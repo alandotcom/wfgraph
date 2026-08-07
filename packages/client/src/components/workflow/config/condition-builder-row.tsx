@@ -40,7 +40,7 @@ import {
   type TimestampAbsoluteOperator,
   type TimestampRelativeOperator,
   type TimeUnit,
-} from "@rova/shared/conditions/conditions";
+} from "@wfgraph/shared/conditions/conditions";
 
 /**
  * What the row is written against, rather than where it is stored.

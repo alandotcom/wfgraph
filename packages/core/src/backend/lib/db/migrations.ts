@@ -19,7 +19,7 @@ const logger = getAppLogger("migrations");
 const currentDir = dirname(fileURLToPath(import.meta.url));
 
 /** The package these migrations belong to, named so the walk-up can recognise it. */
-const OWNING_PACKAGE = "@rova/core";
+const OWNING_PACKAGE = "@wfgraph/core";
 
 /** Drizzle's own journal table, which it creates inside `migrationsSchema`. */
 const MIGRATIONS_TABLE = "__drizzle_migrations";
@@ -31,15 +31,15 @@ const MIGRATIONS_TABLE = "__drizzle_migrations";
  * The one copy of the migrations: drizzle-kit generates into it, and "files" in
  * packages/core/package.json publishes it. Counting `..` segments instead would
  * be counting against a layout that only holds before bundling, and in a flat
- * node_modules the miscount lands on the adopter's own `drizzle/` -- which Rova's
- * migration connection would then apply into Rova's schema, under Rova's
- * search_path, with their hashes in Rova's journal. Anchoring on the package name
+ * node_modules the miscount lands on the adopter's own `drizzle/` -- which WfGraph's
+ * migration connection would then apply into WfGraph's schema, under WfGraph's
+ * search_path, with their hashes in WfGraph's journal. Anchoring on the package name
  * is what makes that unreachable rather than merely unlikely.
  *
  * An operator whose migrations really do sit somewhere else says so with
  * database.migrations.migrationsDir.
  */
-export function rovaMigrationsDir(startDir: string = currentDir): string {
+export function wfgraphMigrationsDir(startDir: string = currentDir): string {
   const findPackageRoot = (dir: string): string => {
     const manifest = resolve(dir, "package.json");
 
@@ -50,14 +50,14 @@ export function rovaMigrationsDir(startDir: string = currentDir): string {
       }
 
       throw new Error(
-        `Rova's migrations are published inside ${OWNING_PACKAGE}, but the package holding its code is named ${String(name)}. Pass database.migrations.migrationsDir to createRovaApp to say where the SQL is.`
+        `WfGraph's migrations are published inside ${OWNING_PACKAGE}, but the package holding its code is named ${String(name)}. Pass database.migrations.migrationsDir to createWfGraphApp to say where the SQL is.`
       );
     }
 
     const parent = dirname(dir);
     if (parent === dir) {
       throw new Error(
-        `Could not find the ${OWNING_PACKAGE} package above ${startDir}, so Rova cannot locate the migrations it ships. Pass database.migrations.migrationsDir to createRovaApp.`
+        `Could not find the ${OWNING_PACKAGE} package above ${startDir}, so WfGraph cannot locate the migrations it ships. Pass database.migrations.migrationsDir to createWfGraphApp.`
       );
     }
 
@@ -70,7 +70,7 @@ export function rovaMigrationsDir(startDir: string = currentDir): string {
 export type MigrationsOptions = {
   /**
    * Apply every pending migration while the app starts, before it serves a
-   * request; `createRovaApp` is what reads this. False unless the host says
+   * request; `createWfGraphApp` is what reads this. False unless the host says
    * otherwise, since whether a deployment migrates from its own instances or from
    * a step of its own is the deployment's decision. Several instances starting
    * together is safe either way: `runMigrations` holds an advisory lock and the
@@ -79,7 +79,7 @@ export type MigrationsOptions = {
   runOnStartup?: boolean;
   /**
    * Directory holding the generated SQL, for an operator whose migrations really
-   * do sit somewhere other than the copy Rova ships.
+   * do sit somewhere other than the copy WfGraph ships.
    */
   migrationsDir?: string;
 };
@@ -89,7 +89,7 @@ async function resolveExistingMigrationsDir(
 ): Promise<string> {
   const folder = configuredPath
     ? resolve(process.cwd(), configuredPath)
-    : rovaMigrationsDir();
+    : wfgraphMigrationsDir();
 
   try {
     const stats = await stat(folder);
@@ -102,7 +102,7 @@ async function resolveExistingMigrationsDir(
 
   throw new Error(
     `Migrations folder not found at ${folder}.` +
-      " If needed, pass database.migrations.migrationsDir to createRovaApp."
+      " If needed, pass database.migrations.migrationsDir to createWfGraphApp."
   );
 }
 
@@ -111,7 +111,7 @@ async function resolveExistingMigrationsDir(
  *
  * The generated SQL names no schema, so the search_path the connection carries is
  * what puts the tables where the host asked for them, and the journal goes in
- * that same schema rather than one of its own: everything Rova owns then sits
+ * that same schema rather than one of its own: everything WfGraph owns then sits
  * inside the one name a host can drop.
  *
  * The connection is this call's own, and it goes back before this returns whether
@@ -142,9 +142,9 @@ export async function runMigrations(
     ...describeConnection(client, schema),
   });
 
-  // One lock name per schema, so two Rovas sharing a database do not wait on each
+  // One lock name per schema, so two WfGraphs sharing a database do not wait on each
   // other. hashtext turns it into the integer the lock functions take.
-  const lockName = `rova:migrations:${schema}`;
+  const lockName = `wfgraph:migrations:${schema}`;
 
   try {
     await lockMigrations(client, lockName);
@@ -239,7 +239,7 @@ export function assertJournalHashesAreOurs(
 
   if (foreign.length > 0) {
     throw new Error(
-      `The ${target.schema} schema carries ${foreign.length} migration(s) this build of Rova does not ship, so applying the ones it does would re-run statements against objects that already exist. This happens when Rova's migration set was rebaselined, or when another tool's migrations were applied into this schema. Drop the ${target.schema} schema and migrate again.`
+      `The ${target.schema} schema carries ${foreign.length} migration(s) this build of WfGraph does not ship, so applying the ones it does would re-run statements against objects that already exist. This happens when WfGraph's migration set was rebaselined, or when another tool's migrations were applied into this schema. Drop the ${target.schema} schema and migrate again.`
     );
   }
 }
@@ -259,7 +259,7 @@ async function assertSearchPathHolds(
 
   if (current?.schema !== schema) {
     throw new Error(
-      `The connection resolves unqualified names to ${current?.schema ?? "no schema"}, not the configured ${schema}. Rova sends the schema as a search_path startup parameter; a connection pooler in front of Postgres has to pass it through.`
+      `The connection resolves unqualified names to ${current?.schema ?? "no schema"}, not the configured ${schema}. WfGraph sends the schema as a search_path startup parameter; a connection pooler in front of Postgres has to pass it through.`
     );
   }
 }

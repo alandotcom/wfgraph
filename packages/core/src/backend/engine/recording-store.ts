@@ -7,7 +7,7 @@
  * opened the row.
  */
 
-import { type JsonValue, readJsonValue } from "@rova/shared/types/json";
+import { type JsonValue, readJsonValue } from "@wfgraph/shared/types/json";
 import { Effect } from "effect";
 import type {
   CompleteRunInput,

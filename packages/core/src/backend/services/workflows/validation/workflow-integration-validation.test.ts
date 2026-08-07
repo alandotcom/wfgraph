@@ -6,8 +6,8 @@ import {
   extractRequiredIntegrationIds,
   validateWorkflowIntegrations,
 } from "#src/backend/services/workflows/validation/workflow-integration-validation";
-import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
-import type { WorkflowNode } from "@rova/shared/graph/types";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 
 // Which integration an action needs is the catalog's answer, and the built-in
 // two ride in on an empty assembly.

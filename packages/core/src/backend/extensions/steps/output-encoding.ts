@@ -15,7 +15,7 @@
  */
 
 import { Result, Schema } from "effect";
-import { formatSchemaFailure } from "@rova/shared/types/schema-message";
+import { formatSchemaFailure } from "@wfgraph/shared/types/schema-message";
 
 /**
  * An encoder for one action's output schema, answering a ready-made sentence

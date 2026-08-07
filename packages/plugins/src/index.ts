@@ -1,14 +1,14 @@
 /**
  * The built-in integrations, as values.
  *
- * Nothing registers on import: this array is what a host hands to `createRovaApp`
+ * Nothing registers on import: this array is what a host hands to `createWfGraphApp`
  * under `extensions.integrations`, so the line that turns the built-ins on is a
  * line in the host's code and dropping it is what turns them off. Each entry is
  * server-only -- a client, a connection test, a step handler -- and the
  * editor learns about all of it as JSON over `/api/extensions` instead.
  *
  * Each is also exported by name, for a host that lists some of the six rather than
- * all of them. That narrows what reaches `createRovaApp` and not what the process
+ * all of them. That narrows what reaches `createWfGraphApp` and not what the process
  * loads: this module imports every integration as a value, so the SDKs three
  * of them carry load with the package either way.
  */

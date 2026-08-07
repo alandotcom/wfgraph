@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { IntegrationUi } from "@rova/plugins/ui";
+import type { IntegrationUi } from "@wfgraph/plugins/ui";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OutputDisplay } from "#src/components/workflow/workflow-run-shared";
 

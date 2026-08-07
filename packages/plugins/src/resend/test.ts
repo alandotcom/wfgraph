@@ -1,7 +1,7 @@
 import { listResendDomains, readResendError } from "#src/resend/client";
 import type { ResendCredentials } from "#src/resend/index";
-import { callExternalAsync } from "@rova/core/plugin";
-import type { IntegrationTestResult } from "@rova/core/plugin";
+import { callExternalAsync } from "@wfgraph/core/plugin";
+import type { IntegrationTestResult } from "@wfgraph/core/plugin";
 
 export async function testResend(
   credentials: ResendCredentials

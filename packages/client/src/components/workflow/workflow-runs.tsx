@@ -28,7 +28,7 @@ import {
   propertiesPanelActiveTabAtom,
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
-import { toWorkflowGraphData } from "@rova/shared/graph/graph";
+import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import { WorkflowRefusedStarts } from "./workflow-refused-starts";
 import { WorkflowRunDetail } from "./workflow-run-detail";
 import { WorkflowRunsList } from "./workflow-runs-list";

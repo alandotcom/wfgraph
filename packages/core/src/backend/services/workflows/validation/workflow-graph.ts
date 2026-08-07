@@ -2,8 +2,8 @@ import { hasCycle } from "graphology-dag";
 import {
   isConditionActionNode,
   normalizeConditionBranch,
-} from "@rova/shared/conditions/condition-branch";
-import { isLifecycleOutlet } from "@rova/shared/lifecycle/lifecycle-outlets";
+} from "@wfgraph/shared/conditions/condition-branch";
+import { isLifecycleOutlet } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import {
   createGraphFromSerialized,
   getNodeTypeFromSerializedNode,
@@ -12,12 +12,12 @@ import {
   parseSerializedWorkflowGraph,
   toWorkflowGraphData,
   WORKFLOW_GRAPH_OPTIONS,
-} from "@rova/shared/graph/graph";
+} from "@wfgraph/shared/graph/graph";
 import type {
   SerializedWorkflowGraph,
   WorkflowEdge,
   WorkflowNode,
-} from "@rova/shared/graph/types";
+} from "@wfgraph/shared/graph/types";
 
 function hasDuplicates(values: string[]): boolean {
   return new Set(values).size !== values.length;

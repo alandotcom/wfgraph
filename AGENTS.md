@@ -1,13 +1,13 @@
 # Agent Instructions
 
-Rova Workflow Builder: a pnpm workspace monorepo with four packages under `packages/`,
-beside `@rova/example-app` (`examples/`), the host app `pnpm run dev` runs.
+WfGraph Workflow Builder: a pnpm workspace monorepo with four packages under `packages/`,
+beside `@wfgraph/example-app` (`examples/`), the host app `pnpm run dev` runs.
 
-- `@rova/shared` (`packages/shared`) runtime-agnostic types, workflow contracts, utilities
-- `@rova/core` (`packages/core`) library entrypoints and the backend
-- `@rova/client` (`packages/client`) the React SPA, handed to `createRovaApp` as `client`
-- `@rova/plugins` (`packages/plugins`) the six built-in integrations. Each server half
-  builds against `@rova/core/plugin` alone; the browser half is one exported record,
+- `@wfgraph/shared` (`packages/shared`) runtime-agnostic types, workflow contracts, utilities
+- `@wfgraph/core` (`packages/core`) library entrypoints and the backend
+- `@wfgraph/client` (`packages/client`) the React SPA, handed to `createWfGraphApp` as `client`
+- `@wfgraph/plugins` (`packages/plugins`) the six built-in integrations. Each server half
+  builds against `@wfgraph/core/plugin` alone; the browser half is one exported record,
   `src/ui.ts`, which the editor provides through React context.
 
 Read the code for structure. `README.md` is the short host entrypoint, `docs/embedding.md`,
@@ -18,12 +18,12 @@ vocabulary, `docs/adr/` the decisions. What follows is what none of those say.
 
 pnpm only, at the version the root `packageManager` field names (`corepack enable` gets
 it). Never npm, yarn, or `bun install`. Node runs everything, and `engines` names Node 24
-as the floor. Trying Rova inside another app is `pnpm link <path-to>/packages/core` after
+as the floor. Trying WfGraph inside another app is `pnpm link <path-to>/packages/core` after
 a build, since the published entries point at `dist`.
 
 **`#src/` means this package's own `src`, never another's.** It is a Node subpath import,
 defined against the manifest of the file that wrote it, so it cannot leave the package.
-Import a sibling by name: `@rova/shared/types/json`, `@rova/core/plugin`. ESM resolution
+Import a sibling by name: `@wfgraph/shared/types/json`, `@wfgraph/core/plugin`. ESM resolution
 has no directory-index and no extension guessing, so write `#src/backend/lib/db/index`.
 Inside `packages/core/src`, `#src/` is the only spelling a lint rule allows.
 
@@ -82,7 +82,7 @@ ISO-string-to-`Date` conversion, and `isoTimestampString` is the spelling that a
 `ReferenceField` the editor menus off.
 
 **Zod is the example app's schema library, and a test fixture inside `packages/`.**
-`@rova/example-app` is written in it, which makes "an adopter needs no Effect" enforceable
+`@wfgraph/example-app` is written in it, which makes "an adopter needs no Effect" enforceable
 rather than promised. In `packages/` it is a devDependency of `core` and `shared` only.
 
 **The authoring vocabulary is three functions**, all in
@@ -115,7 +115,7 @@ kind: `backend/rpc/errors.ts` into an oRPC code, `backend/lib/http/failure-respo
 an HTTP status.
 
 **A service takes its database questions from its aggregate's repository**, never from
-`Database` directly, and the type system holds it to that: `RovaServices` in
+`Database` directly, and the type system holds it to that: `WfGraphServices` in
 `backend/runtime.ts` leaves `Database` out, so a body writing `yield* Database` fails to
 type-check where it is run. The repository is the seam a test stands on, through the
 factories in `backend/lib/effect/test-layers.ts`; each fills every unnamed method with an
@@ -154,7 +154,7 @@ explicitly, with a function reading the global per call, which is what makes fet
 work at all.
 
 **Inngest shapes the workflow engine.** `step.*` inside `step.run()` is a runtime error, so
-a Wait node suspends outside any step. Rova wraps no handler body (ADR-0009): work with a
+a Wait node suspends outside any step. WfGraph wraps no handler body (ADR-0009): work with a
 side effect goes in the handler's own `step.run`, and a `StepFailure` travels back as a
 value so a refused call fails the node once rather than four times. Retries are
 function-level, each step carrying its own counter. Step results round-trip through JSON, and
@@ -194,20 +194,20 @@ nowhere.
 `packages/client/vite.config.ts` is the SPA's dev server and build; the root
 `vitest.config.ts` is the suite's. vitest resolves `vitest.config` first and stops at the
 first file it finds, so anything the tests need is declared at the root as well. The
-`@rova/plugins` source aliases are shared between them as `workspaceSourceAliases`
+`@wfgraph/plugins` source aliases are shared between them as `workspaceSourceAliases`
 (`scripts/plugins/workspace-source-aliases.ts`) for that reason; without them a test
-importing `@rova/plugins` would resolve through the package's `exports` to a stale `dist`.
+importing `@wfgraph/plugins` would resolve through the package's `exports` to a stale `dist`.
 
 **The repo has no server of its own.** The one server is `examples/app.ts` (ADR-0006), and
 the bar for a line in it is whether an adopter would write it. `pnpm run dev` is three
 processes: the app on 4017, Vite's dev server in `packages/client`, and the Inngest CLI.
 Vite serves the editor on its own port and proxies `/api`, and its history fallback answers
-a page view, so nothing outside Rova applies the SPA-path rule. `client` goes unset in
+a page view, so nothing outside WfGraph applies the SPA-path rule. `client` goes unset in
 development, because the option takes a built bundle. `pnpm run start` is one process, with
-the built bundle handed to `createRovaApp`.
+the built bundle handed to `createWfGraphApp`.
 
 **The published package is not the dev tree.** `packages/core` publishes `dist` and
-`drizzle`, with `@rova/shared` inlined into the build so it never appears as a dependency,
+`drizzle`, with `@wfgraph/shared` inlined into the build so it never appears as a dependency,
 and `backend/lib/effect/test-layers.ts` reachable from no entry. Verify a packaging change
 with `pnpm pack` and read the extracted manifest. `docs/embedding.md` ("Package exports")
 is the one home of the six entry points.
@@ -296,7 +296,7 @@ No emojis. Do not create new markdown docs unless asked.
 - **CONTEXT.md** owns domain vocabulary, one paragraph per term.
 - **An ADR** owns why a design was chosen: once, in past tense, never updated. A decision
   that changes gets a dated amendment, not a rewrite.
-- **README.md** owns the short entrypoint: what Rova is, how to run it locally, and a
+- **README.md** owns the short entrypoint: what WfGraph is, how to run it locally, and a
   minimal embed. Detail lives under `docs/`: `docs/embedding.md` (mount, database,
   options, package exports), `docs/events.md` (`defineEvent`), `docs/integrations.md`
   (`defineIntegration`).
@@ -316,7 +316,7 @@ machinery that greps to nothing costs a future session an hour.
 Configuration the engineering skills read before they act. Editing these changes their
 behaviour; nothing in them is enforced by lint or tests.
 
-- `docs/agents/issue-tracker.md` — issues are GitHub issues on `alandotcom/rova`, via `gh`.
+- `docs/agents/issue-tracker.md` — issues are GitHub issues on `alandotcom/wfgraph`, via `gh`.
 - `docs/agents/triage-labels.md` — the five triage roles, each label equal to its name.
 - `docs/agents/domain.md` — single-context: one `CONTEXT.md` and `docs/adr/` at the root.
 

@@ -13,7 +13,7 @@ import {
   LifecyclePanel,
 } from "#src/components/workflow/config/lifecycle-panel";
 import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
-import type { LifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
+import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
 // The Events a panel offers come from the server's catalog. One declares its own

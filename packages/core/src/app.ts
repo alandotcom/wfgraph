@@ -24,7 +24,7 @@ import {
 import {
   type Authorize,
   resolveAuthorize,
-  type RovaAuth,
+  type WfGraphAuth,
   UNAUTHORIZED_BODY,
 } from "#src/backend/lib/http/authorize";
 import { serveClientAsset } from "#src/backend/lib/http/client-assets";
@@ -34,12 +34,12 @@ import {
 } from "#src/backend/lib/http/mount-path";
 import {
   assembleExtensions,
-  type RovaExtensions,
+  type WfGraphExtensions,
 } from "#src/backend/extensions/extension-set";
 import {
   createInngestSurface,
   type InngestSurface,
-  type RovaInngestConfig,
+  type WfGraphInngestConfig,
   type WorkerConnection,
 } from "#src/backend/lib/inngest/client";
 import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
@@ -48,54 +48,57 @@ import {
   configureAppLoggingWithBridge,
   getAppLogger,
 } from "#src/backend/lib/logger";
-import { createRovaRuntime, type RovaRuntime } from "#src/backend/runtime";
-import type { RovaLogger } from "@rova/shared/types/logger";
+import {
+  createWfGraphRuntime,
+  type WfGraphRuntime,
+} from "#src/backend/runtime";
+import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 
 export type { DatabaseRuntimeConfig } from "#src/backend/lib/db/config";
 export type { MigrationsOptions } from "#src/backend/lib/db/migrations";
 export type { EncryptionRuntimeConfig } from "#src/backend/services/integrations/cipher";
-export type { RovaInngestConfig } from "#src/backend/lib/inngest/client";
-export type { RovaAuth } from "#src/backend/lib/http/authorize";
-export type { RovaLogger } from "@rova/shared/types/logger";
-export type { RovaExtensions } from "#src/backend/extensions/extension-set";
+export type { WfGraphInngestConfig } from "#src/backend/lib/inngest/client";
+export type { WfGraphAuth } from "#src/backend/lib/http/authorize";
+export type { WfGraphLogger } from "@wfgraph/shared/types/logger";
+export type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
 
 /**
- * Where the database is, which schema Rova lives in, and whether it migrates on
+ * Where the database is, which schema WfGraph lives in, and whether it migrates on
  * the way up. Migrations sit here rather than beside `database` because they are
  * a statement about the same database, and a host reading the options should not
  * have to notice that two top-level keys describe one thing.
  */
-export type RovaDatabaseOptions = DatabaseRuntimeConfig & {
+export type WfGraphDatabaseOptions = DatabaseRuntimeConfig & {
   migrations?: MigrationsOptions;
 };
 
-export type RovaAppOptions = {
+export type WfGraphAppOptions = {
   /**
-   * Absolute path the host mounted Rova at, for example "/workflows". Defaults
-   * to "/". Rova builds its API prefix, its asset URLs, and the SPA's
+   * Absolute path the host mounted WfGraph at, for example "/workflows". Defaults
+   * to "/". WfGraph builds its API prefix, its asset URLs, and the SPA's
    * `<base href>` from this, so a host that mounts under a sub-path says so
-   * once here instead of Rova guessing per request.
+   * once here instead of WfGraph guessing per request.
    */
   basePath?: string;
   /**
    * Who may reach the editor: a predicate over the request, or "external" when
-   * something in front of Rova already gates it.
+   * something in front of WfGraph already gates it.
    *
    * Required everywhere rather than only in production, since the check that
    * would tell the two apart reads an environment variable that says
-   * "production" and misses "prod" and an unset one. Covers everything Rova
+   * "production" and misses "prod" and an unset one. Covers everything WfGraph
    * serves except machine routes (the wait resume path, and `/inngest` when
    * HTTP serve is mounted).
    */
-  auth: RovaAuth;
+  auth: WfGraphAuth;
   /**
-   * Where Rova's own log lines go. Absent, Rova configures a console sink of
+   * Where WfGraph's own log lines go. Absent, WfGraph configures a console sink of
    * its own; present, every line is handed to this instead.
    */
-  logger?: RovaLogger;
-  database: RovaDatabaseOptions;
+  logger?: WfGraphLogger;
+  database: WfGraphDatabaseOptions;
   encryption: EncryptionRuntimeConfig;
-  inngest: RovaInngestConfig;
+  inngest: WfGraphInngestConfig;
   /**
    * The whole extension surface, in one place.
    *
@@ -104,25 +107,25 @@ export type RovaAppOptions = {
    * Event brings its listener, and a `defineAction` brings its handler. Dropping
    * a line is what turns something off.
    */
-  extensions?: RovaExtensions;
+  extensions?: WfGraphExtensions;
   /**
-   * The workflow editor, from `import { clientBundle } from "@rova/client"`.
+   * The workflow editor, from `import { clientBundle } from "@wfgraph/client"`.
    *
-   * Rova serves the editor when a host hands it one and serves nothing when they
+   * WfGraph serves the editor when a host hands it one and serves nothing when they
    * do not, so turning the UI on is a line in the host's code rather than a
-   * consequence of what happens to be installed. `@rova/core` does not depend on
-   * `@rova/client` in either direction.
+   * consequence of what happens to be installed. `@wfgraph/core` does not depend on
+   * `@wfgraph/client` in either direction.
    */
-  client?: RovaClientBundle;
+  client?: WfGraphClientBundle;
 };
 
-/** Structural, so `@rova/core` and `@rova/client` need no dependency between them. */
-export type RovaClientBundle = {
+/** Structural, so `@wfgraph/core` and `@wfgraph/client` need no dependency between them. */
+export type WfGraphClientBundle = {
   /** Directory holding index.html and the hashed asset chunks beside it. */
   dir: string;
 };
 
-export type RovaApp = {
+export type WfGraphApp = {
   /**
    * The whole mounted app as one fetch handler. Bun, Deno, Cloudflare Workers,
    * and Node 18+ all consume this directly; `createRequestListener` translates
@@ -145,14 +148,16 @@ export type RovaApp = {
 };
 
 /**
- * One Rova per process.
+ * One WfGraph per process.
  *
  * Everything an app holds is its own, but the arrangement is still the only
  * supported one (ADR-0002): a second app naming a different database is refused
- * where the pool is claimed, and the parts of Rova that a host reaches through
+ * where the pool is claimed, and the parts of WfGraph that a host reaches through
  * the module graph have never been written for two.
  */
-export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
+export async function createWfGraphApp(
+  options: WfGraphAppOptions
+): Promise<WfGraphApp> {
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const authorize = resolveAuthorize(options.auth);
 
@@ -162,12 +167,16 @@ export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
   const databaseConfig = normalizeDatabaseConfig(options.database);
 
   if (!options.inngest.id?.trim()) {
-    throw new Error("createRovaApp requires inngest.id");
+    throw new Error("createWfGraphApp requires inngest.id");
   }
 
   assertValidEncryptionKey(options.encryption.key);
 
-  return await buildRovaApp(options, { basePath, authorize, databaseConfig });
+  return await buildWfGraphApp(options, {
+    basePath,
+    authorize,
+    databaseConfig,
+  });
 }
 
 /**
@@ -183,19 +192,19 @@ async function assertClientBundle(clientDir: string): Promise<void> {
     await stat(entry);
   } catch {
     throw new Error(
-      `createRovaApp's client.dir does not hold an index.html: looked for ${entry}. Pass clientBundle from @rova/client, or the directory of your own build of the editor.`
+      `createWfGraphApp's client.dir does not hold an index.html: looked for ${entry}. Pass clientBundle from @wfgraph/client, or the directory of your own build of the editor.`
     );
   }
 }
 
-async function buildRovaApp(
-  options: RovaAppOptions,
+async function buildWfGraphApp(
+  options: WfGraphAppOptions,
   startup: {
     basePath: "" | `/${string}`;
     authorize: Authorize;
     databaseConfig: NormalizedDatabaseConfig;
   }
-): Promise<RovaApp> {
+): Promise<WfGraphApp> {
   const { basePath, authorize, databaseConfig } = startup;
 
   if (options.logger) {
@@ -210,10 +219,10 @@ async function buildRovaApp(
   const database = createDatabaseSurface(databaseConfig);
 
   // Everything past this point can fail with the pool already open, and past
-  // `createRovaRuntime` with whatever the Layers acquired. A failure gives both
+  // `createWfGraphRuntime` with whatever the Layers acquired. A failure gives both
   // back, the same as dispose does, so a host that catches a startup failure,
   // corrects an option and calls again is not refused as a rebind.
-  let runtime: RovaRuntime | undefined;
+  let runtime: WfGraphRuntime | undefined;
   try {
     // One value for the Inngest client this app sends on, built before the
     // runtime because the Layer graph takes it. Functions are registered later,
@@ -229,7 +238,7 @@ async function buildRovaApp(
       `Extension surface assembled: ${events.length} events, ${actions.length} actions, ${integrations.length} integrations`
     );
 
-    // Where the tables are is a startup fact worth one line: Rova lives in a
+    // Where the tables are is a startup fact worth one line: WfGraph lives in a
     // schema of a database the host chose, and "it is reading the wrong schema"
     // is otherwise a guess made from an empty editor.
     getAppLogger("database").info(
@@ -245,9 +254,9 @@ async function buildRovaApp(
 
     // The Layer graph this instance owns. Building it is lazy, so an app that
     // never serves a migrated procedure never constructs a service.
-    runtime = createRovaRuntime({ inngest, extensions, database, cipher });
+    runtime = createWfGraphRuntime({ inngest, extensions, database, cipher });
 
-    return await assembleRovaApp(options, {
+    return await assembleWfGraphApp(options, {
       basePath,
       authorize,
       runtime,
@@ -262,16 +271,16 @@ async function buildRovaApp(
 }
 
 /** Everything after the runtime exists: the routes, the editor, and dispose. */
-async function assembleRovaApp(
-  options: RovaAppOptions,
+async function assembleWfGraphApp(
+  options: WfGraphAppOptions,
   startup: {
     basePath: "" | `/${string}`;
     authorize: Authorize;
-    runtime: RovaRuntime;
+    runtime: WfGraphRuntime;
     inngest: InngestSurface;
     database: DatabaseSurface;
   }
-): Promise<RovaApp> {
+): Promise<WfGraphApp> {
   const { basePath, authorize, runtime, inngest, database } = startup;
 
   // Built once: Connect and HTTP serve are alternatives, and whichever path
@@ -338,7 +347,7 @@ async function assembleRovaApp(
     await runtime.dispose();
 
     // Last, because a Layer finalizer is free to run a closing query. postgres.js
-    // holds an idle socket open per pool, so a host that shuts Rova down gets its
+    // holds an idle socket open per pool, so a host that shuts WfGraph down gets its
     // process back only once this has run.
     await database.close();
   };

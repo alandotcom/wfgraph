@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { errorOf } from "#src/backend/services/workflows/validation/validation-test-support";
 import { validateWorkflowTemplates } from "#src/backend/services/workflows/validation/workflow-template-validation";
-import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import type {
   EventMetadata,
   ExtensionCatalog,
-} from "@rova/shared/extensions/catalog";
-import type { ReferenceField } from "@rova/shared/graph/node-references";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
-import { eventSplitOutlet } from "@rova/shared/lifecycle/event-split";
-import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/lifecycle/lifecycle-outlets";
+} from "@wfgraph/shared/extensions/catalog";
+import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
+import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
+import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
+import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 
 const CREATED = "app/appointment.created";
 const RESCHEDULED = "app/appointment.rescheduled";

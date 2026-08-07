@@ -1,6 +1,6 @@
 ---
 name: live-run
-description: Drive a real workflow run against the local stack and read what actually happened. Use when a change touches the engine, the Wait node, cancellation, the Inngest functions, or anything whose behaviour is decided by Inngest's executor rather than by Rova's own code, and a vitest suite therefore cannot settle the question. Triggers on "verify against inngest dev", "drive a real run", "measure the timing", "check it end to end", or a claim about when a run wakes, resumes, retries, or is cancelled.
+description: Drive a real workflow run against the local stack and read what actually happened. Use when a change touches the engine, the Wait node, cancellation, the Inngest functions, or anything whose behaviour is decided by Inngest's executor rather than by WfGraph's own code, and a vitest suite therefore cannot settle the question. Triggers on "verify against inngest dev", "drive a real run", "measure the timing", "check it end to end", or a claim about when a run wakes, resumes, retries, or is cancelled.
 ---
 
 # Driving a live run
@@ -29,7 +29,7 @@ Everything else belongs in vitest, which is faster and repeatable.
 ## 1. Start the stack
 
 ```bash
-(pnpm run dev > /tmp/rova-dev.log 2>&1 &)
+(pnpm run dev > /tmp/wfgraph-dev.log 2>&1 &)
 ```
 
 Three processes: the example app on 4017, Vite in `packages/client`, and
@@ -104,7 +104,7 @@ which for the example app's appointments is `appointment.id`.
 the condition instead, in a `run_in_background` Bash call or an until-loop:
 
 ```bash
-until [ "$(psql "$ROVA_DB" -t -A -c \
+until [ "$(psql "$WFGRAPH_DB" -t -A -c \
   "select status from _workflows.workflow_executions where id='<exec>';")" = "completed" ]
 do sleep 3; done
 ```
@@ -116,21 +116,21 @@ landed on its own target".
 
 ## 5. Read the trace
 
-Rova's tables live in the `_workflows` schema.
+WfGraph's tables live in the `_workflows` schema.
 
 ```bash
-ROVA_DB="postgresql://workflow:workflow@localhost:55437/workflow_builder"
+WFGRAPH_DB="postgresql://workflow:workflow@localhost:55437/workflow_builder"
 
-psql "$ROVA_DB" -c "select node_name, status,
+psql "$WFGRAPH_DB" -c "select node_name, status,
   to_char(started_at,'HH24:MI:SS') started,
   to_char(completed_at,'HH24:MI:SS') completed, duration, output
   from _workflows.workflow_execution_logs
   where execution_id='<exec>' order by timestamp;"
 
-psql "$ROVA_DB" -c "select status, error, duration
+psql "$WFGRAPH_DB" -c "select status, error, duration
   from _workflows.workflow_executions where id='<exec>';"
 
-psql "$ROVA_DB" -c "select node_name, status
+psql "$WFGRAPH_DB" -c "select node_name, status
   from _workflows.workflow_wait_states where execution_id='<exec>';"
 ```
 
@@ -140,7 +140,7 @@ behind it says when the branch resumed.
 
 ## 6. Read what Inngest did
 
-The run log says what Rova recorded. This says what the executor actually ran,
+The run log says what WfGraph recorded. This says what the executor actually ran,
 which is the only place a claim about invocations can be settled.
 
 **Trap.** The dev server holds its database open, so copy it first.
@@ -165,7 +165,7 @@ Every probe leaves rows behind, and the next session reads the workflow list.
 
 ```bash
 pkill -f "inngest dev"; pkill -f "concurrently --kill-others-on-fail"
-psql "$ROVA_DB" -c "delete from _workflows.workflows where id in ('<id>');"
+psql "$WFGRAPH_DB" -c "delete from _workflows.workflows where id in ('<id>');"
 ```
 
 Deleting the workflow cascades to its executions, logs and wait states.

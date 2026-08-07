@@ -11,7 +11,7 @@ import { useMemo } from "react";
 import { useAtomValue } from "jotai";
 import { eventsReachingTarget } from "#src/lib/upstream-node-fields";
 import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
-import type { EventMetadata } from "@rova/shared/extensions/catalog";
+import type { EventMetadata } from "@wfgraph/shared/extensions/catalog";
 
 const NO_OUTLETS: EventMetadata[] = [];
 

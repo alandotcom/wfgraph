@@ -1,5 +1,5 @@
 import { Environment } from "@marcbachmann/cel-js";
-import { decodeIsoTimestamp } from "@rova/shared/types/timestamp";
+import { decodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
 
 const TIMESTAMP_TYPE = "google.protobuf.Timestamp";
 const DURATION_TYPE = "google.protobuf.Duration";

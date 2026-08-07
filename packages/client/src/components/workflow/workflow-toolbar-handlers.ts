@@ -71,16 +71,16 @@ import {
   readEntryLifecycleRules,
   readEntryTestPayloads,
 } from "#src/lib/test-payload";
-import { isEventSplitNode } from "@rova/shared/lifecycle/event-split";
+import { isEventSplitNode } from "@wfgraph/shared/lifecycle/event-split";
 import {
   initialLifecycleRules,
   manualStartAllowed,
-} from "@rova/shared/lifecycle/lifecycle-rules";
+} from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
   collectWorkflowIssues,
   groupWorkflowIssuesForOverlay,
   hasBlockingWorkflowIssues,
-} from "@rova/shared/graph/workflow-issues";
+} from "@wfgraph/shared/graph/workflow-issues";
 
 type WorkflowHandlerParams = {
   currentWorkflowId: string | null;

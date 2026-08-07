@@ -6,8 +6,8 @@ import { validateWorkflowActionConfigs } from "#src/backend/services/workflows/v
 import {
   emptyExtensionCatalog,
   type ExtensionCatalog,
-} from "@rova/shared/extensions/catalog";
-import type { WorkflowNode } from "@rova/shared/graph/types";
+} from "@wfgraph/shared/extensions/catalog";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 
 // An action's required fields come from the catalog a save reads, and the
 // built-in two, Condition and Wait, ride in on an empty assembly.

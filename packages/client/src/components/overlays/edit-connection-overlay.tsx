@@ -16,7 +16,7 @@ import { getExtensionCatalog } from "#src/lib/extensions";
 import {
   findIntegration,
   type IntegrationMetadata,
-} from "@rova/shared/extensions/catalog";
+} from "@wfgraph/shared/extensions/catalog";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";

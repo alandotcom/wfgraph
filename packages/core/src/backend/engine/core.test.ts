@@ -5,13 +5,13 @@ import {
 } from "#src/backend/extensions/define-action";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
-import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
+import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { Effect, Schema } from "effect";
 import { DatabaseError } from "#src/backend/lib/effect/database";
-import { unknownRest } from "@rova/shared/types/schema";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
-import type { WorkflowNode } from "@rova/shared/graph/types";
+import { unknownRest } from "@wfgraph/shared/types/schema";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
 import {
   executionData,
@@ -162,7 +162,7 @@ const actions = createWorkflowActions(
     ],
     integrations: [notify],
   }),
-  stubRovaRuntime()
+  stubWfGraphRuntime()
 );
 
 describe("host action execution", () => {
@@ -280,7 +280,7 @@ describe("host action execution", () => {
   });
 
   // A stored graph naming an action nothing assembled -- an id from a deleted
-  // integration, a typo, a build served by a different Rova than the one that
+  // integration, a typo, a build served by a different WfGraph than the one that
   // saved it -- fails the node by name rather than the run. The message lists
   // the two ids the engine ships itself, which it knows without asking the
   // dispatch port: a surface holding nothing would otherwise make the sentence

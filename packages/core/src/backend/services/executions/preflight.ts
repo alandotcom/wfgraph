@@ -13,16 +13,16 @@ import { validateWorkflowIntegrations } from "#src/backend/services/workflows/va
 import { validateWorkflowEvents } from "#src/backend/services/workflows/validation/workflow-lifecycle-validation";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { graphDigest } from "#src/backend/services/workflows/version-digest";
-import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import {
   type LifecycleRules,
   readLifecycleRules,
-} from "@rova/shared/lifecycle/lifecycle-rules";
-import { isEventSplitNode } from "@rova/shared/lifecycle/event-split";
+} from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import { isEventSplitNode } from "@wfgraph/shared/lifecycle/event-split";
 import type {
   SerializedWorkflowGraph,
   WorkflowNode,
-} from "@rova/shared/graph/types";
+} from "@wfgraph/shared/graph/types";
 
 type WorkflowForPreflight = {
   graph: unknown;

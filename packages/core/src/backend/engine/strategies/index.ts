@@ -17,10 +17,13 @@ import type { TraversalRoute } from "#src/backend/engine/traversal";
 import {
   isConditionNode,
   isEventSplitActionNode,
-} from "@rova/shared/graph/node-config";
-import type { ConditionBranch, WorkflowNode } from "@rova/shared/graph/types";
-import { isEventSplitNode } from "@rova/shared/lifecycle/event-split";
-import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/lifecycle/lifecycle-outlets";
+} from "@wfgraph/shared/graph/node-config";
+import type {
+  ConditionBranch,
+  WorkflowNode,
+} from "@wfgraph/shared/graph/types";
+import { isEventSplitNode } from "@wfgraph/shared/lifecycle/event-split";
+import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import { Effect } from "effect";
 import { failedExecution } from "#src/backend/engine/contracts";
 import { engineFailure } from "#src/backend/engine/engine-failure";

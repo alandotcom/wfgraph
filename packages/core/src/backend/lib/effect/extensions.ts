@@ -4,7 +4,7 @@ import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 /**
  * The assembled surface, as a service rather than module state.
  *
- * `createRovaApp` assembles one set and hands it to the Layer graph, so every
+ * `createWfGraphApp` assembles one set and hands it to the Layer graph, so every
  * reader -- the credential mapping, the two workflow validators, the catalog
  * route, the Event listener set -- asks the runtime that owns it. The type
  * system enforces that an app has assembled a surface: a service body that
@@ -12,7 +12,7 @@ import type { ExtensionSet } from "#src/backend/extensions/extension-set";
  * can run it.
  */
 export class Extensions extends Context.Service<Extensions, ExtensionSet>()(
-  "@rova/core/Extensions"
+  "@wfgraph/core/Extensions"
 ) {}
 
 export function makeExtensionsLayer(

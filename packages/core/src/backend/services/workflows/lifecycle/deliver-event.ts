@@ -26,10 +26,10 @@ import {
   WorkflowRepo,
 } from "#src/backend/services/workflows/repo";
 import { toWorkflowRunTarget } from "#src/backend/services/executions/run-rows";
-import type { JsonObject } from "@rova/shared/types/json";
-import { getValueByPath } from "@rova/shared/utils/object-path";
-import { emptyLifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
-import { asNonEmptyString } from "@rova/shared/types/string";
+import type { JsonObject } from "@wfgraph/shared/types/json";
+import { getValueByPath } from "@wfgraph/shared/utils/object-path";
+import { emptyLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import { asNonEmptyString } from "@wfgraph/shared/types/string";
 
 /**
  * The Event as delivery reads it: its identity, and where its payload carries an

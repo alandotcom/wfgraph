@@ -6,11 +6,11 @@ import {
   eventSplitOutlet,
   eventSplitOutletEvent,
   isEventSplitNode,
-} from "@rova/shared/lifecycle/event-split";
+} from "@wfgraph/shared/lifecycle/event-split";
 import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
-} from "@rova/shared/lifecycle/lifecycle-outlets";
+} from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import {
   eventSplitCardWidth,
   WORKFLOW_NODE_HEIGHT,

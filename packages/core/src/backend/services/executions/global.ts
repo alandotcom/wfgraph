@@ -10,7 +10,7 @@ import {
 import type {
   WorkflowExecutionStartSource,
   WorkflowExecutionStatus,
-} from "@rova/shared/lifecycle/execution-contracts";
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;

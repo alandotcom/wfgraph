@@ -2,9 +2,9 @@
 
 _Decided 2026-07-27 by Alan Cohen, following an architecture review._
 
-Rova is a Bun workspace monorepo: Bun is the runtime, the package manager, the test runner
+WfGraph is a Bun workspace monorepo: Bun is the runtime, the package manager, the test runner
 via `bun:test`, and the client dev server via `Bun.serve`'s HTML entrypoint. Embedders,
-though, run the published `@rova/core` on Node, so the tests that guard this code have
+though, run the published `@wfgraph/core` on Node, so the tests that guard this code have
 always executed on a different runtime than the code they guard. Adopting Effect
 (ADR-0002) brings `@effect/vitest`, which requires vitest, and that forced the question.
 
@@ -15,7 +15,7 @@ We are leaving the Bun platform completely:
   in the root `package.json`, and pnpm's default isolated `node_modules` gives the same
   guarantee that `bunfig.toml`'s `linker = "isolated"` gives today, so a package can still
   import only what its own `package.json` declares.
-- **Vite** serves and builds `@rova/client`, taking over from the per-request
+- **Vite** serves and builds `@wfgraph/client`, taking over from the per-request
   transpilation that `Bun.serve` does for the HTML entrypoint in `server.ts`.
 - **vitest with `@effect/vitest`** is the only test runner, replacing `bun:test`.
 
@@ -35,7 +35,7 @@ is gone.
 ## Consequences
 
 - The two `Bun.serve` call sites, `server.ts` and `examples/library-trigger.ts`, are
-  rewritten. The dev server becomes Vite's, and the example runs through `@rova/core/node`.
+  rewritten. The dev server becomes Vite's, and the example runs through `@wfgraph/core/node`.
   _2026-07-28: superseded by ADR-0006. Neither file exists; the repo has one server, the
   example app at `examples/app.ts`._
 - Development gains a client build step in the sense that Vite now owns transpilation. The

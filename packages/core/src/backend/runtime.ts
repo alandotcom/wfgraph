@@ -42,7 +42,7 @@ import {
  * which no longer matches the `R` this runtime satisfies, so the procedure that
  * runs it stops compiling.
  */
-export type RovaServices =
+export type WfGraphServices =
   | AppLogger
   | Extensions
   | ApiKeyRepo
@@ -52,7 +52,7 @@ export type RovaServices =
   | InngestClient;
 
 /** Everything the app hands the Layer graph, as the app itself holds it. */
-export type RovaRuntimeParts = {
+export type WfGraphRuntimeParts = {
   inngest: InngestSurface;
   extensions: ExtensionSet;
   database: DatabaseSurface;
@@ -65,7 +65,9 @@ export type RovaRuntimeParts = {
 // named rather than rebuilt per domain: Layers are memoized by reference, so one
 // value used in every position means one database service, however many domains
 // provide it to.
-function buildRovaLayer(parts: RovaRuntimeParts): Layer.Layer<RovaServices> {
+function buildWfGraphLayer(
+  parts: WfGraphRuntimeParts
+): Layer.Layer<WfGraphServices> {
   const database = makeDatabaseLayer(parts.database.db);
 
   return Layer.mergeAll(
@@ -86,16 +88,21 @@ function buildRovaLayer(parts: RovaRuntimeParts): Layer.Layer<RovaServices> {
 /**
  * The Layer graph, built once and owned by the app that created it.
  *
- * `createRovaApp` makes one of these and disposes it. Ownership is what buys the
+ * `createWfGraphApp` makes one of these and disposes it. Ownership is what buys the
  * dependency injection: a service reaches its repository and its logger through
  * this graph, so a test swaps either one by handing over a different Layer
  * instead of stubbing a module. Construction is lazy, and the graph is built on
  * the first Effect the runtime runs, so making an app opens no connections.
  *
- * One Rova per process stays the only supported arrangement (ADR-0002).
+ * One WfGraph per process stays the only supported arrangement (ADR-0002).
  */
-export type RovaRuntime = ManagedRuntime.ManagedRuntime<RovaServices, never>;
+export type WfGraphRuntime = ManagedRuntime.ManagedRuntime<
+  WfGraphServices,
+  never
+>;
 
-export function createRovaRuntime(parts: RovaRuntimeParts): RovaRuntime {
-  return ManagedRuntime.make(buildRovaLayer(parts));
+export function createWfGraphRuntime(
+  parts: WfGraphRuntimeParts
+): WfGraphRuntime {
+  return ManagedRuntime.make(buildWfGraphLayer(parts));
 }

@@ -10,9 +10,9 @@ import {
   LIFECYCLE_STARTED_HANDLE,
   type LifecycleOutlet,
   nodesBehindOutlet,
-} from "@rova/shared/lifecycle/lifecycle-outlets";
-import { configDeclaresCancelEvent } from "@rova/shared/lifecycle/lifecycle-rules";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
+} from "@wfgraph/shared/lifecycle/lifecycle-outlets";
+import { configDeclaresCancelEvent } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 
 export type PublishCheckResult =
   | { valid: true }

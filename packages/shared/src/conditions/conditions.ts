@@ -3,7 +3,7 @@
  *
  * Prefer a specific submodule (`condition-model`, `condition-schema`, …) when
  * the caller already knows which layer it needs; this file keeps the historical
- * `@rova/shared/conditions/conditions` import path stable.
+ * `@wfgraph/shared/conditions/conditions` import path stable.
  */
 
 export {

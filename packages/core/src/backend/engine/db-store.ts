@@ -13,7 +13,7 @@ import { Effect } from "effect";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import { redactSensitiveData } from "#src/backend/lib/utils/redact";
 import type { ExecutionRepo } from "#src/backend/services/executions/repo";
-import { decodeIsoTimestampOrThrow } from "@rova/shared/types/timestamp";
+import { decodeIsoTimestampOrThrow } from "@wfgraph/shared/types/timestamp";
 import type {
   CompleteRunInput,
   WorkflowStore,

@@ -13,7 +13,7 @@ import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import { readCompiledWaitSubscriptions } from "#src/backend/engine/wait-match";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
-import type { JsonObject } from "@rova/shared/types/json";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 
 type CandidateWaitState = {
   id: string;

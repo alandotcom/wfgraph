@@ -15,8 +15,8 @@ import {
   RETAINED_VERSIONS_PER_WORKFLOW,
 } from "#src/backend/services/workflows/publish";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
-import type { LifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 
 const catalogLayer = stubExtensionCatalog({
   events: [

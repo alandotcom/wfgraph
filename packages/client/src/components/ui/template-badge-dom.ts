@@ -1,8 +1,8 @@
 import { getExtensionCatalog } from "#src/lib/extensions";
-import { findAction } from "@rova/shared/extensions/catalog";
-import { parseTemplate, type TemplateToken } from "@rova/shared/graph/node-references";
+import { findAction } from "@wfgraph/shared/extensions/catalog";
+import { parseTemplate, type TemplateToken } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-import { readConfigString } from "@rova/shared/graph/node-config";
+import { readConfigString } from "@wfgraph/shared/graph/node-config";
 
 /**
  * The contentEditable behind the template fields, as plain DOM.

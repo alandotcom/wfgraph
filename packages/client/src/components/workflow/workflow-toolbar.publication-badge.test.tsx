@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { WorkflowToolbar } from "#src/components/workflow/workflow-toolbar";
 import { orpcQuery } from "#src/lib/rpc-query";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 
 vi.mock("#src/components/workflows/user-menu", () => ({
   UserMenu: () => null,

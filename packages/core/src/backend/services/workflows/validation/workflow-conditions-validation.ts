@@ -3,10 +3,10 @@ import {
   compileConditionModel,
   compileSerializedConditionModel,
   parseConditionModel,
-} from "@rova/shared/conditions/conditions";
-import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
-import type { WorkflowNode } from "@rova/shared/graph/types";
-import { readWaitSubscriptions } from "@rova/shared/lifecycle/wait-subscription";
+} from "@wfgraph/shared/conditions/conditions";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import { readWaitSubscriptions } from "@wfgraph/shared/lifecycle/wait-subscription";
 
 export type WorkflowConditionsValidationResult =
   | { valid: true }

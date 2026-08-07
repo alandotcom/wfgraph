@@ -17,7 +17,7 @@ import {
   propertiesPanelActiveTabAtom,
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
-import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /**

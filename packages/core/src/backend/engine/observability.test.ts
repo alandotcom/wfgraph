@@ -12,8 +12,8 @@ import { createRecordingWorkflowStore } from "#src/backend/engine/recording-stor
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import { executeWaitAction } from "#src/backend/engine/wait";
 import { TracerBridgeLayer } from "#src/backend/lib/effect/tracer";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
-import type { WorkflowNode } from "@rova/shared/graph/types";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 
 function lifecycleNode(): WorkflowNode {
   return {
@@ -100,54 +100,54 @@ describe("engine Effect spans", () => {
 
     const spans = exporter.getFinishedSpans();
     const execution = spans.find(
-      (span) => span.name === "rova.workflow.execution"
+      (span) => span.name === "wfgraph.workflow.execution"
     );
     const lifecycle = spans.find(
       (span) =>
-        span.name === "rova.workflow.node.execute" &&
-        span.attributes["rova.node.id"] === "lifecycle_1"
+        span.name === "wfgraph.workflow.node.execute" &&
+        span.attributes["wfgraph.node.id"] === "lifecycle_1"
     );
     const actionNodeSpan = spans.find(
       (span) =>
-        span.name === "rova.workflow.node.execute" &&
-        span.attributes["rova.node.id"] === "action_1"
+        span.name === "wfgraph.workflow.node.execute" &&
+        span.attributes["wfgraph.node.id"] === "action_1"
     );
     const action = spans.find(
-      (span) => span.name === "rova.workflow.action.execute"
+      (span) => span.name === "wfgraph.workflow.action.execute"
     );
 
     expect(execution?.attributes).toMatchObject({
-      "rova.workflow.id": "workflow_1",
-      "rova.workflow.name": "Observed workflow",
-      "rova.execution.id": "execution_1",
-      "rova.execution.run_mode": "live",
+      "wfgraph.workflow.id": "workflow_1",
+      "wfgraph.workflow.name": "Observed workflow",
+      "wfgraph.execution.id": "execution_1",
+      "wfgraph.execution.run_mode": "live",
     });
     expect(lifecycle?.attributes).toMatchObject({
-      "rova.node.id": "lifecycle_1",
-      "rova.node.name": "Lifecycle",
-      "rova.node.type": "lifecycle",
+      "wfgraph.node.id": "lifecycle_1",
+      "wfgraph.node.name": "Lifecycle",
+      "wfgraph.node.type": "lifecycle",
     });
-    expect(lifecycle?.attributes["rova.action.type"]).toBeUndefined();
+    expect(lifecycle?.attributes["wfgraph.action.type"]).toBeUndefined();
     expect(actionNodeSpan?.attributes).toMatchObject({
-      "rova.node.id": "action_1",
-      "rova.node.name": "Unknown action",
-      "rova.node.type": "action",
-      "rova.action.type": "test/unknown",
+      "wfgraph.node.id": "action_1",
+      "wfgraph.node.name": "Unknown action",
+      "wfgraph.node.type": "action",
+      "wfgraph.action.type": "test/unknown",
     });
     expect(action?.attributes).toMatchObject({
-      "rova.action.type": "test/unknown",
-      "rova.node.id": "action_1",
-      "rova.node.name": "Unknown action",
+      "wfgraph.action.type": "test/unknown",
+      "wfgraph.node.id": "action_1",
+      "wfgraph.node.name": "Unknown action",
     });
     expect(action?.parentSpanContext?.spanId).toBe(
       actionNodeSpan?.spanContext().spanId
     );
     expect(
       spans
-        .filter((span) => span.name.startsWith("rova.workflow."))
+        .filter((span) => span.name.startsWith("wfgraph.workflow."))
         .every(
           (span) =>
-            span.instrumentationScope.name === "rova-workflows" &&
+            span.instrumentationScope.name === "wfgraph-workflows" &&
             span.instrumentationScope.version === "0.1.0"
         )
     ).toBe(true);
@@ -175,11 +175,11 @@ describe("engine Effect spans", () => {
     expect(result.result.success).toBe(false);
     const wait = exporter
       .getFinishedSpans()
-      .find((span) => span.name === "rova.workflow.wait");
+      .find((span) => span.name === "wfgraph.workflow.wait");
     expect(wait?.attributes).toMatchObject({
-      "rova.wait.type": "delay",
-      "rova.node.id": "wait_1",
-      "rova.node.name": "Wait for reply",
+      "wfgraph.wait.type": "delay",
+      "wfgraph.node.id": "wait_1",
+      "wfgraph.node.name": "Wait for reply",
     });
   });
 
@@ -219,8 +219,8 @@ describe("engine Effect spans", () => {
     const spans = exporter.getFinishedSpans();
     const wait = spans.find(
       (span) =>
-        span.name === "rova.workflow.wait" &&
-        span.attributes["rova.node.id"] === "wait_context"
+        span.name === "wfgraph.workflow.wait" &&
+        span.attributes["wfgraph.node.id"] === "wait_context"
     );
     const durable = spans.find((span) => span.name === "test.wait.durable");
     expect(durable?.parentSpanContext?.spanId).toBe(wait?.spanContext().spanId);

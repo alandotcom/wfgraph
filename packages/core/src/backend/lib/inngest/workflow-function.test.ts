@@ -8,12 +8,12 @@ import {
   noopWorkflowStore,
   type WorkflowStore,
 } from "#src/backend/engine/store";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import {
   createWorkflowBranchFunction,
   createWorkflowRunFunction,
 } from "#src/backend/lib/inngest/workflow-function";
-import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
+import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 
 const { executeWorkflowMock } = vi.hoisted(() => ({
   executeWorkflowMock: vi.fn(),
@@ -32,7 +32,7 @@ vi.mock("#src/backend/engine/core", () => ({
 // mocked, so identity is all this file needs from either.
 const testActions = noWorkflowActions;
 const testStore = noopWorkflowStore;
-const testAppRuntime = stubRovaRuntime();
+const testAppRuntime = stubWfGraphRuntime();
 
 afterAll(() => testAppRuntime.dispose());
 

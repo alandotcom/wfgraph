@@ -3,7 +3,7 @@ import type {
   ServiceFailure,
   ServiceFailureKind,
 } from "#src/backend/lib/effect/failures";
-import { getRpcErrorMessage } from "@rova/shared/rpc/error-message";
+import { getRpcErrorMessage } from "@wfgraph/shared/rpc/error-message";
 
 const FAILURE_KIND_TO_ORPC_CODE = {
   invalid: "BAD_REQUEST",

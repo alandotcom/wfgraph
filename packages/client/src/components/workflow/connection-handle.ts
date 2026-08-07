@@ -7,16 +7,16 @@
 import {
   isConditionActionNode,
   normalizeConditionBranch,
-} from "@rova/shared/conditions/condition-branch";
+} from "@wfgraph/shared/conditions/condition-branch";
 import {
   eventSplitOutlet,
   eventSplitOutletEvent,
   isEventSplitNode,
-} from "@rova/shared/lifecycle/event-split";
+} from "@wfgraph/shared/lifecycle/event-split";
 import {
   isLifecycleOutlet,
   LIFECYCLE_STARTED_HANDLE,
-} from "@rova/shared/lifecycle/lifecycle-outlets";
+} from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import { eventsReachingTarget } from "#src/lib/upstream-node-fields";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 

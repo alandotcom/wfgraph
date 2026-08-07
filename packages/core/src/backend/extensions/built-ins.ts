@@ -15,8 +15,8 @@
  * declares.
  */
 
-import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
-import type { ActionMetadata } from "@rova/shared/extensions/catalog";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import type { ActionMetadata } from "@wfgraph/shared/extensions/catalog";
 
 export const builtInActions: readonly ActionMetadata[] = [
   {

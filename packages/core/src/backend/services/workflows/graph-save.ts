@@ -38,7 +38,7 @@ import type {
   SerializedWorkflowGraph,
   WorkflowEdge,
   WorkflowNode,
-} from "@rova/shared/graph/types";
+} from "@wfgraph/shared/graph/types";
 
 export type PreparedGraphSave = {
   graph: SerializedWorkflowGraph;

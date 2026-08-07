@@ -10,9 +10,9 @@ import type {
 } from "#src/components/workflow/workflow-toolbar-handlers";
 import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { toEditorNode } from "#src/lib/workflow-graph-types";
-import { toWorkflowGraphData } from "@rova/shared/graph/graph";
+import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 
 /**
  * `publishDisabled` used to check only isGenerating / isSaving / node

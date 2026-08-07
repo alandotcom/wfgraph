@@ -1,6 +1,6 @@
 import { Effect, Result } from "effect";
 import { describe, expect, it } from "vitest";
-import { emptyExtensionCatalog } from "@rova/shared/extensions/catalog";
+import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import {
   CredentialsUnavailable,
   fetchCredentials,
@@ -10,7 +10,7 @@ import {
   ENCRYPTION_KEY_MISMATCH_MESSAGE,
   EncryptionKeyMismatch,
 } from "#src/backend/services/integrations/cipher";
-import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
+import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 
 /**
  * What the credential read answers with, which decides whether the step that
@@ -23,7 +23,7 @@ import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
  */
 describe("fetchCredentials", () => {
   it("answers a database refusal as a typed failure naming the integration", async () => {
-    const runtime = stubRovaRuntime({
+    const runtime = stubWfGraphRuntime({
       integrationRepo: {
         findById: () =>
           Effect.fail(new DatabaseError({ cause: new Error("no connection") })),
@@ -48,7 +48,7 @@ describe("fetchCredentials", () => {
   // Both failures reach the step as `CredentialsUnavailable`, so the message is
   // the only thing a reader can tell them apart by.
   it("names the key when the stored row was sealed under another one", async () => {
-    const runtime = stubRovaRuntime({
+    const runtime = stubWfGraphRuntime({
       integrationRepo: {
         findById: () =>
           Effect.fail(
@@ -71,7 +71,7 @@ describe("fetchCredentials", () => {
   });
 
   it("answers no credentials for an integration id no row carries", async () => {
-    const runtime = stubRovaRuntime({
+    const runtime = stubWfGraphRuntime({
       integrationRepo: { findById: () => Effect.succeed(null) },
     });
 

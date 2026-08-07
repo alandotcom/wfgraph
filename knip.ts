@@ -7,11 +7,11 @@ import type { KnipConfig } from "knip";
  * Two things shape this config, and both come from how the repo is built:
  *
  * 1. A package reaches its own source through the `#src/*` subpath import its
- *    package.json declares, and a sibling's through the `@rova/*` path aliases in
+ *    package.json declares, and a sibling's through the `@wfgraph/*` path aliases in
  *    the root tsconfig.json. knip resolves both to real files, which is why the
  *    workspace entry lists below can stay small.
- * 2. `@rova/core` is the only workspace that builds. tsdown inlines the
- *    `@rova/shared` source it reaches into packages/core/dist, so some of core's
+ * 2. `@wfgraph/core` is the only workspace that builds. tsdown inlines the
+ *    `@wfgraph/shared` source it reaches into packages/core/dist, so some of core's
  *    declared dependencies are imported by the built bundle rather than by
  *    core's own source. Those are named in ignoreDependencies with the reason.
  */
@@ -81,7 +81,7 @@ const config: KnipConfig = {
     },
 
     "packages/shared": {
-      // Core and plugins reach into this tree by the `@rova/shared/*` specifier,
+      // Core and plugins reach into this tree by the `@wfgraph/shared/*` specifier,
       // which the root tsconfig maps to these sources, so leaving entry empty
       // lets those imports decide what is reachable and lets knip report the
       // rest.
@@ -92,7 +92,7 @@ const config: KnipConfig = {
       // every source file here as an entry, and an entry's exports are exempt by
       // default. That left the whole package unchecked for dead exports while
       // the config above read as though it were checked. This turns the check
-      // back on; nothing outside the repo consumes @rova/shared, so an export
+      // back on; nothing outside the repo consumes @wfgraph/shared, so an export
       // no sibling imports is dead.
       includeEntryExports: true,
     },
@@ -108,7 +108,7 @@ const config: KnipConfig = {
       ignoreDependencies: [
         // packages/core/dist/index.js imports graphology and @orpc/contract, and
         // the emitted .d.ts files import @standard-schema/spec. All three arrive
-        // through the @rova/shared source that tsdown inlines into the bundle —
+        // through the @wfgraph/shared source that tsdown inlines into the bundle —
         // the RPC contracts are built with `oc` from @orpc/contract — so the
         // published package needs them declared here even though no file under
         // packages/core/src names them.
@@ -127,7 +127,7 @@ const config: KnipConfig = {
       // Both entries are found rather than named. knip's Vite plugin reads
       // vite.config.ts, follows `root` to src/index.html, and takes the script
       // tag there as the SPA's entry; src/index.ts, the tiny module a host
-      // imports to hand the built bundle to createRovaApp, comes from the
+      // imports to hand the built bundle to createWfGraphApp, comes from the
       // "exports" map.
       entry: [],
       project: ["src/**/*.{ts,tsx}", "**/*.css"],
@@ -144,7 +144,7 @@ const config: KnipConfig = {
     "packages/plugins": {
       // src/index.ts and src/ui.ts are the two names in this package's "exports"
       // map, and knip picks them up from there. The first exports the
-      // integrations as values, which a host passes to createRovaApp; the second
+      // integrations as values, which a host passes to createWfGraphApp; the second
       // exports the icons and output renderers, which are React components and
       // so cannot travel over /api/extensions.
       entry: [],

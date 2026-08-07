@@ -16,7 +16,7 @@ describe("celStringLiteral", () => {
   });
 
   // An apostrophe is ordinary inside the double-quoted form, which is half of
-  // why that is the form Rova writes.
+  // why that is the form WfGraph writes.
   it("leaves an apostrophe alone", () => {
     expect(celStringLiteral("it's")).toBe('"it\'s"');
   });

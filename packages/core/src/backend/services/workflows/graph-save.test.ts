@@ -10,8 +10,8 @@ import {
   stubIntegrationRepo,
 } from "#src/backend/lib/effect/test-layers";
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
-import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/lifecycle/lifecycle-outlets";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 
 const catalogLayer = stubExtensionCatalog({
   actions: [

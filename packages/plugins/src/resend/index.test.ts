@@ -1,4 +1,4 @@
-import { requireOutputFieldsFromSchema } from "@rova/core/plugin";
+import { requireOutputFieldsFromSchema } from "@wfgraph/core/plugin";
 import { describe, expect, it } from "vitest";
 import { resend } from "#src/resend/index";
 

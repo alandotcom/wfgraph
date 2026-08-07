@@ -45,9 +45,9 @@ export class AppLogger extends Context.Service<
   {
     readonly get: (...category: string[]) => EffectLogger;
   }
->()("@rova/core/AppLogger") {}
+>()("@wfgraph/core/AppLogger") {}
 
-const APP_LOG_CATEGORY_ANNOTATION = "rova.log.category";
+const APP_LOG_CATEGORY_ANNOTATION = "wfgraph.log.category";
 
 function renderMessagePart(value: unknown): string {
   if (typeof value === "string") {

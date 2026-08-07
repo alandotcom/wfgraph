@@ -1,7 +1,7 @@
 import { Check, ChevronDown, ChevronRight, Copy } from "lucide-react";
 import { Schema } from "effect";
 import { type ComponentType, useState } from "react";
-import type { IntegrationUi, ResultComponentProps } from "@rova/plugins/ui";
+import type { IntegrationUi, ResultComponentProps } from "@wfgraph/plugins/ui";
 import { Button } from "#src/components/ui/button";
 import { useIntegrationUi } from "#src/components/integration-ui-provider";
 import { getExtensionCatalog } from "#src/lib/extensions";
@@ -9,9 +9,9 @@ import { getClientLogger } from "#src/lib/logger";
 import {
   type ActionMetadata,
   findAction,
-} from "@rova/shared/extensions/catalog";
-import type { WorkflowExecutionStatus } from "@rova/shared/lifecycle/execution-contracts";
-import { readAs } from "@rova/shared/types/schema";
+} from "@wfgraph/shared/extensions/catalog";
+import type { WorkflowExecutionStatus } from "@wfgraph/shared/lifecycle/execution-contracts";
+import { readAs } from "@wfgraph/shared/types/schema";
 
 /**
  * How a status reads on screen, for the two vocabularies that reach these.

@@ -24,8 +24,8 @@ import {
 } from "#src/lib/workflow-save-store";
 import { savedWorkflow } from "#src/lib/workflow-save-test-support";
 import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
-import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 
 type RawExecution = {
   id: string;

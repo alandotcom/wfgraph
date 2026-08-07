@@ -10,7 +10,7 @@
  */
 
 import { Effect } from "effect";
-import { readWaitConfig } from "@rova/shared/lifecycle/wait-subscription";
+import { readWaitConfig } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { closeStepLog, openStepLog } from "#src/backend/engine/step-log";
 import { runDurable } from "#src/backend/engine/durable";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
@@ -36,11 +36,11 @@ export function executeWaitAction(
   const execute = executeWaitActionInner(input);
 
   return execute.pipe(
-    Effect.withSpan("rova.workflow.wait", {
+    Effect.withSpan("wfgraph.workflow.wait", {
       attributes: {
-        "rova.wait.type": waitType,
-        "rova.node.id": input.context.nodeId,
-        "rova.node.name": input.context.nodeName,
+        "wfgraph.wait.type": waitType,
+        "wfgraph.node.id": input.context.nodeId,
+        "wfgraph.node.name": input.context.nodeName,
       },
     })
   );

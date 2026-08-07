@@ -39,15 +39,18 @@ import {
   type InputSchema,
   isPromiseLike,
 } from "#src/backend/extensions/schema-io";
-import { asStandardSchema, isEffectSchema } from "@rova/shared/types/schema";
-import type { OutputSchema } from "@rova/shared/graph/output-fields";
+import { asStandardSchema, isEffectSchema } from "@wfgraph/shared/types/schema";
+import type { OutputSchema } from "@wfgraph/shared/graph/output-fields";
 import type {
   ActionConfigField,
   ActionConfigFieldBase,
   ActionConfigFieldGroup,
-} from "@rova/shared/plugins/action-fields";
-import type { NodeSteps, StepResult } from "@rova/shared/actions/step-result";
-import type { JsonSafe } from "@rova/shared/types/json";
+} from "@wfgraph/shared/plugins/action-fields";
+import type {
+  NodeSteps,
+  StepResult,
+} from "@wfgraph/shared/actions/step-result";
+import type { JsonSafe } from "@wfgraph/shared/types/json";
 
 /**
  * Why a step could not do its work, in the words the run log shows.
@@ -70,7 +73,7 @@ export class StepFailure extends Schema.TaggedErrorClass<StepFailure>()(
  *
  * A durable runtime re-runs the whole workflow function every time a run
  * resumes, so anything with a side effect goes inside `run` or it happens again
- * on every attempt. Rova wraps no handler body for you: that is Inngest's model,
+ * on every attempt. WfGraph wraps no handler body for you: that is Inngest's model,
  * and an author who reaches a system twice is an author who did not say so here.
  *
  * The Effect overload is the internal shape: integrations yield it and memoize

@@ -16,7 +16,7 @@ import {
   WorkflowRepo,
   WorkflowRepoLayer,
 } from "#src/backend/services/workflows/repo";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 
 /** One row of the subscription-index read, in the order it selects columns. */
 type NamedRow = [

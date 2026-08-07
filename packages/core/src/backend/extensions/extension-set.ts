@@ -1,7 +1,7 @@
 /**
  * The whole extension surface, assembled once.
  *
- * Nothing registers itself: the host hands its definitions to `createRovaApp`,
+ * Nothing registers itself: the host hands its definitions to `createWfGraphApp`,
  * which calls this. What comes back has a catalog, which is JSON and crosses the
  * wire, beside the lookups the server keeps.
  *
@@ -17,11 +17,11 @@ import type {
   EventMetadata,
   ExtensionCatalog,
   IntegrationMetadata,
-} from "@rova/shared/extensions/catalog";
+} from "@wfgraph/shared/extensions/catalog";
 import {
   type ActionConfigFieldBase,
   flattenConfigFields,
-} from "@rova/shared/plugins/action-fields";
+} from "@wfgraph/shared/plugins/action-fields";
 import type { StepFactory } from "#src/backend/extensions/steps/step-runner";
 import { builtInActions } from "#src/backend/extensions/built-ins";
 import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
@@ -49,7 +49,7 @@ export type RegisteredEvent = AnyEventDefinition;
  * anywhere for it to. An integration brings a step per action and a connection
  * test; a host's own action, from `defineAction`, brings its handler.
  */
-export type RovaExtensions = {
+export type WfGraphExtensions = {
   readonly events?: readonly AnyEventDefinition[];
   readonly integrations?: readonly IntegrationDefinition[];
   readonly actions?: readonly ActionDefinition[];
@@ -300,7 +300,7 @@ function readHostAction(action: ActionDefinition, into: Assembly): void {
   into.steps.set(action.id, action.implement);
 }
 
-export function assembleExtensions(input: RovaExtensions): ExtensionSet {
+export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
   const eventsByName = indexEvents(input.events ?? []);
   const events = Array.from(eventsByName.values());
   assertSourcesAreDistinguishable(events);

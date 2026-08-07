@@ -10,19 +10,19 @@
 
 import { Effect, Schema } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
-import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
+import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
-import { unknownRest } from "@rova/shared/types/schema";
+import { unknownRest } from "@wfgraph/shared/types/schema";
 import { defineAction } from "#src/backend/extensions/define-action";
 import {
   type ConditionModel,
   compileConditionModel,
   EVENT_NAME_FIELD_PATH,
   serializeConditionModel,
-} from "@rova/shared/conditions/conditions";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
+} from "@wfgraph/shared/conditions/conditions";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
 import {
   createRecordingWorkflowStore,
@@ -62,7 +62,7 @@ const actions = createWorkflowActions(
       }),
     ],
   }),
-  stubRovaRuntime()
+  stubWfGraphRuntime()
 );
 
 const CANCEL: PendingCancel = {

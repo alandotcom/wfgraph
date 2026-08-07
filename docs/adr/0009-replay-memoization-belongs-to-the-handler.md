@@ -28,7 +28,7 @@ either remembered both or neither.
 
 It also diverged from the runtime underneath. Inngest wraps no function body,
 and an author who has written an Inngest function arrives expecting to declare
-what is remembered. Rova declared it for them, in a place they could not see,
+what is remembered. WfGraph declared it for them, in a place they could not see,
 with no way to subdivide it.
 
 ## Decision
@@ -47,7 +47,7 @@ handler: Effect.fn(function* (bag) {
 
 Three things fell out of it.
 
-**Rova namespaces the id.** An author writes `"post"` and the runtime sees
+**WfGraph namespaces the id.** An author writes `"post"` and the runtime sees
 `node:${nodeId}:post`, so two nodes running the same action do not read one
 another's stored result.
 
@@ -74,7 +74,7 @@ does. Suspension stays a Wait node's job.
 
 ## Consequences
 
-At-most-once per node moves from Rova to the author. A handler that wraps nothing
+At-most-once per node moves from WfGraph to the author. A handler that wraps nothing
 runs its work on every replay.
 
 **The trap to know:** a handler that wraps nothing still has memoized run-log

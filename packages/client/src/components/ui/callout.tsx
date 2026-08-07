@@ -1,6 +1,6 @@
 import { TriangleAlert } from "lucide-react";
 import type React from "react";
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 
 /**
  * The inline "this configuration is refused" surface.

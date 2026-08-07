@@ -8,7 +8,7 @@ import type {
   RunScopedAuditEventType,
   WorkflowScopedAuditEventType,
 } from "#src/backend/services/executions/workflow-audit";
-import type { JsonObject, JsonObjectDraft } from "@rova/shared/types/json";
+import type { JsonObject, JsonObjectDraft } from "@wfgraph/shared/types/json";
 
 /** One row of `workflow_executions`, as the run panel and the engine see it. */
 export type WorkflowExecution = typeof workflowExecutions.$inferSelect;

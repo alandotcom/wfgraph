@@ -1,4 +1,4 @@
-import { requireOutputFieldsFromSchema } from "@rova/core/plugin";
+import { requireOutputFieldsFromSchema } from "@wfgraph/core/plugin";
 import { describe, expect, it } from "vitest";
 import { twilio } from "#src/twilio/index";
 
@@ -6,7 +6,7 @@ const sendSms = twilio.actions["send-sms"];
 
 describe("the twilio integration", () => {
   // Nothing registers on import. The value is the whole of what an integration
-  // is, and the line that passes it to `createRovaApp` is what turns it on.
+  // is, and the line that passes it to `createWfGraphApp` is what turns it on.
   it("declares its credentials and its actions as one value", () => {
     expect(twilio.type).toBe("twilio");
     expect(twilio.label).toBe("Twilio");

@@ -2,7 +2,7 @@
  * Concurrency: how many Executions may exist per Entity Value.
  *
  * A start always starts, and this is what decides what happens to the runs
- * already going (ADR-0007). Rova owns it rather than Inngest because two of the
+ * already going (ADR-0007). WfGraph owns it rather than Inngest because two of the
  * three answers have to be recorded: newest-wins ends the displaced run with a
  * status, and first-wins refuses a start and says so in run history.
  *
@@ -28,9 +28,9 @@ import {
   type WorkflowRunStart,
   type WorkflowRunTarget,
 } from "#src/backend/services/executions/run-rows";
-import type { JsonObject } from "@rova/shared/types/json";
-import type { Concurrency } from "@rova/shared/lifecycle/lifecycle-rules";
-import type { WorkflowMode } from "@rova/shared/graph/types";
+import type { JsonObject } from "@wfgraph/shared/types/json";
+import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import type { WorkflowMode } from "@wfgraph/shared/graph/types";
 
 export type StartWithConcurrencyInput = {
   workflow: WorkflowRunTarget;

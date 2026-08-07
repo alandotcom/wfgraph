@@ -1,6 +1,6 @@
 // First, so the variables below are in place before anything reads them.
 import "../load-env";
-import { migrateRovaDatabase } from "@rova/core/migrate";
+import { migrateWfGraphDatabase } from "@wfgraph/core/migrate";
 
 // `pnpm run db:migrate` against the dev database, and the same command by hand
 // against a deployed one. It goes through the published entry rather than
@@ -13,7 +13,7 @@ import { migrateRovaDatabase } from "@rova/core/migrate";
 const DEV_DATABASE_URL =
   "postgresql://workflow:workflow@localhost:55437/workflow_builder";
 
-await migrateRovaDatabase({
+await migrateWfGraphDatabase({
   url: process.env.DATABASE_URL?.trim() || DEV_DATABASE_URL,
   schema: process.env.DATABASE_SCHEMA?.trim() || undefined,
   migrationsDir: process.env.MIGRATIONS_DIR?.trim(),

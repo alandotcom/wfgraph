@@ -1,7 +1,7 @@
 /**
- * What a package of integrations may use from Rova's server.
+ * What a package of integrations may use from WfGraph's server.
  *
- * `@rova/plugins` builds against this and nothing else, so an outside
+ * `@wfgraph/plugins` builds against this and nothing else, so an outside
  * integration package can be written the same way. Anything added here is a
  * promise; add it only when a plugin cannot be written without it.
  *
@@ -9,7 +9,7 @@
  * integration is one `defineIntegration` call: a credential record, and an
  * action per record key holding an input schema, an output schema, the metadata
  * the editor draws it with, and a handler. There is nothing to register: an
- * integration is a value a host passes to `createRovaApp`, and the credential
+ * integration is a value a host passes to `createWfGraphApp`, and the credential
  * fetch and the run logging are `defineIntegration`'s business.
  *
  * **Effect is the integration authoring path.** Handlers are `Effect.fn`,
@@ -22,7 +22,7 @@
  * A connection test answers the credentials UI over a Promise, so it calls out
  * through `callExternalAsync`. That is the one Promise HTTP seam on this entry.
  *
- * An integration's own suite drives an action through `@rova/core/testing`,
+ * An integration's own suite drives an action through `@wfgraph/core/testing`,
  * which is a separate entry because nothing in it runs in a server.
  */
 
@@ -37,7 +37,7 @@ export {
   type Integration,
   type IntegrationDefinition,
 } from "#src/backend/extensions/define-integration";
-export type { CredentialFields } from "@rova/shared/extensions/catalog";
+export type { CredentialFields } from "@wfgraph/shared/extensions/catalog";
 export {
   type StepBag,
   StepFailure,
@@ -49,7 +49,7 @@ export {
  */
 export type { CredentialsUnavailable } from "#src/backend/extensions/credential-fetcher";
 /**
- * The `@rova/shared` vocabulary a server-side plugin file needs beside the
+ * The `@wfgraph/shared` vocabulary a server-side plugin file needs beside the
  * above: the JSON type an external payload decodes to and the reader that gets
  * it there, the Effect Schema helper for a value already typed as JSON, the
  * error-message helper for a caught exception, and the output-field derivation
@@ -61,16 +61,16 @@ export {
   type JsonObject,
   type JsonValue,
   readJsonValue,
-} from "@rova/shared/types/json";
+} from "@wfgraph/shared/types/json";
 /**
  * `isEffectSchema` is the narrowing an integration's own suite needs: a step's
  * `input` and `output` are typed as any Standard Schema, so running one through
  * `Schema.toCodecJson` to assert a wire shape asks first.
  */
-export { isEffectSchema, readAs } from "@rova/shared/types/schema";
-export { isoTimestampString } from "@rova/shared/types/timestamp";
-export { getErrorMessage } from "@rova/shared/utils";
-export { requireOutputFieldsFromSchema } from "@rova/shared/graph/output-fields";
+export { isEffectSchema, readAs } from "@wfgraph/shared/types/schema";
+export { isoTimestampString } from "@wfgraph/shared/types/timestamp";
+export { getErrorMessage } from "@wfgraph/shared/utils";
+export { requireOutputFieldsFromSchema } from "@wfgraph/shared/graph/output-fields";
 /**
  * The HTTP call an integration makes to the system behind it, with the timeout,
  * the retry schedule and the repeat-safety rule that decide when a request may

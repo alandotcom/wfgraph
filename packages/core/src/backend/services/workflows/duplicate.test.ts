@@ -12,7 +12,7 @@ import {
 } from "#src/backend/lib/effect/test-layers";
 import { postWorkflowDuplicate } from "#src/backend/services/workflows/duplicate";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 
 const sourceGraph = createSerializedWorkflowGraph({
   nodes: [

@@ -12,7 +12,7 @@ import {
   redactSensitiveData,
   redactWorkflowGraph,
 } from "#src/backend/lib/utils/redact";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 
 describe("redactSensitiveData", () => {
   it("masks a secret by its key and leaves the rest alone", () => {

@@ -7,19 +7,19 @@ import { Label } from "#src/components/ui/label";
 import { getExtensionCatalog } from "#src/lib/extensions";
 import { getEventConditionFields } from "#src/lib/upstream-node-fields";
 import { nodesAtom, selectedNodeAtom } from "#src/lib/workflow-graph-store";
-import { findEvent } from "@rova/shared/extensions/catalog";
+import { findEvent } from "@wfgraph/shared/extensions/catalog";
 import {
   createDefaultConditionModel,
   serializeConditionModel,
-} from "@rova/shared/conditions/conditions";
+} from "@wfgraph/shared/conditions/conditions";
 import {
   readLifecycleRules,
   resolveCorrelationPath,
-} from "@rova/shared/lifecycle/lifecycle-rules";
+} from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
   type EventSubscription,
   readWaitSubscriptions,
-} from "@rova/shared/lifecycle/wait-subscription";
+} from "@wfgraph/shared/lifecycle/wait-subscription";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import { EventMultiCombobox } from "./event-combobox";
 import type { UpdateNodeConfig } from "./node-config-patch";

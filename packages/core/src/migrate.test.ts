@@ -1,21 +1,21 @@
 import type { Sql } from "postgres";
 import { describe, expect, it, vi } from "vitest";
 import * as dbModule from "#src/backend/lib/db/index";
-import { migrateRovaDatabase } from "#src/migrate";
+import { migrateWfGraphDatabase } from "#src/migrate";
 
 // A folder that is not there stops the migrator before it opens a connection, so
 // a case naming it reaches the configuration step and stops. What the migrator
 // does once it has a database is `runMigrations`' own business.
 const NO_MIGRATIONS = "no-such-folder";
 const CONFIG = {
-  url: "postgresql://rova:rova@127.0.0.1:5439/rova_migrate_test",
+  url: "postgresql://wfgraph:wfgraph@127.0.0.1:5439/wfgraph_migrate_test",
   migrationsDir: NO_MIGRATIONS,
 } as const;
 
-describe("migrateRovaDatabase", () => {
+describe("migrateWfGraphDatabase", () => {
   it("migrates the database the options name", async () => {
     await expect(
-      migrateRovaDatabase({ ...CONFIG, schema: "tenant_alpha" })
+      migrateWfGraphDatabase({ ...CONFIG, schema: "tenant_alpha" })
     ).rejects.toThrow("Migrations folder not found");
   });
 
@@ -24,24 +24,24 @@ describe("migrateRovaDatabase", () => {
   // from a CI job, from a release step, and from a process already serving an
   // app.
   it("takes the same configuration as often as it is asked", async () => {
-    await expect(migrateRovaDatabase(CONFIG)).rejects.toThrow(
+    await expect(migrateWfGraphDatabase(CONFIG)).rejects.toThrow(
       "Migrations folder not found"
     );
 
-    await expect(migrateRovaDatabase(CONFIG)).rejects.toThrow(
+    await expect(migrateWfGraphDatabase(CONFIG)).rejects.toThrow(
       "Migrations folder not found"
     );
   });
 
   it("migrates a second database in the same process", async () => {
-    await expect(migrateRovaDatabase(CONFIG)).rejects.toThrow(
+    await expect(migrateWfGraphDatabase(CONFIG)).rejects.toThrow(
       "Migrations folder not found"
     );
 
     await expect(
-      migrateRovaDatabase({
+      migrateWfGraphDatabase({
         ...CONFIG,
-        url: "postgresql://rova:rova@127.0.0.1:5439/somewhere_else",
+        url: "postgresql://wfgraph:wfgraph@127.0.0.1:5439/somewhere_else",
       })
     ).rejects.toThrow("Migrations folder not found");
   });
@@ -60,8 +60,8 @@ describe("migrateRovaDatabase", () => {
 
     try {
       await expect(
-        migrateRovaDatabase({
-          url: "postgresql://rova:rova@127.0.0.1:1/rova_migrate_test",
+        migrateWfGraphDatabase({
+          url: "postgresql://wfgraph:wfgraph@127.0.0.1:1/wfgraph_migrate_test",
         })
       ).rejects.toThrow(/ECONNREFUSED/);
 
@@ -79,13 +79,13 @@ describe("migrateRovaDatabase", () => {
     }
   });
 
-  // The entry normalizes the config the same way `createRovaApp` does, so every
+  // The entry normalizes the config the same way `createWfGraphApp` does, so every
   // refusal that guards the schema guards this too.
   it("refuses a url that names a search_path of its own", async () => {
     await expect(
-      migrateRovaDatabase({
+      migrateWfGraphDatabase({
         ...CONFIG,
-        url: "postgresql://rova@127.0.0.1:5439/rova?search_path=tenant_alpha",
+        url: "postgresql://wfgraph@127.0.0.1:5439/wfgraph?search_path=tenant_alpha",
       })
     ).rejects.toThrow("may not carry a search_path");
   });

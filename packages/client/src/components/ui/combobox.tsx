@@ -2,7 +2,7 @@ import { Combobox as ComboboxPrimitive } from "@base-ui/react/combobox";
 import { CheckIcon, ChevronDownIcon, XIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 
 // Generic in the item type, because Root is: collapsing it to `ComponentProps`
 // would type every item value as `unknown` at the call sites.

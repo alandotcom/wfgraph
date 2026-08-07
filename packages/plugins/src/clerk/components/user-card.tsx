@@ -1,7 +1,7 @@
 import { compact } from "es-toolkit/array";
 import { Schema } from "effect";
 import type { ResultComponentProps } from "#src/ui";
-import { readAs } from "@rova/shared/types/schema";
+import { readAs } from "@wfgraph/shared/types/schema";
 
 // This component renders a Clerk step's result read back out of the execution log,
 // so the output arrives as untyped JSON. The logging layer unwraps the standardized

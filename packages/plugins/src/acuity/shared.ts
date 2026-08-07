@@ -16,7 +16,7 @@
  * hold, before one of these parsers reads it.
  */
 
-import { StepFailure } from "@rova/core/plugin";
+import { StepFailure } from "@wfgraph/core/plugin";
 import { Effect, Result, Schema } from "effect";
 
 /** Every config field arrives as text, so this is what most of them look like. */

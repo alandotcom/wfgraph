@@ -1,7 +1,7 @@
 import { Acuity, AcuityError } from "@fountain-bio/acuity";
 import { getAcuityErrorMessage } from "#src/acuity/client";
 import type { AcuityCredentials } from "#src/acuity/index";
-import type { IntegrationTestResult } from "@rova/core/plugin";
+import type { IntegrationTestResult } from "@wfgraph/core/plugin";
 
 export async function testAcuity(
   credentials: AcuityCredentials

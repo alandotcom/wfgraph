@@ -1,4 +1,4 @@
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 import { TemplateAutocomplete } from "./template-autocomplete";
 import { useTemplateBadgeField } from "./use-template-badge-field";
 

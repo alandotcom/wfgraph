@@ -2,7 +2,7 @@
  * An integration as one value: its credentials, its actions, and the connection
  * test behind them.
  *
- * Nothing registers on import. A host hands the value to `createRovaApp` under
+ * Nothing registers on import. A host hands the value to `createWfGraphApp` under
  * `extensions.integrations`, so the line that turns an integration on is a line
  * in the host's code rather than a consequence of what happens to be installed.
  *
@@ -25,12 +25,12 @@ import type { InputSchema } from "#src/backend/extensions/schema-io";
 import {
   type CredentialFields,
   formatActionId,
-} from "@rova/shared/extensions/catalog";
-import type { ReferenceField } from "@rova/shared/graph/node-references";
+} from "@wfgraph/shared/extensions/catalog";
+import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
 import {
   type OutputSchema,
   requireOutputFieldsFromSchema,
-} from "@rova/shared/graph/output-fields";
+} from "@wfgraph/shared/graph/output-fields";
 
 /**
  * The credential keys a handler of this integration may read.
@@ -50,7 +50,7 @@ export type IntegrationDefinition = {
    * Keys the stored credentials, and prefixes every action id.
    *
    * Any string: the set of types a server holds is whatever was passed to
-   * `createRovaApp`, and the assembled catalog is what a reader asks.
+   * `createWfGraphApp`, and the assembled catalog is what a reader asks.
    */
   readonly type: string;
   readonly label: string;
@@ -108,7 +108,7 @@ type IntegrationActions<TCredentials, TInputs, TOutputs> = {
  *
  * Assembly reads the erased `IntegrationDefinition` and asks for none of this.
  * It is here for a caller naming an action by slug, which is what `runAction`
- * in `@rova/core/testing` does.
+ * in `@wfgraph/core/testing` does.
  */
 export type Integration<
   TInputs extends Record<string, unknown> = Record<string, unknown>,

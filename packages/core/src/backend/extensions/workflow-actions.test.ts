@@ -1,11 +1,11 @@
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
-import type { NodeSteps } from "@rova/shared/actions/step-result";
-import { emptyExtensionCatalog } from "@rova/shared/extensions/catalog";
+import type { NodeSteps } from "@wfgraph/shared/actions/step-result";
+import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import { defineStep } from "#src/backend/extensions/steps/define-step";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
-import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
+import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 
 const SLOW_ACTION_ID = "test/slow";
 
@@ -56,7 +56,7 @@ function slowStep() {
 describe("the step the app runs", () => {
   it("delivers an in-flight handler result before the runtime is disposed", async () => {
     const { calls, extensions } = slowStep();
-    const runtime = stubRovaRuntime();
+    const runtime = stubWfGraphRuntime();
     const actions = createWorkflowActions(extensions, runtime);
     const step = actions.stepFor(SLOW_ACTION_ID);
     if (!step) {
@@ -98,7 +98,7 @@ describe("the step the app runs", () => {
 
   it("rejects a step dispatched after the runtime was disposed", async () => {
     const { calls, extensions } = slowStep();
-    const runtime = stubRovaRuntime();
+    const runtime = stubWfGraphRuntime();
     const actions = createWorkflowActions(extensions, runtime);
     const step = actions.stepFor(SLOW_ACTION_ID);
     if (!step) {

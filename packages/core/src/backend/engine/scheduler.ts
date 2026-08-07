@@ -8,14 +8,14 @@
  * cancellation routes the run is `CancelBoundary`'s.
  */
 
-import type { WorkflowNode } from "@rova/shared/graph/types";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import {
   actionTypeOf,
   isConditionNode,
   isWaitNode,
   readConfigString,
-} from "@rova/shared/graph/node-config";
-import { type JsonObject, readJsonValue } from "@rova/shared/types/json";
+} from "@wfgraph/shared/graph/node-config";
+import { type JsonObject, readJsonValue } from "@wfgraph/shared/types/json";
 import { Cause, Effect } from "effect";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import type { CancelBoundary } from "#src/backend/engine/cancel-boundary";
@@ -190,14 +190,14 @@ export class NodeScheduler {
             nodeName,
             nodeType: node.data.type,
           }),
-          Effect.withSpan("rova.workflow.node.execute", {
+          Effect.withSpan("wfgraph.workflow.node.execute", {
             attributes: {
-              "rova.node.id": nodeId,
-              "rova.node.name": nodeName,
-              "rova.node.type": node.data.type,
+              "wfgraph.node.id": nodeId,
+              "wfgraph.node.name": nodeName,
+              "wfgraph.node.type": node.data.type,
               ...(actionType === undefined
                 ? {}
-                : { "rova.action.type": actionType }),
+                : { "wfgraph.action.type": actionType }),
             },
           })
         );

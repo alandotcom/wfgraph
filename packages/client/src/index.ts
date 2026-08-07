@@ -1,12 +1,12 @@
 /**
- * The workflow editor, as something a host hands to `createRovaApp`:
+ * The workflow editor, as something a host hands to `createWfGraphApp`:
  *
  * ```ts
- * import { clientBundle } from "@rova/client";
- * const rova = await createRovaApp({ client: clientBundle, ... });
+ * import { clientBundle } from "@wfgraph/client";
+ * const wfgraph = await createWfGraphApp({ client: clientBundle, ... });
  * ```
  *
- * Rova's server does not depend on this package and cannot find it on its own,
+ * WfGraph's server does not depend on this package and cannot find it on its own,
  * so passing it is what turns the UI on.
  */
 

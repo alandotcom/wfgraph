@@ -1,7 +1,7 @@
 /**
  * What "Test connection" is, as an integration author writes it.
  *
- * `@rova/core/plugin` publishes these, because a test is written in the
+ * `@wfgraph/core/plugin` publishes these, because a test is written in the
  * integration package and run by the credentials dialog: the answer below is what
  * reaches an operator filling in the form.
  */

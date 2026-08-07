@@ -9,8 +9,8 @@
 import {
   type ExtensionCatalog,
   findIntegration,
-} from "@rova/shared/extensions/catalog";
-import type { IntegrationConfig } from "@rova/shared/types/integration";
+} from "@wfgraph/shared/extensions/catalog";
+import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
 
 export const SECRET_MASK = "********";
 
@@ -19,7 +19,7 @@ export const SECRET_MASK = "********";
  *
  * An integration declares its secrets by marking credential fields as passwords,
  * so an integration the assembled catalog does not hold has no declaration to
- * read. That happens whenever a host mounted Rova without the integration a
+ * read. That happens whenever a host mounted WfGraph without the integration a
  * stored row names, and answering "no secrets at all" there would serve a
  * stored API token to the browser in the clear. Not knowing which keys are secret
  * is a reason to treat every key as secret, so this answers a predicate and

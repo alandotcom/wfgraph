@@ -15,10 +15,10 @@ import {
 import type { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { WorkflowExecution } from "#src/backend/services/executions/repo/contracts";
 import { postWorkflowExecute } from "#src/backend/services/workflows/lifecycle/manual-start";
-import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
-import type { LifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
-import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/lifecycle/lifecycle-outlets";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 
 function graphWithRules(rules: LifecycleRules) {
   return createSerializedWorkflowGraph({

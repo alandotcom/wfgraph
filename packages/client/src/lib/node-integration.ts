@@ -1,7 +1,7 @@
 import { getExtensionCatalog } from "#src/lib/extensions";
-import { findAction } from "@rova/shared/extensions/catalog";
+import { findAction } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-import { readConfigString } from "@rova/shared/graph/node-config";
+import { readConfigString } from "@wfgraph/shared/graph/node-config";
 
 /**
  * Keeping a node's `integrationId` pointing at a connection that still exists.

@@ -1,8 +1,8 @@
 import { stripInternalFields } from "#src/backend/extensions/steps/step-handler";
 import { runWithStepLog } from "#src/backend/engine/step-log";
 import type { ActionStepInput } from "#src/backend/engine/strategies/types";
-import type { NodeSteps } from "@rova/shared/actions/step-result";
-import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
+import type { NodeSteps } from "@wfgraph/shared/actions/step-result";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { Effect } from "effect";
 import {
   executionResultFromStepResult,
@@ -44,7 +44,7 @@ export function runPluginActionStep(input: ActionStepInput) {
       };
     }
 
-    // Rova namespaces the id, so an author writes "post" and two nodes running
+    // WfGraph namespaces the id, so an author writes "post" and two nodes running
     // the same action do not write to one another's memoized result.
     const steps: NodeSteps = {
       run: (stepId, work) =>

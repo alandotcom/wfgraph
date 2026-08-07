@@ -6,7 +6,7 @@
  */
 
 import { Schema } from "effect";
-import { readAs } from "@rova/shared/types/schema";
+import { readAs } from "@wfgraph/shared/types/schema";
 
 /**
  * What the engine tells a step about the run it is part of.

@@ -13,7 +13,7 @@
  * is asserted in resend/send-email.test.ts.
  */
 
-import type { JsonObject, JsonValue } from "@rova/core/plugin";
+import type { JsonObject, JsonValue } from "@wfgraph/core/plugin";
 import type { Effect } from "effect";
 import { Schema } from "effect";
 import type { HttpClient } from "effect/unstable/http";
@@ -21,7 +21,7 @@ import {
   callExternal,
   parsePayload,
   type ExternalError,
-} from "@rova/core/plugin";
+} from "@wfgraph/core/plugin";
 
 const RESEND_API_BASE = "https://api.resend.com";
 

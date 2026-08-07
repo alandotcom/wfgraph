@@ -5,8 +5,8 @@ import {
   readSlackError,
 } from "#src/slack/client";
 import type { SlackCredentials } from "#src/slack/index";
-import { callExternalAsync } from "@rova/core/plugin";
-import type { IntegrationTestResult } from "@rova/core/plugin";
+import { callExternalAsync } from "@wfgraph/core/plugin";
+import type { IntegrationTestResult } from "@wfgraph/core/plugin";
 
 // auth.test is Slack's own "is this token any good" call: it takes no arguments
 // and answers with the workspace and bot the token belongs to.

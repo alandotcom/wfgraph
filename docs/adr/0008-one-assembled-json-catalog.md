@@ -4,7 +4,7 @@ _Decided 2026-07-31 by Alan Cohen, during the architecture pass._
 
 An Event, an action and an integration reach the editor as one value: `ExtensionCatalog`
 (`packages/shared/src/extensions/catalog.ts`), served by `GET /api/extensions` and decoded
-once by the browser before the first render. `createRovaApp` builds it with
+once by the browser before the first render. `createWfGraphApp` builds it with
 `assembleExtensions` (`packages/core/src/backend/extensions/extension-set.ts`) from the
 definitions a host passed, and hands it to the Layer graph as the `Extensions` service.
 
@@ -47,7 +47,7 @@ file as its metadata, which is why a plugin in this repo is one file.
   the surface is fixed for the life of the server process and the lookups over it run
   during render.
 - An icon and a custom output renderer are React components, so they cannot travel as JSON.
-  They stay an explicit browser import through `@rova/plugins/ui`, which is the one
+  They stay an explicit browser import through `@wfgraph/plugins/ui`, which is the one
   exception and the reason it is a separate entry point.
 - Every lookup (`findAction`, `findEvent`, `findIntegration`, `credentialsFromConfig`) is a
   pure function in the shared module, so the server and the browser run one implementation.

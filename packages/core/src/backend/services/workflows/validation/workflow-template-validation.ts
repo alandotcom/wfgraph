@@ -9,24 +9,24 @@
  * API.
  */
 
-import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import {
   type ExtensionCatalog,
   findAction,
-} from "@rova/shared/extensions/catalog";
-import { eventsReaching } from "@rova/shared/graph/events-reaching";
-import { findTemplateTokens } from "@rova/shared/graph/node-references";
+} from "@wfgraph/shared/extensions/catalog";
+import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
+import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
 import {
   absentOn,
   reachableEventFields,
-} from "@rova/shared/graph/reachable-fields";
+} from "@wfgraph/shared/graph/reachable-fields";
 import {
   targetAccepts,
   type ValueTargetType,
-} from "@rova/shared/graph/value-targets";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
-import { flattenConfigFields } from "@rova/shared/plugins/action-fields";
-import { waitValueTargetsFor } from "@rova/shared/lifecycle/wait-subscription";
+} from "@wfgraph/shared/graph/value-targets";
+import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
+import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
+import { waitValueTargetsFor } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { getNodeLabel } from "#src/backend/services/workflows/validation/workflow-graph";
 
 export type WorkflowTemplateValidationResult =

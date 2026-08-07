@@ -34,12 +34,12 @@
       }
     ],
     "paths": {
-      "@rova/shared/*": ["./packages/shared/src/*"],
-      "@rova/core": ["./packages/core/src/index.ts"],
-      "@rova/core/*": ["./packages/core/src/*"],
-      "@rova/client": ["./packages/client/src/index.ts"],
-      "@rova/plugins": ["./packages/plugins/src/index.ts"],
-      "@rova/plugins/*": ["./packages/plugins/src/*"]
+      "@wfgraph/shared/*": ["./packages/shared/src/*"],
+      "@wfgraph/core": ["./packages/core/src/index.ts"],
+      "@wfgraph/core/*": ["./packages/core/src/*"],
+      "@wfgraph/client": ["./packages/client/src/index.ts"],
+      "@wfgraph/plugins": ["./packages/plugins/src/index.ts"],
+      "@wfgraph/plugins/*": ["./packages/plugins/src/*"]
     }
   },
   "include": [

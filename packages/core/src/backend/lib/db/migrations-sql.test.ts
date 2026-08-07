@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { is } from "drizzle-orm";
 import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 import * as schema from "#src/backend/lib/db/schema";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/lifecycle/execution-contracts";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { WORKFLOW_SCOPED_AUDIT_EVENT_TYPES } from "#src/backend/services/executions/workflow-audit";
 
 /**
@@ -17,7 +17,7 @@ import { WORKFLOW_SCOPED_AUDIT_EVENT_TYPES } from "#src/backend/services/executi
  * writes exactly one such qualifier today, `REFERENCES "public"."workflows"`, and
  * `scripts/unqualify-migrations.ts` takes that spelling off during
  * `pnpm run db:generate`. This is the guard that does not have to know the
- * spelling: any qualifier that is not one of Rova's own table names fails here.
+ * spelling: any qualifier that is not one of WfGraph's own table names fails here.
  */
 const MIGRATIONS_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -54,7 +54,7 @@ describe("the generated migrations", () => {
     expect((await readMigrations()).length).toBeGreaterThan(0);
   });
 
-  it("qualify nothing but Rova's own tables", async () => {
+  it("qualify nothing but WfGraph's own tables", async () => {
     const foreign = (await readMigrations()).flatMap((migration) =>
       [...migration.sql.matchAll(QUALIFIER)]
         .map(([, identifier]) => identifier)

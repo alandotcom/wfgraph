@@ -12,7 +12,7 @@ import {
 } from "#src/lib/connection-credentials";
 import { orpcQuery, refreshIntegrations } from "#src/lib/rpc-query";
 import { getExtensionCatalog } from "#src/lib/extensions";
-import { findIntegration } from "@rova/shared/extensions/catalog";
+import { findIntegration } from "@wfgraph/shared/extensions/catalog";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";

@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { createDbWorkflowStore } from "#src/backend/engine/db-store";
-import type { RovaRuntime } from "#src/backend/runtime";
+import type { WfGraphRuntime } from "#src/backend/runtime";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 // Static, now that the id helper the app assembly needs has moved to a leaf of
 // its own: this import is the only reason the delivery stack loads, and this
@@ -25,7 +25,7 @@ import {
  *
  * The runtime is a parameter rather than something the caller holds, because the
  * Layer graph takes the surface this is built for: constructing one before the
- * other is what keeps that from being a cycle. `createRovaApp` builds the list
+ * other is what keeps that from being a cycle. `createWfGraphApp` builds the list
  * once after the runtime exists and hands it to either Connect or HTTP serve.
  *
  * v4 encodes the trigger tuple in a function's type, so the run function and the
@@ -34,7 +34,7 @@ import {
  */
 export async function buildInngestFunctions(
   client: Inngest,
-  runtime: RovaRuntime
+  runtime: WfGraphRuntime
 ): Promise<InngestFunction.Any[]> {
   const { extensions, executionRepo } = await runtime.runPromise(
     Effect.gen(function* () {

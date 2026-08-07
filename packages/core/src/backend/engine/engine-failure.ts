@@ -1,5 +1,5 @@
 import { Cause, Context, Effect, Exit, Option, Result, Schema } from "effect";
-import { getErrorMessage } from "@rova/shared/utils";
+import { getErrorMessage } from "@wfgraph/shared/utils";
 
 export type EngineFailureKind = "failure" | "defect" | "interrupt";
 

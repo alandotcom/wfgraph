@@ -3,14 +3,14 @@ import { normalizeSourceHandleForConnection } from "#src/components/workflow/con
 import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
-} from "@rova/shared/lifecycle/lifecycle-outlets";
+} from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
-import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
-import { eventSplitOutlet } from "@rova/shared/lifecycle/event-split";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
 import {
   emptyExtensionCatalog,
   type EventMetadata,
-} from "@rova/shared/extensions/catalog";
+} from "@wfgraph/shared/extensions/catalog";
 
 // An Event Split's outlets are the Events reaching it, which the editor reads
 // off the catalog it fetched once before render.

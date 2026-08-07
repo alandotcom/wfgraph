@@ -7,20 +7,20 @@ import { join } from "node:path";
 import middie from "@fastify/middie";
 import express from "express";
 import Fastify, { type FastifyInstance } from "fastify";
-import { createRovaApp, type RovaApp } from "#src/app";
+import { createWfGraphApp, type WfGraphApp } from "#src/app";
 import { createRequestListener } from "#src/node";
 
 // These are the tests the review that produced this plan asked for: a real
-// Express app and a real Fastify app, each mounting Rova under a sub-path, so
+// Express app and a real Fastify app, each mounting WfGraph under a sub-path, so
 // the two hazards the adapter exists to handle get exercised by the frameworks
 // that actually cause them rather than by a hand-built IncomingMessage.
 //
 // Every route driven here answers out of process memory, so no Postgres and no
 // Inngest are involved.
 
-const MOUNT = "/rova";
+const MOUNT = "/wfgraph";
 
-let rova: RovaApp;
+let wfgraph: WfGraphApp;
 let expressServer: Server;
 let expressOrigin: string;
 let fastify: FastifyInstance;
@@ -33,7 +33,7 @@ let mismatchedServer: Server;
 let mismatchedOrigin: string;
 let clientDir: string;
 
-// A stand-in for @rova/client. What these cases assert is the routing and the
+// A stand-in for @wfgraph/client. What these cases assert is the routing and the
 // injected base href, not the contents of the real bundle.
 const STUB_CLIENT_ASSET = "stub-client.js";
 const STUB_CLIENT_HTML = `<!doctype html><html><head><base href="/" /></head><body><script type="module" src="./${STUB_CLIENT_ASSET}"></script></body></html>`;
@@ -103,27 +103,27 @@ function postJson(url: string, body: string): Promise<TestResponse> {
 }
 
 beforeAll(async () => {
-  clientDir = await mkdtemp(join(tmpdir(), "rova-node-client-"));
+  clientDir = await mkdtemp(join(tmpdir(), "wfgraph-node-client-"));
   await writeFile(join(clientDir, "index.html"), STUB_CLIENT_HTML);
   await writeFile(
     join(clientDir, STUB_CLIENT_ASSET),
     "export const stub = 1;\n"
   );
 
-  rova = await createRovaApp({
+  wfgraph = await createWfGraphApp({
     client: { dir: clientDir },
     auth: "external",
     basePath: MOUNT,
     // Deliberately a different identity from app.test.ts, so a reader can tell
     // the two app-owned surfaces apart in a log.
-    database: { url: "postgresql://rova:rova@127.0.0.1:1/rova_test" },
+    database: { url: "postgresql://wfgraph:wfgraph@127.0.0.1:1/wfgraph_test" },
     encryption: { key: "b".repeat(64) },
-    inngest: { id: "rova-node-test", isDev: true },
+    inngest: { id: "wfgraph-node-test", isDev: true },
     // A logger that drops everything, so the suite gets no console sink.
     logger: { info: () => {}, warn: () => {}, error: () => {} },
   });
 
-  const listener = createRequestListener(rova);
+  const listener = createRequestListener(wfgraph);
 
   const expressApp = express();
   expressApp.use(MOUNT, listener);
@@ -134,7 +134,7 @@ beforeAll(async () => {
   fastify = Fastify();
   await fastify.register(middie);
   // middie runs connect-style middleware in the onRequest hook, ahead of
-  // Fastify's own body parsing, so the request stream reaches Rova intact.
+  // Fastify's own body parsing, so the request stream reaches WfGraph intact.
   fastify.use(MOUNT, listener);
   await fastify.listen({ port: 0, host: "127.0.0.1" });
   fastifyOrigin = originOf(fastify.server);
@@ -155,7 +155,7 @@ beforeAll(async () => {
   await listen(bareServer);
   bareOrigin = originOf(bareServer);
 
-  // A host that mounts Rova somewhere other than its configured basePath. Every
+  // A host that mounts WfGraph somewhere other than its configured basePath. Every
   // request 404s, and the adapter's job is to say why.
   const mismatchedApp = express();
   mismatchedApp.use("/elsewhere", listener);
@@ -170,18 +170,18 @@ afterAll(async () => {
   await close(parsedBodyServer);
   await close(bareServer);
   await close(mismatchedServer);
-  await rova.dispose();
+  await wfgraph.dispose();
   await rm(clientDir, { recursive: true, force: true });
 });
 
 describe.each([
   ["Express", () => expressOrigin],
   ["Fastify", () => fastifyOrigin],
-])("Rova mounted under %s at /rova", (_name, origin) => {
+])("WfGraph mounted under %s at /wfgraph", (_name, origin) => {
   it("serves the API at the path the browser asked for", async () => {
     // Express rewrites req.url to "/api/extensions" here. Without the
-    // originalUrl handling in the adapter, Rova would not recognize the path.
-    const response = await send(`${origin()}/rova/api/extensions`);
+    // originalUrl handling in the adapter, WfGraph would not recognize the path.
+    const response = await send(`${origin()}/wfgraph/api/extensions`);
 
     expect(response.status).toBe(200);
     expect(JSON.parse(response.body)).toMatchObject({
@@ -191,7 +191,7 @@ describe.each([
 
   it("delivers a POST body to an oRPC procedure under the mounted prefix", async () => {
     const response = await postJson(
-      `${origin()}/rova/api/rpc/workflow/getById`,
+      `${origin()}/wfgraph/api/rpc/workflow/getById`,
       JSON.stringify({ json: { workflowId: "" } })
     );
 
@@ -205,7 +205,7 @@ describe.each([
     // Valid JSON of the wrong shape, so validation rejects it before the route
     // reaches the database.
     const response = await postJson(
-      `${origin()}/rova/api/workflows/waits/tok_1/resume`,
+      `${origin()}/wfgraph/api/workflows/waits/tok_1/resume`,
       JSON.stringify(["not", "an", "object"])
     );
 
@@ -217,7 +217,7 @@ describe.each([
 
   it("reports a malformed body as such rather than as an empty one", async () => {
     const response = await postJson(
-      `${origin()}/rova/api/workflows/waits/tok_1/resume`,
+      `${origin()}/wfgraph/api/workflows/waits/tok_1/resume`,
       "{ not json"
     );
 
@@ -231,26 +231,26 @@ describe.each([
     // openapi.json is the cheapest route that answers 200 and would notice a
     // path rebuilt from the wrong pieces.
     const response = await send(
-      `${origin()}/rova/api/openapi.json?format=json`
+      `${origin()}/wfgraph/api/openapi.json?format=json`
     );
 
     expect(response.status).toBe(200);
     expect(JSON.parse(response.body)).toMatchObject({
-      servers: [{ url: "/rova/api/rest" }],
+      servers: [{ url: "/wfgraph/api/rest" }],
     });
   });
 
   it("serves the SPA and its assets under the mount", async () => {
-    const index = await send(`${origin()}/rova/workflows`);
+    const index = await send(`${origin()}/wfgraph/workflows`);
 
     expect(index.status).toBe(200);
-    expect(index.body).toContain('<base href="/rova/" />');
+    expect(index.body).toContain('<base href="/wfgraph/" />');
 
     // The browser resolves the client's relative asset references against that
     // base href, so this is the URL it would actually request.
     const assetRef = index.body.match(/src="\.\/([^"]+\.js)"/)?.[1];
     expect(assetRef).toBeDefined();
-    const asset = await send(`${origin()}/rova/${assetRef}`);
+    const asset = await send(`${origin()}/wfgraph/${assetRef}`);
     expect(asset.status).toBe(200);
   });
 
@@ -259,9 +259,9 @@ describe.each([
   });
 });
 
-describe("Rova mounted on a bare node:http server", () => {
+describe("WfGraph mounted on a bare node:http server", () => {
   it("routes on req.url when no host stripped the path", async () => {
-    const response = await send(`${bareOrigin}/rova/api/extensions`);
+    const response = await send(`${bareOrigin}/wfgraph/api/extensions`);
 
     expect(response.status).toBe(200);
     expect(JSON.parse(response.body)).toMatchObject({
@@ -270,7 +270,7 @@ describe("Rova mounted on a bare node:http server", () => {
   });
 });
 
-describe("Rova mounted somewhere other than its basePath", () => {
+describe("WfGraph mounted somewhere other than its basePath", () => {
   it("404s, which is why the adapter logs the mismatch", async () => {
     expect(
       (await send(`${mismatchedOrigin}/elsewhere/api/extensions`)).status
@@ -278,10 +278,10 @@ describe("Rova mounted somewhere other than its basePath", () => {
   });
 });
 
-describe("Rova mounted behind a body parser", () => {
+describe("WfGraph mounted behind a body parser", () => {
   it("names the misconfiguration instead of running on an empty body", async () => {
     const response = await postJson(
-      `${parsedBodyOrigin}/rova/api/workflows/waits/tok_1/resume`,
+      `${parsedBodyOrigin}/wfgraph/api/workflows/waits/tok_1/resume`,
       JSON.stringify({ event: "created" })
     );
 
@@ -292,8 +292,8 @@ describe("Rova mounted behind a body parser", () => {
   });
 
   it("still serves requests that carry no body", async () => {
-    expect((await send(`${parsedBodyOrigin}/rova/api/extensions`)).status).toBe(
-      200
-    );
+    expect(
+      (await send(`${parsedBodyOrigin}/wfgraph/api/extensions`)).status
+    ).toBe(200);
   });
 });

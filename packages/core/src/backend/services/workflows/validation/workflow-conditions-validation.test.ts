@@ -3,8 +3,8 @@ import { validateWorkflowConditionConfigs } from "#src/backend/services/workflow
 import {
   createDefaultConditionModel,
   serializeConditionModel,
-} from "@rova/shared/conditions/conditions";
-import type { WorkflowNode } from "@rova/shared/graph/types";
+} from "@wfgraph/shared/conditions/conditions";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 
 function createConditionNode(config: Record<string, unknown>): WorkflowNode {
   return {

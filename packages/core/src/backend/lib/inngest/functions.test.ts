@@ -3,7 +3,7 @@ import { Inngest } from "inngest";
 import { describe, expect, it } from "vitest";
 
 import { defineEvent } from "#src/backend/extensions/define-event";
-import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
+import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 
 // Constructing a client opens nothing; these functions are never invoked.
@@ -34,7 +34,7 @@ function triggerFilters(built: unknown): (string | undefined)[] {
  */
 describe("buildInngestFunctions", () => {
   it("builds the run and branch functions and a listener for each Event", async () => {
-    const runtime = stubRovaRuntime({
+    const runtime = stubWfGraphRuntime({
       extensions: { events: [appointmentCreated] },
     });
 
@@ -43,7 +43,7 @@ describe("buildInngestFunctions", () => {
     expect(functions.map((fn) => fn.id())).toEqual([
       "workflow-run",
       "workflow-branch",
-      "rova-event-app-appointment-created",
+      "wfgraph-event-app-appointment-created",
     ]);
   });
 
@@ -54,7 +54,7 @@ describe("buildInngestFunctions", () => {
    * whatever workflow it names.
    */
   it("gives the run function a trigger no workflow id narrows", async () => {
-    const runtime = stubRovaRuntime();
+    const runtime = stubWfGraphRuntime();
 
     const [runFunction] = await buildInngestFunctions(client, runtime);
 

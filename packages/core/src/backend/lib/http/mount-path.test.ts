@@ -13,21 +13,25 @@ describe("normalizeBasePath", () => {
   });
 
   it("keeps a sub-path with a leading slash and no trailing one", () => {
-    expect(normalizeBasePath("/rova")).toBe("/rova");
-    expect(normalizeBasePath("/rova/")).toBe("/rova");
-    expect(normalizeBasePath("  /rova/nested//  ")).toBe("/rova/nested");
+    expect(normalizeBasePath("/wfgraph")).toBe("/wfgraph");
+    expect(normalizeBasePath("/wfgraph/")).toBe("/wfgraph");
+    expect(normalizeBasePath("  /wfgraph/nested//  ")).toBe("/wfgraph/nested");
   });
 
   it("adds the leading slash a host left off", () => {
-    expect(normalizeBasePath("rova")).toBe("/rova");
+    expect(normalizeBasePath("wfgraph")).toBe("/wfgraph");
   });
 
   it("refuses a path that would escape the mount or break a URL", () => {
-    expect(() => normalizeBasePath("/rova/../etc")).toThrow(
+    expect(() => normalizeBasePath("/wfgraph/../etc")).toThrow(
       "unusable basePath"
     );
-    expect(() => normalizeBasePath("/rova//deep")).toThrow("unusable basePath");
-    expect(() => normalizeBasePath("/rova?x=1")).toThrow("unusable basePath");
+    expect(() => normalizeBasePath("/wfgraph//deep")).toThrow(
+      "unusable basePath"
+    );
+    expect(() => normalizeBasePath("/wfgraph?x=1")).toThrow(
+      "unusable basePath"
+    );
     expect(() => normalizeBasePath("//evil.example.com")).toThrow(
       "unusable basePath"
     );
@@ -35,30 +39,30 @@ describe("normalizeBasePath", () => {
 });
 
 describe("toMountRelativePath", () => {
-  it("passes a pathname through untouched when Rova owns the root", () => {
+  it("passes a pathname through untouched when WfGraph owns the root", () => {
     expect(toMountRelativePath("/api/extensions", "")).toBe("/api/extensions");
     expect(toMountRelativePath("/", "")).toBe("/");
   });
 
   it("strips the prefix, mapping the bare mount point to the root", () => {
-    expect(toMountRelativePath("/rova", "/rova")).toBe("/");
-    expect(toMountRelativePath("/rova/", "/rova")).toBe("/");
-    expect(toMountRelativePath("/rova/api/extensions", "/rova")).toBe(
+    expect(toMountRelativePath("/wfgraph", "/wfgraph")).toBe("/");
+    expect(toMountRelativePath("/wfgraph/", "/wfgraph")).toBe("/");
+    expect(toMountRelativePath("/wfgraph/api/extensions", "/wfgraph")).toBe(
       "/api/extensions"
     );
   });
 
   it("reports a request that landed outside the mount", () => {
-    expect(toMountRelativePath("/api/extensions", "/rova")).toBeNull();
+    expect(toMountRelativePath("/api/extensions", "/wfgraph")).toBeNull();
     // A sibling path that merely shares the prefix as a string is not inside it.
-    expect(toMountRelativePath("/rovally/api", "/rova")).toBeNull();
+    expect(toMountRelativePath("/wfgraphlly/api", "/wfgraph")).toBeNull();
   });
 });
 
 describe("rewriteClientBaseHref", () => {
   it("points the base tag at the mount point", () => {
-    expect(rewriteClientBaseHref('<base href="/">', "/rova")).toBe(
-      '<base href="/rova/" />'
+    expect(rewriteClientBaseHref('<base href="/">', "/wfgraph")).toBe(
+      '<base href="/wfgraph/" />'
     );
   });
 
@@ -66,8 +70,8 @@ describe("rewriteClientBaseHref", () => {
   // through, so this is the shape the real built client actually arrives in.
   it("rewrites the self-closing form the client build emits", () => {
     expect(
-      rewriteClientBaseHref('<head><base href="/" /></head>', "/rova")
-    ).toBe('<head><base href="/rova/" /></head>');
+      rewriteClientBaseHref('<head><base href="/" /></head>', "/wfgraph")
+    ).toBe('<head><base href="/wfgraph/" /></head>');
   });
 
   it("leaves the root mount serving a root base href", () => {
@@ -77,6 +81,6 @@ describe("rewriteClientBaseHref", () => {
   });
 
   it("reports a bundle that carries no base tag", () => {
-    expect(rewriteClientBaseHref("<head></head>", "/rova")).toBeNull();
+    expect(rewriteClientBaseHref("<head></head>", "/wfgraph")).toBeNull();
   });
 });

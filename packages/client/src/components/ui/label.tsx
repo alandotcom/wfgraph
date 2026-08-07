@@ -1,6 +1,6 @@
 import type * as React from "react";
 
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 
 function Label({ className, ...props }: React.ComponentProps<"label">) {
   return (

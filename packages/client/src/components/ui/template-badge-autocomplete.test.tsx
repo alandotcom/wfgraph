@@ -10,8 +10,8 @@ import {
   type ActionMetadata,
   emptyExtensionCatalog,
   type EventMetadata,
-} from "@rova/shared/extensions/catalog";
-import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/lifecycle/lifecycle-outlets";
+} from "@wfgraph/shared/extensions/catalog";
+import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { TemplateBadgeInput } from "./template-badge-input";
 import { TemplateBadgeTextarea } from "./template-badge-textarea";

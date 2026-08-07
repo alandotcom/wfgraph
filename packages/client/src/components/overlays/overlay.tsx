@@ -1,4 +1,4 @@
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 import { OverlayFooter } from "./overlay-footer";
 import { SmartOverlayHeader } from "./overlay-header";
 import type { OverlayProps } from "./types";

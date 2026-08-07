@@ -20,12 +20,12 @@ import {
   testPayloadFields,
 } from "#src/lib/test-payload";
 import { getExtensionCatalog } from "#src/lib/extensions";
-import { findEvent } from "@rova/shared/extensions/catalog";
+import { findEvent } from "@wfgraph/shared/extensions/catalog";
 import {
   type TestPayloads,
   testPayloadFor,
-} from "@rova/shared/lifecycle/test-payloads";
-import type { JsonObject } from "@rova/shared/types/json";
+} from "@wfgraph/shared/lifecycle/test-payloads";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
 import type { OverlayComponentProps } from "./types";

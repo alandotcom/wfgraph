@@ -27,7 +27,7 @@ workflow built on it.
 ## Consequences
 
 - `createTrigger` loses `lifecycle` with no compatibility shim, a breaking
-  change to the published `@rova/core/plugin` surface.
+  change to the published `@wfgraph/core/plugin` surface.
 - The webhook trigger's create/update/delete config is retired; every trigger
   type renders the same Routing Policy table.
 - Cancel and Replace widen to target every in-flight Execution for the

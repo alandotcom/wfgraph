@@ -27,8 +27,8 @@ import {
 } from "#src/components/ui/tooltip";
 import { hasTouchSupport } from "#src/hooks/use-touch";
 import { getExtensionCatalog } from "#src/lib/extensions";
-import type { ActionMetadata } from "@rova/shared/extensions/catalog";
-import { cn } from "@rova/shared/utils";
+import type { ActionMetadata } from "@wfgraph/shared/extensions/catalog";
+import { cn } from "@wfgraph/shared/utils";
 
 /**
  * Every action the server can run, which is the whole of what this grid offers.

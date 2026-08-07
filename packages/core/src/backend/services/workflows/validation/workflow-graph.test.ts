@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type {
   SerializedWorkflowGraph,
   WorkflowEdge,
   WorkflowNode,
-} from "@rova/shared/graph/types";
+} from "@wfgraph/shared/graph/types";
 
 function createBaseLifecycleNode(id = "lifecycle_1"): WorkflowNode {
   return {

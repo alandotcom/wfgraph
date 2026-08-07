@@ -2,7 +2,7 @@ import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog
 import type * as React from "react";
 import type { VariantProps } from "class-variance-authority";
 import { buttonVariants } from "#src/components/ui/button";
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 
 function AlertDialog({
   ...props

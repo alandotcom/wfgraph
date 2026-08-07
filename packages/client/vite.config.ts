@@ -23,14 +23,14 @@ const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 // Vite project root and `outDir` below is what pulls the output back out of it.
 const clientSrc = fileURLToPath(new URL("./src", import.meta.url));
 
-// Beside @rova/client's own tsdown output, which is where `clientBundle.dir`
+// Beside @wfgraph/client's own tsdown output, which is where `clientBundle.dir`
 // points a host.
 const outDir = fileURLToPath(new URL("./dist/client", import.meta.url));
 
 // Where examples/app.ts listens, read from the same variable the app reads so
 // `PORT=4018 pnpm run dev` moves both halves together.
 //
-// The example mounts Rova at the root, which puts every backend route under
+// The example mounts WfGraph at the root, which puts every backend route under
 // `/api`: rpc, rest, openapi.json, docs, extensions, inngest, and the webhook
 // and resume paths. Mounting under a `basePath` would move them all, and this
 // proxy rule would have to move with them.
@@ -39,7 +39,7 @@ const APP_ORIGIN = `http://localhost:${process.env.PORT ?? 4017}`;
 export default defineConfig({
   root: clientSrc,
   // Relative asset URLs. The server rewrites index.html's <base> tag to
-  // wherever the host mounted Rova, and that tag is what resolves them, so a
+  // wherever the host mounted WfGraph, and that tag is what resolves them, so a
   // sub-path mount needs no rebuild. Vite resolves a relative base to "/" in
   // development, where the tag is served unrewritten.
   base: "./",
@@ -66,7 +66,7 @@ export default defineConfig({
     // of the published tarball.
     emptyOutDir: true,
     // Chunks land beside index.html rather than in an assets/ subdirectory,
-    // which is the layout @rova/client documents and the server serves.
+    // which is the layout @wfgraph/client documents and the server serves.
     assetsDir: "",
     sourcemap: false,
   },

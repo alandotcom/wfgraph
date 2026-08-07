@@ -2,7 +2,7 @@
  * Run-time side of the toolbar: status animation, remembering the test payload,
  * and turning an execute response into canvas + toast state.
  *
- * Issue collection lives in `@rova/shared/graph/workflow-issues`; this module
+ * Issue collection lives in `@wfgraph/shared/graph/workflow-issues`; this module
  * only drives a run once the builder has cleared (or bypassed) those checks.
  */
 
@@ -15,7 +15,7 @@ import type {
   WorkflowNode,
 } from "#src/lib/workflow-graph-types";
 import type { NodeDataUpdate } from "#src/lib/workflow-graph-store";
-import type { WorkflowExecutionIgnoredReason } from "@rova/shared/lifecycle/execution-contracts";
+import type { WorkflowExecutionIgnoredReason } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
   findEntryNode,
   nextTestPayloads,

@@ -3,7 +3,7 @@
  */
 
 import { Effect } from "effect";
-import type { WaitConfig } from "@rova/shared/lifecycle/wait-subscription";
+import type { WaitConfig } from "@wfgraph/shared/lifecycle/wait-subscription";
 import type { ExecutionResult } from "#src/backend/engine/contracts";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import type { NodeContext } from "#src/backend/engine/step-log";

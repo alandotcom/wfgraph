@@ -28,20 +28,23 @@ import {
   type WorkflowNodeData,
 } from "#src/lib/workflow-graph-types";
 import { getExtensionCatalog } from "#src/lib/extensions";
-import { findAction, findIntegration } from "@rova/shared/extensions/catalog";
+import {
+  findAction,
+  findIntegration,
+} from "@wfgraph/shared/extensions/catalog";
 import { useIntegrationUi } from "#src/components/integration-ui-provider";
-import { readAs } from "@rova/shared/types/schema";
-import { cn } from "@rova/shared/utils";
+import { readAs } from "@wfgraph/shared/types/schema";
+import { cn } from "@wfgraph/shared/utils";
 import {
   parseTimestampWithTimezone,
   resolveWaitUntil,
-} from "@rova/shared/utils/wait-time";
-import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
-import { isConditionActionType } from "@rova/shared/conditions/condition-branch";
+} from "@wfgraph/shared/utils/wait-time";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { isConditionActionType } from "@wfgraph/shared/conditions/condition-branch";
 import {
   eventSplitOutlet,
   isEventSplitActionType,
-} from "@rova/shared/lifecycle/event-split";
+} from "@wfgraph/shared/lifecycle/event-split";
 import { useEventSplitOutlets } from "#src/lib/event-split-outlets";
 import { eventSplitCardWidth } from "#src/components/workflow/workflow-node-dimensions";
 import { useAfterPaint, useNowMs } from "#src/hooks/effects";
@@ -49,7 +52,7 @@ import { useExecutionLogsByNode } from "#src/hooks/use-execution-logs";
 import {
   readConfigString,
   readConfigStringOr,
-} from "@rova/shared/graph/node-config";
+} from "@wfgraph/shared/graph/node-config";
 import {
   integrationIdsQueryOptions,
   NO_INTEGRATION_IDS,

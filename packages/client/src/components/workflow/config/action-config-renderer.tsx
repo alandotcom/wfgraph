@@ -16,8 +16,8 @@ import {
   type ActionConfigField,
   type ActionConfigFieldBase,
   isFieldGroup,
-} from "@rova/shared/plugins/action-fields";
-import { matchesShowWhen } from "@rova/shared/types/show-when";
+} from "@wfgraph/shared/plugins/action-fields";
+import { matchesShowWhen } from "@wfgraph/shared/types/show-when";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
 type FieldProps = {

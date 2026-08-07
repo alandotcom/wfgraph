@@ -15,7 +15,7 @@ import {
   loadWorkflowGraphAtom,
   nodesAtom,
 } from "#src/lib/workflow-graph-store";
-import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /**

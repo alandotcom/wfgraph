@@ -5,7 +5,7 @@
  * of them is written once here rather than twice beside the steps.
  */
 
-import { readAs, StepFailure } from "@rova/core/plugin";
+import { readAs, StepFailure } from "@wfgraph/core/plugin";
 import { Effect, Schema } from "effect";
 
 // Clerk stores any JSON object as user metadata, so a workflow author's pasted

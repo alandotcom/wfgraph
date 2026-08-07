@@ -13,8 +13,8 @@ import {
   stubIntegrationRepo,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
-import type { LifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { EventSubscriber } from "#src/backend/services/workflows/repo";
 import {
   applyLifecycleRules,

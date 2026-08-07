@@ -7,7 +7,7 @@
  * top-level keys -- because that is the shape whoever declared the schema is
  * holding. Inngest reads neither: every path and identifier it evaluates is
  * rooted at `event.data`. Both surfaces that accept such options translate
- * through here, an Event in @rova/core and a trigger in this package, and both do
+ * through here, an Event in @wfgraph/core and a trigger in this package, and both do
  * it at definition so a bad path fails where it was written.
  */
 

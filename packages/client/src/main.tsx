@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 // their custom output renderers. A component cannot be serialized, so this stays
 // an import; everything else about an integration arrives over the wire, as the
 // one catalog `hydrateExtensionsFromApi` below decodes.
-import { integrationUi } from "@rova/plugins/ui";
+import { integrationUi } from "@wfgraph/plugins/ui";
 // Self-hosted variable fonts. The theme's --font-geist-sans/--font-geist-mono
 // variables in globals.css point at the families these register.
 import "@fontsource-variable/geist";

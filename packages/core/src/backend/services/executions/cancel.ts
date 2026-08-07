@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/lifecycle/execution-contracts";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import {
   Conflict,

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
-import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
+import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { checkCelBooleanExpression } from "#src/backend/lib/cel/environment";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
@@ -10,11 +10,11 @@ import {
   compileConditionModel,
   type ConditionModel,
   serializeConditionModel,
-} from "@rova/shared/conditions/conditions";
-import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
-import { eventSplitOutlet } from "@rova/shared/lifecycle/event-split";
-import type { WorkflowNode } from "@rova/shared/graph/types";
+} from "@wfgraph/shared/conditions/conditions";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { executionData } from "#src/backend/engine/contracts";
 import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
 import {
@@ -38,7 +38,7 @@ const wrappedOutputAction = defineAction({
 // assembly.
 const actions = createWorkflowActions(
   assembleExtensions({ actions: [wrappedOutputAction] }),
-  stubRovaRuntime()
+  stubWfGraphRuntime()
 );
 
 function createLifecycleNode(id: string): WorkflowNode {

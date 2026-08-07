@@ -13,7 +13,7 @@ import {
   createInngestEventListenerFunction,
   runEventListener,
 } from "#src/backend/lib/inngest/event-listener-function";
-import type { RovaRuntime } from "#src/backend/runtime";
+import type { WfGraphRuntime } from "#src/backend/runtime";
 import type { EventSubscriber } from "#src/backend/services/workflows/repo";
 
 const {
@@ -63,16 +63,16 @@ function recordingStep() {
 
 /**
  * The runtime the handler runs its services on, which is the seam this stands on:
- * `createRovaApp` hands the real one in, and here it provides the logger plus
+ * `createWfGraphApp` hands the real one in, and here it provides the logger plus
  * whatever a case needs.
  */
-function testRuntime(services = Layer.empty): RovaRuntime {
+function testRuntime(services = Layer.empty): WfGraphRuntime {
   return {
     runPromise: (effect: Effect.Effect<unknown, unknown>) =>
       Effect.runPromise(
         Effect.provide(effect, Layer.mergeAll(SilentAppLoggerLayer, services))
       ),
-  } as unknown as RovaRuntime;
+  } as unknown as WfGraphRuntime;
 }
 
 function subscriber(overrides: Partial<EventSubscriber> = {}): EventSubscriber {

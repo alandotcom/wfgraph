@@ -55,7 +55,7 @@ import {
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 
 function PublishButton({
   isPublishing,

@@ -16,9 +16,9 @@ import {
   credentialsFromConfig,
   type ExtensionCatalog,
   findIntegration,
-} from "@rova/shared/extensions/catalog";
-import type { IntegrationConfig } from "@rova/shared/types/integration";
-import { getErrorMessage } from "@rova/shared/utils";
+} from "@wfgraph/shared/extensions/catalog";
+import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
+import { getErrorMessage } from "@wfgraph/shared/utils";
 import { ENCRYPTION_KEY_MISMATCH_MESSAGE } from "#src/backend/services/integrations/cipher";
 import {
   createSecretConfigKeyTest,
@@ -76,7 +76,7 @@ function describeUnavailableIntegration(
       ? `This server holds: ${available.join(", ")}.`
       : "This server holds no integration at all.";
 
-  return `Integration "${type}" is not available on this server. Pass it to createRovaApp under extensions.integrations, or pass builtInIntegrations from "@rova/plugins" for the built-in ones. ${holds}`;
+  return `Integration "${type}" is not available on this server. Pass it to createWfGraphApp under extensions.integrations, or pass builtInIntegrations from "@wfgraph/plugins" for the built-in ones. ${holds}`;
 }
 
 function mergeIntegrationConfig(

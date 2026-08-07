@@ -12,9 +12,9 @@ import { validateWorkflowGraph } from "#src/backend/services/workflows/validatio
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { toWorkflowApiPayload } from "#src/backend/services/workflows/mappers";
-import { generateId } from "@rova/shared/utils/id";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
+import { generateId } from "@wfgraph/shared/utils/id";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 
 /**
  * Fresh ids for every node. Connection ids stay until after prepareGraphSave:

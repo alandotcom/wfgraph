@@ -11,20 +11,20 @@ import {
   UNAUTHORIZED_BODY,
 } from "#src/backend/lib/http/authorize";
 import type { RpcContext } from "#src/backend/rpc/context";
-import type { RovaRuntime } from "#src/backend/runtime";
+import type { WfGraphRuntime } from "#src/backend/runtime";
 import {
   createOpenApiReferenceHandler,
   openApiRestHandler,
 } from "#src/backend/rpc/openapi";
 import { rpcRouter } from "#src/backend/rpc/router";
 import { postWorkflowResume } from "#src/backend/services/workflows/lifecycle/resume";
-import { type JsonObject, readJsonObject } from "@rova/shared/types/json";
-import { formatSchemaFailure } from "@rova/shared/types/schema-message";
+import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
+import { formatSchemaFailure } from "@wfgraph/shared/types/schema-message";
 import {
   NonEmptyTrimmedString,
   rejectUnknownKeys,
-} from "@rova/shared/types/schema";
-import { getErrorMessage } from "@rova/shared/utils";
+} from "@wfgraph/shared/types/schema";
+import { getErrorMessage } from "@wfgraph/shared/utils";
 
 // A path segment is whatever the sender typed, so the refusal names the field
 // and the rule rather than echoing the value back into the response body.
@@ -103,7 +103,7 @@ function truncateTextForLogs(text: string): {
 /**
  * Read a request body as the JSON object a resume call carries.
  *
- * Rova parses untrusted input at the route boundary, which is what the project
+ * WfGraph parses untrusted input at the route boundary, which is what the project
  * asks for anyway, so no validator middleware sits between the request and the
  * service. A body that is not JSON and a body that is JSON but not an object
  * both come back as a message the caller can act on.
@@ -191,7 +191,7 @@ async function getResponseLogBody(res: Response): Promise<unknown> {
 export type CreateApiAppOptions = {
   /**
    * Absolute path the API is reachable at, leading slash and no trailing slash,
-   * for example "/api" or "/rova/api". The host tells us where it mounted Rova,
+   * for example "/api" or "/wfgraph/api". The host tells us where it mounted WfGraph,
    * so nothing here has to deduce it from the request.
    */
   basePath: `/${string}`;
@@ -201,7 +201,7 @@ export type CreateApiAppOptions = {
    * The Effect runtime the app instance owns, put on every request context so a
    * procedure whose service has been migrated can run its Effect on it.
    */
-  runtime: RovaRuntime;
+  runtime: WfGraphRuntime;
   /**
    * The `/inngest` HTTP serve handler. Absent when the host opted into Connect:
    * that mode dials out over a WebSocket and must not expose a callback route
@@ -244,7 +244,7 @@ export function machineRoutes(options: {
 }
 
 type ApiEnv = {
-  Variables: { rovaMachineRoute?: true };
+  Variables: { wfgraphMachineRoute?: true };
 };
 
 export function createApiApp(options: CreateApiAppOptions) {
@@ -300,13 +300,13 @@ export function createApiApp(options: CreateApiAppOptions) {
   // Markers before the gate: Hono runs matching middleware in registration order.
   for (const route of ungatedRoutes) {
     app.use(route, async (c, next) => {
-      c.set("rovaMachineRoute", true);
+      c.set("wfgraphMachineRoute", true);
       await next();
     });
   }
 
   app.use("*", async (c, next) => {
-    if (c.get("rovaMachineRoute") || (await authorize(c.req.raw))) {
+    if (c.get("wfgraphMachineRoute") || (await authorize(c.req.raw))) {
       await next();
       return undefined;
     }

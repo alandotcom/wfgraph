@@ -1,6 +1,6 @@
 import { ChevronLeftIcon, XIcon } from "lucide-react";
 import { Button } from "#src/components/ui/button";
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 import { useOverlay, useOverlayPosition } from "./overlay-provider";
 import type { OverlayHeaderProps } from "./types";
 

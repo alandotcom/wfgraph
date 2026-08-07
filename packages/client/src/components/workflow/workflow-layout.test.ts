@@ -4,8 +4,8 @@ import type {
   WorkflowNode,
   WorkflowNodeType,
 } from "#src/lib/workflow-graph-types";
-import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
-import { eventSplitOutlet } from "@rova/shared/lifecycle/event-split";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
 import { layoutWorkflowNodes } from "./workflow-layout";
 import {
   eventSplitCardWidth,

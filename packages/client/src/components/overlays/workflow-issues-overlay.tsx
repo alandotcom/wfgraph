@@ -8,7 +8,7 @@ import { ConfigurationOverlay } from "./configuration-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
 import type { OverlayComponentProps } from "./types";
-import type { WorkflowIssuesOverlayModel } from "@rova/shared/graph/workflow-issues";
+import type { WorkflowIssuesOverlayModel } from "@wfgraph/shared/graph/workflow-issues";
 
 type WorkflowIssuesOverlayProps = OverlayComponentProps<{
   issues: WorkflowIssuesOverlayModel;

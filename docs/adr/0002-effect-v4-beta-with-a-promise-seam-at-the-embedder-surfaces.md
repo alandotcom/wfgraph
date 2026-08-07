@@ -8,7 +8,7 @@ validation runs through Zod at some boundaries and hand-written checks at others
 service reaches its database handle and its Inngest client through process globals. Effect
 covers all of that ground with one typed model, so we
 adopt `effect@beta` (the v4 line, `4.0.0-beta.102` at the time of the decision) across
-`@rova/core`, `@rova/plugins`, and the server-side code in `@rova/shared`. The version is
+`@wfgraph/core`, `@wfgraph/plugins`, and the server-side code in `@wfgraph/shared`. The version is
 pinned exactly, and every `@effect/*` package is held at a version-aligned release,
 because a beta line moves under you otherwise.
 
@@ -22,11 +22,11 @@ against v4 idioms.
 
 ## Where Effect stops
 
-Everything an embedder touches stays Promise-based: the `createRovaApp` options object,
-the fetch handler it returns, `@rova/core/node`, and all of `@rova/client`. An embedder
-should be able to mount Rova in an Express app without learning Effect.
+Everything an embedder touches stays Promise-based: the `createWfGraphApp` options object,
+the fetch handler it returns, `@wfgraph/core/node`, and all of `@wfgraph/client`. An embedder
+should be able to mount WfGraph in an Express app without learning Effect.
 
-`@rova/core/plugin` is the deliberate exception and becomes Effect-native. A step handler
+`@wfgraph/core/plugin` is the deliberate exception and becomes Effect-native. A step handler
 returns an `Effect` with tagged errors, and a `defineStep` constructor owns credential
 fetch, step logging, and construction of the result envelope. Plugins are where Effect
 pays for itself, since most of a plugin's body is a vendor HTTP call with a retry policy
@@ -36,7 +36,7 @@ second-class citizens of the surface they define.
 
 ## Schema
 
-Effect Schema replaces Zod everywhere, including the RPC contracts in `@rova/shared`, the
+Effect Schema replaces Zod everywhere, including the RPC contracts in `@wfgraph/shared`, the
 timestamp codec, and `JsonValue` parsing. Service failures become tagged errors built with
 `Schema.TaggedErrorClass`. The two adapters at the edges keep doing their translation job:
 `packages/core/src/backend/rpc/errors.ts` maps a failure to an oRPC code, and
@@ -91,7 +91,7 @@ pinning it, so a later change to any of them is a decision rather than a drift.
 
 ## Dependency wiring
 
-`createRovaApp` builds a Layer graph and holds it in a `ManagedRuntime` owned by that app
+`createWfGraphApp` builds a Layer graph and holds it in a `ManagedRuntime` owned by that app
 instance. Four pieces of shared process state are deleted:
 
 - the `globalThis` Proxy over the Drizzle handle in `packages/core/src/backend/lib/db/index.ts`
@@ -100,7 +100,7 @@ instance. Four pieces of shared process state are deleted:
 - the `claimProcess` guard in `packages/core/src/app.ts`
 
 The `claimProcess` guard goes away with the state it policed, and that is the whole
-story: one Rova per process remains the only supported arrangement. Constructing a
+story: one WfGraph per process remains the only supported arrangement. Constructing a
 second app in a process is undefined behavior (decided 2026-07-28). The runtime work
 is justified by dependency injection and testability, and nothing is added, tested,
 or documented to make multiple apps work.
@@ -114,7 +114,7 @@ be deleted until stage 7 brings that interior across. `DatabaseLayer` and
 services above them be injected and tested now.
 
 **Amendment, 2026-07-30.** Stage 7's first half took the Inngest half of that back.
-`createRovaApp` builds one `InngestSurface` -- the client, the function registry over it,
+`createWfGraphApp` builds one `InngestSurface` -- the client, the function registry over it,
 and the `/inngest` serve handler as one value -- and threads it to the runtime and the API
 app, so the Layer is `makeInngestClientLayer(client)` and nothing looks a client up. The
 database handle is still a process global, and the run engine's interior is still what
@@ -219,7 +219,7 @@ deliberate: a credential store that rejects is a defect, and a defect leaves by 
 path, where Inngest's function-level retry runs the step again, which is the right answer
 for a store that was briefly unreachable. The transport those Promise callers provide is
 the layer `defineStep` already gives a handler, exported as `VendorTransport` from
-`@rova/core/plugin` rather than copied into the plugins package. One dead branch went with
+`@wfgraph/core/plugin` rather than copied into the plugins package. One dead branch went with
 the rewrite: nothing in the tree ever set `_context._workflowComplete`, so
 `withStepLogging` no longer looks for it.
 
@@ -233,7 +233,7 @@ reaching a real phone.
 
 - **`effect` 3.22 stable** rejected: adopting v3 guarantees a v3-to-v4 migration of the
   entire backend later, and the guidance we intend to follow targets v4.
-- **A Promise-based `@rova/core/plugin`** rejected: it would push every plugin to unwrap
+- **A Promise-based `@wfgraph/core/plugin`** rejected: it would push every plugin to unwrap
   its own Effects at the boundary, and the built-in plugins are the largest consumer of
   that surface.
 - **Zod kept at the wire, Effect Schema inside** rejected: it institutionalizes two schema
@@ -256,11 +256,11 @@ handlers: acuity's eight, clerk's four, linear's two, resend's one and slack's o
 schema pair in a `schemas.ts` beside the plugin's metadata and an `Effect.fn` handler
 under `steps/`.
 
-`registerStepFunction` came off `@rova/core/plugin`, and so did `fetchCredentials`,
+`registerStepFunction` came off `@wfgraph/core/plugin`, and so did `fetchCredentials`,
 `withStepLogging` and `StepInput`, which existed for the steps that fetched and logged by
 hand. The published surface is now `defineStep`, `StepFailure`, `StepDefinition`,
 `StepRunContext`, `registerStep`, `registerIntegrationTest` and `VendorTransport`, which
-`pnpm pack` on `@rova/core` confirms. The unsound call did not die with the plugins,
+`pnpm pack` on `@wfgraph/core` confirms. The unsound call did not die with the plugins,
 though, and this is the one place 6a's plan was wrong: `Database Query` and `HTTP Request`
 register through it too, and each answers a shape `StepResult` has no room for -- rows
 beside a count, a status beside the data. Moving them is a decision about what a step may
@@ -308,7 +308,7 @@ Promise seam is one `Effect.runPromise` where the engine calls a step.
 
 **Amendment, 2026-07-31.** Stage 5's module moved and changed its name. It is
 `packages/core/src/backend/extensions/steps/external-http.ts` now, exported whole from
-`@rova/core/plugin`, and every name in it reads `External` where it read `Vendor`:
+`@wfgraph/core/plugin`, and every name in it reads `External` where it read `Vendor`:
 `callExternal`, `callExternalAsync` (was `runVendorCall`), the three failure classes, and
 `ExternalTransport` beside it. Nothing about the timeout, the retry schedule, or the
 repeat-safety rule this ADR set out above changed.
@@ -316,7 +316,7 @@ repeat-safety rule this ADR set out above changed.
 Two reasons. The word first: "vendor" named who was called rather than what the boundary
 guarantees, and `CONTEXT.md` defined it nowhere while five type names carried it. The
 project's own pair for this distinction is internal and external, and `CONTEXT.md` now
-holds both terms. The location second: the module sat inside `@rova/plugins`, where no
+holds both terms. The location second: the module sat inside `@wfgraph/plugins`, where no
 outside integration package could reach it, so the one thing this ADR judged worth writing
 once was written once for the six built-ins and not at all for anybody else. The
 repeat-safety rule is the part that matters, because getting it wrong sends a second
@@ -338,7 +338,7 @@ until `terminal-record.ts` logs and handles it. Node and fatal failures likewise
 that projects that value onto the existing message column.
 
 The database surface is app-owned now, with no module-level handle retaining it. Disposing
-the app closes that app's pool. One Rova per process remains the supported arrangement,
+the app closes that app's pool. One WfGraph per process remains the supported arrangement,
 but shared mutable state no longer enforces it.
 
 Effect logging annotations replaced the logger threaded through the traversal, and
@@ -358,7 +358,7 @@ durable `runtime.run` callback runs its Effect with the invocation's current con
 
 - Pinning a beta means upgrades are deliberate work: a bump can break compilation, so read
   the changelog before moving the pin, and move every `@effect/*` package with it.
-- `@rova/core/plugin` changes shape, which is a breaking change to a published surface.
+- `@wfgraph/core/plugin` changes shape, which is a breaking change to a published surface.
   Third-party integration authors take on Effect as a build-time dependency.
 - Zod leaves the dependency tree at stage 4. The AGENTS.md guidance that names Zod at the
   boundary, and the `JsonValue` narrowing rules, need rewriting at that point.

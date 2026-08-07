@@ -34,14 +34,17 @@ import {
   nodesAtom,
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
-import { actionsByCategory, findAction } from "@rova/shared/extensions/catalog";
-import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
+import {
+  actionsByCategory,
+  findAction,
+} from "@wfgraph/shared/extensions/catalog";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import {
   DEFAULT_WAIT_TIMEOUT,
   readWaitDelayTiming,
   WAIT_VALUE_TARGETS,
   waitValueKeysNotIn,
-} from "@rova/shared/lifecycle/wait-subscription";
+} from "@wfgraph/shared/lifecycle/wait-subscription";
 import { ActionConfigRenderer } from "./action-config-renderer";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import type { UpdateNodeConfig } from "./node-config-patch";
@@ -50,7 +53,7 @@ import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import {
   readConfigString,
   readConfigStringOr,
-} from "@rova/shared/graph/node-config";
+} from "@wfgraph/shared/graph/node-config";
 
 type ActionConfigProps = {
   config: Record<string, unknown>;

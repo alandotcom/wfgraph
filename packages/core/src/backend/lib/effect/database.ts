@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Schema } from "effect";
-import type { RovaDatabase } from "#src/backend/lib/db/index";
+import type { WfGraphDatabase } from "#src/backend/lib/db/index";
 
 /**
  * A query did not reach the database, or the database refused it.
@@ -29,10 +29,10 @@ export class Database extends Context.Service<
   Database,
   {
     readonly query: <A>(
-      run: (db: RovaDatabase) => Promise<A>
+      run: (db: WfGraphDatabase) => Promise<A>
     ) => Effect.Effect<A, DatabaseError>;
   }
->()("@rova/core/Database") {}
+>()("@wfgraph/core/Database") {}
 
 /**
  * The live database, over the handle the app built.
@@ -41,7 +41,7 @@ export class Database extends Context.Service<
  * repository queries on is decided by the app that owns it, and a second app in
  * the same process cannot reach the first one's rows.
  */
-export function makeDatabaseLayer(db: RovaDatabase): Layer.Layer<Database> {
+export function makeDatabaseLayer(db: WfGraphDatabase): Layer.Layer<Database> {
   return Layer.succeed(Database, {
     query: (run) =>
       Effect.tryPromise({

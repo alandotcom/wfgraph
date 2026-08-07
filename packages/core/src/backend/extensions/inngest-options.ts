@@ -5,21 +5,21 @@
  * An Event Author writes every path against the payload, so the translation into
  * the `event.data.` form belongs somewhere; `defineEvent` is the only caller, and
  * this sits beside it. The prefixing and the CEL rewrite themselves are
- * `@rova/shared/lifecycle/inngest-event-data`, since a path and an expression over
+ * `@wfgraph/shared/lifecycle/inngest-event-data`, since a path and an expression over
  * a payload are the same problem wherever they are written.
  */
 
 import type { InngestFunction } from "inngest";
-import type { JsonObject } from "@rova/shared/types/json";
-import type { PayloadPath } from "@rova/shared/types/payload-path";
+import type { JsonObject } from "@wfgraph/shared/types/json";
+import type { PayloadPath } from "@wfgraph/shared/types/payload-path";
 import {
   extractSchemaKeys,
   type StandardSchema,
-} from "@rova/shared/types/schema";
+} from "@wfgraph/shared/types/schema";
 import {
   prefixKeyField,
   rewriteCelExpression,
-} from "@rova/shared/lifecycle/inngest-event-data";
+} from "@wfgraph/shared/lifecycle/inngest-event-data";
 
 type FunctionOptions = InngestFunction.Options;
 
@@ -42,7 +42,7 @@ type WithPayloadKey<TOption, TPayload extends JsonObject> = Omit<
  * Inngest flow control for an Event's listener, written against the payload.
  *
  * Inngest `concurrency` is not a member. Per-Entity-Value serialization is
- * Rova's Concurrency on the Lifecycle Node, which Inngest's version cannot
+ * WfGraph's Concurrency on the Lifecycle Node, which Inngest's version cannot
  * stand in for: it can neither end a displaced run with the `superseded` status
  * nor refuse a start and say so in run history.
  */

@@ -7,7 +7,7 @@
  * the type, so the set of types is closed by construction: a field the renderer
  * cannot draw is not a usable field.
  *
- * An integration is a value a host passes to `createRovaApp` and the editor reads
+ * An integration is a value a host passes to `createWfGraphApp` and the editor reads
  * the catalog, so what is left here is the field vocabulary those two share and a
  * few helpers over a field list.
  */

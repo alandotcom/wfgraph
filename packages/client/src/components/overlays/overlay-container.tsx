@@ -14,7 +14,7 @@ import {
   useMeasuredHeight,
 } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 import { useOverlay } from "./overlay-provider";
 
 // iOS-like spring configuration

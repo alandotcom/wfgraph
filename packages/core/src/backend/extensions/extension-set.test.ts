@@ -1,6 +1,6 @@
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
-import { findIntegration } from "@rova/shared/extensions/catalog";
+import { findIntegration } from "@wfgraph/shared/extensions/catalog";
 import { defineAction } from "#src/backend/extensions/define-action";
 import { defineEvent } from "#src/backend/extensions/define-event";
 import {

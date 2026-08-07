@@ -4,15 +4,15 @@ import {
   validateEventSplitOutlets,
   validateWorkflowEvents,
 } from "#src/backend/services/workflows/validation/workflow-lifecycle-validation";
-import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
-import { eventSplitOutlet } from "@rova/shared/lifecycle/event-split";
-import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/lifecycle/lifecycle-outlets";
-import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
-import type { LifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
+import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 
 // The vocabulary the rules are checked against, which a running app assembles
-// from what the host passed `createRovaApp`.
+// from what the host passed `createWfGraphApp`.
 const catalog: ExtensionCatalog = {
   events: [
     {

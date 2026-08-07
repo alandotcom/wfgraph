@@ -1,7 +1,7 @@
 /**
  * Running one action of an integration, the way a workflow runs it.
  *
- * A separate entry from `@rova/core/plugin` because nothing here runs in a
+ * A separate entry from `@wfgraph/core/plugin` because nothing here runs in a
  * server: an integration's own suite imports it, and a server bundle never
  * reaches it. What it drives is the whole boundary `defineIntegration` builds,
  * so a case sees the config decode, the credential fetch, the handler, the
@@ -16,8 +16,11 @@ import type {
 import type { Integration } from "#src/backend/extensions/define-integration";
 import type { ActionStep } from "#src/backend/extensions/steps/define-step";
 import type { StepEnvironment } from "#src/backend/extensions/steps/step-runner";
-import { formatActionId } from "@rova/shared/extensions/catalog";
-import type { StepError, StepResult } from "@rova/shared/actions/step-result";
+import { formatActionId } from "@wfgraph/shared/extensions/catalog";
+import type {
+  StepError,
+  StepResult,
+} from "@wfgraph/shared/actions/step-result";
 
 /** What the action under test answers with, read off the step it was built into. */
 type OutputOf<TAction> =

@@ -1,7 +1,7 @@
 /**
  * Editor view-model for the workflow graph.
  *
- * Persisted shapes live in `@rova/shared/graph/types`. React Flow's `Node` /
+ * Persisted shapes live in `@wfgraph/shared/graph/types`. React Flow's `Node` /
  * `Edge` and run `status` are editor-only and stop at this package.
  */
 
@@ -11,7 +11,7 @@ import type {
   PersistedNodeData,
   WorkflowNode as PersistedWorkflowNode,
   WorkflowEdge as PersistedWorkflowEdge,
-} from "@rova/shared/graph/types";
+} from "@wfgraph/shared/graph/types";
 
 export type { NodeRunStatus, PersistedNodeData };
 export type {
@@ -19,7 +19,7 @@ export type {
   WorkflowMode,
   WorkflowNodeType,
   WorkflowVisibility,
-} from "@rova/shared/graph/types";
+} from "@wfgraph/shared/graph/types";
 
 export type EditorNodeData = PersistedNodeData & {
   status?: NodeRunStatus;

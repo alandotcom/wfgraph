@@ -9,19 +9,19 @@ import {
   type ConditionModel,
   EVENT_NAME_FIELD_PATH,
   serializeConditionModel,
-} from "@rova/shared/conditions/conditions";
+} from "@wfgraph/shared/conditions/conditions";
 import {
   type ActionMetadata,
   emptyExtensionCatalog,
   type EventMetadata,
-} from "@rova/shared/extensions/catalog";
+} from "@wfgraph/shared/extensions/catalog";
 import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
-} from "@rova/shared/lifecycle/lifecycle-outlets";
-import type { LifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
-import { isoTimestampString } from "@rova/shared/types/timestamp";
-import { requireOutputFieldsFromSchema } from "@rova/shared/graph/output-fields";
+} from "@wfgraph/shared/lifecycle/lifecycle-outlets";
+import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import { isoTimestampString } from "@wfgraph/shared/types/timestamp";
+import { requireOutputFieldsFromSchema } from "@wfgraph/shared/graph/output-fields";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 // What a node offers downstream comes off the catalog the editor fetches once

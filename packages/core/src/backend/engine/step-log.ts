@@ -10,7 +10,7 @@
  */
 
 import type { StepContext } from "#src/backend/extensions/steps/step-handler";
-import type { StepResult } from "@rova/shared/actions/step-result";
+import type { StepResult } from "@wfgraph/shared/actions/step-result";
 import { Cause, Effect } from "effect";
 import type {
   WorkflowStepLogHandle,

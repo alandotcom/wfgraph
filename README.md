@@ -1,4 +1,4 @@
-# Rova Workflow Builder
+# WfGraph Workflow Builder
 
 A self-hosted workflow engine you embed in your application. Your code declares the
 vocabulary — Events, actions, and integrations — and your team builds workflows in a visual
@@ -9,7 +9,7 @@ editor.
 | **Event Author**     | The developer who embeds  | Defines Events, actions, and which integrations to turn on  |
 | **Workflow Builder** | Their less technical team | Builds the graph and declares Lifecycle Rules in the editor |
 
-Rova runs on your infrastructure (Node, PostgreSQL, Inngest) and uses your database.
+WfGraph runs on your infrastructure (Node, PostgreSQL, Inngest) and uses your database.
 
 ## Run locally
 
@@ -47,20 +47,20 @@ pnpm run start
 
 ## Embed in your app
 
-`createRovaApp` returns a fetch handler. Pass Events, actions, and integrations in one
+`createWfGraphApp` returns a fetch handler. Pass Events, actions, and integrations in one
 `extensions` object:
 
 ```ts
 import { createServer } from "node:http";
 import { z } from "zod";
-import { clientBundle } from "@rova/client";
+import { clientBundle } from "@wfgraph/client";
 import {
   createRequestListener,
-  createRovaApp,
+  createWfGraphApp,
   defineAction,
   defineEvent,
-} from "@rova/core";
-import { builtInIntegrations } from "@rova/plugins";
+} from "@wfgraph/core";
+import { builtInIntegrations } from "@wfgraph/plugins";
 
 const appointmentCreated = defineEvent({
   name: "app/appointment.created",
@@ -91,7 +91,7 @@ const cancelAppointment = defineAction({
   },
 });
 
-const rova = await createRovaApp({
+const wfgraph = await createWfGraphApp({
   database: {
     url: process.env.DATABASE_URL!,
     migrations: { runOnStartup: true },
@@ -99,7 +99,7 @@ const rova = await createRovaApp({
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
   auth: (request) => hasValidSession(request),
   client: clientBundle,
-  inngest: { id: "my-rova-app", connect: true },
+  inngest: { id: "my-wfgraph-app", connect: true },
   extensions: {
     events: [appointmentCreated],
     actions: [cancelAppointment],
@@ -107,7 +107,7 @@ const rova = await createRovaApp({
   },
 });
 
-createServer(createRequestListener(rova)).listen(3000);
+createServer(createRequestListener(wfgraph)).listen(3000);
 ```
 
 `examples/app.ts` is the canonical host. If this README disagrees with it, the example wins.
@@ -122,5 +122,5 @@ createServer(createRequestListener(rova)).listen(3000);
 | [`CONTEXT.md`](CONTEXT.md)                     | Domain vocabulary                                                |
 | [`docs/adr/`](docs/adr/)                       | Design decisions                                                 |
 
-Packages: `@rova/core` (library + backend), `@rova/client` (editor), `@rova/plugins`
-(built-in integrations), `@rova/shared` (private types).
+Packages: `@wfgraph/core` (library + backend), `@wfgraph/client` (editor), `@wfgraph/plugins`
+(built-in integrations), `@wfgraph/shared` (private types).

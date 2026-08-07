@@ -11,12 +11,12 @@ import { Effect, Schema } from "effect";
 import {
   credentialsFromConfig,
   findIntegration,
-} from "@rova/shared/extensions/catalog";
-import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
-import type { IntegrationConfig } from "@rova/shared/types/integration";
+} from "@wfgraph/shared/extensions/catalog";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
 import { ENCRYPTION_KEY_MISMATCH_MESSAGE } from "#src/backend/services/integrations/cipher";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
-import type { RovaRuntime } from "#src/backend/runtime";
+import type { WfGraphRuntime } from "#src/backend/runtime";
 import { getAppLogger } from "#src/backend/lib/logger";
 
 const credentialFetcherLogger = getAppLogger("credentials", "fetcher");
@@ -86,7 +86,7 @@ const unavailable =
  */
 export function fetchCredentials(
   catalog: ExtensionCatalog,
-  runtime: RovaRuntime,
+  runtime: WfGraphRuntime,
   integrationId: string
 ): Effect.Effect<WorkflowCredentials, CredentialsUnavailable> {
   return Effect.gen(function* () {

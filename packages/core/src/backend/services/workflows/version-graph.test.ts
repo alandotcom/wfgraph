@@ -8,7 +8,7 @@ import {
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import { getVersionGraph } from "#src/backend/services/workflows/version-graph";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 
 function version(overrides: Partial<WorkflowVersion> = {}): WorkflowVersion {
   return {

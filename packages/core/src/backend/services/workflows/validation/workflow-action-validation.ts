@@ -1,12 +1,12 @@
 import {
   type ExtensionCatalog,
   findAction,
-} from "@rova/shared/extensions/catalog";
+} from "@wfgraph/shared/extensions/catalog";
 import {
   getMissingRequiredFieldsForNodes,
   type ResolveActionByType,
-} from "@rova/shared/actions/action-config-validation";
-import type { WorkflowNode } from "@rova/shared/graph/types";
+} from "@wfgraph/shared/actions/action-config-validation";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 
 export type WorkflowActionValidationResult =
   | { valid: true }

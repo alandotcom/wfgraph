@@ -6,12 +6,12 @@
  * is the whole authority, and the branch runs inside the same Execution.
  */
 
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
+import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import {
   LIFECYCLE_CANCELED_HANDLE,
   nodesBehindOutlet,
-} from "@rova/shared/lifecycle/lifecycle-outlets";
-import { configDeclaresCancelEvent } from "@rova/shared/lifecycle/lifecycle-rules";
+} from "@wfgraph/shared/lifecycle/lifecycle-outlets";
+import { configDeclaresCancelEvent } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { Effect } from "effect";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
 import { runDurable } from "#src/backend/engine/durable";

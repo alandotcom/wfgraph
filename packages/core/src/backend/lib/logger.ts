@@ -16,7 +16,7 @@ import {
   resetSync,
 } from "@logtape/logtape";
 import { getPrettyFormatter } from "@logtape/pretty";
-import type { RovaLogger } from "@rova/shared/types/logger";
+import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 
 const LOGGER_ROOT = "app";
 
@@ -140,7 +140,7 @@ function renderLogMessage(message: readonly unknown[]): string {
   return result;
 }
 
-export function configureAppLoggingWithBridge(logger: RovaLogger): void {
+export function configureAppLoggingWithBridge(logger: WfGraphLogger): void {
   if (isConfigured) {
     resetSync();
   }

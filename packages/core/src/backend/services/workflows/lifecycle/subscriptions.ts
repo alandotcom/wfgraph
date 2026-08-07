@@ -9,10 +9,10 @@
  */
 
 import type { WorkflowEventSubscriptionRow } from "#src/backend/services/workflows/repo";
-import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
-import { readLifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
-import type { WorkflowNode } from "@rova/shared/graph/types";
-import { readWaitSubscriptions } from "@rova/shared/lifecycle/wait-subscription";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import { readWaitSubscriptions } from "@wfgraph/shared/lifecycle/wait-subscription";
 
 /**
  * The rows one graph's nodes call for, deduplicated by workflow, name and role.

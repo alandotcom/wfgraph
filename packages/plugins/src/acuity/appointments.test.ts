@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { AcuityError } from "@fountain-bio/acuity";
-import { actionData, actionError, runAction } from "@rova/core/testing";
+import { actionData, actionError, runAction } from "@wfgraph/core/testing";
 import { Effect } from "effect";
 import { beforeEach, vi } from "vitest";
 import { acuity } from "#src/acuity/index";

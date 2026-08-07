@@ -7,7 +7,7 @@ import type {
   NewAuditEvent,
   WorkflowExecutionEvent,
 } from "#src/backend/services/executions/repo/contracts";
-import { toJsonObject } from "@rova/shared/types/json";
+import { toJsonObject } from "@wfgraph/shared/types/json";
 
 /** How far back the audit trail beside a single run is read. */
 const EXECUTION_EVENTS_LIMIT = 200;

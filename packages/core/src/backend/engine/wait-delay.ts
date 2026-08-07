@@ -2,8 +2,8 @@
  * Delay-mode Wait: park until a wall-clock target, then resume.
  */
 
-import { encodeIsoTimestamp } from "@rova/shared/types/timestamp";
-import { resolveWaitUntil } from "@rova/shared/utils/wait-time";
+import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
+import { resolveWaitUntil } from "@wfgraph/shared/utils/wait-time";
 import { Effect } from "effect";
 import { closeStepLog } from "#src/backend/engine/step-log";
 import { fromUnknownPromise, runDurable } from "#src/backend/engine/durable";

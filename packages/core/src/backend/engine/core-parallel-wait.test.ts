@@ -10,18 +10,18 @@
 
 import { describe, expect, it } from "vitest";
 import { Effect, Schema } from "effect";
-import { unknownRest } from "@rova/shared/types/schema";
-import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
-import { eventSplitOutlet } from "@rova/shared/lifecycle/event-split";
-import type { WorkflowNode } from "@rova/shared/graph/types";
-import type { JsonObject } from "@rova/shared/types/json";
+import { unknownRest } from "@wfgraph/shared/types/schema";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import type { PendingCancel, WorkflowStore } from "#src/backend/engine/store";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { defineAction } from "#src/backend/extensions/define-action";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
-import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
+import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import {
   executeTestWorkflow as executeWorkflow,
   executeTestWorkflowBranch as executeWorkflowBranch,
@@ -94,7 +94,7 @@ const echoAction = defineAction({
 
 const actions = createWorkflowActions(
   assembleExtensions({ actions: [sendAction, echoAction, wrapAction] }),
-  stubRovaRuntime()
+  stubWfGraphRuntime()
 );
 
 function lifecycleNode(id: string, config: JsonObject = {}): WorkflowNode {

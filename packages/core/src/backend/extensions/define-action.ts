@@ -18,17 +18,17 @@ import {
   type StepBag,
 } from "#src/backend/extensions/steps/define-step";
 import type { StepFactory } from "#src/backend/extensions/steps/step-runner";
-import type { ActionConfigField } from "@rova/shared/plugins/action-fields";
+import type { ActionConfigField } from "@wfgraph/shared/plugins/action-fields";
 import {
   configFieldsFromInputSchema,
   type InputSchema,
 } from "#src/backend/extensions/schema-io";
-import { asStandardSchema } from "@rova/shared/types/schema";
-import type { ReferenceField } from "@rova/shared/graph/node-references";
+import { asStandardSchema } from "@wfgraph/shared/types/schema";
+import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
 import {
   type OutputSchema,
   outputFieldsFromSchema,
-} from "@rova/shared/graph/output-fields";
+} from "@wfgraph/shared/graph/output-fields";
 
 /**
  * The one argument an action's handler is called with, which is the bag a step's
@@ -100,7 +100,7 @@ export type ActionDefinition = ActionIdentity & {
    * own id, so this is the factory itself.
    */
   readonly implement: StepFactory;
-  readonly __rovaActionBrand: true;
+  readonly __wfgraphActionBrand: true;
 };
 
 /**
@@ -188,7 +188,7 @@ function normalizeActionIdentity(
 }
 
 /**
- * Define an action of your own, for `createRovaApp({ extensions: { actions } })`.
+ * Define an action of your own, for `createWfGraphApp({ extensions: { actions } })`.
  *
  * Actions are the executable steps in a workflow. When a workflow reaches an
  * action node, the engine resolves template variables in the config, validates
@@ -273,6 +273,6 @@ export function defineAction<TInput extends Record<string, unknown>>(
       },
       `Action "${normalized.id}"`
     ),
-    __rovaActionBrand: true,
+    __wfgraphActionBrand: true,
   };
 }

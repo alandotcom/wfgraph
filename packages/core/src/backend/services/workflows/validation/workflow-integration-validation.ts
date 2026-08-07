@@ -5,10 +5,10 @@ import { getAppLogger } from "#src/backend/lib/logger";
 import {
   type ExtensionCatalog,
   findAction,
-} from "@rova/shared/extensions/catalog";
-import type { WorkflowNode } from "@rova/shared/graph/types";
-import { readConfigTrimmedString } from "@rova/shared/graph/node-config";
-import { findUnconfiguredIntegrationNodes } from "@rova/shared/graph/workflow-issues";
+} from "@wfgraph/shared/extensions/catalog";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import { readConfigTrimmedString } from "@wfgraph/shared/graph/node-config";
+import { findUnconfiguredIntegrationNodes } from "@wfgraph/shared/graph/workflow-issues";
 
 /** As much of a catalog entry as the checks below read. */
 type ResolvedAction = {

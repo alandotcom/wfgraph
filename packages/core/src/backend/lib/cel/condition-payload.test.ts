@@ -5,8 +5,8 @@ import {
   type ConditionRule,
   compileConditionModel,
   EVENT_NAME_FIELD_PATH,
-} from "@rova/shared/conditions/conditions";
-import type { JsonObject } from "@rova/shared/types/json";
+} from "@wfgraph/shared/conditions/conditions";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 
 /**
  * The pair this file tests is compile-then-evaluate, because neither half states

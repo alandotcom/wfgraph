@@ -1,5 +1,5 @@
 {
-  "name": "@rova/core",
+  "name": "@wfgraph/core",
   "version": "0.0.0",
   "license": "Apache-2.0",
   "files": [
@@ -62,8 +62,8 @@
     "@fastify/middie": "^9.3.3",
     "@inngest/test": "^1.0.0",
     "@opentelemetry/sdk-trace-base": "^2.10.0",
-    "@rova/shared": "workspace:*",
     "@types/express": "^5.0.6",
+    "@wfgraph/shared": "workspace:*",
     "arktype": "catalog:",
     "express": "^5.2.1",
     "fastify": "^5.10.0",

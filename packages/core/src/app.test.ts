@@ -13,12 +13,12 @@ import { join } from "node:path";
 import { Effect, Schema } from "effect";
 import { defineAction, defineEvent } from "#src/index";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
-import { createRovaApp, type RovaApp } from "#src/app";
+import { createWfGraphApp, type WfGraphApp } from "#src/app";
 import { createApiApp, machineRoutes } from "#src/backend/api-app";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { createInngestSurface } from "#src/backend/lib/inngest/client";
 import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
-import { createRovaRuntime } from "#src/backend/runtime";
+import { createWfGraphRuntime } from "#src/backend/runtime";
 import { normalizeDatabaseConfig } from "#src/backend/lib/db/config";
 import * as dbModule from "#src/backend/lib/db/index";
 import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
@@ -29,29 +29,29 @@ vi.mock("inngest/connect", () => ({
   connect,
 }));
 
-// createRovaApp opens no connections: the database client is lazy and
+// createWfGraphApp opens no connections: the database client is lazy and
 // migrations only run when asked. Every route exercised below answers from
 // process memory, so these tests need no Postgres and no Inngest.
 const BASE_OPTIONS = {
   auth: "external",
-  database: { url: "postgresql://rova:rova@127.0.0.1:1/rova_test" },
+  database: { url: "postgresql://wfgraph:wfgraph@127.0.0.1:1/wfgraph_test" },
   encryption: { key: "a".repeat(64) },
-  inngest: { id: "rova-app-test", isDev: true },
+  inngest: { id: "wfgraph-app-test", isDev: true },
   // A logger that drops everything, so the suite gets no console sink.
   logger: { info: () => {}, warn: () => {}, error: () => {} },
 } as const;
 
-async function createTestApp(basePath?: string): Promise<RovaApp> {
-  return await createRovaApp({ ...BASE_OPTIONS, basePath });
+async function createTestApp(basePath?: string): Promise<WfGraphApp> {
+  return await createWfGraphApp({ ...BASE_OPTIONS, basePath });
 }
 
-// A stand-in for @rova/client: what the server needs is a directory with an
+// A stand-in for @wfgraph/client: what the server needs is a directory with an
 // index.html, and building the real SPA to assert routing would be beside the
 // point.
 let clientDir: string;
 
 beforeAll(async () => {
-  clientDir = await mkdtemp(join(tmpdir(), "rova-client-"));
+  clientDir = await mkdtemp(join(tmpdir(), "wfgraph-client-"));
   await writeFile(
     join(clientDir, "index.html"),
     '<!doctype html><html><head><base href="/" /></head><body></body></html>'
@@ -62,11 +62,11 @@ afterAll(async () => {
   await rm(clientDir, { recursive: true, force: true });
 });
 
-function get(app: RovaApp, path: string): Promise<Response> {
+function get(app: WfGraphApp, path: string): Promise<Response> {
   return app.fetch(new Request(`http://localhost${path}`));
 }
 
-describe("createRovaApp mounted at the root", () => {
+describe("createWfGraphApp mounted at the root", () => {
   it("serves the API off /api", async () => {
     const app = await createTestApp();
     try {
@@ -92,7 +92,7 @@ describe("createRovaApp mounted at the root", () => {
   });
 
   it("serves the integrations the host passed, actions and all", async () => {
-    const app = await createRovaApp({
+    const app = await createWfGraphApp({
       ...BASE_OPTIONS,
       extensions: {
         integrations: [
@@ -161,7 +161,7 @@ describe("createRovaApp mounted at the root", () => {
   });
 
   it("serves the Events the host defined", async () => {
-    const app = await createRovaApp({
+    const app = await createWfGraphApp({
       ...BASE_OPTIONS,
       extensions: {
         events: [
@@ -193,18 +193,18 @@ describe("createRovaApp mounted at the root", () => {
   });
 });
 
-describe("createRovaApp mounted under a sub-path", () => {
+describe("createWfGraphApp mounted under a sub-path", () => {
   it("serves the API off the mount point", async () => {
-    const app = await createTestApp("/rova");
+    const app = await createTestApp("/wfgraph");
     try {
-      expect((await get(app, "/rova/api/extensions")).status).toBe(200);
+      expect((await get(app, "/wfgraph/api/extensions")).status).toBe(200);
     } finally {
       await app.dispose();
     }
   });
 
   it("does not answer on the unmounted path", async () => {
-    const app = await createTestApp("/rova");
+    const app = await createTestApp("/wfgraph");
     try {
       expect((await get(app, "/api/extensions")).status).toBe(404);
     } finally {
@@ -213,13 +213,13 @@ describe("createRovaApp mounted under a sub-path", () => {
   });
 
   it("matches oRPC procedures under the mounted prefix", async () => {
-    const app = await createTestApp("/rova");
+    const app = await createTestApp("/wfgraph");
     try {
       // An empty body fails the procedure's input validation. Reaching that
       // validation at all is the signal: an unmatched prefix would fall through
       // to the app's own 404 instead.
       const response = await app.fetch(
-        new Request("http://localhost/rova/api/rpc/workflow/getById", {
+        new Request("http://localhost/wfgraph/api/rpc/workflow/getById", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ json: {} }),
@@ -234,15 +234,15 @@ describe("createRovaApp mounted under a sub-path", () => {
   });
 
   it("advertises the mounted REST path in the OpenAPI document", async () => {
-    const app = await createTestApp("/rova");
+    const app = await createTestApp("/wfgraph");
     try {
-      const response = await get(app, "/rova/api/openapi.json");
+      const response = await get(app, "/wfgraph/api/openapi.json");
 
       expect(response.status).toBe(200);
       // What the docs panel's "Try it" button and every generated client aim
       // at. A hardcoded "/api/rest" here 404s under a sub-path mount.
       expect(await response.json()).toMatchObject({
-        servers: [{ url: "/rova/api/rest" }],
+        servers: [{ url: "/wfgraph/api/rest" }],
       });
     } finally {
       await app.dispose();
@@ -250,15 +250,15 @@ describe("createRovaApp mounted under a sub-path", () => {
   });
 
   it("serves the editor a host handed it, under the mount", async () => {
-    const app = await createRovaApp({
+    const app = await createWfGraphApp({
       ...BASE_OPTIONS,
-      basePath: "/rova",
+      basePath: "/wfgraph",
       client: { dir: clientDir },
     });
     try {
-      const index = await get(app, "/rova/workflows/abc");
+      const index = await get(app, "/wfgraph/workflows/abc");
       expect(index.status).toBe(200);
-      expect(await index.text()).toContain('<base href="/rova/" />');
+      expect(await index.text()).toContain('<base href="/wfgraph/" />');
       expect((await get(app, "/elsewhere/workflows/abc")).status).toBe(404);
     } finally {
       await app.dispose();
@@ -267,29 +267,29 @@ describe("createRovaApp mounted under a sub-path", () => {
 
   // No bundle passed, no editor: the option is the switch.
   it("serves no editor when the host hands it none", async () => {
-    const app = await createTestApp("/rova");
+    const app = await createTestApp("/wfgraph");
     try {
-      expect((await get(app, "/rova/")).status).toBe(404);
+      expect((await get(app, "/wfgraph/")).status).toBe(404);
     } finally {
       await app.dispose();
     }
   });
 
   it("refuses a basePath that could escape the mount", async () => {
-    await expect(createTestApp("/rova/../admin")).rejects.toThrow(
+    await expect(createTestApp("/wfgraph/../admin")).rejects.toThrow(
       "unusable basePath"
     );
   });
 });
 
-describe("createRovaApp with an auth predicate", () => {
+describe("createWfGraphApp with an auth predicate", () => {
   async function createGuardedApp(
     allow: boolean,
     client?: { dir: string }
-  ): Promise<RovaApp> {
-    return await createRovaApp({
+  ): Promise<WfGraphApp> {
+    return await createWfGraphApp({
       ...BASE_OPTIONS,
-      basePath: "/rova",
+      basePath: "/wfgraph",
       client,
       auth: () => allow,
     });
@@ -307,7 +307,7 @@ describe("createRovaApp with an auth predicate", () => {
     const database = dbModule.createDatabaseSurface(
       normalizeDatabaseConfig(BASE_OPTIONS.database)
     );
-    const runtime = createRovaRuntime({
+    const runtime = createWfGraphRuntime({
       inngest,
       extensions: assembleExtensions({}),
       database,
@@ -315,7 +315,7 @@ describe("createRovaApp with an auth predicate", () => {
     });
     try {
       const app = createApiApp({
-        basePath: "/rova/api",
+        basePath: "/wfgraph/api",
         authorize: () => Promise.resolve(true),
         runtime,
         inngestHandler: inngest.serve(
@@ -324,7 +324,7 @@ describe("createRovaApp with an auth predicate", () => {
       });
       const machinePaths = new Set(
         machineRoutes({ serveInngest: true }).map(
-          (route) => `/rova/api${route}`
+          (route) => `/wfgraph/api${route}`
         )
       );
 
@@ -381,11 +381,14 @@ describe("createRovaApp with an auth predicate", () => {
     const app = await createGuardedApp(false);
     try {
       const resume = await app.fetch(
-        new Request("http://localhost/rova/api/workflows/waits/tok_1/resume", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(["wrong", "shape"]),
-        })
+        new Request(
+          "http://localhost/wfgraph/api/workflows/waits/tok_1/resume",
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(["wrong", "shape"]),
+          }
+        )
       );
       // 400 from the route's own body validation, so the request got past the
       // gate rather than being turned away at it.
@@ -393,7 +396,7 @@ describe("createRovaApp with an auth predicate", () => {
 
       // Inngest cannot carry a browser session, so a gate here would break every
       // callback and with it every workflow run.
-      const inngest = await get(app, "/rova/api/inngest");
+      const inngest = await get(app, "/wfgraph/api/inngest");
       expect(inngest.status).not.toBe(401);
     } finally {
       await app.dispose();
@@ -403,7 +406,7 @@ describe("createRovaApp with an auth predicate", () => {
   it("refuses the editor itself, not only its data", async () => {
     const app = await createGuardedApp(false, { dir: clientDir });
     try {
-      for (const path of ["/rova/", "/rova/workflows/abc"]) {
+      for (const path of ["/wfgraph/", "/wfgraph/workflows/abc"]) {
         expect((await get(app, path)).status).toBe(401);
       }
     } finally {
@@ -414,21 +417,21 @@ describe("createRovaApp with an auth predicate", () => {
   it("lets everything through when the host says yes", async () => {
     const app = await createGuardedApp(true, { dir: clientDir });
     try {
-      expect((await get(app, "/rova/api/extensions")).status).toBe(200);
-      expect((await get(app, "/rova/api/openapi.json")).status).toBe(200);
-      expect((await get(app, "/rova/")).status).toBe(200);
+      expect((await get(app, "/wfgraph/api/extensions")).status).toBe(200);
+      expect((await get(app, "/wfgraph/api/openapi.json")).status).toBe(200);
+      expect((await get(app, "/wfgraph/")).status).toBe(200);
     } finally {
       await app.dispose();
     }
   });
 });
 
-describe("createRovaApp configuration", () => {
+describe("createWfGraphApp configuration", () => {
   // Integration credentials are stored encrypted, so a missing or malformed key
   // has to stop startup rather than surface later as a failing integration read.
   it("refuses to start without an encryption key", async () => {
     await expect(
-      createRovaApp({ ...BASE_OPTIONS, encryption: { key: undefined } })
+      createWfGraphApp({ ...BASE_OPTIONS, encryption: { key: undefined } })
     ).rejects.toThrow("encryption.key is unset");
   });
 
@@ -436,7 +439,7 @@ describe("createRovaApp configuration", () => {
   // has the same problem as one that never set it, and gets the same message.
   it("treats a blank encryption key as unset", async () => {
     await expect(
-      createRovaApp({ ...BASE_OPTIONS, encryption: { key: "  " } })
+      createWfGraphApp({ ...BASE_OPTIONS, encryption: { key: "  " } })
     ).rejects.toThrow("encryption.key is unset");
   });
 
@@ -445,7 +448,7 @@ describe("createRovaApp configuration", () => {
   // startup migrations look for the folder before they open a connection.
   it("takes startup migrations from database.migrations", async () => {
     await expect(
-      createRovaApp({
+      createWfGraphApp({
         ...BASE_OPTIONS,
         database: {
           ...BASE_OPTIONS.database,
@@ -456,7 +459,7 @@ describe("createRovaApp configuration", () => {
   });
 
   it("leaves the database alone when startup migrations go unasked for", async () => {
-    const app = await createRovaApp({
+    const app = await createWfGraphApp({
       ...BASE_OPTIONS,
       database: {
         ...BASE_OPTIONS.database,
@@ -469,19 +472,21 @@ describe("createRovaApp configuration", () => {
 
   it("refuses an encryption key of the wrong length", async () => {
     await expect(
-      createRovaApp({ ...BASE_OPTIONS, encryption: { key: "abc123" } })
+      createWfGraphApp({ ...BASE_OPTIONS, encryption: { key: "abc123" } })
     ).rejects.toThrow("64-character hex string");
   });
 
   // Dispose closes the app-owned pool: postgres.js holds an idle socket open per
-  // pool, so a host that shuts Rova down and never exits would otherwise keep it.
+  // pool, so a host that shuts WfGraph down and never exits would otherwise keep it.
   it("gives the database runtime back when an app is disposed", async () => {
     const app = await createTestApp();
     await app.dispose();
 
-    const elsewhere = await createRovaApp({
+    const elsewhere = await createWfGraphApp({
       ...BASE_OPTIONS,
-      database: { url: "postgresql://rova:rova@127.0.0.1:3/rova_elsewhere" },
+      database: {
+        url: "postgresql://wfgraph:wfgraph@127.0.0.1:3/wfgraph_elsewhere",
+      },
     });
     await elsewhere.dispose();
   });
@@ -490,15 +495,17 @@ describe("createRovaApp configuration", () => {
   // gets a fresh app and database surface.
   it("gives the database config back when startup fails", async () => {
     await expect(
-      createRovaApp({
+      createWfGraphApp({
         ...BASE_OPTIONS,
-        client: { dir: join(tmpdir(), "rova-no-such-bundle") },
+        client: { dir: join(tmpdir(), "wfgraph-no-such-bundle") },
       })
     ).rejects.toThrow("does not hold an index.html");
 
-    const retried = await createRovaApp({
+    const retried = await createWfGraphApp({
       ...BASE_OPTIONS,
-      database: { url: "postgresql://rova:rova@127.0.0.1:2/rova_other" },
+      database: {
+        url: "postgresql://wfgraph:wfgraph@127.0.0.1:2/wfgraph_other",
+      },
     });
     await retried.dispose();
   });
@@ -520,13 +527,13 @@ describe("createRovaApp configuration", () => {
       handler: ({ input }) => ({ id: input.id }),
     });
 
-    const first = await createRovaApp({
+    const first = await createWfGraphApp({
       ...BASE_OPTIONS,
       extensions: { actions: [action] },
     });
     await first.dispose();
 
-    const second = await createRovaApp({
+    const second = await createWfGraphApp({
       ...BASE_OPTIONS,
       extensions: { actions: [action] },
     });
@@ -542,7 +549,7 @@ describe("createRovaApp configuration", () => {
   });
 });
 
-describe("createRovaApp with inngest.connect", () => {
+describe("createWfGraphApp with inngest.connect", () => {
   const close = vi.fn(async () => undefined);
 
   beforeEach(() => {
@@ -558,7 +565,7 @@ describe("createRovaApp with inngest.connect", () => {
   });
 
   it("opens Connect at boot and drains it on dispose", async () => {
-    const app = await createRovaApp({
+    const app = await createWfGraphApp({
       ...BASE_OPTIONS,
       inngest: { ...BASE_OPTIONS.inngest, connect: true },
     });
@@ -589,7 +596,7 @@ describe("createRovaApp with inngest.connect", () => {
   it("logs a warning when Connect close fails during dispose", async () => {
     const warn = vi.fn();
     close.mockRejectedValueOnce(new Error("close failed"));
-    const app = await createRovaApp({
+    const app = await createWfGraphApp({
       ...BASE_OPTIONS,
       inngest: { ...BASE_OPTIONS.inngest, connect: true },
       logger: { info: () => {}, warn, error: () => {} },
@@ -621,7 +628,7 @@ describe("createRovaApp with inngest.connect", () => {
 
     try {
       await expect(
-        createRovaApp({
+        createWfGraphApp({
           ...BASE_OPTIONS,
           inngest: { ...BASE_OPTIONS.inngest, connect: true },
         })
@@ -664,7 +671,7 @@ describe("createRovaApp with inngest.connect", () => {
 
     try {
       await expect(
-        createRovaApp({
+        createWfGraphApp({
           ...BASE_OPTIONS,
           inngest: {
             ...BASE_OPTIONS.inngest,

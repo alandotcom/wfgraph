@@ -13,7 +13,7 @@
  * error body reads.
  */
 
-import type { JsonValue } from "@rova/core/plugin";
+import type { JsonValue } from "@wfgraph/core/plugin";
 import type { Effect } from "effect";
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
@@ -23,7 +23,7 @@ import {
   callExternal,
   parsePayload,
   type ExternalError,
-} from "@rova/core/plugin";
+} from "@wfgraph/core/plugin";
 
 const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01";
 

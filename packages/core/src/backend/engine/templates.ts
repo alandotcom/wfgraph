@@ -7,7 +7,7 @@ import {
   parseTemplate,
   resolveOutputPath,
   type TemplateToken,
-} from "@rova/shared/graph/node-references";
+} from "@wfgraph/shared/graph/node-references";
 import type { NodeOutputs } from "#src/backend/engine/contracts";
 import { outputKey } from "#src/backend/engine/traversal";
 

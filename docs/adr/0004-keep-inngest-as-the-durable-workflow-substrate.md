@@ -25,7 +25,7 @@ open without being decided now.
   even inside a beta release line, so its API can move under us while the rest of the
   migration is still in flight. Running it also means running the cluster and persistence
   infrastructure it expects, which Inngest currently supplies as a managed service.
-  Adopting it would additionally delete the `inngest` option from `createRovaApp`, an
+  Adopting it would additionally delete the `inngest` option from `createWfGraphApp`, an
   embedder-facing contract that ADR-0002 commits to holding stable.
 
 ## Consequences

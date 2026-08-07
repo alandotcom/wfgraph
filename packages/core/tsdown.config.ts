@@ -1,7 +1,7 @@
 import { defineConfig } from "tsdown";
 
-// Builds the publishable @rova/core library: `src/index.ts` is the one
-// host-facing entry, re-exporting the authoring vocabulary, `createRovaApp`
+// Builds the publishable @wfgraph/core library: `src/index.ts` is the one
+// host-facing entry, re-exporting the authoring vocabulary, `createWfGraphApp`
 // and `createRequestListener` from the internal `app.ts` and `node.ts`
 // modules; `src/plugin.ts` is what a package of integrations builds against,
 // `src/testing.ts` is what that package's own suite drives an action with, and
@@ -28,6 +28,6 @@ export default defineConfig({
   tsconfig: "../../tsconfig.build.json",
   // Wipe the output between builds so a renamed entry cannot leave a stale
   // hashed chunk behind. Nothing else writes into this dist: the SPA is
-  // @rova/client's output now.
+  // @wfgraph/client's output now.
   clean: true,
 });

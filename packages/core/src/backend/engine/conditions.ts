@@ -7,9 +7,9 @@ import { evaluateCompiledCondition } from "#src/backend/lib/cel/condition-payloa
 import {
   collectTimestampFieldPaths,
   parseConditionModel,
-} from "@rova/shared/conditions/conditions";
-import { unwrapStepOutput } from "@rova/shared/graph/node-references";
-import type { JsonObject, JsonValue } from "@rova/shared/types/json";
+} from "@wfgraph/shared/conditions/conditions";
+import { unwrapStepOutput } from "@wfgraph/shared/graph/node-references";
+import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
 import type { NodeOutputs } from "#src/backend/engine/contracts";
 import { Effect } from "effect";
 

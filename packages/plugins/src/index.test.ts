@@ -1,4 +1,4 @@
-import { checkIntegration } from "@rova/core/plugin";
+import { checkIntegration } from "@wfgraph/core/plugin";
 import { describe, expect, it } from "vitest";
 import { builtInIntegrations } from "#src/index";
 

@@ -11,7 +11,7 @@ to how they are run.
 What changes is how the handle reaches a query. A `Database` service, declared with
 `Context.Service` (Effect v4's spelling of the service tag), owns the Drizzle instance
 and is provided through the Layer graph that
-`createRovaApp` builds. A query runs inside `Effect.tryPromise` and fails with a tagged
+`createWfGraphApp` builds. A query runs inside `Effect.tryPromise` and fails with a tagged
 `DatabaseError`, which puts database failure in the caller's error channel where the type
 system can see it. The
 `globalThis` Proxy in `packages/core/src/backend/lib/db/index.ts` that currently makes the
@@ -37,18 +37,18 @@ handle reachable from anywhere is deleted as part of the runtime work in ADR-000
 - Passing a `Database` Layer in tests replaces reaching for the module-level `db` export,
   which is what lets a service be exercised without a database. This sentence used to
   claim the Layer made two app instances in one process viable; that is not a goal, and
-  one Rova per process remains the only supported arrangement. See the dependency-wiring
+  one WfGraph per process remains the only supported arrangement. See the dependency-wiring
   amendment in ADR-0002 (decided 2026-07-28).
 
 ## Amendment: the schema name is a runtime option (2026-07-31)
 
-Rova keeps its tables in a Postgres schema the host names, `_workflows` by default. The
+WfGraph keeps its tables in a Postgres schema the host names, `_workflows` by default. The
 tables are therefore declared unqualified in
 `packages/core/src/backend/lib/db/schema.ts`, and the connection's `search_path` is the
 only thing that decides where they land. `db/index.ts` sends it in the startup packet on
 the query client and the migration client alike, so every connection a pool opens, and
 every one it reopens after a network drop, is already pointed at the right schema.
-Dropping that one schema removes Rova from the database, migration journal included.
+Dropping that one schema removes WfGraph from the database, migration journal included.
 
 A build-time schema name was the alternative, and it fails the case this exists for: an
 adopter whose database already has a `workflows` table, or who runs two environments in
@@ -71,14 +71,14 @@ migrations could only ever build one schema.
   to crash all but the first.
 - drizzle-kit can no longer be told where the tables are, so `push`, `studio` and `pull`
   are gone and `drizzle.config.ts` carries no credentials. Generating SQL is the one thing
-  drizzle-kit still does, offline, and `pnpm run db:migrate` applies it through Rova's own
+  drizzle-kit still does, offline, and `pnpm run db:migrate` applies it through WfGraph's own
   migrator. drizzle-kit also writes `REFERENCES "public"."workflows"` for a foreign key
   even where both tables are unqualified, which is why `db:generate` runs
   `scripts/unqualify-migrations.ts` after it.
-- `@rova/core/migrate` exists because of this: the shipped SQL names no schema, so nothing
-  but Rova's migrator carries the `search_path` that decides which one it builds.
+- `@wfgraph/core/migrate` exists because of this: the shipped SQL names no schema, so nothing
+  but WfGraph's migrator carries the `search_path` that decides which one it builds.
 - Four tests guard the arrangement, and they are the reason it can be trusted:
   `db/schema.test.ts` holds every table to naming no schema, `db/migrations-sql.test.ts`
-  holds every committed statement to qualifying nothing but Rova's own table names,
+  holds every committed statement to qualifying nothing but WfGraph's own table names,
   `db/config.test.ts` covers the checks and defaults, and `db/index.test.ts` covers what
   the pools are opened with.

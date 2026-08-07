@@ -5,25 +5,25 @@ import {
   type ExtensionCatalog,
   findAction,
   findEvent,
-} from "@rova/shared/extensions/catalog";
+} from "@wfgraph/shared/extensions/catalog";
 import {
   type ConditionFieldDefinition,
   type ConditionFieldType,
   EVENT_NAME_FIELD_PATH,
-} from "@rova/shared/conditions/conditions";
-import { eventsReaching } from "@rova/shared/graph/events-reaching";
+} from "@wfgraph/shared/conditions/conditions";
+import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
 import {
   fieldsVisibleForConfig,
   type ReferenceField,
   type UpstreamField,
-} from "@rova/shared/graph/node-references";
+} from "@wfgraph/shared/graph/node-references";
 import {
   type ReachableField,
   reachableEventFields,
-} from "@rova/shared/graph/reachable-fields";
+} from "@wfgraph/shared/graph/reachable-fields";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
-import { upstreamNodeIds } from "@rova/shared/graph/upstream-nodes";
-import { readConfigString } from "@rova/shared/graph/node-config";
+import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
+import { readConfigString } from "@wfgraph/shared/graph/node-config";
 
 export type ConditionSelectableField = ConditionFieldDefinition & {
   sourceNodeId: string;

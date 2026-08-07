@@ -12,22 +12,22 @@ import { Effect, Schema } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 import { defineEvent } from "#src/backend/extensions/define-event";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
-import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
+import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { defineAction } from "#src/backend/extensions/define-action";
 import {
   isoTimestampString,
   isoTimestampToDate,
-} from "@rova/shared/types/timestamp";
+} from "@wfgraph/shared/types/timestamp";
 import {
   compileConditionModel,
   type ConditionModel,
   createDefaultConditionRule,
   serializeConditionModel,
   TIMESTAMP_OPERATOR_OPTIONS,
-} from "@rova/shared/conditions/conditions";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
-import type { WorkflowNode } from "@rova/shared/graph/types";
+} from "@wfgraph/shared/conditions/conditions";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
 import { executionData } from "#src/backend/engine/contracts";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
@@ -69,7 +69,7 @@ const echoAction = defineAction({
 // so the host action these cases run reaches the engine the way a host's would.
 const actions = createWorkflowActions(
   assembleExtensions({ actions: [echoAction] }),
-  stubRovaRuntime()
+  stubWfGraphRuntime()
 );
 
 const appointmentBooked = defineEvent({

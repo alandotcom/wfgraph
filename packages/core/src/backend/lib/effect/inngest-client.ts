@@ -60,7 +60,7 @@ export class InngestClient extends Context.Service<
       input: Parameters<typeof sendWorkflowBranchKill>[1]
     ) => Effect.Effect<void, InngestError>;
   }
->()("@rova/core/InngestClient") {}
+>()("@wfgraph/core/InngestClient") {}
 
 const send = <A>(run: () => Promise<A>): Effect.Effect<A, InngestError> =>
   Effect.tryPromise({

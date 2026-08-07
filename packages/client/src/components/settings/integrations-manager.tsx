@@ -13,7 +13,7 @@ import { announceTestResult } from "#src/lib/connection-credentials";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions, orpcQuery } from "#src/lib/rpc-query";
 import { getExtensionCatalog } from "#src/lib/extensions";
-import { findIntegration } from "@rova/shared/extensions/catalog";
+import { findIntegration } from "@wfgraph/shared/extensions/catalog";
 
 type IntegrationsManagerProps = {
   filter?: string;

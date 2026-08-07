@@ -1,5 +1,5 @@
 /**
- * The five events Rova sends to itself, with the schemas that define them.
+ * The five events WfGraph sends to itself, with the schemas that define them.
  *
  * An `eventType` is one definition used from both ends: the sender builds its
  * payload with `.create()`, and the function that triggers on it declares the
@@ -13,25 +13,25 @@
  * `eventType` below, which is the only place these shapes are used.
  *
  * The optional fields are `Schema.optional` rather than `Schema.optionalKey`,
- * which is the opposite of the wire schemas in `@rova/shared`. Those read a
+ * which is the opposite of the wire schemas in `@wfgraph/shared`. Those read a
  * payload that has already been through `JSON.parse`, where a key is either
  * present or absent and never `undefined`. This one is checked before the
  * payload is serialized, against an object literal TypeScript built, and
  * `{ entityValue: undefined }` is how TypeScript spells a field the caller
  * had no value for. `optionalKey` calls that a missing string.
  *
- * These live in `@rova/core` because they import the SDK. `@rova/shared` has no
+ * These live in `@wfgraph/core` because they import the SDK. `@wfgraph/shared` has no
  * Inngest dependency and should not gain one.
  */
 import { Schema } from "effect";
 import { eventType } from "inngest";
-import { jsonObjectSchema } from "@rova/shared/types/json";
+import { jsonObjectSchema } from "@wfgraph/shared/types/json";
 import {
   NonEmptyTrimmedString,
   rejectUnknownKeys,
   toStandardSchema,
-} from "@rova/shared/types/schema";
-import { serializedWorkflowGraphSchema } from "@rova/shared/graph/schemas";
+} from "@wfgraph/shared/types/schema";
+import { serializedWorkflowGraphSchema } from "@wfgraph/shared/graph/schemas";
 
 /**
  * The `workflow/run.requested` payload, as the engine needs it.
@@ -71,7 +71,7 @@ export const workflowRunRequested = eventType("workflow/run.requested", {
 
 /**
  * Where Inngest states the invocation an event belongs to. Its spelling, and
- * the one key on this payload Rova neither writes nor reads.
+ * the one key on this payload WfGraph neither writes nor reads.
  */
 export const INNGEST_META_KEY = "_inngest";
 

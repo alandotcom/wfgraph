@@ -3,7 +3,7 @@
 Proposed. Not started.
 
 Goal: an integration can declare Events of its own, and one of them can start a workflow.
-A Slack message wakes a Rova workflow without the host writing a webhook receiver.
+A Slack message wakes a WfGraph workflow without the host writing a webhook receiver.
 
 An application may hold several connections of one integration type. Two Slack
 workspaces are two connections, and one workspace's Event must never start the other's
@@ -16,14 +16,14 @@ gives each row an `id` and a `name`, and it declares no unique index on `type`. 
 node stores an `integrationId` and the handler reads it from its run context
 (`packages/core/src/backend/extensions/define-action.ts`, `ActionBag.integrationId`).
 
-**Events reach Rova through Inngest only.** An Event is a listener function built from
+**Events reach WfGraph through Inngest only.** An Event is a listener function built from
 its definition (`packages/core/src/backend/lib/inngest/event-listener-function.ts`), and
 the payload gate runs there (line 102). Core mounts no route that a third party can post
 to. The host sends its own Events from its own code.
 
 **An Event belongs to nobody.** `EventDefinition` (`packages/core/src/backend/extensions/define-event.ts`)
 carries a name, a payload gate, a Correlation Path, and a source. It has no owner and no
-place to record which connection a payload came in on. `RovaExtensions`
+place to record which connection a payload came in on. `WfGraphExtensions`
 (`packages/core/src/backend/extensions/extension-set.ts:52`) takes `events` from the host
 and `integrations` beside it, and an `IntegrationDefinition` holds credentials, a test,
 and actions, with no events.
@@ -64,7 +64,7 @@ webhook: {
 
 `verify` runs first, with the credentials of the connection named in the URL. `receive`
 turns the accepted body into the Inngest event name and its data, and answers `undefined`
-for a payload this integration knows and this Rova has no Event for, which the route
+for a payload this integration knows and this WfGraph has no Event for, which the route
 answers 200 rather than an error.
 
 ### The connection id travels in the event data

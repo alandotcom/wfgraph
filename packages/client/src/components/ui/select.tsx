@@ -4,7 +4,7 @@ import { createContext, useContext, useMemo } from "react";
 import type { ComponentProps, ReactNode } from "react";
 import { Children, isValidElement } from "react";
 
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 
 /**
  * `null` is how Base UI spells "nothing chosen", and this wrapper takes it as

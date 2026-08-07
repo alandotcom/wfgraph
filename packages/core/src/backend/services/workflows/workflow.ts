@@ -17,7 +17,7 @@ import {
   buildWorkflowUpdateData,
   toWorkflowApiPayload,
 } from "#src/backend/services/workflows/mappers";
-import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
+import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 
 /** The contract answers a delete with this and nothing else. */
 type WorkflowDeleted = { success: true };

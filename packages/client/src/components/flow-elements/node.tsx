@@ -3,7 +3,7 @@ import { Ban, Check, Loader2, XCircle } from "lucide-react";
 import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import { AnimatedBorder } from "#src/components/ui/animated-border";
 import { Card, CardDescription, CardTitle } from "#src/components/ui/card";
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 
 export type NodeProps = ComponentProps<typeof Card> & {
   handles: {

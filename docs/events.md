@@ -29,7 +29,7 @@ names the Event in any error.
 states its rules over Event names. One umbrella Event with a subtype field is wrong.
 
 **`schema` describes the payload as it arrives.** Write it in Effect Schema, Zod, or
-arktype and pass it as it is. Rova needs both halves of Standard Schema from one object:
+arktype and pass it as it is. WfGraph needs both halves of Standard Schema from one object:
 
 - the validate half checks an arriving payload;
 - the JSON Schema half draws the field list in the editor.
@@ -66,7 +66,7 @@ Add `.check(Schema.isPattern(...))` where a malformed value must be turned away.
 ## The umbrella source
 
 For an existing bus that sends one name and cannot change. `source` separates the identity
-of an Event from its transport. The identity stays the Rova name, so the lifecycle model is
+of an Event from its transport. The identity stays the WfGraph name, so the lifecycle model is
 untouched, and `when` becomes the filter of the listener.
 
 ```ts
@@ -84,7 +84,7 @@ const invoicePaid = defineEvent({
 
 - Each listener carries its filter as the `if` of its Inngest trigger, so the bus decides
   which Event a payload is. It invokes a listener only for a subtype an Event declares.
-- Rova compiles the filter at definition, so an expression it cannot build fails in the
+- WfGraph compiles the filter at definition, so an expression it cannot build fails in the
   build of whoever wrote it.
 - Assembly refuses two Events on one source that both omit `when`.
 
@@ -97,17 +97,17 @@ durable from the moment the send returns.
 inngest.send({ name: "app/appointment.created", data: { appointment } });
 ```
 
-**The gate is open by design.** Rova validates the declared fields and ignores a key that
+**The gate is open by design.** WfGraph validates the declared fields and ignores a key that
 the schema never heard of.
 
 - The payload of an Event is the message of the host, and senders add fields routinely, so
   an additive change upstream must not stop intake.
 - This is the one boundary in the repository that decodes this way. A declared field that
   drifts fails loudly, and an extra key passes in silence by choice.
-- Rova logs a refusal and stops there, because a second attempt meets the same malformed
+- WfGraph logs a refusal and stops there, because a second attempt meets the same malformed
   payload.
 
-Rova discards what the gate decoded to and carries the raw JSON on. Every consumer
+WfGraph discards what the gate decoded to and carries the raw JSON on. Every consumer
 downstream reads that JSON directly. A transform rewrites what the sender sent, and one
 `Date` round trip breaks a wait match that compares a literal captured at park time.
 

@@ -16,7 +16,7 @@ import { NonEmptyTrimmedString, readAs } from "#src/types/schema";
 /**
  * How many Executions may exist per Entity Value.
  *
- * Rova's own rather than Inngest's: newest-wins has to end the displaced run
+ * WfGraph's own rather than Inngest's: newest-wins has to end the displaced run
  * with a status, and first-wins has to refuse a start and say so in run
  * history. Inngest concurrency can do neither.
  */
@@ -46,7 +46,7 @@ export const lifecycleRulesSchema = Schema.Struct({
    * The start source that is not an Event: the Run button and the execute route.
    *
    * A clock is the other one the design names, and it is absent rather than
-   * carried-and-refused, because nothing in Rova can write one. It arrives with
+   * carried-and-refused, because nothing in WfGraph can write one. It arrives with
    * whatever ticks it, and the panel says so where a builder looks for it.
    */
   allowManualStart: Schema.optional(Schema.Boolean),

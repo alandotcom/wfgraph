@@ -14,7 +14,7 @@ import {
   type CredentialsOf,
   defineIntegration,
   StepFailure,
-} from "@rova/core/plugin";
+} from "@wfgraph/core/plugin";
 import { Effect, Schema, SchemaTransformation } from "effect";
 import { createTwilioMessage, describeTwilioFailure } from "#src/twilio/client";
 

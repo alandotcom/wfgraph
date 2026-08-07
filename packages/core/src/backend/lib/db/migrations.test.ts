@@ -1,5 +1,5 @@
 /**
- * Where Rova finds the SQL it ships.
+ * Where WfGraph finds the SQL it ships.
  *
  * The answer has to hold in two layouts -- this source tree, and a published
  * package whose code sits one directory under its manifest -- and it has to hold
@@ -14,13 +14,13 @@ import { readMigrationFiles } from "drizzle-orm/migrator";
 import { describe, expect, it } from "vitest";
 import {
   assertJournalHashesAreOurs,
-  rovaMigrationsDir,
+  wfgraphMigrationsDir,
 } from "#src/backend/lib/db/migrations";
 
 const packageRoot = resolve(import.meta.dirname, "../../../..");
 
 function scratchTree(): string {
-  return mkdtempSync(join(tmpdir(), "rova-migrations-"));
+  return mkdtempSync(join(tmpdir(), "wfgraph-migrations-"));
 }
 
 function writePackage(dir: string, name: string): void {
@@ -28,48 +28,52 @@ function writePackage(dir: string, name: string): void {
   writeFileSync(join(dir, "package.json"), JSON.stringify({ name }));
 }
 
-describe("rovaMigrationsDir", () => {
+describe("wfgraphMigrationsDir", () => {
   it("finds the copy this package publishes", () => {
-    expect(rovaMigrationsDir()).toBe(join(packageRoot, "drizzle"));
+    expect(wfgraphMigrationsDir()).toBe(join(packageRoot, "drizzle"));
   });
 
   // The published layout: the code is a chunk in dist/, one level under the
   // manifest, rather than five levels under it as it is here.
   it("finds it from the bundled layout too", () => {
     const root = scratchTree();
-    writePackage(join(root, "node_modules/@rova/core"), "@rova/core");
+    writePackage(join(root, "node_modules/@wfgraph/core"), "@wfgraph/core");
 
-    expect(rovaMigrationsDir(join(root, "node_modules/@rova/core/dist"))).toBe(
-      join(root, "node_modules/@rova/core/drizzle")
-    );
+    expect(
+      wfgraphMigrationsDir(join(root, "node_modules/@wfgraph/core/dist"))
+    ).toBe(join(root, "node_modules/@wfgraph/core/drizzle"));
   });
 
   // The failure this replaces: counting `..` segments reached the adopter's own
-  // drizzle-kit folder in a flat node_modules, and Rova applied their migrations
+  // drizzle-kit folder in a flat node_modules, and WfGraph applied their migrations
   // on its migration connection, inside its schema.
   it("cannot reach a drizzle folder outside the package", () => {
     const root = scratchTree();
     writePackage(root, "adopter-app");
     mkdirSync(join(root, "drizzle"), { recursive: true });
-    writePackage(join(root, "node_modules/@rova/core"), "@rova/core");
+    writePackage(join(root, "node_modules/@wfgraph/core"), "@wfgraph/core");
 
-    const found = rovaMigrationsDir(join(root, "node_modules/@rova/core/dist"));
+    const found = wfgraphMigrationsDir(
+      join(root, "node_modules/@wfgraph/core/dist")
+    );
 
     expect(found).not.toBe(join(root, "drizzle"));
-    expect(found.startsWith(join(root, "node_modules/@rova/core"))).toBe(true);
+    expect(found.startsWith(join(root, "node_modules/@wfgraph/core"))).toBe(
+      true
+    );
   });
 
-  it("names the package it found when the code was moved out of Rova's", () => {
+  it("names the package it found when the code was moved out of WfGraph's", () => {
     const root = scratchTree();
     writePackage(root, "adopter-app");
 
-    expect(() => rovaMigrationsDir(root)).toThrow("adopter-app");
+    expect(() => wfgraphMigrationsDir(root)).toThrow("adopter-app");
   });
 });
 
 describe("assertJournalHashesAreOurs", () => {
   const target = {
-    migrationsFolder: rovaMigrationsDir(),
+    migrationsFolder: wfgraphMigrationsDir(),
     schema: "_workflows",
   };
 

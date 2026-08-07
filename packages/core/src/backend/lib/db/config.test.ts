@@ -5,15 +5,15 @@ import {
 } from "#src/backend/lib/db/config";
 
 const URL_CONFIG = {
-  url: "postgresql://rova:rova@127.0.0.1:5439/rova_config_test",
+  url: "postgresql://wfgraph:wfgraph@127.0.0.1:5439/wfgraph_config_test",
 } as const;
 
 const DISCRETE_CONFIG = {
   host: "db.internal",
   port: 6432,
-  user: "rova",
-  password: "rova",
-  database: "rova_config_test",
+  user: "wfgraph",
+  password: "wfgraph",
+  database: "wfgraph_config_test",
 } as const;
 
 describe("the database connection options", () => {
@@ -29,24 +29,24 @@ describe("the database connection options", () => {
   });
 
   // The fields survive as fields. Folding them into a URL first would hand this
-  // database name over as "rova%20test", since postgres.js decodes a URL's user
+  // database name over as "wfgraph%20test", since postgres.js decodes a URL's user
   // and password but not its path segment.
   it("take the discrete fields a platform hands out separately", () => {
     expect(
-      normalizeDatabaseConfig({ ...DISCRETE_CONFIG, database: "rova test" })
+      normalizeDatabaseConfig({ ...DISCRETE_CONFIG, database: "wfgraph test" })
     ).toMatchObject({
       host: "db.internal",
       port: 6432,
-      user: "rova",
-      database: "rova test",
+      user: "wfgraph",
+      database: "wfgraph test",
     });
   });
 
   it("leave the port to Postgres when the host does not say", () => {
     const config = normalizeDatabaseConfig({
       host: "db.internal",
-      user: "rova",
-      database: "rova_config_test",
+      user: "wfgraph",
+      database: "wfgraph_config_test",
     });
 
     expect(config.port).toBeUndefined();
@@ -68,7 +68,7 @@ describe("the database connection options", () => {
     );
   });
 
-  // Both spellings at once is the one case where Rova would have to choose, and
+  // Both spellings at once is the one case where WfGraph would have to choose, and
   // whichever it chose would surprise somebody. The union's `never` fields refuse
   // this literal outright, so only a host who is not on TypeScript can get here,
   // and the cast is what stands in for one.
@@ -81,7 +81,7 @@ describe("the database connection options", () => {
   });
 
   it("refuse a host holding anything but a host", () => {
-    for (const host of ["db.internal:6432", "db.internal/rova", "a b"]) {
+    for (const host of ["db.internal:6432", "db.internal/wfgraph", "a b"]) {
       expect(() =>
         normalizeDatabaseConfig({ ...DISCRETE_CONFIG, host })
       ).toThrow("database.host takes a host name or address on its own");
@@ -101,9 +101,9 @@ describe("the database connection options", () => {
   // because the parameters are read parsed: a substring test misses it.
   it("refuse a url that names a search_path of its own", () => {
     for (const url of [
-      "postgresql://rova@127.0.0.1:5439/rova?search_path=tenant_alpha",
-      "postgresql://rova@127.0.0.1:5439/rova?search%5Fpath=tenant_alpha",
-      "postgresql://rova@127.0.0.1:5439/rova?options=-c%20search_path%3Dtenant_alpha",
+      "postgresql://wfgraph@127.0.0.1:5439/wfgraph?search_path=tenant_alpha",
+      "postgresql://wfgraph@127.0.0.1:5439/wfgraph?search%5Fpath=tenant_alpha",
+      "postgresql://wfgraph@127.0.0.1:5439/wfgraph?options=-c%20search_path%3Dtenant_alpha",
     ]) {
       expect(() => normalizeDatabaseConfig({ url })).toThrow(
         "may not carry a search_path"
@@ -115,7 +115,7 @@ describe("the database connection options", () => {
   it("accept a password that happens to read like one", () => {
     expect(() =>
       normalizeDatabaseConfig({
-        url: "postgresql://rova:search_path%3Dx@127.0.0.1:5439/rova",
+        url: "postgresql://wfgraph:search_path%3Dx@127.0.0.1:5439/wfgraph",
       })
     ).not.toThrow();
   });

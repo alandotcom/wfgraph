@@ -15,7 +15,7 @@ import {
   configureAppLogging,
   configureAppLoggingWithBridge,
 } from "#src/backend/lib/logger";
-import type { RovaRuntime } from "#src/backend/runtime";
+import type { WfGraphRuntime } from "#src/backend/runtime";
 import { rpcEffectHandler } from "#src/backend/rpc/router";
 
 /**
@@ -24,10 +24,10 @@ import { rpcEffectHandler } from "#src/backend/rpc/router";
  *
  * The handlers under test reach for none of them, and the refusals are what
  * says so. It has to provide the full set rather than an empty layer because
- * `RovaRuntime` is what a procedure's context carries, and a runtime built over
+ * `WfGraphRuntime` is what a procedure's context carries, and a runtime built over
  * fewer services cannot stand in for one.
  */
-function createStubRuntime(): RovaRuntime {
+function createStubRuntime(): WfGraphRuntime {
   return ManagedRuntime.make(
     Layer.mergeAll(
       SilentAppLoggerLayer,
@@ -41,7 +41,7 @@ function createStubRuntime(): RovaRuntime {
   );
 }
 
-function createContext(runtime: RovaRuntime) {
+function createContext(runtime: WfGraphRuntime) {
   return { context: { headers: new Headers(), runtime } };
 }
 

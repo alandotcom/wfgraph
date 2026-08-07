@@ -1,7 +1,7 @@
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import type * as React from "react";
 
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 
 function TooltipProvider({
   delayDuration = 0,

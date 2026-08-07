@@ -5,7 +5,7 @@ import { defineConfig } from "tsdown";
 // imports the first without pulling React in, and the browser imports the second
 // without pulling a vendor client in.
 //
-// @rova/shared is private and gets inlined, as it is into @rova/core.
+// @wfgraph/shared is private and gets inlined, as it is into @wfgraph/core.
 export default defineConfig({
   entry: ["src/index.ts", "src/ui.ts"],
   format: "esm",

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 import { type ExecutionLog } from "#src/lib/execution-logs";
 import {
   CollapsibleSection,

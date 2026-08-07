@@ -10,8 +10,8 @@ import { useConnectionRepair } from "#src/hooks/use-connection-repair";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { getExtensionCatalog } from "#src/lib/extensions";
-import { findIntegration } from "@rova/shared/extensions/catalog";
-import { cn } from "@rova/shared/utils";
+import { findIntegration } from "@wfgraph/shared/extensions/catalog";
+import { cn } from "@wfgraph/shared/utils";
 
 type IntegrationSelectorProps = {
   integrationType: string;

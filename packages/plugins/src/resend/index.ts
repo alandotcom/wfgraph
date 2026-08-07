@@ -15,7 +15,7 @@ import {
   defineIntegration,
   type JsonObject,
   StepFailure,
-} from "@rova/core/plugin";
+} from "@wfgraph/core/plugin";
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
 import { Effect, Result, Schema } from "effect";

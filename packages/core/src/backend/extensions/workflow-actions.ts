@@ -8,8 +8,8 @@
  */
 
 import { Effect } from "effect";
-import { findAction } from "@rova/shared/extensions/catalog";
-import { literalFieldKeys } from "@rova/shared/plugins/action-fields";
+import { findAction } from "@wfgraph/shared/extensions/catalog";
+import { literalFieldKeys } from "@wfgraph/shared/plugins/action-fields";
 import {
   fetchCredentials,
   type WorkflowCredentials,
@@ -18,12 +18,12 @@ import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import type { StepEnvironment } from "#src/backend/extensions/steps/step-runner";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import { failureFromUnknown } from "#src/backend/engine/engine-failure";
-import type { RovaRuntime } from "#src/backend/runtime";
+import type { WfGraphRuntime } from "#src/backend/runtime";
 import { catalogFingerprint as fingerprintCatalog } from "#src/backend/services/workflows/version-digest";
 
 export function createWorkflowActions(
   extensions: ExtensionSet,
-  runtime: RovaRuntime
+  runtime: WfGraphRuntime
 ): WorkflowActions {
   // One query per integration for the life of this surface, which the app builds
   // per invocation of the workflow function. A durable runtime re-runs that body

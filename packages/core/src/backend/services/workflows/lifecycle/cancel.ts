@@ -19,8 +19,8 @@ import {
   ExecutionRepo,
   type WorkflowWaitState,
 } from "#src/backend/services/executions/repo";
-import type { JsonObject } from "@rova/shared/types/json";
-import type { WorkflowMode } from "@rova/shared/graph/types";
+import type { JsonObject } from "@wfgraph/shared/types/json";
+import type { WorkflowMode } from "@wfgraph/shared/graph/types";
 
 /**
  * Claims every in-flight run of this workflow about this entity for the Canceled

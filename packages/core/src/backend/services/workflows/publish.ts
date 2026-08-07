@@ -19,16 +19,16 @@ import {
 import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import { toWorkflowApiPayload } from "#src/backend/services/workflows/mappers";
-import type { WorkflowPublishPayload } from "@rova/shared/graph/api-contracts";
-import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
+import type { WorkflowPublishPayload } from "@wfgraph/shared/graph/api-contracts";
+import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 import { checkUnreachableSubtrees } from "#src/backend/services/workflows/publish-checks";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
   catalogFingerprint,
   graphDigest,
 } from "#src/backend/services/workflows/version-digest";
-import { generateId } from "@rova/shared/utils/id";
-import { getErrorMessage } from "@rova/shared/utils";
+import { generateId } from "@wfgraph/shared/utils/id";
+import { getErrorMessage } from "@wfgraph/shared/utils";
 
 const loggerFor = (workflowId: string) =>
   Effect.map(AppLogger, (appLogger) =>

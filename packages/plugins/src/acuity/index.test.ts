@@ -1,4 +1,4 @@
-import { requireOutputFieldsFromSchema } from "@rova/core/plugin";
+import { requireOutputFieldsFromSchema } from "@wfgraph/core/plugin";
 import { describe, expect, it } from "vitest";
 import { acuity } from "#src/acuity/index";
 
@@ -29,7 +29,7 @@ describe("the acuity integration", () => {
   ] as const;
 
   // Nothing registers on import. The value is the whole of what an integration is,
-  // and the line that passes it to `createRovaApp` is what turns it on. The slug is
+  // and the line that passes it to `createWfGraphApp` is what turns it on. The slug is
   // the record key and nowhere else, so an id like "acuity/get-appointment" is
   // computed at assembly rather than written here.
   it("declares its credentials and its actions as one value", () => {

@@ -2,7 +2,7 @@ import { implement } from "@orpc/server";
 import { Effect, Schema } from "effect";
 import type { ServiceFailure } from "#src/backend/lib/effect/failures";
 import { getAppLogger } from "#src/backend/lib/logger";
-import type { RovaServices } from "#src/backend/runtime";
+import type { WfGraphServices } from "#src/backend/runtime";
 import { deleteApiKey } from "#src/backend/services/api-keys/api-key";
 import {
   getApiKeys,
@@ -43,9 +43,9 @@ import {
   getWorkflowsCurrent,
   postWorkflowsCurrent,
 } from "#src/backend/services/workflows/current";
-import { rpcContract } from "@rova/shared/rpc/contracts";
-import { readAs } from "@rova/shared/types/schema";
-import { getErrorMessage } from "@rova/shared/utils";
+import { rpcContract } from "@wfgraph/shared/rpc/contracts";
+import { readAs } from "@wfgraph/shared/types/schema";
+import { getErrorMessage } from "@wfgraph/shared/utils";
 import type { RpcContext } from "#src/backend/rpc/context";
 import { toOrpcError } from "#src/backend/rpc/errors";
 
@@ -115,7 +115,7 @@ export function rpcEffectHandler<
   TOutput,
   TFailure extends ServiceFailure,
 >(
-  handler: (...args: TArgs) => Effect.Effect<TOutput, TFailure, RovaServices>
+  handler: (...args: TArgs) => Effect.Effect<TOutput, TFailure, WfGraphServices>
 ): (...args: TArgs) => Promise<TOutput> {
   return async (...args) =>
     await args[0].context.runtime.runPromise(

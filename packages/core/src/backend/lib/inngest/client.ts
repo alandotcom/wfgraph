@@ -17,7 +17,7 @@ export type { WorkerConnection } from "inngest/connect";
  * failure surfaces as a `ReconnectError`, and the reconcile loop's `while
  * (true)` retries each one with exponential backoff forever, never settling
  * the promise `connect()` hands back. An unreachable gateway would otherwise
- * hang `createRovaApp` with nothing logged. Thirty seconds covers a slow but
+ * hang `createWfGraphApp` with nothing logged. Thirty seconds covers a slow but
  * live gateway; a wedged one gets caught well inside a typical platform
  * startup-probe window instead of past it.
  */
@@ -29,7 +29,7 @@ const DEFAULT_CONNECT_TIMEOUT_MS = 30_000;
  * cancel `connecting` once the timer wins, so its reconcile loop keeps
  * retrying in the background. If it later succeeds, the `WorkerConnection`
  * it hands back is already registered with the gateway (WORKER_READY sent)
- * with nothing holding it: `createRovaApp` rejected on the timeout and tore
+ * with nothing holding it: `createWfGraphApp` rejected on the timeout and tore
  * its runtime and database pool down. Resolving the outer promise at that
  * point would be a no-op, since it already settled, so a late arrival is
  * closed instead, and left alone otherwise.
@@ -97,12 +97,12 @@ function getInngestBaseUrl() {
  * Everything a host says about Inngest, in one object.
  *
  * Written out by hand rather than derived from the SDK's own option types, so
- * `@rova/core`'s published surface stops moving whenever Inngest changes its
+ * `@wfgraph/core`'s published surface stops moving whenever Inngest changes its
  * constructor. The split between what the client takes and what `serve()` /
  * `connect()` take is Inngest's business and is applied below, not something a
  * host restates.
  */
-export type RovaInngestConfig = {
+export type WfGraphInngestConfig = {
   id: string;
   isDev?: boolean;
   baseUrl?: string;
@@ -137,7 +137,7 @@ export type RovaInngestConfig = {
    */
   maxWorkerConcurrency?: number;
   /**
-   * Milliseconds `createRovaApp` waits for the Connect handshake to reach an
+   * Milliseconds `createWfGraphApp` waits for the Connect handshake to reach an
    * active connection before failing boot. Defaults to 30 seconds. Used only
    * when `connect` is true.
    */
@@ -155,7 +155,7 @@ export type RovaInngestConfig = {
  * URL, the event key, the signing keys.
  */
 function createInngestClient(
-  config: RovaInngestConfig,
+  config: WfGraphInngestConfig,
   signingKey: string | undefined
 ): Inngest {
   const id = config.id.trim();
@@ -243,7 +243,7 @@ export type InngestServeHandler = ReturnType<typeof serveInngest>;
  * Everything one app does with Inngest, as one value.
  *
  * HTTP serve and Connect are alternatives: a host picks one registration path
- * per app. Building the function list once in `createRovaApp` and handing that
+ * per app. Building the function list once in `createWfGraphApp` and handing that
  * same array to whichever path is chosen is what keeps the registered surface
  * and the client the same app's.
  */
@@ -258,7 +258,7 @@ export type InngestSurface = {
   serve: (functions: InngestFunction.Any[]) => InngestServeHandler;
   /**
    * Opens a Connect WebSocket for a function list already built for this
-   * client. Shutdown signals are left to the host: Rova closes the returned
+   * client. Shutdown signals are left to the host: WfGraph closes the returned
    * connection from `dispose`. Rejects once `connectTimeoutMs` elapses
    * without an active connection, naming the gateway it could not reach.
    */
@@ -266,7 +266,7 @@ export type InngestSurface = {
 };
 
 export function createInngestSurface(
-  config: RovaInngestConfig
+  config: WfGraphInngestConfig
 ): InngestSurface {
   const signingKey = config.signingKey ?? process.env.INNGEST_SIGNING_KEY;
   const client = createInngestClient(config, signingKey);

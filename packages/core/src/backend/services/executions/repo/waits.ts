@@ -14,8 +14,8 @@ import {
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/lifecycle/execution-contracts";
-import { type JsonObjectDraft, toJsonObject } from "@rova/shared/types/json";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
+import { type JsonObjectDraft, toJsonObject } from "@wfgraph/shared/types/json";
 import { inFlightExecution } from "#src/backend/services/executions/repo/runs";
 import type {
   SettledWaitStatus,

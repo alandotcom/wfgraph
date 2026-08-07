@@ -81,7 +81,7 @@ const idSchema = NonEmptyTrimmedString;
  * Which integration a connection is for.
  *
  * A plain identifier rather than a closed list: the set of integrations is
- * whatever a host passed to `createRovaApp`, so the server refuses a type its
+ * whatever a host passed to `createWfGraphApp`, so the server refuses a type its
  * assembled catalog does not hold and says which types it does. A literal list
  * here could only be a second, staler copy of that answer.
  */

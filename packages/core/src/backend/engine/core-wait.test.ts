@@ -9,10 +9,10 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-import type { JsonObject } from "@rova/shared/types/json";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
-import { resolveOutputPath } from "@rova/shared/graph/node-references";
-import type { WorkflowNode } from "@rova/shared/graph/types";
+import type { JsonObject } from "@wfgraph/shared/types/json";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { resolveOutputPath } from "@wfgraph/shared/graph/node-references";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
 import {
   type ExecutionResult,

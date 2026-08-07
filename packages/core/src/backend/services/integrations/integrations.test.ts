@@ -28,8 +28,8 @@ import {
   postIntegrationTest,
   putIntegration,
 } from "#src/backend/services/integrations/integrations";
-import type { IntegrationMetadata } from "@rova/shared/extensions/catalog";
-import type { IntegrationConfig } from "@rova/shared/types/integration";
+import type { IntegrationMetadata } from "@wfgraph/shared/extensions/catalog";
+import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
 
 /**
  * Which config keys count as secrets is read from the assembled catalog, so these

@@ -21,8 +21,11 @@ import {
   resolveTemplateString,
 } from "#src/backend/engine/templates";
 import { executeWaitAction } from "#src/backend/engine/wait";
-import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
-import { actionTypeOf, readConfigString } from "@rova/shared/graph/node-config";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import {
+  actionTypeOf,
+  readConfigString,
+} from "@wfgraph/shared/graph/node-config";
 import { Effect } from "effect";
 import { failedExecution } from "#src/backend/engine/contracts";
 import {
@@ -64,11 +67,11 @@ function executeActionStep(
   });
 
   return execute.pipe(
-    Effect.withSpan("rova.workflow.action.execute", {
+    Effect.withSpan("wfgraph.workflow.action.execute", {
       attributes: {
-        "rova.action.type": input.actionType,
-        "rova.node.id": input.context.nodeId,
-        "rova.node.name": input.context.nodeName,
+        "wfgraph.action.type": input.actionType,
+        "wfgraph.node.id": input.context.nodeId,
+        "wfgraph.node.name": input.context.nodeName,
       },
     })
   );

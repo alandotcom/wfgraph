@@ -9,12 +9,12 @@
  */
 
 import { evaluateCelBooleanExpression } from "#src/backend/lib/cel/environment";
-import type { JsonObject } from "@rova/shared/types/json";
-import { decodeIsoTimestamp } from "@rova/shared/types/timestamp";
+import type { JsonObject } from "@wfgraph/shared/types/json";
+import { decodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
 import {
   CONDITION_CONTEXT_ROOT,
   EVENT_CONTEXT_ROOT,
-} from "@rova/shared/conditions/conditions";
+} from "@wfgraph/shared/conditions/conditions";
 
 /**
  * Read a dotted field path out of the condition context.

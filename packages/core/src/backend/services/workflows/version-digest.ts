@@ -6,8 +6,8 @@
 
 import { createHash } from "node:crypto";
 import { sortBy } from "es-toolkit/array";
-import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
-import { flattenConfigFields } from "@rova/shared/plugins/action-fields";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);

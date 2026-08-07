@@ -3,12 +3,12 @@ import type { Workflow } from "#src/backend/lib/db/schema";
 import type {
   WorkflowApiPayload,
   WorkflowSummaryPayload,
-} from "@rova/shared/graph/api-contracts";
+} from "@wfgraph/shared/graph/api-contracts";
 import {
   createSerializedWorkflowGraph,
   isSerializedWorkflowGraph,
-} from "@rova/shared/graph/graph";
-import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
+} from "@wfgraph/shared/graph/graph";
+import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 import { draftDiffersFromPublished } from "#src/backend/services/workflows/version-digest";
 
 type WorkflowPayloadSource = Pick<

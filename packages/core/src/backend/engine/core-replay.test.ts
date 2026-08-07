@@ -11,12 +11,12 @@
 
 import { Effect, Schema, SchemaTransformation } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
-import type { WorkflowNode } from "@rova/shared/graph/types";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { defineAction } from "#src/backend/extensions/define-action";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
-import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
+import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
 import {
@@ -97,7 +97,7 @@ const branchAction = vi.fn<() => Record<string, unknown>>(() => ({ ok: true }));
 
 /**
  * A host action whose work is inside `step.run`, which is the whole of what
- * makes it happen once across a replay. Rova wraps no handler body.
+ * makes it happen once across a replay. WfGraph wraps no handler body.
  */
 function aHostAction(
   id: string,
@@ -142,7 +142,7 @@ describe("workflow engine replay safety", () => {
         aHostAction(BRANCH_ACTION_ID, "Branch Action", branchAction),
       ],
     }),
-    stubRovaRuntime()
+    stubWfGraphRuntime()
   );
 
   beforeEach(() => {
@@ -244,7 +244,7 @@ describe("workflow engine replay safety", () => {
     expect(memo.has("wait-delay-resume-wait_1")).toBe(true);
   });
 
-  // The other half of the contract, and the trap worth knowing: Rova wraps no
+  // The other half of the contract, and the trap worth knowing: WfGraph wraps no
   // handler body, so work left outside `step.run` happens again on every attempt
   // while the node's log rows stay memoized. The run panel then shows one row for
   // however many times the work ran.
@@ -259,7 +259,7 @@ describe("workflow engine replay safety", () => {
           aHostAction(FOLLOWUP_ACTION_ID, "Send Followup", followupAction),
         ],
       }),
-      stubRovaRuntime()
+      stubWfGraphRuntime()
     );
     const memo = new Map<string, unknown>();
 
@@ -308,7 +308,7 @@ describe("workflow engine replay safety", () => {
           aHostAction(FOLLOWUP_ACTION_ID, "Send Followup", followupAction),
         ],
       }),
-      stubRovaRuntime()
+      stubWfGraphRuntime()
     );
     const memo = new Map<string, unknown>();
 
@@ -539,7 +539,7 @@ describe("a Date-bearing step output across a replay", () => {
 
   const actions = createWorkflowActions(
     assembleExtensions({ integrations: [clock] }),
-    stubRovaRuntime()
+    stubWfGraphRuntime()
   );
 
   beforeEach(() => {

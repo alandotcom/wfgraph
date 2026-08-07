@@ -1,15 +1,15 @@
 /**
- * The Rova app this repo runs, for `pnpm run dev` and for `pnpm run start`.
+ * The WfGraph app this repo runs, for `pnpm run dev` and for `pnpm run start`.
  *
- * The repo has no server of its own. `createRovaApp` returns a fetch handler and
+ * The repo has no server of its own. `createWfGraphApp` returns a fetch handler and
  * the host mounts it, so the only server here is an adopter's app, written the
  * way an adopter writes one. Running it is what keeps the published path
- * exercised: every line below is a line someone embedding Rova would also write,
+ * exercised: every line below is a line someone embedding WfGraph would also write,
  * and anything that would exist only to serve this repo's dev loop belongs
  * somewhere else.
  *
  * The Events and the custom action are the interesting half. They show what
- * `defineEvent` and `defineAction` are for, and Rova serves them beside its
+ * `defineEvent` and `defineAction` are for, and WfGraph serves them beside its
  * built-in integrations with no further registration.
  *
  * Development hands over no editor. `pnpm run dev` runs Vite's dev server in
@@ -21,14 +21,14 @@
 import { createServer } from "node:http";
 import {
   createRequestListener,
-  createRovaApp,
+  createWfGraphApp,
   defineAction,
   defineEvent,
-} from "@rova/core";
+} from "@wfgraph/core";
 // The built-in integrations, as values. Nothing registers on import, so the line
-// that passes them to `createRovaApp` below is what turns them on and dropping it
+// that passes them to `createWfGraphApp` below is what turns them on and dropping it
 // is what turns them off.
-import { builtInIntegrations } from "@rova/plugins";
+import { builtInIntegrations } from "@wfgraph/plugins";
 import { z } from "zod";
 
 const DEFAULT_PORT = 4017;
@@ -37,7 +37,7 @@ const DEFAULT_DATABASE_URL =
 
 const isProduction = process.env.NODE_ENV === "production";
 
-// Rova reads a schema through Standard Schema and asks nothing else of it. The
+// WfGraph reads a schema through Standard Schema and asks nothing else of it. The
 // editor labels a path from its key ("Patient Name" from `patientName`), and
 // `z.iso.datetime()` emits `format: "date-time"`, which is what gives the field
 // before/after operators in the condition builder and admits it to the Wait
@@ -139,7 +139,7 @@ const cancelAppointmentAction = defineAction({
     cancelledAt: z.iso.datetime(),
   }),
   // The cancellation goes inside `step.run`, so a retry of a later node replays
-  // this answer rather than cancelling a second time. Rova wraps no handler body:
+  // this answer rather than cancelling a second time. WfGraph wraps no handler body:
   // work with a side effect says so here or it happens again on every attempt.
   handler({ input, step }) {
     return step.run("cancel", () =>
@@ -153,11 +153,11 @@ const cancelAppointmentAction = defineAction({
   },
 });
 
-const rova = await createRovaApp({
+const wfgraph = await createWfGraphApp({
   // Handing the editor over is what turns it on. Development has none to hand
-  // over, and Rova then serves the API alone.
+  // over, and WfGraph then serves the API alone.
   client: isProduction
-    ? (await import("@rova/client")).clientBundle
+    ? (await import("@wfgraph/client")).clientBundle
     : undefined,
   // "external" admits every request, so the interface this app binds to is the
   // only thing standing between the editor and whoever else is on the network.
@@ -168,7 +168,7 @@ const rova = await createRovaApp({
     // One URL, or the discrete host/port/user/password/database fields a
     // platform hands out separately.
     url: process.env.DATABASE_URL?.trim() || DEFAULT_DATABASE_URL,
-    // Rova keeps its tables in "_workflows" unless told otherwise. This is read
+    // WfGraph keeps its tables in "_workflows" unless told otherwise. This is read
     // here because `pnpm run db:migrate` reads the same variable, and an app
     // querying one schema while the migrator creates another is a bad afternoon.
     schema: process.env.DATABASE_SCHEMA?.trim() || undefined,
@@ -177,7 +177,7 @@ const rova = await createRovaApp({
       migrationsDir: process.env.MIGRATIONS_DIR,
     },
   },
-  // Rova refuses to start without a 64-character hex key and says so, so there
+  // WfGraph refuses to start without a 64-character hex key and says so, so there
   // is nothing to check here.
   encryption: {
     key: process.env.INTEGRATION_ENCRYPTION_KEY,
@@ -213,11 +213,11 @@ const rova = await createRovaApp({
   },
 });
 
-// The whole mount is one fetch handler. Bun, Deno and Workers take `rova.fetch`
+// The whole mount is one fetch handler. Bun, Deno and Workers take `wfgraph.fetch`
 // as it is; node:http speaks IncomingMessage/ServerResponse, so
 // createRequestListener does the one translation step. An Express or Fastify
 // host passes the same listener to its own mount call.
-const server = createServer(createRequestListener(rova));
+const server = createServer(createRequestListener(wfgraph));
 
 const port = Number(process.env.PORT ?? DEFAULT_PORT);
 
@@ -226,7 +226,7 @@ const port = Number(process.env.PORT ?? DEFAULT_PORT);
 // repo's dev script sets it to 127.0.0.1, since the app above admits every
 // request that arrives.
 server.listen(port, process.env.HOST, () => {
-  console.log(`Rova listening on http://localhost:${port}/`);
+  console.log(`WfGraph listening on http://localhost:${port}/`);
 });
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -237,7 +237,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
       // so ctrl-C would otherwise sit there with the editor open in a tab.
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
-      await rova.dispose();
+      await wfgraph.dispose();
       process.exit(0);
     })();
   });

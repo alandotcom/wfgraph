@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { actionData, actionError, runAction } from "@rova/core/testing";
+import { actionData, actionError, runAction } from "@wfgraph/core/testing";
 import { Effect } from "effect";
 import { beforeEach, vi } from "vitest";
 import { twilio } from "#src/twilio/index";

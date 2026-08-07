@@ -6,17 +6,17 @@ import {
   NodeDescription,
   NodeTitle,
 } from "#src/components/flow-elements/node";
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
-} from "@rova/shared/lifecycle/lifecycle-outlets";
+} from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import type { WorkflowNodeData } from "#src/lib/workflow-graph-types";
 import {
   configDeclaresCancelEvent,
   manualStartAllowed,
   readLifecycleRules,
-} from "@rova/shared/lifecycle/lifecycle-rules";
+} from "@wfgraph/shared/lifecycle/lifecycle-rules";
 
 // Two bottom handles split left/right rather than stacked, so both stay
 // reachable for a drag, and each carries a label chip centred on it.

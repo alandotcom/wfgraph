@@ -3,7 +3,7 @@ import { useAtomValue } from "jotai";
 import { toExecutionLogsByNodeId } from "#src/lib/execution-logs";
 import { orpcQuery } from "#src/lib/rpc-query";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
-import type { ExecutionLogEntry } from "@rova/shared/graph/types";
+import type { ExecutionLogEntry } from "@wfgraph/shared/graph/types";
 
 const NO_LOGS: Record<string, ExecutionLogEntry> = {};
 

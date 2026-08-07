@@ -13,8 +13,8 @@
  */
 
 import type { StepContext } from "#src/backend/extensions/steps/step-handler";
-import { getErrorMessage } from "@rova/shared/utils";
-import type { StepResult } from "@rova/shared/actions/step-result";
+import { getErrorMessage } from "@wfgraph/shared/utils";
+import type { StepResult } from "@wfgraph/shared/actions/step-result";
 
 /**
  * The one argument every handler is called with: its config, and the run it is
@@ -65,7 +65,7 @@ export function toHandlerBag<TInput>(
 /**
  * What an input record carrying no run context becomes.
  *
- * Every node the engine runs carries its context, so this is a Rova bug rather
+ * Every node the engine runs carries its context, so this is a WfGraph bug rather
  * than something an author wrote. Both boundaries fail the node on it, because
  * the alternative is handing an author the node ids they were promised as
  * undefined, and a run log naming a node that does not exist.

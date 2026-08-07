@@ -4,7 +4,7 @@
  * Logging for the editor, categorised the way the backend's is.
  *
  * A development build routes through logtape's console sink, which the browser
- * renders with CSS styling, a `rova.<area>` category and a level per line. A
+ * renders with CSS styling, a `wfgraph.<area>` category and a level per line. A
  * production build folds `import.meta.env.DEV` to `false`, and every reference
  * to logtape then falls to dead-code elimination: what ships forwards warnings
  * and failures to the console and drops the chatter.
@@ -13,7 +13,7 @@
 import { configureSync, getConsoleSink, getLogger } from "@logtape/logtape";
 
 /** The one category prefix every editor logger hangs off. */
-const LOGGER_ROOT = "rova";
+const LOGGER_ROOT = "wfgraph";
 
 /** What a call site may say. One line, plus a bag of structured fields. */
 export type ClientLogger = {
@@ -70,7 +70,7 @@ function productionLogger(category: string[]): ClientLogger {
 
 /**
  * The logger for one area of the editor, named the way its module is:
- * `getClientLogger("workflow", "save")` logs under `rova.workflow.save`.
+ * `getClientLogger("workflow", "save")` logs under `wfgraph.workflow.save`.
  */
 export function getClientLogger(...category: string[]): ClientLogger {
   return import.meta.env.DEV

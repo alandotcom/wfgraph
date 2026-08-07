@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   emptyExtensionCatalog,
   type ExtensionCatalog,
-} from "@rova/shared/extensions/catalog";
+} from "@wfgraph/shared/extensions/catalog";
 import {
   getExtensionCatalog,
   hydrateExtensionsFromApi,

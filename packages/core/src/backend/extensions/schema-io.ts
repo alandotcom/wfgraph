@@ -9,16 +9,19 @@
 
 import { Result, Schema } from "effect";
 import { stripInternalFields } from "#src/backend/extensions/steps/step-handler";
-import type { ActionConfigFieldBase } from "@rova/shared/plugins/action-fields";
+import type { ActionConfigFieldBase } from "@wfgraph/shared/plugins/action-fields";
 import {
   configFieldsFromJsonSchema,
   jsonSchemaLibraryOptions,
-} from "@rova/shared/graph/schema-codec";
+} from "@wfgraph/shared/graph/schema-codec";
 import {
   formatSchemaFailure,
   formatStandardIssuePath,
-} from "@rova/shared/types/schema-message";
-import { isEffectSchema, type StandardSchema } from "@rova/shared/types/schema";
+} from "@wfgraph/shared/types/schema-message";
+import {
+  isEffectSchema,
+  type StandardSchema,
+} from "@wfgraph/shared/types/schema";
 
 /**
  * What an `input` accepts, in either of the two forms a schema arrives in.

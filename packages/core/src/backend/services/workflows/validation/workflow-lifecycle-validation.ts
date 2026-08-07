@@ -10,21 +10,21 @@
 import {
   type ExtensionCatalog,
   findEvent,
-} from "@rova/shared/extensions/catalog";
-import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
-import { eventsReaching } from "@rova/shared/graph/events-reaching";
+} from "@wfgraph/shared/extensions/catalog";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
 import {
   eventSplitOutletEvent,
   isEventSplitNode,
-} from "@rova/shared/lifecycle/event-split";
+} from "@wfgraph/shared/lifecycle/event-split";
 import {
   checkLifecycleRules,
   readLifecycleRules,
   unknownEventMessage,
-} from "@rova/shared/lifecycle/lifecycle-rules";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
+} from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import { getNodeLabel } from "#src/backend/services/workflows/validation/workflow-graph";
-import { readWaitSubscriptions } from "@rova/shared/lifecycle/wait-subscription";
+import { readWaitSubscriptions } from "@wfgraph/shared/lifecycle/wait-subscription";
 
 export type WorkflowLifecycleValidationResult =
   | { valid: true }

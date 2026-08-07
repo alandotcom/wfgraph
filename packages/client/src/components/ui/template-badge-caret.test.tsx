@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
-import { findTemplateTokens } from "@rova/shared/graph/node-references";
+import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
 import { TemplateBadgeInput } from "./template-badge-input";
 import { TemplateBadgeTextarea } from "./template-badge-textarea";
 import { type BadgeEditor, createBadgeEditor } from "./template-badge-dom";

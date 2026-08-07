@@ -4,13 +4,13 @@
  */
 
 import { getAppLogger } from "#src/backend/lib/logger";
-import { getErrorMessage } from "@rova/shared/utils";
+import { getErrorMessage } from "@wfgraph/shared/utils";
 import {
   type JsonObject,
   type JsonValue,
   readJsonValue,
-} from "@rova/shared/types/json";
-import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
+} from "@wfgraph/shared/types/json";
+import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 
 const redactLogger = getAppLogger("utils", "redact");
 

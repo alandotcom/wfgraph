@@ -22,11 +22,14 @@ import {
   workflowVersions,
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
-import type { RovaDatabase, RovaTransaction } from "#src/backend/lib/db/index";
+import type {
+  WfGraphDatabase,
+  WfGraphTransaction,
+} from "#src/backend/lib/db/index";
 import { Database, type DatabaseError } from "#src/backend/lib/effect/database";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
 import type { WorkflowUpdateData } from "#src/backend/services/workflows/mappers";
-import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
+import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 
 /** One row of `workflow_event_subscriptions`: one workflow, one Event, one role. */
 export type WorkflowEventSubscriptionRow =
@@ -312,7 +315,7 @@ export class WorkflowRepo extends Context.Service<
       limit: number;
     }) => Effect.Effect<string[], DatabaseError>;
   }
->()("@rova/core/WorkflowRepo") {}
+>()("@wfgraph/core/WorkflowRepo") {}
 
 /** Outcome of `insertPublishedVersion`: published, behind, or workflow missing. */
 export type InsertPublishedVersionResult =
@@ -331,7 +334,7 @@ export type InsertPublishedVersionResult =
  */
 async function selectWorkflowWithPublishedVersion<
   WorkflowColumns extends Record<string, PgColumn> | PgTable,
->(db: RovaDatabase, workflowId: string, workflowColumns: WorkflowColumns) {
+>(db: WfGraphDatabase, workflowId: string, workflowColumns: WorkflowColumns) {
   const [row] = await db
     .select({
       workflow: workflowColumns,
@@ -859,7 +862,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
   );
 
 async function activatePublishedVersion(
-  tx: RovaDatabase | RovaTransaction,
+  tx: WfGraphDatabase | WfGraphTransaction,
   input: {
     workflowId: string;
     version: WorkflowVersion;

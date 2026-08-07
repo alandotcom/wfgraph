@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/pg-proxy";
 import { Effect, Layer, ManagedRuntime } from "effect";
-import type { RovaDatabase } from "#src/backend/lib/db/index";
+import type { WfGraphDatabase } from "#src/backend/lib/db/index";
 import * as schema from "#src/backend/lib/db/schema";
 import {
   AppLogger,
@@ -18,12 +18,12 @@ import type { StepEnvironment } from "#src/backend/extensions/steps/step-runner"
 import {
   emptyExtensionCatalog,
   type ExtensionCatalog,
-} from "@rova/shared/extensions/catalog";
+} from "@wfgraph/shared/extensions/catalog";
 import { ApiKeyRepo } from "#src/backend/services/api-keys/repo";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import type { RovaServices } from "#src/backend/runtime";
+import type { WfGraphServices } from "#src/backend/runtime";
 
 /**
  * The Layers a backend test stands on.
@@ -218,14 +218,14 @@ export function stubDatabase(
   );
 
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the two handles differ only in the driver behind them: both are Drizzle over `schema`, so every method a repository reaches for is present and builds the same statement. This is the one place the two are equated, which is what this factory exists to be.
-  const db: RovaDatabase = new Proxy(base, {
+  const db: WfGraphDatabase = new Proxy(base, {
     get(target, property, receiver) {
       if (property === "transaction") {
         return async (body: (tx: unknown) => Promise<unknown>) => body(db);
       }
       return Reflect.get(target, property, receiver);
     },
-  }) as unknown as RovaDatabase;
+  }) as unknown as WfGraphDatabase;
 
   const service: Database["Service"] = {
     query: (run) => Effect.promise(() => run(db)),
@@ -366,7 +366,7 @@ export function stubInngestClient(
 }
 
 /**
- * A whole `RovaRuntime`, for a test standing up something the app builds from
+ * A whole `WfGraphRuntime`, for a test standing up something the app builds from
  * its own.
  *
  * Two app-owned boundaries take the runtime rather than a service: the dispatch
@@ -377,7 +377,7 @@ export function stubInngestClient(
  * Every repository dies on an unnamed method, the same as the stub Layers do, so
  * a subject that reaches a query the test did not account for fails loudly.
  */
-export function stubRovaRuntime(
+export function stubWfGraphRuntime(
   overrides: {
     extensions?: Partial<ExtensionSet>;
     workflowRepo?: Partial<WorkflowRepo["Service"]>;
@@ -386,7 +386,7 @@ export function stubRovaRuntime(
     apiKeyRepo?: Partial<ApiKeyRepo["Service"]>;
     inngestClient?: Partial<InngestClient["Service"]>;
   } = {}
-): ManagedRuntime.ManagedRuntime<RovaServices, never> {
+): ManagedRuntime.ManagedRuntime<WfGraphServices, never> {
   return ManagedRuntime.make(
     Layer.mergeAll(
       SilentAppLoggerLayer,

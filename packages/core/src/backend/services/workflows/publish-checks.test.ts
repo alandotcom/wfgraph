@@ -13,14 +13,14 @@ import type {
   EventMetadata,
   ExtensionCatalog,
   IntegrationMetadata,
-} from "@rova/shared/extensions/catalog";
-import { emptyExtensionCatalog } from "@rova/shared/extensions/catalog";
-import type { ActionConfigField } from "@rova/shared/plugins/action-fields";
+} from "@wfgraph/shared/extensions/catalog";
+import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import type { ActionConfigField } from "@wfgraph/shared/plugins/action-fields";
 import {
   createSerializedWorkflowGraph,
   toWorkflowGraphData,
-} from "@rova/shared/graph/graph";
-import { LIFECYCLE_CANCELED_HANDLE } from "@rova/shared/lifecycle/lifecycle-outlets";
+} from "@wfgraph/shared/graph/graph";
+import { LIFECYCLE_CANCELED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 
 function lifecycleNode(cancelEvents: string[] = []) {
   return {

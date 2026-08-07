@@ -43,18 +43,18 @@ const tables: {
  * The Drizzle handle, with this app's tables attached. The `Database` service in
  * `backend/lib/effect/database.ts` hands one of these to every query it runs.
  */
-export type RovaDatabase = PostgresJsDatabase<typeof tables>;
+export type WfGraphDatabase = PostgresJsDatabase<typeof tables>;
 
 /**
  * The handle inside `db.transaction(...)`, named by asking the handle itself.
  *
  * Drizzle's own transaction type takes four generic parameters that have to agree
- * with the ones `RovaDatabase` was built from, and naming them again is how those
+ * with the ones `WfGraphDatabase` was built from, and naming them again is how those
  * drift. A repository writing part of a query inside a transaction and part
- * outside takes this beside `RovaDatabase`.
+ * outside takes this beside `WfGraphDatabase`.
  */
-export type RovaTransaction = Parameters<
-  Parameters<RovaDatabase["transaction"]>[0]
+export type WfGraphTransaction = Parameters<
+  Parameters<WfGraphDatabase["transaction"]>[0]
 >[0];
 
 // One connection, and load-bearing: the advisory lock runMigrations takes is
@@ -69,7 +69,7 @@ const MIGRATION_CONNECTIONS = 1;
  * what decides where they live. It travels in the startup packet rather than as a
  * `SET` on checkout, which is what makes every connection the pool opens, and
  * every one it reopens after a network drop, already correct. `application_name`
- * is there because Rova now cohabits a host's database and its connections should
+ * is there because WfGraph now cohabits a host's database and its connections should
  * be attributable in `pg_stat_activity`.
  */
 function createSqlClient(
@@ -98,22 +98,22 @@ function createSqlClient(
 export function createMigrationClient(config: NormalizedDatabaseConfig): Sql {
   return createSqlClient(config, {
     max: MIGRATION_CONNECTIONS,
-    applicationName: "rova-migrations",
+    applicationName: "wfgraph-migrations",
   });
 }
 
 /**
  * The pool an app runs its queries on, and the Drizzle handle over it.
  *
- * `createRovaApp` builds one of these and hands the handle to the `Database`
+ * `createWfGraphApp` builds one of these and hands the handle to the `Database`
  * Layer, so which connection a service queries on is decided by the app that owns
  * it rather than by whichever module happened to be imported first.
  */
 export type DatabaseSurface = {
-  /** The schema holding Rova's tables, which is what the migrator creates. */
+  /** The schema holding WfGraph's tables, which is what the migrator creates. */
   readonly schema: string;
   /** What every repository query runs on. */
-  readonly db: RovaDatabase;
+  readonly db: WfGraphDatabase;
   /** The pool underneath, for the startup log line. */
   readonly client: Sql;
   /** Gives the app-owned pool back. */
@@ -131,7 +131,7 @@ export function createDatabaseSurface(
 ): DatabaseSurface {
   const client = createSqlClient(config, {
     max: config.maxConnections,
-    applicationName: "rova",
+    applicationName: "wfgraph",
   });
 
   const surface: DatabaseSurface = {

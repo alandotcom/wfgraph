@@ -1,7 +1,7 @@
 import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Separator } from "#src/components/ui/separator";
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 
 const buttonGroupVariants = cva(
   // `shrink-0` matters more than it looks: the base layer applies `min-w-0` to

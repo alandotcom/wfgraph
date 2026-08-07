@@ -3,12 +3,12 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { type JsonObject, readJsonObject } from "@rova/shared/types/json";
-import { encodeIsoTimestamp } from "@rova/shared/types/timestamp";
-import { resolveWaitUntil } from "@rova/shared/utils/wait-time";
-import { celStringLiteral } from "@rova/shared/conditions/cel-string-literal";
+import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
+import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
+import { resolveWaitUntil } from "@wfgraph/shared/utils/wait-time";
+import { celStringLiteral } from "@wfgraph/shared/conditions/cel-string-literal";
 import { Effect } from "effect";
-import { DEFAULT_WAIT_TIMEOUT } from "@rova/shared/lifecycle/wait-subscription";
+import { DEFAULT_WAIT_TIMEOUT } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { closeStepLog } from "#src/backend/engine/step-log";
 import { compileWaitSubscriptions } from "#src/backend/engine/wait-match";
 import { fromUnknownPromise, runDurable } from "#src/backend/engine/durable";
@@ -30,7 +30,7 @@ function generateWaitToken(): string {
 /**
  * The `workflow/wait.signal` body out of the Inngest event that carried it.
  *
- * `waitForEvent` resolves to the whole event object, and the signal is Rova's
+ * `waitForEvent` resolves to the whole event object, and the signal is WfGraph's
  * own envelope inside it. Reading it once here is what keeps that envelope out
  * of everything below: a builder addresses the Event's payload, not the
  * transport it travelled in.
@@ -201,8 +201,8 @@ export function executeEventWait(
 
     const resumeEvent = yield* Effect.catchCause(
       fromUnknownPromise(() =>
-        // Inngest waits on Rova's own signal envelope rather than on the
-        // business Event: Rova decides which runs an arrival concerns first.
+        // Inngest waits on WfGraph's own signal envelope rather than on the
+        // business Event: WfGraph decides which runs an arrival concerns first.
         runtime.waitForEvent(`wait-event-${context.nodeId}`, {
           event: "workflow/wait.signal",
           timeoutMs: prepared.timeoutMs,

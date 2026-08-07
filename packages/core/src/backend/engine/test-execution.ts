@@ -11,7 +11,7 @@ import type { WorkflowStore } from "#src/backend/engine/store";
 import { AppLoggerLayer } from "#src/backend/lib/effect/app-logger";
 import { TracerBridgeLayer } from "#src/backend/lib/effect/tracer";
 
-/** The observability services a production invocation gets from RovaRuntime. */
+/** The observability services a production invocation gets from WfGraphRuntime. */
 const EngineTestLayer = Layer.merge(AppLoggerLayer, TracerBridgeLayer);
 
 export function executeTestWorkflow(

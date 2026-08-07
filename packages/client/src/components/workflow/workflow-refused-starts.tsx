@@ -1,6 +1,6 @@
 import { Ban } from "lucide-react";
 import type { RefusedStart } from "#src/lib/execution-logs";
-import { getRelativeTime } from "@rova/shared/utils/time";
+import { getRelativeTime } from "@wfgraph/shared/utils/time";
 
 /**
  * The Refused Starts: arrivals this workflow declined, which have no run to be

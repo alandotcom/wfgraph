@@ -10,15 +10,15 @@ import {
   type SourcedField,
 } from "#src/lib/upstream-node-fields";
 import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 import {
   formatTemplateToken,
   type ReferenceField,
-} from "@rova/shared/graph/node-references";
+} from "@wfgraph/shared/graph/node-references";
 import {
   targetAccepts,
   type ValueTargetType,
-} from "@rova/shared/graph/value-targets";
+} from "@wfgraph/shared/graph/value-targets";
 
 type TemplateAutocompleteProps = {
   isOpen: boolean;

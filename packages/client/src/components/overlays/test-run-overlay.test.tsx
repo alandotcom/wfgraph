@@ -5,7 +5,7 @@ import {
   TestRunOverlay,
   type TestRunRequest,
 } from "#src/components/overlays/test-run-overlay";
-import type { TestPayloads } from "@rova/shared/lifecycle/test-payloads";
+import type { TestPayloads } from "@wfgraph/shared/lifecycle/test-payloads";
 
 // The Events the overlay draws a form from come from the server's catalog. One
 // declares a timestamp, which is the field the Wait node's target is written

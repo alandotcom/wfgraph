@@ -8,7 +8,7 @@ import {
   withDefaultLifecycleNode,
 } from "#src/backend/services/workflows/mappers";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import { generateId } from "@rova/shared/utils/id";
+import { generateId } from "@wfgraph/shared/utils/id";
 
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */
 const loggerFor = () =>

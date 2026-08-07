@@ -4,7 +4,7 @@ import {
   type EffectLogger,
 } from "#src/backend/lib/effect/app-logger";
 import { InternalFailure } from "#src/backend/lib/effect/failures";
-import { getErrorMessage } from "@rova/shared/utils";
+import { getErrorMessage } from "@wfgraph/shared/utils";
 
 /**
  * What a service answers when one of its seams refused it: the underlying error

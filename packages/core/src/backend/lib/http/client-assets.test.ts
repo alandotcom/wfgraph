@@ -10,7 +10,7 @@ const INDEX_HTML =
 let clientDir: string;
 
 beforeAll(async () => {
-  clientDir = await mkdtemp(join(tmpdir(), "rova-client-"));
+  clientDir = await mkdtemp(join(tmpdir(), "wfgraph-client-"));
   await writeFile(join(clientDir, "index.html"), INDEX_HTML);
   await writeFile(join(clientDir, "app.js"), "export const ok = true;\n");
 });
@@ -59,15 +59,15 @@ describe("serveClientAsset", () => {
     expect(await response.text()).toContain('<base href="/" />');
   });
 
-  it("points the SPA entry at the mount point when Rova is mounted under one", async () => {
+  it("points the SPA entry at the mount point when WfGraph is mounted under one", async () => {
     const response = await serveClientAsset({
       clientDir,
-      basePath: "/rova",
+      basePath: "/wfgraph",
       pathname: "/",
     });
 
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain('<base href="/rova/" />');
+    expect(await response.text()).toContain('<base href="/wfgraph/" />');
   });
 
   it("404s a non-SPA path with no file behind it", async () => {

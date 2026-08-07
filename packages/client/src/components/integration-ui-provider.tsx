@@ -1,5 +1,5 @@
 import { createContext, type ReactNode, useContext } from "react";
-import type { IntegrationUi } from "@rova/plugins/ui";
+import type { IntegrationUi } from "@wfgraph/plugins/ui";
 
 /**
  * The icons and output renderers the editor draws integrations with, held as

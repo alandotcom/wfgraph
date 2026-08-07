@@ -9,12 +9,12 @@ describe("CatalogUnavailable", () => {
   it("names the endpoint and offers a retry", () => {
     const view = render(
       <CatalogUnavailable
-        endpoint="/rova/api/extensions"
+        endpoint="/wfgraph/api/extensions"
         reason="unreachable"
       />
     );
 
-    expect(view.getByText(/GET \/rova\/api\/extensions/)).toBeTruthy();
+    expect(view.getByText(/GET \/wfgraph\/api\/extensions/)).toBeTruthy();
     expect(view.getByRole("button", { name: "Try again" })).toBeTruthy();
   });
 
@@ -23,7 +23,7 @@ describe("CatalogUnavailable", () => {
       <CatalogUnavailable endpoint="/api/extensions" reason="mismatch" />
     );
 
-    expect(view.getByText(/different builds of Rova/)).toBeTruthy();
+    expect(view.getByText(/different builds of WfGraph/)).toBeTruthy();
     expect(view.queryByText(/did not answer/)).toBeNull();
   });
 });

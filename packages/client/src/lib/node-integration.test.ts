@@ -5,7 +5,7 @@ import {
   repairNodeIntegrations,
   requiredIntegrationType,
 } from "#src/lib/node-integration";
-import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /**

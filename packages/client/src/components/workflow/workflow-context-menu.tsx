@@ -17,7 +17,7 @@ import {
 } from "#src/lib/workflow-graph-store";
 import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 import { type WorkflowNode } from "#src/lib/workflow-graph-types";
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 
 export type ContextMenuType = "node" | "edge" | "pane" | null;
 

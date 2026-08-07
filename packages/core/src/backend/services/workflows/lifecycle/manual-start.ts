@@ -17,22 +17,22 @@ import {
 import {
   type ExtensionCatalog,
   findEvent,
-} from "@rova/shared/extensions/catalog";
-import type { JsonObject } from "@rova/shared/types/json";
-import { asNonEmptyString } from "@rova/shared/types/string";
-import { getValueByPath } from "@rova/shared/utils/object-path";
+} from "@wfgraph/shared/extensions/catalog";
+import type { JsonObject } from "@wfgraph/shared/types/json";
+import { asNonEmptyString } from "@wfgraph/shared/types/string";
+import { getValueByPath } from "@wfgraph/shared/utils/object-path";
 import type {
   WorkflowExecuteResponse,
   WorkflowExecutionIgnoredReason,
-} from "@rova/shared/lifecycle/execution-contracts";
-import type { WorkflowMode } from "@rova/shared/graph/types";
+} from "@wfgraph/shared/lifecycle/execution-contracts";
+import type { WorkflowMode } from "@wfgraph/shared/graph/types";
 import {
   emptyLifecycleRules,
   type LifecycleRules,
   manualStartAllowed,
   resolveCorrelationPath,
   unknownEventMessage,
-} from "@rova/shared/lifecycle/lifecycle-rules";
+} from "@wfgraph/shared/lifecycle/lifecycle-rules";
 
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */
 const loggerFor = (workflowId: string) =>

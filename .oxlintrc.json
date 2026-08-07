@@ -27,25 +27,16 @@
     //
     // `_context` is the engine-internal field on a step's input record;
     // `withStepLogging` reads it and strips it before the input reaches the run
-    // log. The three `__rova*State` names are the process-global handles
-    // `createRovaApp` configures, and `__resizeObserverPatched` is the editor's own
-    // one-time patch, all on globalThis so a dev reload does not double them. `_id`
-    // is the row identity the key/value config editor holds outside the JSON it
+    // log. `__resizeObserverPatched` is the editor's own one-time patch, held on
+    // globalThis so a dev reload does not double it. `_id` is the row identity the
+    // key/value config editor holds outside the JSON it
     // emits. `_tag` is not ours: it is the discriminant Effect puts on every tagged
     // error and tagged class, and code that narrows a failure union by hand rather
     // than through `Effect.catchTag` has to read it.
     "no-underscore-dangle": [
       "error",
       {
-        "allow": [
-          "_tag",
-          "_context",
-          "_id",
-          "__rovaDatabaseState",
-          "__rovaEncryptionState",
-          "__rovaInngestState",
-          "__resizeObserverPatched"
-        ]
+        "allow": ["_tag", "_context", "_id", "__resizeObserverPatched"]
       }
     ],
     // This rule and tsconfig's noImplicitReturns are both on, because measurement
@@ -198,8 +189,8 @@
       }
     },
     {
-      // @rova/shared is the runtime-agnostic package: it declares its own npm
-      // dependencies and nothing else, and both @rova/core and @rova/plugins
+      // @wfgraph/shared is the runtime-agnostic package: it declares its own npm
+      // dependencies and nothing else, and both @wfgraph/core and @wfgraph/plugins
       // compile against its source. Nothing may point the other way.
       //
       // pnpm's isolated node_modules enforces that for npm specifiers, because a
@@ -218,16 +209,16 @@
             "patterns": [
               {
                 "group": [
-                  "@rova/core",
-                  "@rova/core/**",
-                  "@rova/plugins",
-                  "@rova/plugins/**",
+                  "@wfgraph/core",
+                  "@wfgraph/core/**",
+                  "@wfgraph/plugins",
+                  "@wfgraph/plugins/**",
                   "../../core/**",
                   "../../plugins/**",
                   "../../../core/**",
                   "../../../plugins/**"
                 ],
-                "message": "@rova/shared cannot import @rova/core or @rova/plugins source. Shared is the bottom of the dependency graph: move the shared piece into packages/shared, or invert the call so core passes it in."
+                "message": "@wfgraph/shared cannot import @wfgraph/core or @wfgraph/plugins source. Shared is the bottom of the dependency graph: move the shared piece into packages/shared, or invert the call so core passes it in."
               }
             ]
           }

@@ -1,6 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { Button } from "#src/components/ui/button";
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 import type { OverlayAction, OverlayFooterProps } from "./types";
 
 /**

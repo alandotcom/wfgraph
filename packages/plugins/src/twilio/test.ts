@@ -4,8 +4,8 @@ import {
   readTwilioError,
 } from "#src/twilio/client";
 import type { TwilioCredentials } from "#src/twilio/index";
-import { callExternalAsync } from "@rova/core/plugin";
-import type { IntegrationTestResult } from "@rova/core/plugin";
+import { callExternalAsync } from "@wfgraph/core/plugin";
+import type { IntegrationTestResult } from "@wfgraph/core/plugin";
 
 export async function testTwilio(
   credentials: TwilioCredentials

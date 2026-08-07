@@ -12,7 +12,7 @@
 
 import { Schema } from "effect";
 import { getAppLogger } from "#src/backend/lib/logger";
-import { readAs } from "@rova/shared/types/schema";
+import { readAs } from "@wfgraph/shared/types/schema";
 import {
   collectTimestampFieldPaths,
   compileConditionModel,
@@ -21,8 +21,8 @@ import {
   isNullCheckConditionRule,
   isTimestampAbsoluteConditionRule,
   parseConditionModel,
-} from "@rova/shared/conditions/conditions";
-import type { EventSubscription } from "@rova/shared/lifecycle/wait-subscription";
+} from "@wfgraph/shared/conditions/conditions";
+import type { EventSubscription } from "@wfgraph/shared/lifecycle/wait-subscription";
 
 const logger = getAppLogger("workflow", "wait-match");
 

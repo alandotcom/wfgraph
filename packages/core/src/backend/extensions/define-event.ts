@@ -8,7 +8,7 @@
  * (ADR-0007).
  *
  * `defineEvent` registers nothing. It returns a plain value the host passes to
- * `createRovaApp`, which assembles the one catalog the editor reads.
+ * `createWfGraphApp`, which assembles the one catalog the editor reads.
  */
 
 import { Effect, Schema } from "effect";
@@ -17,21 +17,21 @@ import {
   type InngestEventOptions,
   rewriteInngestOptions,
 } from "#src/backend/extensions/inngest-options";
-import type { JsonObject } from "@rova/shared/types/json";
-import type { StringPath } from "@rova/shared/types/payload-path";
+import type { JsonObject } from "@wfgraph/shared/types/json";
+import type { StringPath } from "@wfgraph/shared/types/payload-path";
 import {
   formatSchemaFailure,
   formatSchemaFailurePaths,
   formatStandardIssuePath,
-} from "@rova/shared/types/schema-message";
+} from "@wfgraph/shared/types/schema-message";
 import {
   asStandardSchema,
   isEffectSchema,
   type StandardSchema,
-} from "@rova/shared/types/schema";
-import type { ReferenceField } from "@rova/shared/graph/node-references";
-import { compileEventDataEquals } from "@rova/shared/lifecycle/inngest-event-data";
-import { requireOutputFieldsFromSchema } from "@rova/shared/graph/output-fields";
+} from "@wfgraph/shared/types/schema";
+import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
+import { compileEventDataEquals } from "@wfgraph/shared/lifecycle/inngest-event-data";
+import { requireOutputFieldsFromSchema } from "@wfgraph/shared/graph/output-fields";
 
 /**
  * What an Event's payload schema may be written in: any Standard Schema library,
@@ -50,7 +50,7 @@ import { requireOutputFieldsFromSchema } from "@rova/shared/graph/output-fields"
  * Nothing consumes the decoded value -- the gate discards it and the raw JSON
  * travels -- so a transform buys validation precision and derivation, and the
  * decoded type it produces has no reader to serve. `OutputSchema` in
- * `@rova/shared/graph/output-fields` is the deliberate opposite: an action's
+ * `@wfgraph/shared/graph/output-fields` is the deliberate opposite: an action's
  * handler produces the decoded value, so that one constrains the decoded side.
  *
  * The foreign arm names the other side, and Standard Schema leaves no way to say
@@ -78,14 +78,14 @@ export type EventSource = {
 
 export type EventDefinition<TPayload extends JsonObject> = {
   readonly kind: "event";
-  /** The Event's identity in Rova, and by default the name it arrives under. */
+  /** The Event's identity in WfGraph, and by default the name it arrives under. */
   readonly name: string;
   readonly label: string;
   readonly description?: string;
   /**
    * The intake gate: whether an arriving payload is this Event at all.
    *
-   * Built from the author's Effect schema with Rova's own parse options when
+   * Built from the author's Effect schema with WfGraph's own parse options when
    * there is one, and from `~standard.validate` when the payload was written in
    * Zod or arktype, so intake has one thing to call and one failure to catch.
    */
@@ -226,7 +226,7 @@ function buildPayloadGate(
 
 export type DefineEventInput<TPayload extends JsonObject> = {
   /**
-   * The Event's identity in Rova. One Event per name, and per thing that
+   * The Event's identity in WfGraph. One Event per name, and per thing that
    * happened: an app declares `appointment.created` and `appointment.canceled`
    * separately rather than one umbrella Event with a subtype field, because the
    * lifecycle model's rules are stated over Event names.
@@ -243,7 +243,7 @@ export type DefineEventInput<TPayload extends JsonObject> = {
   readonly correlationPath?: StringPath<TPayload>;
   /**
    * How the Event arrives, for an existing bus that sends one umbrella name and
-   * cannot change. Identity stays the Rova name above, so the lifecycle model is
+   * cannot change. Identity stays the WfGraph name above, so the lifecycle model is
    * untouched, and `when` becomes the listener's filter so Inngest still does
    * the narrowing.
    *

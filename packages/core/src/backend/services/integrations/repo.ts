@@ -6,7 +6,7 @@ import type {
   EncryptionKeyMismatch,
   IntegrationCipher,
 } from "#src/backend/services/integrations/cipher";
-import type { IntegrationConfig } from "@rova/shared/types/integration";
+import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
 
 /** One `integrations` row, with its config opened out of the AES envelope. */
 export type DecryptedIntegration = {
@@ -69,13 +69,13 @@ export class IntegrationRepo extends Context.Service<
       integrationId: string
     ) => Effect.Effect<boolean, DatabaseError>;
   }
->()("@rova/core/IntegrationRepo") {}
+>()("@wfgraph/core/IntegrationRepo") {}
 
 /**
  * The live repository.
  *
  * The cipher is a parameter because the encryption key belongs to the app, the
- * same way the database handle does: `createRovaApp` builds one from its
+ * same way the database handle does: `createWfGraphApp` builds one from its
  * `encryption` option and the Layer graph carries it here. Opening a row is its
  * own step after the query, which is what gives a rotated key its own tag:
  * crypto inside the query callback surfaces as a `DatabaseError`.

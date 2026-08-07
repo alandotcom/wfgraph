@@ -6,7 +6,7 @@ describe("toListenerFunctionId", () => {
   // cannot travel in it.
   it("slugs an Event name into something a URL can carry", () => {
     expect(toListenerFunctionId("app/appointment.updated")).toBe(
-      "rova-event-app-appointment-updated"
+      "wfgraph-event-app-appointment-updated"
     );
   });
 });

@@ -7,8 +7,8 @@
 import {
   LIFECYCLE_CANCELED_HANDLE,
   nodesBehindOutlet,
-} from "@rova/shared/lifecycle/lifecycle-outlets";
-import { configDeclaresCancelEvent } from "@rova/shared/lifecycle/lifecycle-rules";
+} from "@wfgraph/shared/lifecycle/lifecycle-outlets";
+import { configDeclaresCancelEvent } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 export type InactiveCanceledBranch = {

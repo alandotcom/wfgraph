@@ -6,10 +6,13 @@ import {
   workflowExecutions,
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
-import type { RovaDatabase, RovaTransaction } from "#src/backend/lib/db/index";
+import type {
+  WfGraphDatabase,
+  WfGraphTransaction,
+} from "#src/backend/lib/db/index";
 import { Database, type DatabaseError } from "#src/backend/lib/effect/database";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/lifecycle/execution-contracts";
-import type { Concurrency } from "@rova/shared/lifecycle/lifecycle-rules";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
+import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
   type AuditRepoMethods,
   makeAuditMethods,
@@ -67,7 +70,7 @@ function isStuckBeforeTheBus(row: {
  * meantime from being overwritten.
  */
 async function reclaimStuckRuns(
-  tx: RovaTransaction,
+  tx: WfGraphTransaction,
   executionIds: string[]
 ): Promise<string[]> {
   if (executionIds.length === 0) {
@@ -160,7 +163,7 @@ export class ExecutionRepo extends Context.Service<
     WaitsRepoMethods &
     AuditRepoMethods &
     CrossTableRepoMethods
->()("@rova/core/ExecutionRepo") {}
+>()("@wfgraph/core/ExecutionRepo") {}
 
 export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
   Layer.effect(
@@ -179,7 +182,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
             const { entityValue } = execution;
 
             const findByDelivery = async (
-              tx: RovaDatabase | RovaTransaction
+              tx: WfGraphDatabase | WfGraphTransaction
             ) => {
               if (!execution.deliveryId) {
                 return undefined;
@@ -197,7 +200,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
             // the run may have finished while the step was being retried, and
             // opening a second one would run the graph twice for one Event.
             const insertRunning = async (
-              tx: RovaDatabase | RovaTransaction
+              tx: WfGraphDatabase | WfGraphTransaction
             ) => {
               const [row] = await tx
                 .insert(workflowExecutions)
@@ -238,14 +241,14 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
 
             return await db.transaction(async (tx) => {
               // Serialized per workflow and entity, and only against other
-              // starts: nothing else in Rova takes a lock in this name space, so a
+              // starts: nothing else in WfGraph takes a lock in this name space, so a
               // run's own writes never wait here. The two-key form keeps the
               // workflow and the entity in separate hashes, so no pair of values
               // can join into another pair's key. Two entities whose hashes
               // collide serialize against each other, which costs a wait and
               // decides nothing.
               await tx.execute(
-                sql`select pg_advisory_xact_lock(hashtext(${`rova:entity:${execution.workflowId}`}), hashtext(${entityValue}))`
+                sql`select pg_advisory_xact_lock(hashtext(${`wfgraph:entity:${execution.workflowId}`}), hashtext(${entityValue}))`
               );
 
               // Asked before Concurrency is, because this arrival's own row is

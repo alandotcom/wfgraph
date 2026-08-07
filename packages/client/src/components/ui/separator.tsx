@@ -1,7 +1,7 @@
 import { Separator as SeparatorPrimitive } from "@base-ui/react/separator";
 import type * as React from "react";
 
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 
 function Separator({
   className,

@@ -14,8 +14,8 @@ import {
 import type { Effect } from "effect";
 import { workflowExecutions, workflows } from "#src/backend/lib/db/schema";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/lifecycle/execution-contracts";
-import type { JsonObject, JsonValue } from "@rova/shared/types/json";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
+import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
 import type {
   ExecutionPageQuery,
   ExecutionStatusRow,

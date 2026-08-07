@@ -1,4 +1,4 @@
-import type { RovaRuntime } from "#src/backend/runtime";
+import type { WfGraphRuntime } from "#src/backend/runtime";
 
 export type RpcContext = {
   headers: Headers;
@@ -8,5 +8,5 @@ export type RpcContext = {
    * the database and logger it reaches are the ones the app was built with and a
    * test can hand it different ones.
    */
-  runtime: RovaRuntime;
+  runtime: WfGraphRuntime;
 };

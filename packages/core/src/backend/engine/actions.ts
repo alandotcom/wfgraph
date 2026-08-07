@@ -2,7 +2,7 @@
  * Dispatch port for the workflow engine.
  *
  * How the engine reaches an action's implementation, and what it may say about
- * one. Everything a host passed to `createRovaApp` carries its own
+ * one. Everything a host passed to `createWfGraphApp` carries its own
  * implementation into the assembled surface -- an integration's actions through
  * `defineStep`, a host's own through `defineAction`, the engine's two through
  * the same `defineStep` -- and the app turns that surface into one of these. The
@@ -14,7 +14,10 @@
  */
 
 import type { Effect } from "effect";
-import type { NodeSteps, StepResult } from "@rova/shared/actions/step-result";
+import type {
+  NodeSteps,
+  StepResult,
+} from "@wfgraph/shared/actions/step-result";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
 
 /** What the catalog says about an action, as the run needs it. */

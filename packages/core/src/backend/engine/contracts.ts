@@ -6,8 +6,8 @@
  * calls it.
  */
 
-import type { StepResult } from "@rova/shared/actions/step-result";
-import type { JsonValue } from "@rova/shared/types/json";
+import type { StepResult } from "@wfgraph/shared/actions/step-result";
+import type { JsonValue } from "@wfgraph/shared/types/json";
 import {
   type EngineFailure,
   engineFailure,

@@ -4,7 +4,7 @@ import {
   getErrorMessage,
   type StepBag,
   StepFailure,
-} from "@rova/core/plugin";
+} from "@wfgraph/core/plugin";
 import { Effect } from "effect";
 import type { AcuityCredentials } from "#src/acuity/index";
 

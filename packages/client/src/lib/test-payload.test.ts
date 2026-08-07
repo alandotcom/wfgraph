@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { EventMetadata } from "@rova/shared/extensions/catalog";
+import type { EventMetadata } from "@wfgraph/shared/extensions/catalog";
 import {
   formValuesFromPayload,
   nextTestPayloads,

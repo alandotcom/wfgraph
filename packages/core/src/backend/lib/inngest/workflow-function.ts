@@ -21,9 +21,9 @@ import {
 } from "#src/backend/engine/core";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import type { WorkflowStore } from "#src/backend/engine/store";
-import { readJsonObject } from "@rova/shared/types/json";
-import { rejectUnknownKeys } from "@rova/shared/types/schema";
-import { formatSchemaFailure } from "@rova/shared/types/schema-message";
+import { readJsonObject } from "@wfgraph/shared/types/json";
+import { rejectUnknownKeys } from "@wfgraph/shared/types/schema";
+import { formatSchemaFailure } from "@wfgraph/shared/types/schema-message";
 import {
   INNGEST_META_KEY,
   workflowBranchInputSchema,
@@ -33,7 +33,7 @@ import {
   workflowRunCancelRequested,
   workflowRunRequested,
 } from "#src/backend/lib/inngest/events";
-import type { RovaRuntime } from "#src/backend/runtime";
+import type { WfGraphRuntime } from "#src/backend/runtime";
 
 function toDurationString(milliseconds: number): string {
   const seconds = Math.max(1, Math.ceil(milliseconds / 1000));
@@ -187,7 +187,7 @@ async function workflowRunRequestedHandler({
   actions: WorkflowActions;
   store: WorkflowStore;
   /** The application boundary that runs the whole engine Effect. */
-  appRuntime: RovaRuntime;
+  appRuntime: WfGraphRuntime;
   /** Zero on the first attempt of this body, and one higher on each retry. */
   attempt: number;
   step: DurableStep;
@@ -252,7 +252,7 @@ async function workflowBranchRequestedHandler({
   event: { data: typeof workflowBranchInputSchema.Type };
   actions: WorkflowActions;
   store: WorkflowStore;
-  appRuntime: RovaRuntime;
+  appRuntime: WfGraphRuntime;
   attempt: number;
   step: DurableStep;
 }) {
@@ -283,7 +283,7 @@ type WorkflowFunctionPorts = {
   /** Where a run's rows go, built by the app from its own runtime. */
   store: WorkflowStore;
   /** Runs the engine Effect at the outer Inngest execution boundary. */
-  appRuntime: RovaRuntime;
+  appRuntime: WfGraphRuntime;
 };
 
 /**
@@ -294,7 +294,7 @@ type WorkflowFunctionPorts = {
  * a terminal status ends non-retriably instead and spends none of these.
  *
  * What is remembered is what a handler put in its own `step.run`, plus the
- * run-log row the engine opens around it. Rova wraps no handler body
+ * run-log row the engine opens around it. WfGraph wraps no handler body
  * (ADR-0009), so a handler that wraps nothing repeats its work on every
  * attempt.
  *
@@ -314,7 +314,7 @@ const STEP_RETRIES = 4;
  * event, put there by whoever enqueued it.
  *
  * The Inngest dashboard therefore labels every run alike. The workflow's name
- * reaches a trace through the `rova.workflow.name` attribute the engine's span
+ * reaches a trace through the `wfgraph.workflow.name` attribute the engine's span
  * carries.
  *
  * The return type is stated because declaration emit cannot name the inferred

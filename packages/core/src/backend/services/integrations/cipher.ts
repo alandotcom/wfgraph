@@ -10,7 +10,7 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { Effect, Schema } from "effect";
 import { getAppLogger } from "#src/backend/lib/logger";
-import type { IntegrationConfig } from "@rova/shared/types/integration";
+import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
 
 const ALGORITHM = "aes-256-gcm";
 const KEY_LENGTH = 32;
@@ -31,7 +31,7 @@ export type EncryptionRuntimeConfig = {
 };
 
 /**
- * The key's shape, checked without building a cipher, so `createRovaApp` can
+ * The key's shape, checked without building a cipher, so `createWfGraphApp` can
  * report a bad key as a bad key before it has changed anything about the process.
  *
  * An absent key and a wrong-shaped one are different mistakes with different
@@ -46,7 +46,7 @@ export function assertValidEncryptionKey(
 
   if (!trimmed) {
     throw new Error(
-      `createRovaApp's encryption.key is unset. It is a 64-character hex string; read it from ${ENCRYPTION_KEY_ENV} or wherever your app keeps its secrets.`
+      `createWfGraphApp's encryption.key is unset. It is a 64-character hex string; read it from ${ENCRYPTION_KEY_ENV} or wherever your app keeps its secrets.`
     );
   }
 
@@ -55,7 +55,7 @@ export function assertValidEncryptionKey(
   // short buffer, and the throw lands at the first seal or open rather than here.
   if (!isHex(trimmed, KEY_LENGTH)) {
     throw new Error(
-      "createRovaApp's encryption.key must be a 64-character hex string (32 bytes)"
+      "createWfGraphApp's encryption.key must be a 64-character hex string (32 bytes)"
     );
   }
 }

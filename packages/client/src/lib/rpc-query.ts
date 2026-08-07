@@ -1,7 +1,7 @@
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { type Integration, rpc } from "#src/lib/rpc-client";
-import type { WorkflowApiPayload } from "@rova/shared/graph/api-contracts";
+import type { WorkflowApiPayload } from "@wfgraph/shared/graph/api-contracts";
 
 /**
  * TanStack Query bindings for the RPC contract.

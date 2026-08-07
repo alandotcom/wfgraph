@@ -6,12 +6,12 @@
  * `CancelBoundary`.
  */
 
-import { toWorkflowGraphData } from "@rova/shared/graph/graph";
+import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import type {
   SerializedWorkflowGraph,
   WorkflowNode,
-} from "@rova/shared/graph/types";
-import type { JsonObject } from "@rova/shared/types/json";
+} from "@wfgraph/shared/graph/types";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import { Cause, Effect } from "effect";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import type { BranchRunResult } from "#src/backend/engine/branch";
@@ -199,12 +199,12 @@ function workflowSpanAttributes(
   input: WorkflowExecutionInput | WorkflowBranchInput
 ): Record<string, string> {
   return {
-    "rova.workflow.id": input.workflowId,
-    "rova.execution.id": input.executionId,
+    "wfgraph.workflow.id": input.workflowId,
+    "wfgraph.execution.id": input.executionId,
     ...(input.workflowName === undefined
       ? {}
-      : { "rova.workflow.name": input.workflowName }),
-    "rova.execution.run_mode": input.runMode ?? "live",
+      : { "wfgraph.workflow.name": input.workflowName }),
+    "wfgraph.execution.run_mode": input.runMode ?? "live",
   };
 }
 
@@ -224,7 +224,7 @@ export function executeWorkflow(
 ): Effect.Effect<WorkflowExecutionResult, EngineFailure> {
   const execute = executeWorkflowInner(input, runtime, store, actions).pipe(
     Effect.annotateLogs(runLogAnnotations(input, runtime)),
-    Effect.withSpan("rova.workflow.execution", {
+    Effect.withSpan("wfgraph.workflow.execution", {
       attributes: workflowSpanAttributes(input),
     })
   );
@@ -381,10 +381,10 @@ export function executeWorkflowBranch(
     actions
   ).pipe(
     Effect.annotateLogs(runLogAnnotations(input, runtime)),
-    Effect.withSpan("rova.workflow.branch", {
+    Effect.withSpan("wfgraph.workflow.branch", {
       attributes: {
         ...workflowSpanAttributes(input),
-        "rova.branch.entry_node_id": input.entryNodeId,
+        "wfgraph.branch.entry_node_id": input.entryNodeId,
       },
     })
   );

@@ -17,7 +17,7 @@
  * the timeout, the retry schedule, and the trace span operators on one effect
  * rather than six pieces of bookkeeping in each client.
  *
- * `@rova/core/plugin` exports the whole of this, so an integration written
+ * `@wfgraph/core/plugin` exports the whole of this, so an integration written
  * outside this repo gets the retry-safety rule rather than inventing one.
  */
 
@@ -25,13 +25,13 @@ import {
   type JsonObject,
   type JsonValue,
   readJsonValue,
-} from "@rova/shared/types/json";
+} from "@wfgraph/shared/types/json";
 import { ExternalTransport } from "#src/backend/extensions/steps/external-transport";
 import {
   type InputSchema,
   isPromiseLike,
 } from "#src/backend/extensions/schema-io";
-import { isEffectSchema } from "@rova/shared/types/schema";
+import { isEffectSchema } from "@wfgraph/shared/types/schema";
 import { Duration, Effect, Option, Schedule, Schema } from "effect";
 import {
   Headers,
@@ -242,7 +242,7 @@ export type ExternalCallResult<A, TFailure> =
  * it is not that shape. Callers decide what an unreadable body means for them:
  * a failed send should say so rather than report success with blank fields.
  *
- * This is `readAs` from `@rova/shared/types/schema` with its compile-time guard
+ * This is `readAs` from `@wfgraph/shared/types/schema` with its compile-time guard
  * dropped, which is what lets a caller ask for nothing in particular. A client
  * checking that credentials work only needs a body to have arrived, and
  * `Schema.Unknown` says exactly that; the absent body it would otherwise read as

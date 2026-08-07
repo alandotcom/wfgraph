@@ -35,7 +35,7 @@ import {
  *
  * `TOutput` is the decoded side, because a handler produces the decoded value and
  * the encode to JSON happens after it returns. An Event's `PayloadSchema` in
- * `@rova/core` constrains the other side for the mirror-image reason: its payload
+ * `@wfgraph/core` constrains the other side for the mirror-image reason: its payload
  * arrives already encoded.
  */
 export type OutputSchema<TOutput> =
@@ -71,7 +71,7 @@ function describeSchema(
  * which is what `defineAction` wants: a host's `output` may come from
  * any Standard Schema library, and a derivation failure there should leave
  * the action addressable by node rather than crash the host's own boot. An
- * integration's action is Rova's own code and is held to the stricter
+ * integration's action is WfGraph's own code and is held to the stricter
  * `requireOutputFieldsFromSchema` below.
  */
 export function outputFieldsFromSchema(

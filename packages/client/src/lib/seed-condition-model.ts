@@ -3,7 +3,7 @@ import {
   compileConditionModel,
   createDefaultConditionModel,
   serializeConditionModel,
-} from "@rova/shared/conditions/conditions";
+} from "@wfgraph/shared/conditions/conditions";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /**

@@ -3,7 +3,7 @@ import type { Effect } from "effect";
 import { workflowExecutionLogs } from "#src/backend/lib/db/schema";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import type { WorkflowExecutionLog } from "#src/backend/services/executions/repo/contracts";
-import type { JsonValue } from "@rova/shared/types/json";
+import type { JsonValue } from "@wfgraph/shared/types/json";
 
 /** The `workflow_execution_logs` slice of `ExecutionRepo`, one row per node attempt. */
 export type NodeLogsRepoMethods = {

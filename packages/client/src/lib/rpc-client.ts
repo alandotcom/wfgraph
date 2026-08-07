@@ -8,14 +8,14 @@ import type { RouterContractClient } from "@orpc/contract";
 import { isNil } from "es-toolkit/predicate";
 import { omitBy } from "es-toolkit/object";
 import { getBasePath } from "#src/lib/base-path";
-import type { RpcContract } from "@rova/shared/rpc/contracts";
-import { getRpcErrorMessage } from "@rova/shared/rpc/error-message";
-import type { WorkflowApiPayload } from "@rova/shared/graph/api-contracts";
+import type { RpcContract } from "@wfgraph/shared/rpc/contracts";
+import { getRpcErrorMessage } from "@wfgraph/shared/rpc/error-message";
+import type { WorkflowApiPayload } from "@wfgraph/shared/graph/api-contracts";
 import {
   createSerializedWorkflowGraph,
   toWorkflowGraphData,
-} from "@rova/shared/graph/graph";
-import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
+} from "@wfgraph/shared/graph/graph";
+import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 import type {
   WorkflowEdge,
   WorkflowMode,

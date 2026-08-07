@@ -13,7 +13,7 @@ import {
   type CredentialsOf,
   defineIntegration,
   StepFailure,
-} from "@rova/core/plugin";
+} from "@wfgraph/core/plugin";
 import { Effect, Schema } from "effect";
 import { callSlack, describeSlackFailure } from "#src/slack/client";
 

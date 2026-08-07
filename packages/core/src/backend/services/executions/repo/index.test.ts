@@ -202,7 +202,7 @@ describe("startForEntity", () => {
     await start("newest-wins");
 
     const lock = sent(isLock);
-    expect(lock?.params).toEqual(["rova:entity:wf_1", "appt_1"]);
+    expect(lock?.params).toEqual(["wfgraph:entity:wf_1", "appt_1"]);
   });
 
   // Unlimited compares nothing, so a lock would only make concurrent starts of

@@ -45,7 +45,7 @@ export default defineConfig({
           setupFiles: ["./test-setup.ts"],
           server: {
             deps: {
-              // bundle.test.ts imports the built @rova/client to check where
+              // bundle.test.ts imports the built @wfgraph/client to check where
               // `clientBundle.dir` lands, and that answer comes from the built
               // file's own `import.meta.url`. The module runner rewrites that,
               // so this one artifact goes to node's loader untouched.

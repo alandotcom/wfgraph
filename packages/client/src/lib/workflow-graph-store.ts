@@ -21,7 +21,7 @@ import {
 import {
   formatTemplateToken,
   parseTemplate,
-} from "@rova/shared/graph/node-references";
+} from "@wfgraph/shared/graph/node-references";
 import { inactiveCanceledBranch } from "#src/lib/inactive-canceled-branch";
 import type {
   NodeRunStatus,

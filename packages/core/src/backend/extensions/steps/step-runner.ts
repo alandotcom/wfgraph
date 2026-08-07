@@ -12,7 +12,10 @@ import type {
   CredentialsUnavailable,
   WorkflowCredentials,
 } from "#src/backend/extensions/credential-fetcher";
-import type { NodeSteps, StepResult } from "@rova/shared/actions/step-result";
+import type {
+  NodeSteps,
+  StepResult,
+} from "@wfgraph/shared/actions/step-result";
 
 export type StepEnvironment = {
   /** An integration's stored secrets, read at the moment the handler asks. */

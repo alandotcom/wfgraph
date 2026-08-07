@@ -8,7 +8,7 @@ import {
   Position,
   useInternalNode,
 } from "@xyflow/react";
-import { getConditionBranchDisplayLabel } from "@rova/shared/conditions/condition-branch";
+import { getConditionBranchDisplayLabel } from "@wfgraph/shared/conditions/condition-branch";
 import type { WorkflowEdge } from "#src/lib/workflow-graph-types";
 
 const Temporary = ({

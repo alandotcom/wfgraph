@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { NodeConfigPatch } from "#src/components/workflow/config/node-config-patch";
 import { WaitEventSelect } from "#src/components/workflow/config/wait-event-select";
 import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
-import { parseConditionModel } from "@rova/shared/conditions/conditions";
+import { parseConditionModel } from "@wfgraph/shared/conditions/conditions";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /**

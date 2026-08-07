@@ -4,7 +4,7 @@ import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
-} from "@rova/shared/lifecycle/lifecycle-outlets";
+} from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 
 function lifecycleNode(id: string, cancelEvents: string[] = []): WorkflowNode {
   return {

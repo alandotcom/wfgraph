@@ -2,7 +2,7 @@
  * The fixtures here are Effect Schema, which is what this repo writes and what a
  * plugin author writes. The claim that any Standard Schema library may define an
  * Event rides on `asStandardSchema`, and `standard-schema-compat.test.ts` in
- * @rova/shared is where that bridge is tested against a foreign library.
+ * @wfgraph/shared is where that bridge is tested against a foreign library.
  */
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
@@ -276,7 +276,7 @@ describe("the intake gate", () => {
  * An Event may be described in any Standard Schema library, and the gate then goes
  * through that library's own `validate` rather than through an Effect decode. The
  * fixture is hand-rolled rather than Zod or arktype because neither is a
- * dependency of this package -- `standard-schema-compat.test.ts` in @rova/shared is
+ * dependency of this package -- `standard-schema-compat.test.ts` in @wfgraph/shared is
  * where the claim about those two libraries is made -- and what matters here is the
  * branch: a schema Effect does not recognise takes the other path.
  */

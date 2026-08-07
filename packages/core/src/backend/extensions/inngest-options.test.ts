@@ -3,7 +3,7 @@
  * the shape `defineEvent` hands this module: the identifier check reads the
  * schema object's own field names, so a bridged schema is what is under test.
  * What the rewrite does with an identifier once those names are in hand is
- * `inngest-event-data.test.ts` in @rova/shared.
+ * `inngest-event-data.test.ts` in @wfgraph/shared.
  */
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
@@ -11,7 +11,7 @@ import { rewriteInngestOptions } from "#src/backend/extensions/inngest-options";
 import {
   type StandardSchema,
   toStandardSchema,
-} from "@rova/shared/types/schema";
+} from "@wfgraph/shared/types/schema";
 
 const appointmentPayloadSchema = Schema.Struct({
   event: Schema.String.annotate({ description: "What happened" }),

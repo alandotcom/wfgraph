@@ -152,7 +152,7 @@ describe("defineStep and a credential store that refuses the read", () => {
  * A step written the way a host's `defineAction` is written: Zod for the
  * schemas, an `async` handler, and no Effect anywhere in the definition.
  *
- * Integrations author with Effect (`@rova/core/plugin`). The Promise arm stays
+ * Integrations author with Effect (`@wfgraph/core/plugin`). The Promise arm stays
  * for host actions; both shapes share `HandlerAnswer` / `toHandlerEffect`.
  */
 describe("defineStep and a handler that is not an Effect", () => {

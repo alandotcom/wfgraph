@@ -1,4 +1,4 @@
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 
 interface AnimatedBorderProps {
   className?: string;

@@ -11,15 +11,15 @@ import {
 import type { RunScopedAuditEventType } from "#src/backend/services/executions/workflow-audit";
 import { signalRunToStop } from "#src/backend/services/executions/end-runs";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
-import type { JsonObject, JsonObjectDraft } from "@rova/shared/types/json";
+import type { JsonObject, JsonObjectDraft } from "@wfgraph/shared/types/json";
 import type {
   WorkflowExecutionIgnoredReason,
   WorkflowExecutionStartSource,
-} from "@rova/shared/lifecycle/execution-contracts";
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 import type {
   SerializedWorkflowGraph,
   WorkflowMode,
-} from "@rova/shared/graph/types";
+} from "@wfgraph/shared/graph/types";
 
 /** Identity of the workflow plus the published version the run will execute. */
 export type WorkflowRunTarget = {

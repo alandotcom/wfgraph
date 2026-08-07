@@ -15,11 +15,11 @@ afterEach(() => {
 
 describe("getBasePath", () => {
   it("reads the mount point off the base tag, without its trailing slash", () => {
-    setBaseHref("/rova/");
-    expect(getBasePath()).toBe("/rova");
+    setBaseHref("/wfgraph/");
+    expect(getBasePath()).toBe("/wfgraph");
   });
 
-  it("reports no prefix when Rova owns the root", () => {
+  it("reports no prefix when WfGraph owns the root", () => {
     setBaseHref("/");
     expect(getBasePath()).toBe("");
   });
@@ -30,8 +30,8 @@ describe("getBasePath", () => {
   });
 
   it("composes into a root-relative API URL", () => {
-    setBaseHref("/rova/");
-    expect(`${getBasePath()}/api/extensions`).toBe("/rova/api/extensions");
+    setBaseHref("/wfgraph/");
+    expect(`${getBasePath()}/api/extensions`).toBe("/wfgraph/api/extensions");
 
     setBaseHref("/");
     expect(`${getBasePath()}/api/extensions`).toBe("/api/extensions");

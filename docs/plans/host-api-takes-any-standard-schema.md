@@ -1,14 +1,14 @@
 # The host API takes any Standard Schema
 
-A host hands Rova one Standard Schema per Event and per action. Rova reads it and
-asks for nothing else: no annotation on every path, no Rova-branded field helper,
+A host hands WfGraph one Standard Schema per Event and per action. WfGraph reads it and
+asks for nothing else: no annotation on every path, no WfGraph-branded field helper,
 no Effect. Today it asks for all three, and this plan removes them.
 
 ## What is wrong
 
 The schema is doing two jobs, and only one belongs to the host. Validation is the
-host's. Presentation is Rova's: a label per path, the fact that a string holds a
-moment in time, the list the template picker offers. Rova reads both off the same
+host's. Presentation is WfGraph's: a label per path, the fact that a string holds a
+moment in time, the list the template picker offers. WfGraph reads both off the same
 object, so a host has to edit their schema to serve the editor.
 
 The two entry points already disagree about this, which is the clearest evidence
@@ -53,7 +53,7 @@ a timestamp. It is JSON Schema's own vocabulary, every library can emit it, and
 - **Effect** emits nothing, for `Schema.Date` and for `Schema.DateFromString`
   alike. Both render as bare `{"type":"string"}`.
 
-So there is one broken library, and it is the one Rova is written in. Filed
+So there is one broken library, and it is the one WfGraph is written in. Filed
 upstream as [Effect-TS/effect#6790](https://github.com/Effect-TS/effect/issues/6790),
 with a one-line fix: annotate the internal `DateString` at `Schema.ts:11814` the
 way `Base64String` at `Schema.ts:13242` is already annotated. Both date paths
@@ -84,14 +84,14 @@ The example currently borrows the root's dependencies, so the root manifest is t
 example's manifest wearing a disguise. `examples/app.ts:31` is the only import of
 `effect` outside `packages/`.
 
-- Add `examples/package.json`: `@rova/example-app`, private. Dependencies
-  `@rova/core`, `@rova/plugins`, `@rova/client`, `dotenv`, `zod`. Dev dependency
+- Add `examples/package.json`: `@wfgraph/example-app`, private. Dependencies
+  `@wfgraph/core`, `@wfgraph/plugins`, `@wfgraph/client`, `dotenv`, `zod`. Dev dependency
   `tsx`. It owns `dev` and `start`.
 - Add `examples` to `packages` in `pnpm-workspace.yaml`.
-- Drop `@rova/core`, `@rova/plugins`, `dotenv` and `effect` from the root
-  dependencies, and `@rova/client` from the root dev dependencies. What is left at
+- Drop `@wfgraph/core`, `@wfgraph/plugins`, `dotenv` and `effect` from the root
+  dependencies, and `@wfgraph/client` from the root dev dependencies. What is left at
   the root is tooling.
-- Root `dev:app` and `start` delegate with `pnpm --filter @rova/example-app`.
+- Root `dev:app` and `start` delegate with `pnpm --filter @wfgraph/example-app`.
 - `load-env.ts` stays at the root for `scripts/migrate.ts`. The example inlines the
   two dotenv lines, which is what an adopter writes anyway.
 - `knip.ts` gains an `examples` workspace and loses `examples/**/*.ts` from the
@@ -108,13 +108,13 @@ example has no tests.
 
 ### 3. Rewrite the example in Zod
 
-Dates become `z.iso.datetime()` and ask nothing of Rova. Descriptions stay only
+Dates become `z.iso.datetime()` and ask nothing of WfGraph. Descriptions stay only
 where the key name reads badly, which is the point: an adopter sees what is
 required and what is decoration.
 
 ### 4. Delete `timestampField` and `dateField`
 
-Remove both from `@rova/core` and `@rova/core/plugin`, and delete them from
+Remove both from `@wfgraph/core` and `@wfgraph/core/plugin`, and delete them from
 `packages/shared/src/types/timestamp.ts`. The rest of that module stays: the ISO
 pattern and the encode/decode pair are used elsewhere.
 
@@ -136,7 +136,7 @@ Four things in it exist only because the host API was written in Effect:
   hand-written `format` annotation this plan introduces depends on it.]
 - The note on `Schema.Date` being refused at registration.
 
-The package list at the top gains `@rova/example-app`.
+The package list at the top gains `@wfgraph/example-app`.
 
 ## Order
 
@@ -147,7 +147,7 @@ it describes is gone.
 
 - Verify what `@valibot/to-json-schema` emits for `isoTimestamp`.
 - Until [#6790](https://github.com/Effect-TS/effect/issues/6790) lands, an Effect
-  author writing an Event gets no timestamp detection. Either bridge it in Rova
+  author writing an Event gets no timestamp detection. Either bridge it in WfGraph
   through the public `.ast` (the `Declaration` node carries
   `annotations.representation.id === "effect/schema/Date"`), or let them write the
   `format: "date-time"` annotation themselves. Nothing in the repo needs this once

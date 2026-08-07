@@ -1,5 +1,5 @@
 ---
-name: Rova Workflow Builder
+name: WfGraph Workflow Builder
 description: A self-hosted visual workflow editor that reads as an instrument, with graphite surfaces and color reserved for signal.
 colors:
   paper: "oklch(1 0 0)"
@@ -94,13 +94,13 @@ components:
     width: "192px"
 ---
 
-# Design System: Rova Workflow Builder
+# Design System: WfGraph Workflow Builder
 
 ## 1. Overview
 
 **Creative North Star: "The Instrument Panel"**
 
-Rova's editor is a cockpit for automation. The chrome recedes into graphite so the workflow graph owns the screen, and every light that comes on means something: a green border is a successful run, a red border is a failure, an animated border is work in progress. The user should feel they are reading gauges, never decoration.
+WfGraph's editor is a cockpit for automation. The chrome recedes into graphite so the workflow graph owns the screen, and every light that comes on means something: a green border is a successful run, a red border is a failure, an animated border is work in progress. The user should feel they are reading gauges, never decoration.
 
 The system is built from shadcn/ui (new-york style) on Base UI primitives, styled with Tailwind v4 tokens declared in OKLCH. It is deliberately conventional where convention earns trust: standard buttons, standard dialogs, standard form controls, in the vocabulary a Linear or Vercel user already speaks. The strategic anti-references from PRODUCT.md hold here: this must never resemble the colorful n8n/Zapier canvas where every node shouts its brand, and it must never drift into SaaS-generic gradients and cream tints.
 

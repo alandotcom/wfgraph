@@ -7,7 +7,7 @@
  * deciding what a node offers downstream -- are called during render and need it
  * synchronously.
  *
- * Read it with the lookups in `@rova/shared/extensions/catalog`, which the server
+ * Read it with the lookups in `@wfgraph/shared/extensions/catalog`, which the server
  * uses over the same document.
  */
 
@@ -16,11 +16,11 @@ import { getClientLogger } from "#src/lib/logger";
 import {
   emptyExtensionCatalog,
   type ExtensionCatalog,
-} from "@rova/shared/extensions/catalog";
+} from "@wfgraph/shared/extensions/catalog";
 import {
   readExtensionCatalog,
   readExtensionsResponse,
-} from "@rova/shared/extensions/catalog-wire";
+} from "@wfgraph/shared/extensions/catalog-wire";
 
 const logger = getClientLogger("extensions");
 
@@ -84,7 +84,7 @@ export async function hydrateExtensionsFromApi(): Promise<CatalogLoadResult> {
   const decoded = readExtensionCatalog(envelope?.catalog);
   if (!decoded) {
     logger.warn(
-      "The extension catalog from /api/extensions did not fit the wire schema in @rova/shared/extensions/catalog-wire, so the editor is drawing from the catalog it had. The server serving it is most likely a different build of Rova."
+      "The extension catalog from /api/extensions did not fit the wire schema in @wfgraph/shared/extensions/catalog-wire, so the editor is drawing from the catalog it had. The server serving it is most likely a different build of WfGraph."
     );
     return { ok: false, reason: "mismatch" };
   }

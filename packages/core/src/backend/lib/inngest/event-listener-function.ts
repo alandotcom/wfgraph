@@ -19,16 +19,16 @@ import { NonRetriableError } from "inngest";
 import type { Inngest, InngestFunction } from "inngest";
 import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
 import { getAppLogger } from "#src/backend/lib/logger";
-import type { RovaRuntime } from "#src/backend/runtime";
+import type { WfGraphRuntime } from "#src/backend/runtime";
 import {
   applyLifecycleRules,
   deliverToWaits,
   type LifecycleDeliveryOutcome,
   listEventSubscribers,
 } from "#src/backend/services/workflows/lifecycle/deliver-event";
-import { type JsonObject, readJsonObject } from "@rova/shared/types/json";
+import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
 import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
-import { compileEventDataEquals } from "@rova/shared/lifecycle/inngest-event-data";
+import { compileEventDataEquals } from "@wfgraph/shared/lifecycle/inngest-event-data";
 
 const logger = getAppLogger("workflow", "event-listener");
 
@@ -86,7 +86,7 @@ export async function runEventListener(input: {
   payload: JsonObject;
   /** Names the arrival in every line and row this delivery writes. */
   arrival: { eventId?: string; runId?: string };
-  runtime: RovaRuntime;
+  runtime: WfGraphRuntime;
   step: EventListenerSteps;
 }): Promise<{ eventName: string; workflows: WorkflowDelivery[] }> {
   const { event, payload, runtime, step } = input;
@@ -96,7 +96,7 @@ export async function runEventListener(input: {
   });
 
   // The gate, because what arrives is a host's own message onto the bus rather
-  // than a contract between Rova's two halves. A refusal is not retried, since
+  // than a contract between WfGraph's two halves. A refusal is not retried, since
   // the same payload fails the same way on the next attempt.
   const rejection = await runtime.runPromise(
     event.decodePayload(payload).pipe(
@@ -203,11 +203,11 @@ export function createInngestEventListenerFunction(input: {
   client: Inngest;
   event: AnyEventDefinition;
   /**
-   * The app's Layer graph. It arrives from `createRovaApp` through the function
+   * The app's Layer graph. It arrives from `createWfGraphApp` through the function
    * registry rather than being reached for here, so this function runs its
    * services on the same repositories and logger the HTTP side does.
    */
-  runtime: RovaRuntime;
+  runtime: WfGraphRuntime;
 }): InngestFunction.Any {
   const { client, event, runtime } = input;
   const when = event.source.when;

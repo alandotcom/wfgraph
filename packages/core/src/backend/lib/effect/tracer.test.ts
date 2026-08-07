@@ -43,7 +43,7 @@ describe("TracerBridgeLayer", () => {
       .getFinishedSpans()
       .find((finished) => finished.name === "traced.work");
     expect(span).toBeDefined();
-    expect(span?.instrumentationScope.name).toBe("rova-workflows");
+    expect(span?.instrumentationScope.name).toBe("wfgraph-workflows");
 
     await provider.shutdown();
   });
@@ -77,7 +77,7 @@ describe("TracerBridgeLayer", () => {
     expect(span?.status).toEqual({ code: 2, message: "test failure" });
     expect(span?.events.map((event) => event.name)).toEqual(["exception"]);
     expect(span?.instrumentationScope).toMatchObject({
-      name: "rova-workflows",
+      name: "wfgraph-workflows",
       version: "0.1.0",
     });
 

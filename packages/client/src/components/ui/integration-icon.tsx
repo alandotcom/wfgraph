@@ -1,6 +1,6 @@
 import { Database, HelpCircle } from "lucide-react";
 import { useIntegrationUi } from "#src/components/integration-ui-provider";
-import { cn } from "@rova/shared/utils";
+import { cn } from "@wfgraph/shared/utils";
 
 interface IntegrationIconProps {
   integration: string;

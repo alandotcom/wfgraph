@@ -4,7 +4,7 @@ import {
   type CredentialsOf,
   defineIntegration,
 } from "#src/backend/extensions/define-integration";
-import type { CredentialFields } from "@rova/shared/extensions/catalog";
+import type { CredentialFields } from "@wfgraph/shared/extensions/catalog";
 
 const twilioCredentialFields = {
   TWILIO_ACCOUNT_SID: { label: "Account SID", type: "text" },
@@ -44,7 +44,7 @@ function aTwilio(overrides: { category?: string } = {}) {
 
 describe("defineIntegration", () => {
   // Nothing registers on import: the value is the whole of what an integration
-  // is, and the line that passes it to `createRovaApp` is what turns it on.
+  // is, and the line that passes it to `createWfGraphApp` is what turns it on.
   it("answers a value carrying the credentials and the actions it was given", () => {
     const twilio = aTwilio();
 

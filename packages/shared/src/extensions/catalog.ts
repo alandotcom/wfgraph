@@ -6,7 +6,7 @@
  * never imports that file, so nothing a plugin reaches for reaches a bundle.
  *
  * Only data fits, so an icon and a custom output renderer stay an explicit
- * browser import, keyed by integration type in `@rova/plugins/ui`, and `logoUrl`
+ * browser import, keyed by integration type in `@wfgraph/plugins/ui`, and `logoUrl`
  * serves an integration that wants no more than an image.
  *
  * The lookups are pure functions over a catalog rather than methods on one, so
@@ -92,7 +92,7 @@ export type ExtensionCatalog = {
  * The surface before anything has been assembled or fetched.
  *
  * A host that forgets to pass its integrations gets this and no error, which is
- * why `createRovaApp` logs the counts it assembled.
+ * why `createWfGraphApp` logs the counts it assembled.
  */
 export const emptyExtensionCatalog: ExtensionCatalog = {
   events: [],
@@ -164,7 +164,7 @@ export function actionsByCategory(
  * The stored row is whatever was written to it, so a key the integration no
  * longer declares is dropped here rather than handed on. An integration the
  * catalog has never heard of contributes nothing, which is what happens when a
- * stored row outlives the integration a host passed to `createRovaApp`.
+ * stored row outlives the integration a host passed to `createWfGraphApp`.
  *
  * A blank value is left out rather than passed on as an empty string, so a
  * handler asking whether a credential is configured reads an absent key.

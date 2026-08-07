@@ -12,8 +12,8 @@ import { omit } from "es-toolkit/object";
 import type {
   ActionConfigField,
   ActionConfigFieldBase,
-} from "@rova/shared/plugins/action-fields";
-import { labelFromKey } from "@rova/shared/graph/schema-codec";
+} from "@wfgraph/shared/plugins/action-fields";
+import { labelFromKey } from "@wfgraph/shared/graph/schema-codec";
 
 /** An author's entry: the key, and whichever properties they chose to state. */
 export type AuthoredField = Partial<Omit<ActionConfigFieldBase, "key">> & {
@@ -30,7 +30,7 @@ export type AuthoredGroup = {
 export type AuthoredEntry = AuthoredField | AuthoredGroup;
 
 /**
- * `isFieldGroup` in `@rova/shared` reads a finished field. This reads an
+ * `isFieldGroup` in `@wfgraph/shared` reads a finished field. This reads an
  * author's, whose `type` may be absent because the schema supplies it.
  */
 function isAuthoredGroup(entry: AuthoredEntry): entry is AuthoredGroup {

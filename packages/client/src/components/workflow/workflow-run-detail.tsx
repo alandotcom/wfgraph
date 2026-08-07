@@ -1,4 +1,4 @@
-import { getRelativeTime } from "@rova/shared/utils/time";
+import { getRelativeTime } from "@wfgraph/shared/utils/time";
 import { Button } from "#src/components/ui/button";
 import {
   type ExecutionEvent,

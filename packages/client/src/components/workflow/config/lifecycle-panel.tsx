@@ -17,8 +17,8 @@ import { getExtensionCatalog } from "#src/lib/extensions";
 import {
   type ExtensionCatalog,
   findEvent,
-} from "@rova/shared/extensions/catalog";
-import { cn } from "@rova/shared/utils";
+} from "@wfgraph/shared/extensions/catalog";
+import { cn } from "@wfgraph/shared/utils";
 import {
   checkLifecycleRules,
   type Concurrency,
@@ -28,7 +28,7 @@ import {
   type LifecycleRules,
   pruneCorrelationPaths,
   readLifecycleRules,
-} from "@rova/shared/lifecycle/lifecycle-rules";
+} from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { EventMultiCombobox } from "./event-combobox";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
@@ -207,7 +207,7 @@ export function LifecyclePanel({
 
       <EventField
         hasEvents={catalog.events.length > 0}
-        help="When one of these arrives, Rova reads its Entity Value at the Correlation Path you set for it and cancels the runs already going for that entity. A canceled run leaves through the Canceled outlet."
+        help="When one of these arrives, WfGraph reads its Entity Value at the Correlation Path you set for it and cancels the runs already going for that entity. A canceled run leaves through the Canceled outlet."
         inputId={cancelEventsId}
         label="Cancel Events"
       >
@@ -275,7 +275,7 @@ function EventField({
       ) : (
         <p className="text-muted-foreground text-xs">
           This server declares no Events. Whoever runs it passes them to
-          <code className="mx-1 font-mono text-xs">createRovaApp</code>, and
+          <code className="mx-1 font-mono text-xs">createWfGraphApp</code>, and
           they appear here.
         </p>
       )}

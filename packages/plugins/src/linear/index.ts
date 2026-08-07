@@ -15,7 +15,7 @@ import {
   type CredentialsOf,
   defineIntegration,
   StepFailure,
-} from "@rova/core/plugin";
+} from "@wfgraph/core/plugin";
 import { Effect, Schema } from "effect";
 import { describeLinearFailure } from "#src/linear/errors";
 

@@ -3,7 +3,7 @@ import {
   type LinearErrorRaw,
   parseLinearError,
 } from "@linear/sdk";
-import { getErrorMessage } from "@rova/core/plugin";
+import { getErrorMessage } from "@wfgraph/core/plugin";
 import { Option, Schema } from "effect";
 
 /**

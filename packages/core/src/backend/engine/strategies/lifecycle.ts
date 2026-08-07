@@ -3,7 +3,7 @@ import type {
   NodeStrategy,
   NodeWorkContext,
 } from "#src/backend/engine/strategies/types";
-import type { JsonObject } from "@rova/shared/types/json";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import { Effect } from "effect";
 import { executionResultFromStepResult } from "#src/backend/engine/contracts";
 

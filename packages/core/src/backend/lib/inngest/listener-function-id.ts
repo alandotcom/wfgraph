@@ -11,5 +11,5 @@ import { slugify } from "inngest";
  * `slugify` is the SDK's own, so an id built here is the id Inngest would build.
  */
 export function toListenerFunctionId(eventName: string): string {
-  return `rova-event-${slugify(eventName)}`;
+  return `wfgraph-event-${slugify(eventName)}`;
 }

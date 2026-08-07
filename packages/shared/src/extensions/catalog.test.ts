@@ -239,7 +239,7 @@ describe("credentialsFromConfig", () => {
   });
 
   // Which is what a stored row naming an integration the host stopped passing to
-  // `createRovaApp` gets: no credentials, rather than a wrong guess at them.
+  // `createWfGraphApp` gets: no credentials, rather than a wrong guess at them.
   it("answers nothing for an integration the catalog does not hold", () => {
     expect(credentialsFromConfig(undefined, { authToken: "secret" })).toEqual(
       {}

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   emptyExtensionCatalog,
   type ExtensionCatalog,
-} from "@rova/shared/extensions/catalog";
+} from "@wfgraph/shared/extensions/catalog";
 import { maskIntegrationConfig } from "#src/backend/services/integrations/integration-config-masking";
 
 const slackLike = {
@@ -31,7 +31,7 @@ describe("masking an integration config on its way to the browser", () => {
     ).toEqual({ apiKey: "********", team: "acme" });
   });
 
-  // The integration is absent whenever a host mounted Rova without it. With no
+  // The integration is absent whenever a host mounted WfGraph without it. With no
   // declaration to read, every value is treated as a secret; the alternative
   // served a live API token to the browser.
   it("masks everything when the catalog does not hold the integration", () => {

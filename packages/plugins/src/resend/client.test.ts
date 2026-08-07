@@ -1,4 +1,4 @@
-import { ExternalTransport } from "@rova/core/plugin";
+import { ExternalTransport } from "@wfgraph/core/plugin";
 import { describe, expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { afterEach, beforeEach } from "vitest";

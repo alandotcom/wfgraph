@@ -3,8 +3,8 @@ import {
   WORKFLOW_EXECUTION_STATUSES,
   type WorkflowExecutionStartSource,
   type WorkflowExecutionStatus,
-} from "@rova/shared/lifecycle/execution-contracts";
-import type { ExecutionLogEntry } from "@rova/shared/graph/types";
+} from "@wfgraph/shared/lifecycle/execution-contracts";
+import type { ExecutionLogEntry } from "@wfgraph/shared/graph/types";
 import type { ExecutionLogsResult } from "#src/lib/rpc-client";
 
 /**

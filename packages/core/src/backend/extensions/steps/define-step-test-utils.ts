@@ -4,7 +4,7 @@
 
 import { Effect, Schema } from "effect";
 import { vi } from "vitest";
-import type { NodeSteps } from "@rova/shared/actions/step-result";
+import type { NodeSteps } from "@wfgraph/shared/actions/step-result";
 import { stubStepEnvironment } from "#src/backend/lib/effect/test-layers";
 import type { StepEffect } from "#src/backend/extensions/steps/step-runner";
 

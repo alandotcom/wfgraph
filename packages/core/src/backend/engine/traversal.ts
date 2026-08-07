@@ -14,14 +14,14 @@
 
 import { omit } from "es-toolkit";
 import { Effect } from "effect";
-import { normalizeConditionBranch } from "@rova/shared/conditions/condition-branch";
+import { normalizeConditionBranch } from "@wfgraph/shared/conditions/condition-branch";
 import type {
   ConditionBranch,
   WorkflowEdge,
   WorkflowNode,
-} from "@rova/shared/graph/types";
-import { eventSplitOutletEvent } from "@rova/shared/lifecycle/event-split";
-import type { LifecycleOutlet } from "@rova/shared/lifecycle/lifecycle-outlets";
+} from "@wfgraph/shared/graph/types";
+import { eventSplitOutletEvent } from "@wfgraph/shared/lifecycle/event-split";
+import type { LifecycleOutlet } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import type { BranchRunResult } from "#src/backend/engine/branch";
 import {
   type ExecutionResult,

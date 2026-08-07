@@ -42,7 +42,7 @@ three failures a call can end in: `ExternalUnreachable`, `ExternalRejected` (car
 system's own error body), and `ExternalUnreadable`.
 
 It lives in core, at `packages/core/src/backend/extensions/steps/external-http.ts`, and
-reaches this package through `@rova/core/plugin`. That is deliberate: the repeat-safety
+reaches this package through `@wfgraph/core/plugin`. That is deliberate: the repeat-safety
 rule it holds is the one an integration written outside this repo would otherwise invent,
 and inventing it wrong sends a second message to a real person.
 
@@ -125,7 +125,7 @@ Naming: the folder is the integration `type` in kebab-case; the credential type 
 
 ## Testing
 
-Drive the action, through `runAction` from `@rova/core/testing`. A handler is written
+Drive the action, through `runAction` from `@wfgraph/core/testing`. A handler is written
 inline and is not importable, and driving the action covers the whole path a run takes: the
 config decode, the credential fetch, the handler, the output encode and the envelope.
 `slack/send-slack-message.test.ts` is the pattern, with credentials as an `Effect.sync` that
@@ -146,11 +146,11 @@ other's outcome. Passing `credentials` an `Effect` is what pins the lazy read.
 
 `[name]/index.test.ts` beside it asserts what the definition contributes: the credential
 vocabulary, the action slugs, and the field list `requireOutputFieldsFromSchema` derives from
-each output schema. What Rova itself does around a handler is covered once, in
+each output schema. What WfGraph itself does around a handler is covered once, in
 `packages/core/src/backend/extensions/steps/define-step.test.ts`.
 
 `src/index.test.ts` runs `checkIntegration` over all six at module level, which is every
 check `assembleExtensions` runs, so a bad definition fails that file's collection. A host
 would otherwise meet it as a startup crash, and a description missing from one field of one
 output schema would reach a reviewer as a green suite. `checkIntegration` is exported from
-`@rova/core/plugin` so an outside integration package can do the same.
+`@wfgraph/core/plugin` so an outside integration package can do the same.

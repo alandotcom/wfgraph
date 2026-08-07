@@ -23,7 +23,7 @@ import type {
   JsonObject,
   JsonObjectDraft,
   JsonValue,
-} from "@rova/shared/types/json";
+} from "@wfgraph/shared/types/json";
 import { Effect } from "effect";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
 import type { DatabaseError } from "#src/backend/lib/effect/database";

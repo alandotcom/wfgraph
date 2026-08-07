@@ -1,6 +1,6 @@
 import { createClerkBackendClient, getClerkApiErrorMessage } from "./client";
 import type { ClerkCredentials } from "#src/clerk/index";
-import type { IntegrationTestResult } from "@rova/core/plugin";
+import type { IntegrationTestResult } from "@wfgraph/core/plugin";
 
 export async function testClerk(
   credentials: ClerkCredentials

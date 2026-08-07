@@ -179,7 +179,7 @@ describe("defineStep", () => {
     expect(modes).toEqual(["test", "live"]);
   });
 
-  // An input with no context is a Rova bug rather than something an author
+  // An input with no context is a WfGraph bug rather than something an author
   // wrote, and running anyway would hand a handler the node ids it was promised
   // as undefined. `defineAction` answers the same way.
   it("fails the node rather than calling the handler without a context", async () => {

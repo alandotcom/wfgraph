@@ -31,7 +31,7 @@ import {
   type CredentialsOf,
   defineIntegration,
   StepFailure,
-} from "@rova/core/plugin";
+} from "@wfgraph/core/plugin";
 import { Effect, Schema } from "effect";
 import { callAcuity, createAcuityClient } from "#src/acuity/client";
 import {

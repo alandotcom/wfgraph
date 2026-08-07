@@ -11,24 +11,27 @@
  * and comes back with the Event's own sentence about it.
  */
 
-import type { EventMetadata } from "@rova/shared/extensions/catalog";
-import type { ReferenceField } from "@rova/shared/graph/node-references";
+import type { EventMetadata } from "@wfgraph/shared/extensions/catalog";
+import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   type LifecycleRules,
   readLifecycleRules,
-} from "@rova/shared/lifecycle/lifecycle-rules";
+} from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
   readTestPayloads,
   type TestPayloads,
-} from "@rova/shared/lifecycle/test-payloads";
+} from "@wfgraph/shared/lifecycle/test-payloads";
 import {
   type JsonObject,
   type JsonValue,
   readJsonObject,
-} from "@rova/shared/types/json";
-import { encodeIsoTimestamp } from "@rova/shared/types/timestamp";
-import { getValueByPath, setValueByPath } from "@rova/shared/utils/object-path";
+} from "@wfgraph/shared/types/json";
+import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
+import {
+  getValueByPath,
+  setValueByPath,
+} from "@wfgraph/shared/utils/object-path";
 
 /** Which control draws a field, decided by the type the Event declared. */
 export type TestPayloadControl =

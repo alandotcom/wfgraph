@@ -14,8 +14,8 @@ import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import type { NodeContext } from "#src/backend/engine/step-log";
 import type { WorkflowStore } from "#src/backend/engine/store";
 import type { Traversal } from "#src/backend/engine/traversal";
-import type { WorkflowNode } from "@rova/shared/graph/types";
-import type { JsonObject } from "@rova/shared/types/json";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import type { Effect } from "effect";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
 
