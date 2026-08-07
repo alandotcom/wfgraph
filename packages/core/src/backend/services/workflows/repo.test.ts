@@ -306,3 +306,59 @@ describe("insertPublishedVersion", () => {
     ).toBe(false);
   });
 });
+
+describe("findByIdWithPublishedVersionForRun", () => {
+  function findForRun(workflowId: string) {
+    return Effect.gen(function* () {
+      const repo = yield* WorkflowRepo;
+      return yield* repo.findByIdWithPublishedVersionForRun(workflowId);
+    });
+  }
+
+  // The delivery fan-out and the manual-start preflight read only these four
+  // columns off the workflow row; the draft graph can run to megabytes and
+  // neither has any use for it (#36).
+  it("selects the workflow's id, name, mode and isPaused, and not its graph", async () => {
+    const { layer: databaseLayer, statements } = stubDatabase(() => []);
+
+    await Effect.runPromise(
+      findForRun("wf_1").pipe(
+        Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
+      )
+    );
+
+    const [statement] = statements;
+    expect(statement?.query).toContain('"workflows"."id"');
+    expect(statement?.query).toContain('"workflows"."name"');
+    expect(statement?.query).toContain('"workflows"."mode"');
+    expect(statement?.query).toContain('"workflows"."is_paused"');
+    expect(statement?.query).not.toContain('"workflows"."graph"');
+  });
+
+  // Preflight validates the published version's graph, not the draft, so the
+  // joined `workflow_versions` row is read in full.
+  it("still selects the published version's graph in full", async () => {
+    const { layer: databaseLayer, statements } = stubDatabase(() => []);
+
+    await Effect.runPromise(
+      findForRun("wf_1").pipe(
+        Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
+      )
+    );
+
+    const [statement] = statements;
+    expect(statement?.query).toContain('"workflow_versions"."graph"');
+  });
+
+  it("answers null when the workflow is gone", async () => {
+    const { layer: databaseLayer } = stubDatabase(() => []);
+
+    const found = await Effect.runPromise(
+      findForRun("wf_missing").pipe(
+        Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
+      )
+    );
+
+    expect(found).toBeNull();
+  });
+});

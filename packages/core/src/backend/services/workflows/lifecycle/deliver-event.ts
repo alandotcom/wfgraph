@@ -162,7 +162,7 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       .get("workflow", "deliver-event")
       .with({ eventName: input.event.name, workflowId: input.subscriber.id });
 
-    const loaded = yield* repo.findByIdWithPublishedVersion(
+    const loaded = yield* repo.findByIdWithPublishedVersionForRun(
       input.subscriber.id
     );
     if (!loaded) {

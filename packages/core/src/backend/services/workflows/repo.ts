@@ -1,4 +1,5 @@
 import { and, arrayContains, desc, eq, ne, sql } from "drizzle-orm";
+import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { Context, Effect, Layer } from "effect";
 import {
   type Workflow,
@@ -34,6 +35,19 @@ const workflowSummaryColumns = {
 };
 
 export type WorkflowSummaryRow = Omit<Workflow, "graph">;
+
+/** The columns a run reads off the workflow row: enough to gate and route it. */
+const workflowRunColumns = {
+  id: workflows.id,
+  name: workflows.name,
+  mode: workflows.mode,
+  isPaused: workflows.isPaused,
+};
+
+export type WorkflowRunRow = Pick<
+  Workflow,
+  "id" | "name" | "mode" | "isPaused"
+>;
 
 /**
  * A workflow one delivered Event concerns, and what it holds that Event for.
@@ -219,6 +233,25 @@ export class WorkflowRepo extends Context.Service<
       DatabaseError
     >;
     /**
+     * The same pair as `findByIdWithPublishedVersion`, narrowed to what a run
+     * reads off the workflow: `id`, `name`, `mode` and `isPaused`.
+     *
+     * The delivery fan-out and the manual-start preflight take this instead:
+     * both gate and route a run off these four columns and never the draft
+     * graph, which is what `findByIdWithPublishedVersion` still carries for the
+     * editor's load. The published version rides along in full, since preflight
+     * validates that graph.
+     */
+    readonly findByIdWithPublishedVersionForRun: (
+      workflowId: string
+    ) => Effect.Effect<
+      {
+        workflow: WorkflowRunRow;
+        publishedVersion: WorkflowVersion | null;
+      } | null,
+      DatabaseError
+    >;
+    /**
      * Point the workflow at an existing version, align the draft graph, and
      * rewrite subscriptions, in one transaction.
      */
@@ -254,6 +287,41 @@ export type InsertPublishedVersionResult =
   | { workflow: Workflow; version: WorkflowVersion }
   | { stale: true }
   | null;
+
+/**
+ * The query behind `findByIdWithPublishedVersion` and its `ForRun` sibling:
+ * same select, join, where and limit, and the same null check when the
+ * workflow is gone. The two callers differ only in which `workflows` columns
+ * they ask for, so that column set is the one parameter; a later change to
+ * the join or the where clause (a soft-delete filter, say) then lands on
+ * both callers by construction instead of needing two edits kept in sync
+ * by hand.
+ */
+async function selectWorkflowWithPublishedVersion<
+  WorkflowColumns extends Record<string, PgColumn> | PgTable,
+>(db: RovaDatabase, workflowId: string, workflowColumns: WorkflowColumns) {
+  const [row] = await db
+    .select({
+      workflow: workflowColumns,
+      publishedVersion: workflowVersions,
+    })
+    .from(workflows)
+    .leftJoin(
+      workflowVersions,
+      eq(workflows.publishedVersionId, workflowVersions.id)
+    )
+    .where(eq(workflows.id, workflowId))
+    .limit(1);
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    workflow: row.workflow,
+    publishedVersion: row.publishedVersion,
+  };
+}
 
 export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
   Layer.effect(
@@ -586,29 +654,18 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
           }),
 
         findByIdWithPublishedVersion: (workflowId) =>
-          database.query(async (db) => {
-            const [row] = await db
-              .select({
-                workflow: workflows,
-                publishedVersion: workflowVersions,
-              })
-              .from(workflows)
-              .leftJoin(
-                workflowVersions,
-                eq(workflows.publishedVersionId, workflowVersions.id)
-              )
-              .where(eq(workflows.id, workflowId))
-              .limit(1);
+          database.query((db) =>
+            selectWorkflowWithPublishedVersion(db, workflowId, workflows)
+          ),
 
-            if (!row) {
-              return null;
-            }
-
-            return {
-              workflow: row.workflow,
-              publishedVersion: row.publishedVersion,
-            };
-          }),
+        findByIdWithPublishedVersionForRun: (workflowId) =>
+          database.query((db) =>
+            selectWorkflowWithPublishedVersion(
+              db,
+              workflowId,
+              workflowRunColumns
+            )
+          ),
 
         setPublishedVersion: (input) =>
           database.query(
