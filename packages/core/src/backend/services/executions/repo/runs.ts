@@ -12,14 +12,9 @@ import {
   sql,
 } from "drizzle-orm";
 import type { Effect } from "effect";
-import {
-  workflowExecutions,
-  workflows,
-  workflowVersions,
-} from "#src/backend/lib/db/schema";
+import { workflowExecutions, workflows } from "#src/backend/lib/db/schema";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/lifecycle/execution-contracts";
-import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
 import type { JsonObject, JsonValue } from "@rova/shared/types/json";
 import type {
   ExecutionPageQuery,
@@ -105,16 +100,6 @@ export type RunsRepoMethods = {
   readonly findSummaryById: (
     executionId: string
   ) => Effect.Effect<ExecutionSummary | null, DatabaseError>;
-  /**
-   * The logs payload's run row plus the pinned version graph, in one round trip.
-   */
-  readonly findSummaryWithPinnedGraph: (executionId: string) => Effect.Effect<
-    | (ExecutionSummary & {
-        graph: SerializedWorkflowGraph;
-      })
-    | null,
-    DatabaseError
-  >;
   /** Where one run got to, the smallest answer the status poll can be given. */
   readonly findStatusById: (
     executionId: string
@@ -319,37 +304,6 @@ export function makeRunsMethods(
         });
 
         return execution ?? null;
-      }),
-
-    findSummaryWithPinnedGraph: (executionId) =>
-      database.query(async (db) => {
-        const [row] = await db
-          .select({
-            id: workflowExecutions.id,
-            workflowId: workflowExecutions.workflowId,
-            workflowVersionId: workflowExecutions.workflowVersionId,
-            status: workflowExecutions.status,
-            startSource: workflowExecutions.startSource,
-            runMode: workflowExecutions.runMode,
-            startEventName: workflowExecutions.startEventName,
-            entityValue: workflowExecutions.entityValue,
-            input: workflowExecutions.input,
-            output: workflowExecutions.output,
-            error: workflowExecutions.error,
-            startedAt: workflowExecutions.startedAt,
-            completedAt: workflowExecutions.completedAt,
-            duration: workflowExecutions.duration,
-            graph: workflowVersions.graph,
-          })
-          .from(workflowExecutions)
-          .innerJoin(
-            workflowVersions,
-            eq(workflowExecutions.workflowVersionId, workflowVersions.id)
-          )
-          .where(eq(workflowExecutions.id, executionId))
-          .limit(1);
-
-        return row ?? null;
       }),
 
     findStatusById: (executionId) =>

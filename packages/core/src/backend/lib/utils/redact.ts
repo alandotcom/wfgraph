@@ -10,6 +10,7 @@ import {
   type JsonValue,
   readJsonValue,
 } from "@rova/shared/types/json";
+import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
 
 const redactLogger = getAppLogger("utils", "redact");
 
@@ -201,4 +202,61 @@ export function redactSensitiveData(data: unknown): JsonValue | undefined {
     });
     return "[REDACTION_ERROR]";
   }
+}
+
+/**
+ * Redacts a JSON-shaped value and hands it back typed as what went in.
+ *
+ * `redactSensitiveData` answers `JsonValue | undefined` because it also has to
+ * answer for a bare scalar, or a value JSON has no spelling for at all. A
+ * node's `data` is neither: it already decoded through the graph schema, so
+ * nothing redaction does to it -- masking a leaf value, dropping a key that
+ * holds `undefined` -- can produce a shape the caller's own type disallows.
+ */
+function redactJsonShaped<T>(value: T): T {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see the doc comment above: redaction only narrows values the input type already allows.
+  return redactSensitiveData(value) as T;
+}
+
+/**
+ * Redacts a pinned workflow graph before it leaves a service, the same pass
+ * `redactSensitiveData` runs on a run's logged input and output. A node's
+ * `data` -- most of all `data.config`, which decodes as open JSON an author
+ * fills in freely -- can carry a value tried out while wiring an action: an
+ * API key, a token, a test sample pasted into a Lifecycle Node's Test
+ * Payloads. An edge's `data` is the same open JSON bag (`workflowEdgeAttributesSchema`
+ * declares it `Schema.Record(Schema.String, Schema.Unknown)`), so it is walked
+ * the same way. That value must not survive into a response built from a
+ * stored graph.
+ *
+ * Both walks touch `data` alone rather than the whole serialized node or edge,
+ * because the envelope graphology wraps each one in names its own identifier
+ * field `key`, which is also the exact spelling `redactSensitiveData` masks as
+ * a secret. Walking the envelope would turn every node or edge id into
+ * `[REDACTED]` instead of the value an author actually typed. `data` is the
+ * one open, JSON-shaped part of a node or edge; `key`, `attributes.id`,
+ * `attributes.type`, `attributes.position`, `attributes.source`, and
+ * `attributes.target` are graph structure the editor and the engine resolve
+ * node and edge ids against, so they pass through untouched.
+ */
+export function redactWorkflowGraph(
+  graph: SerializedWorkflowGraph
+): SerializedWorkflowGraph {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((node) => ({
+      ...node,
+      attributes: {
+        ...node.attributes,
+        data: redactJsonShaped(node.attributes.data),
+      },
+    })),
+    edges: graph.edges.map((edge) => ({
+      ...edge,
+      attributes: {
+        ...edge.attributes,
+        data: redactJsonShaped(edge.attributes.data),
+      },
+    })),
+  };
 }

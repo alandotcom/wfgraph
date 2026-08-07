@@ -50,27 +50,3 @@ describe("finishRun", () => {
     expect(statements[0]?.query).toMatch(/"duration" = [^,]*started_at/i);
   });
 });
-
-describe("findSummaryWithPinnedGraph", () => {
-  // Every run pins a version, so the logs overlay joins inner — a missing
-  // version is absence of the run, not detail-without-overlay. Joining on the
-  // wrong key, or dropping `graph` from the select, still answers a row and
-  // the service would only learn the overlay was wrong after a human opened it.
-  it("selects graph by inner-joining versions on workflow_version_id", async () => {
-    const { service: database, statements } = stubDatabase();
-
-    await Effect.runPromise(
-      makeRunsMethods(database).findSummaryWithPinnedGraph("exec_1")
-    );
-
-    const [statement] = statements;
-    expect(statement?.query).toContain('"workflow_versions"."graph"');
-    expect(statement?.query).toContain(
-      'inner join "workflow_versions" on "workflow_executions"."workflow_version_id" = "workflow_versions"."id"'
-    );
-    expect(statement?.query).not.toContain(
-      '"workflow_executions"."workflow_version_id" = "workflow_versions"."workflow_id"'
-    );
-    expect(statement?.params).toContain("exec_1");
-  });
-});

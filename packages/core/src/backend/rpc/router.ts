@@ -30,6 +30,7 @@ import {
 } from "#src/backend/services/workflows/workflow";
 import { postWorkflowDuplicate } from "#src/backend/services/workflows/duplicate";
 import { publishWorkflow } from "#src/backend/services/workflows/publish";
+import { getVersionGraph } from "#src/backend/services/workflows/version-graph";
 import {
   deleteWorkflowExecutions,
   getWorkflowExecutions,
@@ -291,6 +292,9 @@ export const rpcRouter = rpc.router({
     ),
     getExecutionLogs: rpc.workflow.getExecutionLogs.handler(
       rpcEffectHandler(({ input }) => getExecutionLogs(input.executionId))
+    ),
+    getVersionGraph: rpc.workflow.getVersionGraph.handler(
+      rpcEffectHandler(({ input }) => getVersionGraph(input.versionId))
     ),
     getExecutionEvents: rpc.workflow.getExecutionEvents.handler(
       rpcEffectHandler(({ input }) => getExecutionEvents(input.executionId))

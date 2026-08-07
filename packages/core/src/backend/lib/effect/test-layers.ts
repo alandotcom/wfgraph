@@ -278,7 +278,6 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   countSuperseded: refuse("countSuperseded"),
   listPage: refuse("listPage"),
   findSummaryById: refuse("findSummaryById"),
-  findSummaryWithPinnedGraph: refuse("findSummaryWithPinnedGraph"),
   findStatusById: refuse("findStatusById"),
   existsById: refuse("existsById"),
   findWorkflowIdById: refuse("findWorkflowIdById"),

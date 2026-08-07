@@ -46,6 +46,7 @@ type RawExecution = {
 const served = vi.hoisted(() => ({
   items: [] as RawExecution[],
   supersededCount: 0,
+  /** Keyed by workflowVersionId, the key `getVersionGraph` reads by. */
   graphs: {} as Record<string, SerializedWorkflowGraph>,
   /** Start identity the logs summary carries for ids not in the list. */
   logsSummaryExtras: {} as Record<
@@ -58,6 +59,13 @@ const served = vi.hoisted(() => ({
     }
   >,
 }));
+
+/** The mock logs endpoint's version id for one execution: a run pins a version,
+ * mocked here as a fixed function of the execution id so a test can address
+ * `served.graphs` by it without threading a real version id through. */
+function versionIdFor(executionId: string): string {
+  return `ver_${executionId}`;
+}
 
 vi.mock("#src/lib/rpc-query", () => ({
   refreshRunHistory: () => undefined,
@@ -100,6 +108,7 @@ vi.mock("#src/lib/rpc-query", () => ({
               execution: {
                 id: input.executionId,
                 workflowId: listed?.workflowId ?? "wf_1",
+                workflowVersionId: versionIdFor(input.executionId),
                 status: listed?.status ?? "completed",
                 startSource: listed?.startSource ?? "event",
                 runMode: listed?.runMode ?? "live",
@@ -115,11 +124,25 @@ vi.mock("#src/lib/rpc-query", () => ({
               },
               logs: [],
               waits: [],
-              graph:
-                served.graphs[input.executionId] ??
-                createSerializedWorkflowGraph({ nodes: [], edges: [] }),
             };
           },
+          select,
+        }),
+      },
+      getVersionGraph: {
+        queryOptions: ({
+          input,
+          select,
+        }: {
+          input: { versionId: string };
+          select: (payload: unknown) => unknown;
+        }) => ({
+          queryKey: ["version-graph", input.versionId],
+          queryFn: () => ({
+            graph:
+              served.graphs[input.versionId] ??
+              createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+          }),
           select,
         }),
       },
@@ -345,8 +368,8 @@ describe("WorkflowRuns", () => {
       execution("exec_old", "completed"),
     ];
     served.graphs = {
-      exec_old: pinnedGraph("v1_lifecycle"),
-      exec_new: pinnedGraph("v2_lifecycle"),
+      [versionIdFor("exec_old")]: pinnedGraph("v1_lifecycle"),
+      [versionIdFor("exec_new")]: pinnedGraph("v2_lifecycle"),
     };
     const { view, store } = renderRuns();
 
@@ -384,8 +407,8 @@ describe("WorkflowRuns", () => {
       execution("exec_old", "completed"),
     ];
     served.graphs = {
-      exec_old: pinnedGraph("v1_lifecycle"),
-      exec_new: pinnedGraph("v2_lifecycle"),
+      [versionIdFor("exec_old")]: pinnedGraph("v1_lifecycle"),
+      [versionIdFor("exec_new")]: pinnedGraph("v2_lifecycle"),
     };
     const { store, router } = renderRuns({ executionId: "exec_new" });
 
@@ -419,8 +442,8 @@ describe("WorkflowRuns", () => {
       execution("exec_b", "completed", "wf_2"),
     ];
     served.graphs = {
-      exec_a: pinnedGraph("a_lifecycle"),
-      exec_b: pinnedGraph("b_lifecycle"),
+      [versionIdFor("exec_a")]: pinnedGraph("a_lifecycle"),
+      [versionIdFor("exec_b")]: pinnedGraph("b_lifecycle"),
     };
     const { store, router } = renderRuns({ executionId: "exec_a" });
 
@@ -459,7 +482,7 @@ describe("WorkflowRuns", () => {
   // poll would rebuild nodes as idle and wipe statuses the status poll painted.
   it("does not reset overlay node statuses when logs poll", async () => {
     served.items = [execution("exec_1", "running")];
-    served.graphs = { exec_1: pinnedGraph("v1_lifecycle") };
+    served.graphs = { [versionIdFor("exec_1")]: pinnedGraph("v1_lifecycle") };
     const { view, store, queryClient } = renderRuns();
 
     fireEvent.click(await view.findByTestId("workflow-run-summary-row"));
