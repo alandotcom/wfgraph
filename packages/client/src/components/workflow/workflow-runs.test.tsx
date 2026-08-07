@@ -13,8 +13,10 @@ import { createStore, Provider as JotaiProvider } from "jotai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkflowRuns } from "#src/components/workflow/workflow-runs";
 import {
+  displayNodesAtom,
   executionOverlayGraphAtom,
   hydrateWorkflowAtom,
+  setNodeStatusesAtom,
 } from "#src/lib/workflow-graph-store";
 import {
   currentWorkflowIdAtom,
@@ -489,9 +491,71 @@ describe("WorkflowRuns", () => {
     });
   });
 
+  // The server's node-status list is not exhaustive: it reports only nodes
+  // that have an execution-log row for that run, so a node the new run has
+  // not reached is simply absent from it rather than reported idle. Nothing
+  // clears statusByNodeIdAtom on a straight run-to-run switch other than this
+  // sync effect, so without a reset a node id shared between two runs would
+  // go on showing what the first run did.
+  it("resets stale node statuses when switching straight to another run", async () => {
+    served.items = [
+      execution("exec_new", "completed"),
+      execution("exec_old", "completed"),
+    ];
+    served.graphs = {
+      [versionIdFor("exec_old")]: pinnedGraph("shared_lifecycle"),
+      [versionIdFor("exec_new")]: pinnedGraph("shared_lifecycle"),
+    };
+    const { store, router } = renderRuns({ executionId: "exec_new" });
+
+    await waitFor(() => {
+      expect(
+        store.get(executionOverlayGraphAtom)?.nodes.map((n) => n.id)
+      ).toEqual(["shared_lifecycle"]);
+    });
+
+    // Paint a status while exec_new is open, the way the run-status poll in
+    // page.tsx would.
+    store.set(setNodeStatusesAtom, [
+      { nodeId: "shared_lifecycle", status: "running" },
+    ]);
+    expect(
+      store.get(displayNodesAtom).find((node) => node.id === "shared_lifecycle")
+        ?.data.status
+    ).toBe("running");
+
+    await act(async () => {
+      await router.navigate({
+        to: "/workflows/$workflowId",
+        params: { workflowId: "wf_1" },
+        search: { executionId: "exec_old" },
+      });
+    });
+
+    await waitFor(() => {
+      expect(
+        store.get(executionOverlayGraphAtom)?.nodes.map((n) => n.id)
+      ).toEqual(["shared_lifecycle"]);
+    });
+
+    // exec_old's own status poll never ran in this test (that lives in
+    // page.tsx), so a node still reading "running" here can only be the
+    // previous run's stale entry surviving the switch. With the map reset,
+    // displayNodesAtom's fast path (no statuses, no inactive branch) hands
+    // the node back with no status field at all -- equivalent to idle, since
+    // the node components treat a missing status the same as "idle".
+    expect(
+      store.get(displayNodesAtom).find((node) => node.id === "shared_lifecycle")
+        ?.data.status ?? "idle"
+    ).toBe("idle");
+  });
+
   // A logs poll advances dataUpdatedAt; the overlay key must not, or every
   // poll would rebuild nodes as idle and wipe statuses the status poll painted.
-  it("does not reset overlay node statuses when logs poll", async () => {
+  // Status lives off the overlay's own node data now, in statusByNodeIdAtom
+  // (merged in by displayNodesAtom), so this exercises that atom rather than
+  // reaching into the overlay's nodes the way the pinned graph used to carry it.
+  it("does not reset node statuses when logs poll", async () => {
     served.items = [execution("exec_1", "running")];
     served.graphs = { [versionIdFor("exec_1")]: pinnedGraph("v1_lifecycle") };
     const { view, store, queryClient } = renderRuns();
@@ -504,24 +568,19 @@ describe("WorkflowRuns", () => {
       );
     });
 
-    const overlay = store.get(executionOverlayGraphAtom);
-    expect(overlay).not.toBeNull();
-    store.set(executionOverlayGraphAtom, {
-      ...overlay!,
-      nodes: overlay!.nodes.map((node) => ({
-        ...node,
-        data: { ...node.data, status: "success" as const },
-      })),
-    });
+    store.set(setNodeStatusesAtom, [
+      { nodeId: "v1_lifecycle", status: "success" },
+    ]);
 
     await act(async () => {
       await queryClient.refetchQueries({ queryKey: ["logs", "exec_1"] });
     });
 
     await waitFor(() => {
-      expect(store.get(executionOverlayGraphAtom)?.nodes[0]?.data.status).toBe(
-        "success"
-      );
+      expect(
+        store.get(displayNodesAtom).find((node) => node.id === "v1_lifecycle")
+          ?.data.status
+      ).toBe("success");
     });
   });
 });

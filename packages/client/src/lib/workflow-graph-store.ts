@@ -24,6 +24,7 @@ import {
 } from "@rova/shared/graph/node-references";
 import { inactiveCanceledBranch } from "#src/lib/inactive-canceled-branch";
 import type {
+  NodeRunStatus,
   WorkflowEdge,
   WorkflowNode,
   WorkflowNodeData,
@@ -57,6 +58,17 @@ export const executionOverlayGraphAtom = atom<{
 /** Read-only draft. Mutate through the action atoms below so undo always sees it. */
 export const nodesAtom = atom((get) => get(nodesStateAtom));
 export const edgesAtom = atom((get) => get(edgesStateAtom));
+
+/**
+ * Run status by node id, independent of which graph is on screen.
+ *
+ * A status belongs to a run, not to a node, so it is never written into a
+ * node's own `data` -- doing that is what used to force `executionOverlayGraphAtom`
+ * to carry a full second copy of the graph just to hold a different status per
+ * node. `displayNodesAtom` merges this onto the draft or the pinned overlay at
+ * display time instead, the same way it already merges `inactiveCanceledBranchAtom`.
+ */
+const statusByNodeIdAtom = atom<ReadonlyMap<string, NodeRunStatus>>(new Map());
 
 /** Whether the canvas is showing a run's pinned graph instead of the draft. */
 export const isExecutionOverlayActiveAtom = atom(
@@ -96,18 +108,32 @@ const INACTIVE_EDGE_STYLE = { opacity: 0.4 } as const;
 
 export const displayNodesAtom = atom((get) => {
   const nodes = get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom);
+  const statusByNodeId = get(statusByNodeIdAtom);
   const { nodeIds } = get(inactiveCanceledBranchAtom);
-  if (nodeIds.size === 0) {
+
+  // The common case -- no run is being painted and every Cancel Event outlet
+  // is either connected or the graph has none -- has nothing to merge, so the
+  // nodes come back exactly as they went in. React.memo on ActionNode and
+  // LifecycleNode does a shallow prop comparison, and it can only bail out on
+  // a node that is `===` what it rendered last time; a fresh `data` object on
+  // every node, every recompute, defeats that on every drag frame and every
+  // keystroke, since this atom is read on every render of the canvas.
+  if (statusByNodeId.size === 0 && nodeIds.size === 0) {
     return nodes;
   }
-  return nodes.map((node) =>
-    nodeIds.has(node.id)
+
+  return nodes.map((node) => {
+    const withStatus: WorkflowNode = {
+      ...node,
+      data: { ...node.data, status: statusByNodeId.get(node.id) ?? "idle" },
+    };
+    return nodeIds.has(node.id)
       ? {
-          ...node,
-          style: { ...node.style, ...INACTIVE_NODE_STYLE },
+          ...withStatus,
+          style: { ...withStatus.style, ...INACTIVE_NODE_STYLE },
         }
-      : node
-  );
+      : withStatus;
+  });
 });
 export const displayEdgesAtom = atom((get) => {
   const edges = get(executionOverlayGraphAtom)?.edges ?? get(edgesStateAtom);
@@ -221,18 +247,21 @@ export const loadWorkflowGraphAtom = atom(
 export const hydrateWorkflowAtom = atom(
   null,
   (_get, set, workflow: SavedWorkflow) => {
-    // Statuses belong to a run, not to the workflow, so a freshly loaded graph
-    // shows none of the previous run's progress. Clearing selection stops a
-    // node from arriving pre-selected in a workflow the user has just opened.
+    // Clearing selection stops a node from arriving pre-selected in a
+    // workflow the user has just opened.
     const nodes = workflow.nodes.map((node) => ({
       ...node,
       selected: false,
-      data: { ...node.data, status: "idle" as const },
     }));
 
     // Also clears undo history, so undo cannot reach back past the switch and
     // write the previous workflow's graph into this one.
     set(loadWorkflowGraphAtom, { nodes, edges: workflow.edges });
+    // Statuses belong to a run, not to the workflow, so a freshly loaded graph
+    // shows none of the previous run's progress -- even if a node id happens
+    // to be reused, which id generation makes exceedingly unlikely but the
+    // status map cannot otherwise rule out.
+    set(statusByNodeIdAtom, new Map());
     set(executionOverlayGraphAtom, null);
     set(selectedExecutionIdAtom, null);
     set(currentWorkflowIdAtom, workflow.id);
@@ -473,9 +502,25 @@ export const applyNodeLayoutAtom = atom(
   }
 );
 
+/**
+ * What `updateNodeDataAtom` accepts. `status` is omitted rather than merely
+ * documented, so writing a run status into a node's own data is a compile
+ * error at every call site, including the ones that take the setter straight
+ * off the atom with `useSetAtom`.
+ */
+export type NodeDataUpdate = {
+  id: string;
+  data: Partial<Omit<WorkflowNodeData, "status">>;
+};
+
+/**
+ * Write an edit into one node's data: label, description, config. Run status
+ * does not travel through here -- it is never part of a node's own data, so
+ * it has its own writer, `setNodeStatusesAtom`.
+ */
 export const updateNodeDataAtom = atom(
   null,
-  (get, set, { id, data }: { id: string; data: Partial<WorkflowNodeData> }) => {
+  (get, set, { id, data }: NodeDataUpdate) => {
     if (!draftEditable(get)) {
       return;
     }
@@ -511,12 +556,7 @@ export const updateNodeDataAtom = atom(
     });
 
     set(nodesStateAtom, newNodes);
-
-    // A status change is execution progress, not an edit, so it neither dirties
-    // the workflow nor triggers a save.
-    if (!data.status) {
-      requestGraphSave(get, set);
-    }
+    requestGraphSave(get, set);
   }
 );
 
@@ -763,64 +803,53 @@ export const canUndoAtom = atom((get) => get(historyAtom).length > 0);
 export const canRedoAtom = atom((get) => get(futureAtom).length > 0);
 
 /** Reset run badges. Execution state, so it neither dirties nor saves. */
-export const clearNodeStatusesAtom = atom(null, (get, set) => {
+export const clearNodeStatusesAtom = atom(null, (_get, set) => {
   // Deleting runs (the only caller) must also drop the run overlay so the
   // canvas returns to the draft rather than painting statuses on a gone run.
   set(executionOverlayGraphAtom, null);
-  set(
-    nodesStateAtom,
-    get(nodesStateAtom).map((node) => ({
-      ...node,
-      data: { ...node.data, status: "idle" as const },
-    }))
-  );
+  set(statusByNodeIdAtom, new Map());
 });
 
+/**
+ * Drop every recorded status without touching the overlay.
+ *
+ * The server's status list is not exhaustive -- it names only the nodes that
+ * have an execution-log row for the run being read -- so switching straight
+ * from one open run to another has to clear what the first run left behind
+ * before the second run's statuses land. Leaving a stale entry in place would
+ * have a node the new run never reached go on reporting what the old run did.
+ * `clearNodeStatusesAtom` also drops the overlay, which is wrong here: the
+ * overlay for the new run is what workflow-runs.tsx's sync effect sets up
+ * next, in the same pass.
+ */
+export const resetNodeStatusesAtom = atom(null, (_get, set) => {
+  set(statusByNodeIdAtom, new Map());
+});
+
+/**
+ * Record a run's progress. Merged onto whichever graph `displayNodesAtom` is
+ * showing -- there is no branch here for the overlay versus the draft,
+ * because a status is display-time state, not graph state.
+ */
 export const setNodeStatusesAtom = atom(
   null,
-  (
-    get,
-    set,
-    statuses: Array<{
-      nodeId: string;
-      status: "idle" | "running" | "success" | "error" | "cancelled";
-    }>
-  ) => {
+  (get, set, statuses: Array<{ nodeId: string; status: NodeRunStatus }>) => {
     if (statuses.length === 0) {
       return;
     }
 
-    const statusByNodeId = new Map(
-      statuses.map((statusEntry) => [statusEntry.nodeId, statusEntry.status])
-    );
-
-    const applyStatuses = (nodes: WorkflowNode[]) => {
-      let hasUpdates = false;
-      const nextNodes = nodes.map((node) => {
-        const nextStatus = statusByNodeId.get(node.id);
-        if (!nextStatus || node.data.status === nextStatus) {
-          return node;
-        }
-
+    const current = get(statusByNodeIdAtom);
+    const next = new Map(current);
+    let hasUpdates = false;
+    for (const { nodeId, status } of statuses) {
+      if (current.get(nodeId) !== status) {
+        next.set(nodeId, status);
         hasUpdates = true;
-        return { ...node, data: { ...node.data, status: nextStatus } };
-      });
-      return hasUpdates ? nextNodes : null;
-    };
-
-    // Statuses belong on the graph the canvas is showing.
-    const overlay = get(executionOverlayGraphAtom);
-    if (overlay) {
-      const nextNodes = applyStatuses(overlay.nodes);
-      if (nextNodes) {
-        set(executionOverlayGraphAtom, { ...overlay, nodes: nextNodes });
       }
-      return;
     }
 
-    const nextNodes = applyStatuses(get(nodesStateAtom));
-    if (nextNodes) {
-      set(nodesStateAtom, nextNodes);
+    if (hasUpdates) {
+      set(statusByNodeIdAtom, next);
     }
   }
 );

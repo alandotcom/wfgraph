@@ -88,7 +88,10 @@ export function toEditorNode(node: PersistedWorkflowNode): WorkflowNode {
     width: node.width,
     height: node.height,
     measured: node.measured,
-    data: { ...node.data, status: "idle" },
+    // No status: a freshly converted node carries no run of its own. The
+    // graph store merges a run's status onto whichever graph is on screen at
+    // display time, so this node's `data` never needs one baked in.
+    data: { ...node.data },
   };
 }
 

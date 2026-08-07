@@ -18,7 +18,10 @@ import {
   toWorkflowExecutions,
 } from "#src/lib/execution-logs";
 import { orpcQuery, refreshRunHistory } from "#src/lib/rpc-query";
-import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
+import {
+  executionOverlayGraphAtom,
+  resetNodeStatusesAtom,
+} from "#src/lib/workflow-graph-store";
 import { toEditorEdge, toEditorNode } from "#src/lib/workflow-graph-types";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
@@ -64,6 +67,7 @@ export function WorkflowRuns() {
   const [showSuperseded, setShowSuperseded] = useState(false);
   const includeSuperseded = showSuperseded || executionId !== undefined;
   const setExecutionOverlay = useSetAtom(executionOverlayGraphAtom);
+  const resetNodeStatuses = useSetAtom(resetNodeStatusesAtom);
 
   const executionsQuery = useQuery({
     ...orpcQuery.workflow.getExecutions.queryOptions({
@@ -156,6 +160,18 @@ export function WorkflowRuns() {
         return;
       }
 
+      // The server's node-status list only names nodes the run actually
+      // reached, so moving the effective selection to a different run has to
+      // drop what the previous one left behind before the new run's own
+      // statuses land -- otherwise a node the new run never reaches goes on
+      // reporting what the old run did. A repeat commit for the run already
+      // open (a logs poll, or the open→ready transition of the same run)
+      // must not reset, or it would wipe statuses the status poll just
+      // painted for this very run.
+      if (selectedExecutionId !== executionId) {
+        resetNodeStatuses();
+      }
+
       setActiveTab("runs");
       setSelectedExecutionId(executionId);
 
@@ -169,14 +185,10 @@ export function WorkflowRuns() {
 
       const graphData = toWorkflowGraphData(graph);
       setExecutionOverlay({
-        nodes: graphData.nodes.map((node) => {
-          const editorNode = toEditorNode(node);
-          return {
-            ...editorNode,
-            selected: false,
-            data: { ...editorNode.data, status: "idle" as const },
-          };
-        }),
+        nodes: graphData.nodes.map((node) => ({
+          ...toEditorNode(node),
+          selected: false,
+        })),
         edges: graphData.edges.map(toEditorEdge),
       });
     }
