@@ -227,7 +227,7 @@ function graphWithEventSplit() {
 function workflowLayer(workflow: Workflow) {
   return stubWorkflowRepo({
     findById: () => Effect.succeed(workflow),
-    findByIdWithPublishedVersion: () =>
+    findByIdWithPublishedVersionForRun: () =>
       Effect.succeed({
         workflow,
         publishedVersion: {

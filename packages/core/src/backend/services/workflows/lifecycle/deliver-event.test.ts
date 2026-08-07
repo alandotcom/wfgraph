@@ -156,7 +156,7 @@ function publishedVersion(workflow: Workflow): WorkflowVersion {
 function stubPublishedWorkflow(workflow: Workflow) {
   return stubWorkflowRepo({
     findById: () => Effect.succeed(workflow),
-    findByIdWithPublishedVersion: () =>
+    findByIdWithPublishedVersionForRun: () =>
       Effect.succeed({
         workflow,
         publishedVersion: publishedVersion(workflow),
@@ -515,7 +515,7 @@ describe("applyLifecycleRules", () => {
           Effect.provide(
             Layer.mergeAll(
               stubWorkflowRepo({
-                findByIdWithPublishedVersion: () => Effect.succeed(null),
+                findByIdWithPublishedVersionForRun: () => Effect.succeed(null),
               }),
               unreachedRunSeams
             )
@@ -572,7 +572,7 @@ describe("applyLifecycleRules", () => {
           Effect.provide(
             Layer.mergeAll(
               stubWorkflowRepo({
-                findByIdWithPublishedVersion: () =>
+                findByIdWithPublishedVersionForRun: () =>
                   Effect.fail(
                     new DatabaseError({
                       cause: new Error("terminating connection due to crash"),
