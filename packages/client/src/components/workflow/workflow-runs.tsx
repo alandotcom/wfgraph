@@ -211,7 +211,9 @@ export function WorkflowRuns() {
   };
 
   const handleBack = () => {
-    void navigate({ search: {} });
+    // Closing a run is an exit, not a forward step: a push here would let the
+    // browser Back button undo the exit and reopen the run just closed (#40).
+    void navigate({ search: {}, replace: true });
   };
 
   if (executionsQuery.isPending && executionId === undefined) {
