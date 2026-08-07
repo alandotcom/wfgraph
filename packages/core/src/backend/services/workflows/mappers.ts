@@ -66,14 +66,14 @@ export function toWorkflowSummaryPayload(
  */
 export function toWorkflowApiPayload(
   workflow: WorkflowPayloadSource,
-  published: { graph: unknown } | null
+  published: { graphDigest: string } | null
 ): WorkflowApiPayload {
   return {
     ...toWorkflowSummaryPayload(workflow),
     graph: workflow.graph,
     hasUnpublishedChanges: draftDiffersFromPublished(
       workflow.graph,
-      published?.graph
+      published?.graphDigest ?? null
     ),
   };
 }

@@ -23,6 +23,20 @@ import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
 type WorkflowDeleted = { success: true };
 
 /**
+ * The version a draft still points at, resolved by the id an already-read row
+ * carries rather than by re-reading `published_version_id` through the
+ * workflow: a concurrent publish could otherwise pair the draft with a newer
+ * version than the one it knew.
+ */
+export const resolvePublishedVersion = (
+  repo: WorkflowRepo["Service"],
+  publishedVersionId: string | null
+) =>
+  publishedVersionId
+    ? repo.findVersionById(publishedVersionId)
+    : Effect.succeed(null);
+
+/**
  * This module's logger, as the Effect that produces it.
  *
  * A generator body yields it, and the `Effect.fn` transform beside that body
@@ -178,12 +192,10 @@ export const patchWorkflow = Effect.fn("patchWorkflow")(
       modeChanged,
     });
 
-    // Resolve the version this draft still points at by id, not by re-reading
-    // `published_version_id` through the workflow: a concurrent publish could
-    // otherwise pair this draft with a newer version than the one it knew.
-    const publishedVersion = updatedWorkflow.publishedVersionId
-      ? yield* repo.findVersionById(updatedWorkflow.publishedVersionId)
-      : null;
+    const publishedVersion = yield* resolvePublishedVersion(
+      repo,
+      updatedWorkflow.publishedVersionId
+    );
 
     return toWorkflowApiPayload(updatedWorkflow, publishedVersion);
   },

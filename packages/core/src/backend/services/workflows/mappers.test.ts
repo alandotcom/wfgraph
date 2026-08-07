@@ -9,6 +9,7 @@ import {
   toWorkflowApiPayload,
   withDefaultLifecycleNode,
 } from "#src/backend/services/workflows/mappers";
+import { graphDigest } from "#src/backend/services/workflows/version-digest";
 
 function createWorkflow(overrides: Partial<Workflow> = {}): Workflow {
   return {
@@ -73,7 +74,9 @@ describe("workflow mappers", () => {
       ],
       edges: [],
     });
-    const payload = toWorkflowApiPayload(draft, { graph: published });
+    const payload = toWorkflowApiPayload(draft, {
+      graphDigest: graphDigest(published),
+    });
 
     expect(payload.hasUnpublishedChanges).toBe(true);
     expect(payload.publishedVersionId).toBe("ver_1");
@@ -85,7 +88,9 @@ describe("workflow mappers", () => {
       publishedVersionId: "ver_1",
       graph,
     });
-    const payload = toWorkflowApiPayload(draft, { graph });
+    const payload = toWorkflowApiPayload(draft, {
+      graphDigest: graphDigest(graph),
+    });
 
     expect(payload.hasUnpublishedChanges).toBe(false);
   });

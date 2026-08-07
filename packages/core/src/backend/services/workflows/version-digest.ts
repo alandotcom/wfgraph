@@ -19,21 +19,22 @@ export function graphDigest(graph: unknown): string {
 }
 
 /**
- * Whether the editable draft differs from the version starts use.
+ * Whether the editable draft differs from the published version.
  *
- * Both sides are hashed as loaded (typically from JSONB), so key-order drift
- * between an in-memory prepare and a round-tripped row cannot disagree with
- * itself. Never-published workflows answer false: the badge for that case is
- * "Never published", not this flag.
+ * Compares against the version row's own stored digest rather than re-hashing
+ * its graph, so a badge read costs one hash, not two. The draft side is hashed
+ * as loaded (typically from JSONB), which is why it agrees with a digest
+ * computed the same way at publish time. Never-published workflows answer
+ * false: the badge for that case is "Never published", not this flag.
  */
 export function draftDiffersFromPublished(
   draftGraph: unknown,
-  publishedGraph: unknown
+  publishedGraphDigest: string | null
 ): boolean {
-  if (publishedGraph == null) {
+  if (publishedGraphDigest == null) {
     return false;
   }
-  return graphDigest(draftGraph) !== graphDigest(publishedGraph);
+  return graphDigest(draftGraph) !== publishedGraphDigest;
 }
 
 /**

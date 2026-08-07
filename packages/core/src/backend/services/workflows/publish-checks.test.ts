@@ -111,8 +111,10 @@ describe("version-digest", () => {
       edges: [],
     });
 
-    expect(draftDiffersFromPublished(published, published)).toBe(false);
-    expect(draftDiffersFromPublished(moved, published)).toBe(true);
+    expect(draftDiffersFromPublished(published, graphDigest(published))).toBe(
+      false
+    );
+    expect(draftDiffersFromPublished(moved, graphDigest(published))).toBe(true);
     expect(draftDiffersFromPublished(moved, null)).toBe(false);
   });
 
