@@ -603,10 +603,11 @@ describe("createRovaApp with inngest.connect", () => {
     );
   });
 
-  // A down or misconfigured gateway rejects the Connect handshake at boot.
-  // The shared catch still gives the pool back, so a host that retries after
-  // fixing the gateway is not refused by a leaked connection.
-  it("rejects boot when Connect handshake fails and gives the pool back", async () => {
+  // A handshake failure the SDK cannot itself retry (outside its
+  // ReconnectError catch) still rejects `connect()` directly, and the shared
+  // catch still gives the pool back so a host that retries after fixing
+  // whatever broke is not refused by a leaked connection.
+  it("rejects boot when Connect itself rejects and gives the pool back", async () => {
     const createSurface = dbModule.createDatabaseSurface;
     let database: ReturnType<typeof createSurface> | undefined;
     const surfaceSpy = vi
@@ -632,6 +633,52 @@ describe("createRovaApp with inngest.connect", () => {
 
       // A pool that was never ended would answer with ECONNREFUSED
       // (nothing listens on :1), not CONNECTION_ENDED.
+      await expect(database.client`select 1`).rejects.toThrow(
+        "CONNECTION_ENDED"
+      );
+    } finally {
+      surfaceSpy.mockRestore();
+    }
+  });
+
+  // Read against the installed inngest@4.14.0 source: every handshake
+  // failure the SDK meets (a down gateway included) is a ReconnectError, and
+  // its reconcile loop retries a ReconnectError forever without ever
+  // settling the promise connect() hands back. Boot must not hang behind
+  // that: it fails once connectTimeoutMs elapses, names the gateway it could
+  // not reach, and still gives the pool back.
+  it("fails boot when Connect never settles, naming the gateway", async () => {
+    const createSurface = dbModule.createDatabaseSurface;
+    let database: ReturnType<typeof createSurface> | undefined;
+    const surfaceSpy = vi
+      .spyOn(dbModule, "createDatabaseSurface")
+      .mockImplementation((config) => {
+        database = createSurface(config);
+        return database;
+      });
+
+    // Mirrors the SDK's own behavior against an unreachable gateway: the
+    // handshake's ReconnectError is retried internally, so nothing outside
+    // the SDK ever observes a rejection or a resolution.
+    connect.mockReturnValueOnce(new Promise<never>(() => {}));
+
+    try {
+      await expect(
+        createRovaApp({
+          ...BASE_OPTIONS,
+          inngest: {
+            ...BASE_OPTIONS.inngest,
+            connect: true,
+            gatewayUrl: "ws://localhost:8390/v0/connect",
+            connectTimeoutMs: 5,
+          },
+        })
+      ).rejects.toThrow("ws://localhost:8390/v0/connect");
+
+      if (!database) {
+        throw new Error("Boot opened no database surface to give back.");
+      }
+
       await expect(database.client`select 1`).rejects.toThrow(
         "CONNECTION_ENDED"
       );

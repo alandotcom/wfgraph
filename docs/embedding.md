@@ -266,25 +266,25 @@ server of the host takes.
 
 ## createRovaApp options
 
-| Option                              | Required | Description                                                                                                                                  |
-| ----------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `basePath`                          | No       | Path the host mounts Rova at (default `/`)                                                                                                   |
-| `auth`                              | Yes      | Predicate that decides who reaches the editor, or `"external"`                                                                               |
-| `database.url`                      | Yes¹     | PostgreSQL connection string                                                                                                                 |
-| `database.host` and co.             | Yes¹     | `host`, `port`, `user`, `password`, `database`, in place of a URL                                                                            |
-| `database.schema`                   | No       | Postgres schema Rova keeps its tables in (default `_workflows`)                                                                              |
-| `database.maxConnections`           | No       | Connections the query pool can open (default 10)                                                                                             |
-| `database.ssl`                      | No       | `true`, `"require"`, `"allow"`, `"prefer"` or `"verify-full"`                                                                                |
-| `database.migrations.runOnStartup`  | No       | Apply the pending migrations at start-up (default `false`)                                                                                   |
-| `database.migrations.migrationsDir` | No       | Custom migrations directory                                                                                                                  |
-| `encryption.key`                    | Yes      | 64-character hex string. It encrypts the integration secrets                                                                                 |
-| `inngest.id`                        | Yes      | Inngest application ID                                                                                                                       |
-| `inngest.*`                         | No       | isDev, baseUrl, eventKey, env, signingKey, signingKeyFallback, serveOrigin, servePath, connect, instanceId, gatewayUrl, maxWorkerConcurrency |
-| `extensions.events`                 | No       | `defineEvent` values                                                                                                                         |
-| `extensions.actions`                | No       | `defineAction` values                                                                                                                        |
-| `extensions.integrations`           | No       | `defineIntegration` values                                                                                                                   |
-| `logger`                            | No       | A `RovaLogger` that takes each log line. The default is a console sink                                                                       |
-| `client`                            | No       | The editor bundle to serve, from `@rova/client`                                                                                              |
+| Option                              | Required | Description                                                                                                                                                    |
+| ----------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `basePath`                          | No       | Path the host mounts Rova at (default `/`)                                                                                                                     |
+| `auth`                              | Yes      | Predicate that decides who reaches the editor, or `"external"`                                                                                                 |
+| `database.url`                      | Yes¹     | PostgreSQL connection string                                                                                                                                   |
+| `database.host` and co.             | Yes¹     | `host`, `port`, `user`, `password`, `database`, in place of a URL                                                                                              |
+| `database.schema`                   | No       | Postgres schema Rova keeps its tables in (default `_workflows`)                                                                                                |
+| `database.maxConnections`           | No       | Connections the query pool can open (default 10)                                                                                                               |
+| `database.ssl`                      | No       | `true`, `"require"`, `"allow"`, `"prefer"` or `"verify-full"`                                                                                                  |
+| `database.migrations.runOnStartup`  | No       | Apply the pending migrations at start-up (default `false`)                                                                                                     |
+| `database.migrations.migrationsDir` | No       | Custom migrations directory                                                                                                                                    |
+| `encryption.key`                    | Yes      | 64-character hex string. It encrypts the integration secrets                                                                                                   |
+| `inngest.id`                        | Yes      | Inngest application ID                                                                                                                                         |
+| `inngest.*`                         | No       | isDev, baseUrl, eventKey, env, signingKey, signingKeyFallback, serveOrigin, servePath, connect, instanceId, gatewayUrl, maxWorkerConcurrency, connectTimeoutMs |
+| `extensions.events`                 | No       | `defineEvent` values                                                                                                                                           |
+| `extensions.actions`                | No       | `defineAction` values                                                                                                                                          |
+| `extensions.integrations`           | No       | `defineIntegration` values                                                                                                                                     |
+| `logger`                            | No       | A `RovaLogger` that takes each log line. The default is a console sink                                                                                         |
+| `client`                            | No       | The editor bundle to serve, from `@rova/client`                                                                                                                |
 
 ¹ `database` takes one arm of the two. `schema`, `maxConnections`, `ssl` and `migrations`
 are valid on both.
@@ -321,6 +321,11 @@ Read these once:
   `inngest.gatewayUrl`, or `inngest.maxWorkerConcurrency` when the worker needs
   them; the SDK also reads `INNGEST_CONNECT_GATEWAY_URL`. Serverless hosts leave
   `connect` unset so Inngest can call `/api/inngest`.
+- **`createRovaApp` bounds the Connect handshake at boot.** The installed SDK
+  retries a failed handshake forever and never settles the promise it hands
+  back, so an unreachable gateway would otherwise hang boot with nothing
+  logged. Rova races it against `inngest.connectTimeoutMs` (default 30
+  seconds) and fails boot with an error naming the gateway once that elapses.
 - `createRovaApp` answers `{ fetch, basePath, dispose }`. `await dispose()` drains an
   open Connect worker, then returns when the layers of the Effect runtime finalize. One
   Rova per process is the supported arrangement, because the database handle, the Inngest

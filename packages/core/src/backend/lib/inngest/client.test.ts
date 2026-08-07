@@ -162,4 +162,47 @@ describe("createInngestSurface connect", () => {
     });
     expect(connection.connectionId).toBe("conn-test");
   });
+
+  // The SDK's own reconcile loop keeps retrying a handshake after the
+  // timeout has rejected boot: nothing cancels it, so it can still land a
+  // WorkerConnection later. Left alone, that connection sits registered
+  // with the gateway (WORKER_READY already sent) with nothing holding it,
+  // since createRovaApp tore its runtime and pool down when boot's promise
+  // rejected. The late arrival must be closed, not silently dropped.
+  it("closes a handshake that resolves after boot's timeout already rejected", async () => {
+    let resolveConnect!: (value: {
+      connectionId: string;
+      state: string;
+      close: () => Promise<void>;
+      closed: Promise<void>;
+      getDebugState: () => unknown;
+    }) => void;
+    connect.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveConnect = resolve;
+      })
+    );
+
+    const surface = createInngestSurface({
+      id: "connect-late",
+      isDev: true,
+      connectTimeoutMs: 5,
+    });
+
+    await expect(surface.connect(functions)).rejects.toThrow("could not reach");
+
+    const close = vi.fn().mockResolvedValue(undefined);
+    resolveConnect({
+      connectionId: "conn-late",
+      state: "ACTIVE",
+      close,
+      closed: Promise.resolve(),
+      getDebugState: vi.fn(),
+    });
+
+    // Give the late `.then()` handler a turn to run.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    expect(close).toHaveBeenCalledTimes(1);
+  });
 });
