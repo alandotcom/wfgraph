@@ -134,7 +134,9 @@ Event needs no lifecycle role to wake a wait, and waking follows Precedence.
 An immutable published copy of a workflow's graph, together with the catalog
 fingerprint it was sound against. Draft saves edit the live graph only;
 Publish mints (or reuses) a version and points the workflow at it. Event and
-manual starts refuse a never-published workflow.
+manual starts refuse a never-published workflow. A version an Execution pins
+lives as long as that Execution; one that no Execution pins and no workflow
+names is swept once it falls outside the newest ten.
 
 **Publish**:
 The hard gate that turns a draft into a Workflow Version. Content-hash

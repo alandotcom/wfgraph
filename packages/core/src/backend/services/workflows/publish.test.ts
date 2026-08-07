@@ -1,14 +1,19 @@
-import { assert, describe, layer } from "@effect/vitest";
+import { assert, describe, it as standalone, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
+import { DatabaseError } from "#src/backend/lib/effect/database";
 import { Conflict } from "#src/backend/lib/effect/failures";
 import {
+  makeRecordingLogger,
   SilentAppLoggerLayer,
   stubExtensionCatalog,
   stubIntegrationRepo,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
-import { publishWorkflow } from "#src/backend/services/workflows/publish";
+import {
+  publishWorkflow,
+  RETAINED_VERSIONS_PER_WORKFLOW,
+} from "#src/backend/services/workflows/publish";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import type { LifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
@@ -61,6 +66,30 @@ const draft: Workflow = {
   updatedAt: new Date("2026-03-01T00:00:00.000Z"),
 };
 
+/** What `insertPublishedVersion` answers for the input it was handed. */
+function mintedFrom(
+  input: Parameters<WorkflowRepo["Service"]["insertPublishedVersion"]>[0]
+): { workflow: Workflow; version: WorkflowVersion } {
+  const version: WorkflowVersion = {
+    id: input.versionId,
+    workflowId: input.workflowId,
+    version: input.version,
+    graph: input.draftGraph,
+    catalogFingerprint: input.catalogFingerprint,
+    graphDigest: input.graphDigest,
+    publishedAt: new Date("2026-08-03T00:00:00.000Z"),
+  };
+
+  return {
+    workflow: {
+      ...draft,
+      publishedVersionId: version.id,
+      graph: version.graph,
+    },
+    version,
+  };
+}
+
 describe("publishWorkflow", () => {
   layer(
     Layer.mergeAll(
@@ -79,6 +108,7 @@ describe("publishWorkflow", () => {
           findById: () => Effect.succeed(draft),
           findVersionByContent: () => Effect.succeed(null),
           findLatestVersion: () => Effect.succeed(null),
+          pruneUnreferencedVersions: () => Effect.succeed([]),
           insertPublishedVersion: (input) =>
             Effect.sync(() => {
               inserted.push(input);
@@ -137,6 +167,7 @@ describe("publishWorkflow", () => {
           findById: () => Effect.succeed(draft),
           findVersionByContent: () => Effect.succeed(null),
           findLatestVersion: () => Effect.succeed(null),
+          pruneUnreferencedVersions: () => Effect.succeed([]),
           insertPublishedVersion: (input) =>
             Effect.sync(() => {
               capturedDigest = input.graphDigest;
@@ -170,6 +201,7 @@ describe("publishWorkflow", () => {
               catalogFingerprint: capturedFingerprint,
               graph: draft.graph,
             }),
+          pruneUnreferencedVersions: () => Effect.succeed([]),
           setPublishedVersion: (input) =>
             Effect.sync(() => {
               reused.push(input.versionId);
@@ -224,5 +256,122 @@ describe("publishWorkflow", () => {
         );
       })
     );
+
+    // Publish is the only event that grows the version table, so the bound
+    // holds continuously by sweeping here rather than on a schedule.
+    it.effect("sweeps the workflow it just published", () =>
+      Effect.gen(function* () {
+        const swept: Array<
+          Parameters<WorkflowRepo["Service"]["pruneUnreferencedVersions"]>[0]
+        > = [];
+
+        const repo = stubWorkflowRepo({
+          findById: () => Effect.succeed(draft),
+          findVersionByContent: () => Effect.succeed(null),
+          findLatestVersion: () => Effect.succeed(null),
+          pruneUnreferencedVersions: (input) =>
+            Effect.sync(() => {
+              swept.push(input);
+              return [];
+            }),
+          insertPublishedVersion: (input) => Effect.succeed(mintedFrom(input)),
+        });
+
+        yield* publishWorkflow({
+          workflowId: "wf_1",
+          graph: draft.graph,
+        }).pipe(Effect.provide(repo));
+
+        assert.strictEqual(swept.length, 1);
+        assert.strictEqual(swept[0]?.workflowId, "wf_1");
+        assert.strictEqual(
+          swept[0]?.keepNewest,
+          RETAINED_VERSIONS_PER_WORKFLOW
+        );
+      })
+    );
+
+    // The reuse path is where a version most often becomes prunable: the one
+    // the workflow pointed at a moment ago is now named by nothing.
+    it.effect("sweeps on the reuse path too", () =>
+      Effect.gen(function* () {
+        const swept: string[] = [];
+        const existing: WorkflowVersion = {
+          id: "ver_1",
+          workflowId: "wf_1",
+          version: 3,
+          graph: draft.graph,
+          catalogFingerprint: "",
+          graphDigest: "",
+          publishedAt: new Date("2026-08-01T00:00:00.000Z"),
+        };
+
+        const repo = stubWorkflowRepo({
+          findById: () => Effect.succeed(draft),
+          findVersionByContent: (input) =>
+            Effect.succeed({
+              ...existing,
+              graphDigest: input.graphDigest,
+              catalogFingerprint: input.catalogFingerprint,
+            }),
+          pruneUnreferencedVersions: (input) =>
+            Effect.sync(() => {
+              swept.push(input.workflowId);
+              return [];
+            }),
+          setPublishedVersion: () =>
+            Effect.succeed({
+              workflow: { ...draft, publishedVersionId: existing.id },
+              version: existing,
+            }),
+        });
+
+        yield* publishWorkflow({
+          workflowId: "wf_1",
+          graph: draft.graph,
+        }).pipe(Effect.provide(repo));
+
+        assert.deepStrictEqual(swept, ["wf_1"]);
+      })
+    );
   });
+
+  // The version write has already committed by the time the sweep runs, so
+  // letting its failure escape would answer a 500 for a publish that happened.
+  // This case reads its own log lines, so it builds a logger rather than
+  // joining the silent one the block above shares.
+  standalone.effect("answers the publish even when the sweep fails", () =>
+    Effect.gen(function* () {
+      const recording = makeRecordingLogger();
+      const repo = stubWorkflowRepo({
+        findById: () => Effect.succeed(draft),
+        findVersionByContent: () => Effect.succeed(null),
+        findLatestVersion: () => Effect.succeed(null),
+        pruneUnreferencedVersions: () =>
+          Effect.fail(new DatabaseError({ cause: new Error("boom") })),
+        insertPublishedVersion: (input) => Effect.succeed(mintedFrom(input)),
+      });
+
+      const result = yield* publishWorkflow({
+        workflowId: "wf_1",
+        graph: draft.graph,
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            repo,
+            recording.layer,
+            catalogLayer,
+            stubIntegrationRepo({ typesByIds: () => Effect.succeed({}) })
+          )
+        )
+      );
+
+      assert.strictEqual(result.publishedVersion, 1);
+      assert.strictEqual(recording.warnLines.length, 1);
+      assert.ok(
+        recording.warnLines[0]?.message.includes("prune"),
+        `expected a prune warning, got: ${recording.warnLines[0]?.message}`
+      );
+    })
+  );
 });

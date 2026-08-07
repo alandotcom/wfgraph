@@ -99,6 +99,19 @@ describe("the generated migrations", () => {
     );
     expect(sql).toContain(`in (${predicate})`);
   });
+  // The version sweep at publish is the first thing that deletes a
+  // workflow_versions row, and published_version_id is `on delete set null`, so
+  // Postgres runs that action for every version deleted whether a referrer
+  // exists or not. Without this index it scans the whole workflows table each
+  // time, and the sweep also asks the same question in its own predicate.
+  it("index the published_version_id a workflow_versions delete sets null", async () => {
+    const sql = (await readMigrations())
+      .map((migration) => migration.sql)
+      .join("\n");
+
+    expect(sql).toContain(`CREATE INDEX "workflows_published_version_id_idx"`);
+  });
+
   // Drizzle applies a migration by comparing folder timestamps and never hashes,
   // so a regenerated baseline re-runs `CREATE TABLE` on every database that ran
   // the old one. This entry is what every existing database recorded after the

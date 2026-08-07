@@ -258,6 +258,7 @@ const workflowRepoStubs: WorkflowRepo["Service"] = {
   ),
   setPublishedVersion: refuse("setPublishedVersion"),
   insertPublishedVersion: refuse("insertPublishedVersion"),
+  pruneUnreferencedVersions: refuse("pruneUnreferencedVersions"),
 };
 
 /**

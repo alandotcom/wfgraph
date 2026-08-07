@@ -27,6 +27,20 @@ describe("the schema declarations", () => {
   });
 });
 
+describe("workflows indexes", () => {
+  // published_version_id is `on delete set null`, and the version sweep at
+  // publish is what makes a workflow_versions delete happen at all. Without an
+  // index on this column, every version deleted scans the whole workflows table
+  // for a row to null out, and the sweep's own predicate scans it a second time.
+  it("indexes published_version_id, which a workflow_versions delete sets null through", () => {
+    const names = getTableConfig(schema.workflows).indexes.map(
+      (index) => index.config.name
+    );
+
+    expect(names).toContain("workflows_published_version_id_idx");
+  });
+});
+
 describe("workflow_versions indexes", () => {
   // No query in repo.ts orders or filters on published_at: findLatestVersion and
   // findVersionByContent both order by version, findVersionById and

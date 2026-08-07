@@ -2,6 +2,10 @@
  * Publish: mint (or reuse) an immutable workflow version from the editor graph,
  * rewrite the event subscription index from that graph, and point the workflow
  * at it so starts use it.
+ *
+ * The version sweep at the end runs after that write has committed, so it is
+ * awaited but cannot fail the publish: its failure is a warning and nothing
+ * more.
  */
 
 import { Effect } from "effect";
@@ -24,6 +28,7 @@ import {
   graphDigest,
 } from "#src/backend/services/workflows/version-digest";
 import { generateId } from "@rova/shared/utils/id";
+import { getErrorMessage } from "@rova/shared/utils";
 
 const loggerFor = (workflowId: string) =>
   Effect.map(AppLogger, (appLogger) =>
@@ -34,6 +39,19 @@ const publishOnlyChecks = [checkUnreachableSubtrees] as const;
 
 const STALE_PUBLISH_MESSAGE =
   "This workflow was published elsewhere. Refresh and try again.";
+
+/**
+ * Versions a workflow keeps whatever their state.
+ *
+ * Nothing in the product reads an unreferenced version — the run panel fetches
+ * the graph by the id its Execution pins, and a version an Execution pins is
+ * never swept — so this is a margin around the head of the list rather than a
+ * retention guarantee anyone reads.
+ */
+export const RETAINED_VERSIONS_PER_WORKFLOW = 10;
+
+/** Versions one publish sweeps, so a long backlog drains over several. */
+const VERSION_PRUNE_BATCH = 50;
 
 /**
  * Publish the graph the editor sent as an immutable version.
@@ -137,6 +155,33 @@ export const publishWorkflow = Effect.fn("publishWorkflow")(
         ...(matching ? {} : { nodeCount: prepared.nodes.length }),
       }
     );
+
+    // Publish is the only event that grows the version table, so bounding it
+    // here holds the bound continuously. The reuse path sweeps too: the version
+    // the workflow pointed at a moment ago is the one that just became
+    // unreferenced. The write above has committed, so a failure here is a
+    // warning rather than a 500 for a publish that happened.
+    const pruned = yield* repo
+      .pruneUnreferencedVersions({
+        workflowId,
+        keepNewest: RETAINED_VERSIONS_PER_WORKFLOW,
+        limit: VERSION_PRUNE_BATCH,
+      })
+      .pipe(
+        Effect.catchTag("DatabaseError", (failure) =>
+          logger
+            .warn("Failed to prune unreferenced workflow versions", {
+              error: getErrorMessage(failure.cause),
+            })
+            .pipe(Effect.as<string[]>([]))
+        )
+      );
+    if (pruned.length > 0) {
+      yield* logger.info("Pruned unreferenced workflow versions", {
+        count: pruned.length,
+        versionIds: pruned,
+      });
+    }
 
     const payload: WorkflowPublishPayload = {
       ...toWorkflowApiPayload(published.workflow, published.version),

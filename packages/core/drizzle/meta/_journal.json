@@ -15,6 +15,13 @@
       "when": 1786113814366,
       "tag": "0001_breezy_miracleman",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786128095423,
+      "tag": "0002_exotic_eternity",
+      "breakpoints": true
     }
   ]
 }

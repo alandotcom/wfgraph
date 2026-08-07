@@ -307,6 +307,195 @@ describe("insertPublishedVersion", () => {
   });
 });
 
+describe("setPublishedVersion", () => {
+  // Publish reaches this path by content dedupe, which can name a version old
+  // enough for the sweep to have claimed it. Reading it unlocked would let the
+  // sweep delete it between the read and the update, and the update would then
+  // fail the foreign key. `for key share` is the strength the sweep's
+  // `for update` conflicts with, so one of the two waits for the other.
+  it("locks the version it is about to point at", async () => {
+    const { layer: databaseLayer, statements } = stubDatabase(() => []);
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const repo = yield* WorkflowRepo;
+        return yield* repo.setPublishedVersion({
+          workflowId: "wf_1",
+          versionId: "ver_1",
+          draftGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+          eventSubscriptions: [],
+        });
+      }).pipe(
+        Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
+      )
+    );
+
+    expect(statements[0]?.query).toContain("for key share");
+  });
+});
+
+describe("pruneUnreferencedVersions", () => {
+  /** The claim is the only select that locks, and the delete the only write. */
+  const isClaim = (query: string) => query.includes("for update");
+  const isCutoff = (query: string) =>
+    query.startsWith("select") && !isClaim(query);
+  const isDelete = (query: string) => query.startsWith("delete");
+
+  /**
+   * `claimed` is what the claim arm answers, `deleted` what the delete arm
+   * answers; leaving `deleted` off means every claimed row survived the
+   * re-check, which is the ordinary case.
+   */
+  function pruneHarness(answers: {
+    cutoffVersion?: number;
+    claimed?: string[];
+    deleted?: string[];
+  }) {
+    const { layer: databaseLayer, statements } = stubDatabase(({ query }) => {
+      if (isDelete(query)) {
+        return (answers.deleted ?? answers.claimed ?? []).map((id) => [id]);
+      }
+      if (isClaim(query)) {
+        return (answers.claimed ?? []).map((id) => [id]);
+      }
+      return answers.cutoffVersion === undefined
+        ? []
+        : [[answers.cutoffVersion]];
+    });
+
+    const prune = (input?: { keepNewest?: number; limit?: number }) =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const repo = yield* WorkflowRepo;
+          return yield* repo.pruneUnreferencedVersions({
+            workflowId: "wf_1",
+            keepNewest: input?.keepNewest ?? 10,
+            limit: input?.limit ?? 50,
+          });
+        }).pipe(
+          Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
+        )
+      );
+
+    const sent = (predicate: (query: string) => boolean) =>
+      statements.find((statement) => predicate(statement.query));
+
+    return { prune, sent };
+  }
+
+  // The window is read as an offset into the version order, so the cutoff is
+  // the newest version outside it and everything at or below is a candidate.
+  it("takes its cutoff from the newest version outside the window", async () => {
+    const { prune, sent } = pruneHarness({ cutoffVersion: 7 });
+
+    await prune({ keepNewest: 10 });
+
+    expect(sent(isCutoff)?.query).toContain("offset");
+    expect(sent(isCutoff)?.params).toContain(10);
+  });
+
+  it("sends no claim and no delete when the workflow holds fewer versions than the window", async () => {
+    const { prune, sent } = pruneHarness({});
+
+    expect(await prune()).toEqual([]);
+    expect(sent(isClaim)).toBeUndefined();
+    expect(sent(isDelete)).toBeUndefined();
+  });
+
+  // `for update` is the one lock strength that conflicts with the `for key
+  // share` an FK insert takes, and `skip locked` is what keeps the sweep from
+  // ever blocking a run start or a publish.
+  it("claims candidates for update, skipping any row another transaction holds", async () => {
+    const { prune, sent } = pruneHarness({
+      cutoffVersion: 7,
+      claimed: ["ver_1"],
+    });
+
+    await prune();
+
+    expect(sent(isClaim)?.query).toContain("for update");
+    expect(sent(isClaim)?.query).toContain("skip locked");
+  });
+
+  // Both foreign keys act destructively: the executions one cascades and would
+  // take a run's whole history, the published_version_id one sets null and
+  // would silently unpublish. The claim excludes a row either could reach.
+  it("leaves out a version an execution pins and the version a workflow publishes", async () => {
+    const { prune, sent } = pruneHarness({
+      cutoffVersion: 7,
+      claimed: ["ver_1"],
+    });
+
+    await prune();
+
+    expect(sent(isClaim)?.query).toContain('"workflow_executions"');
+    expect(sent(isClaim)?.query).toContain('"workflows"');
+    expect(sent(isClaim)?.query.match(/not exists/g)).toHaveLength(2);
+  });
+
+  // The sweep is per workflow, and the delete is bounded only by the ids the
+  // claim answered. A claim that lost its workflow scope would hand the delete
+  // every other workflow's unreferenced versions.
+  it("claims only the workflow it was asked about", async () => {
+    const { prune, sent } = pruneHarness({
+      cutoffVersion: 7,
+      claimed: ["ver_1"],
+    });
+
+    await prune();
+
+    expect(sent(isClaim)?.query).toContain('"workflow_id" = ');
+    expect(sent(isClaim)?.params).toContain("wf_1");
+  });
+
+  // The delete is a second statement and so a second snapshot under READ
+  // COMMITTED. Narrowing it to the claimed ids alone would delete a row that
+  // gained a run between the claim and the delete.
+  it("re-checks the predicate in the delete rather than trusting the claim", async () => {
+    const { prune, sent } = pruneHarness({
+      cutoffVersion: 7,
+      claimed: ["ver_1"],
+    });
+
+    await prune();
+
+    expect(sent(isDelete)?.query.match(/not exists/g)).toHaveLength(2);
+  });
+
+  it("bounds one sweep to the batch it was given", async () => {
+    const { prune, sent } = pruneHarness({
+      cutoffVersion: 7,
+      claimed: ["ver_1", "ver_2"],
+    });
+
+    await prune({ limit: 2 });
+
+    expect(sent(isClaim)?.params).toContain(2);
+    expect(sent(isDelete)?.params).toEqual(
+      expect.arrayContaining(["ver_1", "ver_2"])
+    );
+  });
+
+  it("sends no delete when every candidate was locked away", async () => {
+    const { prune, sent } = pruneHarness({ cutoffVersion: 7, claimed: [] });
+
+    expect(await prune()).toEqual([]);
+    expect(sent(isDelete)).toBeUndefined();
+  });
+
+  // A row that gained a run since the claim fails the re-check and stays. It
+  // was claimed, so reporting the claim would overstate what went.
+  it("answers the ids the delete returned rather than the ids it claimed", async () => {
+    const { prune } = pruneHarness({
+      cutoffVersion: 7,
+      claimed: ["ver_1", "ver_2"],
+      deleted: ["ver_1"],
+    });
+
+    expect(await prune()).toEqual(["ver_1"]);
+  });
+});
+
 describe("findByIdWithPublishedVersionForRun", () => {
   function findForRun(workflowId: string) {
     return Effect.gen(function* () {
