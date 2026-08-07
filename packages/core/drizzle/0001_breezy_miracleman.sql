@@ -1,0 +1,2 @@
+DROP INDEX "workflow_versions_workflow_id_published_at_idx";--> statement-breakpoint
+CREATE INDEX "workflow_executions_workflow_version_id_idx" ON "workflow_executions" USING btree ("workflow_version_id");

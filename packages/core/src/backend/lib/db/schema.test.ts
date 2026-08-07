@@ -26,3 +26,34 @@ describe("the schema declarations", () => {
     expect(qualified).toEqual([]);
   });
 });
+
+describe("workflow_versions indexes", () => {
+  // No query in repo.ts orders or filters on published_at: findLatestVersion and
+  // findVersionByContent both order by version, findVersionById and
+  // findPublishedVersion both look up by id. The unique (workflow_id, version)
+  // index already serves every existing version read, so this index pays a
+  // second btree insert on every publish for a column nothing reads.
+  it("carries no index on published_at", () => {
+    const names = getTableConfig(schema.workflowVersions).indexes.map(
+      (index) => index.config.name
+    );
+
+    expect(names).not.toContain(
+      "workflow_versions_workflow_id_published_at_idx"
+    );
+  });
+});
+
+describe("workflow_executions indexes", () => {
+  // workflow_version_id cascades from workflow_versions (a version delete
+  // removes every execution pinned to it). Without an index on this column,
+  // that cascade scans the whole executions table -- the largest table in the
+  // schema -- to find the rows to delete.
+  it("indexes workflow_version_id, which a workflow_versions delete cascades through", () => {
+    const names = getTableConfig(schema.workflowExecutions).indexes.map(
+      (index) => index.config.name
+    );
+
+    expect(names).toContain("workflow_executions_workflow_version_id_idx");
+  });
+});
