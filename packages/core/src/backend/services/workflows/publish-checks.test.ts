@@ -123,4 +123,26 @@ describe("version-digest", () => {
       catalogFingerprint(emptyExtensionCatalog)
     );
   });
+
+  // Postgres jsonb does not keep the key order a value was written with: a
+  // node written as {id, type, position, data} reads back {id, data, type,
+  // position}. draftDiffersFromPublished compares a freshly-read draft
+  // against a digest stored at publish time, so the digest itself must not
+  // care about key order, or every draft looks changed right after publish.
+  it("hashes the same regardless of object key order", () => {
+    const asWritten = {
+      id: "a",
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: { label: "A" },
+    };
+    const asReadBackFromJsonb = {
+      id: "a",
+      data: { label: "A" },
+      type: "action",
+      position: { x: 0, y: 0 },
+    };
+
+    expect(graphDigest(asWritten)).toBe(graphDigest(asReadBackFromJsonb));
+  });
 });
