@@ -10,6 +10,7 @@ import {
   withDefaultLifecycleNode,
 } from "#src/backend/services/workflows/mappers";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import { resolvePublishedVersion } from "#src/backend/services/workflows/workflow";
 import { generateId } from "@rova/shared/utils/id";
 
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */
@@ -42,7 +43,11 @@ export const getWorkflowsCurrent = Effect.fn("getWorkflowsCurrent")(
     // Conditions and Lifecycle Rules are checked on save and again before a run,
     // never on the way out: refusing the read would leave the editor unable to
     // open the graph whose configuration needs correcting.
-    return toWorkflowApiPayload(currentWorkflow);
+    const publishedVersion = yield* resolvePublishedVersion(
+      repo,
+      currentWorkflow.publishedVersionId
+    );
+    return toWorkflowApiPayload(currentWorkflow, publishedVersion);
   },
   (effect) =>
     effect.pipe(
@@ -84,7 +89,11 @@ export const postWorkflowsCurrent = Effect.fn("postWorkflowsCurrent")(
         });
       }
 
-      return toWorkflowApiPayload(updatedWorkflow);
+      const publishedVersion = yield* resolvePublishedVersion(
+        repo,
+        updatedWorkflow.publishedVersionId
+      );
+      return toWorkflowApiPayload(updatedWorkflow, publishedVersion);
     }
 
     const savedWorkflow = yield* repo.insertCurrent({
@@ -98,7 +107,7 @@ export const postWorkflowsCurrent = Effect.fn("postWorkflowsCurrent")(
       });
     }
 
-    return toWorkflowApiPayload(savedWorkflow);
+    return toWorkflowApiPayload(savedWorkflow, null);
   },
   (effect) =>
     effect.pipe(

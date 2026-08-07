@@ -65,7 +65,7 @@ export const postWorkflowsCreate = Effect.fn("postWorkflowsCreate")(
       edgeCount: prepared.edgeCount,
     });
 
-    return toWorkflowApiPayload(newWorkflow);
+    return toWorkflowApiPayload(newWorkflow, null);
   },
   (effect) =>
     effect.pipe(

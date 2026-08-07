@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { UserMenu } from "#src/components/workflows/user-menu";
 import {
   DuplicateButton,
@@ -8,6 +9,7 @@ import {
   useWorkflowActions,
   useWorkflowState,
 } from "#src/components/workflow/workflow-toolbar-handlers";
+import { workflowPublicationQueryOptions } from "#src/lib/rpc-query";
 
 type WorkflowToolbarProps = {
   workflowId?: string;
@@ -21,6 +23,12 @@ export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
     (workflow) => workflow.id === state.currentWorkflowId
   );
   const isPublished = Boolean(currentWorkflow?.publishedVersionId);
+  // Server state: draft vs published. Seeded by the route loader's getById,
+  // patched by save/publish into the same cache entry — not mirrored in jotai.
+  const { data: hasUnpublishedChanges = false } = useQuery({
+    ...workflowPublicationQueryOptions(workflowId ?? ""),
+    enabled: Boolean(workflowId),
+  });
 
   return (
     <>
@@ -49,13 +57,13 @@ export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
             )}
           {workflowId &&
             isPublished && (
-              // Answers "is what I am looking at what is running", which nothing
+              // Answers "is the draft what is running", which nothing
               // on this screen said once the publish toast faded. Worded away
               // from "Live" on purpose: that word already names the run mode two
               // controls to the right, and two meanings for it read as one
-              // switch.
+              // switch. Driven by draft-vs-published digest, not the save queue.
               <span className="rounded-md border bg-card px-2 py-1 font-medium text-muted-foreground text-xs">
-                {state.hasUnsavedChanges ? "Unpublished changes" : "Published"}
+                {hasUnpublishedChanges ? "Unpublished changes" : "Published"}
               </span>
             )}
           {workflowId && !isPublished && (

@@ -1,6 +1,7 @@
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { type Integration, rpc } from "#src/lib/rpc-client";
+import type { WorkflowApiPayload } from "@rova/shared/graph/api-contracts";
 
 /**
  * TanStack Query bindings for the RPC contract.
@@ -53,6 +54,29 @@ export const integrationIdsQueryOptions = () =>
 export const workflowListQueryOptions = () =>
   orpcQuery.workflow.getAll.queryOptions({ input: {} });
 
+/** Module-level select: TanStack memoises by identity. */
+export function selectHasUnpublishedChanges(
+  payload: WorkflowApiPayload
+): boolean {
+  return payload.hasUnpublishedChanges;
+}
+
+/**
+ * The open workflow's publication flag, for the toolbar badge.
+ *
+ * Lives in the getById cache (server state), not in jotai. The loader seeds the
+ * entry; save and publish patch it via `cacheWorkflowPublication`. `staleTime:
+ * Infinity` keeps the badge off the network: the flag only moves when a write
+ * patches the cache.
+ */
+export function workflowPublicationQueryOptions(workflowId: string) {
+  return orpcQuery.workflow.getById.queryOptions({
+    input: { workflowId },
+    select: selectHasUnpublishedChanges,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+}
+
 /*
  * What a write invalidates, said once.
  *
@@ -73,6 +97,36 @@ export function refreshWorkflowList(queryClient: QueryClient) {
   return queryClient.invalidateQueries({
     queryKey: orpcQuery.workflow.getAll.key(),
   });
+}
+
+/**
+ * Write the publication flag a save or publish just answered with into the
+ * open workflow's getById entry. The list procedure does not carry this field
+ * (no draft graph), so the badge reads getById and nowhere else.
+ */
+export function cacheWorkflowPublication(
+  queryClient: QueryClient,
+  workflow: Pick<WorkflowApiPayload, "id" | "hasUnpublishedChanges"> &
+    Partial<Pick<WorkflowApiPayload, "publishedVersionId" | "updatedAt">>
+) {
+  queryClient.setQueryData(
+    orpcQuery.workflow.getById.queryKey({
+      input: { workflowId: workflow.id },
+    }),
+    (current: WorkflowApiPayload | undefined) => {
+      if (!current) {
+        return current;
+      }
+      return {
+        ...current,
+        hasUnpublishedChanges: workflow.hasUnpublishedChanges,
+        updatedAt: workflow.updatedAt ?? current.updatedAt,
+        ...(workflow.publishedVersionId !== undefined
+          ? { publishedVersionId: workflow.publishedVersionId }
+          : {}),
+      };
+    }
+  );
 }
 
 /**

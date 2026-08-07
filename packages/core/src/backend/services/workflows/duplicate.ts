@@ -168,7 +168,7 @@ export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(
       newWorkflowId,
     });
 
-    return toWorkflowApiPayload(newWorkflow);
+    return toWorkflowApiPayload(newWorkflow, null);
   },
   (effect, workflowId) =>
     effect.pipe(

@@ -9,6 +9,7 @@ import {
   toWorkflowApiPayload,
   withDefaultLifecycleNode,
 } from "#src/backend/services/workflows/mappers";
+import { graphDigest } from "#src/backend/services/workflows/version-digest";
 
 function createWorkflow(overrides: Partial<Workflow> = {}): Workflow {
   return {
@@ -28,7 +29,7 @@ function createWorkflow(overrides: Partial<Workflow> = {}): Workflow {
 
 describe("workflow mappers", () => {
   it("maps DB workflow visibility and timestamps into API payload", () => {
-    const payload = toWorkflowApiPayload(createWorkflow());
+    const payload = toWorkflowApiPayload(createWorkflow(), null);
 
     expect(payload.visibility).toBe("public");
     expect(payload.createdAt).toBe("2026-01-01T00:00:00.000Z");
@@ -36,6 +37,62 @@ describe("workflow mappers", () => {
     expect(payload.description).toBeUndefined();
     expect(payload.isPaused).toBe(false);
     expect(payload.mode).toBe("live");
+    expect(payload.hasUnpublishedChanges).toBe(false);
+  });
+
+  it("flags unpublished changes when the draft differs from published", () => {
+    const draft = createWorkflow({
+      publishedVersionId: "ver_1",
+      graph: createSerializedWorkflowGraph({
+        nodes: [
+          {
+            id: "a",
+            type: "action",
+            position: { x: 0, y: 0 },
+            data: {
+              label: "A",
+              type: "action",
+              config: { actionId: "custom/send" },
+            },
+          },
+        ],
+        edges: [],
+      }),
+    });
+    const published = createSerializedWorkflowGraph({
+      nodes: [
+        {
+          id: "a",
+          type: "action",
+          position: { x: 40, y: 0 },
+          data: {
+            label: "A",
+            type: "action",
+            config: { actionId: "custom/send" },
+          },
+        },
+      ],
+      edges: [],
+    });
+    const payload = toWorkflowApiPayload(draft, {
+      graphDigest: graphDigest(published),
+    });
+
+    expect(payload.hasUnpublishedChanges).toBe(true);
+    expect(payload.publishedVersionId).toBe("ver_1");
+  });
+
+  it("clears unpublished changes when the draft matches the published graph", () => {
+    const graph = createSerializedWorkflowGraph({ nodes: [], edges: [] });
+    const draft = createWorkflow({
+      publishedVersionId: "ver_1",
+      graph,
+    });
+    const payload = toWorkflowApiPayload(draft, {
+      graphDigest: graphDigest(graph),
+    });
+
+    expect(payload.hasUnpublishedChanges).toBe(false);
   });
 
   it("builds patch update payload without forcing visibility", () => {

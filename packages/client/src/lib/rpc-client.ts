@@ -54,6 +54,8 @@ export type SavedWorkflow = WorkflowData & {
   isOwner?: boolean;
   /** Absent until the first publish. */
   publishedVersionId?: string;
+  /** Whether the draft graph differs from the published version. */
+  hasUnpublishedChanges: boolean;
 };
 
 /** Assemble a wire graph from editor nodes/edges, dropping the `add` placeholder. */

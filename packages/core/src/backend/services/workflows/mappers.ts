@@ -9,6 +9,7 @@ import {
   isSerializedWorkflowGraph,
 } from "@rova/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
+import { draftDiffersFromPublished } from "#src/backend/services/workflows/version-digest";
 
 type WorkflowPayloadSource = Pick<
   Workflow,
@@ -58,10 +59,23 @@ export function toWorkflowSummaryPayload(
   };
 }
 
+/**
+ * Full workflow payload. Pass the published version (or null when none) so the
+ * publish badge can tell draft from live; omitting it is not allowed because a
+ * forgotten lookup would report "Published" for a dirty draft.
+ */
 export function toWorkflowApiPayload(
-  workflow: WorkflowPayloadSource
+  workflow: WorkflowPayloadSource,
+  published: { graphDigest: string } | null
 ): WorkflowApiPayload {
-  return { ...toWorkflowSummaryPayload(workflow), graph: workflow.graph };
+  return {
+    ...toWorkflowSummaryPayload(workflow),
+    graph: workflow.graph,
+    hasUnpublishedChanges: draftDiffersFromPublished(
+      workflow.graph,
+      published?.graphDigest ?? null
+    ),
+  };
 }
 
 /**

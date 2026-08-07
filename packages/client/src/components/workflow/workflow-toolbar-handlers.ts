@@ -20,6 +20,7 @@ import { useDeleteWorkflow } from "#src/hooks/use-delete-workflow";
 import { useDomEvent } from "#src/hooks/effects";
 import { getExtensionCatalog } from "#src/lib/extensions";
 import {
+  cacheWorkflowPublication,
   integrationsQueryOptions,
   orpcQuery,
   refreshRunHistory,
@@ -482,6 +483,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     orpcQuery.workflow.publish.mutationOptions({
       onSuccess: (payload) => {
         toast.success(`Published version ${payload.publishedVersion}`);
+        cacheWorkflowPublication(queryClient, payload);
         void loadWorkflows();
       },
       // Let Conflict ("Refresh and try again") and validation errors surface

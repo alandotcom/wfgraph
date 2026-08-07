@@ -267,6 +267,13 @@ the only place a cache key is named for invalidation, and a mutation calls one f
 covers the run panel's three procedures, which poll every two seconds, so one write becomes
 a burst of refetches.
 
+**A write can also patch instead of invalidate, in the one place that names the entry.**
+`cacheWorkflowPublication` (`packages/client/src/lib/rpc-query.ts`) writes the publish
+badge's fields straight into the open workflow's `getById` entry with `setQueryData`, for a
+mutation whose own response already carries the fresher value: invalidating would only
+refetch what the mutation just returned. This is the one place that patches a cache entry
+directly; every other write invalidates through the helpers above.
+
 **A mutation that shows its own failure says so.** `mutationMeta.errorShownByCaller: true`
 suppresses the `MutationCache` toast for a call site rendering the error itself;
 `errorMessage` replaces the server's wording; neither falls back to `error.message`.

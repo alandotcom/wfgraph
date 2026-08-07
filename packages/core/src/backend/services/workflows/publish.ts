@@ -139,7 +139,7 @@ export const publishWorkflow = Effect.fn("publishWorkflow")(
     );
 
     const payload: WorkflowPublishPayload = {
-      ...toWorkflowApiPayload(published.workflow),
+      ...toWorkflowApiPayload(published.workflow, published.version),
       publishedVersionId: published.version.id,
       publishedVersion: published.version.version,
     };

@@ -149,6 +149,12 @@ const workflowSummarySchema = Schema.Struct({
 const workflowApiPayloadSchema = Schema.Struct({
   ...workflowSummarySchema.fields,
   graph: serializedWorkflowGraphSchema,
+  /**
+   * Whether the draft graph differs from the published version's graph.
+   * False when the workflow has never been published. Lives on the full
+   * payload only: computing it needs the draft graph, which the list omits.
+   */
+  hasUnpublishedChanges: Schema.Boolean,
 });
 
 const workflowPublishPayloadSchema = Schema.Struct({

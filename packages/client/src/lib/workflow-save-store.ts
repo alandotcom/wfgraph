@@ -3,7 +3,7 @@ import { getClientLogger } from "#src/lib/logger";
 import { queryClient } from "#src/lib/query-client";
 import type { SavedWorkflow } from "#src/lib/rpc-client";
 import { workflowApi } from "#src/lib/rpc-client";
-import { orpcQuery } from "#src/lib/rpc-query";
+import { cacheWorkflowPublication, orpcQuery } from "#src/lib/rpc-query";
 import type {
   WorkflowEdge,
   WorkflowMode,
@@ -217,6 +217,7 @@ export const saveWorkflowAtom = atom(
             outcome = { ok: true, workflow };
             set(lastSaveErrorAtom, null);
             markWorkflowListStale();
+            cacheWorkflowPublication(queryClient, workflow);
 
             // Clear the dirty flag only when nothing newer is queued and the
             // saved workflow is still the one on screen.
@@ -337,6 +338,7 @@ export const createWorkflowAtom = atom(
       set(hasUnsavedChangesAtom, false);
       set(lastSaveErrorAtom, null);
       markWorkflowListStale();
+      cacheWorkflowPublication(queryClient, workflow);
       return { ok: true, workflow };
     } catch (error) {
       const saveError = toError(error);
