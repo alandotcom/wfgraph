@@ -4,6 +4,7 @@ import {
   type ExecutionEvent,
   type ExecutionLog,
   type ExecutionWait,
+  isRunInProgress,
   type WorkflowExecution,
 } from "#src/lib/execution-logs";
 import { CollapsibleSection } from "./workflow-run-shared";
@@ -50,7 +51,7 @@ export function WorkflowRunDetail({
         runNumber={runNumber}
         showStartEventName
         trailing={
-          execution.status === "waiting"
+          isRunInProgress(execution.status)
             ? {
                 isCanceling,
                 onCancel,

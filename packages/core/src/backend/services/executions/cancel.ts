@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/lifecycle/execution-contracts";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import {
   Conflict,
@@ -33,14 +34,25 @@ export const postExecutionCancel = Effect.fn("postExecutionCancel")(
       return yield* new NotFound({ error: "Execution not found" });
     }
 
-    const waitingStates = yield* repo.listWaitingStates(executionId);
+    // The same read `getExecutionStatus` answers a poll with, checked against
+    // the statuses a run can still leave. A Lifecycle Rules Cancel Event reaches
+    // every one of them (ADR-0007), so the Runs panel button does too, rather
+    // than staying narrowed to a run parked on a Wait.
+    const execution = yield* repo.findStatusById(executionId);
+    const isInFlight =
+      execution !== null &&
+      IN_FLIGHT_EXECUTION_STATUSES.some(
+        (status) => status === execution.status
+      );
 
-    if (waitingStates.length === 0) {
-      yield* logger.warn("Execution is not waiting and cannot be cancelled");
+    if (!isInFlight) {
+      yield* logger.warn("Execution is not in flight and cannot be cancelled");
       return yield* new Conflict({
-        error: "Execution is not currently waiting",
+        error: "Execution has already finished",
       });
     }
+
+    const waitingStates = yield* repo.listWaitingStates(executionId);
 
     yield* repo.recordAuditEvent({
       workflowId,
@@ -50,8 +62,9 @@ export const postExecutionCancel = Effect.fn("postExecutionCancel")(
     });
 
     // The one run-ender a person reaches: the signal, the row behind its
-    // compare-and-set, the wait rows, and the timeline entry are one thing. A
-    // Cancel Event takes the other path, flagging the run for its Canceled outlet
+    // compare-and-set, the wait rows (whatever exist -- a run standing on any
+    // other node carries none), and the timeline entry are one thing. A Cancel
+    // Event takes the other path, flagging the run for its Canceled outlet
     // rather than ending it (`lifecycle/cancel.ts`).
     const ended = yield* cancelInFlightRuns({
       workflowId,
