@@ -5,6 +5,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { sortBy } from "es-toolkit/array";
 import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
 import { flattenConfigFields } from "@rova/shared/plugins/action-fields";
 
@@ -78,27 +79,47 @@ export function draftDiffersFromPublished(
  * of it: two deploys with the same catalog ids share a fingerprint even when
  * step bodies changed, which is Inngest's step-memoization problem rather than
  * this one.
+ *
+ * Every list is sorted first. A version pins this value, and each later run of
+ * that version compares the live one against it
+ * (`engine/strategies/plugin-action.ts`). The catalog arrives in the order the
+ * host declared it, so reading that order would fail every published workflow
+ * with a republish notice over an edit that renamed nothing.
+ *
+ * SHA-256 for the reason `graphDigest` gives: a collision here reads a changed
+ * surface as unchanged, which is the one failure this catches.
  */
 export function catalogFingerprint(catalog: ExtensionCatalog): string {
   const surface = {
-    events: catalog.events.map((event) => ({
-      name: event.name,
-      correlationPath: event.correlationPath ?? null,
-      payloadFields: event.payloadFields.map((field) => field.path),
-    })),
-    actions: catalog.actions.map((action) => ({
-      id: action.id,
-      integration: action.integration ?? null,
-      configFields: flattenConfigFields(action.configFields).map(
-        (field) => field.key
-      ),
-      outputFields: action.outputFields.map((field) => field.path),
-    })),
-    integrations: catalog.integrations.map((integration) => ({
-      type: integration.type,
-      credentialKeys: Object.keys(integration.credentialFields),
-    })),
+    events: sortBy(
+      catalog.events.map((event) => ({
+        name: event.name,
+        correlationPath: event.correlationPath ?? null,
+        payloadFields: event.payloadFields
+          .map((field) => field.path)
+          .toSorted(),
+      })),
+      ["name"]
+    ),
+    actions: sortBy(
+      catalog.actions.map((action) => ({
+        id: action.id,
+        integration: action.integration ?? null,
+        configFields: flattenConfigFields(action.configFields)
+          .map((field) => field.key)
+          .toSorted(),
+        outputFields: action.outputFields.map((field) => field.path).toSorted(),
+      })),
+      ["id"]
+    ),
+    integrations: sortBy(
+      catalog.integrations.map((integration) => ({
+        type: integration.type,
+        credentialKeys: Object.keys(integration.credentialFields).toSorted(),
+      })),
+      ["type"]
+    ),
   };
 
-  return createHash("sha1").update(JSON.stringify(surface)).digest("hex");
+  return createHash("sha256").update(JSON.stringify(surface)).digest("hex");
 }
