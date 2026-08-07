@@ -1,8 +1,19 @@
-import { and, arrayContains, desc, eq, ne, sql } from "drizzle-orm";
+import {
+  and,
+  arrayContains,
+  desc,
+  eq,
+  inArray,
+  lte,
+  ne,
+  notExists,
+  sql,
+} from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { Context, Effect, Layer } from "effect";
 import {
   type Workflow,
+  workflowExecutions,
   type WorkflowVersion,
   workflowEventSubscriptions,
   type WorkflowMode,
@@ -279,6 +290,27 @@ export class WorkflowRepo extends Context.Service<
       draftGraph: SerializedWorkflowGraph;
       eventSubscriptions: WorkflowEventSubscriptionRow[];
     }) => Effect.Effect<InsertPublishedVersionResult, DatabaseError>;
+    /**
+     * Delete this workflow's versions that nothing points at, keeping the
+     * newest `keepNewest` whatever their state, and answer the ids that went.
+     *
+     * A version goes only when no execution pins it and no workflow names it as
+     * published, because both foreign keys act destructively: the executions one
+     * cascades and would take a run's whole history, `published_version_id` sets
+     * null and would silently unpublish. Candidates are claimed with `for update
+     * skip locked` — the one lock strength that conflicts with the `for key
+     * share` an FK insert takes — and the predicate is then re-checked in the
+     * delete, which is a second statement and so a second snapshot under READ
+     * COMMITTED. That pair is what makes the answer final: a row another
+     * transaction is part way through pinning is skipped, and a row pinned since
+     * the claim fails the re-check. `limit` bounds one sweep, so a long backlog
+     * drains over several rather than in one.
+     */
+    readonly pruneUnreferencedVersions: (input: {
+      workflowId: string;
+      keepNewest: number;
+      limit: number;
+    }) => Effect.Effect<string[], DatabaseError>;
   }
 >()("@rova/core/WorkflowRepo") {}
 
@@ -671,9 +703,20 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
           database.query(
             async (db) =>
               await db.transaction(async (tx) => {
-                const version = await tx.query.workflowVersions.findFirst({
-                  where: eq(workflowVersions.id, input.versionId),
-                });
+                // `for key share` against the version sweep, which claims a
+                // prunable row `for update`. Publish reaches this path by
+                // content dedupe, which can name a version old enough to be a
+                // sweep candidate; a plain snapshot read would let the sweep
+                // delete it between this read and the update below, and the
+                // update would then fail the foreign key. Whichever lock lands
+                // first now decides: the sweep skips a row held here, and a read
+                // held behind the sweep sees the row gone and answers null.
+                const [version] = await tx
+                  .select()
+                  .from(workflowVersions)
+                  .where(eq(workflowVersions.id, input.versionId))
+                  .limit(1)
+                  .for("key share");
                 if (!version) {
                   return null;
                 }
@@ -730,6 +773,85 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                   draftGraph: input.draftGraph,
                   eventSubscriptions: input.eventSubscriptions,
                 });
+              })
+          ),
+
+        pruneUnreferencedVersions: (input) =>
+          database.query(
+            async (db) =>
+              await db.transaction(async (tx) => {
+                // The window read as an offset into the version order: this is
+                // the newest version outside it, so everything at or below is a
+                // candidate. No row means the workflow has nothing to sweep. A
+                // publish racing this can only raise the cutoff, which makes a
+                // stale read here conservative rather than permissive.
+                const [cutoff] = await tx
+                  .select({ version: workflowVersions.version })
+                  .from(workflowVersions)
+                  .where(eq(workflowVersions.workflowId, input.workflowId))
+                  .orderBy(desc(workflowVersions.version))
+                  .limit(1)
+                  .offset(input.keepNewest);
+                if (!cutoff) {
+                  return [];
+                }
+
+                // Correlated against the outer `workflow_versions` row, so the
+                // same pair serves the claim and the delete's re-check. Both
+                // statements ask it; that repetition is the design.
+                const unreferenced = and(
+                  notExists(
+                    tx
+                      .select({ pinned: sql`1` })
+                      .from(workflowExecutions)
+                      .where(
+                        eq(
+                          workflowExecutions.workflowVersionId,
+                          workflowVersions.id
+                        )
+                      )
+                  ),
+                  notExists(
+                    tx
+                      .select({ published: sql`1` })
+                      .from(workflows)
+                      .where(
+                        eq(workflows.publishedVersionId, workflowVersions.id)
+                      )
+                  )
+                );
+
+                const claimed = await tx
+                  .select({ id: workflowVersions.id })
+                  .from(workflowVersions)
+                  .where(
+                    and(
+                      eq(workflowVersions.workflowId, input.workflowId),
+                      lte(workflowVersions.version, cutoff.version),
+                      unreferenced
+                    )
+                  )
+                  .orderBy(workflowVersions.version)
+                  .limit(input.limit)
+                  .for("update", { skipLocked: true });
+                if (claimed.length === 0) {
+                  return [];
+                }
+
+                const deleted = await tx
+                  .delete(workflowVersions)
+                  .where(
+                    and(
+                      inArray(
+                        workflowVersions.id,
+                        claimed.map((row) => row.id)
+                      ),
+                      unreferenced
+                    )
+                  )
+                  .returning({ id: workflowVersions.id });
+
+                return deleted.map((row) => row.id);
               })
           ),
       };

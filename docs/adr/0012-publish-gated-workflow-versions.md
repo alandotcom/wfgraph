@@ -63,3 +63,26 @@ Event declared is no longer refused: the engine never enters that branch
 (`CancelBoundary` buys no boundary read without a Cancel Event), and the editor
 mutes it instead. The Decision paragraph above that named both refusals is
 superseded for the Cancel Event half only.
+
+## Amendment, 2026-08-07: versions outside the retention window are swept at publish
+
+This ADR left `workflow_versions` append-only by omission, and #35 reported the
+consequence: a value an author pasted into a node config, then removed and
+republished, sat in an old version row indefinitely with nothing bounding the
+table.
+
+A publish now sweeps that workflow's versions outside the newest ten, deleting
+only rows no Execution pins and no workflow names as published. Both foreign
+keys act destructively — `workflow_executions.workflow_version_id` cascades,
+`workflows.published_version_id` sets null — so the predicate makes both actions
+unreachable rather than merely avoiding them.
+
+"Readers load the version's graph" is unchanged: a version an Execution pins is
+never a candidate, so the run panel's fetch by pinned id cannot miss. What the
+sweep narrows is the lifetime of a version nothing ever asks for.
+
+The sweep sits at publish because publish is the only event that grows the
+table, which bounds it continuously with no scheduler. One consequence worth
+naming: content-hash dedupe misses on a graph whose row was swept, so
+republishing it mints a new row and advances the version counter. Nothing
+attaches meaning to version-number density.

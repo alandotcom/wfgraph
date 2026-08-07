@@ -73,6 +73,11 @@ export const workflows = pgTable(
   },
   (table) => [
     uniqueIndex("workflows_name_ci_uidx").on(sql`lower(${table.name})`),
+    // The version sweep at publish deletes workflow_versions rows, and this FK
+    // is `on delete set null`, so Postgres runs that action on every one of
+    // them. Unindexed, each delete scans the whole workflows table; the sweep's
+    // own "is this version published" predicate reads the same index.
+    index("workflows_published_version_id_idx").on(table.publishedVersionId),
   ]
 );
 
@@ -80,7 +85,9 @@ export const workflows = pgTable(
  * An immutable published graph, plus the catalog fingerprint it was sound against.
  *
  * Publish mints a row (or reuses one whose graph digest and fingerprint match),
- * and every Execution pins to one. Draft saves never write here.
+ * and every Execution pins to one. Draft saves never write here. Immutable is
+ * not permanent: publish sweeps rows outside the retention window that no
+ * Execution pins and no workflow names.
  */
 export const workflowVersions = pgTable(
   "workflow_versions",

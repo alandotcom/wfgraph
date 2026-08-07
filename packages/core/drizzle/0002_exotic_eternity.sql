@@ -1,0 +1,1 @@
+CREATE INDEX "workflows_published_version_id_idx" ON "workflows" USING btree ("published_version_id");
