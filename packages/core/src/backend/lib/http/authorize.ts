@@ -1,14 +1,14 @@
 /**
  * Who is allowed to reach the mounted app.
  *
- * The host supplies a predicate; WfGraph supplies the knowledge of which routes it
+ * The host supplies a predicate; Workflow Graph supplies the knowledge of which routes it
  * applies to. That split is why this is an option rather than middleware a host
  * wraps the mount in: the Inngest callback and the wait resume path are reached by
  * machines carrying their own credentials, and gating them uniformly would break
  * both.
  *
  * The predicate authorizes; it does not identify. No table carries a tenant or a
- * user column, so a `Principal` type WfGraph defined and never read would be
+ * user column, so a `Principal` type Workflow Graph defined and never read would be
  * interface weight with nothing behind it.
  */
 
@@ -23,7 +23,7 @@ export type WfGraphAuth =
    * so consuming it here leaves every POST arriving empty downstream.
    */
   | ((request: Request) => boolean | Promise<boolean>)
-  /** Something in front of WfGraph already gates it, said deliberately. */
+  /** Something in front of Workflow Graph already gates it, said deliberately. */
   | "external";
 
 export type Authorize = (request: Request) => Promise<boolean>;

@@ -2,7 +2,7 @@
 
 _Decided 2026-07-27 by Alan Cohen, following an architecture review._
 
-WfGraph is a Bun workspace monorepo: Bun is the runtime, the package manager, the test runner
+Workflow Graph is a Bun workspace monorepo: Bun is the runtime, the package manager, the test runner
 via `bun:test`, and the client dev server via `Bun.serve`'s HTML entrypoint. Embedders,
 though, run the published `@wfgraph/core` on Node, so the tests that guard this code have
 always executed on a different runtime than the code they guard. Adopting Effect

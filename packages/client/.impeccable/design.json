@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "generatedAt": "2026-07-27T00:00:00.000Z",
-  "title": "Design System: WfGraph Workflow Builder",
+  "title": "Design System: Workflow Graph",
   "extensions": {
     "colorMeta": {
       "graphite-ink": {
@@ -206,7 +206,7 @@
   ],
   "narrative": {
     "northStar": "The Instrument Panel",
-    "overview": "WfGraph's editor is a cockpit for automation. The chrome recedes into graphite so the workflow graph owns the screen, and every light that comes on means something: a green border is a successful run, a red border is a failure, an animated border is work in progress. The system is built from shadcn/ui (new-york) on Base UI, styled with Tailwind v4 tokens declared in OKLCH, deliberately conventional where convention earns trust.",
+    "overview": "Workflow Graph's editor is a cockpit for automation. The chrome recedes into graphite so the workflow graph owns the screen, and every light that comes on means something: a green border is a successful run, a red border is a failure, an animated border is work in progress. The system is built from shadcn/ui (new-york) on Base UI, styled with Tailwind v4 tokens declared in OKLCH, deliberately conventional where convention earns trust.",
     "keyCharacteristics": [
       "Achromatic field: every surface, border, and text color is a zero-chroma graphite step.",
       "Color is signal: chroma appears only on run status, destructive actions, and integration icons.",

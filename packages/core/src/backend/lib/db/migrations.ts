@@ -31,9 +31,9 @@ const MIGRATIONS_TABLE = "__drizzle_migrations";
  * The one copy of the migrations: drizzle-kit generates into it, and "files" in
  * packages/core/package.json publishes it. Counting `..` segments instead would
  * be counting against a layout that only holds before bundling, and in a flat
- * node_modules the miscount lands on the adopter's own `drizzle/` -- which WfGraph's
- * migration connection would then apply into WfGraph's schema, under WfGraph's
- * search_path, with their hashes in WfGraph's journal. Anchoring on the package name
+ * node_modules the miscount lands on the adopter's own `drizzle/` -- which Workflow Graph's
+ * migration connection would then apply into Workflow Graph's schema, under Workflow Graph's
+ * search_path, with their hashes in Workflow Graph's journal. Anchoring on the package name
  * is what makes that unreachable rather than merely unlikely.
  *
  * An operator whose migrations really do sit somewhere else says so with
@@ -50,14 +50,14 @@ export function wfgraphMigrationsDir(startDir: string = currentDir): string {
       }
 
       throw new Error(
-        `WfGraph's migrations are published inside ${OWNING_PACKAGE}, but the package holding its code is named ${String(name)}. Pass database.migrations.migrationsDir to createWfGraphApp to say where the SQL is.`
+        `Workflow Graph's migrations are published inside ${OWNING_PACKAGE}, but the package holding its code is named ${String(name)}. Pass database.migrations.migrationsDir to createWfGraphApp to say where the SQL is.`
       );
     }
 
     const parent = dirname(dir);
     if (parent === dir) {
       throw new Error(
-        `Could not find the ${OWNING_PACKAGE} package above ${startDir}, so WfGraph cannot locate the migrations it ships. Pass database.migrations.migrationsDir to createWfGraphApp.`
+        `Could not find the ${OWNING_PACKAGE} package above ${startDir}, so Workflow Graph cannot locate the migrations it ships. Pass database.migrations.migrationsDir to createWfGraphApp.`
       );
     }
 
@@ -79,7 +79,7 @@ export type MigrationsOptions = {
   runOnStartup?: boolean;
   /**
    * Directory holding the generated SQL, for an operator whose migrations really
-   * do sit somewhere other than the copy WfGraph ships.
+   * do sit somewhere other than the copy Workflow Graph ships.
    */
   migrationsDir?: string;
 };
@@ -111,7 +111,7 @@ async function resolveExistingMigrationsDir(
  *
  * The generated SQL names no schema, so the search_path the connection carries is
  * what puts the tables where the host asked for them, and the journal goes in
- * that same schema rather than one of its own: everything WfGraph owns then sits
+ * that same schema rather than one of its own: everything Workflow Graph owns then sits
  * inside the one name a host can drop.
  *
  * The connection is this call's own, and it goes back before this returns whether
@@ -239,7 +239,7 @@ export function assertJournalHashesAreOurs(
 
   if (foreign.length > 0) {
     throw new Error(
-      `The ${target.schema} schema carries ${foreign.length} migration(s) this build of WfGraph does not ship, so applying the ones it does would re-run statements against objects that already exist. This happens when WfGraph's migration set was rebaselined, or when another tool's migrations were applied into this schema. Drop the ${target.schema} schema and migrate again.`
+      `The ${target.schema} schema carries ${foreign.length} migration(s) this build of Workflow Graph does not ship, so applying the ones it does would re-run statements against objects that already exist. This happens when Workflow Graph's migration set was rebaselined, or when another tool's migrations were applied into this schema. Drop the ${target.schema} schema and migrate again.`
     );
   }
 }
@@ -259,7 +259,7 @@ async function assertSearchPathHolds(
 
   if (current?.schema !== schema) {
     throw new Error(
-      `The connection resolves unqualified names to ${current?.schema ?? "no schema"}, not the configured ${schema}. WfGraph sends the schema as a search_path startup parameter; a connection pooler in front of Postgres has to pass it through.`
+      `The connection resolves unqualified names to ${current?.schema ?? "no schema"}, not the configured ${schema}. Workflow Graph sends the schema as a search_path startup parameter; a connection pooler in front of Postgres has to pass it through.`
     );
   }
 }

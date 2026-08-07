@@ -70,7 +70,7 @@ cannot arrive as an import inside it. Two candidates:
 
 - The host builds the SPA entry itself, and `main.tsx` becomes an exported function
   taking the record. This is honest and costs the host a build step.
-- WfGraph exposes a global the host's own script fills before the bundle runs. This costs
+- Workflow Graph exposes a global the host's own script fills before the bundle runs. This costs
   the host nothing and gives up type safety at the seam.
 
 Decide this before phase 3 starts.

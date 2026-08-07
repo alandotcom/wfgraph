@@ -1,5 +1,5 @@
 /**
- * Where WfGraph finds the SQL it ships.
+ * Where Workflow Graph finds the SQL it ships.
  *
  * The answer has to hold in two layouts -- this source tree, and a published
  * package whose code sits one directory under its manifest -- and it has to hold
@@ -45,7 +45,7 @@ describe("wfgraphMigrationsDir", () => {
   });
 
   // The failure this replaces: counting `..` segments reached the adopter's own
-  // drizzle-kit folder in a flat node_modules, and WfGraph applied their migrations
+  // drizzle-kit folder in a flat node_modules, and Workflow Graph applied their migrations
   // on its migration connection, inside its schema.
   it("cannot reach a drizzle folder outside the package", () => {
     const root = scratchTree();
@@ -63,7 +63,7 @@ describe("wfgraphMigrationsDir", () => {
     );
   });
 
-  it("names the package it found when the code was moved out of WfGraph's", () => {
+  it("names the package it found when the code was moved out of Workflow Graph's", () => {
     const root = scratchTree();
     writePackage(root, "adopter-app");
 

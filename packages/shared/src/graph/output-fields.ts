@@ -71,7 +71,7 @@ function describeSchema(
  * which is what `defineAction` wants: a host's `output` may come from
  * any Standard Schema library, and a derivation failure there should leave
  * the action addressable by node rather than crash the host's own boot. An
- * integration's action is WfGraph's own code and is held to the stricter
+ * integration's action is Workflow Graph's own code and is held to the stricter
  * `requireOutputFieldsFromSchema` below.
  */
 export function outputFieldsFromSchema(

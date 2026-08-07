@@ -6,7 +6,7 @@
  * const wfgraph = await createWfGraphApp({ client: clientBundle, ... });
  * ```
  *
- * WfGraph's server does not depend on this package and cannot find it on its own,
+ * Workflow Graph's server does not depend on this package and cannot find it on its own,
  * so passing it is what turns the UI on.
  */
 

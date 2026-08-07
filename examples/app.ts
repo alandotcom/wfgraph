@@ -1,15 +1,15 @@
 /**
- * The WfGraph app this repo runs, for `pnpm run dev` and for `pnpm run start`.
+ * The Workflow Graph app this repo runs, for `pnpm run dev` and for `pnpm run start`.
  *
  * The repo has no server of its own. `createWfGraphApp` returns a fetch handler and
  * the host mounts it, so the only server here is an adopter's app, written the
  * way an adopter writes one. Running it is what keeps the published path
- * exercised: every line below is a line someone embedding WfGraph would also write,
+ * exercised: every line below is a line someone embedding Workflow Graph would also write,
  * and anything that would exist only to serve this repo's dev loop belongs
  * somewhere else.
  *
  * The Events and the custom action are the interesting half. They show what
- * `defineEvent` and `defineAction` are for, and WfGraph serves them beside its
+ * `defineEvent` and `defineAction` are for, and Workflow Graph serves them beside its
  * built-in integrations with no further registration.
  *
  * Development hands over no editor. `pnpm run dev` runs Vite's dev server in
@@ -37,7 +37,7 @@ const DEFAULT_DATABASE_URL =
 
 const isProduction = process.env.NODE_ENV === "production";
 
-// WfGraph reads a schema through Standard Schema and asks nothing else of it. The
+// Workflow Graph reads a schema through Standard Schema and asks nothing else of it. The
 // editor labels a path from its key ("Patient Name" from `patientName`), and
 // `z.iso.datetime()` emits `format: "date-time"`, which is what gives the field
 // before/after operators in the condition builder and admits it to the Wait
@@ -139,7 +139,7 @@ const cancelAppointmentAction = defineAction({
     cancelledAt: z.iso.datetime(),
   }),
   // The cancellation goes inside `step.run`, so a retry of a later node replays
-  // this answer rather than cancelling a second time. WfGraph wraps no handler body:
+  // this answer rather than cancelling a second time. Workflow Graph wraps no handler body:
   // work with a side effect says so here or it happens again on every attempt.
   handler({ input, step }) {
     return step.run("cancel", () =>
@@ -155,7 +155,7 @@ const cancelAppointmentAction = defineAction({
 
 const wfgraph = await createWfGraphApp({
   // Handing the editor over is what turns it on. Development has none to hand
-  // over, and WfGraph then serves the API alone.
+  // over, and Workflow Graph then serves the API alone.
   client: isProduction
     ? (await import("@wfgraph/client")).clientBundle
     : undefined,
@@ -168,7 +168,7 @@ const wfgraph = await createWfGraphApp({
     // One URL, or the discrete host/port/user/password/database fields a
     // platform hands out separately.
     url: process.env.DATABASE_URL?.trim() || DEFAULT_DATABASE_URL,
-    // WfGraph keeps its tables in "_workflows" unless told otherwise. This is read
+    // Workflow Graph keeps its tables in "_workflows" unless told otherwise. This is read
     // here because `pnpm run db:migrate` reads the same variable, and an app
     // querying one schema while the migrator creates another is a bad afternoon.
     schema: process.env.DATABASE_SCHEMA?.trim() || undefined,
@@ -177,7 +177,7 @@ const wfgraph = await createWfGraphApp({
       migrationsDir: process.env.MIGRATIONS_DIR,
     },
   },
-  // WfGraph refuses to start without a 64-character hex key and says so, so there
+  // Workflow Graph refuses to start without a 64-character hex key and says so, so there
   // is nothing to check here.
   encryption: {
     key: process.env.INTEGRATION_ENCRYPTION_KEY,
@@ -226,7 +226,7 @@ const port = Number(process.env.PORT ?? DEFAULT_PORT);
 // repo's dev script sets it to 127.0.0.1, since the app above admits every
 // request that arrives.
 server.listen(port, process.env.HOST, () => {
-  console.log(`WfGraph listening on http://localhost:${port}/`);
+  console.log(`Workflow Graph listening on http://localhost:${port}/`);
 });
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

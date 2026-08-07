@@ -68,7 +68,7 @@ describe("the database connection options", () => {
     );
   });
 
-  // Both spellings at once is the one case where WfGraph would have to choose, and
+  // Both spellings at once is the one case where Workflow Graph would have to choose, and
   // whichever it chose would surprise somebody. The union's `never` fields refuse
   // this literal outright, so only a host who is not on TypeScript can get here,
   // and the cast is what stands in for one.

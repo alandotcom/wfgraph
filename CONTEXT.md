@@ -1,6 +1,6 @@
-# WfGraph Workflow Builder
+# Workflow Graph
 
-WfGraph lets a developer embed a workflow engine in their app and hand a visual
+Workflow Graph lets a developer embed a workflow engine in their app and hand a visual
 editor to the people who build workflows on top of it. Two personas share the
 system, and most of this vocabulary exists to keep their responsibilities
 apart: the Event Author supplies vocabulary, the Workflow Builder assigns it
@@ -159,7 +159,7 @@ network. `defineEvent` and `defineAction` are how one is written. Who wrote it
 decides nothing: a published package of pure-compute actions is internal too.
 
 **External System**:
-A system WfGraph reaches over HTTP, holding credentials an operator supplied.
+A system Workflow Graph reaches over HTTP, holding credentials an operator supplied.
 `defineIntegration` and `defineStep` are how one is written, and
 `callExternal` is the one call that reaches it, carrying the timeout, the
 retry schedule, and the rule about when a request may be sent twice.

@@ -10,11 +10,11 @@ web
 
 ## Users
 
-Developers first: engineers who adopt WfGraph, embed `@wfgraph/core` and the editor in their own stack, and build or debug workflows in it. Once embedded, their less-technical teammates use the same editor to wire up automations. The developer is the primary audience and sets the bar; the ops teammate must still be able to read a workflow at a glance and edit one safely.
+Developers first: engineers who adopt Workflow Graph, embed `@wfgraph/core` and the editor in their own stack, and build or debug workflows in it. Once embedded, their less-technical teammates use the same editor to wire up automations. The developer is the primary audience and sets the bar; the ops teammate must still be able to read a workflow at a glance and edit one safely.
 
 ## Product Purpose
 
-WfGraph is a general workflow automation platform: a node-based visual editor over a typed, plugin-driven execution engine (Hono API, Postgres, Inngest). Users compose a Lifecycle Node, steps, and conditions on a canvas, connect integrations (Slack, Twilio, Resend, Linear, Acuity, Clerk), and watch runs execute with logs and history. Success in the near term is production use at Fountain, with real workflows running reliably.
+Workflow Graph is a general workflow automation platform: a node-based visual editor over a typed, plugin-driven execution engine (Hono API, Postgres, Inngest). Users compose a Lifecycle Node, steps, and conditions on a canvas, connect integrations (Slack, Twilio, Resend, Linear, Acuity, Clerk), and watch runs execute with logs and history. Success in the near term is production use at Fountain, with real workflows running reliably.
 
 ## Positioning
 
@@ -26,7 +26,7 @@ Precise, calm, technical. An instrument for people who know what they're doing. 
 
 ## Anti-references
 
-The colorful automation-canvas look of Zapier or n8n, where every node type shouts its integration branding. Also the SaaS-generic default: gradient accents, cream-tinted backgrounds, identical card grids. WfGraph reads as a tool, closer to an IDE than a marketing site.
+The colorful automation-canvas look of Zapier or n8n, where every node type shouts its integration branding. Also the SaaS-generic default: gradient accents, cream-tinted backgrounds, identical card grids. Workflow Graph reads as a tool, closer to an IDE than a marketing site.
 
 ## Design Principles
 

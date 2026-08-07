@@ -65,7 +65,7 @@ export function toHandlerBag<TInput>(
 /**
  * What an input record carrying no run context becomes.
  *
- * Every node the engine runs carries its context, so this is a WfGraph bug rather
+ * Every node the engine runs carries its context, so this is a Workflow Graph bug rather
  * than something an author wrote. Both boundaries fail the node on it, because
  * the alternative is handing an author the node ids they were promised as
  * undefined, and a run log naming a node that does not exist.

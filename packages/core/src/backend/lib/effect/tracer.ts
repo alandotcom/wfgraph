@@ -1,6 +1,6 @@
 import { Layer } from "effect";
 // By subpath, because the package's own entry re-exports NodeSdk and WebSdk,
-// which import @opentelemetry/sdk-trace-node and -web at module scope. WfGraph
+// which import @opentelemetry/sdk-trace-node and -web at module scope. Workflow Graph
 // installs neither: the SDK is the host's.
 import * as OtelTracer from "@effect/opentelemetry/OtelTracer";
 import * as Resource from "@effect/opentelemetry/Resource";
@@ -13,9 +13,9 @@ import { TRACER_NAME, TRACER_VERSION } from "#src/backend/lib/telemetry";
  * `Effect.withSpan` opens on Effect's tracer. Replacing the `Tracer` reference
  * for the whole Layer graph is what exports them in one trace tree.
  *
- * WfGraph starts no SDK, exporter or processor. What this reads is the global proxy
+ * Workflow Graph starts no SDK, exporter or processor. What this reads is the global proxy
  * provider `@opentelemetry/api` always answers with, and that proxy resolves its
- * delegate once per span: a host registering after WfGraph has booted is still
+ * delegate once per span: a host registering after Workflow Graph has booted is still
  * traced, and a host registering nothing gets no-op spans.
  */
 export const TracerBridgeLayer: Layer.Layer<never> =

@@ -294,7 +294,7 @@ type WorkflowFunctionPorts = {
  * a terminal status ends non-retriably instead and spends none of these.
  *
  * What is remembered is what a handler put in its own `step.run`, plus the
- * run-log row the engine opens around it. WfGraph wraps no handler body
+ * run-log row the engine opens around it. Workflow Graph wraps no handler body
  * (ADR-0009), so a handler that wraps nothing repeats its work on every
  * attempt.
  *

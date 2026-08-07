@@ -1,4 +1,4 @@
-# WfGraph Workflow Builder
+# Workflow Graph
 
 A self-hosted workflow engine you embed in your application. Your code declares the
 vocabulary — Events, actions, and integrations — and your team builds workflows in a visual
@@ -9,7 +9,7 @@ editor.
 | **Event Author**     | The developer who embeds  | Defines Events, actions, and which integrations to turn on  |
 | **Workflow Builder** | Their less technical team | Builds the graph and declares Lifecycle Rules in the editor |
 
-WfGraph runs on your infrastructure (Node, PostgreSQL, Inngest) and uses your database.
+Workflow Graph runs on your infrastructure (Node, PostgreSQL, Inngest) and uses your database.
 
 ## Run locally
 

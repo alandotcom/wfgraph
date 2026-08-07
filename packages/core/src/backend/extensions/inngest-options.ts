@@ -42,7 +42,7 @@ type WithPayloadKey<TOption, TPayload extends JsonObject> = Omit<
  * Inngest flow control for an Event's listener, written against the payload.
  *
  * Inngest `concurrency` is not a member. Per-Entity-Value serialization is
- * WfGraph's Concurrency on the Lifecycle Node, which Inngest's version cannot
+ * Workflow Graph's Concurrency on the Lifecycle Node, which Inngest's version cannot
  * stand in for: it can neither end a displaced run with the `superseded` status
  * nor refuse a start and say so in run history.
  */

@@ -2,7 +2,7 @@
   "name": "wfgraph",
   "version": "0.0.0",
   "private": true,
-  "description": "WfGraph Workflow Builder — visual workflow automation with a node-based editor and plugin integrations",
+  "description": "Workflow Graph — visual workflow automation with a node-based editor and plugin integrations",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {

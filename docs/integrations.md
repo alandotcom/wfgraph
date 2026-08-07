@@ -58,7 +58,7 @@ export const myService = defineIntegration({
         id: Schema.String.annotate({ description: "Item ID" }),
       }),
       // Optional. `input` draws the form, so this states what a schema cannot.
-      // WfGraph checks each `key` against the schema.
+      // Workflow Graph checks each `key` against the schema.
       configFields: [{ key: "text", placeholder: "Something to send" }],
       // One bag, the way an Inngest handler takes one. Destructure what you use.
       handler: Effect.fn(function* (bag) {
@@ -104,14 +104,14 @@ to learn.
 ## What is remembered across a replay
 
 A durable runtime re-runs the whole workflow function every time a run resumes, after a
-sleep, after a wait, after a retry. **WfGraph wraps no handler body.** Work with a side effect
+sleep, after a wait, after a retry. **Workflow Graph wraps no handler body.** Work with a side effect
 goes inside `step.run` or it happens again on every attempt:
 
 ```ts
 const posted = yield* bag.step.run("post", callSlack(apiKey, ...));
 ```
 
-You name the work; WfGraph prefixes the node it belongs to, so two nodes running the same
+You name the work; Workflow Graph prefixes the node it belongs to, so two nodes running the same
 action never read one another's stored result. Wrap the call out to the system and leave
 parsing, branching and shaping outside it: those are cheap to repeat, and keeping them out
 keeps the stored value small.
@@ -129,7 +129,7 @@ Three rules:
 - **A handler that wraps nothing still opens one memoized log row.** The run panel then
   shows one row for however many times the work ran, so the log is not evidence it ran once.
 
-`docs/adr/0009` is why this is the author's job rather than WfGraph's.
+`docs/adr/0009` is why this is the author's job rather than Workflow Graph's.
 
 ## Effect for integrations, Promise for host actions
 
@@ -168,7 +168,7 @@ handler: async ({ input, readCredentials, step }) => {
 Internally both arms of `step.run` share one Effect memoization path; the Promise overload is
 a thin adapter. The rest of the contract (config decode, output encode, run log) is identical.
 One case is worth knowing: `readCredentials` rejects with the failure a refused credential
-store raises, and WfGraph fails the node on it, naming the store in the message. A handler that
+store raises, and Workflow Graph fails the node on it, naming the store in the message. A handler that
 catches around the await turns that into whatever it answers next, so catch narrowly.
 
 ## The config form
@@ -181,7 +181,7 @@ a friendly `select` label, a `showWhen`, a group. An entry merges into the deriv
 the same key, property by property. `configFields` is optional, and a schema that already
 says everything stands on its own.
 
-Order follows your entries, and WfGraph draws each key you left out after them, in schema
+Order follows your entries, and Workflow Graph draws each key you left out after them, in schema
 order. A group takes its position from your list, because its placement is a decision you
 make.
 
@@ -219,10 +219,10 @@ read with: a handler that decides it has nothing to send never runs it.
 ## Schemas at a step boundary
 
 Write them in the library you already use. Effect Schema, Zod, arktype, anything that
-publishes Standard Schema. What differs is how much WfGraph does with them.
+publishes Standard Schema. What differs is how much Workflow Graph does with them.
 
 **An Effect schema crosses its canonical JSON codec in both directions.** A step boundary is
-JSON on both sides, so WfGraph runs `Schema.toCodecJson(schema)`, built once at definition.
+JSON on both sides, so Workflow Graph runs `Schema.toCodecJson(schema)`, built once at definition.
 `defineAction` reads and answers through the same codec, so an action of a host written in
 Effect Schema gets this too. An input schema can therefore carry a transform:
 
@@ -251,7 +251,7 @@ A handler that answers with something its output schema cannot encode fails the 
 naming the field path, and keeps its retries for a failure that might clear.
 
 **A schema from another library** publishes a validator and a JSON Schema. Both of those
-run in the decode direction only. WfGraph validates its config, and its form and field list
+run in the decode direction only. Workflow Graph validates its config, and its form and field list
 derive as usual. What the handler answered passes on as it stands, so answer with JSON
 there, because the engine memoizes a step result and replays it.
 

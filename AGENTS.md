@@ -1,6 +1,6 @@
 # Agent Instructions
 
-WfGraph Workflow Builder: a pnpm workspace monorepo with four packages under `packages/`,
+Workflow Graph: a pnpm workspace monorepo with four packages under `packages/`,
 beside `@wfgraph/example-app` (`examples/`), the host app `pnpm run dev` runs.
 
 - `@wfgraph/shared` (`packages/shared`) runtime-agnostic types, workflow contracts, utilities
@@ -18,7 +18,7 @@ vocabulary, `docs/adr/` the decisions. What follows is what none of those say.
 
 pnpm only, at the version the root `packageManager` field names (`corepack enable` gets
 it). Never npm, yarn, or `bun install`. Node runs everything, and `engines` names Node 24
-as the floor. Trying WfGraph inside another app is `pnpm link <path-to>/packages/core` after
+as the floor. Trying Workflow Graph inside another app is `pnpm link <path-to>/packages/core` after
 a build, since the published entries point at `dist`.
 
 **`#src/` means this package's own `src`, never another's.** It is a Node subpath import,
@@ -154,7 +154,7 @@ explicitly, with a function reading the global per call, which is what makes fet
 work at all.
 
 **Inngest shapes the workflow engine.** `step.*` inside `step.run()` is a runtime error, so
-a Wait node suspends outside any step. WfGraph wraps no handler body (ADR-0009): work with a
+a Wait node suspends outside any step. Workflow Graph wraps no handler body (ADR-0009): work with a
 side effect goes in the handler's own `step.run`, and a `StepFailure` travels back as a
 value so a refused call fails the node once rather than four times. Retries are
 function-level, each step carrying its own counter. Step results round-trip through JSON, and
@@ -202,7 +202,7 @@ importing `@wfgraph/plugins` would resolve through the package's `exports` to a 
 the bar for a line in it is whether an adopter would write it. `pnpm run dev` is three
 processes: the app on 4017, Vite's dev server in `packages/client`, and the Inngest CLI.
 Vite serves the editor on its own port and proxies `/api`, and its history fallback answers
-a page view, so nothing outside WfGraph applies the SPA-path rule. `client` goes unset in
+a page view, so nothing outside Workflow Graph applies the SPA-path rule. `client` goes unset in
 development, because the option takes a built bundle. `pnpm run start` is one process, with
 the built bundle handed to `createWfGraphApp`.
 
@@ -296,7 +296,7 @@ No emojis. Do not create new markdown docs unless asked.
 - **CONTEXT.md** owns domain vocabulary, one paragraph per term.
 - **An ADR** owns why a design was chosen: once, in past tense, never updated. A decision
   that changes gets a dated amendment, not a rewrite.
-- **README.md** owns the short entrypoint: what WfGraph is, how to run it locally, and a
+- **README.md** owns the short entrypoint: what Workflow Graph is, how to run it locally, and a
   minimal embed. Detail lives under `docs/`: `docs/embedding.md` (mount, database,
   options, package exports), `docs/events.md` (`defineEvent`), `docs/integrations.md`
   (`defineIntegration`).

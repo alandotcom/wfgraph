@@ -1,6 +1,6 @@
-# Embedding WfGraph
+# Embedding Workflow Graph
 
-How to mount WfGraph in a host application: `createWfGraphApp`, the editor, integrations, database, migrations, package exports, and options.
+How to mount Workflow Graph in a host application: `createWfGraphApp`, the editor, integrations, database, migrations, package exports, and options.
 
 `createWfGraphApp` returns a fetch handler: `(request: Request) => Promise<Response>`.
 
@@ -64,7 +64,7 @@ const cancelAppointment = defineAction({
 const wfgraph = await createWfGraphApp({
   database: {
     url: process.env.DATABASE_URL!,
-    // WfGraph puts its tables in "_workflows". This option names a different schema.
+    // Workflow Graph puts its tables in "_workflows". This option names a different schema.
     schema: process.env.DATABASE_SCHEMA,
     migrations: { runOnStartup: true },
   },
@@ -111,7 +111,7 @@ Express and Fastify speak `IncomingMessage` and `ServerResponse`.
 
 ```ts
 const app = express();
-// Mount WfGraph before each body parser. Pass the same path as basePath.
+// Mount Workflow Graph before each body parser. Pass the same path as basePath.
 app.use("/workflows", createRequestListener(wfgraph));
 app.use(express.json());
 ```
@@ -126,7 +126,7 @@ Two failures the adapter handles for you:
 
 - Express strips the matched path from `req.url`, so the adapter reads `req.originalUrl`.
   It logs once when the mount path and `basePath` disagree.
-- A body parser in front of WfGraph drains the request. WfGraph cannot rebuild the original
+- A body parser in front of Workflow Graph drains the request. Workflow Graph cannot rebuild the original
   bytes that the Inngest callback verifies a signature over. Such a request gets a 500 that
   names the fix.
 
@@ -140,7 +140,7 @@ import { clientBundle } from "@wfgraph/client";
 const wfgraph = await createWfGraphApp({ client: clientBundle, ... });
 ```
 
-- Omit `client` and WfGraph answers 404 outside `/api`. That suits a host that puts the editor
+- Omit `client` and Workflow Graph answers 404 outside `/api`. That suits a host that puts the editor
   elsewhere, or drives workflows with Events alone.
 - The option takes a directory that holds an `index.html`, so a custom build of the editor
   is the same call with a different bundle.
@@ -167,12 +167,12 @@ const wfgraph = await createWfGraphApp({
   values. The static import buys the timing of a failure. A missing SDK stops the
   application at start-up, where a lazy import would let a single run fail much later.
 - `@wfgraph/plugins` peer-depends on `@wfgraph/core`. A second copy means a second database
-  handle, which the one-WfGraph-per-process rule prevents.
+  handle, which the one-instance-per-process rule prevents.
 
 ## The database options
 
 Pass a `url`, or pass the separate fields. Use one form only. A mixed value fails to
-compile, and WfGraph refuses the same mixture at runtime.
+compile, and Workflow Graph refuses the same mixture at runtime.
 
 ```ts
 database: {
@@ -191,9 +191,9 @@ database: {
 The separate fields reach postgres.js as fields, so a database name with a space, an IPv6
 host, a unix-socket host, and `ssl` all work.
 
-**`database.schema`** names the Postgres schema that holds WfGraph. The default is
-`_workflows`. WfGraph declares the tables unqualified, and the `search_path` of the connection
-puts them in place, so the schema name is a runtime option. Drop that one schema and WfGraph
+**`database.schema`** names the Postgres schema that holds Workflow Graph. The default is
+`_workflows`. Workflow Graph declares the tables unqualified, and the `search_path` of the connection
+puts them in place, so the schema name is a runtime option. Drop that one schema and Workflow Graph
 leaves the database, migration journal included.
 
 Three rules follow. Each fails loudly:
@@ -215,7 +215,7 @@ Two entry points, one migrator.
 **At start-up.** `database.migrations.runOnStartup` (default `false`) applies the pending
 migrations before the HTTP server starts. `database.migrations.migrationsDir` names a
 different source, resolved from the working directory. The default is the `drizzle/`
-directory that `@wfgraph/core` ships, found relative to the running code. WfGraph reads the
+directory that `@wfgraph/core` ships, found relative to the running code. Workflow Graph reads the
 working directory for that one option, so your own `./drizzle` is safe.
 
 **From CI or a release step**, before an instance boots:
@@ -225,7 +225,7 @@ import { migrateWfGraphDatabase } from "@wfgraph/core/migrate";
 
 await migrateWfGraphDatabase({
   url: process.env.DATABASE_URL!,
-  // Or the separate fields. Add `schema` when WfGraph lives elsewhere.
+  // Or the separate fields. Add `schema` when Workflow Graph lives elsewhere.
   // `migrationsDir` sits here, flat, and takes no `migrations` key.
 });
 ```
@@ -238,7 +238,7 @@ await migrateWfGraphDatabase({
   call and is closed with it.
 
 **Why this entry point alone applies the shipped SQL.** The files are schema-agnostic, and
-`search_path` that selects the schema rides on the connection that WfGraph opens. `psql` or a
+`search_path` that selects the schema rides on the connection that Workflow Graph opens. `psql` or a
 different migration tool puts the tables in `public`. This repository's
 `pnpm run db:migrate` is the same entry with the environment read in front
 (`scripts/migrate.ts`).
@@ -255,7 +255,7 @@ different migration tool puts the tables in `public`. This repository's
 | `@wfgraph/plugins`      | The built-in integrations as values, by name and as `builtInIntegrations`                                                                                                                                                                                        |
 | `@wfgraph/plugins/ui`   | Their icons and output renderers as one record, imported by the browser alone                                                                                                                                                                                    |
 
-WfGraph cannot serialize a React component, so that last record is the one part of the catalog
+Workflow Graph cannot serialize a React component, so that last record is the one part of the catalog
 that stays off `/api/extensions`. `@wfgraph/shared` stays private, and the build inlines it
 into whichever bundle needs it.
 
@@ -268,11 +268,11 @@ server of the host takes.
 
 | Option                              | Required | Description                                                                                                                                                    |
 | ----------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `basePath`                          | No       | Path the host mounts WfGraph at (default `/`)                                                                                                                  |
+| `basePath`                          | No       | Path the host mounts Workflow Graph at (default `/`)                                                                                                           |
 | `auth`                              | Yes      | Predicate that decides who reaches the editor, or `"external"`                                                                                                 |
 | `database.url`                      | Yes¹     | PostgreSQL connection string                                                                                                                                   |
 | `database.host` and co.             | Yes¹     | `host`, `port`, `user`, `password`, `database`, in place of a URL                                                                                              |
-| `database.schema`                   | No       | Postgres schema WfGraph keeps its tables in (default `_workflows`)                                                                                             |
+| `database.schema`                   | No       | Postgres schema Workflow Graph keeps its tables in (default `_workflows`)                                                                                      |
 | `database.maxConnections`           | No       | Connections the query pool can open (default 10)                                                                                                               |
 | `database.ssl`                      | No       | `true`, `"require"`, `"allow"`, `"prefer"` or `"verify-full"`                                                                                                  |
 | `database.migrations.runOnStartup`  | No       | Apply the pending migrations at start-up (default `false`)                                                                                                     |
@@ -291,15 +291,15 @@ are valid on both.
 
 Read these once:
 
-- **`auth` decides who reaches the editor**, and WfGraph refuses to start without it. It
+- **`auth` decides who reaches the editor**, and Workflow Graph refuses to start without it. It
   prevents the quiet failure: an editor the internet reaches, running actions with
   credentials decrypted out of the `integrations` table. Pass a predicate
   `(request: Request) => boolean | Promise<boolean>` that reads the session your application
-  already uses, or `"external"` when something in front of WfGraph already gates it. It covers
+  already uses, or `"external"` when something in front of Workflow Graph already gates it. It covers
   the RPC, REST, OpenAPI, extensions, and SPA routes.
 - **Two routes can sit outside that gate:** the wait resume path always, and the
   Inngest HTTP callback only when `inngest.connect` is unset. Their callers are
-  machines, each carrying a signing key or a resume token. WfGraph alone knows which
+  machines, each carrying a signing key or a resume token. Workflow Graph alone knows which
   of its routes are which, which is why it takes the predicate as an option and
   applies it route by route. Connect mode mounts no `/api/inngest` — the worker
   dials out — so a private network that Inngest cannot call into still runs.
@@ -308,9 +308,9 @@ Read these once:
   that holds with a configured signing key alone. Without one the SDK runs in
   dev mode and skips the signature check, so an anonymous POST to that path can
   execute a workflow function with a payload of its choice. With Connect, the
-  same key authenticates the worker to the gateway. WfGraph logs an error at
+  same key authenticates the worker to the gateway. Workflow Graph logs an error at
   start-up when no key is set for the path in use.
-- **A mount under a sub-path takes `basePath`.** WfGraph builds its API prefix, the
+- **A mount under a sub-path takes `basePath`.** Workflow Graph builds its API prefix, the
   `<base href>` of the SPA, and each asset URL from it. A host that mounts at `/workflows`
   and omits it gets a client that requests its assets from the root.
 - **Running Inngest is the job of the consumer**, self-hosted or cloud. `pnpm run dev` here
@@ -324,16 +324,16 @@ Read these once:
 - **`createWfGraphApp` bounds the Connect handshake at boot.** The installed SDK
   retries a failed handshake forever and never settles the promise it hands
   back, so an unreachable gateway would otherwise hang boot with nothing
-  logged. WfGraph races it against `inngest.connectTimeoutMs` (default 30
+  logged. Workflow Graph races it against `inngest.connectTimeoutMs` (default 30
   seconds) and fails boot with an error naming the gateway once that elapses.
 - `createWfGraphApp` answers `{ fetch, basePath, dispose }`. `await dispose()` drains an
   open Connect worker, then returns when the layers of the Effect runtime finalize. One
-  WfGraph per process is the supported arrangement, because the database handle, the Inngest
+  Workflow Graph per process is the supported arrangement, because the database handle, the Inngest
   client, the encryption key and the assembled surface are global to the process.
 
 ## API endpoints
 
-The base path is `/api`, under whatever `basePath` names. WfGraph builds the full route list
+The base path is `/api`, under whatever `basePath` names. Workflow Graph builds the full route list
 from `packages/shared/src/rpc/contracts.ts` and serves it live:
 
 - `GET /api/openapi.json` for the document

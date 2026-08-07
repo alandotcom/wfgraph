@@ -280,7 +280,7 @@ describe("host action execution", () => {
   });
 
   // A stored graph naming an action nothing assembled -- an id from a deleted
-  // integration, a typo, a build served by a different WfGraph than the one that
+  // integration, a typo, a build served by a different Workflow Graph than the one that
   // saved it -- fails the node by name rather than the run. The message lists
   // the two ids the engine ships itself, which it knows without asking the
   // dispatch port: a surface holding nothing would otherwise make the sentence

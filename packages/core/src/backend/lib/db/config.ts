@@ -22,9 +22,9 @@ const MAX_PORT = 65_535;
 /** The options both spellings of the connection take. */
 type DatabaseCommonConfig = {
   /**
-   * Postgres schema WfGraph keeps its tables in, "_workflows" unless the host says
-   * otherwise. WfGraph creates it when it migrates and holds every table and the
-   * migration journal inside it, so dropping this one schema removes WfGraph from
+   * Postgres schema Workflow Graph keeps its tables in, "_workflows" unless the host says
+   * otherwise. Workflow Graph creates it when it migrates and holds every table and the
+   * migration journal inside it, so dropping this one schema removes Workflow Graph from
    * the database. Lowercase only: an unquoted identifier in `search_path` folds
    * to lowercase, so a mixed-case name would silently mean a different schema
    * than the one written here.

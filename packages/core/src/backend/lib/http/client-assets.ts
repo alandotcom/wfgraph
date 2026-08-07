@@ -63,7 +63,7 @@ async function fileExists(filePath: string): Promise<boolean> {
  * True for a path the browser router owns, so the answer is index.html rather
  * than a file lookup.
  *
- * WfGraph is the only place this rule is applied. Development serves the editor
+ * Workflow Graph is the only place this rule is applied. Development serves the editor
  * from Vite's own dev server, whose history fallback answers a page view
  * without asking anything here, so the rule has one implementation and one
  * caller.

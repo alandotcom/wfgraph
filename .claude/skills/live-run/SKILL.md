@@ -1,6 +1,6 @@
 ---
 name: live-run
-description: Drive a real workflow run against the local stack and read what actually happened. Use when a change touches the engine, the Wait node, cancellation, the Inngest functions, or anything whose behaviour is decided by Inngest's executor rather than by WfGraph's own code, and a vitest suite therefore cannot settle the question. Triggers on "verify against inngest dev", "drive a real run", "measure the timing", "check it end to end", or a claim about when a run wakes, resumes, retries, or is cancelled.
+description: Drive a real workflow run against the local stack and read what actually happened. Use when a change touches the engine, the Wait node, cancellation, the Inngest functions, or anything whose behaviour is decided by Inngest's executor rather than by Workflow Graph's own code, and a vitest suite therefore cannot settle the question. Triggers on "verify against inngest dev", "drive a real run", "measure the timing", "check it end to end", or a claim about when a run wakes, resumes, retries, or is cancelled.
 ---
 
 # Driving a live run
@@ -116,7 +116,7 @@ landed on its own target".
 
 ## 5. Read the trace
 
-WfGraph's tables live in the `_workflows` schema.
+Workflow Graph's tables live in the `_workflows` schema.
 
 ```bash
 WFGRAPH_DB="postgresql://workflow:workflow@localhost:55437/workflow_builder"
@@ -140,7 +140,7 @@ behind it says when the branch resumed.
 
 ## 6. Read what Inngest did
 
-The run log says what WfGraph recorded. This says what the executor actually ran,
+The run log says what Workflow Graph recorded. This says what the executor actually ran,
 which is the only place a claim about invocations can be settled.
 
 **Trap.** The dev server holds its database open, so copy it first.

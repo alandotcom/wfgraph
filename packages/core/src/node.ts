@@ -1,5 +1,5 @@
 /**
- * Mounting WfGraph inside a host that speaks Node's `http` module.
+ * Mounting Workflow Graph inside a host that speaks Node's `http` module.
  *
  * `createWfGraphApp` hands back a fetch handler, which Bun, Deno, and Cloudflare
  * Workers consume as-is. Express and Fastify sit on `node:http`, whose currency
@@ -21,10 +21,10 @@ import { getErrorMessage } from "@wfgraph/shared/utils";
 const nodeLogger = getAppLogger("http", "node");
 
 const CONSUMED_BODY_MESSAGE =
-  "WfGraph received a request whose body another middleware had already read. " +
-  "Mount WfGraph before your body parser, or exclude WfGraph's path from it " +
+  "Workflow Graph received a request whose body another middleware had already read. " +
+  "Mount Workflow Graph before your body parser, or exclude Workflow Graph's path from it " +
   '(for example `app.use("/wfgraph", wfgraphListener)` above `app.use(express.json())`). ' +
-  "WfGraph cannot re-create the original bytes, and the Inngest callback verifies a " +
+  "Workflow Graph cannot re-create the original bytes, and the Inngest callback verifies a " +
   "signature over them.";
 
 function buildMountMismatchMessage(
@@ -32,7 +32,7 @@ function buildMountMismatchMessage(
   basePath: string
 ): string {
   return (
-    `WfGraph is mounted at "${hostPrefix || "/"}" but was configured with basePath "${basePath || "/"}". ` +
+    `Workflow Graph is mounted at "${hostPrefix || "/"}" but was configured with basePath "${basePath || "/"}". ` +
     "Every request under this mount answers 404 until the two agree. Pass the same path to " +
     "the host's mount call and to createWfGraphApp's basePath option."
   );
@@ -42,7 +42,7 @@ function buildMountMismatchMessage(
  * Express rewrites `req.url` to strip the path it matched on, so a listener
  * mounted with `app.use("/wfgraph", ...)` sees "/api/extensions" where the client
  * asked for "/wfgraph/api/extensions". `req.originalUrl` is the only place the
- * full path survives, and WfGraph routes on the full path because the host told it
+ * full path survives, and Workflow Graph routes on the full path because the host told it
  * where the mount is. `@fastify/middie` sets the same property, and a bare
  * `http.createServer` sets neither, leaving `req.url` already complete.
  */
@@ -59,8 +59,8 @@ function hasRequestBody(request: IncomingMessage): boolean {
 /**
  * True when a body arrived on the wire but the stream has already been drained.
  *
- * A body parser mounted ahead of WfGraph leaves exactly this state, and every POST
- * would otherwise reach WfGraph empty: a wait resume would see `{}` and the Inngest
+ * A body parser mounted ahead of Workflow Graph leaves exactly this state, and every POST
+ * would otherwise reach Workflow Graph empty: a wait resume would see `{}` and the Inngest
  * callback's signature check would fail on bytes that no longer exist.
  * Re-serializing a parsed body is not a way out, because `JSON.stringify` does
  * not reproduce the original bytes and the signature covers those.
@@ -75,7 +75,7 @@ function isRequestBodyConsumed(request: IncomingMessage): boolean {
 export type CreateRequestListenerOptions = {
   /**
    * Hostname to assume when a request carries no Host header, which is legal in
-   * HTTP/1.0. WfGraph only needs it to build a `Request` URL; nothing routes on it.
+   * HTTP/1.0. Workflow Graph only needs it to build a `Request` URL; nothing routes on it.
    */
   hostname?: string;
 };
@@ -86,7 +86,7 @@ export type WfGraphRequestListener = (
 ) => Promise<void>;
 
 /**
- * Turn a WfGraph app into a Node request listener.
+ * Turn a Workflow Graph app into a Node request listener.
  *
  * Hand the result to `http.createServer`, to `app.use(path, listener)` in
  * Express, or to the same call in Fastify once `@fastify/middie` is registered.
@@ -104,10 +104,10 @@ export function createRequestListener(
     // and Response constructors, which this adapter does by default.
     overrideGlobalObjects: false,
     // Without this the adapter answers 500 with an empty body and says nothing,
-    // which turns a bug inside WfGraph into a mystery for whoever mounted it.
+    // which turns a bug inside Workflow Graph into a mystery for whoever mounted it.
     errorHandler: (error) => {
       nodeLogger.error(
-        `Unhandled error serving a WfGraph request: ${getErrorMessage(error)}`,
+        `Unhandled error serving a Workflow Graph request: ${getErrorMessage(error)}`,
         {
           error,
         }
@@ -135,11 +135,11 @@ export function createRequestListener(
 
     // Restore the path the client actually asked for. Mutating `url` is how the
     // underlying adapter is told about it; the change is confined to this
-    // request and to the part of the pipeline WfGraph owns, since this listener
+    // request and to the part of the pipeline Workflow Graph owns, since this listener
     // always answers rather than calling next().
     if (mounted.originalUrl !== undefined) {
-      // What the host stripped off is where the host thinks WfGraph is mounted.
-      // Comparing it to what WfGraph was told catches the mount call and the
+      // What the host stripped off is where the host thinks Workflow Graph is mounted.
+      // Comparing it to what Workflow Graph was told catches the mount call and the
       // basePath option naming different paths, in either direction, which
       // otherwise shows up as a uniform 404 with nothing to explain it.
       const hostPrefix = mounted.originalUrl.slice(

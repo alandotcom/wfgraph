@@ -258,7 +258,7 @@ export type InngestSurface = {
   serve: (functions: InngestFunction.Any[]) => InngestServeHandler;
   /**
    * Opens a Connect WebSocket for a function list already built for this
-   * client. Shutdown signals are left to the host: WfGraph closes the returned
+   * client. Shutdown signals are left to the host: Workflow Graph closes the returned
    * connection from `dispose`. Rejects once `connectTimeoutMs` elapses
    * without an active connection, naming the gateway it could not reach.
    */

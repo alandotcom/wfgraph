@@ -23,7 +23,7 @@ describe("CatalogUnavailable", () => {
       <CatalogUnavailable endpoint="/api/extensions" reason="mismatch" />
     );
 
-    expect(view.getByText(/different builds of WfGraph/)).toBeTruthy();
+    expect(view.getByText(/different builds of Workflow Graph/)).toBeTruthy();
     expect(view.queryByText(/did not answer/)).toBeNull();
   });
 });

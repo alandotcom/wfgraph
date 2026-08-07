@@ -97,7 +97,7 @@ const branchAction = vi.fn<() => Record<string, unknown>>(() => ({ ok: true }));
 
 /**
  * A host action whose work is inside `step.run`, which is the whole of what
- * makes it happen once across a replay. WfGraph wraps no handler body.
+ * makes it happen once across a replay. Workflow Graph wraps no handler body.
  */
 function aHostAction(
   id: string,
@@ -244,7 +244,7 @@ describe("workflow engine replay safety", () => {
     expect(memo.has("wait-delay-resume-wait_1")).toBe(true);
   });
 
-  // The other half of the contract, and the trap worth knowing: WfGraph wraps no
+  // The other half of the contract, and the trap worth knowing: Workflow Graph wraps no
   // handler body, so work left outside `step.run` happens again on every attempt
   // while the node's log rows stay memoized. The run panel then shows one row for
   // however many times the work ran.

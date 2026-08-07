@@ -62,7 +62,7 @@ function describingItselfAs(
 
 describe("requireOutputFieldsFromSchema", () => {
   it("derives a schema that annotates nothing, describing no key", () => {
-    // Validation is the author's job and presentation is WfGraph's, so a schema
+    // Validation is the author's job and presentation is Workflow Graph's, so a schema
     // written in any library derives without being edited to serve the editor.
     // An author who wrote no description gets none, and each surface decides
     // what to show in its place.

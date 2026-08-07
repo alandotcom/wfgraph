@@ -30,7 +30,7 @@ const outDir = fileURLToPath(new URL("./dist/client", import.meta.url));
 // Where examples/app.ts listens, read from the same variable the app reads so
 // `PORT=4018 pnpm run dev` moves both halves together.
 //
-// The example mounts WfGraph at the root, which puts every backend route under
+// The example mounts Workflow Graph at the root, which puts every backend route under
 // `/api`: rpc, rest, openapi.json, docs, extensions, inngest, and the webhook
 // and resume paths. Mounting under a `basePath` would move them all, and this
 // proxy rule would have to move with them.
@@ -39,7 +39,7 @@ const APP_ORIGIN = `http://localhost:${process.env.PORT ?? 4017}`;
 export default defineConfig({
   root: clientSrc,
   // Relative asset URLs. The server rewrites index.html's <base> tag to
-  // wherever the host mounted WfGraph, and that tag is what resolves them, so a
+  // wherever the host mounted Workflow Graph, and that tag is what resolves them, so a
   // sub-path mount needs no rebuild. Vite resolves a relative base to "/" in
   // development, where the tag is served unrewritten.
   base: "./",

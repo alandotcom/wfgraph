@@ -44,7 +44,7 @@ export function runPluginActionStep(input: ActionStepInput) {
       };
     }
 
-    // WfGraph namespaces the id, so an author writes "post" and two nodes running
+    // Workflow Graph namespaces the id, so an author writes "post" and two nodes running
     // the same action do not write to one another's memoized result.
     const steps: NodeSteps = {
       run: (stepId, work) =>

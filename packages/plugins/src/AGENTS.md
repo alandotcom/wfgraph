@@ -146,7 +146,7 @@ other's outcome. Passing `credentials` an `Effect` is what pins the lazy read.
 
 `[name]/index.test.ts` beside it asserts what the definition contributes: the credential
 vocabulary, the action slugs, and the field list `requireOutputFieldsFromSchema` derives from
-each output schema. What WfGraph itself does around a handler is covered once, in
+each output schema. What Workflow Graph itself does around a handler is covered once, in
 `packages/core/src/backend/extensions/steps/define-step.test.ts`.
 
 `src/index.test.ts` runs `checkIntegration` over all six at module level, which is every

@@ -59,7 +59,7 @@ describe("serveClientAsset", () => {
     expect(await response.text()).toContain('<base href="/" />');
   });
 
-  it("points the SPA entry at the mount point when WfGraph is mounted under one", async () => {
+  it("points the SPA entry at the mount point when Workflow Graph is mounted under one", async () => {
     const response = await serveClientAsset({
       clientDir,
       basePath: "/wfgraph",

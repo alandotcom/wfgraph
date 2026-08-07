@@ -23,7 +23,7 @@ const openApiGenerator = new OpenAPIGenerator({
  *
  * This is a factory rather than a module-level singleton because the spec has to
  * advertise the REST base URL, and that is only known once the host has said
- * where it mounted WfGraph. A hardcoded "/api/rest" sent every generated client and
+ * where it mounted Workflow Graph. A hardcoded "/api/rest" sent every generated client and
  * every "Try it" button in the docs panel to a path that 404s under a sub-path
  * mount.
  */

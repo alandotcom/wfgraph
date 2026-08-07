@@ -207,7 +207,7 @@ export function LifecyclePanel({
 
       <EventField
         hasEvents={catalog.events.length > 0}
-        help="When one of these arrives, WfGraph reads its Entity Value at the Correlation Path you set for it and cancels the runs already going for that entity. A canceled run leaves through the Canceled outlet."
+        help="When one of these arrives, Workflow Graph reads its Entity Value at the Correlation Path you set for it and cancels the runs already going for that entity. A canceled run leaves through the Canceled outlet."
         inputId={cancelEventsId}
         label="Cancel Events"
       >

@@ -1,5 +1,5 @@
 /**
- * What a package of integrations may use from WfGraph's server.
+ * What a package of integrations may use from Workflow Graph's server.
  *
  * `@wfgraph/plugins` builds against this and nothing else, so an outside
  * integration package can be written the same way. Anything added here is a

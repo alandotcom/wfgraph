@@ -39,7 +39,7 @@ describe("normalizeBasePath", () => {
 });
 
 describe("toMountRelativePath", () => {
-  it("passes a pathname through untouched when WfGraph owns the root", () => {
+  it("passes a pathname through untouched when Workflow Graph owns the root", () => {
     expect(toMountRelativePath("/api/extensions", "")).toBe("/api/extensions");
     expect(toMountRelativePath("/", "")).toBe("/");
   });

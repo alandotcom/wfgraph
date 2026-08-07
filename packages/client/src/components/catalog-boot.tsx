@@ -23,9 +23,9 @@ const FAILURE_SENTENCES: Record<CatalogLoadFailure, string> = {
   unreachable:
     "The server did not answer. It may be down, or something between the browser and it is dropping the request.",
   refused:
-    "The server answered with an error. Check that WfGraph is mounted where this page expects it.",
+    "The server answered with an error. Check that Workflow Graph is mounted where this page expects it.",
   mismatch:
-    "The server answered with a document this editor cannot read. The two are most likely different builds of WfGraph.",
+    "The server answered with a document this editor cannot read. The two are most likely different builds of Workflow Graph.",
 };
 
 export function CatalogUnavailable({

@@ -371,7 +371,7 @@ describe("defineAction as the engine calls it", () => {
     });
   }
 
-  // An input with no context is a WfGraph bug rather than something a host wrote,
+  // An input with no context is a Workflow Graph bug rather than something a host wrote,
   // and running anyway would hand an author the node ids they were promised as
   // empty strings.
   it("fails the node rather than calling the handler without a context", async () => {

@@ -103,7 +103,7 @@ function truncateTextForLogs(text: string): {
 /**
  * Read a request body as the JSON object a resume call carries.
  *
- * WfGraph parses untrusted input at the route boundary, which is what the project
+ * Workflow Graph parses untrusted input at the route boundary, which is what the project
  * asks for anyway, so no validator middleware sits between the request and the
  * service. A body that is not JSON and a body that is JSON but not an object
  * both come back as a message the caller can act on.
@@ -191,7 +191,7 @@ async function getResponseLogBody(res: Response): Promise<unknown> {
 export type CreateApiAppOptions = {
   /**
    * Absolute path the API is reachable at, leading slash and no trailing slash,
-   * for example "/api" or "/wfgraph/api". The host tells us where it mounted WfGraph,
+   * for example "/api" or "/wfgraph/api". The host tells us where it mounted Workflow Graph,
    * so nothing here has to deduce it from the request.
    */
   basePath: `/${string}`;

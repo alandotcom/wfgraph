@@ -78,14 +78,14 @@ export type EventSource = {
 
 export type EventDefinition<TPayload extends JsonObject> = {
   readonly kind: "event";
-  /** The Event's identity in WfGraph, and by default the name it arrives under. */
+  /** The Event's identity in Workflow Graph, and by default the name it arrives under. */
   readonly name: string;
   readonly label: string;
   readonly description?: string;
   /**
    * The intake gate: whether an arriving payload is this Event at all.
    *
-   * Built from the author's Effect schema with WfGraph's own parse options when
+   * Built from the author's Effect schema with Workflow Graph's own parse options when
    * there is one, and from `~standard.validate` when the payload was written in
    * Zod or arktype, so intake has one thing to call and one failure to catch.
    */
@@ -226,7 +226,7 @@ function buildPayloadGate(
 
 export type DefineEventInput<TPayload extends JsonObject> = {
   /**
-   * The Event's identity in WfGraph. One Event per name, and per thing that
+   * The Event's identity in Workflow Graph. One Event per name, and per thing that
    * happened: an app declares `appointment.created` and `appointment.canceled`
    * separately rather than one umbrella Event with a subtype field, because the
    * lifecycle model's rules are stated over Event names.
@@ -243,7 +243,7 @@ export type DefineEventInput<TPayload extends JsonObject> = {
   readonly correlationPath?: StringPath<TPayload>;
   /**
    * How the Event arrives, for an existing bus that sends one umbrella name and
-   * cannot change. Identity stays the WfGraph name above, so the lifecycle model is
+   * cannot change. Identity stays the Workflow Graph name above, so the lifecycle model is
    * untouched, and `when` becomes the listener's filter so Inngest still does
    * the narrowing.
    *

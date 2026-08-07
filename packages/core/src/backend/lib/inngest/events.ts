@@ -1,5 +1,5 @@
 /**
- * The five events WfGraph sends to itself, with the schemas that define them.
+ * The five events Workflow Graph sends to itself, with the schemas that define them.
  *
  * An `eventType` is one definition used from both ends: the sender builds its
  * payload with `.create()`, and the function that triggers on it declares the
@@ -71,7 +71,7 @@ export const workflowRunRequested = eventType("workflow/run.requested", {
 
 /**
  * Where Inngest states the invocation an event belongs to. Its spelling, and
- * the one key on this payload WfGraph neither writes nor reads.
+ * the one key on this payload Workflow Graph neither writes nor reads.
  */
 export const INNGEST_META_KEY = "_inngest";
 

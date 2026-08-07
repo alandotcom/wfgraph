@@ -94,7 +94,7 @@ function buildWfGraphLayer(
  * instead of stubbing a module. Construction is lazy, and the graph is built on
  * the first Effect the runtime runs, so making an app opens no connections.
  *
- * One WfGraph per process stays the only supported arrangement (ADR-0002).
+ * One Workflow Graph per process stays the only supported arrangement (ADR-0002).
  */
 export type WfGraphRuntime = ManagedRuntime.ManagedRuntime<
   WfGraphServices,

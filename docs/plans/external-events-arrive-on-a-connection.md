@@ -3,7 +3,7 @@
 Proposed. Not started.
 
 Goal: an integration can declare Events of its own, and one of them can start a workflow.
-A Slack message wakes a WfGraph workflow without the host writing a webhook receiver.
+A Slack message wakes a Workflow Graph workflow without the host writing a webhook receiver.
 
 An application may hold several connections of one integration type. Two Slack
 workspaces are two connections, and one workspace's Event must never start the other's
@@ -16,7 +16,7 @@ gives each row an `id` and a `name`, and it declares no unique index on `type`. 
 node stores an `integrationId` and the handler reads it from its run context
 (`packages/core/src/backend/extensions/define-action.ts`, `ActionBag.integrationId`).
 
-**Events reach WfGraph through Inngest only.** An Event is a listener function built from
+**Events reach Workflow Graph through Inngest only.** An Event is a listener function built from
 its definition (`packages/core/src/backend/lib/inngest/event-listener-function.ts`), and
 the payload gate runs there (line 102). Core mounts no route that a third party can post
 to. The host sends its own Events from its own code.
@@ -64,7 +64,7 @@ webhook: {
 
 `verify` runs first, with the credentials of the connection named in the URL. `receive`
 turns the accepted body into the Inngest event name and its data, and answers `undefined`
-for a payload this integration knows and this WfGraph has no Event for, which the route
+for a payload this integration knows and this Workflow Graph has no Event for, which the route
 answers 200 rather than an error.
 
 ### The connection id travels in the event data

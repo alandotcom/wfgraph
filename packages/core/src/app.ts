@@ -63,7 +63,7 @@ export type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 export type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
 
 /**
- * Where the database is, which schema WfGraph lives in, and whether it migrates on
+ * Where the database is, which schema Workflow Graph lives in, and whether it migrates on
  * the way up. Migrations sit here rather than beside `database` because they are
  * a statement about the same database, and a host reading the options should not
  * have to notice that two top-level keys describe one thing.
@@ -74,25 +74,25 @@ export type WfGraphDatabaseOptions = DatabaseRuntimeConfig & {
 
 export type WfGraphAppOptions = {
   /**
-   * Absolute path the host mounted WfGraph at, for example "/workflows". Defaults
-   * to "/". WfGraph builds its API prefix, its asset URLs, and the SPA's
+   * Absolute path the host mounted Workflow Graph at, for example "/workflows". Defaults
+   * to "/". Workflow Graph builds its API prefix, its asset URLs, and the SPA's
    * `<base href>` from this, so a host that mounts under a sub-path says so
-   * once here instead of WfGraph guessing per request.
+   * once here instead of Workflow Graph guessing per request.
    */
   basePath?: string;
   /**
    * Who may reach the editor: a predicate over the request, or "external" when
-   * something in front of WfGraph already gates it.
+   * something in front of Workflow Graph already gates it.
    *
    * Required everywhere rather than only in production, since the check that
    * would tell the two apart reads an environment variable that says
-   * "production" and misses "prod" and an unset one. Covers everything WfGraph
+   * "production" and misses "prod" and an unset one. Covers everything Workflow Graph
    * serves except machine routes (the wait resume path, and `/inngest` when
    * HTTP serve is mounted).
    */
   auth: WfGraphAuth;
   /**
-   * Where WfGraph's own log lines go. Absent, WfGraph configures a console sink of
+   * Where Workflow Graph's own log lines go. Absent, Workflow Graph configures a console sink of
    * its own; present, every line is handed to this instead.
    */
   logger?: WfGraphLogger;
@@ -111,7 +111,7 @@ export type WfGraphAppOptions = {
   /**
    * The workflow editor, from `import { clientBundle } from "@wfgraph/client"`.
    *
-   * WfGraph serves the editor when a host hands it one and serves nothing when they
+   * Workflow Graph serves the editor when a host hands it one and serves nothing when they
    * do not, so turning the UI on is a line in the host's code rather than a
    * consequence of what happens to be installed. `@wfgraph/core` does not depend on
    * `@wfgraph/client` in either direction.
@@ -148,11 +148,11 @@ export type WfGraphApp = {
 };
 
 /**
- * One WfGraph per process.
+ * One Workflow Graph per process.
  *
  * Everything an app holds is its own, but the arrangement is still the only
  * supported one (ADR-0002): a second app naming a different database is refused
- * where the pool is claimed, and the parts of WfGraph that a host reaches through
+ * where the pool is claimed, and the parts of Workflow Graph that a host reaches through
  * the module graph have never been written for two.
  */
 export async function createWfGraphApp(
@@ -238,7 +238,7 @@ async function buildWfGraphApp(
       `Extension surface assembled: ${events.length} events, ${actions.length} actions, ${integrations.length} integrations`
     );
 
-    // Where the tables are is a startup fact worth one line: WfGraph lives in a
+    // Where the tables are is a startup fact worth one line: Workflow Graph lives in a
     // schema of a database the host chose, and "it is reading the wrong schema"
     // is otherwise a guess made from an empty editor.
     getAppLogger("database").info(
@@ -347,7 +347,7 @@ async function assembleWfGraphApp(
     await runtime.dispose();
 
     // Last, because a Layer finalizer is free to run a closing query. postgres.js
-    // holds an idle socket open per pool, so a host that shuts WfGraph down gets its
+    // holds an idle socket open per pool, so a host that shuts Workflow Graph down gets its
     // process back only once this has run.
     await database.close();
   };

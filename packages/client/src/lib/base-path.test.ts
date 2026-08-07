@@ -19,7 +19,7 @@ describe("getBasePath", () => {
     expect(getBasePath()).toBe("/wfgraph");
   });
 
-  it("reports no prefix when WfGraph owns the root", () => {
+  it("reports no prefix when Workflow Graph owns the root", () => {
     setBaseHref("/");
     expect(getBasePath()).toBe("");
   });

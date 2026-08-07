@@ -1,4 +1,4 @@
-# Plan: make WfGraph a library anyone can embed
+# Plan: make Workflow Graph a library anyone can embed
 
 Goal: someone clones nothing, runs `bun add @wfgraph/core`, mounts it inside their existing
 app on whatever HTTP framework they already run, and defines actions and triggers driven
@@ -18,7 +18,7 @@ Hono stays inside as an implementation detail. That one change does four things 
   framework they are not using.
 - The exported type stops naming a third-party class, so swapping the router later is an
   internal change.
-- Express and Fastify support reduces to one small translator that WfGraph owns, instead of
+- Express and Fastify support reduces to one small translator that Workflow Graph owns, instead of
   a recipe every adopter reimplements.
 
 What a fetch handler does not solve by itself: Node's `http` module speaks
@@ -38,7 +38,7 @@ documented at adopters (see Phase 2).
 | 6   | A host cannot define a credential-holding integration. `IntegrationType` is a closed union of seven strings and `registerIntegration` accepts nothing else                                                                                                                       | `packages/shared/src/types/integration.ts:1`, `packages/shared/src/plugins/registry.ts:248`                                                                                                                                                                            |
 | 7   | The mounted app has no seam for authentication. `WfGraphAppOptions` offers no hook, and API keys gate only the webhook path                                                                                                                                                      | `packages/core/src/hono.ts:69`, `packages/core/src/backend/services/workflows/workflow-webhook.workflows.ts:80`                                                                                                                                                        |
 | 8   | Two functions named `registerRuntimeAction` write to two different stores with different semantics                                                                                                                                                                               | `packages/shared/src/plugins/registry.ts:261` (plain set, used by the browser) and `packages/shared/src/workflow/action-registry.ts:384` (normalizes and wraps `execute`, used by the server)                                                                          |
-| 9   | Database, Inngest, encryption, and both registries are process-global singletons, so one process holds exactly one WfGraph                                                                                                                                                       | `packages/core/src/backend/lib/db/index.ts:124` and the `configure*` family                                                                                                                                                                                            |
+| 9   | Database, Inngest, encryption, and both registries are process-global singletons, so one process holds exactly one Workflow Graph                                                                                                                                                | `packages/core/src/backend/lib/db/index.ts:124` and the `configure*` family                                                                                                                                                                                            |
 | 10  | The built bundle imports `axios` at runtime and no package.json declares it. It resolves here only because Twilio hoists it into the workspace `node_modules` through `@wfgraph/plugins`. An outside adopter gets `Cannot find module 'axios'` the first time a Twilio step runs | `packages/core/dist/test-CNx817mJ.js` holds `from "axios"`; `packages/core/package.json` never names it                                                                                                                                                                |
 | 11  | `hono` is the one peer dependency in the repo, so the adopter installs the web framework the interface exposes                                                                                                                                                                   | `packages/core/package.json:73`                                                                                                                                                                                                                                        |
 
@@ -121,7 +121,7 @@ Addresses the Express and Fastify question directly.
    check, which needs exact bytes. Detect a populated `req.body` with a drained stream and
    throw a named error naming the fix, rather than serving a silent 400. Re-serializing a
    parsed body is not an option because it changes the bytes the signature covers.
-4. Write integration tests that boot a real Express app and a real Fastify app, mount WfGraph
+4. Write integration tests that boot a real Express app and a real Fastify app, mount Workflow Graph
    under a sub-path, and drive a workflow through each: fetch `/wfgraph/api/extensions`, save a
    workflow over RPC, POST a webhook trigger. These are the tests that would have caught
    findings 1 and 5.
@@ -182,7 +182,7 @@ Addresses finding 4.
 
    **Regular dependencies, not peers.** Peer dependencies earn their cost when the package
    has identity that must be shared across the boundary, as React and ESLint plugins do.
-   WfGraph constructs every vendor client itself from credentials it decrypts out of the
+   Workflow Graph constructs every vendor client itself from credentials it decrypts out of the
    `integrations` table (`send-sms.ts:148` calls `twilio(accountSid, authToken)`), so no
    adopter hands us an instance, nothing checks `instanceof` across the boundary, and a
    duplicate copy in the tree costs only bytes. A peer here would buy no correctness and
@@ -251,14 +251,14 @@ Addresses finding 7.
 
 1. Add `auth: ((request: Request) => boolean | Promise<boolean>) | "external"` to
    `WfGraphAppOptions`. The hook authorizes; it does not identify. No table carries a tenant or
-   user column and no service reads an identity, so a `Principal` type that WfGraph defines and
+   user column and no service reads an identity, so a `Principal` type that Workflow Graph defines and
    never interprets would be pure interface weight. Widen the return type when Phase 6 or an
    audit column creates the first real consumer of identity; the no-backwards-compatibility
    rule makes that widening cheap.
 2. Wire it as middleware ahead of the RPC, REST, extensions, and execute mounts. Leave the
    Inngest callback and the signed webhook path on their existing checks, since those callers
    are machines carrying their own credentials. This split is the reason the hook belongs to
-   WfGraph rather than to the host: the host supplies the predicate, WfGraph supplies the knowledge
+   Workflow Graph rather than to the host: the host supplies the predicate, Workflow Graph supplies the knowledge
    of which routes are human-facing. A host wrapping the whole mount in session middleware
    breaks Inngest and webhooks, and the route taxonomy that would let them wrap correctly is
    exactly the knowledge information hiding says stays inside the module.
@@ -322,7 +322,7 @@ Addresses findings 8 and 9.
    URL silently aliases the first connection, and the damage surfaces later as data in the
    wrong database.
 
-Commit: `Register a runtime action through one registry` and `Refuse a second WfGraph instance in one process`
+Commit: `Register a runtime action through one registry` and `Refuse a second Workflow Graph instance in one process`
 
 ## Sequencing notes
 

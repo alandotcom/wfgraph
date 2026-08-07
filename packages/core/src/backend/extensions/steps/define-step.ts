@@ -73,7 +73,7 @@ export class StepFailure extends Schema.TaggedErrorClass<StepFailure>()(
  *
  * A durable runtime re-runs the whole workflow function every time a run
  * resumes, so anything with a side effect goes inside `run` or it happens again
- * on every attempt. WfGraph wraps no handler body for you: that is Inngest's model,
+ * on every attempt. Workflow Graph wraps no handler body for you: that is Inngest's model,
  * and an author who reaches a system twice is an author who did not say so here.
  *
  * The Effect overload is the internal shape: integrations yield it and memoize

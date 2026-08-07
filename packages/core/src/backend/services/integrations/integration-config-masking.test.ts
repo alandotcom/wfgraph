@@ -31,7 +31,7 @@ describe("masking an integration config on its way to the browser", () => {
     ).toEqual({ apiKey: "********", team: "acme" });
   });
 
-  // The integration is absent whenever a host mounted WfGraph without it. With no
+  // The integration is absent whenever a host mounted Workflow Graph without it. With no
   // declaration to read, every value is treated as a secret; the alternative
   // served a live API token to the browser.
   it("masks everything when the catalog does not hold the integration", () => {

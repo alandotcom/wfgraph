@@ -1,8 +1,8 @@
 /**
- * Path arithmetic for a WfGraph app mounted somewhere other than the root.
+ * Path arithmetic for a Workflow Graph app mounted somewhere other than the root.
  *
  * The host tells `createWfGraphApp` where it mounted us via `basePath`, and every
- * URL WfGraph builds or matches is derived from that one answer. Deducing the
+ * URL Workflow Graph builds or matches is derived from that one answer. Deducing the
  * mount point per request by subtracting Hono's local path from the full URL
  * would silently produce the wrong prefix under any host that rewrites the
  * request URL on mount (Express `app.use("/wfgraph", ...)` does).
@@ -20,8 +20,8 @@ const TRAILING_SLASHES_RE = /\/+$/;
 const CLIENT_BASE_TAG_RE = /<base\b[^>]*>/i;
 
 /**
- * Turn a host-supplied mount path into the prefix every WfGraph URL is built from:
- * the empty string when WfGraph owns the root, otherwise a leading slash with no
+ * Turn a host-supplied mount path into the prefix every Workflow Graph URL is built from:
+ * the empty string when Workflow Graph owns the root, otherwise a leading slash with no
  * trailing one, as in "/workflows".
  */
 export function normalizeBasePath(basePath: string): "" | `/${string}` {
@@ -53,7 +53,7 @@ export function normalizeBasePath(basePath: string): "" | `/${string}` {
 
 /**
  * Strip the mount prefix off an incoming pathname, so the routing that follows
- * only reasons about paths relative to WfGraph. Null means the request landed
+ * only reasons about paths relative to Workflow Graph. Null means the request landed
  * outside the mount entirely.
  */
 export function toMountRelativePath(
@@ -78,7 +78,7 @@ export function toMountRelativePath(
  * The client reads this tag back to build its own asset and RPC URLs
  * (`client/lib/base-path.ts`), so this is the one channel the mount point
  * travels to the browser through. Null means the bundle carries no `<base>`
- * tag, which leaves the browser with no way to learn where WfGraph is mounted.
+ * tag, which leaves the browser with no way to learn where Workflow Graph is mounted.
  */
 export function rewriteClientBaseHref(
   html: string,

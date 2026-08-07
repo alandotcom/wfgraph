@@ -241,7 +241,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
 
             return await db.transaction(async (tx) => {
               // Serialized per workflow and entity, and only against other
-              // starts: nothing else in WfGraph takes a lock in this name space, so a
+              // starts: nothing else in Workflow Graph takes a lock in this name space, so a
               // run's own writes never wait here. The two-key form keeps the
               // workflow and the entity in separate hashes, so no pair of values
               // can join into another pair's key. Two entities whose hashes

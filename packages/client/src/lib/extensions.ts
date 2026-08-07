@@ -84,7 +84,7 @@ export async function hydrateExtensionsFromApi(): Promise<CatalogLoadResult> {
   const decoded = readExtensionCatalog(envelope?.catalog);
   if (!decoded) {
     logger.warn(
-      "The extension catalog from /api/extensions did not fit the wire schema in @wfgraph/shared/extensions/catalog-wire, so the editor is drawing from the catalog it had. The server serving it is most likely a different build of WfGraph."
+      "The extension catalog from /api/extensions did not fit the wire schema in @wfgraph/shared/extensions/catalog-wire, so the editor is drawing from the catalog it had. The server serving it is most likely a different build of Workflow Graph."
     );
     return { ok: false, reason: "mismatch" };
   }

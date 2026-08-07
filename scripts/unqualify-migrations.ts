@@ -2,10 +2,10 @@
  * Takes the `public` qualifier off the generated migration SQL, as the second
  * half of `pnpm run db:generate`.
  *
- * WfGraph's tables are declared unqualified, so drizzle-kit leaves nearly every
+ * Workflow Graph's tables are declared unqualified, so drizzle-kit leaves nearly every
  * statement unqualified too and then writes `REFERENCES "public"."workflows"` for
  * each foreign key: `public` is its stand-in for "the default schema", which for
- * WfGraph is whatever the running app's `database.schema` names. Left in, those
+ * Workflow Graph is whatever the running app's `database.schema` names. Left in, those
  * statements would look for the tables in `public` however the connection's
  * search_path is set, and the migration would fail on any other schema.
  *

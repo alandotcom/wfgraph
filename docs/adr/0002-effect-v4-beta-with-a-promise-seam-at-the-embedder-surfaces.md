@@ -24,7 +24,7 @@ against v4 idioms.
 
 Everything an embedder touches stays Promise-based: the `createWfGraphApp` options object,
 the fetch handler it returns, `@wfgraph/core/node`, and all of `@wfgraph/client`. An embedder
-should be able to mount WfGraph in an Express app without learning Effect.
+should be able to mount Workflow Graph in an Express app without learning Effect.
 
 `@wfgraph/core/plugin` is the deliberate exception and becomes Effect-native. A step handler
 returns an `Effect` with tagged errors, and a `defineStep` constructor owns credential
@@ -100,7 +100,7 @@ instance. Four pieces of shared process state are deleted:
 - the `claimProcess` guard in `packages/core/src/app.ts`
 
 The `claimProcess` guard goes away with the state it policed, and that is the whole
-story: one WfGraph per process remains the only supported arrangement. Constructing a
+story: one Workflow Graph per process remains the only supported arrangement. Constructing a
 second app in a process is undefined behavior (decided 2026-07-28). The runtime work
 is justified by dependency injection and testability, and nothing is added, tested,
 or documented to make multiple apps work.
@@ -338,7 +338,7 @@ until `terminal-record.ts` logs and handles it. Node and fatal failures likewise
 that projects that value onto the existing message column.
 
 The database surface is app-owned now, with no module-level handle retaining it. Disposing
-the app closes that app's pool. One WfGraph per process remains the supported arrangement,
+the app closes that app's pool. One Workflow Graph per process remains the supported arrangement,
 but shared mutable state no longer enforces it.
 
 Effect logging annotations replaced the logger threaded through the traversal, and

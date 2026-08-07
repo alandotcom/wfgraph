@@ -477,7 +477,7 @@ describe("createWfGraphApp configuration", () => {
   });
 
   // Dispose closes the app-owned pool: postgres.js holds an idle socket open per
-  // pool, so a host that shuts WfGraph down and never exits would otherwise keep it.
+  // pool, so a host that shuts Workflow Graph down and never exits would otherwise keep it.
   it("gives the database runtime back when an app is disposed", async () => {
     const app = await createTestApp();
     await app.dispose();

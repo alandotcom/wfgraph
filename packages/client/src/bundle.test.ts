@@ -49,7 +49,7 @@ describe("clientBundle", () => {
     expect(entries.some((entry) => entry.endsWith(".js"))).toBe(true);
   });
 
-  // The server rewrites this tag to tell the browser where WfGraph is mounted; a
+  // The server rewrites this tag to tell the browser where Workflow Graph is mounted; a
   // bundle without one answers 503 on every page.
   it("ships an entrypoint carrying a base tag the server can rewrite", async () => {
     const html = await readFile(join(bundleDir, "index.html"), "utf-8");

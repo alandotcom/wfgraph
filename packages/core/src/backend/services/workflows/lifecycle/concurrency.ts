@@ -2,7 +2,7 @@
  * Concurrency: how many Executions may exist per Entity Value.
  *
  * A start always starts, and this is what decides what happens to the runs
- * already going (ADR-0007). WfGraph owns it rather than Inngest because two of the
+ * already going (ADR-0007). Workflow Graph owns it rather than Inngest because two of the
  * three answers have to be recorded: newest-wins ends the displaced run with a
  * status, and first-wins refuses a start and says so in run history.
  *

@@ -69,7 +69,7 @@ const MIGRATION_CONNECTIONS = 1;
  * what decides where they live. It travels in the startup packet rather than as a
  * `SET` on checkout, which is what makes every connection the pool opens, and
  * every one it reopens after a network drop, already correct. `application_name`
- * is there because WfGraph now cohabits a host's database and its connections should
+ * is there because Workflow Graph now cohabits a host's database and its connections should
  * be attributable in `pg_stat_activity`.
  */
 function createSqlClient(
@@ -110,7 +110,7 @@ export function createMigrationClient(config: NormalizedDatabaseConfig): Sql {
  * it rather than by whichever module happened to be imported first.
  */
 export type DatabaseSurface = {
-  /** The schema holding WfGraph's tables, which is what the migrator creates. */
+  /** The schema holding Workflow Graph's tables, which is what the migrator creates. */
   readonly schema: string;
   /** What every repository query runs on. */
   readonly db: WfGraphDatabase;

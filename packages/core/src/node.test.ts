@@ -11,7 +11,7 @@ import { createWfGraphApp, type WfGraphApp } from "#src/app";
 import { createRequestListener } from "#src/node";
 
 // These are the tests the review that produced this plan asked for: a real
-// Express app and a real Fastify app, each mounting WfGraph under a sub-path, so
+// Express app and a real Fastify app, each mounting Workflow Graph under a sub-path, so
 // the two hazards the adapter exists to handle get exercised by the frameworks
 // that actually cause them rather than by a hand-built IncomingMessage.
 //
@@ -134,7 +134,7 @@ beforeAll(async () => {
   fastify = Fastify();
   await fastify.register(middie);
   // middie runs connect-style middleware in the onRequest hook, ahead of
-  // Fastify's own body parsing, so the request stream reaches WfGraph intact.
+  // Fastify's own body parsing, so the request stream reaches Workflow Graph intact.
   fastify.use(MOUNT, listener);
   await fastify.listen({ port: 0, host: "127.0.0.1" });
   fastifyOrigin = originOf(fastify.server);
@@ -155,7 +155,7 @@ beforeAll(async () => {
   await listen(bareServer);
   bareOrigin = originOf(bareServer);
 
-  // A host that mounts WfGraph somewhere other than its configured basePath. Every
+  // A host that mounts Workflow Graph somewhere other than its configured basePath. Every
   // request 404s, and the adapter's job is to say why.
   const mismatchedApp = express();
   mismatchedApp.use("/elsewhere", listener);
@@ -177,10 +177,10 @@ afterAll(async () => {
 describe.each([
   ["Express", () => expressOrigin],
   ["Fastify", () => fastifyOrigin],
-])("WfGraph mounted under %s at /wfgraph", (_name, origin) => {
+])("Workflow Graph mounted under %s at /wfgraph", (_name, origin) => {
   it("serves the API at the path the browser asked for", async () => {
     // Express rewrites req.url to "/api/extensions" here. Without the
-    // originalUrl handling in the adapter, WfGraph would not recognize the path.
+    // originalUrl handling in the adapter, Workflow Graph would not recognize the path.
     const response = await send(`${origin()}/wfgraph/api/extensions`);
 
     expect(response.status).toBe(200);
@@ -259,7 +259,7 @@ describe.each([
   });
 });
 
-describe("WfGraph mounted on a bare node:http server", () => {
+describe("Workflow Graph mounted on a bare node:http server", () => {
   it("routes on req.url when no host stripped the path", async () => {
     const response = await send(`${bareOrigin}/wfgraph/api/extensions`);
 
@@ -270,7 +270,7 @@ describe("WfGraph mounted on a bare node:http server", () => {
   });
 });
 
-describe("WfGraph mounted somewhere other than its basePath", () => {
+describe("Workflow Graph mounted somewhere other than its basePath", () => {
   it("404s, which is why the adapter logs the mismatch", async () => {
     expect(
       (await send(`${mismatchedOrigin}/elsewhere/api/extensions`)).status
@@ -278,7 +278,7 @@ describe("WfGraph mounted somewhere other than its basePath", () => {
   });
 });
 
-describe("WfGraph mounted behind a body parser", () => {
+describe("Workflow Graph mounted behind a body parser", () => {
   it("names the misconfiguration instead of running on an empty body", async () => {
     const response = await postJson(
       `${parsedBodyOrigin}/wfgraph/api/workflows/waits/tok_1/resume`,
