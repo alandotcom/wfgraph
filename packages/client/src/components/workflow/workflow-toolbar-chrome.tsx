@@ -49,6 +49,7 @@ import {
   deleteEdgeAtom,
   deleteNodeAtom,
   edgesAtom,
+  canvasEditingLockedAtom,
   nodesAtom,
   selectedEdgeAtom,
   selectedNodeAtom,
@@ -198,12 +199,18 @@ export function ToolbarActions({
   const deleteEdge = useSetAtom(deleteEdgeAtom);
   const { screenToFlowPosition } = useReactFlow();
   const isMobile = useIsMobile();
+  const editingLocked = useAtomValue(canvasEditingLockedAtom);
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
   const hasSelection = selectedNode || selectedEdge;
+  // A run overlay pins the canvas to a past run's graph; Publish sends the
+  // draft underneath it, which the user cannot see while it's pinned (#39).
+  // Every other graph write already refuses under the same conditions, so
+  // Publish reads the same atom the canvas does rather than restating them.
+  // Saving is Publish's own concern: the canvas stays editable during a save.
   const publishDisabled =
-    state.isGenerating ||
+    editingLocked ||
     state.isSaving ||
     !state.nodes.some((node) => node.type !== "add");
 

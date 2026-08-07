@@ -65,7 +65,6 @@ import {
   isGeneratingAtom,
   isTransitioningFromHomepageAtom,
   propertiesPanelActiveTabAtom,
-  selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
 import {
   readEntryLifecycleRules,
@@ -95,7 +94,6 @@ type WorkflowHandlerParams = {
   setIsTransitioningFromHomepage: (value: boolean) => void;
   setActiveTab: (value: string) => void;
   setSelectedNodeId: (id: string | null) => void;
-  setSelectedExecutionId: (id: string | null) => void;
   userIntegrations: Array<{ id: string; type: string }>;
 };
 
@@ -112,7 +110,6 @@ function useWorkflowHandlers({
   setIsTransitioningFromHomepage,
   setActiveTab,
   setSelectedNodeId,
-  setSelectedExecutionId,
   userIntegrations,
 }: WorkflowHandlerParams) {
   const { open: openOverlay } = useOverlay();
@@ -222,7 +219,14 @@ function useWorkflowHandlers({
       nodes,
       updateNodeData,
       setIsExecuting,
-      setSelectedExecutionId,
+      // The URL is the one writer of which run is open; workflow-runs.tsx
+      // derives the selection atom and the pinned-graph overlay from it.
+      navigateToExecution: (executionId) =>
+        navigate({
+          to: "/workflows/$workflowId",
+          params: { workflowId: currentWorkflowId },
+          search: { executionId },
+        }),
     });
     // Don't set executing to false here - let polling handle it
   };
@@ -317,7 +321,6 @@ export function useWorkflowState() {
   const [canRedo] = useAtom(canRedoAtom);
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
   const setSelectedNodeId = useSetAtom(selectedNodeAtom);
-  const setSelectedExecutionId = useSetAtom(selectedExecutionIdAtom);
   const { data: userIntegrations = [] } = useQuery(integrationsQueryOptions());
 
   const { data: allWorkflows = [] } = useQuery(workflowListQueryOptions());
@@ -348,7 +351,6 @@ export function useWorkflowState() {
     allWorkflows,
     setActiveTab,
     setSelectedNodeId,
-    setSelectedExecutionId,
     userIntegrations,
   };
 }
@@ -386,7 +388,6 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     clearWorkflow,
     setActiveTab,
     setSelectedNodeId,
-    setSelectedExecutionId,
     userIntegrations,
   } = state;
 
@@ -403,7 +404,6 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     setIsTransitioningFromHomepage,
     setActiveTab,
     setSelectedNodeId,
-    setSelectedExecutionId,
     userIntegrations,
   });
 

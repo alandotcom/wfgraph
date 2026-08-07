@@ -30,7 +30,7 @@ import {
   connectNodesAtom,
   displayEdgesAtom,
   displayNodesAtom,
-  isExecutionOverlayActiveAtom,
+  canvasEditingLockedAtom,
   onEdgesChangeAtom,
   onNodesChangeAtom,
   redoAtom,
@@ -42,7 +42,6 @@ import {
 } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
-  isGeneratingAtom,
   isTransitioningFromHomepageAtom,
   propertiesPanelActiveTabAtom,
   rightPanelWidthAtom,
@@ -68,8 +67,10 @@ const edgeTypes = {
 export function WorkflowCanvas() {
   const nodes = useAtomValue(displayNodesAtom);
   const edges = useAtomValue(displayEdgesAtom);
-  const isExecutionOverlay = useAtomValue(isExecutionOverlayActiveAtom);
-  const [isGenerating] = useAtom(isGeneratingAtom);
+  // Draft edits and run-overlay viewing are mutually exclusive: mutating while
+  // the overlay is up would write the draft under a canvas that is not showing
+  // it. The toolbar's Publish button reads this same atom.
+  const editingLocked = useAtomValue(canvasEditingLockedAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
   // The sidebar renders nothing on a narrow viewport, so the canvas keeps the
@@ -95,10 +96,6 @@ export function WorkflowCanvas() {
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
   const { screenToFlowPosition, fitView, getViewport, setViewport } =
     useReactFlow();
-
-  // Draft edits and run-overlay viewing are mutually exclusive: mutating while
-  // the overlay is up would write the draft under a canvas that is not showing it.
-  const editingLocked = isGenerating || isExecutionOverlay;
 
   const connectingNodeId = useRef<string | null>(null);
   const connectingHandleType = useRef<"source" | "target" | null>(null);

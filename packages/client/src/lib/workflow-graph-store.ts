@@ -14,7 +14,10 @@ import {
   saveWorkflowAtom,
   workflowNotFoundAtom,
 } from "#src/lib/workflow-save-store";
-import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
+import {
+  isGeneratingAtom,
+  selectedExecutionIdAtom,
+} from "#src/lib/workflow-ui-store";
 import {
   formatTemplateToken,
   parseTemplate,
@@ -58,6 +61,20 @@ export const edgesAtom = atom((get) => get(edgesStateAtom));
 /** Whether the canvas is showing a run's pinned graph instead of the draft. */
 export const isExecutionOverlayActiveAtom = atom(
   (get) => get(executionOverlayGraphAtom) !== null
+);
+
+/**
+ * Whether the canvas is showing something other than an editable draft, so
+ * anything that writes the draft has to refuse. Generation is rewriting the
+ * graph underneath the user; a run overlay pins the canvas to a past run.
+ *
+ * Both the canvas (which drops React Flow's drag, connect and select props)
+ * and the toolbar (which disables Publish) read this one atom, so the two
+ * cannot drift apart: the whole point of #39 was that Publish had missed a
+ * condition the canvas already had.
+ */
+export const canvasEditingLockedAtom = atom(
+  (get) => get(isGeneratingAtom) || get(isExecutionOverlayActiveAtom)
 );
 
 /**

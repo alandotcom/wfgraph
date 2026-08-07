@@ -357,6 +357,17 @@ describe("WorkflowRuns", () => {
     expect(
       view.queryByRole("button", { name: "Back to runs list" })
     ).toBeNull();
+
+    // #40: the panel's own Back must replace the run's history entry, not
+    // push a new one on top of it — otherwise the browser Back button undoes
+    // this exit and reopens the run the user just closed.
+    expect(router.history.canGoBack()).toBe(false);
+    await act(async () => {
+      router.history.back();
+    });
+    await waitFor(() => {
+      expect(router.state.location.search).toEqual({});
+    });
   });
 
   // Selecting a run, leaving it (draft / newer version on screen), then

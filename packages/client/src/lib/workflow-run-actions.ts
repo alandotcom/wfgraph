@@ -88,7 +88,13 @@ type ExecuteWorkflowRunParams = {
   nodes: WorkflowNode[];
   updateNodeData: UpdateNodeData;
   setIsExecuting: (value: boolean) => void;
-  setSelectedExecutionId: (value: string | null) => void;
+  /**
+   * Opens the new run in the URL, which is what the Runs panel and the
+   * canvas overlay both read (#33). Called only once a run has actually
+   * started: the ignored and error paths below leave the URL exactly where
+   * it stood, since neither one created an execution for it to point at.
+   */
+  navigateToExecution: (executionId: string) => Promise<void>;
 };
 
 export async function executeWorkflowRun({
@@ -96,7 +102,7 @@ export async function executeWorkflowRun({
   nodes,
   updateNodeData,
   setIsExecuting,
-  setSelectedExecutionId,
+  navigateToExecution,
 }: ExecuteWorkflowRunParams) {
   updateNodesStatus(nodes, updateNodeData, "idle");
 
@@ -117,7 +123,8 @@ export async function executeWorkflowRun({
           : "Execution completed without starting a new run."
       );
 
-      setSelectedExecutionId(null);
+      // No execution was created, so there is no id for the URL to own.
+      // Whatever run was already open (or not) is left as it stands.
       setIsExecuting(false);
       updateNodesStatus(nodes, updateNodeData, "idle");
       return;
@@ -144,8 +151,9 @@ export async function executeWorkflowRun({
       }
     }
 
-    // Select the new execution
-    setSelectedExecutionId(result.executionId);
+    // The URL is the one writer of which run is open; the Runs panel and the
+    // canvas overlay both derive their selection from it.
+    await navigateToExecution(result.executionId);
   } catch (error) {
     // The mutation cache has already toasted the message. What is left is the
     // canvas, which still shows the Lifecycle Node running.
