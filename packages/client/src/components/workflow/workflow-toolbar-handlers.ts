@@ -34,6 +34,7 @@ import {
   executionOverlayGraphAtom,
   nodesAtom,
   selectedNodeAtom,
+  setNodeStatusesAtom,
   updateNodeDataAtom,
   addNodeAtom,
   canRedoAtom,
@@ -117,6 +118,7 @@ function useWorkflowHandlers({
   const queryClient = useQueryClient();
   const clearGraphSelection = useSetAtom(clearGraphSelectionAtom);
   const setExecutionOverlay = useSetAtom(executionOverlayGraphAtom);
+  const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
   const saveWorkflow = useSetAtom(saveWorkflowAtom);
   const createWorkflow = useSetAtom(createWorkflowAtom);
   // No errorMessage: a rejected run carries a server message worth reading, and
@@ -217,7 +219,7 @@ function useWorkflowHandlers({
           ...(request.eventName ? { eventName: request.eventName } : {}),
         }),
       nodes,
-      updateNodeData,
+      setNodeStatuses,
       setIsExecuting,
       // The URL is the one writer of which run is open; workflow-runs.tsx
       // derives the selection atom and the pinned-graph overlay from it.

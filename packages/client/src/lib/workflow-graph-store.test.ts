@@ -5,19 +5,24 @@ import {
   addNodeAtom,
   applyNodeLayoutAtom,
   canUndoAtom,
+  clearNodeStatusesAtom,
   clearWorkflowAtom,
   connectNodesAtom,
   deleteEdgeAtom,
   deleteNodeAtom,
   deleteSelectedItemsAtom,
+  displayNodesAtom,
   edgesAtom,
+  executionOverlayGraphAtom,
   hydrateWorkflowAtom,
   loadWorkflowGraphAtom,
   nodesAtom,
   onEdgesChangeAtom,
   onNodesChangeAtom,
+  setNodeStatusesAtom,
   snapshotHistoryAtom,
   undoAtom,
+  updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
 import {
   autosaveDelayAtom,
@@ -296,5 +301,145 @@ describe("hydrateWorkflowAtom", () => {
     store.set(hydrateWorkflowAtom, savedWorkflow("workflow_2"));
 
     expect(store.get(selectedExecutionIdAtom)).toBeNull();
+  });
+
+  it("drops the previous workflow's node statuses, not just its overlay", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(setNodeStatusesAtom, [{ nodeId: "a", status: "running" }]);
+    expect(
+      store.get(displayNodesAtom).find((node) => node.id === "a")?.data.status
+    ).toBe("running");
+
+    // The freshly hydrated workflow happens to reuse node id "a"; its status
+    // must read idle, not the previous workflow's "running". Hydrate leaves
+    // the status map empty, so displayNodesAtom's fast path hands back the
+    // node exactly as loaded rather than stamping an explicit "idle" on it --
+    // `??` mirrors the node components' own `!status || status === "idle"`
+    // check, which treats the two identically.
+    store.set(
+      hydrateWorkflowAtom,
+      savedWorkflow("workflow_2", { nodes: [actionNode("a")], edges: [] })
+    );
+
+    expect(
+      store.get(displayNodesAtom).find((node) => node.id === "a")?.data
+        .status ?? "idle"
+    ).toBe("idle");
+  });
+});
+
+describe("displayNodesAtom memoization", () => {
+  // React.memo on ActionNode and LifecycleNode bails out on a shallow prop
+  // comparison, which only works if a node that has not changed keeps its old
+  // object identity. Rebuilding every node into a fresh object on every
+  // recompute -- the common case, since most recomputes carry no status and no
+  // inactive Canceled branch to paint -- would re-render every node on every
+  // drag frame and every keystroke.
+  it("returns the draft's own node objects when there is nothing to merge", () => {
+    const store = createGraphStore(...standardGraph());
+    const draftNodes = store.get(nodesAtom);
+
+    const displayed = store.get(displayNodesAtom);
+
+    expect(displayed).toHaveLength(draftNodes.length);
+    for (const [index, node] of draftNodes.entries()) {
+      expect(displayed[index]).toBe(node);
+    }
+  });
+});
+
+/**
+ * Run status is a display-time concern, merged onto whichever graph
+ * `displayNodesAtom` is showing -- the draft or a pinned run overlay -- the
+ * same way `inactiveCanceledBranchAtom` is already merged in. It must never
+ * live on the graph's own node data, because that is what forces a second
+ * full copy of the graph to carry it.
+ */
+describe("run status", () => {
+  it("merges onto the draft without writing into the draft's own node data", () => {
+    const store = createGraphStore(...standardGraph());
+
+    store.set(setNodeStatusesAtom, [{ nodeId: "a", status: "running" }]);
+
+    expect(
+      store.get(displayNodesAtom).find((node) => node.id === "a")?.data.status
+    ).toBe("running");
+    // The draft itself -- what gets persisted -- never sees the status.
+    expect(
+      store.get(nodesAtom).find((node) => node.id === "a")?.data.status
+    ).toBeUndefined();
+  });
+
+  it("defaults every node with no reported status to idle", () => {
+    const store = createGraphStore(...standardGraph());
+
+    store.set(setNodeStatusesAtom, [{ nodeId: "a", status: "running" }]);
+
+    expect(
+      store.get(displayNodesAtom).find((node) => node.id === "t")?.data.status
+    ).toBe("idle");
+  });
+
+  it("merges onto a pinned run overlay by the same path as the draft", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(executionOverlayGraphAtom, {
+      nodes: [lifecycleNode("pinned_t"), actionNode("pinned_a")],
+      edges: [],
+    });
+
+    store.set(setNodeStatusesAtom, [{ nodeId: "pinned_a", status: "success" }]);
+
+    expect(
+      store.get(displayNodesAtom).find((node) => node.id === "pinned_a")?.data
+        .status
+    ).toBe("success");
+    // Statuses set while the overlay is up must not have landed on the draft,
+    // reachable again once the overlay is cleared.
+    store.set(executionOverlayGraphAtom, null);
+    expect(
+      store.get(nodesAtom).find((node) => node.id === "a")?.data.status
+    ).toBeUndefined();
+  });
+
+  it("clears every status and drops the overlay together", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(executionOverlayGraphAtom, {
+      nodes: [lifecycleNode("t")],
+      edges: [],
+    });
+    store.set(setNodeStatusesAtom, [{ nodeId: "t", status: "error" }]);
+
+    store.set(clearNodeStatusesAtom);
+
+    expect(store.get(executionOverlayGraphAtom)).toBeNull();
+    // An empty status map trips displayNodesAtom's fast path, so the draft's
+    // node "a" comes back exactly as stored rather than carrying an explicit
+    // "idle" -- equivalent to idle in every way that matters, since the node
+    // components treat a missing status the same as "idle".
+    expect(
+      store.get(displayNodesAtom).find((node) => node.id === "a")?.data
+        .status ?? "idle"
+    ).toBe("idle");
+  });
+});
+
+describe("updateNodeDataAtom refuses a status write", () => {
+  // Run status lives in its own map and is merged at display time, so writing
+  // one into a node's own data would resurrect the duplicate-state bug #50
+  // removed. `NodeDataUpdate` omits the field, and this asserts the compiler
+  // really enforces that: if the type ever widens back, `@ts-expect-error`
+  // has nothing to suppress and type-check fails on this line.
+  it("is a compile error, not a comment", () => {
+    const store = createGraphStore(...standardGraph());
+
+    store.set(updateNodeDataAtom, {
+      id: "a",
+      // @ts-expect-error -- status is omitted from NodeDataUpdate on purpose
+      data: { status: "success" },
+    });
+
+    // The write is rejected by the type system, not at runtime; jotai still
+    // applies whatever it was handed, so this only pins the compile-time rule.
+    expect(store.get(nodesAtom).some((node) => node.id === "a")).toBe(true);
   });
 });

@@ -11,9 +11,10 @@ import { getClientLogger } from "#src/lib/logger";
 import type { TestRunRequest } from "#src/components/overlays/test-run-overlay";
 import type { WorkflowExecuteResult } from "#src/lib/rpc-client";
 import type {
+  NodeRunStatus,
   WorkflowNode,
-  WorkflowNodeData,
 } from "#src/lib/workflow-graph-types";
+import type { NodeDataUpdate } from "#src/lib/workflow-graph-store";
 import type { WorkflowExecutionIgnoredReason } from "@rova/shared/lifecycle/execution-contracts";
 import {
   findEntryNode,
@@ -37,20 +38,24 @@ export const IGNORED_REASON_MESSAGES = {
     "This workflow splits on the Event a run is on, so a run has to name one.",
 } satisfies Record<WorkflowExecutionIgnoredReason, string>;
 
-/** The graph store's node writer, as everything in this file passes it around. */
-export type UpdateNodeData = (update: {
-  id: string;
-  data: Partial<WorkflowNodeData>;
-}) => void;
+/**
+ * The graph store's node writer, as everything in this file passes it around.
+ * The payload type comes from the atom itself, so the `status` exclusion is
+ * stated once, where the write actually happens.
+ */
+export type UpdateNodeData = (update: NodeDataUpdate) => void;
+
+/** The graph store's status writer -- `setNodeStatusesAtom`, one call per batch. */
+export type SetNodeStatuses = (
+  statuses: Array<{ nodeId: string; status: NodeRunStatus }>
+) => void;
 
 export function updateNodesStatus(
   nodes: WorkflowNode[],
-  updateNodeData: UpdateNodeData,
-  status: "idle" | "running" | "success" | "error" | "cancelled"
+  setNodeStatuses: SetNodeStatuses,
+  status: NodeRunStatus
 ) {
-  for (const node of nodes) {
-    updateNodeData({ id: node.id, data: { status } });
-  }
+  setNodeStatuses(nodes.map((node) => ({ nodeId: node.id, status })));
 }
 
 /**
@@ -86,7 +91,7 @@ type ExecuteWorkflowRunParams = {
   /** The run mutation, with its variables already bound by the caller. */
   runWorkflow: () => Promise<WorkflowExecuteResult>;
   nodes: WorkflowNode[];
-  updateNodeData: UpdateNodeData;
+  setNodeStatuses: SetNodeStatuses;
   setIsExecuting: (value: boolean) => void;
   /**
    * Opens the new run in the URL, which is what the Runs panel and the
@@ -100,18 +105,18 @@ type ExecuteWorkflowRunParams = {
 export async function executeWorkflowRun({
   runWorkflow,
   nodes,
-  updateNodeData,
+  setNodeStatuses,
   setIsExecuting,
   navigateToExecution,
 }: ExecuteWorkflowRunParams) {
-  updateNodesStatus(nodes, updateNodeData, "idle");
+  updateNodesStatus(nodes, setNodeStatuses, "idle");
 
   // Instant visual feedback before the first poll lands.
-  for (const node of nodes) {
-    if (node.data.type === "lifecycle") {
-      updateNodeData({ id: node.id, data: { status: "running" } });
-    }
-  }
+  setNodeStatuses(
+    nodes
+      .filter((node) => node.data.type === "lifecycle")
+      .map((node) => ({ nodeId: node.id, status: "running" }))
+  );
 
   try {
     const result = await runWorkflow();
@@ -126,7 +131,7 @@ export async function executeWorkflowRun({
       // No execution was created, so there is no id for the URL to own.
       // Whatever run was already open (or not) is left as it stands.
       setIsExecuting(false);
-      updateNodesStatus(nodes, updateNodeData, "idle");
+      updateNodesStatus(nodes, setNodeStatuses, "idle");
       return;
     }
 
@@ -158,7 +163,7 @@ export async function executeWorkflowRun({
     // The mutation cache has already toasted the message. What is left is the
     // canvas, which still shows the Lifecycle Node running.
     logger.error("Failed to execute the workflow", { error });
-    updateNodesStatus(nodes, updateNodeData, "error");
+    updateNodesStatus(nodes, setNodeStatuses, "error");
     setIsExecuting(false);
   }
 }
