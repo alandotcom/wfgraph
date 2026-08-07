@@ -9,6 +9,74 @@ import { getAppLogger } from "#src/backend/lib/logger";
 
 export type { WorkerConnection } from "inngest/connect";
 
+/**
+ * Bound on the Connect handshake at boot, absent `inngest.connectTimeoutMs`.
+ *
+ * Read against the installed `inngest@4.14.0` source
+ * (`components/connect/strategies/core/connection.js`): every handshake
+ * failure surfaces as a `ReconnectError`, and the reconcile loop's `while
+ * (true)` retries each one with exponential backoff forever, never settling
+ * the promise `connect()` hands back. An unreachable gateway would otherwise
+ * hang `createRovaApp` with nothing logged. Thirty seconds covers a slow but
+ * live gateway; a wedged one gets caught well inside a typical platform
+ * startup-probe window instead of past it.
+ */
+const DEFAULT_CONNECT_TIMEOUT_MS = 30_000;
+
+/**
+ * Races an in-flight Connect handshake against a bound, so a gateway that
+ * never settles fails boot instead of hanging it. The SDK gives no way to
+ * cancel `connecting` once the timer wins, so its reconcile loop keeps
+ * retrying in the background. If it later succeeds, the `WorkerConnection`
+ * it hands back is already registered with the gateway (WORKER_READY sent)
+ * with nothing holding it: `createRovaApp` rejected on the timeout and tore
+ * its runtime and database pool down. Resolving the outer promise at that
+ * point would be a no-op, since it already settled, so a late arrival is
+ * closed instead, and left alone otherwise.
+ */
+function withConnectTimeout(
+  connecting: Promise<WorkerConnection>,
+  timeoutMs: number,
+  gatewayLabel: string
+): Promise<WorkerConnection> {
+  let timedOut = false;
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      timedOut = true;
+      reject(
+        new Error(
+          `Inngest Connect could not reach ${gatewayLabel} within ${timeoutMs}ms and gave up. A gateway that never completes the handshake would otherwise retry forever without failing boot. Confirm the gateway is running and reachable, or raise inngest.connectTimeoutMs if it is only slow.`
+        )
+      );
+    }, timeoutMs);
+
+    connecting.then(
+      (value) => {
+        clearTimeout(timer);
+        if (timedOut) {
+          // Boot already rejected on this handshake; tear the now-orphaned
+          // connection back down rather than leave it receiving executions
+          // that would run against a disposed runtime. `close()` rejecting
+          // here must not become an unhandled rejection on top of a boot
+          // that has already failed for its own, already-reported reason.
+          value.close().catch((closeError: unknown) => {
+            getAppLogger("inngest").warn(
+              `Inngest Connect handshake succeeded after boot had already given up on it, and closing the abandoned worker connection failed: ${closeError instanceof Error ? closeError.message : String(closeError)}`
+            );
+          });
+          return;
+        }
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
 function getInngestBaseUrl() {
   const candidates = [process.env.INNGEST_BASE_URL, process.env.INNGEST_DEV];
 
@@ -68,6 +136,12 @@ export type RovaInngestConfig = {
    * `connect` is true.
    */
   maxWorkerConcurrency?: number;
+  /**
+   * Milliseconds `createRovaApp` waits for the Connect handshake to reach an
+   * active connection before failing boot. Defaults to 30 seconds. Used only
+   * when `connect` is true.
+   */
+  connectTimeoutMs?: number;
 };
 
 /**
@@ -185,7 +259,8 @@ export type InngestSurface = {
   /**
    * Opens a Connect WebSocket for a function list already built for this
    * client. Shutdown signals are left to the host: Rova closes the returned
-   * connection from `dispose`.
+   * connection from `dispose`. Rejects once `connectTimeoutMs` elapses
+   * without an active connection, naming the gateway it could not reach.
    */
   connect: (functions: InngestFunction.Any[]) => Promise<WorkerConnection>;
 };
@@ -213,14 +288,24 @@ export function createInngestSurface(
         servePath: config.servePath,
       }),
     connect: (functions) =>
-      connectInngest({
-        apps: [{ client, functions }],
-        instanceId: config.instanceId,
-        gatewayUrl: config.gatewayUrl,
-        maxWorkerConcurrency: config.maxWorkerConcurrency,
-        // The host owns SIGINT/SIGTERM (and `dispose`); leaving the SDK's
-        // default handlers in place races a second close against that path.
-        handleShutdownSignals: [],
-      }),
+      withConnectTimeout(
+        connectInngest({
+          apps: [{ client, functions }],
+          instanceId: config.instanceId,
+          gatewayUrl: config.gatewayUrl,
+          maxWorkerConcurrency: config.maxWorkerConcurrency,
+          // The host owns SIGINT/SIGTERM (and `dispose`); leaving the SDK's
+          // default handlers in place races a second close against that path.
+          handleShutdownSignals: [],
+        }),
+        config.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS,
+        // An explicit gatewayUrl, ours or the SDK's own INNGEST_CONNECT_GATEWAY_URL
+        // fallback, is what actually gets dialed. Absent both, the SDK asks the
+        // Inngest API for a gateway on every attempt, so naming that API is the
+        // closest true statement available here.
+        config.gatewayUrl ??
+          process.env.INNGEST_CONNECT_GATEWAY_URL ??
+          `the gateway ${client.apiBaseUrl} assigns`
+      ),
   };
 }
