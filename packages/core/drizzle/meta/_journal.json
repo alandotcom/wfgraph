@@ -8,6 +8,13 @@
       "when": 1785991417231,
       "tag": "0000_peaceful_blacklash",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786113814366,
+      "tag": "0001_breezy_miracleman",
+      "breakpoints": true
     }
   ]
 }

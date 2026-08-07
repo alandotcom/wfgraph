@@ -109,10 +109,6 @@ export const workflowVersions = pgTable(
       table.workflowId,
       table.version
     ),
-    index("workflow_versions_workflow_id_published_at_idx").on(
-      table.workflowId,
-      table.publishedAt
-    ),
   ]
 );
 
@@ -243,6 +239,12 @@ export const workflowExecutions = pgTable(
     index("workflow_executions_in_flight_by_entity_idx")
       .on(table.workflowId, table.entityValue, table.runMode)
       .where(sql`${table.status} in (${sql.raw(inFlightStatusLiterals)})`),
+    // workflow_version_id cascades from workflow_versions, and this is the
+    // largest table in the schema: without this index, deleting a version
+    // scans every execution row to find the ones the cascade must remove.
+    index("workflow_executions_workflow_version_id_idx").on(
+      table.workflowVersionId
+    ),
   ]
 );
 
