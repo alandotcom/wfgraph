@@ -2,7 +2,6 @@
 // provides, so nothing here imports the bare one.
 import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
-import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
 import {
   SilentAppLoggerLayer,
   stubExecutionRepo,
@@ -10,15 +9,7 @@ import {
 import type { ExecutionSummary } from "#src/backend/services/executions/repo";
 import { getExecutionLogs } from "#src/backend/services/executions/logs";
 
-const pinnedGraph: SerializedWorkflowGraph = { nodes: [], edges: [] };
-
-type SummaryWithPinnedGraph = ExecutionSummary & {
-  graph: SerializedWorkflowGraph;
-};
-
-function summary(
-  overrides: Partial<SummaryWithPinnedGraph> = {}
-): SummaryWithPinnedGraph {
+function summary(overrides: Partial<ExecutionSummary> = {}): ExecutionSummary {
   return {
     id: "exec_1",
     workflowId: "wf_1",
@@ -34,17 +25,16 @@ function summary(
     startedAt: new Date("2026-03-01T10:00:00.000Z"),
     completedAt: new Date("2026-03-01T10:00:01.000Z"),
     duration: "1000",
-    graph: pinnedGraph,
     ...overrides,
   };
 }
 
 /** The three reads this service makes, with the summary the test chose. */
-function makeRepos(execution: SummaryWithPinnedGraph | null) {
+function makeRepos(execution: ExecutionSummary | null) {
   return Layer.mergeAll(
     SilentAppLoggerLayer,
     stubExecutionRepo({
-      findSummaryWithPinnedGraph: () => Effect.succeed(execution),
+      findSummaryById: () => Effect.succeed(execution),
       listLogs: () => Effect.succeed([]),
       listWaitingStates: () => Effect.succeed([]),
     })
@@ -53,15 +43,16 @@ function makeRepos(execution: SummaryWithPinnedGraph | null) {
 
 describe("getExecutionLogs", () => {
   layer(SilentAppLoggerLayer)((it) => {
-    // Every run pins a version, so the overlay always receives that graph —
-    // not whatever the draft looks like now.
-    it.effect("includes the pinned graph from the version join", () =>
+    // The graph itself rides `getVersionGraph` now (#37); this payload still
+    // has to carry the version id that procedure is keyed by, or the client
+    // has nothing to fetch the graph with.
+    it.effect("carries the pinned version id the graph is fetched by", () =>
       Effect.gen(function* () {
         const result = yield* getExecutionLogs("exec_1").pipe(
-          Effect.provide(makeRepos(summary()))
+          Effect.provide(makeRepos(summary({ workflowVersionId: "ver_9" })))
         );
 
-        assert.deepStrictEqual(result.graph, pinnedGraph);
+        assert.strictEqual(result.execution.workflowVersionId, "ver_9");
       })
     );
 

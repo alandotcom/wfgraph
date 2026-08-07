@@ -116,18 +116,33 @@ export function WorkflowRuns() {
     refetchInterval: detailPollInterval,
   });
 
+  // The pinned graph is immutable once published (ADR-0012), so it is fetched
+  // once per workflowVersionId and cached forever rather than riding the
+  // polled logs payload above: `staleTime: Infinity` keeps it off the
+  // 2-second tick that never has anything new to say about it.
+  const versionId = detailQuery.data?.execution.workflowVersionId;
+  const graphQuery = useQuery({
+    ...orpcQuery.workflow.getVersionGraph.queryOptions({
+      input: { versionId: versionId ?? "" },
+      select: (payload) => payload.graph,
+    }),
+    enabled: versionId !== undefined,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+
   // URL search owns which run is open. One sync: selection, Runs tab, and the
   // pinned-graph overlay. Paint only when the run's workflowId matches the
   // hydrated editor (`currentWorkflowId`) — never before, or a late hydrate
   // clears the overlay while the key stays `ready` and the canvas sticks on
   // the draft. Key is closed | open:exec:wf | ready:exec:wf; never fetch
   // timestamps, so a logs poll cannot rebuild nodes as idle and wipe statuses.
-  // `graph` is always on a successful logs payload; absence means the query
-  // has not landed yet.
   const detail = detailQuery.data;
+  const graph = graphQuery.data;
   const executionWorkflowId = detail?.execution.workflowId;
   const workflowAligned =
-    detail !== undefined && executionWorkflowId === currentWorkflowId;
+    detail !== undefined &&
+    graph !== undefined &&
+    executionWorkflowId === currentWorkflowId;
   useAfterCommit(
     executionId === undefined
       ? "closed"
@@ -144,14 +159,15 @@ export function WorkflowRuns() {
       setActiveTab("runs");
       setSelectedExecutionId(executionId);
 
-      if (!workflowAligned || detail === undefined) {
-        // Stay selection-only until hydrate and the run agree; drop any stale
-        // overlay from the previous workflow rather than paint-then-lose.
+      if (!workflowAligned || detail === undefined || graph === undefined) {
+        // Stay selection-only until hydrate, the run, and its graph all agree;
+        // drop any stale overlay from the previous workflow rather than
+        // paint-then-lose.
         setExecutionOverlay(null);
         return;
       }
 
-      const graphData = toWorkflowGraphData(detail.graph);
+      const graphData = toWorkflowGraphData(graph);
       setExecutionOverlay({
         nodes: graphData.nodes.map((node) => {
           const editorNode = toEditorNode(node);

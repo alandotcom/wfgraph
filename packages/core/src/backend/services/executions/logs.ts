@@ -20,7 +20,7 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
     const repo = yield* ExecutionRepo;
     const logger = yield* loggerFor(executionId);
 
-    const execution = yield* repo.findSummaryWithPinnedGraph(executionId);
+    const execution = yield* repo.findSummaryById(executionId);
 
     if (!execution) {
       yield* logger.warn("Execution not found for logs");
@@ -34,6 +34,7 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
       execution: {
         id: execution.id,
         workflowId: execution.workflowId,
+        workflowVersionId: execution.workflowVersionId,
         status: execution.status,
         startSource: execution.startSource,
         runMode: execution.runMode,
@@ -46,7 +47,6 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
         completedAt: toIso(execution.completedAt),
         duration: execution.duration,
       },
-      graph: execution.graph,
       // Whatever a node was handed and answered with is shown here verbatim,
       // which is why it passes through redaction on the way out.
       logs: logs.map((log) => ({

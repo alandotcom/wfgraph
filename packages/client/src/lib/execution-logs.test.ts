@@ -85,6 +85,7 @@ describe("toWorkflowExecutionFromSummary", () => {
     const summary: ExecutionLogsResult["execution"] = {
       id: "exec_past_cap",
       workflowId: "wf_1",
+      workflowVersionId: "ver_1",
       status: "completed",
       input: {},
       output: {},

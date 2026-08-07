@@ -4,10 +4,7 @@ import {
   type WorkflowExecutionStartSource,
   type WorkflowExecutionStatus,
 } from "@rova/shared/lifecycle/execution-contracts";
-import type {
-  ExecutionLogEntry,
-  SerializedWorkflowGraph,
-} from "@rova/shared/graph/types";
+import type { ExecutionLogEntry } from "@rova/shared/graph/types";
 import type { ExecutionLogsResult } from "#src/lib/rpc-client";
 
 /**
@@ -137,14 +134,15 @@ export function toWorkflowExecutions(payload: {
  *
  * The execution summary rides along for deep-links that open a run no longer in
  * the polled list: the panel needs a row shape before it can show detail, and
- * the list cannot supply one past its newest-50 cap. `graph` is the version this
- * run pinned.
+ * the list cannot supply one past its newest-50 cap. The pinned graph itself is
+ * not here -- it is immutable once published, so it rides `getVersionGraph`
+ * instead, fetched once per `workflowVersionId` and cached forever rather than
+ * retransmitted on every poll of this payload.
  */
 export function toExecutionDetail(payload: ExecutionLogsResult): {
   logs: ExecutionLog[];
   waits: ExecutionWait[];
-  execution: WorkflowExecution;
-  graph: SerializedWorkflowGraph;
+  execution: WorkflowExecution & { workflowVersionId: string };
 } {
   return {
     logs: toExecutionLogs(payload),
@@ -152,8 +150,10 @@ export function toExecutionDetail(payload: ExecutionLogsResult): {
       ...wait,
       waitUntil: wait.waitUntil ? new Date(wait.waitUntil) : null,
     })),
-    execution: toWorkflowExecutionFromSummary(payload.execution),
-    graph: payload.graph,
+    execution: {
+      ...toWorkflowExecutionFromSummary(payload.execution),
+      workflowVersionId: payload.execution.workflowVersionId,
+    },
   };
 }
 

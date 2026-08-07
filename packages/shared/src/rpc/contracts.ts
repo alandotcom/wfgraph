@@ -231,6 +231,8 @@ const executionLogSchema = Schema.Struct({
 const executionSummarySchema = Schema.Struct({
   id: idSchema,
   workflowId: idSchema,
+  /** The published version this run pinned; the key `getVersionGraph` reads by. */
+  workflowVersionId: idSchema,
   status: Schema.String,
   startSource: workflowExecutionFields.startSource,
   runMode: workflowExecutionFields.runMode,
@@ -577,12 +579,21 @@ export const rpcContract = {
         contractSchema(
           Schema.Struct({
             execution: executionSummarySchema,
-            /** The graph this run pinned. */
-            graph: serializedWorkflowGraphSchema,
             logs: listOf(executionLogSchema),
             waits: listOf(executionWaitSchema),
           })
         )
+      ),
+    /**
+     * The pinned graph of one published version, on its own procedure rather
+     * than riding the polled logs payload: the graph is immutable once minted,
+     * so a client fetches it once per version id and caches the answer forever
+     * (ADR-0012, "Readers load the version's graph").
+     */
+    getVersionGraph: route("GET", "/workflows/versions/{versionId}/graph")
+      .input(contractSchema(Schema.Struct({ versionId: idSchema })))
+      .output(
+        contractSchema(Schema.Struct({ graph: serializedWorkflowGraphSchema }))
       ),
     resumeWait: route("POST", "/workflows/waits/{token}/resume-from-panel")
       .input(
