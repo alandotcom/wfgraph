@@ -97,10 +97,11 @@ const workflowRoute = createRoute({
   path: "/workflows/$workflowId",
   validateSearch: validateWorkflowSearch,
   /**
-   * Open the Runs tab before the loader hydrates so a deep-linked run mounts
-   * the panel that owns URL→selection sync. Does not touch selection or
-   * overlay: hydrate clears those, and the panel writes them after mount.
-   * Safe on every search change — selecting a run must not re-hydrate.
+   * Open the Runs tab on a deep-linked run so the panel is what the builder
+   * sees. Selection and overlay are the editor shell's
+   * `ExecutionOverlaySync`, not this panel — hydrate clears those, and the
+   * shell rewrites them after mount. Safe on every search change: selecting a
+   * run must not re-hydrate.
    */
   beforeLoad: ({ search }) => {
     if (search.executionId) {

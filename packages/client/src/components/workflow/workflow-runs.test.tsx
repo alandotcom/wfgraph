@@ -10,7 +10,9 @@ import {
 } from "@tanstack/react-router";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
 import { WorkflowRuns } from "#src/components/workflow/workflow-runs";
 import {
   displayNodesAtom,
@@ -134,7 +136,21 @@ function pinnedGraph(nodeId: string): SerializedWorkflowGraph {
   });
 }
 
-function renderRuns(options?: { executionId?: string }) {
+/**
+ * Editor-shell mount for the overlay sync, matching production: the headless
+ * component lives on the workflow route, not inside the Runs panel. Optional
+ * children are the panel UI when a case needs to click a row.
+ */
+function EditorShell({ children }: { children?: ReactNode }) {
+  return (
+    <>
+      <ExecutionOverlaySync />
+      {children ?? null}
+    </>
+  );
+}
+
+function renderRuns(options?: { executionId?: string; panel?: boolean }) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -142,6 +158,8 @@ function renderRuns(options?: { executionId?: string }) {
   store.set(currentWorkflowIdAtom, "wf_1");
   store.set(isWorkflowOwnerAtom, true);
   store.set(propertiesPanelActiveTabAtom, "runs");
+
+  const showPanel = options?.panel !== false;
 
   const rootRoute = createRootRoute({
     component: () => <Outlet />,
@@ -155,7 +173,9 @@ function renderRuns(options?: { executionId?: string }) {
           ? search.executionId
           : undefined,
     }),
-    component: () => <WorkflowRuns />,
+    component: () => (
+      <EditorShell>{showPanel ? <WorkflowRuns /> : null}</EditorShell>
+    ),
   });
   const router = createRouter({
     routeTree: rootRoute.addChildren([workflowRoute]),
@@ -179,14 +199,16 @@ function renderRuns(options?: { executionId?: string }) {
   return { view, queryClient, router, store };
 }
 
+function resetServed(): void {
+  served.items = [];
+  served.supersededCount = 0;
+  served.graphs = {};
+  served.logsSummaryExtras = {};
+  stubRunQueries();
+}
+
 describe("WorkflowRuns", () => {
-  beforeEach(() => {
-    served.items = [];
-    served.supersededCount = 0;
-    served.graphs = {};
-    served.logsSummaryExtras = {};
-    stubRunQueries();
-  });
+  beforeEach(resetServed);
 
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -304,10 +326,19 @@ describe("WorkflowRuns", () => {
       expect(router.state.location.search).toEqual({});
     });
   });
+});
+
+describe("ExecutionOverlaySync", () => {
+  beforeEach(resetServed);
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
   // Selecting a run, leaving it (draft / newer version on screen), then
   // reopening the same run must restore that run's pinned graph — not leave
-  // the canvas on the live draft.
+  // the canvas on the live draft. The harness mounts the headless sync on the
+  // route (editor shell) and the panel only to write the URL via clicks.
   it("re-applies the pinned graph after leaving and reopening a run", async () => {
     served.items = [
       execution("exec_new", "completed"),
@@ -356,7 +387,10 @@ describe("WorkflowRuns", () => {
       [versionIdFor("exec_old")]: pinnedGraph("v1_lifecycle"),
       [versionIdFor("exec_new")]: pinnedGraph("v2_lifecycle"),
     };
-    const { store, router } = renderRuns({ executionId: "exec_new" });
+    const { store, router } = renderRuns({
+      executionId: "exec_new",
+      panel: false,
+    });
 
     await waitFor(() => {
       expect(
@@ -379,9 +413,10 @@ describe("WorkflowRuns", () => {
     });
   });
 
-  // Cross-workflow deep link while Runs stays mounted: the pinned graph can be
-  // ready before the route loader hydrates. Painting then would be cleared by
-  // hydrate while the sync key stayed `ready`, leaving the canvas on the draft.
+  // Cross-workflow deep link while the shell stays mounted: the pinned graph
+  // can be ready before the route loader hydrates. Painting then would be
+  // cleared by hydrate while the sync key stayed `ready`, leaving the canvas
+  // on the draft.
   it("waits for hydrate before painting a deep-linked run on another workflow", async () => {
     served.items = [
       execution("exec_a", "completed", "wf_1"),
@@ -391,7 +426,10 @@ describe("WorkflowRuns", () => {
       [versionIdFor("exec_a")]: pinnedGraph("a_lifecycle"),
       [versionIdFor("exec_b")]: pinnedGraph("b_lifecycle"),
     };
-    const { store, router } = renderRuns({ executionId: "exec_a" });
+    const { store, router } = renderRuns({
+      executionId: "exec_a",
+      panel: false,
+    });
 
     await waitFor(() => {
       expect(
@@ -439,7 +477,10 @@ describe("WorkflowRuns", () => {
       [versionIdFor("exec_old")]: pinnedGraph("shared_lifecycle"),
       [versionIdFor("exec_new")]: pinnedGraph("shared_lifecycle"),
     };
-    const { store, router } = renderRuns({ executionId: "exec_new" });
+    const { store, router } = renderRuns({
+      executionId: "exec_new",
+      panel: false,
+    });
 
     await waitFor(() => {
       expect(
