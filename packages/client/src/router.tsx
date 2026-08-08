@@ -99,7 +99,7 @@ const workflowRoute = createRoute({
   /**
    * Open the Runs tab on a deep-linked run so the panel is what the builder
    * sees. Selection and overlay are the editor shell's
-   * `useExecutionOverlaySync`, not this panel — hydrate clears those, and the
+   * `ExecutionOverlaySync`, not this panel — hydrate clears those, and the
    * shell rewrites them after mount. Safe on every search change: selecting a
    * run must not re-hydrate.
    */

@@ -12,8 +12,8 @@ import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
 import { WorkflowRuns } from "#src/components/workflow/workflow-runs";
-import { useExecutionOverlaySync } from "#src/hooks/use-execution-overlay-sync";
 import {
   displayNodesAtom,
   executionOverlayGraphAtom,
@@ -137,13 +137,17 @@ function pinnedGraph(nodeId: string): SerializedWorkflowGraph {
 }
 
 /**
- * Editor-shell mount for the overlay sync, matching production: the hook
- * lives on the workflow route, not inside the Runs panel. Optional children
- * are the panel UI when a case needs to click a row.
+ * Editor-shell mount for the overlay sync, matching production: the headless
+ * component lives on the workflow route, not inside the Runs panel. Optional
+ * children are the panel UI when a case needs to click a row.
  */
 function EditorShell({ children }: { children?: ReactNode }) {
-  useExecutionOverlaySync();
-  return children ?? null;
+  return (
+    <>
+      <ExecutionOverlaySync />
+      {children ?? null}
+    </>
+  );
 }
 
 function renderRuns(options?: { executionId?: string; panel?: boolean }) {
@@ -324,7 +328,7 @@ describe("WorkflowRuns", () => {
   });
 });
 
-describe("useExecutionOverlaySync", () => {
+describe("ExecutionOverlaySync", () => {
   beforeEach(resetServed);
 
   afterEach(() => {
@@ -333,8 +337,8 @@ describe("useExecutionOverlaySync", () => {
 
   // Selecting a run, leaving it (draft / newer version on screen), then
   // reopening the same run must restore that run's pinned graph — not leave
-  // the canvas on the live draft. The harness mounts the hook on the route
-  // (editor shell) and the panel only to write the URL via clicks.
+  // the canvas on the live draft. The harness mounts the headless sync on the
+  // route (editor shell) and the panel only to write the URL via clicks.
   it("re-applies the pinned graph after leaving and reopening a run", async () => {
     served.items = [
       execution("exec_new", "completed"),

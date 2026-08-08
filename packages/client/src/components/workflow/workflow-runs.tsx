@@ -42,8 +42,8 @@ export function WorkflowRuns() {
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
   const queryClient = useQueryClient();
-  // Which run is open is URL state. The editor shell's overlay sync derives
-  // the selection atom and pinned graph; this panel only reads the search.
+  // Which run is open is URL state. ExecutionOverlaySync on the editor shell
+  // derives the selection atom and pinned graph; this panel only reads search.
   const { executionId } = workflowRouteApi.useSearch();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
 

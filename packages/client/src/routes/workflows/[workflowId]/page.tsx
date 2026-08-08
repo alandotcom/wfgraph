@@ -4,9 +4,9 @@ import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useCallback } from "react";
 import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
+import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
 import { WorkflowSidebarPanel } from "#src/components/workflow/workflow-sidebar-panel";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
-import { useExecutionOverlaySync } from "#src/hooks/use-execution-overlay-sync";
 import { isRunInProgress } from "#src/lib/execution-logs";
 import { isRefusal } from "#src/lib/rpc-client";
 import { orpcQuery } from "#src/lib/rpc-query";
@@ -43,10 +43,6 @@ const WorkflowEditor = () => {
   const saveWorkflow = useSetAtom(saveWorkflowAtom);
   const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
   const workflowNotFound = useAtomValue(workflowNotFoundAtom);
-
-  // URL → selection atom and pinned-graph overlay. Lives on the shell so it
-  // outlives the Runs panel; the status projection below reads what it writes.
-  useExecutionOverlaySync();
 
   // A debounced autosave has no caller waiting on it, so a failure would
   // otherwise reach only the console while the editor looked saved.
@@ -146,6 +142,10 @@ const WorkflowEditor = () => {
 
   return (
     <div className="flex h-dvh w-full flex-col overflow-hidden">
+      {/* URL → selection + pinned-graph overlay. Sibling of the sidebar so it
+          outlives the Runs panel; the status projection above reads what it writes. */}
+      <ExecutionOverlaySync />
+
       {/* Workflow not found overlay */}
       {workflowNotFound && (
         <div className="pointer-events-auto absolute inset-0 z-20 flex items-center justify-center">

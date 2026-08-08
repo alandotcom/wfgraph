@@ -16,17 +16,12 @@ import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 const workflowRouteApi = getRouteApi("/workflows/$workflowId");
 
 /**
- * URL search → canvas overlay wiring for the open run.
+ * URL search → selection atom and pinned-graph overlay for the open run.
  *
- * Mounted on the workflow editor shell so selection and the pinned-graph
- * overlay outlive the Runs panel. ActionNode badges and
- * `useExecutionLogsByNode` read the selection atom this writes; the panel
- * only queries what its list and detail views display.
- *
- * Opening the Runs tab for a deep link is the route `beforeLoad`, not this
- * hook: the shell is already mounted before that tab paints.
+ * Private to `ExecutionOverlaySync`: the headless component is the mount API
+ * so the editor tree shows who owns the sync.
  */
-export function useExecutionOverlaySync(): void {
+function useExecutionOverlaySync(): void {
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [selectedExecutionId, setSelectedExecutionId] = useAtom(
     selectedExecutionIdAtom
@@ -122,4 +117,20 @@ export function useExecutionOverlaySync(): void {
       });
     }
   );
+}
+
+/**
+ * Headless owner of URL → canvas overlay wiring for the open run.
+ *
+ * Mount on the workflow editor shell so selection and the pinned-graph
+ * overlay outlive the Runs panel. ActionNode badges and
+ * `useExecutionLogsByNode` read the selection atom this writes; the panel
+ * only queries what its list and detail views display.
+ *
+ * Opening the Runs tab for a deep link is the route `beforeLoad`, not this
+ * component: the shell is already mounted before that tab paints.
+ */
+export function ExecutionOverlaySync() {
+  useExecutionOverlaySync();
+  return null;
 }
