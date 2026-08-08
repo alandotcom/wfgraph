@@ -10,7 +10,7 @@ import {
 } from "@tanstack/react-router";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkflowRuns } from "#src/components/workflow/workflow-runs";
 import {
   displayNodesAtom,
@@ -18,6 +18,13 @@ import {
   hydrateWorkflowAtom,
   setNodeStatusesAtom,
 } from "#src/lib/workflow-graph-store";
+import {
+  answerWorkflowRunRpc,
+  extractRpcProcedurePath,
+  parseRpcRequestInput,
+  rpcUrl,
+  type WorkflowRunRpcFixture,
+} from "#src/lib/rpc-fetch-test-support";
 import {
   currentWorkflowIdAtom,
   isWorkflowOwnerAtom,
@@ -45,7 +52,7 @@ type RawExecution = {
 };
 
 /** What the runs endpoint is answering with, rewritten between polls. */
-const served = vi.hoisted(() => ({
+const served: WorkflowRunRpcFixture = {
   items: [] as RawExecution[],
   supersededCount: 0,
   /** Keyed by workflowVersionId, the key `getVersionGraph` reads by. */
@@ -60,7 +67,7 @@ const served = vi.hoisted(() => ({
       entityValue?: string | null;
     }
   >,
-}));
+};
 
 /** The mock logs endpoint's version id for one execution: a run pins a version,
  * mocked here as a fixed function of the execution id so a test can address
@@ -69,105 +76,26 @@ function versionIdFor(executionId: string): string {
   return `ver_${executionId}`;
 }
 
-vi.mock("#src/lib/rpc-query", () => ({
-  refreshRunHistory: () => undefined,
-  orpcQuery: {
-    workflow: {
-      getExecutions: {
-        queryOptions: ({
-          input,
-          select,
-        }: {
-          input: { workflowId: string; includeSuperseded: boolean };
-          select: (payload: unknown) => unknown;
-        }) => ({
-          queryKey: ["executions", input.workflowId, input.includeSuperseded],
-          queryFn: () => ({
-            items: input.includeSuperseded
-              ? served.items
-              : served.items.filter((item) => item.status !== "superseded"),
-            supersededCount: served.supersededCount,
-            refusedStarts: [],
-          }),
-          select,
-        }),
-      },
-      getExecutionLogs: {
-        queryOptions: ({
-          input,
-          select,
-        }: {
-          input: { executionId: string };
-          select: (payload: unknown) => unknown;
-        }) => ({
-          queryKey: ["logs", input.executionId],
-          queryFn: () => {
-            const listed = served.items.find(
-              (item) => item.id === input.executionId
-            );
-            const extras = served.logsSummaryExtras[input.executionId] ?? {};
-            return {
-              execution: {
-                id: input.executionId,
-                workflowId: listed?.workflowId ?? "wf_1",
-                workflowVersionId: versionIdFor(input.executionId),
-                status: listed?.status ?? "completed",
-                startSource: listed?.startSource ?? "event",
-                runMode: listed?.runMode ?? "live",
-                startEventName: listed?.startEventName ?? null,
-                entityValue: listed?.entityValue ?? null,
-                error: null,
-                startedAt: "2026-03-01T10:00:00.000Z",
-                completedAt: "2026-03-01T10:00:30.000Z",
-                duration: "30s",
-                input: {},
-                output: {},
-                ...extras,
-              },
-              logs: [],
-              waits: [],
-            };
-          },
-          select,
-        }),
-      },
-      getVersionGraph: {
-        queryOptions: ({
-          input,
-          select,
-        }: {
-          input: { versionId: string };
-          select: (payload: unknown) => unknown;
-        }) => ({
-          queryKey: ["version-graph", input.versionId],
-          queryFn: () => ({
-            graph:
-              served.graphs[input.versionId] ??
-              createSerializedWorkflowGraph({ nodes: [], edges: [] }),
-          }),
-          select,
-        }),
-      },
-      getExecutionEvents: {
-        queryOptions: ({
-          select,
-        }: {
-          select: (payload: unknown) => unknown;
-        }) => ({
-          queryKey: ["events"],
-          queryFn: () => ({ events: [] }),
-          select,
-        }),
-      },
-      cancelExecution: {
-        mutationOptions: () => ({ mutationFn: () => Promise.resolve({}) }),
-      },
-      resumeWait: {
-        mutationOptions: () => ({ mutationFn: () => Promise.resolve({}) }),
-      },
-    },
-  },
-}));
+/**
+ * Stub fetch so the run panel's oRPC procedures read from `served`. The utils
+ * object rebuilds each procedure helper on every property access, so nested
+ * spies cannot stick; answering by URL path is what isolate:false needs.
+ */
+function stubRunQueries(): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = rpcUrl(input);
+      const procedurePath = extractRpcProcedurePath(url);
+      if (!procedurePath.startsWith("workflow/")) {
+        throw new Error(`unexpected fetch in workflow-runs test: ${url}`);
+      }
+
+      const requestInput = await parseRpcRequestInput(init);
+      return answerWorkflowRunRpc(served, procedurePath, requestInput);
+    })
+  );
+}
 
 function execution(
   id: string,
@@ -257,6 +185,11 @@ describe("WorkflowRuns", () => {
     served.supersededCount = 0;
     served.graphs = {};
     served.logsSummaryExtras = {};
+    stubRunQueries();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   // A newest-wins workflow supersedes the open run out of the polled list, so

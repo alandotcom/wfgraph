@@ -2,10 +2,26 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { describe, expect, it, vi } from "vitest";
+import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { IntegrationSelector } from "#src/components/ui/integration-selector";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+
+const testCatalog: ExtensionCatalog = {
+  events: [],
+  actions: [],
+  integrations: [
+    {
+      type: "acuity",
+      label: "Acuity",
+      description: "Acuity Scheduling",
+      credentialFields: {},
+      hasTest: true,
+    },
+  ],
+};
 
 /**
  * What the selector claims about the node it was handed.
@@ -44,17 +60,19 @@ function renderSelector(options: {
   );
 
   render(
-    <QueryClientProvider client={queryClient}>
-      <JotaiProvider store={createStore()}>
-        <OverlayProvider>
-          <IntegrationSelector
-            integrationType="acuity"
-            onChange={onChange}
-            value={options.value}
-          />
-        </OverlayProvider>
-      </JotaiProvider>
-    </QueryClientProvider>
+    <ExtensionCatalogProvider value={testCatalog}>
+      <QueryClientProvider client={queryClient}>
+        <JotaiProvider store={createStore()}>
+          <OverlayProvider>
+            <IntegrationSelector
+              integrationType="acuity"
+              onChange={onChange}
+              value={options.value}
+            />
+          </OverlayProvider>
+        </JotaiProvider>
+      </QueryClientProvider>
+    </ExtensionCatalogProvider>
   );
 
   return { onChange };

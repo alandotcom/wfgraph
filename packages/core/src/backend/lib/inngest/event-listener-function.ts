@@ -72,6 +72,24 @@ type EventListenerSteps = {
 };
 
 /**
+ * The deliver halves this listener fans out through.
+ *
+ * Named here so a wiring test can stand in for them without mocking the module
+ * graph. Production wiring passes the real exports at the construction site.
+ */
+export type EventListenerDeliverPorts = {
+  listSubscribers: typeof listEventSubscribers;
+  applyLifecycle: typeof applyLifecycleRules;
+  deliverWaits: typeof deliverToWaits;
+};
+
+export const defaultDeliverPorts: EventListenerDeliverPorts = {
+  listSubscribers: listEventSubscribers,
+  applyLifecycle: applyLifecycleRules,
+  deliverWaits: deliverToWaits,
+};
+
+/**
  * One delivered Event, fanned out.
  *
  * Each workflow is two sibling steps: the Lifecycle Rules, then the wait delivery
@@ -88,8 +106,9 @@ export async function runEventListener(input: {
   arrival: { eventId?: string; runId?: string };
   runtime: WfGraphRuntime;
   step: EventListenerSteps;
+  deliver: EventListenerDeliverPorts;
 }): Promise<{ eventName: string; workflows: WorkflowDelivery[] }> {
-  const { event, payload, runtime, step } = input;
+  const { event, payload, runtime, step, deliver } = input;
   const arrivalLogger = logger.with({
     eventName: event.name,
     ...input.arrival,
@@ -117,7 +136,7 @@ export async function runEventListener(input: {
 
   const subscribers = await step.run(
     `subscribers-${event.name}`,
-    async () => await runtime.runPromise(listEventSubscribers(event.name))
+    async () => await runtime.runPromise(deliver.listSubscribers(event.name))
   );
 
   const workflows: WorkflowDelivery[] = [];
@@ -135,7 +154,7 @@ export async function runEventListener(input: {
           `lifecycle-${subscriber.id}`,
           async () =>
             await runtime.runPromise(
-              applyLifecycleRules({
+              deliver.applyLifecycle({
                 subscriber,
                 event,
                 payload,
@@ -167,7 +186,7 @@ export async function runEventListener(input: {
           `waits-${subscriber.id}`,
           async () =>
             await runtime.runPromise(
-              deliverToWaits({ subscriber, event, payload, excluding })
+              deliver.deliverWaits({ subscriber, event, payload, excluding })
             )
         )
       : { workflowId: subscriber.id, resumedWaits: 0 };
@@ -233,6 +252,7 @@ export function createInngestEventListenerFunction(input: {
         arrival: { eventId: delivered.id, runId },
         runtime,
         step,
+        deliver: defaultDeliverPorts,
       })
   );
 }

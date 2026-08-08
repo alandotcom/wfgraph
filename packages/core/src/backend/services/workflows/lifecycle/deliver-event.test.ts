@@ -5,6 +5,7 @@ import { beforeEach, vi } from "vitest";
 import { Effect, Layer } from "effect";
 import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
 import { DatabaseError } from "#src/backend/lib/effect/database";
+import type { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import {
   SilentAppLoggerLayer,
   stubExecutionRepo,
@@ -15,48 +16,41 @@ import {
 } from "#src/backend/lib/effect/test-layers";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import type {
+  EntityStartOutcome,
+  ExecutionRepo,
+  WorkflowExecution,
+  WorkflowWaitState,
+} from "#src/backend/services/executions/repo";
 import type { EventSubscriber } from "#src/backend/services/workflows/repo";
 import {
   applyLifecycleRules,
   deliverToWaits,
 } from "#src/backend/services/workflows/lifecycle/deliver-event";
 
-// The two neighbours whose own cases live elsewhere, replaced for this file.
-const {
-  listWaitsForEventMock,
-  resumeWaitsMatchingEventMock,
-  validateWorkflowIntegrationsMock,
-  startWithConcurrencyMock,
-  requestCanceledOutletMock,
-} = vi.hoisted(() => ({
-  listWaitsForEventMock: vi.fn(),
-  resumeWaitsMatchingEventMock: vi.fn(),
-  validateWorkflowIntegrationsMock: vi.fn(),
-  startWithConcurrencyMock: vi.fn(),
-  requestCanceledOutletMock: vi.fn(),
-}));
+type Repo = ExecutionRepo["Service"];
 
-vi.mock("#src/backend/services/workflows/lifecycle/resume-waits", () => ({
-  resumeWaitsMatchingEvent: resumeWaitsMatchingEventMock,
-}));
-
-// Concurrency's own cases are `concurrency.test.ts`; what matters here is what it
-// is asked for and what its answer does to the delivery.
-vi.mock("#src/backend/services/workflows/lifecycle/concurrency", () => ({
-  startWithConcurrency: startWithConcurrencyMock,
-}));
-
-// The claim and the nudge are `cancel.test.ts`; here it is what the cancel arm
-// asks for and what its answer keeps off the wait delivery.
-vi.mock("#src/backend/services/workflows/lifecycle/cancel", () => ({
-  requestCanceledOutlet: requestCanceledOutletMock,
-}));
-
-vi.mock(
-  "#src/backend/services/workflows/validation/workflow-integration-validation",
-  () => ({
-    validateWorkflowIntegrations: validateWorkflowIntegrationsMock,
-  })
+const startForEntityMock = vi.fn<Repo["startForEntity"]>();
+const requestCancelForEntityMock = vi.fn<Repo["requestCancelForEntity"]>();
+const listWaitingStatesForExecutionsMock =
+  vi.fn<Repo["listWaitingStatesForExecutions"]>();
+const listWaitsForEventMock = vi.fn<Repo["listWaitsForEvent"]>();
+const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
+const markWaitStatusMock = vi.fn<Repo["markWaitStatus"]>(() =>
+  Effect.succeed(true)
+);
+const markRunningMock = vi.fn<Repo["markRunning"]>(() => Effect.succeed(true));
+const sendRunRequestedMock = vi.fn<
+  InngestClient["Service"]["sendRunRequested"]
+>(() => Effect.succeed({ eventId: "evt_1" }));
+const sendCancelRequestedMock = vi.fn<
+  InngestClient["Service"]["sendCancelRequested"]
+>(() => Effect.void);
+const sendWaitSignalMock = vi.fn<InngestClient["Service"]["sendWaitSignal"]>(
+  () => Effect.void
+);
+const sendBranchKillMock = vi.fn<InngestClient["Service"]["sendBranchKill"]>(
+  () => Effect.void
 );
 
 // The catalog the save rules are checked against, which preflight reads off the
@@ -100,6 +94,43 @@ const cancelRules: LifecycleRules = {
   startEvents: ["app/appointment.created"],
   cancelEvents: ["app/appointment.canceled"],
   concurrency: "unlimited",
+};
+
+function createExecution(
+  overrides: Partial<WorkflowExecution> = {}
+): WorkflowExecution {
+  return {
+    id: "exec_new",
+    workflowId: "wf_1",
+    workflowRunId: null,
+    deliveryId: null,
+    enqueuedAt: null,
+    status: "running",
+    startSource: "event",
+    runMode: "live",
+    startEventName: "app/appointment.created",
+    entityValue: "appt_8813",
+    input: {},
+    output: null,
+    error: null,
+    startedAt: new Date("2026-03-01T00:00:00.000Z"),
+    waitingAt: null,
+    cancelledAt: null,
+    completedAt: null,
+    duration: null,
+    cancelRequestedAt: null,
+    cancelEventName: null,
+    cancelPayload: null,
+    workflowVersionId: "ver_1",
+    ...overrides,
+  };
+}
+
+const startedOutcome: EntityStartOutcome = {
+  status: "started",
+  execution: createExecution(),
+  supersededExecutionIds: [],
+  reclaimedExecutionIds: [],
 };
 
 /** The entry node, carrying the rules under test and nothing else. */
@@ -176,30 +207,102 @@ function subscriber(overrides: Partial<EventSubscriber> = {}): EventSubscriber {
   };
 }
 
-/** The run seams, left refusing: the start path is replaced above them. */
-const unreachedRunSeams = Layer.mergeAll(
-  stubExecutionRepo(),
-  stubInngestClient(),
+/**
+ * A parked wait whose match-free subscription wakes on the next occurrence.
+ *
+ * Resume matching's own cases live in `resume-waits.test.ts`; here the row only
+ * has to be wakeable so the delivery's candidate query and exclusion are what
+ * the assertion can see.
+ */
+function parkedWait(
+  eventName: string,
+  overrides: Partial<WorkflowWaitState> = {}
+): WorkflowWaitState {
+  return {
+    id: "wait_1",
+    executionId: "exec_parked",
+    workflowId: "wf_1",
+    runId: "run_1",
+    nodeId: "node_wait",
+    nodeName: "Wait",
+    waitType: "event",
+    status: "waiting",
+    resumeToken: "token_1",
+    waitUntil: null,
+    subscribedEvents: [eventName],
+    metadata: { waitFor: [{ event: eventName }] },
+    createdAt: new Date("2026-03-01T00:00:00.000Z"),
+    resumedAt: null,
+    cancelledAt: null,
+    ...overrides,
+  };
+}
+
+/**
+ * The ports `applyLifecycleRules` reaches through its real neighbours.
+ *
+ * Cancel's nudge and supersede signalling are stubbed quiet (empty waits, a
+ * succeeding cancel send); their own suites own those behaviours.
+ */
+const lifecyclePorts = Layer.mergeAll(
+  stubExecutionRepo({
+    startForEntity: startForEntityMock,
+    requestCancelForEntity: requestCancelForEntityMock,
+    listWaitingStatesForExecutions: listWaitingStatesForExecutionsMock,
+    recordAuditEvent: recordAuditEventMock,
+    markEnqueued: () => Effect.void,
+  }),
+  stubInngestClient({
+    sendRunRequested: sendRunRequestedMock,
+    sendCancelRequested: sendCancelRequestedMock,
+    sendWaitSignal: sendWaitSignalMock,
+    sendBranchKill: sendBranchKillMock,
+  }),
   stubIntegrationRepo()
 );
 
+const waitPorts = Layer.mergeAll(
+  stubExecutionRepo({
+    listWaitsForEvent: listWaitsForEventMock,
+    markWaitStatus: markWaitStatusMock,
+    markRunning: markRunningMock,
+    recordAuditEvent: recordAuditEventMock,
+  }),
+  stubInngestClient({
+    sendWaitSignal: sendWaitSignalMock,
+  })
+);
+
 beforeEach(() => {
-  vi.clearAllMocks();
-  listWaitsForEventMock.mockReturnValue(Effect.succeed([]));
-  resumeWaitsMatchingEventMock.mockReturnValue(Effect.succeed(0));
-  validateWorkflowIntegrationsMock.mockReturnValue(
-    Effect.succeed({ valid: true })
+  startForEntityMock.mockReset();
+  requestCancelForEntityMock.mockReset();
+  listWaitingStatesForExecutionsMock.mockReset();
+  listWaitsForEventMock.mockReset();
+  recordAuditEventMock.mockReset();
+  markWaitStatusMock.mockReset();
+  markRunningMock.mockReset();
+  sendRunRequestedMock.mockReset();
+  sendCancelRequestedMock.mockReset();
+  sendWaitSignalMock.mockReset();
+  sendBranchKillMock.mockReset();
+
+  startForEntityMock.mockImplementation(() => Effect.succeed(startedOutcome));
+  requestCancelForEntityMock.mockImplementation(() =>
+    Effect.succeed(["exec_running"])
   );
-  startWithConcurrencyMock.mockReturnValue(
-    Effect.succeed({
-      status: "started",
-      executionId: "exec_new",
-      runId: "evt_1",
-      supersededExecutionIds: [],
-      failedToSupersede: [],
-    })
+  listWaitingStatesForExecutionsMock.mockImplementation(() =>
+    Effect.succeed(new Map())
   );
-  requestCanceledOutletMock.mockReturnValue(Effect.succeed(["exec_running"]));
+  listWaitsForEventMock.mockImplementation(() => Effect.succeed([]));
+  recordAuditEventMock.mockImplementation(() => Effect.void);
+  markWaitStatusMock.mockImplementation(() => Effect.succeed(true));
+  markRunningMock.mockImplementation(() => Effect.succeed(true));
+  sendRunRequestedMock.mockImplementation(() =>
+    Effect.succeed({ eventId: "evt_1" })
+  );
+  sendCancelRequestedMock.mockImplementation(() => Effect.void);
+  sendWaitSignalMock.mockImplementation(() => Effect.void);
+  sendBranchKillMock.mockImplementation(() => Effect.void);
 });
 
 describe("applyLifecycleRules", () => {
@@ -214,7 +317,7 @@ describe("applyLifecycleRules", () => {
           Effect.provide(
             Layer.mergeAll(
               stubPublishedWorkflow(createWorkflow({ rules: startRules })),
-              unreachedRunSeams
+              lifecyclePorts
             )
           )
         );
@@ -227,16 +330,15 @@ describe("applyLifecycleRules", () => {
           failedToSupersede: [],
         });
         assert.strictEqual(
-          startWithConcurrencyMock.mock.calls[0]?.[0].start.entityValue,
+          startForEntityMock.mock.calls[0]?.[0].execution.entityValue,
           "appt_8813"
         );
         assert.strictEqual(
-          startWithConcurrencyMock.mock.calls[0]?.[0].workflow.versionId,
+          startForEntityMock.mock.calls[0]?.[0].execution.workflowVersionId,
           "ver_1"
         );
         assert.strictEqual(
-          startWithConcurrencyMock.mock.calls[0]?.[0].workflow
-            .catalogFingerprint,
+          sendRunRequestedMock.mock.calls[0]?.[0].catalogFingerprint,
           "fp"
         );
       })
@@ -266,15 +368,19 @@ describe("applyLifecycleRules", () => {
                   },
                 })
               ),
-              unreachedRunSeams
+              lifecyclePorts
             )
           )
         );
 
         assert.strictEqual(outcome.kind, "started");
         assert.strictEqual(
-          startWithConcurrencyMock.mock.calls[0]?.[0].start.eventName,
+          startForEntityMock.mock.calls[0]?.[0].execution.startEventName,
           "app/appointment.canceled"
+        );
+        assert.strictEqual(
+          startForEntityMock.mock.calls[0]?.[0].concurrency,
+          "newest-wins"
         );
       })
     );
@@ -291,13 +397,13 @@ describe("applyLifecycleRules", () => {
           Effect.provide(
             Layer.mergeAll(
               stubPublishedWorkflow(createWorkflow({ rules: startRules })),
-              unreachedRunSeams
+              lifecyclePorts
             )
           )
         );
 
         assert.strictEqual(
-          startWithConcurrencyMock.mock.calls[0]?.[0].start.entityValue,
+          startForEntityMock.mock.calls[0]?.[0].execution.entityValue,
           "appt_8813"
         );
       })
@@ -316,7 +422,7 @@ describe("applyLifecycleRules", () => {
           Effect.provide(
             Layer.mergeAll(
               stubPublishedWorkflow(createWorkflow({})),
-              unreachedRunSeams
+              lifecyclePorts
             )
           )
         );
@@ -325,16 +431,15 @@ describe("applyLifecycleRules", () => {
           kind: "waits_only",
           workflowId: "wf_1",
         });
-        assert.strictEqual(startWithConcurrencyMock.mock.calls.length, 0);
+        assert.strictEqual(startForEntityMock.mock.calls.length, 0);
       })
     );
 
     it.effect("carries a first-wins refusal back as refused", () =>
       Effect.gen(function* () {
-        startWithConcurrencyMock.mockReturnValue(
+        startForEntityMock.mockReturnValue(
           Effect.succeed({
-            status: "not_started",
-            reason: "concurrency_first_wins",
+            status: "refused",
             inFlightExecutionIds: ["exec_running"],
           })
         );
@@ -347,7 +452,7 @@ describe("applyLifecycleRules", () => {
           Effect.provide(
             Layer.mergeAll(
               stubPublishedWorkflow(createWorkflow({ rules: startRules })),
-              unreachedRunSeams
+              lifecyclePorts
             )
           )
         );
@@ -357,6 +462,7 @@ describe("applyLifecycleRules", () => {
           workflowId: "wf_1",
           reason: "concurrency_first_wins",
         });
+        assert.strictEqual(sendRunRequestedMock.mock.calls.length, 0);
       })
     );
 
@@ -370,7 +476,7 @@ describe("applyLifecycleRules", () => {
           Effect.provide(
             Layer.mergeAll(
               stubPublishedWorkflow(createWorkflow({ rules: cancelRules })),
-              unreachedRunSeams
+              lifecyclePorts
             )
           )
         );
@@ -380,14 +486,14 @@ describe("applyLifecycleRules", () => {
           workflowId: "wf_1",
           canceledExecutionIds: ["exec_running"],
         });
-        assert.deepStrictEqual(requestCanceledOutletMock.mock.calls[0]?.[0], {
+        assert.deepStrictEqual(requestCancelForEntityMock.mock.calls[0]?.[0], {
           workflowId: "wf_1",
+          entityValue: "appt_8813",
           runMode: "live",
           eventName: "app/appointment.canceled",
           payload,
-          entityValue: "appt_8813",
         });
-        assert.strictEqual(startWithConcurrencyMock.mock.calls.length, 0);
+        assert.strictEqual(startForEntityMock.mock.calls.length, 0);
       })
     );
 
@@ -412,13 +518,13 @@ describe("applyLifecycleRules", () => {
             Effect.provide(
               Layer.mergeAll(
                 stubPublishedWorkflow(createWorkflow({ rules: cancelRules })),
-                unreachedRunSeams
+                lifecyclePorts
               )
             )
           );
 
           assert.strictEqual(
-            requestCanceledOutletMock.mock.calls[0]?.[0].entityValue,
+            requestCancelForEntityMock.mock.calls[0]?.[0].entityValue,
             "pat_42"
           );
         })
@@ -458,7 +564,7 @@ describe("applyLifecycleRules", () => {
           workflowId: "wf_1",
           reason: "entity_value_missing",
         });
-        assert.strictEqual(requestCanceledOutletMock.mock.calls.length, 0);
+        assert.strictEqual(requestCancelForEntityMock.mock.calls.length, 0);
         assert.deepStrictEqual(recorded, [
           {
             workflowId: "wf_1",
@@ -490,7 +596,7 @@ describe("applyLifecycleRules", () => {
           Effect.provide(
             Layer.mergeAll(
               stubPublishedWorkflow(createWorkflow({ rules: startRules })),
-              unreachedRunSeams
+              lifecyclePorts
             )
           )
         );
@@ -499,7 +605,7 @@ describe("applyLifecycleRules", () => {
           kind: "waits_only",
           workflowId: "wf_1",
         });
-        assert.strictEqual(requestCanceledOutletMock.mock.calls.length, 0);
+        assert.strictEqual(requestCancelForEntityMock.mock.calls.length, 0);
       })
     );
 
@@ -517,7 +623,7 @@ describe("applyLifecycleRules", () => {
               stubWorkflowRepo({
                 findByIdWithPublishedVersionForRun: () => Effect.succeed(null),
               }),
-              unreachedRunSeams
+              lifecyclePorts
             )
           )
         );
@@ -547,7 +653,7 @@ describe("applyLifecycleRules", () => {
                   }),
                 })
               ),
-              unreachedRunSeams
+              lifecyclePorts
             )
           )
         );
@@ -579,7 +685,7 @@ describe("applyLifecycleRules", () => {
                     })
                   ),
               }),
-              unreachedRunSeams
+              lifecyclePorts
             )
           ),
           Effect.flip
@@ -592,23 +698,15 @@ describe("applyLifecycleRules", () => {
 });
 
 describe("deliverToWaits", () => {
-  layer(
-    Layer.mergeAll(
-      SilentAppLoggerLayer,
-      catalogLayer,
-      stubInngestClient(),
-      stubExecutionRepo({ listWaitsForEvent: listWaitsForEventMock })
-    )
-  )((it) => {
+  layer(Layer.mergeAll(SilentAppLoggerLayer, catalogLayer, waitPorts))((it) => {
     // Candidates are found by Event name, and each row's own compiled match
     // decides. Nothing here reads a Correlation Path, which is what lets a run
     // park on an Event that has no entity of its own.
     it.effect("offers the Event to the runs parked on its name", () =>
       Effect.gen(function* () {
         listWaitsForEventMock.mockReturnValueOnce(
-          Effect.succeed([{ id: "wait_1", executionId: "exec_parked" }])
+          Effect.succeed([parkedWait("app/appointment.created")])
         );
-        resumeWaitsMatchingEventMock.mockReturnValueOnce(Effect.succeed(1));
 
         const outcome = yield* deliverToWaits({
           subscriber: subscriber({ roles: ["wait"] }),
@@ -631,6 +729,11 @@ describe("deliverToWaits", () => {
             excludingExecutionIds: [],
           },
         ]);
+        assert.strictEqual(sendWaitSignalMock.mock.calls.length, 1);
+        assert.strictEqual(
+          sendWaitSignalMock.mock.calls[0]?.[0].executionId,
+          "exec_parked"
+        );
       })
     );
 
@@ -649,7 +752,7 @@ describe("deliverToWaits", () => {
         }).pipe(Effect.provide(stubWorkflowRepo()));
 
         assert.strictEqual(outcome.resumedWaits, 0);
-        assert.strictEqual(resumeWaitsMatchingEventMock.mock.calls.length, 0);
+        assert.strictEqual(sendWaitSignalMock.mock.calls.length, 0);
         assert.deepStrictEqual(
           listWaitsForEventMock.mock.calls[0][0].excludingExecutionIds,
           ["exec_superseded"]
@@ -662,9 +765,8 @@ describe("deliverToWaits", () => {
     it.effect("reaches parked runs with no Correlation Path in sight", () =>
       Effect.gen(function* () {
         listWaitsForEventMock.mockReturnValueOnce(
-          Effect.succeed([{ id: "wait_1", executionId: "exec_parked" }])
+          Effect.succeed([parkedWait("ops/nightly.swept")])
         );
-        resumeWaitsMatchingEventMock.mockReturnValueOnce(Effect.succeed(1));
 
         const outcome = yield* deliverToWaits({
           subscriber: subscriber({ roles: ["wait"] }),
@@ -684,6 +786,7 @@ describe("deliverToWaits", () => {
             excludingExecutionIds: [],
           },
         ]);
+        assert.strictEqual(sendWaitSignalMock.mock.calls.length, 1);
       })
     );
 
@@ -717,7 +820,7 @@ describe("deliverToWaits", () => {
         }).pipe(Effect.provide(stubWorkflowRepo({})));
 
         assert.strictEqual(outcome.resumedWaits, 0);
-        assert.strictEqual(resumeWaitsMatchingEventMock.mock.calls.length, 0);
+        assert.strictEqual(sendWaitSignalMock.mock.calls.length, 0);
       })
     );
   });

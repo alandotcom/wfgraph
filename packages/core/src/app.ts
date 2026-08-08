@@ -43,6 +43,7 @@ import {
   type WorkerConnection,
 } from "#src/backend/lib/inngest/client";
 import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
+import { connect as connectInngestSdk } from "inngest/connect";
 import {
   configureAppLogging,
   configureAppLoggingWithBridge,
@@ -227,7 +228,9 @@ async function buildWfGraphApp(
     // One value for the Inngest client this app sends on, built before the
     // runtime because the Layer graph takes it. Functions are registered later,
     // once the runtime exists, on either Connect or HTTP serve.
-    const inngest = createInngestSurface(options.inngest);
+    const inngest = createInngestSurface(options.inngest, {
+      connect: connectInngestSdk,
+    });
 
     const extensions = assembleExtensions(options.extensions ?? {});
 

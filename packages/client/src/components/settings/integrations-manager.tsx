@@ -12,7 +12,7 @@ import { Spinner } from "#src/components/ui/spinner";
 import { announceTestResult } from "#src/lib/connection-credentials";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions, orpcQuery } from "#src/lib/rpc-query";
-import { getExtensionCatalog } from "#src/lib/extensions";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { findIntegration } from "@wfgraph/shared/extensions/catalog";
 
 type IntegrationsManagerProps = {
@@ -20,6 +20,7 @@ type IntegrationsManagerProps = {
 };
 
 export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
+  const catalog = useExtensionCatalog();
   const { push } = useOverlay();
   const { data: integrations = [], isPending } = useQuery({
     ...integrationsQueryOptions(),
@@ -40,10 +41,7 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
 
     return integrations
       .map((integration) => {
-        const catalogEntry = findIntegration(
-          getExtensionCatalog(),
-          integration.type
-        );
+        const catalogEntry = findIntegration(catalog, integration.type);
         return {
           ...integration,
           label: catalogEntry?.label ?? integration.type,
@@ -70,7 +68,7 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
         }
         return a.name.localeCompare(b.name);
       });
-  }, [integrations, filter]);
+  }, [integrations, filter, catalog]);
 
   // No onSuccess: refreshing the connection list is the write's own business
   // now, and this screen reads the same cache entry every selector does.

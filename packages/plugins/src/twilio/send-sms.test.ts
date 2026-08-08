@@ -1,19 +1,15 @@
 import { describe, expect, it } from "@effect/vitest";
 import { actionData, actionError, runAction } from "@wfgraph/core/testing";
 import { Effect } from "effect";
-import { beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
+import * as twilioClient from "#src/twilio/client";
 import { twilio } from "#src/twilio/index";
 
 // What this step decides is whether and what to send, so the seam under it is
 // the Twilio client. What that client puts on the wire is covered separately in
-// twilio/client.test.ts, against a stubbed fetch.
+// twilio/client.test.ts, against a stubbed fetch. Spy rather than `vi.mock` so
+// a worker that already evaluated this module still sees the stub.
 const mocks = vi.hoisted(() => ({ createMessage: vi.fn() }));
-
-vi.mock("#src/twilio/client", () => ({
-  createTwilioMessage: mocks.createMessage,
-  describeTwilioFailure: (error: { message?: string }) =>
-    error.message ?? "twilio failure",
-}));
 
 const TWILIO_CREDENTIALS = {
   TWILIO_ACCOUNT_SID: "AC123",
@@ -57,6 +53,16 @@ beforeEach(() => {
         messaging_service_sid: parameters.MessagingServiceSid ?? null,
       })
   );
+  vi.spyOn(twilioClient, "createTwilioMessage").mockImplementation(
+    mocks.createMessage
+  );
+  vi.spyOn(twilioClient, "describeTwilioFailure").mockImplementation(
+    (error: { message?: string }) => error.message ?? "twilio failure"
+  );
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 /**

@@ -1,12 +1,33 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from "@tanstack/react-router";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
+import type { JSX } from "react";
+import { toast } from "sonner";
+import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import type { NodeConfigPatch } from "#src/components/workflow/config/node-config-patch";
 import { useNodeConfigWriter } from "#src/components/workflow/config/use-node-config-writer";
-import { hydrateExtensionsFromApi } from "#src/lib/extensions";
 import type { Integration } from "#src/lib/rpc-client";
-import { integrationsQueryOptions } from "#src/lib/rpc-query";
+import * as rpcQuery from "#src/lib/rpc-query";
+import {
+  extractRpcProcedurePath,
+  rpcJsonResponse,
+  rpcUrl,
+} from "#src/lib/rpc-fetch-test-support";
 import {
   loadWorkflowGraphAtom,
   nodesAtom,
@@ -14,7 +35,7 @@ import {
 } from "#src/lib/workflow-graph-store";
 import { isWorkflowOwnerAtom } from "#src/lib/workflow-save-store";
 import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
-import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { type ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /**
@@ -25,51 +46,15 @@ import type { WorkflowNode } from "#src/lib/workflow-graph-types";
  * through a callback the overlay stack froze at push time.
  *
  * `repairNodeIntegration`'s lookup reads `requiredIntegrationType` off the
- * catalog module, so these cases hydrate a real one rather than leaving it at
- * `emptyExtensionCatalog`: an unhydrated catalog answers every action type
- * with no required integration, and the repair below would no-op regardless
- * of which case ran.
+ * catalog module, so these cases put a real one rather than leaving it at
+ * `emptyExtensionCatalog`: an empty catalog answers every action type with no
+ * required integration, and the repair below would no-op regardless of which
+ * case ran.
+ *
+ * Router is a real provider, and deleteExecutions is stubbed through fetch rather
+ * than `vi.mock`, so isolate:false does not leave this file's replacements on
+ * the shared registry for neighbours.
  */
-
-const navigate = vi.hoisted(() => vi.fn(() => Promise.resolve()));
-
-vi.mock("@tanstack/react-router", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@tanstack/react-router")>();
-  return {
-    ...actual,
-    useNavigate: () => navigate,
-  };
-});
-
-vi.mock("#src/lib/rpc-query", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("#src/lib/rpc-query")>();
-  return {
-    ...actual,
-    refreshRunHistory: vi.fn(() => Promise.resolve()),
-    orpcQuery: {
-      ...actual.orpcQuery,
-      workflow: new Proxy(actual.orpcQuery.workflow, {
-        get(target, prop, receiver) {
-          if (prop === "deleteExecutions") {
-            return {
-              mutationOptions: (opts: Record<string, unknown> = {}) => ({
-                mutationKey: ["workflow", "deleteExecutions"],
-                mutationFn: async () => ({}),
-                ...opts,
-              }),
-            };
-          }
-          return Reflect.get(target as object, prop, receiver);
-        },
-      }),
-    },
-  };
-});
-
-vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
-}));
 
 const CONNECTED_ACTION = "twilio/send-sms";
 
@@ -97,23 +82,13 @@ const served: ExtensionCatalog = {
   ],
 };
 
-beforeAll(async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(() =>
-      Promise.resolve(
-        new Response(JSON.stringify({ catalog: served }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
-      )
-    )
-  );
-  await hydrateExtensionsFromApi();
+beforeEach(() => {
+  vi.spyOn(toast, "success").mockImplementation(() => "id" as never);
 });
 
-afterAll(() => {
+afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 function integration(id: string): Integration {
@@ -133,6 +108,42 @@ function connectedNode(config: Record<string, unknown>): WorkflowNode {
     position: { x: 0, y: 0 },
     data: { label: "Send SMS", type: "action", config },
   };
+}
+
+function renderInWorkflowRoute(
+  store: ReturnType<typeof createStore>,
+  queryClient: QueryClient,
+  Component: () => JSX.Element,
+  initialEntry = "/workflows/wf_1"
+) {
+  const rootRoute = createRootRoute({ component: () => <Outlet /> });
+  const workflowRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/workflows/$workflowId",
+    validateSearch: (search: Record<string, unknown>) => ({
+      executionId:
+        typeof search.executionId === "string" ? search.executionId : undefined,
+    }),
+    component: Component,
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([workflowRoute]),
+    history: createMemoryHistory({
+      initialEntries: [initialEntry],
+    }),
+  });
+
+  render(
+    <ExtensionCatalogProvider value={served}>
+      <QueryClientProvider client={queryClient}>
+        <JotaiProvider store={store}>
+          <RouterProvider router={router} />
+        </JotaiProvider>
+      </QueryClientProvider>
+    </ExtensionCatalogProvider>
+  );
+
+  return router;
 }
 
 /**
@@ -165,30 +176,26 @@ function renderWriter(
     );
   }
 
-  const view = render(
-    <QueryClientProvider client={queryClient}>
-      <JotaiProvider store={store}>
-        <Writer />
-      </JotaiProvider>
-    </QueryClientProvider>
-  );
+  renderInWorkflowRoute(store, queryClient, Writer);
 
   return {
     queryClient,
-    write: () => fireEvent.click(view.getByText("write")),
+    write: async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "write" }));
+    },
     config: () => store.get(nodesAtom)[0]?.data.config,
   };
 }
 
 function setConnections(queryClient: QueryClient, ids: string[]) {
   queryClient.setQueryData(
-    integrationsQueryOptions().queryKey,
+    rpcQuery.integrationsQueryOptions().queryKey,
     ids.map(integration)
   );
 }
 
 describe("updateConfig and the connection a node points at", () => {
-  it("keeps a connection that was created after this render", () => {
+  it("keeps a connection that was created after this render", async () => {
     const { queryClient, write, config } = renderWriter(
       connectedNode({ actionType: CONNECTED_ACTION }),
       { integrationId: "int_new" },
@@ -200,12 +207,12 @@ describe("updateConfig and the connection a node points at", () => {
     // read at render time is still the one-connection list above, and the
     // repair would rebind the node to it.
     setConnections(queryClient, ["int_old", "int_new"]);
-    write();
+    await write();
 
     expect(config()?.integrationId).toBe("int_new");
   });
 
-  it("leaves the node alone while the connection list has never been fetched", () => {
+  it("leaves the node alone while the connection list has never been fetched", async () => {
     const { write, config } = renderWriter(
       connectedNode({
         actionType: CONNECTED_ACTION,
@@ -214,14 +221,14 @@ describe("updateConfig and the connection a node points at", () => {
       { smsTo: "+15550001111" }
     );
 
-    write();
+    await write();
 
     // An unfetched entry is not an empty connection list, and clearing the id
     // here would report a healthy node as needing a connection.
     expect(config()?.integrationId).toBe("int_gone");
   });
 
-  it("drops the connection when the action changes", () => {
+  it("drops the connection when the action changes", async () => {
     const { write, config } = renderWriter(
       connectedNode({
         actionType: CONNECTED_ACTION,
@@ -231,7 +238,7 @@ describe("updateConfig and the connection a node points at", () => {
       ["int_twilio"]
     );
 
-    write();
+    await write();
 
     expect(config()?.integrationId).toBeUndefined();
   });
@@ -239,8 +246,6 @@ describe("updateConfig and the connection a node points at", () => {
 
 describe("deleteRuns", () => {
   it("clears the open run via the URL on success", async () => {
-    navigate.mockClear();
-
     const store = createStore();
     store.set(loadWorkflowGraphAtom, {
       nodes: [connectedNode({ actionType: CONNECTED_ACTION })],
@@ -256,6 +261,22 @@ describe("deleteRuns", () => {
       },
     });
 
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+        const url = rpcUrl(input);
+        const procedurePath = extractRpcProcedurePath(url);
+        if (procedurePath === "workflow/deleteExecutions") {
+          return rpcJsonResponse({});
+        }
+        throw new Error(`unexpected fetch in deleteRuns test: ${url}`);
+      })
+    );
+
+    const refreshSpy = vi
+      .spyOn(rpcQuery, "refreshRunHistory")
+      .mockResolvedValue(undefined as never);
+
     function Deleter() {
       const { deleteRuns } = useNodeConfigWriter();
       return (
@@ -268,20 +289,21 @@ describe("deleteRuns", () => {
       );
     }
 
-    const view = render(
-      <QueryClientProvider client={queryClient}>
-        <JotaiProvider store={store}>
-          <Deleter />
-        </JotaiProvider>
-      </QueryClientProvider>
+    const router = renderInWorkflowRoute(
+      store,
+      queryClient,
+      Deleter,
+      "/workflows/wf_1?executionId=exec_1"
     );
 
     await act(async () => {
-      fireEvent.click(view.getByText("delete"));
+      fireEvent.click(await screen.findByRole("button", { name: "delete" }));
     });
 
     await waitFor(() => {
-      expect(navigate).toHaveBeenCalledWith({ search: {}, replace: true });
+      expect(router.state.location.search).toEqual({});
     });
+    expect(refreshSpy).toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledWith("All runs deleted");
   });
 });

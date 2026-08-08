@@ -19,8 +19,11 @@ import {
   type TestPayloadFormValues,
   testPayloadFields,
 } from "#src/lib/test-payload";
-import { getExtensionCatalog } from "#src/lib/extensions";
-import { findEvent } from "@wfgraph/shared/extensions/catalog";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
+import {
+  findEvent,
+  type ExtensionCatalog,
+} from "@wfgraph/shared/extensions/catalog";
 import {
   type TestPayloads,
   testPayloadFor,
@@ -57,8 +60,8 @@ type TestRunOverlayProps = OverlayComponentProps<{
 }>;
 
 /** What the Event select shows for one Start Event: its label, then its name. */
-function eventLabel(eventName: string): string {
-  return findEvent(getExtensionCatalog(), eventName)?.label ?? eventName;
+function eventLabel(catalog: ExtensionCatalog, eventName: string): string {
+  return findEvent(catalog, eventName)?.label ?? eventName;
 }
 
 function FieldControl({
@@ -174,6 +177,7 @@ export function TestRunOverlay({
   savedPayloads,
   onRun,
 }: TestRunOverlayProps) {
+  const catalog = useExtensionCatalog();
   const { closeAll } = useOverlay();
 
   // The first Start Event, since one of them is the ordinary shape. A workflow
@@ -187,7 +191,7 @@ export function TestRunOverlay({
   const savedPayload = testPayloadFor(savedPayloads, eventName);
 
   const fields = testPayloadFields(
-    eventName ? findEvent(getExtensionCatalog(), eventName) : undefined
+    eventName ? findEvent(catalog, eventName) : undefined
   );
 
   const [values, setValues] = useState<TestPayloadFormValues>(() =>
@@ -209,7 +213,7 @@ export function TestRunOverlay({
     const chosen = next === NO_EVENT ? undefined : next;
     const payload = testPayloadFor(savedPayloads, chosen) ?? {};
     const nextFields = testPayloadFields(
-      chosen ? findEvent(getExtensionCatalog(), chosen) : undefined
+      chosen ? findEvent(catalog, chosen) : undefined
     );
 
     setValues(formValuesFromPayload(nextFields, payload));
@@ -283,7 +287,7 @@ export function TestRunOverlay({
             <SelectContent>
               {startEvents.map((name) => (
                 <SelectItem key={name} value={name}>
-                  {eventLabel(name)}
+                  {eventLabel(catalog, name)}
                 </SelectItem>
               ))}
               {allowManualStart && (

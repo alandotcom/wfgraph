@@ -1,13 +1,17 @@
 import type { InngestFunction } from "inngest";
 import { Inngest } from "inngest";
 import {
-  connect as connectInngest,
+  connect as connectInngestSdk,
   type WorkerConnection,
 } from "inngest/connect";
 import { serve as serveInngest } from "inngest/hono";
 import { getAppLogger } from "#src/backend/lib/logger";
 
 export type { WorkerConnection } from "inngest/connect";
+
+export type InngestSurfaceDeps = {
+  connect: typeof connectInngestSdk;
+};
 
 /**
  * Bound on the Connect handshake at boot, absent `inngest.connectTimeoutMs`.
@@ -266,8 +270,10 @@ export type InngestSurface = {
 };
 
 export function createInngestSurface(
-  config: WfGraphInngestConfig
+  config: WfGraphInngestConfig,
+  deps: InngestSurfaceDeps
 ): InngestSurface {
+  const { connect: connectImpl } = deps;
   const signingKey = config.signingKey ?? process.env.INNGEST_SIGNING_KEY;
   const client = createInngestClient(config, signingKey);
   if (config.connect === true) {
@@ -289,7 +295,7 @@ export function createInngestSurface(
       }),
     connect: (functions) =>
       withConnectTimeout(
-        connectInngest({
+        connectImpl({
           apps: [{ client, functions }],
           instanceId: config.instanceId,
           gatewayUrl: config.gatewayUrl,

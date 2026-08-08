@@ -1,5 +1,6 @@
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -16,18 +17,14 @@ import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { createWfGraphApp, type WfGraphApp } from "#src/app";
 import { createApiApp, machineRoutes } from "#src/backend/api-app";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
+import { connect as connectInngestSdk } from "inngest/connect";
 import { createInngestSurface } from "#src/backend/lib/inngest/client";
+import * as inngestClientModule from "#src/backend/lib/inngest/client";
 import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 import { createWfGraphRuntime } from "#src/backend/runtime";
 import { normalizeDatabaseConfig } from "#src/backend/lib/db/config";
 import * as dbModule from "#src/backend/lib/db/index";
 import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
-
-const connect = vi.hoisted(() => vi.fn());
-
-vi.mock("inngest/connect", () => ({
-  connect,
-}));
 
 // createWfGraphApp opens no connections: the database client is lazy and
 // migrations only run when asked. Every route exercised below answers from
@@ -303,7 +300,9 @@ describe("createWfGraphApp with an auth predicate", () => {
     // Only the route table is read here. A runtime builds its Layers on the
     // first Effect it runs and this app never serves a request, so this one is
     // disposed having built nothing.
-    const inngest = createInngestSurface(BASE_OPTIONS.inngest);
+    const inngest = createInngestSurface(BASE_OPTIONS.inngest, {
+      connect: connectInngestSdk,
+    });
     const database = dbModule.createDatabaseSurface(
       normalizeDatabaseConfig(BASE_OPTIONS.database)
     );
@@ -551,6 +550,8 @@ describe("createWfGraphApp configuration", () => {
 
 describe("createWfGraphApp with inngest.connect", () => {
   const close = vi.fn(async () => undefined);
+  const connect = vi.fn();
+  const realCreate = inngestClientModule.createInngestSurface;
 
   beforeEach(() => {
     connect.mockReset();
@@ -562,6 +563,13 @@ describe("createWfGraphApp with inngest.connect", () => {
       closed: Promise.resolve(),
       getDebugState: vi.fn(),
     });
+    vi.spyOn(inngestClientModule, "createInngestSurface").mockImplementation(
+      (config) => realCreate(config, { connect })
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("opens Connect at boot and drains it on dispose", async () => {

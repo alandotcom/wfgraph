@@ -1,9 +1,8 @@
 /**
  * The Test connection button, for Acuity.
  *
- * The seam is the SDK, stubbed the way `appointments.test.ts` stubs it, because
- * this is the one integration whose connection test builds an `Acuity` client
- * rather than reaching a system over `fetch`.
+ * The seam is `createSdk`, passed into `testAcuity` so each case says what
+ * `types` did without spying the production factory.
  */
 
 import { AcuityError } from "@fountain-bio/acuity";
@@ -12,12 +11,11 @@ import { testAcuity } from "#src/acuity/test";
 
 const mocks = vi.hoisted(() => ({ types: vi.fn() }));
 
-vi.mock("@fountain-bio/acuity", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@fountain-bio/acuity")>()),
-  Acuity: class {
-    appointments = { types: mocks.types };
-  },
-}));
+function fakeCreateSdk(_userId: string, _apiKey: string) {
+  return {
+    appointments: { types: mocks.types },
+  } as never;
+}
 
 const credentials = {
   ACUITY_USER_ID: "12345678",
@@ -25,7 +23,7 @@ const credentials = {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  mocks.types.mockReset();
 });
 
 describe("testAcuity", () => {
@@ -37,11 +35,16 @@ describe("testAcuity", () => {
       error: "ACUITY_USER_ID and ACUITY_API_KEY are required",
     };
 
-    expect(await testAcuity({})).toEqual(expected);
-    expect(await testAcuity({ ACUITY_USER_ID: "1" })).toEqual(expected);
+    expect(await testAcuity({}, fakeCreateSdk)).toEqual(expected);
+    expect(await testAcuity({ ACUITY_USER_ID: "1" }, fakeCreateSdk)).toEqual(
+      expected
+    );
     // Whitespace is what a paste out of a spreadsheet leaves behind.
     expect(
-      await testAcuity({ ACUITY_USER_ID: "  ", ACUITY_API_KEY: "k" })
+      await testAcuity(
+        { ACUITY_USER_ID: "  ", ACUITY_API_KEY: "k" },
+        fakeCreateSdk
+      )
     ).toEqual(expected);
     expect(mocks.types).not.toHaveBeenCalled();
   });
@@ -49,7 +52,9 @@ describe("testAcuity", () => {
   it("accepts credentials that can list appointment types", async () => {
     mocks.types.mockResolvedValue([]);
 
-    expect(await testAcuity(credentials)).toEqual({ success: true });
+    expect(await testAcuity(credentials, fakeCreateSdk)).toEqual({
+      success: true,
+    });
   });
 
   // Acuity says "Unauthorized" in words rather than by a code the SDK exposes,
@@ -63,7 +68,7 @@ describe("testAcuity", () => {
       })
     );
 
-    expect(await testAcuity(credentials)).toMatchObject({
+    expect(await testAcuity(credentials, fakeCreateSdk)).toMatchObject({
       success: false,
       error:
         "Invalid Acuity credentials. Please check your User ID and API key.",
@@ -78,7 +83,7 @@ describe("testAcuity", () => {
       new AcuityError({ status: 429, message: "Rate limit exceeded" })
     );
 
-    expect(await testAcuity(credentials)).toMatchObject({
+    expect(await testAcuity(credentials, fakeCreateSdk)).toMatchObject({
       success: false,
       error: "Rate limit exceeded",
       details: { status: 429, message: "Rate limit exceeded" },
@@ -90,7 +95,7 @@ describe("testAcuity", () => {
   it("reports a request that never arrived", async () => {
     mocks.types.mockRejectedValue(new Error("ECONNREFUSED"));
 
-    expect(await testAcuity(credentials)).toEqual({
+    expect(await testAcuity(credentials, fakeCreateSdk)).toEqual({
       success: false,
       error: "ECONNREFUSED",
       details: { message: "ECONNREFUSED" },

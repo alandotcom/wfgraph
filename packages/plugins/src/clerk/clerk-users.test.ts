@@ -1,15 +1,17 @@
 import { describe, expect, it } from "@effect/vitest";
 import { actionData, actionError, runAction } from "@wfgraph/core/testing";
 import { Effect } from "effect";
-import { beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
+import * as clerkClient from "#src/clerk/client";
 import { clerk } from "#src/clerk/index";
 
 /**
  * The four Clerk steps in one file, because what they have to say is the same
  * four things each: which credential is missing, which field the action cannot
  * do without, what Clerk's user looks like flattened, and how a thrown Clerk
- * error reads. The seam under all of them is `@clerk/backend`, whose users
- * resource is stubbed here.
+ * error reads. The seam under all of them is `createClerkBackendClient`, whose
+ * users resource is stubbed here via spy so isolate:false does not leave a
+ * `vi.mock` of this module on the shared registry.
  */
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
@@ -17,11 +19,6 @@ const mocks = vi.hoisted(() => ({
   updateUser: vi.fn(),
   deleteUser: vi.fn(),
   createClient: vi.fn(),
-}));
-
-vi.mock("#src/clerk/client", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("#src/clerk/client")>()),
-  createClerkBackendClient: mocks.createClient,
 }));
 
 const CLERK_CREDENTIALS = { CLERK_SECRET_KEY: "sk_test_key" };
@@ -61,7 +58,11 @@ function credentialsRead(
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  mocks.getUser.mockReset();
+  mocks.createUser.mockReset();
+  mocks.updateUser.mockReset();
+  mocks.deleteUser.mockReset();
+  mocks.createClient.mockReset();
   mocks.createClient.mockReturnValue({
     users: {
       getUser: mocks.getUser,
@@ -74,6 +75,13 @@ beforeEach(() => {
   mocks.createUser.mockResolvedValue(CLERK_USER);
   mocks.updateUser.mockResolvedValue(CLERK_USER);
   mocks.deleteUser.mockResolvedValue(undefined);
+  vi.spyOn(clerkClient, "createClerkBackendClient").mockImplementation(
+    mocks.createClient
+  );
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("clerk/get-user", () => {

@@ -2,19 +2,21 @@ import { describe, expect, it } from "@effect/vitest";
 import { actionData, actionError, runAction } from "@wfgraph/core/testing";
 import { Effect } from "effect";
 import { beforeEach, vi } from "vitest";
-import { linear } from "#src/linear/index";
+import { createLinear } from "#src/linear/index";
 
-// This step's seam is the Linear SDK, which it constructs itself, so the
-// constructor is what the test replaces. What this step decides is which filter
-// to ask for and how to flatten what comes back.
+/**
+ * The seam is `createClient`, injected when the integration is built so a case
+ * says what filter was asked for and how the answer was flattened.
+ */
 const mocks = vi.hoisted(() => ({ issues: vi.fn() }));
 
-vi.mock("@linear/sdk", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@linear/sdk")>()),
-  LinearClient: class {
-    issues = mocks.issues;
-  },
-}));
+function fakeCreateClient(_apiKey: string) {
+  return {
+    issues: mocks.issues,
+  } as never;
+}
+
+const underTest = createLinear(fakeCreateClient);
 
 const LINEAR_CREDENTIALS = { LINEAR_API_KEY: "lin_api_key" };
 
@@ -26,7 +28,7 @@ function credentialsRead(
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  mocks.issues.mockReset();
   mocks.issues.mockResolvedValue({
     nodes: [
       {
@@ -45,7 +47,7 @@ describe("linear/find-issues", () => {
   it.effect("flattens the issue and the state behind it", () =>
     Effect.gen(function* () {
       const result = actionData(
-        yield* runAction(linear, "find-issues", {
+        yield* runAction(underTest, "find-issues", {
           input: {},
           credentials: credentialsRead(),
         })
@@ -71,7 +73,7 @@ describe("linear/find-issues", () => {
   // "any" is how the status select spells "do not filter on status".
   it.effect("asks for no filter when nothing was filled in", () =>
     Effect.gen(function* () {
-      yield* runAction(linear, "find-issues", {
+      yield* runAction(underTest, "find-issues", {
         input: { linearStatus: "any", linearLabel: "" },
         credentials: credentialsRead(),
       });
@@ -82,7 +84,7 @@ describe("linear/find-issues", () => {
 
   it.effect("builds Linear's filter shape from the fields given", () =>
     Effect.gen(function* () {
-      yield* runAction(linear, "find-issues", {
+      yield* runAction(underTest, "find-issues", {
         input: {
           linearAssigneeId: "user_1",
           linearTeamId: "team_1",
@@ -119,7 +121,7 @@ describe("linear/find-issues", () => {
       });
 
       const result = actionData(
-        yield* runAction(linear, "find-issues", {
+        yield* runAction(underTest, "find-issues", {
           input: {},
           credentials: credentialsRead(),
         })
@@ -147,7 +149,7 @@ describe("linear/find-issues", () => {
       });
 
       const error = actionError(
-        yield* runAction(linear, "find-issues", {
+        yield* runAction(underTest, "find-issues", {
           input: {},
           credentials: credentialsRead(),
         })
@@ -162,7 +164,7 @@ describe("linear/find-issues", () => {
   it.effect("says which credential is missing before reaching Linear", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(linear, "find-issues", {
+        yield* runAction(underTest, "find-issues", {
           input: {},
           credentials: credentialsRead({}),
         })

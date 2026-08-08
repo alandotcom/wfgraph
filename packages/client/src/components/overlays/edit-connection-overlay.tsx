@@ -12,7 +12,7 @@ import {
 } from "#src/lib/connection-credentials";
 import type { Integration } from "#src/lib/rpc-client";
 import { orpcQuery, refreshIntegrations } from "#src/lib/rpc-query";
-import { getExtensionCatalog } from "#src/lib/extensions";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
   findIntegration,
   type IntegrationMetadata,
@@ -178,7 +178,8 @@ export function EditConnectionOverlay({
     })
   );
 
-  const catalogEntry = findIntegration(getExtensionCatalog(), integration.type);
+  const catalog = useExtensionCatalog();
+  const catalogEntry = findIntegration(catalog, integration.type);
   const formFields = catalogEntry?.credentialFields;
   // Whether this integration has a connection test at all. An integration that
   // declares none has nothing to press and nothing to run before a save.

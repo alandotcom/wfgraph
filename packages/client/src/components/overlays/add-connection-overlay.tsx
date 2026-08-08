@@ -11,8 +11,11 @@ import {
   hasProvidedConfigValues,
 } from "#src/lib/connection-credentials";
 import { orpcQuery, refreshIntegrations } from "#src/lib/rpc-query";
-import { getExtensionCatalog } from "#src/lib/extensions";
-import { findIntegration } from "@wfgraph/shared/extensions/catalog";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
+import {
+  findIntegration,
+  type ExtensionCatalog,
+} from "@wfgraph/shared/extensions/catalog";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
@@ -22,13 +25,14 @@ import { useOverlay } from "./overlay-provider";
  * catalog. The database connection is in it like any other, so this list needs no
  * second source and no ordering rule of its own.
  */
-const connectableIntegrations = () =>
-  getExtensionCatalog().integrations.toSorted((a, b) =>
+function connectableIntegrations(catalog: ExtensionCatalog) {
+  return catalog.integrations.toSorted((a, b) =>
     a.label.localeCompare(b.label)
   );
+}
 
-const getLabel = (type: string): string =>
-  findIntegration(getExtensionCatalog(), type)?.label ?? type;
+const getLabel = (catalog: ExtensionCatalog, type: string): string =>
+  findIntegration(catalog, type)?.label ?? type;
 
 type AddConnectionOverlayProps = {
   overlayId: string;
@@ -42,6 +46,7 @@ export function AddConnectionOverlay({
   overlayId,
   onSuccess,
 }: AddConnectionOverlayProps) {
+  const catalog = useExtensionCatalog();
   const { push } = useOverlay();
   const [searchQuery, setSearchQuery] = useState("");
   const isMobile = useIsMobile();
@@ -50,7 +55,7 @@ export function AddConnectionOverlay({
   // and `connectableIntegrations` builds a fresh array every render anyway, so a
   // memo keyed on it would never hit.
   const query = searchQuery.trim().toLowerCase();
-  const filtered = connectableIntegrations().filter(
+  const filtered = connectableIntegrations(catalog).filter(
     (integration) => !query || integration.label.toLowerCase().includes(query)
   );
 
@@ -177,6 +182,7 @@ export function ConfigureConnectionOverlay({
   type,
   onSuccess,
 }: ConfigureConnectionOverlayProps) {
+  const catalog = useExtensionCatalog();
   const { push, closeAll } = useOverlay();
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
@@ -214,7 +220,7 @@ export function ConfigureConnectionOverlay({
     })
   );
 
-  const catalogEntry = findIntegration(getExtensionCatalog(), type);
+  const catalogEntry = findIntegration(catalog, type);
   const formFields = catalogEntry?.credentialFields;
   // Whether this integration has a connection test at all. An integration that
   // declares none has nothing to press and nothing to run before a save.
@@ -344,7 +350,7 @@ export function ConfigureConnectionOverlay({
         { label: "Create", onClick: handleSave, loading: saving },
       ]}
       overlayId={overlayId}
-      title={`Add ${getLabel(type)}`}
+      title={`Add ${getLabel(catalog, type)}`}
     >
       <p className="-mt-2 mb-4 text-muted-foreground text-sm">
         Enter your credentials

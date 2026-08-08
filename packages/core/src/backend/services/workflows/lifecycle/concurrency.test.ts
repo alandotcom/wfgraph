@@ -4,6 +4,10 @@ import { assert, describe, layer } from "@effect/vitest";
 import { beforeEach, vi } from "vitest";
 import { Effect, Layer } from "effect";
 import {
+  InngestError,
+  type InngestClient,
+} from "#src/backend/lib/effect/inngest-client";
+import {
   makeRecordingLogger,
   SilentAppLoggerLayer,
   stubExecutionRepo,
@@ -16,23 +20,15 @@ import type {
 } from "#src/backend/services/executions/repo";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
 
-// Announcing a supersede has its own cases in `end-runs.test.ts`; here it is the
-// call that matters, so the neighbour is replaced for this file.
-const { announceSupersededRunsMock, announceReclaimedRunsMock } = vi.hoisted(
-  () => ({
-    announceSupersededRunsMock: vi.fn(),
-    announceReclaimedRunsMock: vi.fn(),
-  })
-);
+type Repo = ExecutionRepo["Service"];
 
-vi.mock("#src/backend/services/executions/end-runs", () => ({
-  announceSupersededRuns: announceSupersededRunsMock,
-  announceReclaimedRuns: announceReclaimedRunsMock,
-}));
-
-const recordAuditEventMock = vi.fn<
-  ExecutionRepo["Service"]["recordAuditEvent"]
+const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
+const sendCancelRequestedMock = vi.fn<
+  InngestClient["Service"]["sendCancelRequested"]
 >(() => Effect.void);
+const sendRunRequestedMock = vi.fn<
+  InngestClient["Service"]["sendRunRequested"]
+>(() => Effect.succeed({ eventId: "evt_1" }));
 
 const workflow = {
   id: "wf_1",
@@ -79,9 +75,7 @@ function createExecution(
   };
 }
 
-type StartForEntityInput = Parameters<
-  ExecutionRepo["Service"]["startForEntity"]
->[0];
+type StartForEntityInput = Parameters<Repo["startForEntity"]>[0];
 
 /** The locked transaction's answer, and what it was asked for. */
 function stubStart(outcome: EntityStartOutcome) {
@@ -100,7 +94,8 @@ function stubStart(outcome: EntityStartOutcome) {
         recordAuditEvent: recordAuditEventMock,
       }),
       stubInngestClient({
-        sendRunRequested: () => Effect.succeed({ eventId: "evt_1" }),
+        sendRunRequested: sendRunRequestedMock,
+        sendCancelRequested: sendCancelRequestedMock,
       })
     ),
   };
@@ -114,13 +109,14 @@ const startedOutcome: EntityStartOutcome = {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  recordAuditEventMock.mockReset();
+  sendCancelRequestedMock.mockReset();
+  sendRunRequestedMock.mockReset();
+
   recordAuditEventMock.mockImplementation(() => Effect.void);
-  announceSupersededRunsMock.mockReturnValue(
-    Effect.succeed({ failedExecutionIds: [] })
-  );
-  announceReclaimedRunsMock.mockReturnValue(
-    Effect.succeed({ failedExecutionIds: [] })
+  sendCancelRequestedMock.mockImplementation(() => Effect.void);
+  sendRunRequestedMock.mockImplementation(() =>
+    Effect.succeed({ eventId: "evt_1" })
   );
 });
 
@@ -149,6 +145,7 @@ describe("startWithConcurrency", () => {
         assert.strictEqual(repo.calls[0]?.concurrency, "unlimited");
         assert.strictEqual(repo.calls[0]?.execution.entityValue, "appt_8813");
         assert.strictEqual(repo.calls[0]?.execution.workflowVersionId, "ver_1");
+        assert.strictEqual(sendCancelRequestedMock.mock.calls.length, 0);
       })
     );
 
@@ -252,14 +249,20 @@ describe("startWithConcurrency", () => {
 
     // Supersede-then-start: the rows the transaction flipped are told to stop
     // before the new run is announced, and their ids come back so the caller
-    // knows not to deliver this Event to their waits.
+    // knows not to deliver this Event to their waits. Announcing is `end-runs`'
+    // own; here it is the cancel signal that proves the real neighbour ran.
     it.effect("announces the runs the transaction superseded", () =>
       Effect.gen(function* () {
         const order: string[] = [];
-        announceSupersededRunsMock.mockImplementation(() =>
+        sendCancelRequestedMock.mockImplementation(() =>
           Effect.sync(() => {
             order.push("announce");
-            return { failedExecutionIds: [] };
+          })
+        );
+        sendRunRequestedMock.mockImplementation(() =>
+          Effect.sync(() => {
+            order.push("enqueue");
+            return { eventId: "evt_1" };
           })
         );
 
@@ -288,11 +291,8 @@ describe("startWithConcurrency", () => {
                 recordAuditEvent: recordAuditEventMock,
               }),
               stubInngestClient({
-                sendRunRequested: () =>
-                  Effect.sync(() => {
-                    order.push("enqueue");
-                    return { eventId: "evt_1" };
-                  }),
+                sendCancelRequested: sendCancelRequestedMock,
+                sendRunRequested: sendRunRequestedMock,
               })
             )
           )
@@ -306,9 +306,13 @@ describe("startWithConcurrency", () => {
           supersededExecutionIds: ["exec_old"],
           failedToSupersede: [],
         });
-
-        const announced = announceSupersededRunsMock.mock.calls[0]?.[0];
-        assert.deepStrictEqual(announced.executionIds, ["exec_old"]);
+        assert.deepStrictEqual(sendCancelRequestedMock.mock.calls[0]?.[0], {
+          executionId: "exec_old",
+          workflowId: "wf_1",
+          reason: "Superseded by a newer start from app/appointment.created",
+          requestedBy: "wf_1",
+          eventType: "app/appointment.created",
+        });
       })
     );
 
@@ -355,8 +359,14 @@ describe("startWithConcurrency", () => {
           )
         );
 
-        const announced = announceReclaimedRunsMock.mock.calls[0]?.[0];
-        assert.deepStrictEqual(announced.executionIds, ["exec_stuck"]);
+        assert.deepStrictEqual(sendCancelRequestedMock.mock.calls[0]?.[0], {
+          executionId: "exec_stuck",
+          workflowId: "wf_1",
+          reason:
+            "The run was opened but never reached the bus, so a later start for this entity closed it",
+          requestedBy: "wf_1",
+          eventType: "app/appointment.created",
+        });
         assert.deepStrictEqual(recorder.infoLines, [
           {
             message: "Closed runs that never reached the bus",
@@ -370,8 +380,8 @@ describe("startWithConcurrency", () => {
     // the caller hears about it rather than reading one clean new run.
     it.effect("carries a half-failed supersede back to the caller", () =>
       Effect.gen(function* () {
-        announceSupersededRunsMock.mockReturnValue(
-          Effect.succeed({ failedExecutionIds: ["exec_old"] })
+        sendCancelRequestedMock.mockReturnValue(
+          Effect.fail(new InngestError({ cause: "no route" }))
         );
 
         const outcome = yield* startWithConcurrency({
@@ -395,6 +405,11 @@ describe("startWithConcurrency", () => {
         assert.deepStrictEqual(
           outcome.status === "started" ? outcome.failedToSupersede : [],
           ["exec_old"]
+        );
+        assert.strictEqual(sendCancelRequestedMock.mock.calls.length, 1);
+        assert.strictEqual(
+          sendCancelRequestedMock.mock.calls[0]?.[0].executionId,
+          "exec_old"
         );
       })
     );

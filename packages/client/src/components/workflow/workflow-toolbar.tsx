@@ -9,6 +9,7 @@ import {
   useWorkflowActions,
   useWorkflowState,
 } from "#src/components/workflow/workflow-toolbar-handlers";
+import { WorkflowPublicationBadge } from "#src/components/workflow/workflow-publication-badge";
 import { workflowPublicationQueryOptions } from "#src/lib/rpc-query";
 
 type WorkflowToolbarProps = {
@@ -55,21 +56,11 @@ export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
                 Test mode
               </span>
             )}
-          {workflowId &&
-            isPublished && (
-              // Answers "is the draft what is running", which nothing
-              // on this screen said once the publish toast faded. Worded away
-              // from "Live" on purpose: that word already names the run mode two
-              // controls to the right, and two meanings for it read as one
-              // switch. Driven by draft-vs-published digest, not the save queue.
-              <span className="rounded-md border bg-card px-2 py-1 font-medium text-muted-foreground text-xs">
-                {hasUnpublishedChanges ? "Unpublished changes" : "Published"}
-              </span>
-            )}
-          {workflowId && !isPublished && (
-            <span className="rounded-md border bg-card px-2 py-1 font-medium text-muted-foreground text-xs">
-              Never published
-            </span>
+          {workflowId && (
+            <WorkflowPublicationBadge
+              hasUnpublishedChanges={hasUnpublishedChanges}
+              isPublished={isPublished}
+            />
           )}
           {workflowId && !state.isOwner && (
             <span className="text-muted-foreground text-xs">Read-only</span>

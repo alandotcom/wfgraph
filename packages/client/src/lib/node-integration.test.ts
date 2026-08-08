@@ -1,5 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { hydrateExtensionsFromApi } from "#src/lib/extensions";
+import { describe, expect, it } from "vitest";
 import {
   repairNodeIntegration,
   repairNodeIntegrations,
@@ -46,25 +45,6 @@ const served: ExtensionCatalog = {
   ],
 };
 
-beforeAll(async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(() =>
-      Promise.resolve(
-        new Response(JSON.stringify({ catalog: served }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
-      )
-    )
-  );
-  await hydrateExtensionsFromApi();
-});
-
-afterAll(() => {
-  vi.unstubAllGlobals();
-});
-
 function actionNode(
   config: Record<string, unknown>,
   id = "node_1"
@@ -83,11 +63,11 @@ const slackConnection = { id: "int_slack", type: "slack" };
 
 describe("requiredIntegrationType", () => {
   it("reads the integration a plugin action names", () => {
-    expect(requiredIntegrationType("twilio/send-sms")).toBe("twilio");
+    expect(requiredIntegrationType(served, "twilio/send-sms")).toBe("twilio");
   });
 
   it("is undefined for an action that needs no connection", () => {
-    expect(requiredIntegrationType("Condition")).toBeUndefined();
+    expect(requiredIntegrationType(served, "Condition")).toBeUndefined();
   });
 });
 
@@ -95,7 +75,7 @@ describe("repairNodeIntegration", () => {
   it("selects the only connection of the right kind", () => {
     const node = actionNode({ actionType: "twilio/send-sms" });
 
-    const repaired = repairNodeIntegration(node, [twilioConnection]);
+    const repaired = repairNodeIntegration(served, node, [twilioConnection]);
 
     expect(repaired.data.config?.integrationId).toBe("int_twilio");
   });
@@ -106,7 +86,7 @@ describe("repairNodeIntegration", () => {
       integrationId: "int_deleted",
     });
 
-    const repaired = repairNodeIntegration(node, [slackConnection]);
+    const repaired = repairNodeIntegration(served, node, [slackConnection]);
 
     expect(repaired.data.config?.integrationId).toBeUndefined();
   });
@@ -117,7 +97,7 @@ describe("repairNodeIntegration", () => {
       integrationId: "int_deleted",
     });
 
-    const repaired = repairNodeIntegration(node, [
+    const repaired = repairNodeIntegration(served, node, [
       twilioConnection,
       otherTwilioConnection,
     ]);
@@ -133,26 +113,26 @@ describe("repairNodeIntegration", () => {
 
     // Identity, not just equality: the graph store reads a new node object as
     // an edit and queues an autosave.
-    expect(repairNodeIntegration(node, [twilioConnection])).toBe(node);
+    expect(repairNodeIntegration(served, node, [twilioConnection])).toBe(node);
   });
 
   it("leaves a node with no action type alone", () => {
     const node = actionNode({});
 
-    expect(repairNodeIntegration(node, [twilioConnection])).toBe(node);
+    expect(repairNodeIntegration(served, node, [twilioConnection])).toBe(node);
   });
 
   it("leaves an action that needs no connection alone", () => {
     const node = actionNode({ actionType: "Condition" });
 
-    expect(repairNodeIntegration(node, [twilioConnection])).toBe(node);
+    expect(repairNodeIntegration(served, node, [twilioConnection])).toBe(node);
   });
 
   it("does not invent an id for a node that never had one", () => {
     const node = actionNode({ actionType: "twilio/send-sms" });
 
     // No candidates and nothing stored means there is nothing to repair.
-    expect(repairNodeIntegration(node, [slackConnection])).toBe(node);
+    expect(repairNodeIntegration(served, node, [slackConnection])).toBe(node);
   });
 });
 
@@ -166,7 +146,9 @@ describe("repairNodeIntegrations", () => {
       actionNode({ actionType: "Condition" }, "node_2"),
     ];
 
-    expect(repairNodeIntegrations(nodes, [twilioConnection])).toBe(nodes);
+    expect(repairNodeIntegrations(served, nodes, [twilioConnection])).toBe(
+      nodes
+    );
   });
 
   it("repairs only the nodes that need it", () => {
@@ -180,6 +162,7 @@ describe("repairNodeIntegrations", () => {
     );
 
     const repaired = repairNodeIntegrations(
+      served,
       [healthy, stale],
       [twilioConnection]
     );

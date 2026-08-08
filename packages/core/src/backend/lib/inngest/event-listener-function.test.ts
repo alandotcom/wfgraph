@@ -1,8 +1,6 @@
 import { Effect, Layer, Schema } from "effect";
 import { Inngest } from "inngest";
-// The mocks API has to be the one vitest itself exports; reaching it through the
-// `@effect/vitest` re-export leaves it unable to find the module registry.
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import {
   SilentAppLoggerLayer,
@@ -11,29 +9,11 @@ import {
 import { defineEvent } from "#src/backend/extensions/define-event";
 import {
   createInngestEventListenerFunction,
+  type EventListenerDeliverPorts,
   runEventListener,
 } from "#src/backend/lib/inngest/event-listener-function";
 import type { WfGraphRuntime } from "#src/backend/runtime";
 import type { EventSubscriber } from "#src/backend/services/workflows/repo";
-
-const {
-  applyLifecycleRulesMock,
-  deliverToWaitsMock,
-  listEventSubscribersMock,
-} = vi.hoisted(() => ({
-  applyLifecycleRulesMock: vi.fn(),
-  deliverToWaitsMock: vi.fn(),
-  listEventSubscribersMock: vi.fn(),
-}));
-
-// What this file is about is the order and the boundaries of the two halves, so
-// the halves themselves are replaced; `deliver-event.test.ts` covers what each
-// one does.
-vi.mock("#src/backend/services/workflows/lifecycle/deliver-event", () => ({
-  applyLifecycleRules: applyLifecycleRulesMock,
-  deliverToWaits: deliverToWaitsMock,
-  listEventSubscribers: listEventSubscribersMock,
-}));
 
 const appointmentCreated = defineEvent({
   name: "app/appointment.created",
@@ -86,28 +66,38 @@ function subscriber(overrides: Partial<EventSubscriber> = {}): EventSubscriber {
   };
 }
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  listEventSubscribersMock.mockReturnValue(Effect.succeed([]));
-  applyLifecycleRulesMock.mockReturnValue(
-    Effect.succeed({ kind: "waits_only", workflowId: "wf_1" })
+/**
+ * What this file is about is the order and the boundaries of the two halves,
+ * so the halves themselves are fakes injected through `deliver`;
+ * `deliver-event.test.ts` covers what each one does.
+ */
+function fakeDeliver(): EventListenerDeliverPorts & {
+  applyLifecycle: ReturnType<typeof vi.fn>;
+  deliverWaits: ReturnType<typeof vi.fn>;
+  listSubscribers: ReturnType<typeof vi.fn>;
+} {
+  const listSubscribers = vi.fn(() => Effect.succeed([] as EventSubscriber[]));
+  const applyLifecycle = vi.fn(() =>
+    Effect.succeed({ kind: "waits_only" as const, workflowId: "wf_1" })
   );
-  deliverToWaitsMock.mockReturnValue(
+  const deliverWaits = vi.fn(() =>
     Effect.succeed({ workflowId: "wf_1", resumedWaits: 0 })
   );
-});
+  return { listSubscribers, applyLifecycle, deliverWaits };
+}
 
 describe("runEventListener", () => {
   // Sibling steps, in this order: a wait delivery that fails retries on its own,
   // and replaying the start above it would open a second run for one arrival.
   it("runs the lifecycle and the waits as siblings per workflow", async () => {
-    listEventSubscribersMock.mockReturnValue(
+    const deliver = fakeDeliver();
+    deliver.listSubscribers.mockReturnValue(
       Effect.succeed([
         subscriber({ roles: ["start", "wait"] }),
         subscriber({ id: "wf_2", roles: ["start", "wait"] }),
       ])
     );
-    applyLifecycleRulesMock.mockReturnValue(
+    deliver.applyLifecycle.mockReturnValue(
       Effect.succeed({
         kind: "started",
         workflowId: "wf_1",
@@ -124,6 +114,7 @@ describe("runEventListener", () => {
       arrival: { eventId: "evt_1" },
       runtime: testRuntime(),
       step: recorder.step,
+      deliver,
     });
 
     expect(recorder.ids).toEqual([
@@ -137,7 +128,7 @@ describe("runEventListener", () => {
 
     // The run just started and the run it displaced both take no wait: one is
     // ending, and the other has parked nothing yet.
-    expect(deliverToWaitsMock.mock.calls[0]?.[0].excluding).toEqual([
+    expect(deliver.deliverWaits.mock.calls[0]?.[0].excluding).toEqual([
       "exec_new",
       "exec_old",
     ]);
@@ -146,10 +137,11 @@ describe("runEventListener", () => {
   // A run claimed for the Canceled outlet is on its way out, so waking its wait
   // would resume a run that is ending.
   it("keeps the Event off the waits of the runs a cancel claimed", async () => {
-    listEventSubscribersMock.mockReturnValue(
+    const deliver = fakeDeliver();
+    deliver.listSubscribers.mockReturnValue(
       Effect.succeed([subscriber({ roles: ["cancel", "wait"] })])
     );
-    applyLifecycleRulesMock.mockReturnValue(
+    deliver.applyLifecycle.mockReturnValue(
       Effect.succeed({
         kind: "canceled",
         workflowId: "wf_1",
@@ -164,6 +156,7 @@ describe("runEventListener", () => {
       arrival: {},
       runtime: testRuntime(),
       step: recorder.step,
+      deliver,
     });
 
     expect(recorder.ids).toEqual([
@@ -171,7 +164,7 @@ describe("runEventListener", () => {
       "lifecycle-wf_1",
       "waits-wf_1",
     ]);
-    expect(deliverToWaitsMock.mock.calls[0]?.[0].excluding).toEqual([
+    expect(deliver.deliverWaits.mock.calls[0]?.[0].excluding).toEqual([
       "exec_running",
       "exec_parked",
     ]);
@@ -181,7 +174,8 @@ describe("runEventListener", () => {
   // would validate every action and integration in its graph for a delivery that
   // only wakes a wait.
   it("skips the lifecycle step for a wait-only subscriber", async () => {
-    listEventSubscribersMock.mockReturnValue(
+    const deliver = fakeDeliver();
+    deliver.listSubscribers.mockReturnValue(
       Effect.succeed([subscriber({ roles: ["wait"] })])
     );
     const recorder = recordingStep();
@@ -192,20 +186,22 @@ describe("runEventListener", () => {
       arrival: {},
       runtime: testRuntime(),
       step: recorder.step,
+      deliver,
     });
 
     expect(recorder.ids).toEqual([
       "subscribers-app/appointment.created",
       "waits-wf_1",
     ]);
-    expect(applyLifecycleRulesMock.mock.calls).toHaveLength(0);
+    expect(deliver.applyLifecycle.mock.calls).toHaveLength(0);
   });
 
   // The wait role is pushed only from the parked-run read, so a subscriber
   // without it had nothing waiting on this Event when the list was built and the
   // step would resolve to zero runs.
   it("skips the wait step for a subscriber with nothing parked", async () => {
-    listEventSubscribersMock.mockReturnValue(
+    const deliver = fakeDeliver();
+    deliver.listSubscribers.mockReturnValue(
       Effect.succeed([subscriber({ roles: ["start"] })])
     );
     const recorder = recordingStep();
@@ -216,13 +212,14 @@ describe("runEventListener", () => {
       arrival: {},
       runtime: testRuntime(),
       step: recorder.step,
+      deliver,
     });
 
     expect(recorder.ids).toEqual([
       "subscribers-app/appointment.created",
       "lifecycle-wf_1",
     ]);
-    expect(deliverToWaitsMock.mock.calls).toHaveLength(0);
+    expect(deliver.deliverWaits.mock.calls).toHaveLength(0);
     expect(result.workflows[0]?.resumedWaits).toBe(0);
   });
 
@@ -230,7 +227,8 @@ describe("runEventListener", () => {
   // going is the one parked on this Event, so refusing a second run is exactly
   // what leaves it the one to wake.
   it("delivers the waits of a workflow whose start was refused", async () => {
-    listEventSubscribersMock.mockReturnValue(
+    const deliver = fakeDeliver();
+    deliver.listSubscribers.mockReturnValue(
       Effect.succeed([subscriber({ roles: ["start", "wait"] })])
     );
     const refused = {
@@ -238,8 +236,8 @@ describe("runEventListener", () => {
       workflowId: "wf_1",
       reason: "concurrency_first_wins",
     };
-    applyLifecycleRulesMock.mockReturnValue(Effect.succeed(refused));
-    deliverToWaitsMock.mockReturnValue(
+    deliver.applyLifecycle.mockReturnValue(Effect.succeed(refused));
+    deliver.deliverWaits.mockReturnValue(
       Effect.succeed({ workflowId: "wf_1", resumedWaits: 1 })
     );
     const recorder = recordingStep();
@@ -250,6 +248,7 @@ describe("runEventListener", () => {
       arrival: { eventId: "dlv_9" },
       runtime: testRuntime(),
       step: recorder.step,
+      deliver,
     });
 
     expect(recorder.ids).toEqual([
@@ -257,17 +256,18 @@ describe("runEventListener", () => {
       "lifecycle-wf_1",
       "waits-wf_1",
     ]);
-    expect(deliverToWaitsMock.mock.calls[0]?.[0].excluding).toEqual([]);
+    expect(deliver.deliverWaits.mock.calls[0]?.[0].excluding).toEqual([]);
     expect(result.workflows).toEqual([{ lifecycle: refused, resumedWaits: 1 }]);
 
     // The arrival travels with the delivery, so the audit row a start or a
     // refusal writes names the arrival it answered.
-    expect(applyLifecycleRulesMock.mock.calls[0]?.[0].deliveryId).toBe("dlv_9");
+    expect(deliver.applyLifecycle.mock.calls[0]?.[0].deliveryId).toBe("dlv_9");
   });
 
   it("delivers no waits to a workflow that is gone", async () => {
-    listEventSubscribersMock.mockReturnValue(Effect.succeed([subscriber()]));
-    applyLifecycleRulesMock.mockReturnValue(
+    const deliver = fakeDeliver();
+    deliver.listSubscribers.mockReturnValue(Effect.succeed([subscriber()]));
+    deliver.applyLifecycle.mockReturnValue(
       Effect.succeed({
         kind: "skipped",
         workflowId: "wf_1",
@@ -282,13 +282,14 @@ describe("runEventListener", () => {
       arrival: {},
       runtime: testRuntime(),
       step: recorder.step,
+      deliver,
     });
 
     expect(recorder.ids).toEqual([
       "subscribers-app/appointment.created",
       "lifecycle-wf_1",
     ]);
-    expect(deliverToWaitsMock.mock.calls).toHaveLength(0);
+    expect(deliver.deliverWaits.mock.calls).toHaveLength(0);
   });
 
   // A payload that is not this Event will not become one on a second attempt, so
@@ -303,6 +304,7 @@ describe("runEventListener", () => {
         arrival: {},
         runtime: testRuntime(),
         step: recorder.step,
+        deliver: fakeDeliver(),
       })
     ).rejects.toThrow(/Payload refused for Event/);
 
@@ -312,7 +314,8 @@ describe("runEventListener", () => {
   // A rejected query is the one thing here worth retrying, so it leaves the
   // handler as itself.
   it("lets a refused query out to the retry policy", async () => {
-    listEventSubscribersMock.mockReturnValue(
+    const deliver = fakeDeliver();
+    deliver.listSubscribers.mockReturnValue(
       Effect.fail(
         new DatabaseError({
           cause: new Error("terminating connection due to crash"),
@@ -326,6 +329,7 @@ describe("runEventListener", () => {
       arrival: {},
       runtime: testRuntime(stubWorkflowRepo()),
       step: recordingStep().step,
+      deliver,
     }).then(
       () => undefined,
       (error: unknown) => error
@@ -335,14 +339,6 @@ describe("runEventListener", () => {
   });
 });
 
-/**
- * The trigger the listener is registered with.
- *
- * Several Events may share one bus source and narrow it with `source.when`, and
- * the filter is what stops each of them being invoked for every sibling subtype
- * and failing its intake gate. Constructing a client opens nothing, and none of
- * these functions is invoked.
- */
 describe("createInngestEventListenerFunction", () => {
   const client = new Inngest({ id: "listener-test", isDev: true });
 

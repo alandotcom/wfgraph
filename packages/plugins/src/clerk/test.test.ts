@@ -1,22 +1,27 @@
 /**
  * The Test connection button, for Clerk.
  *
- * The seam is `@clerk/backend`, stubbed here so a case says what the SDK did and
- * reads the verdict back.
+ * The seam is `createClerkBackendClient` in `#src/clerk/client`, stubbed here
+ * so a case says what the SDK did and reads the verdict back. Spying that
+ * export (rather than `vi.mock` of `@clerk/backend`) keeps isolate:false from
+ * colliding with `clerk-users.test.ts`, which owns the same client module.
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as clerkClient from "#src/clerk/client";
 import { testClerk } from "#src/clerk/test";
 
 const mocks = vi.hoisted(() => ({ getUserList: vi.fn() }));
 
-vi.mock("@clerk/backend", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@clerk/backend")>()),
-  createClerkClient: () => ({ users: { getUserList: mocks.getUserList } }),
-}));
-
 beforeEach(() => {
-  vi.clearAllMocks();
+  mocks.getUserList.mockReset();
+  vi.spyOn(clerkClient, "createClerkBackendClient").mockReturnValue({
+    users: { getUserList: mocks.getUserList },
+  } as never);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("testClerk", () => {

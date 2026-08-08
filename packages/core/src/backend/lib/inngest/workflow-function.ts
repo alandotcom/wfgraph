@@ -14,8 +14,8 @@ import {
 } from "#src/backend/engine/branch";
 import { executionError } from "#src/backend/engine/contracts";
 import {
-  executeWorkflow,
-  executeWorkflowBranch,
+  executeWorkflow as defaultExecuteWorkflow,
+  executeWorkflowBranch as defaultExecuteWorkflowBranch,
   type WorkflowBranchInput,
   type WorkflowExecutionInput,
 } from "#src/backend/engine/core";
@@ -34,6 +34,10 @@ import {
   workflowRunRequested,
 } from "#src/backend/lib/inngest/events";
 import type { WfGraphRuntime } from "#src/backend/runtime";
+
+/** The engine entry the run function calls; tests inject a stand-in. */
+type ExecuteWorkflow = typeof defaultExecuteWorkflow;
+type ExecuteWorkflowBranch = typeof defaultExecuteWorkflowBranch;
 
 function toDurationString(milliseconds: number): string {
   const seconds = Math.max(1, Math.ceil(milliseconds / 1000));
@@ -182,6 +186,7 @@ async function workflowRunRequestedHandler({
   actions,
   store,
   appRuntime,
+  executeWorkflow,
 }: {
   event: { data: typeof workflowExecutionInputSchema.Type };
   actions: WorkflowActions;
@@ -191,6 +196,7 @@ async function workflowRunRequestedHandler({
   /** Zero on the first attempt of this body, and one higher on each retry. */
   attempt: number;
   step: DurableStep;
+  executeWorkflow: ExecuteWorkflow;
 }) {
   const data: WorkflowExecutionInput = event.data;
 
@@ -248,6 +254,7 @@ async function workflowBranchRequestedHandler({
   actions,
   store,
   appRuntime,
+  executeWorkflowBranch,
 }: {
   event: { data: typeof workflowBranchInputSchema.Type };
   actions: WorkflowActions;
@@ -255,6 +262,7 @@ async function workflowBranchRequestedHandler({
   appRuntime: WfGraphRuntime;
   attempt: number;
   step: DurableStep;
+  executeWorkflowBranch: ExecuteWorkflowBranch;
 }) {
   // The invoke metadata describes the event that started this run, so it is
   // dropped here rather than carried onto whatever branch this one hands off.
@@ -271,7 +279,7 @@ async function workflowBranchRequestedHandler({
 }
 
 /** What an app hands both functions: where work comes from, where rows go. */
-type WorkflowFunctionPorts = {
+export type WorkflowFunctionPorts = {
   /**
    * Where an action id becomes work, built by the app from its own surface.
    *
@@ -284,6 +292,10 @@ type WorkflowFunctionPorts = {
   store: WorkflowStore;
   /** Runs the engine Effect at the outer Inngest execution boundary. */
   appRuntime: WfGraphRuntime;
+  /** The engine entry for a full run. */
+  executeWorkflow: ExecuteWorkflow;
+  /** The engine entry for one waiting branch. */
+  executeWorkflowBranch: ExecuteWorkflowBranch;
 };
 
 /**
@@ -348,6 +360,7 @@ export function createWorkflowRunFunction(
         actions: input.actions(),
         store: input.store,
         appRuntime: input.appRuntime,
+        executeWorkflow: input.executeWorkflow,
       })
   );
 }
@@ -390,6 +403,7 @@ export function createWorkflowBranchFunction(
         actions: input.actions(),
         store: input.store,
         appRuntime: input.appRuntime,
+        executeWorkflowBranch: input.executeWorkflowBranch,
       })
   );
 }

@@ -1,5 +1,6 @@
 import dagre from "@dagrejs/dagre";
 import { hierarchy, tree } from "d3-hierarchy";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { eventsReachingTarget } from "#src/lib/upstream-node-fields";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
@@ -163,6 +164,7 @@ function readNodeShape(input: {
   node: WorkflowNode;
   nodes: readonly WorkflowNode[];
   edges: readonly WorkflowEdge[];
+  catalog: ExtensionCatalog;
 }): { width: number; handleRanks: Map<string, number> } {
   if (!isEventSplitNode(input.node)) {
     return { width: WORKFLOW_NODE_WIDTH, handleRanks: HANDLE_SORT_RANK };
@@ -172,6 +174,7 @@ function readNodeShape(input: {
     targetNodeId: input.node.id,
     nodes: input.nodes,
     edges: input.edges,
+    catalog: input.catalog,
   });
 
   return {
@@ -214,6 +217,7 @@ function sortOutEdges(input: {
 function buildLayoutModel(input: {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
+  catalog: ExtensionCatalog;
 }): LayoutModel {
   const positionXById = new Map(
     input.nodes.map((node) => [node.id, node.position.x])
@@ -232,6 +236,7 @@ function buildLayoutModel(input: {
       node,
       nodes: input.nodes,
       edges: input.edges,
+      catalog: input.catalog,
     });
     widthById.set(node.id, shape.width);
 
@@ -512,6 +517,7 @@ export function layoutWorkflowNodes(input: {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   availableWidth?: number;
+  catalog: ExtensionCatalog;
 }): {
   nodes: WorkflowNode[];
   changed: boolean;
@@ -530,6 +536,7 @@ export function layoutWorkflowNodes(input: {
   const model = buildLayoutModel({
     nodes: layoutableNodes,
     edges: layoutableEdges,
+    catalog: input.catalog,
   });
 
   const treeLayoutResult = layoutWorkflowNodesWithHierarchy({

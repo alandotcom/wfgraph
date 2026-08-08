@@ -26,7 +26,7 @@ import {
   TooltipTrigger,
 } from "#src/components/ui/tooltip";
 import { hasTouchSupport } from "#src/hooks/use-touch";
-import { getExtensionCatalog } from "#src/lib/extensions";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import type { ActionMetadata } from "@wfgraph/shared/extensions/catalog";
 import { cn } from "@wfgraph/shared/utils";
 
@@ -38,7 +38,8 @@ import { cn } from "@wfgraph/shared/utils";
  * server draws what that server says it has.
  */
 function useAllActions(): readonly ActionMetadata[] {
-  return useMemo(() => getExtensionCatalog().actions, []);
+  const catalog = useExtensionCatalog();
+  return useMemo(() => catalog.actions, [catalog]);
 }
 
 type ActionGridProps = {

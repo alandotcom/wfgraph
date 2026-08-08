@@ -6,7 +6,18 @@ import {
   StepFailure,
 } from "@wfgraph/core/plugin";
 import { Effect } from "effect";
-import type { AcuityCredentials } from "#src/acuity/index";
+
+/** Production SDK construction from stored credentials. */
+export function createAcuitySdk(userId: string, apiKey: string): Acuity {
+  return new Acuity({ userId, apiKey });
+}
+
+export type CreateAcuitySdk = typeof createAcuitySdk;
+
+type AcuityCredentials = {
+  ACUITY_USER_ID?: string;
+  ACUITY_API_KEY?: string;
+};
 
 /**
  * The Acuity SDK, built from the step's own credentials, or the failure that
@@ -20,14 +31,15 @@ import type { AcuityCredentials } from "#src/acuity/index";
  * `StepFailure`: that failure is the one a step is retried for.
  */
 export function createAcuityClient(
-  bag: StepBag<unknown, AcuityCredentials>
+  bag: StepBag<unknown, AcuityCredentials>,
+  createSdk: CreateAcuitySdk
 ): Effect.Effect<Acuity, StepFailure | CredentialsUnavailable> {
   return Effect.flatMap(bag.credentials, (credentials) => {
     const userId = credentials.ACUITY_USER_ID?.trim();
     const apiKey = credentials.ACUITY_API_KEY?.trim();
 
     return userId && apiKey
-      ? Effect.succeed(new Acuity({ userId, apiKey }))
+      ? Effect.succeed(createSdk(userId, apiKey))
       : Effect.fail(
           new StepFailure({
             message:

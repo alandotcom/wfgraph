@@ -1,4 +1,12 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { InngestTestEngine, InngestTestRun } from "@inngest/test";
 import { Inngest } from "inngest";
 import { Effect } from "effect";
@@ -15,21 +23,10 @@ import {
 } from "#src/backend/lib/inngest/workflow-function";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 
-const { executeWorkflowMock } = vi.hoisted(() => ({
-  executeWorkflowMock: vi.fn(),
-}));
-
-// This file tests the Inngest handler's wiring, so the engine underneath it is
-// replaced outright. The mock is scoped to this file: vitest gives each test
-// file its own module registry, so core-replay.test.ts still runs the real
-// engine and observes a real suspend. `executeWorkflow` is the module's only
-// runtime export, the rest being types, so nothing else needs supplying.
-vi.mock("#src/backend/engine/core", () => ({
-  executeWorkflow: executeWorkflowMock,
-}));
+const executeWorkflowMock = vi.fn();
 
 // The app builds both of these from what it owns; the engine underneath is
-// mocked, so identity is all this file needs from either.
+// injected, so identity is all this file needs from either.
 const testActions = noWorkflowActions;
 const testStore = noopWorkflowStore;
 const testAppRuntime = stubWfGraphRuntime();
@@ -46,6 +43,10 @@ function createTestFunction() {
       actions: buildTestActions,
       store: testStore,
       appRuntime: testAppRuntime,
+      // This file tests the Inngest handler's wiring, so the engine underneath
+      // it is a stand-in handed through the ports rather than a module spy.
+      executeWorkflow: executeWorkflowMock,
+      executeWorkflowBranch: vi.fn(),
     }
   );
 }
@@ -91,7 +92,12 @@ async function executeWorkflowFunctionForTest() {
 
 describe("the workflow run function", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    executeWorkflowMock.mockReset();
+    buildTestActions.mockClear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   // One function serves every workflow, so its id is a constant rather than
@@ -115,6 +121,8 @@ describe("the workflow run function", () => {
         actions: buildTestActions,
         store: testStore,
         appRuntime: testAppRuntime,
+        executeWorkflow: vi.fn(),
+        executeWorkflowBranch: vi.fn(),
       }
     );
 

@@ -3,6 +3,7 @@ import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
 import { repairNodeIntegrations } from "#src/lib/node-integration";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { SavedWorkflow } from "#src/lib/rpc-client";
 import {
   currentWorkflowIdAtom,
@@ -283,13 +284,24 @@ export const hydrateWorkflowAtom = atom(
  */
 export const repairIntegrationsAtom = atom(
   null,
-  (get, set, integrations: readonly { id: string; type: string }[]) => {
+  (
+    get,
+    set,
+    input: {
+      integrations: readonly { id: string; type: string }[];
+      catalog: ExtensionCatalog;
+    }
+  ) => {
     if (!draftEditable(get)) {
       return;
     }
 
     const currentNodes = get(nodesStateAtom);
-    const repaired = repairNodeIntegrations(currentNodes, integrations);
+    const repaired = repairNodeIntegrations(
+      input.catalog,
+      currentNodes,
+      input.integrations
+    );
 
     if (repaired === currentNodes) {
       return;

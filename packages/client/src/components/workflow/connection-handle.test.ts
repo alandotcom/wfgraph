@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { normalizeSourceHandleForConnection } from "#src/components/workflow/connection-handle";
 import {
   LIFECYCLE_CANCELED_HANDLE,
@@ -9,19 +9,10 @@ import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
 import {
   emptyExtensionCatalog,
-  type EventMetadata,
+  type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
 
-// An Event Split's outlets are the Events reaching it, which the editor reads
-// off the catalog it fetched once before render.
-const surface = vi.hoisted(() => ({ events: [] as EventMetadata[] }));
-
-vi.mock("#src/lib/extensions", () => ({
-  getExtensionCatalog: () => ({
-    ...emptyExtensionCatalog,
-    events: surface.events,
-  }),
-}));
+const emptyCatalog = emptyExtensionCatalog;
 
 function lifecycleNode(id = "entry"): WorkflowNode {
   return {
@@ -65,6 +56,7 @@ describe("normalizeSourceHandleForConnection", () => {
         edges: [],
         sourceNodeId: "entry",
         sourceHandle: LIFECYCLE_CANCELED_HANDLE,
+        catalog: emptyCatalog,
       })
     ).toBe(LIFECYCLE_CANCELED_HANDLE);
   });
@@ -76,6 +68,7 @@ describe("normalizeSourceHandleForConnection", () => {
         edges: [],
         sourceNodeId: "entry",
         sourceHandle: LIFECYCLE_STARTED_HANDLE,
+        catalog: emptyCatalog,
       })
     ).toBe(LIFECYCLE_STARTED_HANDLE);
   });
@@ -87,6 +80,7 @@ describe("normalizeSourceHandleForConnection", () => {
         edges: [],
         sourceNodeId: "entry",
         sourceHandle: null,
+        catalog: emptyCatalog,
       })
     ).toBe(LIFECYCLE_STARTED_HANDLE);
   });
@@ -98,6 +92,7 @@ describe("normalizeSourceHandleForConnection", () => {
         edges: [],
         sourceNodeId: "cond",
         sourceHandle: null,
+        catalog: emptyCatalog,
       })
     ).toBe("true");
   });
@@ -118,6 +113,7 @@ describe("normalizeSourceHandleForConnection", () => {
         edges,
         sourceNodeId: "cond",
         sourceHandle: null,
+        catalog: emptyCatalog,
       })
     ).toBe("false");
   });
@@ -129,6 +125,7 @@ describe("normalizeSourceHandleForConnection", () => {
         edges: [],
         sourceNodeId: "action",
         sourceHandle: "out",
+        catalog: emptyCatalog,
       })
     ).toBe("out");
   });
@@ -137,6 +134,15 @@ describe("normalizeSourceHandleForConnection", () => {
 describe("normalizeSourceHandleForConnection - Event Split", () => {
   const CREATED = "app/appointment.created";
   const RESCHEDULED = "app/appointment.rescheduled";
+
+  const eventSplitCatalog: ExtensionCatalog = {
+    events: [
+      { name: CREATED, label: CREATED, payloadFields: [] },
+      { name: RESCHEDULED, label: RESCHEDULED, payloadFields: [] },
+    ],
+    actions: [],
+    integrations: [],
+  };
 
   function splitNode(id = "split"): WorkflowNode {
     return {
@@ -178,13 +184,6 @@ describe("normalizeSourceHandleForConnection - Event Split", () => {
     target: "split",
   };
 
-  beforeEach(() => {
-    surface.events = [
-      { name: CREATED, label: CREATED, payloadFields: [] },
-      { name: RESCHEDULED, label: RESCHEDULED, payloadFields: [] },
-    ];
-  });
-
   it("keeps the outlet an edge was actually dragged from", () => {
     expect(
       normalizeSourceHandleForConnection({
@@ -192,6 +191,7 @@ describe("normalizeSourceHandleForConnection - Event Split", () => {
         edges: [entryEdge],
         sourceNodeId: "split",
         sourceHandle: eventSplitOutlet(RESCHEDULED),
+        catalog: eventSplitCatalog,
       })
     ).toBe(eventSplitOutlet(RESCHEDULED));
   });
@@ -205,6 +205,7 @@ describe("normalizeSourceHandleForConnection - Event Split", () => {
         edges: [entryEdge],
         sourceNodeId: "split",
         sourceHandle: null,
+        catalog: eventSplitCatalog,
       })
     ).toBe(eventSplitOutlet(CREATED));
   });
@@ -224,6 +225,7 @@ describe("normalizeSourceHandleForConnection - Event Split", () => {
         ],
         sourceNodeId: "split",
         sourceHandle: null,
+        catalog: eventSplitCatalog,
       })
     ).toBe(eventSplitOutlet(RESCHEDULED));
   });
@@ -237,6 +239,7 @@ describe("normalizeSourceHandleForConnection - Event Split", () => {
         edges: [],
         sourceNodeId: "split",
         sourceHandle: null,
+        catalog: eventSplitCatalog,
       })
     ).toBeNull();
   });

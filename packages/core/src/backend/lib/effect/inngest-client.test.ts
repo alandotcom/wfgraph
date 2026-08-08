@@ -3,7 +3,7 @@
 import { assert, describe, layer } from "@effect/vitest";
 // The mocks API has to be the one vitest itself exports; reaching it through the
 // `@effect/vitest` re-export leaves it unable to find the module registry.
-import { vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 import { Effect } from "effect";
 import { Inngest } from "inngest";
 import {
@@ -11,6 +11,7 @@ import {
   InngestError,
   makeInngestClientLayer,
 } from "#src/backend/lib/effect/inngest-client";
+import * as runtimeEventsModule from "#src/backend/lib/inngest/runtime-events";
 
 /**
  * The three envelope builders the live Layer delegates to, replaced so a send
@@ -19,7 +20,8 @@ import {
  * What the Layer adds over them is the error channel, and that is the whole of
  * what these tests are about: a rejected promise becomes an `InngestError`
  * keeping whatever was thrown, and a resolution travels through untouched.
- * vitest scopes a mock to the file that declares it.
+ * spyOn + restore keeps isolate:false from leaving these stubs on the shared
+ * registry.
  */
 const runtimeEvents = vi.hoisted(() => ({
   sendWorkflowRunRequested: vi.fn(),
@@ -27,7 +29,26 @@ const runtimeEvents = vi.hoisted(() => ({
   sendWorkflowWaitSignal: vi.fn(),
 }));
 
-vi.mock("#src/backend/lib/inngest/runtime-events", () => runtimeEvents);
+beforeEach(() => {
+  runtimeEvents.sendWorkflowRunRequested.mockReset();
+  runtimeEvents.sendWorkflowCancelRequested.mockReset();
+  runtimeEvents.sendWorkflowWaitSignal.mockReset();
+
+  vi.spyOn(runtimeEventsModule, "sendWorkflowRunRequested").mockImplementation(
+    runtimeEvents.sendWorkflowRunRequested
+  );
+  vi.spyOn(
+    runtimeEventsModule,
+    "sendWorkflowCancelRequested"
+  ).mockImplementation(runtimeEvents.sendWorkflowCancelRequested);
+  vi.spyOn(runtimeEventsModule, "sendWorkflowWaitSignal").mockImplementation(
+    runtimeEvents.sendWorkflowWaitSignal
+  );
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 // A real client, because constructing one opens nothing: the mocked envelope
 // builders take it as their first argument and none of them calls it.

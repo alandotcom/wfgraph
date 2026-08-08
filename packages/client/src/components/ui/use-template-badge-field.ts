@@ -1,5 +1,6 @@
 import { useAtomValue } from "jotai";
 import { useCallback, useRef, useState } from "react";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useAfterCommit } from "#src/hooks/effects";
 import { nodesAtom } from "#src/lib/workflow-graph-store";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
@@ -32,6 +33,7 @@ export function useTemplateBadgeField(input: {
 }) {
   const { value, onChange, placeholder, multiline } = input;
 
+  const catalog = useExtensionCatalog();
   const nodes = useAtomValue(nodesAtom);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -60,9 +62,9 @@ export function useTemplateBadgeField(input: {
       // Installing the editor is all this does. The first draw comes from the
       // hook below, which fires on mount as well as on every later change, so
       // there is one place that decides what the DOM should say.
-      editorRef.current = createBadgeEditor(element, { multiline });
+      editorRef.current = createBadgeEditor(element, { multiline, catalog });
     },
-    [multiline]
+    [multiline, catalog]
   );
 
   // The parent handed over different text while the user was somewhere else.

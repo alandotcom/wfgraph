@@ -2,55 +2,51 @@ import { fireEvent, render, type RenderResult } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import type { NodeConfigPatch } from "#src/components/workflow/config/node-config-patch";
 import { WaitEventSelect } from "#src/components/workflow/config/wait-event-select";
 import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
 import { parseConditionModel } from "@wfgraph/shared/conditions/conditions";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
-/**
- * The picker takes its subscriptions from the node config it is handed and its
- * vocabulary from the app's catalog, which is what lets a wait park on an Event
- * the workflow does not start on. The match editor's vocabulary is then the
- * chosen Event's own payload fields.
- */
-vi.mock("#src/lib/extensions", () => ({
-  getExtensionCatalog: () => ({
-    events: [
-      {
-        name: "billing/payment.settled",
-        label: "Payment settled",
-        correlationPath: "appointmentId",
-        payloadFields: [
-          { path: "appointmentId", description: "The appointment" },
-          {
-            path: "settledAt",
-            description: "When it settled",
-            type: "timestamp",
-          },
-        ],
-      },
-      {
-        name: "ops/nightly.swept",
-        label: "Nightly sweep",
-        payloadFields: [],
-      },
-    ],
-    actions: [],
-    integrations: [],
-  }),
-}));
+const testCatalog: ExtensionCatalog = {
+  events: [
+    {
+      name: "billing/payment.settled",
+      label: "Payment settled",
+      correlationPath: "appointmentId",
+      payloadFields: [
+        { path: "appointmentId", description: "The appointment" },
+        {
+          path: "settledAt",
+          description: "When it settled",
+          type: "timestamp",
+        },
+      ],
+    },
+    {
+      name: "ops/nightly.swept",
+      label: "Nightly sweep",
+      payloadFields: [],
+    },
+  ],
+  actions: [],
+  integrations: [],
+};
 
 type Subscription = { event: string; match?: string };
 
 function renderSelect(config: Record<string, unknown>) {
   const onUpdateConfig = vi.fn((_patch: NodeConfigPatch) => undefined);
   const view = render(
-    <WaitEventSelect
-      config={config}
-      disabled={false}
-      onUpdateConfig={onUpdateConfig}
-    />
+    <ExtensionCatalogProvider value={testCatalog}>
+      <WaitEventSelect
+        config={config}
+        disabled={false}
+        onUpdateConfig={onUpdateConfig}
+      />
+    </ExtensionCatalogProvider>
   );
 
   return {
@@ -69,7 +65,11 @@ function withGraph(nodes: WorkflowNode[], children: ReactNode) {
   const store = createStore();
   store.set(loadWorkflowGraphAtom, { nodes, edges: [] });
 
-  return <JotaiProvider store={store}>{children}</JotaiProvider>;
+  return (
+    <ExtensionCatalogProvider value={testCatalog}>
+      <JotaiProvider store={store}>{children}</JotaiProvider>
+    </ExtensionCatalogProvider>
+  );
 }
 
 function entryNode(correlationPaths: Record<string, string>): WorkflowNode {

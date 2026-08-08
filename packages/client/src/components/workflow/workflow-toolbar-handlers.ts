@@ -18,7 +18,7 @@ import { WorkflowIssuesOverlay } from "#src/components/overlays/workflow-issues-
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useDeleteWorkflow } from "#src/hooks/use-delete-workflow";
 import { useDomEvent } from "#src/hooks/effects";
-import { getExtensionCatalog } from "#src/lib/extensions";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
   cacheWorkflowPublication,
   integrationsQueryOptions,
@@ -113,6 +113,7 @@ function useWorkflowHandlers({
   setSelectedNodeId,
   userIntegrations,
 }: WorkflowHandlerParams) {
+  const catalog = useExtensionCatalog();
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -271,7 +272,7 @@ function useWorkflowHandlers({
 
     const issues = collectWorkflowIssues({
       nodes,
-      catalog: getExtensionCatalog(),
+      catalog,
       integrations: userIntegrations,
     });
 

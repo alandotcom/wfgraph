@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useSetAtom } from "jotai";
 import { useCallback } from "react";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { repairIntegrationsAtom } from "#src/lib/workflow-graph-store";
 
@@ -18,11 +19,13 @@ import { repairIntegrationsAtom } from "#src/lib/workflow-graph-store";
  */
 export function useConnectionRepair() {
   const queryClient = useQueryClient();
+  const catalog = useExtensionCatalog();
   const repairIntegrations = useSetAtom(repairIntegrationsAtom);
 
   return useCallback(async () => {
-    repairIntegrations(
-      await queryClient.fetchQuery(integrationsQueryOptions())
-    );
-  }, [queryClient, repairIntegrations]);
+    repairIntegrations({
+      integrations: await queryClient.fetchQuery(integrationsQueryOptions()),
+      catalog,
+    });
+  }, [queryClient, repairIntegrations, catalog]);
 }

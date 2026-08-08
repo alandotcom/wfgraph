@@ -6,48 +6,52 @@ import {
   within,
 } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
-import { type ReactNode, useState } from "react";
+import { type ReactElement, type ReactNode, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import {
   CONCURRENCY_OPTIONS,
   LifecyclePanel,
 } from "#src/components/workflow/config/lifecycle-panel";
 import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
-// The Events a panel offers come from the server's catalog. One declares its own
-// Correlation Path and one leaves it to the builder, which is the difference the
-// path picker exists for. The payload fields are what the picker lists, and the
-// object and array paths among them are what it has to leave out.
-vi.mock("#src/lib/extensions", () => ({
-  getExtensionCatalog: () => ({
-    events: [
-      {
-        name: "app/appointment.created",
-        label: "Appointment created",
-        correlationPath: "appointment.id",
-        payloadFields: [
-          { path: "appointment", type: "object" },
-          { path: "appointment.id", type: "string" },
-          { path: "appointment.duration", type: "number" },
-          { path: "appointment.attendees", type: "array" },
-          { path: "patient.id", type: "string" },
-        ],
-      },
-      {
-        name: "ops/nightly.swept",
-        label: "Nightly sweep",
-        payloadFields: [
-          { path: "sweep.id", type: "string" },
-          { path: "sweep.count", type: "number" },
-        ],
-      },
-    ],
-    actions: [],
-    integrations: [],
-  }),
-}));
+const testCatalog: ExtensionCatalog = {
+  events: [
+    {
+      name: "app/appointment.created",
+      label: "Appointment created",
+      correlationPath: "appointment.id",
+      payloadFields: [
+        { path: "appointment", type: "object" },
+        { path: "appointment.id", type: "string" },
+        { path: "appointment.duration", type: "number" },
+        { path: "appointment.attendees", type: "array" },
+        { path: "patient.id", type: "string" },
+      ],
+    },
+    {
+      name: "ops/nightly.swept",
+      label: "Nightly sweep",
+      payloadFields: [
+        { path: "sweep.id", type: "string" },
+        { path: "sweep.count", type: "number" },
+      ],
+    },
+  ],
+  actions: [],
+  integrations: [],
+};
+
+function renderWithCatalog(ui: ReactElement) {
+  return render(
+    <ExtensionCatalogProvider value={testCatalog}>
+      {ui}
+    </ExtensionCatalogProvider>
+  );
+}
 
 const NO_CONFIG: Record<string, unknown> = {};
 
@@ -80,7 +84,11 @@ function withGraph(nodes: WorkflowNode[], children: ReactNode) {
   const store = createStore();
   store.set(loadWorkflowGraphAtom, { nodes, edges: [] });
 
-  return <JotaiProvider store={store}>{children}</JotaiProvider>;
+  return (
+    <ExtensionCatalogProvider value={testCatalog}>
+      <JotaiProvider store={store}>{children}</JotaiProvider>
+    </ExtensionCatalogProvider>
+  );
 }
 
 function waitNode(events: string[]): WorkflowNode {
@@ -174,7 +182,7 @@ describe("LifecyclePanel", () => {
   // write has to carry a start source or it refuses the save that wrote it.
   it("carries manual starts into the rules it first writes", async () => {
     let latest: Record<string, unknown> = {};
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         onConfigChange={(config) => {
           latest = config;
@@ -199,7 +207,7 @@ describe("LifecyclePanel", () => {
   // "configured this way".
   it("writes nothing until something is edited", () => {
     const onUpdateConfig = vi.fn();
-    const view = render(
+    const view = renderWithCatalog(
       <LifecyclePanel
         config={{}}
         disabled={false}
@@ -217,7 +225,7 @@ describe("LifecyclePanel", () => {
   // The trigger button is the pointer path into a picker's full list, beside
   // the keyboard path `chooseEvent` drives everywhere else in this file.
   it("opens the Start Event picker from its trigger button", () => {
-    const view = render(
+    const view = renderWithCatalog(
       <LifecyclePanel config={{}} disabled={false} onUpdateConfig={vi.fn()} />
     );
 
@@ -234,7 +242,7 @@ describe("LifecyclePanel", () => {
   // knows the Event by, so it is searchable beside the label.
   it("finds an Event by the name a sender posts", async () => {
     let latest: Record<string, unknown> = {};
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         onConfigChange={(config) => {
           latest = config;
@@ -260,7 +268,7 @@ describe("LifecyclePanel", () => {
         allowManualStart: true,
       },
     };
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={latest}
         onConfigChange={(config) => {
@@ -289,7 +297,7 @@ describe("LifecyclePanel", () => {
           concurrency: value === "unlimited" ? "newest-wins" : "unlimited",
         },
       };
-      const view = render(
+      const view = renderWithCatalog(
         <ControlledPanel
           initialConfig={latest}
           onConfigChange={(config) => {
@@ -317,7 +325,7 @@ describe("LifecyclePanel", () => {
         allowManualStart: true,
       },
     };
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={latest}
         onConfigChange={(config) => {
@@ -351,7 +359,7 @@ describe("LifecyclePanel", () => {
         allowManualStart: true,
       },
     };
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={latest}
         onConfigChange={(config) => {
@@ -382,7 +390,7 @@ describe("LifecyclePanel Cancel Events", () => {
         allowManualStart: true,
       },
     };
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={latest}
         onConfigChange={(config) => {
@@ -408,7 +416,7 @@ describe("LifecyclePanel Cancel Events", () => {
         correlationPaths: { "ops/nightly.swept": "sweep.id" },
       },
     };
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={latest}
         onConfigChange={(config) => {
@@ -430,7 +438,7 @@ describe("LifecyclePanel Cancel Events", () => {
   // Event gets a picker of its own: an Event declaring the wrong field for this
   // workflow would otherwise be a rule the builder can read and cannot fix.
   it("gives each chosen Event a picker, defaulted to its declaration", () => {
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
@@ -448,7 +456,7 @@ describe("LifecyclePanel Cancel Events", () => {
   });
 
   it("shows the builder's override in the picker", () => {
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
@@ -476,7 +484,7 @@ describe("LifecyclePanel Cancel Events", () => {
         allowManualStart: true,
       },
     };
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={latest}
         onConfigChange={(config) => {
@@ -505,7 +513,7 @@ describe("LifecyclePanel Cancel Events", () => {
         allowManualStart: true,
       },
     };
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={latest}
         onConfigChange={(config) => {
@@ -539,7 +547,7 @@ describe("LifecyclePanel Correlation Paths", () => {
         concurrency: "newest-wins",
       },
     };
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={latest}
         onConfigChange={(config) => {
@@ -571,7 +579,7 @@ describe("LifecyclePanel Correlation Paths", () => {
         },
       },
     };
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={latest}
         onConfigChange={(config) => {
@@ -604,7 +612,7 @@ describe("LifecyclePanel Correlation Paths", () => {
         },
       },
     };
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={latest}
         onConfigChange={(config) => {
@@ -633,7 +641,7 @@ describe("LifecyclePanel Correlation Paths", () => {
         correlationPaths: { "ops/nightly.swept": "sweep.id" },
       },
     };
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={latest}
         onConfigChange={(config) => {
@@ -653,7 +661,7 @@ describe("LifecyclePanel Correlation Paths", () => {
   // a whole object or a list of them is no candidate and never reaches the list.
   // The payload declares one of each beside the fields that can be matched on.
   it("offers only the payload paths that can identify an entity", () => {
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
@@ -676,7 +684,7 @@ describe("LifecyclePanel Correlation Paths", () => {
   // it was saved with, so the picker lists that path rather than dropping it and
   // appearing to match on the declaration.
   it("keeps a stored path this Event no longer declares", () => {
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
@@ -710,7 +718,7 @@ describe("LifecyclePanel Correlation Paths", () => {
         allowManualStart: true,
       },
     };
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={latest}
         onConfigChange={(config) => {
@@ -749,7 +757,7 @@ describe("LifecyclePanel Correlation Paths", () => {
   // stated no override.
   it("offers a picker for a Start Event that declares its own path", () => {
     const onConfigChange = vi.fn();
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
@@ -769,7 +777,7 @@ describe("LifecyclePanel Correlation Paths", () => {
 
   // Unlimited compares no entities, so there is no value to compare and no input.
   it("asks for no path when nothing compares entities", () => {
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
@@ -788,7 +796,7 @@ describe("LifecyclePanel Correlation Paths", () => {
   // declaring no path owes one exactly as a start pick would. The row's own
   // heading names the Event; the field carries no second, role-labelled one.
   it("asks for a path when a cancel pick owes one", () => {
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
@@ -808,7 +816,7 @@ describe("LifecyclePanel Correlation Paths", () => {
   // A Wait Subscription carries its own match expression, so nothing a Wait node
   // parks on is asked about here. The rules answer for start and cancel roles.
   it("asks nothing on account of a Wait node", () => {
-    const view = render(
+    const view = renderWithCatalog(
       withGraph(
         [waitNode(["ops/nightly.swept"])],
         <ControlledPanel
@@ -833,7 +841,7 @@ describe("LifecyclePanel refusals", () => {
   // The panel runs the same check the save is refused by, so the sentence is
   // there before a builder waits for a toast to tell them.
   it("shows the refusal a save would answer with", () => {
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
@@ -855,7 +863,7 @@ describe("LifecyclePanel refusals", () => {
   });
 
   it("names an Event the catalog does not declare as the refusal it is", () => {
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {

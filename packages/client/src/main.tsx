@@ -15,10 +15,14 @@ import {
   CatalogLoading,
   CatalogUnavailable,
 } from "#src/components/catalog-boot";
+import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { getBasePath } from "#src/lib/base-path";
 import { queryClient } from "#src/lib/query-client";
-import { hydrateExtensionsFromApi } from "#src/lib/extensions";
+import {
+  getExtensionCatalog,
+  hydrateExtensionsFromApi,
+} from "#src/lib/extensions";
 import { router } from "./router";
 
 declare global {
@@ -107,11 +111,13 @@ const catalogLoad = await hydrateExtensionsFromApi();
 
 root.render(
   catalogLoad.ok ? (
-    <IntegrationUiProvider value={integrationUi}>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
-    </IntegrationUiProvider>
+    <ExtensionCatalogProvider value={getExtensionCatalog()}>
+      <IntegrationUiProvider value={integrationUi}>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </IntegrationUiProvider>
+    </ExtensionCatalogProvider>
   ) : (
     <CatalogUnavailable
       endpoint={`${getBasePath()}/api/extensions`}

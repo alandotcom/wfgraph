@@ -4,7 +4,7 @@ import { type ComponentType, useState } from "react";
 import type { IntegrationUi, ResultComponentProps } from "@wfgraph/plugins/ui";
 import { Button } from "#src/components/ui/button";
 import { useIntegrationUi } from "#src/components/integration-ui-provider";
-import { getExtensionCatalog } from "#src/lib/extensions";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { getClientLogger } from "#src/lib/logger";
 import {
   type ActionMetadata,
@@ -294,15 +294,13 @@ export function OutputDisplay({
   input?: unknown;
   actionType?: string;
 }) {
+  const catalog = useExtensionCatalog();
   const integrationUi = useIntegrationUi();
 
   // An integration's own renderer takes precedence over the plain base64 image
   // below, which is keyed on nothing but the shape of the output.
   const CustomComponent = actionType
-    ? findOutputComponent(
-        integrationUi,
-        findAction(getExtensionCatalog(), actionType)
-      )
+    ? findOutputComponent(integrationUi, findAction(catalog, actionType))
     : undefined;
   const base64Image = CustomComponent ? null : readBase64ImageOutput(output);
 

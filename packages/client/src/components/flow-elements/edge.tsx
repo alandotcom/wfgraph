@@ -8,7 +8,10 @@ import {
   Position,
   useInternalNode,
 } from "@xyflow/react";
-import { getConditionBranchDisplayLabel } from "@wfgraph/shared/conditions/condition-branch";
+import {
+  isMutedEdgeStyle,
+  resolveEdgeLabel,
+} from "#src/components/flow-elements/edge-label";
 import type { WorkflowEdge } from "#src/lib/workflow-graph-types";
 
 const Temporary = ({
@@ -157,11 +160,10 @@ const Animated = ({
     targetY: ty,
     targetPosition: targetPos,
   });
-  const branchLabel = getConditionBranchDisplayLabel(sourceHandleId);
-  const edgeLabel = branchLabel ?? data?.displayLabel ?? null;
+  const edgeLabel = resolveEdgeLabel(sourceHandleId, data);
   // Display atoms mute an inactive Canceled subtree by setting style.opacity;
   // that is the contract for dropping the dash animation here.
-  const inactive = style?.opacity !== undefined;
+  const inactive = isMutedEdgeStyle(style);
 
   return (
     <>
