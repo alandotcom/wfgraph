@@ -7,12 +7,14 @@ import {
 } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { type ReactNode, useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CONCURRENCY_OPTIONS,
   LifecyclePanel,
 } from "#src/components/workflow/config/lifecycle-panel";
+import { putExtensionCatalog } from "#src/lib/extensions";
 import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
+import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
@@ -20,8 +22,8 @@ import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 // Correlation Path and one leaves it to the builder, which is the difference the
 // path picker exists for. The payload fields are what the picker lists, and the
 // object and array paths among them are what it has to leave out.
-vi.mock("#src/lib/extensions", () => ({
-  getExtensionCatalog: () => ({
+beforeEach(() => {
+  putExtensionCatalog({
     events: [
       {
         name: "app/appointment.created",
@@ -46,8 +48,12 @@ vi.mock("#src/lib/extensions", () => ({
     ],
     actions: [],
     integrations: [],
-  }),
-}));
+  });
+});
+
+afterEach(() => {
+  putExtensionCatalog(emptyExtensionCatalog);
+});
 
 const NO_CONFIG: Record<string, unknown> = {};
 

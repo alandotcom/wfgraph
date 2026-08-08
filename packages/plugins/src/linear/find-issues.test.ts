@@ -1,20 +1,17 @@
 import { describe, expect, it } from "@effect/vitest";
 import { actionData, actionError, runAction } from "@wfgraph/core/testing";
 import { Effect } from "effect";
-import { beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
+import * as linearClient from "#src/linear/client";
 import { linear } from "#src/linear/index";
 
-// This step's seam is the Linear SDK, which it constructs itself, so the
-// constructor is what the test replaces. What this step decides is which filter
-// to ask for and how to flatten what comes back.
+/**
+ * The seam is `createLinearClient`, stubbed so a case says what filter was
+ * asked for and how the answer was flattened. Spying that export (rather than
+ * `vi.mock` of `@linear/sdk`) keeps isolate:false from colliding with the
+ * other Linear suites that need different client shapes.
+ */
 const mocks = vi.hoisted(() => ({ issues: vi.fn() }));
-
-vi.mock("@linear/sdk", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@linear/sdk")>()),
-  LinearClient: class {
-    issues = mocks.issues;
-  },
-}));
 
 const LINEAR_CREDENTIALS = { LINEAR_API_KEY: "lin_api_key" };
 
@@ -26,7 +23,7 @@ function credentialsRead(
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  mocks.issues.mockReset();
   mocks.issues.mockResolvedValue({
     nodes: [
       {
@@ -39,6 +36,13 @@ beforeEach(() => {
       },
     ],
   });
+  vi.spyOn(linearClient, "createLinearClient").mockReturnValue({
+    issues: mocks.issues,
+  } as never);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("linear/find-issues", () => {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, waitFor } from "@testing-library/react";
 import { getDefaultStore } from "jotai";
 import { useState } from "react";
@@ -10,28 +10,32 @@ import {
   type ActionMetadata,
   emptyExtensionCatalog,
   type EventMetadata,
+  type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
 import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
+import { putExtensionCatalog } from "#src/lib/extensions";
 import { TemplateBadgeInput } from "./template-badge-input";
 import { TemplateBadgeTextarea } from "./template-badge-textarea";
 
 // The entry node offers the payload fields of the Events its rules start on, and
 // an action node offers its own catalog entry's output fields, so a case that
-// wants either says what the app declares. `vi.hoisted` is what lets the mock
-// factory below read this.
-const surface = vi.hoisted(() => ({
+// wants either says what the app declares by writing this object.
+const surface = {
   events: [] as EventMetadata[],
   actions: [] as ActionMetadata[],
-}));
+  integrations: [] as ExtensionCatalog["integrations"],
+};
 
-vi.mock("#src/lib/extensions", () => ({
-  getExtensionCatalog: () => ({
-    ...emptyExtensionCatalog,
-    events: surface.events,
-    actions: surface.actions,
-  }),
-}));
+beforeEach(() => {
+  surface.events = [];
+  surface.actions = [];
+  putExtensionCatalog(surface);
+});
+
+afterEach(() => {
+  putExtensionCatalog(emptyExtensionCatalog);
+});
 
 const APPOINTMENT_CREATED: EventMetadata = {
   name: "app/appointment.created",

@@ -1,24 +1,19 @@
 import { describe, expect, it } from "@effect/vitest";
 import { actionData, actionError, runAction } from "@wfgraph/core/testing";
 import { Effect } from "effect";
-import { beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
+import * as linearClient from "#src/linear/client";
 import { linear } from "#src/linear/index";
 
-// This step's seam is the Linear SDK, which it constructs itself, so the
-// constructor is what the test replaces. What the SDK puts on the wire is
-// Linear's business; what this step decides is which team to file under and
-// what to say when the SDK throws.
+/**
+ * The seam is `createLinearClient`, stubbed so a case says which team was
+ * filed under and what the SDK threw. Spying that export (rather than
+ * `vi.mock` of `@linear/sdk`) keeps isolate:false from colliding with the
+ * other Linear suites that need different client shapes.
+ */
 const mocks = vi.hoisted(() => ({
   teams: vi.fn(),
   createIssue: vi.fn(),
-}));
-
-vi.mock("@linear/sdk", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@linear/sdk")>()),
-  LinearClient: class {
-    teams = mocks.teams;
-    createIssue = mocks.createIssue;
-  },
 }));
 
 const LINEAR_CREDENTIALS = { LINEAR_API_KEY: "lin_api_key" };
@@ -39,7 +34,8 @@ function credentialsRead(
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  mocks.teams.mockReset();
+  mocks.createIssue.mockReset();
   mocks.teams.mockResolvedValue({ nodes: [{ id: "team_first" }] });
   mocks.createIssue.mockResolvedValue({
     issue: Promise.resolve({
@@ -48,6 +44,14 @@ beforeEach(() => {
       title: "Bug report",
     }),
   });
+  vi.spyOn(linearClient, "createLinearClient").mockReturnValue({
+    teams: mocks.teams,
+    createIssue: mocks.createIssue,
+  } as never);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("linear/create-ticket", () => {

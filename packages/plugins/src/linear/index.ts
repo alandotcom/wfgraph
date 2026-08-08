@@ -10,6 +10,7 @@
  */
 
 import { LinearClient, type LinearDocument } from "@linear/sdk";
+import { createLinearClient } from "#src/linear/client";
 import {
   type CredentialFields,
   type CredentialsOf,
@@ -209,7 +210,7 @@ export const linear = defineIntegration({
           });
         }
 
-        const client = new LinearClient({ apiKey });
+        const client = createLinearClient(apiKey);
         const teamId =
           credentials.LINEAR_TEAM_ID ||
           (yield* bag.step.run("first-team", firstTeamId(client)));
@@ -294,7 +295,7 @@ export const linear = defineIntegration({
           });
         }
 
-        const client = new LinearClient({ apiKey });
+        const client = createLinearClient(apiKey);
 
         // Everything the Linear SDK does is a Promise that throws, and an
         // issue's state is a second request behind the issue, so the whole read

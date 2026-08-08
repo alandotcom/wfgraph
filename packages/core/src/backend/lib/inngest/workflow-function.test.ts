@@ -1,8 +1,17 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { InngestTestEngine, InngestTestRun } from "@inngest/test";
 import { Inngest } from "inngest";
 import { Effect } from "effect";
 import { noWorkflowActions } from "#src/backend/engine/actions";
+import * as engineCore from "#src/backend/engine/core";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import {
   noopWorkflowStore,
@@ -17,15 +26,6 @@ import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 
 const { executeWorkflowMock } = vi.hoisted(() => ({
   executeWorkflowMock: vi.fn(),
-}));
-
-// This file tests the Inngest handler's wiring, so the engine underneath it is
-// replaced outright. The mock is scoped to this file: vitest gives each test
-// file its own module registry, so core-replay.test.ts still runs the real
-// engine and observes a real suspend. `executeWorkflow` is the module's only
-// runtime export, the rest being types, so nothing else needs supplying.
-vi.mock("#src/backend/engine/core", () => ({
-  executeWorkflow: executeWorkflowMock,
 }));
 
 // The app builds both of these from what it owns; the engine underneath is
@@ -91,7 +91,21 @@ async function executeWorkflowFunctionForTest() {
 
 describe("the workflow run function", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    executeWorkflowMock.mockReset();
+    buildTestActions.mockClear();
+
+    // This file tests the Inngest handler's wiring, so the engine underneath it
+    // is replaced via spyOn. Restored after each case so core-replay.test.ts
+    // (and anything else sharing the registry under isolate:false) still runs
+    // the real engine. `executeWorkflow` is the only runtime export this
+    // handler needs replaced.
+    vi.spyOn(engineCore, "executeWorkflow").mockImplementation(
+      executeWorkflowMock
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   // One function serves every workflow, so its id is a constant rather than

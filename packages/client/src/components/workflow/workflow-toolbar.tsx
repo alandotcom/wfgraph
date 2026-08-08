@@ -11,13 +11,27 @@ import {
 } from "#src/components/workflow/workflow-toolbar-handlers";
 import { workflowPublicationQueryOptions } from "#src/lib/rpc-query";
 
+/**
+ * Toolbar chrome and handlers, held on an object so tests can `vi.spyOn` them.
+ * A `vi.mock` of those modules would stay in the worker's graph under
+ * isolate:false; the dial restores with `vi.restoreAllMocks`.
+ */
+export const workflowToolbarDial = {
+  UserMenu,
+  DuplicateButton,
+  ToolbarActions,
+  WorkflowMenuComponent,
+  useWorkflowActions,
+  useWorkflowState,
+};
+
 type WorkflowToolbarProps = {
   workflowId?: string;
 };
 
 export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
-  const state = useWorkflowState();
-  const actions = useWorkflowActions(state);
+  const state = workflowToolbarDial.useWorkflowState();
+  const actions = workflowToolbarDial.useWorkflowActions(state);
 
   const currentWorkflow = state.allWorkflows.find(
     (workflow) => workflow.id === state.currentWorkflowId
@@ -30,6 +44,11 @@ export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
     enabled: Boolean(workflowId),
   });
 
+  const Menu = workflowToolbarDial.WorkflowMenuComponent;
+  const Actions = workflowToolbarDial.ToolbarActions;
+  const Duplicate = workflowToolbarDial.DuplicateButton;
+  const MenuUser = workflowToolbarDial.UserMenu;
+
   return (
     <>
       {/* One row spanning the canvas rather than two independent corner layers.
@@ -41,11 +60,7 @@ export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
           wide. */}
       <div className="pointer-events-none absolute inset-x-4 top-4 z-10 flex flex-col items-stretch gap-2 @container @xl:flex-row @xl:items-start @xl:justify-between">
         <div className="pointer-events-auto flex min-w-0 flex-wrap items-center gap-2">
-          <WorkflowMenuComponent
-            actions={actions}
-            state={state}
-            workflowId={workflowId}
-          />
+          <Menu actions={actions} state={state} workflowId={workflowId} />
           {workflowId &&
             state.workflowMode === "test" && (
               // Warning rather than destructive: test mode destroys nothing, and
@@ -82,19 +97,15 @@ export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
             container it pins content to the right and pushes the first controls
             off the left edge, where no scroll position can reach them. */}
         <div className="pointer-events-auto flex items-center gap-2 overflow-x-auto @xl:justify-end">
-          <ToolbarActions
-            actions={actions}
-            state={state}
-            workflowId={workflowId}
-          />
+          <Actions actions={actions} state={state} workflowId={workflowId} />
           <div className="flex items-center gap-2">
             {workflowId && !state.isOwner && (
-              <DuplicateButton
+              <Duplicate
                 isDuplicating={actions.isDuplicating}
                 onDuplicate={actions.handleDuplicate}
               />
             )}
-            <UserMenu />
+            <MenuUser />
           </div>
         </div>
       </div>

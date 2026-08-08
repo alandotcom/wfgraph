@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { normalizeSourceHandleForConnection } from "#src/components/workflow/connection-handle";
 import {
   LIFECYCLE_CANCELED_HANDLE,
@@ -10,18 +10,26 @@ import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
 import {
   emptyExtensionCatalog,
   type EventMetadata,
+  type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
+import { putExtensionCatalog } from "#src/lib/extensions";
 
 // An Event Split's outlets are the Events reaching it, which the editor reads
 // off the catalog it fetched once before render.
-const surface = vi.hoisted(() => ({ events: [] as EventMetadata[] }));
+const surface = {
+  events: [] as EventMetadata[],
+  actions: [] as ExtensionCatalog["actions"],
+  integrations: [] as ExtensionCatalog["integrations"],
+};
 
-vi.mock("#src/lib/extensions", () => ({
-  getExtensionCatalog: () => ({
-    ...emptyExtensionCatalog,
-    events: surface.events,
-  }),
-}));
+beforeEach(() => {
+  surface.events = [];
+  putExtensionCatalog(surface);
+});
+
+afterEach(() => {
+  putExtensionCatalog(emptyExtensionCatalog);
+});
 
 function lifecycleNode(id = "entry"): WorkflowNode {
   return {

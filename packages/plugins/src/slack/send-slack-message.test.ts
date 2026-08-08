@@ -1,19 +1,15 @@
 import { describe, expect, it } from "@effect/vitest";
 import { actionData, actionError, runAction } from "@wfgraph/core/testing";
 import { Effect } from "effect";
-import { beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
+import * as slackClient from "#src/slack/client";
 import { slack } from "#src/slack/index";
 
 // What this step decides is whether to post at all, so the seam under it is the
 // Slack client. What that client puts on the wire is covered separately in
-// slack/client.test.ts, against a stubbed fetch.
+// slack/client.test.ts, against a stubbed fetch. Spy rather than `vi.mock` so
+// a worker that already evaluated this module still sees the stub.
 const mocks = vi.hoisted(() => ({ callSlack: vi.fn() }));
-
-vi.mock("#src/slack/client", () => ({
-  callSlack: mocks.callSlack,
-  describeSlackFailure: (error: { message?: string }) =>
-    error.message ?? "slack failure",
-}));
 
 const SLACK_CREDENTIALS = { SLACK_API_KEY: "xoxb-test-token" };
 
@@ -44,6 +40,14 @@ beforeEach(() => {
   mocks.callSlack.mockReturnValue(
     Effect.succeed({ ts: "1739.123", channel: "C12345" })
   );
+  vi.spyOn(slackClient, "callSlack").mockImplementation(mocks.callSlack);
+  vi.spyOn(slackClient, "describeSlackFailure").mockImplementation(
+    (error: { message?: string }) => error.message ?? "slack failure"
+  );
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("the send-message action", () => {

@@ -10,6 +10,15 @@ import { useOverlay } from "./overlay-provider";
 import type { OverlayComponentProps } from "./types";
 import type { WorkflowIssuesOverlayModel } from "@wfgraph/shared/graph/workflow-issues";
 
+/**
+ * Connection form the issues dialog pushes. Held on an object so tests can
+ * `vi.spyOn` it: a `vi.mock` of the overlay module would stay in the worker's
+ * graph under isolate:false.
+ */
+export const workflowIssuesOverlayDial = {
+  ConfigureConnectionOverlay,
+};
+
 type WorkflowIssuesOverlayProps = OverlayComponentProps<{
   issues: WorkflowIssuesOverlayModel;
   onGoToStep: (nodeId: string, fieldKey?: string) => void;
@@ -50,7 +59,7 @@ export function WorkflowIssuesOverlay({
   };
 
   const handleAddIntegration = (integrationType: string) => {
-    push(ConfigureConnectionOverlay, {
+    push(workflowIssuesOverlayDial.ConfigureConnectionOverlay, {
       type: integrationType,
       // The repair is what clears the issue. One integration type is listed
       // once here however many nodes need it, so the fix is the graph rather

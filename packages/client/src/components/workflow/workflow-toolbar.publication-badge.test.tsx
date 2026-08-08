@@ -1,24 +1,31 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
-import { WorkflowToolbar } from "#src/components/workflow/workflow-toolbar";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  WorkflowToolbar,
+  workflowToolbarDial,
+} from "#src/components/workflow/workflow-toolbar";
 import { orpcQuery } from "#src/lib/rpc-query";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 
-vi.mock("#src/components/workflows/user-menu", () => ({
-  UserMenu: () => null,
-}));
-
-vi.mock("#src/components/workflow/workflow-toolbar-chrome", () => ({
-  DuplicateButton: () => null,
-  ToolbarActions: () => null,
-  WorkflowMenuComponent: () => null,
-}));
-
-vi.mock("#src/components/workflow/workflow-toolbar-handlers", () => ({
-  useWorkflowActions: () => ({}),
-  useWorkflowState: () => ({
+beforeEach(() => {
+  vi.spyOn(workflowToolbarDial, "UserMenu").mockImplementation(
+    (() => null) as never
+  );
+  vi.spyOn(workflowToolbarDial, "DuplicateButton").mockImplementation(
+    (() => null) as never
+  );
+  vi.spyOn(workflowToolbarDial, "ToolbarActions").mockImplementation(
+    (() => null) as never
+  );
+  vi.spyOn(workflowToolbarDial, "WorkflowMenuComponent").mockImplementation(
+    (() => null) as never
+  );
+  vi.spyOn(workflowToolbarDial, "useWorkflowActions").mockReturnValue(
+    {} as never
+  );
+  vi.spyOn(workflowToolbarDial, "useWorkflowState").mockReturnValue({
     allWorkflows: [
       {
         id: "workflow_1",
@@ -30,8 +37,12 @@ vi.mock("#src/components/workflow/workflow-toolbar-handlers", () => ({
     hasUnsavedChanges: false,
     isOwner: true,
     workflowMode: "live" as const,
-  }),
-}));
+  } as never);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function seedPublication(
   queryClient: QueryClient,

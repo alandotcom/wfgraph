@@ -1,7 +1,7 @@
 import { assert, describe, layer } from "@effect/vitest";
 // The mocks API has to be the one vitest itself exports; reaching it through the
 // `@effect/vitest` re-export leaves it unable to find the module registry.
-import { beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 import { Effect, Layer } from "effect";
 import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
 import { DatabaseError } from "#src/backend/lib/effect/database";
@@ -16,12 +16,17 @@ import {
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { EventSubscriber } from "#src/backend/services/workflows/repo";
+import * as cancel from "#src/backend/services/workflows/lifecycle/cancel";
+import * as concurrency from "#src/backend/services/workflows/lifecycle/concurrency";
 import {
   applyLifecycleRules,
   deliverToWaits,
 } from "#src/backend/services/workflows/lifecycle/deliver-event";
+import * as resumeWaits from "#src/backend/services/workflows/lifecycle/resume-waits";
+import * as workflowIntegrationValidation from "#src/backend/services/workflows/validation/workflow-integration-validation";
 
-// The two neighbours whose own cases live elsewhere, replaced for this file.
+// The neighbours whose own cases live elsewhere, replaced for this file via
+// spyOn so isolate:false can share the module registry.
 const {
   listWaitsForEventMock,
   resumeWaitsMatchingEventMock,
@@ -35,29 +40,6 @@ const {
   startWithConcurrencyMock: vi.fn(),
   requestCanceledOutletMock: vi.fn(),
 }));
-
-vi.mock("#src/backend/services/workflows/lifecycle/resume-waits", () => ({
-  resumeWaitsMatchingEvent: resumeWaitsMatchingEventMock,
-}));
-
-// Concurrency's own cases are `concurrency.test.ts`; what matters here is what it
-// is asked for and what its answer does to the delivery.
-vi.mock("#src/backend/services/workflows/lifecycle/concurrency", () => ({
-  startWithConcurrency: startWithConcurrencyMock,
-}));
-
-// The claim and the nudge are `cancel.test.ts`; here it is what the cancel arm
-// asks for and what its answer keeps off the wait delivery.
-vi.mock("#src/backend/services/workflows/lifecycle/cancel", () => ({
-  requestCanceledOutlet: requestCanceledOutletMock,
-}));
-
-vi.mock(
-  "#src/backend/services/workflows/validation/workflow-integration-validation",
-  () => ({
-    validateWorkflowIntegrations: validateWorkflowIntegrationsMock,
-  })
-);
 
 // The catalog the save rules are checked against, which preflight reads off the
 // runtime the delivery runs on.
@@ -184,7 +166,30 @@ const unreachedRunSeams = Layer.mergeAll(
 );
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  listWaitsForEventMock.mockReset();
+  resumeWaitsMatchingEventMock.mockReset();
+  validateWorkflowIntegrationsMock.mockReset();
+  startWithConcurrencyMock.mockReset();
+  requestCanceledOutletMock.mockReset();
+
+  // Concurrency's own cases are `concurrency.test.ts`; what matters here is what
+  // it is asked for and what its answer does to the delivery.
+  vi.spyOn(concurrency, "startWithConcurrency").mockImplementation(
+    startWithConcurrencyMock
+  );
+  // The claim and the nudge are `cancel.test.ts`; here it is what the cancel arm
+  // asks for and what its answer keeps off the wait delivery.
+  vi.spyOn(cancel, "requestCanceledOutlet").mockImplementation(
+    requestCanceledOutletMock
+  );
+  vi.spyOn(resumeWaits, "resumeWaitsMatchingEvent").mockImplementation(
+    resumeWaitsMatchingEventMock
+  );
+  vi.spyOn(
+    workflowIntegrationValidation,
+    "validateWorkflowIntegrations"
+  ).mockImplementation(validateWorkflowIntegrationsMock);
+
   listWaitsForEventMock.mockReturnValue(Effect.succeed([]));
   resumeWaitsMatchingEventMock.mockReturnValue(Effect.succeed(0));
   validateWorkflowIntegrationsMock.mockReturnValue(
@@ -200,6 +205,10 @@ beforeEach(() => {
     })
   );
   requestCanceledOutletMock.mockReturnValue(Effect.succeed(["exec_running"]));
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("applyLifecycleRules", () => {

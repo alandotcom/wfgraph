@@ -1,19 +1,15 @@
 import { describe, expect, it } from "@effect/vitest";
 import { actionData, actionError, runAction } from "@wfgraph/core/testing";
 import { Effect } from "effect";
-import { beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
+import * as resendClient from "#src/resend/client";
 import { resend } from "#src/resend/index";
 
 // What this step decides is whether and where to send, so the seam under it is
 // the Resend client. What that client puts on the wire is covered separately in
-// resend/client.test.ts, against a stubbed fetch.
+// resend/client.test.ts, against a stubbed fetch. Spy rather than `vi.mock` so
+// a worker that already evaluated this module still sees the stub.
 const mocks = vi.hoisted(() => ({ sendEmail: vi.fn() }));
-
-vi.mock("#src/resend/client", () => ({
-  sendResendEmail: mocks.sendEmail,
-  describeResendFailure: (error: { message?: string }) =>
-    error.message ?? "resend failure",
-}));
 
 const RESEND_CREDENTIALS = {
   RESEND_API_KEY: "re_test_key",
@@ -54,6 +50,14 @@ function sentCall() {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.sendEmail.mockReturnValue(Effect.succeed({ id: "email_123" }));
+  vi.spyOn(resendClient, "sendResendEmail").mockImplementation(mocks.sendEmail);
+  vi.spyOn(resendClient, "describeResendFailure").mockImplementation(
+    (error: { message?: string }) => error.message ?? "resend failure"
+  );
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("the send-email action", () => {

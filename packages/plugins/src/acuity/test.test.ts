@@ -1,23 +1,17 @@
 /**
  * The Test connection button, for Acuity.
  *
- * The seam is the SDK, stubbed the way `appointments.test.ts` stubs it, because
- * this is the one integration whose connection test builds an `Acuity` client
- * rather than reaching a system over `fetch`.
+ * The seam is `acuitySdk.build`, stubbed so a case says what `types` did. Spying
+ * that method (rather than `vi.mock` of `@fountain-bio/acuity`) keeps
+ * isolate:false from colliding with `appointments.test.ts`.
  */
 
 import { AcuityError } from "@fountain-bio/acuity";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { acuitySdk } from "#src/acuity/client";
 import { testAcuity } from "#src/acuity/test";
 
 const mocks = vi.hoisted(() => ({ types: vi.fn() }));
-
-vi.mock("@fountain-bio/acuity", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@fountain-bio/acuity")>()),
-  Acuity: class {
-    appointments = { types: mocks.types };
-  },
-}));
 
 const credentials = {
   ACUITY_USER_ID: "12345678",
@@ -25,7 +19,14 @@ const credentials = {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  mocks.types.mockReset();
+  vi.spyOn(acuitySdk, "build").mockReturnValue({
+    appointments: { types: mocks.types },
+  } as never);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("testAcuity", () => {

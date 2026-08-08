@@ -7,17 +7,14 @@ import {
   it,
   vi,
 } from "vitest";
-import { createInngestSurface } from "#src/backend/lib/inngest/client";
+import {
+  createInngestSurface,
+  inngestConnectDial,
+} from "#src/backend/lib/inngest/client";
 import {
   configureAppLogging,
   configureAppLoggingWithBridge,
 } from "#src/backend/lib/logger";
-
-const connect = vi.hoisted(() => vi.fn());
-
-vi.mock("inngest/connect", () => ({
-  connect,
-}));
 
 /** The startup lines, read off logtape through the bridge sink. */
 const logLines: string[] = [];
@@ -44,6 +41,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 afterAll(() => {
@@ -130,6 +128,7 @@ describe("the callback exposure warning", () => {
 
 describe("createInngestSurface connect", () => {
   const functions = [{ id: "workflow-run" }] as never[];
+  const connect = vi.fn();
 
   beforeEach(() => {
     connect.mockReset();
@@ -140,6 +139,7 @@ describe("createInngestSurface connect", () => {
       closed: Promise.resolve(),
       getDebugState: vi.fn(),
     });
+    vi.spyOn(inngestConnectDial, "connect").mockImplementation(connect);
   });
 
   it("registers the caller's function list on a Connect WebSocket", async () => {

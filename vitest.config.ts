@@ -22,6 +22,10 @@ export default defineConfig({
     alias: [...workspaceSourceAliases],
   },
   test: {
+    // Files share one module graph per worker. Suites that used to `vi.mock` a
+    // neighbour now put a seam or `vi.spyOn` an export and restore it, so the
+    // per-file isolate tax (most of CI's wall time was import) can stay off.
+    isolate: false,
     projects: [
       {
         extends: true,

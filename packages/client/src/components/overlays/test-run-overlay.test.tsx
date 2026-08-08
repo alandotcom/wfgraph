@@ -1,17 +1,19 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import {
   TestRunOverlay,
   type TestRunRequest,
 } from "#src/components/overlays/test-run-overlay";
+import { putExtensionCatalog } from "#src/lib/extensions";
+import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { TestPayloads } from "@wfgraph/shared/lifecycle/test-payloads";
 
 // The Events the overlay draws a form from come from the server's catalog. One
 // declares a timestamp, which is the field the Wait node's target is written
 // against, and the other is here so the select has two rows.
-vi.mock("#src/lib/extensions", () => ({
-  getExtensionCatalog: () => ({
+beforeEach(() => {
+  putExtensionCatalog({
     events: [
       {
         name: "app/appointment.created",
@@ -33,8 +35,12 @@ vi.mock("#src/lib/extensions", () => ({
     ],
     actions: [],
     integrations: [],
-  }),
-}));
+  });
+});
+
+afterEach(() => {
+  putExtensionCatalog(emptyExtensionCatalog);
+});
 
 const START_EVENTS = [
   "app/appointment.created",

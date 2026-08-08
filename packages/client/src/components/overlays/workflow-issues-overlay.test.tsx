@@ -1,13 +1,25 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import {
   OverlayProvider,
   useOverlay,
 } from "#src/components/overlays/overlay-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
-import { WorkflowIssuesOverlay } from "#src/components/overlays/workflow-issues-overlay";
+import {
+  WorkflowIssuesOverlay,
+  workflowIssuesOverlayDial,
+} from "#src/components/overlays/workflow-issues-overlay";
 import { hydrateExtensionsFromApi } from "#src/lib/extensions";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
@@ -29,17 +41,22 @@ const ACTION = "acuity/list-appointments";
 
 // The credential form belongs to another suite. What matters here is what the
 // dialog hands it and what happens when it reports a connection created.
-vi.mock("#src/components/overlays/add-connection-overlay", () => ({
-  ConfigureConnectionOverlay: ({
-    onSuccess,
-  }: {
-    onSuccess?: (integrationId: string) => void;
-  }) => (
-    <button onClick={() => onSuccess?.("int_acuity")} type="button">
-      create
-    </button>
-  ),
-}));
+beforeEach(() => {
+  vi.spyOn(
+    workflowIssuesOverlayDial,
+    "ConfigureConnectionOverlay"
+  ).mockImplementation(
+    ({ onSuccess }: { onSuccess?: (integrationId: string) => void }) => (
+      <button onClick={() => onSuccess?.("int_acuity")} type="button">
+        create
+      </button>
+    )
+  );
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const served: ExtensionCatalog = {
   events: [],

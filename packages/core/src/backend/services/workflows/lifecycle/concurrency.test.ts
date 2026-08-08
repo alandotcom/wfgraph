@@ -1,7 +1,7 @@
 import { assert, describe, layer } from "@effect/vitest";
 // The mocks API has to be the one vitest itself exports; reaching it through the
 // `@effect/vitest` re-export leaves it unable to find the module registry.
-import { beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 import { Effect, Layer } from "effect";
 import {
   makeRecordingLogger,
@@ -9,6 +9,7 @@ import {
   stubExecutionRepo,
   stubInngestClient,
 } from "#src/backend/lib/effect/test-layers";
+import * as endRuns from "#src/backend/services/executions/end-runs";
 import type {
   EntityStartOutcome,
   ExecutionRepo,
@@ -17,18 +18,13 @@ import type {
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
 
 // Announcing a supersede has its own cases in `end-runs.test.ts`; here it is the
-// call that matters, so the neighbour is replaced for this file.
+// call that matters, so the neighbour is replaced via spyOn for this file.
 const { announceSupersededRunsMock, announceReclaimedRunsMock } = vi.hoisted(
   () => ({
     announceSupersededRunsMock: vi.fn(),
     announceReclaimedRunsMock: vi.fn(),
   })
 );
-
-vi.mock("#src/backend/services/executions/end-runs", () => ({
-  announceSupersededRuns: announceSupersededRunsMock,
-  announceReclaimedRuns: announceReclaimedRunsMock,
-}));
 
 const recordAuditEventMock = vi.fn<
   ExecutionRepo["Service"]["recordAuditEvent"]
@@ -114,7 +110,17 @@ const startedOutcome: EntityStartOutcome = {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  announceSupersededRunsMock.mockReset();
+  announceReclaimedRunsMock.mockReset();
+  recordAuditEventMock.mockReset();
+
+  vi.spyOn(endRuns, "announceSupersededRuns").mockImplementation(
+    announceSupersededRunsMock
+  );
+  vi.spyOn(endRuns, "announceReclaimedRuns").mockImplementation(
+    announceReclaimedRunsMock
+  );
+
   recordAuditEventMock.mockImplementation(() => Effect.void);
   announceSupersededRunsMock.mockReturnValue(
     Effect.succeed({ failedExecutionIds: [] })
@@ -122,6 +128,10 @@ beforeEach(() => {
   announceReclaimedRunsMock.mockReturnValue(
     Effect.succeed({ failedExecutionIds: [] })
   );
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("startWithConcurrency", () => {

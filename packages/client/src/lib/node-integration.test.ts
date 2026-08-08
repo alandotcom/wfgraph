@@ -1,11 +1,14 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { hydrateExtensionsFromApi } from "#src/lib/extensions";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { putExtensionCatalog } from "#src/lib/extensions";
 import {
   repairNodeIntegration,
   repairNodeIntegrations,
   requiredIntegrationType,
 } from "#src/lib/node-integration";
-import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import {
+  emptyExtensionCatalog,
+  type ExtensionCatalog,
+} from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /**
@@ -46,23 +49,12 @@ const served: ExtensionCatalog = {
   ],
 };
 
-beforeAll(async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(() =>
-      Promise.resolve(
-        new Response(JSON.stringify({ catalog: served }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
-      )
-    )
-  );
-  await hydrateExtensionsFromApi();
+beforeEach(() => {
+  putExtensionCatalog(served);
 });
 
-afterAll(() => {
-  vi.unstubAllGlobals();
+afterEach(() => {
+  putExtensionCatalog(emptyExtensionCatalog);
 });
 
 function actionNode(

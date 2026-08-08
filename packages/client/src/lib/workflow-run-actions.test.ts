@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { toast } from "sonner";
 import {
   executeWorkflowRun,
   updateNodesStatus,
@@ -6,9 +7,15 @@ import {
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import type { WorkflowExecuteResult } from "#src/lib/rpc-client";
 
-vi.mock("sonner", () => ({
-  toast: { message: vi.fn(), error: vi.fn(), success: vi.fn() },
-}));
+beforeEach(() => {
+  vi.spyOn(toast, "message").mockImplementation(() => "id" as never);
+  vi.spyOn(toast, "error").mockImplementation(() => "id" as never);
+  vi.spyOn(toast, "success").mockImplementation(() => "id" as never);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function lifecycleNode(id: string): WorkflowNode {
   return {

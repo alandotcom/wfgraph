@@ -1,11 +1,13 @@
 import { fireEvent, render, type RenderResult } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NodeConfigPatch } from "#src/components/workflow/config/node-config-patch";
 import { WaitEventSelect } from "#src/components/workflow/config/wait-event-select";
+import { putExtensionCatalog } from "#src/lib/extensions";
 import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
 import { parseConditionModel } from "@wfgraph/shared/conditions/conditions";
+import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /**
@@ -14,8 +16,8 @@ import type { WorkflowNode } from "#src/lib/workflow-graph-types";
  * the workflow does not start on. The match editor's vocabulary is then the
  * chosen Event's own payload fields.
  */
-vi.mock("#src/lib/extensions", () => ({
-  getExtensionCatalog: () => ({
+beforeEach(() => {
+  putExtensionCatalog({
     events: [
       {
         name: "billing/payment.settled",
@@ -38,8 +40,12 @@ vi.mock("#src/lib/extensions", () => ({
     ],
     actions: [],
     integrations: [],
-  }),
-}));
+  });
+});
+
+afterEach(() => {
+  putExtensionCatalog(emptyExtensionCatalog);
+});
 
 type Subscription = { event: string; match?: string };
 

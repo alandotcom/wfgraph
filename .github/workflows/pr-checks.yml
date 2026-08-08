@@ -48,10 +48,10 @@ jobs:
         run: pnpm run knip
 
       # The suite is self-contained: it was run with the local .env moved aside to
-      # confirm all 662 tests pass with no environment file, database or other
+      # confirm all 1620 tests pass with no environment file, database or other
       # service, which is what this runner gives it. vitest.config.ts puts the
       # client project in a happy-dom environment, so the client-side tests get
-      # their DOM here too.
+      # their DOM here too. isolate is off, so import cost is paid once per worker.
       - name: Run tests
         run: pnpm run test
 

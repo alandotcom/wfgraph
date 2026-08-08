@@ -2,7 +2,7 @@ import { Effect, Layer, Schema } from "effect";
 import { Inngest } from "inngest";
 // The mocks API has to be the one vitest itself exports; reaching it through the
 // `@effect/vitest` re-export leaves it unable to find the module registry.
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import {
   SilentAppLoggerLayer,
@@ -14,6 +14,7 @@ import {
   runEventListener,
 } from "#src/backend/lib/inngest/event-listener-function";
 import type { WfGraphRuntime } from "#src/backend/runtime";
+import * as deliverEvent from "#src/backend/services/workflows/lifecycle/deliver-event";
 import type { EventSubscriber } from "#src/backend/services/workflows/repo";
 
 const {
@@ -24,15 +25,6 @@ const {
   applyLifecycleRulesMock: vi.fn(),
   deliverToWaitsMock: vi.fn(),
   listEventSubscribersMock: vi.fn(),
-}));
-
-// What this file is about is the order and the boundaries of the two halves, so
-// the halves themselves are replaced; `deliver-event.test.ts` covers what each
-// one does.
-vi.mock("#src/backend/services/workflows/lifecycle/deliver-event", () => ({
-  applyLifecycleRules: applyLifecycleRulesMock,
-  deliverToWaits: deliverToWaitsMock,
-  listEventSubscribers: listEventSubscribersMock,
 }));
 
 const appointmentCreated = defineEvent({
@@ -87,7 +79,23 @@ function subscriber(overrides: Partial<EventSubscriber> = {}): EventSubscriber {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  applyLifecycleRulesMock.mockReset();
+  deliverToWaitsMock.mockReset();
+  listEventSubscribersMock.mockReset();
+
+  // What this file is about is the order and the boundaries of the two halves,
+  // so the halves themselves are replaced; `deliver-event.test.ts` covers what
+  // each one does.
+  vi.spyOn(deliverEvent, "applyLifecycleRules").mockImplementation(
+    applyLifecycleRulesMock
+  );
+  vi.spyOn(deliverEvent, "deliverToWaits").mockImplementation(
+    deliverToWaitsMock
+  );
+  vi.spyOn(deliverEvent, "listEventSubscribers").mockImplementation(
+    listEventSubscribersMock
+  );
+
   listEventSubscribersMock.mockReturnValue(Effect.succeed([]));
   applyLifecycleRulesMock.mockReturnValue(
     Effect.succeed({ kind: "waits_only", workflowId: "wf_1" })
@@ -95,6 +103,10 @@ beforeEach(() => {
   deliverToWaitsMock.mockReturnValue(
     Effect.succeed({ workflowId: "wf_1", resumedWaits: 0 })
   );
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("runEventListener", () => {

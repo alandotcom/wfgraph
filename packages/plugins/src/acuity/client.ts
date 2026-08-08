@@ -9,6 +9,17 @@ import { Effect } from "effect";
 import type { AcuityCredentials } from "#src/acuity/index";
 
 /**
+ * SDK construction. Held on an object so tests can `vi.spyOn` it: a same-module
+ * function call would not see an export spy, and a `vi.mock` of
+ * `@fountain-bio/acuity` leaks across files when vitest runs with isolate:false.
+ */
+export const acuitySdk = {
+  build(userId: string, apiKey: string): Acuity {
+    return new Acuity({ userId, apiKey });
+  },
+};
+
+/**
  * The Acuity SDK, built from the step's own credentials, or the failure that
  * says which of them is missing.
  *
@@ -27,7 +38,7 @@ export function createAcuityClient(
     const apiKey = credentials.ACUITY_API_KEY?.trim();
 
     return userId && apiKey
-      ? Effect.succeed(new Acuity({ userId, apiKey }))
+      ? Effect.succeed(acuitySdk.build(userId, apiKey))
       : Effect.fail(
           new StepFailure({
             message:

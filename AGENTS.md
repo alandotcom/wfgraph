@@ -134,15 +134,16 @@ primitives and do not introduce Radix. Bundle size is not a concern here.
 
 ## Pitfalls that have bitten
 
-**`vi.mock` is hoisted, and scoped to one file.** vitest lifts every `vi.mock` call above
-the imports, so a factory reading a variable declared later in the file hits the temporal
-dead zone. Put that variable in `vi.hoisted`, which vitest lifts higher still. The stub
-reaches only the file that declares it, because vitest resets the module registry between
-test files, so a stub needs no on/off flag and the subject can be a plain static import.
-For a stub only one case wants, `vi.doMock` stays where it is written and takes effect on
-the next dynamic import. Import `vi` from `vitest`: `@effect/vitest` re-exports the name,
-but the copy reaching a test that way cannot find the module registry, and every `vi.mock`
-in the file then throws at collection.
+**`vi.mock` is hoisted, and shares the worker's module graph.** vitest lifts every
+`vi.mock` call above the imports, so a factory reading a variable declared later in
+the file hits the temporal dead zone. Put that variable in `vi.hoisted`, which vitest
+lifts higher still. The suite runs with `isolate: false`, so a mock that replaces a
+module stays in that worker's evaluated graph for later files: prefer a writable seam
+(`putExtensionCatalog`, `putOrpcQuery`) or `vi.spyOn` on a namespace/export object, and
+restore in `afterEach`. For a stub only one case wants, `vi.doMock` stays where it is
+written and takes effect on the next dynamic import. Import `vi` from `vitest`:
+`@effect/vitest` re-exports the name, but the copy reaching a test that way cannot find
+the module registry, and every `vi.mock` in the file then throws at collection.
 
 **A `Context.Reference` caches its default value forever.** The first read of a reference
 with no explicit provider computes its `defaultValue` and stores it on the reference object

@@ -1,16 +1,18 @@
 import { render } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { IntegrationUi } from "@wfgraph/plugins/ui";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OutputDisplay } from "#src/components/workflow/workflow-run-shared";
+import { putExtensionCatalog } from "#src/lib/extensions";
+import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
 /**
  * Three actions the renderer lookup has to tell apart: one Slack owns, one a
  * host defined under a Slack-looking id, and one whose id carries no owner
  * prefix at all.
  */
-vi.mock("#src/lib/extensions", () => ({
-  getExtensionCatalog: () => ({
+beforeEach(() => {
+  putExtensionCatalog({
     events: [],
     integrations: [],
     actions: [
@@ -41,8 +43,12 @@ vi.mock("#src/lib/extensions", () => ({
         outputFields: [],
       },
     ],
-  }),
-}));
+  });
+});
+
+afterEach(() => {
+  putExtensionCatalog(emptyExtensionCatalog);
+});
 
 const SLACK_UI: Record<string, IntegrationUi> = {
   slack: {

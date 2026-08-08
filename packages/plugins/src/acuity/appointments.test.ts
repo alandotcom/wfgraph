@@ -2,17 +2,17 @@ import { describe, expect, it } from "@effect/vitest";
 import { AcuityError } from "@fountain-bio/acuity";
 import { actionData, actionError, runAction } from "@wfgraph/core/testing";
 import { Effect } from "effect";
-import { beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
+import * as acuityClient from "#src/acuity/client";
 import { acuity } from "#src/acuity/index";
 
 /**
  * The eight Acuity actions in one file, because what they have to say is the
  * same three things each: which config field it cannot read, which parameters
  * Acuity is asked for, and what a thrown SDK error reads as. The seam under all
- * of them is `@fountain-bio/acuity`, whose two resources are stubbed here.
- *
- * The text-to-number and text-to-boolean reading is shared, so each message is
- * asserted once, on whichever action first offers the field.
+ * of them is `acuitySdk.build`, whose two resources are stubbed here via spy so
+ * isolate:false does not leave a `vi.mock` of `@fountain-bio/acuity` on the
+ * shared registry.
  */
 const mocks = vi.hoisted(() => ({
   types: vi.fn(),
@@ -23,21 +23,6 @@ const mocks = vi.hoisted(() => ({
   cancel: vi.fn(),
   dates: vi.fn(),
   times: vi.fn(),
-}));
-
-vi.mock("@fountain-bio/acuity", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@fountain-bio/acuity")>()),
-  Acuity: class {
-    appointments = {
-      types: mocks.types,
-      list: mocks.list,
-      get: mocks.get,
-      create: mocks.create,
-      reschedule: mocks.reschedule,
-      cancel: mocks.cancel,
-    };
-    availability = { dates: mocks.dates, times: mocks.times };
-  },
 }));
 
 const ACUITY_CREDENTIALS = {
@@ -106,7 +91,14 @@ function withCredentials() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  mocks.types.mockReset();
+  mocks.list.mockReset();
+  mocks.get.mockReset();
+  mocks.create.mockReset();
+  mocks.reschedule.mockReset();
+  mocks.cancel.mockReset();
+  mocks.dates.mockReset();
+  mocks.times.mockReset();
   mocks.types.mockResolvedValue([{ id: 1, name: "Consultation" }]);
   mocks.list.mockResolvedValue([APPOINTMENT]);
   mocks.get.mockResolvedValue(APPOINTMENT);
@@ -115,6 +107,21 @@ beforeEach(() => {
   mocks.cancel.mockResolvedValue({ ...APPOINTMENT, canceled: true });
   mocks.dates.mockResolvedValue([{ date: "2026-03-15" }]);
   mocks.times.mockResolvedValue([{ time: "2026-03-15T15:00:00-04:00" }]);
+  vi.spyOn(acuityClient.acuitySdk, "build").mockReturnValue({
+    appointments: {
+      types: mocks.types,
+      list: mocks.list,
+      get: mocks.get,
+      create: mocks.create,
+      reschedule: mocks.reschedule,
+      cancel: mocks.cancel,
+    },
+    availability: { dates: mocks.dates, times: mocks.times },
+  } as never);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("list-appointment-types", () => {

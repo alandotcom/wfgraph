@@ -1,13 +1,22 @@
 import type { InngestFunction } from "inngest";
 import { Inngest } from "inngest";
 import {
-  connect as connectInngest,
+  connect as connectInngestSdk,
   type WorkerConnection,
 } from "inngest/connect";
 import { serve as serveInngest } from "inngest/hono";
 import { getAppLogger } from "#src/backend/lib/logger";
 
 export type { WorkerConnection } from "inngest/connect";
+
+/**
+ * The Connect dial. Held on an object so tests can `vi.spyOn` it: the SDK's
+ * `inngest/connect` namespace is not configurable in ESM, and a `vi.mock` of
+ * that module leaks across files when vitest runs with isolate:false.
+ */
+export const inngestConnectDial = {
+  connect: connectInngestSdk,
+};
 
 /**
  * Bound on the Connect handshake at boot, absent `inngest.connectTimeoutMs`.
@@ -289,7 +298,7 @@ export function createInngestSurface(
       }),
     connect: (functions) =>
       withConnectTimeout(
-        connectInngest({
+        inngestConnectDial.connect({
           apps: [{ client, functions }],
           instanceId: config.instanceId,
           gatewayUrl: config.gatewayUrl,

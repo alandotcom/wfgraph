@@ -1,28 +1,31 @@
 /**
  * The Test connection button, for Linear.
  *
- * The seam is `@linear/sdk`, stubbed so a case says what `viewer` did. What
- * `toLinearError` makes of a thrown value is `errors.test.ts`'s subject; what is
- * left here is the verdict each of those becomes.
+ * The seam is `createLinearClient`, stubbed so a case says what `viewer` did.
+ * What `toLinearError` makes of a thrown value is `errors.test.ts`'s subject;
+ * what is left here is the verdict each of those becomes. Spying the factory
+ * (rather than `vi.mock` of `@linear/sdk`) keeps isolate:false from colliding
+ * with the other Linear suites that need different client shapes.
  */
 
 import { GraphQLClientError, type LinearRawResponse } from "@linear/sdk";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as linearClient from "#src/linear/client";
 import { testLinear } from "#src/linear/test";
 
 const mocks = vi.hoisted(() => ({ viewer: vi.fn() }));
 
-vi.mock("@linear/sdk", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@linear/sdk")>()),
-  LinearClient: class {
+beforeEach(() => {
+  mocks.viewer.mockReset();
+  vi.spyOn(linearClient, "createLinearClient").mockReturnValue({
     get viewer() {
       return mocks.viewer();
-    }
-  },
-}));
+    },
+  } as never);
+});
 
-beforeEach(() => {
-  vi.clearAllMocks();
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("testLinear", () => {

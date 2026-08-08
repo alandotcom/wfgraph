@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppLogger } from "#src/backend/lib/effect/app-logger";
 import {
   InngestError,
@@ -11,23 +11,12 @@ import {
   stubExecutionRepo,
   stubInngestClient,
 } from "#src/backend/lib/effect/test-layers";
+import { getAppLogger } from "#src/backend/lib/logger";
 import type { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { resumeWaitsMatchingEvent } from "#src/backend/services/workflows/lifecycle/resume-waits";
 
 const { loggerErrorMock } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
-}));
-
-// `wait-match` still logs through the module-scope app logger, and one case
-// below is about what reaches it rather than about what is returned. This
-// module's own logging goes through the `AppLogger` service, silenced below.
-vi.mock("#src/backend/lib/logger", () => ({
-  getAppLogger: () => ({
-    error: loggerErrorMock,
-    warn: vi.fn(),
-    info: vi.fn(),
-    debug: vi.fn(),
-  }),
 }));
 
 type Repo = ExecutionRepo["Service"];
@@ -104,11 +93,30 @@ function resumeWaits(
 
 describe("resumeWaitsMatchingEvent", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    loggerErrorMock.mockReset();
+    sendWaitSignalMock.mockReset();
+    markWaitStatusMock.mockReset();
+    markRunningMock.mockReset();
+    recordAuditEventMock.mockReset();
+
+    // `wait-match` captured the logger at module load, so spy the same category
+    // instance's `error` rather than replacing `getAppLogger`. This module's
+    // own logging goes through the `AppLogger` service, silenced below.
+    const waitMatchLogger = getAppLogger("workflow", "wait-match");
+    vi.spyOn(waitMatchLogger, "error").mockImplementation(((
+      message: string
+    ) => {
+      loggerErrorMock(message);
+    }) as typeof waitMatchLogger.error);
+
     sendWaitSignalMock.mockImplementation(() => Effect.void);
     markWaitStatusMock.mockImplementation(() => Effect.succeed(true));
     markRunningMock.mockImplementation(() => Effect.succeed(true));
     recordAuditEventMock.mockImplementation(() => Effect.void);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("returns 0 when eventType is undefined", async () => {

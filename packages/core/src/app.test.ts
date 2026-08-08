@@ -1,5 +1,6 @@
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -16,18 +17,15 @@ import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { createWfGraphApp, type WfGraphApp } from "#src/app";
 import { createApiApp, machineRoutes } from "#src/backend/api-app";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
-import { createInngestSurface } from "#src/backend/lib/inngest/client";
+import {
+  createInngestSurface,
+  inngestConnectDial,
+} from "#src/backend/lib/inngest/client";
 import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 import { createWfGraphRuntime } from "#src/backend/runtime";
 import { normalizeDatabaseConfig } from "#src/backend/lib/db/config";
 import * as dbModule from "#src/backend/lib/db/index";
 import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
-
-const connect = vi.hoisted(() => vi.fn());
-
-vi.mock("inngest/connect", () => ({
-  connect,
-}));
 
 // createWfGraphApp opens no connections: the database client is lazy and
 // migrations only run when asked. Every route exercised below answers from
@@ -551,6 +549,7 @@ describe("createWfGraphApp configuration", () => {
 
 describe("createWfGraphApp with inngest.connect", () => {
   const close = vi.fn(async () => undefined);
+  const connect = vi.fn();
 
   beforeEach(() => {
     connect.mockReset();
@@ -562,6 +561,11 @@ describe("createWfGraphApp with inngest.connect", () => {
       closed: Promise.resolve(),
       getDebugState: vi.fn(),
     });
+    vi.spyOn(inngestConnectDial, "connect").mockImplementation(connect);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("opens Connect at boot and drains it on dispose", async () => {

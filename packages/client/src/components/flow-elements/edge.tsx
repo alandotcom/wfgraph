@@ -11,6 +11,20 @@ import {
 import { getConditionBranchDisplayLabel } from "@wfgraph/shared/conditions/condition-branch";
 import type { WorkflowEdge } from "#src/lib/workflow-graph-types";
 
+/**
+ * @xyflow/react symbols the edge reads. Held on an object so tests can
+ * `vi.spyOn` them: a `vi.mock` of that package would stay in the worker's
+ * graph under isolate:false.
+ */
+export const edgeXyflowDial = {
+  BaseEdge,
+  EdgeLabelRenderer,
+  getBezierPath,
+  getSimpleBezierPath,
+  Position,
+  useInternalNode,
+};
+
 const Temporary = ({
   id,
   sourceX,
@@ -21,7 +35,7 @@ const Temporary = ({
   targetPosition,
   selected,
 }: EdgeProps) => {
-  const [edgePath] = getSimpleBezierPath({
+  const [edgePath] = edgeXyflowDial.getSimpleBezierPath({
     sourceX,
     sourceY,
     sourcePosition,
@@ -31,7 +45,7 @@ const Temporary = ({
   });
 
   return (
-    <BaseEdge
+    <edgeXyflowDial.BaseEdge
       className="stroke-1"
       id={id}
       path={edgePath}
@@ -72,16 +86,16 @@ const getHandleCoordsByPosition = (
   // The handle position that gets calculated has the origin top-left, so depending which side we are using, we add a little offset
   // when the handlePosition is Position.Right for example, we need to add an offset as big as the handle itself in order to get the correct position
   switch (handlePosition) {
-    case Position.Left:
+    case edgeXyflowDial.Position.Left:
       offsetX = 0;
       break;
-    case Position.Right:
+    case edgeXyflowDial.Position.Right:
       offsetX = handle.width;
       break;
-    case Position.Top:
+    case edgeXyflowDial.Position.Top:
       offsetY = 0;
       break;
-    case Position.Bottom:
+    case edgeXyflowDial.Position.Bottom:
       offsetY = handle.height;
       break;
     default:
@@ -100,14 +114,14 @@ const getEdgeParams = (
   sourceHandle?: string | null,
   targetHandle?: string | null
 ) => {
-  const sourcePos = Position.Bottom;
+  const sourcePos = edgeXyflowDial.Position.Bottom;
   const [sx, sy] = getHandleCoordsByPosition(
     source,
     "source",
     sourcePos,
     sourceHandle
   );
-  const targetPos = Position.Top;
+  const targetPos = edgeXyflowDial.Position.Top;
   const [tx, ty] = getHandleCoordsByPosition(
     target,
     "target",
@@ -135,8 +149,8 @@ const Animated = ({
   selected,
   data,
 }: EdgeProps<WorkflowEdge>) => {
-  const sourceNode = useInternalNode(source);
-  const targetNode = useInternalNode(target);
+  const sourceNode = edgeXyflowDial.useInternalNode(source);
+  const targetNode = edgeXyflowDial.useInternalNode(target);
 
   if (!(sourceNode && targetNode)) {
     return null;
@@ -149,7 +163,7 @@ const Animated = ({
     targetHandleId
   );
 
-  const [edgePath, labelX, labelY] = getBezierPath({
+  const [edgePath, labelX, labelY] = edgeXyflowDial.getBezierPath({
     sourceX: sx,
     sourceY: sy,
     sourcePosition: sourcePos,
@@ -165,7 +179,7 @@ const Animated = ({
 
   return (
     <>
-      <BaseEdge
+      <edgeXyflowDial.BaseEdge
         id={id}
         path={edgePath}
         style={{
@@ -179,7 +193,7 @@ const Animated = ({
         }}
       />
       {edgeLabel && (
-        <EdgeLabelRenderer>
+        <edgeXyflowDial.EdgeLabelRenderer>
           <div
             className="pointer-events-none absolute rounded-sm border bg-background px-1.5 py-0.5 font-medium text-xs text-muted-foreground leading-none"
             style={{
@@ -189,7 +203,7 @@ const Animated = ({
           >
             {edgeLabel}
           </div>
-        </EdgeLabelRenderer>
+        </edgeXyflowDial.EdgeLabelRenderer>
       )}
     </>
   );

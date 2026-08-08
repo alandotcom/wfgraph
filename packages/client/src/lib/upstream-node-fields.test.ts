@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   getUpstreamConditionFields,
   getUpstreamFields,
@@ -14,6 +14,7 @@ import {
   type ActionMetadata,
   emptyExtensionCatalog,
   type EventMetadata,
+  type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
 import {
   LIFECYCLE_CANCELED_HANDLE,
@@ -23,23 +24,23 @@ import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { isoTimestampString } from "@wfgraph/shared/types/timestamp";
 import { requireOutputFieldsFromSchema } from "@wfgraph/shared/graph/output-fields";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
+import { putExtensionCatalog } from "#src/lib/extensions";
 
 // What a node offers downstream comes off the catalog the editor fetches once
 // before render: an action's own entry, and for the entry node the Events its rules
-// name. A case says what the surface holds by writing this, and `vi.hoisted` is
-// what lets the factory below read it.
-const surface = vi.hoisted(() => ({
-  actions: [] as ActionMetadata[],
+// name. A case says what the surface holds by writing this object; it is the
+// same reference `getExtensionCatalog` returns after `putExtensionCatalog`.
+const surface = {
   events: [] as EventMetadata[],
-}));
+  actions: [] as ActionMetadata[],
+  integrations: [] as ExtensionCatalog["integrations"],
+};
 
-vi.mock("#src/lib/extensions", () => ({
-  getExtensionCatalog: () => ({
-    ...emptyExtensionCatalog,
-    actions: surface.actions,
-    events: surface.events,
-  }),
-}));
+beforeEach(() => {
+  surface.actions = [];
+  surface.events = [];
+  putExtensionCatalog(surface);
+});
 
 /** One catalog action, with the fields a case cares about and defaults elsewhere. */
 function anAction(
@@ -133,8 +134,7 @@ function anEntryNode(input: {
 
 describe("upstream-node-fields", () => {
   afterEach(() => {
-    surface.actions = [];
-    surface.events = [];
+    putExtensionCatalog(emptyExtensionCatalog);
   });
 
   it("discovers transitive upstream nodes and condition fields", () => {

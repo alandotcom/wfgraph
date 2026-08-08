@@ -1,4 +1,5 @@
-import { LinearClient, LinearErrorType } from "@linear/sdk";
+import { LinearErrorType } from "@linear/sdk";
+import { createLinearClient } from "#src/linear/client";
 import { toLinearError } from "#src/linear/errors";
 import type { LinearCredentials } from "#src/linear/index";
 import type { IntegrationTestResult } from "@wfgraph/core/plugin";
@@ -16,7 +17,7 @@ export async function testLinear(
       };
     }
 
-    const linearClient = new LinearClient({ apiKey });
+    const linearClient = createLinearClient(apiKey);
     const viewer = await linearClient.viewer;
 
     if (!viewer?.id) {

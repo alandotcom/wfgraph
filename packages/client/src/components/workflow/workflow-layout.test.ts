@@ -1,11 +1,13 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import type {
   WorkflowEdge,
   WorkflowNode,
   WorkflowNodeType,
 } from "#src/lib/workflow-graph-types";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
+import { putExtensionCatalog } from "#src/lib/extensions";
 import { layoutWorkflowNodes } from "./workflow-layout";
 import {
   eventSplitCardWidth,
@@ -20,31 +22,33 @@ const CREATED_EVENT = "app/appointment.created";
 const RESCHEDULED_EVENT = "app/appointment.rescheduled";
 const CONFIRMED_EVENT = "app/appointment.confirmed";
 
-// The names are spelled out again below because vitest lifts this call above
-// the constants, which would still be in their dead zone when it runs.
-vi.mock("#src/lib/extensions", () => ({
-  getExtensionCatalog: () => ({
+beforeEach(() => {
+  putExtensionCatalog({
     integrations: [],
     actions: [],
     events: [
       {
-        name: "app/appointment.created",
+        name: CREATED_EVENT,
         label: "Appointment created",
         payloadFields: [],
       },
       {
-        name: "app/appointment.rescheduled",
+        name: RESCHEDULED_EVENT,
         label: "Appointment rescheduled",
         payloadFields: [],
       },
       {
-        name: "app/appointment.confirmed",
+        name: CONFIRMED_EVENT,
         label: "Appointment confirmed",
         payloadFields: [],
       },
     ],
-  }),
-}));
+  });
+});
+
+afterEach(() => {
+  putExtensionCatalog(emptyExtensionCatalog);
+});
 
 function buildNode(
   id: string,
