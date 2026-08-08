@@ -2,28 +2,17 @@ import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import {
   getUpstreamConditionFields,
-  getUpstreamFields,
   getUpstreamNodes,
 } from "#src/lib/upstream-node-fields";
-import {
-  type ConditionModel,
-  EVENT_NAME_FIELD_PATH,
-  serializeConditionModel,
-} from "@wfgraph/shared/conditions/conditions";
-import { isoTimestampString } from "@wfgraph/shared/types/timestamp";
 import {
   anAction,
   anEntryNode,
   anEvent,
   createEdge,
   createNode,
-  startedEdge,
   surface,
 } from "#src/lib/upstream-node-fields-test-support";
-import {
-  LIFECYCLE_CANCELED_HANDLE,
-  LIFECYCLE_STARTED_HANDLE,
-} from "@wfgraph/shared/lifecycle/lifecycle-outlets";
+import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 describe("upstream-node-fields conditions", () => {
   it("discovers transitive upstream nodes and condition fields", () => {
