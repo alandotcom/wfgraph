@@ -120,7 +120,7 @@ export function useNodeConfigWriter() {
    *
    * Destroying every run includes the one being shown, so clear `executionId`
    * from the URL the same way Back does (#40 / #75). The URL is the one writer
-   * of which run is open; WorkflowRuns derives the selection atom from it.
+   * of which run is open; useExecutionOverlaySync derives the selection atom from it.
    */
   const deleteRuns = useMutation(
     orpcQuery.workflow.deleteExecutions.mutationOptions({
