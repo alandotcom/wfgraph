@@ -4,6 +4,7 @@ import {
   createDefaultConditionModel,
   serializeConditionModel,
 } from "@wfgraph/shared/conditions/conditions";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /**
@@ -22,11 +23,13 @@ export function seedConditionModel(input: {
   nodeId: string;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
+  catalog: ExtensionCatalog;
 }): { conditionModel: string; condition: string } | undefined {
   const [firstField] = getUpstreamConditionFields({
     currentNodeId: input.nodeId,
     nodes: input.nodes,
     edges: input.edges,
+    catalog: input.catalog,
   });
 
   if (!firstField) {

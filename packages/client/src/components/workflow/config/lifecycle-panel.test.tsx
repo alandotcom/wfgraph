@@ -12,9 +12,11 @@ import {
   CONCURRENCY_OPTIONS,
   LifecyclePanel,
 } from "#src/components/workflow/config/lifecycle-panel";
-import { putExtensionCatalog } from "#src/lib/extensions";
+import {
+  clearTestCatalog,
+  hydrateTestCatalog,
+} from "#src/lib/extensions-test-support";
 import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
-import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
@@ -22,8 +24,8 @@ import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 // Correlation Path and one leaves it to the builder, which is the difference the
 // path picker exists for. The payload fields are what the picker lists, and the
 // object and array paths among them are what it has to leave out.
-beforeEach(() => {
-  putExtensionCatalog({
+beforeEach(async () => {
+  await hydrateTestCatalog({
     events: [
       {
         name: "app/appointment.created",
@@ -51,8 +53,8 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => {
-  putExtensionCatalog(emptyExtensionCatalog);
+afterEach(async () => {
+  await clearTestCatalog();
 });
 
 const NO_CONFIG: Record<string, unknown> = {};

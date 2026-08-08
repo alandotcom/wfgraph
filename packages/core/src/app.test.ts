@@ -17,10 +17,8 @@ import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { createWfGraphApp, type WfGraphApp } from "#src/app";
 import { createApiApp, machineRoutes } from "#src/backend/api-app";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
-import {
-  createInngestSurface,
-  inngestConnectDial,
-} from "#src/backend/lib/inngest/client";
+import { createInngestSurface } from "#src/backend/lib/inngest/client";
+import * as inngestClientModule from "#src/backend/lib/inngest/client";
 import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 import { createWfGraphRuntime } from "#src/backend/runtime";
 import { normalizeDatabaseConfig } from "#src/backend/lib/db/config";
@@ -550,6 +548,7 @@ describe("createWfGraphApp configuration", () => {
 describe("createWfGraphApp with inngest.connect", () => {
   const close = vi.fn(async () => undefined);
   const connect = vi.fn();
+  const realCreate = inngestClientModule.createInngestSurface;
 
   beforeEach(() => {
     connect.mockReset();
@@ -561,7 +560,9 @@ describe("createWfGraphApp with inngest.connect", () => {
       closed: Promise.resolve(),
       getDebugState: vi.fn(),
     });
-    vi.spyOn(inngestConnectDial, "connect").mockImplementation(connect);
+    vi.spyOn(inngestClientModule, "createInngestSurface").mockImplementation(
+      (config) => realCreate(config, { connect })
+    );
   });
 
   afterEach(() => {

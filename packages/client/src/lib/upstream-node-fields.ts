@@ -1,5 +1,4 @@
 import { compact, partition } from "es-toolkit/array";
-import { getExtensionCatalog } from "#src/lib/extensions";
 import {
   type EventMetadata,
   type ExtensionCatalog,
@@ -98,17 +97,23 @@ export function eventsReachingTarget(request: FieldRequest): EventMetadata[] {
     targetNodeId: request.targetNodeId,
     nodes: request.nodes,
     edges: request.edges,
-    catalog: getExtensionCatalog(),
+    catalog: request.catalog,
   });
 }
 
-function getPluginActionOutputFields(actionType: string): ReferenceField[] {
-  const action = findAction(getExtensionCatalog(), actionType);
+function getPluginActionOutputFields(
+  catalog: ExtensionCatalog,
+  actionType: string
+): ReferenceField[] {
+  const action = findAction(catalog, actionType);
 
   return action ? [...action.outputFields] : [];
 }
 
-export function getNodeDisplayName(node: WorkflowNode): string {
+export function getNodeDisplayName(
+  catalog: ExtensionCatalog,
+  node: WorkflowNode
+): string {
   if (node.data.label) {
     return node.data.label;
   }
@@ -116,7 +121,7 @@ export function getNodeDisplayName(node: WorkflowNode): string {
   if (node.data.type === "action") {
     const actionType = readConfigString(node.data.config, "actionType");
     if (actionType) {
-      const action = findAction(getExtensionCatalog(), actionType);
+      const action = findAction(catalog, actionType);
       if (action?.label) {
         return action.label;
       }
@@ -144,6 +149,7 @@ export type FieldRequest = {
   targetNodeId: string;
   nodes: readonly WorkflowNode[];
   edges: readonly WorkflowEdge[];
+  catalog: ExtensionCatalog;
 };
 
 export function getNodeOutputFields(
@@ -153,7 +159,10 @@ export function getNodeOutputFields(
   const actionType = readConfigString(node.data.config, "actionType");
 
   if (actionType) {
-    const pluginFields = getPluginActionOutputFields(actionType);
+    const pluginFields = getPluginActionOutputFields(
+      request.catalog,
+      actionType
+    );
     if (pluginFields.length > 0) {
       return [...fieldsVisibleForConfig(node.data.config, pluginFields)];
     }
@@ -191,21 +200,23 @@ export function getUpstreamFields(input: {
   currentNodeId?: string;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
+  catalog: ExtensionCatalog;
 }): SelectableUpstreamField[] {
   // The one narrowing: an entry node's answer names the node asking, so the id has
   // to be a string by the time the fields are read.
-  const { currentNodeId, nodes, edges } = input;
+  const { currentNodeId, nodes, edges, catalog } = input;
   if (!currentNodeId) {
     return [];
   }
 
   return getUpstreamNodes(input).flatMap((node) => {
-    const sourceNodeName = getNodeDisplayName(node);
+    const sourceNodeName = getNodeDisplayName(catalog, node);
 
     return getNodeOutputFields(node, {
       targetNodeId: currentNodeId,
       nodes,
       edges,
+      catalog,
     }).map(({ sourceLabel, ...field }) => ({
       ...field,
       sourceNodeId: node.id,
@@ -299,8 +310,9 @@ function eventNameConditionField(input: {
   currentNodeId?: string;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
+  catalog: ExtensionCatalog;
 }): ConditionSelectableField[] {
-  const { currentNodeId, nodes, edges } = input;
+  const { currentNodeId, nodes, edges, catalog } = input;
   const entryNode = getUpstreamNodes(input).find(
     (node) => node.data.type === "lifecycle"
   );
@@ -312,6 +324,7 @@ function eventNameConditionField(input: {
     targetNodeId: currentNodeId,
     nodes,
     edges,
+    catalog,
   });
   if (events.length < 2) {
     return [];
@@ -334,6 +347,7 @@ export function getUpstreamConditionFields(input: {
   currentNodeId?: string;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
+  catalog: ExtensionCatalog;
 }): ConditionSelectableField[] {
   const fieldsByPath = new Map<string, ConditionSelectableField>(
     eventNameConditionField(input).map((field) => [field.path, field])

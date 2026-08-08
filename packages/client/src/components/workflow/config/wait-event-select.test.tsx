@@ -4,11 +4,13 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NodeConfigPatch } from "#src/components/workflow/config/node-config-patch";
 import { WaitEventSelect } from "#src/components/workflow/config/wait-event-select";
-import { putExtensionCatalog } from "#src/lib/extensions";
 import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
 import { parseConditionModel } from "@wfgraph/shared/conditions/conditions";
-import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import {
+  clearTestCatalog,
+  hydrateTestCatalog,
+} from "#src/lib/extensions-test-support";
 
 /**
  * The picker takes its subscriptions from the node config it is handed and its
@@ -16,8 +18,8 @@ import type { WorkflowNode } from "#src/lib/workflow-graph-types";
  * the workflow does not start on. The match editor's vocabulary is then the
  * chosen Event's own payload fields.
  */
-beforeEach(() => {
-  putExtensionCatalog({
+beforeEach(async () => {
+  await hydrateTestCatalog({
     events: [
       {
         name: "billing/payment.settled",
@@ -43,8 +45,8 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => {
-  putExtensionCatalog(emptyExtensionCatalog);
+afterEach(async () => {
+  await clearTestCatalog();
 });
 
 type Subscription = { event: string; match?: string };

@@ -197,6 +197,7 @@ const rpcEndpoint = splitRpcUrl(resolveRpcUrl());
 const link = new RPCLink({
   origin: rpcEndpoint.origin,
   url: rpcEndpoint.pathWithQuery,
+  fetch: (url, init) => globalThis.fetch(url, init),
   interceptors: [
     async (options) => {
       try {

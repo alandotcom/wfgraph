@@ -1,14 +1,14 @@
 /**
  * The Test connection button, for Acuity.
  *
- * The seam is `acuitySdk.build`, stubbed so a case says what `types` did. Spying
- * that method (rather than `vi.mock` of `@fountain-bio/acuity`) keeps
+ * The seam is `createAcuitySdk`, stubbed so a case says what `types` did. Spying
+ * that function (rather than `vi.mock` of `@fountain-bio/acuity`) keeps
  * isolate:false from colliding with `appointments.test.ts`.
  */
 
 import { AcuityError } from "@fountain-bio/acuity";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { acuitySdk } from "#src/acuity/client";
+import * as acuityClient from "#src/acuity/client";
 import { testAcuity } from "#src/acuity/test";
 
 const mocks = vi.hoisted(() => ({ types: vi.fn() }));
@@ -20,7 +20,7 @@ const credentials = {
 
 beforeEach(() => {
   mocks.types.mockReset();
-  vi.spyOn(acuitySdk, "build").mockReturnValue({
+  vi.spyOn(acuityClient, "createAcuitySdk").mockReturnValue({
     appointments: { types: mocks.types },
   } as never);
 });

@@ -20,9 +20,17 @@ import type { JSX } from "react";
 import { toast } from "sonner";
 import type { NodeConfigPatch } from "#src/components/workflow/config/node-config-patch";
 import { useNodeConfigWriter } from "#src/components/workflow/config/use-node-config-writer";
-import { putExtensionCatalog } from "#src/lib/extensions";
 import type { Integration } from "#src/lib/rpc-client";
 import * as rpcQuery from "#src/lib/rpc-query";
+import {
+  clearTestCatalog,
+  hydrateTestCatalog,
+} from "#src/lib/extensions-test-support";
+import {
+  extractRpcProcedurePath,
+  rpcJsonResponse,
+  rpcUrl,
+} from "#src/lib/rpc-fetch-test-support";
 import {
   loadWorkflowGraphAtom,
   nodesAtom,
@@ -30,10 +38,7 @@ import {
 } from "#src/lib/workflow-graph-store";
 import { isWorkflowOwnerAtom } from "#src/lib/workflow-save-store";
 import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
-import {
-  emptyExtensionCatalog,
-  type ExtensionCatalog,
-} from "@wfgraph/shared/extensions/catalog";
+import { type ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /**
@@ -49,9 +54,9 @@ import type { WorkflowNode } from "#src/lib/workflow-graph-types";
  * required integration, and the repair below would no-op regardless of which
  * case ran.
  *
- * Router is a real provider, and deleteExecutions is stubbed through
- * `putOrpcQuery` rather than `vi.mock`, so isolate:false does not leave this
- * file's replacements on the shared registry for neighbours.
+ * Router is a real provider, and deleteExecutions is stubbed through fetch rather
+ * than `vi.mock`, so isolate:false does not leave this file's replacements on
+ * the shared registry for neighbours.
  */
 
 const CONNECTED_ACTION = "twilio/send-sms";
@@ -80,14 +85,14 @@ const served: ExtensionCatalog = {
   ],
 };
 
-beforeEach(() => {
-  putExtensionCatalog(served);
+beforeEach(async () => {
+  await hydrateTestCatalog(served);
   vi.spyOn(toast, "success").mockImplementation(() => "id" as never);
 });
 
-afterEach(() => {
-  putExtensionCatalog(emptyExtensionCatalog);
-  rpcQuery.resetOrpcQuery();
+afterEach(async () => {
+  await clearTestCatalog();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -259,31 +264,16 @@ describe("deleteRuns", () => {
       },
     });
 
-    rpcQuery.resetOrpcQuery();
-    const live = rpcQuery.orpcQuery;
-    rpcQuery.putOrpcQuery(
-      new Proxy(live, {
-        get(target, prop, receiver) {
-          if (prop !== "workflow") {
-            return Reflect.get(target, prop, receiver);
-          }
-          const workflow = Reflect.get(target, prop, receiver) as object;
-          return new Proxy(workflow, {
-            get(wfTarget, wfProp, wfReceiver) {
-              if (wfProp === "deleteExecutions") {
-                return {
-                  mutationOptions: (opts: Record<string, unknown> = {}) => ({
-                    mutationKey: ["workflow", "deleteExecutions"],
-                    mutationFn: async () => ({}),
-                    ...opts,
-                  }),
-                };
-              }
-              return Reflect.get(wfTarget, wfProp, wfReceiver);
-            },
-          });
-        },
-      }) as typeof live
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = rpcUrl(input);
+        const procedurePath = extractRpcProcedurePath(url);
+        if (procedurePath === "workflow/deleteExecutions") {
+          return rpcJsonResponse({});
+        }
+        throw new Error(`unexpected fetch in deleteRuns test: ${url}`);
+      })
     );
 
     const refreshSpy = vi

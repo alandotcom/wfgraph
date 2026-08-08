@@ -1,5 +1,5 @@
-import { getExtensionCatalog } from "#src/lib/extensions";
 import { findAction } from "@wfgraph/shared/extensions/catalog";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { readConfigString } from "@wfgraph/shared/graph/node-config";
 
@@ -19,6 +19,10 @@ import { readConfigString } from "@wfgraph/shared/graph/node-config";
  * That identity matters: the graph store treats a new node object as an edit
  * and queues an autosave, so a repair that churned would autosave on every
  * render.
+ *
+ * The catalog is an argument rather than a module read: these are pure
+ * reconciliations, and a caller that already holds the surface (the editor's
+ * boot catalog, a test fixture) passes it in.
  */
 
 type IntegrationLike = { id: string; type: string };
@@ -29,9 +33,10 @@ type IntegrationLike = { id: string; type: string };
  * own does the same when it has one.
  */
 export function requiredIntegrationType(
+  catalog: ExtensionCatalog,
   actionType: string
 ): string | undefined {
-  return findAction(getExtensionCatalog(), actionType)?.integration;
+  return findAction(catalog, actionType)?.integration;
 }
 
 /**
@@ -47,6 +52,7 @@ export function requiredIntegrationType(
  *   user
  */
 export function repairNodeIntegration<T extends WorkflowNode>(
+  catalog: ExtensionCatalog,
   node: T,
   integrations: readonly IntegrationLike[]
 ): T {
@@ -55,7 +61,7 @@ export function repairNodeIntegration<T extends WorkflowNode>(
     return node;
   }
 
-  const integrationType = requiredIntegrationType(actionType);
+  const integrationType = requiredIntegrationType(catalog, actionType);
   if (!integrationType) {
     return node;
   }
@@ -89,12 +95,13 @@ export function repairNodeIntegration<T extends WorkflowNode>(
  * every node was already correct.
  */
 export function repairNodeIntegrations<T extends WorkflowNode>(
+  catalog: ExtensionCatalog,
   nodes: T[],
   integrations: readonly IntegrationLike[]
 ): T[] {
   let changed = false;
   const repaired = nodes.map((node) => {
-    const next = repairNodeIntegration(node, integrations);
+    const next = repairNodeIntegration(catalog, node, integrations);
     if (next !== node) {
       changed = true;
     }

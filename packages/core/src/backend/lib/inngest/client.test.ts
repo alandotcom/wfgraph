@@ -7,10 +7,7 @@ import {
   it,
   vi,
 } from "vitest";
-import {
-  createInngestSurface,
-  inngestConnectDial,
-} from "#src/backend/lib/inngest/client";
+import { createInngestSurface } from "#src/backend/lib/inngest/client";
 import {
   configureAppLogging,
   configureAppLoggingWithBridge,
@@ -139,17 +136,19 @@ describe("createInngestSurface connect", () => {
       closed: Promise.resolve(),
       getDebugState: vi.fn(),
     });
-    vi.spyOn(inngestConnectDial, "connect").mockImplementation(connect);
   });
 
   it("registers the caller's function list on a Connect WebSocket", async () => {
-    const surface = createInngestSurface({
-      id: "connect-app",
-      isDev: true,
-      instanceId: "worker-1",
-      gatewayUrl: "ws://localhost:8390/v0/connect",
-      maxWorkerConcurrency: 4,
-    });
+    const surface = createInngestSurface(
+      {
+        id: "connect-app",
+        isDev: true,
+        instanceId: "worker-1",
+        gatewayUrl: "ws://localhost:8390/v0/connect",
+        maxWorkerConcurrency: 4,
+      },
+      { connect }
+    );
 
     const connection = await surface.connect(functions);
 
@@ -183,11 +182,14 @@ describe("createInngestSurface connect", () => {
       })
     );
 
-    const surface = createInngestSurface({
-      id: "connect-late",
-      isDev: true,
-      connectTimeoutMs: 5,
-    });
+    const surface = createInngestSurface(
+      {
+        id: "connect-late",
+        isDev: true,
+        connectTimeoutMs: 5,
+      },
+      { connect }
+    );
 
     await expect(surface.connect(functions)).rejects.toThrow("could not reach");
 

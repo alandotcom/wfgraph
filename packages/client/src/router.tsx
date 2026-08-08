@@ -16,6 +16,7 @@ import { PersistentCanvas } from "#src/components/workflow/persistent-canvas";
 import { appStore } from "#src/lib/app-store";
 import { getBasePath } from "#src/lib/base-path";
 import { repairNodeIntegrations } from "#src/lib/node-integration";
+import { getExtensionCatalog } from "#src/lib/extensions";
 import { queryClient } from "#src/lib/query-client";
 import { toSavedWorkflow } from "#src/lib/rpc-client";
 import { integrationsQueryOptions, orpcQuery } from "#src/lib/rpc-query";
@@ -146,7 +147,11 @@ const workflowRoute = createRoute({
       const workflow = toSavedWorkflow(payload);
       appStore.set(hydrateWorkflowAtom, {
         ...workflow,
-        nodes: repairNodeIntegrations(workflow.nodes, integrations),
+        nodes: repairNodeIntegrations(
+          getExtensionCatalog(),
+          workflow.nodes,
+          integrations
+        ),
       });
     } catch (error) {
       appStore.set(workflowNotFoundAtom, true);

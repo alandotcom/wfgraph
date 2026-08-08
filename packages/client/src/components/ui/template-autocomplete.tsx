@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
+import { getExtensionCatalog } from "#src/lib/extensions";
 import {
   getNodeDisplayName,
   getNodeOutputFields,
@@ -124,11 +125,13 @@ export function TemplateAutocomplete({
     const nextOptions: TemplateOption[] = [];
 
     for (const node of upstreamNodes) {
-      const nodeName = getNodeDisplayName(node);
+      const catalog = getExtensionCatalog();
+      const nodeName = getNodeDisplayName(catalog, node);
       const outputFields = getNodeOutputFields(node, {
         targetNodeId: currentNodeId,
         nodes,
         edges,
+        catalog,
       });
 
       // A whole node's output, for dropping a JSON blob into a text field. Only

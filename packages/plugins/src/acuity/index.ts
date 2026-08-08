@@ -33,7 +33,8 @@ import {
   StepFailure,
 } from "@wfgraph/core/plugin";
 import { Effect, Schema } from "effect";
-import { callAcuity, createAcuityClient } from "#src/acuity/client";
+import { callAcuity } from "#src/acuity/client";
+import { createAcuityClient } from "#src/acuity/acuity-runtime";
 import {
   appointmentSchema,
   appointmentTypeSchema,

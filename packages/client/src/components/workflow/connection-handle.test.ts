@@ -12,23 +12,26 @@ import {
   type EventMetadata,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
-import { putExtensionCatalog } from "#src/lib/extensions";
+import {
+  clearTestCatalog,
+  hydrateTestCatalog,
+} from "#src/lib/extensions-test-support";
 
 // An Event Split's outlets are the Events reaching it, which the editor reads
 // off the catalog it fetched once before render.
-const surface = {
+const surface: ExtensionCatalog = {
   events: [] as EventMetadata[],
   actions: [] as ExtensionCatalog["actions"],
   integrations: [] as ExtensionCatalog["integrations"],
 };
 
-beforeEach(() => {
+beforeEach(async () => {
   surface.events = [];
-  putExtensionCatalog(surface);
+  await hydrateTestCatalog(surface);
 });
 
-afterEach(() => {
-  putExtensionCatalog(emptyExtensionCatalog);
+afterEach(async () => {
+  await clearTestCatalog();
 });
 
 function lifecycleNode(id = "entry"): WorkflowNode {
@@ -186,11 +189,12 @@ describe("normalizeSourceHandleForConnection - Event Split", () => {
     target: "split",
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     surface.events = [
       { name: CREATED, label: CREATED, payloadFields: [] },
       { name: RESCHEDULED, label: RESCHEDULED, payloadFields: [] },
     ];
+    await hydrateTestCatalog(surface);
   });
 
   it("keeps the outlet an edge was actually dragged from", () => {

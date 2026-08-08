@@ -18,6 +18,7 @@ import {
   LIFECYCLE_STARTED_HANDLE,
 } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import { eventsReachingTarget } from "#src/lib/upstream-node-fields";
+import { getExtensionCatalog } from "#src/lib/extensions";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /**
@@ -63,6 +64,7 @@ export function inferEventSplitOutlet(input: {
     targetNodeId: sourceNodeId,
     nodes,
     edges,
+    catalog: getExtensionCatalog(),
   });
 
   const taken = new Set(

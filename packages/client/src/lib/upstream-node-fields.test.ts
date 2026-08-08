@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   getUpstreamConditionFields,
   getUpstreamFields,
@@ -12,7 +12,6 @@ import {
 } from "@wfgraph/shared/conditions/conditions";
 import {
   type ActionMetadata,
-  emptyExtensionCatalog,
   type EventMetadata,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
@@ -24,23 +23,15 @@ import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { isoTimestampString } from "@wfgraph/shared/types/timestamp";
 import { requireOutputFieldsFromSchema } from "@wfgraph/shared/graph/output-fields";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
-import { putExtensionCatalog } from "#src/lib/extensions";
 
 // What a node offers downstream comes off the catalog the editor fetches once
 // before render: an action's own entry, and for the entry node the Events its rules
-// name. A case says what the surface holds by writing this object; it is the
-// same reference `getExtensionCatalog` returns after `putExtensionCatalog`.
-const surface = {
+// name. A case says what the surface holds by writing this object.
+const surface: ExtensionCatalog = {
   events: [] as EventMetadata[],
   actions: [] as ActionMetadata[],
   integrations: [] as ExtensionCatalog["integrations"],
 };
-
-beforeEach(() => {
-  surface.actions = [];
-  surface.events = [];
-  putExtensionCatalog(surface);
-});
 
 /** One catalog action, with the fields a case cares about and defaults elsewhere. */
 function anAction(
@@ -133,10 +124,6 @@ function anEntryNode(input: {
 }
 
 describe("upstream-node-fields", () => {
-  afterEach(() => {
-    putExtensionCatalog(emptyExtensionCatalog);
-  });
-
   it("discovers transitive upstream nodes and condition fields", () => {
     surface.events = [
       anEvent({
@@ -212,6 +199,7 @@ describe("upstream-node-fields", () => {
     ]);
 
     const fields = getUpstreamConditionFields({
+      catalog: surface,
       currentNodeId: "condition-1",
       nodes,
       edges,
@@ -238,6 +226,7 @@ describe("upstream-node-fields", () => {
     ];
 
     const fields = getUpstreamConditionFields({
+      catalog: surface,
       currentNodeId: "condition-1",
       nodes: [
         anEntryNode({ startEvents: ["app/appointment.created"] }),
@@ -311,9 +300,12 @@ describe("upstream-node-fields", () => {
     // Event never declares. One Event reaches this node, so the fields stay under
     // the node's own name.
     expect(
-      getUpstreamFields({ currentNodeId: "on-cancel", nodes, edges }).map(
-        (field) => [field.path, field.sourceNodeName]
-      )
+      getUpstreamFields({
+        catalog: surface,
+        currentNodeId: "on-cancel",
+        nodes,
+        edges,
+      }).map((field) => [field.path, field.sourceNodeName])
     ).toEqual([
       ["occurredAt", "Lifecycle"],
       ["reason", "Lifecycle"],
@@ -374,9 +366,12 @@ describe("upstream-node-fields", () => {
     ];
 
     expect(
-      getUpstreamFields({ currentNodeId: "on-cancel", nodes, edges }).map(
-        (field) => [field.path, field.sourceNodeName]
-      )
+      getUpstreamFields({
+        catalog: surface,
+        currentNodeId: "on-cancel",
+        nodes,
+        edges,
+      }).map((field) => [field.path, field.sourceNodeName])
     ).toEqual([
       ["occurredAt", "Carried by every Event"],
       ["reason", "app/appointment.canceled"],
@@ -419,6 +414,7 @@ describe("upstream-node-fields", () => {
 
     expect(
       getUpstreamFields({
+        catalog: surface,
         currentNodeId: "action-1",
         nodes,
         edges: [startedEdge("action-1")],
@@ -513,7 +509,12 @@ describe("upstream-node-fields", () => {
     // One Event reaching it, so its fields sit under the node's own name rather
     // than in per-Event sections.
     expect(
-      getUpstreamFields({ currentNodeId: "on-canceled", nodes, edges })
+      getUpstreamFields({
+        catalog: surface,
+        currentNodeId: "on-canceled",
+        nodes,
+        edges,
+      })
         .filter((field) => field.sourceNodeId === "lifecycle-1")
         .map((field) => [field.path, field.sourceNodeName])
     ).toEqual([
@@ -523,6 +524,7 @@ describe("upstream-node-fields", () => {
 
     expect(
       getUpstreamConditionFields({
+        catalog: surface,
         currentNodeId: "on-canceled",
         nodes,
         edges,
@@ -573,6 +575,7 @@ describe("upstream-node-fields", () => {
     ];
 
     const eventName = getUpstreamConditionFields({
+      catalog: surface,
       currentNodeId: "on-cancel",
       nodes,
       edges,
@@ -597,6 +600,7 @@ describe("upstream-node-fields", () => {
     ];
 
     const fields = getUpstreamConditionFields({
+      catalog: surface,
       currentNodeId: "action-1",
       nodes: [
         anEntryNode({ startEvents: ["app/appointment.created"] }),
@@ -621,6 +625,7 @@ describe("upstream-node-fields", () => {
 
     expect(
       getUpstreamFields({
+        catalog: surface,
         currentNodeId: "action-1",
         nodes: [
           anEntryNode({ startEvents: ["app/never.declared"] }),
@@ -680,7 +685,12 @@ describe("upstream-node-fields", () => {
     ];
 
     expect(
-      getUpstreamFields({ currentNodeId: "on-cancel", nodes, edges })
+      getUpstreamFields({
+        catalog: surface,
+        currentNodeId: "on-cancel",
+        nodes,
+        edges,
+      })
     ).toEqual([
       {
         path: "occurredAt",
@@ -699,6 +709,7 @@ describe("upstream-node-fields", () => {
     // is the field a builder splits the Events on.
     expect(
       getUpstreamConditionFields({
+        catalog: surface,
         currentNodeId: "on-cancel",
         nodes,
         edges,
@@ -738,6 +749,7 @@ describe("upstream-node-fields", () => {
     ];
 
     const fields = getUpstreamConditionFields({
+      catalog: surface,
       currentNodeId: "action-1",
       nodes,
       edges: [startedEdge("action-1")],
@@ -770,6 +782,7 @@ describe("upstream-node-fields", () => {
     ];
 
     const fields = getUpstreamFields({
+      catalog: surface,
       currentNodeId: "action-1",
       nodes: [
         anEntryNode({ startEvents: ["app/appointment.created"] }),
@@ -827,6 +840,7 @@ describe("upstream-node-fields", () => {
     ];
 
     const fields = getUpstreamConditionFields({
+      catalog: surface,
       currentNodeId: "condition-1",
       nodes,
       edges,
@@ -877,6 +891,7 @@ describe("upstream-node-fields", () => {
     ];
 
     const fields = getUpstreamFields({
+      catalog: surface,
       currentNodeId: "action-2",
       nodes,
       edges: [createEdge({ id: "e1", source: "action-1", target: "action-2" })],
@@ -920,6 +935,7 @@ describe("upstream-node-fields", () => {
     ];
 
     const fields = getUpstreamFields({
+      catalog: surface,
       currentNodeId: "action-2",
       nodes,
       edges: [createEdge({ id: "e1", source: "action-1", target: "action-2" })],
@@ -966,6 +982,7 @@ describe("upstream-node-fields", () => {
     ];
 
     const fields = getUpstreamConditionFields({
+      catalog: surface,
       currentNodeId: "condition-1",
       nodes,
       edges,
@@ -1014,6 +1031,7 @@ describe("upstream-node-fields", () => {
     ];
 
     const paths = getUpstreamConditionFields({
+      catalog: surface,
       currentNodeId: "condition-1",
       nodes,
       edges,
@@ -1064,6 +1082,7 @@ describe("upstream-node-fields", () => {
     ];
 
     const paths = getUpstreamConditionFields({
+      catalog: surface,
       currentNodeId: "condition-1",
       nodes,
       edges,

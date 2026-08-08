@@ -1,5 +1,6 @@
 import dagre from "@dagrejs/dagre";
 import { hierarchy, tree } from "d3-hierarchy";
+import { getExtensionCatalog } from "#src/lib/extensions";
 import { eventsReachingTarget } from "#src/lib/upstream-node-fields";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
@@ -172,6 +173,7 @@ function readNodeShape(input: {
     targetNodeId: input.node.id,
     nodes: input.nodes,
     edges: input.edges,
+    catalog: getExtensionCatalog(),
   });
 
   return {

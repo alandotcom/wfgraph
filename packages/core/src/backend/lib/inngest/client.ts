@@ -9,13 +9,8 @@ import { getAppLogger } from "#src/backend/lib/logger";
 
 export type { WorkerConnection } from "inngest/connect";
 
-/**
- * The Connect dial. Held on an object so tests can `vi.spyOn` it: the SDK's
- * `inngest/connect` namespace is not configurable in ESM, and a `vi.mock` of
- * that module leaks across files when vitest runs with isolate:false.
- */
-export const inngestConnectDial = {
-  connect: connectInngestSdk,
+export type InngestSurfaceDeps = {
+  connect?: typeof connectInngestSdk;
 };
 
 /**
@@ -275,8 +270,10 @@ export type InngestSurface = {
 };
 
 export function createInngestSurface(
-  config: WfGraphInngestConfig
+  config: WfGraphInngestConfig,
+  deps: InngestSurfaceDeps = {}
 ): InngestSurface {
+  const connectImpl = deps.connect ?? connectInngestSdk;
   const signingKey = config.signingKey ?? process.env.INNGEST_SIGNING_KEY;
   const client = createInngestClient(config, signingKey);
   if (config.connect === true) {
@@ -298,7 +295,7 @@ export function createInngestSurface(
       }),
     connect: (functions) =>
       withConnectTimeout(
-        inngestConnectDial.connect({
+        connectImpl({
           apps: [{ client, functions }],
           instanceId: config.instanceId,
           gatewayUrl: config.gatewayUrl,

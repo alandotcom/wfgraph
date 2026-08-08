@@ -6,8 +6,11 @@ import {
 import {
   getExtensionCatalog,
   hydrateExtensionsFromApi,
-  putExtensionCatalog,
 } from "#src/lib/extensions";
+import {
+  clearTestCatalog,
+  hydrateTestCatalog,
+} from "#src/lib/extensions-test-support";
 
 const served: ExtensionCatalog = {
   events: [
@@ -68,13 +71,12 @@ function respondWith(body: unknown, status = 200): void {
   );
 }
 
-beforeEach(() => {
-  putExtensionCatalog(emptyExtensionCatalog);
+beforeEach(async () => {
+  await clearTestCatalog();
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  putExtensionCatalog(emptyExtensionCatalog);
 });
 
 describe("hydrateExtensionsFromApi", () => {

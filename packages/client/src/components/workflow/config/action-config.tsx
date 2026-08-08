@@ -121,6 +121,7 @@ function ConditionFields({
         currentNodeId: selectedNodeId ?? undefined,
         nodes,
         edges,
+        catalog: getExtensionCatalog(),
       }),
     [selectedNodeId, nodes, edges]
   );

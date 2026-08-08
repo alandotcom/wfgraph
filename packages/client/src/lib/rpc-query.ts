@@ -10,24 +10,8 @@ import type { WorkflowApiPayload } from "@wfgraph/shared/graph/api-contracts";
  * keep in step with packages/shared/src/rpc/contracts.ts. Invalidating a whole
  * area is `orpcQuery.integration.key()`; invalidating one entry is
  * `orpcQuery.workflow.getById.queryKey({ input: { workflowId } })`.
- *
- * Held as `let` so tests can `putOrpcQuery` a stand-in: the utils object is a
- * Proxy that builds a fresh procedure helper on every property access, so a
- * nested `vi.spyOn` never sticks, and a `vi.mock` of this module leaks across
- * files when vitest runs with isolate:false.
  */
-const liveOrpcQuery = createTanstackQueryUtils(rpc);
-export let orpcQuery = liveOrpcQuery;
-
-/** Put query utils in place without mocking the module. Tests own this. */
-export function putOrpcQuery(next: typeof liveOrpcQuery): void {
-  orpcQuery = next;
-}
-
-/** Restore the live utils after a test that called `putOrpcQuery`. */
-export function resetOrpcQuery(): void {
-  orpcQuery = liveOrpcQuery;
-}
+export const orpcQuery = createTanstackQueryUtils(rpc);
 
 /**
  * Every connection the user has, in one cache entry.

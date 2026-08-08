@@ -10,7 +10,7 @@ import {
 } from "@tanstack/react-router";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkflowRuns } from "#src/components/workflow/workflow-runs";
 import {
   displayNodesAtom,
@@ -18,7 +18,13 @@ import {
   hydrateWorkflowAtom,
   setNodeStatusesAtom,
 } from "#src/lib/workflow-graph-store";
-import { orpcQuery, putOrpcQuery, resetOrpcQuery } from "#src/lib/rpc-query";
+import {
+  answerWorkflowRunRpc,
+  extractRpcProcedurePath,
+  parseRpcRequestInput,
+  rpcUrl,
+  type WorkflowRunRpcFixture,
+} from "#src/lib/rpc-fetch-test-support";
 import {
   currentWorkflowIdAtom,
   isWorkflowOwnerAtom,
@@ -46,7 +52,7 @@ type RawExecution = {
 };
 
 /** What the runs endpoint is answering with, rewritten between polls. */
-const served = {
+const served: WorkflowRunRpcFixture = {
   items: [] as RawExecution[],
   supersededCount: 0,
   /** Keyed by workflowVersionId, the key `getVersionGraph` reads by. */
@@ -70,118 +76,24 @@ function versionIdFor(executionId: string): string {
   return `ver_${executionId}`;
 }
 
-const runProcedureStubs: Record<
-  string,
-  {
-    queryOptions?: (args: {
-      input?: Record<string, unknown>;
-      select?: (payload: unknown) => unknown;
-    }) => unknown;
-    mutationOptions?: (opts?: Record<string, unknown>) => unknown;
-  }
-> = {
-  getExecutions: {
-    queryOptions: ({ input, select }) => ({
-      queryKey: ["executions", input?.workflowId, input?.includeSuperseded],
-      queryFn: () => ({
-        items: input?.includeSuperseded
-          ? served.items
-          : served.items.filter((item) => item.status !== "superseded"),
-        supersededCount: served.supersededCount,
-        refusedStarts: [],
-      }),
-      select,
-    }),
-  },
-  getExecutionLogs: {
-    queryOptions: ({ input, select }) => {
-      const executionId = String(input?.executionId ?? "");
-      return {
-        queryKey: ["logs", executionId],
-        queryFn: () => {
-          const listed = served.items.find((item) => item.id === executionId);
-          const extras = served.logsSummaryExtras[executionId] ?? {};
-          return {
-            execution: {
-              id: executionId,
-              workflowId: listed?.workflowId ?? "wf_1",
-              workflowVersionId: versionIdFor(executionId),
-              status: listed?.status ?? "completed",
-              startSource: listed?.startSource ?? "event",
-              runMode: listed?.runMode ?? "live",
-              startEventName: listed?.startEventName ?? null,
-              entityValue: listed?.entityValue ?? null,
-              error: null,
-              startedAt: "2026-03-01T10:00:00.000Z",
-              completedAt: "2026-03-01T10:00:30.000Z",
-              duration: "30s",
-              input: {},
-              output: {},
-              ...extras,
-            },
-            logs: [],
-            waits: [],
-          };
-        },
-        select,
-      };
-    },
-  },
-  getVersionGraph: {
-    queryOptions: ({ input, select }) => {
-      const versionId = String(input?.versionId ?? "");
-      return {
-        queryKey: ["version-graph", versionId],
-        queryFn: () => ({
-          graph:
-            served.graphs[versionId] ??
-            createSerializedWorkflowGraph({ nodes: [], edges: [] }),
-        }),
-        select,
-      };
-    },
-  },
-  getExecutionEvents: {
-    queryOptions: ({ select }) => ({
-      queryKey: ["events"],
-      queryFn: () => ({ events: [] }),
-      select,
-    }),
-  },
-  cancelExecution: {
-    mutationOptions: () => ({ mutationFn: () => Promise.resolve({}) }),
-  },
-  resumeWait: {
-    mutationOptions: () => ({ mutationFn: () => Promise.resolve({}) }),
-  },
-};
-
 /**
- * Put a Proxy over the live utils that answers the run panel's procedures from
- * `served`. Nested spies cannot stick: orpc rebuilds each procedure object on
- * every property access. `putOrpcQuery` is the seam isolate:false needs.
+ * Stub fetch so the run panel's oRPC procedures read from `served`. The utils
+ * object rebuilds each procedure helper on every property access, so nested
+ * spies cannot stick; answering by URL path is what isolate:false needs.
  */
 function stubRunQueries(): void {
-  resetOrpcQuery();
-  const live = orpcQuery;
-  putOrpcQuery(
-    new Proxy(live, {
-      get(target, prop, receiver) {
-        if (prop !== "workflow") {
-          return Reflect.get(target, prop, receiver);
-        }
-        const workflow = Reflect.get(target, prop, receiver) as object;
-        return new Proxy(workflow, {
-          get(wfTarget, wfProp, wfReceiver) {
-            const stub = runProcedureStubs[String(wfProp)];
-            if (stub) {
-              return stub;
-            }
-            return Reflect.get(wfTarget, wfProp, wfReceiver);
-          },
-        });
-      },
-    }) as typeof live
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = rpcUrl(input);
+      const procedurePath = extractRpcProcedurePath(url);
+      if (!procedurePath.startsWith("workflow/")) {
+        throw new Error(`unexpected fetch in workflow-runs test: ${url}`);
+      }
+
+      const requestInput = await parseRpcRequestInput(init);
+      return answerWorkflowRunRpc(served, procedurePath, requestInput);
+    })
   );
 }
 
@@ -277,7 +189,7 @@ describe("WorkflowRuns", () => {
   });
 
   afterEach(() => {
-    resetOrpcQuery();
+    vi.unstubAllGlobals();
   });
 
   // A newest-wins workflow supersedes the open run out of the polled list, so

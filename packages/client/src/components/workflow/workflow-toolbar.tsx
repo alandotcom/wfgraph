@@ -9,29 +9,16 @@ import {
   useWorkflowActions,
   useWorkflowState,
 } from "#src/components/workflow/workflow-toolbar-handlers";
+import { WorkflowPublicationBadge } from "#src/components/workflow/workflow-publication-badge";
 import { workflowPublicationQueryOptions } from "#src/lib/rpc-query";
-
-/**
- * Toolbar chrome and handlers, held on an object so tests can `vi.spyOn` them.
- * A `vi.mock` of those modules would stay in the worker's graph under
- * isolate:false; the dial restores with `vi.restoreAllMocks`.
- */
-export const workflowToolbarDial = {
-  UserMenu,
-  DuplicateButton,
-  ToolbarActions,
-  WorkflowMenuComponent,
-  useWorkflowActions,
-  useWorkflowState,
-};
 
 type WorkflowToolbarProps = {
   workflowId?: string;
 };
 
 export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
-  const state = workflowToolbarDial.useWorkflowState();
-  const actions = workflowToolbarDial.useWorkflowActions(state);
+  const state = useWorkflowState();
+  const actions = useWorkflowActions(state);
 
   const currentWorkflow = state.allWorkflows.find(
     (workflow) => workflow.id === state.currentWorkflowId
@@ -44,11 +31,6 @@ export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
     enabled: Boolean(workflowId),
   });
 
-  const Menu = workflowToolbarDial.WorkflowMenuComponent;
-  const Actions = workflowToolbarDial.ToolbarActions;
-  const Duplicate = workflowToolbarDial.DuplicateButton;
-  const MenuUser = workflowToolbarDial.UserMenu;
-
   return (
     <>
       {/* One row spanning the canvas rather than two independent corner layers.
@@ -60,7 +42,11 @@ export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
           wide. */}
       <div className="pointer-events-none absolute inset-x-4 top-4 z-10 flex flex-col items-stretch gap-2 @container @xl:flex-row @xl:items-start @xl:justify-between">
         <div className="pointer-events-auto flex min-w-0 flex-wrap items-center gap-2">
-          <Menu actions={actions} state={state} workflowId={workflowId} />
+          <WorkflowMenuComponent
+            actions={actions}
+            state={state}
+            workflowId={workflowId}
+          />
           {workflowId &&
             state.workflowMode === "test" && (
               // Warning rather than destructive: test mode destroys nothing, and
@@ -70,21 +56,11 @@ export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
                 Test mode
               </span>
             )}
-          {workflowId &&
-            isPublished && (
-              // Answers "is the draft what is running", which nothing
-              // on this screen said once the publish toast faded. Worded away
-              // from "Live" on purpose: that word already names the run mode two
-              // controls to the right, and two meanings for it read as one
-              // switch. Driven by draft-vs-published digest, not the save queue.
-              <span className="rounded-md border bg-card px-2 py-1 font-medium text-muted-foreground text-xs">
-                {hasUnpublishedChanges ? "Unpublished changes" : "Published"}
-              </span>
-            )}
-          {workflowId && !isPublished && (
-            <span className="rounded-md border bg-card px-2 py-1 font-medium text-muted-foreground text-xs">
-              Never published
-            </span>
+          {workflowId && (
+            <WorkflowPublicationBadge
+              hasUnpublishedChanges={hasUnpublishedChanges}
+              isPublished={isPublished}
+            />
           )}
           {workflowId && !state.isOwner && (
             <span className="text-muted-foreground text-xs">Read-only</span>
@@ -97,15 +73,19 @@ export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
             container it pins content to the right and pushes the first controls
             off the left edge, where no scroll position can reach them. */}
         <div className="pointer-events-auto flex items-center gap-2 overflow-x-auto @xl:justify-end">
-          <Actions actions={actions} state={state} workflowId={workflowId} />
+          <ToolbarActions
+            actions={actions}
+            state={state}
+            workflowId={workflowId}
+          />
           <div className="flex items-center gap-2">
             {workflowId && !state.isOwner && (
-              <Duplicate
+              <DuplicateButton
                 isDuplicating={actions.isDuplicating}
                 onDuplicate={actions.handleDuplicate}
               />
             )}
-            <MenuUser />
+            <UserMenu />
           </div>
         </div>
       </div>

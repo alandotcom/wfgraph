@@ -10,7 +10,7 @@ import { acuity } from "#src/acuity/index";
  * The eight Acuity actions in one file, because what they have to say is the
  * same three things each: which config field it cannot read, which parameters
  * Acuity is asked for, and what a thrown SDK error reads as. The seam under all
- * of them is `acuitySdk.build`, whose two resources are stubbed here via spy so
+ * of them is `createAcuitySdk`, whose two resources are stubbed here via spy so
  * isolate:false does not leave a `vi.mock` of `@fountain-bio/acuity` on the
  * shared registry.
  */
@@ -107,7 +107,7 @@ beforeEach(() => {
   mocks.cancel.mockResolvedValue({ ...APPOINTMENT, canceled: true });
   mocks.dates.mockResolvedValue([{ date: "2026-03-15" }]);
   mocks.times.mockResolvedValue([{ time: "2026-03-15T15:00:00-04:00" }]);
-  vi.spyOn(acuityClient.acuitySdk, "build").mockReturnValue({
+  vi.spyOn(acuityClient, "createAcuitySdk").mockReturnValue({
     appointments: {
       types: mocks.types,
       list: mocks.list,

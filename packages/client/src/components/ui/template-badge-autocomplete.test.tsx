@@ -8,13 +8,15 @@ import {
 } from "#src/lib/workflow-graph-store";
 import {
   type ActionMetadata,
-  emptyExtensionCatalog,
   type EventMetadata,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
 import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
-import { putExtensionCatalog } from "#src/lib/extensions";
+import {
+  clearTestCatalog,
+  hydrateTestCatalog,
+} from "#src/lib/extensions-test-support";
 import { TemplateBadgeInput } from "./template-badge-input";
 import { TemplateBadgeTextarea } from "./template-badge-textarea";
 
@@ -27,14 +29,14 @@ const surface = {
   integrations: [] as ExtensionCatalog["integrations"],
 };
 
-beforeEach(() => {
+beforeEach(async () => {
   surface.events = [];
   surface.actions = [];
-  putExtensionCatalog(surface);
+  await hydrateTestCatalog(surface);
 });
 
-afterEach(() => {
-  putExtensionCatalog(emptyExtensionCatalog);
+afterEach(async () => {
+  await clearTestCatalog();
 });
 
 const APPOINTMENT_CREATED: EventMetadata = {
@@ -67,9 +69,10 @@ const SEND_MESSAGE_ACTION: ActionMetadata = {
   ],
 };
 
-function seedTemplateContext(selectedNodeId = "wait_1") {
+async function seedTemplateContext(selectedNodeId = "wait_1") {
   const store = getDefaultStore();
   surface.events = [APPOINTMENT_CREATED];
+  await hydrateTestCatalog(surface);
   const nodes: WorkflowNode[] = [
     {
       id: "lifecycle_1",
@@ -236,8 +239,8 @@ function ControlledTemplateBadgeTextarea({
 }
 
 describe("Template badge autocomplete", () => {
-  beforeEach(() => {
-    seedTemplateContext();
+  beforeEach(async () => {
+    await seedTemplateContext();
   });
 
   it("renders a pill immediately after mouse selection in TemplateBadgeInput", async () => {
@@ -333,6 +336,7 @@ describe("Template badge autocomplete", () => {
         ],
       },
     ];
+    await hydrateTestCatalog(surface);
 
     const view = render(<DurationTemplateBadgeInput />);
     typeAtSymbol(view.getByRole("textbox"));
@@ -381,6 +385,7 @@ describe("Template badge autocomplete", () => {
         ],
       },
     ];
+    await hydrateTestCatalog(surface);
     const view = render(<DurationTemplateBadgeInput />);
     typeAtSymbol(view.getByRole("textbox"));
 
@@ -424,6 +429,7 @@ describe("Template badge autocomplete", () => {
 
   it("uses currentNodeId for autocomplete when no node is selected in the canvas", async () => {
     surface.actions = [SEND_MESSAGE_ACTION];
+    await hydrateTestCatalog(surface);
     const store = getDefaultStore();
     const nodes: WorkflowNode[] = [
       {
@@ -522,8 +528,8 @@ describe("Template badge autocomplete", () => {
 });
 
 describe("Template badge rendering", () => {
-  beforeEach(() => {
-    seedTemplateContext();
+  beforeEach(async () => {
+    await seedTemplateContext();
   });
 
   it("relabels a badge when its node is renamed", async () => {
@@ -597,8 +603,8 @@ describe("Template badge rendering", () => {
 });
 
 describe("Template badge editing", () => {
-  beforeEach(() => {
-    seedTemplateContext();
+  beforeEach(async () => {
+    await seedTemplateContext();
   });
 
   it("does not read its own placeholder back as the value", async () => {
@@ -651,8 +657,8 @@ describe("Template badge editing", () => {
 });
 
 describe("Template badge autocomplete node rows", () => {
-  beforeEach(() => {
-    seedTemplateContext();
+  beforeEach(async () => {
+    await seedTemplateContext();
   });
 
   it("leaves out a node that declares no output of its own", async () => {
@@ -669,6 +675,7 @@ describe("Template badge autocomplete node rows", () => {
       },
       SEND_MESSAGE_ACTION,
     ];
+    await hydrateTestCatalog(surface);
 
     const store = getDefaultStore();
     store.set(loadWorkflowGraphAtom, {

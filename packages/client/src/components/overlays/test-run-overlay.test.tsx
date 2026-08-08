@@ -5,15 +5,17 @@ import {
   TestRunOverlay,
   type TestRunRequest,
 } from "#src/components/overlays/test-run-overlay";
-import { putExtensionCatalog } from "#src/lib/extensions";
-import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import {
+  clearTestCatalog,
+  hydrateTestCatalog,
+} from "#src/lib/extensions-test-support";
 import type { TestPayloads } from "@wfgraph/shared/lifecycle/test-payloads";
 
 // The Events the overlay draws a form from come from the server's catalog. One
 // declares a timestamp, which is the field the Wait node's target is written
 // against, and the other is here so the select has two rows.
-beforeEach(() => {
-  putExtensionCatalog({
+beforeEach(async () => {
+  await hydrateTestCatalog({
     events: [
       {
         name: "app/appointment.created",
@@ -38,8 +40,8 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => {
-  putExtensionCatalog(emptyExtensionCatalog);
+afterEach(async () => {
+  await clearTestCatalog();
 });
 
 const START_EVENTS = [

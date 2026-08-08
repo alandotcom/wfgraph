@@ -5,9 +5,11 @@ import type {
   WorkflowNodeType,
 } from "#src/lib/workflow-graph-types";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
-import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
-import { putExtensionCatalog } from "#src/lib/extensions";
+import {
+  clearTestCatalog,
+  hydrateTestCatalog,
+} from "#src/lib/extensions-test-support";
 import { layoutWorkflowNodes } from "./workflow-layout";
 import {
   eventSplitCardWidth,
@@ -22,8 +24,8 @@ const CREATED_EVENT = "app/appointment.created";
 const RESCHEDULED_EVENT = "app/appointment.rescheduled";
 const CONFIRMED_EVENT = "app/appointment.confirmed";
 
-beforeEach(() => {
-  putExtensionCatalog({
+beforeEach(async () => {
+  await hydrateTestCatalog({
     integrations: [],
     actions: [],
     events: [
@@ -46,8 +48,8 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => {
-  putExtensionCatalog(emptyExtensionCatalog);
+afterEach(async () => {
+  await clearTestCatalog();
 });
 
 function buildNode(

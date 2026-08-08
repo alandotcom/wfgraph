@@ -1,99 +1,40 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
-import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  WorkflowToolbar,
-  workflowToolbarDial,
-} from "#src/components/workflow/workflow-toolbar";
-import { orpcQuery } from "#src/lib/rpc-query";
-import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { describe, expect, it } from "vitest";
+import { WorkflowPublicationBadge } from "#src/components/workflow/workflow-publication-badge";
 
-beforeEach(() => {
-  vi.spyOn(workflowToolbarDial, "UserMenu").mockImplementation(
-    (() => null) as never
-  );
-  vi.spyOn(workflowToolbarDial, "DuplicateButton").mockImplementation(
-    (() => null) as never
-  );
-  vi.spyOn(workflowToolbarDial, "ToolbarActions").mockImplementation(
-    (() => null) as never
-  );
-  vi.spyOn(workflowToolbarDial, "WorkflowMenuComponent").mockImplementation(
-    (() => null) as never
-  );
-  vi.spyOn(workflowToolbarDial, "useWorkflowActions").mockReturnValue(
-    {} as never
-  );
-  vi.spyOn(workflowToolbarDial, "useWorkflowState").mockReturnValue({
-    allWorkflows: [
-      {
-        id: "workflow_1",
-        name: "Workflow",
-        publishedVersionId: "version_1",
-      },
-    ],
-    currentWorkflowId: "workflow_1",
-    hasUnsavedChanges: false,
-    isOwner: true,
-    workflowMode: "live" as const,
-  } as never);
-});
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
-
-function seedPublication(
-  queryClient: QueryClient,
-  hasUnpublishedChanges: boolean
-) {
-  queryClient.setQueryData(
-    orpcQuery.workflow.getById.queryKey({
-      input: { workflowId: "workflow_1" },
-    }),
-    {
-      id: "workflow_1",
-      name: "Workflow",
-      isPaused: false,
-      mode: "live" as const,
-      visibility: "private" as const,
-      createdAt: "2026-01-01T00:00:00.000Z",
-      updatedAt: "2026-01-01T00:00:00.000Z",
-      publishedVersionId: "version_1",
-      hasUnpublishedChanges,
-      graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
-    }
-  );
-}
-
-function renderToolbar(queryClient: QueryClient) {
-  const wrapper = ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-  );
-  return render(<WorkflowToolbar workflowId="workflow_1" />, { wrapper });
-}
-
-describe("workflow publication badge", () => {
-  it("shows Unpublished changes when getById says the draft differs", () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    seedPublication(queryClient, true);
-    renderToolbar(queryClient);
+describe("WorkflowPublicationBadge", () => {
+  it("shows Unpublished changes when the draft differs from published", () => {
+    render(
+      <WorkflowPublicationBadge
+        hasUnpublishedChanges={true}
+        isPublished={true}
+      />
+    );
 
     expect(screen.getByText("Unpublished changes")).toBeTruthy();
     expect(screen.queryByText("Published")).toBeNull();
   });
 
-  it("shows Published when getById says the draft matches", () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    seedPublication(queryClient, false);
-    renderToolbar(queryClient);
+  it("shows Published when the draft matches", () => {
+    render(
+      <WorkflowPublicationBadge
+        hasUnpublishedChanges={false}
+        isPublished={true}
+      />
+    );
 
     expect(screen.getByText("Published")).toBeTruthy();
     expect(screen.queryByText("Unpublished changes")).toBeNull();
+  });
+
+  it("shows Never published when there is no published version", () => {
+    render(
+      <WorkflowPublicationBadge
+        hasUnpublishedChanges={false}
+        isPublished={false}
+      />
+    );
+
+    expect(screen.getByText("Never published")).toBeTruthy();
   });
 });

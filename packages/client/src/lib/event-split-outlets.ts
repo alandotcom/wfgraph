@@ -9,6 +9,7 @@
 
 import { useMemo } from "react";
 import { useAtomValue } from "jotai";
+import { getExtensionCatalog } from "#src/lib/extensions";
 import { eventsReachingTarget } from "#src/lib/upstream-node-fields";
 import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
 import type { EventMetadata } from "@wfgraph/shared/extensions/catalog";
@@ -27,7 +28,12 @@ export function useEventSplitOutlets(nodeId: string | null): EventMetadata[] {
   return useMemo(
     () =>
       nodeId
-        ? eventsReachingTarget({ targetNodeId: nodeId, nodes, edges })
+        ? eventsReachingTarget({
+            targetNodeId: nodeId,
+            nodes,
+            edges,
+            catalog: getExtensionCatalog(),
+          })
         : NO_OUTLETS,
     [nodeId, nodes, edges]
   );

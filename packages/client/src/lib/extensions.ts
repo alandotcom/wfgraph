@@ -31,17 +31,6 @@ export function getExtensionCatalog(): ExtensionCatalog {
 }
 
 /**
- * Put a catalog in place without fetching.
- *
- * Tests own this: the boot path only writes through `hydrateExtensionsFromApi`,
- * and a suite that used to `vi.mock` this module writes here instead so the
- * real module stays shared across files when vitest runs without isolation.
- */
-export function putExtensionCatalog(next: ExtensionCatalog): void {
-  catalog = next;
-}
-
-/**
  * Why a hydration did not produce a catalog.
  *
  * `unreachable` is a fetch that threw, `refused` a response that was not ok, and

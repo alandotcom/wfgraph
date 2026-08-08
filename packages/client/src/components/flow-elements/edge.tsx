@@ -8,22 +8,11 @@ import {
   Position,
   useInternalNode,
 } from "@xyflow/react";
-import { getConditionBranchDisplayLabel } from "@wfgraph/shared/conditions/condition-branch";
+import {
+  isMutedEdgeStyle,
+  resolveEdgeLabel,
+} from "#src/components/flow-elements/edge-label";
 import type { WorkflowEdge } from "#src/lib/workflow-graph-types";
-
-/**
- * @xyflow/react symbols the edge reads. Held on an object so tests can
- * `vi.spyOn` them: a `vi.mock` of that package would stay in the worker's
- * graph under isolate:false.
- */
-export const edgeXyflowDial = {
-  BaseEdge,
-  EdgeLabelRenderer,
-  getBezierPath,
-  getSimpleBezierPath,
-  Position,
-  useInternalNode,
-};
 
 const Temporary = ({
   id,
@@ -35,7 +24,7 @@ const Temporary = ({
   targetPosition,
   selected,
 }: EdgeProps) => {
-  const [edgePath] = edgeXyflowDial.getSimpleBezierPath({
+  const [edgePath] = getSimpleBezierPath({
     sourceX,
     sourceY,
     sourcePosition,
@@ -45,7 +34,7 @@ const Temporary = ({
   });
 
   return (
-    <edgeXyflowDial.BaseEdge
+    <BaseEdge
       className="stroke-1"
       id={id}
       path={edgePath}
@@ -86,16 +75,16 @@ const getHandleCoordsByPosition = (
   // The handle position that gets calculated has the origin top-left, so depending which side we are using, we add a little offset
   // when the handlePosition is Position.Right for example, we need to add an offset as big as the handle itself in order to get the correct position
   switch (handlePosition) {
-    case edgeXyflowDial.Position.Left:
+    case Position.Left:
       offsetX = 0;
       break;
-    case edgeXyflowDial.Position.Right:
+    case Position.Right:
       offsetX = handle.width;
       break;
-    case edgeXyflowDial.Position.Top:
+    case Position.Top:
       offsetY = 0;
       break;
-    case edgeXyflowDial.Position.Bottom:
+    case Position.Bottom:
       offsetY = handle.height;
       break;
     default:
@@ -114,14 +103,14 @@ const getEdgeParams = (
   sourceHandle?: string | null,
   targetHandle?: string | null
 ) => {
-  const sourcePos = edgeXyflowDial.Position.Bottom;
+  const sourcePos = Position.Bottom;
   const [sx, sy] = getHandleCoordsByPosition(
     source,
     "source",
     sourcePos,
     sourceHandle
   );
-  const targetPos = edgeXyflowDial.Position.Top;
+  const targetPos = Position.Top;
   const [tx, ty] = getHandleCoordsByPosition(
     target,
     "target",
@@ -149,8 +138,8 @@ const Animated = ({
   selected,
   data,
 }: EdgeProps<WorkflowEdge>) => {
-  const sourceNode = edgeXyflowDial.useInternalNode(source);
-  const targetNode = edgeXyflowDial.useInternalNode(target);
+  const sourceNode = useInternalNode(source);
+  const targetNode = useInternalNode(target);
 
   if (!(sourceNode && targetNode)) {
     return null;
@@ -163,7 +152,7 @@ const Animated = ({
     targetHandleId
   );
 
-  const [edgePath, labelX, labelY] = edgeXyflowDial.getBezierPath({
+  const [edgePath, labelX, labelY] = getBezierPath({
     sourceX: sx,
     sourceY: sy,
     sourcePosition: sourcePos,
@@ -171,15 +160,14 @@ const Animated = ({
     targetY: ty,
     targetPosition: targetPos,
   });
-  const branchLabel = getConditionBranchDisplayLabel(sourceHandleId);
-  const edgeLabel = branchLabel ?? data?.displayLabel ?? null;
+  const edgeLabel = resolveEdgeLabel(sourceHandleId, data);
   // Display atoms mute an inactive Canceled subtree by setting style.opacity;
   // that is the contract for dropping the dash animation here.
-  const inactive = style?.opacity !== undefined;
+  const inactive = isMutedEdgeStyle(style);
 
   return (
     <>
-      <edgeXyflowDial.BaseEdge
+      <BaseEdge
         id={id}
         path={edgePath}
         style={{
@@ -193,7 +181,7 @@ const Animated = ({
         }}
       />
       {edgeLabel && (
-        <edgeXyflowDial.EdgeLabelRenderer>
+        <EdgeLabelRenderer>
           <div
             className="pointer-events-none absolute rounded-sm border bg-background px-1.5 py-0.5 font-medium text-xs text-muted-foreground leading-none"
             style={{
@@ -203,7 +191,7 @@ const Animated = ({
           >
             {edgeLabel}
           </div>
-        </edgeXyflowDial.EdgeLabelRenderer>
+        </EdgeLabelRenderer>
       )}
     </>
   );

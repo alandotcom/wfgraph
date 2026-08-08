@@ -3,6 +3,7 @@ import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
 import { repairNodeIntegrations } from "#src/lib/node-integration";
+import { getExtensionCatalog } from "#src/lib/extensions";
 import type { SavedWorkflow } from "#src/lib/rpc-client";
 import {
   currentWorkflowIdAtom,
@@ -289,7 +290,11 @@ export const repairIntegrationsAtom = atom(
     }
 
     const currentNodes = get(nodesStateAtom);
-    const repaired = repairNodeIntegrations(currentNodes, integrations);
+    const repaired = repairNodeIntegrations(
+      getExtensionCatalog(),
+      currentNodes,
+      integrations
+    );
 
     if (repaired === currentNodes) {
       return;
