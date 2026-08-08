@@ -179,14 +179,16 @@ function renderRuns(options?: { executionId?: string }) {
   return { view, queryClient, router, store };
 }
 
+function resetServed(): void {
+  served.items = [];
+  served.supersededCount = 0;
+  served.graphs = {};
+  served.logsSummaryExtras = {};
+  stubRunQueries();
+}
+
 describe("WorkflowRuns", () => {
-  beforeEach(() => {
-    served.items = [];
-    served.supersededCount = 0;
-    served.graphs = {};
-    served.logsSummaryExtras = {};
-    stubRunQueries();
-  });
+  beforeEach(resetServed);
 
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -304,10 +306,19 @@ describe("WorkflowRuns", () => {
       expect(router.state.location.search).toEqual({});
     });
   });
+});
+
+describe("useExecutionOverlaySync", () => {
+  beforeEach(resetServed);
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
   // Selecting a run, leaving it (draft / newer version on screen), then
   // reopening the same run must restore that run's pinned graph — not leave
-  // the canvas on the live draft.
+  // the canvas on the live draft. Exercised through WorkflowRuns, which is
+  // where the hook is mounted today.
   it("re-applies the pinned graph after leaving and reopening a run", async () => {
     served.items = [
       execution("exec_new", "completed"),
