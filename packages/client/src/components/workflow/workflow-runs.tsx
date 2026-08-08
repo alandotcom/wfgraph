@@ -4,13 +4,12 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useAtomValue } from "jotai";
 import { Play } from "lucide-react";
 import { useState } from "react";
 import { Button } from "#src/components/ui/button";
 import { Spinner } from "#src/components/ui/spinner";
-import { useExecutionOverlaySync } from "#src/hooks/use-execution-overlay-sync";
 import {
   isRunInProgress,
   toExecutionDetail,
@@ -37,13 +36,15 @@ const EXECUTIONS_PAGE_CAP = 50;
 const LEFT_THE_LIST_NOTICE =
   "This run has left the runs list, so what it shows stops here. A newer start supersedes the runs going for the same entity, and the list holds the newest 50.";
 
+const workflowRouteApi = getRouteApi("/workflows/$workflowId");
+
 export function WorkflowRuns() {
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
   const queryClient = useQueryClient();
-  // Which run is open is URL state (TanStack Router search params). The overlay
-  // sync hook wires that into the selection atom and the pinned-graph canvas.
-  const { executionId } = useExecutionOverlaySync();
+  // Which run is open is URL state. The editor shell's overlay sync derives
+  // the selection atom and pinned graph; this panel only reads the search.
+  const { executionId } = workflowRouteApi.useSearch();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
 
   // Superseded runs are the ones a newer start displaced. They are hidden by

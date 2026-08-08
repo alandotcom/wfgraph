@@ -198,6 +198,21 @@ export function toExecutionLogsByNodeId(
   return createExecutionLogsMap(toExecutionLogs(payload));
 }
 
+/**
+ * The fields the overlay sync needs from the logs payload: which workflow the
+ * run belongs to, and which published version pins its graph. Logs and waits
+ * stay on the Runs panel's own observer of the same query key.
+ */
+export function toExecutionOverlaySource(payload: ExecutionLogsResult): {
+  workflowId: string;
+  workflowVersionId: string;
+} {
+  return {
+    workflowId: payload.execution.workflowId,
+    workflowVersionId: payload.execution.workflowVersionId,
+  };
+}
+
 export function toExecutionEvents(
   payload: RawExecutionEvents
 ): ExecutionEvent[] {
