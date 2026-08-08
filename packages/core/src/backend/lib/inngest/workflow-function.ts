@@ -292,12 +292,10 @@ export type WorkflowFunctionPorts = {
   store: WorkflowStore;
   /** Runs the engine Effect at the outer Inngest execution boundary. */
   appRuntime: WfGraphRuntime;
-  /**
-   * The engine entry. Defaults to `executeWorkflow` / `executeWorkflowBranch`.
-   * A wiring test passes a stand-in so it does not mock the module graph.
-   */
-  executeWorkflow?: ExecuteWorkflow;
-  executeWorkflowBranch?: ExecuteWorkflowBranch;
+  /** The engine entry for a full run. */
+  executeWorkflow: ExecuteWorkflow;
+  /** The engine entry for one waiting branch. */
+  executeWorkflowBranch: ExecuteWorkflowBranch;
 };
 
 /**
@@ -362,7 +360,7 @@ export function createWorkflowRunFunction(
         actions: input.actions(),
         store: input.store,
         appRuntime: input.appRuntime,
-        executeWorkflow: input.executeWorkflow ?? defaultExecuteWorkflow,
+        executeWorkflow: input.executeWorkflow,
       })
   );
 }
@@ -405,8 +403,7 @@ export function createWorkflowBranchFunction(
         actions: input.actions(),
         store: input.store,
         appRuntime: input.appRuntime,
-        executeWorkflowBranch:
-          input.executeWorkflowBranch ?? defaultExecuteWorkflowBranch,
+        executeWorkflowBranch: input.executeWorkflowBranch,
       })
   );
 }

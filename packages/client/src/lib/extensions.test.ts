@@ -7,7 +7,6 @@ import {
   getExtensionCatalog,
   hydrateExtensionsFromApi,
 } from "#src/lib/extensions";
-import { clearTestCatalog } from "#src/lib/extensions-test-support";
 
 const served: ExtensionCatalog = {
   events: [
@@ -69,7 +68,18 @@ function respondWith(body: unknown, status = 200): void {
 }
 
 beforeEach(async () => {
-  await clearTestCatalog();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ catalog: emptyExtensionCatalog }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+    )
+  );
+  await hydrateExtensionsFromApi();
 });
 
 afterEach(() => {

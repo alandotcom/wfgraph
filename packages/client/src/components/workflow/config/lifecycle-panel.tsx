@@ -13,7 +13,7 @@ import {
 } from "#src/components/ui/select";
 import { Label } from "#src/components/ui/label";
 import { Radio, RadioGroup } from "#src/components/ui/radio-group";
-import { getExtensionCatalog } from "#src/lib/extensions";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
   type ExtensionCatalog,
   findEvent,
@@ -55,7 +55,7 @@ export function LifecyclePanel({
   const cancelEventsId = useId();
   const concurrencyLabelId = useId();
   const manualStartId = useId();
-  const catalog = getExtensionCatalog();
+  const catalog = useExtensionCatalog();
   const rules = readLifecycleRules(config) ?? initialLifecycleRules;
 
   // The same function the save is refused by, over the same catalog, so the

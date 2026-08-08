@@ -27,10 +27,11 @@ import {
   type ExecutionLogEntry,
   type WorkflowNodeData,
 } from "#src/lib/workflow-graph-types";
-import { getExtensionCatalog } from "#src/lib/extensions";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
   findAction,
   findIntegration,
+  type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
 import { useIntegrationUi } from "#src/components/integration-ui-provider";
 import { readAs } from "@wfgraph/shared/types/schema";
@@ -317,8 +318,10 @@ const getModelDisplayName = (modelId: string): string => {
 // The badge over an action node: the integration it belongs to, by the label that
 // integration goes by. An action belonging to none reads as "System", which is
 // the engine's own: Condition and Wait, neither of which names a connection.
-const getIntegrationFromActionType = (actionType: string): string => {
-  const catalog = getExtensionCatalog();
+const getIntegrationFromActionType = (
+  catalog: ExtensionCatalog,
+  actionType: string
+): string => {
   const integrationType = findAction(catalog, actionType)?.integration;
 
   return integrationType
@@ -326,14 +329,18 @@ const getIntegrationFromActionType = (actionType: string): string => {
     : "System";
 };
 
-// Whether this action needs a connection, which the catalog answers for every
-// action alike.
-const requiresIntegration = (actionType: string): boolean =>
-  Boolean(findAction(getExtensionCatalog(), actionType)?.integration);
+const requiresIntegration = (
+  catalog: ExtensionCatalog,
+  actionType: string
+): boolean => Boolean(findAction(catalog, actionType)?.integration);
 
-// The logo an action wears on its node: a built-in's own glyph, its
-// integration's icon, or a fallback.
-const ProviderLogo = ({ actionType }: { actionType: string }) => {
+const ProviderLogo = ({
+  actionType,
+  catalog,
+}: {
+  actionType: string;
+  catalog: ExtensionCatalog;
+}) => {
   const integrationUi = useIntegrationUi();
 
   // Check for system actions first (non-plugin)
@@ -351,10 +358,7 @@ const ProviderLogo = ({ actionType }: { actionType: string }) => {
       break;
   }
 
-  const integrationType = findAction(
-    getExtensionCatalog(),
-    actionType
-  )?.integration;
+  const integrationType = findAction(catalog, actionType)?.integration;
   if (integrationType) {
     const ui = integrationUi[integrationType];
     if (ui) {
@@ -432,6 +436,7 @@ function eventSplitOutletLeft(index: number, count: number): string {
 }
 
 export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
+  const catalog = useExtensionCatalog();
   const updateNodeInternals = useUpdateNodeInternals();
   const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
   const executionLogs = useExecutionLogsByNode();
@@ -521,12 +526,12 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
     );
   }
 
-  const actionInfo = findAction(getExtensionCatalog(), actionType);
+  const actionInfo = findAction(catalog, actionType);
   const displayTitle = data.label || actionInfo?.label || actionType;
   const displayDescription =
-    data.description || getIntegrationFromActionType(actionType);
+    data.description || getIntegrationFromActionType(catalog, actionType);
 
-  const needsIntegration = requiresIntegration(actionType);
+  const needsIntegration = requiresIntegration(catalog, actionType);
   const configuredIntegrationId = readConfigString(
     data.config,
     "integrationId"
@@ -650,7 +655,7 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
         {generatedImageBase64 ? (
           <GeneratedImageThumbnail base64={generatedImageBase64} />
         ) : (
-          <ProviderLogo actionType={actionType} />
+          <ProviderLogo actionType={actionType} catalog={catalog} />
         )}
         <div className="flex flex-col items-center gap-1 text-center">
           <NodeTitle className="text-base">{displayTitle}</NodeTitle>

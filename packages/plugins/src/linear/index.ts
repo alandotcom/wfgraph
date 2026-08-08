@@ -10,7 +10,10 @@
  */
 
 import { LinearClient, type LinearDocument } from "@linear/sdk";
-import { createLinearClient } from "#src/linear/client";
+import {
+  createLinearClient,
+  type CreateLinearClient,
+} from "#src/linear/client";
 import {
   type CredentialFields,
   type CredentialsOf,
@@ -165,172 +168,181 @@ function buildIssueFilter(
   return Object.keys(filter).length > 0 ? filter : undefined;
 }
 
-export const linear = defineIntegration({
-  type: "linear",
-  label: "Linear",
-  description: "Create and manage issues in Linear",
-  credentials: linearCredentialFields,
+export function createLinear(createClient: CreateLinearClient) {
+  return defineIntegration({
+    type: "linear",
+    label: "Linear",
+    description: "Create and manage issues in Linear",
+    credentials: linearCredentialFields,
 
-  test: async () => (await import("#src/linear/test")).testLinear,
+    test: async () => {
+      const { testLinear } = await import("#src/linear/test");
+      return (creds) => testLinear(creds, createClient);
+    },
 
-  actions: {
-    "create-ticket": {
-      label: "Create Ticket",
-      description: "Create an issue in Linear",
-      input: createTicketInput,
-      output: createTicketOutput,
-      configFields: [
-        {
-          key: "ticketTitle",
-          label: "Ticket Title",
-          type: "template-input",
-          placeholder: "Bug report or {{NodeName.title}}",
-          example: "Bug: Login button not working",
-          required: true,
-        },
-        {
-          key: "ticketDescription",
-          label: "Description",
-          type: "template-textarea",
-          placeholder:
-            "Description. Use {{NodeName.field}} to insert data from previous nodes.",
-          rows: 4,
-          example: "Users are unable to click the login button on mobile.",
-        },
-      ],
-      handler: Effect.fn(function* (bag) {
-        const { input } = bag;
-        const credentials = yield* bag.credentials;
-        const apiKey = credentials.LINEAR_API_KEY;
+    actions: {
+      "create-ticket": {
+        label: "Create Ticket",
+        description: "Create an issue in Linear",
+        input: createTicketInput,
+        output: createTicketOutput,
+        configFields: [
+          {
+            key: "ticketTitle",
+            label: "Ticket Title",
+            type: "template-input",
+            placeholder: "Bug report or {{NodeName.title}}",
+            example: "Bug: Login button not working",
+            required: true,
+          },
+          {
+            key: "ticketDescription",
+            label: "Description",
+            type: "template-textarea",
+            placeholder:
+              "Description. Use {{NodeName.field}} to insert data from previous nodes.",
+            rows: 4,
+            example: "Users are unable to click the login button on mobile.",
+          },
+        ],
+        handler: Effect.fn(function* (bag) {
+          const { input } = bag;
+          const credentials = yield* bag.credentials;
+          const apiKey = credentials.LINEAR_API_KEY;
 
-        if (!apiKey) {
-          return yield* new StepFailure({
-            message:
-              "LINEAR_API_KEY is not configured. Please add it in Project Integrations.",
-          });
-        }
-
-        const client = createLinearClient(apiKey);
-        const teamId =
-          credentials.LINEAR_TEAM_ID ||
-          (yield* bag.step.run("first-team", firstTeamId(client)));
-
-        // Linear answers a mutation with a payload holding a promise for the
-        // issue it made, so the issue is two awaits away from the call. The
-        // three fields are read inside the step because what a step remembers
-        // round-trips through JSON, and the SDK's issue is a class instance.
-        const issue = yield* bag.step.run(
-          "create-ticket",
-          callLinear("Failed to create ticket", async () => {
-            const created = await client.createIssue({
-              title: input.ticketTitle,
-              description: input.ticketDescription,
-              teamId,
+          if (!apiKey) {
+            return yield* new StepFailure({
+              message:
+                "LINEAR_API_KEY is not configured. Please add it in Project Integrations.",
             });
-            const made = created.issue ? await created.issue : undefined;
+          }
 
-            return made
-              ? { id: made.id, url: made.url, title: made.title }
-              : undefined;
-          })
-        );
+          const client = createClient(apiKey);
+          const teamId =
+            credentials.LINEAR_TEAM_ID ||
+            (yield* bag.step.run("first-team", firstTeamId(client)));
 
-        if (!issue) {
-          return yield* new StepFailure({ message: "Failed to create issue" });
-        }
-
-        return issue;
-      }),
-    },
-
-    "find-issues": {
-      label: "Find Issues",
-      description: "Search for issues in Linear",
-      input: findIssuesInput,
-      output: findIssuesOutput,
-      configFields: [
-        {
-          key: "linearAssigneeId",
-          label: "Assignee (User ID)",
-          type: "template-input",
-          placeholder: "user-id-123 or {{NodeName.userId}}",
-        },
-        {
-          key: "linearTeamId",
-          label: "Team ID (optional)",
-          type: "template-input",
-          placeholder: "team-id-456 or {{NodeName.teamId}}",
-        },
-        {
-          key: "linearStatus",
-          label: "Status (optional)",
-          type: "select",
-          defaultValue: "any",
-          placeholder: "Any status",
-          options: [
-            { value: "any", label: "Any" },
-            { value: "backlog", label: "Backlog" },
-            { value: "todo", label: "Todo" },
-            { value: "in_progress", label: "In Progress" },
-            { value: "done", label: "Done" },
-            { value: "canceled", label: "Canceled" },
-          ],
-        },
-        {
-          key: "linearLabel",
-          label: "Label (optional)",
-          type: "template-input",
-          placeholder: "bug, feature, etc. or {{NodeName.label}}",
-        },
-      ],
-      handler: Effect.fn(function* (bag) {
-        const { input } = bag;
-        const credentials = yield* bag.credentials;
-        const apiKey = credentials.LINEAR_API_KEY;
-
-        if (!apiKey) {
-          return yield* new StepFailure({
-            message:
-              "LINEAR_API_KEY is not configured. Please add it in Project Integrations.",
-          });
-        }
-
-        const client = createLinearClient(apiKey);
-
-        // Everything the Linear SDK does is a Promise that throws, and an
-        // issue's state is a second request behind the issue, so the whole read
-        // is one call.
-        const issues = yield* bag.step.run(
-          "find-issues",
-          Effect.tryPromise({
-            try: async () => {
-              const found = await client.issues({
-                filter: buildIssueFilter(input),
+          // Linear answers a mutation with a payload holding a promise for the
+          // issue it made, so the issue is two awaits away from the call. The
+          // three fields are read inside the step because what a step remembers
+          // round-trips through JSON, and the SDK's issue is a class instance.
+          const issue = yield* bag.step.run(
+            "create-ticket",
+            callLinear("Failed to create ticket", async () => {
+              const created = await client.createIssue({
+                title: input.ticketTitle,
+                description: input.ticketDescription,
+                teamId,
               });
+              const made = created.issue ? await created.issue : undefined;
 
-              return await Promise.all(
-                found.nodes.map(async (issue) => {
-                  const state = issue.state ? await issue.state : undefined;
-                  return {
-                    id: issue.id,
-                    title: issue.title,
-                    url: issue.url,
-                    state: state?.name || "Unknown",
-                    priority: issue.priority,
-                    assigneeId: issue.assigneeId ?? null,
-                  };
-                })
-              );
-            },
-            catch: (error) =>
-              new StepFailure({
-                message: `Failed to find issues: ${describeLinearFailure(error)}`,
-              }),
-          })
-        );
+              return made
+                ? { id: made.id, url: made.url, title: made.title }
+                : undefined;
+            })
+          );
 
-        return { issues, count: issues.length };
-      }),
+          if (!issue) {
+            return yield* new StepFailure({
+              message: "Failed to create issue",
+            });
+          }
+
+          return issue;
+        }),
+      },
+
+      "find-issues": {
+        label: "Find Issues",
+        description: "Search for issues in Linear",
+        input: findIssuesInput,
+        output: findIssuesOutput,
+        configFields: [
+          {
+            key: "linearAssigneeId",
+            label: "Assignee (User ID)",
+            type: "template-input",
+            placeholder: "user-id-123 or {{NodeName.userId}}",
+          },
+          {
+            key: "linearTeamId",
+            label: "Team ID (optional)",
+            type: "template-input",
+            placeholder: "team-id-456 or {{NodeName.teamId}}",
+          },
+          {
+            key: "linearStatus",
+            label: "Status (optional)",
+            type: "select",
+            defaultValue: "any",
+            placeholder: "Any status",
+            options: [
+              { value: "any", label: "Any" },
+              { value: "backlog", label: "Backlog" },
+              { value: "todo", label: "Todo" },
+              { value: "in_progress", label: "In Progress" },
+              { value: "done", label: "Done" },
+              { value: "canceled", label: "Canceled" },
+            ],
+          },
+          {
+            key: "linearLabel",
+            label: "Label (optional)",
+            type: "template-input",
+            placeholder: "bug, feature, etc. or {{NodeName.label}}",
+          },
+        ],
+        handler: Effect.fn(function* (bag) {
+          const { input } = bag;
+          const credentials = yield* bag.credentials;
+          const apiKey = credentials.LINEAR_API_KEY;
+
+          if (!apiKey) {
+            return yield* new StepFailure({
+              message:
+                "LINEAR_API_KEY is not configured. Please add it in Project Integrations.",
+            });
+          }
+
+          const client = createClient(apiKey);
+
+          // Everything the Linear SDK does is a Promise that throws, and an
+          // issue's state is a second request behind the issue, so the whole read
+          // is one call.
+          const issues = yield* bag.step.run(
+            "find-issues",
+            Effect.tryPromise({
+              try: async () => {
+                const found = await client.issues({
+                  filter: buildIssueFilter(input),
+                });
+
+                return await Promise.all(
+                  found.nodes.map(async (issue) => {
+                    const state = issue.state ? await issue.state : undefined;
+                    return {
+                      id: issue.id,
+                      title: issue.title,
+                      url: issue.url,
+                      state: state?.name || "Unknown",
+                      priority: issue.priority,
+                      assigneeId: issue.assigneeId ?? null,
+                    };
+                  })
+                );
+              },
+              catch: (error) =>
+                new StepFailure({
+                  message: `Failed to find issues: ${describeLinearFailure(error)}`,
+                }),
+            })
+          );
+
+          return { issues, count: issues.length };
+        }),
+      },
     },
-  },
-});
+  });
+}
+
+export const linear = createLinear(createLinearClient);

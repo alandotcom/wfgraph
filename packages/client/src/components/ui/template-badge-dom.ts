@@ -1,5 +1,5 @@
-import { getExtensionCatalog } from "#src/lib/extensions";
 import { findAction } from "@wfgraph/shared/extensions/catalog";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { parseTemplate, type TemplateToken } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { readConfigString } from "@wfgraph/shared/graph/node-config";
@@ -25,6 +25,7 @@ import { readConfigString } from "@wfgraph/shared/graph/node-config";
  */
 
 export type BadgeEditorOptions = {
+  catalog: ExtensionCatalog;
   /** Render newlines as `<br>` and allow inserting them. */
   multiline?: boolean;
 };
@@ -95,7 +96,8 @@ const BROKEN_BADGE_CLASS =
  */
 function getDisplayTextForToken(
   token: TemplateToken,
-  nodes: WorkflowNode[]
+  nodes: WorkflowNode[],
+  catalog: ExtensionCatalog
 ): string {
   const storedText = token.fieldPath
     ? `${token.nodeLabel}.${token.fieldPath}`
@@ -111,7 +113,7 @@ function getDisplayTextForToken(
   if (!displayLabel && node.data.type === "action") {
     const actionType = readConfigString(node.data.config, "actionType");
     if (actionType) {
-      displayLabel = findAction(getExtensionCatalog(), actionType)?.label;
+      displayLabel = findAction(catalog, actionType)?.label;
     }
   }
 
@@ -214,8 +216,9 @@ function readTextFrom(container: HTMLElement, multiline: boolean): string {
 
 export function createBadgeEditor(
   container: HTMLElement,
-  options: BadgeEditorOptions = {}
+  options: BadgeEditorOptions
 ): BadgeEditor {
+  const { catalog } = options;
   const multiline = options.multiline ?? false;
   let lastRenderOptions: RenderOptions = { focused: false, nodes: [] };
 
@@ -420,7 +423,8 @@ export function createBadgeEditor(
       badge.setAttribute("data-template", segment.token.raw);
       badge.textContent = getDisplayTextForToken(
         segment.token,
-        renderOptions.nodes
+        renderOptions.nodes,
+        catalog
       );
       appendCaretStop();
       container.appendChild(badge);

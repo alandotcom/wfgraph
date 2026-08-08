@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import type {
   WorkflowEdge,
   WorkflowNode,
@@ -6,10 +6,7 @@ import type {
 } from "#src/lib/workflow-graph-types";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
-import {
-  clearTestCatalog,
-  hydrateTestCatalog,
-} from "#src/lib/extensions-test-support";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { layoutWorkflowNodes } from "./workflow-layout";
 import {
   eventSplitCardWidth,
@@ -24,33 +21,27 @@ const CREATED_EVENT = "app/appointment.created";
 const RESCHEDULED_EVENT = "app/appointment.rescheduled";
 const CONFIRMED_EVENT = "app/appointment.confirmed";
 
-beforeEach(async () => {
-  await hydrateTestCatalog({
-    integrations: [],
-    actions: [],
-    events: [
-      {
-        name: CREATED_EVENT,
-        label: "Appointment created",
-        payloadFields: [],
-      },
-      {
-        name: RESCHEDULED_EVENT,
-        label: "Appointment rescheduled",
-        payloadFields: [],
-      },
-      {
-        name: CONFIRMED_EVENT,
-        label: "Appointment confirmed",
-        payloadFields: [],
-      },
-    ],
-  });
-});
-
-afterEach(async () => {
-  await clearTestCatalog();
-});
+const layoutCatalog: ExtensionCatalog = {
+  integrations: [],
+  actions: [],
+  events: [
+    {
+      name: CREATED_EVENT,
+      label: "Appointment created",
+      payloadFields: [],
+    },
+    {
+      name: RESCHEDULED_EVENT,
+      label: "Appointment rescheduled",
+      payloadFields: [],
+    },
+    {
+      name: CONFIRMED_EVENT,
+      label: "Appointment confirmed",
+      payloadFields: [],
+    },
+  ],
+};
 
 function buildNode(
   id: string,
@@ -131,14 +122,22 @@ function positionX(nodes: WorkflowNode[], id: string): number {
 
 describe("layoutWorkflowNodes", () => {
   test("returns unchanged result when no nodes exist", async () => {
-    const result = await layoutWorkflowNodes({ nodes: [], edges: [] });
+    const result = await layoutWorkflowNodes({
+      catalog: layoutCatalog,
+      nodes: [],
+      edges: [],
+    });
     expect(result.changed).toBe(false);
     expect(result.nodes).toEqual([]);
   });
 
   test("keeps canonical single-node position unchanged", async () => {
     const nodes = [buildNode("a", { x: 40, y: 40 })];
-    const result = await layoutWorkflowNodes({ nodes, edges: [] });
+    const result = await layoutWorkflowNodes({
+      catalog: layoutCatalog,
+      nodes,
+      edges: [],
+    });
     expect(result.changed).toBe(false);
     expect(result.nodes[0]?.position).toEqual({ x: 40, y: 40 });
   });
@@ -154,8 +153,13 @@ describe("layoutWorkflowNodes", () => {
       buildEdge("e2", "lifecycle", "right"),
     ];
 
-    const first = await layoutWorkflowNodes({ nodes, edges });
+    const first = await layoutWorkflowNodes({
+      catalog: layoutCatalog,
+      nodes,
+      edges,
+    });
     const second = await layoutWorkflowNodes({
+      catalog: layoutCatalog,
       nodes: first.nodes,
       edges,
     });
@@ -178,7 +182,11 @@ describe("layoutWorkflowNodes", () => {
       buildEdge("e2", "lifecycle", "a-canceled", "canceled"),
     ];
 
-    const result = await layoutWorkflowNodes({ nodes, edges });
+    const result = await layoutWorkflowNodes({
+      catalog: layoutCatalog,
+      nodes,
+      edges,
+    });
 
     expect(positionX(result.nodes, "z-started")).toBeLessThan(
       positionX(result.nodes, "a-canceled")
@@ -198,7 +206,11 @@ describe("layoutWorkflowNodes", () => {
       buildEdge("e3", "condition", "a-false", "false"),
     ];
 
-    const result = await layoutWorkflowNodes({ nodes, edges });
+    const result = await layoutWorkflowNodes({
+      catalog: layoutCatalog,
+      nodes,
+      edges,
+    });
 
     expect(positionX(result.nodes, "z-true")).toBeLessThan(
       positionX(result.nodes, "a-false")
@@ -213,7 +225,11 @@ describe("layoutWorkflowNodes", () => {
     ];
     const edges = [buildEdge("e1", "a", "c"), buildEdge("e2", "b", "c")];
 
-    const result = await layoutWorkflowNodes({ nodes, edges });
+    const result = await layoutWorkflowNodes({
+      catalog: layoutCatalog,
+      nodes,
+      edges,
+    });
 
     expect(result.nodes).toHaveLength(3);
     for (const node of result.nodes) {
@@ -233,7 +249,11 @@ describe("layoutWorkflowNodes", () => {
       buildEdge("dangling-source", "missing", "b"),
     ];
 
-    const result = await layoutWorkflowNodes({ nodes, edges });
+    const result = await layoutWorkflowNodes({
+      catalog: layoutCatalog,
+      nodes,
+      edges,
+    });
     expect(result.nodes).toHaveLength(2);
     for (const node of result.nodes) {
       expect(Number.isFinite(node.position.x)).toBe(true);
@@ -264,7 +284,11 @@ describe("layoutWorkflowNodes", () => {
       ),
     ];
 
-    const result = await layoutWorkflowNodes({ nodes, edges });
+    const result = await layoutWorkflowNodes({
+      catalog: layoutCatalog,
+      nodes,
+      edges,
+    });
 
     expect(positionX(result.nodes, "z-created")).toBeLessThan(
       positionX(result.nodes, "a-rescheduled")
@@ -285,7 +309,11 @@ describe("layoutWorkflowNodes", () => {
       buildEdge("e2", "entry", "sibling", "started"),
     ];
 
-    const result = await layoutWorkflowNodes({ nodes, edges });
+    const result = await layoutWorkflowNodes({
+      catalog: layoutCatalog,
+      nodes,
+      edges,
+    });
 
     // The gap between the two left edges covers the split's whole card, so the
     // wider it draws the further its neighbour sits.
@@ -309,7 +337,11 @@ describe("layoutWorkflowNodes", () => {
       buildEdge("e2", "entry", "z-left", "started"),
     ];
 
-    const result = await layoutWorkflowNodes({ nodes, edges });
+    const result = await layoutWorkflowNodes({
+      catalog: layoutCatalog,
+      nodes,
+      edges,
+    });
 
     expect(positionX(result.nodes, "z-left")).toBeLessThan(
       positionX(result.nodes, "a-right")
@@ -318,6 +350,7 @@ describe("layoutWorkflowNodes", () => {
 
   test("orders two branches sitting at one place by how they were wired", async () => {
     const buildGraph = (firstTarget: string, secondTarget: string) => ({
+      catalog: layoutCatalog,
       nodes: [
         buildNode("entry", { x: 0, y: 0 }, "lifecycle"),
         buildNode("one", { x: 200, y: 300 }),
@@ -351,7 +384,11 @@ describe("layoutWorkflowNodes", () => {
       buildEdge("e2", "entry", "right", "canceled"),
     ];
 
-    const result = await layoutWorkflowNodes({ nodes, edges });
+    const result = await layoutWorkflowNodes({
+      catalog: layoutCatalog,
+      nodes,
+      edges,
+    });
 
     expect(positionX(result.nodes, "entry")).toBeGreaterThan(
       positionX(result.nodes, "left")
@@ -378,7 +415,11 @@ describe("layoutWorkflowNodes", () => {
       buildEdge("e4", "right", "join"),
     ];
 
-    const result = await layoutWorkflowNodes({ nodes, edges });
+    const result = await layoutWorkflowNodes({
+      catalog: layoutCatalog,
+      nodes,
+      edges,
+    });
 
     const branches = [
       positionX(result.nodes, "left"),
@@ -396,6 +437,7 @@ describe("layoutWorkflowNodes", () => {
     const buildGraph = (suffix: string, join: boolean) => {
       const id = (name: string) => `${name}${suffix}`;
       return {
+        catalog: layoutCatalog,
         nodes: [
           buildNode(id("entry"), { x: 0, y: 0 }, "lifecycle"),
           buildNode(id("left"), { x: 0, y: 300 }),
@@ -431,7 +473,11 @@ describe("layoutWorkflowNodes", () => {
     ];
     const edges = [buildEdge("e1", "lifecycle", "action")];
 
-    const result = await layoutWorkflowNodes({ nodes, edges });
+    const result = await layoutWorkflowNodes({
+      catalog: layoutCatalog,
+      nodes,
+      edges,
+    });
     const nextAddNode = result.nodes.find((node) => node.id === addNode.id);
 
     expect(nextAddNode?.position).toEqual(addNode.position);

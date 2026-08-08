@@ -22,6 +22,7 @@ import "@xyflow/react/dist/style.css";
 import { nanoid } from "nanoid";
 import { Edge } from "#src/components/flow-elements/edge";
 import { Panel } from "#src/components/flow-elements/panel";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useAfterCommit, useAfterPaint, useDomEvent } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import {
@@ -65,6 +66,7 @@ const edgeTypes = {
 };
 
 export function WorkflowCanvas() {
+  const catalog = useExtensionCatalog();
   const nodes = useAtomValue(displayNodesAtom);
   const edges = useAtomValue(displayEdgesAtom);
   // Draft edits and run-overlay viewing are mutually exclusive: mutating while
@@ -258,6 +260,7 @@ export function WorkflowCanvas() {
         nodes,
         edges,
         availableWidth: containerWidth,
+        catalog,
       });
 
       if (requestId !== reflowRequestId.current) {
@@ -279,7 +282,15 @@ export function WorkflowCanvas() {
         setIsReflowing(false);
       }
     }
-  }, [applyNodeLayout, edges, fitView, editingLocked, nodes, realNodeCount]);
+  }, [
+    applyNodeLayout,
+    edges,
+    fitView,
+    editingLocked,
+    nodes,
+    realNodeCount,
+    catalog,
+  ]);
 
   const nodeTypes = useMemo(
     () => ({
@@ -342,8 +353,14 @@ export function WorkflowCanvas() {
 
   const normalizeSourceHandleForConnection = useCallback(
     (sourceNodeId: string, sourceHandle: string | null | undefined) =>
-      normalizeSourceHandle({ nodes, edges, sourceNodeId, sourceHandle }),
-    [nodes, edges]
+      normalizeSourceHandle({
+        nodes,
+        edges,
+        sourceNodeId,
+        sourceHandle,
+        catalog,
+      }),
+    [nodes, edges, catalog]
   );
 
   const onConnect: OnConnect = useCallback(

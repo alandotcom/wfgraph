@@ -2,17 +2,14 @@ import { describe, expect, it } from "@effect/vitest";
 import { AcuityError } from "@fountain-bio/acuity";
 import { actionData, actionError, runAction } from "@wfgraph/core/testing";
 import { Effect } from "effect";
-import { afterEach, beforeEach, vi } from "vitest";
-import * as acuityClient from "#src/acuity/client";
-import { acuity } from "#src/acuity/index";
+import { beforeEach, vi } from "vitest";
+import { createAcuity } from "#src/acuity/index";
 
 /**
  * The eight Acuity actions in one file, because what they have to say is the
  * same three things each: which config field it cannot read, which parameters
  * Acuity is asked for, and what a thrown SDK error reads as. The seam under all
- * of them is `createAcuitySdk`, whose two resources are stubbed here via spy so
- * isolate:false does not leave a `vi.mock` of `@fountain-bio/acuity` on the
- * shared registry.
+ * of them is `createSdk`, injected when the integration is built.
  */
 const mocks = vi.hoisted(() => ({
   types: vi.fn(),
@@ -24,6 +21,22 @@ const mocks = vi.hoisted(() => ({
   dates: vi.fn(),
   times: vi.fn(),
 }));
+
+function fakeCreateSdk(_userId: string, _apiKey: string) {
+  return {
+    appointments: {
+      types: mocks.types,
+      list: mocks.list,
+      get: mocks.get,
+      create: mocks.create,
+      reschedule: mocks.reschedule,
+      cancel: mocks.cancel,
+    },
+    availability: { dates: mocks.dates, times: mocks.times },
+  } as never;
+}
+
+const underTest = createAcuity(fakeCreateSdk);
 
 const ACUITY_CREDENTIALS = {
   ACUITY_USER_ID: "12345678",
@@ -107,28 +120,13 @@ beforeEach(() => {
   mocks.cancel.mockResolvedValue({ ...APPOINTMENT, canceled: true });
   mocks.dates.mockResolvedValue([{ date: "2026-03-15" }]);
   mocks.times.mockResolvedValue([{ time: "2026-03-15T15:00:00-04:00" }]);
-  vi.spyOn(acuityClient, "createAcuitySdk").mockReturnValue({
-    appointments: {
-      types: mocks.types,
-      list: mocks.list,
-      get: mocks.get,
-      create: mocks.create,
-      reschedule: mocks.reschedule,
-      cancel: mocks.cancel,
-    },
-    availability: { dates: mocks.dates, times: mocks.times },
-  } as never);
-});
-
-afterEach(() => {
-  vi.restoreAllMocks();
 });
 
 describe("list-appointment-types", () => {
   it.effect("counts what Acuity listed", () =>
     Effect.gen(function* () {
       const result = actionData(
-        yield* runAction(acuity, "list-appointment-types", {
+        yield* runAction(underTest, "list-appointment-types", {
           input: {},
           credentials: withCredentials(),
         })
@@ -148,7 +146,7 @@ describe("list-appointment-types", () => {
   it.effect("names both credentials before reaching Acuity", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(acuity, "list-appointment-types", {
+        yield* runAction(underTest, "list-appointment-types", {
           input: {},
           credentials: credentialsRead({ ACUITY_USER_ID: "12345678" }),
         })
@@ -170,7 +168,7 @@ describe("list-appointment-types", () => {
         mocks.types.mockRejectedValue({});
 
         const error = actionError(
-          yield* runAction(acuity, "list-appointment-types", {
+          yield* runAction(underTest, "list-appointment-types", {
             input: {},
             credentials: withCredentials(),
           })
@@ -185,7 +183,7 @@ describe("list-appointments", () => {
   it.effect("sends Acuity's own parameter names", () =>
     Effect.gen(function* () {
       const result = actionData(
-        yield* runAction(acuity, "list-appointments", {
+        yield* runAction(underTest, "list-appointments", {
           input: {
             appointmentTypeId: "12345",
             calendarId: "67890",
@@ -223,7 +221,7 @@ describe("list-appointments", () => {
   // A blank filter is no filter, which is what the select's empty option means.
   it.effect("leaves out the filters that were not filled in", () =>
     Effect.gen(function* () {
-      yield* runAction(acuity, "list-appointments", {
+      yield* runAction(underTest, "list-appointments", {
         input: { canceled: "", showAll: "", calendarId: "" },
         credentials: withCredentials(),
       });
@@ -247,7 +245,7 @@ describe("list-appointments", () => {
   it.effect("names the field a non-integer was typed into", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(acuity, "list-appointments", {
+        yield* runAction(underTest, "list-appointments", {
           input: { calendarId: "not-a-number" },
           credentials: withCredentials(),
         })
@@ -261,7 +259,7 @@ describe("list-appointments", () => {
   it.effect("names the field a non-boolean was typed into", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(acuity, "list-appointments", {
+        yield* runAction(underTest, "list-appointments", {
           input: { canceled: "maybe" },
           credentials: withCredentials(),
         })
@@ -278,7 +276,7 @@ describe("get-appointment", () => {
   it.effect("offers the id and datetime beside the appointment", () =>
     Effect.gen(function* () {
       const result = actionData(
-        yield* runAction(acuity, "get-appointment", {
+        yield* runAction(underTest, "get-appointment", {
           input: { appointmentId: "987", pastFormAnswers: "true" },
           credentials: withCredentials(),
         })
@@ -296,7 +294,7 @@ describe("get-appointment", () => {
   it.effect("asks for the appointment id it cannot do without", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(acuity, "get-appointment", {
+        yield* runAction(underTest, "get-appointment", {
           input: { appointmentId: "  " },
           credentials: withCredentials(),
         })
@@ -312,7 +310,7 @@ describe("get-availability-dates", () => {
   it.effect("sends the month and type Acuity asks for", () =>
     Effect.gen(function* () {
       const result = actionData(
-        yield* runAction(acuity, "get-availability-dates", {
+        yield* runAction(underTest, "get-availability-dates", {
           input: {
             month: "2026-03",
             appointmentTypeId: "12345",
@@ -336,7 +334,7 @@ describe("get-availability-dates", () => {
   it.effect("says what a month has to look like", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(acuity, "get-availability-dates", {
+        yield* runAction(underTest, "get-availability-dates", {
           input: { month: "  ", appointmentTypeId: "12345" },
           credentials: withCredentials(),
         })
@@ -356,7 +354,7 @@ describe("get-availability-times", () => {
   it.effect("reads the ignore list as the numbers Acuity takes", () =>
     Effect.gen(function* () {
       const result = actionData(
-        yield* runAction(acuity, "get-availability-times", {
+        yield* runAction(underTest, "get-availability-times", {
           input: {
             date: "2026-03-15",
             appointmentTypeId: "12345",
@@ -380,7 +378,7 @@ describe("get-availability-times", () => {
   it.effect("names the ignore list when it holds something else", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(acuity, "get-availability-times", {
+        yield* runAction(underTest, "get-availability-times", {
           input: {
             date: "2026-03-15",
             appointmentTypeId: "12345",
@@ -399,7 +397,7 @@ describe("get-availability-times", () => {
   it.effect("says what a date has to look like", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(acuity, "get-availability-times", {
+        yield* runAction(underTest, "get-availability-times", {
           input: { date: "", appointmentTypeId: "12345" },
           credentials: withCredentials(),
         })
@@ -416,7 +414,7 @@ describe("create-appointment", () => {
   it.effect("sends the booking and the mutation flags separately", () =>
     Effect.gen(function* () {
       const result = actionData(
-        yield* runAction(acuity, "create-appointment", {
+        yield* runAction(underTest, "create-appointment", {
           input: {
             datetime: "2026-03-15T15:00:00-04:00",
             appointmentTypeId: "12345",
@@ -461,7 +459,7 @@ describe("create-appointment", () => {
   it.effect("says what the custom fields JSON has to look like", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(acuity, "create-appointment", {
+        yield* runAction(underTest, "create-appointment", {
           input: {
             datetime: "2026-03-15T15:00:00-04:00",
             appointmentTypeId: "12345",
@@ -485,7 +483,7 @@ describe("create-appointment", () => {
   it.effect("asks for the client's name", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(acuity, "create-appointment", {
+        yield* runAction(underTest, "create-appointment", {
           input: {
             datetime: "2026-03-15T15:00:00-04:00",
             appointmentTypeId: "12345",
@@ -505,7 +503,7 @@ describe("create-appointment", () => {
   it.effect("asks for a way to reach the client", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(acuity, "create-appointment", {
+        yield* runAction(underTest, "create-appointment", {
           input: {
             datetime: "2026-03-15T15:00:00-04:00",
             appointmentTypeId: "12345",
@@ -525,7 +523,7 @@ describe("create-appointment", () => {
   it.effect("says what a datetime has to look like", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(acuity, "create-appointment", {
+        yield* runAction(underTest, "create-appointment", {
           input: {
             datetime: " ",
             appointmentTypeId: "12345",
@@ -547,7 +545,7 @@ describe("reschedule-appointment", () => {
   it.effect("sends the new datetime and the mutation flags", () =>
     Effect.gen(function* () {
       const result = actionData(
-        yield* runAction(acuity, "reschedule-appointment", {
+        yield* runAction(underTest, "reschedule-appointment", {
           input: {
             appointmentId: "987",
             datetime: "2026-03-16T10:00:00-04:00",
@@ -571,7 +569,7 @@ describe("reschedule-appointment", () => {
   it.effect("says what a new datetime has to look like", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(acuity, "reschedule-appointment", {
+        yield* runAction(underTest, "reschedule-appointment", {
           input: { appointmentId: "987", datetime: "" },
           credentials: withCredentials(),
         })
@@ -587,7 +585,7 @@ describe("cancel-appointment", () => {
   it.effect("sends the note and the flags Acuity takes", () =>
     Effect.gen(function* () {
       const result = actionData(
-        yield* runAction(acuity, "cancel-appointment", {
+        yield* runAction(underTest, "cancel-appointment", {
           input: {
             appointmentId: "987",
             cancelNote: "Client rescheduled by phone",
@@ -617,7 +615,7 @@ describe("cancel-appointment", () => {
       mocks.cancel.mockRejectedValue(new Error("Appointment already canceled"));
 
       const error = actionError(
-        yield* runAction(acuity, "cancel-appointment", {
+        yield* runAction(underTest, "cancel-appointment", {
           input: { appointmentId: "987" },
           credentials: withCredentials(),
         })
@@ -637,7 +635,7 @@ describe("cancel-appointment", () => {
       );
 
       const error = actionError(
-        yield* runAction(acuity, "cancel-appointment", {
+        yield* runAction(underTest, "cancel-appointment", {
           input: { appointmentId: "987" },
           credentials: withCredentials(),
         })
@@ -663,7 +661,7 @@ describe("an appointment through the encode", () => {
     () =>
       Effect.gen(function* () {
         const result = actionData(
-          yield* runAction(acuity, "get-appointment", {
+          yield* runAction(underTest, "get-appointment", {
             input: { appointmentId: "987" },
             credentials: withCredentials(),
           })
@@ -681,7 +679,7 @@ describe("an appointment through the encode", () => {
   it.effect("keeps every appointment on the way out of list-appointments", () =>
     Effect.gen(function* () {
       const result = actionData(
-        yield* runAction(acuity, "list-appointments", {
+        yield* runAction(underTest, "list-appointments", {
           input: {},
           credentials: withCredentials(),
         })
@@ -697,7 +695,7 @@ describe("an appointment through the encode", () => {
     () =>
       Effect.gen(function* () {
         const created = actionData(
-          yield* runAction(acuity, "create-appointment", {
+          yield* runAction(underTest, "create-appointment", {
             input: {
               datetime: "2026-03-15T15:00:00-04:00",
               appointmentTypeId: "12345",
@@ -710,7 +708,7 @@ describe("an appointment through the encode", () => {
           })
         );
         const rescheduled = actionData(
-          yield* runAction(acuity, "reschedule-appointment", {
+          yield* runAction(underTest, "reschedule-appointment", {
             input: {
               appointmentId: "987",
               datetime: "2026-03-16T15:00:00-04:00",
@@ -719,7 +717,7 @@ describe("an appointment through the encode", () => {
           })
         );
         const canceled = actionData(
-          yield* runAction(acuity, "cancel-appointment", {
+          yield* runAction(underTest, "cancel-appointment", {
             input: { appointmentId: "987" },
             credentials: withCredentials(),
           })
@@ -737,7 +735,7 @@ describe("an appointment through the encode", () => {
   it.effect("keeps a sparse appointment type on the way out", () =>
     Effect.gen(function* () {
       const result = actionData(
-        yield* runAction(acuity, "list-appointment-types", {
+        yield* runAction(underTest, "list-appointment-types", {
           input: {},
           credentials: withCredentials(),
         })

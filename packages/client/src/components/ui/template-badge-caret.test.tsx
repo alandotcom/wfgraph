@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { type ReactElement } from "react";
 import { fireEvent, render } from "@testing-library/react";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
+import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { TemplateBadgeInput } from "./template-badge-input";
 import { TemplateBadgeTextarea } from "./template-badge-textarea";
 import { type BadgeEditor, createBadgeEditor } from "./template-badge-dom";
@@ -23,6 +26,14 @@ const TOKEN_B = "{{@action_1:Send Message.status}}";
  */
 const MIXED = `${TOKEN_A} hi ${TOKEN_A}${TOKEN_B} bye`;
 
+function renderWithCatalog(ui: ReactElement) {
+  return render(
+    <ExtensionCatalogProvider value={emptyExtensionCatalog}>
+      {ui}
+    </ExtensionCatalogProvider>
+  );
+}
+
 let container: HTMLElement | null = null;
 
 function editorWith(
@@ -33,7 +44,10 @@ function editorWith(
   container.contentEditable = "true";
   document.body.appendChild(container);
 
-  const editor = createBadgeEditor(container, options);
+  const editor = createBadgeEditor(container, {
+    catalog: emptyExtensionCatalog,
+    ...options,
+  });
   // No node array: a token whose node is missing keeps the label baked into it,
   // which is a different length from the raw token and so exercises the offset
   // maths the same way a live badge does.
@@ -206,7 +220,7 @@ function caretPrecedes(node: Node): boolean {
 describe("keys beside a badge", () => {
   it("removes the whole badge on one Backspace", () => {
     const onChange = vi.fn();
-    const { container: root } = render(
+    const { container: root } = renderWithCatalog(
       <TemplateBadgeInput onChange={onChange} value={`${TOKEN_A} tail`} />
     );
     const textbox = findTextbox(root);
@@ -220,7 +234,7 @@ describe("keys beside a badge", () => {
 
   it("removes the whole badge on one Delete", () => {
     const onChange = vi.fn();
-    const { container: root } = render(
+    const { container: root } = renderWithCatalog(
       <TemplateBadgeInput onChange={onChange} value={`lead ${TOKEN_A}`} />
     );
     const textbox = findTextbox(root);
@@ -233,7 +247,7 @@ describe("keys beside a badge", () => {
 
   it("removes only the badge the caret touches", () => {
     const onChange = vi.fn();
-    const { container: root } = render(
+    const { container: root } = renderWithCatalog(
       <TemplateBadgeInput onChange={onChange} value={`${TOKEN_A}${TOKEN_B}`} />
     );
     const textbox = findTextbox(root);
@@ -246,7 +260,7 @@ describe("keys beside a badge", () => {
 
   it("leaves Backspace in prose to the browser", () => {
     const onChange = vi.fn();
-    const { container: root } = render(
+    const { container: root } = renderWithCatalog(
       <TemplateBadgeInput onChange={onChange} value={`${TOKEN_A} tail`} />
     );
     const textbox = findTextbox(root);
@@ -267,7 +281,7 @@ describe("keys beside a badge", () => {
   });
 
   it("steps over a badge in one press of an arrow", () => {
-    const { container: root } = render(
+    const { container: root } = renderWithCatalog(
       <TemplateBadgeInput value={`${TOKEN_A} tail`} />
     );
     const textbox = findTextbox(root);
@@ -282,7 +296,7 @@ describe("keys beside a badge", () => {
   });
 
   it("keeps the caret out of a badge when a redraw restores it", () => {
-    const { container: root } = render(
+    const { container: root } = renderWithCatalog(
       <TemplateBadgeInput onChange={() => {}} value={`${TOKEN_A} hi ${TOKEN_B}`} />
     );
     const textbox = findTextbox(root);
@@ -300,7 +314,7 @@ describe("keys beside a badge", () => {
 
   it("keeps Enter inserting a line break in the multi-line field", () => {
     const onChange = vi.fn();
-    const { container: root } = render(
+    const { container: root } = renderWithCatalog(
       <TemplateBadgeTextarea onChange={onChange} value="one" />
     );
     const textbox = findTextbox(root);

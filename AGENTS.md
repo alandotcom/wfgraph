@@ -138,11 +138,19 @@ primitives and do not introduce Radix. Bundle size is not a concern here.
 `vi.mock` call above the imports, so a factory reading a variable declared later in
 the file hits the temporal dead zone. Put that variable in `vi.hoisted`, which vitest
 lifts higher still. The suite runs with `isolate: false`, so a mock that replaces a
-module stays in that worker's evaluated graph for later files: prefer dependency
-injection ports, catalog-as-argument, named SDK factories, and fetch stubs that read
-`globalThis` per call — not production put/dial seams written only for tests — or
-`vi.spyOn` on a namespace/export object, and restore in `afterEach`. For a stub only
-one case wants, `vi.doMock` stays where it is written and takes effect on the next
+module stays in that worker's evaluated graph for later files. Prefer:
+
+- catalog-as-argument on pure helpers, and `ExtensionCatalogProvider` /
+  `useExtensionCatalog()` for React (fixtures wrap the provider; only
+  `extensions.test.ts` stubs `fetch` to exercise hydrate)
+- required DI ports at construction (`runEventListener`'s `deliver`,
+  `WorkflowFunctionPorts.execute*`, `createInngestSurface`'s `connect`)
+- injected SDK factories (`createAcuity(createSdk)`, `createLinear(createClient)`)
+  rather than `vi.spyOn` of thin wrappers
+- fetch stubs that read `globalThis` per call (see `RPCLink`'s `fetch`)
+
+Do not add production put/dial seams written only for tests. For a stub only one
+case wants, `vi.doMock` stays where it is written and takes effect on the next
 dynamic import. Import `vi` from `vitest`: `@effect/vitest` re-exports the name, but
 the copy reaching a test that way cannot find the module registry, and every `vi.mock`
 in the file then throws at collection.

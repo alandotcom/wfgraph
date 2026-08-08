@@ -1,36 +1,33 @@
 /**
  * The Test connection button, for Linear.
  *
- * The seam is `createLinearClient`, stubbed so a case says what `viewer` did.
- * What `toLinearError` makes of a thrown value is `errors.test.ts`'s subject;
- * what is left here is the verdict each of those becomes. Spying the factory
- * (rather than `vi.mock` of `@linear/sdk`) keeps isolate:false from colliding
- * with the other Linear suites that need different client shapes.
+ * The seam is `createClient`, passed into `testLinear` so each case says what
+ * `viewer` did without spying the production factory. What `toLinearError`
+ * makes of a thrown value is `errors.test.ts`'s subject; what is left here is
+ * the verdict each of those becomes.
  */
 
 import { GraphQLClientError, type LinearRawResponse } from "@linear/sdk";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as linearClient from "#src/linear/client";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testLinear } from "#src/linear/test";
 
 const mocks = vi.hoisted(() => ({ viewer: vi.fn() }));
 
-beforeEach(() => {
-  mocks.viewer.mockReset();
-  vi.spyOn(linearClient, "createLinearClient").mockReturnValue({
+function fakeCreateClient(_apiKey: string) {
+  return {
     get viewer() {
       return mocks.viewer();
     },
-  } as never);
-});
+  } as never;
+}
 
-afterEach(() => {
-  vi.restoreAllMocks();
+beforeEach(() => {
+  mocks.viewer.mockReset();
 });
 
 describe("testLinear", () => {
   it("names the credential when there is none", async () => {
-    expect(await testLinear({})).toEqual({
+    expect(await testLinear({}, fakeCreateClient)).toEqual({
       success: false,
       error: "LINEAR_API_KEY is required",
     });
@@ -40,7 +37,9 @@ describe("testLinear", () => {
   it("accepts a key whose viewer comes back", async () => {
     mocks.viewer.mockResolvedValue({ id: "user_1" });
 
-    expect(await testLinear({ LINEAR_API_KEY: "lin_api_good" })).toEqual({
+    expect(
+      await testLinear({ LINEAR_API_KEY: "lin_api_good" }, fakeCreateClient)
+    ).toEqual({
       success: true,
     });
   });
@@ -50,7 +49,9 @@ describe("testLinear", () => {
   it("refuses a viewer that names nobody", async () => {
     mocks.viewer.mockResolvedValue({});
 
-    expect(await testLinear({ LINEAR_API_KEY: "lin_api_x" })).toEqual({
+    expect(
+      await testLinear({ LINEAR_API_KEY: "lin_api_x" }, fakeCreateClient)
+    ).toEqual({
       success: false,
       error: "Failed to verify Linear connection",
     });
@@ -75,7 +76,9 @@ describe("testLinear", () => {
       new GraphQLClientError(response, { query: "query Me { viewer { id } }" })
     );
 
-    expect(await testLinear({ LINEAR_API_KEY: "lin_api_bad" })).toMatchObject({
+    expect(
+      await testLinear({ LINEAR_API_KEY: "lin_api_bad" }, fakeCreateClient)
+    ).toMatchObject({
       success: false,
       error: "Invalid API key. Please check your Linear API key.",
     });
@@ -86,7 +89,9 @@ describe("testLinear", () => {
   it("passes any other failure through in Linear's own words", async () => {
     mocks.viewer.mockRejectedValue(new Error("ECONNREFUSED"));
 
-    expect(await testLinear({ LINEAR_API_KEY: "lin_api_x" })).toMatchObject({
+    expect(
+      await testLinear({ LINEAR_API_KEY: "lin_api_x" }, fakeCreateClient)
+    ).toMatchObject({
       success: false,
       error: "ECONNREFUSED",
     });

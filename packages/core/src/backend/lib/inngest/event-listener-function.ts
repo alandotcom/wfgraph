@@ -75,7 +75,7 @@ type EventListenerSteps = {
  * The deliver halves this listener fans out through.
  *
  * Named here so a wiring test can stand in for them without mocking the module
- * graph: production passes nothing and the real exports run.
+ * graph. Production wiring passes the real exports at the construction site.
  */
 export type EventListenerDeliverPorts = {
   listSubscribers: typeof listEventSubscribers;
@@ -83,7 +83,7 @@ export type EventListenerDeliverPorts = {
   deliverWaits: typeof deliverToWaits;
 };
 
-const defaultDeliverPorts: EventListenerDeliverPorts = {
+export const defaultDeliverPorts: EventListenerDeliverPorts = {
   listSubscribers: listEventSubscribers,
   applyLifecycle: applyLifecycleRules,
   deliverWaits: deliverToWaits,
@@ -106,11 +106,9 @@ export async function runEventListener(input: {
   arrival: { eventId?: string; runId?: string };
   runtime: WfGraphRuntime;
   step: EventListenerSteps;
-  /** Defaults to the real deliver-event exports. */
-  deliver?: EventListenerDeliverPorts;
+  deliver: EventListenerDeliverPorts;
 }): Promise<{ eventName: string; workflows: WorkflowDelivery[] }> {
-  const { event, payload, runtime, step } = input;
-  const deliver = input.deliver ?? defaultDeliverPorts;
+  const { event, payload, runtime, step, deliver } = input;
   const arrivalLogger = logger.with({
     eventName: event.name,
     ...input.arrival,
@@ -254,6 +252,7 @@ export function createInngestEventListenerFunction(input: {
         arrival: { eventId: delivered.id, runId },
         runtime,
         step,
+        deliver: defaultDeliverPorts,
       })
   );
 }

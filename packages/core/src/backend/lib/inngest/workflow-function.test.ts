@@ -46,6 +46,7 @@ function createTestFunction() {
       // This file tests the Inngest handler's wiring, so the engine underneath
       // it is a stand-in handed through the ports rather than a module spy.
       executeWorkflow: executeWorkflowMock,
+      executeWorkflowBranch: vi.fn(),
     }
   );
 }
@@ -120,6 +121,8 @@ describe("the workflow run function", () => {
         actions: buildTestActions,
         store: testStore,
         appRuntime: testAppRuntime,
+        executeWorkflow: vi.fn(),
+        executeWorkflowBranch: vi.fn(),
       }
     );
 

@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, waitFor } from "@testing-library/react";
 import { getDefaultStore } from "jotai";
-import { useState } from "react";
+import { type ReactElement, useState } from "react";
+import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import {
   loadWorkflowGraphAtom,
   updateNodeDataAtom,
@@ -13,31 +14,36 @@ import {
 } from "@wfgraph/shared/extensions/catalog";
 import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
-import {
-  clearTestCatalog,
-  hydrateTestCatalog,
-} from "#src/lib/extensions-test-support";
 import { TemplateBadgeInput } from "./template-badge-input";
 import { TemplateBadgeTextarea } from "./template-badge-textarea";
 
 // The entry node offers the payload fields of the Events its rules start on, and
 // an action node offers its own catalog entry's output fields, so a case that
 // wants either says what the app declares by writing this object.
-const surface = {
-  events: [] as EventMetadata[],
-  actions: [] as ActionMetadata[],
-  integrations: [] as ExtensionCatalog["integrations"],
+type MutableCatalog = {
+  events: EventMetadata[];
+  actions: ActionMetadata[];
+  integrations: ExtensionCatalog["integrations"];
 };
 
-beforeEach(async () => {
+const surface: MutableCatalog = {
+  events: [],
+  actions: [],
+  integrations: [],
+};
+
+beforeEach(() => {
   surface.events = [];
   surface.actions = [];
-  await hydrateTestCatalog(surface);
 });
 
-afterEach(async () => {
-  await clearTestCatalog();
-});
+function renderWithCatalog(ui: ReactElement) {
+  return render(
+    <ExtensionCatalogProvider value={surface as ExtensionCatalog}>
+      {ui}
+    </ExtensionCatalogProvider>
+  );
+}
 
 const APPOINTMENT_CREATED: EventMetadata = {
   name: "app/appointment.created",
@@ -72,7 +78,6 @@ const SEND_MESSAGE_ACTION: ActionMetadata = {
 async function seedTemplateContext(selectedNodeId = "wait_1") {
   const store = getDefaultStore();
   surface.events = [APPOINTMENT_CREATED];
-  await hydrateTestCatalog(surface);
   const nodes: WorkflowNode[] = [
     {
       id: "lifecycle_1",
@@ -245,7 +250,7 @@ describe("Template badge autocomplete", () => {
 
   it("renders a pill immediately after mouse selection in TemplateBadgeInput", async () => {
     let latestValue = "";
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledTemplateBadgeInput
         onValueChange={(value) => {
           latestValue = value;
@@ -271,7 +276,7 @@ describe("Template badge autocomplete", () => {
 
   it("renders a pill immediately after keyboard Enter selection", async () => {
     let latestValue = "";
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledTemplateBadgeInput
         onValueChange={(value) => {
           latestValue = value;
@@ -295,7 +300,7 @@ describe("Template badge autocomplete", () => {
 
   it("renders a pill immediately after mouse selection in TemplateBadgeTextarea", async () => {
     let latestValue = "";
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledTemplateBadgeTextarea
         onValueChange={(value) => {
           latestValue = value;
@@ -336,9 +341,7 @@ describe("Template badge autocomplete", () => {
         ],
       },
     ];
-    await hydrateTestCatalog(surface);
-
-    const view = render(<DurationTemplateBadgeInput />);
+    const view = renderWithCatalog(<DurationTemplateBadgeInput />);
     typeAtSymbol(view.getByRole("textbox"));
 
     await waitFor(() => {
@@ -347,7 +350,7 @@ describe("Template badge autocomplete", () => {
   });
 
   it("says why a duration field has nothing to offer", async () => {
-    const view = render(<DurationTemplateBadgeInput />);
+    const view = renderWithCatalog(<DurationTemplateBadgeInput />);
     typeAtSymbol(view.getByRole("textbox"));
 
     await waitFor(() => {
@@ -359,7 +362,7 @@ describe("Template badge autocomplete", () => {
   });
 
   it("offers a date field only the instants upstream", async () => {
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledTemplateBadgeInput onValueChange={() => {}} />
     );
     typeAtSymbol(view.getByRole("textbox"));
@@ -385,8 +388,7 @@ describe("Template badge autocomplete", () => {
         ],
       },
     ];
-    await hydrateTestCatalog(surface);
-    const view = render(<DurationTemplateBadgeInput />);
+    const view = renderWithCatalog(<DurationTemplateBadgeInput />);
     typeAtSymbol(view.getByRole("textbox"));
 
     await waitFor(() => {
@@ -406,7 +408,7 @@ describe("Template badge autocomplete", () => {
       scrollIntoView
     );
 
-    const view = render(
+    const view = renderWithCatalog(
       <PlaceholderTemplateBadgeInput onValueChange={() => {}} />
     );
     typeAtSymbol(view.getByRole("textbox"));
@@ -429,7 +431,6 @@ describe("Template badge autocomplete", () => {
 
   it("uses currentNodeId for autocomplete when no node is selected in the canvas", async () => {
     surface.actions = [SEND_MESSAGE_ACTION];
-    await hydrateTestCatalog(surface);
     const store = getDefaultStore();
     const nodes: WorkflowNode[] = [
       {
@@ -467,7 +468,7 @@ describe("Template badge autocomplete", () => {
     store.set(loadWorkflowGraphAtom, { nodes, edges });
 
     let latestValue = "";
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledTemplateBadgeInputWithNodeContext
         currentNodeId="condition_1"
         onValueChange={(value) => {
@@ -493,7 +494,7 @@ describe("Template badge autocomplete", () => {
   });
 
   it("stays closed for the @ inside a badge already placed", async () => {
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledTemplateBadgeInput onValueChange={() => {}} />
     );
 
@@ -513,7 +514,7 @@ describe("Template badge autocomplete", () => {
   });
 
   it("leaves the keys alone while it has no row to show", async () => {
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledTemplateBadgeInput onValueChange={() => {}} />
     );
 
@@ -537,7 +538,7 @@ describe("Template badge rendering", () => {
     // token holding the label the token was written against. Renaming a node
     // produces no DOM event, so this is the one thing the editor genuinely has
     // to re-render in response to a React state change.
-    const view = render(
+    const view = renderWithCatalog(
       <UncontrolledTemplateBadgeInput value={LIFECYCLE_TEMPLATE} />
     );
 
@@ -561,10 +562,14 @@ describe("Template badge rendering", () => {
   });
 
   it("renders a value the parent supplies while the field is not focused", async () => {
-    const view = render(<UncontrolledTemplateBadgeInput value="" />);
+    const view = renderWithCatalog(<UncontrolledTemplateBadgeInput value="" />);
     const textbox = view.getByRole("textbox");
 
-    view.rerender(<UncontrolledTemplateBadgeInput value={LIFECYCLE_TEMPLATE} />);
+    view.rerender(
+      <ExtensionCatalogProvider value={surface as ExtensionCatalog}>
+        <UncontrolledTemplateBadgeInput value={LIFECYCLE_TEMPLATE} />
+      </ExtensionCatalogProvider>
+    );
 
     await waitFor(() => {
       expect(textbox.querySelector("[data-template]")?.textContent).toBe(
@@ -575,7 +580,7 @@ describe("Template badge rendering", () => {
 
   it("reads a badge back as the raw token it stands for", async () => {
     let latestValue = "";
-    const view = render(
+    const view = renderWithCatalog(
       <ControlledTemplateBadgeInput
         onValueChange={(value) => {
           latestValue = value;
@@ -611,7 +616,7 @@ describe("Template badge editing", () => {
     // An empty unfocused field shows prompt text, which lives in the same
     // contentEditable as anything the user types.
     let latestValue = "";
-    const view = render(
+    const view = renderWithCatalog(
       <PlaceholderTemplateBadgeInput
         onValueChange={(value) => {
           latestValue = value;
@@ -632,7 +637,7 @@ describe("Template badge editing", () => {
     // produces a new node array. Redrawing the badges on each one would rebuild
     // the DOM under the caret.
     let latestValue = "";
-    const view = render(
+    const view = renderWithCatalog(
       <PlaceholderTemplateBadgeInput
         onValueChange={(value) => {
           latestValue = value;
@@ -675,8 +680,6 @@ describe("Template badge autocomplete node rows", () => {
       },
       SEND_MESSAGE_ACTION,
     ];
-    await hydrateTestCatalog(surface);
-
     const store = getDefaultStore();
     store.set(loadWorkflowGraphAtom, {
       nodes: [
@@ -737,7 +740,7 @@ describe("Template badge autocomplete node rows", () => {
       ],
     });
 
-    const view = render(
+    const view = renderWithCatalog(
       <PlaceholderTemplateBadgeInput onValueChange={() => {}} />
     );
     typeAtSymbol(view.getByRole("textbox"));

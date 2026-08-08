@@ -1,56 +1,43 @@
 import { render } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { IntegrationUi } from "@wfgraph/plugins/ui";
+import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OutputDisplay } from "#src/components/workflow/workflow-run-shared";
-import {
-  clearTestCatalog,
-  hydrateTestCatalog,
-} from "#src/lib/extensions-test-support";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
-/**
- * Three actions the renderer lookup has to tell apart: one Slack owns, one a
- * host defined under a Slack-looking id, and one whose id carries no owner
- * prefix at all.
- */
-beforeEach(async () => {
-  await hydrateTestCatalog({
-    events: [],
-    integrations: [],
-    actions: [
-      {
-        id: "slack/post-message",
-        label: "Post message",
-        description: "Post to a channel",
-        category: "messaging",
-        integration: "slack",
-        configFields: [],
-        outputFields: [],
-      },
-      {
-        id: "slack/notify",
-        label: "Notify",
-        description: "A host action, owned by no integration",
-        category: "messaging",
-        configFields: [],
-        outputFields: [],
-      },
-      {
-        id: "post-message",
-        label: "Unprefixed",
-        description: "Claims Slack as its owner without wearing the prefix",
-        category: "messaging",
-        integration: "slack",
-        configFields: [],
-        outputFields: [],
-      },
-    ],
-  });
-});
-
-afterEach(async () => {
-  await clearTestCatalog();
-});
+const testCatalog: ExtensionCatalog = {
+  events: [],
+  integrations: [],
+  actions: [
+    {
+      id: "slack/post-message",
+      label: "Post message",
+      description: "Post to a channel",
+      category: "messaging",
+      integration: "slack",
+      configFields: [],
+      outputFields: [],
+    },
+    {
+      id: "slack/notify",
+      label: "Notify",
+      description: "A host action, owned by no integration",
+      category: "messaging",
+      configFields: [],
+      outputFields: [],
+    },
+    {
+      id: "post-message",
+      label: "Unprefixed",
+      description: "Claims Slack as its owner without wearing the prefix",
+      category: "messaging",
+      integration: "slack",
+      configFields: [],
+      outputFields: [],
+    },
+  ],
+};
 
 const SLACK_UI: Record<string, IntegrationUi> = {
   slack: {
@@ -63,9 +50,11 @@ const SLACK_UI: Record<string, IntegrationUi> = {
 
 function renderOutput(actionType: string) {
   return render(
-    <IntegrationUiProvider value={SLACK_UI}>
-      <OutputDisplay actionType={actionType} output={{ ok: true }} />
-    </IntegrationUiProvider>
+    <ExtensionCatalogProvider value={testCatalog}>
+      <IntegrationUiProvider value={SLACK_UI}>
+        <OutputDisplay actionType={actionType} output={{ ok: true }} />
+      </IntegrationUiProvider>
+    </ExtensionCatalogProvider>
   );
 }
 

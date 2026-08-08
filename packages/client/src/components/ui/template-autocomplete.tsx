@@ -3,7 +3,7 @@ import { Check } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
-import { getExtensionCatalog } from "#src/lib/extensions";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
   getNodeDisplayName,
   getNodeOutputFields,
@@ -99,6 +99,7 @@ export function TemplateAutocomplete({
   filter = "",
   fieldType,
 }: TemplateAutocompleteProps) {
+  const catalog = useExtensionCatalog();
   const [nodes] = useAtom(nodesAtom);
   const [edges] = useAtom(edgesAtom);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -125,7 +126,6 @@ export function TemplateAutocomplete({
     const nextOptions: TemplateOption[] = [];
 
     for (const node of upstreamNodes) {
-      const catalog = getExtensionCatalog();
       const nodeName = getNodeDisplayName(catalog, node);
       const outputFields = getNodeOutputFields(node, {
         targetNodeId: currentNodeId,
@@ -178,7 +178,7 @@ export function TemplateAutocomplete({
     // A stable sort, so the fields a typed target actually wants come first while
     // each node's own fields stay in schema order behind them.
     return nextOptions.toSorted((a, b) => a.rank - b.rank);
-  }, [upstreamNodes, fieldType, currentNodeId, nodes, edges]);
+  }, [upstreamNodes, fieldType, currentNodeId, nodes, edges, catalog]);
 
   const filteredOptions = useMemo(() => {
     const trimmedFilter = filter.trim().toLowerCase();

@@ -9,7 +9,7 @@ import { Button } from "#src/components/ui/button";
 import { useConnectionRepair } from "#src/hooks/use-connection-repair";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
-import { getExtensionCatalog } from "#src/lib/extensions";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { findIntegration } from "@wfgraph/shared/extensions/catalog";
 import { cn } from "@wfgraph/shared/utils";
 
@@ -91,6 +91,7 @@ export function IntegrationSelector({
   disabled,
   onAddConnection,
 }: IntegrationSelectorProps) {
+  const catalog = useExtensionCatalog();
   const { push } = useOverlay();
   const repairAgainstConnectionList = useConnectionRepair();
   const { data: allIntegrations = [], isPending } = useQuery(
@@ -153,7 +154,7 @@ export function IntegrationSelector({
     );
   }
 
-  const catalogEntry = findIntegration(getExtensionCatalog(), integrationType);
+  const catalogEntry = findIntegration(catalog, integrationType);
   const integrationLabel = catalogEntry?.label || integrationType;
   const nameOf = (integration: Integration) =>
     integration.name || `${integrationLabel} API Key`;

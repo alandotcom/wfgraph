@@ -1,16 +1,52 @@
 import { Acuity, AcuityError } from "@fountain-bio/acuity";
-import { getErrorMessage, StepFailure } from "@wfgraph/core/plugin";
+import {
+  type CredentialsUnavailable,
+  getErrorMessage,
+  type StepBag,
+  StepFailure,
+} from "@wfgraph/core/plugin";
 import { Effect } from "effect";
 
-/**
- * Acuity's SDK construction.
- *
- * Held here so tests can `vi.spyOn` the factory: a `vi.mock` of
- * `@fountain-bio/acuity` that replaces `Acuity` with a different shape per file
- * leaks across the suite when vitest runs with isolate:false.
- */
+/** Production SDK construction from stored credentials. */
 export function createAcuitySdk(userId: string, apiKey: string): Acuity {
   return new Acuity({ userId, apiKey });
+}
+
+export type CreateAcuitySdk = typeof createAcuitySdk;
+
+type AcuityCredentials = {
+  ACUITY_USER_ID?: string;
+  ACUITY_API_KEY?: string;
+};
+
+/**
+ * The Acuity SDK, built from the step's own credentials, or the failure that
+ * says which of them is missing.
+ *
+ * It takes the handler's whole bag rather than the credentials, so fetching them
+ * is part of the one line every handler opens with. Every step starts here, which
+ * is what makes the check on them written once and reported the same way.
+ *
+ * A store that could not be read is passed on rather than turned into a
+ * `StepFailure`: that failure is the one a step is retried for.
+ */
+export function createAcuityClient(
+  bag: StepBag<unknown, AcuityCredentials>,
+  createSdk: CreateAcuitySdk
+): Effect.Effect<Acuity, StepFailure | CredentialsUnavailable> {
+  return Effect.flatMap(bag.credentials, (credentials) => {
+    const userId = credentials.ACUITY_USER_ID?.trim();
+    const apiKey = credentials.ACUITY_API_KEY?.trim();
+
+    return userId && apiKey
+      ? Effect.succeed(createSdk(userId, apiKey))
+      : Effect.fail(
+          new StepFailure({
+            message:
+              "ACUITY_USER_ID and ACUITY_API_KEY are required. Add them in Project Integrations.",
+          })
+        );
+  });
 }
 
 /**

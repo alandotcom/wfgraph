@@ -7,6 +7,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { connect as connectInngestSdk } from "inngest/connect";
 import { createInngestSurface } from "#src/backend/lib/inngest/client";
 import {
   configureAppLogging,
@@ -15,6 +16,9 @@ import {
 
 /** The startup lines, read off logtape through the bridge sink. */
 const logLines: string[] = [];
+
+/** Mode/warn cases do not dial Connect; they still owe the required dep. */
+const surfaceDeps = { connect: connectInngestSdk };
 
 beforeEach(() => {
   logLines.length = 0;
@@ -52,7 +56,7 @@ afterAll(() => {
  */
 describe("createInngestSurface mode", () => {
   it("runs in cloud mode when the host says nothing", () => {
-    const surface = createInngestSurface({ id: "mode-unset" });
+    const surface = createInngestSurface({ id: "mode-unset" }, surfaceDeps);
 
     expect(surface.client.mode).toBe("cloud");
   });
@@ -60,14 +64,15 @@ describe("createInngestSurface mode", () => {
   it("keeps cloud mode when NODE_ENV names something other than production", () => {
     vi.stubEnv("NODE_ENV", "staging");
 
-    expect(createInngestSurface({ id: "mode-staging" }).client.mode).toBe(
-      "cloud"
-    );
+    expect(
+      createInngestSurface({ id: "mode-staging" }, surfaceDeps).client.mode
+    ).toBe("cloud");
   });
 
   it("runs in dev mode only where the host opts in", () => {
     expect(
-      createInngestSurface({ id: "mode-dev", isDev: true }).client.mode
+      createInngestSurface({ id: "mode-dev", isDev: true }, surfaceDeps).client
+        .mode
     ).toBe("dev");
   });
 
@@ -76,47 +81,56 @@ describe("createInngestSurface mode", () => {
   it("honours INNGEST_DEV", () => {
     vi.stubEnv("INNGEST_DEV", "1");
 
-    expect(createInngestSurface({ id: "mode-env-dev" }).client.mode).toBe(
-      "dev"
-    );
+    expect(
+      createInngestSurface({ id: "mode-env-dev" }, surfaceDeps).client.mode
+    ).toBe("dev");
   });
 });
 
 describe("the callback exposure warning", () => {
   it("names dev mode as the cause, signing key or not", () => {
     vi.stubEnv("INNGEST_SIGNING_KEY", "signkey-test-abc");
-    createInngestSurface({ id: "warn-dev", isDev: true });
+    createInngestSurface({ id: "warn-dev", isDev: true }, surfaceDeps);
 
     expect(logLines).toHaveLength(1);
     expect(logLines[0]).toContain("dev mode");
   });
 
   it("names the missing signing key in cloud mode", () => {
-    createInngestSurface({ id: "warn-unsigned" });
+    createInngestSurface({ id: "warn-unsigned" }, surfaceDeps);
 
     expect(logLines).toHaveLength(1);
     expect(logLines[0]).toContain("no signing key");
   });
 
   it("stays quiet for a signed cloud deployment", () => {
-    createInngestSurface({ id: "warn-none", signingKey: "signkey-test-abc" });
+    createInngestSurface(
+      { id: "warn-none", signingKey: "signkey-test-abc" },
+      surfaceDeps
+    );
 
     expect(logLines).toEqual([]);
   });
 
   it("skips the HTTP callback warning when Connect is opted in", () => {
     vi.stubEnv("INNGEST_SIGNING_KEY", "signkey-test-abc");
-    createInngestSurface({
-      id: "warn-connect-dev",
-      isDev: true,
-      connect: true,
-    });
+    createInngestSurface(
+      {
+        id: "warn-connect-dev",
+        isDev: true,
+        connect: true,
+      },
+      surfaceDeps
+    );
 
     expect(logLines).toEqual([]);
   });
 
   it("names the missing signing key for Connect in cloud mode", () => {
-    createInngestSurface({ id: "warn-connect-unsigned", connect: true });
+    createInngestSurface(
+      { id: "warn-connect-unsigned", connect: true },
+      surfaceDeps
+    );
 
     expect(logLines).toHaveLength(1);
     expect(logLines[0]).toContain("Connect has no signing key");

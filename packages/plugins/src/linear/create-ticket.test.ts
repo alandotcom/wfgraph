@@ -1,20 +1,26 @@
 import { describe, expect, it } from "@effect/vitest";
 import { actionData, actionError, runAction } from "@wfgraph/core/testing";
 import { Effect } from "effect";
-import { afterEach, beforeEach, vi } from "vitest";
-import * as linearClient from "#src/linear/client";
-import { linear } from "#src/linear/index";
+import { beforeEach, vi } from "vitest";
+import { createLinear } from "#src/linear/index";
 
 /**
- * The seam is `createLinearClient`, stubbed so a case says which team was
- * filed under and what the SDK threw. Spying that export (rather than
- * `vi.mock` of `@linear/sdk`) keeps isolate:false from colliding with the
- * other Linear suites that need different client shapes.
+ * The seam is `createClient`, injected when the integration is built so a case
+ * says which team was filed under and what the SDK threw.
  */
 const mocks = vi.hoisted(() => ({
   teams: vi.fn(),
   createIssue: vi.fn(),
 }));
+
+function fakeCreateClient(_apiKey: string) {
+  return {
+    teams: mocks.teams,
+    createIssue: mocks.createIssue,
+  } as never;
+}
+
+const underTest = createLinear(fakeCreateClient);
 
 const LINEAR_CREDENTIALS = { LINEAR_API_KEY: "lin_api_key" };
 
@@ -44,14 +50,6 @@ beforeEach(() => {
       title: "Bug report",
     }),
   });
-  vi.spyOn(linearClient, "createLinearClient").mockReturnValue({
-    teams: mocks.teams,
-    createIssue: mocks.createIssue,
-  } as never);
-});
-
-afterEach(() => {
-  vi.restoreAllMocks();
 });
 
 describe("linear/create-ticket", () => {
@@ -63,7 +61,7 @@ describe("linear/create-ticket", () => {
       });
 
       const result = actionData(
-        yield* runAction(linear, "create-ticket", {
+        yield* runAction(underTest, "create-ticket", {
           input: { ticketTitle: "Bug report", ticketDescription: "It broke" },
           credentials,
         })
@@ -87,7 +85,7 @@ describe("linear/create-ticket", () => {
     Effect.gen(function* () {
       const { credentials } = credentialsRead();
 
-      yield* runAction(linear, "create-ticket", {
+      yield* runAction(underTest, "create-ticket", {
         input: { ticketTitle: "Bug report" },
         credentials,
       });
@@ -107,7 +105,7 @@ describe("linear/create-ticket", () => {
       const { credentials } = credentialsRead();
 
       const error = actionError(
-        yield* runAction(linear, "create-ticket", {
+        yield* runAction(underTest, "create-ticket", {
           input: { ticketTitle: "Bug report" },
           credentials,
         })
@@ -124,7 +122,7 @@ describe("linear/create-ticket", () => {
       const { credentials } = credentialsRead();
 
       const error = actionError(
-        yield* runAction(linear, "create-ticket", {
+        yield* runAction(underTest, "create-ticket", {
           input: { ticketTitle: "Bug report" },
           credentials,
         })
@@ -145,7 +143,7 @@ describe("linear/create-ticket", () => {
       const { credentials } = credentialsRead();
 
       const error = actionError(
-        yield* runAction(linear, "create-ticket", {
+        yield* runAction(underTest, "create-ticket", {
           input: { ticketTitle: "Bug report" },
           credentials,
         })
@@ -160,7 +158,7 @@ describe("linear/create-ticket", () => {
       const { credentials } = credentialsRead({});
 
       const error = actionError(
-        yield* runAction(linear, "create-ticket", {
+        yield* runAction(underTest, "create-ticket", {
           input: { ticketTitle: "Bug report" },
           credentials,
         })

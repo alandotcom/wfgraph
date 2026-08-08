@@ -18,14 +18,11 @@ import {
 import { createStore, Provider as JotaiProvider } from "jotai";
 import type { JSX } from "react";
 import { toast } from "sonner";
+import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import type { NodeConfigPatch } from "#src/components/workflow/config/node-config-patch";
 import { useNodeConfigWriter } from "#src/components/workflow/config/use-node-config-writer";
 import type { Integration } from "#src/lib/rpc-client";
 import * as rpcQuery from "#src/lib/rpc-query";
-import {
-  clearTestCatalog,
-  hydrateTestCatalog,
-} from "#src/lib/extensions-test-support";
 import {
   extractRpcProcedurePath,
   rpcJsonResponse,
@@ -85,13 +82,11 @@ const served: ExtensionCatalog = {
   ],
 };
 
-beforeEach(async () => {
-  await hydrateTestCatalog(served);
+beforeEach(() => {
   vi.spyOn(toast, "success").mockImplementation(() => "id" as never);
 });
 
-afterEach(async () => {
-  await clearTestCatalog();
+afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -139,11 +134,13 @@ function renderInWorkflowRoute(
   });
 
   render(
-    <QueryClientProvider client={queryClient}>
-      <JotaiProvider store={store}>
-        <RouterProvider router={router} />
-      </JotaiProvider>
-    </QueryClientProvider>
+    <ExtensionCatalogProvider value={served}>
+      <QueryClientProvider client={queryClient}>
+        <JotaiProvider store={store}>
+          <RouterProvider router={router} />
+        </JotaiProvider>
+      </QueryClientProvider>
+    </ExtensionCatalogProvider>
   );
 
   return router;

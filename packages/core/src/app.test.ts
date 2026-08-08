@@ -17,6 +17,7 @@ import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { createWfGraphApp, type WfGraphApp } from "#src/app";
 import { createApiApp, machineRoutes } from "#src/backend/api-app";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
+import { connect as connectInngestSdk } from "inngest/connect";
 import { createInngestSurface } from "#src/backend/lib/inngest/client";
 import * as inngestClientModule from "#src/backend/lib/inngest/client";
 import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
@@ -299,7 +300,9 @@ describe("createWfGraphApp with an auth predicate", () => {
     // Only the route table is read here. A runtime builds its Layers on the
     // first Effect it runs and this app never serves a request, so this one is
     // disposed having built nothing.
-    const inngest = createInngestSurface(BASE_OPTIONS.inngest);
+    const inngest = createInngestSurface(BASE_OPTIONS.inngest, {
+      connect: connectInngestSdk,
+    });
     const database = dbModule.createDatabaseSurface(
       normalizeDatabaseConfig(BASE_OPTIONS.database)
     );

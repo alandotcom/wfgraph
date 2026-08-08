@@ -4,7 +4,7 @@ import { useCallback, useId, useMemo } from "react";
 import { Button } from "#src/components/ui/button";
 import { WarningCallout } from "#src/components/ui/callout";
 import { Label } from "#src/components/ui/label";
-import { getExtensionCatalog } from "#src/lib/extensions";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { getEventConditionFields } from "#src/lib/upstream-node-fields";
 import { nodesAtom, selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import { findEvent } from "@wfgraph/shared/extensions/catalog";
@@ -50,7 +50,7 @@ export function WaitEventSelect({
   const eventsInputId = useId();
 
   const selected = readWaitSubscriptions(config);
-  const catalog = getExtensionCatalog();
+  const catalog = useExtensionCatalog();
 
   const selectedNames = selected.map((subscription) => subscription.event);
 
@@ -140,7 +140,7 @@ function WaitSubscriptionRow({
 }) {
   const selectedNodeId = useAtomValue(selectedNodeAtom);
   const nodes = useAtomValue(nodesAtom);
-  const catalog = getExtensionCatalog();
+  const catalog = useExtensionCatalog();
   const event = findEvent(catalog, subscription.event);
 
   // The entry node's rules, if this graph has one, so the seed below can read

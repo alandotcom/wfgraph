@@ -3,6 +3,10 @@ import { Effect } from "effect";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { createDbWorkflowStore } from "#src/backend/engine/db-store";
+import {
+  executeWorkflow,
+  executeWorkflowBranch,
+} from "#src/backend/engine/core";
 import type { WfGraphRuntime } from "#src/backend/runtime";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 // Static, now that the id helper the app assembly needs has moved to a leaf of
@@ -48,6 +52,8 @@ export async function buildInngestFunctions(
     actions: () => createWorkflowActions(extensions, runtime),
     store: createDbWorkflowStore(executionRepo),
     appRuntime: runtime,
+    executeWorkflow,
+    executeWorkflowBranch,
   };
 
   return [

@@ -9,7 +9,7 @@
 
 import { useMemo } from "react";
 import { useAtomValue } from "jotai";
-import { getExtensionCatalog } from "#src/lib/extensions";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { eventsReachingTarget } from "#src/lib/upstream-node-fields";
 import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
 import type { EventMetadata } from "@wfgraph/shared/extensions/catalog";
@@ -22,6 +22,7 @@ const NO_OUTLETS: EventMetadata[] = [];
  * graph N times to serve the one that asks.
  */
 export function useEventSplitOutlets(nodeId: string | null): EventMetadata[] {
+  const catalog = useExtensionCatalog();
   const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
 
@@ -32,9 +33,9 @@ export function useEventSplitOutlets(nodeId: string | null): EventMetadata[] {
             targetNodeId: nodeId,
             nodes,
             edges,
-            catalog: getExtensionCatalog(),
+            catalog,
           })
         : NO_OUTLETS,
-    [nodeId, nodes, edges]
+    [nodeId, nodes, edges, catalog]
   );
 }

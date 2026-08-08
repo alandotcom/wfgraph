@@ -1,10 +1,14 @@
 import { AcuityError } from "@fountain-bio/acuity";
-import { createAcuitySdk, getAcuityErrorMessage } from "#src/acuity/client";
+import {
+  type CreateAcuitySdk,
+  getAcuityErrorMessage,
+} from "#src/acuity/client";
 import type { AcuityCredentials } from "#src/acuity/index";
 import type { IntegrationTestResult } from "@wfgraph/core/plugin";
 
 export async function testAcuity(
-  credentials: AcuityCredentials
+  credentials: AcuityCredentials,
+  createSdk: CreateAcuitySdk
 ): Promise<IntegrationTestResult> {
   try {
     const userId = credentials.ACUITY_USER_ID?.trim();
@@ -20,7 +24,7 @@ export async function testAcuity(
     // The SDK is built here rather than through the steps' own constructor,
     // which answers an effect: both credentials have already been checked, so
     // there is nothing left for it to fail with.
-    const client = createAcuitySdk(userId, apiKey);
+    const client = createSdk(userId, apiKey);
 
     // Listing appointment types is the cheapest read any valid key can make.
     await client.appointments.types();

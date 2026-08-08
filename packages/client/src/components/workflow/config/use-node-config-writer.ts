@@ -3,8 +3,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useCallback } from "react";
 import { toast } from "sonner";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { repairNodeIntegration } from "#src/lib/node-integration";
-import { getExtensionCatalog } from "#src/lib/extensions";
 import {
   integrationsQueryOptions,
   orpcQuery,
@@ -32,6 +32,7 @@ import type { NodeConfigPatch } from "./node-config-patch";
  * which never cleared a stale connection as the action changed.
  */
 export function useNodeConfigWriter() {
+  const catalog = useExtensionCatalog();
   const store = useStore();
   const queryClient = useQueryClient();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
@@ -73,7 +74,7 @@ export function useNodeConfigWriter() {
             nodeId: latestNode.id,
             nodes: latestNodes,
             edges: store.get(edgesAtom),
-            catalog: getExtensionCatalog(),
+            catalog,
           })
         );
       }
@@ -95,7 +96,7 @@ export function useNodeConfigWriter() {
 
       const repaired = integrations
         ? repairNodeIntegration(
-            getExtensionCatalog(),
+            catalog,
             { ...latestNode, data: { ...latestNode.data, config: newConfig } },
             integrations
           ).data.config
@@ -103,7 +104,7 @@ export function useNodeConfigWriter() {
 
       updateNodeData({ id: latestNode.id, data: { config: repaired } });
     },
-    [store, selectedNodeId, queryClient, updateNodeData]
+    [store, selectedNodeId, queryClient, updateNodeData, catalog]
   );
 
   /** Re-read the run list, behind the Refresh button above it. */

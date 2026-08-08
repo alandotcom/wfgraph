@@ -18,7 +18,7 @@ import {
   LIFECYCLE_STARTED_HANDLE,
 } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import { eventsReachingTarget } from "#src/lib/upstream-node-fields";
-import { getExtensionCatalog } from "#src/lib/extensions";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /**
@@ -58,13 +58,14 @@ export function inferEventSplitOutlet(input: {
   nodes: readonly WorkflowNode[];
   edges: readonly WorkflowEdge[];
   sourceNodeId: string;
+  catalog: ExtensionCatalog;
 }): string | null {
-  const { nodes, edges, sourceNodeId } = input;
+  const { nodes, edges, sourceNodeId, catalog } = input;
   const outlets = eventsReachingTarget({
     targetNodeId: sourceNodeId,
     nodes,
     edges,
-    catalog: getExtensionCatalog(),
+    catalog,
   });
 
   const taken = new Set(
@@ -91,8 +92,9 @@ export function normalizeSourceHandleForConnection(input: {
   edges: readonly WorkflowEdge[];
   sourceNodeId: string;
   sourceHandle: string | null | undefined;
+  catalog: ExtensionCatalog;
 }): string | null {
-  const { nodes, edges, sourceNodeId, sourceHandle } = input;
+  const { nodes, edges, sourceNodeId, sourceHandle, catalog } = input;
 
   const explicitBranch = normalizeConditionBranch(sourceHandle);
   if (explicitBranch) {
@@ -111,7 +113,7 @@ export function normalizeSourceHandleForConnection(input: {
     const draggedFrom = eventSplitOutletEvent(sourceHandle);
     return draggedFrom
       ? eventSplitOutlet(draggedFrom)
-      : inferEventSplitOutlet({ nodes, edges, sourceNodeId });
+      : inferEventSplitOutlet({ nodes, edges, sourceNodeId, catalog });
   }
 
   if (!isConditionActionNode(sourceNode)) {

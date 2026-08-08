@@ -26,7 +26,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "#src/components/ui/tooltip";
-import { getExtensionCatalog } from "#src/lib/extensions";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useEventSplitOutlets } from "#src/lib/event-split-outlets";
 import { getUpstreamConditionFields } from "#src/lib/upstream-node-fields";
 import {
@@ -37,6 +37,7 @@ import {
 import {
   actionsByCategory,
   findAction,
+  type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import {
@@ -115,15 +116,16 @@ function ConditionFields({
   const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
 
+  const catalog = useExtensionCatalog();
   const fields = useMemo(
     () =>
       getUpstreamConditionFields({
         currentNodeId: selectedNodeId ?? undefined,
         nodes,
         edges,
-        catalog: getExtensionCatalog(),
+        catalog,
       }),
-    [selectedNodeId, nodes, edges]
+    [selectedNodeId, nodes, edges, catalog]
   );
 
   const handleChange = useCallback(
@@ -565,8 +567,9 @@ function SystemActionFields({
  * than its server offers what that server can run.
  */
 function useCategoryData(): Record<string, CategoryActionOption[]> {
+  const catalog = useExtensionCatalog();
   return useMemo(() => {
-    const grouped = actionsByCategory(getExtensionCatalog());
+    const grouped = actionsByCategory(catalog);
 
     return Object.fromEntries(
       Object.entries(grouped).map(([category, actions]) => [
@@ -579,11 +582,14 @@ function useCategoryData(): Record<string, CategoryActionOption[]> {
         })),
       ])
     );
-  }, []);
+  }, [catalog]);
 }
 
-function getCategoryForAction(actionType: string): string | null {
-  return findAction(getExtensionCatalog(), actionType)?.category ?? null;
+function getCategoryForAction(
+  catalog: ExtensionCatalog,
+  actionType: string
+): string | null {
+  return findAction(catalog, actionType)?.category ?? null;
 }
 
 export function ActionConfig({
@@ -592,6 +598,7 @@ export function ActionConfig({
   disabled,
   isOwner = true,
 }: ActionConfigProps) {
+  const catalog = useExtensionCatalog();
   const actionType = readConfigString(config, "actionType");
   const categories = useCategoryData();
   const categoryOptions = useMemo(
@@ -602,7 +609,9 @@ export function ActionConfig({
     [categories]
   );
 
-  const category = actionType ? getCategoryForAction(actionType) || "" : "";
+  const category = actionType
+    ? getCategoryForAction(catalog, actionType) || ""
+    : "";
   const { data: globalIntegrations = [] } = useQuery(
     integrationsQueryOptions()
   );
@@ -620,7 +629,7 @@ export function ActionConfig({
   };
 
   const catalogAction = actionType
-    ? findAction(getExtensionCatalog(), actionType)
+    ? findAction(catalog, actionType)
     : undefined;
 
   // Which connection this action needs, which the catalog answers for every

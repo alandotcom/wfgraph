@@ -1,15 +1,11 @@
+import { describe, expect, it } from "vitest";
 import { createStore } from "jotai";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   loadWorkflowGraphAtom,
   nodesAtom,
   repairIntegrationsAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-import {
-  clearTestCatalog,
-  hydrateTestCatalog,
-} from "#src/lib/extensions-test-support";
 
 /**
  * The issues dialog's Add button creates a connection and then repairs the
@@ -44,14 +40,6 @@ const acuityCatalog = {
   ],
 };
 
-beforeEach(async () => {
-  await hydrateTestCatalog(acuityCatalog);
-});
-
-afterEach(async () => {
-  await clearTestCatalog();
-});
-
 const unboundNode: WorkflowNode = {
   id: "node_1",
   type: "action",
@@ -68,7 +56,10 @@ describe("repairIntegrationsAtom", () => {
     const store = createStore();
     store.set(loadWorkflowGraphAtom, { nodes: [unboundNode], edges: [] });
 
-    store.set(repairIntegrationsAtom, [{ id: "int_acuity", type: "acuity" }]);
+    store.set(repairIntegrationsAtom, {
+      integrations: [{ id: "int_acuity", type: "acuity" }],
+      catalog: acuityCatalog,
+    });
 
     expect(store.get(nodesAtom)[0]?.data.config?.integrationId).toBe(
       "int_acuity"

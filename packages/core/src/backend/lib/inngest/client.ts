@@ -10,7 +10,7 @@ import { getAppLogger } from "#src/backend/lib/logger";
 export type { WorkerConnection } from "inngest/connect";
 
 export type InngestSurfaceDeps = {
-  connect?: typeof connectInngestSdk;
+  connect: typeof connectInngestSdk;
 };
 
 /**
@@ -271,9 +271,9 @@ export type InngestSurface = {
 
 export function createInngestSurface(
   config: WfGraphInngestConfig,
-  deps: InngestSurfaceDeps = {}
+  deps: InngestSurfaceDeps
 ): InngestSurface {
-  const connectImpl = deps.connect ?? connectInngestSdk;
+  const { connect: connectImpl } = deps;
   const signingKey = config.signingKey ?? process.env.INNGEST_SIGNING_KEY;
   const client = createInngestClient(config, signingKey);
   if (config.connect === true) {

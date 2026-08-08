@@ -1,48 +1,37 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import {
   TestRunOverlay,
   type TestRunRequest,
 } from "#src/components/overlays/test-run-overlay";
-import {
-  clearTestCatalog,
-  hydrateTestCatalog,
-} from "#src/lib/extensions-test-support";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { TestPayloads } from "@wfgraph/shared/lifecycle/test-payloads";
 
-// The Events the overlay draws a form from come from the server's catalog. One
-// declares a timestamp, which is the field the Wait node's target is written
-// against, and the other is here so the select has two rows.
-beforeEach(async () => {
-  await hydrateTestCatalog({
-    events: [
-      {
-        name: "app/appointment.created",
-        label: "Appointment created",
-        correlationPath: "appointment.id",
-        payloadFields: [
-          { path: "appointment.id", type: "string" },
-          {
-            path: "appointment.startsAt",
-            type: "timestamp",
-          },
-        ],
-      },
-      {
-        name: "app/appointment.rescheduled",
-        label: "Appointment rescheduled",
-        payloadFields: [{ path: "appointment.id", type: "string" }],
-      },
-    ],
-    actions: [],
-    integrations: [],
-  });
-});
-
-afterEach(async () => {
-  await clearTestCatalog();
-});
+const testCatalog: ExtensionCatalog = {
+  events: [
+    {
+      name: "app/appointment.created",
+      label: "Appointment created",
+      correlationPath: "appointment.id",
+      payloadFields: [
+        { path: "appointment.id", type: "string" },
+        {
+          path: "appointment.startsAt",
+          type: "timestamp",
+        },
+      ],
+    },
+    {
+      name: "app/appointment.rescheduled",
+      label: "Appointment rescheduled",
+      payloadFields: [{ path: "appointment.id", type: "string" }],
+    },
+  ],
+  actions: [],
+  integrations: [],
+};
 
 const START_EVENTS = [
   "app/appointment.created",
@@ -59,16 +48,18 @@ function renderOverlay(
   const onRun = vi.fn<(request: TestRunRequest) => void>();
 
   render(
-    <OverlayProvider>
-      <TestRunOverlay
-        allowManualStart={overrides.allowManualStart ?? true}
-        hasEventSplit={overrides.hasEventSplit ?? false}
-        onRun={onRun}
-        overlayId="overlay-1"
-        savedPayloads={overrides.savedPayloads ?? {}}
-        startEvents={START_EVENTS}
-      />
-    </OverlayProvider>
+    <ExtensionCatalogProvider value={testCatalog}>
+      <OverlayProvider>
+        <TestRunOverlay
+          allowManualStart={overrides.allowManualStart ?? true}
+          hasEventSplit={overrides.hasEventSplit ?? false}
+          onRun={onRun}
+          overlayId="overlay-1"
+          savedPayloads={overrides.savedPayloads ?? {}}
+          startEvents={START_EVENTS}
+        />
+      </OverlayProvider>
+    </ExtensionCatalogProvider>
   );
 
   return { onRun };
