@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useCallback } from "react";
 import { toast } from "sonner";
@@ -16,7 +17,6 @@ import {
   selectedNodeAtom,
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
-import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import type { NodeConfigPatch } from "./node-config-patch";
 
@@ -33,10 +33,10 @@ import type { NodeConfigPatch } from "./node-config-patch";
 export function useNodeConfigWriter() {
   const store = useStore();
   const queryClient = useQueryClient();
+  const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const selectedNodeId = useAtomValue(selectedNodeAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const clearNodeStatuses = useSetAtom(clearNodeStatusesAtom);
-  const setSelectedExecutionId = useSetAtom(selectedExecutionIdAtom);
 
   const updateConfig = useCallback(
     (patch: NodeConfigPatch) => {
@@ -113,12 +113,16 @@ export function useNodeConfigWriter() {
    * Clearing a workflow's run history, behind the panel's confirmation. The
    * success toast is part of it: written once per panel back when there were
    * two, one of them toasted and the other finished in silence.
+   *
+   * Destroying every run includes the one being shown, so clear `executionId`
+   * from the URL the same way Back does (#40 / #75). The URL is the one writer
+   * of which run is open; WorkflowRuns derives the selection atom from it.
    */
   const deleteRuns = useMutation(
     orpcQuery.workflow.deleteExecutions.mutationOptions({
       onSuccess: async () => {
         clearNodeStatuses();
-        setSelectedExecutionId(null);
+        void navigate({ search: {}, replace: true });
         await refreshRunHistory(queryClient);
         toast.success("All runs deleted");
       },

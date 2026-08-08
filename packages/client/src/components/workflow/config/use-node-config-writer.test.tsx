@@ -13,10 +13,7 @@ import {
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import { isWorkflowOwnerAtom } from "#src/lib/workflow-save-store";
-import {
-  propertiesPanelActiveTabAtom,
-  selectedExecutionIdAtom,
-} from "#src/lib/workflow-ui-store";
+import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
@@ -33,6 +30,17 @@ import type { WorkflowNode } from "#src/lib/workflow-graph-types";
  * with no required integration, and the repair below would no-op regardless
  * of which case ran.
  */
+
+const navigate = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@tanstack/react-router")>();
+  return {
+    ...actual,
+    useNavigate: () => navigate,
+  };
+});
 
 vi.mock("#src/lib/rpc-query", async (importOriginal) => {
   const actual = await importOriginal<typeof import("#src/lib/rpc-query")>();
@@ -230,7 +238,9 @@ describe("updateConfig and the connection a node points at", () => {
 });
 
 describe("deleteRuns", () => {
-  it("clears the watched execution id on success", async () => {
+  it("clears the open run via the URL on success", async () => {
+    navigate.mockClear();
+
     const store = createStore();
     store.set(loadWorkflowGraphAtom, {
       nodes: [connectedNode({ actionType: CONNECTED_ACTION })],
@@ -238,8 +248,6 @@ describe("deleteRuns", () => {
     });
     store.set(isWorkflowOwnerAtom, true);
     store.set(propertiesPanelActiveTabAtom, "runs");
-    store.set(selectedExecutionIdAtom, "exec_to_delete");
-    expect(store.get(selectedExecutionIdAtom)).toBe("exec_to_delete");
 
     const queryClient = new QueryClient({
       defaultOptions: {
@@ -273,7 +281,7 @@ describe("deleteRuns", () => {
     });
 
     await waitFor(() => {
-      expect(store.get(selectedExecutionIdAtom)).toBeNull();
+      expect(navigate).toHaveBeenCalledWith({ search: {}, replace: true });
     });
   });
 });
