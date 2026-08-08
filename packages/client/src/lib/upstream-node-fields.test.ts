@@ -27,10 +27,16 @@ import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 // What a node offers downstream comes off the catalog the editor fetches once
 // before render: an action's own entry, and for the entry node the Events its rules
 // name. A case says what the surface holds by writing this object.
-const surface: ExtensionCatalog = {
-  events: [] as EventMetadata[],
-  actions: [] as ActionMetadata[],
-  integrations: [] as ExtensionCatalog["integrations"],
+type MutableCatalog = {
+  events: EventMetadata[];
+  actions: ActionMetadata[];
+  integrations: ExtensionCatalog["integrations"];
+};
+
+const surface: MutableCatalog = {
+  events: [],
+  actions: [],
+  integrations: [],
 };
 
 /** One catalog action, with the fields a case cares about and defaults elsewhere. */

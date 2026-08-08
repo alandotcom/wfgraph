@@ -7,10 +7,7 @@ import {
   getExtensionCatalog,
   hydrateExtensionsFromApi,
 } from "#src/lib/extensions";
-import {
-  clearTestCatalog,
-  hydrateTestCatalog,
-} from "#src/lib/extensions-test-support";
+import { clearTestCatalog } from "#src/lib/extensions-test-support";
 
 const served: ExtensionCatalog = {
   events: [

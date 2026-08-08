@@ -266,7 +266,7 @@ describe("deleteRuns", () => {
 
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
         const url = rpcUrl(input);
         const procedurePath = extractRpcProcedurePath(url);
         if (procedurePath === "workflow/deleteExecutions") {

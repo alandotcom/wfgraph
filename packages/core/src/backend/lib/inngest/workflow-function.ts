@@ -19,6 +19,7 @@ import {
   type WorkflowBranchInput,
   type WorkflowExecutionInput,
 } from "#src/backend/engine/core";
+import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import type { WorkflowStore } from "#src/backend/engine/store";
 import { readJsonObject } from "@wfgraph/shared/types/json";
 import { rejectUnknownKeys } from "@wfgraph/shared/types/schema";

@@ -8,7 +8,6 @@ import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
 import {
-  emptyExtensionCatalog,
   type EventMetadata,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
@@ -19,10 +18,16 @@ import {
 
 // An Event Split's outlets are the Events reaching it, which the editor reads
 // off the catalog it fetched once before render.
-const surface: ExtensionCatalog = {
-  events: [] as EventMetadata[],
-  actions: [] as ExtensionCatalog["actions"],
-  integrations: [] as ExtensionCatalog["integrations"],
+type MutableCatalog = {
+  events: EventMetadata[];
+  actions: ExtensionCatalog["actions"];
+  integrations: ExtensionCatalog["integrations"];
+};
+
+const surface: MutableCatalog = {
+  events: [],
+  actions: [],
+  integrations: [],
 };
 
 beforeEach(async () => {

@@ -1,4 +1,5 @@
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 
 export function rpcUrl(input: RequestInfo | URL): string {
@@ -9,9 +10,13 @@ export function rpcUrl(input: RequestInfo | URL): string {
       : input.url;
 }
 
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export async function parseRpcRequestInput(
   init?: RequestInit
-): Promise<Record<string, unknown>> {
+): Promise<JsonObject> {
   if (!init?.body) {
     return {};
   }
@@ -19,9 +24,19 @@ export async function parseRpcRequestInput(
   const text =
     typeof init.body === "string"
       ? init.body
-      : await new Response(init.body as BodyInit).text();
-  const parsed = JSON.parse(text) as { json?: Record<string, unknown> };
-  return parsed.json ?? {};
+      : await new Response(init.body).text();
+
+  if (!text) {
+    return {};
+  }
+
+  const parsed: unknown = JSON.parse(text);
+  if (!isJsonObject(parsed)) {
+    return {};
+  }
+
+  const payload = parsed.json;
+  return isJsonObject(payload) ? payload : {};
 }
 
 export function rpcJsonResponse(output: unknown, status = 200): Response {
@@ -80,7 +95,7 @@ function versionIdFor(executionId: string): string {
 export async function answerWorkflowRunRpc(
   served: WorkflowRunRpcFixture,
   procedurePath: string,
-  input: Record<string, unknown>
+  input: JsonObject
 ): Promise<Response> {
   switch (procedurePath) {
     case "workflow/getExecutions":
@@ -93,7 +108,8 @@ export async function answerWorkflowRunRpc(
       });
 
     case "workflow/getExecutionLogs": {
-      const executionId = String(input.executionId ?? "");
+      const executionId =
+        typeof input.executionId === "string" ? input.executionId : "";
       const listed = served.items.find((item) => item.id === executionId);
       const extras = served.logsSummaryExtras[executionId] ?? {};
       return rpcJsonResponse({
@@ -120,7 +136,8 @@ export async function answerWorkflowRunRpc(
     }
 
     case "workflow/getVersionGraph": {
-      const versionId = String(input.versionId ?? "");
+      const versionId =
+        typeof input.versionId === "string" ? input.versionId : "";
       return rpcJsonResponse({
         graph:
           served.graphs[versionId] ??
