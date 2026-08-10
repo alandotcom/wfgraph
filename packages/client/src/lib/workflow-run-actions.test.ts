@@ -119,13 +119,11 @@ describe("executeWorkflowRun", () => {
     const setNodeStatuses = vi.fn();
     const setIsExecuting = vi.fn();
     const navigateToExecution = vi.fn(async () => {});
-    const runWorkflow = vi.fn(
-      async (): Promise<WorkflowExecuteResult> => ({
-        status: "ignored",
-        runMode: "live",
-        reason: "workflow_paused",
-      })
-    );
+    const runWorkflow = vi.fn(async (): Promise<WorkflowExecuteResult> => ({
+      status: "ignored",
+      runMode: "live",
+      reason: "workflow_paused",
+    }));
 
     await executeWorkflowRun(
       baseParams({
