@@ -293,6 +293,65 @@ describe("saveWorkflowAtom", () => {
     expect(store.get(isSavingAtom)).toBe(false);
   });
 
+  it("carries a failed patch into a newer queued save", async () => {
+    const store = createSaveStore();
+
+    const graphSave = store.set(
+      saveWorkflowAtom,
+      { nodes: [actionNode("node_1")], edges: [] },
+      { immediate: true }
+    );
+    const rename = store.set(
+      saveWorkflowAtom,
+      { name: "Renamed" },
+      { immediate: true }
+    );
+
+    pending.shift()?.reject(new Error("network is down"));
+    await waitForCalls(2);
+
+    expect(updateMock.mock.calls[1]?.[1]).toMatchObject({
+      name: "Renamed",
+      nodes: [expect.objectContaining({ id: "node_1" })],
+      edges: [],
+    });
+
+    pending.shift()?.resolve(savedWorkflow("workflow_1"));
+    expect(await graphSave).toMatchObject({ ok: false });
+    expect(await rename).toMatchObject({ ok: true });
+    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+    expect(store.get(lastSaveErrorAtom)).toBeNull();
+  });
+
+  it("retries a failed patch on the workflow's next save", async () => {
+    const store = createSaveStore();
+
+    const graphSave = store.set(
+      saveWorkflowAtom,
+      { nodes: [actionNode("node_1")], edges: [] },
+      { immediate: true }
+    );
+    pending.shift()?.reject(new Error("network is down"));
+    expect(await graphSave).toMatchObject({ ok: false });
+
+    const rename = store.set(
+      saveWorkflowAtom,
+      { name: "Renamed" },
+      { immediate: true }
+    );
+    await waitForCalls(2);
+
+    expect(updateMock.mock.calls[1]?.[1]).toMatchObject({
+      name: "Renamed",
+      nodes: [expect.objectContaining({ id: "node_1" })],
+      edges: [],
+    });
+
+    pending.shift()?.resolve(savedWorkflow("workflow_1"));
+    expect(await rename).toMatchObject({ ok: true });
+    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+  });
+
   it("does nothing when no workflow is open", async () => {
     const store = createSaveStore(null);
 

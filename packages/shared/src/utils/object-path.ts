@@ -32,8 +32,11 @@ export function getValueByPath(
     }
 
     if (Array.isArray(current)) {
-      const index = Number.parseInt(segment, 10);
-      if (Number.isNaN(index)) {
+      if (!/^\d+$/.test(segment)) {
+        return undefined;
+      }
+      const index = Number(segment);
+      if (!Number.isSafeInteger(index)) {
         return undefined;
       }
       current = current[index];

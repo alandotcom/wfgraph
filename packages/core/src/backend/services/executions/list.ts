@@ -2,6 +2,7 @@ import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
+import { redactSensitiveData } from "#src/backend/lib/utils/redact";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type {
@@ -52,6 +53,8 @@ function toWorkflowExecutionItem(input: {
 }): WorkflowExecutionItem {
   return {
     ...input,
+    input: redactSensitiveData(input.input),
+    output: redactSensitiveData(input.output),
     startedAt: input.startedAt.toISOString(),
     waitingAt: toIso(input.waitingAt),
     cancelledAt: toIso(input.cancelledAt),

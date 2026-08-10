@@ -146,7 +146,7 @@ describe("the workflow run function", () => {
       function: workflowRunRequestedFunction,
     });
 
-    const { result } = await engine.execute({
+    const { result, ctx } = await engine.execute({
       events: [{ name: "workflow/run.requested", data: workflowInput }],
     });
 
@@ -163,7 +163,9 @@ describe("the workflow run function", () => {
       sleep: expect.any(Function),
       waitForEvent: expect.any(Function),
       run: expect.any(Function),
+      runId: expect.any(String),
     });
+    expect(runtime.runId).toBe(ctx.runId);
     // A live run must be recorded: the handler runs on the store the app built
     // for it rather than on one of its own.
     expect(store).toBe(testStore);

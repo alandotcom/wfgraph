@@ -33,7 +33,20 @@ import type { EngineFailure } from "#src/backend/engine/engine-failure";
 
 /** Key a node's output is stored and looked up under. */
 export function outputKey(nodeId: string): string {
-  return nodeId.replace(/[^a-zA-Z0-9]/g, "_");
+  return nodeId;
+}
+
+function writeOutput(
+  outputs: NodeOutputs,
+  nodeId: string,
+  output: NodeOutputs[string]
+) {
+  Object.defineProperty(outputs, outputKey(nodeId), {
+    configurable: true,
+    enumerable: true,
+    value: output,
+    writable: true,
+  });
 }
 
 /**
@@ -195,14 +208,14 @@ export class Traversal {
   ) {
     this.nodeResults[nodeId] = result;
     if (output) {
-      this.nodeOutputs[outputKey(nodeId)] = output;
+      writeOutput(this.nodeOutputs, nodeId, output);
     }
     this.completedNodes.add(nodeId);
   }
 
   /** Writes a node's output without closing the node. */
   setOutput(nodeId: string, output: NodeOutputs[string]) {
-    this.nodeOutputs[outputKey(nodeId)] = output;
+    writeOutput(this.nodeOutputs, nodeId, output);
   }
 
   /**
@@ -217,7 +230,7 @@ export class Traversal {
    */
   inheritCompleted(nodeId: string, output: NodeOutputs[string]) {
     const key = outputKey(nodeId);
-    this.nodeOutputs[key] = output;
+    writeOutput(this.nodeOutputs, nodeId, output);
     this.inheritedOutputKeys.add(key);
     this.completedNodes.add(nodeId);
   }
@@ -245,8 +258,8 @@ export class Traversal {
     for (const [nodeId, result] of Object.entries(branch.results)) {
       this.nodeResults[nodeId] = result;
     }
-    for (const [key, output] of Object.entries(branch.outputs)) {
-      this.nodeOutputs[key] = output;
+    for (const [nodeId, output] of Object.entries(branch.outputs)) {
+      writeOutput(this.nodeOutputs, nodeId, output);
     }
   }
 

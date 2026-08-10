@@ -80,6 +80,28 @@ describe("getExecutionLogs", () => {
       })
     );
 
+    it.effect("redacts execution input and output beside the node logs", () =>
+      Effect.gen(function* () {
+        const result = yield* getExecutionLogs("exec_1").pipe(
+          Effect.provide(
+            makeRepos(
+              summary({
+                input: { password: "input-secret" },
+                output: { apiToken: "output-secret" },
+              })
+            )
+          )
+        );
+
+        assert.deepStrictEqual(result.execution.input, {
+          password: "********cret",
+        });
+        assert.deepStrictEqual(result.execution.output, {
+          apiToken: "********cret",
+        });
+      })
+    );
+
     it.effect("answers not-found when the run is gone", () =>
       Effect.gen(function* () {
         const failure = yield* getExecutionLogs("exec_gone").pipe(

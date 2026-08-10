@@ -10,6 +10,7 @@
 
 import { Effect, Schema } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
+import { DatabaseError } from "#src/backend/lib/effect/database";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
@@ -347,6 +348,29 @@ describe("a run claimed for the Canceled outlet", () => {
     );
 
     expect(recorded).toEqual({});
+    expect(store.callsOf("completeRun")[0]?.status).toBe("canceled");
+  });
+
+  it("honors a pending cancel when the active node fails through the error channel", async () => {
+    const refusingStore: RecordingWorkflowStore = {
+      ...store,
+      startStepLog: (input) =>
+        input.nodeId === "producer_1"
+          ? Effect.fail(
+              new DatabaseError({ cause: new Error("run log unreachable") })
+            )
+          : store.startStepLog(input),
+    };
+
+    const result = await executeWorkflow(
+      cancelInput,
+      createInMemoryWorkflowRuntime(),
+      withCancelAnswers(refusingStore, [null, CANCEL]),
+      actions
+    );
+
+    expect(Object.keys(recorded)).toEqual(["Cleanup"]);
+    expect(result.results.after_1).toBeUndefined();
     expect(store.callsOf("completeRun")[0]?.status).toBe("canceled");
   });
 

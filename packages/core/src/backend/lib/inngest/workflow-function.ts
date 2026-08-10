@@ -138,9 +138,10 @@ function readBranchHandoff(answer: unknown): BranchHandoff {
 function createDurableRuntime(input: {
   step: DurableStep;
   attempt: number;
+  runId: string;
   data: WorkflowExecutionInput;
 }): WorkflowExecutionRuntime {
-  const { step, attempt, data } = input;
+  const { step, attempt, runId, data } = input;
 
   return {
     sleep: async (stepId, durationMs) => {
@@ -169,6 +170,7 @@ function createDurableRuntime(input: {
         })
       ),
     attempt,
+    runId,
   };
 }
 
@@ -183,6 +185,7 @@ async function workflowRunRequestedHandler({
   event,
   step,
   attempt,
+  runId,
   actions,
   store,
   appRuntime,
@@ -195,6 +198,7 @@ async function workflowRunRequestedHandler({
   appRuntime: WfGraphRuntime;
   /** Zero on the first attempt of this body, and one higher on each retry. */
   attempt: number;
+  runId: string;
   step: DurableStep;
   executeWorkflow: ExecuteWorkflow;
 }) {
@@ -205,7 +209,7 @@ async function workflowRunRequestedHandler({
   const result = await appRuntime.runPromise(
     executeWorkflow(
       data,
-      createDurableRuntime({ step, attempt, data }),
+      createDurableRuntime({ step, attempt, runId, data }),
       store,
       actions
     )
@@ -251,6 +255,7 @@ async function workflowBranchRequestedHandler({
   event,
   step,
   attempt,
+  runId,
   actions,
   store,
   appRuntime,
@@ -261,6 +266,7 @@ async function workflowBranchRequestedHandler({
   store: WorkflowStore;
   appRuntime: WfGraphRuntime;
   attempt: number;
+  runId: string;
   step: DurableStep;
   executeWorkflowBranch: ExecuteWorkflowBranch;
 }) {
@@ -271,7 +277,7 @@ async function workflowBranchRequestedHandler({
   return await appRuntime.runPromise(
     executeWorkflowBranch(
       data,
-      createDurableRuntime({ step, attempt, data }),
+      createDurableRuntime({ step, attempt, runId, data }),
       store,
       actions
     )

@@ -40,15 +40,15 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
         runMode: execution.runMode,
         startEventName: execution.startEventName,
         entityValue: execution.entityValue,
-        input: execution.input,
-        output: execution.output,
+        input: redactSensitiveData(execution.input),
+        output: redactSensitiveData(execution.output),
         error: execution.error,
         startedAt: execution.startedAt.toISOString(),
         completedAt: toIso(execution.completedAt),
         duration: execution.duration,
       },
-      // Whatever a node was handed and answered with is shown here verbatim,
-      // which is why it passes through redaction on the way out.
+      // Whatever a run or node was handed and answered with passes through the
+      // same redaction policy on the way out.
       logs: logs.map((log) => ({
         id: log.id,
         executionId: log.executionId,

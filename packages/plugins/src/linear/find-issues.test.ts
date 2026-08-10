@@ -40,6 +40,8 @@ beforeEach(() => {
         assigneeId: "user_1",
       },
     ],
+    pageInfo: { hasNextPage: false },
+    fetchNext: vi.fn(),
   });
 });
 
@@ -98,10 +100,56 @@ describe("linear/find-issues", () => {
         filter: {
           assignee: { id: { eq: "user_1" } },
           team: { id: { eq: "team_1" } },
-          state: { name: { eqIgnoreCase: "in_progress" } },
+          state: { type: { eq: "started" } },
           labels: { name: { eqIgnoreCase: "bug" } },
         },
       });
+    })
+  );
+
+  it.effect("reads every page in Linear's issue connection", () =>
+    Effect.gen(function* () {
+      const found = {
+        nodes: [
+          {
+            id: "issue_1",
+            title: "First page",
+            url: "https://linear.app/team/issue/ABC-1",
+            state: Promise.resolve({ name: "Todo" }),
+            priority: 1,
+            assigneeId: null,
+          },
+        ],
+        pageInfo: { hasNextPage: true },
+        fetchNext: vi.fn(),
+      };
+      found.fetchNext.mockImplementation(async () => {
+        found.nodes.push({
+          id: "issue_2",
+          title: "Second page",
+          url: "https://linear.app/team/issue/ABC-2",
+          state: Promise.resolve({ name: "In Progress" }),
+          priority: 2,
+          assigneeId: null,
+        });
+        found.pageInfo.hasNextPage = false;
+        return found;
+      });
+      mocks.issues.mockResolvedValue(found);
+
+      const result = actionData(
+        yield* runAction(underTest, "find-issues", {
+          input: {},
+          credentials: credentialsRead(),
+        })
+      );
+
+      expect(found.fetchNext).toHaveBeenCalledTimes(1);
+      expect(result.issues.map((issue) => issue.id)).toEqual([
+        "issue_1",
+        "issue_2",
+      ]);
+      expect(result.count).toBe(2);
     })
   );
 
@@ -118,6 +166,8 @@ describe("linear/find-issues", () => {
             assigneeId: null,
           },
         ],
+        pageInfo: { hasNextPage: false },
+        fetchNext: vi.fn(),
       });
 
       const result = actionData(

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serveClientAsset } from "#src/backend/lib/http/client-assets";
@@ -8,15 +8,18 @@ const INDEX_HTML =
   '<!doctype html><html><head><base href="/" /></head><body></body></html>';
 
 let clientDir: string;
+let fixtureDir: string;
 
 beforeAll(async () => {
-  clientDir = await mkdtemp(join(tmpdir(), "wfgraph-client-"));
+  fixtureDir = await mkdtemp(join(tmpdir(), "wfgraph-client-"));
+  clientDir = join(fixtureDir, "client");
+  await mkdir(clientDir);
   await writeFile(join(clientDir, "index.html"), INDEX_HTML);
   await writeFile(join(clientDir, "app.js"), "export const ok = true;\n");
 });
 
 afterAll(async () => {
-  await rm(clientDir, { recursive: true, force: true });
+  await rm(fixtureDir, { recursive: true, force: true });
 });
 
 describe("serveClientAsset", () => {
@@ -93,6 +96,20 @@ describe("serveClientAsset", () => {
       });
       expect(response.status).toBe(404);
     }
+  });
+
+  it("refuses a symlink inside the bundle that points outside it", async () => {
+    const outsidePath = join(fixtureDir, "host-secret.txt");
+    await writeFile(outsidePath, "outside-secret\n");
+    await symlink(outsidePath, join(clientDir, "leak.txt"));
+
+    const response = await serveClientAsset({
+      clientDir,
+      basePath: "",
+      pathname: "/leak.txt",
+    });
+
+    expect(response.status).toBe(404);
   });
 
   it("reports a missing client bundle rather than pretending the route is gone", async () => {

@@ -224,7 +224,17 @@ export class NodeScheduler {
             nodeId,
             failedExecution(failureFromCause(cause))
           );
+          const cancel = yield* this.input.cancelBoundary.settle(nodeId);
+          if (cancel.entered) {
+            yield* this.runAll(cancel.nextNodes);
+          }
         }.bind(this)
+      ).pipe(
+        Effect.catchCause((recoveryCause) =>
+          Effect.logError(
+            "Failed to settle cancellation after node failure"
+          ).pipe(Effect.annotateLogs({ error: Cause.squash(recoveryCause) }))
+        )
       )
     ).pipe(Effect.annotateLogs({ nodeId }));
   }

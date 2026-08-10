@@ -126,36 +126,38 @@ export function makeWaitsMethods(
 ): WaitsRepoMethods {
   return {
     startWait: (input) =>
-      database.query(async (db) => {
-        const parked = await db
-          .update(workflowExecutions)
-          .set({ status: "waiting", waitingAt: new Date() })
-          .where(inFlightExecution(input.executionId))
-          .returning({ id: workflowExecutions.id });
+      database.query((db) =>
+        db.transaction(async (tx) => {
+          const parked = await tx
+            .update(workflowExecutions)
+            .set({ status: "waiting", waitingAt: new Date() })
+            .where(inFlightExecution(input.executionId))
+            .returning({ id: workflowExecutions.id });
 
-        if (parked.length === 0) {
-          return undefined;
-        }
+          if (parked.length === 0) {
+            return undefined;
+          }
 
-        const [waitState] = await db
-          .insert(workflowWaitStates)
-          .values({
-            executionId: input.executionId,
-            workflowId: input.workflowId,
-            runId: input.runId,
-            nodeId: input.nodeId,
-            nodeName: input.nodeName,
-            waitType: input.waitType,
-            status: "waiting",
-            resumeToken: input.resumeToken,
-            waitUntil: input.waitUntil,
-            subscribedEvents: input.subscribedEvents ?? [],
-            metadata: toJsonObject(input.metadata),
-          })
-          .returning({ id: workflowWaitStates.id });
+          const [waitState] = await tx
+            .insert(workflowWaitStates)
+            .values({
+              executionId: input.executionId,
+              workflowId: input.workflowId,
+              runId: input.runId,
+              nodeId: input.nodeId,
+              nodeName: input.nodeName,
+              waitType: input.waitType,
+              status: "waiting",
+              resumeToken: input.resumeToken,
+              waitUntil: input.waitUntil,
+              subscribedEvents: input.subscribedEvents ?? [],
+              metadata: toJsonObject(input.metadata),
+            })
+            .returning({ id: workflowWaitStates.id });
 
-        return { waitStateId: waitState.id };
-      }),
+          return { waitStateId: waitState.id };
+        })
+      ),
 
     markWaitStatus: (input) =>
       database.query(async (db) => {

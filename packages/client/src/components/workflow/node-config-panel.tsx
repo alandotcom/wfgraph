@@ -522,6 +522,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
             config={selectedNode.data.config || {}}
             disabled={isGenerating || !isOwner}
             isOwner={isOwner}
+            key={selectedNode.id}
             onUpdateConfig={handleUpdateConfig}
           />
         ) : null}

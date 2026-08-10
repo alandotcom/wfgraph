@@ -130,6 +130,14 @@ describe("graph mutations are undoable and persisted", () => {
     ["deleteNode", (store) => store.set(deleteNodeAtom, "a")],
     ["deleteEdge", (store) => store.set(deleteEdgeAtom, "e1")],
     ["clearWorkflow", (store) => store.set(clearWorkflowAtom)],
+    [
+      "updateNodeData",
+      (store) =>
+        store.set(updateNodeDataAtom, {
+          id: "a",
+          data: { label: "Renamed action" },
+        }),
+    ],
     ["node deleted with the Delete key", deleteNodeViaReactFlow],
     [
       "edge deleted with the Delete key",

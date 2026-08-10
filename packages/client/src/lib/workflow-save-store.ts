@@ -113,6 +113,13 @@ type SaveQueue = {
    * it — and dropping it would also strand everyone awaiting it.
    */
   pending: PendingSave[];
+  /**
+   * Fields a failed request did not persist, kept per workflow until another
+   * save for that workflow can carry them. Without this, a later partial save
+   * (for example a rename after a graph write) can succeed and make the editor
+   * look clean while the failed graph fields are still absent on the server.
+   */
+  failedPatches: Map<string, WorkflowPatch>;
   isFlushing: boolean;
 };
 
@@ -135,7 +142,12 @@ type SaveQueue = {
  * from it and a re-render per keystroke would be pure waste.
  */
 const saveQueueAtom = atom(
-  (): SaveQueue => ({ timeoutId: null, pending: [], isFlushing: false })
+  (): SaveQueue => ({
+    timeoutId: null,
+    pending: [],
+    failedPatches: new Map(),
+    isFlushing: false,
+  })
 );
 
 function toError(error: unknown): Error {
@@ -222,7 +234,10 @@ export const saveWorkflowAtom = atom(
             // Clear the dirty flag only when nothing newer is queued and the
             // saved workflow is still the one on screen.
             if (
-              queue.pending.length === 0 &&
+              !queue.pending.some(
+                (pending) => pending.workflowId === next.workflowId
+              ) &&
+              !queue.failedPatches.has(next.workflowId) &&
               get(currentWorkflowIdAtom) === next.workflowId
             ) {
               set(hasUnsavedChangesAtom, false);
@@ -231,6 +246,22 @@ export const saveWorkflowAtom = atom(
             const saveError = toError(error);
             outcome = { ok: false, error: saveError };
             set(lastSaveErrorAtom, saveError);
+
+            // A later partial patch must not make this failed one disappear.
+            // Fold it into the next queued write for the same workflow when
+            // there is one; otherwise remember it until that workflow is
+            // edited again. The later patch wins field by field.
+            const later = queue.pending.find(
+              (pending) => pending.workflowId === next.workflowId
+            );
+            if (later) {
+              later.patch = { ...next.patch, ...later.patch };
+            } else {
+              queue.failedPatches.set(next.workflowId, {
+                ...queue.failedPatches.get(next.workflowId),
+                ...next.patch,
+              });
+            }
             logger.error("Save failed", {
               workflowId: next.workflowId,
               error,
@@ -251,14 +282,22 @@ export const saveWorkflowAtom = atom(
       // Merge only into the newest entry, and only when it targets the same
       // workflow, so a rename typed during a node drag becomes one request
       // carrying both. An entry for a different workflow stays queued behind it.
+      const failedPatch = queue.failedPatches.get(workflowId);
+      const patchWithRetry = failedPatch ? { ...failedPatch, ...patch } : patch;
+      queue.failedPatches.delete(workflowId);
+
       const newest = queue.pending.at(-1);
       if (newest?.workflowId === workflowId) {
-        newest.patch = { ...newest.patch, ...patch };
+        newest.patch = { ...newest.patch, ...patchWithRetry };
         newest.waiters.push(resolve);
         return;
       }
 
-      queue.pending.push({ workflowId, patch, waiters: [resolve] });
+      queue.pending.push({
+        workflowId,
+        patch: patchWithRetry,
+        waiters: [resolve],
+      });
     });
 
     if (queue.timeoutId) {

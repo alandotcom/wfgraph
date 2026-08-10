@@ -14,10 +14,9 @@ type WorkflowResumeSuccess = {
 };
 
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */
-const loggerFor = (token: string) =>
-  Effect.map(AppLogger, (appLogger) =>
-    appLogger.get("workflow", "resume").with({ token })
-  );
+const resumeLogger = Effect.map(AppLogger, (appLogger) =>
+  appLogger.get("workflow", "resume")
+);
 
 /**
  * Unparks one wait by its resume token, whatever the wait was subscribed to.
@@ -32,7 +31,7 @@ export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
     const { token, body } = input;
     const repo = yield* ExecutionRepo;
     const inngest = yield* InngestClient;
-    const logger = yield* loggerFor(token);
+    const logger = yield* resumeLogger;
 
     const waitState = yield* repo.findWaitingStateByToken(token);
 
@@ -70,7 +69,7 @@ export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
       eventType: "run_resumed",
       message: `Run resumed from ${input.source}`,
       metadata: {
-        token,
+        waitStateId: waitState.id,
       },
     });
 
@@ -81,13 +80,13 @@ export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
     };
     return resumed;
   },
-  (effect, input) =>
+  (effect) =>
     // The caller holds a resume token, not our confidence, so the cause goes to
     // the log and they get a stated sentence.
     effect.pipe(
       Effect.catchTags(
         statedSeamFailureHandlers(
-          loggerFor(input.token),
+          resumeLogger,
           "Failed to resume wait",
           "Could not resume this wait"
         )
@@ -111,7 +110,7 @@ export const postWorkflowResume = Effect.fn("postWorkflowResume")(
   }) {
     yield* validateApiKey(input.authHeader).pipe(
       Effect.tapError((failure) =>
-        Effect.andThen(loggerFor(input.token), (logger) =>
+        Effect.andThen(resumeLogger, (logger) =>
           logger.warn("Workflow resume rejected due to invalid API key", {
             reason: failure.payload.error,
           })

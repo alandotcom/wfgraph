@@ -5,11 +5,7 @@
 
 import { getAppLogger } from "#src/backend/lib/logger";
 import { getErrorMessage } from "@wfgraph/shared/utils";
-import {
-  type JsonObject,
-  type JsonValue,
-  readJsonValue,
-} from "@wfgraph/shared/types/json";
+import { type JsonObject, type JsonValue } from "@wfgraph/shared/types/json";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 
 const redactLogger = getAppLogger("utils", "redact");
@@ -119,12 +115,10 @@ function maskValue(value: string): string {
  * no own enumerable properties.
  */
 function redactObject(obj: unknown, depth = 0): JsonValue | undefined {
-  // Prevent infinite recursion. What is left goes in as it stands, so a subtree
-  // this deep keeps whatever the walk would have masked above it. The `?? undefined`
-  // keeps the JSON policy the same as every level above: a value JSON cannot
-  // spell drops its key rather than turning into a stored `null`.
+  // Bound hostile or cyclic input without returning the uninspected subtree:
+  // doing that would let a sensitive key bypass redaction merely by nesting it.
   if (depth > 10) {
-    return readJsonValue(obj) ?? undefined;
+    return "[REDACTED]";
   }
 
   if (obj === undefined) {

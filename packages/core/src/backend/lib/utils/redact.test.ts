@@ -61,6 +61,17 @@ describe("redactSensitiveData", () => {
     expect(redactSensitiveData(null)).toBeNull();
     expect(redactSensitiveData(undefined)).toBeUndefined();
   });
+
+  it("does not return an uninspected secret below the recursion limit", () => {
+    let nested: Record<string, unknown> = { token: "deep-secret" };
+    for (let depth = 0; depth < 12; depth += 1) {
+      nested = { child: nested };
+    }
+
+    const serialized = JSON.stringify(redactSensitiveData(nested));
+    expect(serialized).not.toContain("deep-secret");
+    expect(serialized).toContain("[REDACTED]");
+  });
 });
 
 describe("redactWorkflowGraph", () => {

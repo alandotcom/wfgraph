@@ -63,6 +63,9 @@ function makeResumeSeams(input: {
 }) {
   const calls = {
     tokenLookups: [] as string[],
+    auditEvents: [] as Parameters<
+      ExecutionRepo["Service"]["recordAuditEvent"]
+    >[0][],
   };
 
   return {
@@ -79,7 +82,10 @@ function makeResumeSeams(input: {
           }),
         markWaitStatus,
         markRunning: () => Effect.succeed(true),
-        recordAuditEvent: () => Effect.void,
+        recordAuditEvent: (event) =>
+          Effect.sync(() => {
+            calls.auditEvents.push(event);
+          }),
       }),
       // Left refusing unless a test supplies one, so a send from a request that
       // should never have got this far kills the test.
@@ -194,6 +200,15 @@ describe("postWorkflowResume", () => {
         ]);
         assert.deepStrictEqual(markWaitStatus.mock.calls, [
           [{ waitStateId: "wait_1", status: "resumed" }],
+        ]);
+        assert.deepStrictEqual(seams.calls.auditEvents, [
+          {
+            workflowId: "wf_1",
+            executionId: "exec_1",
+            eventType: "run_resumed",
+            message: "Run resumed from the resume endpoint",
+            metadata: { waitStateId: "wait_1" },
+          },
         ]);
       })
     );

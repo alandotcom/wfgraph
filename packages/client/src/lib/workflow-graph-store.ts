@@ -538,6 +538,7 @@ export const updateNodeDataAtom = atom(
     }
 
     const currentNodes = get(nodesStateAtom);
+    pushHistory(get, set);
 
     const oldNode = currentNodes.find((node) => node.id === id);
     const oldLabel = oldNode?.data.label;

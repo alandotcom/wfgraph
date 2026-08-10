@@ -10,7 +10,10 @@ import {
 } from "#src/backend/lib/effect/test-layers";
 import { getWorkflowExecutions } from "#src/backend/services/executions/list";
 
-function execution(id: string, status: WorkflowExecution["status"]) {
+function execution(
+  id: string,
+  status: WorkflowExecution["status"]
+): WorkflowExecution {
   return {
     id,
     workflowId: "wf_1",
@@ -113,6 +116,27 @@ describe("getWorkflowExecutions", () => {
           result.items[0]?.startedAt,
           "2026-03-01T10:00:00.000Z"
         );
+      })
+    );
+
+    it.effect("redacts execution payloads in the workflow history", () =>
+      Effect.gen(function* () {
+        const row = execution("exec_1", "completed");
+        row.input = { password: "input-secret" };
+        row.output = { apiToken: "output-secret" };
+        const repos = makeRepos([row]);
+
+        const result = yield* getWorkflowExecutions({
+          workflowId: "wf_1",
+          includeSuperseded: false,
+        }).pipe(Effect.provide(repos.layer));
+
+        assert.deepStrictEqual(result.items[0]?.input, {
+          password: "********cret",
+        });
+        assert.deepStrictEqual(result.items[0]?.output, {
+          apiToken: "********cret",
+        });
       })
     );
 

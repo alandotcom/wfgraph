@@ -63,12 +63,33 @@ const createTicketOutput = Schema.Struct({
   title: Schema.String.annotate({ description: "Ticket title" }),
 });
 
+const linearStatusValues = [
+  "any",
+  "backlog",
+  "todo",
+  "in_progress",
+  "done",
+  "canceled",
+] as const;
+
 const findIssuesInput = Schema.Struct({
   linearAssigneeId: Schema.optionalKey(Schema.String),
   linearTeamId: Schema.optionalKey(Schema.String),
-  linearStatus: Schema.optionalKey(Schema.String),
+  linearStatus: Schema.optionalKey(Schema.Literals(linearStatusValues)),
   linearLabel: Schema.optionalKey(Schema.String),
 });
+
+/**
+ * Linear state names are workspace-owned and may be renamed. Its state types
+ * are the stable vocabulary behind the labels the select presents.
+ */
+const linearStateType = {
+  backlog: "backlog",
+  todo: "unstarted",
+  in_progress: "started",
+  done: "completed",
+  canceled: "canceled",
+} satisfies Record<Exclude<(typeof linearStatusValues)[number], "any">, string>;
 
 /**
  * One issue as the step reports it, flattened out of Linear's GraphQL objects.
@@ -158,7 +179,7 @@ function buildIssueFilter(
   }
 
   if (input.linearStatus && input.linearStatus !== "any") {
-    filter.state = { name: { eqIgnoreCase: input.linearStatus } };
+    filter.state = { type: { eq: linearStateType[input.linearStatus] } };
   }
 
   if (input.linearLabel) {
@@ -316,6 +337,14 @@ export function createLinear(createClient: CreateLinearClient) {
                 const found = await client.issues({
                   filter: buildIssueFilter(input),
                 });
+
+                // `issues()` is a Relay connection. `fetchNext()` appends into
+                // this same connection, so exhaust it before flattening or the
+                // action silently reports only Linear's first page.
+                while (found.pageInfo.hasNextPage) {
+                  // eslint-disable-next-line no-await-in-loop -- Relay gives each next-page cursor only after the preceding page arrives.
+                  await found.fetchNext();
+                }
 
                 return await Promise.all(
                   found.nodes.map(async (issue) => {

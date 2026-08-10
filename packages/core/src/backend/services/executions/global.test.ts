@@ -126,6 +126,30 @@ describe("getWorkflowExecutionsGlobal", () => {
       })
     );
 
+    it.effect("redacts execution payloads in global run history", () =>
+      Effect.gen(function* () {
+        const repo = makeExecutionRepo([
+          createRow({
+            id: "exec_secret",
+            startedAt: new Date("2026-02-18T19:40:00.000Z"),
+            input: { password: "input-secret" },
+            output: { apiToken: "output-secret" },
+          }),
+        ]);
+
+        const result = yield* getWorkflowExecutionsGlobal({}).pipe(
+          Effect.provide(repo.layer)
+        );
+
+        assert.deepStrictEqual(result.items[0]?.input, {
+          password: "********cret",
+        });
+        assert.deepStrictEqual(result.items[0]?.output, {
+          apiToken: "********cret",
+        });
+      })
+    );
+
     it.effect("asks for one row more than the page it answers with", () =>
       Effect.gen(function* () {
         const repo = makeExecutionRepo(page);

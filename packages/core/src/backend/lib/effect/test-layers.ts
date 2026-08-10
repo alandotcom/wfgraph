@@ -221,7 +221,9 @@ export function stubDatabase(
   const db: WfGraphDatabase = new Proxy(base, {
     get(target, property, receiver) {
       if (property === "transaction") {
-        return async (body: (tx: unknown) => Promise<unknown>) => body(db);
+        return async (body: (tx: unknown) => Promise<unknown>) => {
+          return body(db);
+        };
       }
       return Reflect.get(target, property, receiver);
     },
@@ -231,7 +233,11 @@ export function stubDatabase(
     query: (run) => Effect.promise(() => run(db)),
   };
 
-  return { service, layer: Layer.succeed(Database, service), statements };
+  return {
+    service,
+    layer: Layer.succeed(Database, service),
+    statements,
+  };
 }
 
 const workflowRepoStubs: WorkflowRepo["Service"] = {

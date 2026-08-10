@@ -6,8 +6,16 @@
  * fall back to index.html so the router in the browser can take over.
  */
 
-import { readFile, stat } from "node:fs/promises";
-import { extname, join, normalize, posix } from "node:path";
+import { readFile, realpath, stat } from "node:fs/promises";
+import {
+  extname,
+  isAbsolute,
+  join,
+  normalize,
+  posix,
+  relative,
+  sep,
+} from "node:path";
 import { rewriteClientBaseHref } from "#src/backend/lib/http/mount-path";
 import { getAppLogger } from "#src/backend/lib/logger";
 
@@ -50,12 +58,34 @@ function getContentType(filePath: string): string {
   );
 }
 
-async function fileExists(filePath: string): Promise<boolean> {
+/**
+ * Resolve a file that physically remains under the client directory.
+ *
+ * The lexical path check rejects `..`; this real-path check rejects a symlink
+ * inside the bundle that points at a host file outside it.
+ */
+async function resolveContainedFile(
+  clientDir: string,
+  filePath: string
+): Promise<string | null> {
   try {
-    const stats = await stat(filePath);
-    return stats.isFile();
+    const [realClientDir, realFilePath] = await Promise.all([
+      realpath(clientDir),
+      realpath(filePath),
+    ]);
+    const fromClient = relative(realClientDir, realFilePath);
+    if (
+      fromClient === ".." ||
+      fromClient.startsWith(`..${sep}`) ||
+      isAbsolute(fromClient)
+    ) {
+      return null;
+    }
+
+    const stats = await stat(realFilePath);
+    return stats.isFile() ? realFilePath : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -129,23 +159,31 @@ export async function serveClientAsset(
 
   if (!isSpaPath(pathname)) {
     const assetPath = resolveClientAssetPath(clientDir, pathname);
-    if (assetPath && (await fileExists(assetPath))) {
-      const content = await readFile(assetPath);
+    const containedAsset = assetPath
+      ? await resolveContainedFile(clientDir, assetPath)
+      : null;
+    if (containedAsset) {
+      const content = await readFile(containedAsset);
       return new Response(content, {
-        headers: { "content-type": getContentType(assetPath) },
+        headers: { "content-type": getContentType(containedAsset) },
       });
     }
 
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
-  const indexPath = join(clientDir, CLIENT_ENTRY_FILE);
-  if (!(await fileExists(indexPath))) {
+  const configuredIndexPath = join(clientDir, CLIENT_ENTRY_FILE);
+  const indexPath = await resolveContainedFile(clientDir, configuredIndexPath);
+  if (!indexPath) {
     // Name the directory that was searched, since "build the client" is only
     // actionable once an operator knows where the server expected to find it.
-    clientLogger.error("Client bundle entrypoint is missing", { indexPath });
+    clientLogger.error("Client bundle entrypoint is missing", {
+      indexPath: configuredIndexPath,
+    });
     return Response.json(
-      { error: `Client bundle is missing its entrypoint at ${indexPath}.` },
+      {
+        error: `Client bundle is missing its entrypoint at ${configuredIndexPath}.`,
+      },
       { status: 503 }
     );
   }
