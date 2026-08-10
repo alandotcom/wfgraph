@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { uniq } from "es-toolkit/array";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
+import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { deleteWorkflow } from "#src/backend/services/workflows/workflow";
 
@@ -85,7 +85,7 @@ const setPausedState = Effect.fn("setWorkflowPausedState")(
     effect.pipe(
       Effect.catchTag(
         "DatabaseError",
-        internalFailureRelayingCause(
+        internalFailureFromCause(
           itemLoggerFor(input),
           `Failed to ${input.action} workflow`
         )

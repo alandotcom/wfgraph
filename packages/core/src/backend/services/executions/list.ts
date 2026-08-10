@@ -1,8 +1,11 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
+import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
-import { redactSensitiveData } from "#src/backend/lib/utils/redact";
+import {
+  redactSensitiveData,
+  redactSensitiveText,
+} from "#src/backend/lib/utils/redact";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type {
@@ -55,6 +58,7 @@ function toWorkflowExecutionItem(input: {
     ...input,
     input: redactSensitiveData(input.input),
     output: redactSensitiveData(input.output),
+    error: redactSensitiveText(input.error),
     startedAt: input.startedAt.toISOString(),
     waitingAt: toIso(input.waitingAt),
     cancelledAt: toIso(input.cancelledAt),
@@ -131,7 +135,7 @@ export const getWorkflowExecutions = Effect.fn("getWorkflowExecutions")(
     effect.pipe(
       Effect.catchTag(
         "DatabaseError",
-        internalFailureRelayingCause(
+        internalFailureFromCause(
           loggerFor(input.workflowId),
           "Failed to get workflow executions"
         )
@@ -161,7 +165,7 @@ export const deleteWorkflowExecutions = Effect.fn("deleteWorkflowExecutions")(
     effect.pipe(
       Effect.catchTag(
         "DatabaseError",
-        internalFailureRelayingCause(
+        internalFailureFromCause(
           loggerFor(workflowId),
           "Failed to delete workflow executions"
         )

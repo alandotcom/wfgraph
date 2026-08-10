@@ -345,7 +345,7 @@ export const workflowWaitStates = pgTable(
     waitType: text("wait_type").notNull().$type<"delay" | "event">(),
     status: text("status")
       .notNull()
-      .$type<"waiting" | "resumed" | "timed_out" | "cancelled">(),
+      .$type<"waiting" | "resuming" | "resumed" | "timed_out" | "cancelled">(),
     /**
      * What `POST /workflows/waits/:token/resume` unparks this run by. Generated
      * per park: a token decided at design time is one two runs at the same node
@@ -363,6 +363,8 @@ export const workflowWaitStates = pgTable(
     subscribedEvents: text("subscribed_events").array(),
     metadata: jsonb("metadata").$type<JsonObject>(),
     createdAt: timestamp("created_at").notNull().default(utcNow()),
+    // While `resuming`, this is the claim's lease timestamp and fencing token.
+    // Settling the claim replaces it with the actual resume time.
     resumedAt: timestamp("resumed_at"),
     cancelledAt: timestamp("cancelled_at"),
   },

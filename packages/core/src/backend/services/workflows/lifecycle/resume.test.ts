@@ -3,11 +3,13 @@
 import { assert, describe, layer } from "@effect/vitest";
 // The mocks API has to be the one vitest itself exports; reaching it through the
 // `@effect/vitest` re-export leaves it unable to find the module registry.
-import { vi } from "vitest";
 import { hash } from "bcryptjs";
 import { Effect, Layer } from "effect";
 import { NotFound, Unauthorized } from "#src/backend/lib/effect/failures";
-import type { InngestClient } from "#src/backend/lib/effect/inngest-client";
+import {
+  InngestError,
+  type InngestClient,
+} from "#src/backend/lib/effect/inngest-client";
 import {
   SilentAppLoggerLayer,
   stubApiKeyRepo,
@@ -19,14 +21,13 @@ import type {
   ExecutionRepo,
   WorkflowWaitState,
 } from "#src/backend/services/executions/repo";
-import { postWorkflowResume } from "#src/backend/services/workflows/lifecycle/resume";
-
-/** Waking a wait means a send plus the three writes around it. */
-const markWaitStatus = vi.fn<ExecutionRepo["Service"]["markWaitStatus"]>(() =>
-  Effect.succeed(true)
-);
+import {
+  postWorkflowResume,
+  resumeWaitByToken,
+} from "#src/backend/services/workflows/lifecycle/resume";
 
 const RESUME_TOKEN = "resume_token_1";
+const CLAIMED_AT = new Date("2026-03-01T00:01:00.000Z");
 
 const liveWaitState: WorkflowWaitState = {
   id: "wait_1",
@@ -63,6 +64,7 @@ function makeResumeSeams(input: {
 }) {
   const calls = {
     tokenLookups: [] as string[],
+    claimed: false,
     auditEvents: [] as Parameters<
       ExecutionRepo["Service"]["recordAuditEvent"]
     >[0][],
@@ -75,12 +77,24 @@ function makeResumeSeams(input: {
         touchLastUsed: () => Effect.void,
       }),
       stubExecutionRepo({
-        findWaitingStateByToken: (hookToken) =>
+        claimWaitingStateByToken: (hookToken) =>
           Effect.sync(() => {
             calls.tokenLookups.push(hookToken);
-            return input.waitState ?? null;
+            if (calls.claimed || !input.waitState) {
+              return null;
+            }
+            calls.claimed = true;
+            return { waitState: input.waitState, claimedAt: CLAIMED_AT };
           }),
-        markWaitStatus,
+        releaseWaitingStateClaim: () =>
+          Effect.sync(() => {
+            if (!calls.claimed) {
+              return false;
+            }
+            calls.claimed = false;
+            return true;
+          }),
+        settleWaitingStateClaim: () => Effect.succeed(true),
         markRunning: () => Effect.succeed(true),
         recordAuditEvent: (event) =>
           Effect.sync(() => {
@@ -162,7 +176,6 @@ describe("postWorkflowResume", () => {
 
     it.effect("wakes the waiting node and marks the wait resumed", () =>
       Effect.gen(function* () {
-        markWaitStatus.mockClear();
         const key = "wfb_valid_key";
         const signals: Array<
           Parameters<InngestClient["Service"]["sendWaitSignal"]>[0]
@@ -198,9 +211,6 @@ describe("postWorkflowResume", () => {
             signalType: "wait-resume",
           },
         ]);
-        assert.deepStrictEqual(markWaitStatus.mock.calls, [
-          [{ waitStateId: "wait_1", status: "resumed" }],
-        ]);
         assert.deepStrictEqual(seams.calls.auditEvents, [
           {
             workflowId: "wf_1",
@@ -210,6 +220,76 @@ describe("postWorkflowResume", () => {
             metadata: { waitStateId: "wait_1" },
           },
         ]);
+      })
+    );
+
+    it.effect("lets only one concurrent caller send the resume signal", () =>
+      Effect.gen(function* () {
+        const signals: Array<
+          Parameters<InngestClient["Service"]["sendWaitSignal"]>[0]
+        > = [];
+        const seams = makeResumeSeams({
+          candidates: [],
+          waitState: liveWaitState,
+          sendWaitSignal: (signal) =>
+            Effect.sync(() => {
+              signals.push(signal);
+            }),
+        });
+
+        const attempts = yield* Effect.all(
+          [
+            resumeWaitByToken({ token: RESUME_TOKEN, body: {}, source: "one" }),
+            resumeWaitByToken({ token: RESUME_TOKEN, body: {}, source: "two" }),
+          ].map(Effect.exit),
+          { concurrency: "unbounded" }
+        ).pipe(Effect.provide(seams.layer));
+
+        assert.strictEqual(signals.length, 1);
+        assert.strictEqual(
+          attempts.filter((attempt) => attempt._tag === "Success").length,
+          1
+        );
+        assert.strictEqual(
+          attempts.filter((attempt) => attempt._tag === "Failure").length,
+          1
+        );
+      })
+    );
+
+    it.effect("allows a retry when the wake signal is refused", () =>
+      Effect.gen(function* () {
+        let attempts = 0;
+        const seams = makeResumeSeams({
+          candidates: [],
+          waitState: liveWaitState,
+          sendWaitSignal: () =>
+            Effect.suspend(() => {
+              attempts += 1;
+              return attempts === 1
+                ? Effect.fail(
+                    new InngestError({
+                      cause: new Error("temporarily offline"),
+                    })
+                  )
+                : Effect.void;
+            }),
+        });
+
+        const first = yield* resumeWaitByToken({
+          token: RESUME_TOKEN,
+          body: {},
+          source: "first",
+        }).pipe(Effect.provide(seams.layer), Effect.exit);
+        const second = yield* resumeWaitByToken({
+          token: RESUME_TOKEN,
+          body: {},
+          source: "retry",
+        }).pipe(Effect.provide(seams.layer), Effect.exit);
+
+        assert.strictEqual(first._tag, "Failure");
+        assert.strictEqual(second._tag, "Success");
+        assert.strictEqual(attempts, 2);
       })
     );
   });

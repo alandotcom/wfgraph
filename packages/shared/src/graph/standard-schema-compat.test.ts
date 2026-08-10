@@ -503,7 +503,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema with date formats", () => {
     ]);
   });
 
-  it("recognizes format: date as timestamp", () => {
+  it("keeps a calendar date as text", () => {
     const fields = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
       properties: {
@@ -512,7 +512,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema with date formats", () => {
     });
 
     expect(fields).toEqual([
-      { name: "birthday", type: "timestamp", description: undefined },
+      { name: "birthday", type: "string", description: undefined },
     ]);
   });
 });

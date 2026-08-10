@@ -1,9 +1,12 @@
 import { Effect } from "effect";
 import { uniq } from "es-toolkit/array";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
+import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { InvalidInput } from "#src/backend/lib/effect/failures";
-import { redactSensitiveData } from "#src/backend/lib/utils/redact";
+import {
+  redactSensitiveData,
+  redactSensitiveText,
+} from "#src/backend/lib/utils/redact";
 import {
   ExecutionRepo,
   type GlobalExecutionRow,
@@ -86,7 +89,7 @@ function toGlobalExecutionItem(row: GlobalExecutionRow): GlobalExecutionItem {
     workflowRunId: row.workflowRunId,
     input: redactSensitiveData(row.input),
     output: redactSensitiveData(row.output),
-    error: row.error,
+    error: redactSensitiveText(row.error),
     startedAt: row.startedAt.toISOString(),
     waitingAt: toIso(row.waitingAt),
     cancelledAt: toIso(row.cancelledAt),
@@ -166,7 +169,7 @@ export const getWorkflowExecutionsGlobal = Effect.fn(
     effect.pipe(
       Effect.catchTag(
         "DatabaseError",
-        internalFailureRelayingCause(
+        internalFailureFromCause(
           loggerFor(input),
           "Failed to get global workflow executions"
         )

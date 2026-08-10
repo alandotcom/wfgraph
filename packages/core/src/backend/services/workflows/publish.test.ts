@@ -257,6 +257,49 @@ describe("publishWorkflow", () => {
       })
     );
 
+    it.effect(
+      "refuses to reactivate a matching version after another publish won",
+      () =>
+        Effect.gen(function* () {
+          const existing: WorkflowVersion = {
+            id: "ver_old",
+            workflowId: "wf_1",
+            version: 1,
+            graph: draft.graph,
+            catalogFingerprint: "",
+            graphDigest: "",
+            publishedAt: new Date("2026-08-01T00:00:00.000Z"),
+          };
+          const observed = { ...draft, publishedVersionId: "ver_observed" };
+
+          const repo = stubWorkflowRepo({
+            findById: () => Effect.succeed(observed),
+            findVersionByContent: (input) =>
+              Effect.succeed({
+                ...existing,
+                graphDigest: input.graphDigest,
+                catalogFingerprint: input.catalogFingerprint,
+              }),
+            setPublishedVersion: (input) =>
+              Effect.sync(() => {
+                assert.strictEqual(
+                  input.expectedPublishedVersionId,
+                  "ver_observed"
+                );
+                return { stale: true as const };
+              }),
+          });
+
+          const failure = yield* publishWorkflow({
+            workflowId: "wf_1",
+            graph: draft.graph,
+          }).pipe(Effect.provide(repo), Effect.flip);
+
+          assert.instanceOf(failure, Conflict);
+          assert.include(failure.error, "Refresh");
+        })
+    );
+
     // Publish is the only event that grows the version table, so the bound
     // holds continuously by sweeping here rather than on a schedule.
     it.effect("sweeps the workflow it just published", () =>

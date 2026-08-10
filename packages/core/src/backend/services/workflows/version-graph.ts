@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
+import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
 import { redactWorkflowGraph } from "#src/backend/lib/utils/redact";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
@@ -39,7 +39,7 @@ export const getVersionGraph = Effect.fn("getVersionGraph")(
     effect.pipe(
       Effect.catchTag(
         "DatabaseError",
-        internalFailureRelayingCause(
+        internalFailureFromCause(
           loggerFor(versionId),
           "Failed to get workflow version graph"
         )

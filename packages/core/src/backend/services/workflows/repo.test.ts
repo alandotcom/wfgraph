@@ -322,6 +322,7 @@ describe("setPublishedVersion", () => {
         return yield* repo.setPublishedVersion({
           workflowId: "wf_1",
           versionId: "ver_1",
+          expectedPublishedVersionId: null,
           draftGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
           eventSubscriptions: [],
         });

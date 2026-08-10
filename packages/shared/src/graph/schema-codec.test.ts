@@ -22,6 +22,20 @@ describe("parseWorkflowSchemaField", () => {
     });
   });
 
+  it("keeps a calendar date as text because it is not an instant", () => {
+    const field = parseWorkflowSchemaField({
+      name: "birthday",
+      type: "string",
+      format: "date",
+    });
+
+    expect(field).toEqual({
+      name: "birthday",
+      type: "string",
+      description: undefined,
+    });
+  });
+
   it("normalizes a primitive duration field", () => {
     // `format: "duration"` is JSON Schema's own keyword for an ISO 8601 length
     // of time, which is what an author declares a wait's input with.
@@ -110,6 +124,26 @@ describe("parseWorkflowSchemaField", () => {
 });
 
 describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
+  it("keeps nullable numeric const unions numeric", () => {
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: {
+        priority: {
+          anyOf: [{ const: 1 }, { const: 2 }, { type: "null" }],
+        },
+      },
+    });
+
+    expect(schema).toEqual([
+      {
+        name: "priority",
+        type: "number",
+        description: undefined,
+        nullable: true,
+      },
+    ]);
+  });
+
   it("parses JSON schema properties including array object items", () => {
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",

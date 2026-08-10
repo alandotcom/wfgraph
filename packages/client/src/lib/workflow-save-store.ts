@@ -36,6 +36,7 @@ export const currentWorkflowModeAtom = atom<WorkflowMode>("live");
 export const isWorkflowOwnerAtom = atom<boolean>(true);
 export const workflowNameErrorAtom = atom<string | null>(null);
 export const workflowNotFoundAtom = atom(false);
+export const workflowLoadErrorAtom = atom<string | null>(null);
 
 // Save status, read by the toolbar and the unsaved-changes indicator.
 export const isSavingAtom = atom(false);

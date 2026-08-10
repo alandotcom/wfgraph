@@ -265,10 +265,12 @@ export function formatTemplateToken(input: {
   return `{{@${input.nodeId}:${input.nodeLabel}${suffix}}}`;
 }
 
-/** One dot-separated piece of a path: a key, then any bracket indices after it. */
-type PathSegment = { key: string; indices: number[] };
-
 const BRACKET_INDEX_PATTERN = /\[(\d+)\]/g;
+const PATH_PART_PATTERN = /^([^[]*)((?:\[\d+\])*)$/;
+
+export type OutputPathStep =
+  | { kind: "key"; key: string }
+  | { kind: "index"; index: number };
 
 /**
  * Plugin steps return `{ success, data }`. A user writing `{{@n1:Step.id}}`
@@ -300,22 +302,38 @@ export function unwrapStepOutput(output: JsonValue): JsonValue {
   return isStepWrapper(output) ? output.data : output;
 }
 
-function parsePathSegments(path: string): PathSegment[] {
-  return path.split(".").flatMap((part) => {
+export function parseOutputPath(path: string): OutputPathStep[] | null {
+  const steps: OutputPathStep[] = [];
+
+  for (const part of path.split(".")) {
     const trimmed = part.trim();
     if (!trimmed) {
-      return [];
+      return null;
     }
 
-    const indices = Array.from(
-      trimmed.matchAll(BRACKET_INDEX_PATTERN),
-      (match) => Number.parseInt(match[1], 10)
-    );
-    const bracketStart = trimmed.indexOf("[");
-    const key = bracketStart === -1 ? trimmed : trimmed.slice(0, bracketStart);
+    const parsed = PATH_PART_PATTERN.exec(trimmed);
+    if (!parsed) {
+      return null;
+    }
 
-    return [{ key, indices }];
-  });
+    const key = parsed[1];
+    if (key.includes("]")) {
+      return null;
+    }
+    if (key) {
+      steps.push({ kind: "key", key });
+    }
+
+    for (const match of trimmed.matchAll(BRACKET_INDEX_PATTERN)) {
+      const index = Number(match[1]);
+      if (!Number.isSafeInteger(index)) {
+        return null;
+      }
+      steps.push({ kind: "index", index });
+    }
+  }
+
+  return steps.length > 0 ? steps : null;
 }
 
 /**
@@ -354,12 +372,16 @@ export function resolveOutputPath(
   output: JsonValue,
   path: string
 ): JsonValue | undefined {
-  const segments = parsePathSegments(path);
-  if (segments.length === 0) {
+  if (!path.trim()) {
     return output;
   }
+  const steps = parseOutputPath(path);
+  if (!steps) {
+    return undefined;
+  }
 
-  const firstKey = segments[0].key;
+  const first = steps[0];
+  const firstKey = first.kind === "key" ? first.key : "";
   const namesWrapperKey =
     firstKey === "success" || firstKey === "data" || firstKey === "error";
 
@@ -367,19 +389,15 @@ export function resolveOutputPath(
     ? output
     : unwrapStepOutput(output);
 
-  for (const segment of segments) {
+  for (const step of steps) {
     if (current === null || current === undefined) {
       return undefined;
     }
 
-    // A leading `[0]` has no key, so the indices apply to `current` directly.
-    if (segment.key) {
-      current = readKey(current, segment.key);
-    }
-
-    for (const index of segment.indices) {
-      current = readIndex(current, index);
-    }
+    current =
+      step.kind === "key"
+        ? readKey(current, step.key)
+        : readIndex(current, step.index);
   }
 
   return current;

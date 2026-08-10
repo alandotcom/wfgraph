@@ -173,18 +173,44 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
   const inngest = yield* InngestClient;
 
   return yield* Effect.gen(function* () {
-    yield* inngest.sendWaitSignal({
-      executionId: waitState.executionId,
-      nodeId: waitState.nodeId,
-      token: resumeToken,
-      eventType,
-      payload: input.payload,
-      signalType: "wait-resume",
-    });
+    const claim = yield* repo.claimWaitingStateById(waitState.id);
+    if (!claim) {
+      return 0;
+    }
+    const { waitState: claimedWait, claimedAt } = claim;
 
-    const waitStateUpdated = yield* repo.markWaitStatus({
-      waitStateId: waitState.id,
-      status: "resumed",
+    yield* inngest
+      .sendWaitSignal({
+        executionId: claimedWait.executionId,
+        nodeId: claimedWait.nodeId,
+        token: resumeToken,
+        eventType,
+        payload: input.payload,
+        signalType: "wait-resume",
+      })
+      .pipe(
+        Effect.tapError(() =>
+          repo
+            .releaseWaitingStateClaim({
+              waitStateId: claimedWait.id,
+              claimedAt,
+            })
+            .pipe(
+              Effect.catchTag("DatabaseError", (releaseFailure) =>
+                logger.error("Failed to release refused wait-resume claim", {
+                  workflowId: input.workflowId,
+                  eventType,
+                  waitStateId: claimedWait.id,
+                  error: releaseFailure.cause,
+                })
+              )
+            )
+        )
+      );
+
+    const waitStateUpdated = yield* repo.settleWaitingStateClaim({
+      waitStateId: claimedWait.id,
+      claimedAt,
     });
 
     if (!waitStateUpdated) {
@@ -193,10 +219,10 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
 
     yield* Effect.all(
       [
-        repo.markRunning(waitState.executionId),
+        repo.markRunning(claimedWait.executionId),
         repo.recordAuditEvent({
           workflowId: input.workflowId,
-          executionId: waitState.executionId,
+          executionId: claimedWait.executionId,
           eventType: "run_resumed",
           message: `Run resumed from wait on ${eventType}`,
           metadata: { eventType },

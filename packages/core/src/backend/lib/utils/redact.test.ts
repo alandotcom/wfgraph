@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import {
   redactSensitiveData,
+  redactSensitiveText,
   redactWorkflowGraph,
 } from "#src/backend/lib/utils/redact";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
@@ -71,6 +72,24 @@ describe("redactSensitiveData", () => {
     const serialized = JSON.stringify(redactSensitiveData(nested));
     expect(serialized).not.toContain("deep-secret");
     expect(serialized).toContain("[REDACTED]");
+  });
+});
+
+describe("redactSensitiveText", () => {
+  it("scrubs bearer tokens, labeled secrets, and URI passwords", () => {
+    const message =
+      'Authorization: Bearer header.payload.signature; backupAuthorization: Basic dXNlcjpwYXNz; token="resume-secret"; {"apiToken":"api-secret","clientSecret":"client-secret","passwordHash":"hash-secret"}; postgres://user:db-password@host/db';
+
+    const redacted = redactSensitiveText(message);
+
+    expect(redacted).not.toContain("header.payload.signature");
+    expect(redacted).not.toContain("resume-secret");
+    expect(redacted).not.toContain("api-secret");
+    expect(redacted).not.toContain("client-secret");
+    expect(redacted).not.toContain("hash-secret");
+    expect(redacted).not.toContain("dXNlcjpwYXNz");
+    expect(redacted).not.toContain("db-password");
+    expect(redacted).toContain("[REDACTED]");
   });
 });
 

@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { InternalFailure, NotFound } from "#src/backend/lib/effect/failures";
-import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
+import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import {
@@ -53,10 +53,7 @@ export const getWorkflowsCurrent = Effect.fn("getWorkflowsCurrent")(
     effect.pipe(
       Effect.catchTag(
         "DatabaseError",
-        internalFailureRelayingCause(
-          loggerFor(),
-          "Failed to get current workflow"
-        )
+        internalFailureFromCause(loggerFor(), "Failed to get current workflow")
       )
     )
 );
@@ -113,10 +110,7 @@ export const postWorkflowsCurrent = Effect.fn("postWorkflowsCurrent")(
     effect.pipe(
       Effect.catchTag(
         "DatabaseError",
-        internalFailureRelayingCause(
-          loggerFor(),
-          "Failed to save current workflow"
-        )
+        internalFailureFromCause(loggerFor(), "Failed to save current workflow")
       )
     )
 );

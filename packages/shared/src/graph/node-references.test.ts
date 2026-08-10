@@ -388,6 +388,12 @@ describe("resolveOutputPath", () => {
     expect(resolveOutputPath({ rows: { id: "a" } }, "rows[0]")).toBeUndefined();
   });
 
+  it("refuses text trailing a bracket index", () => {
+    const output = { rows: [{ id: "first" }, { id: "second" }] };
+
+    expect(resolveOutputPath(output, "rows[1]oops.id")).toBeUndefined();
+  });
+
   it("returns undefined for a missing key rather than throwing", () => {
     expect(resolveOutputPath({ a: 1 }, "b.c.d")).toBeUndefined();
     expect(resolveOutputPath(null, "a")).toBeUndefined();

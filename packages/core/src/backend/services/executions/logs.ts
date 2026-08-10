@@ -1,8 +1,11 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
+import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
-import { redactSensitiveData } from "#src/backend/lib/utils/redact";
+import {
+  redactSensitiveData,
+  redactSensitiveText,
+} from "#src/backend/lib/utils/redact";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 
 function toIso(value: Date | null): string | null {
@@ -42,7 +45,7 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
         entityValue: execution.entityValue,
         input: redactSensitiveData(execution.input),
         output: redactSensitiveData(execution.output),
-        error: execution.error,
+        error: redactSensitiveText(execution.error),
         startedAt: execution.startedAt.toISOString(),
         completedAt: toIso(execution.completedAt),
         duration: execution.duration,
@@ -58,7 +61,7 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
         status: log.status,
         input: redactSensitiveData(log.input),
         output: redactSensitiveData(log.output),
-        error: log.error,
+        error: redactSensitiveText(log.error),
         startedAt: log.startedAt.toISOString(),
         completedAt: toIso(log.completedAt),
         duration: log.duration,
@@ -77,7 +80,7 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
     effect.pipe(
       Effect.catchTag(
         "DatabaseError",
-        internalFailureRelayingCause(
+        internalFailureFromCause(
           loggerFor(executionId),
           "Failed to get execution logs"
         )

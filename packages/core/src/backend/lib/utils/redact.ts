@@ -75,6 +75,35 @@ const SENSITIVE_PATTERNS = [
   /auth/i,
 ];
 
+const SENSITIVE_TEXT_LABEL =
+  "(?:[a-z0-9_-]*(?:api[_-]?key|token|secret|password|authorization|credential|private[_-]?key)[a-z0-9_-]*)";
+const QUOTED_SENSITIVE_TEXT = new RegExp(
+  `((?:["'])?\\b${SENSITIVE_TEXT_LABEL}\\b(?:["'])?\\s*[:=]\\s*)(["'])(.*?)\\2`,
+  "gi"
+);
+const UNQUOTED_SENSITIVE_TEXT = new RegExp(
+  `((?:["'])?\\b${SENSITIVE_TEXT_LABEL}\\b(?:["'])?\\s*[:=]\\s*)([^\\s,;&}]+)`,
+  "gi"
+);
+const BEARER_TOKEN = /(\bBearer\s+)[A-Za-z0-9._~+/=-]+/gi;
+const AUTHORIZATION_CREDENTIAL =
+  /(\b[a-z0-9_-]*authorization[a-z0-9_-]*\b\s*[:=]\s*)(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
+const URI_CREDENTIAL = /([a-z][a-z0-9+.-]*:\/\/[^:\s/@]+:)[^@\s/]+(@)/gi;
+
+/** Scrub credentials embedded in an otherwise free-form error or log line. */
+export function redactSensitiveText(value: string | null): string | null {
+  if (value === null) {
+    return null;
+  }
+
+  return value
+    .replace(URI_CREDENTIAL, "$1[REDACTED]$2")
+    .replace(AUTHORIZATION_CREDENTIAL, "$1[REDACTED]")
+    .replace(BEARER_TOKEN, "$1[REDACTED]")
+    .replace(QUOTED_SENSITIVE_TEXT, "$1$2[REDACTED]$2")
+    .replace(UNQUOTED_SENSITIVE_TEXT, "$1[REDACTED]");
+}
+
 /**
  * Check if a key name indicates sensitive data
  */
@@ -130,7 +159,7 @@ function redactObject(obj: unknown, depth = 0): JsonValue | undefined {
   }
 
   if (typeof obj === "string") {
-    return obj;
+    return redactSensitiveText(obj) ?? undefined;
   }
 
   if (typeof obj === "number" || typeof obj === "boolean") {

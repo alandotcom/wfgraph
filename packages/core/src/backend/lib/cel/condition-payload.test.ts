@@ -16,7 +16,8 @@ import type { JsonObject } from "@wfgraph/shared/types/json";
 function evaluate(
   groups: ConditionRule[][],
   payload: JsonObject,
-  eventName: string | null = null
+  eventName: string | null = null,
+  timestampPaths: string[] = []
 ) {
   const model: ConditionModel = {
     version: 2,
@@ -35,7 +36,7 @@ function evaluate(
 
   return evaluateCompiledCondition({
     expression: compiled.expression,
-    timestampPaths: [],
+    timestampPaths,
     payload,
     eventName,
   });
@@ -125,6 +126,65 @@ describe("a compiled condition against a payload", () => {
     if (evaluation.ok) {
       expect(evaluation.value).toBe(false);
     }
+  });
+
+  it("reads a property whose name is not a CEL identifier", () => {
+    const evaluation = evaluate(
+      [
+        [
+          {
+            id: "rule-1",
+            field: "status-code",
+            fieldType: "string",
+            operator: "equals",
+            value: "accepted",
+          },
+        ],
+      ],
+      { "status-code": "accepted" }
+    );
+
+    expect(evaluation).toEqual({ ok: true, value: true });
+  });
+
+  it("reads a field from the array element the editor offered", () => {
+    const rule: ConditionRule = {
+      id: "rule-1",
+      field: "items[0].sku",
+      fieldType: "string",
+      operator: "equals",
+      value: "sku_1",
+    };
+
+    expect(evaluate([[rule]], { items: [{ sku: "sku_1" }] })).toEqual({
+      ok: true,
+      value: true,
+    });
+    expect(evaluate([[rule]], { items: [] })).toEqual({
+      ok: true,
+      value: false,
+    });
+  });
+
+  it("decodes a timestamp inside an array before CEL compares it", () => {
+    const evaluation = evaluate(
+      [
+        [
+          {
+            id: "rule-1",
+            field: "items[0].startsAt",
+            fieldType: "timestamp",
+            operator: "before",
+            dateTime: "2030-01-01T00:00:00.000Z",
+          },
+        ],
+      ],
+      { items: [{ startsAt: "2026-08-09T12:00:00.000Z" }] },
+      null,
+      ["items[0].startsAt"]
+    );
+
+    expect(evaluation).toEqual({ ok: true, value: true });
   });
 
   it("answers is_not_set for a path whose parent object never arrived", () => {

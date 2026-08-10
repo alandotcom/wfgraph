@@ -26,15 +26,43 @@ const sendWaitSignalMock = vi.fn<InngestClient["Service"]["sendWaitSignal"]>(
 );
 const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
 const markRunningMock = vi.fn<Repo["markRunning"]>(() => Effect.succeed(true));
-const markWaitStatusMock = vi.fn<Repo["markWaitStatus"]>(() =>
+const CLAIMED_AT = new Date("2026-03-01T00:01:00.000Z");
+const claimWaitingStateByIdMock = vi.fn<Repo["claimWaitingStateById"]>((id) =>
+  Effect.succeed({
+    claimedAt: CLAIMED_AT,
+    waitState: {
+      id,
+      executionId: `exec_${id}`,
+      workflowId: "workflow_1",
+      runId: `run_${id}`,
+      nodeId: `node_${id}`,
+      nodeName: `Wait ${id}`,
+      waitType: "event",
+      status: "resuming",
+      resumeToken: `token_${id}`,
+      waitUntil: null,
+      subscribedEvents: ["event.update"],
+      metadata: null,
+      createdAt: new Date("2026-03-01T00:00:00.000Z"),
+      resumedAt: CLAIMED_AT,
+      cancelledAt: null,
+    },
+  })
+);
+const settleWaitingStateClaimMock = vi.fn<Repo["settleWaitingStateClaim"]>(() =>
   Effect.succeed(true)
+);
+const releaseWaitingStateClaimMock = vi.fn<Repo["releaseWaitingStateClaim"]>(
+  () => Effect.succeed(true)
 );
 
 const services = Layer.mergeAll(
   stubExecutionRepo({
     recordAuditEvent: recordAuditEventMock,
     markRunning: markRunningMock,
-    markWaitStatus: markWaitStatusMock,
+    claimWaitingStateById: claimWaitingStateByIdMock,
+    settleWaitingStateClaim: settleWaitingStateClaimMock,
+    releaseWaitingStateClaim: releaseWaitingStateClaimMock,
   }),
   stubInngestClient({ sendWaitSignal: sendWaitSignalMock })
 );
@@ -95,7 +123,9 @@ describe("resumeWaitsMatchingEvent", () => {
   beforeEach(() => {
     loggerErrorMock.mockReset();
     sendWaitSignalMock.mockReset();
-    markWaitStatusMock.mockReset();
+    claimWaitingStateByIdMock.mockReset();
+    settleWaitingStateClaimMock.mockReset();
+    releaseWaitingStateClaimMock.mockReset();
     markRunningMock.mockReset();
     recordAuditEventMock.mockReset();
 
@@ -110,7 +140,30 @@ describe("resumeWaitsMatchingEvent", () => {
     }) as typeof waitMatchLogger.error);
 
     sendWaitSignalMock.mockImplementation(() => Effect.void);
-    markWaitStatusMock.mockImplementation(() => Effect.succeed(true));
+    claimWaitingStateByIdMock.mockImplementation((id) =>
+      Effect.succeed({
+        claimedAt: CLAIMED_AT,
+        waitState: {
+          id,
+          executionId: `exec_${id}`,
+          workflowId: "workflow_1",
+          runId: `run_${id}`,
+          nodeId: `node_${id}`,
+          nodeName: `Wait ${id}`,
+          waitType: "event",
+          status: "resuming",
+          resumeToken: `token_${id}`,
+          waitUntil: null,
+          subscribedEvents: ["event.update"],
+          metadata: null,
+          createdAt: new Date("2026-03-01T00:00:00.000Z"),
+          resumedAt: CLAIMED_AT,
+          cancelledAt: null,
+        },
+      })
+    );
+    settleWaitingStateClaimMock.mockImplementation(() => Effect.succeed(true));
+    releaseWaitingStateClaimMock.mockImplementation(() => Effect.succeed(true));
     markRunningMock.mockImplementation(() => Effect.succeed(true));
     recordAuditEventMock.mockImplementation(() => Effect.void);
   });
@@ -202,9 +255,9 @@ describe("resumeWaitsMatchingEvent", () => {
       payload: { key: "value" },
       signalType: "wait-resume",
     });
-    expect(markWaitStatusMock).toHaveBeenCalledWith({
+    expect(settleWaitingStateClaimMock).toHaveBeenCalledWith({
       waitStateId: "1",
-      status: "resumed",
+      claimedAt: CLAIMED_AT,
     });
     expect(markRunningMock).toHaveBeenCalledWith("exec_1");
     expect(recordAuditEventMock).toHaveBeenCalledTimes(1);
@@ -224,7 +277,7 @@ describe("resumeWaitsMatchingEvent", () => {
 
     expect(result).toBe(3);
     expect(sendWaitSignalMock).toHaveBeenCalledTimes(3);
-    expect(markWaitStatusMock).toHaveBeenCalledTimes(3);
+    expect(settleWaitingStateClaimMock).toHaveBeenCalledTimes(3);
     expect(markRunningMock).toHaveBeenCalledTimes(3);
   });
 
@@ -267,7 +320,7 @@ describe("resumeWaitsMatchingEvent", () => {
   });
 
   it("returns 0 for a wait state when the wait row had already moved on", async () => {
-    markWaitStatusMock.mockImplementation(() => Effect.succeed(false));
+    claimWaitingStateByIdMock.mockImplementation(() => Effect.succeed(null));
 
     const result = await resumeWaits({
       workflowId: "workflow_1",
@@ -277,8 +330,8 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(0);
-    expect(sendWaitSignalMock).toHaveBeenCalledTimes(1);
-    expect(markWaitStatusMock).toHaveBeenCalledTimes(1);
+    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+    expect(settleWaitingStateClaimMock).not.toHaveBeenCalled();
     expect(markRunningMock).not.toHaveBeenCalled();
     expect(recordAuditEventMock).not.toHaveBeenCalled();
   });
@@ -304,10 +357,11 @@ describe("resumeWaitsMatchingEvent", () => {
 
     expect(result).toBe(2);
     expect(sendWaitSignalMock).toHaveBeenCalledTimes(3);
+    expect(releaseWaitingStateClaimMock).toHaveBeenCalledTimes(1);
   });
 
-  it("counts partial successes when some markWaitStateStatus return false", async () => {
-    markWaitStatusMock
+  it("counts partial successes when some settleWaitingStateClaim return false", async () => {
+    settleWaitingStateClaimMock
       .mockImplementationOnce(() => Effect.succeed(true))
       .mockImplementationOnce(() => Effect.succeed(false));
 
@@ -463,7 +517,9 @@ describe("resumeWaitsMatchingEvent", () => {
       expect(before).toBe(1);
 
       vi.clearAllMocks();
-      markWaitStatusMock.mockImplementation(() => Effect.succeed(true));
+      settleWaitingStateClaimMock.mockImplementation(() =>
+        Effect.succeed(true)
+      );
 
       const after = await resumeWaits({
         workflowId: "workflow_1",

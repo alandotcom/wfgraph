@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { omit } from "es-toolkit/object";
 import { nanoid } from "nanoid";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
+import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import {
   Conflict,
   InternalFailure,
@@ -174,7 +174,7 @@ export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(
     effect.pipe(
       Effect.catchTag(
         "DatabaseError",
-        internalFailureRelayingCause(
+        internalFailureFromCause(
           loggerFor(workflowId),
           "Failed to duplicate workflow"
         )

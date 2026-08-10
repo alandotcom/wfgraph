@@ -38,12 +38,8 @@ export const internalFailure =
     });
 
 /**
- * The same answer, except that the caller reads the message from underneath.
- *
- * Every service in the workflows domain words its failure this way: a thrown
- * `Error` hands its own message to whoever called, and `message` is the fallback
- * for something thrown that was not an `Error`. The log line is unchanged, so
- * `message` is still what an operator greps for.
+ * The same answer for a function-level catch, where the logger is still an
+ * Effect rather than a value the generator already yielded.
  *
  * Which of the two handlers a service uses follows from where it catches. A
  * body-level `Effect.catchTag` has the logger in hand and takes `internalFailure`;
@@ -52,22 +48,17 @@ export const internalFailure =
  * Effect that produces it. Handing it the same `loggerFor(...)` the body yields is
  * what lets one policy cover every query in the function.
  *
- * The wording difference is not a style choice. The editor shows this text next
- * to the graph the user was editing, and "duplicate key value violates unique
- * constraint" is what tells them their save collided; the API key screens answer
- * a fixed sentence because a caller there can do nothing with the detail.
- *
  * `callerMessage` is for the entrypoints whose log line and caller-facing
  * fallback were never the same sentence: the operator greps "Failed to start
  * workflow execution" and the caller is told "Failed to execute workflow". It
  * defaults to `message`, which is what most services want.
  *
- * A relayed cause reaches the API client, query text and bound parameters
- * included. That is the trade this file takes deliberately: reach for
- * `internalFailure` when a caller can do nothing with the cause, not because the
- * cause looks sensitive.
+ * The cause stays in the operator log and on the non-serialized failure object.
+ * The caller gets only `callerMessage`: database errors can contain query text
+ * and bound values, while Inngest errors can contain request details, and none
+ * of those are a public error contract.
  */
-export const internalFailureRelayingCause =
+export const internalFailureFromCause =
   (
     logger: Effect.Effect<EffectLogger, never, AppLogger>,
     message: string,
@@ -83,7 +74,7 @@ export const internalFailureRelayingCause =
         error: cause,
       });
       return yield* new InternalFailure({
-        error: cause instanceof Error ? cause.message : callerMessage,
+        error: callerMessage,
         cause,
       });
     });
@@ -92,12 +83,11 @@ export const internalFailureRelayingCause =
  * The same answer with the cause kept out of it, for a caller who is not us.
  *
  * The wait resume route answers third parties across origins, and
- * `internalFailureRelayingCause` would hand them a Postgres message naming our
- * tables and bound parameters. They get a stated sentence; the cause goes to the
- * log, where the operator greps `message`.
+ * They get a stated sentence; the cause goes to the log, where the operator
+ * greps `message`.
  *
  * It takes the logger as the Effect that produces one for the same reason the
- * relaying handler does: both are used from an `Effect.fn` transform, which runs
+ * function-level handler does: both are used from an `Effect.fn` transform, which runs
  * outside the generator that could have yielded `AppLogger`.
  */
 const statedInternalFailure =
@@ -138,14 +128,14 @@ export const statedSeamFailureHandlers = (
  *
  * A service that both queries and enqueues has two tags to catch and one thing
  * to say about either, and spelling the handler out twice let the two drift.
- * The single `internalFailureRelayingCause` instance is what makes them the same
- * answer by construction rather than by matching text.
+ * The single handler instance is what makes them the same answer by
+ * construction rather than by matching text.
  */
 export const seamFailureHandlers = (
   logger: Effect.Effect<EffectLogger, never, AppLogger>,
   message: string,
   callerMessage: string = message
 ) => {
-  const handler = internalFailureRelayingCause(logger, message, callerMessage);
+  const handler = internalFailureFromCause(logger, message, callerMessage);
   return { DatabaseError: handler, InngestError: handler };
 };

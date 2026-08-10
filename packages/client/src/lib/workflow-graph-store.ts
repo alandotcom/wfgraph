@@ -14,6 +14,7 @@ import {
   isWorkflowOwnerAtom,
   saveWorkflowAtom,
   workflowNotFoundAtom,
+  workflowLoadErrorAtom,
 } from "#src/lib/workflow-save-store";
 import {
   isGeneratingAtom,
@@ -271,6 +272,7 @@ export const hydrateWorkflowAtom = atom(
     set(currentWorkflowModeAtom, workflow.mode ?? "live");
     set(isWorkflowOwnerAtom, workflow.isOwner !== false);
     set(workflowNotFoundAtom, false);
+    set(workflowLoadErrorAtom, null);
   }
 );
 

@@ -140,6 +140,21 @@ describe("getWorkflowExecutions", () => {
       })
     );
 
+    it.effect("redacts a credential embedded in the execution error", () =>
+      Effect.gen(function* () {
+        const row = execution("exec_1", "failed");
+        row.error = "Authorization: Bearer secret-token";
+        const repos = makeRepos([row]);
+
+        const result = yield* getWorkflowExecutions({
+          workflowId: "wf_1",
+          includeSuperseded: false,
+        }).pipe(Effect.provide(repos.layer));
+
+        assert.notInclude(result.items[0]?.error ?? "", "secret-token");
+      })
+    );
+
     // The Refused Starts ride in this payload rather than in a procedure of their
     // own, so their mapping is asserted here: the panel formats a Date.
     it.effect("hands the Refused Starts over with their timestamps", () =>

@@ -134,6 +134,7 @@ describe("getWorkflowExecutionsGlobal", () => {
             startedAt: new Date("2026-02-18T19:40:00.000Z"),
             input: { password: "input-secret" },
             output: { apiToken: "output-secret" },
+            error: "Authorization: Bearer error-secret",
           }),
         ]);
 
@@ -147,6 +148,7 @@ describe("getWorkflowExecutionsGlobal", () => {
         assert.deepStrictEqual(result.items[0]?.output, {
           apiToken: "********cret",
         });
+        assert.notInclude(result.items[0]?.error ?? "", "error-secret");
       })
     );
 

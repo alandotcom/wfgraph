@@ -6,7 +6,7 @@ import {
   InternalFailure,
   NotFound,
 } from "#src/backend/lib/effect/failures";
-import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
+import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { cancelInFlightRuns } from "#src/backend/services/executions/end-runs";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 
@@ -103,7 +103,7 @@ export const postExecutionCancel = Effect.fn("postExecutionCancel")(
     effect.pipe(
       Effect.catchTag(
         "DatabaseError",
-        internalFailureRelayingCause(
+        internalFailureFromCause(
           loggerFor(executionId),
           "Failed to cancel execution"
         )

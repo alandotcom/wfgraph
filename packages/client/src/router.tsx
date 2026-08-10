@@ -21,7 +21,15 @@ import { queryClient } from "#src/lib/query-client";
 import { toSavedWorkflow } from "#src/lib/rpc-client";
 import { integrationsQueryOptions, orpcQuery } from "#src/lib/rpc-query";
 import { hydrateWorkflowAtom } from "#src/lib/workflow-graph-store";
-import { workflowNotFoundAtom } from "#src/lib/workflow-save-store";
+import {
+  workflowLoadErrorAtom,
+  workflowNotFoundAtom,
+} from "#src/lib/workflow-save-store";
+import {
+  classifyWorkflowLoadFailure,
+  WORKFLOW_LOAD_ERROR_MESSAGE,
+  workflowPanelTab,
+} from "#src/lib/workflow-route-state";
 import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 import WorkflowEditorPage from "#src/routes/workflows/[workflowId]/page";
 import WorkflowsPage from "#src/routes/workflows/page";
@@ -104,9 +112,10 @@ const workflowRoute = createRoute({
    * run must not re-hydrate.
    */
   beforeLoad: ({ search }) => {
-    if (search.executionId) {
-      appStore.set(propertiesPanelActiveTabAtom, "runs");
-    }
+    appStore.set(
+      propertiesPanelActiveTabAtom,
+      workflowPanelTab(search.executionId)
+    );
   },
   /**
    * Put the workflow on screen before the editor renders.
@@ -134,30 +143,40 @@ const workflowRoute = createRoute({
    * the pinned-graph overlay and left the canvas on the live draft.
    */
   loader: async ({ params }) => {
-    try {
-      const [payload, integrations] = await Promise.all([
-        queryClient.fetchQuery(
-          orpcQuery.workflow.getById.queryOptions({
-            input: { workflowId: params.workflowId },
-            staleTime: 0,
-          })
-        ),
-        queryClient.fetchQuery(integrationsQueryOptions()),
-      ]);
+    appStore.set(workflowNotFoundAtom, false);
+    appStore.set(workflowLoadErrorAtom, null);
 
-      const workflow = toSavedWorkflow(payload);
-      appStore.set(hydrateWorkflowAtom, {
-        ...workflow,
-        nodes: repairNodeIntegrations(
-          getExtensionCatalog(),
-          workflow.nodes,
-          integrations
-        ),
-      });
-    } catch (error) {
-      appStore.set(workflowNotFoundAtom, true);
-      throw error;
+    const [workflowResult, integrationsResult] = await Promise.allSettled([
+      queryClient.fetchQuery(
+        orpcQuery.workflow.getById.queryOptions({
+          input: { workflowId: params.workflowId },
+          staleTime: 0,
+        })
+      ),
+      queryClient.fetchQuery(integrationsQueryOptions()),
+    ]);
+
+    if (workflowResult.status === "rejected") {
+      const failure = classifyWorkflowLoadFailure(workflowResult.reason);
+      appStore.set(workflowNotFoundAtom, failure.notFound);
+      appStore.set(workflowLoadErrorAtom, failure.message);
+      throw workflowResult.reason;
     }
+
+    if (integrationsResult.status === "rejected") {
+      appStore.set(workflowLoadErrorAtom, WORKFLOW_LOAD_ERROR_MESSAGE);
+      throw integrationsResult.reason;
+    }
+
+    const workflow = toSavedWorkflow(workflowResult.value);
+    appStore.set(hydrateWorkflowAtom, {
+      ...workflow,
+      nodes: repairNodeIntegrations(
+        getExtensionCatalog(),
+        workflow.nodes,
+        integrationsResult.value
+      ),
+    });
   },
   errorComponent: WorkflowRouteComponent,
   component: WorkflowRouteComponent,

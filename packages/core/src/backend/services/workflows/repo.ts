@@ -4,6 +4,7 @@ import {
   desc,
   eq,
   inArray,
+  isNull,
   lte,
   ne,
   notExists,
@@ -272,10 +273,11 @@ export class WorkflowRepo extends Context.Service<
     readonly setPublishedVersion: (input: {
       workflowId: string;
       versionId: string;
+      expectedPublishedVersionId: string | null;
       draftGraph: SerializedWorkflowGraph;
       eventSubscriptions: WorkflowEventSubscriptionRow[];
     }) => Effect.Effect<
-      { workflow: Workflow; version: WorkflowVersion } | null,
+      { workflow: Workflow; version: WorkflowVersion } | { stale: true } | null,
       DatabaseError
     >;
     /**
@@ -723,12 +725,14 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                 if (!version) {
                   return null;
                 }
-                return activatePublishedVersion(tx, {
+                const activated = await activatePublishedVersion(tx, {
                   workflowId: input.workflowId,
                   version,
+                  expectedPublishedVersionId: input.expectedPublishedVersionId,
                   draftGraph: input.draftGraph,
                   eventSubscriptions: input.eventSubscriptions,
                 });
+                return activated ?? { stale: true };
               })
           ),
 
@@ -866,6 +870,7 @@ async function activatePublishedVersion(
   input: {
     workflowId: string;
     version: WorkflowVersion;
+    expectedPublishedVersionId?: string | null;
     draftGraph: SerializedWorkflowGraph;
     eventSubscriptions: WorkflowEventSubscriptionRow[];
   }
@@ -879,7 +884,16 @@ async function activatePublishedVersion(
       graph: input.draftGraph,
       updatedAt: new Date(),
     })
-    .where(eq(workflows.id, input.workflowId))
+    .where(
+      and(
+        eq(workflows.id, input.workflowId),
+        input.expectedPublishedVersionId === undefined
+          ? undefined
+          : input.expectedPublishedVersionId === null
+            ? isNull(workflows.publishedVersionId)
+            : eq(workflows.publishedVersionId, input.expectedPublishedVersionId)
+      )
+    )
     .returning();
 
   const workflow = updated.at(0);

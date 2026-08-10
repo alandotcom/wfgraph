@@ -6,7 +6,10 @@ import {
   SilentAppLoggerLayer,
   stubExecutionRepo,
 } from "#src/backend/lib/effect/test-layers";
-import type { ExecutionSummary } from "#src/backend/services/executions/repo";
+import type {
+  ExecutionSummary,
+  WorkflowExecutionLog,
+} from "#src/backend/services/executions/repo";
 import { getExecutionLogs } from "#src/backend/services/executions/logs";
 
 function summary(overrides: Partial<ExecutionSummary> = {}): ExecutionSummary {
@@ -30,12 +33,15 @@ function summary(overrides: Partial<ExecutionSummary> = {}): ExecutionSummary {
 }
 
 /** The three reads this service makes, with the summary the test chose. */
-function makeRepos(execution: ExecutionSummary | null) {
+function makeRepos(
+  execution: ExecutionSummary | null,
+  logs: WorkflowExecutionLog[] = []
+) {
   return Layer.mergeAll(
     SilentAppLoggerLayer,
     stubExecutionRepo({
       findSummaryById: () => Effect.succeed(execution),
-      listLogs: () => Effect.succeed([]),
+      listLogs: () => Effect.succeed(logs),
       listWaitingStates: () => Effect.succeed([]),
     })
   );
@@ -99,6 +105,35 @@ describe("getExecutionLogs", () => {
         assert.deepStrictEqual(result.execution.output, {
           apiToken: "********cret",
         });
+      })
+    );
+
+    it.effect("redacts credentials embedded in execution and node errors", () =>
+      Effect.gen(function* () {
+        const result = yield* getExecutionLogs("exec_1").pipe(
+          Effect.provide(
+            makeRepos(summary({ error: "token=execution-secret" }), [
+              {
+                id: "log_1",
+                executionId: "exec_1",
+                nodeId: "node_1",
+                nodeName: "Send request",
+                nodeType: "action",
+                status: "error",
+                input: null,
+                output: null,
+                error: "Authorization: Bearer node-secret",
+                startedAt: new Date("2026-03-01T10:00:00.000Z"),
+                completedAt: new Date("2026-03-01T10:00:01.000Z"),
+                duration: "1000",
+                timestamp: new Date("2026-03-01T10:00:00.000Z"),
+              },
+            ])
+          )
+        );
+
+        assert.notInclude(result.execution.error ?? "", "execution-secret");
+        assert.notInclude(result.logs[0]?.error ?? "", "node-secret");
       })
     );
 

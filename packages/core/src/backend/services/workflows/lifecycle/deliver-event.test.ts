@@ -36,8 +36,21 @@ const listWaitingStatesForExecutionsMock =
   vi.fn<Repo["listWaitingStatesForExecutions"]>();
 const listWaitsForEventMock = vi.fn<Repo["listWaitsForEvent"]>();
 const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
-const markWaitStatusMock = vi.fn<Repo["markWaitStatus"]>(() =>
+const CLAIMED_AT = new Date("2026-03-01T00:01:00.000Z");
+const claimWaitingStateByIdMock = vi.fn<Repo["claimWaitingStateById"]>(() =>
+  Effect.succeed({
+    waitState: parkedWait("claimed.event", {
+      status: "resuming",
+      resumedAt: CLAIMED_AT,
+    }),
+    claimedAt: CLAIMED_AT,
+  })
+);
+const settleWaitingStateClaimMock = vi.fn<Repo["settleWaitingStateClaim"]>(() =>
   Effect.succeed(true)
+);
+const releaseWaitingStateClaimMock = vi.fn<Repo["releaseWaitingStateClaim"]>(
+  () => Effect.succeed(true)
 );
 const markRunningMock = vi.fn<Repo["markRunning"]>(() => Effect.succeed(true));
 const sendRunRequestedMock = vi.fn<
@@ -264,7 +277,9 @@ const lifecyclePorts = Layer.mergeAll(
 const waitPorts = Layer.mergeAll(
   stubExecutionRepo({
     listWaitsForEvent: listWaitsForEventMock,
-    markWaitStatus: markWaitStatusMock,
+    claimWaitingStateById: claimWaitingStateByIdMock,
+    settleWaitingStateClaim: settleWaitingStateClaimMock,
+    releaseWaitingStateClaim: releaseWaitingStateClaimMock,
     markRunning: markRunningMock,
     recordAuditEvent: recordAuditEventMock,
   }),
@@ -279,7 +294,9 @@ beforeEach(() => {
   listWaitingStatesForExecutionsMock.mockReset();
   listWaitsForEventMock.mockReset();
   recordAuditEventMock.mockReset();
-  markWaitStatusMock.mockReset();
+  claimWaitingStateByIdMock.mockReset();
+  settleWaitingStateClaimMock.mockReset();
+  releaseWaitingStateClaimMock.mockReset();
   markRunningMock.mockReset();
   sendRunRequestedMock.mockReset();
   sendCancelRequestedMock.mockReset();
@@ -295,7 +312,17 @@ beforeEach(() => {
   );
   listWaitsForEventMock.mockImplementation(() => Effect.succeed([]));
   recordAuditEventMock.mockImplementation(() => Effect.void);
-  markWaitStatusMock.mockImplementation(() => Effect.succeed(true));
+  claimWaitingStateByIdMock.mockImplementation(() =>
+    Effect.succeed({
+      waitState: parkedWait("claimed.event", {
+        status: "resuming",
+        resumedAt: CLAIMED_AT,
+      }),
+      claimedAt: CLAIMED_AT,
+    })
+  );
+  settleWaitingStateClaimMock.mockImplementation(() => Effect.succeed(true));
+  releaseWaitingStateClaimMock.mockImplementation(() => Effect.succeed(true));
   markRunningMock.mockImplementation(() => Effect.succeed(true));
   sendRunRequestedMock.mockImplementation(() =>
     Effect.succeed({ eventId: "evt_1" })

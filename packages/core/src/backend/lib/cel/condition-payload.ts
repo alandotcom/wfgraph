@@ -15,6 +15,7 @@ import {
   CONDITION_CONTEXT_ROOT,
   EVENT_CONTEXT_ROOT,
 } from "@wfgraph/shared/conditions/conditions";
+import { parseOutputPath } from "@wfgraph/shared/graph/node-references";
 
 /**
  * Read a dotted field path out of the condition context.
@@ -26,25 +27,48 @@ import {
 function readContextPath(
   context: JsonObject,
   path: string
-): { parent: object; key: string; value: unknown } | null {
-  const segments = path.split(".");
-  const key = segments.pop();
-  if (!key) {
+): { parent: object; key: string | number; value: unknown } | null {
+  const steps = parseOutputPath(path);
+  if (!steps) {
     return null;
   }
 
-  let parent: object = context;
-  for (const segment of segments) {
-    const next: unknown = Reflect.get(parent, segment);
-    // Only a keyed object can hold the rest of the path. An array stops the
-    // walk: a condition field names a property, never an index.
-    if (typeof next !== "object" || next === null || Array.isArray(next)) {
+  let current: unknown = context;
+  for (const [index, step] of steps.entries()) {
+    const isLast = index === steps.length - 1;
+    if (step.kind === "key") {
+      if (
+        typeof current !== "object" ||
+        current === null ||
+        Array.isArray(current)
+      ) {
+        return null;
+      }
+      if (isLast) {
+        return {
+          parent: current,
+          key: step.key,
+          value: Reflect.get(current, step.key),
+        };
+      }
+      current = Reflect.get(current, step.key);
+      continue;
+    }
+
+    if (!Array.isArray(current)) {
       return null;
     }
-    parent = next;
+    if (isLast) {
+      return {
+        parent: current,
+        key: step.index,
+        value: current[step.index],
+      };
+    }
+    current = current[step.index];
   }
 
-  return { parent, key, value: Reflect.get(parent, key) };
+  return null;
 }
 
 /**

@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
+import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { toWorkflowSummaryPayload } from "#src/backend/services/workflows/mappers";
 
@@ -20,7 +20,7 @@ export const getWorkflows = Effect.fn("getWorkflows")(
     effect.pipe(
       Effect.catchTag(
         "DatabaseError",
-        internalFailureRelayingCause(loggerFor(), "Failed to get workflows")
+        internalFailureFromCause(loggerFor(), "Failed to get workflows")
       )
     )
 );

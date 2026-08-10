@@ -5,7 +5,7 @@ import { InngestError } from "#src/backend/lib/effect/inngest-client";
 import { InternalFailure } from "#src/backend/lib/effect/failures";
 import {
   internalFailure,
-  internalFailureRelayingCause,
+  internalFailureFromCause,
 } from "#src/backend/lib/effect/internal-failure";
 import { makeRecordingLogger } from "#src/backend/lib/effect/test-layers";
 
@@ -35,8 +35,8 @@ describe("internalFailure", () => {
   });
 });
 
-describe("internalFailureRelayingCause", () => {
-  it("hands the underlying message to the caller", async () => {
+describe("internalFailureFromCause", () => {
+  it("keeps the underlying message in the log and out of the caller response", async () => {
     const recorder = makeRecordingLogger();
     const cause = new Error("duplicate key value violates unique constraint");
 
@@ -44,7 +44,7 @@ describe("internalFailureRelayingCause", () => {
       Effect.fail(new DatabaseError({ cause })).pipe(
         Effect.catchTag(
           "DatabaseError",
-          internalFailureRelayingCause(
+          internalFailureFromCause(
             Effect.succeed(recorder.logger),
             "Failed to save current workflow"
           )
@@ -55,10 +55,7 @@ describe("internalFailureRelayingCause", () => {
     );
 
     assert.instanceOf(failure, InternalFailure);
-    assert.strictEqual(
-      failure.error,
-      "duplicate key value violates unique constraint"
-    );
+    assert.strictEqual(failure.error, "Failed to save current workflow");
     assert.deepStrictEqual(recorder.lines, [
       {
         message:
@@ -68,16 +65,16 @@ describe("internalFailureRelayingCause", () => {
     ]);
   });
 
-  // The entrypoints whose two sentences were never the same one: the operator
-  // greps for the log line, the caller is told what they asked for failed.
-  it("falls back to the caller's own message when nothing was thrown", async () => {
+  // The entrypoints whose two sentences differ: the operator greps for the log
+  // line, while the caller is told what they asked for failed.
+  it("uses the caller's own message", async () => {
     const recorder = makeRecordingLogger();
 
     const failure = await Effect.runPromise(
       Effect.fail(new DatabaseError({ cause: "connection lost" })).pipe(
         Effect.catchTag(
           "DatabaseError",
-          internalFailureRelayingCause(
+          internalFailureFromCause(
             Effect.succeed(recorder.logger),
             "Failed to start workflow execution",
             "Failed to execute workflow"
@@ -105,7 +102,7 @@ describe("internalFailureRelayingCause", () => {
       Effect.fail(new InngestError({ cause })).pipe(
         Effect.catchTag(
           "InngestError",
-          internalFailureRelayingCause(
+          internalFailureFromCause(
             Effect.succeed(recorder.logger),
             "Failed to cancel execution"
           )
@@ -115,7 +112,7 @@ describe("internalFailureRelayingCause", () => {
       )
     );
 
-    assert.strictEqual(failure.error, "inngest dev server unreachable");
+    assert.strictEqual(failure.error, "Failed to cancel execution");
     assert.strictEqual(
       recorder.lines[0]?.message,
       "Failed to cancel execution: inngest dev server unreachable"

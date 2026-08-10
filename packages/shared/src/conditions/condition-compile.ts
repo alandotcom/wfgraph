@@ -21,6 +21,10 @@ import {
 } from "#src/conditions/condition-model";
 import { parseConditionModel } from "#src/conditions/condition-schema";
 import { decodeIsoTimestamp } from "#src/types/timestamp";
+import {
+  parseOutputPath,
+  type OutputPathStep,
+} from "#src/graph/node-references";
 
 function isGroupLogic(value: unknown): value is GroupLogic {
   return value === "and" || value === "or";
@@ -207,15 +211,50 @@ function compileBooleanConditionRule(
  * each segment is tested before the one below it, and the chain as a whole reads
  * false for a path the payload does not reach.
  */
-function presenceChain(path: string): string {
-  const segments = path.split(".");
+function isCelIdentifier(key: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(key);
+}
 
-  return segments
-    .map(
-      (_, index) =>
-        `has(${CONDITION_CONTEXT_ROOT}.${segments.slice(0, index + 1).join(".")})`
+function compilePayloadPath(
+  path: string
+): { field: string; presence: string } | null {
+  const steps = parseOutputPath(path);
+  if (!steps) {
+    return null;
+  }
+
+  if (
+    steps.every(
+      (step): step is Extract<OutputPathStep, { kind: "key" }> =>
+        step.kind === "key" && isCelIdentifier(step.key)
     )
-    .join(" && ");
+  ) {
+    const keys = steps.map((step) => step.key);
+    return {
+      field: `${CONDITION_CONTEXT_ROOT}.${keys.join(".")}`,
+      presence: keys
+        .map(
+          (_, index) =>
+            `has(${CONDITION_CONTEXT_ROOT}.${keys.slice(0, index + 1).join(".")})`
+        )
+        .join(" && "),
+    };
+  }
+
+  let field = CONDITION_CONTEXT_ROOT;
+  const guards: string[] = [];
+  for (const step of steps) {
+    if (step.kind === "key") {
+      const key = celStringLiteral(step.key);
+      guards.push(`${key} in ${field}`);
+      field = `${field}[${key}]`;
+    } else {
+      guards.push(`size(${field}) > ${step.index}`);
+      field = `${field}[${step.index}]`;
+    }
+  }
+
+  return { field, presence: guards.join(" && ") };
 }
 
 /**
@@ -285,8 +324,11 @@ function compileConditionRule(rule: ConditionRule): ConditionCompileResult {
 
   // A rule stores the path as the field picker offered it, relative to the node
   // output. The root belongs to the expression, not the model.
-  const field = `${CONDITION_CONTEXT_ROOT}.${path}`;
-  const presence = presenceChain(path);
+  const compiledPath = compilePayloadPath(path);
+  if (!compiledPath) {
+    return { valid: false, error: "Condition field path is invalid" };
+  }
+  const { field, presence } = compiledPath;
 
   if (isNullCheckConditionRule(rule)) {
     return compileNullCheckConditionRule(rule, presence);

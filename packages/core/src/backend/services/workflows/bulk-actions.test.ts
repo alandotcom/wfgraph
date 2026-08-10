@@ -165,7 +165,7 @@ describe("postWorkflowsBulkLifecycle", () => {
             workflowId: "wf_2",
             action: "pause",
             ok: false,
-            error: "terminating connection due to crash",
+            error: "Failed to pause workflow",
           },
           { workflowId: "wf_3", action: "pause", ok: true },
         ]);

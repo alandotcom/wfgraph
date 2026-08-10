@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
+import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import {
   Conflict,
   InternalFailure,
@@ -76,7 +76,7 @@ export const getWorkflow = Effect.fn("getWorkflow")(
     effect.pipe(
       Effect.catchTag(
         "DatabaseError",
-        internalFailureRelayingCause(
+        internalFailureFromCause(
           loggerFor(workflowId),
           "Failed to get workflow"
         )
@@ -203,7 +203,7 @@ export const patchWorkflow = Effect.fn("patchWorkflow")(
     effect.pipe(
       Effect.catchTag(
         "DatabaseError",
-        internalFailureRelayingCause(
+        internalFailureFromCause(
           loggerFor(workflowId),
           "Failed to update workflow"
         )
@@ -233,7 +233,7 @@ export const deleteWorkflow = Effect.fn("deleteWorkflow")(
     effect.pipe(
       Effect.catchTag(
         "DatabaseError",
-        internalFailureRelayingCause(
+        internalFailureFromCause(
           loggerFor(workflowId),
           "Failed to delete workflow"
         )

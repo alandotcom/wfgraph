@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { statedSeamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
-import { Conflict, NotFound } from "#src/backend/lib/effect/failures";
+import { NotFound } from "#src/backend/lib/effect/failures";
 import { validateApiKey } from "#src/backend/services/api-keys/auth";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { JsonObject } from "@wfgraph/shared/types/json";
@@ -33,31 +33,58 @@ export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
     const inngest = yield* InngestClient;
     const logger = yield* resumeLogger;
 
-    const waitState = yield* repo.findWaitingStateByToken(token);
+    // Claim before sending. The guarded update is the one winner across every
+    // app process, so two callers can never both wake the same parked run.
+    const claim = yield* repo.claimWaitingStateByToken(token);
 
-    if (!waitState) {
+    if (!claim) {
       yield* logger.warn("Wait not found or no longer active");
       return yield* new NotFound({
         error: "Wait not found or no longer active",
       });
     }
+    const { waitState, claimedAt } = claim;
 
-    yield* inngest.sendWaitSignal({
-      executionId: waitState.executionId,
-      nodeId: waitState.nodeId,
-      token,
-      payload: body,
-      signalType: "wait-resume",
-    });
+    yield* inngest
+      .sendWaitSignal({
+        executionId: waitState.executionId,
+        nodeId: waitState.nodeId,
+        token,
+        payload: body,
+        signalType: "wait-resume",
+      })
+      .pipe(
+        Effect.tapError(() =>
+          repo
+            .releaseWaitingStateClaim({ waitStateId: waitState.id, claimedAt })
+            .pipe(
+              Effect.flatMap((released) =>
+                released
+                  ? Effect.void
+                  : logger.error(
+                      "Failed to release refused wait-resume claim",
+                      {
+                        waitStateId: waitState.id,
+                      }
+                    )
+              ),
+              Effect.catchTag("DatabaseError", (releaseFailure) =>
+                logger.error("Failed to release refused wait-resume claim", {
+                  waitStateId: waitState.id,
+                  error: releaseFailure.cause,
+                })
+              )
+            )
+        )
+      );
 
-    const waitStateUpdated = yield* repo.markWaitStatus({
+    const completedClaim = yield* repo.settleWaitingStateClaim({
       waitStateId: waitState.id,
-      status: "resumed",
+      claimedAt,
     });
-    if (!waitStateUpdated) {
-      yield* logger.warn("Wait changed state before resume update");
-      return yield* new Conflict({
-        error: "Wait not found or no longer active",
+    if (!completedClaim) {
+      yield* logger.warn("Wait resume claim was already settled", {
+        waitStateId: waitState.id,
       });
     }
 

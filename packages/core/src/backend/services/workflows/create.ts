@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { Conflict, InvalidInput } from "#src/backend/lib/effect/failures";
-import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
+import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import {
   toWorkflowApiPayload,
@@ -71,7 +71,7 @@ export const postWorkflowsCreate = Effect.fn("postWorkflowsCreate")(
     effect.pipe(
       Effect.catchTag(
         "DatabaseError",
-        internalFailureRelayingCause(loggerFor(), "Failed to create workflow")
+        internalFailureFromCause(loggerFor(), "Failed to create workflow")
       )
     )
 );

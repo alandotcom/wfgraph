@@ -3,16 +3,20 @@ import {
   arrayContains,
   asc,
   eq,
+  exists,
   getTableColumns,
   gt,
   inArray,
+  lte,
   notInArray,
+  or,
 } from "drizzle-orm";
 import type { Effect } from "effect";
 import {
   workflowExecutions,
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
+import type { WfGraphDatabase } from "#src/backend/lib/db/index";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { type JsonObjectDraft, toJsonObject } from "@wfgraph/shared/types/json";
@@ -22,6 +26,13 @@ import type {
   WorkflowExecution,
   WorkflowWaitState,
 } from "#src/backend/services/executions/repo/contracts";
+
+const WAIT_RESUME_CLAIM_LEASE_MS = 5 * 60 * 1000;
+
+export type WaitResumeClaim = {
+  waitState: WorkflowWaitState;
+  claimedAt: Date;
+};
 
 /** The `workflow_wait_states` slice of `ExecutionRepo`. */
 export type WaitsRepoMethods = {
@@ -47,19 +58,21 @@ export type WaitsRepoMethods = {
     metadata?: JsonObjectDraft;
   }) => Effect.Effect<{ waitStateId: string } | undefined, DatabaseError>;
   /**
-   * Close out one wait row, answering whether it was still waiting. Guarded on
-   * `waiting`, so a wait that already resumed is left alone.
+   * Close out one wait row, answering whether it was still active. A normal
+   * resume starts from `waiting`; timeout and cancellation may also overtake an
+   * in-flight resume claim. Only the fenced claim method can settle `resuming`
+   * as successfully resumed.
    */
   readonly markWaitStatus: (input: {
     waitStateId: string;
     status: SettledWaitStatus;
   }) => Effect.Effect<boolean, DatabaseError>;
-  /** Cancel whichever of these wait rows are still waiting, answering which. */
+  /** Cancel whichever rows are waiting or being resumed, answering which. */
   readonly cancelWaits: (
     waitStateIds: string[]
   ) => Effect.Effect<string[], DatabaseError>;
   /**
-   * Cancel every wait of one run that is still waiting.
+   * Cancel every active wait of one run, including an in-flight resume claim.
    *
    * For the rows a killed branch run left behind, whose ids nobody holds: the
    * branch parked and was then stopped where it stood.
@@ -96,14 +109,28 @@ export type WaitsRepoMethods = {
     excludingExecutionIds?: string[];
   }) => Effect.Effect<WorkflowWaitState[], DatabaseError>;
   /**
-   * The waiting node one resume token addresses, or null when the token names
-   * no wait or one that has already moved on. Status is part of the question
-   * rather than of the answer, since a resumed wait and an absent one are the
-   * same "no longer active" to the caller.
+   * Claim the waiting node one resume token addresses. The guarded update is
+   * the concurrency boundary: exactly one caller gets the row. An abandoned
+   * in-flight claim becomes reclaimable after its lease rather than consuming
+   * the wait forever.
    */
-  readonly findWaitingStateByToken: (
+  readonly claimWaitingStateByToken: (
     resumeToken: string
-  ) => Effect.Effect<WorkflowWaitState | null, DatabaseError>;
+  ) => Effect.Effect<WaitResumeClaim | null, DatabaseError>;
+  /** Claim one candidate previously found by event delivery. */
+  readonly claimWaitingStateById: (
+    waitStateId: string
+  ) => Effect.Effect<WaitResumeClaim | null, DatabaseError>;
+  /** Settle only the exact claim that delivered the wake signal. */
+  readonly settleWaitingStateClaim: (input: {
+    waitStateId: string;
+    claimedAt: Date;
+  }) => Effect.Effect<boolean, DatabaseError>;
+  /** Restore a claimed wait when its wake signal was refused before delivery. */
+  readonly releaseWaitingStateClaim: (input: {
+    waitStateId: string;
+    claimedAt: Date;
+  }) => Effect.Effect<boolean, DatabaseError>;
   /** Every wait one run is currently parked on, for the runs panel. */
   readonly listWaitingStates: (
     executionId: string
@@ -172,7 +199,9 @@ export function makeWaitsMethods(
           .where(
             and(
               eq(workflowWaitStates.id, input.waitStateId),
-              eq(workflowWaitStates.status, "waiting")
+              input.status === "resumed"
+                ? eq(workflowWaitStates.status, "waiting")
+                : inArray(workflowWaitStates.status, ["waiting", "resuming"])
             )
           )
           .returning({ id: workflowWaitStates.id });
@@ -192,7 +221,7 @@ export function makeWaitsMethods(
           .where(
             and(
               inArray(workflowWaitStates.id, waitStateIds),
-              eq(workflowWaitStates.status, "waiting")
+              inArray(workflowWaitStates.status, ["waiting", "resuming"])
             )
           )
           .returning({ id: workflowWaitStates.id });
@@ -208,7 +237,7 @@ export function makeWaitsMethods(
           .where(
             and(
               eq(workflowWaitStates.executionId, executionId),
-              eq(workflowWaitStates.status, "waiting")
+              inArray(workflowWaitStates.status, ["waiting", "resuming"])
             )
           );
       }),
@@ -251,16 +280,48 @@ export function makeWaitsMethods(
           .limit(input.limit)
       ),
 
-    findWaitingStateByToken: (resumeToken) =>
-      database.query(async (db) => {
-        const waitState = await db.query.workflowWaitStates.findFirst({
-          where: and(
-            eq(workflowWaitStates.resumeToken, resumeToken),
-            eq(workflowWaitStates.status, "waiting")
-          ),
-        });
+    claimWaitingStateByToken: (resumeToken) =>
+      database.query((db) =>
+        claimWaitState(db, eq(workflowWaitStates.resumeToken, resumeToken))
+      ),
 
-        return waitState ?? null;
+    claimWaitingStateById: (waitStateId) =>
+      database.query((db) =>
+        claimWaitState(db, eq(workflowWaitStates.id, waitStateId))
+      ),
+
+    settleWaitingStateClaim: (input) =>
+      database.query(async (db) => {
+        const settled = await db
+          .update(workflowWaitStates)
+          .set({ status: "resumed", resumedAt: new Date() })
+          .where(
+            and(
+              eq(workflowWaitStates.id, input.waitStateId),
+              eq(workflowWaitStates.status, "resuming"),
+              eq(workflowWaitStates.resumedAt, input.claimedAt)
+            )
+          )
+          .returning({ id: workflowWaitStates.id });
+
+        return settled.length > 0;
+      }),
+
+    releaseWaitingStateClaim: (input) =>
+      database.query(async (db) => {
+        const released = await db
+          .update(workflowWaitStates)
+          .set({ status: "waiting", resumedAt: null })
+          .where(
+            and(
+              eq(workflowWaitStates.id, input.waitStateId),
+              eq(workflowWaitStates.status, "resuming"),
+              eq(workflowWaitStates.resumedAt, input.claimedAt)
+            )
+          )
+          .returning({ id: workflowWaitStates.id });
+
+        return released.length > 0;
       }),
 
     listWaitingStates: (executionId) =>
@@ -299,4 +360,43 @@ export function makeWaitsMethods(
         return byExecution;
       }),
   };
+}
+
+async function claimWaitState(
+  db: WfGraphDatabase,
+  identity: ReturnType<typeof eq>
+): Promise<WaitResumeClaim | null> {
+  const claimedAt = new Date();
+  const staleBefore = new Date(
+    claimedAt.getTime() - WAIT_RESUME_CLAIM_LEASE_MS
+  );
+  const [waitState] = await db
+    .update(workflowWaitStates)
+    .set({ status: "resuming", resumedAt: claimedAt })
+    .where(
+      and(
+        identity,
+        or(
+          eq(workflowWaitStates.status, "waiting"),
+          and(
+            eq(workflowWaitStates.status, "resuming"),
+            lte(workflowWaitStates.resumedAt, staleBefore)
+          )
+        ),
+        exists(
+          db
+            .select({ id: workflowExecutions.id })
+            .from(workflowExecutions)
+            .where(
+              and(
+                eq(workflowExecutions.id, workflowWaitStates.executionId),
+                eq(workflowExecutions.status, "waiting")
+              )
+            )
+        )
+      )
+    )
+    .returning();
+
+  return waitState ? { waitState, claimedAt } : null;
 }

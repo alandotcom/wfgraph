@@ -21,6 +21,7 @@ import {
   lastSaveErrorAtom,
   saveWorkflowAtom,
   workflowNotFoundAtom,
+  workflowLoadErrorAtom,
 } from "#src/lib/workflow-save-store";
 import {
   isExecutingAtom,
@@ -43,6 +44,7 @@ const WorkflowEditor = () => {
   const saveWorkflow = useSetAtom(saveWorkflowAtom);
   const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
   const workflowNotFound = useAtomValue(workflowNotFoundAtom);
+  const workflowLoadError = useAtomValue(workflowLoadErrorAtom);
 
   // A debounced autosave has no caller waiting on it, so a failure would
   // otherwise reach only the console while the editor looked saved.
@@ -155,6 +157,18 @@ const WorkflowEditor = () => {
               The workflow you're looking for doesn't exist or has been deleted.
             </p>
             <Button render={<Link to="/" />}>Go to Dashboard</Button>
+          </div>
+        </div>
+      )}
+
+      {workflowLoadError && (
+        <div className="pointer-events-auto absolute inset-0 z-20 flex items-center justify-center">
+          <div className="rounded-lg border bg-background p-8 text-center shadow-lg">
+            <h1 className="mb-2 font-semibold text-2xl">
+              Couldn't Load Workflow
+            </h1>
+            <p className="mb-6 text-muted-foreground">{workflowLoadError}</p>
+            <Button onClick={() => window.location.reload()}>Try Again</Button>
           </div>
         </div>
       )}

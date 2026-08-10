@@ -284,12 +284,7 @@ function normalizeJsonSchemaType(
 function normalizeSchemaFormat(
   value: string | undefined
 ): "timestamp" | "duration" | undefined {
-  if (
-    value === "date-time" ||
-    value === "datetime" ||
-    value === "date" ||
-    value === "timestamp"
-  ) {
+  if (value === "date-time" || value === "datetime" || value === "timestamp") {
     return "timestamp";
   }
 
@@ -479,14 +474,18 @@ function resolveConstBranches(
     return null;
   }
 
-  const constValues = toEnumValues(
-    nonNullBranches.map((branch) => branch.const)
-  );
-
-  const result: JsonSchemaNode = { type: "string" };
-  if (constValues) {
-    result.enum = constValues;
+  const rawValues = nonNullBranches.map((branch) => branch.const);
+  const firstType = typeof rawValues[0];
+  if (
+    (firstType !== "string" &&
+      firstType !== "number" &&
+      firstType !== "boolean") ||
+    !rawValues.every((value) => typeof value === firstType)
+  ) {
+    return null;
   }
+
+  const result: JsonSchemaNode = { type: firstType, enum: rawValues };
   if (description !== undefined) {
     result.description = description;
   }
@@ -551,7 +550,8 @@ function parseNonNullableJsonSchemaProperty(
     normalizedType === "timestamp" ||
     normalizedType === "duration"
   ) {
-    const enumValues = toEnumValues(value.enum);
+    const enumValues =
+      normalizedType === "string" ? toEnumValues(value.enum) : undefined;
     return {
       name,
       type:

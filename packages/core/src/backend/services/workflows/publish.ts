@@ -16,7 +16,7 @@ import {
   InvalidInput,
   NotFound,
 } from "#src/backend/lib/effect/failures";
-import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
+import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import { toWorkflowApiPayload } from "#src/backend/services/workflows/mappers";
 import type { WorkflowPublishPayload } from "@wfgraph/shared/graph/api-contracts";
@@ -114,6 +114,7 @@ export const publishWorkflow = Effect.fn("publishWorkflow")(
       ? yield* repo.setPublishedVersion({
           workflowId,
           versionId: matching.id,
+          expectedPublishedVersionId: workflow.publishedVersionId,
           draftGraph,
           eventSubscriptions,
         })
@@ -140,6 +141,11 @@ export const publishWorkflow = Effect.fn("publishWorkflow")(
           }
           return inserted;
         });
+
+    if (published && "stale" in published) {
+      yield* logger.warn("Rejected workflow publish: published version race");
+      return yield* new Conflict({ error: STALE_PUBLISH_MESSAGE });
+    }
 
     if (!published) {
       return yield* new NotFound({ error: "Workflow not found" });
@@ -194,7 +200,7 @@ export const publishWorkflow = Effect.fn("publishWorkflow")(
     effect.pipe(
       Effect.catchTag(
         "DatabaseError",
-        internalFailureRelayingCause(
+        internalFailureFromCause(
           loggerFor(input.workflowId),
           "Failed to publish workflow"
         )
