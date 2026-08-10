@@ -102,16 +102,15 @@ export function buildConfigForm(
   const derivedByKey = new Map(derived.map((field) => [field.key, field]));
   const claimed = claimedKeys(authored);
 
-  const spine = authored.map(
-    (entry): ActionConfigField =>
-      isAuthoredGroup(entry)
-        ? {
-            ...entry,
-            fields: entry.fields.map((field) =>
-              mergeField(derivedByKey.get(field.key), field)
-            ),
-          }
-        : mergeField(derivedByKey.get(entry.key), entry)
+  const spine = authored.map((entry): ActionConfigField =>
+    isAuthoredGroup(entry)
+      ? {
+          ...entry,
+          fields: entry.fields.map((field) =>
+            mergeField(derivedByKey.get(field.key), field)
+          ),
+        }
+      : mergeField(derivedByKey.get(entry.key), entry)
   );
 
   return [...spine, ...derived.filter((field) => !claimed.has(field.key))];

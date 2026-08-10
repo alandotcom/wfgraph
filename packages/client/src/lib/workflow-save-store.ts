@@ -142,14 +142,12 @@ type SaveQueue = {
  * The object is mutated in place rather than `set`, because nothing renders
  * from it and a re-render per keystroke would be pure waste.
  */
-const saveQueueAtom = atom(
-  (): SaveQueue => ({
-    timeoutId: null,
-    pending: [],
-    failedPatches: new Map(),
-    isFlushing: false,
-  })
-);
+const saveQueueAtom = atom((): SaveQueue => ({
+  timeoutId: null,
+  pending: [],
+  failedPatches: new Map(),
+  isFlushing: false,
+}));
 
 function toError(error: unknown): Error {
   return error instanceof Error

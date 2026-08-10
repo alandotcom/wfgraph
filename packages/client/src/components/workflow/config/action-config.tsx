@@ -605,7 +605,7 @@ export function ActionConfig({
     () =>
       Object.keys(categories)
         .filter((name) => name !== "System")
-        .sort(),
+        .toSorted(),
     [categories]
   );
 

@@ -35,7 +35,7 @@
   },
   "dependencies": {
     "@effect/opentelemetry": "catalog:",
-    "@hono/node-server": "^2.0.12",
+    "@hono/node-server": "^2.1.0",
     "@logtape/logtape": "catalog:",
     "@logtape/pretty": "catalog:",
     "@marcbachmann/cel-js": "catalog:",
@@ -53,8 +53,8 @@
     "es-toolkit": "catalog:",
     "graphology": "catalog:",
     "graphology-dag": "^0.4.1",
-    "hono": "^4.12.34",
-    "inngest": "^4.14.0",
+    "hono": "^4.13.1",
+    "inngest": "^4.18.0",
     "nanoid": "catalog:",
     "postgres": "catalog:"
   },
@@ -66,7 +66,7 @@
     "@wfgraph/shared": "workspace:*",
     "arktype": "catalog:",
     "express": "^5.2.1",
-    "fastify": "^5.10.0",
+    "fastify": "^5.11.3",
     "zod": "catalog:"
   }
 }

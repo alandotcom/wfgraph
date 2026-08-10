@@ -508,10 +508,8 @@ export function buildStep<TInput, TOutput>(
       // `CredentialsUnavailable` stays in the error channel, where the action
       // dispatch port turns it into an engine failure: the message then names
       // the credential store rather than the step.
-      Effect.catchTag(
-        "StepFailure",
-        (failure): Effect.Effect<StepResult> =>
-          Effect.succeed(failedStep(failure.message))
+      Effect.catchTag("StepFailure", (failure): Effect.Effect<StepResult> =>
+        Effect.succeed(failedStep(failure.message))
       ),
       Effect.provide(ExternalTransport)
     );
