@@ -4,7 +4,7 @@ import {
   asc,
   eq,
   exists,
-  getTableColumns,
+  getColumns,
   gt,
   inArray,
   lte,
@@ -245,7 +245,7 @@ export function makeWaitsMethods(
     listWaitsForEvent: (input) =>
       database.query((db) =>
         db
-          .select(getTableColumns(workflowWaitStates))
+          .select(getColumns(workflowWaitStates))
           .from(workflowWaitStates)
           .innerJoin(
             workflowExecutions,
@@ -327,10 +327,10 @@ export function makeWaitsMethods(
     listWaitingStates: (executionId) =>
       database.query((db) =>
         db.query.workflowWaitStates.findMany({
-          where: and(
-            eq(workflowWaitStates.executionId, executionId),
-            eq(workflowWaitStates.status, "waiting")
-          ),
+          where: {
+            executionId,
+            status: "waiting",
+          },
         })
       ),
 
@@ -342,10 +342,10 @@ export function makeWaitsMethods(
         }
 
         const rows = await db.query.workflowWaitStates.findMany({
-          where: and(
-            inArray(workflowWaitStates.executionId, executionIds),
-            eq(workflowWaitStates.status, "waiting")
-          ),
+          where: {
+            executionId: { in: executionIds },
+            status: "waiting",
+          },
         });
 
         for (const row of rows) {

@@ -27,9 +27,10 @@ const MIGRATIONS_DIR = resolve(
 
 const PUBLIC_QUALIFIER = /"public"\./g;
 
-const names = (await readdir(MIGRATIONS_DIR)).filter((name) =>
-  name.endsWith(".sql")
-);
+const entries = await readdir(MIGRATIONS_DIR, { withFileTypes: true });
+const names = entries
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => join(entry.name, "migration.sql"));
 
 // Every rewrite is settled before any of them is written, so a surprise in the
 // last file leaves the set as it was rather than half rewritten. Every file is

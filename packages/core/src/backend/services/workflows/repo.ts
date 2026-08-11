@@ -388,7 +388,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
         findById: (workflowId) =>
           database.query(async (db) => {
             const workflow = await db.query.workflows.findFirst({
-              where: eq(workflows.id, workflowId),
+              where: { id: workflowId },
             });
 
             return workflow ?? null;
@@ -397,7 +397,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
         existsById: (workflowId) =>
           database.query(async (db) => {
             const workflow = await db.query.workflows.findFirst({
-              where: eq(workflows.id, workflowId),
+              where: { id: workflowId },
               columns: { id: true },
             });
 
@@ -407,7 +407,9 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
         hasWithName: (name) =>
           database.query(async (db) => {
             const conflict = await db.query.workflows.findFirst({
-              where: sql`lower(${workflows.name}) = lower(${name})`,
+              where: {
+                RAW: sql`lower(${workflows.name}) = lower(${name})`,
+              },
               columns: { id: true },
             });
 
@@ -417,10 +419,14 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
         hasOtherWithName: (input) =>
           database.query(async (db) => {
             const conflict = await db.query.workflows.findFirst({
-              where: and(
-                sql`lower(${workflows.name}) = lower(${input.name})`,
-                ne(workflows.id, input.excludingWorkflowId)
-              ),
+              where: {
+                AND: [
+                  {
+                    RAW: sql`lower(${workflows.name}) = lower(${input.name})`,
+                  },
+                  { id: { ne: input.excludingWorkflowId } },
+                ],
+              },
               columns: { id: true },
             });
 
@@ -559,7 +565,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
         findPausedById: (workflowId) =>
           database.query(async (db) => {
             const workflow = await db.query.workflows.findFirst({
-              where: eq(workflows.id, workflowId),
+              where: { id: workflowId },
               columns: { id: true, isPaused: true },
             });
 
@@ -646,7 +652,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
         findVersionById: (versionId) =>
           database.query(async (db) => {
             const row = await db.query.workflowVersions.findFirst({
-              where: eq(workflowVersions.id, versionId),
+              where: { id: versionId },
             });
 
             return row ?? null;
@@ -676,7 +682,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
         findPublishedVersion: (workflowId) =>
           database.query(async (db) => {
             const workflow = await db.query.workflows.findFirst({
-              where: eq(workflows.id, workflowId),
+              where: { id: workflowId },
               columns: { publishedVersionId: true },
             });
             if (!workflow?.publishedVersionId) {
@@ -684,7 +690,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
             }
 
             const row = await db.query.workflowVersions.findFirst({
-              where: eq(workflowVersions.id, workflow.publishedVersionId),
+              where: { id: workflow.publishedVersionId },
             });
 
             return row ?? null;
@@ -744,7 +750,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                 // commit an orphan version row. Presence here means the later
                 // update cannot miss under the FK KEY SHARE the insert takes.
                 const existing = await tx.query.workflows.findFirst({
-                  where: eq(workflows.id, input.workflowId),
+                  where: { id: input.workflowId },
                   columns: { id: true },
                 });
                 if (!existing) {

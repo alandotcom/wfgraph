@@ -189,10 +189,10 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
               }
 
               return await tx.query.workflowExecutions.findFirst({
-                where: and(
-                  eq(workflowExecutions.workflowId, execution.workflowId),
-                  eq(workflowExecutions.deliveryId, execution.deliveryId)
-                ),
+                where: {
+                  workflowId: execution.workflowId,
+                  deliveryId: execution.deliveryId,
+                },
               });
             };
 

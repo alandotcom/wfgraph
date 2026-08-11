@@ -1,4 +1,4 @@
-import type { Config } from "drizzle-kit";
+import { defineConfig } from "drizzle-kit";
 
 /**
  * Generation only, with no database credentials at all.
@@ -15,8 +15,8 @@ import type { Config } from "drizzle-kit";
  * unqualified, and scripts/unqualify-migrations.ts takes that qualifier off
  * again.
  */
-export default {
+export default defineConfig({
   schema: "./packages/core/src/backend/lib/db/schema.ts",
   out: "./packages/core/drizzle",
   dialect: "postgresql",
-} satisfies Config;
+});

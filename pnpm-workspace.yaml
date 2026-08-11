@@ -63,10 +63,9 @@ overrides:
   # inngest-cli pins adm-zip to ^0.5.10, which never reaches the patched line;
   # GHSA-xcpc-8h2w-3j85 (crafted ZIP triggers a 4GB allocation) is fixed in 0.6.0.
   adm-zip: "0.6.0"
-  # @esbuild-kit/core-utils (an unmaintained drizzle-kit transitive, dev-only)
-  # pins esbuild to ~0.18.20; GHSA-67mh-4wv8-2f99 (dev server answers any
-  # origin's request) is fixed at 0.24.3, and drizzle-kit's own direct esbuild
-  # dependency already resolves within this same range.
+  # GHSA-67mh-4wv8-2f99 (dev server answers any origin's request) is fixed at
+  # 0.24.3; pin the tree onto a current 0.25 line that drizzle-kit, tsx and vite
+  # already resolve within.
   esbuild: "^0.25.4"
   # fastify's JSON Schema stack resolves both fast-uri majors; GHSA-7p8r-x3mc-p8w7
   # (host confusion via backslash authority introducer) is fixed in 3.1.5 / 4.1.2.

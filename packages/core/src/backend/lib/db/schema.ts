@@ -1,4 +1,4 @@
-import { relations, sql } from "drizzle-orm";
+import { defineRelations, sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   boolean,
@@ -445,27 +445,39 @@ export const apiKeys = pgTable(
   (table) => [index("api_keys_key_prefix_idx").on(table.keyPrefix)]
 );
 
-export const workflowExecutionsRelations = relations(
-  workflowExecutions,
-  ({ one }) => ({
-    workflow: one(workflows, {
-      fields: [workflowExecutions.workflowId],
-      references: [workflows.id],
-    }),
-    version: one(workflowVersions, {
-      fields: [workflowExecutions.workflowVersionId],
-      references: [workflowVersions.id],
-    }),
-  })
-);
-
-export const workflowVersionsRelations = relations(
-  workflowVersions,
-  ({ one }) => ({
-    workflow: one(workflows, {
-      fields: [workflowVersions.workflowId],
-      references: [workflows.id],
-    }),
+/**
+ * Relational Queries v2 config. `db.query` is keyed off this, so every table a
+ * repository reads through that API has to appear here even when it has no
+ * edges of its own.
+ */
+export const relations = defineRelations(
+  {
+    workflows,
+    workflowVersions,
+    workflowExecutions,
+    workflowExecutionLogs,
+    workflowExecutionEvents,
+    workflowWaitStates,
+    apiKeys,
+    integrations,
+  },
+  (r) => ({
+    workflowExecutions: {
+      workflow: r.one.workflows({
+        from: r.workflowExecutions.workflowId,
+        to: r.workflows.id,
+      }),
+      version: r.one.workflowVersions({
+        from: r.workflowExecutions.workflowVersionId,
+        to: r.workflowVersions.id,
+      }),
+    },
+    workflowVersions: {
+      workflow: r.one.workflows({
+        from: r.workflowVersions.workflowId,
+        to: r.workflows.id,
+      }),
+    },
   })
 );
 

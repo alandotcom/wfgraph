@@ -3,6 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { is } from "drizzle-orm";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 import * as schema from "#src/backend/lib/db/schema";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
@@ -37,14 +38,15 @@ const tableNames = new Set(
 const QUALIFIER = /"([^"]+)"\./g;
 
 async function readMigrations(): Promise<{ name: string; sql: string }[]> {
-  const names = (await readdir(MIGRATIONS_DIR)).filter((name) =>
-    name.endsWith(".sql")
-  );
+  const entries = await readdir(MIGRATIONS_DIR, { withFileTypes: true });
+  const names = entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name);
 
   return await Promise.all(
     names.map(async (name) => ({
       name,
-      sql: await readFile(join(MIGRATIONS_DIR, name), "utf8"),
+      sql: await readFile(join(MIGRATIONS_DIR, name, "migration.sql"), "utf8"),
     }))
   );
 }
@@ -112,20 +114,26 @@ describe("the generated migrations", () => {
     expect(sql).toContain(`CREATE INDEX "workflows_published_version_id_idx"`);
   });
 
-  // Drizzle applies a migration by comparing folder timestamps and never hashes,
-  // so a regenerated baseline re-runs `CREATE TABLE` on every database that ran
-  // the old one. This entry is what every existing database recorded after the
-  // squash; changing it is a deliberate act that costs every operator a dropped
-  // schema, and `assertJournalHashesAreOurs` is what turns it into a sentence.
-  it("keeps the journal's baseline entries append-only", async () => {
-    const journal = JSON.parse(
-      await readFile(join(MIGRATIONS_DIR, "meta/_journal.json"), "utf8")
-    );
+  // Drizzle matches applied migrations by folder name after the v1 journal
+  // upgrade, and compares hashes only while backfilling that name. This entry
+  // is what every existing database recorded after the squash; changing the
+  // SQL (and therefore the hash) is a deliberate act that costs every operator
+  // a dropped schema, and `assertJournalHashesAreOurs` is what turns it into a
+  // sentence.
+  it("keeps the journal's baseline entries append-only", () => {
+    const migrations = readMigrationFiles({
+      migrationsFolder: MIGRATIONS_DIR,
+    });
 
     expect(
-      journal.entries
+      migrations
         .slice(0, 1)
-        .map((entry: { tag: string; when: number }) => [entry.tag, entry.when])
-    ).toEqual([["0000_peaceful_blacklash", 1785991417231]]);
+        .map((migration) => [migration.name, migration.hash])
+    ).toEqual([
+      [
+        "20260806044337_peaceful_blacklash",
+        "480ea8e2d4266c78673f79bef971a48a90ca6414470ea8002cc88b08b9443114",
+      ],
+    ]);
   });
 });
