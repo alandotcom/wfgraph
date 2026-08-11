@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
 import { partition } from "es-toolkit";
 import {
@@ -52,6 +52,18 @@ export const UNSENT_RUN_GRACE_MS = 5 * 60 * 1000;
 export const UNSENT_RUN_RECLAIM_REASON =
   "The run was opened but never reached the bus, so a later start for this entity closed it";
 
+const SERIALIZATION_RETRIES = 3;
+
+function isSerializationFailure(error: DatabaseError): boolean {
+  const cause = error.cause;
+  return (
+    typeof cause === "object" &&
+    cause !== null &&
+    "code" in cause &&
+    cause.code === "40001"
+  );
+}
+
 function isStuckBeforeTheBus(row: {
   enqueuedAt: Date | null;
   startedAt: Date;
@@ -99,8 +111,8 @@ async function reclaimStuckRuns(
 /**
  * The two methods that touch more than one table in one transaction, which is
  * the reason `ExecutionRepo` is one service rather than four: `startForEntity`
- * writes `workflow_executions` and `workflow_wait_states` inside one advisory
- * lock, and `deleteAllForWorkflow` deletes the runs and the workflow-scoped audit
+ * writes `workflow_executions` and `workflow_wait_states` inside one serializable
+ * transaction, and `deleteAllForWorkflow` deletes the runs and the workflow-scoped audit
  * rows together. Neither can be split across services without splitting a
  * transaction.
  */
@@ -108,12 +120,11 @@ type CrossTableRepoMethods = {
   /**
    * Open a run, with Concurrency applied to the entity it is about.
    *
-   * One transaction holding an advisory lock on the workflow and Entity Value,
-   * because the candidate read and the insert have to be one decision: two
-   * reschedules arriving together otherwise both read an empty in-flight set
-   * and both start, which the compare-and-set on the displaced rows cannot
-   * catch. `unlimited` compares nothing, so it takes no lock and inserts
-   * straight away.
+   * One serializable transaction, because the candidate read and the insert have
+   * to be one decision: two reschedules arriving together otherwise both read an
+   * empty in-flight set and both start. PostgreSQL detects that predicate conflict
+   * and aborts one decision, which this method retries. `unlimited` compares
+   * nothing, so it inserts straight away.
    *
    * Idempotent per arrival: a row this delivery already opened is answered with
    * rather than joined by a second, because the caller is an Inngest step whose
@@ -178,181 +189,180 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
         ...makeAuditMethods(database),
 
         startForEntity: ({ execution, concurrency, supersededReason }) =>
-          database.query(async (db) => {
-            const { entityValue } = execution;
+          database
+            .query(async (db) => {
+              const { entityValue } = execution;
 
-            const findByDelivery = async (
-              tx: WfGraphDatabase | WfGraphTransaction
-            ) => {
-              if (!execution.deliveryId) {
-                return undefined;
-              }
+              const findByDelivery = async (
+                tx: WfGraphDatabase | WfGraphTransaction
+              ) => {
+                if (!execution.deliveryId) {
+                  return undefined;
+                }
 
-              return await tx.query.workflowExecutions.findFirst({
-                where: {
-                  workflowId: execution.workflowId,
-                  deliveryId: execution.deliveryId,
-                },
-              });
-            };
-
-            // Whatever status the arrival's own row is in, it is the answer:
-            // the run may have finished while the step was being retried, and
-            // opening a second one would run the graph twice for one Event.
-            const insertRunning = async (
-              tx: WfGraphDatabase | WfGraphTransaction
-            ) => {
-              const [row] = await tx
-                .insert(workflowExecutions)
-                .values({
-                  workflowId: execution.workflowId,
-                  workflowVersionId: execution.workflowVersionId,
-                  status: "running",
-                  startSource: execution.startSource,
-                  runMode: execution.runMode,
-                  startEventName: execution.startEventName,
-                  entityValue: execution.entityValue,
-                  deliveryId: execution.deliveryId,
-                  input: execution.input,
-                })
-                .onConflictDoNothing({
-                  target: [
-                    workflowExecutions.workflowId,
-                    workflowExecutions.deliveryId,
-                  ],
-                })
-                .returning();
-
-              // The conflict fires when two attempts at one arrival reach here
-              // together, which the advisory lock cannot serialize because
-              // `unlimited` takes none.
-              return row ?? (await findByDelivery(tx));
-            };
-
-            if (concurrency === "unlimited" || !entityValue) {
-              const opened = await insertRunning(db);
-              return {
-                status: "started" as const,
-                execution: opened,
-                supersededExecutionIds: [],
-                reclaimedExecutionIds: [],
+                return await tx.query.workflowExecutions.findFirst({
+                  where: {
+                    workflowId: execution.workflowId,
+                    deliveryId: execution.deliveryId,
+                  },
+                });
               };
-            }
 
-            return await db.transaction(async (tx) => {
-              // Serialized per workflow and entity, and only against other
-              // starts: nothing else in Workflow Graph takes a lock in this name space, so a
-              // run's own writes never wait here. The two-key form keeps the
-              // workflow and the entity in separate hashes, so no pair of values
-              // can join into another pair's key. Two entities whose hashes
-              // collide serialize against each other, which costs a wait and
-              // decides nothing.
-              await tx.execute(
-                sql`select pg_advisory_xact_lock(hashtext(${`wfgraph:entity:${execution.workflowId}`}), hashtext(${entityValue}))`
-              );
+              // Whatever status the arrival's own row is in, it is the answer:
+              // the run may have finished while the step was being retried, and
+              // opening a second one would run the graph twice for one Event.
+              const insertRunning = async (
+                tx: WfGraphDatabase | WfGraphTransaction
+              ) => {
+                const [row] = await tx
+                  .insert(workflowExecutions)
+                  .values({
+                    workflowId: execution.workflowId,
+                    workflowVersionId: execution.workflowVersionId,
+                    status: "running",
+                    startSource: execution.startSource,
+                    runMode: execution.runMode,
+                    startEventName: execution.startEventName,
+                    entityValue: execution.entityValue,
+                    deliveryId: execution.deliveryId,
+                    input: execution.input,
+                  })
+                  .onConflictDoNothing({
+                    target: [
+                      workflowExecutions.workflowId,
+                      workflowExecutions.deliveryId,
+                    ],
+                  })
+                  .returning();
 
-              // Asked before Concurrency is, because this arrival's own row is
-              // not a run to defer to or displace. It is this call's answer.
-              const own = await findByDelivery(tx);
-              if (own) {
+                // The conflict fires when two attempts at one arrival reach here
+                // together. `unlimited` has no entity decision to serialize, so
+                // the delivery constraint is its idempotency boundary.
+                return row ?? (await findByDelivery(tx));
+              };
+
+              if (concurrency === "unlimited" || !entityValue) {
+                const opened = await insertRunning(db);
                 return {
                   status: "started" as const,
-                  execution: own,
+                  execution: opened,
                   supersededExecutionIds: [],
                   reclaimedExecutionIds: [],
                 };
               }
 
-              const inFlight = await tx
-                .select({
-                  id: workflowExecutions.id,
-                  enqueuedAt: workflowExecutions.enqueuedAt,
-                  startedAt: workflowExecutions.startedAt,
-                })
-                .from(workflowExecutions)
-                .where(
-                  and(
-                    eq(workflowExecutions.workflowId, execution.workflowId),
-                    eq(workflowExecutions.entityValue, entityValue),
-                    eq(workflowExecutions.runMode, execution.runMode),
-                    inArray(workflowExecutions.status, [
-                      ...IN_FLIGHT_EXECUTION_STATUSES,
-                    ])
-                  )
-                );
+              return await db.transaction(
+                async (tx) => {
+                  // Asked before Concurrency is, because this arrival's own row is
+                  // not a run to defer to or displace. It is this call's answer.
+                  const own = await findByDelivery(tx);
+                  if (own) {
+                    return {
+                      status: "started" as const,
+                      execution: own,
+                      supersededExecutionIds: [],
+                      reclaimedExecutionIds: [],
+                    };
+                  }
 
-              let reclaimedExecutionIds: string[] = [];
-
-              if (inFlight.length > 0 && concurrency === "first-wins") {
-                const [unsent, live] = partition(inFlight, (row) =>
-                  isStuckBeforeTheBus(row)
-                );
-
-                if (live.length > 0) {
-                  return {
-                    status: "refused" as const,
-                    inFlightExecutionIds: live.map((row) => row.id),
-                  };
-                }
-
-                reclaimedExecutionIds = await reclaimStuckRuns(
-                  tx,
-                  unsent.map((row) => row.id)
-                );
-              }
-
-              let supersededExecutionIds: string[] = [];
-
-              // Newest-wins only. First-wins either deferred to the runs it
-              // found or reclaimed them above, and displaces nothing.
-              if (inFlight.length > 0 && concurrency !== "first-wins") {
-                const ids = inFlight.map((row) => row.id);
-                const now = new Date();
-
-                const superseded = await tx
-                  .update(workflowExecutions)
-                  .set({
-                    status: "superseded",
-                    waitingAt: null,
-                    completedAt: now,
-                    error: supersededReason,
-                  })
-                  .where(
-                    and(
-                      inArray(workflowExecutions.id, ids),
-                      inArray(workflowExecutions.status, [
-                        ...IN_FLIGHT_EXECUTION_STATUSES,
-                      ])
-                    )
-                  )
-                  .returning({ id: workflowExecutions.id });
-
-                supersededExecutionIds = superseded.map((row) => row.id);
-
-                if (supersededExecutionIds.length > 0) {
-                  await tx
-                    .update(workflowWaitStates)
-                    .set({ status: "cancelled", cancelledAt: now })
+                  const inFlight = await tx
+                    .select({
+                      id: workflowExecutions.id,
+                      enqueuedAt: workflowExecutions.enqueuedAt,
+                      startedAt: workflowExecutions.startedAt,
+                    })
+                    .from(workflowExecutions)
                     .where(
                       and(
-                        inArray(
-                          workflowWaitStates.executionId,
-                          supersededExecutionIds
-                        ),
-                        eq(workflowWaitStates.status, "waiting")
+                        eq(workflowExecutions.workflowId, execution.workflowId),
+                        eq(workflowExecutions.entityValue, entityValue),
+                        eq(workflowExecutions.runMode, execution.runMode),
+                        inArray(workflowExecutions.status, [
+                          ...IN_FLIGHT_EXECUTION_STATUSES,
+                        ])
                       )
                     );
-                }
-              }
 
-              return {
-                status: "started" as const,
-                execution: await insertRunning(tx),
-                supersededExecutionIds,
-                reclaimedExecutionIds,
-              };
-            });
-          }),
+                  let reclaimedExecutionIds: string[] = [];
+
+                  if (inFlight.length > 0 && concurrency === "first-wins") {
+                    const [unsent, live] = partition(inFlight, (row) =>
+                      isStuckBeforeTheBus(row)
+                    );
+
+                    if (live.length > 0) {
+                      return {
+                        status: "refused" as const,
+                        inFlightExecutionIds: live.map((row) => row.id),
+                      };
+                    }
+
+                    reclaimedExecutionIds = await reclaimStuckRuns(
+                      tx,
+                      unsent.map((row) => row.id)
+                    );
+                  }
+
+                  let supersededExecutionIds: string[] = [];
+
+                  // Newest-wins only. First-wins either deferred to the runs it
+                  // found or reclaimed them above, and displaces nothing.
+                  if (inFlight.length > 0 && concurrency !== "first-wins") {
+                    const ids = inFlight.map((row) => row.id);
+                    const now = new Date();
+
+                    const superseded = await tx
+                      .update(workflowExecutions)
+                      .set({
+                        status: "superseded",
+                        waitingAt: null,
+                        completedAt: now,
+                        error: supersededReason,
+                      })
+                      .where(
+                        and(
+                          inArray(workflowExecutions.id, ids),
+                          inArray(workflowExecutions.status, [
+                            ...IN_FLIGHT_EXECUTION_STATUSES,
+                          ])
+                        )
+                      )
+                      .returning({ id: workflowExecutions.id });
+
+                    supersededExecutionIds = superseded.map((row) => row.id);
+
+                    if (supersededExecutionIds.length > 0) {
+                      await tx
+                        .update(workflowWaitStates)
+                        .set({ status: "cancelled", cancelledAt: now })
+                        .where(
+                          and(
+                            inArray(
+                              workflowWaitStates.executionId,
+                              supersededExecutionIds
+                            ),
+                            eq(workflowWaitStates.status, "waiting")
+                          )
+                        );
+                    }
+                  }
+
+                  return {
+                    status: "started" as const,
+                    execution: await insertRunning(tx),
+                    supersededExecutionIds,
+                    reclaimedExecutionIds,
+                  };
+                },
+                { isolationLevel: "serializable" }
+              );
+            })
+            .pipe(
+              Effect.retry({
+                times: SERIALIZATION_RETRIES,
+                while: isSerializationFailure,
+              })
+            ),
 
         deleteAllForWorkflow: (workflowId) =>
           database.query(

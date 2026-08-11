@@ -279,7 +279,7 @@ the built bundle handed to `createWfGraphApp`.
 `drizzle`, with `@wfgraph/shared` inlined into the build so it never appears as a dependency,
 and `backend/lib/effect/test-layers.ts` reachable from no entry. Verify a packaging change
 with `pnpm pack` and read the extracted manifest. `docs/embedding.md` ("Package exports")
-is the one home of the six entry points.
+is the one home of the seven core entry points.
 
 ## Code cleanliness
 
@@ -295,7 +295,16 @@ is the one home of the six entry points.
 - Directory traversal represents the stack: group by domain aggregate, and let one
   directory level answer one question.
 
-## Database
+## Persistence and database
+
+`createWfGraphApp` takes an opaque `persistence` backend. The application
+runtime sees only the four aggregate repository services; backend-specific
+connection, schema, migration, query, and concurrency code stays under
+`backend/persistence/`. `@wfgraph/core/postgres` is the long-lived Node
+PostgreSQL backend, `@wfgraph/core/sqlite` is native Node SQLite, and
+`@wfgraph/core/worker` opens PostgreSQL through Hyperdrive per request. A new
+backend implements the repository contracts rather than adding a database
+handle to `WfGraphServices`.
 
 Schema is `packages/core/src/backend/lib/db/schema.ts`, on PostgreSQL 15 or newer.
 Generate migrations with `pnpm run db:generate` and apply them with `pnpm run db:migrate`.
@@ -311,6 +320,13 @@ and the four tests guarding it are ADR-0005's amendment. The journal is append-o
 `assertJournalHashesAreOurs` holds every hash to one this build ships, because a
 rebaselined migration set either fails drizzle's journal-name upgrade or re-runs
 `CREATE TABLE` on every database that ran the old one.
+
+SQLite owns its separate normalized schema and migrates it on open. Its write
+transaction is `BEGIN IMMEDIATE`; do not split a repository decision into
+separate read and write transactions. The Worker/Hyperdrive backend requires
+query caching disabled and verifies that the origin role's default
+`search_path` resolves to the configured schema. PostgreSQL migrations for a
+Worker deployment run out of band through `@wfgraph/core/migrate`.
 
 ## API client
 

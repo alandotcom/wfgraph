@@ -310,7 +310,7 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
 });
 
 /**
- * Tells runs whose rows a locked start already flipped to stop, and records what
+ * Tells runs whose rows a serialized start already flipped to stop, and records what
  * ended them.
  *
  * Those rows and their wait rows were both written inside the lock that made room

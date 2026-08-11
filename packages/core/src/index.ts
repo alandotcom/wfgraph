@@ -26,17 +26,15 @@ export { StepFailure } from "#src/backend/extensions/steps/define-step";
 
 export {
   createWfGraphApp,
-  type DatabaseRuntimeConfig,
   type EncryptionRuntimeConfig,
-  type MigrationsOptions,
   type WfGraphApp,
   type WfGraphAppOptions,
   type WfGraphAuth,
   type WfGraphClientBundle,
-  type WfGraphDatabaseOptions,
   type WfGraphExtensions,
   type WfGraphInngestConfig,
   type WfGraphLogger,
+  type WfGraphPersistence,
 } from "#src/app";
 
 export {

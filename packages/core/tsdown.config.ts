@@ -9,7 +9,15 @@ import { defineConfig } from "tsdown";
 // here is named in the "exports" map in package.json, so the emitted file names
 // have to keep matching that map.
 export default defineConfig({
-  entry: ["src/index.ts", "src/plugin.ts", "src/testing.ts", "src/migrate.ts"],
+  entry: [
+    "src/index.ts",
+    "src/plugin.ts",
+    "src/testing.ts",
+    "src/migrate.ts",
+    "src/postgres.ts",
+    "src/sqlite.ts",
+    "src/worker.ts",
+  ],
   format: "esm",
   // Selects Node-flavoured resolution and externalization, which is what a
   // server library needs. tsdown's own default is already "node"; stated here

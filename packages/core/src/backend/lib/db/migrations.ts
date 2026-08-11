@@ -37,7 +37,7 @@ const MIGRATIONS_TABLE = "__drizzle_migrations";
  * is what makes that unreachable rather than merely unlikely.
  *
  * An operator whose migrations really do sit somewhere else says so with
- * database.migrations.migrationsDir.
+ * wfPostgres({ migrations: { migrationsDir } }).
  */
 export function wfgraphMigrationsDir(startDir: string = currentDir): string {
   const findPackageRoot = (dir: string): string => {
@@ -50,14 +50,14 @@ export function wfgraphMigrationsDir(startDir: string = currentDir): string {
       }
 
       throw new Error(
-        `Workflow Graph's migrations are published inside ${OWNING_PACKAGE}, but the package holding its code is named ${String(name)}. Pass database.migrations.migrationsDir to createWfGraphApp to say where the SQL is.`
+        `Workflow Graph's migrations are published inside ${OWNING_PACKAGE}, but the package holding its code is named ${String(name)}. Pass migrations.migrationsDir to wfPostgres to say where the SQL is.`
       );
     }
 
     const parent = dirname(dir);
     if (parent === dir) {
       throw new Error(
-        `Could not find the ${OWNING_PACKAGE} package above ${startDir}, so Workflow Graph cannot locate the migrations it ships. Pass database.migrations.migrationsDir to createWfGraphApp.`
+        `Could not find the ${OWNING_PACKAGE} package above ${startDir}, so Workflow Graph cannot locate the migrations it ships. Pass migrations.migrationsDir to wfPostgres.`
       );
     }
 
@@ -102,7 +102,7 @@ async function resolveExistingMigrationsDir(
 
   throw new Error(
     `Migrations folder not found at ${folder}.` +
-      " If needed, pass database.migrations.migrationsDir to createWfGraphApp."
+      " If needed, pass migrations.migrationsDir to wfPostgres."
   );
 }
 

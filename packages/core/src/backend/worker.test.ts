@@ -1,0 +1,107 @@
+import { afterEach, describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Effect, Layer } from "effect";
+import { wfSqlite } from "#src/backend/persistence/sqlite";
+import { wfWorker } from "#src/backend/worker";
+import type { WfGraphPersistence } from "#src/backend/persistence/types";
+import {
+  stubApiKeyRepo,
+  stubExecutionRepo,
+  stubIntegrationRepo,
+  stubWorkflowRepo,
+} from "#src/backend/lib/effect/test-layers";
+
+let directory: string | undefined;
+
+afterEach(async () => {
+  if (directory) {
+    await rm(directory, { recursive: true, force: true });
+    directory = undefined;
+  }
+});
+
+describe("wfWorker", () => {
+  it("opens and closes persistence for each request", async () => {
+    directory = await mkdtemp(join(tmpdir(), "wfgraph-worker-"));
+    const sqlite = wfSqlite({
+      filename: join(directory, "wfgraph.db"),
+    });
+    let opened = 0;
+    let closed = 0;
+    const persistence: WfGraphPersistence = {
+      open: async (cipher) => {
+        opened += 1;
+        const instance = await sqlite.open(cipher);
+        return {
+          ...instance,
+          close: async () => {
+            closed += 1;
+            await instance.close();
+          },
+        };
+      },
+    };
+    const worker = wfWorker({
+      logger: { info: () => {}, warn: () => {}, error: () => {} },
+      request: () => ({
+        auth: "external",
+        persistence,
+        encryption: { key: "d".repeat(64) },
+        inngest: { id: "wfgraph-worker-test", isDev: true },
+      }),
+    });
+
+    const first = await worker.fetch(
+      new Request("https://example.test/api/extensions"),
+      {}
+    );
+    const second = await worker.fetch(
+      new Request("https://example.test/api/extensions"),
+      {}
+    );
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(opened).toBe(2);
+    expect(closed).toBe(2);
+  });
+
+  it("closes persistence when runtime disposal fails", async () => {
+    let closed = 0;
+    const repositories = Layer.mergeAll(
+      stubApiKeyRepo(),
+      stubExecutionRepo(),
+      stubIntegrationRepo(),
+      stubWorkflowRepo(),
+      Layer.effectDiscard(
+        Effect.addFinalizer(() => Effect.die("runtime dispose failed"))
+      )
+    );
+    const persistence: WfGraphPersistence = {
+      open: async () => ({
+        repositories,
+        description: { backend: "test" },
+        close: () => {
+          closed += 1;
+          return Promise.resolve();
+        },
+      }),
+    };
+    const worker = wfWorker({
+      logger: { info: () => {}, warn: () => {}, error: () => {} },
+      request: () => ({
+        auth: "external",
+        persistence,
+        encryption: { key: "d".repeat(64) },
+        inngest: { id: "wfgraph-worker-test", isDev: true },
+      }),
+    });
+
+    await expect(
+      worker.fetch(new Request("https://example.test/api/extensions"), {})
+    ).rejects.toThrow("runtime dispose failed");
+    expect(closed).toBe(1);
+  });
+});
