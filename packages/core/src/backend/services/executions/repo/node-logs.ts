@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Effect } from "effect";
 import { workflowExecutionLogs } from "#src/backend/lib/db/schema";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
@@ -119,12 +119,12 @@ export function makeNodeLogsMethods(
     readNodeOutputs: (executionId) =>
       database.query(async (db) => {
         const rows = await db.query.workflowExecutionLogs.findMany({
-          where: and(
-            eq(workflowExecutionLogs.executionId, executionId),
-            eq(workflowExecutionLogs.status, "success")
-          ),
+          where: {
+            executionId,
+            status: "success",
+          },
           columns: { nodeId: true, output: true },
-          orderBy: [asc(workflowExecutionLogs.timestamp)],
+          orderBy: { timestamp: "asc" },
         });
 
         const outputs: Record<string, JsonValue> = {};
@@ -138,15 +138,15 @@ export function makeNodeLogsMethods(
     listLogs: (executionId) =>
       database.query((db) =>
         db.query.workflowExecutionLogs.findMany({
-          where: eq(workflowExecutionLogs.executionId, executionId),
-          orderBy: [desc(workflowExecutionLogs.timestamp)],
+          where: { executionId },
+          orderBy: { timestamp: "desc" },
         })
       ),
 
     listNodeStatuses: (executionId) =>
       database.query((db) =>
         db.query.workflowExecutionLogs.findMany({
-          where: eq(workflowExecutionLogs.executionId, executionId),
+          where: { executionId },
           columns: { nodeId: true, status: true },
         })
       ),

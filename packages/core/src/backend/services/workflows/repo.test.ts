@@ -507,7 +507,9 @@ describe("findByIdWithPublishedVersionForRun", () => {
 
   // The delivery fan-out and the manual-start preflight read only these four
   // columns off the workflow row; the draft graph can run to megabytes and
-  // neither has any use for it (#36).
+  // neither has any use for it (#36). Relational Queries aliases the outer
+  // table, so the assertion is on the projected aliases rather than the
+  // qualified table name a hand join would have written.
   it("selects the workflow's id, name, mode and isPaused, and not its graph", async () => {
     const { layer: databaseLayer, statements } = stubDatabase(() => []);
 
@@ -518,11 +520,14 @@ describe("findByIdWithPublishedVersionForRun", () => {
     );
 
     const [statement] = statements;
-    expect(statement?.query).toContain('"workflows"."id"');
-    expect(statement?.query).toContain('"workflows"."name"');
-    expect(statement?.query).toContain('"workflows"."mode"');
-    expect(statement?.query).toContain('"workflows"."is_paused"');
-    expect(statement?.query).not.toContain('"workflows"."graph"');
+    const query = statement?.query ?? "";
+    const outerSelect = query.slice(0, query.indexOf('from "workflows"'));
+    expect(outerSelect).toContain('as "id"');
+    expect(outerSelect).toContain('as "name"');
+    expect(outerSelect).toContain('as "mode"');
+    expect(outerSelect).toContain('as "isPaused"');
+    expect(outerSelect).not.toContain("graph");
+    expect(query).toContain('"workflows"');
   });
 
   // Preflight validates the published version's graph, not the draft, so the
@@ -537,7 +542,8 @@ describe("findByIdWithPublishedVersionForRun", () => {
     );
 
     const [statement] = statements;
-    expect(statement?.query).toContain('"workflow_versions"."graph"');
+    expect(statement?.query).toContain('"workflow_versions"');
+    expect(statement?.query).toContain('"graph" as "graph"');
   });
 
   it("answers null when the workflow is gone", async () => {

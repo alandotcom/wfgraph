@@ -6,7 +6,6 @@ import {
   inArray,
   isNull,
   lt,
-  ne,
   or,
   type SQL,
   sql,
@@ -211,20 +210,20 @@ export function makeRunsMethods(
 ): RunsRepoMethods {
   return {
     listByWorkflow: ({ workflowId, includeSuperseded }) =>
-      database.query((db) =>
-        db.query.workflowExecutions.findMany({
-          // `and` drops an undefined member, so the toggle is one condition
-          // that is there or is not.
-          where: and(
-            eq(workflowExecutions.workflowId, workflowId),
-            includeSuperseded
-              ? undefined
-              : ne(workflowExecutions.status, "superseded")
-          ),
-          orderBy: [desc(workflowExecutions.startedAt)],
+      database.query((db) => {
+        const where = includeSuperseded
+          ? { workflowId }
+          : {
+              workflowId,
+              status: { ne: "superseded" as const },
+            };
+
+        return db.query.workflowExecutions.findMany({
+          where,
+          orderBy: { startedAt: "desc" },
           limit: WORKFLOW_EXECUTIONS_LIMIT,
-        })
-      ),
+        });
+      }),
 
     countSuperseded: (workflowId) =>
       database.query(async (db) => {
@@ -284,7 +283,7 @@ export function makeRunsMethods(
     findSummaryById: (executionId) =>
       database.query(async (db) => {
         const execution = await db.query.workflowExecutions.findFirst({
-          where: eq(workflowExecutions.id, executionId),
+          where: { id: executionId },
           columns: {
             id: true,
             workflowId: true,
@@ -309,7 +308,7 @@ export function makeRunsMethods(
     findStatusById: (executionId) =>
       database.query(async (db) => {
         const execution = await db.query.workflowExecutions.findFirst({
-          where: eq(workflowExecutions.id, executionId),
+          where: { id: executionId },
           columns: { id: true, status: true },
         });
 
@@ -319,7 +318,7 @@ export function makeRunsMethods(
     existsById: (executionId) =>
       database.query(async (db) => {
         const execution = await db.query.workflowExecutions.findFirst({
-          where: eq(workflowExecutions.id, executionId),
+          where: { id: executionId },
           columns: { id: true },
         });
 
@@ -329,7 +328,7 @@ export function makeRunsMethods(
     findWorkflowIdById: (executionId) =>
       database.query(async (db) => {
         const execution = await db.query.workflowExecutions.findFirst({
-          where: eq(workflowExecutions.id, executionId),
+          where: { id: executionId },
           columns: { workflowId: true },
         });
 
@@ -456,7 +455,7 @@ export function makeRunsMethods(
     findPendingCancel: (executionId) =>
       database.query(async (db) => {
         const execution = await db.query.workflowExecutions.findFirst({
-          where: eq(workflowExecutions.id, executionId),
+          where: { id: executionId },
           columns: {
             cancelRequestedAt: true,
             cancelEventName: true,

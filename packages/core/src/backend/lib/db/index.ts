@@ -2,48 +2,14 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres, { type Sql } from "postgres";
 import type { NormalizedDatabaseConfig } from "#src/backend/lib/db/config";
-import {
-  apiKeys,
-  integrations,
-  workflowExecutionEvents,
-  workflowExecutionLogs,
-  workflowExecutions,
-  workflowExecutionsRelations,
-  workflows,
-  workflowVersions,
-  workflowVersionsRelations,
-  workflowWaitStates,
-} from "#src/backend/lib/db/schema";
-
-const tables: {
-  workflows: typeof workflows;
-  workflowVersions: typeof workflowVersions;
-  workflowVersionsRelations: typeof workflowVersionsRelations;
-  workflowExecutions: typeof workflowExecutions;
-  workflowExecutionLogs: typeof workflowExecutionLogs;
-  workflowExecutionEvents: typeof workflowExecutionEvents;
-  workflowExecutionsRelations: typeof workflowExecutionsRelations;
-  workflowWaitStates: typeof workflowWaitStates;
-  apiKeys: typeof apiKeys;
-  integrations: typeof integrations;
-} = {
-  workflows,
-  workflowVersions,
-  workflowVersionsRelations,
-  workflowExecutions,
-  workflowExecutionLogs,
-  workflowExecutionEvents,
-  workflowExecutionsRelations,
-  workflowWaitStates,
-  apiKeys,
-  integrations,
-};
+import { relations } from "#src/backend/lib/db/schema";
 
 /**
- * The Drizzle handle, with this app's tables attached. The `Database` service in
- * `backend/lib/effect/database.ts` hands one of these to every query it runs.
+ * The Drizzle handle, with this app's relational config attached. The `Database`
+ * service in `backend/lib/effect/database.ts` hands one of these to every query
+ * it runs.
  */
-export type WfGraphDatabase = PostgresJsDatabase<typeof tables>;
+export type WfGraphDatabase = PostgresJsDatabase<typeof relations>;
 
 /**
  * The handle inside `db.transaction(...)`, named by asking the handle itself.
@@ -136,7 +102,7 @@ export function createDatabaseSurface(
 
   const surface: DatabaseSurface = {
     schema: config.schema,
-    db: drizzle(client, { schema: tables }),
+    db: drizzle({ client, relations }),
     client,
     close: () => client.end(),
   };

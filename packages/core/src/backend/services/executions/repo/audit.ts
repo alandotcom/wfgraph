@@ -1,6 +1,5 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Effect } from "effect";
-import { WORKFLOW_SCOPED_AUDIT_EVENT_TYPES } from "#src/backend/services/executions/workflow-audit";
+import { WORKFLOW_SCOPED_AUDIT_EVENT_TYPES } from "@wfgraph/shared/lifecycle/audit-event-types";
 import { workflowExecutionEvents } from "#src/backend/lib/db/schema";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import type {
@@ -57,8 +56,8 @@ export function makeAuditMethods(
     listEvents: (executionId) =>
       database.query((db) =>
         db.query.workflowExecutionEvents.findMany({
-          where: eq(workflowExecutionEvents.executionId, executionId),
-          orderBy: [desc(workflowExecutionEvents.createdAt)],
+          where: { executionId },
+          orderBy: { createdAt: "desc" },
           limit: EXECUTION_EVENTS_LIMIT,
         })
       ),
@@ -69,13 +68,11 @@ export function makeAuditMethods(
           // By type rather than by the absent execution id: the scope is what
           // the type means, and a row is unreadable anywhere else because of
           // it. A null id is the consequence, not the definition.
-          where: and(
-            eq(workflowExecutionEvents.workflowId, workflowId),
-            inArray(workflowExecutionEvents.eventType, [
-              ...WORKFLOW_SCOPED_AUDIT_EVENT_TYPES,
-            ])
-          ),
-          orderBy: [desc(workflowExecutionEvents.createdAt)],
+          where: {
+            workflowId,
+            eventType: { in: [...WORKFLOW_SCOPED_AUDIT_EVENT_TYPES] },
+          },
+          orderBy: { createdAt: "desc" },
           limit: WORKFLOW_EVENTS_LIMIT,
         })
       ),

@@ -179,7 +179,7 @@ async function applyMigrations(
   client: Sql,
   target: { migrationsFolder: string; schema: string }
 ): Promise<void> {
-  const migrationDb = drizzle(client);
+  const migrationDb = drizzle({ client });
 
   // Drizzle's migrator creates the journal's schema itself, so this states the
   // precondition rather than carrying it: the tables need the schema to exist
@@ -219,12 +219,13 @@ async function assertJournalIsOurs(
 /**
  * Refuses a database whose journal records migrations this build does not ship.
  *
- * Drizzle applies every migration whose folder timestamp is newer than the newest
- * recorded one and compares no hashes, so a rebaselined migration set re-runs
- * `CREATE TABLE` against tables that already exist and dies partway through on a
- * duplicate relation. The same rows appear when another tool's `drizzle/` was
- * applied here. Both need the schema dropped, and neither is worth learning from
- * a Postgres error code halfway into a transaction.
+ * Drizzle v1 matches applied migrations by folder name after upgrading the
+ * journal table, and only uses hashes while backfilling that name. A
+ * rebaselined migration set therefore either fails the upgrade match or tries
+ * to re-run `CREATE TABLE` against tables that already exist. The same rows
+ * appear when another tool's `drizzle/` was applied here. Both need the schema
+ * dropped, and neither is worth learning from a Postgres error code halfway
+ * into a transaction.
  */
 export function assertJournalHashesAreOurs(
   recorded: string[],

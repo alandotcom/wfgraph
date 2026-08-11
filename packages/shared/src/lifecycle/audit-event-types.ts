@@ -2,7 +2,10 @@
  * The audit event types, as the two scopes they divide into.
  *
  * The rows themselves are written and read through `ExecutionRepo`; this module
- * is the vocabulary both halves are held to.
+ * is the vocabulary both halves are held to. It lives in shared so the Drizzle
+ * schema can name the workflow-scoped literals in an index predicate without
+ * importing through `#src/` (drizzle-kit's schema loader cannot resolve that
+ * subpath).
  */
 
 /**

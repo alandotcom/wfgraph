@@ -242,13 +242,17 @@ is the one home of the six entry points.
 Schema is `packages/core/src/backend/lib/db/schema.ts`, on PostgreSQL 15 or newer.
 Generate migrations with `pnpm run db:generate` and apply them with `pnpm run db:migrate`.
 Do not hand-write migration SQL in `packages/core/drizzle/`.
+The schema file itself must not import through `#src/`: drizzle-kit's loader resolves
+the package `imports` map to `.js` paths and cannot find the TypeScript sources, so
+anything the schema needs from Workflow Graph lands in `@wfgraph/shared` (as the audit
+event type literals do).
 
 The tables are declared unqualified and the connection's `search_path` decides which
 Postgres schema they live in, which is a runtime option. That arrangement, what it refuses,
 and the four tests guarding it are ADR-0005's amendment. The journal is append-only:
-`assertJournalHashesAreOurs` holds every hash to one this build ships, because drizzle
-decides what to run by folder timestamp and compares no hashes, so a regenerated baseline
-would re-run `CREATE TABLE` on every database that ran the old one.
+`assertJournalHashesAreOurs` holds every hash to one this build ships, because a
+rebaselined migration set either fails drizzle's journal-name upgrade or re-runs
+`CREATE TABLE` on every database that ran the old one.
 
 ## API client
 

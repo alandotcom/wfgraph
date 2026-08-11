@@ -71,7 +71,7 @@ export const ApiKeyRepoLayer: Layer.Layer<ApiKeyRepo, never, Database> =
               createdAt: true,
               lastUsedAt: true,
             },
-            orderBy: (table, { desc }) => [desc(table.createdAt)],
+            orderBy: { createdAt: "desc" },
           })
         ),
 
@@ -108,7 +108,7 @@ export const ApiKeyRepoLayer: Layer.Layer<ApiKeyRepo, never, Database> =
         findByPrefix: (keyPrefix) =>
           database.query((db) =>
             db.query.apiKeys.findMany({
-              where: eq(apiKeys.keyPrefix, keyPrefix),
+              where: { keyPrefix },
               columns: {
                 id: true,
                 keyHash: true,

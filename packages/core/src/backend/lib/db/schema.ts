@@ -1,4 +1,4 @@
-import { relations, sql } from "drizzle-orm";
+import { defineRelations, sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   boolean,
@@ -11,9 +11,9 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { WORKFLOW_SCOPED_AUDIT_EVENT_TYPES } from "#src/backend/services/executions/workflow-audit";
 import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
 import { generateId } from "@wfgraph/shared/utils/id";
+import { WORKFLOW_SCOPED_AUDIT_EVENT_TYPES } from "@wfgraph/shared/lifecycle/audit-event-types";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   type WorkflowExecutionStartSource,
@@ -445,29 +445,52 @@ export const apiKeys = pgTable(
   (table) => [index("api_keys_key_prefix_idx").on(table.keyPrefix)]
 );
 
-export const workflowExecutionsRelations = relations(
-  workflowExecutions,
-  ({ one }) => ({
-    workflow: one(workflows, {
-      fields: [workflowExecutions.workflowId],
-      references: [workflows.id],
-    }),
-    version: one(workflowVersions, {
-      fields: [workflowExecutions.workflowVersionId],
-      references: [workflowVersions.id],
-    }),
-  })
-);
-
-export const workflowVersionsRelations = relations(
+/**
+ * Every table the schema module declares. `defineRelations` and the kit-safe
+ * bag for `db.query` both take this object, so a table added below is one edit
+ * rather than a silent hole in the relational surface.
+ */
+export const tables = {
+  workflows,
   workflowVersions,
-  ({ one }) => ({
-    workflow: one(workflows, {
-      fields: [workflowVersions.workflowId],
-      references: [workflows.id],
+  workflowExecutions,
+  workflowExecutionLogs,
+  workflowExecutionEvents,
+  workflowWaitStates,
+  workflowEventSubscriptions,
+  apiKeys,
+  integrations,
+};
+
+/**
+ * Relational Queries v2 config. `db.query` is keyed off this, so every table a
+ * repository reads through that API has to appear here even when it has no
+ * edges of its own.
+ */
+export const relations = defineRelations(tables, (r) => ({
+  workflows: {
+    publishedVersion: r.one.workflowVersions({
+      from: r.workflows.publishedVersionId,
+      to: r.workflowVersions.id,
     }),
-  })
-);
+  },
+  workflowExecutions: {
+    workflow: r.one.workflows({
+      from: r.workflowExecutions.workflowId,
+      to: r.workflows.id,
+    }),
+    version: r.one.workflowVersions({
+      from: r.workflowExecutions.workflowVersionId,
+      to: r.workflowVersions.id,
+    }),
+  },
+  workflowVersions: {
+    workflow: r.one.workflows({
+      from: r.workflowVersions.workflowId,
+      to: r.workflows.id,
+    }),
+  },
+}));
 
 export type Workflow = typeof workflows.$inferSelect;
 export type WorkflowVersion = typeof workflowVersions.$inferSelect;

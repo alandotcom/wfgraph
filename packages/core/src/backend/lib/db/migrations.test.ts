@@ -91,8 +91,9 @@ describe("assertJournalHashesAreOurs", () => {
     ).not.toThrow();
   });
 
-  // Drizzle compares no hashes, so a rebaselined set would re-run `CREATE TABLE`
-  // and die on a duplicate relation with nothing said about the remedy.
+  // A rebaselined set either fails drizzle's journal-name upgrade or re-runs
+  // `CREATE TABLE` and dies on a duplicate relation with nothing said about the
+  // remedy.
   it("names the remedy for a journal from a superseded baseline", () => {
     expect(() =>
       assertJournalHashesAreOurs(["a-hash-from-the-old-baseline"], target)

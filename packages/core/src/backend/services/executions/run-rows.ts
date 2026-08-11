@@ -8,7 +8,7 @@ import {
   InngestClient,
   type InngestError,
 } from "#src/backend/lib/effect/inngest-client";
-import type { RunScopedAuditEventType } from "#src/backend/services/executions/workflow-audit";
+import type { RunScopedAuditEventType } from "@wfgraph/shared/lifecycle/audit-event-types";
 import { signalRunToStop } from "#src/backend/services/executions/end-runs";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { JsonObject, JsonObjectDraft } from "@wfgraph/shared/types/json";
