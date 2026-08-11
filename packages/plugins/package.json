@@ -53,5 +53,8 @@
   },
   "peerDependencies": {
     "@wfgraph/core": "*"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

@@ -84,5 +84,8 @@
     "express": "^5.2.1",
     "fastify": "^5.11.3",
     "zod": "catalog:"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

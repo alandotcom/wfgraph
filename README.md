@@ -1,5 +1,8 @@
 # Workflow Graph
 
+[![npm](https://img.shields.io/npm/v/@wfgraph/core.svg)](https://www.npmjs.com/package/@wfgraph/core)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 A self-hosted workflow engine you embed in your application. Your code declares the
 vocabulary — Events, actions, and integrations — and your team builds workflows in a visual
 editor.
@@ -122,5 +125,16 @@ createServer(createRequestListener(wfgraph)).listen(3000);
 | [`CONTEXT.md`](CONTEXT.md)                     | Domain vocabulary                                                |
 | [`docs/adr/`](docs/adr/)                       | Design decisions                                                 |
 
-Packages: `@wfgraph/core` (library + backend), `@wfgraph/client` (editor), `@wfgraph/plugins`
-(built-in integrations), `@wfgraph/shared` (private types).
+## Packages
+
+The three published packages release together and always carry the same version, so the editor
+can never be installed against a backend whose API contract it no longer matches.
+
+| Package                                                              | What it is                                           |
+| -------------------------------------------------------------------- | ---------------------------------------------------- |
+| [`@wfgraph/core`](https://www.npmjs.com/package/@wfgraph/core)       | Run engine, authoring vocabulary, `createWfGraphApp` |
+| [`@wfgraph/client`](https://www.npmjs.com/package/@wfgraph/client)   | The editor, as a built bundle                        |
+| [`@wfgraph/plugins`](https://www.npmjs.com/package/@wfgraph/plugins) | The six built-in integrations                        |
+
+`@wfgraph/shared` holds types the three have in common. It stays private and is inlined at
+build time, so it never appears as a dependency of anything you install.
