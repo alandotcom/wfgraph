@@ -179,7 +179,7 @@ async function applyMigrations(
   client: Sql,
   target: { migrationsFolder: string; schema: string }
 ): Promise<void> {
-  const migrationDb = drizzle(client);
+  const migrationDb = drizzle({ client });
 
   // Drizzle's migrator creates the journal's schema itself, so this states the
   // precondition rather than carrying it: the tables need the schema to exist
