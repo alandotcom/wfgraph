@@ -242,6 +242,10 @@ is the one home of the six entry points.
 Schema is `packages/core/src/backend/lib/db/schema.ts`, on PostgreSQL 15 or newer.
 Generate migrations with `pnpm run db:generate` and apply them with `pnpm run db:migrate`.
 Do not hand-write migration SQL in `packages/core/drizzle/`.
+The schema file itself must not import through `#src/`: drizzle-kit's loader resolves
+the package `imports` map to `.js` paths and cannot find the TypeScript sources, so
+anything the schema needs from Workflow Graph lands in `@wfgraph/shared` (as the audit
+event type literals do).
 
 The tables are declared unqualified and the connection's `search_path` decides which
 Postgres schema they live in, which is a runtime option. That arrangement, what it refuses,
