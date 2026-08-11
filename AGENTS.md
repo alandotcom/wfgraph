@@ -65,15 +65,9 @@ would bump nothing.
 
 **Each published manifest keeps its `devDependencies`, including `@wfgraph/shared` at a
 version no registry serves. Leave it there.** The three packages import that source, so
-declaring it is what knip's unlisted-dependency check demands; deleting the line to tidy the
-tarball reports 135 undeclared imports and makes the repo lie about what it reads. The line
-is inert once published, because a resolver reads only the `dependencies`,
-`peerDependencies` and `optionalDependencies` of a package it installs, and it was confirmed
-inert by installing the packed tarball into a bare project and importing it. This is also
-what the wider registry does: `@vitejs/plugin-react` ships `@vitejs/react-common` as a raw
-unrewritten `workspace:*`, and `@tanstack/react-query` ships `@tanstack/query-test-utils`,
-and neither exists on npm. pnpm rewriting ours to a concrete version leaves it in better
-shape than either.
+deleting the line to tidy the tarball reports 135 unlisted dependencies from knip and makes
+the repo lie about what it reads. It is inert once published, because a resolver reads only
+the `dependencies`, `peerDependencies` and `optionalDependencies` of a package it installs.
 
 `onlyUpdatePeerDependentsWhenOutOfRange` is on because `@wfgraph/plugins` names
 `@wfgraph/core` as a peer dependency. Left off, changesets reads every minor bump of core as
@@ -100,10 +94,8 @@ placeholder pnpm would send in place of the OIDC-issued token.
 **The action and the CLI move together.** `changesets/action@v2` refuses to run against
 Changesets CLI v2 and says so, and `changesets/action@v1` is the pairing for the older CLI.
 v2 also stopped reading `GITHUB_TOKEN` for its own auth, taking a `github-token` input that
-defaults to the workflow token; the `GITHUB_TOKEN` in the version job's `env` is there for
-`@changesets/changelog-github`, which is a separate consumer. A custom publish script under
-v2 must let the `CHANGESETS_OUTPUT` environment variable reach the CLI, since that file, not
-stdout, is how the action learns what was published.
+defaults to the workflow token, which leaves the `GITHUB_TOKEN` in the version job's `env`
+there for `@changesets/changelog-github` alone.
 
 Publishing a package npm has never seen cannot use OIDC, because a trusted publisher is
 configured on a package that already exists. The first version of a new `@wfgraph/*` package

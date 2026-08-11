@@ -8,16 +8,11 @@ on:
 # the first for the same version tags.
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
-# Nothing by default; each job below states what it needs. Splitting the release
-# across four jobs is what lets the OIDC token stay out of every job that runs
-# repo or dependency code, which is why this is the shape changesets recommends
-# for trusted publishing rather than the single combined `changesets/action@v2`.
+# Nothing by default; each job states what it needs. AGENTS.md ("Releasing")
+# owns why the release is split four ways and what this file's name is worth.
 permissions: {}
 
 jobs:
-  # Reads the repo and answers one question: are there changesets waiting
-  # (version), are there built packages the registry has never seen (publish),
-  # or neither (none). Needs no write permission of any kind.
   select-mode:
     runs-on: ubuntu-latest
     permissions:
@@ -39,8 +34,6 @@ jobs:
       - uses: changesets/action/select-mode@v2
         id: select-mode
 
-  # Opens or updates the "chore: release" PR. Writes to the repo, and never sees
-  # an npm credential.
   version:
     needs: select-mode
     if: needs.select-mode.outputs.mode == 'version'
@@ -65,14 +58,9 @@ jobs:
           pr-title: "chore: release"
           commit-message: "chore: version packages"
         env:
-          # @changesets/changelog-github reads this to resolve each changeset to
-          # the PR and author that landed it. The action's own auth comes from
-          # its `github-token` input, which defaults to the workflow token.
+          # For @changesets/changelog-github, not the action's own auth.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Builds and packs the tarballs. This is the job that runs tsdown, Vite and
-  # every install script in the tree, so it is deliberately the job with no
-  # write permission and no id-token.
   pack:
     needs: select-mode
     if: needs.select-mode.outputs.mode == 'publish'
@@ -98,31 +86,18 @@ jobs:
         with:
           publish-plan-artifact-id: ${{ needs.select-mode.outputs.publish-plan-artifact-id }}
 
-  # Uploads the tarballs packed above and tags the release. The only job holding
-  # id-token, and it runs no build: pnpm exchanges the OIDC token for a
-  # short-lived npm one and pushes artifacts it did not produce.
-  #
-  # npm's trusted publisher for each @wfgraph package names this repository and
-  # the filename of this workflow, so renaming this file breaks publishing until
-  # the three npm settings pages are updated to match.
   publish:
     needs: pack
     runs-on: ubuntu-latest
     permissions:
-      # Push the version tags and create the GitHub releases.
       contents: write
-      # Mint the OIDC token pnpm exchanges for a short-lived npm publish token.
-      # Without it pnpm publish fails before it reaches the registry.
       id-token: write
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+      # Never give this step a registry-url; see AGENTS.md ("Releasing").
       - uses: actions/setup-node@v7
-        # No registry-url here on purpose. Given one, setup-node writes
-        # `_authToken=${NODE_AUTH_TOKEN}` into ~/.npmrc, and that placeholder is
-        # a publish credential as far as pnpm is concerned, so it would be sent
-        # instead of the OIDC-issued token.
         with:
           node-version: 24
       - uses: pnpm/action-setup@v6
