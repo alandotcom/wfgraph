@@ -11,9 +11,9 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { WORKFLOW_SCOPED_AUDIT_EVENT_TYPES } from "#src/backend/services/executions/workflow-audit";
 import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
 import { generateId } from "@wfgraph/shared/utils/id";
+import { WORKFLOW_SCOPED_AUDIT_EVENT_TYPES } from "@wfgraph/shared/lifecycle/audit-event-types";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   type WorkflowExecutionStartSource,

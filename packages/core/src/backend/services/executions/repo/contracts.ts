@@ -7,7 +7,7 @@ import {
 import type {
   RunScopedAuditEventType,
   WorkflowScopedAuditEventType,
-} from "#src/backend/services/executions/workflow-audit";
+} from "@wfgraph/shared/lifecycle/audit-event-types";
 import type { JsonObject, JsonObjectDraft } from "@wfgraph/shared/types/json";
 
 /** One row of `workflow_executions`, as the run panel and the engine see it. */
