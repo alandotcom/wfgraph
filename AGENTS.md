@@ -45,6 +45,64 @@ pnpm run fix          # oxfmt, must leave the tree clean
 Do not leave the repo with a failing check. `pnpm run lint` printing nothing means it
 passed; oxlint has no summary line on success.
 
+## Releasing
+
+A change that alters what an adopter installs needs a changeset. Run
+`pnpm exec changeset`, pick a bump, and commit the `.changeset/*.md` file with the code.
+A change nothing outside the repo can observe takes `pnpm exec changeset --empty` or no
+changeset at all.
+
+**The four packages share one version.** `.changeset/config.json` names `core`, `client`,
+`plugins` and `shared` as a `fixed` group, so a changeset naming any one of them releases
+all four at the same number. That is what keeps the editor bundle in `@wfgraph/client` from
+being installed against a `@wfgraph/core` whose oRPC contract it no longer matches, and it
+is why a `@wfgraph/shared` change reaches the registry at all: shared is inlined into the
+other three at build time and is declared only as their devDependency, which on its own
+would bump nothing.
+
+`@wfgraph/shared` is private, so it is versioned for the lockstep and never published, and
+`@wfgraph/example-app` is in `ignore` so it stays at 0.0.0.
+
+**Each published manifest keeps its `devDependencies`, including `@wfgraph/shared` at a
+version no registry serves. Leave it there.** The three packages import that source, so
+deleting the line to tidy the tarball reports 135 unlisted dependencies from knip and makes
+the repo lie about what it reads. It is inert once published, because a resolver reads only
+the `dependencies`, `peerDependencies` and `optionalDependencies` of a package it installs.
+
+`onlyUpdatePeerDependentsWhenOutOfRange` is on because `@wfgraph/plugins` names
+`@wfgraph/core` as a peer dependency. Left off, changesets reads every minor bump of core as
+a breaking change for its peer dependents, and the fixed group would carry the whole repo to
+a major. The peer range stays `*` for the same reason; the fixed group is what actually
+holds the two versions together.
+
+**`.github/workflows/release.yml`'s filename is part of the npm credential.** Each of the
+three packages has a trusted publisher on npmjs.com naming this repository and that exact
+filename, and publishing is OIDC only, with no token anywhere. Renaming the file makes every
+publish fail with a 404 until the three npm settings pages are changed to match.
+
+**The release runs as four jobs, and the split is the security boundary.** `select-mode`
+reads the repo and answers version, publish or none. `version` opens the release PR and holds
+`contents: write` with no npm credential. `pack` runs `pnpm run build` and packs the
+tarballs, which makes it the job executing tsdown, Vite and every install script in the tree,
+so it is given no write permission and no token. `publish` uploads the tarballs `pack`
+produced, runs no build, and is the only job holding `id-token: write`. Collapsing these back
+into the single `changesets/action@v2` would hand the OIDC token to the same job that runs
+the build; changesets recommends the split for exactly that reason. `actions/setup-node` must
+stay without a `registry-url` in the publish job, since that option writes an `_authToken`
+placeholder pnpm would send in place of the OIDC-issued token.
+
+**The action and the CLI move together.** `changesets/action@v2` refuses to run against
+Changesets CLI v2 and says so, and `changesets/action@v1` is the pairing for the older CLI.
+v2 also stopped reading `GITHUB_TOKEN` for its own auth, taking a `github-token` input that
+defaults to the workflow token, which leaves the `GITHUB_TOKEN` in the version job's `env`
+there for `@changesets/changelog-github` alone.
+
+Publishing a package npm has never seen cannot use OIDC, because a trusted publisher is
+configured on a package that already exists. The first version of a new `@wfgraph/*` package
+goes out by hand with `npm login` and `pnpm run release:publish`, and its trusted publisher
+is added afterwards. That script is the local path only: CI never calls it, because the
+`pack` and `publish` jobs split the build from the upload that script runs together.
+
 ## Conventions that differ from the defaults
 
 **No backwards compatibility.** There is no stored data and no external consumer. Make the

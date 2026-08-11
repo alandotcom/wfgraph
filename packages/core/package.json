@@ -1,7 +1,20 @@
 {
   "name": "@wfgraph/core",
-  "version": "0.0.0",
+  "version": "0.0.1",
+  "description": "Workflow Graph's backend: the run engine, the authoring vocabulary and the app a host mounts",
+  "keywords": [
+    "automation",
+    "effect",
+    "inngest",
+    "workflow",
+    "workflow-engine"
+  ],
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alandotcom/wfgraph.git",
+    "directory": "packages/core"
+  },
   "files": [
     "dist",
     "drizzle"
@@ -29,6 +42,9 @@
       "types": "./dist/testing.d.ts",
       "default": "./dist/testing.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsdown"

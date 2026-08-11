@@ -1,0 +1,21 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@4.0.0/schema.json",
+  "changelog": [
+    "@changesets/changelog-github",
+    { "repo": "alandotcom/wfgraph" }
+  ],
+  "commit": false,
+  "access": "public",
+  "format": "oxfmt",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "fixed": [
+    ["@wfgraph/core", "@wfgraph/client", "@wfgraph/plugins", "@wfgraph/shared"]
+  ],
+  "linked": [],
+  "ignore": ["@wfgraph/example-app"],
+  "privatePackages": { "version": true, "tag": false },
+  "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
+    "onlyUpdatePeerDependentsWhenOutOfRange": true
+  }
+}
