@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# One release at a time. A second push while a publish is in flight would race
+# the first for the same version tags.
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    # npm's trusted publisher for each @wfgraph package names this repository and
+    # the filename of this workflow, so renaming this file breaks publishing until
+    # the three npm settings pages are updated to match.
+    permissions:
+      # Push the release PR's branch and the version tags changeset publish makes.
+      contents: write
+      # Open and update the release PR.
+      pull-requests: write
+      # Mint the OIDC token pnpm exchanges for a short-lived npm publish token.
+      # Without it pnpm publish fails before it reaches the registry.
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      # No registry-url here on purpose. Given one, setup-node writes
+      # `_authToken=${NODE_AUTH_TOKEN}` into ~/.npmrc, and that placeholder is a
+      # publish credential as far as pnpm is concerned, so it would be sent
+      # instead of the OIDC-issued token.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          cache: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Two modes in one step. With changeset files on main the action opens or
+      # updates the release PR by running the version script; with none left,
+      # which is what merging that PR leaves behind, it runs the publish script
+      # and turns each published package into a GitHub release.
+      - name: Open release PR or publish
+        uses: changesets/action@v1
+        with:
+          version: pnpm run release:version
+          publish: pnpm run release:publish
+          title: "chore: release"
+          commit: "chore: version packages"
+        env:
+          # Read by the action's octokit and by @changesets/changelog-github,
+          # which resolves each changeset to the PR and author that landed it.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

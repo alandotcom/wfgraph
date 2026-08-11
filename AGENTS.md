@@ -45,6 +45,55 @@ pnpm run fix          # oxfmt, must leave the tree clean
 Do not leave the repo with a failing check. `pnpm run lint` printing nothing means it
 passed; oxlint has no summary line on success.
 
+## Releasing
+
+A change that alters what an adopter installs needs a changeset. Run
+`pnpm exec changeset`, pick a bump, and commit the `.changeset/*.md` file with the code.
+A change nothing outside the repo can observe takes `pnpm exec changeset --empty` or no
+changeset at all.
+
+**The four packages share one version.** `.changeset/config.json` names `core`, `client`,
+`plugins` and `shared` as a `fixed` group, so a changeset naming any one of them releases
+all four at the same number. That is what keeps the editor bundle in `@wfgraph/client` from
+being installed against a `@wfgraph/core` whose oRPC contract it no longer matches, and it
+is why a `@wfgraph/shared` change reaches the registry at all: shared is inlined into the
+other three at build time and is declared only as their devDependency, which on its own
+would bump nothing.
+
+`@wfgraph/shared` is private, so it is versioned for the lockstep and never published, and
+`@wfgraph/example-app` is in `ignore` so it stays at 0.0.0.
+
+**Each published manifest keeps its `devDependencies`, including `@wfgraph/shared` at a
+version no registry serves. Leave it there.** The three packages import that source, so
+declaring it is what knip's unlisted-dependency check demands; deleting the line to tidy the
+tarball reports 135 undeclared imports and makes the repo lie about what it reads. The line
+is inert once published, because a resolver reads only the `dependencies`,
+`peerDependencies` and `optionalDependencies` of a package it installs, and it was confirmed
+inert by installing the packed tarball into a bare project and importing it. This is also
+what the wider registry does: `@vitejs/plugin-react` ships `@vitejs/react-common` as a raw
+unrewritten `workspace:*`, and `@tanstack/react-query` ships `@tanstack/query-test-utils`,
+and neither exists on npm. pnpm rewriting ours to a concrete version leaves it in better
+shape than either.
+
+`onlyUpdatePeerDependentsWhenOutOfRange` is on because `@wfgraph/plugins` names
+`@wfgraph/core` as a peer dependency. Left off, changesets reads every minor bump of core as
+a breaking change for its peer dependents, and the fixed group would carry the whole repo to
+a major. The peer range stays `*` for the same reason; the fixed group is what actually
+holds the two versions together.
+
+**`.github/workflows/release.yml`'s filename is part of the npm credential.** Each of the
+three packages has a trusted publisher on npmjs.com naming this repository and that exact
+filename, and publishing is OIDC only, with no token anywhere. Renaming or splitting the
+file makes every publish fail with a 404 until the three npm settings pages are changed to
+match. The job needs `id-token: write` for pnpm to mint the token it exchanges, and
+`actions/setup-node` must stay without a `registry-url`, since that option writes an
+`_authToken` placeholder pnpm would send in place of the OIDC-issued token.
+
+Publishing a package npm has never seen cannot use OIDC, because a trusted publisher is
+configured on a package that already exists. The first version of a new `@wfgraph/*` package
+goes out by hand with `npm login` and `pnpm run release:publish`, and its trusted publisher
+is added afterwards.
+
 ## Conventions that differ from the defaults
 
 **No backwards compatibility.** There is no stored data and no external consumer. Make the

@@ -1,7 +1,20 @@
 {
   "name": "@wfgraph/plugins",
-  "version": "0.0.0",
+  "version": "0.0.1",
+  "description": "The six built-in Workflow Graph integrations, plus the icons and output renderers the editor draws them with",
+  "keywords": [
+    "automation",
+    "clerk",
+    "integrations",
+    "linear",
+    "workflow"
+  ],
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alandotcom/wfgraph.git",
+    "directory": "packages/plugins"
+  },
   "files": [
     "dist"
   ],
@@ -18,6 +31,9 @@
       "types": "./dist/ui.d.ts",
       "default": "./dist/ui.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsdown"
