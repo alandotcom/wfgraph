@@ -210,18 +210,20 @@ export function makeRunsMethods(
 ): RunsRepoMethods {
   return {
     listByWorkflow: ({ workflowId, includeSuperseded }) =>
-      database.query((db) =>
-        db.query.workflowExecutions.findMany({
-          where: {
-            workflowId,
-            ...(includeSuperseded
-              ? {}
-              : { status: { ne: "superseded" as const } }),
-          },
+      database.query((db) => {
+        const where = includeSuperseded
+          ? { workflowId }
+          : {
+              workflowId,
+              status: { ne: "superseded" as const },
+            };
+
+        return db.query.workflowExecutions.findMany({
+          where,
           orderBy: { startedAt: "desc" },
           limit: WORKFLOW_EXECUTIONS_LIMIT,
-        })
-      ),
+        });
+      }),
 
     countSuperseded: (workflowId) =>
       database.query(async (db) => {

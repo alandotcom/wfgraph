@@ -10,7 +10,6 @@ import {
   notExists,
   sql,
 } from "drizzle-orm";
-import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { Context, Effect, Layer } from "effect";
 import {
   type Workflow,
@@ -50,14 +49,6 @@ const workflowSummaryColumns = {
 };
 
 export type WorkflowSummaryRow = Omit<Workflow, "graph">;
-
-/** The columns a run reads off the workflow row: enough to gate and route it. */
-const workflowRunColumns = {
-  id: workflows.id,
-  name: workflows.name,
-  mode: workflows.mode,
-  isPaused: workflows.isPaused,
-};
 
 export type WorkflowRunRow = Pick<
   Workflow,
@@ -326,38 +317,34 @@ export type InsertPublishedVersionResult =
   | null;
 
 /**
- * The query behind `findByIdWithPublishedVersion` and its `ForRun` sibling:
- * same select, join, where and limit, and the same null check when the
- * workflow is gone. The two callers differ only in which `workflows` columns
- * they ask for, so that column set is the one parameter; a later change to
- * the join or the where clause (a soft-delete filter, say) then lands on
- * both callers by construction instead of needing two edits kept in sync
- * by hand.
+ * Load a workflow and its published version in one RQB round trip.
+ *
+ * `columns` narrows the workflow side for callers that only gate and route a
+ * run; omitting it returns the full row. The published version is always the
+ * whole `workflow_versions` row when present.
  */
-async function selectWorkflowWithPublishedVersion<
-  WorkflowColumns extends Record<string, PgColumn> | PgTable,
->(db: WfGraphDatabase, workflowId: string, workflowColumns: WorkflowColumns) {
-  const [row] = await db
-    .select({
-      workflow: workflowColumns,
-      publishedVersion: workflowVersions,
-    })
-    .from(workflows)
-    .leftJoin(
-      workflowVersions,
-      eq(workflows.publishedVersionId, workflowVersions.id)
-    )
-    .where(eq(workflows.id, workflowId))
-    .limit(1);
+async function findWorkflowWithPublishedVersion(
+  db: WfGraphDatabase,
+  workflowId: string,
+  columns?: {
+    id: true;
+    name: true;
+    mode: true;
+    isPaused: true;
+  }
+) {
+  const row = await db.query.workflows.findFirst({
+    where: { id: workflowId },
+    ...(columns ? { columns } : {}),
+    with: { publishedVersion: true },
+  });
 
   if (!row) {
     return null;
   }
 
-  return {
-    workflow: row.workflow,
-    publishedVersion: row.publishedVersion,
-  };
+  const { publishedVersion, ...workflow } = row;
+  return { workflow, publishedVersion };
 }
 
 export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
@@ -406,29 +393,30 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
 
         hasWithName: (name) =>
           database.query(async (db) => {
-            const conflict = await db.query.workflows.findFirst({
-              where: {
-                RAW: sql`lower(${workflows.name}) = lower(${name})`,
-              },
-              columns: { id: true },
-            });
+            // Case-insensitive match against `workflows_name_ci_uidx`. Expression
+            // predicates stay on the SQL builder; RQB's object `where` has no
+            // clean form for `lower(name)` that is not an escape hatch.
+            const [conflict] = await db
+              .select({ id: workflows.id })
+              .from(workflows)
+              .where(sql`lower(${workflows.name}) = lower(${name})`)
+              .limit(1);
 
             return conflict !== undefined;
           }),
 
         hasOtherWithName: (input) =>
           database.query(async (db) => {
-            const conflict = await db.query.workflows.findFirst({
-              where: {
-                AND: [
-                  {
-                    RAW: sql`lower(${workflows.name}) = lower(${input.name})`,
-                  },
-                  { id: { ne: input.excludingWorkflowId } },
-                ],
-              },
-              columns: { id: true },
-            });
+            const [conflict] = await db
+              .select({ id: workflows.id })
+              .from(workflows)
+              .where(
+                and(
+                  sql`lower(${workflows.name}) = lower(${input.name})`,
+                  ne(workflows.id, input.excludingWorkflowId)
+                )
+              )
+              .limit(1);
 
             return conflict !== undefined;
           }),
@@ -681,33 +669,28 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
 
         findPublishedVersion: (workflowId) =>
           database.query(async (db) => {
-            const workflow = await db.query.workflows.findFirst({
+            const row = await db.query.workflows.findFirst({
               where: { id: workflowId },
-              columns: { publishedVersionId: true },
-            });
-            if (!workflow?.publishedVersionId) {
-              return null;
-            }
-
-            const row = await db.query.workflowVersions.findFirst({
-              where: { id: workflow.publishedVersionId },
+              columns: { id: true },
+              with: { publishedVersion: true },
             });
 
-            return row ?? null;
+            return row?.publishedVersion ?? null;
           }),
 
         findByIdWithPublishedVersion: (workflowId) =>
           database.query((db) =>
-            selectWorkflowWithPublishedVersion(db, workflowId, workflows)
+            findWorkflowWithPublishedVersion(db, workflowId)
           ),
 
         findByIdWithPublishedVersionForRun: (workflowId) =>
           database.query((db) =>
-            selectWorkflowWithPublishedVersion(
-              db,
-              workflowId,
-              workflowRunColumns
-            )
+            findWorkflowWithPublishedVersion(db, workflowId, {
+              id: true,
+              name: true,
+              mode: true,
+              isPaused: true,
+            })
           ),
 
         setPublishedVersion: (input) =>

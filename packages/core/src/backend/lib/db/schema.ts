@@ -446,40 +446,51 @@ export const apiKeys = pgTable(
 );
 
 /**
+ * Every table the schema module declares. `defineRelations` and the kit-safe
+ * bag for `db.query` both take this object, so a table added below is one edit
+ * rather than a silent hole in the relational surface.
+ */
+export const tables = {
+  workflows,
+  workflowVersions,
+  workflowExecutions,
+  workflowExecutionLogs,
+  workflowExecutionEvents,
+  workflowWaitStates,
+  workflowEventSubscriptions,
+  apiKeys,
+  integrations,
+};
+
+/**
  * Relational Queries v2 config. `db.query` is keyed off this, so every table a
  * repository reads through that API has to appear here even when it has no
  * edges of its own.
  */
-export const relations = defineRelations(
-  {
-    workflows,
-    workflowVersions,
-    workflowExecutions,
-    workflowExecutionLogs,
-    workflowExecutionEvents,
-    workflowWaitStates,
-    apiKeys,
-    integrations,
+export const relations = defineRelations(tables, (r) => ({
+  workflows: {
+    publishedVersion: r.one.workflowVersions({
+      from: r.workflows.publishedVersionId,
+      to: r.workflowVersions.id,
+    }),
   },
-  (r) => ({
-    workflowExecutions: {
-      workflow: r.one.workflows({
-        from: r.workflowExecutions.workflowId,
-        to: r.workflows.id,
-      }),
-      version: r.one.workflowVersions({
-        from: r.workflowExecutions.workflowVersionId,
-        to: r.workflowVersions.id,
-      }),
-    },
-    workflowVersions: {
-      workflow: r.one.workflows({
-        from: r.workflowVersions.workflowId,
-        to: r.workflows.id,
-      }),
-    },
-  })
-);
+  workflowExecutions: {
+    workflow: r.one.workflows({
+      from: r.workflowExecutions.workflowId,
+      to: r.workflows.id,
+    }),
+    version: r.one.workflowVersions({
+      from: r.workflowExecutions.workflowVersionId,
+      to: r.workflowVersions.id,
+    }),
+  },
+  workflowVersions: {
+    workflow: r.one.workflows({
+      from: r.workflowVersions.workflowId,
+      to: r.workflows.id,
+    }),
+  },
+}));
 
 export type Workflow = typeof workflows.$inferSelect;
 export type WorkflowVersion = typeof workflowVersions.$inferSelect;

@@ -25,6 +25,21 @@ describe("the schema declarations", () => {
 
     expect(qualified).toEqual([]);
   });
+
+  // `db.query` is keyed off `relations`, which is built from `tables`. A table
+  // exported from this module but missing from that bag is invisible to every
+  // repository that reaches for `db.query.<name>`.
+  it("registers every declared table on the relational surface", () => {
+    const declaredNames = new Set(
+      Object.keys(schema.tables).toSorted((a, b) => a.localeCompare(b))
+    );
+    const relationNames = new Set(
+      Object.keys(schema.relations).toSorted((a, b) => a.localeCompare(b))
+    );
+
+    expect([...declaredNames]).toEqual([...relationNames]);
+    expect(declaredNames.size).toBe(declaredTables.length);
+  });
 });
 
 describe("workflows indexes", () => {
