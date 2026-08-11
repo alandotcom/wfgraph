@@ -1,11 +1,12 @@
 {
-  "$schema": "https://unpkg.com/@changesets/config@3.1.4/schema.json",
+  "$schema": "https://unpkg.com/@changesets/config@4.0.0/schema.json",
   "changelog": [
     "@changesets/changelog-github",
     { "repo": "alandotcom/wfgraph" }
   ],
   "commit": false,
   "access": "public",
+  "format": "oxfmt",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "fixed": [

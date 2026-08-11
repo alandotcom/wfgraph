@@ -83,16 +83,33 @@ holds the two versions together.
 
 **`.github/workflows/release.yml`'s filename is part of the npm credential.** Each of the
 three packages has a trusted publisher on npmjs.com naming this repository and that exact
-filename, and publishing is OIDC only, with no token anywhere. Renaming or splitting the
-file makes every publish fail with a 404 until the three npm settings pages are changed to
-match. The job needs `id-token: write` for pnpm to mint the token it exchanges, and
-`actions/setup-node` must stay without a `registry-url`, since that option writes an
-`_authToken` placeholder pnpm would send in place of the OIDC-issued token.
+filename, and publishing is OIDC only, with no token anywhere. Renaming the file makes every
+publish fail with a 404 until the three npm settings pages are changed to match.
+
+**The release runs as four jobs, and the split is the security boundary.** `select-mode`
+reads the repo and answers version, publish or none. `version` opens the release PR and holds
+`contents: write` with no npm credential. `pack` runs `pnpm run build` and packs the
+tarballs, which makes it the job executing tsdown, Vite and every install script in the tree,
+so it is given no write permission and no token. `publish` uploads the tarballs `pack`
+produced, runs no build, and is the only job holding `id-token: write`. Collapsing these back
+into the single `changesets/action@v2` would hand the OIDC token to the same job that runs
+the build; changesets recommends the split for exactly that reason. `actions/setup-node` must
+stay without a `registry-url` in the publish job, since that option writes an `_authToken`
+placeholder pnpm would send in place of the OIDC-issued token.
+
+**The action and the CLI move together.** `changesets/action@v2` refuses to run against
+Changesets CLI v2 and says so, and `changesets/action@v1` is the pairing for the older CLI.
+v2 also stopped reading `GITHUB_TOKEN` for its own auth, taking a `github-token` input that
+defaults to the workflow token; the `GITHUB_TOKEN` in the version job's `env` is there for
+`@changesets/changelog-github`, which is a separate consumer. A custom publish script under
+v2 must let the `CHANGESETS_OUTPUT` environment variable reach the CLI, since that file, not
+stdout, is how the action learns what was published.
 
 Publishing a package npm has never seen cannot use OIDC, because a trusted publisher is
 configured on a package that already exists. The first version of a new `@wfgraph/*` package
 goes out by hand with `npm login` and `pnpm run release:publish`, and its trusted publisher
-is added afterwards.
+is added afterwards. That script is the local path only: CI never calls it, because the
+`pack` and `publish` jobs split the build from the upload that script runs together.
 
 ## Conventions that differ from the defaults
 
