@@ -1,5 +1,5 @@
 /**
- * What the locked start decides, read back through a driver that answers with
+ * What the serialized start decides, read back through a driver that answers with
  * rows the test chose.
  *
  * The decision lives in a `WHERE` and in the order the statements go out, neither
@@ -47,22 +47,30 @@ function harness(answers: {
   ownRow?: boolean;
   inFlight?: InFlightRow[];
   updated?: string[];
+  transactionFailures?: readonly unknown[];
 }) {
-  const { layer: databaseLayer, statements } = stubDatabase(({ query }) => {
-    if (isDeliveryLookup(query)) {
-      return answers.ownRow ? [["exec_own"]] : [];
-    }
-    if (isInFlightQuery(query)) {
-      return answers.inFlight ?? [];
-    }
-    if (query.startsWith("update")) {
-      return (answers.updated ?? []).map((id) => [id]);
-    }
-    if (query.startsWith("insert")) {
-      return [["exec_new"]];
-    }
-    return [];
-  });
+  const {
+    layer: databaseLayer,
+    statements,
+    transactions,
+  } = stubDatabase(
+    ({ query }) => {
+      if (isDeliveryLookup(query)) {
+        return answers.ownRow ? [["exec_own"]] : [];
+      }
+      if (isInFlightQuery(query)) {
+        return answers.inFlight ?? [];
+      }
+      if (query.startsWith("update")) {
+        return (answers.updated ?? []).map((id) => [id]);
+      }
+      if (query.startsWith("insert")) {
+        return [["exec_new"]];
+      }
+      return [];
+    },
+    { transactionFailures: answers.transactionFailures }
+  );
 
   // `null` is how a case asks for a start carrying no delivery: an explicit
   // `undefined` would take the default instead.
@@ -97,7 +105,7 @@ function harness(answers: {
   const sentAny = (predicate: (query: string) => boolean) =>
     statements.some((statement) => predicate(statement.query));
 
-  return { sent, sentAny, start };
+  return { sent, sentAny, start, transactions };
 }
 
 describe("startForEntity", () => {
@@ -194,15 +202,26 @@ describe("startForEntity", () => {
   });
 
   // Two reschedules arriving together otherwise both read an empty in-flight set
-  // and both start. The two-key form keeps the workflow and the entity in
-  // separate hashes, so no pair of values can join into another pair's key.
-  it("serializes the decision per workflow and entity", async () => {
-    const { sent, start } = harness({});
+  // and both start. PostgreSQL's predicate locks detect that write skew at
+  // SERIALIZABLE and abort one whole decision for retry.
+  it("runs the entity decision in a serializable transaction", async () => {
+    const { sentAny, start, transactions } = harness({});
 
     await start("newest-wins");
 
-    const lock = sent(isLock);
-    expect(lock?.params).toEqual(["wfgraph:entity:wf_1", "appt_1"]);
+    expect(transactions).toEqual([{ isolationLevel: "serializable" }]);
+    expect(sentAny(isLock)).toBe(false);
+  });
+
+  it("retries a serialization failure inside the repository call", async () => {
+    const { start, transactions } = harness({
+      transactionFailures: [{ code: "40001" }],
+    });
+
+    const outcome = await start("first-wins");
+
+    expect(outcome.status).toBe("started");
+    expect(transactions).toHaveLength(2);
   });
 
   // Unlimited compares nothing, so a lock would only make concurrent starts of

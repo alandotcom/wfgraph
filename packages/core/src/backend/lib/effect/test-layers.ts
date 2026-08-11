@@ -7,7 +7,7 @@ import {
   type EffectLogger,
   type LogProperties,
 } from "#src/backend/lib/effect/app-logger";
-import { Database } from "#src/backend/lib/effect/database";
+import { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import {
   Extensions,
@@ -188,6 +188,8 @@ export type StubbedDatabase = {
   readonly layer: Layer.Layer<Database>;
   /** Every statement sent, in the order the repository sent them. */
   readonly statements: CapturedStatement[];
+  /** Every transaction option object, in call order. */
+  readonly transactions: Parameters<WfGraphDatabase["transaction"]>[1][];
 };
 
 /**
@@ -204,9 +206,12 @@ export type StubbedDatabase = {
  * that opens one is then testable without the rollback a real one would give.
  */
 export function stubDatabase(
-  answer: (statement: CapturedStatement) => StatementRows = () => []
+  answer: (statement: CapturedStatement) => StatementRows = () => [],
+  options: { transactionFailures?: readonly unknown[] } = {}
 ): StubbedDatabase {
   const statements: CapturedStatement[] = [];
+  const transactions: Parameters<WfGraphDatabase["transaction"]>[1][] = [];
+  const transactionFailures = [...(options.transactionFailures ?? [])];
 
   const base = drizzle(
     async (query, params) => {
@@ -221,7 +226,15 @@ export function stubDatabase(
   const db: WfGraphDatabase = new Proxy(base, {
     get(target, property, receiver) {
       if (property === "transaction") {
-        return async (body: (tx: unknown) => Promise<unknown>) => {
+        return async (
+          body: (tx: unknown) => Promise<unknown>,
+          config: Parameters<WfGraphDatabase["transaction"]>[1]
+        ) => {
+          transactions.push(config);
+          const failure = transactionFailures.shift();
+          if (failure !== undefined) {
+            throw failure;
+          }
           return body(db);
         };
       }
@@ -230,13 +243,18 @@ export function stubDatabase(
   }) as unknown as WfGraphDatabase;
 
   const service: Database["Service"] = {
-    query: (run) => Effect.promise(() => run(db)),
+    query: (run) =>
+      Effect.tryPromise({
+        try: () => run(db),
+        catch: (cause) => new DatabaseError({ cause }),
+      }),
   };
 
   return {
     service,
     layer: Layer.succeed(Database, service),
     statements,
+    transactions,
   };
 }
 

@@ -17,6 +17,7 @@ import {
   defineAction,
   defineEvent,
 } from "@wfgraph/core";
+import { wfPostgres } from "@wfgraph/core/postgres";
 import { builtInIntegrations } from "@wfgraph/plugins";
 
 // An Event your application raises. See docs/events.md.
@@ -62,12 +63,12 @@ const cancelAppointment = defineAction({
 });
 
 const wfgraph = await createWfGraphApp({
-  database: {
+  persistence: wfPostgres({
     url: process.env.DATABASE_URL!,
     // Workflow Graph puts its tables in "_workflows". This option names a different schema.
     schema: process.env.DATABASE_SCHEMA,
     migrations: { runOnStartup: true },
-  },
+  }),
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
   auth: (request) => hasValidSession(request),
   client: clientBundle,
@@ -96,14 +97,12 @@ createServer(createRequestListener(wfgraph)).listen(3000);
 `examples/app.ts` is the same call with four Events and one custom action. That file is
 correct. If this file disagrees with it, this file is wrong.
 
-## Mounting
+## Mounting on Node
 
-A fetch-native runtime takes `wfgraph.fetch` as it is:
+A fetch-native Node runtime takes `wfgraph.fetch` as it is:
 
 ```ts
-Bun.serve({ port: 3000, fetch: wfgraph.fetch }); // Bun
-Deno.serve({ port: 3000 }, wfgraph.fetch); // Deno
-export default { fetch: wfgraph.fetch }; // Cloudflare Workers
+Bun.serve({ port: 3000, fetch: wfgraph.fetch });
 ```
 
 Express and Fastify speak `IncomingMessage` and `ServerResponse`.
@@ -166,16 +165,21 @@ const wfgraph = await createWfGraphApp({
   package imports: three of the six carry one, and `@wfgraph/plugins` imports all six as
   values. The static import buys the timing of a failure. A missing SDK stops the
   application at start-up, where a lazy import would let a single run fail much later.
-- `@wfgraph/plugins` peer-depends on `@wfgraph/core`. A second copy means a second database
-  handle, which the one-instance-per-process rule prevents.
+- `@wfgraph/plugins` peer-depends on `@wfgraph/core`. Keep one core copy so the
+  plugin definitions and the app share one runtime contract.
 
-## The database options
+## Persistence
+
+`createWfGraphApp` takes one opaque `persistence` value. The backend owns its
+connection lifecycle, schema, migrations, queries, and transaction semantics.
+
+For PostgreSQL 15 or newer, pass `wfPostgres`:
 
 Pass a `url`, or pass the separate fields. Use one form only. A mixed value fails to
 compile, and Workflow Graph refuses the same mixture at runtime.
 
 ```ts
-database: {
+persistence: wfPostgres({
   host: "db.internal",
   port: 5432,
   user: "wfgraph",
@@ -185,13 +189,13 @@ database: {
   maxConnections: 10,
   ssl: "require",
   migrations: { runOnStartup: false },
-}
+}),
 ```
 
 The separate fields reach postgres.js as fields, so a database name with a space, an IPv6
 host, a unix-socket host, and `ssl` all work.
 
-**`database.schema`** names the Postgres schema that holds Workflow Graph. The default is
+**`schema`** names the Postgres schema that holds Workflow Graph. The default is
 `_workflows`. Workflow Graph declares the tables unqualified, and the `search_path` of the connection
 puts them in place, so the schema name is a runtime option. Drop that one schema and Workflow Graph
 leaves the database, migration journal included.
@@ -208,13 +212,74 @@ Three rules follow. Each fails loudly:
 
 `docs/adr/0005` gives the reasons and the guards.
 
-## Migrations
+For native Node SQLite:
+
+```ts
+import { wfSqlite } from "@wfgraph/core/sqlite";
+
+const wfgraph = await createWfGraphApp({
+  persistence: wfSqlite({ filename: "./wfgraph.db" }),
+  // auth, encryption, inngest, extensions
+});
+```
+
+`wfSqlite()` with no options uses an in-memory database. Its workflows, runs,
+keys, and integrations disappear when the app is disposed or the process exits.
+Pass `filename` when the data must survive a restart:
+
+```ts
+persistence: wfSqlite(); // ephemeral
+persistence: wfSqlite({ filename: "./wfgraph.db" }); // persistent
+```
+
+SQLite creates and migrates its own normalized tables when it opens. Every write
+takes `BEGIN IMMEDIATE`, so concurrency decisions and wait claims remain atomic
+across processes sharing the file. It is the embedded option; PostgreSQL remains
+the option for horizontally scaled hosts.
+
+## Cloudflare Workers and Hyperdrive
+
+Workers use the dedicated entry, not the Node app entry:
+
+```ts
+import { wfHyperdrive, wfWorker } from "@wfgraph/core/worker";
+
+type Env = {
+  HYPERDRIVE: { connectionString: string };
+  INTEGRATION_ENCRYPTION_KEY: string;
+  INNGEST_SIGNING_KEY: string;
+};
+
+export default wfWorker<Env>({
+  request: (env) => ({
+    auth: (request) => hasValidSession(request),
+    persistence: wfHyperdrive(env.HYPERDRIVE),
+    encryption: { key: env.INTEGRATION_ENCRYPTION_KEY },
+    inngest: {
+      id: "my-wfgraph-worker",
+      signingKey: env.INNGEST_SIGNING_KEY,
+    },
+  }),
+  extensions: { events, actions, integrations },
+});
+```
+
+The Worker opens and closes the PostgreSQL client inside each request. Configure
+the Hyperdrive binding with query caching disabled: Hyperdrive does not
+invalidate cached reads after Workflow Graph writes. Set the PostgreSQL origin
+role's default `search_path` to put `_workflows` first (or the `schema` passed to
+the factory); startup checks `current_schema()` and refuses a mismatch. Apply
+PostgreSQL migrations outside the Worker with `@wfgraph/core/migrate`. Enable
+Cloudflare's `nodejs_compat` compatibility flag; the runtime uses Node crypto
+and the PostgreSQL driver relies on the Node compatibility APIs.
+
+## PostgreSQL migrations
 
 Two entry points, one migrator.
 
-**At start-up.** `database.migrations.runOnStartup` (default `false`) applies the pending
-migrations before the HTTP server starts. `database.migrations.migrationsDir` names a
-different source, resolved from the working directory. The default is the `drizzle/`
+**At start-up.** `wfPostgres({ migrations })` applies the pending
+migrations before the HTTP server starts when `runOnStartup` is true (default
+`false`). `migrationsDir` names a different source, resolved from the working directory. The default is the `drizzle/`
 directory that `@wfgraph/core` ships, found relative to the running code. Workflow Graph reads the
 working directory for that one option, so your own `./drizzle` is safe.
 
@@ -230,7 +295,7 @@ await migrateWfGraphDatabase({
 });
 ```
 
-- It takes the same connection fields as the `database` option, and it closes the
+- It takes the same connection fields as `wfPostgres`, and it closes the
   connection on the way out, so a one-shot process exits when the promise resolves.
 - Run it from several places at once. It holds a session-scoped advisory lock, and each
   caller that waits wakes to an already-migrated database.
@@ -245,49 +310,42 @@ different migration tool puts the tables in `public`. This repository's
 
 ## Package exports
 
-| Entry                   | What it is                                                                                                                                                                                                                                                       |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@wfgraph/core`         | The one host-facing entry. `defineEvent` and `defineAction` author the vocabulary. `createWfGraphApp` builds the application, with `WfGraphAppOptions`, `WfGraphApp` and the config types. `createRequestListener` mounts it on Express, Fastify or `node:http`. |
-| `@wfgraph/core/plugin`  | What an integration package builds against                                                                                                                                                                                                                       |
-| `@wfgraph/core/testing` | `runAction`, `actionData` and `actionError`, for that package's own suite                                                                                                                                                                                        |
-| `@wfgraph/core/migrate` | `migrateWfGraphDatabase`, for migrations without an application                                                                                                                                                                                                  |
-| `@wfgraph/client`       | `clientBundle`, the built editor, passed to `createWfGraphApp` as `client`                                                                                                                                                                                       |
-| `@wfgraph/plugins`      | The built-in integrations as values, by name and as `builtInIntegrations`                                                                                                                                                                                        |
-| `@wfgraph/plugins/ui`   | Their icons and output renderers as one record, imported by the browser alone                                                                                                                                                                                    |
+| Entry                    | What it is                                                                                                                                                                                                                                                       |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@wfgraph/core`          | The one host-facing entry. `defineEvent` and `defineAction` author the vocabulary. `createWfGraphApp` builds the application, with `WfGraphAppOptions`, `WfGraphApp` and the config types. `createRequestListener` mounts it on Express, Fastify or `node:http`. |
+| `@wfgraph/core/postgres` | `wfPostgres` for a Node PostgreSQL pool                                                                                                                                                                                                                          |
+| `@wfgraph/core/sqlite`   | `wfSqlite` for native Node SQLite                                                                                                                                                                                                                                |
+| `@wfgraph/core/worker`   | `wfWorker`, `wfHyperdrive`, and request-scoped PostgreSQL through Hyperdrive                                                                                                                                                                                     |
+| `@wfgraph/core/plugin`   | What an integration package builds against                                                                                                                                                                                                                       |
+| `@wfgraph/core/testing`  | `runAction`, `actionData` and `actionError`, for that package's own suite                                                                                                                                                                                        |
+| `@wfgraph/core/migrate`  | `migrateWfGraphDatabase`, for migrations without an application                                                                                                                                                                                                  |
+| `@wfgraph/client`        | `clientBundle`, the built editor, passed to `createWfGraphApp` as `client`                                                                                                                                                                                       |
+| `@wfgraph/plugins`       | The built-in integrations as values, by name and as `builtInIntegrations`                                                                                                                                                                                        |
+| `@wfgraph/plugins/ui`    | Their icons and output renderers as one record, imported by the browser alone                                                                                                                                                                                    |
 
 Workflow Graph cannot serialize a React component, so that last record is the one part of the catalog
 that stays off `/api/extensions`. `@wfgraph/shared` stays private, and the build inlines it
 into whichever bundle needs it.
 
-Each export except `createRequestListener` runs on a runtime with `Request` and `Response`.
-`createWfGraphApp` already answers a fetch handler, so mounting it is two lines the host owns.
-A published wrapper would charge an options type that reaccumulates each parameter the
-server of the host takes.
+`createWfGraphApp` is the Node host. `wfWorker` is the Cloudflare
+Worker host and serves the API while the platform's Assets binding or the
+application's router serves static files.
 
 ## createWfGraphApp options
 
-| Option                              | Required | Description                                                                                                                                                    |
-| ----------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `basePath`                          | No       | Path the host mounts Workflow Graph at (default `/`)                                                                                                           |
-| `auth`                              | Yes      | Predicate that decides who reaches the editor, or `"external"`                                                                                                 |
-| `database.url`                      | Yes¹     | PostgreSQL connection string                                                                                                                                   |
-| `database.host` and co.             | Yes¹     | `host`, `port`, `user`, `password`, `database`, in place of a URL                                                                                              |
-| `database.schema`                   | No       | Postgres schema Workflow Graph keeps its tables in (default `_workflows`)                                                                                      |
-| `database.maxConnections`           | No       | Connections the query pool can open (default 10)                                                                                                               |
-| `database.ssl`                      | No       | `true`, `"require"`, `"allow"`, `"prefer"` or `"verify-full"`                                                                                                  |
-| `database.migrations.runOnStartup`  | No       | Apply the pending migrations at start-up (default `false`)                                                                                                     |
-| `database.migrations.migrationsDir` | No       | Custom migrations directory                                                                                                                                    |
-| `encryption.key`                    | Yes      | 64-character hex string. It encrypts the integration secrets                                                                                                   |
-| `inngest.id`                        | Yes      | Inngest application ID                                                                                                                                         |
-| `inngest.*`                         | No       | isDev, baseUrl, eventKey, env, signingKey, signingKeyFallback, serveOrigin, servePath, connect, instanceId, gatewayUrl, maxWorkerConcurrency, connectTimeoutMs |
-| `extensions.events`                 | No       | `defineEvent` values                                                                                                                                           |
-| `extensions.actions`                | No       | `defineAction` values                                                                                                                                          |
-| `extensions.integrations`           | No       | `defineIntegration` values                                                                                                                                     |
-| `logger`                            | No       | A `WfGraphLogger` that takes each log line. The default is a console sink                                                                                      |
-| `client`                            | No       | The editor bundle to serve, from `@wfgraph/client`                                                                                                             |
-
-¹ `database` takes one arm of the two. `schema`, `maxConnections`, `ssl` and `migrations`
-are valid on both.
+| Option                    | Required | Description                                                                                                                                                    |
+| ------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `basePath`                | No       | Path the host mounts Workflow Graph at (default `/`)                                                                                                           |
+| `auth`                    | Yes      | Predicate that decides who reaches the editor, or `"external"`                                                                                                 |
+| `persistence`             | Yes      | A backend from `@wfgraph/core/postgres` or `@wfgraph/core/sqlite`                                                                                              |
+| `encryption.key`          | Yes      | 64-character hex string. It encrypts the integration secrets                                                                                                   |
+| `inngest.id`              | Yes      | Inngest application ID                                                                                                                                         |
+| `inngest.*`               | No       | isDev, baseUrl, eventKey, env, signingKey, signingKeyFallback, serveOrigin, servePath, connect, instanceId, gatewayUrl, maxWorkerConcurrency, connectTimeoutMs |
+| `extensions.events`       | No       | `defineEvent` values                                                                                                                                           |
+| `extensions.actions`      | No       | `defineAction` values                                                                                                                                          |
+| `extensions.integrations` | No       | `defineIntegration` values                                                                                                                                     |
+| `logger`                  | No       | A `WfGraphLogger` that takes each log line. The default is a console sink                                                                                      |
+| `client`                  | No       | The editor bundle to serve, from `@wfgraph/client`                                                                                                             |
 
 Read these once:
 
@@ -328,8 +386,8 @@ Read these once:
   seconds) and fails boot with an error naming the gateway once that elapses.
 - `createWfGraphApp` answers `{ fetch, basePath, dispose }`. `await dispose()` drains an
   open Connect worker, then returns when the layers of the Effect runtime finalize. One
-  Workflow Graph per process is the supported arrangement, because the database handle, the Inngest
-  client, the encryption key and the assembled surface are global to the process.
+  Workflow Graph per process remains the supported arrangement; each app owns its
+  persistence instance, Inngest client, encryption key, and assembled surface.
 
 ## API endpoints
 

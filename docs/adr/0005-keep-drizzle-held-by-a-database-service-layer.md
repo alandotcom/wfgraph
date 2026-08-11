@@ -64,7 +64,7 @@ migrations could only ever build one schema.
   that swallows it would build the wrong schema silently. `runMigrations` reads
   `current_schema()` back before applying anything and fails naming both schemas, so that
   failure surfaces at the migration rather than in a query downstream. `docs/embedding.md`
-  ("The database options") has the pooler configuration this requires.
+  ("Persistence") has the pooler configuration this requires.
 - Migrations hold a session-scoped advisory lock, which is why the migration pool is one
   connection. Postgres does not serialize concurrent `CREATE SCHEMA` or `CREATE TABLE` of
   one name; it fails the losers on a unique violation, so replicas starting together used
@@ -82,3 +82,32 @@ migrations could only ever build one schema.
   holds every committed statement to qualifying nothing but Workflow Graph's own table names,
   `db/config.test.ts` covers the checks and defaults, and `db/index.test.ts` covers what
   the pools are opened with.
+
+## Amendment: persistence is a backend-owned adapter (2026-08-11)
+
+Workflow Graph no longer makes its application runtime depend on Drizzle or a
+PostgreSQL handle. The runtime accepts the four aggregate repository services as
+one persistence Layer. Each backend owns its connection lifecycle, physical
+schema, migrations, queries, and concurrency implementation; services and the
+run engine continue to depend only on repository contracts.
+
+PostgreSQL keeps the existing Drizzle schema and repository implementations
+behind `wfPostgres`. Native Node SQLite is a separate backend behind
+`wfSqlite`; it stores each aggregate in normalized,
+indexed tables with foreign-key and uniqueness constraints. Repository writes
+run inside `BEGIN IMMEDIATE`, making a read/decision/write operation one
+transaction. This deliberately serializes SQLite writes and makes the embedded
+backend unsuitable for horizontal scale, while preserving the lifecycle,
+delivery-idempotency, publish, and wait-claim invariants.
+
+`createWfGraphApp` now takes the resulting opaque `persistence` value rather
+than PostgreSQL fields. Separate package entries keep driver-specific factories
+out of that contract.
+
+Cloudflare Workers use `wfWorker` with PostgreSQL through Hyperdrive.
+The Worker opens and closes its PostgreSQL client per request. The Hyperdrive
+binding must have query caching disabled, since cached reads are not invalidated
+by writes, and the origin role's default `search_path` must put Workflow Graph's
+schema first. The adapter checks `current_schema()` before exposing its
+repositories. PostgreSQL migrations remain an out-of-band deployment step for
+the Worker host.

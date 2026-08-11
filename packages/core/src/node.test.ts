@@ -9,6 +9,7 @@ import express from "express";
 import Fastify, { type FastifyInstance } from "fastify";
 import { createWfGraphApp, type WfGraphApp } from "#src/app";
 import { createRequestListener } from "#src/node";
+import { wfPostgres } from "#src/backend/persistence/postgres";
 
 // These are the tests the review that produced this plan asked for: a real
 // Express app and a real Fastify app, each mounting Workflow Graph under a sub-path, so
@@ -116,7 +117,9 @@ beforeAll(async () => {
     basePath: MOUNT,
     // Deliberately a different identity from app.test.ts, so a reader can tell
     // the two app-owned surfaces apart in a log.
-    database: { url: "postgresql://wfgraph:wfgraph@127.0.0.1:1/wfgraph_test" },
+    persistence: wfPostgres({
+      url: "postgresql://wfgraph:wfgraph@127.0.0.1:1/wfgraph_test",
+    }),
     encryption: { key: "b".repeat(64) },
     inngest: { id: "wfgraph-node-test", isDev: true },
     // A logger that drops everything, so the suite gets no console sink.

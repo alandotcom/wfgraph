@@ -25,6 +25,7 @@ import {
   defineAction,
   defineEvent,
 } from "@wfgraph/core";
+import { wfPostgres } from "@wfgraph/core/postgres";
 // The built-in integrations, as values. Nothing registers on import, so the line
 // that passes them to `createWfGraphApp` below is what turns them on and dropping it
 // is what turns them off.
@@ -164,7 +165,7 @@ const wfgraph = await createWfGraphApp({
   // See the listen call below. A deployment puts a session check here and a
   // gateway in front.
   auth: "external",
-  database: {
+  persistence: wfPostgres({
     // One URL, or the discrete host/port/user/password/database fields a
     // platform hands out separately.
     url: process.env.DATABASE_URL?.trim() || DEFAULT_DATABASE_URL,
@@ -176,7 +177,7 @@ const wfgraph = await createWfGraphApp({
       runOnStartup: process.env.RUN_DB_MIGRATIONS === "true",
       migrationsDir: process.env.MIGRATIONS_DIR,
     },
-  },
+  }),
   // Workflow Graph refuses to start without a 64-character hex key and says so, so there
   // is nothing to check here.
   encryption: {

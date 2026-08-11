@@ -12,7 +12,7 @@ editor.
 | **Event Author**     | The developer who embeds  | Defines Events, actions, and which integrations to turn on  |
 | **Workflow Builder** | Their less technical team | Builds the graph and declares Lifecycle Rules in the editor |
 
-Workflow Graph runs on your infrastructure (Node, PostgreSQL, Inngest) and uses your database.
+Workflow Graph runs on your infrastructure (Node, PostgreSQL or SQLite, and Inngest).
 
 ## Run locally
 
@@ -63,6 +63,7 @@ import {
   defineAction,
   defineEvent,
 } from "@wfgraph/core";
+import { wfPostgres } from "@wfgraph/core/postgres";
 import { builtInIntegrations } from "@wfgraph/plugins";
 
 const appointmentCreated = defineEvent({
@@ -95,10 +96,10 @@ const cancelAppointment = defineAction({
 });
 
 const wfgraph = await createWfGraphApp({
-  database: {
+  persistence: wfPostgres({
     url: process.env.DATABASE_URL!,
     migrations: { runOnStartup: true },
-  },
+  }),
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
   auth: (request) => hasValidSession(request),
   client: clientBundle,
@@ -114,6 +115,19 @@ createServer(createRequestListener(wfgraph)).listen(3000);
 ```
 
 `examples/app.ts` is the canonical host. If this README disagrees with it, the example wins.
+
+For embedded SQLite, use `wfSqlite()` for an ephemeral in-memory database or
+pass a file to keep data across restarts:
+
+```ts
+import { wfSqlite } from "@wfgraph/core/sqlite";
+
+persistence: wfSqlite(); // in memory
+persistence: wfSqlite({ filename: "./wfgraph.db" }); // persistent
+```
+
+See [Embedding: Persistence](docs/embedding.md#persistence) for PostgreSQL,
+SQLite, and Cloudflare Hyperdrive setup.
 
 ## Docs
 

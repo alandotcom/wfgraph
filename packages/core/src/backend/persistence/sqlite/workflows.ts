@@ -1,0 +1,496 @@
+import type { DatabaseSync, SQLInputValue } from "node:sqlite";
+import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
+import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
+import {
+  WorkflowRepo,
+  type EventSubscriber,
+  type WorkflowEventSubscriptionRow,
+} from "#src/backend/services/workflows/repo";
+import type { SqliteDatabase } from "#src/backend/persistence/sqlite/database";
+import {
+  encodeGraph,
+  optionalString,
+  placeholders,
+  requiredBoolean,
+  requiredDate,
+  requiredGraph,
+  requiredNumber,
+  requiredString,
+} from "#src/backend/persistence/sqlite/database";
+
+function workflowMode(value: string): Workflow["mode"] {
+  if (value !== "live" && value !== "test") {
+    throw new Error("Invalid SQLite workflow mode");
+  }
+  return value;
+}
+
+function workflowVisibility(value: string): Workflow["visibility"] {
+  if (value !== "private" && value !== "public") {
+    throw new Error("Invalid SQLite workflow visibility");
+  }
+  return value;
+}
+
+export function sqliteWorkflow(row: Record<string, unknown>): Workflow {
+  return {
+    id: requiredString(row, "id"),
+    name: requiredString(row, "name"),
+    description: optionalString(row, "description"),
+    graph: requiredGraph(row),
+    isPaused: requiredBoolean(row, "is_paused"),
+    mode: workflowMode(requiredString(row, "mode")),
+    visibility: workflowVisibility(requiredString(row, "visibility")),
+    publishedVersionId: optionalString(row, "published_version_id"),
+    createdAt: requiredDate(row, "created_at"),
+    updatedAt: requiredDate(row, "updated_at"),
+  };
+}
+
+export function sqliteWorkflowVersion(
+  row: Record<string, unknown>,
+  prefix = ""
+): WorkflowVersion {
+  return {
+    id: requiredString(row, `${prefix}id`),
+    workflowId: requiredString(row, `${prefix}workflow_id`),
+    version: requiredNumber(row, `${prefix}version`),
+    graph: requiredGraph(row, `${prefix}graph`),
+    catalogFingerprint: requiredString(row, `${prefix}catalog_fingerprint`),
+    graphDigest: requiredString(row, `${prefix}graph_digest`),
+    publishedAt: requiredDate(row, `${prefix}published_at`),
+  };
+}
+
+function replaceSubscriptions(
+  database: DatabaseSync,
+  workflowId: string,
+  rows: WorkflowEventSubscriptionRow[]
+): void {
+  database
+    .prepare("DELETE FROM workflow_event_subscriptions WHERE workflow_id = ?")
+    .run(workflowId);
+  const insert = database.prepare(
+    `INSERT INTO workflow_event_subscriptions
+     (workflow_id, event_name, role, correlation_path) VALUES (?, ?, ?, ?)`
+  );
+  for (const row of rows) {
+    insert.run(row.workflowId, row.eventName, row.role, row.correlationPath);
+  }
+}
+
+function findWorkflow(
+  database: DatabaseSync,
+  workflowId: string
+): Workflow | null {
+  const row = database
+    .prepare("SELECT * FROM workflows WHERE id = ?")
+    .get(workflowId);
+  return row ? sqliteWorkflow(row) : null;
+}
+
+function publishedPair(
+  database: DatabaseSync,
+  workflowId: string
+): { workflow: Workflow; publishedVersion: WorkflowVersion | null } | null {
+  const row = database
+    .prepare(
+      `SELECT w.*,
+         v.id AS version_id, v.workflow_id AS version_workflow_id,
+         v.version AS version_version, v.graph AS version_graph,
+         v.catalog_fingerprint AS version_catalog_fingerprint,
+         v.graph_digest AS version_graph_digest,
+         v.published_at AS version_published_at
+       FROM workflows w
+       LEFT JOIN workflow_versions v ON v.id = w.published_version_id
+       WHERE w.id = ?`
+    )
+    .get(workflowId);
+  if (!row) return null;
+  return {
+    workflow: sqliteWorkflow(row),
+    publishedVersion:
+      row.version_id === null ? null : sqliteWorkflowVersion(row, "version_"),
+  };
+}
+
+function stalePublication(): { stale: true } {
+  return { stale: true };
+}
+
+function addEventSubscriber(
+  subscribers: Map<string, EventSubscriber>,
+  row: Record<string, unknown>
+): void {
+  const id = requiredString(row, "id");
+  const role = requiredString(row, "role");
+  if (role !== "start" && role !== "cancel" && role !== "wait") {
+    throw new Error("Invalid SQLite subscription role");
+  }
+
+  const existing = subscribers.get(id);
+  if (existing) {
+    if (!existing.roles.includes(role)) existing.roles.push(role);
+    return;
+  }
+
+  subscribers.set(id, {
+    id,
+    name: requiredString(row, "name"),
+    mode: workflowMode(requiredString(row, "mode")),
+    roles: [role],
+    correlationPath: optionalString(row, "correlation_path"),
+  });
+}
+
+export function makeSqliteWorkflowRepo(
+  store: SqliteDatabase
+): WorkflowRepo["Service"] {
+  return {
+    listSummariesNewestFirst: store.read((database) =>
+      database
+        .prepare(
+          `SELECT id, name, description, is_paused, mode, visibility,
+                  published_version_id, created_at, updated_at
+           FROM workflows ORDER BY updated_at DESC`
+        )
+        .all()
+        .map((row) => ({
+          id: requiredString(row, "id"),
+          name: requiredString(row, "name"),
+          description: optionalString(row, "description"),
+          isPaused: requiredBoolean(row, "is_paused"),
+          mode: workflowMode(requiredString(row, "mode")),
+          visibility: workflowVisibility(requiredString(row, "visibility")),
+          publishedVersionId: optionalString(row, "published_version_id"),
+          createdAt: requiredDate(row, "created_at"),
+          updatedAt: requiredDate(row, "updated_at"),
+        }))
+    ),
+    findById: (workflowId) =>
+      store.read((database) => findWorkflow(database, workflowId)),
+    existsById: (workflowId) =>
+      store.read(
+        (database) =>
+          database
+            .prepare("SELECT 1 AS present FROM workflows WHERE id = ?")
+            .get(workflowId) !== undefined
+      ),
+    hasWithName: (name) =>
+      store.read(
+        (database) =>
+          database
+            .prepare("SELECT 1 AS present FROM workflows WHERE name = ?")
+            .get(name) !== undefined
+      ),
+    hasOtherWithName: ({ name, excludingWorkflowId }) =>
+      store.read(
+        (database) =>
+          database
+            .prepare(
+              "SELECT 1 AS present FROM workflows WHERE name = ? AND id <> ?"
+            )
+            .get(name, excludingWorkflowId) !== undefined
+      ),
+    listEventSubscribers: (eventName) =>
+      store.read((database) => {
+        const subscribers = new Map<string, EventSubscriber>();
+
+        for (const row of database
+          .prepare(
+            `SELECT w.id, w.name, w.mode, s.role, s.correlation_path
+             FROM workflow_event_subscriptions s
+             JOIN workflows w ON w.id = s.workflow_id
+             WHERE s.event_name = ? AND s.role <> 'wait' AND w.is_paused = 0`
+          )
+          .all(eventName)) {
+          addEventSubscriber(subscribers, row);
+        }
+        for (const row of database
+          .prepare(
+            `SELECT DISTINCT w.id, w.name, w.mode, 'wait' AS role,
+                    s.correlation_path
+             FROM workflow_wait_states ws
+             JOIN workflows w ON w.id = ws.workflow_id
+             LEFT JOIN workflow_event_subscriptions s
+               ON s.workflow_id = ws.workflow_id
+              AND s.event_name = ? AND s.role = 'wait'
+             WHERE ws.status = 'waiting' AND w.is_paused = 0
+               AND EXISTS (
+                 SELECT 1 FROM json_each(ws.subscribed_events) e
+                 WHERE e.value = ?
+               )`
+          )
+          .all(eventName, eventName)) {
+          addEventSubscriber(subscribers, row);
+        }
+        return [...subscribers.values()];
+      }),
+    insert: (input) =>
+      store.write((database) => {
+        const now = new Date();
+        database
+          .prepare(
+            `INSERT INTO workflows
+             (id, name, description, graph, is_paused, mode, visibility,
+              published_version_id, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`
+          )
+          .run(
+            input.id,
+            input.name,
+            input.description ?? null,
+            encodeGraph(input.graph),
+            input.isPaused === true ? 1 : 0,
+            input.mode ?? "live",
+            input.visibility ?? "private",
+            now.getTime(),
+            now.getTime()
+          );
+        replaceSubscriptions(database, input.id, input.eventSubscriptions);
+        const workflow = findWorkflow(database, input.id);
+        if (!workflow) throw new Error("Inserted SQLite workflow is missing");
+        return workflow;
+      }),
+    findPausedById: (workflowId) =>
+      store.read((database) => {
+        const row = database
+          .prepare("SELECT id, is_paused FROM workflows WHERE id = ?")
+          .get(workflowId);
+        return row
+          ? {
+              id: requiredString(row, "id"),
+              isPaused: requiredBoolean(row, "is_paused"),
+            }
+          : null;
+      }),
+    setPaused: ({ workflowId, isPaused }) =>
+      store.write((database) => {
+        database
+          .prepare(
+            "UPDATE workflows SET is_paused = ?, updated_at = ? WHERE id = ?"
+          )
+          .run(isPaused ? 1 : 0, Date.now(), workflowId);
+      }),
+    update: ({ workflowId, updates, eventSubscriptions }) =>
+      store.write((database) => {
+        const clauses = ["updated_at = ?"];
+        const values: SQLInputValue[] = [updates.updatedAt.getTime()];
+        if (updates.name !== undefined) {
+          clauses.push("name = ?");
+          values.push(updates.name);
+        }
+        if (updates.description !== undefined) {
+          clauses.push("description = ?");
+          values.push(updates.description);
+        }
+        if (updates.graph !== undefined) {
+          clauses.push("graph = ?");
+          values.push(encodeGraph(updates.graph));
+        }
+        if (updates.mode !== undefined) {
+          clauses.push("mode = ?");
+          values.push(updates.mode);
+        }
+        const changed = database
+          .prepare(
+            `UPDATE workflows SET ${clauses.join(", ")} WHERE id = ? RETURNING id`
+          )
+          .get(...values, workflowId);
+        if (!changed) return null;
+        if (eventSubscriptions !== "unchanged") {
+          replaceSubscriptions(database, workflowId, eventSubscriptions);
+        }
+        return findWorkflow(database, workflowId);
+      }),
+    deleteById: (workflowId) =>
+      store.write((database) => {
+        database.prepare("DELETE FROM workflows WHERE id = ?").run(workflowId);
+      }),
+    findCurrent: store.read((database) => {
+      const row = database
+        .prepare(
+          "SELECT * FROM workflows WHERE name = ? ORDER BY updated_at DESC LIMIT 1"
+        )
+        .get(CURRENT_WORKFLOW_NAME);
+      return row ? sqliteWorkflow(row) : null;
+    }),
+    insertCurrent: ({ id, graph }) =>
+      store.write((database) => {
+        const now = new Date();
+        database
+          .prepare(
+            `INSERT INTO workflows
+             (id, name, description, graph, is_paused, mode, visibility,
+              published_version_id, created_at, updated_at)
+             VALUES (?, ?, ?, ?, 0, 'live', 'private', NULL, ?, ?)`
+          )
+          .run(
+            id,
+            CURRENT_WORKFLOW_NAME,
+            "Auto-saved current workflow",
+            encodeGraph(graph),
+            now.getTime(),
+            now.getTime()
+          );
+        return findWorkflow(database, id);
+      }),
+    findLatestVersion: (workflowId) =>
+      store.read((database) => {
+        const row = database
+          .prepare(
+            `SELECT * FROM workflow_versions
+             WHERE workflow_id = ? ORDER BY version DESC LIMIT 1`
+          )
+          .get(workflowId);
+        return row ? sqliteWorkflowVersion(row) : null;
+      }),
+    findVersionById: (versionId) =>
+      store.read((database) => {
+        const row = database
+          .prepare("SELECT * FROM workflow_versions WHERE id = ?")
+          .get(versionId);
+        return row ? sqliteWorkflowVersion(row) : null;
+      }),
+    findVersionByContent: (input) =>
+      store.read((database) => {
+        const row = database
+          .prepare(
+            `SELECT * FROM workflow_versions
+             WHERE workflow_id = ? AND graph_digest = ? AND catalog_fingerprint = ?
+             ORDER BY version DESC LIMIT 1`
+          )
+          .get(input.workflowId, input.graphDigest, input.catalogFingerprint);
+        return row ? sqliteWorkflowVersion(row) : null;
+      }),
+    findPublishedVersion: (workflowId) =>
+      store.read(
+        (database) =>
+          publishedPair(database, workflowId)?.publishedVersion ?? null
+      ),
+    findByIdWithPublishedVersion: (workflowId) =>
+      store.read((database) => publishedPair(database, workflowId)),
+    findByIdWithPublishedVersionForRun: (workflowId) =>
+      store.read((database) => {
+        const pair = publishedPair(database, workflowId);
+        if (!pair) return null;
+        const { id, name, mode, isPaused } = pair.workflow;
+        return {
+          workflow: { id, name, mode, isPaused },
+          publishedVersion: pair.publishedVersion,
+        };
+      }),
+    setPublishedVersion: (input) =>
+      store.write((database) => {
+        const versionRow = database
+          .prepare("SELECT * FROM workflow_versions WHERE id = ?")
+          .get(input.versionId);
+        if (!versionRow) return null;
+        const changed = database
+          .prepare(
+            `UPDATE workflows
+             SET published_version_id = ?, graph = ?, updated_at = ?
+             WHERE id = ? AND published_version_id IS ? RETURNING id`
+          )
+          .get(
+            input.versionId,
+            encodeGraph(input.draftGraph),
+            Date.now(),
+            input.workflowId,
+            input.expectedPublishedVersionId
+          );
+        if (!changed) {
+          return database
+            .prepare("SELECT 1 AS present FROM workflows WHERE id = ?")
+            .get(input.workflowId)
+            ? stalePublication()
+            : null;
+        }
+        replaceSubscriptions(
+          database,
+          input.workflowId,
+          input.eventSubscriptions
+        );
+        const workflow = findWorkflow(database, input.workflowId);
+        if (!workflow) throw new Error("Published SQLite workflow is missing");
+        return { workflow, version: sqliteWorkflowVersion(versionRow) };
+      }),
+    insertPublishedVersion: (input) =>
+      store.write((database) => {
+        if (!findWorkflow(database, input.workflowId)) return null;
+        const publishedAt = new Date();
+        const inserted = database
+          .prepare(
+            `INSERT INTO workflow_versions
+             (id, workflow_id, version, graph, catalog_fingerprint,
+              graph_digest, published_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT (workflow_id, version) DO NOTHING RETURNING id`
+          )
+          .get(
+            input.versionId,
+            input.workflowId,
+            input.version,
+            encodeGraph(input.graph),
+            input.catalogFingerprint,
+            input.graphDigest,
+            publishedAt.getTime()
+          );
+        if (!inserted) return stalePublication();
+        database
+          .prepare(
+            `UPDATE workflows SET published_version_id = ?, graph = ?, updated_at = ?
+             WHERE id = ?`
+          )
+          .run(
+            input.versionId,
+            encodeGraph(input.draftGraph),
+            Date.now(),
+            input.workflowId
+          );
+        replaceSubscriptions(
+          database,
+          input.workflowId,
+          input.eventSubscriptions
+        );
+        const workflow = findWorkflow(database, input.workflowId);
+        const versionRow = database
+          .prepare("SELECT * FROM workflow_versions WHERE id = ?")
+          .get(input.versionId);
+        if (!workflow || !versionRow) {
+          throw new Error("Published SQLite version is missing");
+        }
+        return { workflow, version: sqliteWorkflowVersion(versionRow) };
+      }),
+    pruneUnreferencedVersions: ({ workflowId, keepNewest, limit }) =>
+      store.write((database) => {
+        const candidates = database
+          .prepare(
+            `SELECT v.id FROM workflow_versions v
+             WHERE v.workflow_id = ?
+               AND v.id NOT IN (
+                 SELECT id FROM workflow_versions
+                 WHERE workflow_id = ? ORDER BY version DESC LIMIT ?
+               )
+               AND NOT EXISTS (
+                 SELECT 1 FROM workflow_executions e
+                 WHERE e.workflow_version_id = v.id
+               )
+               AND NOT EXISTS (
+                 SELECT 1 FROM workflows w WHERE w.published_version_id = v.id
+               )
+             ORDER BY v.version ASC LIMIT ?`
+          )
+          .all(workflowId, workflowId, keepNewest, limit)
+          .map((row) => requiredString(row, "id"));
+        if (candidates.length === 0) return [];
+        return database
+          .prepare(
+            `DELETE FROM workflow_versions
+             WHERE id IN (${placeholders(candidates.length)}) RETURNING id`
+          )
+          .all(...candidates)
+          .map((row) => requiredString(row, "id"));
+      }),
+  };
+}

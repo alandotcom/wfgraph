@@ -12,12 +12,13 @@ npm install @wfgraph/core
 ```ts
 import { createServer } from "node:http";
 import { createRequestListener, createWfGraphApp } from "@wfgraph/core";
+import { wfPostgres } from "@wfgraph/core/postgres";
 
 const wfgraph = await createWfGraphApp({
-  database: {
+  persistence: wfPostgres({
     url: process.env.DATABASE_URL!,
     migrations: { runOnStartup: true },
-  },
+  }),
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
   auth: (request) => hasValidSession(request),
   inngest: { id: "my-wfgraph-app", connect: true },
@@ -27,7 +28,14 @@ const wfgraph = await createWfGraphApp({
 createServer(createRequestListener(wfgraph)).listen(3000);
 ```
 
-Runs on Node 24, PostgreSQL 15 or newer, and Inngest. Add
+For SQLite, `wfSqlite()` is in memory and `wfSqlite({ filename: "./wfgraph.db" })`
+persists to a file:
+
+```ts
+import { wfSqlite } from "@wfgraph/core/sqlite";
+```
+
+Runs on Node 24 with PostgreSQL 15 or newer or native SQLite, and Inngest. Add
 [`@wfgraph/client`](https://www.npmjs.com/package/@wfgraph/client) for the visual editor and
 [`@wfgraph/plugins`](https://www.npmjs.com/package/@wfgraph/plugins) for the built-in
 integrations; the three are released together and always share a version.

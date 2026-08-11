@@ -3,24 +3,10 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import { createApiApp } from "#src/backend/api-app";
 import {
-  type DatabaseRuntimeConfig,
-  normalizeDatabaseConfig,
-  type NormalizedDatabaseConfig,
-} from "#src/backend/lib/db/config";
-import {
-  createDatabaseSurface,
-  type DatabaseSurface,
-  describeConnection,
-} from "#src/backend/lib/db/index";
-import {
   assertValidEncryptionKey,
   createIntegrationCipher,
   type EncryptionRuntimeConfig,
 } from "#src/backend/services/integrations/cipher";
-import {
-  type MigrationsOptions,
-  runMigrations,
-} from "#src/backend/lib/db/migrations";
 import {
   type Authorize,
   resolveAuthorize,
@@ -53,25 +39,19 @@ import {
   createWfGraphRuntime,
   type WfGraphRuntime,
 } from "#src/backend/runtime";
+import type {
+  WfGraphPersistence,
+  WfGraphPersistenceInstance,
+} from "#src/backend/persistence/types";
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
+import { closeInOrder, failAfterClose } from "#src/backend/lib/close-in-order";
 
-export type { DatabaseRuntimeConfig } from "#src/backend/lib/db/config";
-export type { MigrationsOptions } from "#src/backend/lib/db/migrations";
 export type { EncryptionRuntimeConfig } from "#src/backend/services/integrations/cipher";
 export type { WfGraphInngestConfig } from "#src/backend/lib/inngest/client";
 export type { WfGraphAuth } from "#src/backend/lib/http/authorize";
 export type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 export type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
-
-/**
- * Where the database is, which schema Workflow Graph lives in, and whether it migrates on
- * the way up. Migrations sit here rather than beside `database` because they are
- * a statement about the same database, and a host reading the options should not
- * have to notice that two top-level keys describe one thing.
- */
-export type WfGraphDatabaseOptions = DatabaseRuntimeConfig & {
-  migrations?: MigrationsOptions;
-};
+export type { WfGraphPersistence } from "#src/backend/persistence/types";
 
 export type WfGraphAppOptions = {
   /**
@@ -97,7 +77,8 @@ export type WfGraphAppOptions = {
    * its own; present, every line is handed to this instead.
    */
   logger?: WfGraphLogger;
-  database: WfGraphDatabaseOptions;
+  /** The storage backend Workflow Graph uses for all durable state. */
+  persistence: WfGraphPersistence;
   encryption: EncryptionRuntimeConfig;
   inngest: WfGraphInngestConfig;
   /**
@@ -128,9 +109,10 @@ export type WfGraphClientBundle = {
 
 export type WfGraphApp = {
   /**
-   * The whole mounted app as one fetch handler. Bun, Deno, Cloudflare Workers,
-   * and Node 18+ all consume this directly; `createRequestListener` translates
-   * it for hosts that speak Node's `IncomingMessage`/`ServerResponse` instead.
+   * The whole mounted Node app as one fetch handler. Fetch-native Node hosts
+   * consume it directly; `createRequestListener` translates it for hosts that
+   * speak Node's `IncomingMessage`/`ServerResponse` instead. Cloudflare uses
+   * the separate `@wfgraph/core/worker` entry.
    */
   fetch: (request: Request) => Promise<Response>;
   /**
@@ -162,11 +144,6 @@ export async function createWfGraphApp(
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const authorize = resolveAuthorize(options.auth);
 
-  // Normalized here rather than inside `createDatabaseSurface` a few steps
-  // later, so a config naming no database is refused before this call has
-  // changed anything about the process.
-  const databaseConfig = normalizeDatabaseConfig(options.database);
-
   if (!options.inngest.id?.trim()) {
     throw new Error("createWfGraphApp requires inngest.id");
   }
@@ -176,7 +153,6 @@ export async function createWfGraphApp(
   return await buildWfGraphApp(options, {
     basePath,
     authorize,
-    databaseConfig,
   });
 }
 
@@ -203,10 +179,9 @@ async function buildWfGraphApp(
   startup: {
     basePath: "" | `/${string}`;
     authorize: Authorize;
-    databaseConfig: NormalizedDatabaseConfig;
   }
 ): Promise<WfGraphApp> {
-  const { basePath, authorize, databaseConfig } = startup;
+  const { basePath, authorize } = startup;
 
   if (options.logger) {
     configureAppLoggingWithBridge(options.logger);
@@ -216,14 +191,12 @@ async function buildWfGraphApp(
 
   const cipher = createIntegrationCipher(options.encryption);
 
-  // The pool, and this process's claim on the database it points at.
-  const database = createDatabaseSurface(databaseConfig);
-
-  // Everything past this point can fail with the pool already open, and past
+  // Everything past this point can fail with persistence already open, and past
   // `createWfGraphRuntime` with whatever the Layers acquired. A failure gives both
   // back, the same as dispose does, so a host that catches a startup failure,
   // corrects an option and calls again is not refused as a rebind.
   let runtime: WfGraphRuntime | undefined;
+  let persistence: WfGraphPersistenceInstance | undefined;
   try {
     // One value for the Inngest client this app sends on, built before the
     // runtime because the Layer graph takes it. Functions are registered later,
@@ -241,35 +214,32 @@ async function buildWfGraphApp(
       `Extension surface assembled: ${events.length} events, ${actions.length} actions, ${integrations.length} integrations`
     );
 
-    // Where the tables are is a startup fact worth one line: Workflow Graph lives in a
-    // schema of a database the host chose, and "it is reading the wrong schema"
-    // is otherwise a guess made from an empty editor.
-    getAppLogger("database").info(
-      "Database configured",
-      describeConnection(database.client, database.schema)
+    persistence = await options.persistence.open(cipher);
+    getAppLogger("persistence").info(
+      "Persistence configured",
+      persistence.description
     );
-
-    if (options.database.migrations?.runOnStartup === true) {
-      await runMigrations(databaseConfig, {
-        migrationsDir: options.database.migrations.migrationsDir,
-      });
-    }
 
     // The Layer graph this instance owns. Building it is lazy, so an app that
     // never serves a migrated procedure never constructs a service.
-    runtime = createWfGraphRuntime({ inngest, extensions, database, cipher });
+    runtime = createWfGraphRuntime({
+      inngest,
+      extensions,
+      repositories: persistence.repositories,
+    });
 
     return await assembleWfGraphApp(options, {
       basePath,
       authorize,
       runtime,
       inngest,
-      database,
+      persistence,
     });
   } catch (error) {
-    await runtime?.dispose();
-    await database.close();
-    throw error;
+    return await failAfterClose(error, [
+      async () => await runtime?.dispose(),
+      async () => await persistence?.close(),
+    ]);
   }
 }
 
@@ -281,10 +251,10 @@ async function assembleWfGraphApp(
     authorize: Authorize;
     runtime: WfGraphRuntime;
     inngest: InngestSurface;
-    database: DatabaseSurface;
+    persistence: WfGraphPersistenceInstance;
   }
 ): Promise<WfGraphApp> {
-  const { basePath, authorize, runtime, inngest, database } = startup;
+  const { basePath, authorize, runtime, inngest, persistence } = startup;
 
   // Built once: Connect and HTTP serve are alternatives, and whichever path
   // this app takes registers that same list. A broken extension surface fails
@@ -347,12 +317,11 @@ async function assembleWfGraphApp(
       workerConnection = undefined;
     }
 
-    await runtime.dispose();
-
-    // Last, because a Layer finalizer is free to run a closing query. postgres.js
-    // holds an idle socket open per pool, so a host that shuts Workflow Graph down gets its
-    // process back only once this has run.
-    await database.close();
+    await closeInOrder([
+      () => runtime.dispose(),
+      // Last, because a Layer finalizer is free to use persistence while closing.
+      persistence.close,
+    ]);
   };
 
   return {

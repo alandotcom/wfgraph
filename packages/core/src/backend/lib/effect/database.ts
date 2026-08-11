@@ -5,8 +5,9 @@ import type { WfGraphDatabase } from "#src/backend/lib/db/index";
  * A query did not reach the database, or the database refused it.
  *
  * `cause` is whatever `postgres.js` threw, kept so that a constraint violation
- * can be told apart from a dropped connection further up. Nothing in the backend
- * inspects it yet; the services log it and answer "internal".
+ * can be told apart from a dropped connection further up. The execution
+ * repository inspects serialization failures so it can retry the whole decision;
+ * services otherwise log database failures and answer "internal".
  */
 export class DatabaseError extends Schema.TaggedErrorClass<DatabaseError>()(
   "DatabaseError",

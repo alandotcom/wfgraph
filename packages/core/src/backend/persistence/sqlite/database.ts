@@ -1,0 +1,345 @@
+import { DatabaseSync } from "node:sqlite";
+import { Effect } from "effect";
+import { DatabaseError } from "#src/backend/lib/effect/database";
+import { isSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
+import {
+  readJsonObject,
+  readJsonValue,
+  type JsonObject,
+  type JsonValue,
+} from "@wfgraph/shared/types/json";
+
+const SCHEMA_VERSION = 1;
+
+const MIGRATION_1 = `
+  CREATE TABLE workflows (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    description TEXT,
+    graph TEXT NOT NULL,
+    is_paused INTEGER NOT NULL DEFAULT 0 CHECK (is_paused IN (0, 1)),
+    mode TEXT NOT NULL DEFAULT 'live' CHECK (mode IN ('live', 'test')),
+    visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'public')),
+    published_version_id TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (published_version_id) REFERENCES workflow_versions(id) ON DELETE SET NULL
+  ) STRICT;
+
+  CREATE TABLE workflow_versions (
+    id TEXT PRIMARY KEY,
+    workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL,
+    graph TEXT NOT NULL,
+    catalog_fingerprint TEXT NOT NULL,
+    graph_digest TEXT NOT NULL,
+    published_at INTEGER NOT NULL,
+    UNIQUE (workflow_id, version)
+  ) STRICT;
+
+  CREATE TABLE workflow_event_subscriptions (
+    workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+    event_name TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('start', 'cancel', 'wait')),
+    correlation_path TEXT,
+    PRIMARY KEY (workflow_id, event_name, role)
+  ) STRICT, WITHOUT ROWID;
+
+  CREATE TABLE workflow_executions (
+    id TEXT PRIMARY KEY,
+    workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+    workflow_version_id TEXT NOT NULL REFERENCES workflow_versions(id) ON DELETE CASCADE,
+    workflow_run_id TEXT UNIQUE,
+    status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'waiting', 'completed', 'failed', 'canceled', 'superseded')),
+    start_source TEXT CHECK (start_source IS NULL OR start_source IN ('event', 'manual', 'schedule')),
+    delivery_id TEXT,
+    enqueued_at INTEGER,
+    run_mode TEXT NOT NULL DEFAULT 'live' CHECK (run_mode IN ('live', 'test')),
+    start_event_name TEXT,
+    entity_value TEXT,
+    input TEXT CHECK (input IS NULL OR json_valid(input)),
+    output TEXT CHECK (output IS NULL OR json_valid(output)),
+    error TEXT,
+    started_at INTEGER NOT NULL,
+    waiting_at INTEGER,
+    cancelled_at INTEGER,
+    completed_at INTEGER,
+    duration TEXT,
+    cancel_requested_at INTEGER,
+    cancel_event_name TEXT,
+    cancel_payload TEXT CHECK (cancel_payload IS NULL OR json_valid(cancel_payload)),
+    UNIQUE (workflow_id, delivery_id)
+  ) STRICT;
+
+  CREATE TABLE workflow_execution_logs (
+    id TEXT PRIMARY KEY,
+    execution_id TEXT NOT NULL REFERENCES workflow_executions(id) ON DELETE CASCADE,
+    node_id TEXT NOT NULL,
+    node_name TEXT NOT NULL,
+    node_type TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'success', 'error', 'cancelled')),
+    input TEXT CHECK (input IS NULL OR json_valid(input)),
+    output TEXT CHECK (output IS NULL OR json_valid(output)),
+    error TEXT,
+    started_at INTEGER NOT NULL,
+    completed_at INTEGER,
+    duration TEXT,
+    timestamp INTEGER NOT NULL
+  ) STRICT;
+
+  CREATE TABLE workflow_wait_states (
+    id TEXT PRIMARY KEY,
+    execution_id TEXT NOT NULL REFERENCES workflow_executions(id) ON DELETE CASCADE,
+    workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+    run_id TEXT NOT NULL,
+    node_id TEXT NOT NULL,
+    node_name TEXT NOT NULL,
+    wait_type TEXT NOT NULL CHECK (wait_type IN ('delay', 'event')),
+    status TEXT NOT NULL CHECK (status IN ('waiting', 'resuming', 'resumed', 'timed_out', 'cancelled')),
+    resume_token TEXT UNIQUE,
+    wait_until INTEGER,
+    subscribed_events TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(subscribed_events) AND json_type(subscribed_events) = 'array'),
+    metadata TEXT CHECK (metadata IS NULL OR (json_valid(metadata) AND json_type(metadata) = 'object')),
+    created_at INTEGER NOT NULL,
+    resumed_at INTEGER,
+    cancelled_at INTEGER
+  ) STRICT;
+
+  CREATE TABLE workflow_execution_events (
+    id TEXT PRIMARY KEY,
+    workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+    execution_id TEXT REFERENCES workflow_executions(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,
+    message TEXT NOT NULL,
+    metadata TEXT CHECK (metadata IS NULL OR (json_valid(metadata) AND json_type(metadata) = 'object')),
+    created_at INTEGER NOT NULL
+  ) STRICT;
+
+  CREATE TABLE api_keys (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    key_hash TEXT NOT NULL,
+    key_prefix TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_used_at INTEGER
+  ) STRICT;
+
+  CREATE TABLE integrations (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    config TEXT NOT NULL,
+    is_managed INTEGER DEFAULT 0 CHECK (is_managed IS NULL OR is_managed IN (0, 1)),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  ) STRICT;
+
+  CREATE INDEX api_keys_prefix_idx ON api_keys(key_prefix);
+  CREATE INDEX integrations_type_idx ON integrations(type);
+  CREATE INDEX subscriptions_event_idx ON workflow_event_subscriptions(event_name);
+  CREATE INDEX executions_workflow_started_idx ON workflow_executions(workflow_id, started_at DESC, id DESC);
+  CREATE INDEX executions_started_idx ON workflow_executions(started_at DESC, id DESC);
+  CREATE INDEX executions_entity_idx ON workflow_executions(workflow_id, entity_value, run_mode, status);
+  CREATE INDEX logs_execution_timestamp_idx ON workflow_execution_logs(execution_id, timestamp DESC);
+  CREATE INDEX waits_execution_status_idx ON workflow_wait_states(execution_id, status);
+  CREATE INDEX waits_workflow_status_idx ON workflow_wait_states(workflow_id, status);
+  CREATE INDEX events_execution_created_idx ON workflow_execution_events(execution_id, created_at DESC);
+  CREATE INDEX events_workflow_created_idx ON workflow_execution_events(workflow_id, created_at DESC);
+`;
+
+export type SqliteDatabase = {
+  readonly read: <A>(
+    run: (database: DatabaseSync) => A
+  ) => Effect.Effect<A, DatabaseError>;
+  readonly write: <A>(
+    run: (database: DatabaseSync) => A
+  ) => Effect.Effect<A, DatabaseError>;
+  readonly close: () => Promise<void>;
+};
+
+function attempt<A>(run: () => A): Effect.Effect<A, DatabaseError> {
+  return Effect.try({
+    try: run,
+    catch: (cause) => new DatabaseError({ cause }),
+  });
+}
+
+function inImmediateTransaction<A>(database: DatabaseSync, run: () => A): A {
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    const result = run();
+    database.exec("COMMIT");
+    return result;
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function migrate(database: DatabaseSync): void {
+  const row = database.prepare("PRAGMA user_version").get();
+  const version = row?.user_version;
+  if (typeof version !== "number") {
+    throw new Error("SQLite did not return its schema version");
+  }
+  if (version > SCHEMA_VERSION) {
+    throw new Error(
+      `Workflow Graph cannot read SQLite schema version ${version}`
+    );
+  }
+  if (version === 0) {
+    inImmediateTransaction(database, () => {
+      database.exec(MIGRATION_1);
+      database.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+    });
+  }
+}
+
+export function openSqliteDatabase(input: {
+  filename: string;
+  busyTimeoutMs: number;
+}): SqliteDatabase {
+  const database = new DatabaseSync(input.filename, {
+    timeout: input.busyTimeoutMs,
+  });
+  try {
+    database.exec(
+      "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;"
+    );
+    migrate(database);
+  } catch (error) {
+    database.close();
+    throw error;
+  }
+
+  return {
+    read: (run) => attempt(() => run(database)),
+    write: (run) =>
+      attempt(() => inImmediateTransaction(database, () => run(database))),
+    close: () => {
+      database.close();
+      return Promise.resolve();
+    },
+  };
+}
+
+export function placeholders(count: number): string {
+  return Array.from({ length: count }, () => "?").join(", ");
+}
+
+export function requiredString(
+  row: Record<string, unknown>,
+  key: string
+): string {
+  const value = row[key];
+  if (typeof value !== "string") throw new Error(`Invalid SQLite ${key}`);
+  return value;
+}
+
+export function optionalString(
+  row: Record<string, unknown>,
+  key: string
+): string | null {
+  const value = row[key];
+  if (value === null) return null;
+  if (typeof value !== "string") throw new Error(`Invalid SQLite ${key}`);
+  return value;
+}
+
+export function requiredNumber(
+  row: Record<string, unknown>,
+  key: string
+): number {
+  const value = row[key];
+  if (typeof value !== "number") throw new Error(`Invalid SQLite ${key}`);
+  return value;
+}
+
+export function optionalNumber(
+  row: Record<string, unknown>,
+  key: string
+): number | null {
+  const value = row[key];
+  if (value === null) return null;
+  if (typeof value !== "number") throw new Error(`Invalid SQLite ${key}`);
+  return value;
+}
+
+export function requiredBoolean(
+  row: Record<string, unknown>,
+  key: string
+): boolean {
+  const value = requiredNumber(row, key);
+  if (value !== 0 && value !== 1) throw new Error(`Invalid SQLite ${key}`);
+  return value === 1;
+}
+
+export function optionalBoolean(
+  row: Record<string, unknown>,
+  key: string
+): boolean | null {
+  const value = optionalNumber(row, key);
+  if (value === null) return null;
+  if (value !== 0 && value !== 1) throw new Error(`Invalid SQLite ${key}`);
+  return value === 1;
+}
+
+export function requiredDate(row: Record<string, unknown>, key: string): Date {
+  return new Date(requiredNumber(row, key));
+}
+
+export function optionalDate(
+  row: Record<string, unknown>,
+  key: string
+): Date | null {
+  const value = optionalNumber(row, key);
+  return value === null ? null : new Date(value);
+}
+
+function parseJson(row: Record<string, unknown>, key: string): unknown {
+  return JSON.parse(requiredString(row, key));
+}
+
+export function requiredGraph(
+  row: Record<string, unknown>,
+  key = "graph"
+): SerializedWorkflowGraph {
+  const value = parseJson(row, key);
+  if (!isSerializedWorkflowGraph(value)) {
+    throw new Error(`Invalid SQLite ${key}`);
+  }
+  return value;
+}
+
+export function optionalJsonValue(
+  row: Record<string, unknown>,
+  key: string
+): JsonValue | null {
+  const encoded = optionalString(row, key);
+  if (encoded === null) return null;
+  const value = readJsonValue(JSON.parse(encoded));
+  if (value === null && encoded !== "null") {
+    throw new Error(`Invalid SQLite ${key}`);
+  }
+  return value;
+}
+
+export function optionalJsonObject(
+  row: Record<string, unknown>,
+  key: string
+): JsonObject | null {
+  const encoded = optionalString(row, key);
+  if (encoded === null) return null;
+  const value = readJsonObject(JSON.parse(encoded));
+  if (value === null) throw new Error(`Invalid SQLite ${key}`);
+  return value;
+}
+
+export function encodeJson(value: JsonValue | undefined | null): string | null {
+  return value === undefined || value === null ? null : JSON.stringify(value);
+}
+
+export function encodeGraph(value: SerializedWorkflowGraph): string {
+  return JSON.stringify(value);
+}

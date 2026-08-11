@@ -22,16 +22,20 @@ import { createInngestSurface } from "#src/backend/lib/inngest/client";
 import * as inngestClientModule from "#src/backend/lib/inngest/client";
 import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 import { createWfGraphRuntime } from "#src/backend/runtime";
+import { makePostgresRepositories } from "#src/backend/persistence/postgres-repositories";
 import { normalizeDatabaseConfig } from "#src/backend/lib/db/config";
 import * as dbModule from "#src/backend/lib/db/index";
 import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
+import { wfPostgres } from "#src/backend/persistence/postgres";
 
 // createWfGraphApp opens no connections: the database client is lazy and
 // migrations only run when asked. Every route exercised below answers from
 // process memory, so these tests need no Postgres and no Inngest.
 const BASE_OPTIONS = {
   auth: "external",
-  database: { url: "postgresql://wfgraph:wfgraph@127.0.0.1:1/wfgraph_test" },
+  persistence: wfPostgres({
+    url: "postgresql://wfgraph:wfgraph@127.0.0.1:1/wfgraph_test",
+  }),
   encryption: { key: "a".repeat(64) },
   inngest: { id: "wfgraph-app-test", isDev: true },
   // A logger that drops everything, so the suite gets no console sink.
@@ -304,13 +308,17 @@ describe("createWfGraphApp with an auth predicate", () => {
       connect: connectInngestSdk,
     });
     const database = dbModule.createDatabaseSurface(
-      normalizeDatabaseConfig(BASE_OPTIONS.database)
+      normalizeDatabaseConfig({
+        url: "postgresql://wfgraph:wfgraph@127.0.0.1:1/wfgraph_test",
+      })
     );
     const runtime = createWfGraphRuntime({
       inngest,
       extensions: assembleExtensions({}),
-      database,
-      cipher: createIntegrationCipher(BASE_OPTIONS.encryption),
+      repositories: makePostgresRepositories(
+        database,
+        createIntegrationCipher(BASE_OPTIONS.encryption)
+      ),
     });
     try {
       const app = createApiApp({
@@ -442,17 +450,17 @@ describe("createWfGraphApp configuration", () => {
     ).rejects.toThrow("encryption.key is unset");
   });
 
-  // The option sits under `database` now, beside the connection it applies to. A
+  // The option belongs to the backend, beside the connection it applies to. A
   // directory that is not there is the cheapest proof that it was read at all:
   // startup migrations look for the folder before they open a connection.
-  it("takes startup migrations from database.migrations", async () => {
+  it("takes startup migrations from PostgreSQL persistence", async () => {
     await expect(
       createWfGraphApp({
         ...BASE_OPTIONS,
-        database: {
-          ...BASE_OPTIONS.database,
+        persistence: wfPostgres({
+          url: "postgresql://wfgraph:wfgraph@127.0.0.1:1/wfgraph_test",
           migrations: { runOnStartup: true, migrationsDir: "no-such-folder" },
-        },
+        }),
       })
     ).rejects.toThrow("Migrations folder not found");
   });
@@ -460,10 +468,10 @@ describe("createWfGraphApp configuration", () => {
   it("leaves the database alone when startup migrations go unasked for", async () => {
     const app = await createWfGraphApp({
       ...BASE_OPTIONS,
-      database: {
-        ...BASE_OPTIONS.database,
+      persistence: wfPostgres({
+        url: "postgresql://wfgraph:wfgraph@127.0.0.1:1/wfgraph_test",
         migrations: { migrationsDir: "no-such-folder" },
-      },
+      }),
     });
 
     await app.dispose();
@@ -483,9 +491,9 @@ describe("createWfGraphApp configuration", () => {
 
     const elsewhere = await createWfGraphApp({
       ...BASE_OPTIONS,
-      database: {
+      persistence: wfPostgres({
         url: "postgresql://wfgraph:wfgraph@127.0.0.1:3/wfgraph_elsewhere",
-      },
+      }),
     });
     await elsewhere.dispose();
   });
@@ -502,9 +510,9 @@ describe("createWfGraphApp configuration", () => {
 
     const retried = await createWfGraphApp({
       ...BASE_OPTIONS,
-      database: {
+      persistence: wfPostgres({
         url: "postgresql://wfgraph:wfgraph@127.0.0.1:2/wfgraph_other",
-      },
+      }),
     });
     await retried.dispose();
   });
