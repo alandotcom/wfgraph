@@ -217,7 +217,7 @@ export function stubDatabase(
     { relations }
   );
 
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the two handles differ only in the driver behind them: both are Drizzle over `schema`, so every method a repository reaches for is present and builds the same statement. This is the one place the two are equated, which is what this factory exists to be.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the two handles differ only in the driver behind them: both are Drizzle over `relations`, so every method a repository reaches for is present and builds the same statement. This is the one place the two are equated, which is what this factory exists to be.
   const db: WfGraphDatabase = new Proxy(base, {
     get(target, property, receiver) {
       if (property === "transaction") {
