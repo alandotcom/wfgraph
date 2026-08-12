@@ -1,5 +1,17 @@
 # @wfgraph/core
 
+## 0.1.0
+
+### Minor Changes
+
+- [#86](https://github.com/alandotcom/wfgraph/pull/86) [`863b6a3`](https://github.com/alandotcom/wfgraph/commit/863b6a3dcbfb963dab022e646bfa4b6e380a099e) Thanks [@alandotcom](https://github.com/alandotcom)! - Add pluggable persistence backends for PostgreSQL, native Node SQLite, and Cloudflare
+  Hyperdrive. Configure a Node app with `wfPostgres` or `wfSqlite`, and configure a
+  Cloudflare Worker with `wfHyperdrive` and `wfWorker`.
+
+  This replaces `createWfGraphApp`'s PostgreSQL-specific `database` option with the
+  backend-independent `persistence` option. Calling `wfSqlite()` creates an ephemeral
+  in-memory database; pass `filename` to persist it to a file.
+
 ## 0.0.2
 
 ### Patch Changes
