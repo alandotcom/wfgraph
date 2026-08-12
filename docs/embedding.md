@@ -1,6 +1,6 @@
 # Embedding Workflow Graph
 
-How to mount Workflow Graph in a host application: `createWfGraphApp`, the editor, integrations, database, migrations, package exports, and options.
+How to mount Workflow Graph in a host application: `createWfGraphApp`, the editor, integrations, database, migrations, package exports, options, logging, and tracing.
 
 `createWfGraphApp` returns a fetch handler: `(request: Request) => Promise<Response>`.
 
@@ -444,6 +444,81 @@ where they can be read whole, and printing them buries the line beside them.
 `run`, `node`, `outcome`, `error`) rather than flat. The pretty layout prints one line per
 group. The JSON line puts each group at the top level of the object, so a log store
 addresses `run.execution` and `http.status`.
+
+## Tracing
+
+Workflow Graph opens OpenTelemetry spans and starts no SDK, no exporter and no processor.
+Each service call and each engine step opens its span on Effect's tracer, which is bridged
+onto whichever provider `@opentelemetry/api` answers with. That provider is resolved once
+per span, so a host may register before or after `createWfGraphApp`, and a host that
+registers nothing gets no-op spans.
+
+Five names arrive, all under the `wfgraph-workflows` instrumentation scope:
+
+| Span                              | Opened for                        | Attributes                                                                                           |
+| --------------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `wfgraph.workflow.execution`      | one run                           | `wfgraph.workflow.id`, `wfgraph.workflow.name`, `wfgraph.execution.id`, `wfgraph.execution.run_mode` |
+| `wfgraph.workflow.branch`         | one branch run released by a Wait | the same, plus `wfgraph.branch.entry_node_id`                                                        |
+| `wfgraph.workflow.node.execute`   | each node                         | `wfgraph.node.id`, `wfgraph.node.name`, `wfgraph.node.type`, and `wfgraph.action.type` on an action  |
+| `wfgraph.workflow.action.execute` | the action inside a node          | `wfgraph.action.type`, `wfgraph.node.id`, `wfgraph.node.name`                                        |
+| `wfgraph.workflow.wait`           | a Wait node                       | `wfgraph.wait.type` (`delay` or `event`), `wfgraph.node.id`, `wfgraph.node.name`                     |
+
+**A Wait ends the trace.** Inngest parks the invocation and wakes a separate one, and
+nothing carries the trace context across that boundary, so each branch run opens a root
+span of its own.
+
+### Sentry
+
+`@sentry/node` puts its own tracer provider on the global OpenTelemetry API, which is the
+one Workflow Graph's spans open on. Initialising Sentry is the whole of the trace setup:
+
+```ts
+import * as Sentry from "@sentry/node";
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  tracesSampleRate: 1,
+  enableLogs: true,
+});
+```
+
+Records reach the same trace through `@logtape/sentry`, which reads the trace and span ids
+off whichever span is open when a record is written. Sentry's trace view then shows a run's
+spans with each record on the node that wrote it.
+
+```ts
+import { configure } from "@logtape/logtape";
+import { getSentrySink } from "@logtape/sentry";
+
+await configure({
+  sinks: { sentry: getSentrySink() },
+  loggers: [{ category: "wfgraph", sinks: ["sentry"], lowestLevel: "info" }],
+});
+```
+
+That is the third way from the section above rather than `configureWfGraphLogging`, because
+one LogTape configuration owns the process. Name a console sink beside it to keep reading
+the records locally.
+
+### Any other backend
+
+Register a provider on the global API and the spans follow it:
+
+```ts
+import {
+  BatchSpanProcessor,
+  NodeTracerProvider,
+} from "@opentelemetry/sdk-trace-node";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+
+new NodeTracerProvider({
+  spanProcessors: [new BatchSpanProcessor(new OTLPTraceExporter())],
+}).register();
+```
+
+`OTEL_EXPORTER_OTLP_ENDPOINT` names the collector. Workflow Graph's own `Resource` supplies
+`service.name` and `service.version` for the instrumentation scope alone; what describes the
+service is the `Resource` the host gave its provider.
 
 ## API endpoints
 
