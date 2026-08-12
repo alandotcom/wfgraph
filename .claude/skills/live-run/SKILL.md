@@ -33,8 +33,8 @@ Everything else belongs in vitest, which is faster and repeatable.
 ```
 
 Three processes: the example app on 4017, Vite in `packages/client`, and
-`inngest dev` on 8388. Postgres is expected on 55437 already, from
-`docker-compose.yml`.
+`inngest dev` on 8388. Nothing else has to be running: the app opens
+`examples/wfgraph.sqlite` and creates its schema on first boot.
 
 **Trap.** A backgrounded `pnpm run dev` returns at once, and the harness reports
 it as finished while the three processes keep running. Wait for readiness rather
@@ -104,8 +104,10 @@ which for the example app's appointments is `appointment.id`.
 the condition instead, in a `run_in_background` Bash call or an until-loop:
 
 ```bash
-until [ "$(psql "$WFGRAPH_DB" -t -A -c \
-  "select status from _workflows.workflow_executions where id='<exec>';")" = "completed" ]
+WFGRAPH_DB="file:examples/wfgraph.sqlite?mode=ro"
+
+until [ "$(sqlite3 "$WFGRAPH_DB" \
+  "select status from workflow_executions where id='<exec>';")" = "completed" ]
 do sleep 3; done
 ```
 
@@ -116,27 +118,32 @@ landed on its own target".
 
 ## 5. Read the trace
 
-Workflow Graph's tables live in the `_workflows` schema.
+The example app's tables are unqualified, in one SQLite file. It is opened in
+WAL mode, so a second reader is free to run while the app holds it.
 
 ```bash
-WFGRAPH_DB="postgresql://workflow:workflow@localhost:55437/workflow_builder"
+WFGRAPH_DB="file:examples/wfgraph.sqlite?mode=ro"
 
-psql "$WFGRAPH_DB" -c "select node_name, status,
-  to_char(started_at,'HH24:MI:SS') started,
-  to_char(completed_at,'HH24:MI:SS') completed, duration, output
-  from _workflows.workflow_execution_logs
+sqlite3 -box "$WFGRAPH_DB" "select node_name, status,
+  strftime('%H:%M:%S', started_at/1000, 'unixepoch') started,
+  strftime('%H:%M:%S', completed_at/1000, 'unixepoch') completed, duration, output
+  from workflow_execution_logs
   where execution_id='<exec>' order by timestamp;"
 
-psql "$WFGRAPH_DB" -c "select status, error, duration
-  from _workflows.workflow_executions where id='<exec>';"
+sqlite3 -box "$WFGRAPH_DB" "select status, error, duration
+  from workflow_executions where id='<exec>';"
 
-psql "$WFGRAPH_DB" -c "select node_name, status
-  from _workflows.workflow_wait_states where execution_id='<exec>';"
+sqlite3 -box "$WFGRAPH_DB" "select node_name, status
+  from workflow_wait_states where execution_id='<exec>';"
 ```
 
-`duration` is milliseconds as text. The node rows are what a timing claim rests
-on: a wait's duration is how long the run was parked, and the row of the node
-behind it says when the branch resumed.
+**Trap.** Every timestamp column is an integer of epoch milliseconds, so it
+reads as a large number until `strftime` divides it by 1000. `duration` is the
+exception: it is milliseconds as text, the way Postgres held it.
+
+The node rows are what a timing claim rests on: a wait's duration is how long
+the run was parked, and the row of the node behind it says when the branch
+resumed.
 
 ## 6. Read what Inngest did
 
@@ -165,10 +172,17 @@ Every probe leaves rows behind, and the next session reads the workflow list.
 
 ```bash
 pkill -f "inngest dev"; pkill -f "concurrently --kill-others-on-fail"
-psql "$WFGRAPH_DB" -c "delete from _workflows.workflows where id in ('<id>');"
+sqlite3 examples/wfgraph.sqlite "PRAGMA foreign_keys = ON;
+  delete from workflows where id in ('<id>');"
 ```
 
 Deleting the workflow cascades to its executions, logs and wait states.
+
+**Trap.** `PRAGMA foreign_keys` is per connection and the `sqlite3` shell opens
+with it off, so the delete above leaves every child row orphaned without it. The
+pragma also has to precede the delete on the same invocation. Dropping the whole
+file is the other way to clean up, and the app rebuilds the schema on its next
+boot.
 
 ## Reporting what you measured
 

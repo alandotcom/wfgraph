@@ -334,6 +334,8 @@ handle to `WfGraphServices`.
 Schema is `packages/core/src/backend/lib/db/schema.ts`, on PostgreSQL 15 or newer.
 Generate migrations with `pnpm run db:generate` and apply them with `pnpm run db:migrate`.
 Do not hand-write migration SQL in `packages/core/drizzle/`.
+Those two scripts want a PostgreSQL on port `55437`, which `docker compose up -d` gives
+from `docker-compose.yml`; the example app runs on SQLite and needs neither.
 The schema file itself must not import through `#src/`: drizzle-kit's loader resolves
 the package `imports` map to `.js` paths and cannot find the TypeScript sources, so
 anything the schema needs from Workflow Graph lands in `@wfgraph/shared` (as the audit
@@ -438,12 +440,11 @@ behaviour; nothing in them is enforced by lint or tests.
 
 ### Runtime services
 
-`pnpm run dev` starts the three processes (example app `:4017`, Vite client `:5173`, Inngest CLI `:8388`). Postgres must already be listening on host port `55437` with db/user/password `workflow_builder`/`workflow`/`workflow` (see `docker-compose.yml`). Apply migrations once with `pnpm run db:migrate` before first boot. The update script only refreshes deps (`pnpm install`); it never starts Postgres or `pnpm run dev`, so each session must start Postgres itself (see below) and then run the services.
+`pnpm run dev` starts the three processes (example app `:4017`, Vite client `:5173`, Inngest CLI `:8388`). The example stores its data in SQLite at gitignored `examples/wfgraph.sqlite`, which it creates and migrates on open, so there is no service to start and no migration to apply. The update script only refreshes deps (`pnpm install`); it never runs `pnpm run dev`, so each session must start the services.
 
-The app refuses to start without `INTEGRATION_ENCRYPTION_KEY` (64-char hex). Put it in gitignored `.env.local` at the repo root; `examples/app.ts` also falls back to `DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflow_builder`.
+The app refuses to start without `INTEGRATION_ENCRYPTION_KEY` (64-char hex). Put it in gitignored `.env.local` at the repo root.
 
 ### Cloud VM gotchas
 
 - **Node 24 is required** (`engines` / `.node-version`). nvm's default alias is set to 24, so a normal `bash` shell already resolves the nvm Node 24 binary and its corepack `pnpm` (verify with `node -v`). If a stray older Node (e.g. `/exec-daemon/node`) is ever ahead on `PATH`, put nvm first: `export PATH="$HOME/.nvm/versions/node/$(nvm version 24)/bin:$PATH"`.
-- **Docker is often unavailable** in this VM, so Postgres runs as a user-owned local cluster instead of `docker compose`. A cluster already exists at `~/pgdata-wfgraph`; start it each session with `pg_ctl -D ~/pgdata-wfgraph -l ~/pgdata-wfgraph/server.log start` (binaries under `/usr/lib/postgresql/16/bin`). Two gotchas if recreating it: `initdb -D ~/pgdata-wfgraph -U workflow --auth=trust`, and set `unix_socket_directories` + `port = 55437` in `postgresql.conf` because the default socket dir `/var/run/postgresql` is not writable by this user. The db is `workflow_builder`; create it and set the `workflow` role password to `workflow` to match `DATABASE_URL`.
 - For driving a real workflow against Inngest (not vitest), use `.claude/skills/live-run/SKILL.md`.

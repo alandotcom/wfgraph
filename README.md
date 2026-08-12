@@ -16,23 +16,16 @@ Workflow Graph runs on your infrastructure (Node, PostgreSQL or SQLite, and Inng
 
 ## Run locally
 
-Prerequisites: Node 24, pnpm (see `packageManager` in `package.json`), Docker (or a local
-Postgres on port `55437`).
+Prerequisites: Node 24 and pnpm (see `packageManager` in `package.json`).
 
 ```bash
-# Start Postgres (db/user/password: workflow / workflow / workflow)
-docker compose up -d
-
 # Install
 pnpm install
 
-# Root .env.local (gitignored). DATABASE_URL falls back in examples/app.ts.
+# Root .env.local (gitignored)
 cat > .env.local <<EOF
-DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflow_builder
 INTEGRATION_ENCRYPTION_KEY=$(openssl rand -hex 32)
 EOF
-
-pnpm run db:migrate
 
 # App :4017, editor :5173, Inngest CLI :8388
 pnpm run dev
@@ -40,6 +33,10 @@ pnpm run dev
 
 Open the editor at [http://localhost:5173](http://localhost:5173). The example host app lives
 in `examples/app.ts`.
+
+It stores its data in SQLite, at `examples/wfgraph.sqlite`, which is gitignored and created
+on first boot. There is no migration step and no separate service. Point `SQLITE_PATH`
+somewhere else to move the file, and delete it to start over.
 
 Production-style single process (built client handed to the app):
 

@@ -26,7 +26,7 @@ import {
   defineEvent,
 } from "@wfgraph/core";
 import { configureWfGraphLogging } from "@wfgraph/core/logging";
-import { wfPostgres } from "@wfgraph/core/postgres";
+import { wfSqlite } from "@wfgraph/core/sqlite";
 // The built-in integrations, as values. Nothing registers on import, so the line
 // that passes them to `createWfGraphApp` below is what turns them on and dropping it
 // is what turns them off.
@@ -42,8 +42,6 @@ import { z } from "zod";
 configureWfGraphLogging();
 
 const DEFAULT_PORT = 4017;
-const DEFAULT_DATABASE_URL =
-  "postgresql://workflow:workflow@localhost:55437/workflow_builder";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -174,18 +172,13 @@ const wfgraph = await createWfGraphApp({
   // See the listen call below. A deployment puts a session check here and a
   // gateway in front.
   auth: "external",
-  persistence: wfPostgres({
-    // One URL, or the discrete host/port/user/password/database fields a
-    // platform hands out separately.
-    url: process.env.DATABASE_URL?.trim() || DEFAULT_DATABASE_URL,
-    // Workflow Graph keeps its tables in "_workflows" unless told otherwise. This is read
-    // here because `pnpm run db:migrate` reads the same variable, and an app
-    // querying one schema while the migrator creates another is a bad afternoon.
-    schema: process.env.DATABASE_SCHEMA?.trim() || undefined,
-    migrations: {
-      runOnStartup: process.env.RUN_DB_MIGRATIONS === "true",
-      migrationsDir: process.env.MIGRATIONS_DIR,
-    },
+  // SQLite creates its schema the first time the app opens the file, so there
+  // is no migration step and no separate service. The name carries no
+  // directory, which puts the file beside this one and keeps the app from
+  // having to create a directory before it can start. Omitting `filename`
+  // gives an in-memory database instead, which no other process can read.
+  persistence: wfSqlite({
+    filename: process.env.SQLITE_PATH?.trim() || "wfgraph.sqlite",
   }),
   // Workflow Graph refuses to start without a 64-character hex key and says so, so there
   // is nothing to check here.
