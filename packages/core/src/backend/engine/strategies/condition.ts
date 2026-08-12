@@ -20,10 +20,6 @@ export function runConditionStep(input: ActionStepInput) {
       config.conditionModel,
       input.eventName
     );
-    yield* Effect.logDebug("Condition evaluation result").pipe(
-      Effect.annotateLogs({ evaluatedCondition })
-    );
-
     const result = yield* runWithStepLog(
       {
         store,

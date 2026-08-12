@@ -19,7 +19,7 @@ type CancelExecutionSuccess = {
 /** This module's logger, as the Effect that produces it (see `services/workflows/workflow.ts`). */
 const loggerFor = (executionId: string) =>
   Effect.map(AppLogger, (appLogger) =>
-    appLogger.get("workflow", "execution-cancel").with({ executionId })
+    appLogger.get("execution-cancel").with({ executionId })
   );
 
 export const postExecutionCancel = Effect.fn("postExecutionCancel")(

@@ -159,7 +159,7 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
   }) {
     const repo = yield* WorkflowRepo;
     const logger = (yield* AppLogger)
-      .get("workflow", "deliver-event")
+      .get("deliver-event")
       .with({ eventName: input.event.name, workflowId: input.subscriber.id });
 
     const loaded = yield* repo.findByIdWithPublishedVersionForRun(

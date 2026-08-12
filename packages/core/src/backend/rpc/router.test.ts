@@ -11,10 +11,9 @@ import {
   stubInngestClient,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
-import {
-  configureAppLogging,
-  configureAppLoggingWithBridge,
-} from "#src/backend/lib/logger";
+import { resetSync } from "@logtape/logtape";
+import { configureLoggingWithBridge } from "#src/backend/lib/log-config";
+import { createRequestEvent } from "#src/backend/lib/http/request-event";
 import type { WfGraphRuntime } from "#src/backend/runtime";
 import { rpcEffectHandler } from "#src/backend/rpc/router";
 
@@ -55,7 +54,7 @@ const logLines: string[] = [];
 
 beforeEach(() => {
   logLines.length = 0;
-  configureAppLoggingWithBridge({
+  configureLoggingWithBridge({
     info: () => undefined,
     warn: (message) => {
       logLines.push(String(message));
@@ -66,8 +65,10 @@ beforeEach(() => {
   });
 });
 
+// Back to unconfigured, which is logtape's own default and what every other
+// file in this worker expects: the suite shares one module graph.
 afterAll(() => {
-  configureAppLogging();
+  resetSync();
 });
 
 describe("rpcEffectHandler", () => {
@@ -118,8 +119,45 @@ describe("rpcEffectHandler", () => {
       assert.isDefined(rejection);
       assert.deepStrictEqual(
         logLines.filter((line) => line.includes("RPC handler died")),
-        ["[app.rpc.handler] RPC handler died: a bug inside a service"]
+        ["[wfgraph.rpc] RPC handler died: a bug inside a service"]
       );
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
+  /**
+   * Served over HTTP the reason goes on the request's own record, which the
+   * middleware writes once the status is known. Writing a line here as well
+   * would report one refusal twice, which is what the request event exists to
+   * stop.
+   */
+  it("puts a failure on the request event instead of logging its own line", async () => {
+    const runtime = createStubRuntime();
+    try {
+      const requestEvent = createRequestEvent();
+      const handler = rpcEffectHandler(() =>
+        Effect.fail(new NotFound({ error: "Workflow not found" }))
+      );
+
+      // oRPC hands the handler its input beside the context, and the failure
+      // summary reads it off there. Declared rather than written inline,
+      // because `rpcEffectHandler` types only the context member.
+      const handlerArgs = {
+        context: { headers: new Headers(), runtime, requestEvent },
+        input: { workflowId: "workflow_1" },
+      };
+
+      await handler(handlerArgs).catch(() => undefined);
+
+      assert.deepStrictEqual(requestEvent.fields(), {
+        error: {
+          kind: "not_found",
+          message: "Workflow not found",
+          input: { workflowId: "workflow_1" },
+        },
+      });
+      assert.deepStrictEqual(logLines, []);
     } finally {
       await runtime.dispose();
     }

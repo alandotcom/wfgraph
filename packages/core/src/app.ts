@@ -31,10 +31,10 @@ import {
 import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 import { connect as connectInngestSdk } from "inngest/connect";
 import {
-  configureAppLogging,
-  configureAppLoggingWithBridge,
-  getAppLogger,
-} from "#src/backend/lib/logger";
+  configureLoggingWithBridge,
+  warnWhenLoggingUnconfigured,
+} from "#src/backend/lib/log-config";
+import { getAppLogger } from "#src/backend/lib/logger";
 import {
   createWfGraphRuntime,
   type WfGraphRuntime,
@@ -184,9 +184,9 @@ async function buildWfGraphApp(
   const { basePath, authorize } = startup;
 
   if (options.logger) {
-    configureAppLoggingWithBridge(options.logger);
+    configureLoggingWithBridge(options.logger);
   } else {
-    configureAppLogging();
+    warnWhenLoggingUnconfigured();
   }
 
   const cipher = createIntegrationCipher(options.encryption);
@@ -215,10 +215,9 @@ async function buildWfGraphApp(
     );
 
     persistence = await options.persistence.open(cipher);
-    getAppLogger("persistence").info(
-      "Persistence configured",
-      persistence.description
-    );
+    getAppLogger("persistence").info("Persistence configured", {
+      persistence: persistence.description,
+    });
 
     // The Layer graph this instance owns. Building it is lazy, so an app that
     // never serves a migrated procedure never constructs a service.

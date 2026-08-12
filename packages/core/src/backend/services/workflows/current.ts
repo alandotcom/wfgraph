@@ -15,7 +15,7 @@ import { generateId } from "@wfgraph/shared/utils/id";
 
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */
 const loggerFor = () =>
-  Effect.map(AppLogger, (appLogger) => appLogger.get("workflow", "current"));
+  Effect.map(AppLogger, (appLogger) => appLogger.get("current"));
 
 export const getWorkflowsCurrent = Effect.fn("getWorkflowsCurrent")(
   function* () {

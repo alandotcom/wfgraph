@@ -38,6 +38,10 @@
       "types": "./dist/migrate.d.ts",
       "default": "./dist/migrate.js"
     },
+    "./logging": {
+      "types": "./dist/logging.d.ts",
+      "default": "./dist/logging.js"
+    },
     "./postgres": {
       "types": "./dist/postgres.d.ts",
       "default": "./dist/postgres.js"

@@ -9,10 +9,8 @@ import {
 } from "vitest";
 import { connect as connectInngestSdk } from "inngest/connect";
 import { createInngestSurface } from "#src/backend/lib/inngest/client";
-import {
-  configureAppLogging,
-  configureAppLoggingWithBridge,
-} from "#src/backend/lib/logger";
+import { resetSync } from "@logtape/logtape";
+import { configureLoggingWithBridge } from "#src/backend/lib/log-config";
 
 /** The startup lines, read off logtape through the bridge sink. */
 const logLines: string[] = [];
@@ -22,7 +20,7 @@ const surfaceDeps = { connect: connectInngestSdk };
 
 beforeEach(() => {
   logLines.length = 0;
-  configureAppLoggingWithBridge({
+  configureLoggingWithBridge({
     info: () => undefined,
     warn: (message) => {
       logLines.push(String(message));
@@ -45,8 +43,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// Back to unconfigured, which is logtape's own default and what every other
+// file in this worker expects: the suite shares one module graph.
 afterAll(() => {
-  configureAppLogging();
+  resetSync();
 });
 
 /**

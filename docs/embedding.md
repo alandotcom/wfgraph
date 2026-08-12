@@ -319,6 +319,7 @@ different migration tool puts the tables in `public`. This repository's
 | `@wfgraph/core/plugin`   | What an integration package builds against                                                                                                                                                                                                                       |
 | `@wfgraph/core/testing`  | `runAction`, `actionData` and `actionError`, for that package's own suite                                                                                                                                                                                        |
 | `@wfgraph/core/migrate`  | `migrateWfGraphDatabase`, for migrations without an application                                                                                                                                                                                                  |
+| `@wfgraph/core/logging`  | `configureWfGraphLogging`, the console setup a host installs                                                                                                                                                                                                     |
 | `@wfgraph/client`        | `clientBundle`, the built editor, passed to `createWfGraphApp` as `client`                                                                                                                                                                                       |
 | `@wfgraph/plugins`       | The built-in integrations as values, by name and as `builtInIntegrations`                                                                                                                                                                                        |
 | `@wfgraph/plugins/ui`    | Their icons and output renderers as one record, imported by the browser alone                                                                                                                                                                                    |
@@ -344,7 +345,7 @@ application's router serves static files.
 | `extensions.events`       | No       | `defineEvent` values                                                                                                                                           |
 | `extensions.actions`      | No       | `defineAction` values                                                                                                                                          |
 | `extensions.integrations` | No       | `defineIntegration` values                                                                                                                                     |
-| `logger`                  | No       | A `WfGraphLogger` that takes each log line. The default is a console sink                                                                                      |
+| `logger`                  | No       | A `WfGraphLogger` that takes every record. See Logging below                                                                                                   |
 | `client`                  | No       | The editor bundle to serve, from `@wfgraph/client`                                                                                                             |
 
 Read these once:
@@ -388,6 +389,61 @@ Read these once:
   open Connect worker, then returns when the layers of the Effect runtime finalize. One
   Workflow Graph per process remains the supported arrangement; each app owns its
   persistence instance, Inngest client, encryption key, and assembled surface.
+
+## Logging
+
+Workflow Graph logs through [LogTape](https://logtape.org) and configures none of it.
+Every record it writes is under the `wfgraph` category, and where those records go is
+the application's decision. A host that installs nothing gets silence, and
+`createWfGraphApp` says so once at start-up.
+
+Three ways to receive the records, in the order most hosts want them:
+
+```ts
+// 1. The console setup Workflow Graph ships. One call, before createWfGraphApp.
+import { configureWfGraphLogging } from "@wfgraph/core/logging";
+
+configureWfGraphLogging();
+```
+
+`LOG_LEVEL` names the level (default `info`), `LOG_FORMAT` picks `pretty` or `json`, and
+with neither set an attached terminal gets `pretty` while a pipe gets one JSON object per
+line. `LOG_PRETTY_PROPERTIES=off` drops the structured fields from the pretty layout, and
+`LOG_PRETTY_INSPECT_DEPTH` sets how deep it walks one (default 3). The call takes `level`
+and `format` as options for a host that would rather say so in code.
+
+```ts
+// 2. An application logger of your own, as one option.
+const wfgraph = await createWfGraphApp({ logger: myLogger, ... });
+```
+
+A `WfGraphLogger` is any object with `info`, `warn`, `error` and an optional `debug`, each
+taking a message and a field bag. Passing one installs a LogTape configuration and
+replaces any other in the process, so a host with its own LogTape setup uses the third way
+instead.
+
+```ts
+// 3. Your own LogTape configuration, with a sink for the wfgraph category.
+await configure({
+  sinks: { console: getConsoleSink() },
+  loggers: [{ category: "wfgraph", sinks: ["console"], lowestLevel: "info" }],
+});
+```
+
+`@wfgraph/core/migrate` writes through the same category, so a migration job that wants
+its output calls one of the three first.
+
+**A record is one unit of work.** One HTTP request writes one record naming the method,
+the path, the status, the elapsed time, the RPC procedure it addressed and, when it was
+refused, the reason. One node execution writes one record naming the node, what it ran,
+how it ended and how long it took. A run writes one when it starts and one when it ends.
+No payload is logged: a request body, a response body and an Event payload are all stored
+where they can be read whole, and printing them buries the line beside them.
+
+**Fields are grouped.** A record's fields arrive as objects by subject (`http`, `rpc`,
+`run`, `node`, `outcome`, `error`) rather than flat. The pretty layout prints one line per
+group. The JSON line puts each group at the top level of the object, so a log store
+addresses `run.execution` and `http.status`.
 
 ## API endpoints
 

@@ -181,17 +181,43 @@ function prepareRun(
   };
 }
 
+/**
+ * Which run a record belongs to, as one field rather than six.
+ *
+ * The pretty formatter prints a line per top-level field, so flat keys cost a
+ * line each on every record the run writes. Grouped they cost one, and the JSON
+ * line carries the group as a nested object a log store addresses as
+ * `run.execution`.
+ *
+ * Two of these. The ambient one rides on every record and carries only what
+ * correlates it, because a full identity repeated on each line is as wide as a
+ * terminal. The full one is written once, on the record that opens the run.
+ */
 function runLogAnnotations(
   input: WorkflowExecutionInput | WorkflowBranchInput,
   runtime: WorkflowExecutionRuntime
 ): Record<string, unknown> {
   return {
-    workflowId: input.workflowId,
-    workflowName: input.workflowName ?? null,
-    executionId: input.executionId,
-    workflowRunId: input.workflowRunId || runtime.runId || input.executionId,
-    runMode: input.runMode ?? "live",
-    branchEntryNodeId: "entryNodeId" in input ? input.entryNodeId : null,
+    run: {
+      execution: input.executionId,
+      id: input.workflowRunId || runtime.runId || input.executionId,
+    },
+  };
+}
+
+function runIdentity(
+  input: WorkflowExecutionInput | WorkflowBranchInput,
+  runtime: WorkflowExecutionRuntime
+): Record<string, unknown> {
+  return {
+    run: {
+      workflow: input.workflowId,
+      workflowName: input.workflowName ?? null,
+      execution: input.executionId,
+      id: input.workflowRunId || runtime.runId || input.executionId,
+      mode: input.runMode ?? "live",
+      branchEntry: "entryNodeId" in input ? input.entryNodeId : null,
+    },
   };
 }
 
@@ -228,7 +254,7 @@ export function executeWorkflow(
       attributes: workflowSpanAttributes(input),
     })
   );
-  return withAppLogCategory(execute, "workflow", "executor");
+  return withAppLogCategory(execute, "engine");
 }
 
 function executeWorkflowInner(
@@ -254,22 +280,21 @@ function executeWorkflowInner(
     const attemptStartTime = Date.now();
 
     const execute = Effect.gen(function* () {
-      yield* Effect.logInfo("Starting workflow execution").pipe(
+      // The two payloads used to ride here. Either one is as large as the Event
+      // that carried it, and the execution row stores both, so the log names
+      // the graph it is about to walk and leaves the payload to the database.
+      yield* Effect.logInfo(
+        `Run started: ${input.workflowName ?? workflowId} (${nodes.length} nodes)`
+      ).pipe(
         Effect.annotateLogs({
-          nodeCount: nodes.length,
-          edgeCount,
-          runMode,
-          startPayload: input.startPayload ?? {},
-          requestPayload: input.requestPayload ?? input.startPayload ?? {},
+          ...runIdentity(input, runtime),
+          graph: {
+            nodes: nodes.length,
+            edges: edgeCount,
+            lifecycle: lifecycleNodeIds,
+          },
         })
       );
-      yield* Effect.logInfo("Discovered lifecycle nodes").pipe(
-        Effect.annotateLogs({
-          lifecycleNodeCount: lifecycleNodeIds.length,
-          lifecycleNodeIds,
-        })
-      );
-      yield* Effect.logInfo("Starting execution from lifecycle nodes");
       yield* scheduler.runAll(lifecycleNodeIds);
       // Every Wait the fan-out reached was held back, so the branches that
       // suspend nothing are finished by now and the run may park.
@@ -286,12 +311,15 @@ function executeWorkflowInner(
             ? "completed"
             : "failed";
 
-      yield* Effect.logInfo("Workflow execution completed").pipe(
+      const attemptMs = Date.now() - attemptStartTime;
+      yield* Effect.logInfo(`Run ${terminalStatus} in ${attemptMs}ms`).pipe(
         Effect.annotateLogs({
-          success: finalSuccess,
-          status: terminalStatus,
-          resultCount: traversal.resultCount,
-          attemptMs: Date.now() - attemptStartTime,
+          outcome: {
+            status: terminalStatus,
+            success: finalSuccess,
+            nodes: traversal.resultCount,
+            ms: attemptMs,
+          },
         })
       );
 
@@ -324,8 +352,7 @@ function executeWorkflowInner(
         const failure = failureFromCause(cause);
         yield* Effect.logError("Fatal error during workflow execution").pipe(
           Effect.annotateLogs({
-            error: Cause.squash(cause),
-            failureKind: failure.kind,
+            error: { kind: failure.kind, cause: Cause.squash(cause) },
           })
         );
 
@@ -388,7 +415,7 @@ export function executeWorkflowBranch(
       },
     })
   );
-  return withAppLogCategory(execute, "workflow", "executor");
+  return withAppLogCategory(execute, "engine");
 }
 
 function executeWorkflowBranchInner(
@@ -431,10 +458,11 @@ function executeWorkflowBranchInner(
       traversal.markReadyForDownstream(nodeId);
     }
 
-    yield* Effect.logInfo("Starting branch execution").pipe(
+    const branchStartTime = Date.now();
+    yield* Effect.logInfo(`Branch started at ${entryNodeId}`).pipe(
       Effect.annotateLogs({
-        entryNodeId,
-        inheritedNodeCount: Object.keys(upstream).length,
+        ...runIdentity(input, runtime),
+        branch: { entry: entryNodeId, inherited: Object.keys(upstream).length },
       })
     );
 
@@ -443,10 +471,15 @@ function executeWorkflowBranchInner(
     // one pause of its own and the branch below that one holds its own.
     yield* scheduler.drainDeferredWaits();
 
-    yield* Effect.logInfo("Branch execution completed").pipe(
+    yield* Effect.logInfo(
+      `Branch at ${entryNodeId} completed in ${Date.now() - branchStartTime}ms`
+    ).pipe(
       Effect.annotateLogs({
-        entryNodeId,
-        resultCount: traversal.resultCount,
+        branch: {
+          entry: entryNodeId,
+          nodes: traversal.resultCount,
+          ms: Date.now() - branchStartTime,
+        },
       })
     );
 

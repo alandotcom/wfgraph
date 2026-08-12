@@ -94,8 +94,6 @@ function runAction(ctx: NodeWorkContext) {
       runMode,
     } = ctx;
 
-    yield* Effect.logDebug("Executing action node");
-
     if (!actionType) {
       yield* Effect.logError("Action node missing action type");
       return {
@@ -134,7 +132,6 @@ function runAction(ctx: NodeWorkContext) {
       nodeType: actionType,
       runMode,
     };
-    yield* Effect.logDebug("Calling executeActionStep");
 
     if (actionType === BUILT_IN_ACTION_IDS.wait) {
       if (!ctx.entersInPlace) {

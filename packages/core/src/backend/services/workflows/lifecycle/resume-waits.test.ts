@@ -132,7 +132,7 @@ describe("resumeWaitsMatchingEvent", () => {
     // `wait-match` captured the logger at module load, so spy the same category
     // instance's `error` rather than replacing `getAppLogger`. This module's
     // own logging goes through the `AppLogger` service, silenced below.
-    const waitMatchLogger = getAppLogger("workflow", "wait-match");
+    const waitMatchLogger = getAppLogger("waits");
     vi.spyOn(waitMatchLogger, "error").mockImplementation(((
       message: string
     ) => {

@@ -49,7 +49,7 @@ import { getErrorMessage } from "@wfgraph/shared/utils";
 import type { RpcContext } from "#src/backend/rpc/context";
 import { toOrpcError } from "#src/backend/rpc/errors";
 
-const rpcLogger = getAppLogger("rpc", "handler");
+const rpcLogger = getAppLogger("rpc");
 
 /**
  * The handler options object oRPC passes as the first argument, narrowed to the
@@ -89,23 +89,38 @@ function summarizeRpcInput(args: unknown[]): unknown {
 }
 
 /**
+ * Records why a procedure did not answer.
+ *
+ * The reason belongs on the request's own record, which the HTTP middleware
+ * writes once the status is known, so a refused call costs one line instead of
+ * two. A procedure reached outside that middleware has no record to write on,
+ * and then this writes its own: a defect that left no trace at all would be a
+ * step backwards from the `try` these services used to sit inside.
+ */
+function recordRpcFailure(
+  context: RpcContext,
+  level: "warn" | "error",
+  summary: string,
+  error: Record<string, unknown>
+): void {
+  if (context.requestEvent) {
+    context.requestEvent.set({ error });
+    return;
+  }
+
+  rpcLogger[level](summary, { error });
+}
+
+/**
  * Runs a procedure's Effect on the runtime the request carries, and turns a
  * domain failure into the oRPC error oRPC expects a handler to throw.
- *
- * The failure is logged on the way past, at the one place every procedure
- * shares. The payload rides as a structured property rather than inside the
- * message, because logtape reads `{...}` in a message as a placeholder and would
- * eat a serialized one.
  *
  * `Effect.fail` carrying the oRPC error is what makes the promise reject with
  * it: `runPromise` squashes a failure cause down to the error itself, so oRPC
  * catches the same object it would have caught from a `throw`.
  *
- * A defect is left to reject the promise and reach oRPC's own 500, but it is
- * logged first. Before the services returned Effects a bug inside one was caught
- * by the same `try` its failures were, so it at least left a line naming itself;
- * a defect that only produced oRPC's bodyless "Internal Server Error" would be
- * a step backwards for whoever has to find it.
+ * A defect is left to reject the promise and reach oRPC's own 500, and its
+ * reason is recorded on the way past.
  *
  * Generic over the service's failures rather than over the whole union, so the
  * narrowing a service's error channel expresses survives the trip through here.
@@ -122,19 +137,30 @@ export function rpcEffectHandler<
       handler(...args).pipe(
         Effect.tapError((failure) =>
           Effect.sync(() => {
-            rpcLogger.warn(`RPC handler returned failure [${failure.kind}]`, {
-              kind: failure.kind,
-              error: failure.payload,
-              input: summarizeRpcInput(args),
-            });
+            recordRpcFailure(
+              args[0].context,
+              "warn",
+              `RPC handler returned failure [${failure.kind}]`,
+              {
+                kind: failure.kind,
+                message: failure.payload.error,
+                input: summarizeRpcInput(args),
+              }
+            );
           })
         ),
         Effect.tapDefect((defect) =>
           Effect.sync(() => {
-            rpcLogger.error(`RPC handler died: ${getErrorMessage(defect)}`, {
-              error: defect,
-              input: summarizeRpcInput(args),
-            });
+            recordRpcFailure(
+              args[0].context,
+              "error",
+              `RPC handler died: ${getErrorMessage(defect)}`,
+              {
+                kind: "defect",
+                message: getErrorMessage(defect),
+                input: summarizeRpcInput(args),
+              }
+            );
           })
         ),
         Effect.mapError(toOrpcError)

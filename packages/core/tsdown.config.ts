@@ -14,6 +14,7 @@ export default defineConfig({
     "src/plugin.ts",
     "src/testing.ts",
     "src/migrate.ts",
+    "src/logging.ts",
     "src/postgres.ts",
     "src/sqlite.ts",
     "src/worker.ts",

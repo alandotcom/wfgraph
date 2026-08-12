@@ -8,7 +8,7 @@ import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 /** This module's logger, as the Effect that produces it (see `services/workflows/workflow.ts`). */
 const loggerFor = (versionId: string) =>
   Effect.map(AppLogger, (appLogger) =>
-    appLogger.get("workflow", "version-graph").with({ versionId })
+    appLogger.get("version-graph").with({ versionId })
   );
 
 /**

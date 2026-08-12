@@ -44,7 +44,6 @@ describe("wfWorker", () => {
       },
     };
     const worker = wfWorker({
-      logger: { info: () => {}, warn: () => {}, error: () => {} },
       request: () => ({
         auth: "external",
         persistence,
@@ -90,7 +89,6 @@ describe("wfWorker", () => {
       }),
     };
     const worker = wfWorker({
-      logger: { info: () => {}, warn: () => {}, error: () => {} },
       request: () => ({
         auth: "external",
         persistence,

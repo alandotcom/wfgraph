@@ -12,7 +12,7 @@ import { generateId } from "@wfgraph/shared/utils/id";
 
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */
 const loggerFor = () =>
-  Effect.map(AppLogger, (appLogger) => appLogger.get("workflow", "create"));
+  Effect.map(AppLogger, (appLogger) => appLogger.get("create"));
 
 export const postWorkflowsCreate = Effect.fn("postWorkflowsCreate")(
   function* (body: { name: string; description?: string; graph: unknown }) {
@@ -59,10 +59,12 @@ export const postWorkflowsCreate = Effect.fn("postWorkflowsCreate")(
     });
 
     yield* logger.info("Workflow created", {
-      workflowId,
-      workflowName,
-      nodeCount: prepared.nodes.length,
-      edgeCount: prepared.edgeCount,
+      workflow: {
+        id: workflowId,
+        name: workflowName,
+        nodes: prepared.nodes.length,
+        edges: prepared.edgeCount,
+      },
     });
 
     return toWorkflowApiPayload(newWorkflow, null);

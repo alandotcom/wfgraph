@@ -54,7 +54,7 @@ export type IntegrationValidation =
   | { valid: false; reason: "unconfigured"; error: string }
   | { valid: false; reason: "invalid_ids"; invalidIds: string[] };
 
-const integrationValidationLogger = getAppLogger("workflow", "integration");
+const integrationValidationLogger = getAppLogger("validation");
 const STRICT_VALIDATION_ENV = "WORKFLOW_STRICT_INTEGRATION_VALIDATION";
 
 function shouldEnforceStrictValidation(

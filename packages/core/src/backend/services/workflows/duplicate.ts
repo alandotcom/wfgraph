@@ -68,7 +68,7 @@ function updateEdgeReferences(
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */
 const loggerFor = (workflowId: string) =>
   Effect.map(AppLogger, (appLogger) =>
-    appLogger.get("workflow", "duplicate").with({ workflowId })
+    appLogger.get("duplicate").with({ workflowId })
   );
 
 export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(

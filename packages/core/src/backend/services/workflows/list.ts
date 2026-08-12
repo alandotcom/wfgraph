@@ -6,7 +6,7 @@ import { toWorkflowSummaryPayload } from "#src/backend/services/workflows/mapper
 
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */
 const loggerFor = () =>
-  Effect.map(AppLogger, (appLogger) => appLogger.get("workflow", "list"));
+  Effect.map(AppLogger, (appLogger) => appLogger.get("list"));
 
 export const getWorkflows = Effect.fn("getWorkflows")(
   function* () {

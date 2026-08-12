@@ -15,7 +15,7 @@ type WorkflowResumeSuccess = {
 
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */
 const resumeLogger = Effect.map(AppLogger, (appLogger) =>
-  appLogger.get("workflow", "resume")
+  appLogger.get("resume")
 );
 
 /**

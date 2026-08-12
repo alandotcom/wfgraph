@@ -20,7 +20,7 @@ import { ExecutionRepo } from "#src/backend/services/executions/repo";
 
 /** This module's logger, as the Effect that produces it (see `list.ts`). */
 const loggerFor = Effect.map(AppLogger, (appLogger) =>
-  appLogger.get("workflow", "run-ending")
+  appLogger.get("run-ending")
 );
 
 /** A wait row belonging to a run being ended, which is cancelled with it. */

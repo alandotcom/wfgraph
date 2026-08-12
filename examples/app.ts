@@ -25,12 +25,21 @@ import {
   defineAction,
   defineEvent,
 } from "@wfgraph/core";
+import { configureWfGraphLogging } from "@wfgraph/core/logging";
 import { wfPostgres } from "@wfgraph/core/postgres";
 // The built-in integrations, as values. Nothing registers on import, so the line
 // that passes them to `createWfGraphApp` below is what turns them on and dropping it
 // is what turns them off.
 import { builtInIntegrations } from "@wfgraph/plugins";
 import { z } from "zod";
+
+// Workflow Graph asks LogTape for a logger and configures nothing, so where its
+// records go is this app's decision. One call installs the console setup it
+// ships: `LOG_LEVEL` picks the level, `LOG_FORMAT` picks pretty or JSON, and an
+// attached terminal picks pretty when neither is set. An app with its own
+// LogTape configuration drops this line and adds a sink for the "wfgraph"
+// category instead.
+configureWfGraphLogging();
 
 const DEFAULT_PORT = 4017;
 const DEFAULT_DATABASE_URL =

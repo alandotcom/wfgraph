@@ -116,7 +116,7 @@ function buildNextCursor(input: {
 /** This module's logger, as the Effect that produces it (see `services/workflows/workflow.ts`). */
 const loggerFor = (input: WorkflowExecutionsGlobalInput) =>
   Effect.map(AppLogger, (appLogger) =>
-    appLogger.get("workflow", "global-executions").with({
+    appLogger.get("global-executions").with({
       workflowFilterCount: input.workflowIds?.length ?? 0,
       statusFilterCount: input.statuses?.length ?? 0,
       hasCursor: input.cursor !== undefined,

@@ -177,7 +177,7 @@ export function buildIgnoredRunAuditMessage(input: {
 /** This module's logger, as the Effect that produces it (see `services/workflows/workflow.ts`). */
 const loggerFor = (workflowId: string) =>
   Effect.map(AppLogger, (appLogger) =>
-    appLogger.get("workflow", "run-rows").with({ workflowId })
+    appLogger.get("run-rows").with({ workflowId })
   );
 
 /**
