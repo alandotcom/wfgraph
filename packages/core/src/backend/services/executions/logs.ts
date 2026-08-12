@@ -15,7 +15,7 @@ function toIso(value: Date | null): string | null {
 /** This module's logger, as the Effect that produces it (see `services/workflows/workflow.ts`). */
 const loggerFor = (executionId: string) =>
   Effect.map(AppLogger, (appLogger) =>
-    appLogger.get("workflow", "execution-logs").with({ executionId })
+    appLogger.get("execution-logs").with({ executionId })
   );
 
 export const getExecutionLogs = Effect.fn("getExecutionLogs")(

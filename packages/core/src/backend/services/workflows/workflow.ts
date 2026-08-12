@@ -45,7 +45,7 @@ export const resolvePublishedVersion = (
  */
 const loggerFor = (workflowId: string) =>
   Effect.map(AppLogger, (appLogger) =>
-    appLogger.get("workflow", "service").with({ workflowId })
+    appLogger.get("workflow").with({ workflowId })
   );
 
 export const getWorkflow = Effect.fn("getWorkflow")(

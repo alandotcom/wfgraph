@@ -1,6 +1,12 @@
 // First, so the variables below are in place before anything reads them.
 import "../load-env";
 import { migrateWfGraphDatabase } from "@wfgraph/core/migrate";
+import { configureWfGraphLogging } from "@wfgraph/core/logging";
+
+// The migrator says what it is doing through LogTape, and Workflow Graph
+// installs no configuration of its own, so a caller that wants to read those
+// lines asks for them. An adopter's CI job writes this same line.
+configureWfGraphLogging();
 
 // `pnpm run db:migrate` against the dev database, and the same command by hand
 // against a deployed one. It goes through the published entry rather than

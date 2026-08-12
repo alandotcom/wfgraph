@@ -85,7 +85,7 @@ type WorkflowExecutionsDeleted = { success: true; deletedCount: number };
 /** This module's logger, as the Effect that produces it (see `services/workflows/workflow.ts`). */
 const loggerFor = (workflowId: string) =>
   Effect.map(AppLogger, (appLogger) =>
-    appLogger.get("workflow", "executions").with({ workflowId })
+    appLogger.get("executions").with({ workflowId })
   );
 
 /**

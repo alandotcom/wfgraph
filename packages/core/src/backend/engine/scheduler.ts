@@ -151,10 +151,7 @@ export class NodeScheduler {
       function* (this: NodeScheduler) {
         const { traversal, actions } = this.input;
 
-        yield* Effect.logDebug("Executing node");
-
         if (traversal.isCompleted(nodeId)) {
-          yield* Effect.logDebug("Skipping node already completed");
           return;
         }
 
@@ -186,10 +183,6 @@ export class NodeScheduler {
           node,
           nodeName
         ).pipe(
-          Effect.annotateLogs({
-            nodeName,
-            nodeType: node.data.type,
-          }),
           Effect.withSpan("wfgraph.workflow.node.execute", {
             attributes: {
               "wfgraph.node.id": nodeId,
@@ -201,14 +194,7 @@ export class NodeScheduler {
             },
           })
         );
-        const ran = yield* traversal.withNodeInProgress(
-          nodeId,
-          () => nodeExecution
-        );
-
-        if (!ran) {
-          yield* Effect.logDebug("Skipping node already in progress");
-        }
+        yield* traversal.withNodeInProgress(nodeId, () => nodeExecution);
       }.bind(this)
     );
 
@@ -236,7 +222,7 @@ export class NodeScheduler {
           ).pipe(Effect.annotateLogs({ error: Cause.squash(recoveryCause) }))
         )
       )
-    ).pipe(Effect.annotateLogs({ nodeId }));
+    ).pipe(Effect.annotateLogs({ node: { id: nodeId } }));
   }
 
   /**
@@ -398,9 +384,44 @@ export class NodeScheduler {
     node: WorkflowNode,
     nodeName: string
   ): Effect.Effect<void, EngineFailure> {
+    const actionType = actionTypeOf(node);
+    const kind = actionType ?? node.data.type;
+
+    /**
+     * The one record this node writes, whatever it did.
+     *
+     * Everything a reader wants about a node execution is here: what ran, how
+     * it ended, how long it took, and whichever of halting, cancelling or a
+     * condition applied. The engine used to say the same in four to six
+     * records, which is what buried the run.
+     */
+    const logNode = (
+      startedAt: number,
+      status: string,
+      extra: Record<string, unknown>
+    ) => {
+      const elapsedMs = Date.now() - startedAt;
+      return Effect.logInfo(
+        `${nodeName} (${kind}) ${status} ${elapsedMs}ms`
+      ).pipe(
+        Effect.annotateLogs({
+          node: {
+            id: nodeId,
+            name: nodeName,
+            type: node.data.type,
+            ...(actionType === undefined ? {} : { action: actionType }),
+            status,
+            ms: elapsedMs,
+            ...extra,
+          },
+        })
+      );
+    };
+
     const execute = Effect.gen(
       function* (this: NodeScheduler) {
         const { traversal, cancelBoundary } = this.input;
+        const startedAt = Date.now();
         const outcome = yield* this.runNodeWork(node, nodeName);
         const { result } = outcome;
 
@@ -408,6 +429,7 @@ export class NodeScheduler {
         // as failed without becoming available to downstream templates.
         if (outcome.unconfigured) {
           traversal.recordResult(nodeId, result);
+          yield* logNode(startedAt, "unconfigured", {});
           return;
         }
 
@@ -430,13 +452,14 @@ export class NodeScheduler {
           data: outputData,
         });
 
-        yield* Effect.logInfo("Node execution completed").pipe(
-          Effect.annotateLogs({
-            success: result.success,
-            haltBranch: outcome.haltBranch === true,
-            error: executionError(result),
-          })
-        );
+        const failure = executionError(result);
+        yield* logNode(startedAt, result.success ? "success" : "failed", {
+          ...(outcome.haltBranch === true ? { halt: true } : {}),
+          ...(isConditionNode(node)
+            ? { condition: outcome.conditionValue ?? null }
+            : {}),
+          ...(failure === undefined ? {} : { error: failure }),
+        });
 
         // A claimed run takes the Canceled outlet instead of whatever came next,
         // and a node that finishes after that stops where it stands.
@@ -446,14 +469,7 @@ export class NodeScheduler {
           return;
         }
 
-        if (!result.success) {
-          return;
-        }
-
-        if (outcome.haltBranch) {
-          yield* Effect.logInfo(
-            "Skipping downstream nodes because step requested halt"
-          );
+        if (!result.success || outcome.haltBranch) {
           return;
         }
 
@@ -463,38 +479,13 @@ export class NodeScheduler {
           outcome
         );
 
-        if (isConditionNode(node)) {
-          yield* Effect.logDebug("Condition node result").pipe(
-            Effect.annotateLogs({
-              conditionResult: outcome.conditionValue,
-            })
-          );
-          if (route === null) {
-            yield* Effect.logDebug(
-              "Condition result missing boolean value, skipping downstream nodes"
-            );
-            return;
-          }
-        }
-
+        // A Condition whose expression produced no boolean routes nowhere. The
+        // value it did produce is on the node's own record above.
         if (!route) {
           return;
         }
 
         const nextNodes = traversal.nextNodes(nodeId, route);
-        yield* Effect.logDebug(
-          isConditionNode(node)
-            ? "Condition branch selected, executing downstream nodes in parallel"
-            : "Executing downstream nodes in parallel"
-        ).pipe(
-          Effect.annotateLogs({
-            ...(route.kind === "condition"
-              ? { selectedBranch: route.branch }
-              : {}),
-            nextNodeCount: nextNodes.length,
-            nextNodeIds: nextNodes,
-          })
-        );
         traversal.markReadyForDownstream(nodeId);
         yield* this.runAll(nextNodes);
       }.bind(this)

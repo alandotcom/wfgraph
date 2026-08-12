@@ -6,6 +6,7 @@ import {
 } from "inngest/connect";
 import { serve as serveInngest } from "inngest/hono";
 import { getAppLogger } from "#src/backend/lib/logger";
+import { createInngestSdkLogger } from "#src/backend/lib/inngest/sdk-logger";
 
 export type { WorkerConnection } from "inngest/connect";
 
@@ -180,6 +181,10 @@ function createInngestClient(
     signingKey,
     signingKeyFallback:
       config.signingKeyFallback ?? process.env.INNGEST_SIGNING_KEY_FALLBACK,
+    // Registration, request parsing and the Connect handshake write here. Left
+    // unset they go to the SDK's own console logger, which prints the handshake
+    // as four unformatted lines and a bare object in the middle of the stream.
+    internalLogger: createInngestSdkLogger(),
   });
 }
 

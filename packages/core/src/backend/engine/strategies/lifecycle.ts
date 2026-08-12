@@ -11,8 +11,6 @@ function runLifecycle(ctx: NodeWorkContext) {
   return Effect.gen(function* () {
     const { node, nodeName, store, runtime, executionId, startPayload } = ctx;
 
-    yield* Effect.logDebug("Executing lifecycle node");
-
     // The entry node's output is the payload and nothing else. The Event's own
     // schema validated it at intake, which is the only gate it passes through,
     // and a key the engine added here would shadow a payload field of the same

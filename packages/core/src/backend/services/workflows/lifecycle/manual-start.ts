@@ -37,7 +37,7 @@ import {
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */
 const loggerFor = (workflowId: string) =>
   Effect.map(AppLogger, (appLogger) =>
-    appLogger.get("workflow", "manual-start").with({ workflowId })
+    appLogger.get("manual-start").with({ workflowId })
   );
 
 /**
@@ -244,10 +244,12 @@ export const postWorkflowExecute = Effect.fn("postWorkflowExecute")(
     }
 
     yield* logger.info("Workflow execute request received", {
-      workflowName: workflow.name,
-      runMode,
-      eventName,
-      payloadKeys: Object.keys(payload),
+      request: {
+        workflowName: workflow.name,
+        runMode,
+        eventName,
+        payloadKeys: Object.keys(payload),
+      },
     });
 
     const started = yield* startWithConcurrency({

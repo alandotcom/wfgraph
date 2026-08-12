@@ -32,7 +32,7 @@ import { getErrorMessage } from "@wfgraph/shared/utils";
 
 const loggerFor = (workflowId: string) =>
   Effect.map(AppLogger, (appLogger) =>
-    appLogger.get("workflow", "publish").with({ workflowId })
+    appLogger.get("publish").with({ workflowId })
   );
 
 const publishOnlyChecks = [checkUnreachableSubtrees] as const;
@@ -156,9 +156,11 @@ export const publishWorkflow = Effect.fn("publishWorkflow")(
         ? "Workflow publish reused existing version"
         : "Workflow published",
       {
-        versionId: published.version.id,
-        version: published.version.version,
-        ...(matching ? {} : { nodeCount: prepared.nodes.length }),
+        version: {
+          id: published.version.id,
+          number: published.version.version,
+          ...(matching ? {} : { nodes: prepared.nodes.length }),
+        },
       }
     );
 

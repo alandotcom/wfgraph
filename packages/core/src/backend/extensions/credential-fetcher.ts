@@ -19,7 +19,7 @@ import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import type { WfGraphRuntime } from "#src/backend/runtime";
 import { getAppLogger } from "#src/backend/lib/logger";
 
-const credentialFetcherLogger = getAppLogger("credentials", "fetcher");
+const credentialFetcherLogger = getAppLogger("credentials");
 
 /** A handler's own credential vocabulary, which its integration declares. */
 export type WorkflowCredentials = Record<string, string | undefined>;

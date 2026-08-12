@@ -5,7 +5,10 @@ import { Extensions } from "#src/backend/lib/effect/extensions";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
 import type { InngestServeHandler } from "#src/backend/lib/inngest/client";
 import { getAppLogger } from "#src/backend/lib/logger";
-import { isNil, omitBy } from "es-toolkit";
+import {
+  createRequestEvent,
+  type RequestEvent,
+} from "#src/backend/lib/http/request-event";
 import {
   type Authorize,
   UNAUTHORIZED_BODY,
@@ -40,19 +43,7 @@ const readTokenParams = Schema.decodeUnknownResult(
   readParams
 );
 
-const httpLogger = getAppLogger("http", "hono");
-
-const BODY_LOG_LIMIT = 8192;
-const isDevelopmentEnvironment = ["development", "dev"].includes(
-  (process.env.NODE_ENV ?? "").trim().toLowerCase()
-);
-const LOG_HTTP_BODIES = isDevelopmentEnvironment;
-const JSON_CONTENT_TYPES = [
-  "application/json",
-  "application/problem+json",
-  "application/ld+json",
-];
-const METHODS_WITH_BODY = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const httpLogger = getAppLogger("http");
 
 /**
  * The RPC procedures the editor's run panel reads on a timer while a run is on
@@ -67,37 +58,19 @@ const POLLED_RPC_PROCEDURES = new Set([
   "workflow/getExecutionStatus",
 ]);
 
-function isPolledProcedure(path: string): boolean {
+/**
+ * The procedure a path addresses, for example "workflow/create" out of
+ * "/api/rpc/workflow/create". Null for every path that is not an RPC call.
+ */
+function rpcProcedureOf(path: string): string | null {
   const rpcMarker = "/rpc/";
   const procedureStart = path.indexOf(rpcMarker);
-  return (
-    procedureStart >= 0 &&
-    POLLED_RPC_PROCEDURES.has(path.slice(procedureStart + rpcMarker.length))
-  );
-}
-
-function isJsonContentType(contentType: string | undefined): boolean {
-  if (!contentType) {
-    return false;
-  }
-  const normalized = contentType.toLowerCase();
-  return JSON_CONTENT_TYPES.some((jsonType) => normalized.includes(jsonType));
-}
-
-function truncateTextForLogs(text: string): {
-  value: string;
-  truncated: boolean;
-  originalLength: number;
-} {
-  if (text.length <= BODY_LOG_LIMIT) {
-    return { value: text, truncated: false, originalLength: text.length };
+  if (procedureStart < 0) {
+    return null;
   }
 
-  return {
-    value: text.slice(0, BODY_LOG_LIMIT),
-    truncated: true,
-    originalLength: text.length,
-  };
+  const procedure = path.slice(procedureStart + rpcMarker.length);
+  return procedure || null;
 }
 
 /**
@@ -124,68 +97,6 @@ async function parseJsonObjectBody(
   }
 
   return { ok: true, data: body };
-}
-
-function safeParseJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-async function getRequestLogBody(req: Request): Promise<unknown> {
-  if (!METHODS_WITH_BODY.has(req.method.toUpperCase())) {
-    return undefined;
-  }
-
-  const contentType = req.headers.get("content-type") ?? undefined;
-  if (!isJsonContentType(contentType)) {
-    return undefined;
-  }
-
-  const rawBody = await req.clone().text();
-  if (!rawBody) {
-    return undefined;
-  }
-
-  const truncated = truncateTextForLogs(rawBody);
-  const parsedValue = safeParseJson(truncated.value);
-
-  if (!truncated.truncated) {
-    return parsedValue;
-  }
-
-  return {
-    truncated: true,
-    originalLength: truncated.originalLength,
-    value: parsedValue,
-  };
-}
-
-async function getResponseLogBody(res: Response): Promise<unknown> {
-  const contentType = res.headers.get("content-type") ?? undefined;
-  if (!isJsonContentType(contentType)) {
-    return undefined;
-  }
-
-  const rawBody = await res.clone().text();
-  if (!rawBody) {
-    return undefined;
-  }
-
-  const truncated = truncateTextForLogs(rawBody);
-  const parsedValue = safeParseJson(truncated.value);
-
-  if (!truncated.truncated) {
-    return parsedValue;
-  }
-
-  return {
-    truncated: true,
-    originalLength: truncated.originalLength,
-    value: parsedValue,
-  };
 }
 
 export type CreateApiAppOptions = {
@@ -244,8 +155,36 @@ export function machineRoutes(options: {
 }
 
 type ApiEnv = {
-  Variables: { wfgraphMachineRoute?: true };
+  Variables: {
+    wfgraphMachineRoute?: true;
+    /** The record this request will write, shared with the oRPC handler. */
+    wfgraphRequestEvent: RequestEvent;
+  };
 };
+
+/** How much of a refusal's own wording reaches the log line. */
+const ERROR_MESSAGE_LIMIT = 200;
+
+/**
+ * The reason a refusal gives, for a route that answers without going through
+ * the oRPC handler: a 404, the auth gate's 401, the wait-resume route's 400.
+ * An oRPC procedure puts a better-typed reason on the request event itself.
+ */
+async function readRefusalMessage(res: Response): Promise<string | undefined> {
+  if (!(res.headers.get("content-type") ?? "").includes("json")) {
+    return undefined;
+  }
+
+  try {
+    const body = readJsonObject(await res.clone().json());
+    const reason = body?.error ?? body?.message;
+    return typeof reason === "string"
+      ? reason.slice(0, ERROR_MESSAGE_LIMIT)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export function createApiApp(options: CreateApiAppOptions) {
   const { basePath, authorize, runtime, inngestHandler } = options;
@@ -255,45 +194,63 @@ export function createApiApp(options: CreateApiAppOptions) {
     serveInngest: inngestHandler !== undefined,
   });
 
-  // One record per request, written once the answer is known. The message says
-  // what happened and the properties carry the payloads, which in development
-  // is the part worth reading.
+  // One record per request, written once the answer is known. Everything the
+  // request learned about itself on the way through is on the event: the
+  // procedure it addressed, and the reason it was refused. No payload is
+  // logged. A body large enough to matter is large enough to bury the line
+  // beside it, and both directions are already readable from the client.
   app.use("*", async (c, next) => {
     const startTime = Date.now();
     const method = c.req.method.toUpperCase();
     const path = c.req.path;
-    const requestBody = LOG_HTTP_BODIES
-      ? await getRequestLogBody(c.req.raw)
-      : undefined;
+    const procedure = rpcProcedureOf(path);
+    const event = createRequestEvent();
+    c.set("wfgraphRequestEvent", event);
+    event.set({
+      http: { method, path },
+      ...(procedure === null ? {} : { rpc: { procedure } }),
+    });
 
     try {
       await next();
     } catch (error) {
+      const elapsedMs = Date.now() - startTime;
+      event.set({
+        http: { method, path, ms: elapsedMs },
+        error: { message: getErrorMessage(error) },
+      });
       httpLogger.error(
-        `${method} ${path} threw after ${Date.now() - startTime}ms: ${getErrorMessage(error)}`,
-        omitBy({ requestBody, error }, isNil)
+        `${method} ${path} threw after ${elapsedMs}ms`,
+        event.fields()
       );
       throw error;
     }
 
     const status = c.res.status;
-    // A refusal carries its reason in its body, and that is the one payload
-    // worth reading back in production, where the rest stay unread.
-    const responseBody =
-      LOG_HTTP_BODIES || status >= 400
-        ? await getResponseLogBody(c.res)
-        : undefined;
-    const summary = `${method} ${path} ${status} ${Date.now() - startTime}ms`;
-    const bodies = omitBy({ requestBody, responseBody }, isNil);
+    const elapsedMs = Date.now() - startTime;
+    event.set({ http: { method, path, status, ms: elapsedMs } });
+
+    // A procedure records its own refusal, which names the failure kind and the
+    // input. Every other route answers with a body, and its wording is the only
+    // account of why.
+    if (status >= 400 && event.fields().error === undefined) {
+      const message = await readRefusalMessage(c.res);
+      if (message !== undefined) {
+        event.set({ error: { message } });
+      }
+    }
+
+    const summary = `${method} ${path} ${status} ${elapsedMs}ms`;
+    const fields = event.fields();
 
     if (status >= 500) {
-      httpLogger.error(summary, bodies);
+      httpLogger.error(summary, fields);
     } else if (status >= 400) {
-      httpLogger.warn(summary, bodies);
-    } else if (isPolledProcedure(path)) {
-      httpLogger.trace(summary, bodies);
+      httpLogger.warn(summary, fields);
+    } else if (procedure !== null && POLLED_RPC_PROCEDURES.has(procedure)) {
+      httpLogger.trace(summary, fields);
     } else {
-      httpLogger.info(summary, bodies);
+      httpLogger.info(summary, fields);
     }
   });
 
@@ -339,7 +296,11 @@ export function createApiApp(options: CreateApiAppOptions) {
     .use("/rpc/*", async (c, next) => {
       const { matched, response } = await rpcHandler.handle(c.req.raw, {
         prefix: resolvePrefix("/rpc"),
-        context: { headers: c.req.raw.headers, runtime },
+        context: {
+          headers: c.req.raw.headers,
+          runtime,
+          requestEvent: c.get("wfgraphRequestEvent"),
+        },
       });
 
       if (matched) {

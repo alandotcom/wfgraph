@@ -17,7 +17,7 @@ const KEY_LENGTH = 32;
 const IV_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
 const ENCRYPTION_KEY_ENV = "INTEGRATION_ENCRYPTION_KEY";
-const cipherLogger = getAppLogger("integrations", "cipher");
+const cipherLogger = getAppLogger("encryption");
 
 export type EncryptionRuntimeConfig = {
   /**

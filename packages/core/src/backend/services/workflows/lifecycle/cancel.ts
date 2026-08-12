@@ -41,7 +41,7 @@ export const requestCanceledOutlet = Effect.fn("requestCanceledOutlet")(
     entityValue: string;
   }) {
     const repo = yield* ExecutionRepo;
-    const logger = (yield* AppLogger).get("workflow", "lifecycle-cancel");
+    const logger = (yield* AppLogger).get("lifecycle-cancel");
 
     const claimed = yield* repo.requestCancelForEntity({
       workflowId: input.workflowId,
@@ -117,7 +117,7 @@ const stopClaimedRun = Effect.fn("stopClaimedRun")(function* (input: {
 }) {
   const repo = yield* ExecutionRepo;
   const inngest = yield* InngestClient;
-  const logger = (yield* AppLogger).get("workflow", "lifecycle-cancel");
+  const logger = (yield* AppLogger).get("lifecycle-cancel");
 
   yield* Effect.gen(function* () {
     yield* inngest.sendBranchKill({

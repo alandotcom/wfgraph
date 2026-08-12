@@ -21,9 +21,9 @@ import {
 } from "#src/backend/lib/inngest/client";
 import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 import {
-  configureAppLogging,
-  configureAppLoggingWithBridge,
-} from "#src/backend/lib/logger";
+  configureLoggingWithBridge,
+  warnWhenLoggingUnconfigured,
+} from "#src/backend/lib/log-config";
 import { createWfGraphRuntime } from "#src/backend/runtime";
 import type { WfGraphPersistence } from "#src/backend/persistence/types";
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
@@ -64,8 +64,8 @@ export function wfWorker<Env>(
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const extensions = assembleExtensions(options.extensions ?? {});
 
-  if (options.logger) configureAppLoggingWithBridge(options.logger);
-  else configureAppLogging();
+  if (options.logger) configureLoggingWithBridge(options.logger);
+  else warnWhenLoggingUnconfigured();
 
   return {
     fetch: async (request, env) => {

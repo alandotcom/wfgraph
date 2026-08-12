@@ -24,7 +24,7 @@ import {
 } from "@wfgraph/shared/conditions/conditions";
 import type { EventSubscription } from "@wfgraph/shared/lifecycle/wait-subscription";
 
-const logger = getAppLogger("workflow", "wait-match");
+const logger = getAppLogger("waits");
 
 /**
  * One subscription as the wait row holds it.

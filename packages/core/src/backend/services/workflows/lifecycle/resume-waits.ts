@@ -122,7 +122,7 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
   waitState: CandidateWaitState;
 }) {
   const { waitState, eventType } = input;
-  const logger = (yield* AppLogger).get("workflow", "wait-resume");
+  const logger = (yield* AppLogger).get("wait-resume");
   const resumeToken = waitState.resumeToken;
   if (!resumeToken) {
     // A row with no token can never be woken by an Event, whatever arrives, so

@@ -186,6 +186,29 @@ takes a durability runtime, an Effect-native store for the run's trace, and a
 fills all three and runs the resulting Effect on the app runtime. The engine imports neither
 the database, the assembled surface, Inngest, nor Drizzle.
 
+**The host configures logtape, and a record is one unit of work** (ADR-0013).
+`backend/lib/logger.ts` is `getAppLogger` and the `wfgraph` root, and it calls no
+`configure`. Configuration lives in two places a host reaches on purpose: the published
+`@wfgraph/core/logging` entry (`configureWfGraphLogging`), and `backend/lib/log-config.ts`
+(`configureLoggingWithBridge` for the `logger` option, plus the one-time notice
+`warnWhenLoggingUnconfigured` prints when neither was used). Keep `@logtape/pretty` out of
+everything but `src/logging.ts`: the Worker bundle reaches `log-config.ts` and would carry
+`node:util` with it.
+
+Two rules for a call site. Write one record per unit of work, and put the fields on it
+rather than narrating the steps that produced it; `engine/scheduler.ts`'s `logNode` is the
+worked example, and the run's two records in `engine/core.ts` are the other. Group a record's own
+fields by subject (`http`, `rpc`, `run`, `node`, `outcome`, `error`) rather than flat,
+because the pretty formatter prints a line per top-level field; a JSON line carries the
+group as a nested object a store addresses as `run.execution`. A single correlation key
+carried by `logger.with({ workflowId })` stays flat, since it is one line and grouping it
+would be replaced by any record annotating the same key. A category is one level deep
+under `wfgraph`, since `categoryWidth` is paid on every line.
+
+**Never log a payload.** A request body, a response body, a step output and an Event
+payload are each stored where they can be read whole, and one of them printed at
+`inspect` depth buries the fifty lines around it. Name its size or its keys.
+
 **Third-party libraries.** Check official usage with Context7 or Exa before writing against
 a library, and never take a version from memory. Prefer latest stable. Use Base UI for UI
 primitives and do not introduce Radix. Bundle size is not a concern here.

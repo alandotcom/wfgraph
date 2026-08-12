@@ -122,8 +122,6 @@ beforeAll(async () => {
     }),
     encryption: { key: "b".repeat(64) },
     inngest: { id: "wfgraph-node-test", isDev: true },
-    // A logger that drops everything, so the suite gets no console sink.
-    logger: { info: () => {}, warn: () => {}, error: () => {} },
   });
 
   const listener = createRequestListener(wfgraph);

@@ -30,7 +30,7 @@ import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
 import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
 import { compileEventDataEquals } from "@wfgraph/shared/lifecycle/inngest-event-data";
 
-const logger = getAppLogger("workflow", "event-listener");
+const logger = getAppLogger("events");
 
 /**
  * Reads the payload off an Inngest event.
