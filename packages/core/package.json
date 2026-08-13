@@ -1,6 +1,6 @@
 {
   "name": "@wfgraph/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Workflow Graph's backend: the run engine, the authoring vocabulary and the app a host mounts",
   "keywords": [
     "automation",
