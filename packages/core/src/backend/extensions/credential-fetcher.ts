@@ -32,7 +32,7 @@ export type WorkflowCredentials = Record<string, string | undefined>;
  * node's failure, and the message names the store rather than anything the
  * builder configured.
  */
-export class CredentialsUnavailable extends Schema.TaggedErrorClass<CredentialsUnavailable>()(
+export class CredentialsUnavailable extends Schema.TaggedError<CredentialsUnavailable>()(
   "CredentialsUnavailable",
   {
     integrationId: Schema.String,

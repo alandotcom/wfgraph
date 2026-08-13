@@ -124,14 +124,14 @@ describe("defineStep", () => {
       success: false,
       error: {
         message:
-          'Step "demo/send" received an invalid configuration: to: Expected string, got 7',
+          'Step "demo/send" received an invalid configuration: to: Expected string',
       },
     });
   });
 
   // The message a failed decode carries is written into the run log and handed
-  // back over HTTP, so it names the field and stops short of quoting whatever
-  // arrived in it.
+  // back over HTTP, so it names the field and holds nothing of what arrived in
+  // it. The 200-character `to` is the value that would show up if it did.
   it("keeps a rejected value out of the message it writes down", async () => {
     const result = await run({
       to: "x".repeat(200),
@@ -144,7 +144,7 @@ describe("defineStep", () => {
       success: false,
       error: {
         message:
-          'Step "demo/send" received an invalid configuration: note: Expected string, got 5',
+          'Step "demo/send" received an invalid configuration: note: Expected string',
       },
     });
   });

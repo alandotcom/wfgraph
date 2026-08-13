@@ -16,7 +16,7 @@ describe("getErrorMessage", () => {
     expect(getErrorMessage(withCause)).toBe("Request failed: socket hang up");
   });
 
-  // A `Schema.TaggedErrorClass` declares no message field, so `.message` is ""
+  // A `Schema.TaggedError` declares no message field, so `.message` is ""
   // and `.name` is the tag. The seam failures the backend answers with are all
   // of that shape, and what this builds lands on a run-log row.
   it("names an Error whose own message is empty by its tag", () => {

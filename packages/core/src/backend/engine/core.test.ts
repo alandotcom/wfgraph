@@ -699,7 +699,7 @@ describe("run persistence through the store port", () => {
     });
   });
 
-  // Every seam failure the backend answers with is a `Schema.TaggedErrorClass`,
+  // Every seam failure the backend answers with is a `Schema.TaggedError`,
   // which carries its text on `cause` and leaves `.message` empty. A row closed
   // with that message alone is a red node with no sentence beside it.
   it("closes a node's row with a sentence when the error carries an empty message", async () => {

@@ -44,7 +44,7 @@ export type ServiceFailureKind =
  * they are constructed in a service and read at the promise seam, both inside
  * one process. Stage 4 of ADR-0002 owns the wire representation, when Effect
  * Schema reaches the RPC contracts and a failure has to survive the trip to a
- * client. `Schema.TaggedErrorClass` rather than `Data.TaggedError` is the
+ * client. `Schema.TaggedError` rather than `Data.TaggedError` is the
  * deliberate choice that leaves that door open.
  */
 
@@ -77,7 +77,7 @@ export type ServiceFailurePayload = {
 };
 
 /** The caller's input, or the resource it points at, does not pass validation. */
-export class InvalidInput extends Schema.TaggedErrorClass<InvalidInput>()(
+export class InvalidInput extends Schema.TaggedError<InvalidInput>()(
   "InvalidInput",
   {
     error: Schema.String,
@@ -100,7 +100,7 @@ export class InvalidInput extends Schema.TaggedErrorClass<InvalidInput>()(
  * body that `getRpcErrorMessage` reads, which appends the ids to the message it
  * builds and is the only thing that reads them today.
  */
-export class IntegrationValidationFailed extends Schema.TaggedErrorClass<IntegrationValidationFailed>()(
+export class IntegrationValidationFailed extends Schema.TaggedError<IntegrationValidationFailed>()(
   "IntegrationValidationFailed",
   {
     error: Schema.String,
@@ -119,7 +119,7 @@ export class IntegrationValidationFailed extends Schema.TaggedErrorClass<Integra
 }
 
 /** The caller's credentials did not authenticate. */
-export class Unauthorized extends Schema.TaggedErrorClass<Unauthorized>()(
+export class Unauthorized extends Schema.TaggedError<Unauthorized>()(
   "Unauthorized",
   {
     error: Schema.String,
@@ -133,7 +133,7 @@ export class Unauthorized extends Schema.TaggedErrorClass<Unauthorized>()(
 }
 
 /** The addressed resource does not exist. */
-export class NotFound extends Schema.TaggedErrorClass<NotFound>()("NotFound", {
+export class NotFound extends Schema.TaggedError<NotFound>()("NotFound", {
   error: Schema.String,
 }) {
   readonly kind: Kind<"not_found"> = "not_found";
@@ -144,7 +144,7 @@ export class NotFound extends Schema.TaggedErrorClass<NotFound>()("NotFound", {
 }
 
 /** The request collides with existing state, such as a duplicate name. */
-export class Conflict extends Schema.TaggedErrorClass<Conflict>()("Conflict", {
+export class Conflict extends Schema.TaggedError<Conflict>()("Conflict", {
   error: Schema.String,
 }) {
   readonly kind: Kind<"conflict"> = "conflict";
@@ -160,7 +160,7 @@ export class Conflict extends Schema.TaggedErrorClass<Conflict>()("Conflict", {
  * `cause` holds whatever was thrown underneath, so the operator-facing log keeps
  * the detail while the caller-facing `error` stays a sentence a UI can show.
  */
-export class InternalFailure extends Schema.TaggedErrorClass<InternalFailure>()(
+export class InternalFailure extends Schema.TaggedError<InternalFailure>()(
   "InternalFailure",
   {
     error: Schema.String,

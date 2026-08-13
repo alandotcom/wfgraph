@@ -130,9 +130,11 @@ something to learn:
   worked example.
 
 **A message never quotes the value it rejected.** Render a decode failure a person will read
-with `formatSchemaFailure` (`packages/shared/src/types/schema-message.ts`); Effect's own
-renderer prints the value in full, and these strings are persisted as run errors and
-answered over HTTP.
+with `formatSchemaFailure` (`packages/shared/src/types/schema-message.ts`), since these
+strings are persisted as run errors and answered over HTTP. Effect keeps the rejected input
+out of its own messages unless a decode passes `reportInput`, and no decode here passes it,
+so what this adds is length: a union that matched nothing is named by its kind, and the
+issues past the third are counted.
 
 **Timestamps cross through a codec.** `packages/shared/src/types/timestamp.ts` owns the one
 ISO-string-to-`Date` conversion, and `isoTimestampString` is the spelling that also carries
