@@ -106,7 +106,7 @@ describe("defineStep and the JSON codec", () => {
       success: false,
       error: {
         message:
-          'Step "demo/clock" returned a value its output schema cannot encode: at: Expected a valid value, got "not a date"',
+          'Step "demo/clock" returned a value its output schema cannot encode: at: Expected a valid value',
       },
     });
   });
@@ -162,7 +162,7 @@ describe("defineStep and an optional config field", () => {
       success: false,
       error: {
         message:
-          'Step "demo/optional" received an invalid configuration: note: Expected string | null, got undefined',
+          'Step "demo/optional" received an invalid configuration: note: Expected string | null',
       },
     });
   });

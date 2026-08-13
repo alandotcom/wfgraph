@@ -21,7 +21,6 @@ import type { JsonObject } from "@wfgraph/shared/types/json";
 import type { StringPath } from "@wfgraph/shared/types/payload-path";
 import {
   formatSchemaFailure,
-  formatSchemaFailurePaths,
   formatStandardIssuePath,
 } from "@wfgraph/shared/types/schema-message";
 import {
@@ -131,11 +130,11 @@ export type AnyEventDefinition = EventDefinition<JsonObject>;
  *
  * Two strings for two audiences. `error` travels to the sender, which is a third
  * party across origins, so it names paths and expectations and quotes nothing of
- * what arrived. `detail` never leaves the process: it carries the bounded
- * rendering an operator needs to tell a null from a number, since intake stores
- * no payload on a refusal and there is no artifact to go back to.
+ * what arrived. `detail` stays in the process, which is what lets it carry a
+ * foreign library's own messages for the operator. An Effect payload schema
+ * renders both through `formatSchemaFailure`, so the two read alike there.
  */
-export class PayloadRejected extends Schema.TaggedErrorClass<PayloadRejected>()(
+export class PayloadRejected extends Schema.TaggedError<PayloadRejected>()(
   "PayloadRejected",
   {
     eventName: Schema.String,
@@ -174,19 +173,17 @@ function buildPayloadGate(
 
   // An Effect schema is decoded directly for the message rather than for the
   // options: the bridge's defaults are these defaults, but `~standard.validate`
-  // hands back its own rendered strings, and Effect's renderer prints the value it
-  // rejected. A direct decode keeps the Effect issue, which this project renders
-  // itself.
+  // hands back strings it rendered itself, which spell out the shape of every
+  // arm a union offered. A direct decode keeps the Effect issue, which this
+  // project renders to a line of its own. The sender and the operator read the
+  // same string here, since neither carries the payload.
   if (isEffectSchema(authored)) {
     const decode = Schema.decodeUnknownEffect(authored, { errors: "all" });
     return (payload) =>
       decode(payload).pipe(
         Effect.asVoid,
         Effect.catchTag("SchemaError", (failure) =>
-          reject(
-            formatSchemaFailurePaths(failure.issue),
-            formatSchemaFailure(failure.issue)
-          )
+          reject(formatSchemaFailure(failure.issue))
         )
       );
   }

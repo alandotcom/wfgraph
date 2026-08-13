@@ -68,7 +68,7 @@ const decode = Schema.decodeUnknownResult(
 
 describe("lifecycleRulesSchema", () => {
   it("decodes the rules the panel writes", () => {
-    const decoded = Schema.decodeUnknownSync(
+    const decoded = Schema.decodeSync(
       lifecycleRulesSchema,
       rejectUnknownKeys
     )({

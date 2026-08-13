@@ -236,7 +236,7 @@ describe("node data failure messages", () => {
 
     expect(message).not.toContain('"action"');
     expect(message).toBe(
-      "config.lifecycleRules: Expected an object | undefined, got 42"
+      "config.lifecycleRules: Expected an object | undefined"
     );
   });
 

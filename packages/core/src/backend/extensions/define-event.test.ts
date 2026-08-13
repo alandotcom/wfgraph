@@ -242,18 +242,18 @@ describe("the intake gate", () => {
   });
 
   // Drift on a declared field is the half that still fails loudly, and the
-  // message is `formatSchemaFailure`'s: paths and what was expected, with the
-  // rejected value cut down to its kind.
+  // message is `formatSchemaFailure`'s: the path and what was expected of it.
   it("refuses a declared field of the wrong type, naming its path", () => {
     expect(gate({ event: 7, appointment: { id: "appt_1" } })).toBe(
       "event: Expected string; appointment.priority: Missing key"
     );
   });
 
-  // Intake stores no payload on a refusal, so the operator's only artifact is
-  // the log line. It carries the bounded rendering, which is what tells a null
-  // from a number; the answer to the sender still quotes nothing.
-  it("carries a bounded rendering for the log beside the paths-only answer", () => {
+  // An Effect payload schema renders through `formatSchemaFailure`, which holds
+  // nothing of what arrived, so the sender's answer and the operator's log line
+  // are the same string. A payload schema from a foreign library is the case
+  // where the two still differ, since its own messages stay in `detail`.
+  it("keeps the payload out of both the answer and the log line", () => {
     const rejected = Effect.runSync(
       appointmentCreated
         .decodePayload({ event: 7, appointment: { id: "appt_1" } })
@@ -265,8 +265,9 @@ describe("the intake gate", () => {
         )
     );
 
-    expect(rejected?.detail).toContain("7");
     expect(rejected?.error).not.toContain("7");
+    expect(rejected?.detail).not.toContain("7");
+    expect(rejected?.detail).toBe(rejected?.error);
   });
 });
 

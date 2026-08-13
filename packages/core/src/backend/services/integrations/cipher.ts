@@ -68,7 +68,7 @@ export function assertValidEncryptionKey(
  * process holding the wrong `encryption.key`, which is why it leaves the read
  * rather than becoming one more empty config.
  */
-export class EncryptionKeyMismatch extends Schema.TaggedErrorClass<EncryptionKeyMismatch>()(
+export class EncryptionKeyMismatch extends Schema.TaggedError<EncryptionKeyMismatch>()(
   "EncryptionKeyMismatch",
   {
     cause: Schema.Defect(),
@@ -78,7 +78,7 @@ export class EncryptionKeyMismatch extends Schema.TaggedErrorClass<EncryptionKey
 /**
  * What a person can do about a key mismatch, for whoever the failure reaches.
  *
- * A constant rather than the class's `message`, since a `Schema.TaggedErrorClass`
+ * A constant rather than the class's `message`, since a `Schema.TaggedError`
  * declares no message field and its `.message` is always the empty string. Every
  * handler that translates this failure words it from here.
  */

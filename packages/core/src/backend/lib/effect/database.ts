@@ -9,7 +9,7 @@ import type { WfGraphDatabase } from "#src/backend/lib/db/index";
  * repository inspects serialization failures so it can retry the whole decision;
  * services otherwise log database failures and answer "internal".
  */
-export class DatabaseError extends Schema.TaggedErrorClass<DatabaseError>()(
+export class DatabaseError extends Schema.TaggedError<DatabaseError>()(
   "DatabaseError",
   {
     cause: Schema.Defect(),

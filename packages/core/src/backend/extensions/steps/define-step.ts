@@ -61,7 +61,7 @@ import type { JsonSafe } from "@wfgraph/shared/types/json";
  * becomes one of these in the plugin that knows how to read its system's error
  * body, which is the only place that reading can happen accurately.
  */
-export class StepFailure extends Schema.TaggedErrorClass<StepFailure>()(
+export class StepFailure extends Schema.TaggedError<StepFailure>()(
   "StepFailure",
   {
     message: Schema.String,
@@ -477,19 +477,22 @@ export function buildStep<TInput, TOutput>(
 
       // The call is wrapped too, because a plain function may throw before it
       // answers anything. An `Effect.fn` handler cannot, so this changes nothing
-      // for one.
-      const answer = yield* Effect.try({
+      // for one. `toHandlerEffect` runs inside the same thunk so that a handler
+      // answering a Promise hands one Effect back here rather than parking the
+      // Promise in a success channel for the next statement to unwrap.
+      const data = yield* Effect.try({
         try: () =>
-          definition.handler({
-            ...toHandlerBag(input, context, integrationId),
-            credentials,
-            readCredentials: () => runToPromise(credentials),
-            step: nodeStepApi(steps),
-          }),
+          toHandlerEffect(
+            definition.handler({
+              ...toHandlerBag(input, context, integrationId),
+              credentials,
+              readCredentials: () => runToPromise(credentials),
+              step: nodeStepApi(steps),
+            }),
+            toFailure
+          ),
         catch: toFailure,
-      });
-
-      const data = yield* toHandlerEffect(answer, toFailure);
+      }).pipe(Effect.flatten);
 
       // A handler that answered with something its output schema cannot encode
       // will answer with it again on every attempt, so this fails the node once

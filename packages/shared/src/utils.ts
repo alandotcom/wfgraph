@@ -89,7 +89,7 @@ export function getErrorMessage(error: unknown): string {
   }
 
   if (error instanceof Error) {
-    // A `Schema.TaggedErrorClass` declares no message field, so its `.message`
+    // A `Schema.TaggedError` declares no message field, so its `.message`
     // is the empty string and its `.name` is the tag. Falling back to the name
     // is what keeps a run-log row and a terminal record a sentence rather than
     // a blank, on both sides of the colon.

@@ -344,7 +344,7 @@ describe("defineAction with an output schema", () => {
       success: false,
       error: {
         message:
-          'Action "custom/cannot-encode" returned a value its output schema cannot encode: at: Expected a valid value, got "not a date"',
+          'Action "custom/cannot-encode" returned a value its output schema cannot encode: at: Expected a valid value',
       },
     });
   });

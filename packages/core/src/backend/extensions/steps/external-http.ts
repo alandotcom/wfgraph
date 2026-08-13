@@ -96,7 +96,7 @@ const RETRY_AFTER_CEILING_SECONDS = 10;
 const RETRY_TOTAL_BUDGET = Duration.seconds(10);
 
 /** The request never got an answer: nothing opened, or the timeout fired. */
-export class ExternalUnreachable extends Schema.TaggedErrorClass<ExternalUnreachable>()(
+export class ExternalUnreachable extends Schema.TaggedError<ExternalUnreachable>()(
   "ExternalUnreachable",
   {
     message: Schema.String,
@@ -112,11 +112,11 @@ export class ExternalUnreachable extends Schema.TaggedErrorClass<ExternalUnreach
  * system sent no `Retry-After` or sent it in some other form, such as the
  * HTTP-date one, which none of these systems uses and this module does not read.
  */
-export class ExternalRejected extends Schema.TaggedErrorClass<ExternalRejected>()(
+export class ExternalRejected extends Schema.TaggedError<ExternalRejected>()(
   "ExternalRejected",
   {
     status: Schema.Finite,
-    // `TaggedErrorClass` wants a schema per field and shared exports none for
+    // `TaggedError` wants a schema per field and shared exports none for
     // `JsonValue`, so the payload is described with Effect's own JSON schema.
     payload: Schema.UndefinedOr(Schema.MutableJson),
     retryAfterSeconds: Schema.UndefinedOr(Schema.Finite),
@@ -124,7 +124,7 @@ export class ExternalRejected extends Schema.TaggedErrorClass<ExternalRejected>(
 ) {}
 
 /** A success status whose body is not the shape the caller asked for. */
-export class ExternalUnreadable extends Schema.TaggedErrorClass<ExternalUnreadable>()(
+export class ExternalUnreadable extends Schema.TaggedError<ExternalUnreadable>()(
   "ExternalUnreadable",
   {
     status: Schema.Finite,
@@ -253,7 +253,7 @@ export function parsePayload<T>(
   schema: InputSchema<T>
 ): T | undefined {
   if (isEffectSchema<T>(schema)) {
-    return Option.getOrUndefined(Schema.decodeUnknownOption(schema)(payload));
+    return Option.getOrUndefined(Schema.decodeOption(schema)(payload));
   }
 
   const parsed = schema["~standard"].validate(payload);

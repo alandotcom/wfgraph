@@ -88,7 +88,7 @@ export function invalidConfigMessage(subject: string, failure: string): string {
  * What a handler's throw becomes on the node's run-log row.
  *
  * The shared reader is used because a throw is often a seam failure whose own
- * `.message` is empty -- every `Schema.TaggedErrorClass` in the backend is one --
+ * `.message` is empty -- every `Schema.TaggedError` in the backend is one --
  * and a row closed with that alone is a red node with no sentence beside it. The
  * fallback names the node so that the row still says which one gave up.
  */
