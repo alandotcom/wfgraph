@@ -52,6 +52,10 @@ next-env.d.ts
 
 tmp/
 
+# The example app's SQLite database, created on first boot. The trailing glob
+# also covers the -wal and -shm sidecars WAL mode opens beside it.
+examples/wfgraph.sqlite*
+
 .npm-cache/
 *.log
 **/.inngest/*.db
