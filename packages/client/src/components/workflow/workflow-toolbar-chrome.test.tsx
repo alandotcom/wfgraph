@@ -9,7 +9,10 @@ import type {
   WorkflowToolbarState,
 } from "#src/components/workflow/workflow-toolbar-handlers";
 import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
-import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
+import {
+  isGeneratingAtom,
+  propertiesPanelActiveTabAtom,
+} from "#src/lib/workflow-ui-store";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { toEditorNode } from "#src/lib/workflow-graph-types";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
@@ -90,6 +93,9 @@ function renderToolbarActions(
 ) {
   const store = createStore();
   if (lock.overlayActive) {
+    // The overlay is only on the canvas while the Runs tab is, so both halves
+    // of that state go in together.
+    store.set(propertiesPanelActiveTabAtom, "runs");
     store.set(executionOverlayGraphAtom, { nodes: [], edges: [] });
   }
   if (lock.generating) {

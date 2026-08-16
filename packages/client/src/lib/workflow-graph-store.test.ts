@@ -390,6 +390,9 @@ describe("run status", () => {
 
   it("merges onto a pinned run overlay by the same path as the draft", () => {
     const store = createGraphStore(...standardGraph());
+    // The overlay reaches the canvas only while the Runs tab is up, so a case
+    // about what the canvas paints has to say the tab is open.
+    store.set(propertiesPanelActiveTabAtom, "runs");
     store.set(executionOverlayGraphAtom, {
       nodes: [lifecycleNode("pinned_t"), actionNode("pinned_a")],
       edges: [],
@@ -411,6 +414,9 @@ describe("run status", () => {
 
   it("clears every status and drops the overlay together", () => {
     const store = createGraphStore(...standardGraph());
+    // Without the tab open the overlay reads null anyway, and the assertion
+    // below would hold whether or not the clear did its job.
+    store.set(propertiesPanelActiveTabAtom, "runs");
     store.set(executionOverlayGraphAtom, {
       nodes: [lifecycleNode("t")],
       edges: [],
