@@ -70,7 +70,10 @@ function executeWaitActionInner(
       const errorMessage = `Wait node configuration is invalid: ${read.error}`;
       yield* runDurable(
         runtime,
-        `wait-invalid-config-${context.nodeId}`,
+        {
+          id: `wait-invalid-config-${context.nodeId}`,
+          name: `${context.nodeName} (invalid config)`,
+        },
         Effect.gen(function* () {
           const earlyLog = yield* openStepLog({
             store,
@@ -100,7 +103,10 @@ function executeWaitActionInner(
     // memoized step return, so the branches below always close the same row.
     const startLog = yield* runDurable(
       runtime,
-      `wait-start-log-${context.nodeId}`,
+      {
+        id: `wait-start-log-${context.nodeId}`,
+        name: `${context.nodeName} (open)`,
+      },
       openStepLog({
         store,
         context,

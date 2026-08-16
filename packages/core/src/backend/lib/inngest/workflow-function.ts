@@ -19,8 +19,13 @@ import {
   type WorkflowBranchInput,
   type WorkflowExecutionInput,
 } from "#src/backend/engine/core";
-import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
+import type {
+  DurableStepRef,
+  WorkflowExecutionRuntime,
+} from "#src/backend/engine/runtime";
 import type { WorkflowStore } from "#src/backend/engine/store";
+import { getAppLogger } from "#src/backend/lib/logger";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import { readJsonObject } from "@wfgraph/shared/types/json";
 import { rejectUnknownKeys } from "@wfgraph/shared/types/schema";
 import { formatSchemaFailure } from "@wfgraph/shared/types/schema-message";
@@ -65,14 +70,14 @@ const workflowBranchTarget: InngestFunctionReference.Any = referenceFunction({
  * these handlers depend on is stated in one readable place.
  */
 type DurableStep = {
-  sleep: (id: string, durationMs: number) => Promise<void>;
+  sleep: (step: DurableStepRef, durationMs: number) => Promise<void>;
   waitForEvent: (
-    id: string,
+    step: DurableStepRef,
     options: { event: string; if?: string; timeout: string }
   ) => Promise<unknown>;
-  run: <T>(id: string, fn: () => Promise<T>) => Promise<T>;
+  run: <T>(step: DurableStepRef, fn: () => Promise<T>) => Promise<T>;
   invoke: (
-    id: string,
+    step: DurableStepRef,
     options: {
       function: InngestFunctionReference.Any;
       data: typeof workflowBranchInputSchema.Type;
@@ -143,15 +148,18 @@ function createDurableRuntime(input: {
 }): WorkflowExecutionRuntime {
   const { step, attempt, runId, data } = input;
 
+  // Every port forwards the engine's `{ id, name }` straight through: Inngest's
+  // step tools each take a `StepOptionsOrId`, where `id` memoizes and `name` is
+  // the label the trace prints.
   return {
-    sleep: async (stepId, durationMs) => {
+    sleep: async (durableStep, durationMs) => {
       if (durationMs <= 0) {
         return;
       }
-      await step.sleep(stepId, durationMs);
+      await step.sleep(durableStep, durationMs);
     },
-    waitForEvent: async (stepId, options) =>
-      await step.waitForEvent(stepId, {
+    waitForEvent: async (durableStep, options) =>
+      await step.waitForEvent(durableStep, {
         event: options.event,
         if: options.ifExpression,
         timeout:
@@ -159,12 +167,12 @@ function createDurableRuntime(input: {
             ? "365d"
             : toDurationString(options.timeoutMs),
       }),
-    // Memoization boundary: Inngest stores the result under `stepId`, so work
-    // already done in an earlier attempt is replayed instead of repeated.
-    run: (stepId, fn) => step.run(stepId, fn),
-    startBranch: async (stepId, { entryNodeId, releasedNodeIds }) =>
+    // Memoization boundary: Inngest stores the result under the step's id, so
+    // work already done in an earlier attempt is replayed instead of repeated.
+    run: (durableStep, fn) => step.run(durableStep, fn),
+    startBranch: async (durableStep, { entryNodeId, releasedNodeIds }) =>
       readBranchHandoff(
-        await step.invoke(stepId, {
+        await step.invoke(durableStep, {
           function: workflowBranchTarget,
           data: { ...data, entryNodeId, releasedNodeIds },
         })
@@ -172,6 +180,70 @@ function createDurableRuntime(input: {
     attempt,
     runId,
   };
+}
+
+/**
+ * Writes a record onto the Inngest run the call is made inside. Built from the
+ * client where the function is created; a test passes its own.
+ */
+type RunMetadataWriter = (values: JsonObject) => Promise<void>;
+
+/**
+ * The one place the SDK's metadata API is named. `wfgraph` is the kind, which
+ * the SDK namespaces to `userland.wfgraph`: the block the run's Metadata tab
+ * shows beside Inngest's own `inngest.usage`. `run()` is what scopes it to the
+ * whole run rather than to the step that wrote it.
+ */
+function runMetadataWriter(client: Inngest): RunMetadataWriter {
+  return (values) => client.metadata.run().update(values, "wfgraph");
+}
+
+/**
+ * Names the run in the Inngest UI, which labels every run of every workflow
+ * "Workflow run" because they all execute on the one function.
+ *
+ * Wrapped in a step for two reasons. This body replays from the top after every
+ * step and every wait, so an unwrapped write would repeat once per driver call
+ * and the SDK says as much. And a write issued from inside a step rides out on
+ * that step's own checkpoint instead of costing a REST round trip.
+ *
+ * The step's display name is the workflow's, so the first row of the trace names
+ * the graph the run is about to walk.
+ *
+ * A refused write is swallowed. Inngest raises a non-2xx as an exception, and a
+ * run that did its work has not failed because a label would not attach.
+ */
+async function writeRunMetadata(input: {
+  step: DurableStep;
+  write: RunMetadataWriter;
+  data: WorkflowExecutionInput | WorkflowBranchInput;
+}): Promise<void> {
+  const { step, write, data } = input;
+  const workflow = data.workflowName ?? data.workflowId;
+
+  await step.run({ id: "run-metadata", name: workflow }, async () => {
+    try {
+      await write({
+        workflow,
+        workflowId: data.workflowId,
+        executionId: data.executionId,
+        runMode: data.runMode ?? "live",
+        triggerEvent: data.startEventName ?? null,
+        versionId: data.workflowVersionId,
+        nodes: data.graph.nodes.length,
+        // A branch run walks part of a graph, so the node it entered at is the
+        // one fact that tells two branches of the same run apart.
+        ...("entryNodeId" in data ? { entryNode: data.entryNodeId } : {}),
+      });
+    } catch (error) {
+      getAppLogger("inngest").warn(
+        "Could not attach this run's metadata to Inngest",
+        { run: { execution: data.executionId }, error }
+      );
+    }
+    // Memoized values round-trip through JSON, and this step answers nothing.
+    return null;
+  });
 }
 
 /**
@@ -190,6 +262,7 @@ async function workflowRunRequestedHandler({
   store,
   appRuntime,
   executeWorkflow,
+  write,
 }: {
   event: { data: typeof workflowExecutionInputSchema.Type };
   actions: WorkflowActions;
@@ -201,8 +274,11 @@ async function workflowRunRequestedHandler({
   runId: string;
   step: DurableStep;
   executeWorkflow: ExecuteWorkflow;
+  write: RunMetadataWriter;
 }) {
   const data: WorkflowExecutionInput = event.data;
+
+  await writeRunMetadata({ step, write, data });
 
   // The engine persists nothing and implements nothing on its own: the store
   // and the dispatch port are the app's, built where the function was.
@@ -260,6 +336,7 @@ async function workflowBranchRequestedHandler({
   store,
   appRuntime,
   executeWorkflowBranch,
+  write,
 }: {
   event: { data: typeof workflowBranchInputSchema.Type };
   actions: WorkflowActions;
@@ -269,10 +346,13 @@ async function workflowBranchRequestedHandler({
   runId: string;
   step: DurableStep;
   executeWorkflowBranch: ExecuteWorkflowBranch;
+  write: RunMetadataWriter;
 }) {
   // The invoke metadata describes the event that started this run, so it is
   // dropped here rather than carried onto whatever branch this one hands off.
   const data: WorkflowBranchInput = omit(event.data, [INNGEST_META_KEY]);
+
+  await writeRunMetadata({ step, write, data });
 
   return await appRuntime.runPromise(
     executeWorkflowBranch(
@@ -331,9 +411,12 @@ const STEP_RETRIES = 4;
  * registration, and Inngest needs no re-sync. Which graph a run walks is on the
  * event, put there by whoever enqueued it.
  *
- * The Inngest dashboard therefore labels every run alike. The workflow's name
- * reaches a trace through the `wfgraph.workflow.name` attribute the engine's span
- * carries.
+ * The Inngest dashboard therefore labels every run alike, and what tells two
+ * runs apart is written by the run itself: `userland.wfgraph` metadata on its
+ * Metadata tab, plus the `wfgraph.workflow.name` attribute the engine's span
+ * carries. Metadata is readable per run and queryable from Insights, and it is
+ * not a runs-list filter; searching the list for one workflow still means a CEL
+ * expression over `event.data.workflowId`.
  *
  * The return type is stated because declaration emit cannot name the inferred
  * one: it references types inngest keeps internal (`SendSignalResponse` under
@@ -367,6 +450,7 @@ export function createWorkflowRunFunction(
         store: input.store,
         appRuntime: input.appRuntime,
         executeWorkflow: input.executeWorkflow,
+        write: runMetadataWriter(client),
       })
   );
 }
@@ -410,6 +494,7 @@ export function createWorkflowBranchFunction(
         store: input.store,
         appRuntime: input.appRuntime,
         executeWorkflowBranch: input.executeWorkflowBranch,
+        write: runMetadataWriter(client),
       })
   );
 }

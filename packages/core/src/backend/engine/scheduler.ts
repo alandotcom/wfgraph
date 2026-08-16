@@ -277,7 +277,7 @@ export class NodeScheduler {
           eventName: this.currentEventName(),
           catalogFingerprint: this.input.catalogFingerprint,
           entersInPlace: this.entersInPlace(node.id),
-          handOffBranch: () => this.handOffBranch(node),
+          handOffBranch: () => this.handOffBranch(node, nodeName),
         };
 
         return yield* strategy.run(ctx);
@@ -298,7 +298,8 @@ export class NodeScheduler {
    * no `startBranch`, which is why the port method is read without a check.
    */
   private handOffBranch(
-    node: WorkflowNode
+    node: WorkflowNode,
+    nodeName: string
   ): Effect.Effect<NodeWorkOutcome, EngineFailure> {
     return Effect.gen(
       function* (this: NodeScheduler) {
@@ -316,10 +317,13 @@ export class NodeScheduler {
           );
         }
         const handoff = yield* fromUnknownPromise(() =>
-          startBranch(`branch-${node.id}`, {
-            entryNodeId: node.id,
-            releasedNodeIds: traversal.releasedNodeIds,
-          })
+          startBranch(
+            { id: `branch-${node.id}`, name: `${nodeName} (branch)` },
+            {
+              entryNodeId: node.id,
+              releasedNodeIds: traversal.releasedNodeIds,
+            }
+          )
         );
 
         if (handoff.status === "killed") {
@@ -370,7 +374,7 @@ export class NodeScheduler {
     return Effect.asVoid(
       runDurableUnit(
         runtime,
-        "branch-kill-sweep",
+        { id: "branch-kill-sweep", name: "Branch kill sweep" },
         store.cancelOpenWork({ executionId })
       )
     );

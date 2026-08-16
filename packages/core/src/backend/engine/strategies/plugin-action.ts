@@ -45,10 +45,17 @@ export function runPluginActionStep(input: ActionStepInput) {
     }
 
     // Workflow Graph namespaces the id, so an author writes "post" and two nodes running
-    // the same action do not write to one another's memoized result.
+    // the same action do not write to one another's memoized result. The name
+    // pairs that author's word with the node's label, which is what a trace shows.
     const steps: NodeSteps = {
       run: (stepId, work) =>
-        runtime.run(`node:${context.nodeId}:${stepId}`, work),
+        runtime.run(
+          {
+            id: `node:${context.nodeId}:${stepId}`,
+            name: `${context.nodeName}: ${stepId}`,
+          },
+          work
+        ),
     };
 
     const result = yield* runWithStepLog(

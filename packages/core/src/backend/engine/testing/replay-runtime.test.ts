@@ -15,11 +15,19 @@ import { driveWithReplay } from "#src/backend/engine/testing/replay-runtime";
 /** A branch body's answer, which the driver hands to whoever started it. */
 const NOTHING_RAN: BranchRunResult = { results: {}, outputs: {} };
 
+/**
+ * A step reference from its id alone. These cases are about when the driver
+ * wakes a run, so none of them has a display name to state.
+ */
+const stepRef = (id: string) => ({ id });
+
 describe("driveWithReplay", () => {
   it("runs a chain of steps, calling the body again after each", async () => {
     const run = await driveWithReplay(async (runtime) => {
-      const first = await runtime.run("first", () => Promise.resolve(1));
-      const second = await runtime.run("second", () =>
+      const first = await runtime.run(stepRef("first"), () =>
+        Promise.resolve(1)
+      );
+      const second = await runtime.run(stepRef("second"), () =>
         Promise.resolve(first + 1)
       );
       return second;
@@ -36,11 +44,11 @@ describe("driveWithReplay", () => {
   it("answers a replayed step out of the memo rather than running it twice", async () => {
     let calls = 0;
     const run = await driveWithReplay(async (runtime) => {
-      const value = await runtime.run("once", () => {
+      const value = await runtime.run(stepRef("once"), () => {
         calls += 1;
         return Promise.resolve("value");
       });
-      await runtime.run("after", () => Promise.resolve(null));
+      await runtime.run(stepRef("after"), () => Promise.resolve(null));
       return value;
     });
 
@@ -51,8 +59,8 @@ describe("driveWithReplay", () => {
 
   it("moves the clock to a sleep's target", async () => {
     const run = await driveWithReplay(async (runtime) => {
-      await runtime.sleep("nap", 5_000);
-      return await runtime.run("after", () => Promise.resolve("done"));
+      await runtime.sleep(stepRef("nap"), 5_000);
+      return await runtime.run(stepRef("after"), () => Promise.resolve("done"));
     });
 
     expect(run.value).toBe("done");
@@ -64,10 +72,10 @@ describe("driveWithReplay", () => {
 
   it("holds a sibling branch at its next step boundary while a sleep is outstanding", async () => {
     const run = await driveWithReplay(async (runtime) => {
-      const parked = runtime.sleep("nap", 60_000);
+      const parked = runtime.sleep(stepRef("nap"), 60_000);
       const busy = (async () => {
-        await runtime.run("first", () => Promise.resolve(1));
-        await runtime.run("second", () => Promise.resolve(2));
+        await runtime.run(stepRef("first"), () => Promise.resolve(1));
+        await runtime.run(stepRef("second"), () => Promise.resolve(2));
       })();
 
       await Promise.all([parked, busy]);
@@ -86,12 +94,12 @@ describe("driveWithReplay", () => {
   it("wakes two outstanding sleeps together, at the later target", async () => {
     const run = await driveWithReplay(async (runtime) => {
       const short = (async () => {
-        await runtime.sleep("short", 20_000);
-        await runtime.run("afterShort", () => Promise.resolve(1));
+        await runtime.sleep(stepRef("short"), 20_000);
+        await runtime.run(stepRef("afterShort"), () => Promise.resolve(1));
       })();
       const long = (async () => {
-        await runtime.sleep("long", 90_000);
-        await runtime.run("afterLong", () => Promise.resolve(1));
+        await runtime.sleep(stepRef("long"), 90_000);
+        await runtime.run(stepRef("afterLong"), () => Promise.resolve(1));
       })();
 
       await Promise.all([short, long]);
@@ -109,7 +117,7 @@ describe("driveWithReplay", () => {
   it("resolves an event wait from the answer it was given", async () => {
     const run = await driveWithReplay(
       async (runtime) =>
-        await runtime.waitForEvent("signal", {
+        await runtime.waitForEvent(stepRef("signal"), {
           event: "workflow/wait.signal",
           timeoutMs: 1_000,
         }),
@@ -123,7 +131,7 @@ describe("driveWithReplay", () => {
   it("reads an event wait with no answer as a timeout", async () => {
     const run = await driveWithReplay(
       async (runtime) =>
-        await runtime.waitForEvent("signal", {
+        await runtime.waitForEvent(stepRef("signal"), {
           event: "workflow/wait.signal",
           timeoutMs: 2_000,
         })
@@ -139,11 +147,11 @@ describe("driveWithReplay", () => {
     const run = await driveWithReplay(
       async (runtime) => {
         await Promise.all([
-          runtime.startBranch?.("branch-short", {
+          runtime.startBranch?.(stepRef("branch-short"), {
             entryNodeId: "short",
             releasedNodeIds: [],
           }),
-          runtime.startBranch?.("branch-long", {
+          runtime.startBranch?.(stepRef("branch-long"), {
             entryNodeId: "long",
             releasedNodeIds: [],
           }),
@@ -152,8 +160,11 @@ describe("driveWithReplay", () => {
       },
       {
         branch: async (runtime, { entryNodeId }) => {
-          await runtime.sleep(`wait-${entryNodeId}`, sleepFor[entryNodeId]);
-          await runtime.run(`after-${entryNodeId}`, () =>
+          await runtime.sleep(
+            stepRef(`wait-${entryNodeId}`),
+            sleepFor[entryNodeId]
+          );
+          await runtime.run(stepRef(`after-${entryNodeId}`), () =>
             Promise.resolve(null)
           );
           return NOTHING_RAN;
@@ -177,11 +188,11 @@ describe("driveWithReplay", () => {
     const run = await driveWithReplay(
       async (runtime) => {
         await Promise.all([
-          runtime.startBranch?.("branch-short", {
+          runtime.startBranch?.(stepRef("branch-short"), {
             entryNodeId: "short",
             releasedNodeIds: [],
           }),
-          runtime.startBranch?.("branch-long", {
+          runtime.startBranch?.(stepRef("branch-long"), {
             entryNodeId: "long",
             releasedNodeIds: [],
           }),
@@ -190,7 +201,7 @@ describe("driveWithReplay", () => {
       },
       {
         branch: async (runtime, { entryNodeId }) => {
-          await runtime.run(`prepare-${entryNodeId}`, () =>
+          await runtime.run(stepRef(`prepare-${entryNodeId}`), () =>
             Promise.resolve(null)
           );
           // Host macrotask between step ports: under quiet-turn quiescence the
@@ -199,8 +210,11 @@ describe("driveWithReplay", () => {
           await new Promise<void>((resolve) => {
             setImmediate(resolve);
           });
-          await runtime.sleep(`wait-${entryNodeId}`, sleepFor[entryNodeId]);
-          await runtime.run(`after-${entryNodeId}`, () =>
+          await runtime.sleep(
+            stepRef(`wait-${entryNodeId}`),
+            sleepFor[entryNodeId]
+          );
+          await runtime.run(stepRef(`after-${entryNodeId}`), () =>
             Promise.resolve(null)
           );
           return NOTHING_RAN;
@@ -224,7 +238,7 @@ describe("driveWithReplay", () => {
 
     const run = await driveWithReplay(
       async (runtime) =>
-        await runtime.startBranch?.("branch-wait", {
+        await runtime.startBranch?.(stepRef("branch-wait"), {
           entryNodeId: "wait",
           releasedNodeIds: [],
         }),
@@ -238,7 +252,7 @@ describe("driveWithReplay", () => {
     await expect(
       driveWithReplay(
         async (runtime) =>
-          await runtime.startBranch?.("branch-wait", {
+          await runtime.startBranch?.(stepRef("branch-wait"), {
             entryNodeId: "wait",
             releasedNodeIds: [],
           }),
@@ -250,14 +264,14 @@ describe("driveWithReplay", () => {
   it("answers killed for a branch the cancel reached mid-sleep", async () => {
     const run = await driveWithReplay(
       async (runtime) =>
-        await runtime.startBranch?.("branch-wait", {
+        await runtime.startBranch?.(stepRef("branch-wait"), {
           entryNodeId: "wait",
           releasedNodeIds: [],
         }),
       {
         branch: async (runtime) => {
-          await runtime.sleep("wait-long", 600_000);
-          await runtime.run("after", () => Promise.resolve(null));
+          await runtime.sleep(stepRef("wait-long"), 600_000);
+          await runtime.run(stepRef("after"), () => Promise.resolve(null));
           return NOTHING_RAN;
         },
         killBranchesAtMs: 30_000,

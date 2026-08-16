@@ -9,6 +9,7 @@ import {
 } from "vitest";
 import { InngestTestEngine, InngestTestRun } from "@inngest/test";
 import { Inngest } from "inngest";
+import { metadataMiddleware } from "inngest/experimental";
 import { Effect } from "effect";
 import { noWorkflowActions } from "#src/backend/engine/actions";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
@@ -36,19 +37,57 @@ afterAll(() => testAppRuntime.dispose());
 /** Records how often the app was asked for a surface, which is per invocation. */
 const buildTestActions = vi.fn(() => testActions);
 
+/**
+ * The client the app builds, middleware and all. `metadataMiddleware` is what
+ * makes `client.metadata` reachable, and the run's own metadata step calls it.
+ */
+function createTestClient() {
+  return new Inngest({
+    id: "workflow-function-test",
+    isDev: true,
+    middleware: [metadataMiddleware()],
+  });
+}
+
 function createTestFunction() {
-  return createWorkflowRunFunction(
-    new Inngest({ id: "workflow-function-test", isDev: true }),
-    {
-      actions: buildTestActions,
-      store: testStore,
-      appRuntime: testAppRuntime,
-      // This file tests the Inngest handler's wiring, so the engine underneath
-      // it is a stand-in handed through the ports rather than a module spy.
-      executeWorkflow: executeWorkflowMock,
-      executeWorkflowBranch: vi.fn(),
-    }
-  );
+  return createWorkflowRunFunction(createTestClient(), {
+    actions: buildTestActions,
+    store: testStore,
+    appRuntime: testAppRuntime,
+    // This file tests the Inngest handler's wiring, so the engine underneath
+    // it is a stand-in handed through the ports rather than a module spy.
+    executeWorkflow: executeWorkflowMock,
+    executeWorkflowBranch: vi.fn(),
+  });
+}
+
+/**
+ * The payload a run arrives on. A case spells out only what it varies, so what
+ * the case is about is what stands out at its call site.
+ */
+function runEventData(varied: Record<string, unknown> = {}) {
+  return {
+    graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+    workflowVersionId: "ver_1",
+    catalogFingerprint: "fp",
+    executionId: "exec_123",
+    workflowId: "workflow_123",
+    ...varied,
+  };
+}
+
+/**
+ * Replaces the SDK's metadata builder with one that records, so a case can read
+ * the values and the kind a run attaches to itself. Spied on the prototype
+ * because `metadata` is a getter there rather than an own property.
+ */
+function recordRunMetadata(update: () => Promise<void>) {
+  const run = vi.fn(() => ({ update }));
+  // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the handler reaches for `.run().update()` and nothing else on the builder
+  vi.spyOn(Inngest.prototype, "metadata", "get").mockReturnValue({
+    run,
+  } as never);
+  return run;
 }
 
 async function executeWorkflowFunctionForTest() {
@@ -66,18 +105,7 @@ async function executeWorkflowFunctionForTest() {
   );
 
   const execution = await engine.execute({
-    events: [
-      {
-        name: "workflow/run.requested",
-        data: {
-          graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
-          workflowVersionId: "ver_1",
-          catalogFingerprint: "fp",
-          executionId: "exec_123",
-          workflowId: "workflow_123",
-        },
-      },
-    ],
+    events: [{ name: "workflow/run.requested", data: runEventData() }],
   });
 
   const runtime = executeWorkflowMock.mock.calls.at(-1)?.[1] as
@@ -115,30 +143,117 @@ describe("the workflow run function", () => {
    * that started it must not be.
    */
   it("registers the branch as a function of its own", () => {
-    const branchFunction = createWorkflowBranchFunction(
-      new Inngest({ id: "workflow-function-test", isDev: true }),
-      {
-        actions: buildTestActions,
-        store: testStore,
-        appRuntime: testAppRuntime,
-        executeWorkflow: vi.fn(),
-        executeWorkflowBranch: vi.fn(),
-      }
-    );
+    const branchFunction = createWorkflowBranchFunction(createTestClient(), {
+      actions: buildTestActions,
+      store: testStore,
+      appRuntime: testAppRuntime,
+      executeWorkflow: vi.fn(),
+      executeWorkflowBranch: vi.fn(),
+    });
 
     expect(branchFunction.id()).toBe("workflow-branch");
     expect(branchFunction.name).toBe("Workflow branch");
   });
 
+  /**
+   * Both registrations above carry one name for every run, so what tells two
+   * runs apart in the Inngest UI is what the run writes about itself here.
+   */
+  it("attaches the run's identity to Inngest as metadata", async () => {
+    const update = vi.fn(() => Promise.resolve());
+    const run = recordRunMetadata(update);
+    executeWorkflowMock.mockReturnValue(
+      Effect.succeed({ success: true, outputs: {}, results: {} })
+    );
+
+    await new InngestTestEngine({ function: createTestFunction() }).execute({
+      events: [
+        {
+          name: "workflow/run.requested",
+          data: runEventData({
+            workflowName: "Donor intake follow-up",
+            startEventName: "donor/intake.submitted",
+          }),
+        },
+      ],
+    });
+
+    // Scoped to the run rather than to the step that wrote it, which is what
+    // puts it on the run's own Metadata tab.
+    expect(run).toHaveBeenCalledWith();
+    expect(update).toHaveBeenCalledWith(
+      {
+        workflow: "Donor intake follow-up",
+        workflowId: "workflow_123",
+        executionId: "exec_123",
+        runMode: "live",
+        triggerEvent: "donor/intake.submitted",
+        versionId: "ver_1",
+        nodes: 0,
+      },
+      "wfgraph"
+    );
+  });
+
+  /** A run that did its work has not failed because a label would not attach. */
+  it("runs on when Inngest refuses the metadata write", async () => {
+    recordRunMetadata(() => Promise.reject(new Error("metadata too large")));
+    const expectedResult = { success: true, outputs: {}, results: {} };
+    executeWorkflowMock.mockReturnValue(Effect.succeed(expectedResult));
+
+    const { result } = await new InngestTestEngine({
+      function: createTestFunction(),
+    }).execute({
+      events: [{ name: "workflow/run.requested", data: runEventData() }],
+    });
+
+    expect(result).toEqual(expectedResult);
+  });
+
+  /**
+   * A branch is a durable run of its own, so it needs its own label, and the
+   * node it entered at is what tells two branches of one run apart.
+   */
+  it("names the entry node in a branch run's metadata", async () => {
+    const update = vi.fn(() => Promise.resolve());
+    recordRunMetadata(update);
+    const executeWorkflowBranch = vi.fn(() =>
+      Effect.succeed({ results: {}, outputs: {} })
+    );
+
+    await new InngestTestEngine({
+      function: createWorkflowBranchFunction(createTestClient(), {
+        actions: buildTestActions,
+        store: testStore,
+        appRuntime: testAppRuntime,
+        executeWorkflow: vi.fn(),
+        executeWorkflowBranch,
+      }),
+    }).execute({
+      events: [
+        {
+          name: "workflow/branch.requested",
+          data: runEventData({
+            workflowName: "Donor intake follow-up",
+            entryNodeId: "wait_1",
+            releasedNodeIds: [],
+          }),
+        },
+      ],
+    });
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflow: "Donor intake follow-up",
+        entryNode: "wait_1",
+      }),
+      "wfgraph"
+    );
+  });
+
   it("forwards event data, runtime, store and actions to executeWorkflow", async () => {
     const workflowRunRequestedFunction = createTestFunction();
-    const workflowInput = {
-      graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
-      workflowVersionId: "ver_1",
-      catalogFingerprint: "fp",
-      executionId: "exec_123",
-      workflowId: "workflow_123",
-    };
+    const workflowInput = runEventData();
     const expectedResult = { success: true, outputs: {}, results: {} };
     executeWorkflowMock.mockReturnValueOnce(Effect.succeed(expectedResult));
 
@@ -171,9 +286,11 @@ describe("the workflow run function", () => {
     expect(store).toBe(testStore);
     // And the dispatch port the app built, which is where an action id becomes
     // work. It is asked for per invocation of the body, because the surface
-    // holds an integration's credentials for its own lifetime.
+    // holds an integration's credentials for its own lifetime. Two invocations
+    // here: the run's `run-metadata` step parks the first one, and the engine
+    // is reached on the one that replays past it.
     expect(actions).toBe(testActions);
-    expect(buildTestActions).toHaveBeenCalledTimes(1);
+    expect(buildTestActions).toHaveBeenCalledTimes(2);
     expect(result).toEqual(expectedResult);
   });
 
@@ -199,18 +316,7 @@ describe("the workflow run function", () => {
 
     const testEngine = new InngestTestEngine({
       function: createTestFunction(),
-      events: [
-        {
-          name: "workflow/run.requested",
-          data: {
-            graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
-            workflowVersionId: "ver_1",
-            catalogFingerprint: "fp",
-            executionId: "exec_123",
-            workflowId: "workflow_123",
-          },
-        },
-      ],
+      events: [{ name: "workflow/run.requested", data: runEventData() }],
     });
     // The rejected checkpoint rather than `execute`, which hands back the error
     // alone: whether Inngest will try again is the assertion here.
@@ -233,10 +339,22 @@ describe("the workflow run function", () => {
       .mockResolvedValue("memoized-result");
 
     const work = () => Promise.resolve("fresh-result");
-    const result = await runtime.run("node:action_1", work);
+    const step = { id: "node:action_1", name: "Send email: post" };
+    const result = await runtime.run(step, work);
 
-    expect(runSpy).toHaveBeenCalledTimes(1);
-    expect(runSpy).toHaveBeenCalledWith("node:action_1", work);
+    // Counted by id rather than in total: the body suspends at its own
+    // `run-metadata` step, and the invocation that parked there is still
+    // unwinding when this spy goes on.
+    expect(
+      runSpy.mock.calls.filter(
+        // The engine always names a step with an object; Inngest's own signature
+        // also allows a bare id, which nothing here passes.
+        ([called]) => typeof called !== "string" && called.id === step.id
+      )
+    ).toHaveLength(1);
+    // The id and the display name both reach Inngest: the first memoizes, the
+    // second is what the trace prints in place of the node's opaque id.
+    expect(runSpy).toHaveBeenCalledWith(step, work);
     // The stored value wins over re-running the work: that is the whole point.
     expect(result).toBe("memoized-result");
   });
@@ -248,26 +366,32 @@ describe("the workflow run function", () => {
       .spyOn(ctx.step, "invoke")
       .mockResolvedValue(branchResult);
 
-    const handoff = await runtime.startBranch?.("branch-wait_1", {
-      entryNodeId: "wait_1",
-      releasedNodeIds: ["entry_1"],
-    });
+    const handoff = await runtime.startBranch?.(
+      { id: "branch-wait_1", name: "Wait for reply (branch)" },
+      {
+        entryNodeId: "wait_1",
+        releasedNodeIds: ["entry_1"],
+      }
+    );
 
     // The branch carries the graph, the run's identity, and the ids of the nodes
     // that let it start. What those nodes produced stays behind: it reads their
     // outputs back from the store.
-    expect(invokeSpy).toHaveBeenCalledWith("branch-wait_1", {
-      function: expect.anything(),
-      data: {
-        graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
-        workflowVersionId: "ver_1",
-        catalogFingerprint: "fp",
-        executionId: "exec_123",
-        workflowId: "workflow_123",
-        entryNodeId: "wait_1",
-        releasedNodeIds: ["entry_1"],
-      },
-    });
+    expect(invokeSpy).toHaveBeenCalledWith(
+      { id: "branch-wait_1", name: "Wait for reply (branch)" },
+      {
+        function: expect.anything(),
+        data: {
+          graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+          workflowVersionId: "ver_1",
+          catalogFingerprint: "fp",
+          executionId: "exec_123",
+          workflowId: "workflow_123",
+          entryNodeId: "wait_1",
+          releasedNodeIds: ["entry_1"],
+        },
+      }
+    );
     expect(handoff).toEqual({ status: "finished", result: branchResult });
   });
 
@@ -284,18 +408,24 @@ describe("the workflow run function", () => {
       data: { _inngest: { status: "Cancelled" } },
     });
     await expect(
-      runtime.startBranch?.("branch-wait_1", {
-        entryNodeId: "wait_1",
-        releasedNodeIds: [],
-      })
+      runtime.startBranch?.(
+        { id: "branch-wait_1" },
+        {
+          entryNodeId: "wait_1",
+          releasedNodeIds: [],
+        }
+      )
     ).resolves.toEqual({ status: "killed" });
 
     invokeSpy.mockResolvedValueOnce({ _inngest: { status: "Cancelled" } });
     await expect(
-      runtime.startBranch?.("branch-wait_2", {
-        entryNodeId: "wait_2",
-        releasedNodeIds: [],
-      })
+      runtime.startBranch?.(
+        { id: "branch-wait_2" },
+        {
+          entryNodeId: "wait_2",
+          releasedNodeIds: [],
+        }
+      )
     ).resolves.toEqual({ status: "killed" });
   });
 
@@ -308,10 +438,13 @@ describe("the workflow run function", () => {
     vi.spyOn(ctx.step, "invoke").mockResolvedValue({ sent: true });
 
     await expect(
-      runtime.startBranch?.("branch-wait_1", {
-        entryNodeId: "wait_1",
-        releasedNodeIds: [],
-      })
+      runtime.startBranch?.(
+        { id: "branch-wait_1" },
+        {
+          entryNodeId: "wait_1",
+          releasedNodeIds: [],
+        }
+      )
     ).rejects.toThrow(/results: Missing key/);
   });
 
@@ -323,10 +456,13 @@ describe("the workflow run function", () => {
     });
 
     await expect(
-      runtime.startBranch?.("branch-wait_1", {
-        entryNodeId: "wait_1",
-        releasedNodeIds: [],
-      })
+      runtime.startBranch?.(
+        { id: "branch-wait_1" },
+        {
+          entryNodeId: "wait_1",
+          releasedNodeIds: [],
+        }
+      )
     ).rejects.toThrow(/shape this run cannot read/);
   });
 
@@ -334,12 +470,12 @@ describe("the workflow run function", () => {
     const { runtime, ctx } = await executeWorkflowFunctionForTest();
     const sleepSpy = vi.spyOn(ctx.step, "sleep").mockResolvedValue(undefined);
 
-    await runtime.sleep("sleep-zero", 0);
-    await runtime.sleep("sleep-negative", -100);
-    await runtime.sleep("sleep-positive", 1500);
+    await runtime.sleep({ id: "sleep-zero" }, 0);
+    await runtime.sleep({ id: "sleep-negative" }, -100);
+    await runtime.sleep({ id: "sleep-positive" }, 1500);
 
     expect(sleepSpy).toHaveBeenCalledTimes(1);
-    expect(sleepSpy).toHaveBeenCalledWith("sleep-positive", 1500);
+    expect(sleepSpy).toHaveBeenCalledWith({ id: "sleep-positive" }, 1500);
   });
 
   it("runtime.waitForEvent converts timeoutMs to Inngest duration format", async () => {
@@ -356,26 +492,36 @@ describe("the workflow run function", () => {
       .mockResolvedValueOnce(waitResult)
       .mockResolvedValueOnce(null);
 
-    const result = await runtime.waitForEvent("wait-hook", {
-      event: "workflow/wait.signal",
-      ifExpression: "async.data.executionId == event.data.executionId",
-      timeoutMs: 1500,
-    });
+    const result = await runtime.waitForEvent(
+      { id: "wait-hook" },
+      {
+        event: "workflow/wait.signal",
+        ifExpression: "async.data.executionId == event.data.executionId",
+        timeoutMs: 1500,
+      }
+    );
 
     expect(result).toBe(waitResult);
-    expect(waitForEventSpy).toHaveBeenNthCalledWith(1, "wait-hook", {
-      event: "workflow/wait.signal",
-      if: "async.data.executionId == event.data.executionId",
-      timeout: "2s",
-    });
+    expect(waitForEventSpy).toHaveBeenNthCalledWith(
+      1,
+      { id: "wait-hook" },
+      {
+        event: "workflow/wait.signal",
+        if: "async.data.executionId == event.data.executionId",
+        timeout: "2s",
+      }
+    );
 
-    await runtime.waitForEvent("wait-hook-default-timeout", {
-      event: "workflow/wait.signal",
-    });
+    await runtime.waitForEvent(
+      { id: "wait-hook-default-timeout" },
+      {
+        event: "workflow/wait.signal",
+      }
+    );
 
     expect(waitForEventSpy).toHaveBeenNthCalledWith(
       2,
-      "wait-hook-default-timeout",
+      { id: "wait-hook-default-timeout" },
       {
         event: "workflow/wait.signal",
         if: undefined,

@@ -185,7 +185,10 @@ export function executeEventWait(
 
     const prepared = yield* runDurable(
       runtime,
-      `wait-event-prepare-${context.nodeId}`,
+      {
+        id: `wait-event-prepare-${context.nodeId}`,
+        name: `${context.nodeName} (prepare wait)`,
+      },
       prepareEventWait(branch)
     );
 
@@ -203,17 +206,23 @@ export function executeEventWait(
       fromUnknownPromise(() =>
         // Inngest waits on Workflow Graph's own signal envelope rather than on the
         // business Event: Workflow Graph decides which runs an arrival concerns first.
-        runtime.waitForEvent(`wait-event-${context.nodeId}`, {
-          event: "workflow/wait.signal",
-          timeoutMs: prepared.timeoutMs,
-          ifExpression: [
-            "async.data.executionId == event.data.executionId",
-            `async.data.nodeId == ${celStringLiteral(context.nodeId)}`,
-            `async.data.token == ${celStringLiteral(prepared.resumeToken)}`,
-            // A Cancel Event wakes a parked run through the same envelope.
-            `(async.data.signalType == ${celStringLiteral("wait-resume")} || async.data.signalType == ${celStringLiteral("lifecycle-cancel")})`,
-          ].join(" && "),
-        })
+        runtime.waitForEvent(
+          {
+            id: `wait-event-${context.nodeId}`,
+            name: `${context.nodeName} (wait for event)`,
+          },
+          {
+            event: "workflow/wait.signal",
+            timeoutMs: prepared.timeoutMs,
+            ifExpression: [
+              "async.data.executionId == event.data.executionId",
+              `async.data.nodeId == ${celStringLiteral(context.nodeId)}`,
+              `async.data.token == ${celStringLiteral(prepared.resumeToken)}`,
+              // A Cancel Event wakes a parked run through the same envelope.
+              `(async.data.signalType == ${celStringLiteral("wait-resume")} || async.data.signalType == ${celStringLiteral("lifecycle-cancel")})`,
+            ].join(" && "),
+          }
+        )
       ),
       (cause) =>
         Effect.gen(function* () {
@@ -236,7 +245,10 @@ export function executeEventWait(
 
     const resumed = yield* runDurable(
       runtime,
-      `wait-event-resume-${context.nodeId}`,
+      {
+        id: `wait-event-resume-${context.nodeId}`,
+        name: `${context.nodeName} (resume)`,
+      },
       Effect.gen(function* () {
         yield* fromStore(
           store.markWaitStateStatus({

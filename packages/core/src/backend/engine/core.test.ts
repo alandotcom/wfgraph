@@ -22,7 +22,10 @@ import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
 } from "#src/backend/engine/recording-store";
-import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
+import {
+  createInMemoryWorkflowRuntime,
+  type DurableStepRef,
+} from "#src/backend/engine/runtime";
 
 const HOST_ACTION_ID = "test/host-action";
 const PRODUCER_ACTION_ID = "test/producer-action";
@@ -767,10 +770,10 @@ describe("run persistence through the store port", () => {
     const runtime = createInMemoryWorkflowRuntime();
     return {
       ...runtime,
-      run: <T>(stepId: string, fn: () => Promise<T>): Promise<T> =>
-        stepId === "workflow-run-completed"
+      run: <T>(step: DurableStepRef, fn: () => Promise<T>): Promise<T> =>
+        step.id === "workflow-run-completed"
           ? Promise.reject(new Error("terminal write refused"))
-          : runtime.run(stepId, fn),
+          : runtime.run(step, fn),
     };
   }
 

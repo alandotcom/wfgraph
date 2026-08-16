@@ -25,6 +25,7 @@ import type {
 } from "#src/backend/engine/branch";
 import { ReplayHostTimers } from "#src/backend/engine/testing/replay-host-timers";
 import type {
+  DurableStepRef,
   WaitForEventOptions,
   WorkflowExecutionRuntime,
 } from "#src/backend/engine/runtime";
@@ -356,7 +357,12 @@ async function driveWithReplayInstalled<T>(
       attempt: 0,
       runId: run.id,
 
-      run: <R>(stepId: string, fn: () => Promise<R>): Promise<R> =>
+      // Only the id is read here. A step's display name is for a durable
+      // runtime's UI, and this runtime has none.
+      run: <R>(
+        { id: stepId }: DurableStepRef,
+        fn: () => Promise<R>
+      ): Promise<R> =>
         withActivity(() => {
           if (run.memo.has(stepId)) {
             // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- a step id always maps back to that step's own result type
@@ -368,7 +374,7 @@ async function driveWithReplayInstalled<T>(
           return pending<R>();
         }),
 
-      sleep: (stepId, durationMs) =>
+      sleep: ({ id: stepId }, durationMs) =>
         withActivity(() => {
           if (run.finishedSleeps.has(stepId)) {
             return Promise.resolve();
@@ -379,7 +385,7 @@ async function driveWithReplayInstalled<T>(
           return pending<void>();
         }),
 
-      waitForEvent: (stepId, waitOptions: WaitForEventOptions) =>
+      waitForEvent: ({ id: stepId }, waitOptions: WaitForEventOptions) =>
         withActivity(() => {
           if (run.finishedWaits.has(stepId)) {
             return Promise.resolve(run.finishedWaits.get(stepId));
@@ -397,7 +403,7 @@ async function driveWithReplayInstalled<T>(
       ...(branch
         ? {
             startBranch: (
-              stepId: string,
+              { id: stepId }: DurableStepRef,
               input: {
                 entryNodeId: string;
                 releasedNodeIds: readonly string[];

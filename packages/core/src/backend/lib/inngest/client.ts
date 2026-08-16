@@ -4,6 +4,7 @@ import {
   connect as connectInngestSdk,
   type WorkerConnection,
 } from "inngest/connect";
+import { metadataMiddleware } from "inngest/experimental";
 import { serve as serveInngest } from "inngest/hono";
 import { getAppLogger } from "#src/backend/lib/logger";
 import { createInngestSdkLogger } from "#src/backend/lib/inngest/sdk-logger";
@@ -185,6 +186,12 @@ function createInngestClient(
     // unset they go to the SDK's own console logger, which prints the handshake
     // as four unformatted lines and a bare object in the middle of the stream.
     internalLogger: createInngestSdkLogger(),
+    // What makes `client.metadata` reachable at all: the getter throws without
+    // it. A run writes its own identity there, since every workflow executes on
+    // the one function and Inngest labels them all "Workflow run". The feature
+    // is experimental, and its GA removes this middleware and makes the metadata
+    // surface unconditional, so this line is deleted rather than rewritten then.
+    middleware: [metadataMiddleware()],
   });
 }
 

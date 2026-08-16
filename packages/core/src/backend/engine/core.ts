@@ -327,7 +327,7 @@ function executeWorkflowInner(
       // written exactly once, even though the body replays after every wait.
       yield* runDurable(
         runtime,
-        "workflow-run-completed",
+        { id: "workflow-run-completed", name: "Run completed" },
         recordRunCompleted({
           store,
           executionId,
@@ -365,7 +365,7 @@ function executeWorkflowInner(
         // Same exactly-once treatment as the success path above.
         yield* runDurable(
           runtime,
-          "workflow-run-failed",
+          { id: "workflow-run-failed", name: "Run failed" },
           recordRunFailed({
             store,
             executionId,
@@ -439,7 +439,10 @@ function executeWorkflowBranchInner(
     // cost is that a row whose close was refused leaves its template unresolved.
     const upstream = yield* runDurable(
       runtime,
-      `branch-upstream-${entryNodeId}`,
+      {
+        id: `branch-upstream-${entryNodeId}`,
+        name: "Inherit upstream outputs",
+      },
       store.readNodeOutputs(executionId)
     );
 

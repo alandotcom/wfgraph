@@ -13,7 +13,10 @@ import {
   failureFromUnknown,
   runPromiseWithEngineFailure,
 } from "#src/backend/engine/engine-failure";
-import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
+import type {
+  DurableStepRef,
+  WorkflowExecutionRuntime,
+} from "#src/backend/engine/runtime";
 
 /** Lift a Promise into the engine failure channel. */
 export function fromUnknownPromise<A>(
@@ -28,13 +31,13 @@ export function fromUnknownPromise<A>(
  */
 export function runDurable<A, E>(
   runtime: WorkflowExecutionRuntime,
-  stepId: string,
+  step: DurableStepRef,
   effect: Effect.Effect<A, E>
 ): Effect.Effect<A, EngineFailure> {
   return Effect.gen(function* () {
     const effectContext = yield* Effect.context();
     return yield* fromUnknownPromise(() =>
-      runtime.run(stepId, () =>
+      runtime.run(step, () =>
         runPromiseWithEngineFailure(effectContext)(effect)
       )
     );
@@ -47,8 +50,8 @@ export function runDurable<A, E>(
  */
 export function runDurableUnit<E>(
   runtime: WorkflowExecutionRuntime,
-  stepId: string,
+  step: DurableStepRef,
   effect: Effect.Effect<void, E>
 ): Effect.Effect<null, EngineFailure> {
-  return runDurable(runtime, stepId, Effect.as(effect, null));
+  return runDurable(runtime, step, Effect.as(effect, null));
 }

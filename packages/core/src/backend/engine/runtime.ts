@@ -19,16 +19,27 @@ export type WaitForEventOptions = {
   ifExpression?: string;
 };
 
+/**
+ * How the engine names one durable step to the runtime.
+ *
+ * `id` is the memoization key and nothing else: change it and a run in flight
+ * repeats the work it already did. `name` is what a durable runtime's UI prints
+ * for the step, carries no meaning to the runtime, and may be reworded at any
+ * time. The two are split because an id has to survive a rename of the node it
+ * belongs to, while the label a person reads should follow that rename.
+ */
+export type DurableStepRef = { id: string; name?: string };
+
 export type WorkflowExecutionRuntime = {
-  sleep: (stepId: string, durationMs: number) => Promise<void>;
+  sleep: (step: DurableStepRef, durationMs: number) => Promise<void>;
   waitForEvent: (
-    stepId: string,
+    step: DurableStepRef,
     options: WaitForEventOptions
   ) => Promise<unknown>;
   /**
    * Runs one unit of work as a durable, memoized step.
    *
-   * The runtime stores the return value under `stepId` and hands it back
+   * The runtime stores the return value under `step.id` and hands it back
    * instead of calling `fn` again on a replay. Anything with a side effect
    * (sending an email, writing a log row) must therefore be wrapped, or it
    * happens once per replay.
@@ -44,7 +55,7 @@ export type WorkflowExecutionRuntime = {
    * cannot carry it, since comparing two generic signatures re-applies the
    * check to a value that already passed it.
    */
-  run: <T>(stepId: string, fn: () => Promise<T>) => Promise<T>;
+  run: <T>(step: DurableStepRef, fn: () => Promise<T>) => Promise<T>;
   /**
    * Hands the branch below one node to a durable run of its own (ADR-0011), and
    * parks the caller until that run ends.
@@ -55,7 +66,7 @@ export type WorkflowExecutionRuntime = {
    * enters the Wait where it stands.
    */
   startBranch?: (
-    stepId: string,
+    step: DurableStepRef,
     input: { entryNodeId: string; releasedNodeIds: readonly string[] }
   ) => Promise<BranchHandoff>;
   /**
@@ -118,8 +129,8 @@ export function createInMemoryWorkflowRuntime(
     waits,
     attempt,
 
-    sleep: async (stepId, durationMs) => {
-      sleeps.push({ stepId, durationMs });
+    sleep: async (step, durationMs) => {
+      sleeps.push({ stepId: step.id, durationMs });
       if (skipSleep || durationMs <= 0) {
         return;
       }
@@ -128,20 +139,23 @@ export function createInMemoryWorkflowRuntime(
       });
     },
 
-    waitForEvent: (stepId, waitOptions) => {
-      waits.push({ stepId, options: waitOptions });
+    waitForEvent: (step, waitOptions) => {
+      waits.push({ stepId: step.id, options: waitOptions });
       return Promise.resolve(resumeEvent);
     },
 
-    run: async <T>(stepId: string, fn: () => Promise<T>): Promise<T> => {
-      if (memo.has(stepId)) {
+    // The display name is dropped rather than recorded: it is a label for a
+    // durable runtime's UI, and a test asserting on one would be asserting on
+    // wording no behaviour reads.
+    run: async <T>(step: DurableStepRef, fn: () => Promise<T>): Promise<T> => {
+      if (memo.has(step.id)) {
         // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- a step id always maps back to that step's own result type
-        return memo.get(stepId) as T;
+        return memo.get(step.id) as T;
       }
 
       const value = await fn();
 
-      memo.set(stepId, JSON.parse(JSON.stringify(value ?? null)));
+      memo.set(step.id, JSON.parse(JSON.stringify(value ?? null)));
 
       return value;
     },
