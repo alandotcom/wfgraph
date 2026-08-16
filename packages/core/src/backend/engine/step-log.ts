@@ -159,9 +159,14 @@ export function runWithStepLog<T extends StepResult, E, R>(
 ): Effect.Effect<T, E | EngineFailure, R> {
   return Effect.gen(function* () {
     const { store, context, runtime } = target;
+    // The id carries the node's own id so it survives a rename; the name carries
+    // the label, so the trace reads as the graph does.
     const handle = yield* runDurable(
       runtime,
-      `node:${context.nodeId}:log-open`,
+      {
+        id: `node:${context.nodeId}:log-open`,
+        name: `${context.nodeName} (open)`,
+      },
       openStepLog(target)
     );
     const startedAt = Date.now();
@@ -172,7 +177,10 @@ export function runWithStepLog<T extends StepResult, E, R>(
     const closeOnce = (close: StepLogClose) =>
       runDurable(
         runtime,
-        `node:${context.nodeId}:log-close:${runtime.attempt}`,
+        {
+          id: `node:${context.nodeId}:log-close:${runtime.attempt}`,
+          name: `${context.nodeName} (close)`,
+        },
         Effect.as(
           closeStepLogQuietly(store, context, handle, close, elapsed()),
           null

@@ -164,7 +164,10 @@ export function executeDelayWait(
     // a fresh target time or insert a second wait-state row.
     const prepared = yield* runDurable(
       runtime,
-      `wait-delay-prepare-${context.nodeId}`,
+      {
+        id: `wait-delay-prepare-${context.nodeId}`,
+        name: `${context.nodeName} (prepare delay)`,
+      },
       prepareDelayWait(branch)
     );
 
@@ -188,7 +191,10 @@ export function executeDelayWait(
     yield* Effect.catchCause(
       fromUnknownPromise(() =>
         runtime.sleep(
-          `wait-delay-${context.nodeId}`,
+          {
+            id: `wait-delay-${context.nodeId}`,
+            name: `${context.nodeName} (delay)`,
+          },
           Math.max(prepared.plannedWaitMs, 0)
         )
       ),
@@ -206,7 +212,10 @@ export function executeDelayWait(
 
     const output = yield* runDurable(
       runtime,
-      `wait-delay-resume-${context.nodeId}`,
+      {
+        id: `wait-delay-resume-${context.nodeId}`,
+        name: `${context.nodeName} (resume)`,
+      },
       Effect.gen(function* () {
         yield* fromStore(
           store.markWaitStateStatus({

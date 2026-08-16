@@ -146,7 +146,9 @@ export class CancelBoundary {
       function* (this: CancelBoundary) {
         const pending = yield* runDurable(
           runtime,
-          `lifecycle-check-${nodeId}`,
+          // No node name reaches this class, and every check reads the same row,
+          // so the label names the question rather than the node asking it.
+          { id: `lifecycle-check-${nodeId}`, name: "Cancel check" },
           store.readPendingCancel(executionId)
         );
 
