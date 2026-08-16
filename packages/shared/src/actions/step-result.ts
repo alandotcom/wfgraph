@@ -27,8 +27,8 @@ export type StepError = { message: string };
  *
  * `TData` stays unconstrained even so. Most step payloads are shaped by a
  * vendor SDK, and TypeScript gives an implicit index signature to a type alias
- * but not to an interface, so `TData extends JsonValue` would reject
- * `Appointment` from the Acuity SDK while accepting an identical local alias.
+ * but not to an interface, so `TData extends JsonValue` would reject an
+ * interface a vendor SDK declares while accepting an identical local alias.
  * That rejects nothing unsafe. The constraint therefore lives at the reading
  * end, on `NodeOutputs`, where the engine has already carried the value across
  * the serialization boundary and every consumer needs to narrow it.

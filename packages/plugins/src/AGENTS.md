@@ -2,7 +2,7 @@
 
 `docs/integrations.md` is the walkthrough: the `defineIntegration` shape, what it owns
 around a handler, the canonical JSON codec and which optional spelling goes on which side.
-This file holds what is specific to the six integrations in this directory.
+This file holds what is specific to the five integrations in this directory.
 
 ## The files
 
@@ -20,12 +20,12 @@ plugins/[name]/
 ```
 
 A larger integration adds modules beside those rather than growing `index.ts` without
-limit: `acuity/` has `payloads.ts` for the system's wire shapes and `shared.ts` for the
-config parsers its eight actions share, `clerk/` has `types.ts`, `metadata.ts` and a
-`components/` directory for its output renderer, `linear/` an `errors.ts`. What stays in
-`index.ts` either way is the integration itself, so a reader opens one file to learn what
-it does. `acuity/` is the largest at eight actions, with its schemas above the
-`defineIntegration` call and each action written inline in the `actions` record.
+limit: `clerk/` has `types.ts` for the system's wire shapes, `metadata.ts` for the config
+parser two of its actions share, and a `components/` directory for its output renderer;
+`linear/` has an `errors.ts`. What stays in `index.ts` either way is the integration
+itself, so a reader opens one file to learn what it does. `clerk/` is the largest at four
+actions, with its schemas above the `defineIntegration` call and each action written
+inline in the `actions` record.
 
 **An action is an object literal and its handler is written inside it.** That is what types
 them: `bag.input` comes from that action's own `input` schema and `bag.credentials` from
@@ -59,9 +59,9 @@ retry policy is stated once, above `RETRY_ATTEMPTS`, and Inngest's function-leve
 the outer policy beyond it.
 
 An SDK earns its place only where it carries protocol logic worth borrowing, which is why
-`@clerk/backend` (JWT verification), `@linear/sdk` (a typed GraphQL client) and
-`@fountain-bio/acuity` stayed while `twilio`, `resend` and `@slack/web-api` did not. Those
-three keep their own transport and error handling and do not go through `callExternal`.
+`@clerk/backend` (JWT verification) and `@linear/sdk` (a typed GraphQL client) stayed while
+`twilio`, `resend` and `@slack/web-api` did not. Those three keep their own transport and
+error handling and do not go through `callExternal`.
 
 ## test.ts
 
@@ -108,8 +108,8 @@ run steering its own test address from its payload defeats the point of nominati
 ## Describe the wire, not the SDK
 
 `docs/integrations.md` states the rule. Pin a wire shape with a fixture built from a
-recorded response and an assertion running the encode: `acuity/appointments.test.ts` is
-the pattern, and a field-derivation test alone catches none of what an SDK type gets wrong.
+recorded response and an assertion running the decode: `twilio/client.test.ts` is the
+pattern, and a field-derivation test alone catches none of what a vendor type gets wrong.
 
 ## Adding one
 
@@ -149,7 +149,7 @@ vocabulary, the action slugs, and the field list `requireOutputFieldsFromSchema`
 each output schema. What Workflow Graph itself does around a handler is covered once, in
 `packages/core/src/backend/extensions/steps/define-step.test.ts`.
 
-`src/index.test.ts` runs `checkIntegration` over all six at module level, which is every
+`src/index.test.ts` runs `checkIntegration` over all five at module level, which is every
 check `assembleExtensions` runs, so a bad definition fails that file's collection. A host
 would otherwise meet it as a startup crash, and a description missing from one field of one
 output schema would reach a reviewer as a green suite. `checkIntegration` is exported from

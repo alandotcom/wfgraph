@@ -434,15 +434,15 @@ describe("workflow engine replay safety", () => {
 describe("a Date-bearing step output across a replay", () => {
   // Any declared integration type will do: what this exercises is the output
   // schema, not the vendor.
-  const CLOCK_ACTION_ID = "acuity/read-clock";
-  const ECHO_ACTION_ID = "acuity/echo-clock";
+  const CLOCK_ACTION_ID = "linear/read-clock";
+  const ECHO_ACTION_ID = "linear/echo-clock";
   const AT_TOKEN = "{{@clock_1:Read Clock.at}}";
 
   /** What each Echo node resolved the template to, in the order they ran. */
   let echoed: string[] = [];
 
   const clock = defineIntegration({
-    type: "acuity",
+    type: "linear",
     label: "Clock",
     description: "Answers with a timestamp",
     credentials: {},

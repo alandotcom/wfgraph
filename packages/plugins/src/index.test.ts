@@ -4,7 +4,7 @@ import { builtInIntegrations } from "#src/index";
 
 /**
  * Every check `assembleExtensions` runs over an integration, run here over the real
- * six.
+ * five.
  *
  * A host finds out about a bad definition when its app starts, which is the right
  * place for a host and the wrong place for this repo: a description missing from one
@@ -19,9 +19,8 @@ const actions = builtInIntegrations.flatMap((integration) =>
 );
 
 describe("every built-in integration", () => {
-  it("covers all six", () => {
+  it("covers all five", () => {
     expect(builtInIntegrations.map((integration) => integration.type)).toEqual([
-      "acuity",
       "clerk",
       "linear",
       "resend",
