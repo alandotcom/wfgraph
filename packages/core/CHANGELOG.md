@@ -1,5 +1,50 @@
 # @wfgraph/core
 
+## 2.0.0
+
+### Major Changes
+
+- [#99](https://github.com/alandotcom/wfgraph/pull/99) [`ff1d523`](https://github.com/alandotcom/wfgraph/commit/ff1d52354079abad1d265c0a27ab27395a1bc177) Thanks [@alandotcom](https://github.com/alandotcom)! - Take `inngest` and `hono` as peer dependencies rather than dependencies. Add both to your
+  own manifest alongside `@wfgraph/core`:
+
+  ```bash
+  pnpm add @wfgraph/core inngest hono
+  ```
+
+  Your application now owns the version of each that runs in its process, inside `^4.18.0`
+  for `inngest` and `^4.13.1` for `hono`. For Inngest that is the point of the change: a host
+  that already drives Inngest functions of its own used to end up with a second copy of a
+  durable-execution runtime, carrying its own OpenTelemetry stack, protobuf codec and Connect
+  worker, as a silent outcome of an install. A version disagreement now fails at install,
+  where it can be read.
+
+  Nothing about the API moved. `createWfGraphApp` still takes the same `inngest` config object
+  and still builds its own Inngest client and its own Hono app, and it still answers with
+  `fetch`, `basePath` and `dispose`. Neither library appears in what it hands back, and no
+  published type names either one.
+
+### Minor Changes
+
+- [#98](https://github.com/alandotcom/wfgraph/pull/98) [`1c94924`](https://github.com/alandotcom/wfgraph/commit/1c9492471ae3d5e70b09bb29beab5f686468ff90) Thanks [@alandotcom](https://github.com/alandotcom)! - Name a run and its steps in the Inngest UI.
+
+  Every workflow executes on one Inngest function, so the dashboard labelled every
+  run "Workflow run" and every trace row carried a memoization id built from an
+  opaque node id. Two things change that:
+
+  - A run attaches its own identity as Inngest run metadata under the
+    `userland.wfgraph` kind: the workflow's name and id, the execution id, the run
+    mode, the triggering event, the workflow version and the node count, plus the
+    entry node on a branch run. It is written inside one memoized step, so it
+    survives a replay and costs no extra request. A refused write is logged and
+    the run continues.
+  - Each durable step now carries a display name beside its id, so a trace reads
+    `Post to Slack: post` rather than `node:vMVCWuW-OmRDEhJok5pfu:post`. Every step
+    id is unchanged, so memoization behaves exactly as before.
+
+  The Inngest client is now built with `metadataMiddleware()` from
+  `inngest/experimental`, which is what makes the metadata surface reachable. The
+  Inngest Dev Server shows the Metadata tab from v1.17.0.
+
 ## 1.0.0
 
 ## 0.3.0
