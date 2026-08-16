@@ -17,6 +17,7 @@ import {
   workflowLoadErrorAtom,
 } from "#src/lib/workflow-save-store";
 import {
+  activePropertiesTabAtom,
   isGeneratingAtom,
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
@@ -46,16 +47,35 @@ import type {
 const nodesStateAtom = atom<WorkflowNode[]>([]);
 const edgesStateAtom = atom<WorkflowEdge[]>([]);
 
+const pinnedRunGraphAtom = atom<{
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+} | null>(null);
+
 /**
  * The published graph a selected run pinned, shown on the canvas instead of the
  * draft so node statuses land on the shape the run actually walked. Cleared
  * when the run is deselected. Never saved: draft atoms stay draft-only so a
  * Cmd+S or toolbar save cannot persist the run graph over the editor's draft.
+ *
+ * Reads as null while the Runs tab is down, on the same `activePropertiesTabAtom`
+ * gate `selectedExecutionIdAtom` reads through, because the two describe one run
+ * and must go off the canvas together. Only the panel's Back button writes the
+ * URL, so leaving the tab any other way left `executionId` in the search, this
+ * graph pinned, and `canvasEditingLockedAtom` refusing every edit with nothing
+ * on screen saying why. Coming back to the tab paints the same run again.
  */
-export const executionOverlayGraphAtom = atom<{
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
-} | null>(null);
+export const executionOverlayGraphAtom = atom(
+  (get) =>
+    get(activePropertiesTabAtom) === "runs" ? get(pinnedRunGraphAtom) : null,
+  (
+    _get,
+    set,
+    graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] } | null
+  ) => {
+    set(pinnedRunGraphAtom, graph);
+  }
+);
 
 /** Read-only draft. Mutate through the action atoms below so undo always sees it. */
 export const nodesAtom = atom((get) => get(nodesStateAtom));

@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
 import { WorkflowRuns } from "#src/components/workflow/workflow-runs";
 import {
+  canvasEditingLockedAtom,
   displayNodesAtom,
   executionOverlayGraphAtom,
   hydrateWorkflowAtom,
@@ -522,6 +523,45 @@ describe("ExecutionOverlaySync", () => {
       store.get(displayNodesAtom).find((node) => node.id === "shared_lifecycle")
         ?.data.status ?? "idle"
     ).toBe("idle");
+  });
+
+  // Leaving the Runs tab is the other way out of a run, and the only one the
+  // rail's tab bar offers: it writes no URL, so `executionId` stays in the
+  // search. The pinned graph has to step aside anyway, or the canvas keeps
+  // painting the run's graph and `canvasEditingLockedAtom` keeps refusing every
+  // edit, with nothing on screen to say why.
+  it("hands the canvas back to the draft when the Runs tab is left", async () => {
+    served.items = [execution("exec_1", "completed")];
+    served.graphs = { [versionIdFor("exec_1")]: pinnedGraph("v1_lifecycle") };
+    const { store, router } = renderRuns({
+      executionId: "exec_1",
+      panel: false,
+    });
+    store.set(hydrateWorkflowAtom, savedWorkflow("wf_1"));
+
+    await waitFor(() => {
+      expect(store.get(canvasEditingLockedAtom)).toBe(true);
+    });
+
+    await act(() => {
+      store.set(propertiesPanelActiveTabAtom, "properties");
+    });
+
+    expect(store.get(canvasEditingLockedAtom)).toBe(false);
+    expect(
+      store.get(displayNodesAtom).some((node) => node.id === "v1_lifecycle")
+    ).toBe(false);
+    // The run stays open in the URL, so coming back to the tab paints it again
+    // without a refetch.
+    expect(router.state.location.search).toEqual({ executionId: "exec_1" });
+
+    await act(() => {
+      store.set(propertiesPanelActiveTabAtom, "runs");
+    });
+
+    expect(store.get(displayNodesAtom).map((node) => node.id)).toEqual([
+      "v1_lifecycle",
+    ]);
   });
 
   // A logs poll advances dataUpdatedAt; the overlay key must not, or every
