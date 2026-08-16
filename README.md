@@ -47,6 +47,13 @@ pnpm run start
 
 ## Embed in your app
 
+```bash
+pnpm add @wfgraph/core @wfgraph/client inngest hono
+```
+
+`inngest` and `hono` are peer dependencies, so your application owns the version of each
+that runs in its process. Add `@wfgraph/plugins` for the built-in integrations.
+
 `createWfGraphApp` returns a fetch handler. Pass Events, actions, and integrations in one
 `extensions` object:
 

@@ -18,7 +18,7 @@ export type InngestSurfaceDeps = {
 /**
  * Bound on the Connect handshake at boot, absent `inngest.connectTimeoutMs`.
  *
- * Read against the installed `inngest@4.14.0` source
+ * Read against the inngest 4.x source this package accepts as its peer
  * (`components/connect/strategies/core/connection.js`): every handshake
  * failure surfaces as a `ReconnectError`, and the reconcile loop's `while
  * (true)` retries each one with exponential backoff forever, never settling

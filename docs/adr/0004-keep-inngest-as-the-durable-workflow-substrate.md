@@ -48,3 +48,32 @@ deferred completes. Inngest resumes a function invocation at the last of its out
 pauses. That wake policy is why each waiting branch is handed to a separate durable run in
 ADR-0011; replacing the substrate would therefore require replacing that branch hand-off,
 not only implementing storage interfaces.
+
+**Amendment, 2026-08-16.** `inngest` moved from `dependencies` to `peerDependencies` in
+`packages/core/package.json`, at `^4.18.0`. The host installs the SDK and picks the version
+inside that range.
+
+`docs/plans/embeddable-library.md` set the opposite rule for a vendor SDK, and that rule
+still holds for the other four. Workflow Graph builds a Twilio or a Linear client out of
+credentials it decrypts, hands the client to nobody, and checks no class identity across the
+boundary, so a duplicate copy of one of those SDKs is inert weight. Inngest is the one
+dependency where a duplicate is a second durable-execution runtime in the same process,
+carrying its own OpenTelemetry stack, its own protobuf codec and its own Connect worker.
+A host that already drives Inngest functions declares its own range, and a range that fails
+to overlap with a pinned `^4.18.0` used to produce that second copy as a silent outcome of
+an install. As a peer, the disagreement fails at install instead, where it can be read.
+
+Nothing about the seam changed. `WfGraphInngestConfig` is still plain data, the client is
+still built by `createInngestClient`, and `WfGraphApp` still exposes `fetch`, `basePath` and
+`dispose` alone. Accepting a host-built `Inngest` client is a separate decision, and this
+amendment leaves it undecided.
+
+`hono` moved to `peerDependencies` in the same change, at `^4.13.1`, which returns it to
+where `docs/plans/embeddable-library.md` took it from. The argument there was that an
+Express host should not install a router it never calls, and that argument still describes
+the cost. What buys it back is the host's control of the version: a host that runs its own
+Hono application now resolves one copy of the router with Workflow Graph rather than two,
+and picks which one. Hono stays an implementation detail either way. No `dist/*.d.ts` names
+a Hono type, so nothing about the published surface changed. `@hono/node-server` stays a
+plain dependency, because it names `hono: ^4` as its own peer and therefore binds to
+whichever copy the host resolved.
