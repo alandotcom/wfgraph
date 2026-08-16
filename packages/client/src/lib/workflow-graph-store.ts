@@ -60,10 +60,11 @@ const pinnedRunGraphAtom = atom<{
  *
  * Reads as null while the Runs tab is down, on the same `activePropertiesTabAtom`
  * gate `selectedExecutionIdAtom` reads through, because the two describe one run
- * and must go off the canvas together. Only the panel's Back button writes the
- * URL, so leaving the tab any other way left `executionId` in the search, this
- * graph pinned, and `canvasEditingLockedAtom` refusing every edit with nothing
- * on screen saying why. Coming back to the tab paints the same run again.
+ * and must go off the canvas together. This gate covers the one exit that keeps
+ * the run open on purpose: the tab bar's Properties button, which writes the tab
+ * and not the URL, so coming back paints the same run again without a refetch.
+ * An interaction that hides the whole surface instead clears the search through
+ * `useLeaveRunsSurface`, and `ExecutionOverlaySync` nulls the write side.
  */
 export const executionOverlayGraphAtom = atom(
   (get) =>

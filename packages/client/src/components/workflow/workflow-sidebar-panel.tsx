@@ -2,9 +2,10 @@ import { useAtom, useAtomValue } from "jotai";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { DeleteConfirmDialog } from "#src/components/delete-confirm-dialog";
-import { ConfigurationOverlay } from "#src/components/overlays/configuration-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
+import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
+import { useLeaveRunsSurface } from "#src/hooks/use-exit-run";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import {
@@ -57,10 +58,14 @@ function NodeConfigRail() {
 
 export function WorkflowSidebarPanel() {
   const isMobile = useIsMobile();
-  const [panelCollapsed, setPanelCollapsed] = useAtom(isSidebarCollapsedAtom);
+  const [panelCollapsed, setPanelCollapsedState] = useAtom(
+    isSidebarCollapsedAtom
+  );
   const [panelWidth, setPanelWidth] = useAtom(sidebarWidthPercentAtom);
   const selectedNodeId = useAtomValue(selectedNodeAtom);
-  const { open: openOverlay, hasOverlays } = useOverlay();
+  const { hasOverlays } = useOverlay();
+  const { openSheet } = useConfigurationSheet();
+  const leaveRunsSurface = useLeaveRunsSurface();
 
   // Narrowing past the breakpoint unmounts this rail. If it was showing a node,
   // that node's config would vanish with it, so the sheet picks it up. The
@@ -69,9 +74,30 @@ export function WorkflowSidebarPanel() {
   // screen at any width.
   useAfterCommit(isMobile, () => {
     if (isMobile && selectedNodeId && !hasOverlays) {
-      openOverlay(ConfigurationOverlay, {});
+      openSheet();
     }
   });
+
+  /**
+   * The single write to the collapsed preference, because collapsing also has to
+   * close any open run. Collapsing slides the rail behind the viewport edge
+   * rather than unmounting it, so the Runs tab keeps its state while its tab bar
+   * is out of reach: the run stayed pinned to the canvas and every edit was
+   * refused with nothing on screen saying why (#96 on the sheet, same shape
+   * here).
+   *
+   * Takes the next value rather than an updater, so the exit is decided here and
+   * not inside a state write that has no business having side effects.
+   */
+  const setPanelCollapsed = useCallback(
+    (collapsed: boolean) => {
+      if (collapsed) {
+        leaveRunsSurface();
+      }
+      setPanelCollapsedState(collapsed);
+    },
+    [setPanelCollapsedState, leaveRunsSurface]
+  );
 
   const [isDraggingResize, setIsDraggingResize] = useState(false);
   const isResizing = useRef(false);
@@ -80,10 +106,10 @@ export function WorkflowSidebarPanel() {
     (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "b") {
         e.preventDefault();
-        setPanelCollapsed((previous) => !previous);
+        setPanelCollapsed(!panelCollapsed);
       }
     },
-    [setPanelCollapsed]
+    [setPanelCollapsed, panelCollapsed]
   );
 
   useDomEvent(window, "keydown", handleToggleShortcut);
@@ -127,7 +153,7 @@ export function WorkflowSidebarPanel() {
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
         if (!travelled) {
-          setPanelCollapsed((previous) => !previous);
+          setPanelCollapsed(!panelCollapsed);
         }
       };
 
@@ -137,7 +163,7 @@ export function WorkflowSidebarPanel() {
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
     },
-    [setPanelWidth, setPanelCollapsed]
+    [setPanelWidth, setPanelCollapsed, panelCollapsed]
   );
 
   return (

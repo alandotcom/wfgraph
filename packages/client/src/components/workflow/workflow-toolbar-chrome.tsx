@@ -22,9 +22,9 @@ import {
 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useState } from "react";
-import { ConfigurationOverlay } from "#src/components/overlays/configuration-overlay";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
+import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { Button } from "#src/components/ui/button";
 import { ButtonGroup } from "#src/components/ui/button-group";
@@ -190,7 +190,8 @@ export function ToolbarActions({
   state: WorkflowToolbarState;
   actions: WorkflowToolbarActions;
 }) {
-  const { open: openOverlay, push } = useOverlay();
+  const { push } = useOverlay();
+  const { openSheet } = useConfigurationSheet();
   const [selectedNodeId] = useAtom(selectedNodeAtom);
   const [selectedEdgeId] = useAtom(selectedEdgeAtom);
   const nodes = useAtomValue(nodesAtom);
@@ -326,7 +327,7 @@ export function ToolbarActions({
       >
         <Button
           className="border hover:bg-secondary dark:hover:bg-secondary"
-          onClick={() => openOverlay(ConfigurationOverlay, {})}
+          onClick={openSheet}
           size="icon"
           title="Configuration"
           variant="secondary"

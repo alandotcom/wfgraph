@@ -57,7 +57,17 @@ export function OverlayProvider({ children }: OverlayProviderProps) {
   const open = useCallback<OverlayContextValue["open"]>(
     (component, props, options): string => {
       const item = createOverlayItem(component, props, options);
-      setStack([item]);
+      setStack((prev) => {
+        // Opening discards whatever was up, and those overlays are as closed as
+        // any the user dismissed, so they get their `onClose` like every other
+        // path here. Without this a config sheet replaced by the Test Run
+        // overlay left the run it was showing pinned to the canvas, with
+        // editing locked and no panel on screen to say why (#96).
+        for (const discarded of prev) {
+          discarded.options.onClose?.();
+        }
+        return [item];
+      });
       return item.id;
     },
     []

@@ -24,6 +24,8 @@ describe("workflow route state", () => {
 
   it("opens runs only while a run is named in the URL", () => {
     expect(workflowPanelTab("exec_1")).toBe("runs");
-    expect(workflowPanelTab(undefined)).toBe("properties");
+    // Null rather than "properties": closing a run must leave the panel's own
+    // tab alone, so the Back button lands on the runs list it names.
+    expect(workflowPanelTab(undefined)).toBeNull();
   });
 });

@@ -11,8 +11,7 @@ import {
 } from "@xyflow/react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { ConfigurationOverlay } from "#src/components/overlays/configuration-overlay";
-import { useOverlay } from "#src/components/overlays/overlay-provider";
+import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { Canvas } from "#src/components/flow-elements/canvas";
 import { Connection } from "#src/components/flow-elements/connection";
 import { Controls } from "#src/components/flow-elements/controls";
@@ -78,7 +77,7 @@ export function WorkflowCanvas() {
   // The sidebar renders nothing on a narrow viewport, so the canvas keeps the
   // whole width. Whether the viewport is narrow is the canvas's own question.
   const isMobile = useIsMobile();
-  const { open: openOverlay } = useOverlay();
+  const { openSheet } = useConfigurationSheet();
   const sidebarWidth = useAtomValue(rightPanelWidthAtom);
   const rightPanelWidth = isMobile ? null : sidebarWidth;
   const [isTransitioningFromHomepage, setIsTransitioningFromHomepage] = useAtom(
@@ -429,10 +428,10 @@ export function WorkflowCanvas() {
       // config lived behind an unlabelled toolbar icon a first-time user has no
       // reason to find. On a narrow canvas the tap opens the sheet itself.
       if (isMobile) {
-        openOverlay(ConfigurationOverlay, {});
+        openSheet();
       }
     },
-    [setSelectedNode, setActiveTab, isMobile, openOverlay]
+    [setSelectedNode, setActiveTab, isMobile, openSheet]
   );
 
   const onConnectStart = useCallback(

@@ -3,9 +3,9 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { Link2Off, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useRef } from "react";
-import { ConfigurationOverlay } from "#src/components/overlays/configuration-overlay";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
+import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useDomEvent } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import {
@@ -45,6 +45,7 @@ export function WorkflowContextMenu({
   const setSelectedNode = useSetAtom(selectedNodeAtom);
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
   const { open: openOverlay } = useOverlay();
+  const { openSheet } = useConfigurationSheet();
   const isMobile = useIsMobile();
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -74,17 +75,10 @@ export function WorkflowContextMenu({
       // On a narrow canvas no rail is mounted to show the selection, so the
       // sheet is the only surface that can answer this click.
       if (isMobile) {
-        openOverlay(ConfigurationOverlay, {});
+        openSheet();
       }
     }
-  }, [
-    menuState,
-    onClose,
-    setSelectedNode,
-    setActiveTab,
-    isMobile,
-    openOverlay,
-  ]);
+  }, [menuState, onClose, setSelectedNode, setActiveTab, isMobile, openSheet]);
 
   const handleDeleteEdge = useCallback(() => {
     if (menuState?.edgeId) {
