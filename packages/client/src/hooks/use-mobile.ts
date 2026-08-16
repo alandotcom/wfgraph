@@ -8,7 +8,12 @@ function subscribe(onViewportChange: () => void) {
   return () => query.removeEventListener("change", onViewportChange);
 }
 
-function isMobileViewport() {
+/**
+ * The same question `useIsMobile` answers, sampled once instead of subscribed to.
+ * For a callback that runs outside render and needs the width as it is at that
+ * moment, such as an overlay's `onClose` deciding whether a rail has taken over.
+ */
+export function isMobileViewport() {
   return window.innerWidth < MOBILE_BREAKPOINT;
 }
 

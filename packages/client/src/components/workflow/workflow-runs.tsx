@@ -16,6 +16,7 @@ import {
   toExecutionEvents,
   toWorkflowExecutions,
 } from "#src/lib/execution-logs";
+import { useExitRun } from "#src/hooks/use-exit-run";
 import { orpcQuery, refreshRunHistory } from "#src/lib/rpc-query";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
@@ -46,6 +47,7 @@ export function WorkflowRuns() {
   // derives the selection atom and pinned graph; this panel only reads search.
   const { executionId } = workflowRouteApi.useSearch();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
+  const exitRun = useExitRun();
 
   // Superseded runs are the ones a newer start displaced. They are hidden by
   // default because a newest-wins workflow makes one on every reschedule, and a
@@ -133,12 +135,6 @@ export function WorkflowRuns() {
     void navigate({ search: { executionId: id } });
   };
 
-  const handleBack = () => {
-    // Closing a run is an exit, not a forward step: a push here would let the
-    // browser Back button undo the exit and reopen the run just closed (#40).
-    void navigate({ search: {}, replace: true });
-  };
-
   if (executionsQuery.isPending && executionId === undefined) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -190,7 +186,7 @@ export function WorkflowRuns() {
         <div className="space-y-2 px-1 py-2">
           <Button
             aria-label="Back to runs list"
-            onClick={handleBack}
+            onClick={exitRun}
             size="sm"
             type="button"
             variant="ghost"
@@ -217,7 +213,7 @@ export function WorkflowRuns() {
         isResuming={resumeWait.isPending}
         logs={detailQuery.data?.logs ?? []}
         notice={listedRun ? undefined : LEFT_THE_LIST_NOTICE}
-        onBack={handleBack}
+        onBack={exitRun}
         onCancel={(id) => cancelExecution.mutate({ executionId: id })}
         onResume={(token) => resumeWait.mutate({ token })}
         runNumber={runNumber}

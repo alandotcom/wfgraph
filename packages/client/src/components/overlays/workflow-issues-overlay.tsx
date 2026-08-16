@@ -1,10 +1,10 @@
 import { AlertTriangle } from "lucide-react";
 import { Button } from "#src/components/ui/button";
 import { IntegrationIcon } from "#src/components/ui/integration-icon";
+import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useConnectionRepair } from "#src/hooks/use-connection-repair";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { ConfigureConnectionOverlay } from "./add-connection-overlay";
-import { ConfigurationOverlay } from "./configuration-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
 import type { OverlayComponentProps } from "./types";
@@ -25,6 +25,7 @@ export function WorkflowIssuesOverlay({
   allowRunAnyway = false,
 }: WorkflowIssuesOverlayProps) {
   const { push, closeAll } = useOverlay();
+  const { pushSheet } = useConfigurationSheet();
   const isMobile = useIsMobile();
   const repairAgainstConnectionList = useConnectionRepair();
 
@@ -43,7 +44,7 @@ export function WorkflowIssuesOverlay({
     // On mobile, push ConfigurationOverlay on top so back button returns here
     // On desktop, close all overlays since the sidebar shows the config
     if (isMobile) {
-      push(ConfigurationOverlay, {});
+      pushSheet();
     } else {
       closeAll();
     }

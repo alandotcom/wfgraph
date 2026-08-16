@@ -112,10 +112,10 @@ const workflowRoute = createRoute({
    * run must not re-hydrate.
    */
   beforeLoad: ({ search }) => {
-    appStore.set(
-      propertiesPanelActiveTabAtom,
-      workflowPanelTab(search.executionId)
-    );
+    const tab = workflowPanelTab(search.executionId);
+    if (tab !== null) {
+      appStore.set(propertiesPanelActiveTabAtom, tab);
+    }
   },
   /**
    * Put the workflow on screen before the editor renders.
