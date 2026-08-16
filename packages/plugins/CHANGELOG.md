@@ -1,5 +1,16 @@
 # @wfgraph/plugins
 
+## 1.0.0
+
+### Major Changes
+
+- [#93](https://github.com/alandotcom/wfgraph/pull/93) [`e83fb18`](https://github.com/alandotcom/wfgraph/commit/e83fb18c1ed52a30cfea1c38aa66b69cd0b6630a) Thanks [@alandotcom](https://github.com/alandotcom)! - Remove the Acuity integration. `@wfgraph/plugins` now ships five built-ins (Clerk, Linear,
+  Resend, Slack, Twilio), the `acuity` export and its `integrationUi` entry are gone, and the
+  `@fountain-bio/acuity` dependency is dropped. A host importing `acuity` by name must delete
+  that import; a host passing `builtInIntegrations` needs no change. Stored `acuity`
+  connections and any workflow node on an `acuity/*` action no longer resolve to a registered
+  integration.
+
 ## 0.3.0
 
 ## 0.2.0
