@@ -32,6 +32,7 @@ import {
   currentWorkflowIdAtom,
   isWorkflowOwnerAtom,
 } from "#src/lib/workflow-save-store";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { savedWorkflow } from "#src/lib/workflow-save-test-support";
 import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
@@ -135,6 +136,16 @@ function pinnedGraph(nodeId: string): SerializedWorkflowGraph {
     ],
     edges: [],
   });
+}
+
+/** An editor node for the draft a run overlay is painted over. */
+function draftNode(id: string): WorkflowNode {
+  return {
+    id,
+    type: "lifecycle",
+    position: { x: 0, y: 0 },
+    data: { label: id, type: "lifecycle" },
+  };
 }
 
 /**
@@ -537,7 +548,20 @@ describe("ExecutionOverlaySync", () => {
       executionId: "exec_1",
       panel: false,
     });
-    store.set(hydrateWorkflowAtom, savedWorkflow("wf_1"));
+    // A draft carrying a node of its own, so the canvas handing the run back is
+    // visible as that node returning. Hydrating an empty workflow would satisfy
+    // the assertion below with the run graph merely gone.
+    //
+    // Synchronous, and deliberately outside `act`: hydrate clears the overlay,
+    // so it has to land before the sync paints the run. An await here would let
+    // the queries settle first and wipe what this case is about to measure.
+    store.set(
+      hydrateWorkflowAtom,
+      savedWorkflow("wf_1", {
+        nodes: [draftNode("draft_lifecycle")],
+        edges: [],
+      })
+    );
 
     await waitFor(() => {
       expect(store.get(canvasEditingLockedAtom)).toBe(true);
@@ -548,9 +572,9 @@ describe("ExecutionOverlaySync", () => {
     });
 
     expect(store.get(canvasEditingLockedAtom)).toBe(false);
-    expect(
-      store.get(displayNodesAtom).some((node) => node.id === "v1_lifecycle")
-    ).toBe(false);
+    expect(store.get(displayNodesAtom).map((node) => node.id)).toEqual([
+      "draft_lifecycle",
+    ]);
     // The run stays open in the URL, so coming back to the tab paints it again
     // without a refetch.
     expect(router.state.location.search).toEqual({ executionId: "exec_1" });
