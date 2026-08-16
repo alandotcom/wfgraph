@@ -12,6 +12,8 @@
     "@wfgraph/client": "workspace:*",
     "@wfgraph/core": "workspace:*",
     "@wfgraph/plugins": "workspace:*",
+    "hono": "catalog:",
+    "inngest": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

@@ -63,6 +63,12 @@ catalogs:
     graphology:
       specifier: ^0.26.0
       version: 0.26.0
+    hono:
+      specifier: ^4.13.1
+      version: 4.13.1
+    inngest:
+      specifier: ^4.18.0
+      version: 4.18.0
     nanoid:
       specifier: ^5.1.16
       version: 5.1.16
@@ -185,6 +191,12 @@ importers:
       '@wfgraph/plugins':
         specifier: workspace:*
         version: link:../packages/plugins
+      hono:
+        specifier: 'catalog:'
+        version: 4.13.1
+      inngest:
+        specifier: 'catalog:'
+        version: 4.18.0(@opentelemetry/core@2.10.0(@opentelemetry/api@1.9.1))(express@5.2.1(supports-color@8.1.1))(fastify@5.11.3)(hono@4.13.1)(react@19.2.8)(supports-color@8.1.1)(typescript@7.0.2)(zod@4.4.3)
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -356,7 +368,7 @@ importers:
         version: 3.0.3
       drizzle-orm:
         specifier: 1.0.0-rc.4
-        version: 1.0.0-rc.4(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(arktype@2.2.3)(bun-types@1.3.14)(effect@4.0.0-rc.108)(postgres@3.4.9)(zod@4.4.3)
+        version: 1.0.0-rc.4(@opentelemetry/api@1.9.1)(@types/pg@8.21.0)(arktype@2.2.3)(bun-types@1.3.14)(effect@4.0.0-rc.108)(postgres@3.4.9)(zod@4.4.3)
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.108
@@ -369,12 +381,6 @@ importers:
       graphology-dag:
         specifier: ^0.4.1
         version: 0.4.1(graphology-types@0.24.8)
-      hono:
-        specifier: ^4.13.1
-        version: 4.13.1
-      inngest:
-        specifier: ^4.18.0
-        version: 4.18.0(@opentelemetry/core@2.10.0(@opentelemetry/api@1.9.1))(express@5.2.1(supports-color@8.1.1))(fastify@5.11.3)(hono@4.13.1)(react@19.2.8)(supports-color@8.1.1)(typescript@7.0.2)(zod@4.4.3)
       nanoid:
         specifier: 'catalog:'
         version: 5.1.16
@@ -406,6 +412,12 @@ importers:
       fastify:
         specifier: ^5.11.3
         version: 5.11.3
+      hono:
+        specifier: 'catalog:'
+        version: 4.13.1
+      inngest:
+        specifier: 'catalog:'
+        version: 4.18.0(@opentelemetry/core@2.10.0(@opentelemetry/api@1.9.1))(express@5.2.1(supports-color@8.1.1))(fastify@5.11.3)(hono@4.13.1)(react@19.2.8)(supports-color@8.1.1)(typescript@7.0.2)(zod@4.4.3)
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -8383,10 +8395,10 @@ snapshots:
       get-tsconfig: 4.14.1
       jiti: 2.7.0
 
-  drizzle-orm@1.0.0-rc.4(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(arktype@2.2.3)(bun-types@1.3.14)(effect@4.0.0-rc.108)(postgres@3.4.9)(zod@4.4.3):
+  drizzle-orm@1.0.0-rc.4(@opentelemetry/api@1.9.1)(@types/pg@8.21.0)(arktype@2.2.3)(bun-types@1.3.14)(effect@4.0.0-rc.108)(postgres@3.4.9)(zod@4.4.3):
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
-      '@types/pg': 8.15.6
+      '@types/pg': 8.21.0
       arktype: 2.2.3
       bun-types: 1.3.14
       effect: 4.0.0-rc.108

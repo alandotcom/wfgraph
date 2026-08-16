@@ -4,6 +4,10 @@ How to mount Workflow Graph in a host application: `createWfGraphApp`, the edito
 
 `createWfGraphApp` returns a fetch handler: `(request: Request) => Promise<Response>`.
 
+```bash
+pnpm add @wfgraph/core @wfgraph/client @wfgraph/plugins inngest hono
+```
+
 An import hands you a value and stops there. The `extensions` option turns that value on,
 and it holds the full surface an application has.
 
@@ -372,6 +376,13 @@ Read these once:
 - **A mount under a sub-path takes `basePath`.** Workflow Graph builds its API prefix, the
   `<base href>` of the SPA, and each asset URL from it. A host that mounts at `/workflows`
   and omits it gets a client that requests its assets from the root.
+- **`inngest` and `hono` are peer dependencies**, at `^4.18.0` and `^4.13.1`. Your
+  application installs both and owns each version. For Inngest that keeps one
+  durable-execution runtime in the process, even when the application drives Inngest
+  functions of its own. Workflow Graph still builds its own Inngest client out of the
+  `inngest` option below, and still builds its own Hono app inside; `createWfGraphApp`
+  answers with `fetch`, `basePath` and `dispose` alone, so neither library appears in what
+  it hands back.
 - **Running Inngest is the job of the consumer**, self-hosted or cloud. `pnpm run dev` here
   starts it as a separate process. Long-running hosts set `inngest.connect: true` so
   executions arrive over a Connect WebSocket and `/api/inngest` is not mounted.

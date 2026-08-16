@@ -662,8 +662,9 @@ describe("createWfGraphApp with inngest.connect", () => {
     }
   });
 
-  // Read against the installed inngest@4.14.0 source: every handshake
-  // failure the SDK meets (a down gateway included) is a ReconnectError, and
+  // Read against the inngest 4.x source this package accepts as its peer:
+  // every handshake failure the SDK meets (a down gateway included) is a
+  // ReconnectError, and
   // its reconcile loop retries a ReconnectError forever without ever
   // settling the promise connect() hands back. Boot must not hang behind
   // that: it fails once connectTimeoutMs elapses, names the gateway it could

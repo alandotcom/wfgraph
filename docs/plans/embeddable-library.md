@@ -101,7 +101,9 @@ Acceptance:
 - `Bun.serve({ fetch: wfgraph.fetch })` serves the editor and runs a workflow.
 - A test asserts that `basePath: "/wfgraph"` produces `<base href="/wfgraph/">` and an oRPC prefix
   of `/wfgraph/api/rpc`, and that the default produces `/`.
-- `packages/core/package.json` has no `peerDependencies` block at all.
+- `packages/core/package.json` has no `peerDependencies` block at all. (Superseded on
+  2026-08-16: `inngest` and `hono` are both peers. The amendment on ADR-0004 carries the
+  reasoning, including why `hono` went back to where this line took it from.)
 
 Commit: `Expose the embedded app as a fetch handler`
 
