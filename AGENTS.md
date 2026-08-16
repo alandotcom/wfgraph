@@ -6,7 +6,7 @@ beside `@wfgraph/example-app` (`examples/`), the host app `pnpm run dev` runs.
 - `@wfgraph/shared` (`packages/shared`) runtime-agnostic types, workflow contracts, utilities
 - `@wfgraph/core` (`packages/core`) library entrypoints and the backend
 - `@wfgraph/client` (`packages/client`) the React SPA, handed to `createWfGraphApp` as `client`
-- `@wfgraph/plugins` (`packages/plugins`) the six built-in integrations. Each server half
+- `@wfgraph/plugins` (`packages/plugins`) the five built-in integrations. Each server half
   builds against `@wfgraph/core/plugin` alone; the browser half is one exported record,
   `src/ui.ts`, which the editor provides through React context.
 
@@ -228,8 +228,8 @@ module stays in that worker's evaluated graph for later files. Prefer:
   `extensions.test.ts` stubs `fetch` to exercise hydrate)
 - required DI ports at construction (`runEventListener`'s `deliver`,
   `WorkflowFunctionPorts.execute*`, `createInngestSurface`'s `connect`)
-- injected SDK factories (`createAcuity(createSdk)`, `createLinear(createClient)`)
-  rather than `vi.spyOn` of thin wrappers
+- injected SDK factories (`createLinear(createClient)`) rather than `vi.spyOn` of
+  thin wrappers
 - fetch stubs that read `globalThis` per call (see `RPCLink`'s `fetch`)
 
 Do not add production put/dial seams written only for tests. For a stub only one

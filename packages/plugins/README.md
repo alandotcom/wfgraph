@@ -1,8 +1,8 @@
 # @wfgraph/plugins
 
-The six built-in integrations for
-[Workflow Graph](https://github.com/alandotcom/wfgraph): Acuity, Clerk, Linear, Resend, Slack,
-and Twilio.
+The five built-in integrations for
+[Workflow Graph](https://github.com/alandotcom/wfgraph): Clerk, Linear, Resend, Slack, and
+Twilio.
 
 ```bash
 npm install @wfgraph/plugins
@@ -21,9 +21,9 @@ const wfgraph = await createWfGraphApp({
 });
 ```
 
-Each integration is also exported by name, for a host that wants some of the six rather than
+Each integration is also exported by name, for a host that wants some of the five rather than
 all of them. That narrows what reaches `createWfGraphApp` rather than what the process loads,
-since this entry imports all six as values.
+since this entry imports all five as values.
 
 `@wfgraph/core` is a peer dependency: an integration is built against it and handed back to it,
 so the two must resolve to one copy. They are released together and always share a version.

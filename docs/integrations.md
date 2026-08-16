@@ -2,7 +2,7 @@
 
 How to author an integration against `@wfgraph/core/plugin`: `defineIntegration`, replay safety, Effect vs Promise, config forms, testing, and step-boundary schemas.
 
-For the six built-ins in this repository, also see `packages/plugins/src/AGENTS.md`.
+For the five built-ins in this repository, also see `packages/plugins/src/AGENTS.md`.
 
 The server half builds against `@wfgraph/core/plugin` alone, so an outside package is written
 the same way. That surface exports `defineIntegration`, `CredentialFields`, `CredentialsOf`,
@@ -133,7 +133,7 @@ Three rules:
 
 ## Effect for integrations, Promise for host actions
 
-**Integrations author with Effect.** The six built-ins and anything built against
+**Integrations author with Effect.** The five built-ins and anything built against
 `@wfgraph/core/plugin` use `Effect.fn`, because `callExternal` answers an Effect and a handler
 yields it directly. Fail with a `StepFailure`. Durable work is
 `yield* bag.step.run(id, effect)`. Credentials are `yield* bag.credentials`. Do not reach for
@@ -287,7 +287,9 @@ green run.
 **Describe the wire.** The types of an SDK are its own promise about the JSON of somebody
 else, and a typed client casts a response rather than validating it. Model what a recorded
 response holds. Keep the fields a handler depends on required, and make the rest tolerant.
-Acuity is the worked example, and that lesson cost five actions.
+Twilio is the worked example: `twilioMessageSchema` in
+`packages/plugins/src/twilio/client.ts` requires the three fields its handler reads and
+leaves the rest optional and nullish.
 
-For the file layout of the six built-ins, the external HTTP layer, config field types,
+For the file layout of the five built-ins, the external HTTP layer, config field types,
 and the test pattern, see `packages/plugins/src/AGENTS.md`.

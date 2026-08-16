@@ -14,9 +14,9 @@ const testCatalog: ExtensionCatalog = {
   actions: [],
   integrations: [
     {
-      type: "acuity",
-      label: "Acuity",
-      description: "Acuity Scheduling",
+      type: "linear",
+      label: "Linear",
+      description: "Linear issue tracking",
       credentialFields: {},
       hasTest: true,
     },
@@ -35,7 +35,7 @@ function connection(id: string, name: string): Integration {
   return {
     id,
     name,
-    type: "acuity",
+    type: "linear",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   };
@@ -65,7 +65,7 @@ function renderSelector(options: {
         <JotaiProvider store={createStore()}>
           <OverlayProvider>
             <IntegrationSelector
-              integrationType="acuity"
+              integrationType="linear"
               onChange={onChange}
               value={options.value}
             />
@@ -82,12 +82,12 @@ describe("IntegrationSelector", () => {
   it("reports the sole connection as chosen only when the node names it", () => {
     renderSelector({
       value: undefined,
-      connections: [connection("int_acuity", "Acuity Testing")],
+      connections: [connection("int_linear", "Linear Testing")],
     });
 
     expect(
       screen
-        .getByRole("radio", { name: "Acuity Testing" })
+        .getByRole("radio", { name: "Linear Testing" })
         .getAttribute("aria-checked")
     ).toBe("false");
   });
@@ -95,23 +95,23 @@ describe("IntegrationSelector", () => {
   it("binds the node to the sole connection when it is clicked", () => {
     const { onChange } = renderSelector({
       value: undefined,
-      connections: [connection("int_acuity", "Acuity Testing")],
+      connections: [connection("int_linear", "Linear Testing")],
     });
 
-    fireEvent.click(screen.getByRole("radio", { name: "Acuity Testing" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Linear Testing" }));
 
-    expect(onChange).toHaveBeenCalledWith("int_acuity");
+    expect(onChange).toHaveBeenCalledWith("int_linear");
   });
 
   it("reports the connection the node names", () => {
     renderSelector({
-      value: "int_acuity",
-      connections: [connection("int_acuity", "Acuity Testing")],
+      value: "int_linear",
+      connections: [connection("int_linear", "Linear Testing")],
     });
 
     expect(
       screen
-        .getByRole("radio", { name: "Acuity Testing" })
+        .getByRole("radio", { name: "Linear Testing" })
         .getAttribute("aria-checked")
     ).toBe("true");
   });
@@ -120,19 +120,19 @@ describe("IntegrationSelector", () => {
     renderSelector({
       value: "int_second",
       connections: [
-        connection("int_first", "First Acuity"),
-        connection("int_second", "Second Acuity"),
+        connection("int_first", "First Linear"),
+        connection("int_second", "Second Linear"),
       ],
     });
 
     expect(
       screen
-        .getByRole("radio", { name: "First Acuity" })
+        .getByRole("radio", { name: "First Linear" })
         .getAttribute("aria-checked")
     ).toBe("false");
     expect(
       screen
-        .getByRole("radio", { name: "Second Acuity" })
+        .getByRole("radio", { name: "Second Linear" })
         .getAttribute("aria-checked")
     ).toBe("true");
   });

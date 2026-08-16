@@ -14,26 +14,26 @@ import type { WorkflowNode } from "#src/lib/workflow-graph-types";
  * is the write that points unbound nodes at the new connection.
  */
 
-const ACTION = "acuity/list-appointments";
+const ACTION = "linear/find-issues";
 
-const acuityCatalog = {
+const linearCatalog = {
   events: [],
   actions: [
     {
       id: ACTION,
-      label: "List Appointments",
-      description: "List appointments with optional filters",
-      category: "Acuity",
-      integration: "acuity",
+      label: "Find Issues",
+      description: "Find issues matching a filter",
+      category: "Linear",
+      integration: "linear",
       configFields: [],
       outputFields: [],
     },
   ],
   integrations: [
     {
-      type: "acuity",
-      label: "Acuity",
-      description: "Acuity Scheduling",
+      type: "linear",
+      label: "Linear",
+      description: "Linear issue tracking",
       credentialFields: {},
       hasTest: true,
     },
@@ -57,12 +57,12 @@ describe("repairIntegrationsAtom", () => {
     store.set(loadWorkflowGraphAtom, { nodes: [unboundNode], edges: [] });
 
     store.set(repairIntegrationsAtom, {
-      integrations: [{ id: "int_acuity", type: "acuity" }],
-      catalog: acuityCatalog,
+      integrations: [{ id: "int_linear", type: "linear" }],
+      catalog: linearCatalog,
     });
 
     expect(store.get(nodesAtom)[0]?.data.config?.integrationId).toBe(
-      "int_acuity"
+      "int_linear"
     );
   });
 });

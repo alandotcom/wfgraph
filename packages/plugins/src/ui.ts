@@ -8,7 +8,6 @@
  */
 
 import type { ComponentType } from "react";
-import { AcuityIcon } from "#src/acuity/icon";
 import { UserCard } from "#src/clerk/components/user-card";
 import { ClerkIcon } from "#src/clerk/icon";
 import { LinearIcon } from "#src/linear/icon";
@@ -34,7 +33,6 @@ export type IntegrationUi = {
 };
 
 export const integrationUi = {
-  acuity: { icon: AcuityIcon },
   clerk: {
     icon: ClerkIcon,
     outputComponents: {

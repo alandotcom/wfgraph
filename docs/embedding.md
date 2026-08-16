@@ -158,11 +158,11 @@ const wfgraph = await createWfGraphApp({
 });
 ```
 
-- Each integration is exported by name too, for a host that lists some of the six.
+- Each integration is exported by name too, for a host that lists some of the five.
 - The editor shows what the server assembled. The action selector lists exactly the
   integrations you passed, and a connection can be stored for those alone.
 - That list controls what reaches `createWfGraphApp`. The process still loads every SDK the
-  package imports: three of the six carry one, and `@wfgraph/plugins` imports all six as
+  package imports: two of the five carry one, and `@wfgraph/plugins` imports all five as
   values. The static import buys the timing of a failure. A missing SDK stops the
   application at start-up, where a lazy import would let a single run fail much later.
 - `@wfgraph/plugins` peer-depends on `@wfgraph/core`. Keep one core copy so the
