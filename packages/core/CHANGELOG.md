@@ -1,5 +1,56 @@
 # @wfgraph/core
 
+## 2.1.0
+
+### Minor Changes
+
+- [#115](https://github.com/alandotcom/wfgraph/pull/115) [`4f34676`](https://github.com/alandotcom/wfgraph/commit/4f34676d7049a9a2577e873c1a79da9a89d43e09) Thanks [@alandotcom](https://github.com/alandotcom)! - Let an action declare `sideEffect: true` when running it changes something
+  outside the workflow, and hold a Group to lookups on that answer. `defineAction`
+  and an integration's action literal both take the field, it defaults to `false`,
+  and it reaches the browser on the extension catalog. The seven writes the
+  built-in plugins ship now declare it, so grouping a Send Email or a Delete User
+  is refused rather than accepted against the Group contract.
+
+  Fix two Group defects on the canvas. Deleting a frame with the Delete key left
+  its interior edges and any collapsed inlet edge in the graph naming steps that
+  were gone, which the next save refused. An edge running from one frame's exit
+  into another frame's entry painted on the two members instead of the two frames,
+  so auto-layout read the frames as unconnected.
+
+  Cut some of the canvas render cost. A graph whose nodes were left out of the
+  order React Flow wants paid a re-sort and an allocation on every render, drag
+  frames included, and grouping a second selection, ungrouping one of two frames,
+  and pasting a frame each left it that way; all three now keep the order. The
+  painted edges also come back as the array they went in as for a graph with no
+  frame, though one holding a frame still rebuilds them per node change.
+
+- [#114](https://github.com/alandotcom/wfgraph/pull/114) [`2565518`](https://github.com/alandotcom/wfgraph/commit/2565518e5e16dea7f6ada86ccbb642a696d190b0) Thanks [@alandotcom](https://github.com/alandotcom)! - Allow AND-joins: two parallel action nodes can both feed one next step. Fan-out was already concurrent; saving and the canvas now accept multi-incoming edges when every predecessor completes successfully, with Wait-on-arm, Started↔Canceled, and exclusive-branch joins still refused.
+
+- [#115](https://github.com/alandotcom/wfgraph/pull/115) [`4f34676`](https://github.com/alandotcom/wfgraph/commit/4f34676d7049a9a2577e873c1a79da9a89d43e09) Thanks [@alandotcom](https://github.com/alandotcom)! - A disabled step now ends its branch, whatever kind of step it is, and the canvas
+  draws what that costs.
+
+  The engine used to stop only at a disabled Condition or Event Split. A disabled
+  lookup handed its null output on, and the step below read that null as an
+  answer. One rule replaces the two: a disabled node is skipped, recorded with a
+  null output, and nothing past it is scheduled. A saved workflow holding a
+  disabled step therefore runs less of itself than it did before, which a minor
+  bump carries because a disabled step was already a request to leave work out,
+  and the old behaviour left the step below reading a null it could not tell from
+  a real answer.
+
+  The editor mutes every step the run cannot reach, which until now was drawn only
+  for a Canceled subtree with no Cancel Event declared. A muted card sits at 50%
+  opacity and its incoming edge stops animating, so the dead part of a graph reads
+  as still. The disabled step itself keeps its own face, since a person needs to
+  tell the step they switched off from the steps that lost their path because of
+  it.
+
+  Disabled belongs to a Group as a whole. Selecting the frame offers the toggle
+  and writes the flag onto every member, which is what the engine walks. A member
+  selected on its own no longer offers it, the same way it offers no Delete, since
+  a frame with some members off and some on has no face it could honestly wear.
+  Grouping a step that was already off takes the whole frame with it.
+
 ## 2.0.2
 
 ### Patch Changes
