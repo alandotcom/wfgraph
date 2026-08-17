@@ -60,6 +60,7 @@ import {
   WorkflowContextMenu,
 } from "./workflow-context-menu";
 import { layoutWorkflowNodes } from "./workflow-layout";
+import { WORKFLOW_NODE_HEIGHT } from "./workflow-node-dimensions";
 
 const edgeTypes = {
   animated: Edge.Animated,
@@ -536,9 +537,8 @@ export function WorkflowCanvas() {
         y: adjustedY,
       });
 
-      // Center vertically on the cursor; node height is h-48 (192px).
-      const nodeHeight = 192;
-      position.y -= nodeHeight / 2;
+      // Center vertically on the cursor.
+      position.y -= WORKFLOW_NODE_HEIGHT / 2;
 
       const newNode: WorkflowNode = {
         id: nanoid(),

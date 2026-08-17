@@ -2,8 +2,6 @@ import {
   BaseEdge,
   EdgeLabelRenderer,
   type EdgeProps,
-  getBezierPath,
-  getSimpleBezierPath,
   type InternalNode,
   Position,
   useInternalNode,
@@ -12,6 +10,7 @@ import {
   isMutedEdgeStyle,
   resolveEdgeLabel,
 } from "#src/components/flow-elements/edge-label";
+import { getWorkflowEdgePath } from "#src/components/flow-elements/edge-path";
 import type { WorkflowEdge } from "#src/lib/workflow-graph-types";
 
 const Temporary = ({
@@ -24,7 +23,7 @@ const Temporary = ({
   targetPosition,
   selected,
 }: EdgeProps) => {
-  const [edgePath] = getSimpleBezierPath({
+  const [edgePath] = getWorkflowEdgePath({
     sourceX,
     sourceY,
     sourcePosition,
@@ -152,7 +151,7 @@ const Animated = ({
     targetHandleId
   );
 
-  const [edgePath, labelX, labelY] = getBezierPath({
+  const [edgePath, labelX, labelY] = getWorkflowEdgePath({
     sourceX: sx,
     sourceY: sy,
     sourcePosition: sourcePos,

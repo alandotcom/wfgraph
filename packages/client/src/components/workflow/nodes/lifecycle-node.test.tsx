@@ -98,6 +98,19 @@ describe("LifecycleNode handles", () => {
     expect(view.getByText("Canceled")).toBeTruthy();
   });
 
+  it("uses the start summary as the subtitle on a compact card", () => {
+    const view = renderLifecycleNode({
+      label: "Lifecycle",
+      description: "",
+      type: "lifecycle",
+      config: {},
+      status: "idle",
+    });
+
+    expect(view.getByText("Manual runs only")).toBeTruthy();
+    expect(view.container.querySelector(".h-28")).toBeTruthy();
+  });
+
   it("softens the Canceled chip when no Cancel Event is declared", () => {
     const view = renderLifecycleNode({
       label: "",

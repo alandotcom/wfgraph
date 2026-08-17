@@ -115,7 +115,7 @@ function renderHandles(
 export const Node = ({ handles, className, status, ...props }: NodeProps) => (
   <Card
     className={cn(
-      "node-container relative size-full h-auto w-sm gap-0 overflow-visible rounded-md bg-card p-0 transition-all duration-200",
+      "node-container relative h-full w-full gap-0 overflow-visible rounded-md bg-card p-0 transition-all duration-200",
       status === "success" && "border-2 border-success",
       status === "error" && "border-2 border-destructive",
       status === "cancelled" && "border-2 border-cancelled",

@@ -92,6 +92,7 @@ components:
     textColor: "{colors.graphite-ink}"
     rounded: "{rounded.md}"
     width: "192px"
+    height: "112px"
 ---
 
 # Design System: Workflow Graph
@@ -214,11 +215,13 @@ All primitives are shadcn/ui new-york on Base UI, refined and restrained: quiet 
 
 ### Workflow Node (signature component)
 
-The reason the product exists. A 192px square card at 8px radius sitting on the React Flow canvas: integration icon, title, and description at rest. Event Split is wider at 264px on purpose, because it carries two labelled outlets. The card is flat; elevation on the canvas would compete with the status border.
+The reason the product exists. A 192×112px rectangular card at 8px radius sitting on the React Flow canvas: integration icon, title, and description at rest. Event Split is wider at 264px on purpose, because it carries two labelled outlets. The card is flat; elevation on the canvas would compete with the status border.
 
 Status is worn on the border: a 2px Signal Green border for success, Signal Red for failure, Signal Slate for cancelled, and an animated Signal Blue sweep while running. Every status also renders its word in a chip, so the border is never the only carrier.
 
 Handles are 12px dots in Graphite Ink with a hairline ring, and their hit areas are 24px on desktop and 44px on touch. Those sizes are divided by `--rf-zoom`, the live canvas scale the viewport transform applies, because a flat pixel size inside that transform shrinks with the zoom and delivered 24.6px on a phone.
+
+Edges leave the bottom handle, travel in a rounded orthogonal step, and enter the top handle of the next node. The dash is the wire; a label sits on the horizontal span when the outlet has a name.
 
 ### Navigation
 
