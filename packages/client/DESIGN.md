@@ -223,6 +223,8 @@ Handles are 12px dots in Graphite Ink with a hairline ring, and their hit areas 
 
 Edges leave the bottom handle, travel in a rounded orthogonal step, and enter the top handle of the next node. The dash is the wire; a label sits on the horizontal span when the outlet has a name.
 
+A step the run can never reach is muted: the card drops to 50% opacity, its incoming edge to 40%, and that edge stops animating, so a dead region reads as still while a live one moves. Two things put a step out of reach, and both wear this: a Canceled subtree while no Cancel Event is declared, which also labels the outlet, and everything below a disabled step, since disabling one ends its branch. A disabled step wears its own face instead, 50% opacity with an eye badge, which is what separates the step a person switched off from the steps that lost their path because of it. A Group frame carries no flag; it wears the disabled face once every member has it.
+
 ### Navigation
 
 A quiet toolbar over the canvas and a Panel-toned sidebar for workflow lists and run history. Selection state uses Graphite Wash fills; the active workflow is marked by tone, never by an accent stripe.

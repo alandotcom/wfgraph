@@ -112,8 +112,17 @@ export function groupSelection(input: {
     },
   };
 
+  // Disabled belongs to the frame, and a frame reads disabled only when every
+  // member is. Grouping one step that was already switched off therefore takes
+  // the whole frame with it, which is the safe direction: the other reading
+  // would run a step the person had turned off.
+  const disabled = members.some((node) => node.data.enabled === false);
   const children = members.map((node) =>
-    nestInGroup(node, groupId, childPosition(positionById, node.id))
+    nestInGroup(
+      disabled ? { ...node, data: { ...node.data, enabled: false } } : node,
+      groupId,
+      childPosition(positionById, node.id)
+    )
   );
   const rest = input.nodes
     .filter((node) => !memberSet.has(node.id))

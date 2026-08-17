@@ -129,8 +129,8 @@ const Animated = memo(function Animated({
     targetPosition: targetPos,
   });
   const edgeLabel = resolveEdgeLabel(sourceHandleId, data);
-  // Display atoms mute an inactive Canceled subtree by setting style.opacity;
-  // that is the contract for dropping the dash animation here.
+  // Display atoms mute an edge landing where the run cannot go by setting
+  // style.opacity; that is the contract for dropping the dash animation here.
   const inactive = isMutedEdgeStyle(style);
 
   return (

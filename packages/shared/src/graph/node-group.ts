@@ -23,6 +23,7 @@ export type GroupGraphNode = {
     type: string;
     label?: string;
     config?: Record<string, unknown>;
+    enabled?: boolean;
   };
 };
 
@@ -434,6 +435,36 @@ export function childIdsOfGroup(
   return nodes
     .filter((node) => node.parentId === groupId)
     .map((node) => node.id);
+}
+
+/**
+ * The frames that read as disabled, which is every member being disabled.
+ *
+ * The engine walks members and never sees the frame, so the members hold the
+ * fact and the frame's face is read back off them. One pass, because the canvas
+ * asks this on every render, including every drag frame.
+ */
+export function disabledGroupIds(
+  nodes: readonly GroupGraphNode[]
+): Set<string> {
+  const enabledByFrame = new Map<string, boolean>();
+  for (const node of nodes) {
+    if (!node.parentId) {
+      continue;
+    }
+    const allDisabled =
+      (enabledByFrame.get(node.parentId) ?? true) &&
+      node.data.enabled === false;
+    enabledByFrame.set(node.parentId, allDisabled);
+  }
+
+  const disabled = new Set<string>();
+  for (const [frameId, allDisabled] of enabledByFrame) {
+    if (allDisabled) {
+      disabled.add(frameId);
+    }
+  }
+  return disabled;
 }
 
 /** React Flow paints a parent before its children. */

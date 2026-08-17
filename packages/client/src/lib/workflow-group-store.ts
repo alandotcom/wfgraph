@@ -9,6 +9,7 @@ import { atom } from "jotai";
 import { nanoid } from "nanoid";
 import { groupSelection, ungroupNode } from "#src/lib/node-group";
 import {
+  childIdsOfGroup,
   fanOutStoreEdges,
   fanOutStoreEdgeIds,
   groupOutletHandle,
@@ -84,6 +85,34 @@ export const ungroupNodeAtom = atom(null, (get, set, nodeId: string) => {
   requestGraphSave(get, set, { immediate: true });
   return true;
 });
+
+/** Switch a whole frame off or on, which writes every member (`disabledGroupIds`). */
+export const setGroupEnabledAtom = atom(
+  null,
+  (get, set, input: { groupId: string; enabled: boolean }) => {
+    if (!draftEditable(get)) {
+      return false;
+    }
+
+    const nodes = get(nodesStateAtom);
+    const memberIds = new Set(childIdsOfGroup(nodes, input.groupId));
+    if (memberIds.size === 0) {
+      return false;
+    }
+
+    pushHistory(get, set);
+    set(
+      nodesStateAtom,
+      nodes.map((node) =>
+        memberIds.has(node.id)
+          ? { ...node, data: { ...node.data, enabled: input.enabled } }
+          : node
+      )
+    );
+    requestGraphSave(get, set);
+    return true;
+  }
+);
 
 /** Connect two nodes, recorded as an undo step like every graph mutation. */
 export const connectNodesAtom = atom(null, (get, set, edge: WorkflowEdge) => {

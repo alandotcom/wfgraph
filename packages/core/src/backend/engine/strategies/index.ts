@@ -86,7 +86,3 @@ export function routeAfterStrategy(
 
   return { kind: "all" };
 }
-
-export function isRoutingNode(node: WorkflowNode): boolean {
-  return isConditionNode(node) || isEventSplitNode(node);
-}

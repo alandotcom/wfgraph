@@ -31,7 +31,7 @@ import {
   formatTemplateToken,
   mapTemplateTokens,
 } from "@wfgraph/shared/graph/node-references";
-import { inactiveCanceledBranch } from "#src/lib/inactive-canceled-branch";
+import { inactiveBranch } from "#src/lib/inactive-branch";
 import {
   dissolveUndersizedGroups,
   expandEdgeRemovals,
@@ -42,6 +42,7 @@ import {
 import {
   displayEdgesForGroups,
   fanOutStoreEdgeIds,
+  disabledGroupIds,
   orderGroupParentsFirst,
 } from "@wfgraph/shared/graph/node-group";
 import {
@@ -72,6 +73,7 @@ export {
   connectNodesAtom,
   deleteEdgeAtom,
   groupSelectionAtom,
+  setGroupEnabledAtom,
   ungroupNodeAtom,
 } from "#src/lib/workflow-group-store";
 
@@ -97,7 +99,7 @@ export const edgesAtom = atom((get) => get(edgesStateAtom));
  * node's own `data` -- doing that is what used to force `executionOverlayGraphAtom`
  * to carry a full second copy of the graph just to hold a different status per
  * node. `displayNodesAtom` merges this onto the draft or the pinned overlay at
- * display time instead, the same way it already merges `inactiveCanceledBranchAtom`.
+ * display time instead, the same way it already merges `inactiveBranchAtom`.
  */
 const statusByNodeIdAtom = atom<ReadonlyMap<string, NodeRunStatus>>(new Map());
 
@@ -124,14 +126,13 @@ export const canvasEditingLockedAtom = atom(
  * What the canvas paints: the run overlay when a run is open, otherwise the
  * draft. Saves, publish, and config always read `nodesAtom` / `edgesAtom`.
  *
- * When no Cancel Event is declared, the Canceled subtree is muted here via
- * React Flow presentation props (`style` / `data.displayLabel`) so the draft
- * stays clean.
+ * A node the run cannot reach is muted here via React Flow presentation props
+ * (`style` / `data.displayLabel`) so the draft stays clean.
  */
-const inactiveCanceledBranchAtom = atom((get) => {
+const inactiveBranchAtom = atom((get) => {
   const nodes = get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom);
   const edges = get(executionOverlayGraphAtom)?.edges ?? get(edgesStateAtom);
-  return inactiveCanceledBranch({ nodes, edges });
+  return inactiveBranch({ nodes, edges });
 });
 
 const INACTIVE_NODE_STYLE = { opacity: 0.5 } as const;
@@ -140,26 +141,53 @@ const INACTIVE_EDGE_STYLE = { opacity: 0.4 } as const;
 export const displayNodesAtom = atom((get) => {
   const nodes = get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom);
   const statusByNodeId = get(statusByNodeIdAtom);
-  const { nodeIds } = get(inactiveCanceledBranchAtom);
+  const { nodeIds } = get(inactiveBranchAtom);
   const ordered = orderGroupParentsFirst(nodes);
+  // Merged at display time like the run status above it.
+  const disabledFrameIds = disabledGroupIds(nodes);
 
-  // The common case -- no run is being painted and every Cancel Event outlet
-  // is either connected or the graph has none -- has nothing to merge, so the
-  // nodes come back exactly as they went in. React.memo on ActionNode and
-  // LifecycleNode does a shallow prop comparison, and it can only bail out on
-  // a node that is `===` what it rendered last time; a fresh `data` object on
-  // every node, every recompute, defeats that on every drag frame and every
-  // keystroke, since this atom is read on every render of the canvas.
-  if (statusByNodeId.size === 0 && nodeIds.size === 0) {
+  // The common case -- no run is being painted and every node is reachable --
+  // has nothing to merge, so the nodes come back exactly as they went in.
+  // React.memo on ActionNode and LifecycleNode does a shallow prop comparison,
+  // and it can only bail out on a node that is `===` what it rendered last
+  // time; a fresh `data` object on every node, every recompute, defeats that on
+  // every drag frame and every keystroke, since this atom is read on every
+  // render of the canvas.
+  if (
+    statusByNodeId.size === 0 &&
+    nodeIds.size === 0 &&
+    disabledFrameIds.size === 0
+  ) {
     return ordered;
   }
 
+  // A run is painted onto every node at once, since a node with no reported
+  // status reads as idle. Muting reaches a few nodes, so the rest are handed
+  // back by reference and their cards can bail out of rendering again.
+  const paintingRun = statusByNodeId.size > 0;
+
   return ordered.map((node) => {
+    const disabledFrame = disabledFrameIds.has(node.id);
+    // A disabled node already wears the disabled face its own card draws.
+    // Dimming it a second time here would take it to a quarter opacity.
+    const muted =
+      nodeIds.has(node.id) && !disabledFrame && node.data.enabled !== false;
+
+    if (!(paintingRun || disabledFrame || muted)) {
+      return node;
+    }
+
     const withStatus: WorkflowNode = {
       ...node,
-      data: { ...node.data, status: statusByNodeId.get(node.id) ?? "idle" },
+      data: {
+        ...node.data,
+        ...(paintingRun
+          ? { status: statusByNodeId.get(node.id) ?? "idle" }
+          : {}),
+        ...(disabledFrame ? { enabled: false } : {}),
+      },
     };
-    return nodeIds.has(node.id)
+    return muted
       ? {
           ...withStatus,
           style: { ...withStatus.style, ...INACTIVE_NODE_STYLE },
@@ -174,12 +202,15 @@ export const displayEdgesAtom = atom((get) => {
     nodes,
     displayEdgesForGroups(nodes, edges)
   );
-  const { edgeIds, outletEdgeIds } = get(inactiveCanceledBranchAtom);
-  if (edgeIds.size === 0) {
+  const { nodeIds, outletEdgeIds } = get(inactiveBranchAtom);
+  if (nodeIds.size === 0) {
     return painted;
   }
+  // An edge is muted by where it lands. The edge into a disabled step stays
+  // live, because the run does arrive and skip it; every edge past that step
+  // lands on a node the run can never reach.
   return painted.map((edge) => {
-    if (!edgeIds.has(edge.id)) {
+    if (!nodeIds.has(edge.target)) {
       return edge;
     }
     return {

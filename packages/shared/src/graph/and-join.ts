@@ -2,6 +2,9 @@
  * AND-join rules for a multi-incoming node. Illegal: two exclusive outlets of
  * one split, a Wait on an arm, or an arm that never leaves a Lifecycle Node.
  * Save and the canvas share this; the engine's readiness gate is separate.
+ *
+ * A disabled step on an arm holds the join just as long, and is shown rather
+ * than refused: the canvas mutes the join and everything past it.
  */
 
 import {

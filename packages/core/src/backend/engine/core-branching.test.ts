@@ -272,10 +272,10 @@ describe("executeWorkflow branch traversal", () => {
     expect(result.results.false_node).toBeUndefined();
   });
 
-  // The other half of the rule above. A disabled node that decides nothing about
-  // routing hands the run straight on, because its one outgoing edge is what
-  // comes next rather than a branch it would have chosen.
-  it("carries on through a disabled action node", async () => {
+  // The same rule for a node that decides no routing. A step below a skipped
+  // lookup would read the null it left behind as an answer, so the branch ends
+  // at the disabled node whatever kind of node it is.
+  it("stops the branch at a disabled action node", async () => {
     const graph = createSerializedWorkflowGraph({
       nodes: [
         createLifecycleNode("lifecycle_1"),
@@ -305,10 +305,104 @@ describe("executeWorkflow branch traversal", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.results.below_node?.success).toBe(true);
-    // The null output is what keeps a template addressing this node resolving
-    // rather than failing the node below it.
+    expect(result.results.below_node).toBeUndefined();
+    // The skipped node is still recorded, so the run's trace shows where the
+    // branch ended and a reader is not left with a silent hole.
+    expect(result.results.disabled_action?.success).toBe(true);
     expect(executionData(result.results.disabled_action)).toBeNull();
+  });
+
+  // A disabled Wait parks nothing and is not held back with the other waits, so
+  // the rule has to reach it on the path it takes through the scheduler.
+  it("stops the branch at a disabled Wait", async () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createLifecycleNode("lifecycle_1"),
+        disableNode({
+          id: "wait_1",
+          type: "action",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "Wait",
+            type: "action",
+            config: {
+              actionType: "Wait",
+              waitMode: "delay",
+              waitDuration: "1h",
+            },
+          },
+        }),
+        createConditionNode("below_node", true),
+      ],
+      edges: [
+        {
+          id: "edge_l_w",
+          source: "lifecycle_1",
+          sourceHandle: "started",
+          target: "wait_1",
+        },
+        { id: "edge_w_b", source: "wait_1", target: "below_node" },
+      ],
+    });
+
+    const result = await executeWorkflow(
+      {
+        graph,
+        executionId: "exec_disabled_wait",
+        workflowId: "workflow_disabled_wait",
+      },
+      createInMemoryWorkflowRuntime(),
+      store,
+      actions
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.results.wait_1?.success).toBe(true);
+    expect(result.results.below_node).toBeUndefined();
+  });
+
+  // What the editor's muting rests on: a node is ready only once every
+  // predecessor released it, so an arm that never arrives holds the join for
+  // the life of the run.
+  it("holds a join whose other arm was disabled", async () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createLifecycleNode("lifecycle_1"),
+        createWrappedActionNode("live_arm"),
+        disableNode(createWrappedActionNode("dead_arm")),
+        createConditionNode("join_node", true),
+      ],
+      edges: [
+        {
+          id: "edge_l_live",
+          source: "lifecycle_1",
+          sourceHandle: "started",
+          target: "live_arm",
+        },
+        {
+          id: "edge_l_dead",
+          source: "lifecycle_1",
+          sourceHandle: "started",
+          target: "dead_arm",
+        },
+        { id: "edge_live_join", source: "live_arm", target: "join_node" },
+        { id: "edge_dead_join", source: "dead_arm", target: "join_node" },
+      ],
+    });
+
+    const result = await executeWorkflow(
+      {
+        graph,
+        executionId: "exec_disabled_arm",
+        workflowId: "workflow_disabled_arm",
+      },
+      createInMemoryWorkflowRuntime(),
+      store,
+      actions
+    );
+
+    expect(result.results.live_arm?.success).toBe(true);
+    expect(result.results.join_node).toBeUndefined();
   });
 
   it("executes only the false branch when condition evaluates false", async () => {

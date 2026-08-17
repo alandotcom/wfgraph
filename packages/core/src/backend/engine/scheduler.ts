@@ -28,7 +28,6 @@ import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import type { WorkflowStore } from "#src/backend/engine/store";
 import type { Traversal } from "#src/backend/engine/traversal";
 import {
-  isRoutingNode,
   resolveStrategy,
   routeAfterStrategy,
   type NodeWorkContext,
@@ -257,15 +256,17 @@ export class NodeScheduler {
           startPayload,
         } = this.input;
 
-        // A disabled node emits a null output, which keeps a template below it
-        // resolving. A disabled routing node also stops its branch, for the reason
-        // `isRoutingNode` gives.
+        // A disabled node is skipped and its branch ends at it, so nothing below
+        // is ever scheduled. Carrying on would mean guessing: a Condition has no
+        // boolean to route on, and a step below a skipped lookup would read the
+        // null it left behind as an answer. The editor draws the whole subtree
+        // muted for the same reason.
         if (node.data.enabled === false) {
-          const haltBranch = isRoutingNode(node);
-          yield* Effect.logInfo("Skipping disabled node").pipe(
-            Effect.annotateLogs({ haltBranch })
-          );
-          return { result: { success: true as const, data: null }, haltBranch };
+          yield* Effect.logInfo("Skipping disabled node");
+          return {
+            result: { success: true as const, data: null },
+            haltBranch: true,
+          };
         }
 
         const strategy = resolveStrategy(node);

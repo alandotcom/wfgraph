@@ -23,10 +23,15 @@ import {
   nodesAtom,
   selectedEdgeAtom,
   selectedNodeAtom,
+  setGroupEnabledAtom,
   ungroupNodeAtom,
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
 import { canUngroup, refuseDelete } from "#src/lib/node-group";
+import {
+  disabledGroupIds,
+  isGroupNode,
+} from "@wfgraph/shared/graph/node-group";
 import {
   currentWorkflowIdAtom,
   currentWorkflowNameAtom,
@@ -209,6 +214,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const deleteNode = useSetAtom(deleteNodeAtom);
   const ungroupSelected = useSetAtom(ungroupNodeAtom);
+  const setGroupEnabled = useSetAtom(setGroupEnabledAtom);
   const deleteEdge = useSetAtom(deleteEdgeAtom);
   const deleteSelectedItems = useSetAtom(deleteSelectedItemsAtom);
   const clearWorkflow = useSetAtom(clearWorkflowAtom);
@@ -251,13 +257,36 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
     }
   };
 
+  const frameDisabled =
+    selectedNode && isGroupNode(selectedNode)
+      ? disabledGroupIds(nodes).has(selectedNode.id)
+      : false;
+  const showDisabledToggle = Boolean(
+    selectedNode &&
+    !selectedNode.parentId &&
+    (selectedNode.data.type === "action" || isGroupNode(selectedNode))
+  );
+  const isSelectionDisabled = selectedNode
+    ? isGroupNode(selectedNode)
+      ? frameDisabled
+      : selectedNode.data.enabled === false
+    : false;
+
   const handleToggleEnabled = () => {
-    if (selectedNode) {
-      updateNodeData({
-        id: selectedNode.id,
-        data: { enabled: selectedNode.data.enabled === false },
-      });
+    if (!selectedNode) {
+      return;
     }
+    if (isGroupNode(selectedNode)) {
+      setGroupEnabled({
+        groupId: selectedNode.id,
+        enabled: frameDisabled,
+      });
+      return;
+    }
+    updateNodeData({
+      id: selectedNode.id,
+      data: { enabled: selectedNode.data.enabled === false },
+    });
   };
 
   const handleUpdateWorkflowName = async (newName: string) => {
@@ -579,11 +608,17 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
 
         {isOwner ? null : publicWorkflowNotice}
 
+        {isOwner && selectedNode.parentId ? (
+          <p className="pt-4 text-muted-foreground text-xs">
+            This step runs with its Group. Select the frame to switch it off.
+          </p>
+        ) : null}
+
         {isOwner ? (
           <div className="flex items-center gap-2 pt-4">
-            {selectedNode.data.type === "action" ? (
+            {showDisabledToggle ? (
               <Button onClick={handleToggleEnabled} size="sm" variant="outline">
-                {selectedNode.data.enabled === false ? (
+                {isSelectionDisabled ? (
                   <>
                     <EyeOff className="mr-2 size-4" />
                     Disabled
