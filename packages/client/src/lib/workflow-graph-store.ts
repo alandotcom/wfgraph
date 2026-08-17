@@ -34,6 +34,17 @@ import {
   mapTemplateTokens,
 } from "@wfgraph/shared/graph/node-references";
 import { inactiveCanceledBranch } from "#src/lib/inactive-canceled-branch";
+import { groupSelection, ungroupNode } from "#src/lib/node-group";
+import {
+  childIdsOfGroup,
+  displayEdgesForGroups,
+  isGroupNode,
+  groupExitId,
+  orderGroupParentsFirst,
+  resolveStoredEndpoint,
+  undersizedGroupIds,
+} from "@wfgraph/shared/graph/node-group";
+import { isConditionNode } from "@wfgraph/shared/graph/node-config";
 import type {
   NodeRunStatus,
   WorkflowEdge,
@@ -141,6 +152,7 @@ export const displayNodesAtom = atom((get) => {
   const nodes = get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom);
   const statusByNodeId = get(statusByNodeIdAtom);
   const { nodeIds } = get(inactiveCanceledBranchAtom);
+  const ordered = orderGroupParentsFirst(nodes);
 
   // The common case -- no run is being painted and every Cancel Event outlet
   // is either connected or the graph has none -- has nothing to merge, so the
@@ -150,10 +162,10 @@ export const displayNodesAtom = atom((get) => {
   // every node, every recompute, defeats that on every drag frame and every
   // keystroke, since this atom is read on every render of the canvas.
   if (statusByNodeId.size === 0 && nodeIds.size === 0) {
-    return nodes;
+    return ordered;
   }
 
-  return nodes.map((node) => {
+  return ordered.map((node) => {
     const withStatus: WorkflowNode = {
       ...node,
       data: { ...node.data, status: statusByNodeId.get(node.id) ?? "idle" },
@@ -167,12 +179,14 @@ export const displayNodesAtom = atom((get) => {
   });
 });
 export const displayEdgesAtom = atom((get) => {
+  const nodes = get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom);
   const edges = get(executionOverlayGraphAtom)?.edges ?? get(edgesStateAtom);
+  const painted = displayEdgesForGroups(nodes, edges);
   const { edgeIds, outletEdgeIds } = get(inactiveCanceledBranchAtom);
   if (edgeIds.size === 0) {
-    return edges;
+    return painted;
   }
-  return edges.map((edge) => {
+  return painted.map((edge) => {
     if (!edgeIds.has(edge.id)) {
       return edge;
     }
@@ -238,7 +252,27 @@ function pushHistory(get: Getter, set: Setter) {
   set(futureAtom, []);
 }
 
-/** Hand the current nodes and edges to the save queue, which owns the flags. */
+function dissolveUndersizedGroups(nodes: WorkflowNode[]): WorkflowNode[] {
+  let next = nodes;
+  for (const groupId of undersizedGroupIds(next)) {
+    next = ungroupNode(next, groupId);
+  }
+  return next;
+}
+
+function idsRemovedWith(
+  nodes: readonly WorkflowNode[],
+  nodeId: string
+): Set<string> {
+  const ids = new Set([nodeId]);
+  const target = nodes.find((node) => node.id === nodeId);
+  if (isGroupNode(target)) {
+    for (const childId of childIdsOfGroup(nodes, nodeId)) {
+      ids.add(childId);
+    }
+  }
+  return ids;
+}
 function requestGraphSave(
   get: Getter,
   set: Setter,
@@ -441,9 +475,8 @@ export const onNodesChangeAtom = atom(
       set(isDraggingAtom, false);
     }
 
-    const newNodes = applyNodeChanges<WorkflowNode>(
-      filteredChanges,
-      currentNodes
+    const newNodes = dissolveUndersizedGroups(
+      applyNodeChanges<WorkflowNode>(filteredChanges, currentNodes)
     );
     set(nodesStateAtom, newNodes);
 
@@ -644,14 +677,92 @@ export const duplicateSelectionAtom = atom(
   }
 );
 
+/** Wrap a valid SESE lookup+Condition selection in a Group frame. */
+export const groupSelectionAtom = atom(
+  null,
+  (get, set, clickedNodeId?: string) => {
+    if (!draftEditable(get)) {
+      return false;
+    }
+
+    const nodes = get(nodesStateAtom);
+    const clicked = clickedNodeId
+      ? nodes.find((node) => node.id === clickedNodeId)
+      : undefined;
+    const selectedIds =
+      clickedNodeId && clicked && !clicked.selected
+        ? new Set([clickedNodeId])
+        : new Set(nodes.filter((node) => node.selected).map((node) => node.id));
+    const grouped = groupSelection({
+      nodes,
+      edges: get(edgesStateAtom),
+      selectedIds,
+    });
+    if (!grouped) {
+      return false;
+    }
+
+    pushHistory(get, set);
+    set(nodesStateAtom, grouped.nodes);
+    const frame = grouped.nodes.find(
+      (node) => isGroupNode(node) && node.selected
+    );
+    set(selectedNodeAtom, frame?.id ?? null);
+    set(selectedEdgeAtom, null);
+    requestGraphSave(get, set, { immediate: true });
+    return true;
+  }
+);
+
+/** Lift children out of a Group and remove the frame. */
+export const ungroupNodeAtom = atom(null, (get, set, nodeId: string) => {
+  if (!draftEditable(get)) {
+    return false;
+  }
+
+  const nodes = get(nodesStateAtom);
+  const target = nodes.find((node) => node.id === nodeId);
+  const groupId = isGroupNode(target) ? nodeId : target?.parentId;
+  if (!groupId) {
+    return false;
+  }
+
+  const next = ungroupNode(nodes, groupId);
+  if (next === nodes) {
+    return false;
+  }
+
+  pushHistory(get, set);
+  set(nodesStateAtom, next);
+  set(selectedNodeAtom, null);
+  set(selectedEdgeAtom, null);
+  requestGraphSave(get, set, { immediate: true });
+  return true;
+});
+
 /** Connect two nodes, recorded as an undo step like every graph mutation. */
 export const connectNodesAtom = atom(null, (get, set, edge: WorkflowEdge) => {
   if (!draftEditable(get)) {
     return;
   }
 
+  const nodes = get(nodesStateAtom);
+  const sourceNode = nodes.find((node) => node.id === edge.source);
+  const source = resolveStoredEndpoint(nodes, edge.source, "source");
+  const target = resolveStoredEndpoint(nodes, edge.target, "target");
+  let sourceHandle = edge.sourceHandle;
+  if (isGroupNode(sourceNode)) {
+    const exit = nodes.find((node) => node.id === groupExitId(sourceNode));
+    if (isConditionNode(exit)) {
+      sourceHandle = "true";
+    }
+  }
+
   pushHistory(get, set);
-  set(edgesStateAtom, [...get(edgesStateAtom), edge]);
+  set(edgesStateAtom, [
+    ...get(edgesStateAtom),
+    { ...edge, source, target, sourceHandle },
+  ]);
   requestGraphSave(get, set, { immediate: true });
 });
 
@@ -768,18 +879,19 @@ export const deleteNodeAtom = atom(null, (get, set, nodeId: string) => {
 
   pushHistory(get, set);
 
-  set(
-    nodesStateAtom,
-    currentNodes.filter((node) => node.id !== nodeId)
+  const removed = idsRemovedWith(currentNodes, nodeId);
+  const remainingNodes = dissolveUndersizedGroups(
+    currentNodes.filter((node) => !removed.has(node.id))
   );
+  set(nodesStateAtom, remainingNodes);
   set(
     edgesStateAtom,
     get(edgesStateAtom).filter(
-      (edge) => edge.source !== nodeId && edge.target !== nodeId
+      (edge) => !removed.has(edge.source) && !removed.has(edge.target)
     )
   );
 
-  if (get(selectedNodeAtom) === nodeId) {
+  if (get(selectedNodeAtom) && removed.has(get(selectedNodeAtom) ?? "")) {
     set(selectedNodeAtom, null);
   }
 
@@ -819,10 +931,17 @@ export const deleteSelectedItemsAtom = atom(null, (get, set) => {
       .filter((node) => node.selected && node.data.type !== "lifecycle")
       .map((node) => node.id)
   );
+  for (const node of currentNodes) {
+    if (node.parentId && selectedNodeIds.has(node.parentId)) {
+      selectedNodeIds.add(node.id);
+    }
+  }
 
   // Lifecycle Nodes survive being selected; the graph needs an entrypoint.
-  const remainingNodes = currentNodes.filter(
-    (node) => node.data.type === "lifecycle" || !node.selected
+  const remainingNodes = dissolveUndersizedGroups(
+    currentNodes.filter(
+      (node) => node.data.type === "lifecycle" || !selectedNodeIds.has(node.id)
+    )
   );
   const remainingEdges = currentEdges.filter(
     (edge) =>

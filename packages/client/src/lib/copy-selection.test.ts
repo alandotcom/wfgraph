@@ -286,6 +286,96 @@ describe("cloneSelection", () => {
   });
 });
 
+describe("copying a Group", () => {
+  function groupNode(): WorkflowNode {
+    return {
+      id: "g",
+      type: "group",
+      position: { x: 40, y: 80 },
+      selected: true,
+      data: {
+        label: "Lookups",
+        type: "group",
+        config: { entryNodeId: "a", exitNodeId: "c" },
+      },
+    };
+  }
+
+  function child(
+    id: string,
+    y: number,
+    config?: Record<string, unknown>
+  ): WorkflowNode {
+    return {
+      ...actionNode(id, { x: 12, y }),
+      parentId: "g",
+      extent: "parent",
+      selected: false,
+      data: {
+        label: id,
+        type: "action",
+        ...(config ? { config } : {}),
+      },
+    };
+  }
+
+  it("expands a selected frame to its children and remaps parentId on clone", () => {
+    const extracted = extractCopyableSelection({
+      nodes: [
+        groupNode(),
+        child("a", 48, { actionType: "fountain/get-user" }),
+        child("c", 112, { actionType: "Condition" }),
+      ],
+      edges: [edge("e-a-c", "a", "c")],
+    });
+    if (!extracted) {
+      throw new Error("expected a copyable group");
+    }
+
+    expect(extracted.nodes.map((node) => node.id).sort()).toEqual([
+      "a",
+      "c",
+      "g",
+    ]);
+    expect(extracted.edges.map((item) => item.id)).toEqual(["e-a-c"]);
+
+    const cloned = cloneSelection(extracted, {
+      offset: { x: PASTE_OFFSET, y: PASTE_OFFSET },
+      createId: sequentialIds(["g2", "a2", "c2", "e2"]),
+    });
+
+    const frame = cloned.nodes.find((node) => node.data.type === "group");
+    const nested = cloned.nodes.filter((node) => node.parentId);
+    expect(frame?.id).toBe("g2");
+    expect(frame?.position).toEqual({
+      x: 40 + PASTE_OFFSET,
+      y: 80 + PASTE_OFFSET,
+    });
+    expect(frame?.data.config).toEqual({
+      entryNodeId: "a2",
+      exitNodeId: "c2",
+    });
+    expect(nested.every((node) => node.parentId === "g2")).toBe(true);
+    expect(nested.map((node) => node.position)).toEqual([
+      { x: 12, y: 48 },
+      { x: 12, y: 112 },
+    ]);
+  });
+
+  it("copies the whole group when a child is the context target", () => {
+    const nodes = [
+      { ...groupNode(), selected: false },
+      child("a", 48),
+      child("c", 112),
+    ];
+    expect([...nodeIdsForContextCopy(nodes, "a")].sort()).toEqual([
+      "a",
+      "c",
+      "g",
+    ]);
+  });
+});
+
 describe("offsetToOrigin", () => {
   it("translates the bounding-box origin onto the given point", () => {
     expect(

@@ -54,7 +54,12 @@ const decodeEdgeAttributes = Schema.decodeUnknownSync(
 );
 
 function isWorkflowNodeType(value: unknown): value is WorkflowNodeType {
-  return value === "lifecycle" || value === "action" || value === "add";
+  return (
+    value === "lifecycle" ||
+    value === "action" ||
+    value === "add" ||
+    value === "group"
+  );
 }
 
 /**
@@ -107,6 +112,7 @@ export type WorkflowGraphNodeInput = {
   width?: number;
   height?: number;
   measured?: { width?: number; height?: number };
+  parentId?: string;
 };
 
 function readOptionalBoolean(
@@ -120,13 +126,23 @@ function readOptionalBoolean(
 function parseNodeAttributes(attributes: unknown): WorkflowNode {
   const parsed = decodeNodeAttributes(attributes);
 
-  return {
+  const node: WorkflowNode = {
     id: parsed.id,
     type: parsed.type,
     position: parsed.position ?? { x: 0, y: 0 },
     data: toPersistedNodeData(parsed.data),
     selected: readOptionalBoolean(parsed, "selected"),
   };
+  if (parsed.parentId !== undefined) {
+    node.parentId = parsed.parentId;
+  }
+  if (parsed.width !== undefined) {
+    node.width = parsed.width;
+  }
+  if (parsed.height !== undefined) {
+    node.height = parsed.height;
+  }
+  return node;
 }
 
 function parseEdgeAttributes(attributes: unknown): WorkflowEdge {

@@ -8,6 +8,30 @@
 export const WORKFLOW_NODE_WIDTH = 192;
 export const WORKFLOW_NODE_HEIGHT = 192;
 
+/** Compact card a Group draws for each nested lookup / Condition. */
+export const GROUP_CHILD_WIDTH = 188;
+export const GROUP_CHILD_HEIGHT = 56;
+export const GROUP_HEADER_HEIGHT = 36;
+export const GROUP_PAD = 12;
+export const GROUP_CHILD_GAP = 8;
+export const GROUP_WIDTH = GROUP_PAD + GROUP_CHILD_WIDTH + GROUP_PAD;
+
+export function groupFrameSize(childCount: number): {
+  width: number;
+  height: number;
+} {
+  const stacked = Math.max(childCount, 1);
+  return {
+    width: GROUP_WIDTH,
+    height:
+      GROUP_HEADER_HEIGHT +
+      GROUP_PAD +
+      stacked * GROUP_CHILD_HEIGHT +
+      (stacked - 1) * GROUP_CHILD_GAP +
+      GROUP_PAD,
+  };
+}
+
 /**
  * How wide one Event Split outlet's slot is, in pixels. Wide enough for the chip
  * naming its Event, which is why the card grows with its outlets rather than

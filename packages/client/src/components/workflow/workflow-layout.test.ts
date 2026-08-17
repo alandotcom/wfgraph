@@ -483,4 +483,51 @@ describe("layoutWorkflowNodes", () => {
     expect(nextAddNode?.position).toEqual(addNode.position);
     expect(nextAddNode?.type).toBe("add");
   });
+
+  test("lays out a Group as one box and keeps children relative", async () => {
+    const group: WorkflowNode = {
+      id: "g",
+      type: "group",
+      position: { x: 0, y: 200 },
+      data: {
+        label: "Lookups",
+        type: "group",
+        config: { entryNodeId: "a", exitNodeId: "c" },
+      },
+    };
+    const childA: WorkflowNode = {
+      ...buildNode("a", { x: 12, y: 48 }),
+      parentId: "g",
+      extent: "parent",
+    };
+    const childC: WorkflowNode = {
+      ...buildNode("c", { x: 12, y: 112 }),
+      parentId: "g",
+      extent: "parent",
+    };
+    const result = await layoutWorkflowNodes({
+      catalog: layoutCatalog,
+      nodes: [
+        buildNode("lifecycle", { x: 0, y: 0 }, "lifecycle"),
+        group,
+        childA,
+        childC,
+        buildNode("sms", { x: 0, y: 500 }),
+      ],
+      edges: [
+        buildEdge("e1", "lifecycle", "a"),
+        buildEdge("e2", "a", "c"),
+        buildEdge("e3", "c", "sms"),
+      ],
+    });
+
+    const nextGroup = result.nodes.find((node) => node.id === "g");
+    const nextA = result.nodes.find((node) => node.id === "a");
+    const nextSms = result.nodes.find((node) => node.id === "sms");
+
+    expect(nextGroup?.parentId).toBeUndefined();
+    expect(nextA?.parentId).toBe("g");
+    expect(nextA?.position.x).toBeGreaterThanOrEqual(0);
+    expect(nextSms?.position.y).toBeGreaterThan(nextGroup?.position.y ?? 0);
+  });
 });

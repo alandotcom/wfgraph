@@ -14,9 +14,15 @@ import {
 } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import {
   eventSplitCardWidth,
+  groupFrameSize,
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
 } from "./workflow-node-dimensions";
+import {
+  edgesForGroupLayout,
+  isGroupNode,
+} from "@wfgraph/shared/graph/node-group";
+import { layoutGroupChildren } from "#src/lib/node-group";
 
 const LAYOUT_DIRECTION = "TB";
 const NODE_SPACING = 132;
@@ -81,6 +87,7 @@ type LayoutSpacing = {
 type LayoutModel = {
   nodes: WorkflowNode[];
   widthById: Map<string, number>;
+  heightById: Map<string, number>;
   outEdgesBySource: Map<string, WorkflowEdge[]>;
 };
 
@@ -165,9 +172,25 @@ function readNodeShape(input: {
   nodes: readonly WorkflowNode[];
   edges: readonly WorkflowEdge[];
   catalog: ExtensionCatalog;
-}): { width: number; handleRanks: Map<string, number> } {
+}): { width: number; height: number; handleRanks: Map<string, number> } {
+  if (isGroupNode(input.node)) {
+    const childCount = input.nodes.filter(
+      (node) => node.parentId === input.node.id
+    ).length;
+    const size = groupFrameSize(childCount);
+    return {
+      width: size.width,
+      height: size.height,
+      handleRanks: HANDLE_SORT_RANK,
+    };
+  }
+
   if (!isEventSplitNode(input.node)) {
-    return { width: WORKFLOW_NODE_WIDTH, handleRanks: HANDLE_SORT_RANK };
+    return {
+      width: WORKFLOW_NODE_WIDTH,
+      height: WORKFLOW_NODE_HEIGHT,
+      handleRanks: HANDLE_SORT_RANK,
+    };
   }
 
   const outlets = eventsReachingTarget({
@@ -179,6 +202,7 @@ function readNodeShape(input: {
 
   return {
     width: eventSplitCardWidth(outlets.length),
+    height: WORKFLOW_NODE_HEIGHT,
     handleRanks: new Map(
       outlets.map((event, index) => [eventSplitOutlet(event.name), index])
     ),
@@ -216,7 +240,9 @@ function sortOutEdges(input: {
 
 function buildLayoutModel(input: {
   nodes: WorkflowNode[];
+  allNodes: WorkflowNode[];
   edges: WorkflowEdge[];
+  allEdges: WorkflowEdge[];
   catalog: ExtensionCatalog;
 }): LayoutModel {
   const positionXById = new Map(
@@ -231,14 +257,16 @@ function buildLayoutModel(input: {
   }
 
   const widthById = new Map<string, number>();
+  const heightById = new Map<string, number>();
   for (const node of input.nodes) {
     const shape = readNodeShape({
       node,
-      nodes: input.nodes,
-      edges: input.edges,
+      nodes: input.allNodes,
+      edges: input.allEdges,
       catalog: input.catalog,
     });
     widthById.set(node.id, shape.width);
+    heightById.set(node.id, shape.height);
 
     outEdgesBySource.set(
       node.id,
@@ -253,6 +281,7 @@ function buildLayoutModel(input: {
   return {
     nodes: input.nodes.toSorted((a, b) => a.position.x - b.position.x),
     widthById,
+    heightById,
     outEdgesBySource,
   };
 }
@@ -288,11 +317,13 @@ function layoutWorkflowNodesWithDagre(input: {
 
   const widthOf = (nodeId: string) =>
     input.model.widthById.get(nodeId) ?? WORKFLOW_NODE_WIDTH;
+  const heightOf = (nodeId: string) =>
+    input.model.heightById.get(nodeId) ?? WORKFLOW_NODE_HEIGHT;
 
   for (const node of input.model.nodes) {
     graph.setNode(node.id, {
       width: widthOf(node.id),
-      height: WORKFLOW_NODE_HEIGHT,
+      height: heightOf(node.id),
     });
   }
 
@@ -318,7 +349,7 @@ function layoutWorkflowNodesWithDagre(input: {
 
     const nextPosition = {
       x: Math.round(layoutNode.x - widthOf(node.id) / 2),
-      y: Math.round(layoutNode.y - WORKFLOW_NODE_HEIGHT / 2),
+      y: Math.round(layoutNode.y - heightOf(node.id) / 2),
     };
 
     if (!hasPositionChanged(node.position, nextPosition)) {
@@ -426,6 +457,9 @@ function layoutWorkflowNodesWithHierarchy(input: {
   nodes: WorkflowNode[];
   changed: boolean;
 } | null {
+  if (input.nodes.some((node) => isGroupNode(node))) {
+    return null;
+  }
   const treeData = buildTreeLayoutData({
     nodes: input.nodes,
     model: input.model,
@@ -510,7 +544,7 @@ function layoutWorkflowNodesWithHierarchy(input: {
 }
 
 function isLayoutableNode(node: WorkflowNode): boolean {
-  return node.type !== "add";
+  return node.type !== "add" && !node.parentId;
 }
 
 export function layoutWorkflowNodes(input: {
@@ -528,14 +562,16 @@ export function layoutWorkflowNodes(input: {
   }
 
   const layoutableNodeIds = new Set(layoutableNodes.map((node) => node.id));
-  const layoutableEdges = input.edges.filter(
+  const layoutableEdges = edgesForGroupLayout(input.nodes, input.edges).filter(
     (edge) =>
       layoutableNodeIds.has(edge.source) && layoutableNodeIds.has(edge.target)
   );
   const spacing = getLayoutSpacing(input.availableWidth);
   const model = buildLayoutModel({
     nodes: layoutableNodes,
+    allNodes: input.nodes,
     edges: layoutableEdges,
+    allEdges: input.edges,
     catalog: input.catalog,
   });
 
@@ -556,22 +592,28 @@ export function layoutWorkflowNodes(input: {
   const nextById = new Map(
     positionedNodes.nodes.map((node) => [node.id, node])
   );
-  let changed = false;
-  const nodes = input.nodes.map((node) => {
+  const positioned = input.nodes.map((node) => {
     const next = nextById.get(node.id);
     if (!next) {
       return node;
     }
-
-    if (!hasPositionChanged(node.position, next.position)) {
-      return node;
-    }
-
-    changed = true;
     return {
       ...node,
       position: next.position,
     };
+  });
+  const nodes = layoutGroupChildren(positioned);
+  const previousById = new Map(input.nodes.map((node) => [node.id, node]));
+  const changed = nodes.some((node) => {
+    const previous = previousById.get(node.id);
+    if (!previous) {
+      return true;
+    }
+    return (
+      hasPositionChanged(previous.position, node.position) ||
+      previous.width !== node.width ||
+      previous.height !== node.height
+    );
   });
 
   return { nodes, changed };

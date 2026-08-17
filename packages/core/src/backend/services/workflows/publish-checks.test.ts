@@ -152,6 +152,37 @@ describe("publish-checks", () => {
       valid: true,
     });
   });
+
+  it("does not treat a Group frame as an unreachable subtree", () => {
+    const lookup = actionNode("lookup", "Get User");
+    const frame = {
+      id: "group-1",
+      type: "group" as const,
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Lookups",
+        type: "group" as const,
+        config: { entryNodeId: lookup.id, exitNodeId: lookup.id },
+      },
+    };
+    const { nodes, edges } = toWorkflowGraphData(
+      createSerializedWorkflowGraph({
+        nodes: [lifecycle, lookup, frame],
+        edges: [
+          {
+            id: "e1",
+            source: lifecycle.id,
+            target: lookup.id,
+            sourceHandle: "started",
+          },
+        ],
+      })
+    );
+
+    expect(checkUnreachableSubtrees({ nodes, edges })).toEqual({
+      valid: true,
+    });
+  });
 });
 
 describe("version-digest", () => {

@@ -1,6 +1,6 @@
 import type { SerializedWorkflowGraphInput } from "#src/graph/schemas";
 
-export type WorkflowNodeType = "lifecycle" | "action" | "add";
+export type WorkflowNodeType = "lifecycle" | "action" | "add" | "group";
 export type ConditionBranch = "true" | "false";
 
 /** Run overlay status. Lives on the editor view-model, never on the wire. */
@@ -40,6 +40,12 @@ export type WorkflowNode = {
   width?: number;
   height?: number;
   measured?: { width?: number; height?: number };
+  /**
+   * Editor nesting: the Group frame this node sits inside. The engine walks
+   * children and never schedules the frame. React Flow's `extent` stays on the
+   * editor view-model; it is wider than `"parent"` and must not land here.
+   */
+  parentId?: string;
 };
 
 export type WorkflowEdge = {

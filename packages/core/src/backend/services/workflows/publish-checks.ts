@@ -87,7 +87,7 @@ export function checkUnreachableSubtrees(input: {
     edges: input.edges,
   });
   const orphans = input.nodes
-    .filter((node) => !connected.has(node.id))
+    .filter((node) => node.data.type !== "group" && !connected.has(node.id))
     .map((node) => node.data.label || node.id);
 
   if (orphans.length === 0) {

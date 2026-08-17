@@ -32,6 +32,7 @@ import {
   connectNodesAtom,
   displayEdgesAtom,
   displayNodesAtom,
+  edgesAtom,
   canvasEditingLockedAtom,
   onEdgesChangeAtom,
   onNodesChangeAtom,
@@ -50,9 +51,11 @@ import {
   showMinimapAtom,
 } from "#src/lib/workflow-ui-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { resolveStoredEndpoint } from "@wfgraph/shared/graph/node-group";
 import { normalizeSourceHandleForConnection as normalizeSourceHandle } from "./connection-handle";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
+import { GroupNode } from "./nodes/group-node";
 import { LifecycleNode } from "./nodes/lifecycle-node";
 import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
 import {
@@ -71,6 +74,7 @@ export function WorkflowCanvas() {
   const catalog = useExtensionCatalog();
   const nodes = useAtomValue(displayNodesAtom);
   const edges = useAtomValue(displayEdgesAtom);
+  const storeEdges = useAtomValue(edgesAtom);
   // Draft edits and run-overlay viewing are mutually exclusive: mutating while
   // the overlay is up would write the draft under a canvas that is not showing
   // it. The toolbar's Publish button reads this same atom.
@@ -294,6 +298,7 @@ export function WorkflowCanvas() {
       lifecycle: LifecycleNode,
       action: ActionNode,
       add: AddNode,
+      group: GroupNode,
     }),
     []
   );
@@ -306,7 +311,7 @@ export function WorkflowCanvas() {
         return false;
       }
 
-      if (node.type === "add") {
+      if (node.type === "add" || node.parentId) {
         return false;
       }
 
@@ -332,15 +337,21 @@ export function WorkflowCanvas() {
         return false;
       }
 
+      const sourceNode = nodes.find((node) => node.id === sourceNodeId);
+      const targetNode = nodes.find((node) => node.id === targetNodeId);
+      if (sourceNode?.parentId || targetNode?.parentId) {
+        return false;
+      }
+
       const connectionId =
         "id" in connection && typeof connection.id === "string"
           ? connection.id
           : null;
       const proposedEdges = [
-        ...edges.filter((edge) => edge.id !== connectionId),
+        ...storeEdges.filter((edge) => edge.id !== connectionId),
         {
-          source: sourceNodeId,
-          target: targetNodeId,
+          source: resolveStoredEndpoint(nodes, sourceNodeId, "source"),
+          target: resolveStoredEndpoint(nodes, targetNodeId, "target"),
           sourceHandle: normalizeSourceHandle({
             nodes,
             edges,
@@ -365,7 +376,7 @@ export function WorkflowCanvas() {
 
       return true;
     },
-    [catalog, edges, nodes]
+    [catalog, edges, nodes, storeEdges]
   );
 
   const normalizeSourceHandleForConnection = useCallback(

@@ -80,7 +80,7 @@ describe("a graph built in process", () => {
 
   // The outer `type` attribute is what React Flow's `nodeTypes` map dispatches
   // on, and `data.type` is what every validator and the engine read. The two
-  // must agree on the same three-arm union, or a graph can decode clean while
+  // must agree on the same four-arm union, or a graph can decode clean while
   // carrying a node React Flow renders as its unstyled default.
   it("rejects a node whose outer type disagrees with data.type", () => {
     expect(() =>
@@ -149,6 +149,42 @@ describe("persisted node data", () => {
     expect(loaded.nodes[0]?.data.config).toMatchObject({
       actionType: "resend/send-email",
     });
+  });
+
+  it("round-trips a Group frame and a child's parentId", () => {
+    const encoded = createSerializedWorkflowGraph({
+      nodes: [
+        {
+          id: "g1",
+          type: "group",
+          position: { x: 10, y: 20 },
+          width: 212,
+          height: 180,
+          data: {
+            label: "Lookups",
+            type: "group",
+            config: { entryNodeId: "a1", exitNodeId: "c1" },
+          },
+        },
+        {
+          id: "a1",
+          type: "action",
+          position: { x: 12, y: 48 },
+          parentId: "g1",
+          data: {
+            label: "Get User",
+            type: "action",
+            config: { actionType: "fountain/get-user" },
+          },
+        },
+      ],
+      edges: [],
+    });
+
+    const loaded = toWorkflowGraphData(encoded);
+    expect(loaded.nodes[0]?.data.type).toBe("group");
+    expect(loaded.nodes[0]?.width).toBe(212);
+    expect(loaded.nodes[1]?.parentId).toBe("g1");
   });
 
   it("accepts a closed Condition config and rejects a stray key", () => {
@@ -279,7 +315,7 @@ describe("node data failure messages", () => {
 
     expect(message).not.toContain("sk-live-do-not-echo-this");
     expect(message).toBe(
-      '<root>: Node data needs a type of "lifecycle", "action", or "add"'
+      '<root>: Node data needs a type of "lifecycle", "action", "add", or "group"'
     );
   });
 });

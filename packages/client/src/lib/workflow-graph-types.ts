@@ -61,6 +61,9 @@ export function toPersistedNode(node: WorkflowNode): PersistedWorkflowNode {
       height: node.measured.height,
     };
   }
+  if (typeof node.parentId === "string" && node.parentId.length > 0) {
+    persisted.parentId = node.parentId;
+  }
   return persisted;
 }
 
@@ -79,7 +82,7 @@ export function toPersistedEdge(edge: WorkflowEdge): PersistedWorkflowEdge {
 }
 
 export function toEditorNode(node: PersistedWorkflowNode): WorkflowNode {
-  return {
+  const editor: WorkflowNode = {
     id: node.id,
     position: node.position,
     type: node.type,
@@ -93,6 +96,13 @@ export function toEditorNode(node: PersistedWorkflowNode): WorkflowNode {
     // display time, so this node's `data` never needs one baked in.
     data: { ...node.data },
   };
+  if (node.parentId) {
+    editor.parentId = node.parentId;
+    editor.extent = "parent";
+    editor.draggable = false;
+    editor.connectable = false;
+  }
+  return editor;
 }
 
 export function toEditorEdge(edge: PersistedWorkflowEdge): WorkflowEdge {

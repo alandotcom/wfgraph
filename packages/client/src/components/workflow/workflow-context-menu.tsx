@@ -4,10 +4,12 @@ import {
   ClipboardPaste,
   Copy,
   CopyPlus,
+  Group,
   Link2Off,
   Plus,
   SlidersHorizontal,
   Trash2,
+  Ungroup,
 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useRef } from "react";
@@ -22,14 +24,21 @@ import {
   deleteEdgeAtom,
   deleteNodeAtom,
   duplicateSelectionAtom,
+  edgesAtom,
+  groupSelectionAtom,
   hasCopiedSelectionAtom,
   nodesAtom,
   pasteCopiedSelectionAtom,
   selectedNodeAtom,
+  ungroupNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 import { type WorkflowNode } from "#src/lib/workflow-graph-types";
 import { cn } from "@wfgraph/shared/utils";
+import {
+  analyzeGroupableSelection,
+  isGroupNode,
+} from "@wfgraph/shared/graph/node-group";
 
 export type ContextMenuType = "node" | "edge" | "pane" | null;
 
@@ -51,12 +60,15 @@ export function WorkflowContextMenu({
   onClose,
 }: WorkflowContextMenuProps) {
   const nodes = useAtomValue(nodesAtom);
+  const edges = useAtomValue(edgesAtom);
   const deleteNode = useSetAtom(deleteNodeAtom);
   const deleteEdge = useSetAtom(deleteEdgeAtom);
   const addNode = useSetAtom(addNodeAtom);
   const copySelection = useSetAtom(copySelectionAtom);
   const pasteSelection = useSetAtom(pasteCopiedSelectionAtom);
   const duplicateSelection = useSetAtom(duplicateSelectionAtom);
+  const groupSelected = useSetAtom(groupSelectionAtom);
+  const ungroupSelected = useSetAtom(ungroupNodeAtom);
   const hasCopiedSelection = useAtomValue(hasCopiedSelectionAtom);
   const setSelectedNode = useSetAtom(selectedNodeAtom);
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
@@ -153,6 +165,20 @@ export function WorkflowContextMenu({
     onClose();
   }, [menuState, duplicateSelection, onClose]);
 
+  const handleGroup = useCallback(() => {
+    if (menuState?.nodeId) {
+      groupSelected(menuState.nodeId);
+    }
+    onClose();
+  }, [menuState, groupSelected, onClose]);
+
+  const handleUngroup = useCallback(() => {
+    if (menuState?.nodeId) {
+      ungroupSelected(menuState.nodeId);
+    }
+    onClose();
+  }, [menuState, ungroupSelected, onClose]);
+
   const handlePaste = useCallback(() => {
     pasteSelection(menuState?.flowPosition);
     onClose();
@@ -203,6 +229,17 @@ export function WorkflowContextMenu({
     nodes.find((n) => n.id === menuState.nodeId)?.data.type === "lifecycle"
   );
 
+  const clicked = menuState.nodeId
+    ? nodes.find((n) => n.id === menuState.nodeId)
+    : undefined;
+  const groupingIds = clicked?.selected
+    ? new Set(nodes.filter((node) => node.selected).map((node) => node.id))
+    : new Set(menuState.nodeId ? [menuState.nodeId] : []);
+  const canGroup = analyzeGroupableSelection(nodes, edges, groupingIds).ok;
+  const canUngroup = Boolean(
+    clicked && (isGroupNode(clicked) || clicked.parentId)
+  );
+
   const getNodeLabel = () => {
     if (!menuState.nodeId) {
       return "Step";
@@ -240,6 +277,18 @@ export function WorkflowContextMenu({
             label="Duplicate"
             onClick={handleDuplicateNode}
             shortcut={shortcutLabel("D")}
+          />
+          <MenuItem
+            disabled={!canGroup}
+            icon={<Group className="size-4" />}
+            label="Group"
+            onClick={handleGroup}
+          />
+          <MenuItem
+            disabled={!canUngroup}
+            icon={<Ungroup className="size-4" />}
+            label="Ungroup"
+            onClick={handleUngroup}
           />
           <MenuItem
             disabled={isLifecycleNode}

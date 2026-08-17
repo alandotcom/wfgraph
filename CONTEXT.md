@@ -82,7 +82,8 @@ anything can read it.
 **Cancel Event**:
 An Event the Lifecycle Rules list as canceling runs. When one arrives, every
 in-flight Execution with an equal Entity Value jumps to the Canceled outlet
-at its next step boundary.
+at its next step boundary. Stopping a sequence mid-graph is an unwired
+Condition False, not a Cancel Event.
 
 **Arriving Event**:
 The Event that put a run where it is: the Start Event it began on, and the
@@ -124,6 +125,14 @@ step. Fan-out onto those predecessors is unchanged: an ordinary action (or the
 Lifecycle Node's Started outlet) already schedules every outgoing edge
 together. A Wait on either arm, a join across exclusive Condition or Event
 Split outlets, and a rejoin of Started with Canceled are refused.
+
+**Group**:
+A visual single-entry single-exit bundle of lookup steps plus an optional
+Condition. The engine walks the children; the frame is editor chrome. True
+continues to the next step. False with no outgoing edge ends that path. That
+is how a sequence stops; it is not a Cancel Event. Sends stay outside the
+frame. After a Wait, the builder pastes the group so the next send reads a
+fresh fetch: node outputs are memoized, and nothing above a Wait re-runs.
 
 **Precedence**:
 One fixed order when an Event arrives: Lifecycle Rules apply first, then the

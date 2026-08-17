@@ -7,6 +7,7 @@ import {
   RefreshCw,
   Settings2,
   Trash2,
+  Ungroup,
 } from "lucide-react";
 import { Button } from "#src/components/ui/button";
 import { Input } from "#src/components/ui/input";
@@ -22,6 +23,7 @@ import {
   nodesAtom,
   selectedEdgeAtom,
   selectedNodeAtom,
+  ungroupNodeAtom,
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
 import {
@@ -205,6 +207,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
   const isOwner = useAtomValue(isWorkflowOwnerAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const deleteNode = useSetAtom(deleteNodeAtom);
+  const ungroupSelected = useSetAtom(ungroupNodeAtom);
   const deleteEdge = useSetAtom(deleteEdgeAtom);
   const deleteSelectedItems = useSetAtom(deleteSelectedItemsAtom);
   const clearWorkflow = useSetAtom(clearWorkflowAtom);
@@ -496,6 +499,13 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
 
     return (
       <div className="space-y-4 p-4">
+        {selectedNode.data.type === "group" ? (
+          <p className="text-muted-foreground text-sm">
+            Lookups and a Condition in a single-entry, single-exit frame. True
+            continues; False with no outgoing edge ends that path.
+          </p>
+        ) : null}
+
         {selectedNode.data.type === "lifecycle" ? (
           /* The Lifecycle Rules are the whole of the entry node's configuration.
              The payload shape is not asked for here: it belongs to the Events the
@@ -582,6 +592,16 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
                     Enabled
                   </>
                 )}
+              </Button>
+            ) : null}
+            {selectedNode.data.type === "group" ? (
+              <Button
+                onClick={() => ungroupSelected(selectedNode.id)}
+                size="sm"
+                variant="outline"
+              >
+                <Ungroup className="mr-2 size-4" />
+                Ungroup
               </Button>
             ) : null}
             <Button onClick={confirmDeleteNode} size="sm" variant="outline">

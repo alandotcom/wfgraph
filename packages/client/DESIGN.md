@@ -214,7 +214,7 @@ All primitives are shadcn/ui new-york on Base UI, refined and restrained: quiet 
 
 ### Workflow Node (signature component)
 
-The reason the product exists. A 192px square card at 8px radius sitting on the React Flow canvas: integration icon, title, and description at rest. Event Split is wider at 264px on purpose, because it carries two labelled outlets. The card is flat; elevation on the canvas would compete with the status border.
+The reason the product exists. A 192px square card at 8px radius sitting on the React Flow canvas: integration icon, title, and description at rest. Event Split is wider at 264px on purpose, because it carries two labelled outlets. Nested Group children are compact (188×56) so the frame reads as one step; 192px remains the top-level card. The card is flat; elevation on the canvas would compete with the status border.
 
 Status is worn on the border: a 2px Signal Green border for success, Signal Red for failure, Signal Slate for cancelled, and an animated Signal Blue sweep while running. Every status also renders its word in a chip, so the border is never the only carrier.
 
