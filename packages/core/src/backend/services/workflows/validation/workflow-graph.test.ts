@@ -124,7 +124,7 @@ describe("validateWorkflowGraph", () => {
       // The node's own fields stay out of the message: the editor put them
       // there, and this string is persisted as a run error.
       expect(result.error).toBe(
-        'nodes[0].attributes.data: Node data needs a type of "lifecycle", "action", or "add"'
+        'nodes[0].attributes.data: Node data needs a type of "lifecycle", "action", "add", or "group"'
       );
     }
   });

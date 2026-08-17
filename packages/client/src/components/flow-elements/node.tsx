@@ -71,6 +71,7 @@ type NodeHandleConfig = {
   id?: string;
   position: Position;
   style?: CSSProperties;
+  className?: string;
 };
 
 function renderHandles(
@@ -102,6 +103,7 @@ function renderHandles(
 
     return (
       <Handle
+        className={handleConfig.className}
         id={handleConfig.id}
         key={handleConfig.id ?? fallbackKey}
         position={handleConfig.position}
@@ -149,13 +151,13 @@ export const NodeDescription = ({
   />
 );
 
-export const NodeBody = ({
-  className,
-  ...props
-}: ComponentProps<"div">) => (
+// `text-center` is what centres the words. The title and description are
+// full-width truncating blocks, so `items-center` reaches only the icon, the one
+// child narrower than the stack.
+export const NodeBody = ({ className, ...props }: ComponentProps<"div">) => (
   <div
     className={cn(
-      "flex w-full flex-col items-center justify-center gap-1 px-3 py-2",
+      "flex w-full flex-col items-center justify-center gap-1 px-3 py-2 text-center",
       className
     )}
     {...props}

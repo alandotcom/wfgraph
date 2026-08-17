@@ -215,13 +215,15 @@ All primitives are shadcn/ui new-york on Base UI, refined and restrained: quiet 
 
 ### Workflow Node (signature component)
 
-The reason the product exists. A 192×112px rectangular card at 8px radius sitting on the React Flow canvas: integration icon, title, and description at rest. Event Split is wider at 264px on purpose, because it carries two labelled outlets. The card is flat; elevation on the canvas would compete with the status border.
+The reason the product exists. A 192×112px rectangular card at 8px radius sitting on the React Flow canvas: integration icon, title, and description at rest. Event Split is wider at 264px on purpose, because it carries two labelled outlets. Nested Group children are compact (188×56) so the frame reads as one step; parallel lookups sit side by side inside it. 192×112 remains the top-level card. The card is flat; elevation on the canvas would compete with the status border.
 
 Status is worn on the border: a 2px Signal Green border for success, Signal Red for failure, Signal Slate for cancelled, and an animated Signal Blue sweep while running. Every status also renders its word in a chip, so the border is never the only carrier.
 
 Handles are 12px dots in Graphite Ink with a hairline ring, and their hit areas are 24px on desktop and 44px on touch. Those sizes are divided by `--rf-zoom`, the live canvas scale the viewport transform applies, because a flat pixel size inside that transform shrinks with the zoom and delivered 24.6px on a phone.
 
 Edges leave the bottom handle, travel in a rounded orthogonal step, and enter the top handle of the next node. The dash is the wire; a label sits on the horizontal span when the outlet has a name.
+
+A step the run can never reach is muted: the card drops to 50% opacity, its incoming edge to 40%, and that edge stops animating, so a dead region reads as still while a live one moves. Two things put a step out of reach, and both wear this: a Canceled subtree while no Cancel Event is declared, which also labels the outlet, and everything below a disabled step, since disabling one ends its branch. A disabled step wears its own face instead, 50% opacity with an eye badge, which is what separates the step a person switched off from the steps that lost their path because of it. A Group frame carries no flag; it wears the disabled face once every member has it.
 
 ### Navigation
 

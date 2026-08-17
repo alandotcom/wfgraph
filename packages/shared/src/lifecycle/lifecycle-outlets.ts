@@ -8,6 +8,7 @@
  * Started: a run enters that outlet carrying what the canceling Event sent.
  */
 
+import { descendantsOf } from "#src/graph/descendants";
 import type { WorkflowEdge } from "#src/graph/types";
 
 export const LIFECYCLE_STARTED_HANDLE = "started";
@@ -29,11 +30,10 @@ export function isLifecycleOutlet(
 }
 
 /**
- * Every node behind one outlet: the edges that outlet opens, and everything
- * downstream of them.
+ * Every node behind one outlet: the nodes the edges that outlet opens land on,
+ * and everything downstream of those.
  *
- * The engine reads it to know which side of the lifecycle a node sits on. A
- * node already seen is not walked again, so a cycle terminates.
+ * The engine reads it to know which side of the lifecycle a node sits on.
  */
 export function nodesBehindOutlet(input: {
   entryNodeIds: ReadonlySet<string>;
@@ -41,30 +41,16 @@ export function nodesBehindOutlet(input: {
   edges: readonly WorkflowEdge[];
 }): Set<string> {
   const { entryNodeIds, outlet, edges } = input;
-  const targetsBySource = new Map<string, string[]>();
-  const pending: string[] = [];
+  const behind = new Set<string>();
 
   for (const edge of edges) {
-    const targets = targetsBySource.get(edge.source);
-    if (targets) {
-      targets.push(edge.target);
-    } else {
-      targetsBySource.set(edge.source, [edge.target]);
-    }
-
     if (entryNodeIds.has(edge.source) && edge.sourceHandle === outlet) {
-      pending.push(edge.target);
+      behind.add(edge.target);
     }
   }
 
-  const behind = new Set<string>();
-  while (pending.length > 0) {
-    const nodeId = pending.pop();
-    if (!nodeId || behind.has(nodeId)) {
-      continue;
-    }
+  for (const nodeId of descendantsOf({ startIds: behind, edges })) {
     behind.add(nodeId);
-    pending.push(...(targetsBySource.get(nodeId) ?? []));
   }
 
   return behind;

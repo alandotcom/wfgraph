@@ -40,7 +40,7 @@ import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-d
 import {
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
-} from "#src/components/workflow/workflow-node-dimensions";
+} from "#src/lib/workflow-node-dimensions";
 import type {
   WorkflowToolbarActions,
   WorkflowToolbarState,

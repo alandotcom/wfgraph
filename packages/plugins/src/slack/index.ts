@@ -91,6 +91,7 @@ export const slack = defineIntegration({
     "send-message": {
       label: "Send Slack Message",
       description: "Send a message to a Slack channel",
+      sideEffect: true,
       input: sendSlackMessageInput,
       output: sendSlackMessageOutput,
       configFields: [

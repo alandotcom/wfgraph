@@ -46,6 +46,13 @@ export type ActionMetadata = {
   /** The integration this action belongs to, absent for a host-defined one. */
   readonly integration?: string;
   readonly logoUrl?: string;
+  /**
+   * Whether running this action changes something outside the workflow: a
+   * message sent, a record written or removed. Absent means it only reads,
+   * which is what lets a Group hold it. Narrower than the replay sense of the
+   * phrase; `ActionStepInput` in core separates the two.
+   */
+  readonly sideEffect?: boolean;
   readonly configFields: readonly ActionConfigField[];
   readonly outputFields: readonly ReferenceField[];
 };

@@ -172,6 +172,7 @@ export const clerk = defineIntegration({
     "create-user": {
       label: "Create User",
       description: "Create a new user in Clerk",
+      sideEffect: true,
       input: createUserInput,
       output: createUserOutput,
       configFields: [
@@ -284,6 +285,7 @@ export const clerk = defineIntegration({
     "update-user": {
       label: "Update User",
       description: "Update an existing user in Clerk",
+      sideEffect: true,
       input: updateUserInput,
       output: updateUserOutput,
       configFields: [
@@ -383,6 +385,7 @@ export const clerk = defineIntegration({
     "delete-user": {
       label: "Delete User",
       description: "Delete a user from Clerk",
+      sideEffect: true,
       input: deleteUserInput,
       output: deleteUserOutput,
       configFields: [

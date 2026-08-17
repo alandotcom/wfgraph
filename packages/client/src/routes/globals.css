@@ -328,14 +328,25 @@
   cursor: pointer !important;
 }
 
-/* React Flow handle positioning and styling */
-.react-flow__handle {
+/* React Flow handle positioning and styling.
+   `group-child-handle` is carved out rather than overridden: a Group member's
+   handle is an anchor for the interior edge the frame draws, never a place to
+   start a connection, so it takes none of the dot, the hit area, or the
+   crosshair. It keeps a 1px box so React Flow can still measure where the edge
+   meets the card. */
+.react-flow__handle:not(.group-child-handle) {
   width: 12px !important;
   height: 12px !important;
   border: 2px solid var(--border) !important;
   background: var(--primary) !important;
   cursor: crosshair !important;
   z-index: 20 !important;
+}
+
+.react-flow__handle.group-child-handle {
+  width: 1px !important;
+  height: 1px !important;
+  pointer-events: none !important;
 }
 
 /* Invisible hit area for desktop.
@@ -346,7 +357,7 @@
    published by the canvas on every viewport move; the fallback of 1 keeps this
    correct before the first move fires. The cap stops a zoomed-out canvas from
    growing hit areas until neighbouring handles overlap. */
-.react-flow__handle::after {
+.react-flow__handle:not(.group-child-handle)::after {
   content: "" !important;
   position: absolute !important;
   top: 50% !important;
@@ -360,7 +371,7 @@
    767.98px rather than 768px so this agrees with `useIsMobile`, which is an
    exclusive `innerWidth < 768`. */
 @media (max-width: 767.98px) {
-  .react-flow__handle::after {
+  .react-flow__handle:not(.group-child-handle)::after {
     width: min(calc(44px / var(--rf-zoom, 1)), 88px) !important;
     height: min(calc(44px / var(--rf-zoom, 1)), 88px) !important;
   }

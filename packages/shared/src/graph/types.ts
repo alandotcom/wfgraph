@@ -1,6 +1,6 @@
 import type { SerializedWorkflowGraphInput } from "#src/graph/schemas";
 
-export type WorkflowNodeType = "lifecycle" | "action" | "add";
+export type WorkflowNodeType = "lifecycle" | "action" | "add" | "group";
 export type ConditionBranch = "true" | "false";
 
 /** Run overlay status. Lives on the editor view-model, never on the wire. */
@@ -27,7 +27,9 @@ export type PersistedNodeData = {
 
 /**
  * A graph node without React Flow. Positions and ids are required after decode;
- * bookkeeping fields the editor round-trips stay optional.
+ * geometry the editor round-trips stays optional. Nothing here describes the
+ * session looking at the graph: `workflowNodeAttributesSchema` names only these
+ * fields, so a selection or a drag written here would be dropped on decode.
  */
 export type WorkflowNode = {
   id: string;
@@ -35,11 +37,15 @@ export type WorkflowNode = {
   data: PersistedNodeData;
   /** React Flow types this as `string`; persisted values are WorkflowNodeType. */
   type?: string;
-  selected?: boolean;
-  dragging?: boolean;
   width?: number;
   height?: number;
   measured?: { width?: number; height?: number };
+  /**
+   * Editor nesting: the Group frame this node sits inside. The engine walks
+   * children and never schedules the frame. React Flow's `extent` stays on the
+   * editor view-model; it is wider than `"parent"` and must not land here.
+   */
+  parentId?: string;
 };
 
 export type WorkflowEdge = {
@@ -49,8 +55,6 @@ export type WorkflowEdge = {
   sourceHandle?: string | null;
   targetHandle?: string | null;
   data?: Record<string, unknown>;
-  type?: string;
-  selected?: boolean;
 };
 
 export type SerializedWorkflowGraph = SerializedWorkflowGraphInput;

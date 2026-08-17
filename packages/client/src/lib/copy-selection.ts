@@ -11,6 +11,10 @@ import {
   mapTemplateTokens,
 } from "@wfgraph/shared/graph/node-references";
 import {
+  expandGroupCopyIds,
+  isGroupNode,
+} from "@wfgraph/shared/graph/node-group";
+import {
   toEditorEdge,
   toEditorNode,
   toPersistedEdge,
@@ -45,14 +49,17 @@ export function nodeIdsForContextCopy(
   }
 
   if (clicked.selected) {
-    return new Set(
-      nodes
-        .filter((node) => node.selected && isCopyableNode(node))
-        .map((node) => node.id)
+    return expandGroupCopyIds(
+      nodes,
+      new Set(
+        nodes
+          .filter((node) => node.selected && isCopyableNode(node))
+          .map((node) => node.id)
+      )
     );
   }
 
-  return new Set([clicked.id]);
+  return expandGroupCopyIds(nodes, new Set([clicked.id]));
 }
 
 export function extractCopyableSelection(input: {
@@ -60,18 +67,22 @@ export function extractCopyableSelection(input: {
   edges: readonly WorkflowEdge[];
   nodeIds?: ReadonlySet<string>;
 }): CopiedSelection | null {
-  const copyable = input.nodes.filter((node) => {
+  const requested = input.nodes.filter((node) => {
     if (!isCopyableNode(node)) {
       return false;
     }
     return input.nodeIds ? input.nodeIds.has(node.id) : Boolean(node.selected);
   });
 
-  if (copyable.length === 0) {
+  if (requested.length === 0) {
     return null;
   }
 
-  const ids = new Set(copyable.map((node) => node.id));
+  const ids = expandGroupCopyIds(
+    input.nodes,
+    new Set(requested.map((node) => node.id))
+  );
+  const copyable = input.nodes.filter((node) => ids.has(node.id));
   const edges = input.edges.filter(
     (edge) => ids.has(edge.source) && ids.has(edge.target)
   );
@@ -101,20 +112,34 @@ export function cloneSelection(
     idMap.set(node.id, createId());
   }
 
-  const nodes = selection.nodes.map((node) => ({
-    ...node,
-    id: mappedId(idMap, node.id),
-    position: {
-      x: node.position.x + options.offset.x,
-      y: node.position.y + options.offset.y,
-    },
-    selected: true,
-    dragging: false,
-    data: {
-      ...node.data,
-      config: remapConfig(node.data.config, idMap),
-    },
-  }));
+  const copiedIds = new Set(selection.nodes.map((node) => node.id));
+  const nodes = selection.nodes.map((node) => {
+    const parentId = node.parentId;
+    const parentCopied =
+      typeof parentId === "string" && copiedIds.has(parentId);
+    const nextParentId = parentCopied ? mappedId(idMap, parentId) : undefined;
+    return {
+      ...node,
+      id: mappedId(idMap, node.id),
+      parentId: nextParentId,
+      position: parentCopied
+        ? node.position
+        : {
+            x: node.position.x + options.offset.x,
+            y: node.position.y + options.offset.y,
+          },
+      selected: true,
+      dragging: false,
+      data: {
+        ...node.data,
+        config: remapGroupEndpoints(
+          remapConfig(node.data.config, idMap),
+          idMap,
+          node
+        ),
+      },
+    };
+  });
 
   const edges = selection.edges.map((edge) => ({
     ...edge,
@@ -132,8 +157,12 @@ export function offsetToOrigin(
   nodes: readonly WorkflowNode[],
   origin: { x: number; y: number }
 ): { x: number; y: number } {
-  const xs = nodes.map((node) => node.position.x);
-  const ys = nodes.map((node) => node.position.y);
+  const ids = new Set(nodes.map((node) => node.id));
+  const topLevel = nodes.filter(
+    (node) => !node.parentId || !ids.has(node.parentId)
+  );
+  const xs = topLevel.map((node) => node.position.x);
+  const ys = topLevel.map((node) => node.position.y);
   return {
     x: origin.x - Math.min(...xs),
     y: origin.y - Math.min(...ys),
@@ -161,6 +190,34 @@ function snapshotEdge(edge: WorkflowEdge): WorkflowEdge {
     ...toEditorEdge(toPersistedEdge(edge)),
     selected: false,
   };
+}
+
+function remapGroupEndpoints(
+  config: Record<string, unknown> | undefined,
+  idMap: ReadonlyMap<string, string>,
+  node: WorkflowNode
+): Record<string, unknown> | undefined {
+  if (!config || !isGroupNode(node)) {
+    return config;
+  }
+
+  const next = { ...config };
+  const entryIds = Array.isArray(config.entryNodeIds)
+    ? config.entryNodeIds
+        .map((id) => (typeof id === "string" ? idMap.get(id) : undefined))
+        .filter((id): id is string => typeof id === "string")
+    : [];
+  const exitId =
+    typeof config.exitNodeId === "string"
+      ? idMap.get(config.exitNodeId)
+      : undefined;
+  if (entryIds.length > 0) {
+    next.entryNodeIds = entryIds;
+  }
+  if (exitId) {
+    next.exitNodeId = exitId;
+  }
+  return next;
 }
 
 function remapConfig(

@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { createStore as createJotaiStore } from "jotai";
 import { createStore } from "jotai";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import {
+  isGroupNode,
+  orderGroupParentsFirst,
+} from "@wfgraph/shared/graph/node-group";
 import {
   addNodeAtom,
   applyNodeLayoutAtom,
@@ -12,10 +17,12 @@ import {
   deleteEdgeAtom,
   deleteNodeAtom,
   deleteSelectedItemsAtom,
+  displayEdgesAtom,
   displayNodesAtom,
   duplicateSelectionAtom,
   edgesAtom,
   executionOverlayGraphAtom,
+  groupSelectionAtom,
   hasCopiedSelectionAtom,
   hydrateWorkflowAtom,
   loadWorkflowGraphAtom,
@@ -23,6 +30,7 @@ import {
   onEdgesChangeAtom,
   onNodesChangeAtom,
   pasteCopiedSelectionAtom,
+  setGroupEnabledAtom,
   setNodeStatusesAtom,
   snapshotHistoryAtom,
   undoAtom,
@@ -39,6 +47,7 @@ import {
   propertiesPanelActiveTabAtom,
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { savedWorkflow } from "./workflow-save-test-support";
 import { PASTE_OFFSET } from "#src/lib/copy-selection";
@@ -84,8 +93,31 @@ function actionNode(id: string, x = 0): WorkflowNode {
 }
 
 function edge(id: string, source: string, target: string): WorkflowEdge {
-  return { id, source, target, type: "animated" };
+  return { id, source, target };
 }
+
+/** A lookup step, which is what a Group is allowed to hold. */
+function groupableLookup(id: string, x: number): WorkflowNode {
+  return {
+    ...actionNode(id, x),
+    selected: true,
+    data: {
+      label: id,
+      type: "action",
+      config: { actionType: "fountain/get-user" },
+    },
+  };
+}
+
+/**
+ * No action here needs a catalog entry: an action the catalog does not list
+ * declares no side effect, which is what lets these lookups group.
+ */
+const emptyCatalog: ExtensionCatalog = {
+  events: [],
+  actions: [],
+  integrations: [],
+};
 
 /** Let a zero-delay debounce timer fire. */
 function tick() {
@@ -384,7 +416,7 @@ describe("displayNodesAtom memoization", () => {
 /**
  * Run status is a display-time concern, merged onto whichever graph
  * `displayNodesAtom` is showing -- the draft or a pinned run overlay -- the
- * same way `inactiveCanceledBranchAtom` is already merged in. It must never
+ * same way `inactiveBranchAtom` is already merged in. It must never
  * live on the graph's own node data, because that is what forces a second
  * full copy of the graph to carry it.
  */
@@ -752,5 +784,303 @@ describe("updateNodeDataAtom rewrites template labels", () => {
         fieldPath: "email",
       }),
     });
+  });
+});
+
+describe("groupSelectionAtom", () => {
+  it("groups an explicit id set after the live selection has collapsed", () => {
+    const lookup = (id: string, x: number): WorkflowNode => ({
+      ...actionNode(id, x),
+      selected: false,
+      data: {
+        label: id,
+        type: "action",
+        config: { actionType: "fountain/get-user" },
+      },
+    });
+    const store = createGraphStore(
+      [
+        lifecycleNode("life"),
+        lookup("a", 0),
+        lookup("b", 200),
+        {
+          ...actionNode("c", 100),
+          selected: true,
+          data: {
+            label: "c",
+            type: "action",
+            config: { actionType: BUILT_IN_ACTION_IDS.condition },
+          },
+        },
+      ],
+      [
+        edge("e-start-a", "life", "a"),
+        edge("e-start-b", "life", "b"),
+        edge("e-a", "a", "c"),
+        edge("e-b", "b", "c"),
+      ]
+    );
+
+    expect(
+      store.set(groupSelectionAtom, {
+        catalog: emptyCatalog,
+        selectedIds: new Set(["a", "b", "c"]),
+      })
+    ).toBe(true);
+    expect(store.get(nodesAtom).some((node) => isGroupNode(node))).toBe(true);
+  });
+
+  it("groups the live selection when no ids are passed", () => {
+    const selectedLookup = (id: string, x: number): WorkflowNode => ({
+      ...actionNode(id, x),
+      selected: true,
+      data: {
+        label: id,
+        type: "action",
+        config: { actionType: "fountain/get-user" },
+      },
+    });
+    const store = createGraphStore(
+      [
+        lifecycleNode("life"),
+        selectedLookup("a", 0),
+        selectedLookup("b", 200),
+        {
+          ...actionNode("c", 100),
+          selected: true,
+          data: {
+            label: "c",
+            type: "action",
+            config: { actionType: BUILT_IN_ACTION_IDS.condition },
+          },
+        },
+      ],
+      [
+        edge("e-start-a", "life", "a"),
+        edge("e-start-b", "life", "b"),
+        edge("e-a", "a", "c"),
+        edge("e-b", "b", "c"),
+      ]
+    );
+
+    expect(store.set(groupSelectionAtom, { catalog: emptyCatalog })).toBe(true);
+    const frame = store.get(nodesAtom).find((node) => isGroupNode(node));
+    expect(frame?.data.config).toMatchObject({
+      entryNodeIds: ["a", "b"],
+      exitNodeId: "c",
+      outletHandle: "true",
+    });
+  });
+
+  // A pasted frame lands after the members already on the canvas, which costs
+  // `displayNodesAtom` its identity fast path on every render from then on.
+  it("keeps the order when a frame is pasted beside one already there", () => {
+    const store = createGraphStore(
+      [
+        lifecycleNode("life"),
+        groupableLookup("a", 0),
+        groupableLookup("b", 200),
+        {
+          ...actionNode("c", 100),
+          selected: true,
+          data: {
+            label: "c",
+            type: "action",
+            config: { actionType: BUILT_IN_ACTION_IDS.condition },
+          },
+        },
+      ],
+      [
+        edge("e-start-a", "life", "a"),
+        edge("e-start-b", "life", "b"),
+        edge("e-a", "a", "c"),
+        edge("e-b", "b", "c"),
+      ]
+    );
+    store.set(groupSelectionAtom, {
+      catalog: emptyCatalog,
+      selectedIds: new Set(["a", "b", "c"]),
+    });
+    store.set(copySelectionAtom);
+    store.set(pasteCopiedSelectionAtom);
+
+    const nodes = store.get(nodesAtom);
+    expect(orderGroupParentsFirst(nodes)).toBe(nodes);
+  });
+
+  /**
+   * React Flow deletes a frame by expanding it into its children, and it asks
+   * for no edge it was told it cannot delete. A frame's interior edges are
+   * painted `deletable: false`, and a collapsed inlet edge never reaches React
+   * Flow at all, so both survive a delete the node pass alone. The next save
+   * then refuses the graph, because those edges name nodes that are gone.
+   */
+  it("drops the edges a removed frame leaves behind", () => {
+    const store = createGraphStore(
+      [
+        lifecycleNode("life"),
+        groupableLookup("a", 0),
+        groupableLookup("b", 200),
+        {
+          ...actionNode("c", 100),
+          selected: true,
+          data: {
+            label: "c",
+            type: "action",
+            config: { actionType: BUILT_IN_ACTION_IDS.condition },
+          },
+        },
+      ],
+      [
+        edge("e-start-a", "life", "a"),
+        edge("e-start-b", "life", "b"),
+        edge("e-a", "a", "c"),
+        edge("e-b", "b", "c"),
+      ]
+    );
+    store.set(groupSelectionAtom, {
+      catalog: emptyCatalog,
+      selectedIds: new Set(["a", "b", "c"]),
+    });
+    const frameId = store.get(nodesAtom).find((node) => isGroupNode(node))?.id;
+    expect(frameId).toBeDefined();
+
+    store.set(snapshotHistoryAtom);
+    // The one painted edge React Flow can see and delete.
+    store.set(onEdgesChangeAtom, [{ type: "remove", id: "e-start-a" }]);
+    store.set(onNodesChangeAtom, [
+      { type: "remove", id: frameId ?? "" },
+      { type: "remove", id: "a" },
+      { type: "remove", id: "b" },
+      { type: "remove", id: "c" },
+    ]);
+
+    const liveIds = new Set(store.get(nodesAtom).map((node) => node.id));
+    expect(
+      store
+        .get(edgesAtom)
+        .filter(
+          (item) => !liveIds.has(item.source) || !liveIds.has(item.target)
+        )
+    ).toEqual([]);
+  });
+});
+
+describe("what the canvas paints for a step that cannot run", () => {
+  function disabled(node: WorkflowNode): WorkflowNode {
+    return { ...node, data: { ...node.data, enabled: false } };
+  }
+
+  it("mutes the edge leaving a disabled step, and not the one into it", () => {
+    const store = createGraphStore(
+      [lifecycleNode("t"), disabled(actionNode("a")), actionNode("b")],
+      [edge("e-in", "t", "a"), edge("e-out", "a", "b")]
+    );
+
+    const edges = store.get(displayEdgesAtom);
+    expect(edges.find((item) => item.id === "e-in")?.style).toBeUndefined();
+    expect(edges.find((item) => item.id === "e-out")?.style).toMatchObject({
+      opacity: 0.4,
+    });
+  });
+
+  it("mutes the step below a disabled one, and leaves that one to its own face", () => {
+    const store = createGraphStore(
+      [lifecycleNode("t"), disabled(actionNode("a")), actionNode("b")],
+      [edge("e-in", "t", "a"), edge("e-out", "a", "b")]
+    );
+
+    const nodes = store.get(displayNodesAtom);
+    expect(nodes.find((node) => node.id === "a")?.style).toBeUndefined();
+    expect(nodes.find((node) => node.id === "b")?.style).toMatchObject({
+      opacity: 0.5,
+    });
+  });
+});
+
+describe("setGroupEnabledAtom", () => {
+  function groupedGraph(): Store {
+    const lookup = (id: string, x: number): WorkflowNode => ({
+      ...actionNode(id, x),
+      selected: true,
+      data: {
+        label: id,
+        type: "action",
+        config: { actionType: "fountain/get-user" },
+      },
+    });
+    const store = createGraphStore(
+      [
+        lifecycleNode("life"),
+        lookup("a", 0),
+        lookup("b", 200),
+        {
+          ...actionNode("c", 100),
+          selected: true,
+          data: {
+            label: "c",
+            type: "action",
+            config: { actionType: BUILT_IN_ACTION_IDS.condition },
+          },
+        },
+        actionNode("after", 100),
+      ],
+      [
+        edge("e-start-a", "life", "a"),
+        edge("e-start-b", "life", "b"),
+        edge("e-a", "a", "c"),
+        edge("e-b", "b", "c"),
+        edge("e-after", "c", "after"),
+      ]
+    );
+    store.set(groupSelectionAtom, { catalog: emptyCatalog });
+    return store;
+  }
+
+  it("writes the flag onto every member in one undo step", () => {
+    const store = groupedGraph();
+    const frameId = store.get(nodesAtom).find((node) => isGroupNode(node))?.id;
+
+    expect(
+      store.set(setGroupEnabledAtom, {
+        groupId: frameId ?? "",
+        enabled: false,
+      })
+    ).toBe(true);
+
+    const members = store
+      .get(nodesAtom)
+      .filter((node) => node.parentId === frameId);
+    expect(members).toHaveLength(3);
+    expect(members.every((node) => node.data.enabled === false)).toBe(true);
+
+    store.set(undoAtom);
+    expect(
+      store
+        .get(nodesAtom)
+        .filter((node) => node.parentId === frameId)
+        .every((node) => node.data.enabled === undefined)
+    ).toBe(true);
+  });
+
+  it("greys the frame and everything the run can no longer reach", () => {
+    const store = groupedGraph();
+    const frameId = store.get(nodesAtom).find((node) => isGroupNode(node))?.id;
+    store.set(setGroupEnabledAtom, { groupId: frameId ?? "", enabled: false });
+
+    const frame = store
+      .get(displayNodesAtom)
+      .find((node) => node.id === frameId);
+    expect(frame?.data.enabled).toBe(false);
+
+    const after = store
+      .get(displayNodesAtom)
+      .find((node) => node.id === "after");
+    expect(after?.style).toMatchObject({ opacity: 0.5 });
+
+    const outlet = store
+      .get(displayEdgesAtom)
+      .find((item) => item.target === "after");
+    expect(outlet?.style).toMatchObject({ opacity: 0.4 });
   });
 });

@@ -7,7 +7,10 @@ import {
   NodeDescription,
   NodeTitle,
 } from "#src/components/flow-elements/node";
-import { workflowNodeSize } from "#src/components/workflow/workflow-node-dimensions";
+import {
+  NODE_ICON_CLASS,
+  workflowNodeSize,
+} from "#src/lib/workflow-node-dimensions";
 import { cn } from "@wfgraph/shared/utils";
 import {
   LIFECYCLE_CANCELED_HANDLE,
@@ -109,7 +112,10 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
       </div>
 
       <NodeBody>
-        <Play className="size-8 text-node-lifecycle" strokeWidth={1.5} />
+        <Play
+          className={cn(NODE_ICON_CLASS, "text-node-lifecycle")}
+          strokeWidth={1.5}
+        />
         <NodeTitle>{displayTitle}</NodeTitle>
         {displayDescription && (
           <NodeDescription>{displayDescription}</NodeDescription>

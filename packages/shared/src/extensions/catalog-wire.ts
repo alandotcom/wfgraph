@@ -115,6 +115,7 @@ const actionMetadataSchema = Schema.Struct({
   category: Schema.String,
   integration: Schema.optionalKey(Schema.String),
   logoUrl: Schema.optionalKey(Schema.String),
+  sideEffect: Schema.optionalKey(Schema.Boolean),
   configFields: Schema.Array(actionConfigFieldWireSchema),
   outputFields: Schema.Array(referenceFieldWireSchema),
 });

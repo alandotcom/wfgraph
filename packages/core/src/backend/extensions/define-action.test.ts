@@ -304,6 +304,33 @@ describe("defineAction with an output schema", () => {
     expect(action.category).toBe("Custom");
   });
 
+  // An action that says nothing only reads, which is what lets a Group hold it.
+  // Declaring the side effect is how a send keeps itself out of a frame.
+  it("defaults an action with no declared side effect to none", () => {
+    const reads = defineAction({
+      id: "custom/reads",
+      label: "Reads",
+      description: "Declares nothing",
+      input: z.object({ value: z.string() }),
+      handler() {
+        return {};
+      },
+    });
+    const writes = defineAction({
+      id: "custom/writes",
+      label: "Writes",
+      description: "Declares a side effect",
+      sideEffect: true,
+      input: z.object({ value: z.string() }),
+      handler() {
+        return {};
+      },
+    });
+
+    expect(reads.sideEffect).toBe(false);
+    expect(writes.sideEffect).toBe(true);
+  });
+
   // Only an Effect output schema carries an encoder, and this is what it buys: a
   // `Date` reaching the memoized result would come back a string on the replay.
   it("encodes the handler's answer through an Effect output schema", async () => {
