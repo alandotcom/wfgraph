@@ -5,11 +5,7 @@ import {
   GROUP_CHILD_WIDTH,
   GROUP_PAD,
 } from "#src/components/workflow/workflow-node-dimensions";
-import {
-  groupSelection,
-  groupingIdsFromSnapshot,
-  ungroupNode,
-} from "#src/lib/node-group";
+import { groupSelection, ungroupNode } from "#src/lib/node-group";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 function action(
@@ -61,6 +57,7 @@ describe("groupSelection", () => {
     expect(frame?.data.config).toEqual({
       entryNodeIds: ["a"],
       exitNodeId: "c",
+      outletHandle: "true",
     });
     expect(frame?.position).toEqual({ x: 100, y: 200 });
     expect(children?.map((node) => node.id)).toEqual(["a", "b", "c"]);
@@ -109,6 +106,7 @@ describe("groupSelection", () => {
     expect(frame?.data.config).toEqual({
       entryNodeIds: ["a", "b"],
       exitNodeId: "c",
+      outletHandle: "true",
     });
     expect(childA?.position).toEqual({ x: GROUP_PAD, y: childA?.position.y });
     expect(childB?.position.x).toBe(
@@ -119,31 +117,5 @@ describe("groupSelection", () => {
     expect(
       grouped?.edges.map((item) => `${item.source}->${item.target}`)
     ).toEqual(["life->a", "a->c", "b->c", "life->b"]);
-  });
-});
-
-describe("groupingIdsFromSnapshot", () => {
-  it("keeps the frozen multi-select when the click target is in it", () => {
-    const nodes = [
-      action("a", "fountain/get-user", { x: 0, y: 0 }),
-      action("b", "fountain/get-appointment", { x: 0, y: 0 }),
-      action("c", BUILT_IN_ACTION_IDS.condition, { x: 0, y: 0 }),
-    ].map((node) => (node.id === "a" ? node : { ...node, selected: false }));
-
-    expect(groupingIdsFromSnapshot(nodes, "a", ["a", "b", "c"])).toEqual(
-      new Set(["a", "b", "c"])
-    );
-  });
-
-  it("falls back to the live selection when the snapshot is a single node", () => {
-    const nodes = [
-      action("a", "fountain/get-user", { x: 0, y: 0 }),
-      {
-        ...action("b", "fountain/get-appointment", { x: 0, y: 0 }),
-        selected: false,
-      },
-    ];
-
-    expect(groupingIdsFromSnapshot(nodes, "a", ["a"])).toEqual(new Set(["a"]));
   });
 });

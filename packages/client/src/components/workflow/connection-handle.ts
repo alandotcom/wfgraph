@@ -18,8 +18,10 @@ import {
   LIFECYCLE_STARTED_HANDLE,
 } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import { eventsReachingTarget } from "#src/lib/upstream-node-fields";
-import { isConditionNode } from "@wfgraph/shared/graph/node-config";
-import { groupExitId, isGroupNode } from "@wfgraph/shared/graph/node-group";
+import {
+  groupOutletHandle,
+  isGroupNode,
+} from "@wfgraph/shared/graph/node-group";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
@@ -106,11 +108,7 @@ export function normalizeSourceHandleForConnection(input: {
   const sourceNode = nodes.find((node) => node.id === sourceNodeId);
 
   if (isGroupNode(sourceNode)) {
-    const exit = nodes.find((node) => node.id === groupExitId(sourceNode));
-    if (isConditionNode(exit) || isConditionActionNode(exit)) {
-      return "true";
-    }
-    return sourceHandle ?? null;
+    return groupOutletHandle(sourceNode) ?? sourceHandle ?? null;
   }
 
   if (sourceNode?.data.type === "lifecycle") {

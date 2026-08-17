@@ -6,9 +6,12 @@ import {
   edgesForGroupLayout,
   expandGroupCopyIds,
   fanOutStoreEdgeIds,
+  fanOutStoreEdges,
   groupMemberSlots,
+  groupOutletHandle,
   isGroupNode,
-  resolveStoredEndpoint,
+  orderGroupParentsFirst,
+  resolveStoredSource,
   storedTargetsFor,
   undersizedGroupIds,
   type GroupGraphNode,
@@ -35,14 +38,19 @@ function action(
 function group(
   id: string,
   entryNodeIds: string[],
-  exitNodeId: string
+  exitNodeId: string,
+  outletHandle?: "true"
 ): GroupGraphNode {
   return {
     id,
     data: {
       type: "group",
       label: "Group",
-      config: { entryNodeIds, exitNodeId },
+      config: {
+        entryNodeIds,
+        exitNodeId,
+        ...(outletHandle ? { outletHandle } : {}),
+      },
     },
   };
 }
@@ -228,8 +236,7 @@ describe("display and store endpoints", () => {
       "out",
     ]);
 
-    expect(resolveStoredEndpoint(nodes, "g", "target")).toBe("a");
-    expect(resolveStoredEndpoint(nodes, "g", "source")).toBe("c");
+    expect(resolveStoredSource(nodes, "g")).toBe("c");
     expect(storedTargetsFor(nodes, "g")).toEqual(["a"]);
   });
 
@@ -257,6 +264,27 @@ describe("display and store endpoints", () => {
     ]);
     expect(storedTargetsFor(nodes, "g")).toEqual(["a", "b"]);
     expect(fanOutStoreEdgeIds(nodes, edges, "in-a")).toEqual(["in-a", "in-b"]);
+    expect(
+      fanOutStoreEdges({
+        nodes,
+        edges,
+        sourceId: "life",
+        targetId: "g",
+        sourceHandle: "started",
+      })
+    ).toEqual([]);
+    expect(
+      fanOutStoreEdges({
+        nodes,
+        edges: [],
+        sourceId: "life",
+        targetId: "g",
+        sourceHandle: "started",
+      })
+    ).toEqual([
+      { source: "life", target: "a", sourceHandle: "started" },
+      { source: "life", target: "b", sourceHandle: "started" },
+    ]);
   });
 });
 
@@ -309,5 +337,36 @@ describe("undersizedGroupIds", () => {
   it("names a group that no longer holds two children", () => {
     const nodes = [group("g", ["a"], "c"), { ...lookupA, parentId: "g" }];
     expect(undersizedGroupIds(nodes)).toEqual(["g"]);
+  });
+});
+
+describe("groupOutletHandle", () => {
+  it("reads the baked Condition outlet and ignores an absent one", () => {
+    expect(groupOutletHandle(group("g", ["a"], "c", "true"))).toBe("true");
+    expect(groupOutletHandle(group("g", ["a"], "c"))).toBeUndefined();
+  });
+});
+
+describe("orderGroupParentsFirst", () => {
+  it("returns the same array when rest, groups, and children are already ordered", () => {
+    const nodes = [
+      action("life", "ignored", {
+        data: { type: "lifecycle", label: "Start" },
+      }),
+      group("g", ["a"], "c"),
+      { ...lookupA, parentId: "g" },
+    ];
+    expect(orderGroupParentsFirst(nodes)).toBe(nodes);
+  });
+
+  it("reorders when a child sits before its group", () => {
+    const child = { ...lookupA, parentId: "g" };
+    const frame = group("g", ["a"], "c");
+    const rest = action("sms", "resend/send-email");
+    expect(orderGroupParentsFirst([child, rest, frame])).toEqual([
+      rest,
+      frame,
+      child,
+    ]);
   });
 });

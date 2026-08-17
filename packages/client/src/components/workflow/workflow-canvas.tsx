@@ -51,10 +51,7 @@ import {
   showMinimapAtom,
 } from "#src/lib/workflow-ui-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-import {
-  resolveStoredEndpoint,
-  storedTargetsFor,
-} from "@wfgraph/shared/graph/node-group";
+import { fanOutStoreEdges } from "@wfgraph/shared/graph/node-group";
 import { normalizeSourceHandleForConnection as normalizeSourceHandle } from "./connection-handle";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
@@ -71,6 +68,13 @@ import { layoutWorkflowNodes } from "./workflow-layout";
 const edgeTypes = {
   animated: Edge.Animated,
   temporary: Edge.Temporary,
+};
+
+const nodeTypes = {
+  lifecycle: LifecycleNode,
+  action: ActionNode,
+  add: AddNode,
+  group: GroupNode,
 };
 
 export function WorkflowCanvas() {
@@ -120,7 +124,7 @@ export function WorkflowCanvas() {
   const [isReflowing, setIsReflowing] = useState(false);
   const [contextMenuState, setContextMenuState] =
     useState<ContextMenuState>(null);
-  const rightClickSelectionRef = useRef<string[]>([]);
+  const rightClickSelectionRef = useRef<ReadonlySet<string>>(new Set());
   useDomEvent(
     window,
     "pointerdown",
@@ -128,9 +132,9 @@ export function WorkflowCanvas() {
       if (event.button !== 2) {
         return;
       }
-      rightClickSelectionRef.current = nodes
-        .filter((node) => node.selected)
-        .map((node) => node.id);
+      rightClickSelectionRef.current = new Set(
+        nodes.filter((node) => node.selected).map((node) => node.id)
+      );
     },
     { capture: true, enabled: !editingLocked }
   );
@@ -318,16 +322,6 @@ export function WorkflowCanvas() {
     catalog,
   ]);
 
-  const nodeTypes = useMemo(
-    () => ({
-      lifecycle: LifecycleNode,
-      action: ActionNode,
-      add: AddNode,
-      group: GroupNode,
-    }),
-    []
-  );
-
   const nodeHasHandle = useCallback(
     (nodeId: string, handleType: "source" | "target") => {
       const node = nodes.find((n) => n.id === nodeId);
@@ -372,7 +366,6 @@ export function WorkflowCanvas() {
         "id" in connection && typeof connection.id === "string"
           ? connection.id
           : null;
-      const storedSource = resolveStoredEndpoint(nodes, sourceNodeId, "source");
       const sourceHandle = normalizeSourceHandle({
         nodes,
         edges,
@@ -381,26 +374,14 @@ export function WorkflowCanvas() {
           "sourceHandle" in connection ? connection.sourceHandle : undefined,
         catalog,
       });
-      const existing = new Set(
-        storeEdges
-          .filter((edge) => edge.id !== connectionId)
-          .map(
-            (edge) =>
-              `${edge.source}\0${edge.sourceHandle ?? ""}\0${edge.target}`
-          )
-      );
-      const additions = storedTargetsFor(nodes, targetNodeId)
-        .map((target) => ({
-          source: storedSource,
-          target,
-          sourceHandle,
-        }))
-        .filter(
-          (edge) =>
-            !existing.has(
-              `${edge.source}\0${edge.sourceHandle ?? ""}\0${edge.target}`
-            )
-        );
+      const additions = fanOutStoreEdges({
+        nodes,
+        edges: storeEdges,
+        sourceId: sourceNodeId,
+        targetId: targetNodeId,
+        sourceHandle,
+        excludeEdgeId: connectionId,
+      });
       if (additions.length === 0) {
         return false;
       }

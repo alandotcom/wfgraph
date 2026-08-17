@@ -795,4 +795,46 @@ describe("groupSelectionAtom", () => {
     expect(store.set(groupSelectionAtom, new Set(["a", "b", "c"]))).toBe(true);
     expect(store.get(nodesAtom).some((node) => isGroupNode(node))).toBe(true);
   });
+
+  it("groups the live selection when no ids are passed", () => {
+    const selectedLookup = (id: string, x: number): WorkflowNode => ({
+      ...actionNode(id, x),
+      selected: true,
+      data: {
+        label: id,
+        type: "action",
+        config: { actionType: "fountain/get-user" },
+      },
+    });
+    const store = createGraphStore(
+      [
+        lifecycleNode("life"),
+        selectedLookup("a", 0),
+        selectedLookup("b", 200),
+        {
+          ...actionNode("c", 100),
+          selected: true,
+          data: {
+            label: "c",
+            type: "action",
+            config: { actionType: BUILT_IN_ACTION_IDS.condition },
+          },
+        },
+      ],
+      [
+        edge("e-start-a", "life", "a"),
+        edge("e-start-b", "life", "b"),
+        edge("e-a", "a", "c"),
+        edge("e-b", "b", "c"),
+      ]
+    );
+
+    expect(store.set(groupSelectionAtom)).toBe(true);
+    const frame = store.get(nodesAtom).find((node) => isGroupNode(node));
+    expect(frame?.data.config).toMatchObject({
+      entryNodeIds: ["a", "b"],
+      exitNodeId: "c",
+      outletHandle: "true",
+    });
+  });
 });

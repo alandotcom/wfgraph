@@ -447,282 +447,304 @@ function eventSplitOutletLeft(index: number, count: number): string {
   return `${((index + 0.5) / count) * 100}%`;
 }
 
-export const ActionNode = memo(
-  ({ data, selected, id, parentId }: ActionNodeProps) => {
-    const catalog = useExtensionCatalog();
-    const updateNodeInternals = useUpdateNodeInternals();
-    const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
-    const executionLogs = useExecutionLogsByNode();
-    const {
-      data: availableIntegrationIds = NO_INTEGRATION_IDS,
-      isPending: isLoadingIntegrations,
-    } = useQuery(integrationIdsQueryOptions());
-    const integrationsLoaded = !isLoadingIntegrations;
-    const nodeLog = executionLogs[id];
-    const actionType = readConfigString(data?.config, "actionType");
-    const isConditionAction = isConditionActionType(actionType);
-    const isEventSplitAction = isEventSplitActionType(actionType);
-    const splitOutlets = useEventSplitOutlets(isEventSplitAction ? id : null);
-    const runtimeWaitPreview = useRuntimeWaitPreview(
-      actionType ?? "",
-      selectedExecutionId,
-      nodeLog
-    );
-    const configWaitPreview = useWaitPreview(actionType ?? "", data?.config);
-    const waitPreview = runtimeWaitPreview ?? configWaitPreview;
+function GroupedActionNode({ data, selected, id }: ActionNodeProps) {
+  const catalog = useExtensionCatalog();
+  if (!data) {
+    return null;
+  }
 
-    // A condition node renders two source handles where every other node renders
-    // one, and an Event Split renders one per Event that can reach it, which
-    // changes as the graph above it does. React Flow caches handle positions and
-    // has no way to notice either, so it has to be told.
-    //
-    // After paint, not during the commit. React Flow measures a node's handles in
-    // its own commit-phase work, which for a node component runs after that
-    // component's own effects; telling it from a passive effect lands too early
-    // and the measurement it then takes is of the handles as they were. The
-    // symptom is a condition node whose true and false handles are on screen and
-    // draggable-looking, while React Flow still has only the single default
-    // handle recorded and starts no connection from either.
-    const splitOutletKey = isEventSplitAction
-      ? splitOutlets.map((event) => event.name).join("|")
+  const actionType = readConfigString(data.config, "actionType");
+  const displayTitle =
+    data.label ||
+    (actionType ? findAction(catalog, actionType)?.label : undefined) ||
+    actionType ||
+    "Action";
+
+  return (
+    <Node
+      className={cn(
+        "nodrag flex h-14 w-[188px] flex-row items-center shadow-none transition-all duration-150 ease-out",
+        selected && "border-primary",
+        data.enabled === false && "opacity-50"
+      )}
+      data-testid={`action-node-${id}`}
+      handles={{ target: false, source: false }}
+      status={data.status}
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-2 px-3">
+        {actionType ? (
+          <ProviderLogo
+            actionType={actionType}
+            catalog={catalog}
+            className="size-6 shrink-0"
+          />
+        ) : (
+          <Zap
+            className="size-6 shrink-0 text-muted-foreground"
+            strokeWidth={1.5}
+          />
+        )}
+        <NodeTitle className="truncate text-sm">{displayTitle}</NodeTitle>
+      </div>
+    </Node>
+  );
+}
+
+const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
+  const catalog = useExtensionCatalog();
+  const updateNodeInternals = useUpdateNodeInternals();
+  const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
+  const executionLogs = useExecutionLogsByNode();
+  const {
+    data: availableIntegrationIds = NO_INTEGRATION_IDS,
+    isPending: isLoadingIntegrations,
+  } = useQuery(integrationIdsQueryOptions());
+  const integrationsLoaded = !isLoadingIntegrations;
+  const nodeLog = executionLogs[id];
+  const actionType = readConfigString(data?.config, "actionType");
+  const isConditionAction = isConditionActionType(actionType);
+  const isEventSplitAction = isEventSplitActionType(actionType);
+  const splitOutlets = useEventSplitOutlets(isEventSplitAction ? id : null);
+  const runtimeWaitPreview = useRuntimeWaitPreview(
+    actionType ?? "",
+    selectedExecutionId,
+    nodeLog
+  );
+  const configWaitPreview = useWaitPreview(actionType ?? "", data?.config);
+  const waitPreview = runtimeWaitPreview ?? configWaitPreview;
+
+  // A condition node renders two source handles where every other node renders
+  // one, and an Event Split renders one per Event that can reach it, which
+  // changes as the graph above it does. React Flow caches handle positions and
+  // has no way to notice either, so it has to be told.
+  //
+  // After paint, not during the commit. React Flow measures a node's handles in
+  // its own commit-phase work, which for a node component runs after that
+  // component's own effects; telling it from a passive effect lands too early
+  // and the measurement it then takes is of the handles as they were. The
+  // symptom is a condition node whose true and false handles are on screen and
+  // draggable-looking, while React Flow still has only the single default
+  // handle recorded and starts no connection from either.
+  const splitOutletKey = isEventSplitAction
+    ? splitOutlets.map((event) => event.name).join("|")
+    : null;
+
+  useAfterPaint(isConditionAction ? id : splitOutletKey, () => {
+    if (isConditionAction || isEventSplitAction) {
+      updateNodeInternals(id);
+    }
+  });
+
+  if (!data) {
+    return null;
+  }
+
+  const status = data.status;
+
+  // A Generate Image step can return its image inline. When the run being viewed
+  // produced one, the node shows it in place of the provider logo.
+  const generatedImageBase64 =
+    selectedExecutionId && actionType === "Generate Image"
+      ? readBase64ImageOutput(nodeLog?.output)
       : null;
 
-    useAfterPaint(isConditionAction ? id : splitOutletKey, () => {
-      if (isConditionAction || isEventSplitAction) {
-        updateNodeInternals(id);
-      }
-    });
-
-    if (!data) {
-      return null;
-    }
-
-    const status = data.status;
-
-    // A Generate Image step can return its image inline. When the run being viewed
-    // produced one, the node shows it in place of the provider logo.
-    const generatedImageBase64 =
-      selectedExecutionId && actionType === "Generate Image"
-        ? readBase64ImageOutput(nodeLog?.output)
-        : null;
-
-    if (!actionType) {
-      const isDisabled = data.enabled === false;
-      return (
-        <Node
-          className={cn(
-            "flex size-48 flex-col items-center justify-center shadow-none transition-all duration-150 ease-out",
-            selected && "border-primary",
-            isDisabled && "opacity-50"
-          )}
-          data-testid={`action-node-${id}`}
-          handles={{ target: true, source: true }}
-          status={status}
-        >
-          {isDisabled && (
-            <div className="absolute top-2 left-2 rounded-full bg-muted-foreground/50 p-1">
-              <EyeOff className="size-3.5 text-background" />
-            </div>
-          )}
-          <div className="flex flex-col items-center justify-center gap-3 p-6">
-            <Zap className="size-12 text-muted-foreground" strokeWidth={1.5} />
-            <div className="flex flex-col items-center gap-1 text-center">
-              <NodeTitle className="text-base">
-                {data.label || "Action"}
-              </NodeTitle>
-              <NodeDescription className="text-xs">
-                Select an action
-              </NodeDescription>
-            </div>
-          </div>
-        </Node>
-      );
-    }
-
-    const actionInfo = findAction(catalog, actionType);
-    const displayTitle = data.label || actionInfo?.label || actionType;
-    const displayDescription =
-      data.description || getIntegrationFromActionType(catalog, actionType);
-
-    const needsIntegration = requiresIntegration(catalog, actionType);
-    const configuredIntegrationId = readConfigString(
-      data.config,
-      "integrationId"
-    );
-    const hasValidIntegration =
-      configuredIntegrationId &&
-      availableIntegrationIds.has(configuredIntegrationId);
-    // Wait for the connection list before claiming one is missing.
-    const integrationMissing =
-      integrationsLoaded && needsIntegration && !hasValidIntegration;
-
-    const getAiModel = (): string | null => {
-      if (actionType === "Generate Text") {
-        return readConfigStringOr(data.config, "aiModel", "meta/llama-4-scout");
-      }
-      if (actionType === "Generate Image") {
-        return readConfigStringOr(
-          data.config,
-          "imageModel",
-          "google/imagen-4.0-generate"
-        );
-      }
-      return null;
-    };
-
-    const aiModel = getAiModel();
+  if (!actionType) {
     const isDisabled = data.enabled === false;
-
-    if (parentId) {
-      return (
-        <Node
-          className={cn(
-            "flex h-14 w-[188px] flex-row items-center shadow-none transition-all duration-150 ease-out",
-            selected && "border-primary",
-            isDisabled && "opacity-50"
-          )}
-          data-testid={`action-node-${id}`}
-          handles={{ target: false, source: false }}
-          status={status}
-        >
-          <div className="flex min-w-0 flex-1 items-center gap-2 px-3">
-            {generatedImageBase64 ? (
-              <GeneratedImageThumbnail base64={generatedImageBase64} />
-            ) : (
-              <ProviderLogo
-                actionType={actionType}
-                catalog={catalog}
-                className="size-6 shrink-0"
-              />
-            )}
-            <NodeTitle className="truncate text-sm">{displayTitle}</NodeTitle>
-          </div>
-        </Node>
-      );
-    }
-
     return (
       <Node
         className={cn(
-          "relative flex size-48 flex-col items-center justify-center shadow-none transition-all duration-150 ease-out",
+          "flex size-48 flex-col items-center justify-center shadow-none transition-all duration-150 ease-out",
           selected && "border-primary",
           isDisabled && "opacity-50"
         )}
         data-testid={`action-node-${id}`}
-        handles={{
-          target: true,
-          source: isConditionAction
-            ? [
-                {
-                  id: "true",
-                  position: Position.Bottom,
-                  style: {
-                    left: CONDITION_TRUE_HANDLE_LEFT,
-                    width: 12,
-                    height: 12,
-                  },
-                },
-                {
-                  id: "false",
-                  position: Position.Bottom,
-                  style: {
-                    left: CONDITION_FALSE_HANDLE_LEFT,
-                    width: 12,
-                    height: 12,
-                  },
-                },
-              ]
-            : isEventSplitAction
-              ? splitOutlets.map((event, index) => ({
-                  id: eventSplitOutlet(event.name),
-                  position: Position.Bottom,
-                  style: {
-                    left: eventSplitOutletLeft(index, splitOutlets.length),
-                    width: 12,
-                    height: 12,
-                  },
-                }))
-              : true,
-        }}
-        // A split is as wide as its outlets. Every other node keeps the width its
-        // class names, which is what `undefined` leaves standing.
-        style={
-          isEventSplitAction && splitOutlets.length > 1
-            ? { width: eventSplitCardWidth(splitOutlets.length) }
-            : undefined
-        }
+        handles={{ target: true, source: true }}
         status={status}
       >
-        {/* Disabled badge in top left */}
         {isDisabled && (
           <div className="absolute top-2 left-2 rounded-full bg-muted-foreground/50 p-1">
             <EyeOff className="size-3.5 text-background" />
           </div>
         )}
-
-        {/* Integration warning badge in top left (only if not disabled) */}
-        {!isDisabled && integrationMissing && (
-          <div className="absolute top-2 left-2 rounded-full bg-warning/50 p-1">
-            <AlertTriangle className="size-3.5 text-background" />
-          </div>
-        )}
-
-        {isConditionAction && (
-          <>
-            <div className="pointer-events-none absolute -bottom-8 left-[38%] -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none">
-              True
-            </div>
-            <div className="pointer-events-none absolute -bottom-8 left-[62%] -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none">
-              False
-            </div>
-          </>
-        )}
-
-        {isEventSplitAction &&
-          splitOutlets.map((event, index) => (
-            <div
-              className="pointer-events-none absolute -bottom-8 max-w-28 -translate-x-1/2 truncate rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none"
-              key={event.name}
-              style={{
-                left: eventSplitOutletLeft(index, splitOutlets.length),
-              }}
-              title={event.name}
-            >
-              {event.label}
-            </div>
-          ))}
-
         <div className="flex flex-col items-center justify-center gap-3 p-6">
-          {generatedImageBase64 ? (
-            <GeneratedImageThumbnail base64={generatedImageBase64} />
-          ) : (
-            <ProviderLogo actionType={actionType} catalog={catalog} />
-          )}
+          <Zap className="size-12 text-muted-foreground" strokeWidth={1.5} />
           <div className="flex flex-col items-center gap-1 text-center">
-            <NodeTitle className="text-base">{displayTitle}</NodeTitle>
-            {waitPreview ? (
-              <div className="flex flex-col items-center gap-0.5">
-                <NodeDescription className="font-medium text-xs tabular-nums">
-                  {waitPreview.countdown}
-                </NodeDescription>
-                <NodeDescription className="max-w-[10.5rem] text-xs leading-tight">
-                  {waitPreview.triggerTime}
-                </NodeDescription>
-              </div>
-            ) : (
-              displayDescription && (
-                <NodeDescription className="text-xs">
-                  {displayDescription}
-                </NodeDescription>
-              )
-            )}
-            {/* Model badge for AI nodes */}
-            {aiModel && <ModelBadge model={aiModel} />}
+            <NodeTitle className="text-base">
+              {data.label || "Action"}
+            </NodeTitle>
+            <NodeDescription className="text-xs">
+              Select an action
+            </NodeDescription>
           </div>
         </div>
       </Node>
     );
   }
-);
+
+  const actionInfo = findAction(catalog, actionType);
+  const displayTitle = data.label || actionInfo?.label || actionType;
+  const displayDescription =
+    data.description || getIntegrationFromActionType(catalog, actionType);
+
+  const needsIntegration = requiresIntegration(catalog, actionType);
+  const configuredIntegrationId = readConfigString(
+    data.config,
+    "integrationId"
+  );
+  const hasValidIntegration =
+    configuredIntegrationId &&
+    availableIntegrationIds.has(configuredIntegrationId);
+  // Wait for the connection list before claiming one is missing.
+  const integrationMissing =
+    integrationsLoaded && needsIntegration && !hasValidIntegration;
+
+  const getAiModel = (): string | null => {
+    if (actionType === "Generate Text") {
+      return readConfigStringOr(data.config, "aiModel", "meta/llama-4-scout");
+    }
+    if (actionType === "Generate Image") {
+      return readConfigStringOr(
+        data.config,
+        "imageModel",
+        "google/imagen-4.0-generate"
+      );
+    }
+    return null;
+  };
+
+  const aiModel = getAiModel();
+  const isDisabled = data.enabled === false;
+
+  return (
+    <Node
+      className={cn(
+        "relative flex size-48 flex-col items-center justify-center shadow-none transition-all duration-150 ease-out",
+        selected && "border-primary",
+        isDisabled && "opacity-50"
+      )}
+      data-testid={`action-node-${id}`}
+      handles={{
+        target: true,
+        source: isConditionAction
+          ? [
+              {
+                id: "true",
+                position: Position.Bottom,
+                style: {
+                  left: CONDITION_TRUE_HANDLE_LEFT,
+                  width: 12,
+                  height: 12,
+                },
+              },
+              {
+                id: "false",
+                position: Position.Bottom,
+                style: {
+                  left: CONDITION_FALSE_HANDLE_LEFT,
+                  width: 12,
+                  height: 12,
+                },
+              },
+            ]
+          : isEventSplitAction
+            ? splitOutlets.map((event, index) => ({
+                id: eventSplitOutlet(event.name),
+                position: Position.Bottom,
+                style: {
+                  left: eventSplitOutletLeft(index, splitOutlets.length),
+                  width: 12,
+                  height: 12,
+                },
+              }))
+            : true,
+      }}
+      // A split is as wide as its outlets. Every other node keeps the width its
+      // class names, which is what `undefined` leaves standing.
+      style={
+        isEventSplitAction && splitOutlets.length > 1
+          ? { width: eventSplitCardWidth(splitOutlets.length) }
+          : undefined
+      }
+      status={status}
+    >
+      {/* Disabled badge in top left */}
+      {isDisabled && (
+        <div className="absolute top-2 left-2 rounded-full bg-muted-foreground/50 p-1">
+          <EyeOff className="size-3.5 text-background" />
+        </div>
+      )}
+
+      {/* Integration warning badge in top left (only if not disabled) */}
+      {!isDisabled && integrationMissing && (
+        <div className="absolute top-2 left-2 rounded-full bg-warning/50 p-1">
+          <AlertTriangle className="size-3.5 text-background" />
+        </div>
+      )}
+
+      {isConditionAction && (
+        <>
+          <div className="pointer-events-none absolute -bottom-8 left-[38%] -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none">
+            True
+          </div>
+          <div className="pointer-events-none absolute -bottom-8 left-[62%] -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none">
+            False
+          </div>
+        </>
+      )}
+
+      {isEventSplitAction &&
+        splitOutlets.map((event, index) => (
+          <div
+            className="pointer-events-none absolute -bottom-8 max-w-28 -translate-x-1/2 truncate rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none"
+            key={event.name}
+            style={{
+              left: eventSplitOutletLeft(index, splitOutlets.length),
+            }}
+            title={event.name}
+          >
+            {event.label}
+          </div>
+        ))}
+
+      <div className="flex flex-col items-center justify-center gap-3 p-6">
+        {generatedImageBase64 ? (
+          <GeneratedImageThumbnail base64={generatedImageBase64} />
+        ) : (
+          <ProviderLogo actionType={actionType} catalog={catalog} />
+        )}
+        <div className="flex flex-col items-center gap-1 text-center">
+          <NodeTitle className="text-base">{displayTitle}</NodeTitle>
+          {waitPreview ? (
+            <div className="flex flex-col items-center gap-0.5">
+              <NodeDescription className="font-medium text-xs tabular-nums">
+                {waitPreview.countdown}
+              </NodeDescription>
+              <NodeDescription className="max-w-[10.5rem] text-xs leading-tight">
+                {waitPreview.triggerTime}
+              </NodeDescription>
+            </div>
+          ) : (
+            displayDescription && (
+              <NodeDescription className="text-xs">
+                {displayDescription}
+              </NodeDescription>
+            )
+          )}
+          {/* Model badge for AI nodes */}
+          {aiModel && <ModelBadge model={aiModel} />}
+        </div>
+      </div>
+    </Node>
+  );
+});
+
+StandaloneActionNode.displayName = "StandaloneActionNode";
+
+export const ActionNode = memo((props: ActionNodeProps) => {
+  if (props.parentId) {
+    return <GroupedActionNode {...props} />;
+  }
+  return <StandaloneActionNode {...props} />;
+});
 
 ActionNode.displayName = "ActionNode";

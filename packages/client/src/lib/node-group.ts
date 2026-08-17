@@ -4,12 +4,17 @@
  */
 
 import { nanoid } from "nanoid";
+import type { EdgeChange } from "@xyflow/react";
+import { isConditionNode } from "@wfgraph/shared/graph/node-config";
 import {
   analyzeGroupableSelection,
+  childIdsOfGroup,
+  fanOutStoreEdgeIds,
   groupEntryIds,
-  groupMemberSlots,
-  groupSlotBounds,
+  groupInteriorLayout,
   isGroupNode,
+  predecessorKey,
+  undersizedGroupIds,
   type GroupAnalysis,
   type GroupMemberSlot,
 } from "@wfgraph/shared/graph/node-group";
@@ -24,45 +29,6 @@ import {
   WORKFLOW_NODE_WIDTH,
   groupFrameSize,
 } from "#src/components/workflow/workflow-node-dimensions";
-
-/** Which ids Group should wrap, given a click, a live selection, or a snapshot. */
-export function selectionIdsForGrouping(
-  nodes: readonly { id: string; selected?: boolean }[],
-  target?: string | ReadonlySet<string>
-): Set<string> {
-  if (target instanceof Set) {
-    return new Set(target);
-  }
-
-  const clickedNodeId = typeof target === "string" ? target : undefined;
-  const clicked = clickedNodeId
-    ? nodes.find((node) => node.id === clickedNodeId)
-    : undefined;
-  if (clickedNodeId && clicked && !clicked.selected) {
-    return new Set([clickedNodeId]);
-  }
-  return new Set(nodes.filter((node) => node.selected).map((node) => node.id));
-}
-
-/**
- * Right-click often lands after the multi-select has already collapsed to the
- * clicked node. If the frozen ids still include that node, Group those.
- */
-export function groupingIdsFromSnapshot(
-  nodes: readonly { id: string; selected?: boolean }[],
-  clickedNodeId: string | undefined,
-  snapshotIds: readonly string[] | undefined
-): Set<string> {
-  if (
-    clickedNodeId &&
-    snapshotIds &&
-    snapshotIds.length > 1 &&
-    snapshotIds.includes(clickedNodeId)
-  ) {
-    return new Set(snapshotIds);
-  }
-  return selectionIdsForGrouping(nodes, clickedNodeId);
-}
 
 export function groupSelection(input: {
   nodes: WorkflowNode[];
@@ -101,15 +67,15 @@ export function groupSelection(input: {
   const interior = input.edges.filter(
     (edge) => memberSet.has(edge.source) && memberSet.has(edge.target)
   );
-  const slots = groupMemberSlots(
+  const { slots, bounds } = groupInteriorLayout(
     analysis.memberIds,
     interior,
     analysis.entryIds
   );
-  const bounds = groupSlotBounds(slots);
   const size = groupFrameSize(bounds.columns, bounds.rows);
   const groupId = (input.createId ?? nanoid)();
   const slotById = new Map(slots.map((slot) => [slot.id, slot]));
+  const exit = byId.get(analysis.exitId);
 
   const groupNode: WorkflowNode = {
     id: groupId,
@@ -125,6 +91,7 @@ export function groupSelection(input: {
       config: {
         entryNodeIds: analysis.entryIds,
         exitNodeId: analysis.exitId,
+        ...(isConditionNode(exit) ? { outletHandle: "true" as const } : {}),
       },
     },
   };
@@ -196,8 +163,11 @@ export function layoutGroupChildren(
     const interior = edges.filter(
       (edge) => memberSet.has(edge.source) && memberSet.has(edge.target)
     );
-    const slots = groupMemberSlots(memberIds, interior, groupEntryIds(group));
-    const bounds = groupSlotBounds(slots);
+    const { slots, bounds } = groupInteriorLayout(
+      memberIds,
+      interior,
+      groupEntryIds(group)
+    );
     sizeByGroup.set(groupId, groupFrameSize(bounds.columns, bounds.rows));
     const slotById = new Map(slots.map((slot) => [slot.id, slot]));
     for (const child of children) {
@@ -227,6 +197,53 @@ export function layoutGroupChildren(
   });
 }
 
+export function dissolveUndersizedGroups(
+  nodes: WorkflowNode[]
+): WorkflowNode[] {
+  let next = nodes;
+  for (const groupId of undersizedGroupIds(next)) {
+    next = ungroupNode(next, groupId);
+  }
+  return next;
+}
+
+export function idsRemovedWith(
+  nodes: readonly WorkflowNode[],
+  nodeId: string
+): Set<string> {
+  const ids = new Set([nodeId]);
+  const target = nodes.find((node) => node.id === nodeId);
+  if (isGroupNode(target)) {
+    for (const childId of childIdsOfGroup(nodes, nodeId)) {
+      ids.add(childId);
+    }
+  }
+  return ids;
+}
+
+export function expandEdgeRemovals(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+  changes: EdgeChange[]
+): EdgeChange[] {
+  const removedIds = new Set<string>();
+  for (const change of changes) {
+    if (change.type !== "remove") {
+      continue;
+    }
+    for (const id of fanOutStoreEdgeIds(nodes, edges, change.id)) {
+      removedIds.add(id);
+    }
+  }
+  if (removedIds.size === 0) {
+    return changes;
+  }
+  return [
+    ...changes.filter((change) => change.type !== "remove"),
+    ...[...removedIds].map((id) => ({ type: "remove" as const, id })),
+  ];
+}
+
 function alignEntryIncoming(input: {
   edges: WorkflowEdge[];
   entryIds: readonly string[];
@@ -238,7 +255,7 @@ function alignEntryIncoming(input: {
   const templates: WorkflowEdge[] = [];
   const seen = new Set<string>();
   for (const edge of incoming) {
-    const key = `${edge.source}\0${edge.sourceHandle ?? ""}`;
+    const key = predecessorKey(edge);
     if (seen.has(key)) {
       continue;
     }
@@ -253,13 +270,10 @@ function alignEntryIncoming(input: {
   if (!template) {
     return edges;
   }
+  const templateKey = predecessorKey(template);
   const have = new Set(
     edges
-      .filter(
-        (edge) =>
-          edge.source === template.source &&
-          (edge.sourceHandle ?? "") === (template.sourceHandle ?? "")
-      )
+      .filter((edge) => predecessorKey(edge) === templateKey)
       .map((edge) => edge.target)
   );
   const extra: WorkflowEdge[] = [];

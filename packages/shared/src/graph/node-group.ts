@@ -42,16 +42,26 @@ export function groupEntryIds(node: GroupGraphNode | undefined): string[] {
   );
 }
 
-export function groupEntryId(
-  node: GroupGraphNode | undefined
-): string | undefined {
-  return groupEntryIds(node)[0];
-}
-
 export function groupExitId(
   node: GroupGraphNode | undefined
 ): string | undefined {
   return readConfigString(node?.data.config, "exitNodeId");
+}
+
+/** The frame's one source handle; `"true"` when the exit is a Condition. */
+export function groupOutletHandle(
+  node: GroupGraphNode | undefined
+): "true" | undefined {
+  return readConfigString(node?.data.config, "outletHandle") === "true"
+    ? "true"
+    : undefined;
+}
+
+export function predecessorKey(edge: {
+  source: string;
+  sourceHandle?: string | null;
+}): string {
+  return `${edge.source}\0${edge.sourceHandle ?? ""}`;
 }
 
 export type GroupMemberSlot = {
@@ -195,17 +205,56 @@ export function analyzeGroupableSelection(
   };
 }
 
-export function resolveStoredEndpoint(
+export function resolveStoredSource(
   nodes: readonly GroupGraphNode[],
-  nodeId: string,
-  role: "source" | "target"
+  nodeId: string
 ): string {
   const node = nodes.find((item) => item.id === nodeId);
   if (!isGroupNode(node)) {
     return nodeId;
   }
-  const resolved = role === "target" ? groupEntryId(node) : groupExitId(node);
-  return resolved ?? nodeId;
+  return groupExitId(node) ?? nodeId;
+}
+
+/**
+ * Store edges a connection onto `targetId` would add: a Group inlet fans out
+ * onto every entry. Empty means the painted connection already exists.
+ */
+export function fanOutStoreEdges(input: {
+  nodes: readonly GroupGraphNode[];
+  edges: readonly WorkflowEdge[];
+  sourceId: string;
+  targetId: string;
+  sourceHandle: string | null | undefined;
+  excludeEdgeId?: string | null;
+}): Array<{
+  source: string;
+  target: string;
+  sourceHandle: string | null | undefined;
+}> {
+  const source = resolveStoredSource(input.nodes, input.sourceId);
+  const existing = new Set(
+    input.edges
+      .filter((edge) => edge.id !== input.excludeEdgeId)
+      .map((edge) => `${predecessorKey(edge)}\0${edge.target}`)
+  );
+  const additions: Array<{
+    source: string;
+    target: string;
+    sourceHandle: string | null | undefined;
+  }> = [];
+  for (const target of storedTargetsFor(input.nodes, input.targetId)) {
+    const key = `${predecessorKey({ source, sourceHandle: input.sourceHandle })}\0${target}`;
+    if (existing.has(key)) {
+      continue;
+    }
+    additions.push({
+      source,
+      target,
+      sourceHandle: input.sourceHandle,
+    });
+  }
+  return additions;
 }
 
 export function storedTargetsFor(
@@ -373,6 +422,10 @@ export function orderGroupParentsFirst<T extends GroupGraphNode>(
     return nodes;
   }
 
+  if (isRestGroupsChildrenOrder(nodes)) {
+    return nodes;
+  }
+
   const groups: T[] = [];
   const children: T[] = [];
   const rest: T[] = [];
@@ -386,6 +439,30 @@ export function orderGroupParentsFirst<T extends GroupGraphNode>(
     }
   }
   return [...rest, ...groups, ...children];
+}
+
+function isRestGroupsChildrenOrder(nodes: readonly GroupGraphNode[]): boolean {
+  let phase: "rest" | "groups" | "children" = "rest";
+  for (const node of nodes) {
+    const kind: "rest" | "groups" | "children" = isGroupNode(node)
+      ? "groups"
+      : node.parentId
+        ? "children"
+        : "rest";
+    if (kind === phase) {
+      continue;
+    }
+    if (phase === "rest" && kind === "groups") {
+      phase = "groups";
+      continue;
+    }
+    if (phase === "groups" && kind === "children") {
+      phase = "children";
+      continue;
+    }
+    return false;
+  }
+  return true;
 }
 
 export function undersizedGroupIds(nodes: readonly GroupGraphNode[]): string[] {
@@ -446,6 +523,18 @@ export function groupSlotBounds(slots: readonly GroupMemberSlot[]): {
   };
 }
 
+export function groupInteriorLayout(
+  memberIds: readonly string[],
+  interior: readonly WorkflowEdge[],
+  entryIds: readonly string[]
+): {
+  slots: GroupMemberSlot[];
+  bounds: { rows: number; columns: number };
+} {
+  const slots = groupMemberSlots(memberIds, interior, entryIds);
+  return { slots, bounds: groupSlotBounds(slots) };
+}
+
 function refuseGroupedMember(node: GroupGraphNode): string | null {
   if (node.data.type === "lifecycle" || node.data.type === "add") {
     return "Only lookup and Condition steps can be grouped";
@@ -466,10 +555,6 @@ function refuseGroupedMember(node: GroupGraphNode): string | null {
     return "Event Split cannot be grouped";
   }
   return null;
-}
-
-function predecessorKey(edge: WorkflowEdge): string {
-  return `${edge.source}\0${edge.sourceHandle ?? ""}`;
 }
 
 function reachableFrom(

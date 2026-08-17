@@ -21,8 +21,7 @@ import {
 import {
   edgesForGroupLayout,
   groupEntryIds,
-  groupMemberSlots,
-  groupSlotBounds,
+  groupInteriorLayout,
   isGroupNode,
 } from "@wfgraph/shared/graph/node-group";
 import { layoutGroupChildren } from "#src/lib/node-group";
@@ -185,12 +184,11 @@ function readNodeShape(input: {
     const interior = input.edges.filter(
       (edge) => memberSet.has(edge.source) && memberSet.has(edge.target)
     );
-    const slots = groupMemberSlots(
+    const { bounds } = groupInteriorLayout(
       memberIds,
       interior,
       groupEntryIds(input.node)
     );
-    const bounds = groupSlotBounds(slots);
     const size = groupFrameSize(bounds.columns, bounds.rows);
     return {
       width: size.width,

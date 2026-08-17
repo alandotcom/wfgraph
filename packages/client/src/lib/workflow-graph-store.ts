@@ -2,7 +2,6 @@ import type { EdgeChange, NodeChange } from "@xyflow/react";
 import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
-import { nanoid } from "nanoid";
 import {
   cloneSelection,
   extractCopyableSelection,
@@ -21,12 +20,10 @@ import {
   currentWorkflowVisibilityAtom,
   hasUnsavedChangesAtom,
   isWorkflowOwnerAtom,
-  saveWorkflowAtom,
   workflowNotFoundAtom,
   workflowLoadErrorAtom,
 } from "#src/lib/workflow-save-store";
 import {
-  activePropertiesTabAtom,
   isGeneratingAtom,
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
@@ -36,22 +33,27 @@ import {
 } from "@wfgraph/shared/graph/node-references";
 import { inactiveCanceledBranch } from "#src/lib/inactive-canceled-branch";
 import {
-  groupSelection,
-  selectionIdsForGrouping,
-  ungroupNode,
+  dissolveUndersizedGroups,
+  expandEdgeRemovals,
+  idsRemovedWith,
 } from "#src/lib/node-group";
 import {
-  childIdsOfGroup,
   displayEdgesForGroups,
   fanOutStoreEdgeIds,
-  isGroupNode,
-  groupExitId,
   orderGroupParentsFirst,
-  resolveStoredEndpoint,
-  storedTargetsFor,
-  undersizedGroupIds,
 } from "@wfgraph/shared/graph/node-group";
-import { isConditionNode } from "@wfgraph/shared/graph/node-config";
+import {
+  draftEditable,
+  edgesStateAtom,
+  executionOverlayGraphAtom,
+  futureAtom,
+  historyAtom,
+  nodesStateAtom,
+  pushHistory,
+  requestGraphSave,
+  selectedEdgeAtom,
+  selectedNodeAtom,
+} from "#src/lib/workflow-graph-cells";
 import type {
   NodeRunStatus,
   WorkflowEdge,
@@ -59,50 +61,28 @@ import type {
   WorkflowNodeData,
 } from "#src/lib/workflow-graph-types";
 
+export {
+  executionOverlayGraphAtom,
+  selectedEdgeAtom,
+  selectedNodeAtom,
+} from "#src/lib/workflow-graph-cells";
+export {
+  connectNodesAtom,
+  deleteEdgeAtom,
+  groupSelectionAtom,
+  ungroupNodeAtom,
+} from "#src/lib/workflow-group-store";
+
 /**
  * The graph the editor is showing, and every operation that may change it.
  *
- * The node and edge cells are private on purpose. A module writing to them
- * directly could change the graph without recording an undo step, the way
- * creating an edge or running auto-layout would. Exporting only read-only
- * views makes that mistake fail to compile, because jotai types the setter of
- * a read-only atom as `never`.
+ * The node and edge cells live in workflow-graph-cells and stay unexported
+ * from this module. A write that skipped an operation here would skip undo.
+ * Exporting only read-only views makes that mistake fail to compile, because
+ * jotai types the setter of a read-only atom as `never`.
  *
  * Add an operation here rather than reaching for the cells.
  */
-const nodesStateAtom = atom<WorkflowNode[]>([]);
-const edgesStateAtom = atom<WorkflowEdge[]>([]);
-
-const pinnedRunGraphAtom = atom<{
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
-} | null>(null);
-
-/**
- * The published graph a selected run pinned, shown on the canvas instead of the
- * draft so node statuses land on the shape the run actually walked. Cleared
- * when the run is deselected. Never saved: draft atoms stay draft-only so a
- * Cmd+S or toolbar save cannot persist the run graph over the editor's draft.
- *
- * Reads as null while the Runs tab is down, on the same `activePropertiesTabAtom`
- * gate `selectedExecutionIdAtom` reads through, because the two describe one run
- * and must go off the canvas together. This gate covers the one exit that keeps
- * the run open on purpose: the tab bar's Properties button, which writes the tab
- * and not the URL, so coming back paints the same run again without a refetch.
- * An interaction that hides the whole surface instead clears the search through
- * `useLeaveRunsSurface`, and `ExecutionOverlaySync` nulls the write side.
- */
-export const executionOverlayGraphAtom = atom(
-  (get) =>
-    get(activePropertiesTabAtom) === "runs" ? get(pinnedRunGraphAtom) : null,
-  (
-    _get,
-    set,
-    graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] } | null
-  ) => {
-    set(pinnedRunGraphAtom, graph);
-  }
-);
 
 /** Read-only draft. Mutate through the action atoms below so undo always sees it. */
 export const nodesAtom = atom((get) => get(nodesStateAtom));
@@ -212,25 +192,9 @@ export const displayEdgesAtom = atom((get) => {
   });
 });
 
-/** Refuse draft mutations while a run overlay owns the canvas. */
-function draftEditable(get: Getter): boolean {
-  return get(executionOverlayGraphAtom) === null;
-}
-
-export const selectedNodeAtom = atom<string | null>(null);
-export const selectedEdgeAtom = atom<string | null>(null);
-
 // Tracks a just-created node so the config panel can focus its search input.
 // Cleared once the node gets an action type or loses selection.
 export const newlyCreatedNodeIdAtom = atom<string | null>(null);
-
-type HistoryState = {
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
-};
-
-const historyAtom = atom<HistoryState[]>([]);
-const futureAtom = atom<HistoryState[]>([]);
 
 type CopiedClipboard = {
   selection: CopiedSelection;
@@ -239,81 +203,9 @@ type CopiedClipboard = {
 
 const copiedSelectionAtom = atom<CopiedClipboard | null>(null);
 
-// Deep enough that no one reaches the end by hand, bounded so a long editing
-// session cannot pin two copies of the graph per step in memory forever.
-const HISTORY_LIMIT = 50;
-
 // Whether a node drag is mid-flight, so the whole drag records one undo step
 // rather than one per frame.
 const isDraggingAtom = atom(false);
-
-/** Snapshot the graph so the next change is undoable, and drop any redo branch. */
-function pushHistory(get: Getter, set: Setter) {
-  const snapshot: HistoryState = {
-    nodes: get(nodesStateAtom),
-    edges: get(edgesStateAtom),
-  };
-  const history = [...get(historyAtom), snapshot];
-
-  set(historyAtom, history.slice(-HISTORY_LIMIT));
-  set(futureAtom, []);
-}
-
-function dissolveUndersizedGroups(nodes: WorkflowNode[]): WorkflowNode[] {
-  let next = nodes;
-  for (const groupId of undersizedGroupIds(next)) {
-    next = ungroupNode(next, groupId);
-  }
-  return next;
-}
-
-function expandEdgeRemovals(
-  nodes: WorkflowNode[],
-  edges: WorkflowEdge[],
-  changes: EdgeChange[]
-): EdgeChange[] {
-  const removedIds = new Set<string>();
-  for (const change of changes) {
-    if (change.type !== "remove") {
-      continue;
-    }
-    for (const id of fanOutStoreEdgeIds(nodes, edges, change.id)) {
-      removedIds.add(id);
-    }
-  }
-  if (removedIds.size === 0) {
-    return changes;
-  }
-  return [
-    ...changes.filter((change) => change.type !== "remove"),
-    ...[...removedIds].map((id) => ({ type: "remove" as const, id })),
-  ];
-}
-
-function idsRemovedWith(
-  nodes: readonly WorkflowNode[],
-  nodeId: string
-): Set<string> {
-  const ids = new Set([nodeId]);
-  const target = nodes.find((node) => node.id === nodeId);
-  if (isGroupNode(target)) {
-    for (const childId of childIdsOfGroup(nodes, nodeId)) {
-      ids.add(childId);
-    }
-  }
-  return ids;
-}
-function requestGraphSave(
-  get: Getter,
-  set: Setter,
-  options?: { immediate?: boolean }
-) {
-  void set(
-    saveWorkflowAtom,
-    { nodes: get(nodesStateAtom), edges: get(edgesStateAtom) },
-    options
-  );
-}
 
 /**
  * Replace the graph with what came back from the server.
@@ -713,111 +605,6 @@ export const duplicateSelectionAtom = atom(
   }
 );
 
-/** Wrap a valid lookup+Condition selection in a Group frame. */
-export const groupSelectionAtom = atom(
-  null,
-  (get, set, target?: string | ReadonlySet<string>) => {
-    if (!draftEditable(get)) {
-      return false;
-    }
-
-    const nodes = get(nodesStateAtom);
-    const selectedIds = selectionIdsForGrouping(nodes, target);
-    const grouped = groupSelection({
-      nodes,
-      edges: get(edgesStateAtom),
-      selectedIds,
-    });
-    if (!grouped) {
-      return false;
-    }
-
-    pushHistory(get, set);
-    set(nodesStateAtom, grouped.nodes);
-    set(edgesStateAtom, grouped.edges);
-    const frame = grouped.nodes.find(
-      (node) => isGroupNode(node) && node.selected
-    );
-    set(selectedNodeAtom, frame?.id ?? null);
-    set(selectedEdgeAtom, null);
-    requestGraphSave(get, set, { immediate: true });
-    return true;
-  }
-);
-
-/** Lift children out of a Group and remove the frame. */
-export const ungroupNodeAtom = atom(null, (get, set, nodeId: string) => {
-  if (!draftEditable(get)) {
-    return false;
-  }
-
-  const nodes = get(nodesStateAtom);
-  const target = nodes.find((node) => node.id === nodeId);
-  const groupId = isGroupNode(target) ? nodeId : target?.parentId;
-  if (!groupId) {
-    return false;
-  }
-
-  const next = ungroupNode(nodes, groupId);
-  if (next === nodes) {
-    return false;
-  }
-
-  pushHistory(get, set);
-  set(nodesStateAtom, next);
-  set(selectedNodeAtom, null);
-  set(selectedEdgeAtom, null);
-  requestGraphSave(get, set, { immediate: true });
-  return true;
-});
-
-/** Connect two nodes, recorded as an undo step like every graph mutation. */
-export const connectNodesAtom = atom(null, (get, set, edge: WorkflowEdge) => {
-  if (!draftEditable(get)) {
-    return;
-  }
-
-  const nodes = get(nodesStateAtom);
-  const sourceNode = nodes.find((node) => node.id === edge.source);
-  const source = resolveStoredEndpoint(nodes, edge.source, "source");
-  const targets = storedTargetsFor(nodes, edge.target);
-  let sourceHandle = edge.sourceHandle;
-  if (isGroupNode(sourceNode)) {
-    const exit = nodes.find((node) => node.id === groupExitId(sourceNode));
-    if (isConditionNode(exit)) {
-      sourceHandle = "true";
-    }
-  }
-
-  const currentEdges = get(edgesStateAtom);
-  const existing = new Set(
-    currentEdges.map(
-      (item) => `${item.source}\0${item.sourceHandle ?? ""}\0${item.target}`
-    )
-  );
-  const additions: WorkflowEdge[] = [];
-  for (const target of targets) {
-    const key = `${source}\0${sourceHandle ?? ""}\0${target}`;
-    if (existing.has(key)) {
-      continue;
-    }
-    additions.push({
-      ...edge,
-      id: additions.length === 0 ? edge.id : nanoid(),
-      source,
-      target,
-      sourceHandle,
-    });
-  }
-  if (additions.length === 0) {
-    return;
-  }
-
-  pushHistory(get, set);
-  set(edgesStateAtom, [...currentEdges, ...additions]);
-  requestGraphSave(get, set, { immediate: true });
-});
-
 /** Apply auto-layout positions. Also an undo step, for the same reason. */
 export const applyNodeLayoutAtom = atom(
   null,
@@ -945,33 +732,6 @@ export const deleteNodeAtom = atom(null, (get, set, nodeId: string) => {
 
   if (get(selectedNodeAtom) && removed.has(get(selectedNodeAtom) ?? "")) {
     set(selectedNodeAtom, null);
-  }
-
-  requestGraphSave(get, set, { immediate: true });
-});
-
-export const deleteEdgeAtom = atom(null, (get, set, edgeId: string) => {
-  if (!draftEditable(get)) {
-    return;
-  }
-
-  const currentEdges = get(edgesStateAtom);
-  const removedIds = new Set(
-    fanOutStoreEdgeIds(get(nodesStateAtom), currentEdges, edgeId)
-  );
-  if (removedIds.size === 0) {
-    return;
-  }
-  const remaining = currentEdges.filter((edge) => !removedIds.has(edge.id));
-  if (remaining.length === currentEdges.length) {
-    return;
-  }
-
-  pushHistory(get, set);
-  set(edgesStateAtom, remaining);
-
-  if (get(selectedEdgeAtom) && removedIds.has(get(selectedEdgeAtom) ?? "")) {
-    set(selectedEdgeAtom, null);
   }
 
   requestGraphSave(get, set, { immediate: true });

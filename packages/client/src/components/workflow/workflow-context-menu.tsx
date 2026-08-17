@@ -34,7 +34,6 @@ import {
 } from "#src/lib/workflow-graph-store";
 import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 import { type WorkflowNode } from "#src/lib/workflow-graph-types";
-import { groupingIdsFromSnapshot } from "#src/lib/node-group";
 import { cn } from "@wfgraph/shared/utils";
 import {
   analyzeGroupableSelection,
@@ -50,7 +49,7 @@ export type ContextMenuState = {
   nodeId?: string;
   edgeId?: string;
   /** Selection frozen at right-pointer-down, before React Flow collapses it. */
-  selectedIds?: string[];
+  selectedIds?: ReadonlySet<string>;
 } | null;
 
 type WorkflowContextMenuProps = {
@@ -173,11 +172,9 @@ export function WorkflowContextMenu({
       onClose();
       return;
     }
-    groupSelected(
-      groupingIdsFromSnapshot(nodes, menuState.nodeId, menuState.selectedIds)
-    );
+    groupSelected(menuState.selectedIds ?? new Set());
     onClose();
-  }, [menuState, groupSelected, nodes, onClose]);
+  }, [menuState, groupSelected, onClose]);
 
   const handleUngroup = useCallback(() => {
     if (menuState?.nodeId) {
@@ -239,11 +236,7 @@ export function WorkflowContextMenu({
   const clicked = menuState.nodeId
     ? nodes.find((n) => n.id === menuState.nodeId)
     : undefined;
-  const groupingIds = groupingIdsFromSnapshot(
-    nodes,
-    menuState.nodeId,
-    menuState.selectedIds
-  );
+  const groupingIds = menuState.selectedIds ?? new Set<string>();
   const grouping = analyzeGroupableSelection(nodes, edges, groupingIds);
   const canGroup = grouping.ok;
   const canUngroup = Boolean(
@@ -402,7 +395,7 @@ function MenuItem({
 export function useContextMenuHandlers(
   screenToFlowPosition: (position: { x: number; y: number }) => XYPosition,
   setMenuState: (state: ContextMenuState) => void,
-  selectedIdsAtRightClick: () => readonly string[]
+  selectedIdsAtRightClick: () => ReadonlySet<string>
 ) {
   const onNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node) => {
@@ -411,7 +404,7 @@ export function useContextMenuHandlers(
         type: "node",
         position: { x: event.clientX, y: event.clientY },
         nodeId: node.id,
-        selectedIds: [...selectedIdsAtRightClick()],
+        selectedIds: selectedIdsAtRightClick(),
       });
     },
     [selectedIdsAtRightClick, setMenuState]
