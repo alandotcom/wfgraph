@@ -170,18 +170,6 @@ function createInitialRule(field: ConditionFieldDefinition): ConditionRule {
   return createDefaultConditionRule(field, nanoid());
 }
 
-/** A stored path the current graph no longer offers, shown so the rule is not blank. */
-function unavailableField(condition: ConditionRule): ConditionSelectableField {
-  return {
-    path: condition.field,
-    label: `${condition.field} (Unavailable)`,
-    type: condition.fieldType,
-    sourceNodeId: "",
-    sourceNodeLabel: "Unavailable",
-    sourceNodeLabels: ["Unavailable"],
-  };
-}
-
 function buildTimestampOperatorRule(input: {
   condition: Extract<ConditionRule, { fieldType: "timestamp" }>;
   operatorValue: string;
@@ -488,25 +476,6 @@ export function ConditionBuilderRow({
     () => new Map(availableFields.map((field) => [field.path, field])),
     [availableFields]
   );
-  const availableFieldsBySource = useMemo(() => {
-    const grouped = new Map<string, typeof availableFields>();
-
-    for (const field of availableFields) {
-      const group = grouped.get(field.sourceNodeLabel);
-      if (group) {
-        group.push(field);
-      } else {
-        grouped.set(field.sourceNodeLabel, [field]);
-      }
-    }
-
-    return Array.from(grouped.entries())
-      .toSorted(([a], [b]) => a.localeCompare(b))
-      .map(([sourceLabel, fields]) => ({
-        sourceLabel,
-        fields: fields.toSorted((a, b) => a.path.localeCompare(b.path)),
-      }));
-  }, [availableFields]);
 
   const modelValue = storedValue.trim();
   const modelParseResult = parseConditionModel(modelValue);
@@ -703,31 +672,13 @@ export function ConditionBuilderRow({
                     selectedFieldDef?.nullable
                   );
                   const canDeleteCondition = group.conditions.length > 1;
-                  const isSelectedFieldUnavailable = !selectedFieldDef;
-                  const selectedField =
-                    selectedFieldDef ?? unavailableField(condition);
-                  const fieldGroups = isSelectedFieldUnavailable
-                    ? [
-                        {
-                          value: selectedField.sourceNodeLabel,
-                          items: [selectedField],
-                        },
-                        ...availableFieldsBySource.map((fieldGroup) => ({
-                          value: fieldGroup.sourceLabel,
-                          items: fieldGroup.fields,
-                        })),
-                      ]
-                    : availableFieldsBySource.map((fieldGroup) => ({
-                        value: fieldGroup.sourceLabel,
-                        items: fieldGroup.fields,
-                      }));
 
                   return (
                     <div key={condition.id}>
                       <div className="flex flex-wrap items-center gap-2">
                         <ConditionFieldCombobox
                           disabled={disabled || availableFields.length === 0}
-                          groups={fieldGroups}
+                          fields={availableFields}
                           onValueChange={(nextField) => {
                             if (nextField.path === condition.field) {
                               return;
@@ -743,7 +694,7 @@ export function ConditionBuilderRow({
                                 )
                             );
                           }}
-                          value={selectedField}
+                          valuePath={condition.field}
                         />
 
                         <Select

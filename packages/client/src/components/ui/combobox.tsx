@@ -184,11 +184,7 @@ function ComboboxGroupLabel({
   );
 }
 
-function ComboboxCollection({
-  ...props
-}: ComponentProps<typeof ComboboxPrimitive.Collection>) {
-  return <ComboboxPrimitive.Collection {...props} />;
-}
+const ComboboxCollection = ComboboxPrimitive.Collection;
 
 export {
   Combobox,

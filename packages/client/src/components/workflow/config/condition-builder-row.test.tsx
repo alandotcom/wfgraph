@@ -8,13 +8,7 @@ import {
   parseConditionModel,
   serializeConditionModel,
 } from "@wfgraph/shared/conditions/conditions";
-import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-
-const emptyCatalog: ExtensionCatalog = {
-  events: [],
-  actions: [],
-  integrations: [],
-};
+import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
 function field(
   path: string,
@@ -98,7 +92,7 @@ function renderRow(
   onChange?: (next: { model: string; expression: string }) => void
 ) {
   return render(
-    <ExtensionCatalogProvider value={emptyCatalog}>
+    <ExtensionCatalogProvider value={emptyExtensionCatalog}>
       <ControlledRow
         fields={fields}
         initialValue={initialValue}

@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   Combobox,
   ComboboxCollection,
@@ -20,6 +21,60 @@ type ConditionFieldGroup = {
 };
 
 /**
+ * A stored path the current graph no longer offers, shown so the input is not
+ * blank. Type is unused: the row never writes this object onto a rule.
+ */
+function unavailableField(path: string): ConditionSelectableField {
+  return {
+    path,
+    label: `${path} (Unavailable)`,
+    type: "string",
+    sourceNodeId: "",
+    sourceNodeLabel: "Unavailable",
+    sourceNodeLabels: ["Unavailable"],
+  };
+}
+
+function groupsBySource(
+  fields: readonly ConditionSelectableField[]
+): ConditionFieldGroup[] {
+  const grouped = new Map<string, ConditionSelectableField[]>();
+
+  for (const field of fields) {
+    const group = grouped.get(field.sourceNodeLabel);
+    if (group) {
+      group.push(field);
+    } else {
+      grouped.set(field.sourceNodeLabel, [field]);
+    }
+  }
+
+  return Array.from(grouped.entries())
+    .toSorted(([a], [b]) => a.localeCompare(b))
+    .map(([value, items]) => ({
+      value,
+      items: items.toSorted((a, b) => a.path.localeCompare(b.path)),
+    }));
+}
+
+function pickerItems(
+  fields: readonly ConditionSelectableField[],
+  valuePath: string
+): { selected: ConditionSelectableField; groups: ConditionFieldGroup[] } {
+  const fromCatalog = fields.find((field) => field.path === valuePath);
+  const groups = groupsBySource(fields);
+  if (fromCatalog) {
+    return { selected: fromCatalog, groups };
+  }
+
+  const selected = unavailableField(valuePath);
+  return {
+    selected,
+    groups: [{ value: selected.sourceNodeLabel, items: [selected] }, ...groups],
+  };
+}
+
+/**
  * A search reads the path, the node it came from, and "nullable" alike.
  *
  * A builder meeting a long list remembers a field as a path, as the step that
@@ -31,16 +86,13 @@ function matchesField(field: ConditionSelectableField, query: string): boolean {
     return true;
   }
 
-  if (
-    field.label.toLowerCase().includes(needle) ||
-    field.path.toLowerCase().includes(needle) ||
-    field.sourceNodeLabel.toLowerCase().includes(needle) ||
-    field.sourceNodeLabels.some((label) => label.toLowerCase().includes(needle))
-  ) {
-    return true;
-  }
-
-  return Boolean(field.nullable) && "nullable".includes(needle);
+  const haystack = [
+    field.path,
+    field.label,
+    ...field.sourceNodeLabels,
+    ...(field.nullable ? ["nullable"] : []),
+  ];
+  return haystack.some((text) => text.toLowerCase().includes(needle));
 }
 
 /** The path is the identity; two fields carrying it are the same choice. */
@@ -51,37 +103,47 @@ function sameField(
   return a.path === b.path;
 }
 
+function fieldLabel(field: ConditionSelectableField): string {
+  return field.label;
+}
+
 /**
  * The field picker for a condition rule.
  *
  * An upstream action can expose dozens of paths, so the list is a combobox the
  * way the Event picker already is: typing filters it, grouped by the node that
- * produced each path.
+ * produced each path. A stored path the graph no longer offers is prepended as
+ * its own section rather than left blank.
  */
 export function ConditionFieldCombobox({
-  groups,
-  value,
+  fields,
+  valuePath,
   onValueChange,
   disabled,
 }: {
-  groups: readonly ConditionFieldGroup[];
-  value: ConditionSelectableField | null;
+  fields: readonly ConditionSelectableField[];
+  valuePath: string;
   onValueChange: (field: ConditionSelectableField) => void;
   disabled: boolean;
 }) {
+  const { selected, groups } = useMemo(
+    () => pickerItems(fields, valuePath),
+    [fields, valuePath]
+  );
+
   return (
     <Combobox<ConditionSelectableField>
       disabled={disabled}
       filter={matchesField}
       isItemEqualToValue={sameField}
       items={groups}
-      itemToStringLabel={(field) => field.label}
+      itemToStringLabel={fieldLabel}
       onValueChange={(next) => {
         if (next) {
           onValueChange(next);
         }
       }}
-      value={value}
+      value={selected}
     >
       <ComboboxInputGroup className="min-w-[280px]">
         <ComboboxInput aria-label="Select field" placeholder="Select field" />
