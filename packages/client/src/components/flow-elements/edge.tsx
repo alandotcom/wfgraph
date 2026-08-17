@@ -2,19 +2,19 @@ import {
   BaseEdge,
   EdgeLabelRenderer,
   type EdgeProps,
-  getBezierPath,
-  getSimpleBezierPath,
   type InternalNode,
   Position,
   useInternalNode,
 } from "@xyflow/react";
+import { memo } from "react";
 import {
   isMutedEdgeStyle,
   resolveEdgeLabel,
 } from "#src/components/flow-elements/edge-label";
+import { getWorkflowEdgePath } from "#src/components/flow-elements/edge-path";
 import type { WorkflowEdge } from "#src/lib/workflow-graph-types";
 
-const Temporary = ({
+const Temporary = memo(function Temporary({
   id,
   sourceX,
   sourceY,
@@ -23,8 +23,8 @@ const Temporary = ({
   sourcePosition,
   targetPosition,
   selected,
-}: EdgeProps) => {
-  const [edgePath] = getSimpleBezierPath({
+}: EdgeProps) {
+  const [edgePath] = getWorkflowEdgePath({
     sourceX,
     sourceY,
     sourcePosition,
@@ -44,7 +44,7 @@ const Temporary = ({
       }}
     />
   );
-};
+});
 
 const getHandleCoordsByPosition = (
   node: InternalNode,
@@ -128,7 +128,7 @@ const getEdgeParams = (
   };
 };
 
-const Animated = ({
+const Animated = memo(function Animated({
   id,
   source,
   sourceHandleId,
@@ -137,7 +137,7 @@ const Animated = ({
   style,
   selected,
   data,
-}: EdgeProps<WorkflowEdge>) => {
+}: EdgeProps<WorkflowEdge>) {
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
 
@@ -152,7 +152,7 @@ const Animated = ({
     targetHandleId
   );
 
-  const [edgePath, labelX, labelY] = getBezierPath({
+  const [edgePath, labelX, labelY] = getWorkflowEdgePath({
     sourceX: sx,
     sourceY: sy,
     sourcePosition: sourcePos,
@@ -195,7 +195,7 @@ const Animated = ({
       )}
     </>
   );
-};
+});
 
 export const Edge = {
   Temporary,

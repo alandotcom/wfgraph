@@ -28,7 +28,7 @@ import { layoutGroupChildren } from "#src/lib/node-group";
 
 const LAYOUT_DIRECTION = "TB";
 const NODE_SPACING = 132;
-const RANK_SPACING = 118;
+const RANK_SPACING = 88;
 const GRAPH_MARGIN = 40;
 const ROOT_ID = "__workflow-root__";
 
@@ -126,7 +126,7 @@ function getLayoutSpacing(availableWidth?: number): LayoutSpacing {
   }
 
   if (availableWidth < 1024) {
-    return { nodeSpacing: 96, rankSpacing: 96 };
+    return { nodeSpacing: 96, rankSpacing: 72 };
   }
 
   return { nodeSpacing: NODE_SPACING, rankSpacing: RANK_SPACING };

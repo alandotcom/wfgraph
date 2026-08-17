@@ -1,12 +1,18 @@
 /**
  * How large a node draws on the canvas.
- *
- * The auto-layout has to reserve a node's width before React Flow has measured
- * anything, so the card and the layout both take the width from here.
+ * Auto-layout reserves this size before React Flow has measured the card.
  */
 
 export const WORKFLOW_NODE_WIDTH = 192;
-export const WORKFLOW_NODE_HEIGHT = 192;
+export const WORKFLOW_NODE_HEIGHT = 112;
+
+/** Width and height the card draws at. Event Split passes a wider width. */
+export function workflowNodeSize(width: number = WORKFLOW_NODE_WIDTH): {
+  width: number;
+  height: number;
+} {
+  return { width, height: WORKFLOW_NODE_HEIGHT };
+}
 
 /** Compact card a Group draws for each nested lookup / Condition. */
 export const GROUP_CHILD_WIDTH = 188;

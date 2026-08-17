@@ -34,6 +34,7 @@ import {
 } from "#src/lib/workflow-graph-store";
 import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 import { type WorkflowNode } from "#src/lib/workflow-graph-types";
+import { WORKFLOW_NODE_HEIGHT } from "#src/components/workflow/workflow-node-dimensions";
 import { cn } from "@wfgraph/shared/utils";
 import {
   analyzeGroupableSelection,
@@ -129,13 +130,12 @@ export function WorkflowContextMenu({
 
   const handleAddStep = useCallback(() => {
     if (menuState?.flowPosition) {
-      const nodeHeight = 192;
       const newNode: WorkflowNode = {
         id: nanoid(),
         type: "action",
         position: {
           x: menuState.flowPosition.x,
-          y: menuState.flowPosition.y - nodeHeight / 2,
+          y: menuState.flowPosition.y - WORKFLOW_NODE_HEIGHT / 2,
         },
         data: {
           label: "",
