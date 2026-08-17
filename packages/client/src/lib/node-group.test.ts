@@ -13,7 +13,20 @@ import {
   refuseDelete,
   ungroupNode,
 } from "#src/lib/node-group";
+import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
+
+/**
+ * These cases are about the geometry a frame lays its members out in, so no
+ * action needs a catalog entry. An action the catalog does not list declares no
+ * side effect, which is what lets these fixtures group.
+ */
+const emptyCatalog: ExtensionCatalog = {
+  events: [],
+  actions: [],
+  integrations: [],
+};
 
 function action(
   id: string,
@@ -75,6 +88,7 @@ function framedNodes(): WorkflowNode[] {
     nodes: parallelNodes(),
     edges: parallelEdges(),
     selectedIds: new Set(["a", "b", "c"]),
+    catalog: emptyCatalog,
     createId: () => "g1",
     createEdgeId: () => "in-b",
   });
@@ -85,6 +99,71 @@ function framedNodes(): WorkflowNode[] {
 }
 
 describe("groupSelection", () => {
+  // `displayNodesAtom` hands its answer back untouched only while the nodes
+  // already read rest, then frames, then members. Appending the new frame after
+  // the members of an existing one breaks that order, and every canvas render
+  // from then on re-sorts and allocates, drag frames included.
+  it("keeps a second frame in the order React Flow is given", () => {
+    const first = groupSelection({
+      nodes: parallelNodes(),
+      edges: parallelEdges(),
+      selectedIds: new Set(["a", "b", "c"]),
+      catalog: emptyCatalog,
+      createId: () => "g1",
+      createEdgeId: () => "in-b",
+    });
+    if (!first) {
+      throw new Error("expected the parallel fixture to group");
+    }
+
+    const second = groupSelection({
+      nodes: [
+        ...first.nodes,
+        action("d", "fountain/get-user", { x: 600, y: 200 }),
+        action("e", BUILT_IN_ACTION_IDS.condition, { x: 600, y: 400 }),
+      ],
+      edges: [...first.edges, edge("de", "d", "e")],
+      selectedIds: new Set(["d", "e"]),
+      catalog: emptyCatalog,
+      createId: () => "g2",
+    });
+    if (!second) {
+      throw new Error("expected the second chain to group");
+    }
+
+    expect(orderGroupParentsFirst(second.nodes)).toBe(second.nodes);
+  });
+
+  // Same fast path as above, from the other side: freeing one frame's members
+  // leaves them ahead of the frame that stayed, which the phase check refuses.
+  it("keeps the order when one of two frames is ungrouped", () => {
+    const first = groupSelection({
+      nodes: parallelNodes(),
+      edges: parallelEdges(),
+      selectedIds: new Set(["a", "b", "c"]),
+      catalog: emptyCatalog,
+      createId: () => "g1",
+      createEdgeId: () => "in-b",
+    });
+    const second = groupSelection({
+      nodes: [
+        ...(first?.nodes ?? []),
+        action("d", "fountain/get-user", { x: 600, y: 200 }),
+        action("e", BUILT_IN_ACTION_IDS.condition, { x: 600, y: 400 }),
+      ],
+      edges: [...(first?.edges ?? []), edge("de", "d", "e")],
+      selectedIds: new Set(["d", "e"]),
+      catalog: emptyCatalog,
+      createId: () => "g2",
+    });
+    if (!second) {
+      throw new Error("expected two frames");
+    }
+
+    const freed = ungroupNode(second.nodes, "g1");
+    expect(orderGroupParentsFirst(freed)).toBe(freed);
+  });
+
   it("nests a lookup chain under a frame with relative positions", () => {
     const nodes = [
       action("a", "fountain/get-user", { x: 100, y: 200 }),
@@ -97,6 +176,7 @@ describe("groupSelection", () => {
       nodes,
       edges,
       selectedIds: new Set(["a", "b", "c"]),
+      catalog: emptyCatalog,
       createId: () => "g1",
     });
 
@@ -125,6 +205,7 @@ describe("groupSelection", () => {
       nodes: parallelNodes(),
       edges: parallelEdges(),
       selectedIds: new Set(["a", "b", "c"]),
+      catalog: emptyCatalog,
       createId: () => "g1",
       createEdgeId: () => "in-b",
     });

@@ -6,6 +6,7 @@
  */
 
 import { normalizeConditionBranch } from "#src/conditions/condition-branch";
+import { type ExtensionCatalog, findAction } from "#src/extensions/catalog";
 import {
   actionTypeOf,
   isConditionNode,
@@ -110,7 +111,8 @@ export type GroupAnalysis =
 export function analyzeGroupableSelection(
   nodes: readonly GroupGraphNode[],
   edges: readonly WorkflowEdge[],
-  selectedIds: ReadonlySet<string>
+  selectedIds: ReadonlySet<string>,
+  catalog: ExtensionCatalog
 ): GroupAnalysis {
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const members: GroupGraphNode[] = [];
@@ -120,7 +122,7 @@ export function analyzeGroupableSelection(
     if (!node) {
       return { ok: false, error: "Select at least two steps" };
     }
-    const refused = refuseGroupedMember(node);
+    const refused = refuseGroupedMember(node, catalog);
     if (refused) {
       return { ok: false, error: refused };
     }
@@ -328,11 +330,12 @@ export function fanOutStoreEdgeIds(
 /**
  * Paint outside→entries as targeting the frame, and exit True→outside as
  * leaving the frame. Store edges still name the children. Fan-out onto
- * several entries collapses to one painted edge.
+ * several entries collapses to one painted edge. Answers the same array when a
+ * graph has no frame to paint onto, so the edges take a mutable array.
  */
 export function displayEdgesForGroups<E extends WorkflowEdge>(
   nodes: readonly GroupGraphNode[],
-  edges: readonly E[]
+  edges: E[]
 ): E[] {
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const entryOf = new Map<string, string>();
@@ -351,30 +354,36 @@ export function displayEdgesForGroups<E extends WorkflowEdge>(
     }
   }
 
+  const parentOf = (nodeId: string) => byId.get(nodeId)?.parentId;
+  let remappedAny = false;
+
   const remapped = edges.map((edge) => {
-    const source = byId.get(edge.source);
-    const target = byId.get(edge.target);
+    // An edge inside one frame keeps naming its members, which is what marks it
+    // interior. Every other end is remapped on its own, because one frame's
+    // exit can feed the next frame's entry and neither end is then unframed.
+    if (isInteriorEdge(parentOf, edge)) {
+      return edge;
+    }
+
     let next = edge;
-
-    if (
-      source?.parentId &&
-      !target?.parentId &&
-      exitOf.get(edge.source) === source.parentId
-    ) {
-      next = { ...next, source: source.parentId };
+    const sourceFrame = parentOf(edge.source);
+    if (sourceFrame && exitOf.get(edge.source) === sourceFrame) {
+      next = { ...next, source: sourceFrame };
     }
-    if (
-      target?.parentId &&
-      !source?.parentId &&
-      entryOf.get(edge.target) === target.parentId
-    ) {
-      next = { ...next, target: target.parentId };
+    const targetFrame = parentOf(edge.target);
+    if (targetFrame && entryOf.get(edge.target) === targetFrame) {
+      next = { ...next, target: targetFrame };
     }
-
+    remappedAny ||= next !== edge;
     return next;
   });
 
-  return collapseDuplicateDisplayEdges(remapped);
+  // `displayEdgesAtom` recomputes on any node change and hands the answer to
+  // React Flow as its `edges` prop, which rebuilds the whole connection lookup
+  // whenever the array is a new one. A graph with no frame to paint onto would
+  // otherwise pay that on every drag frame, so both steps here keep the array
+  // they were given when they change nothing in it.
+  return collapseDuplicateDisplayEdges(remappedAny ? remapped : edges);
 }
 
 /**
@@ -385,7 +394,7 @@ export function displayEdgesForGroups<E extends WorkflowEdge>(
  */
 export function edgesForGroupLayout<E extends WorkflowEdge>(
   nodes: readonly GroupGraphNode[],
-  edges: readonly E[]
+  edges: E[]
 ): E[] {
   const byId = new Map(nodes.map((node) => [node.id, node]));
   return displayEdgesForGroups(nodes, edges).filter(
@@ -467,7 +476,15 @@ export function disabledGroupIds(
   return disabled;
 }
 
-/** React Flow paints a parent before its children. */
+/**
+ * React Flow paints a parent before its children, and deletes them the same
+ * way: `getElementsToRemove` pulls a child in by searching the nodes it has
+ * already collected, so a frame sitting after its members takes none of them
+ * with it. Each is then left with a `parentId` naming a node that is gone, and
+ * its `extent: "parent"` turns that into a position error and no clamp.
+ * Answers the same array when the order already holds, which is what every
+ * writer of node state keeps it in.
+ */
 export function orderGroupParentsFirst<T extends GroupGraphNode>(
   nodes: T[]
 ): T[] {
@@ -588,7 +605,10 @@ export function groupInteriorLayout(
   return { slots, bounds: groupSlotBounds(slots) };
 }
 
-function refuseGroupedMember(node: GroupGraphNode): string | null {
+function refuseGroupedMember(
+  node: GroupGraphNode,
+  catalog: ExtensionCatalog
+): string | null {
   if (node.data.type === "lifecycle" || node.data.type === "add") {
     return "Only lookup and Condition steps can be grouped";
   }
@@ -598,7 +618,8 @@ function refuseGroupedMember(node: GroupGraphNode): string | null {
   if (node.data.type !== "action") {
     return "Only lookup and Condition steps can be grouped";
   }
-  if (!actionTypeOf(node)) {
+  const actionType = actionTypeOf(node);
+  if (!actionType) {
     return "Every step needs an action";
   }
   if (isWaitNode(node)) {
@@ -606,6 +627,13 @@ function refuseGroupedMember(node: GroupGraphNode): string | null {
   }
   if (isEventSplitActionNode(node)) {
     return "Event Split cannot be grouped";
+  }
+  // A group is a bundle a builder pastes again after a Wait so the next send
+  // reads a fresh fetch, so a member that moves the outside world would move it
+  // again on every paste. An action the catalog does not list declares nothing
+  // and is taken at its word.
+  if (findAction(catalog, actionType)?.sideEffect) {
+    return "A step that changes something outside the workflow stays outside the frame";
   }
   return null;
 }
@@ -697,5 +725,7 @@ function collapseDuplicateDisplayEdges<E extends WorkflowEdge>(
     seen.add(key);
     collapsed.push(edge);
   }
-  return collapsed;
+  // The same array when nothing duplicated, so a canvas render that changed no
+  // edge hands React Flow the `edges` prop it already holds.
+  return collapsed.length === edges.length ? edges : collapsed;
 }

@@ -259,6 +259,7 @@ function readIntegration(
       description: step.description,
       category: step.category,
       integration: integration.type,
+      sideEffect: step.sideEffect,
       configFields: step.configFields,
       outputFields,
     });
@@ -294,6 +295,7 @@ function readHostAction(action: ActionDefinition, into: Assembly): void {
     description: action.description,
     category: action.category,
     ...(action.logoUrl ? { logoUrl: action.logoUrl } : {}),
+    sideEffect: action.sideEffect,
     configFields: action.configFields ?? [],
     outputFields: action.outputFields ?? [],
   });

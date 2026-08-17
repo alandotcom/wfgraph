@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
+import type { ExtensionCatalog } from "#src/extensions/catalog";
 import {
   analyzeGroupableSelection,
   displayEdgesForGroups,
@@ -69,6 +70,43 @@ const lookupB = action("b", "fountain/get-appointment");
 const condition = action("c", BUILT_IN_ACTION_IDS.condition);
 const wait = action("w", BUILT_IN_ACTION_IDS.wait);
 const split = action("s", BUILT_IN_ACTION_IDS.eventSplit);
+const sendEmail = action("sms", "resend/send-email");
+
+/**
+ * The two lookups the fixtures group, and the one send they may not. Only
+ * `sideEffect` matters to these cases; the rest is what the type asks for.
+ */
+const catalog: ExtensionCatalog = {
+  events: [],
+  actions: [
+    {
+      id: "fountain/get-user",
+      label: "Get User",
+      description: "Reads a user",
+      category: "Fountain",
+      configFields: [],
+      outputFields: [],
+    },
+    {
+      id: "fountain/get-appointment",
+      label: "Get Appointment",
+      description: "Reads an appointment",
+      category: "Fountain",
+      configFields: [],
+      outputFields: [],
+    },
+    {
+      id: "resend/send-email",
+      label: "Send Email",
+      description: "Sends an email",
+      category: "Resend",
+      sideEffect: true,
+      configFields: [],
+      outputFields: [],
+    },
+  ],
+  integrations: [],
+};
 
 describe("analyzeGroupableSelection", () => {
   it("accepts a lookup chain that ends on an unwired Condition", () => {
@@ -79,7 +117,8 @@ describe("analyzeGroupableSelection", () => {
         edge("e2", "b", "c"),
         edge("e-out", "c", "sms", "true"),
       ],
-      new Set(["a", "b", "c"])
+      new Set(["a", "b", "c"]),
+      catalog
     );
 
     expect(result).toEqual({
@@ -98,7 +137,8 @@ describe("analyzeGroupableSelection", () => {
         edge("e-b", "b", "c"),
         edge("e-out", "c", "sms", "true"),
       ],
-      new Set(["a", "b", "c"])
+      new Set(["a", "b", "c"]),
+      catalog
     );
 
     expect(result).toEqual({
@@ -118,7 +158,8 @@ describe("analyzeGroupableSelection", () => {
         edge("e-a", "a", "c"),
         edge("e-b", "b", "c"),
       ],
-      new Set(["a", "b", "c"])
+      new Set(["a", "b", "c"]),
+      catalog
     );
 
     expect(result).toMatchObject({
@@ -133,7 +174,8 @@ describe("analyzeGroupableSelection", () => {
       analyzeGroupableSelection(
         [lookupA, wait],
         [edge("e1", "a", "w")],
-        new Set(["a", "w"])
+        new Set(["a", "w"]),
+        catalog
       )
     ).toMatchObject({ ok: false, error: "Wait cannot be grouped" });
 
@@ -141,7 +183,8 @@ describe("analyzeGroupableSelection", () => {
       analyzeGroupableSelection(
         [lookupA, split],
         [edge("e1", "a", "s")],
-        new Set(["a", "s"])
+        new Set(["a", "s"]),
+        catalog
       )
     ).toMatchObject({ ok: false, error: "Event Split cannot be grouped" });
   });
@@ -155,7 +198,8 @@ describe("analyzeGroupableSelection", () => {
           edge("e-true", "c", "sms", "true"),
           edge("e-false", "c", "cancel", "false"),
         ],
-        new Set(["a", "c"])
+        new Set(["a", "c"]),
+        catalog
       )
     ).toMatchObject({
       ok: false,
@@ -165,11 +209,16 @@ describe("analyzeGroupableSelection", () => {
 
   it("refuses two exits or one step", () => {
     expect(
-      analyzeGroupableSelection([lookupA, lookupB], [], new Set(["a", "b"]))
+      analyzeGroupableSelection(
+        [lookupA, lookupB],
+        [],
+        new Set(["a", "b"]),
+        catalog
+      )
     ).toMatchObject({ ok: false, error: "Needs exactly one exit step" });
 
     expect(
-      analyzeGroupableSelection([lookupA], [], new Set(["a"]))
+      analyzeGroupableSelection([lookupA], [], new Set(["a"]), catalog)
     ).toMatchObject({ ok: false, error: "Select at least two steps" });
   });
 
@@ -183,12 +232,39 @@ describe("analyzeGroupableSelection", () => {
           edge("e-a", "a", "c"),
           edge("e-b", "b", "c"),
         ],
-        new Set(["a", "b", "c"])
+        new Set(["a", "b", "c"]),
+        catalog
       )
     ).toMatchObject({
       ok: false,
       error: "Parallel lookups must share the same incoming step",
     });
+  });
+
+  it("refuses a step whose action has a side effect", () => {
+    expect(
+      analyzeGroupableSelection(
+        [lookupA, sendEmail],
+        [edge("e1", "a", "sms")],
+        new Set(["a", "sms"]),
+        catalog
+      )
+    ).toMatchObject({
+      ok: false,
+      error:
+        "A step that changes something outside the workflow stays outside the frame",
+    });
+  });
+
+  it("accepts an action the catalog does not list, which declares nothing", () => {
+    expect(
+      analyzeGroupableSelection(
+        [action("x", "host/unlisted"), lookupA],
+        [edge("e1", "x", "a")],
+        new Set(["x", "a"]),
+        catalog
+      )
+    ).toMatchObject({ ok: true });
   });
 
   it("refuses nodes already inside a group", () => {
@@ -199,7 +275,8 @@ describe("analyzeGroupableSelection", () => {
           { ...lookupB, parentId: "g" },
         ],
         [edge("e1", "a", "b")],
-        new Set(["a", "b"])
+        new Set(["a", "b"]),
+        catalog
       )
     ).toMatchObject({ ok: false, error: "Already in a group" });
   });
@@ -238,6 +315,46 @@ describe("display and store endpoints", () => {
 
     expect(resolveStoredSource(nodes, "g")).toBe("c");
     expect(storedTargetsFor(nodes, "g")).toEqual(["a"]);
+  });
+
+  // `displayEdgesAtom` recomputes on every node change, a drag frame included,
+  // and hands the answer to React Flow as its `edges` prop. A fresh array there
+  // rebuilds the whole connection lookup per frame, so a graph with nothing to
+  // remap has to come back as the array it went in as.
+  it("answers the same array when no edge sits on a frame", () => {
+    const nodes: GroupGraphNode[] = [lookupA, lookupB, condition];
+    const edges = [edge("ab", "a", "b"), edge("bc", "b", "c")];
+
+    expect(displayEdgesForGroups(nodes, edges)).toBe(edges);
+  });
+
+  it("paints an edge between two frames on both frames", () => {
+    // Grouping two adjacent chains leaves one stored edge with a member at each
+    // end, and the two members answer to different frames. Remapping only the
+    // end whose other side is unframed left it naming both children, which the
+    // layout below then dropped as if it were interior.
+    const nodes: GroupGraphNode[] = [
+      group("g1", ["a"], "b"),
+      { ...lookupA, parentId: "g1" },
+      { ...lookupB, parentId: "g1" },
+      group("g2", ["c"], "d"),
+      { ...condition, parentId: "g2" },
+      { ...action("d", "fountain/get-user"), parentId: "g2" },
+    ];
+    const edges = [
+      edge("ab", "a", "b"),
+      edge("bc", "b", "c"),
+      edge("cd", "c", "d"),
+    ];
+
+    expect(displayEdgesForGroups(nodes, edges)).toEqual([
+      edges[0],
+      { ...edges[1], source: "g1", target: "g2" },
+      edges[2],
+    ]);
+    expect(edgesForGroupLayout(nodes, edges).map((item) => item.id)).toEqual([
+      "bc",
+    ]);
   });
 
   it("collapses a parallel fan-out onto one painted inlet", () => {

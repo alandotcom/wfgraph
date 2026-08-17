@@ -16,11 +16,13 @@ import {
   isEdgeBetweenMembers,
   isGroupNode,
   isInteriorEdge,
+  orderGroupParentsFirst,
   predecessorKey,
   undersizedGroupIds,
   type GroupAnalysis,
   type GroupMemberSlot,
 } from "@wfgraph/shared/graph/node-group";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   GROUP_CHILD_HEIGHT,
@@ -50,6 +52,8 @@ export function groupSelection(input: {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   selectedIds: ReadonlySet<string>;
+  /** Read for `sideEffect`, which decides whether a step may join a frame. */
+  catalog: ExtensionCatalog;
   createId?: () => string;
   createEdgeId?: () => string;
 }): {
@@ -60,7 +64,8 @@ export function groupSelection(input: {
   const analysis = analyzeGroupableSelection(
     input.nodes,
     input.edges,
-    input.selectedIds
+    input.selectedIds,
+    input.catalog
   );
   if (!analysis.ok) {
     return null;
@@ -129,7 +134,10 @@ export function groupSelection(input: {
     .map((node) => ({ ...node, selected: false }));
 
   return {
-    nodes: [...rest, groupNode, ...children],
+    // Sorted rather than appended, because `rest` already holds any earlier
+    // frame and its members. Appending here would put the new frame after those
+    // members, and `displayNodesAtom` would then re-sort on every render.
+    nodes: orderGroupParentsFirst([...rest, groupNode, ...children]),
     edges: alignEntryIncoming({
       edges: input.edges,
       entryIds: analysis.entryIds,
@@ -148,15 +156,19 @@ export function ungroupNode(
     return nodes;
   }
 
-  return nodes.flatMap((node) => {
-    if (node.id === groupId) {
-      return [];
-    }
-    if (node.parentId !== groupId) {
-      return [node];
-    }
-    return [unnestFromGroup(node, freedPosition(group, node))];
-  });
+  // Sorted for the same reason `groupSelection` is: the freed members stay
+  // where the frame stood, which puts them ahead of any frame that remains.
+  return orderGroupParentsFirst(
+    nodes.flatMap((node) => {
+      if (node.id === groupId) {
+        return [];
+      }
+      if (node.parentId !== groupId) {
+        return [node];
+      }
+      return [unnestFromGroup(node, freedPosition(group, node))];
+    })
+  );
 }
 
 export function layoutGroupChildren(
@@ -349,6 +361,27 @@ export function expandEdgeRemovals(
     ...changes.filter((change) => change.type !== "remove"),
     ...[...removedIds].map((id) => ({ type: "remove" as const, id })),
   ];
+}
+
+/**
+ * Drop the edges whose source or target is no longer a node, which the graph
+ * has to be free of before `createSerializedWorkflowGraph` will take it.
+ *
+ * React Flow asks for no edge it was told it cannot delete, and a frame's
+ * interior edges are painted `deletable: false` by `lockGroupInteriorEdges`; a
+ * collapsed inlet edge never reaches it at all. Deleting a frame therefore
+ * removes its children and leaves both kinds behind. Returns the same array
+ * when every edge still has both ends.
+ */
+export function dropOrphanedEdges(
+  nodes: readonly WorkflowNode[],
+  edges: WorkflowEdge[]
+): WorkflowEdge[] {
+  const liveIds = new Set(nodes.map((node) => node.id));
+  const kept = edges.filter(
+    (edge) => liveIds.has(edge.source) && liveIds.has(edge.target)
+  );
+  return kept.length === edges.length ? edges : kept;
 }
 
 function alignEntryIncoming(input: {

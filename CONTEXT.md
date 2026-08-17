@@ -131,7 +131,8 @@ A visual single-entry single-exit bundle of lookup steps plus an optional
 Condition. The engine walks the children; the frame is editor chrome. Lookups
 inside may run side by side and AND-join at the Condition. True continues to
 the next step. False with no outgoing edge ends that path. That is how a
-sequence stops; it is not a Cancel Event. Sends stay outside the frame. After
+sequence stops; it is not a Cancel Event. Sends stay outside the frame, which an
+action declares with `sideEffect: true` and the editor refuses on. After
 a Wait, the builder pastes the group so the next send reads a fresh fetch:
 node outputs are memoized, and nothing above a Wait re-runs.
 

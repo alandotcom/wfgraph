@@ -149,6 +149,7 @@ export const twilio = defineIntegration({
     "send-sms": {
       label: "Send SMS",
       description: "Send an SMS via Twilio",
+      sideEffect: true,
       input: sendSmsInput,
       output: sendSmsOutput,
       // Each `key` is checked against the input schema, so a field the step

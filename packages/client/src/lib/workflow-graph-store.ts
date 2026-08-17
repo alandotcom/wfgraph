@@ -34,6 +34,7 @@ import {
 import { inactiveBranch } from "#src/lib/inactive-branch";
 import {
   dissolveUndersizedGroups,
+  dropOrphanedEdges,
   expandEdgeRemovals,
   idsRemovedWith,
   lockGroupInteriorEdges,
@@ -438,6 +439,21 @@ export const onNodesChangeAtom = atom(
     );
     set(nodesStateAtom, newNodes);
 
+    // A removal here can strand an edge React Flow never offered to delete;
+    // `dropOrphanedEdges` says which and why. It answers the same array when
+    // there is nothing to drop, and jotai skips a write of the value it holds.
+    if (hasRemoval) {
+      const remainingEdges = dropOrphanedEdges(newNodes, get(edgesStateAtom));
+      set(edgesStateAtom, remainingEdges);
+      // The paths that remove an edge clear the selection naming it, and this
+      // one answers to the same rule even though today's stranded edges are all
+      // unselectable.
+      const selectedEdge = get(selectedEdgeAtom);
+      if (selectedEdge && !remainingEdges.some((e) => e.id === selectedEdge)) {
+        set(selectedEdgeAtom, null);
+      }
+    }
+
     // Mirror React Flow's own selection state onto our selection atoms.
     const selectedNode = newNodes.find((n) => n.selected);
     if (selectedNode) {
@@ -515,10 +531,15 @@ function insertClonedSubgraph(
   const edges = subgraph.edges.map((edge) => ({ ...edge, selected: true }));
 
   pushHistory(get, set);
-  set(nodesStateAtom, [
-    ...get(nodesStateAtom).map((node) => ({ ...node, selected: false })),
-    ...nodes,
-  ]);
+  // Sorted like the other two writers: a cloned frame appended after the
+  // members already on the canvas costs `displayNodesAtom` its fast path.
+  set(
+    nodesStateAtom,
+    orderGroupParentsFirst([
+      ...get(nodesStateAtom).map((node) => ({ ...node, selected: false })),
+      ...nodes,
+    ])
+  );
   set(edgesStateAtom, [
     ...get(edgesStateAtom).map((edge) => ({ ...edge, selected: false })),
     ...edges,

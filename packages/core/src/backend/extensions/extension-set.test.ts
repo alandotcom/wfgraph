@@ -69,6 +69,7 @@ function aDefinition(
       [overrides.slug ?? "send-sms"]: {
         label: "Send SMS",
         description: "Sends a message",
+        sideEffect: true,
         input: Schema.Struct({ to: Schema.String }),
         output: Schema.Struct({
           sid: Schema.String.annotate({ description: "Message SID" }),
@@ -365,6 +366,8 @@ describe("assembleExtensions and an integration definition", () => {
       // which this fixture spells with its type.
       category: "twilio",
       integration: "twilio",
+      // Declared on the action; the Group rule in the editor reads it.
+      sideEffect: true,
       configFields: [
         { key: "to", label: "To", type: "template-input", required: true },
       ],

@@ -15,6 +15,7 @@ import {
   groupOutletHandle,
   isGroupNode,
 } from "@wfgraph/shared/graph/node-group";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge } from "#src/lib/workflow-graph-types";
 import {
   draftEditable,
@@ -26,22 +27,34 @@ import {
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-cells";
 
-/** Wrap a valid lookup+Condition selection in a Group frame. */
+/**
+ * Wrap a valid lookup+Condition selection in a Group frame.
+ *
+ * The catalog is an argument rather than a read, because this runs outside
+ * React and the analysis needs each member's `sideEffect`. `selectedIds` is
+ * for a caller whose live selection has already collapsed; omitting it groups
+ * whatever the canvas has selected.
+ */
 export const groupSelectionAtom = atom(
   null,
-  (get, set, selectedIds?: ReadonlySet<string>) => {
+  (
+    get,
+    set,
+    input: { catalog: ExtensionCatalog; selectedIds?: ReadonlySet<string> }
+  ) => {
     if (!draftEditable(get)) {
       return false;
     }
 
     const nodes = get(nodesStateAtom);
     const ids =
-      selectedIds ??
+      input.selectedIds ??
       new Set(nodes.filter((node) => node.selected).map((node) => node.id));
     const grouped = groupSelection({
       nodes,
       edges: get(edgesStateAtom),
       selectedIds: ids,
+      catalog: input.catalog,
     });
     if (!grouped) {
       return false;

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useRef } from "react";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
@@ -73,6 +74,7 @@ export function WorkflowContextMenu({
   const hasCopiedSelection = useAtomValue(hasCopiedSelectionAtom);
   const setSelectedNode = useSetAtom(selectedNodeAtom);
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
+  const catalog = useExtensionCatalog();
   const { open: openOverlay } = useOverlay();
   const { openSheet } = useConfigurationSheet();
   const isMobile = useIsMobile();
@@ -170,9 +172,9 @@ export function WorkflowContextMenu({
       onClose();
       return;
     }
-    groupSelected(menuState.selectedIds ?? new Set());
+    groupSelected({ catalog, selectedIds: menuState.selectedIds ?? new Set() });
     onClose();
-  }, [menuState, groupSelected, onClose]);
+  }, [menuState, groupSelected, catalog, onClose]);
 
   const handleUngroup = useCallback(() => {
     if (menuState?.nodeId) {
@@ -232,7 +234,12 @@ export function WorkflowContextMenu({
     : undefined;
   const isLifecycleNode = clicked?.data.type === "lifecycle";
   const groupingIds = menuState.selectedIds ?? new Set<string>();
-  const grouping = analyzeGroupableSelection(nodes, edges, groupingIds);
+  const grouping = analyzeGroupableSelection(
+    nodes,
+    edges,
+    groupingIds,
+    catalog
+  );
   const canGroup = grouping.ok;
   const showUngroup = canUngroup(clicked);
   const deleteRefusal = clicked ? refuseDelete([clicked]) : null;

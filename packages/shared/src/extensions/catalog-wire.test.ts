@@ -63,6 +63,29 @@ describe("readExtensionCatalog", () => {
     );
   });
 
+  // The editor keeps a send outside a Group frame, and this flag is the only
+  // thing that tells it which action is one. Dropped on the wire, every send
+  // would look like a lookup to the browser.
+  it("carries an action's side effect across the wire", () => {
+    const catalog: ExtensionCatalog = {
+      events: [],
+      actions: [
+        {
+          id: "resend/send-email",
+          label: "Send Email",
+          description: "Sends an email",
+          category: "Resend",
+          sideEffect: true,
+          configFields: [],
+          outputFields: [],
+        },
+      ],
+      integrations: [],
+    };
+
+    expect(readExtensionCatalog(catalog)).toEqual(catalog);
+  });
+
   it("answers nothing for a field type the vocabulary has no word for", () => {
     expect(
       readExtensionCatalog(aCatalog([{ path: "x", type: "money" } as never]))

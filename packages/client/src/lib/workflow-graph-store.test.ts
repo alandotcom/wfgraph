@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { createStore as createJotaiStore } from "jotai";
 import { createStore } from "jotai";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
-import { isGroupNode } from "@wfgraph/shared/graph/node-group";
+import {
+  isGroupNode,
+  orderGroupParentsFirst,
+} from "@wfgraph/shared/graph/node-group";
 import {
   addNodeAtom,
   applyNodeLayoutAtom,
@@ -44,6 +47,7 @@ import {
   propertiesPanelActiveTabAtom,
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { savedWorkflow } from "./workflow-save-test-support";
 import { PASTE_OFFSET } from "#src/lib/copy-selection";
@@ -91,6 +95,29 @@ function actionNode(id: string, x = 0): WorkflowNode {
 function edge(id: string, source: string, target: string): WorkflowEdge {
   return { id, source, target };
 }
+
+/** A lookup step, which is what a Group is allowed to hold. */
+function groupableLookup(id: string, x: number): WorkflowNode {
+  return {
+    ...actionNode(id, x),
+    selected: true,
+    data: {
+      label: id,
+      type: "action",
+      config: { actionType: "fountain/get-user" },
+    },
+  };
+}
+
+/**
+ * No action here needs a catalog entry: an action the catalog does not list
+ * declares no side effect, which is what lets these lookups group.
+ */
+const emptyCatalog: ExtensionCatalog = {
+  events: [],
+  actions: [],
+  integrations: [],
+};
 
 /** Let a zero-delay debounce timer fire. */
 function tick() {
@@ -794,7 +821,12 @@ describe("groupSelectionAtom", () => {
       ]
     );
 
-    expect(store.set(groupSelectionAtom, new Set(["a", "b", "c"]))).toBe(true);
+    expect(
+      store.set(groupSelectionAtom, {
+        catalog: emptyCatalog,
+        selectedIds: new Set(["a", "b", "c"]),
+      })
+    ).toBe(true);
     expect(store.get(nodesAtom).some((node) => isGroupNode(node))).toBe(true);
   });
 
@@ -831,13 +863,106 @@ describe("groupSelectionAtom", () => {
       ]
     );
 
-    expect(store.set(groupSelectionAtom)).toBe(true);
+    expect(store.set(groupSelectionAtom, { catalog: emptyCatalog })).toBe(true);
     const frame = store.get(nodesAtom).find((node) => isGroupNode(node));
     expect(frame?.data.config).toMatchObject({
       entryNodeIds: ["a", "b"],
       exitNodeId: "c",
       outletHandle: "true",
     });
+  });
+
+  // A pasted frame lands after the members already on the canvas, which costs
+  // `displayNodesAtom` its identity fast path on every render from then on.
+  it("keeps the order when a frame is pasted beside one already there", () => {
+    const store = createGraphStore(
+      [
+        lifecycleNode("life"),
+        groupableLookup("a", 0),
+        groupableLookup("b", 200),
+        {
+          ...actionNode("c", 100),
+          selected: true,
+          data: {
+            label: "c",
+            type: "action",
+            config: { actionType: BUILT_IN_ACTION_IDS.condition },
+          },
+        },
+      ],
+      [
+        edge("e-start-a", "life", "a"),
+        edge("e-start-b", "life", "b"),
+        edge("e-a", "a", "c"),
+        edge("e-b", "b", "c"),
+      ]
+    );
+    store.set(groupSelectionAtom, {
+      catalog: emptyCatalog,
+      selectedIds: new Set(["a", "b", "c"]),
+    });
+    store.set(copySelectionAtom);
+    store.set(pasteCopiedSelectionAtom);
+
+    const nodes = store.get(nodesAtom);
+    expect(orderGroupParentsFirst(nodes)).toBe(nodes);
+  });
+
+  /**
+   * React Flow deletes a frame by expanding it into its children, and it asks
+   * for no edge it was told it cannot delete. A frame's interior edges are
+   * painted `deletable: false`, and a collapsed inlet edge never reaches React
+   * Flow at all, so both survive a delete the node pass alone. The next save
+   * then refuses the graph, because those edges name nodes that are gone.
+   */
+  it("drops the edges a removed frame leaves behind", () => {
+    const store = createGraphStore(
+      [
+        lifecycleNode("life"),
+        groupableLookup("a", 0),
+        groupableLookup("b", 200),
+        {
+          ...actionNode("c", 100),
+          selected: true,
+          data: {
+            label: "c",
+            type: "action",
+            config: { actionType: BUILT_IN_ACTION_IDS.condition },
+          },
+        },
+      ],
+      [
+        edge("e-start-a", "life", "a"),
+        edge("e-start-b", "life", "b"),
+        edge("e-a", "a", "c"),
+        edge("e-b", "b", "c"),
+      ]
+    );
+    store.set(groupSelectionAtom, {
+      catalog: emptyCatalog,
+      selectedIds: new Set(["a", "b", "c"]),
+    });
+    const frameId = store.get(nodesAtom).find((node) => isGroupNode(node))?.id;
+    expect(frameId).toBeDefined();
+
+    store.set(snapshotHistoryAtom);
+    // The one painted edge React Flow can see and delete.
+    store.set(onEdgesChangeAtom, [{ type: "remove", id: "e-start-a" }]);
+    store.set(onNodesChangeAtom, [
+      { type: "remove", id: frameId ?? "" },
+      { type: "remove", id: "a" },
+      { type: "remove", id: "b" },
+      { type: "remove", id: "c" },
+    ]);
+
+    const liveIds = new Set(store.get(nodesAtom).map((node) => node.id));
+    expect(
+      store
+        .get(edgesAtom)
+        .filter(
+          (item) => !liveIds.has(item.source) || !liveIds.has(item.target)
+        )
+    ).toEqual([]);
   });
 });
 
@@ -908,7 +1033,7 @@ describe("setGroupEnabledAtom", () => {
         edge("e-after", "c", "after"),
       ]
     );
-    store.set(groupSelectionAtom);
+    store.set(groupSelectionAtom, { catalog: emptyCatalog });
     return store;
   }
 

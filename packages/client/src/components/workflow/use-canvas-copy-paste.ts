@@ -1,5 +1,6 @@
 import { useSetAtom } from "jotai";
 import { useCallback } from "react";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useDomEvent } from "#src/hooks/effects";
 import { isTextEntry } from "#src/lib/is-text-entry";
 import {
@@ -18,6 +19,7 @@ export function useCanvasCopyPaste(enabled: boolean) {
   const pasteSelection = useSetAtom(pasteCopiedSelectionAtom);
   const duplicateSelection = useSetAtom(duplicateSelectionAtom);
   const groupSelection = useSetAtom(groupSelectionAtom);
+  const catalog = useExtensionCatalog();
 
   const onKeyDown = useCallback(
     (event: KeyboardEvent) => {
@@ -47,11 +49,11 @@ export function useCanvasCopyPaste(enabled: boolean) {
         }
         return;
       }
-      if (key === "g" && groupSelection()) {
+      if (key === "g" && groupSelection({ catalog })) {
         event.preventDefault();
       }
     },
-    [copySelection, pasteSelection, duplicateSelection, groupSelection]
+    [copySelection, pasteSelection, duplicateSelection, groupSelection, catalog]
   );
 
   useDomEvent(window, "keydown", onKeyDown, { enabled });
