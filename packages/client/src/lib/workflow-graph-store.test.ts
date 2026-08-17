@@ -714,4 +714,43 @@ describe("updateNodeDataAtom rewrites template labels", () => {
       nested: { to: expected },
     });
   });
+
+  it("rewrites tokens even when the config still holds undefined optional keys", () => {
+    const token = formatTemplateToken({
+      nodeId: "a",
+      nodeLabel: "Fetch",
+      fieldPath: "email",
+    });
+    const store = createGraphStore(
+      [
+        lifecycleNode("t"),
+        {
+          ...actionNode("a"),
+          data: { label: "Fetch", type: "action" },
+        },
+        {
+          ...actionNode("b", 80),
+          data: {
+            label: "b",
+            type: "action",
+            config: { integrationId: undefined, body: token },
+          },
+        },
+      ],
+      []
+    );
+
+    store.set(updateNodeDataAtom, { id: "a", data: { label: "Renamed" } });
+
+    expect(
+      store.get(nodesAtom).find((node) => node.id === "b")?.data.config
+    ).toStrictEqual({
+      integrationId: undefined,
+      body: formatTemplateToken({
+        nodeId: "a",
+        nodeLabel: "Renamed",
+        fieldPath: "email",
+      }),
+    });
+  });
 });

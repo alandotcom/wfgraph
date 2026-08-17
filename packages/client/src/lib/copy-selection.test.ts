@@ -247,6 +247,43 @@ describe("cloneSelection", () => {
       list: [remappedA],
     });
   });
+
+  it("rewrites tokens even when the config still holds undefined optional keys", () => {
+    const tokenA = formatTemplateToken({
+      nodeId: "a",
+      nodeLabel: "Fetch",
+      fieldPath: "email",
+    });
+
+    const extracted = extractCopyableSelection({
+      nodes: [
+        actionNode("a", { x: 0, y: 0 }),
+        actionNode(
+          "b",
+          { x: 0, y: 0 },
+          { integrationId: undefined, body: tokenA }
+        ),
+      ],
+      edges: [],
+    });
+    if (!extracted) {
+      throw new Error("expected a copyable selection");
+    }
+
+    const cloned = cloneSelection(extracted, {
+      offset: { x: 0, y: 0 },
+      createId: sequentialIds(["a2", "b2"]),
+    });
+
+    expect(cloned.nodes[1]?.data.config).toStrictEqual({
+      integrationId: undefined,
+      body: formatTemplateToken({
+        nodeId: "a2",
+        nodeLabel: "Fetch",
+        fieldPath: "email",
+      }),
+    });
+  });
 });
 
 describe("offsetToOrigin", () => {

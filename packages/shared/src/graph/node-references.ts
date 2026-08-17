@@ -280,22 +280,26 @@ export function formatTemplateToken(input: {
 }
 
 /**
- * Rewrite every template token inside a JSON value. Returning `undefined`
- * leaves that token as it was. The same reference comes back when nothing
- * changed, so a rename can tell a dirty config from an untouched one.
+ * Rewrite every template token inside a config or JSON value. Returning
+ * `undefined` leaves that token as it was. The same reference comes back when
+ * nothing changed, so a rename can tell a dirty config from an untouched one.
+ *
+ * Live node configs may hold `undefined` for optional keys the editor cleared
+ * (`integrationId: undefined`). Those keys stay put; a JSON codec would reject
+ * the whole object and skip the rewrite.
  */
 export function mapTemplateTokens(
-  value: JsonObject,
+  value: Record<string, unknown>,
   rewrite: (token: TemplateToken) => string | undefined
-): JsonObject;
+): Record<string, unknown>;
 export function mapTemplateTokens(
   value: JsonValue,
   rewrite: (token: TemplateToken) => string | undefined
 ): JsonValue;
 export function mapTemplateTokens(
-  value: JsonValue,
+  value: unknown,
   rewrite: (token: TemplateToken) => string | undefined
-): JsonValue {
+): unknown {
   if (typeof value === "string") {
     return mapTemplateString(value, rewrite);
   }
@@ -314,7 +318,7 @@ export function mapTemplateTokens(
 
   if (typeof value === "object" && value !== null) {
     let changed = false;
-    const remapped: JsonObject = {};
+    const remapped: Record<string, unknown> = {};
     for (const [key, nested] of Object.entries(value)) {
       const mapped = mapTemplateTokens(nested, rewrite);
       if (mapped !== nested) {

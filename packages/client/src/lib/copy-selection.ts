@@ -10,7 +10,6 @@ import {
   formatTemplateToken,
   mapTemplateTokens,
 } from "@wfgraph/shared/graph/node-references";
-import { readJsonObject } from "@wfgraph/shared/types/json";
 import {
   toEditorEdge,
   toEditorNode,
@@ -168,12 +167,11 @@ function remapConfig(
   config: Record<string, unknown> | undefined,
   idMap: ReadonlyMap<string, string>
 ): Record<string, unknown> | undefined {
-  const json = readJsonObject(config);
-  if (!json) {
+  if (!config) {
     return config;
   }
 
-  const remapped = mapTemplateTokens(json, (token) => {
+  return mapTemplateTokens(config, (token) => {
     const nodeId = idMap.get(token.nodeId);
     if (!nodeId) {
       return undefined;
@@ -184,6 +182,4 @@ function remapConfig(
       fieldPath: token.fieldPath,
     });
   });
-
-  return remapped === json ? config : remapped;
 }

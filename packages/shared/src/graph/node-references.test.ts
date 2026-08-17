@@ -395,6 +395,32 @@ describe("mapTemplateTokens", () => {
 
     expect(mapTemplateTokens(config, () => undefined)).toBe(config);
   });
+
+  it("rewrites tokens in a config that still holds undefined optional keys", () => {
+    const token = formatTemplateToken({
+      nodeId: "a",
+      nodeLabel: "Fetch",
+      fieldPath: "email",
+    });
+    const remapped = formatTemplateToken({
+      nodeId: "a2",
+      nodeLabel: "Fetch",
+      fieldPath: "email",
+    });
+    const config = { integrationId: undefined, body: token };
+
+    expect(
+      mapTemplateTokens(config, (tokenMatch) =>
+        tokenMatch.nodeId === "a"
+          ? formatTemplateToken({
+              nodeId: "a2",
+              nodeLabel: tokenMatch.nodeLabel,
+              fieldPath: tokenMatch.fieldPath,
+            })
+          : undefined
+      )
+    ).toStrictEqual({ integrationId: undefined, body: remapped });
+  });
 });
 
 describe("formatTemplateToken", () => {

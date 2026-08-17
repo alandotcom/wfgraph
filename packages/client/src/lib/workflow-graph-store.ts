@@ -33,7 +33,6 @@ import {
   formatTemplateToken,
   mapTemplateTokens,
 } from "@wfgraph/shared/graph/node-references";
-import { readJsonObject } from "@wfgraph/shared/types/json";
 import { inactiveCanceledBranch } from "#src/lib/inactive-canceled-branch";
 import type {
   NodeRunStatus,
@@ -743,12 +742,7 @@ function updateTemplatesInConfig(
   oldLabel: string,
   newLabel: string
 ): Record<string, unknown> {
-  const json = readJsonObject(config);
-  if (!json) {
-    return config;
-  }
-
-  const remapped = mapTemplateTokens(json, (token) => {
+  return mapTemplateTokens(config, (token) => {
     if (token.nodeId !== nodeId || token.nodeLabel !== oldLabel) {
       return undefined;
     }
@@ -758,8 +752,6 @@ function updateTemplatesInConfig(
       fieldPath: token.fieldPath,
     });
   });
-
-  return remapped === json ? config : remapped;
 }
 
 export const deleteNodeAtom = atom(null, (get, set, nodeId: string) => {
