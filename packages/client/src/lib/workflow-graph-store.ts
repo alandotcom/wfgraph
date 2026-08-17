@@ -33,6 +33,10 @@ import {
 } from "@wfgraph/shared/graph/node-references";
 import { inactiveBranch } from "#src/lib/inactive-branch";
 import {
+  EMPTY_ISSUES,
+  workflowIssuesByNodeIdAtom,
+} from "#src/lib/workflow-issues-store";
+import {
   dissolveUndersizedGroups,
   dropOrphanedEdges,
   expandEdgeRemovals,
@@ -59,6 +63,7 @@ import {
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-cells";
 import type {
+  NodeIssueSummary,
   NodeRunStatus,
   WorkflowEdge,
   WorkflowNode,
@@ -137,15 +142,38 @@ const inactiveBranchAtom = atom((get) => {
 });
 
 const INACTIVE_NODE_STYLE = { opacity: 0.5 } as const;
-const INACTIVE_EDGE_STYLE = { opacity: 0.4 } as const;
+
+/**
+ * The last painted copy of a node, keyed by the node it was painted from.
+ *
+ * The fast path below covers a canvas with nothing to merge, and a validation
+ * badge takes that away as soon as one step is half-built, which is most of a
+ * canvas being built. Without this, dragging one node handed every flagged card
+ * a fresh `data` object once per frame. The four inputs are stored beside the
+ * result, since the same node has to be repainted when any of them changes.
+ */
+type PaintedNode = {
+  status: NodeRunStatus | undefined;
+  disabledFrame: boolean;
+  muted: boolean;
+  issues: NodeIssueSummary | undefined;
+  painted: WorkflowNode;
+};
+const paintedNodes = new WeakMap<WorkflowNode, PaintedNode>();
 
 export const displayNodesAtom = atom((get) => {
-  const nodes = get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom);
+  const overlay = get(executionOverlayGraphAtom);
+  const nodes = overlay?.nodes ?? get(nodesStateAtom);
   const statusByNodeId = get(statusByNodeIdAtom);
   const { nodeIds } = get(inactiveBranchAtom);
   const ordered = orderGroupParentsFirst(nodes);
   // Merged at display time like the run status above it.
   const disabledFrameIds = disabledGroupIds(nodes);
+  // A past run's graph is not the draft, so validating it would badge nodes
+  // against a canvas the builder cannot edit.
+  const issuesByNodeId = overlay
+    ? EMPTY_ISSUES
+    : get(workflowIssuesByNodeIdAtom);
 
   // The common case -- no run is being painted and every node is reachable --
   // has nothing to merge, so the nodes come back exactly as they went in.
@@ -157,7 +185,8 @@ export const displayNodesAtom = atom((get) => {
   if (
     statusByNodeId.size === 0 &&
     nodeIds.size === 0 &&
-    disabledFrameIds.size === 0
+    disabledFrameIds.size === 0 &&
+    issuesByNodeId.size === 0
   ) {
     return ordered;
   }
@@ -173,27 +202,51 @@ export const displayNodesAtom = atom((get) => {
     // Dimming it a second time here would take it to a quarter opacity.
     const muted =
       nodeIds.has(node.id) && !disabledFrame && node.data.enabled !== false;
+    const issues = issuesByNodeId.get(node.id);
 
-    if (!(paintingRun || disabledFrame || muted)) {
+    if (!(paintingRun || disabledFrame || muted || issues)) {
       return node;
+    }
+
+    const status = paintingRun
+      ? (statusByNodeId.get(node.id) ?? "idle")
+      : undefined;
+
+    const cached = paintedNodes.get(node);
+    if (
+      cached &&
+      cached.status === status &&
+      cached.disabledFrame === disabledFrame &&
+      cached.muted === muted &&
+      cached.issues === issues
+    ) {
+      return cached.painted;
     }
 
     const withStatus: WorkflowNode = {
       ...node,
       data: {
         ...node.data,
-        ...(paintingRun
-          ? { status: statusByNodeId.get(node.id) ?? "idle" }
-          : {}),
+        ...(status ? { status } : {}),
         ...(disabledFrame ? { enabled: false } : {}),
+        ...(issues ? { issues } : {}),
       },
     };
-    return muted
+    const painted = muted
       ? {
           ...withStatus,
           style: { ...withStatus.style, ...INACTIVE_NODE_STYLE },
         }
       : withStatus;
+
+    paintedNodes.set(node, {
+      status,
+      disabledFrame,
+      muted,
+      issues,
+      painted,
+    });
+    return painted;
   });
 });
 export const displayEdgesAtom = atom((get) => {
@@ -216,15 +269,13 @@ export const displayEdgesAtom = atom((get) => {
     }
     return {
       ...edge,
-      style: { ...edge.style, ...INACTIVE_EDGE_STYLE },
-      ...(outletEdgeIds.has(edge.id)
-        ? {
-            data: {
-              ...edge.data,
-              displayLabel: "No Cancel Event",
-            },
-          }
-        : {}),
+      data: {
+        ...edge.data,
+        inactive: true,
+        ...(outletEdgeIds.has(edge.id)
+          ? { displayLabel: "No Cancel Event" }
+          : {}),
+      },
     };
   });
 });

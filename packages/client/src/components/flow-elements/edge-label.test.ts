@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  isMutedEdgeStyle,
-  resolveEdgeLabel,
-} from "#src/components/flow-elements/edge-label";
+import { resolveEdgeLabel } from "#src/components/flow-elements/edge-label";
 
 describe("resolveEdgeLabel", () => {
   it("reads True/False from a condition branch handle", () => {
@@ -19,13 +16,5 @@ describe("resolveEdgeLabel", () => {
   it("answers null when nothing labels the edge", () => {
     expect(resolveEdgeLabel(undefined, undefined)).toBeNull();
     expect(resolveEdgeLabel("other", undefined)).toBeNull();
-  });
-});
-
-describe("isMutedEdgeStyle", () => {
-  it("treats an opacity style as muted", () => {
-    expect(isMutedEdgeStyle({ opacity: 0.4 })).toBe(true);
-    expect(isMutedEdgeStyle({})).toBe(false);
-    expect(isMutedEdgeStyle(undefined)).toBe(false);
   });
 });

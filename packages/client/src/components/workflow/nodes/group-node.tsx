@@ -24,14 +24,21 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
   return (
     <div
       className={cn(
-        "flex h-full w-full flex-col rounded-md border bg-muted/40 shadow-none",
+        // A solid fill, not the old `bg-muted/40`: 40% of oklch(0.97) over the
+        // Paper canvas lands near oklch(0.988), which is why the frame read as
+        // transparent. Solid `--muted` gives the canvas three tones to order --
+        // Paper canvas, recessed frame, Paper member cards -- and it inverts on
+        // its own in dark, where Void, 0.15 and 0.205 stack the same way.
+        "flex h-full w-full flex-col rounded-md border-[1.5px] border-canvas-line bg-muted shadow-none",
         selected && "border-primary",
         isDisabled && "opacity-50"
       )}
       data-testid={`group-node-${id}`}
     >
       <Handle position={Position.Top} type="target" />
-      <div className="flex h-9 shrink-0 items-center gap-2 px-3 font-medium text-sm">
+      {/* The rule under the title is what separates the frame's own chrome from
+          the members below it; without it the header floats in the fill. */}
+      <div className="flex h-9 shrink-0 items-center gap-2 border-canvas-line/60 border-b px-3 font-medium text-sm">
         {isDisabled && (
           <span className="rounded-full bg-muted-foreground/50 p-1">
             <EyeOff className="size-3.5 text-background" />

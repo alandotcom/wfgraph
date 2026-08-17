@@ -159,10 +159,13 @@ lives as long as that Execution; one that no Execution pins and no workflow
 names is swept once it falls outside the newest ten.
 
 **Publish**:
-The hard gate that turns a draft into a Workflow Version. Content-hash
-dedupe stops an idle editor from accreting identical versions. The event
-subscription index tracks the published graph, so a half-built draft cannot
-start runs.
+The hard gate that turns a draft into a Workflow Version, and the only place a
+graph is held to whether it can run: required fields, Events, Event Split
+outlets, template references, connections, and unreachable subtrees. A draft
+save asks none of that and stores whatever parses, because a half-built node is
+the ordinary state of an editor session. Content-hash dedupe stops an idle
+editor from accreting identical versions. The event subscription index tracks
+the published graph, so a half-built draft cannot start runs.
 
 **Execution**:
 One run of one workflow, started by a Start Event, a schedule, or a manual

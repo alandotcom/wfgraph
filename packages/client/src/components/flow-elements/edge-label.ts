@@ -14,10 +14,3 @@ export function resolveEdgeLabel(
 ): string | null {
   return getConditionBranchDisplayLabel(sourceHandleId) ?? data?.displayLabel ?? null;
 }
-
-/** Display atoms mute an inactive Canceled subtree by setting style.opacity. */
-export function isMutedEdgeStyle(
-  style: { opacity?: number | string } | undefined
-): boolean {
-  return style?.opacity !== undefined;
-}

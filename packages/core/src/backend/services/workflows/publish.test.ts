@@ -2,7 +2,7 @@ import { assert, describe, it as standalone, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
 import { DatabaseError } from "#src/backend/lib/effect/database";
-import { Conflict } from "#src/backend/lib/effect/failures";
+import { Conflict, InvalidInput } from "#src/backend/lib/effect/failures";
 import {
   makeRecordingLogger,
   SilentAppLoggerLayer,
@@ -415,6 +415,73 @@ describe("publishWorkflow", () => {
         recording.warnLines[0]?.message.includes("prune"),
         `expected a prune warning, got: ${recording.warnLines[0]?.message}`
       );
+    })
+  );
+
+  /**
+   * The other half of the draft/publish split. A graph the draft save now stores
+   * without complaint has to stop here instead, and it has to stop before any
+   * version row is minted.
+   */
+  standalone.effect("refuses a half-built graph and mints nothing", () =>
+    Effect.gen(function* () {
+      let minted = 0;
+      const repo = stubWorkflowRepo({
+        findById: () => Effect.succeed(draft),
+        findVersionByContent: () => Effect.succeed(null),
+        findLatestVersion: () => Effect.succeed(null),
+        insertPublishedVersion: (input) =>
+          Effect.sync(() => {
+            minted += 1;
+            return mintedFrom(input);
+          }),
+      });
+
+      const failure = yield* publishWorkflow({
+        workflowId: "wf_1",
+        graph: createSerializedWorkflowGraph({
+          nodes: [
+            {
+              id: "lifecycle-1",
+              type: "lifecycle",
+              position: { x: 0, y: 0 },
+              data: {
+                label: "Start",
+                type: "lifecycle",
+                config: { lifecycleRules: rules },
+              },
+            },
+            {
+              id: "action-1",
+              type: "action",
+              position: { x: 200, y: 0 },
+              data: { label: "Notify", type: "action", config: {} },
+            },
+          ],
+          edges: [
+            {
+              id: "e1",
+              source: "lifecycle-1",
+              target: "action-1",
+              sourceHandle: "started",
+            },
+          ],
+        }),
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            repo,
+            SilentAppLoggerLayer,
+            catalogLayer,
+            stubIntegrationRepo({ typesByIds: () => Effect.succeed({}) })
+          )
+        ),
+        Effect.flip
+      );
+
+      assert.instanceOf(failure, InvalidInput);
+      assert.isTrue(failure.error.includes("no action selected"));
+      assert.strictEqual(minted, 0);
     })
   );
 });

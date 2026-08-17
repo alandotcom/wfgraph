@@ -117,7 +117,11 @@ function renderHandles(
 export const Node = ({ handles, className, status, ...props }: NodeProps) => (
   <Card
     className={cn(
-      "node-container relative flex flex-col items-center justify-center gap-0 overflow-visible rounded-md bg-card p-0 shadow-none transition-all duration-150 ease-out",
+      // The resting border is heavier and darker than Card's hairline: a node is
+      // Paper on a Paper canvas, so this stroke is the whole card edge. Status
+      // still steps up to 2px below, so a run reads as a change in weight and
+      // not only in colour.
+      "node-container relative flex flex-col items-center justify-center gap-0 overflow-visible rounded-md border-[1.5px] border-canvas-line bg-card p-0 shadow-none transition-all duration-150 ease-out",
       status === "success" && "border-2 border-success",
       status === "error" && "border-2 border-destructive",
       status === "cancelled" && "border-2 border-cancelled",

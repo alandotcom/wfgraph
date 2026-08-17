@@ -196,6 +196,12 @@ export const saveWorkflowAtom = atom(
     // The edit is unsaved from the moment it is queued, whether or not there is
     // a workflow to send it to yet.
     set(hasUnsavedChangesAtom, true);
+    // A newer edit retires the last failure: the write that failed is not the
+    // one the editor is now holding. Without this the failure never clears --
+    // the dirty flag is not lowered on the failure path -- and the status
+    // readout could never reach "Save failed", because a failed save always
+    // leaves something unsaved to report instead.
+    set(lastSaveErrorAtom, null);
 
     const workflowId = get(currentWorkflowIdAtom);
     if (!workflowId) {

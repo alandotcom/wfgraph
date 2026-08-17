@@ -77,5 +77,5 @@ export function eventSplitCardWidth(outletCount: number): number {
  * value so a resize is one edit; `GeneratedImageThumbnail` also matches its
  * `<img>` width and height to it in pixels.
  */
-export const NODE_ICON_CLASS = "size-6";
-export const NODE_ICON_PX = 24;
+export const NODE_ICON_CLASS = "size-5";
+export const NODE_ICON_PX = 20;

@@ -11,17 +11,13 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
-import {
-  Conflict,
-  InvalidInput,
-  NotFound,
-} from "#src/backend/lib/effect/failures";
+import { Conflict, NotFound } from "#src/backend/lib/effect/failures";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import { toWorkflowApiPayload } from "#src/backend/services/workflows/mappers";
 import type { WorkflowPublishPayload } from "@wfgraph/shared/graph/api-contracts";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
-import { checkUnreachableSubtrees } from "#src/backend/services/workflows/publish-checks";
+import { checkPublishReadiness } from "#src/backend/services/workflows/publish-checks";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
   catalogFingerprint,
@@ -34,8 +30,6 @@ const loggerFor = (workflowId: string) =>
   Effect.map(AppLogger, (appLogger) =>
     appLogger.get("publish").with({ workflowId })
   );
-
-const publishOnlyChecks = [checkUnreachableSubtrees] as const;
 
 const STALE_PUBLISH_MESSAGE =
   "This workflow was published elsewhere. Refresh and try again.";
@@ -56,9 +50,9 @@ const VERSION_PRUNE_BATCH = 50;
 /**
  * Publish the graph the editor sent as an immutable version.
  *
- * Runs the ordinary graph+catalog battery plus the publish-only unreachable-
- * subtree check. A Canceled branch with no Cancel Event is drawable and never
- * entered; the editor shows it inactive rather than refusing publish. Content-
+ * Runs the graph's shape battery and then the whole readiness battery, which no
+ * draft save asks for. A Canceled branch with no Cancel Event is drawable and
+ * never entered; the editor shows it inactive rather than refusing publish. Content-
  * hash dedupe reuses any prior version with the same digest and fingerprint, so
  * an idle editor does not accrete rows — that path only re-points the workflow
  * and rewrites subscriptions. A new version number is read outside the write and
@@ -86,18 +80,19 @@ export const publishWorkflow = Effect.fn("publishWorkflow")(
       )
     );
 
-    for (const check of publishOnlyChecks) {
-      const result = check({
-        nodes: prepared.nodes,
-        edges: prepared.edges,
-      });
-      if (!result.valid) {
-        yield* logger.warn("Rejected workflow publish", {
-          error: result.error,
-        });
-        return yield* new InvalidInput({ error: result.error });
-      }
-    }
+    // The readiness battery runs here and nowhere else on a write path. A draft
+    // save asks none of it, so this is the first time the graph is held to
+    // whether it can actually run.
+    yield* checkPublishReadiness({
+      nodes: prepared.nodes,
+      edges: prepared.edges,
+    }).pipe(
+      Effect.tapError((failure) =>
+        "error" in failure
+          ? logger.warn("Rejected workflow publish", { error: failure.error })
+          : Effect.void
+      )
+    );
 
     const digest = graphDigest(prepared.graph);
     const fingerprint = catalogFingerprint(catalog);

@@ -24,6 +24,11 @@
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
+  /* The canvas structural stroke: a node's border and the wire between two of
+     them. Solved for the 3:1 that WCAG 1.4.11 asks of a graphic carrying
+     meaning, which a hairline `--border` misses by a wide margin on a white
+     canvas. See DESIGN.md section 2. */
+  --color-canvas-line: var(--canvas-line);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   /* Run-status signals. Every value is solved so the text form clears 4.5:1 on
@@ -95,6 +100,14 @@
   --node-condition: oklch(0.673 0.16 346.018);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
+  /* 3.95:1 on Paper. A node card is Paper on a Paper canvas, so this stroke is
+     the only thing drawing its edge; `--border` sits at 1.20:1 and vanishes. */
+  --canvas-line: oklch(0.6 0 0);
+  /* 2.00:1: an edge into a subtree the run cannot reach. Quieter than a live
+     wire and still followable. It is its own value per theme rather than a
+     `color-mix` toward the background, because mixing toward Paper lightens and
+     mixing toward Void darkens, so one expression cannot serve both. */
+  --canvas-line-muted: oklch(0.78 0 0);
   /* Solved for SC 1.4.11: the old oklch(0.708) put the focus border at 2.59:1
      on Paper, under the 3:1 floor for a non-text indicator. */
   --ring: oklch(0.6 0 0);
@@ -142,6 +155,12 @@
   --cancelled: oklch(0.7 0.046 257.417);
   --border: oklch(0.27 0 0);
   --input: oklch(0.27 0 0);
+  /* 3.21:1 on Void, where the light theme's 0.6 would measure 8.4:1 and paint a
+     brighter wire than the node it connects. oklch(0.45) misses the floor at
+     2.82:1, so 0.48 is the first step that clears it. */
+  --canvas-line: oklch(0.48 0 0);
+  /* 2.01:1 on Void, the same step down from live that the light theme takes. */
+  --canvas-line-muted: oklch(0.37 0 0);
   --ring: oklch(0.8 0 0);
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
@@ -261,10 +280,12 @@
 
 /* React Flow ships a blue-tinted grey edge stroke that is identical in both
    themes. Against Void it measured 9.84:1 while the node border it connects
-   measured 1.39:1, so the wire read louder than the node. Route it through the
-   border token instead, which inverts with the theme. */
+   measured 1.39:1, so the wire read louder than the node. Both now come off
+   `--canvas-line`, so they invert with the theme and sit at one weight: a wire
+   and the card it lands on are the same kind of line, and neither should
+   out-shout the other. */
 .react-flow {
-  --xy-edge-stroke-default: var(--border);
+  --xy-edge-stroke-default: var(--canvas-line);
   --xy-edge-stroke-selected-default: var(--primary);
   --xy-connectionline-stroke-default: var(--muted-foreground);
 }
@@ -309,8 +330,13 @@
   outline: none;
 }
 
+/* The border shifts to `--foreground` rather than the `--ring` every other focus
+   treatment uses, because a node at rest is already drawn in `--canvas-line`,
+   which is the same value as `--ring` in light mode. Shifting one to the other
+   would change nothing and leave the halo carrying focus alone, which DESIGN.md
+   section 5 says it must not. */
 .react-flow__node:focus-visible .node-container {
-  border-color: var(--ring);
+  border-color: var(--foreground);
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent);
 }
 

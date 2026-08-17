@@ -115,9 +115,6 @@ function SaveButton({
       ) : (
         <Save className="size-4" />
       )}
-      {state.hasUnsavedChanges && !state.isSaving && (
-        <div className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary" />
-      )}
     </Button>
   );
 }
@@ -432,31 +429,35 @@ export function WorkflowMenuComponent({
   return (
     <>
       <div className="flex flex-col gap-1">
-        <div className="flex h-9 max-w-[160px] items-center overflow-hidden rounded-md border bg-secondary text-secondary-foreground sm:max-w-none">
+        {/* A breadcrumb rather than one dropdown: the way out of the editor used
+            to be the first item inside this menu, which is a place nobody looks
+            for navigation. The crumb leaves; the trigger beside it still
+            switches workflows. */}
+        <div className="flex h-9 max-w-[260px] items-center overflow-hidden rounded-md border bg-secondary text-secondary-foreground sm:max-w-none">
+          <button
+            className="flex h-full shrink-0 cursor-pointer items-center gap-2 px-3 font-medium text-sm transition-all hover:bg-accent dark:hover:bg-accent"
+            onClick={() => navigate({ to: "/" })}
+            type="button"
+          >
+            <WorkflowIcon className="size-4 shrink-0" />
+            <span className="hidden @xl:inline">Dashboard</span>
+          </button>
+          <span aria-hidden="true" className="text-muted-foreground/60">
+            /
+          </span>
           <DropdownMenu
             onOpenChange={(open) => open && actions.loadWorkflows()}
           >
-            <DropdownMenuTrigger className="flex h-full cursor-pointer items-center gap-2 px-3 font-medium text-sm transition-all hover:bg-secondary dark:hover:bg-secondary">
-              <WorkflowIcon className="size-4 shrink-0" />
+            <DropdownMenuTrigger className="flex h-full min-w-0 cursor-pointer items-center gap-2 px-3 font-medium text-sm transition-all hover:bg-accent dark:hover:bg-accent">
+              {/* Named for what it is when there is no id yet: a canvas nobody
+                  has saved. It used to read "Workflow Dashboard" here, which
+                  named a screen the user was not on. */}
               <p className="truncate font-medium text-sm">
-                {workflowId ? (
-                  state.workflowName
-                ) : (
-                  <>
-                    <span className="sm:hidden">Dashboard</span>
-                    <span className="hidden sm:inline">Workflow Dashboard</span>
-                  </>
-                )}
+                {state.workflowName || "Untitled workflow"}
               </p>
               <ChevronDown className="size-3 shrink-0 opacity-50" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-64">
-              <DropdownMenuItem
-                className="flex items-center justify-between"
-                onClick={() => navigate({ to: "/" })}
-              >
-                Dashboard {!workflowId && <Check className="size-4 shrink-0" />}
-              </DropdownMenuItem>
               <DropdownMenuItem
                 className="flex items-center gap-2"
                 onClick={() => {

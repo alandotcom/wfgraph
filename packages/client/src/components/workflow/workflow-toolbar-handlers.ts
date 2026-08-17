@@ -7,7 +7,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import {
@@ -17,7 +17,7 @@ import {
 import { WorkflowIssuesOverlay } from "#src/components/overlays/workflow-issues-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useDeleteWorkflow } from "#src/hooks/use-delete-workflow";
-import { useDomEvent } from "#src/hooks/effects";
+import { useAfterPaint, useDomEvent } from "#src/hooks/effects";
 import { isTextEntry } from "#src/lib/is-text-entry";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
@@ -82,6 +82,7 @@ import {
   groupWorkflowIssuesForOverlay,
   hasBlockingWorkflowIssues,
 } from "@wfgraph/shared/graph/workflow-issues";
+import { toPersistedNodes } from "#src/lib/workflow-graph-types";
 
 type WorkflowHandlerParams = {
   currentWorkflowId: string | null;
@@ -115,6 +116,13 @@ function useWorkflowHandlers({
   userIntegrations,
 }: WorkflowHandlerParams) {
   const catalog = useExtensionCatalog();
+  // The field a "Fix" link is heading for. The panel holding it mounts in the
+  // commit `handleGoToStep` triggers, so the focus waits for that paint rather
+  // than for the 100ms timeout this replaced, which was a race the panel won
+  // only because it is fast.
+  const [pendingFieldFocus, setPendingFieldFocus] = useState<string | null>(
+    null
+  );
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -252,18 +260,21 @@ function useWorkflowHandlers({
   const handleGoToStep = (nodeId: string, fieldKey?: string) => {
     setSelectedNodeId(nodeId);
     setActiveTab("properties");
-
-    // Focus on the specific field after a short delay to allow the panel to render
-    if (fieldKey) {
-      setTimeout(() => {
-        const element = document.getElementById(fieldKey);
-        if (element) {
-          element.focus();
-          element.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-      }, 100);
-    }
+    setPendingFieldFocus(fieldKey ?? null);
   };
+
+  useAfterPaint(pendingFieldFocus, () => {
+    if (!pendingFieldFocus) {
+      return;
+    }
+    setPendingFieldFocus(null);
+    const element = document.getElementById(pendingFieldFocus);
+    if (!element) {
+      return;
+    }
+    element.focus();
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
 
   const handleExecute = async () => {
     // Guard against concurrent executions
@@ -272,7 +283,7 @@ function useWorkflowHandlers({
     }
 
     const issues = collectWorkflowIssues({
-      nodes,
+      nodes: toPersistedNodes(nodes),
       catalog,
       integrations: userIntegrations,
     });
@@ -291,9 +302,26 @@ function useWorkflowHandlers({
     openTestRunOverlay();
   };
 
+  /** The issues list, opened from the toolbar chip rather than by running. */
+  const handleShowIssues = () => {
+    const issues = collectWorkflowIssues({
+      nodes: toPersistedNodes(nodes),
+      catalog,
+      integrations: userIntegrations,
+    });
+
+    openOverlay(WorkflowIssuesOverlay, {
+      issues: groupWorkflowIssuesForOverlay(issues),
+      onGoToStep: handleGoToStep,
+      allowRunAnyway: false,
+    });
+  };
+
   return {
     handleSave,
     handleExecute,
+    handleShowIssues,
+    handleGoToStep,
   };
 }
 
@@ -362,6 +390,7 @@ export function useWorkflowState() {
 export type WorkflowToolbarState = ReturnType<typeof useWorkflowState>;
 
 export function useWorkflowActions(state: WorkflowToolbarState) {
+  const catalog = useExtensionCatalog();
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -386,21 +415,22 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     userIntegrations,
   } = state;
 
-  const { handleSave, handleExecute } = useWorkflowHandlers({
-    currentWorkflowId,
-    workflowName,
-    nodes,
-    edges,
-    updateNodeData,
-    isExecuting,
-    setIsExecuting,
-    setCurrentWorkflowName,
-    setWorkflowNameError,
-    setIsTransitioningFromHomepage,
-    setActiveTab,
-    setSelectedNodeId,
-    userIntegrations,
-  });
+  const { handleSave, handleExecute, handleShowIssues, handleGoToStep } =
+    useWorkflowHandlers({
+      currentWorkflowId,
+      workflowName,
+      nodes,
+      edges,
+      updateNodeData,
+      isExecuting,
+      setIsExecuting,
+      setCurrentWorkflowName,
+      setWorkflowNameError,
+      setIsTransitioningFromHomepage,
+      setActiveTab,
+      setSelectedNodeId,
+      userIntegrations,
+    });
 
   // Cmd+Enter runs the workflow. The listener lives here, beside handleExecute,
   // so the shortcut and the Run button are the same call rather than a store
@@ -496,6 +526,27 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     if (!currentWorkflowId) {
       return;
     }
+
+    // Says the common half early: required fields and connections, which the
+    // canvas has been badging all along. The server stays the authority and
+    // asks more than this -- Events, Event Split outlets, template types,
+    // unreachable subtrees -- so a graph can still be refused after passing
+    // here. A draft saves in any state; this gate does not move, so there is no
+    // Publish Anyway.
+    const issues = collectWorkflowIssues({
+      nodes: toPersistedNodes(nodes),
+      catalog,
+      integrations: userIntegrations,
+    });
+    if (hasBlockingWorkflowIssues(issues)) {
+      openOverlay(WorkflowIssuesOverlay, {
+        issues: groupWorkflowIssuesForOverlay(issues),
+        onGoToStep: handleGoToStep,
+        allowRunAnyway: false,
+      });
+      return;
+    }
+
     publishWorkflow.mutate({
       workflowId: currentWorkflowId,
       graph: toSerializedGraph({ nodes, edges }),
@@ -526,6 +577,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
   return {
     handleSave,
     handleExecute,
+    handleShowIssues,
     handleClearWorkflow,
     handleDeleteWorkflow,
     loadWorkflows,
