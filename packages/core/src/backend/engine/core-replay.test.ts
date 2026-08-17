@@ -415,6 +415,107 @@ describe("workflow engine replay safety", () => {
 
     expect(branchAction).toHaveBeenCalledTimes(3);
   });
+
+  it("runs an AND-join once after both parallel predecessors complete", async () => {
+    const joinInput = {
+      graph: createSerializedWorkflowGraph({
+        nodes: [
+          createLifecycleNode("lifecycle_1"),
+          createActionNode("left_1", BRANCH_ACTION_ID, "Left Lookup"),
+          createActionNode("right_1", BRANCH_ACTION_ID, "Right Lookup"),
+          createActionNode("join_1", BRANCH_ACTION_ID, "Join"),
+        ],
+        edges: [
+          {
+            id: "edge_1",
+            source: "lifecycle_1",
+            sourceHandle: "started",
+            target: "left_1",
+          },
+          {
+            id: "edge_2",
+            source: "lifecycle_1",
+            sourceHandle: "started",
+            target: "right_1",
+          },
+          { id: "edge_3", source: "left_1", target: "join_1" },
+          { id: "edge_4", source: "right_1", target: "join_1" },
+        ],
+      }),
+      executionId: "exec_join",
+      workflowId: "workflow_join",
+    };
+
+    const result = await executeWorkflow(
+      joinInput,
+      createReplayRuntime(new Map()),
+      store,
+      actions
+    );
+
+    expect(result.success).toBe(true);
+    expect(branchAction).toHaveBeenCalledTimes(3);
+    expect(result.results).toMatchObject({
+      left_1: { success: true },
+      right_1: { success: true },
+      join_1: { success: true },
+    });
+  });
+
+  it("does not run an AND-join when one predecessor fails", async () => {
+    const failingLeft = vi.fn(() => {
+      throw new Error("left lookup failed");
+    });
+    const failingActions = createWorkflowActions(
+      assembleExtensions({
+        actions: [
+          aHostAction("test/join-left", "Left Lookup", failingLeft),
+          aHostAction(BRANCH_ACTION_ID, "Branch Action", branchAction),
+        ],
+      }),
+      stubWfGraphRuntime()
+    );
+
+    const joinInput = {
+      graph: createSerializedWorkflowGraph({
+        nodes: [
+          createLifecycleNode("lifecycle_1"),
+          createActionNode("left_1", "test/join-left", "Left Lookup"),
+          createActionNode("right_1", BRANCH_ACTION_ID, "Right Lookup"),
+          createActionNode("join_1", BRANCH_ACTION_ID, "Join"),
+        ],
+        edges: [
+          {
+            id: "edge_1",
+            source: "lifecycle_1",
+            sourceHandle: "started",
+            target: "left_1",
+          },
+          {
+            id: "edge_2",
+            source: "lifecycle_1",
+            sourceHandle: "started",
+            target: "right_1",
+          },
+          { id: "edge_3", source: "left_1", target: "join_1" },
+          { id: "edge_4", source: "right_1", target: "join_1" },
+        ],
+      }),
+      executionId: "exec_join_fail",
+      workflowId: "workflow_join_fail",
+    };
+
+    const result = await executeWorkflow(
+      joinInput,
+      createReplayRuntime(new Map()),
+      store,
+      failingActions
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.results.join_1).toBeUndefined();
+    expect(branchAction).toHaveBeenCalledTimes(1);
+  });
 });
 
 /**

@@ -400,6 +400,45 @@ describe("eventsReaching", () => {
     expect(namesReaching("orphan", nodes, [])).toEqual([]);
   });
 
+  it("intersects Events across AND-join arms", () => {
+    const nodes = [
+      entryNode({ startEvents: [CREATED, RESCHEDULED] }),
+      actionNode("left"),
+      actionNode("right"),
+      actionNode("join"),
+    ];
+
+    expect(
+      namesReaching("join", nodes, [
+        edge("e1", "lifecycle-1", "left", LIFECYCLE_STARTED_HANDLE),
+        edge("e2", "lifecycle-1", "right", LIFECYCLE_STARTED_HANDLE),
+        edge("e3", "left", "join"),
+        edge("e4", "right", "join"),
+      ])
+    ).toEqual([CREATED, RESCHEDULED]);
+  });
+
+  it("offers nothing at an AND-join of Started and Canceled", () => {
+    const nodes = [
+      entryNode({
+        startEvents: [CREATED],
+        cancelEvents: [CANCELED],
+      }),
+      actionNode("started-arm"),
+      actionNode("canceled-arm"),
+      actionNode("join"),
+    ];
+
+    expect(
+      namesReaching("join", nodes, [
+        edge("e1", "lifecycle-1", "started-arm", LIFECYCLE_STARTED_HANDLE),
+        edge("e2", "lifecycle-1", "canceled-arm", LIFECYCLE_CANCELED_HANDLE),
+        edge("e3", "started-arm", "join"),
+        edge("e4", "canceled-arm", "join"),
+      ])
+    ).toEqual([]);
+  });
+
   it("offers nothing through an entry edge naming no outlet", () => {
     const nodes = [
       entryNode({ startEvents: [CREATED] }),

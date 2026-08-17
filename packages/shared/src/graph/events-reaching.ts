@@ -252,11 +252,11 @@ function actionOutputPaths(
  * The Events that could have put a run at this node, narrowed by the Conditions
  * it sits behind.
  *
- * A node carries one incoming edge, which the save refuses more than one of, so
- * the answer follows a single chain up to the entry node rather than a pass over
- * the graph. A node that chain never reaches is offered nothing: the save
- * refuses an entry edge naming no outlet too, so both silences describe a graph
- * that cannot run.
+ * A node with one incoming edge follows a single chain up to the entry node. A
+ * node with several is an AND-join: every path that could complete must agree,
+ * so the answer is the intersection of the Events each path admits. A node no
+ * path reaches is offered nothing: the save refuses an entry edge naming no
+ * outlet too, so both silences describe a graph that cannot run.
  *
  * Where the walk cannot tell, it keeps the Event. Offering a field too many is
  * noise a builder can read past; hiding one is a promise they cannot see broken.
@@ -269,36 +269,78 @@ export function eventsReaching(input: {
 }): EventMetadata[] {
   const { catalog } = input;
   const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
-  const incomingByTarget = new Map<string, WorkflowEdge>();
+  const incomingByTarget = new Map<string, WorkflowEdge[]>();
   for (const edge of input.edges) {
-    if (!incomingByTarget.has(edge.target)) {
-      incomingByTarget.set(edge.target, edge);
+    const list = incomingByTarget.get(edge.target);
+    if (list) {
+      list.push(edge);
+    } else {
+      incomingByTarget.set(edge.target, [edge]);
     }
   }
 
-  // The chain from the target up to the entry node, nearest first. Saving
-  // refuses a cycle, and this runs against whatever the canvas currently holds,
-  // so the walk stops at a node it has already passed.
-  const chain: { parent: WorkflowNode; handle: unknown }[] = [];
-  const seen = new Set<string>([input.targetNodeId]);
-  let cursor = input.targetNodeId;
-
-  for (;;) {
-    const edge = incomingByTarget.get(cursor);
-    const parent = edge && nodeById.get(edge.source);
-    if (!(edge && parent) || seen.has(parent.id)) {
-      return [];
-    }
-
-    chain.push({ parent, handle: edge.sourceHandle });
-    if (parent.data.type === "lifecycle") {
-      break;
-    }
-
-    seen.add(parent.id);
-    cursor = parent.id;
+  const paths = pathsToEntry({
+    targetNodeId: input.targetNodeId,
+    nodeById,
+    incomingByTarget,
+  });
+  if (paths.length === 0) {
+    return [];
   }
 
+  let events: EventMetadata[] | null = null;
+  for (const chain of paths) {
+    const pathEvents = eventsForChain({ chain, catalog });
+    events =
+      events === null ? pathEvents : intersectEventsByName(events, pathEvents);
+  }
+  return events ?? [];
+}
+
+/** One chain from the target up to the entry node, nearest parent first. */
+type ReachChain = { parent: WorkflowNode; handle: unknown }[];
+
+function pathsToEntry(input: {
+  targetNodeId: string;
+  nodeById: Map<string, WorkflowNode>;
+  incomingByTarget: Map<string, WorkflowEdge[]>;
+}): ReachChain[] {
+  const { nodeById, incomingByTarget } = input;
+  const completed: ReachChain[] = [];
+
+  const walk = (cursor: string, chain: ReachChain, seen: Set<string>) => {
+    const incoming = incomingByTarget.get(cursor) ?? [];
+    if (incoming.length === 0) {
+      return;
+    }
+
+    for (const edge of incoming) {
+      const parent = nodeById.get(edge.source);
+      if (!parent || seen.has(parent.id)) {
+        continue;
+      }
+
+      const nextChain = [...chain, { parent, handle: edge.sourceHandle }];
+      if (parent.data.type === "lifecycle") {
+        completed.push(nextChain);
+        continue;
+      }
+
+      const nextSeen = new Set(seen);
+      nextSeen.add(parent.id);
+      walk(parent.id, nextChain, nextSeen);
+    }
+  };
+
+  walk(input.targetNodeId, [], new Set([input.targetNodeId]));
+  return completed;
+}
+
+function eventsForChain(input: {
+  chain: ReachChain;
+  catalog: ExtensionCatalog;
+}): EventMetadata[] {
+  const { chain, catalog } = input;
   const entry = chain.at(-1);
   if (!entry) {
     return [];
@@ -310,17 +352,12 @@ export function eventsReaching(input: {
     catalog,
   });
 
-  // Back down the chain, so each Condition narrows against the paths the actions
-  // above it produce rather than the ones below.
   const declaredElsewhere = new Set<string>();
   for (const step of chain.toReversed()) {
     for (const path of actionOutputPaths(step.parent, catalog)) {
       declaredElsewhere.add(path);
     }
 
-    // An Event Split outlet names one Event, so everything behind it arrived on
-    // that Event and nothing else. An outlet naming an Event that cannot reach
-    // the split leaves nothing, which is a branch no run travels.
     if (isEventSplitNode(step.parent)) {
       const outletEvent = eventSplitOutletEvent(step.handle);
       events = events.filter((event) => event.name === outletEvent);
@@ -338,4 +375,12 @@ export function eventsReaching(input: {
   }
 
   return events;
+}
+
+function intersectEventsByName(
+  left: readonly EventMetadata[],
+  right: readonly EventMetadata[]
+): EventMetadata[] {
+  const rightNames = new Set(right.map((event) => event.name));
+  return left.filter((event) => rightNames.has(event.name));
 }

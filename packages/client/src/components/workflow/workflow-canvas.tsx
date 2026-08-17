@@ -19,6 +19,11 @@ import { WorkflowToolbar } from "#src/components/workflow/workflow-toolbar";
 import "@xyflow/react/dist/style.css";
 
 import { nanoid } from "nanoid";
+import { andJoinRefusalReason } from "@wfgraph/shared/graph/and-join";
+import type {
+  WorkflowEdge as PersistedWorkflowEdge,
+  WorkflowNode as PersistedWorkflowNode,
+} from "@wfgraph/shared/graph/types";
 import { Edge } from "#src/components/flow-elements/edge";
 import { Panel } from "#src/components/flow-elements/panel";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
@@ -335,16 +340,31 @@ export function WorkflowCanvas() {
         "id" in connection && typeof connection.id === "string"
           ? connection.id
           : null;
-      const conflictingIncomingEdge = edges.find(
-        (edge) => edge.target === targetNodeId && edge.id !== connectionId
-      );
-      if (conflictingIncomingEdge) {
+      const proposedEdges = [
+        ...edges.filter((edge) => edge.id !== connectionId),
+        {
+          id: connectionId ?? "proposed",
+          source: sourceNodeId,
+          target: targetNodeId,
+          sourceHandle:
+            "sourceHandle" in connection ? connection.sourceHandle : undefined,
+          targetHandle:
+            "targetHandle" in connection ? connection.targetHandle : undefined,
+        },
+      ] as PersistedWorkflowEdge[];
+
+      if (
+        andJoinRefusalReason({
+          nodes: nodes as PersistedWorkflowNode[],
+          edges: proposedEdges,
+        })
+      ) {
         return false;
       }
 
       return true;
     },
-    [edges]
+    [edges, nodes]
   );
 
   const normalizeSourceHandleForConnection = useCallback(

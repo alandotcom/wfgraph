@@ -114,7 +114,16 @@ Execution behind it.
 The branch behind the Canceled outlet. Runs inside the same Execution, so it
 reads the run's earlier node outputs and the canceling payload. Terminal: a
 run inside it finishes it regardless of later Events. The Execution then ends
-with status canceled.
+with status canceled. It cannot rejoin the Started branch.
+
+**Join**:
+A node with more than one incoming edge. The run reaches it only after every
+predecessor has completed successfully and released what is below it
+(AND-join), which is how two lookups run side by side and both feed the next
+step. Fan-out onto those predecessors is unchanged: an ordinary action (or the
+Lifecycle Node's Started outlet) already schedules every outgoing edge
+together. A Wait on either arm, a join across exclusive Condition or Event
+Split outlets, and a rejoin of Started with Canceled are refused.
 
 **Precedence**:
 One fixed order when an Event arrives: Lifecycle Rules apply first, then the

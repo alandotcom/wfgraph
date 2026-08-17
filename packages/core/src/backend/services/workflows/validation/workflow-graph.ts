@@ -3,6 +3,7 @@ import {
   isConditionActionNode,
   normalizeConditionBranch,
 } from "@wfgraph/shared/conditions/condition-branch";
+import { andJoinRefusalReason } from "@wfgraph/shared/graph/and-join";
 import { isLifecycleOutlet } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import {
   createGraphFromSerialized,
@@ -98,32 +99,16 @@ function validateLifecycleOutletEdges(input: {
 }
 
 /**
- * At most one incoming edge per node.
- *
- * This is also what keeps the Canceled branch terminal: a node the Started
- * branch reaches already has an incoming edge, so an edge from the Canceled
- * branch back into it is a second one.
+ * Multi-incoming edges are AND-joins: every predecessor must complete before
+ * the join runs. `andJoinRefusalReason` keeps Started↔Canceled terminal, bans
+ * Wait on a join arm, and refuses joins across exclusive Condition / Event
+ * Split outlets.
  */
-function validateSingleIncomingEdgePerNode(input: {
+function validateAndJoins(input: {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
 }): string | null {
-  const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
-  const incomingEdgeByTarget = new Map<string, WorkflowEdge>();
-
-  for (const edge of input.edges) {
-    const existingIncomingEdge = incomingEdgeByTarget.get(edge.target);
-    if (!existingIncomingEdge) {
-      incomingEdgeByTarget.set(edge.target, edge);
-      continue;
-    }
-
-    const targetNode = nodeById.get(edge.target);
-    const targetLabel = targetNode ? getNodeLabel(targetNode) : edge.target;
-    return `Node "${targetLabel}" cannot have multiple incoming edges (found "${existingIncomingEdge.id}" and "${edge.id}")`;
-  }
-
-  return null;
+  return andJoinRefusalReason(input);
 }
 
 export type WorkflowGraphValidationResult =
@@ -260,12 +245,11 @@ export function validateWorkflowGraph(
     };
   }
 
-  const incomingEdgeValidationError =
-    validateSingleIncomingEdgePerNode(graphData);
-  if (incomingEdgeValidationError) {
+  const andJoinValidationError = validateAndJoins(graphData);
+  if (andJoinValidationError) {
     return {
       valid: false,
-      error: incomingEdgeValidationError,
+      error: andJoinValidationError,
     };
   }
 
