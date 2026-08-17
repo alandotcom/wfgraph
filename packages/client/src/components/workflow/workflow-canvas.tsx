@@ -120,10 +120,32 @@ export function WorkflowCanvas() {
   const [isReflowing, setIsReflowing] = useState(false);
   const [contextMenuState, setContextMenuState] =
     useState<ContextMenuState>(null);
+  const rightClickSelectionRef = useRef<string[]>([]);
+  useDomEvent(
+    window,
+    "pointerdown",
+    (event) => {
+      if (event.button !== 2) {
+        return;
+      }
+      rightClickSelectionRef.current = nodes
+        .filter((node) => node.selected)
+        .map((node) => node.id);
+    },
+    { capture: true, enabled: !editingLocked }
+  );
+  const selectedIdsAtRightClick = useCallback(
+    () => rightClickSelectionRef.current,
+    []
+  );
 
   // Context menu handlers
   const { onNodeContextMenu, onEdgeContextMenu, onPaneContextMenu } =
-    useContextMenuHandlers(screenToFlowPosition, setContextMenuState);
+    useContextMenuHandlers(
+      screenToFlowPosition,
+      setContextMenuState,
+      selectedIdsAtRightClick
+    );
 
   const closeContextMenu = useCallback(() => {
     setContextMenuState(null);

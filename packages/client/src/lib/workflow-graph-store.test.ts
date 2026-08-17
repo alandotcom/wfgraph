@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { createStore as createJotaiStore } from "jotai";
 import { createStore } from "jotai";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { isGroupNode } from "@wfgraph/shared/graph/node-group";
 import {
   addNodeAtom,
   applyNodeLayoutAtom,
@@ -16,6 +18,7 @@ import {
   duplicateSelectionAtom,
   edgesAtom,
   executionOverlayGraphAtom,
+  groupSelectionAtom,
   hasCopiedSelectionAtom,
   hydrateWorkflowAtom,
   loadWorkflowGraphAtom,
@@ -752,5 +755,44 @@ describe("updateNodeDataAtom rewrites template labels", () => {
         fieldPath: "email",
       }),
     });
+  });
+});
+
+describe("groupSelectionAtom", () => {
+  it("groups an explicit id set after the live selection has collapsed", () => {
+    const lookup = (id: string, x: number): WorkflowNode => ({
+      ...actionNode(id, x),
+      selected: false,
+      data: {
+        label: id,
+        type: "action",
+        config: { actionType: "fountain/get-user" },
+      },
+    });
+    const store = createGraphStore(
+      [
+        lifecycleNode("life"),
+        lookup("a", 0),
+        lookup("b", 200),
+        {
+          ...actionNode("c", 100),
+          selected: true,
+          data: {
+            label: "c",
+            type: "action",
+            config: { actionType: BUILT_IN_ACTION_IDS.condition },
+          },
+        },
+      ],
+      [
+        edge("e-start-a", "life", "a"),
+        edge("e-start-b", "life", "b"),
+        edge("e-a", "a", "c"),
+        edge("e-b", "b", "c"),
+      ]
+    );
+
+    expect(store.set(groupSelectionAtom, new Set(["a", "b", "c"]))).toBe(true);
+    expect(store.get(nodesAtom).some((node) => isGroupNode(node))).toBe(true);
   });
 });

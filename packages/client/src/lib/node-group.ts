@@ -25,6 +25,45 @@ import {
   groupFrameSize,
 } from "#src/components/workflow/workflow-node-dimensions";
 
+/** Which ids Group should wrap, given a click, a live selection, or a snapshot. */
+export function selectionIdsForGrouping(
+  nodes: readonly { id: string; selected?: boolean }[],
+  target?: string | ReadonlySet<string>
+): Set<string> {
+  if (target instanceof Set) {
+    return new Set(target);
+  }
+
+  const clickedNodeId = typeof target === "string" ? target : undefined;
+  const clicked = clickedNodeId
+    ? nodes.find((node) => node.id === clickedNodeId)
+    : undefined;
+  if (clickedNodeId && clicked && !clicked.selected) {
+    return new Set([clickedNodeId]);
+  }
+  return new Set(nodes.filter((node) => node.selected).map((node) => node.id));
+}
+
+/**
+ * Right-click often lands after the multi-select has already collapsed to the
+ * clicked node. If the frozen ids still include that node, Group those.
+ */
+export function groupingIdsFromSnapshot(
+  nodes: readonly { id: string; selected?: boolean }[],
+  clickedNodeId: string | undefined,
+  snapshotIds: readonly string[] | undefined
+): Set<string> {
+  if (
+    clickedNodeId &&
+    snapshotIds &&
+    snapshotIds.length > 1 &&
+    snapshotIds.includes(clickedNodeId)
+  ) {
+    return new Set(snapshotIds);
+  }
+  return selectionIdsForGrouping(nodes, clickedNodeId);
+}
+
 export function groupSelection(input: {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];

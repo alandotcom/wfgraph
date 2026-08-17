@@ -35,7 +35,11 @@ import {
   mapTemplateTokens,
 } from "@wfgraph/shared/graph/node-references";
 import { inactiveCanceledBranch } from "#src/lib/inactive-canceled-branch";
-import { groupSelection, ungroupNode } from "#src/lib/node-group";
+import {
+  groupSelection,
+  selectionIdsForGrouping,
+  ungroupNode,
+} from "#src/lib/node-group";
 import {
   childIdsOfGroup,
   displayEdgesForGroups,
@@ -712,19 +716,13 @@ export const duplicateSelectionAtom = atom(
 /** Wrap a valid lookup+Condition selection in a Group frame. */
 export const groupSelectionAtom = atom(
   null,
-  (get, set, clickedNodeId?: string) => {
+  (get, set, target?: string | ReadonlySet<string>) => {
     if (!draftEditable(get)) {
       return false;
     }
 
     const nodes = get(nodesStateAtom);
-    const clicked = clickedNodeId
-      ? nodes.find((node) => node.id === clickedNodeId)
-      : undefined;
-    const selectedIds =
-      clickedNodeId && clicked && !clicked.selected
-        ? new Set([clickedNodeId])
-        : new Set(nodes.filter((node) => node.selected).map((node) => node.id));
+    const selectedIds = selectionIdsForGrouping(nodes, target);
     const grouped = groupSelection({
       nodes,
       edges: get(edgesStateAtom),

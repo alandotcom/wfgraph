@@ -34,6 +34,7 @@ import {
 } from "#src/lib/workflow-graph-store";
 import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 import { type WorkflowNode } from "#src/lib/workflow-graph-types";
+import { groupingIdsFromSnapshot } from "#src/lib/node-group";
 import { cn } from "@wfgraph/shared/utils";
 import {
   analyzeGroupableSelection,
@@ -48,6 +49,8 @@ export type ContextMenuState = {
   flowPosition?: XYPosition;
   nodeId?: string;
   edgeId?: string;
+  /** Selection frozen at right-pointer-down, before React Flow collapses it. */
+  selectedIds?: string[];
 } | null;
 
 type WorkflowContextMenuProps = {
@@ -166,11 +169,15 @@ export function WorkflowContextMenu({
   }, [menuState, duplicateSelection, onClose]);
 
   const handleGroup = useCallback(() => {
-    if (menuState?.nodeId) {
-      groupSelected(menuState.nodeId);
+    if (menuState?.type !== "node") {
+      onClose();
+      return;
     }
+    groupSelected(
+      groupingIdsFromSnapshot(nodes, menuState.nodeId, menuState.selectedIds)
+    );
     onClose();
-  }, [menuState, groupSelected, onClose]);
+  }, [menuState, groupSelected, nodes, onClose]);
 
   const handleUngroup = useCallback(() => {
     if (menuState?.nodeId) {
@@ -232,10 +239,13 @@ export function WorkflowContextMenu({
   const clicked = menuState.nodeId
     ? nodes.find((n) => n.id === menuState.nodeId)
     : undefined;
-  const groupingIds = clicked?.selected
-    ? new Set(nodes.filter((node) => node.selected).map((node) => node.id))
-    : new Set(menuState.nodeId ? [menuState.nodeId] : []);
-  const canGroup = analyzeGroupableSelection(nodes, edges, groupingIds).ok;
+  const groupingIds = groupingIdsFromSnapshot(
+    nodes,
+    menuState.nodeId,
+    menuState.selectedIds
+  );
+  const grouping = analyzeGroupableSelection(nodes, edges, groupingIds);
+  const canGroup = grouping.ok;
   const canUngroup = Boolean(
     clicked && (isGroupNode(clicked) || clicked.parentId)
   );
@@ -280,9 +290,11 @@ export function WorkflowContextMenu({
           />
           <MenuItem
             disabled={!canGroup}
+            hint={!canGroup && !grouping.ok ? grouping.error : undefined}
             icon={<Group className="size-4" />}
             label="Group"
             onClick={handleGroup}
+            shortcut={shortcutLabel("G")}
           />
           <MenuItem
             disabled={!canUngroup}
@@ -335,6 +347,7 @@ type MenuItemProps = {
   onClick: () => void;
   variant?: "default" | "destructive";
   disabled?: boolean;
+  hint?: string;
   shortcut?: string;
 };
 
@@ -351,6 +364,7 @@ function MenuItem({
   onClick,
   variant = "default",
   disabled,
+  hint,
   shortcut,
 }: MenuItemProps) {
   return (
@@ -364,10 +378,18 @@ function MenuItem({
       )}
       disabled={disabled}
       onClick={onClick}
+      title={hint}
       type="button"
     >
       {icon}
-      {label}
+      <span className="flex min-w-0 flex-col items-start">
+        {label}
+        {hint ? (
+          <span className="text-muted-foreground text-xs leading-tight">
+            {hint}
+          </span>
+        ) : null}
+      </span>
       {shortcut ? (
         <span className="ml-auto pl-4 text-muted-foreground text-xs tracking-widest">
           {shortcut}
@@ -379,7 +401,8 @@ function MenuItem({
 
 export function useContextMenuHandlers(
   screenToFlowPosition: (position: { x: number; y: number }) => XYPosition,
-  setMenuState: (state: ContextMenuState) => void
+  setMenuState: (state: ContextMenuState) => void,
+  selectedIdsAtRightClick: () => readonly string[]
 ) {
   const onNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node) => {
@@ -388,9 +411,10 @@ export function useContextMenuHandlers(
         type: "node",
         position: { x: event.clientX, y: event.clientY },
         nodeId: node.id,
+        selectedIds: [...selectedIdsAtRightClick()],
       });
     },
-    [setMenuState]
+    [selectedIdsAtRightClick, setMenuState]
   );
 
   const onEdgeContextMenu = useCallback(
