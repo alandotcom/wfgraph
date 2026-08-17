@@ -6,6 +6,7 @@ import {
   Position,
   useInternalNode,
 } from "@xyflow/react";
+import { memo } from "react";
 import {
   isMutedEdgeStyle,
   resolveEdgeLabel,
@@ -13,7 +14,7 @@ import {
 import { getWorkflowEdgePath } from "#src/components/flow-elements/edge-path";
 import type { WorkflowEdge } from "#src/lib/workflow-graph-types";
 
-const Temporary = ({
+const Temporary = memo(function Temporary({
   id,
   sourceX,
   sourceY,
@@ -22,7 +23,7 @@ const Temporary = ({
   sourcePosition,
   targetPosition,
   selected,
-}: EdgeProps) => {
+}: EdgeProps) {
   const [edgePath] = getWorkflowEdgePath({
     sourceX,
     sourceY,
@@ -43,7 +44,7 @@ const Temporary = ({
       }}
     />
   );
-};
+});
 
 const getHandleCoordsByPosition = (
   node: InternalNode,
@@ -127,7 +128,7 @@ const getEdgeParams = (
   };
 };
 
-const Animated = ({
+const Animated = memo(function Animated({
   id,
   source,
   sourceHandleId,
@@ -136,7 +137,7 @@ const Animated = ({
   style,
   selected,
   data,
-}: EdgeProps<WorkflowEdge>) => {
+}: EdgeProps<WorkflowEdge>) {
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
 
@@ -194,7 +195,7 @@ const Animated = ({
       )}
     </>
   );
-};
+});
 
 export const Edge = {
   Temporary,

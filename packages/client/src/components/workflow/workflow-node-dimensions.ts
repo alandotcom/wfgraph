@@ -6,12 +6,13 @@
 export const WORKFLOW_NODE_WIDTH = 192;
 export const WORKFLOW_NODE_HEIGHT = 112;
 
-/**
- * Tailwind classes that draw a node at WORKFLOW_NODE_WIDTH × WORKFLOW_NODE_HEIGHT.
- * `h-28` is 112px and `w-48` is 192px; keep those in lockstep with the constants.
- */
-export const workflowNodeClassName =
-  "flex h-28 w-48 flex-col items-center justify-center shadow-none transition-all duration-150 ease-out";
+/** Width and height the card draws at. Event Split passes a wider width. */
+export function workflowNodeSize(width: number = WORKFLOW_NODE_WIDTH): {
+  width: number;
+  height: number;
+} {
+  return { width, height: WORKFLOW_NODE_HEIGHT };
+}
 
 /**
  * How wide one Event Split outlet's slot is, in pixels. Wide enough for the chip

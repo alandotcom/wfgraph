@@ -108,7 +108,6 @@ describe("LifecycleNode handles", () => {
     });
 
     expect(view.getByText("Manual runs only")).toBeTruthy();
-    expect(view.container.querySelector(".h-28")).toBeTruthy();
   });
 
   it("softens the Canceled chip when no Cancel Event is declared", () => {

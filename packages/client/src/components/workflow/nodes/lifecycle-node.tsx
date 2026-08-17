@@ -3,10 +3,11 @@ import { Play } from "lucide-react";
 import { memo } from "react";
 import {
   Node,
+  NodeBody,
   NodeDescription,
   NodeTitle,
 } from "#src/components/flow-elements/node";
-import { workflowNodeClassName } from "#src/components/workflow/workflow-node-dimensions";
+import { workflowNodeSize } from "#src/components/workflow/workflow-node-dimensions";
 import { cn } from "@wfgraph/shared/utils";
 import {
   LIFECYCLE_CANCELED_HANDLE,
@@ -22,9 +23,9 @@ import {
 // Two bottom handles split left/right rather than stacked, so both stay
 // reachable for a drag, and each carries a label chip centred on it.
 //
-// The percentages are of this card's own 192px width (`w-48` below). A
-// quarter either side of centre gives the two chips 96px, which they need
-// because both labels together are wider than a tighter 38/62 split.
+// The percentages are of this card's own 192px width. A quarter either side
+// of centre gives the two chips 96px, which they need because both labels
+// together are wider than a tighter 38/62 split.
 const STARTED_HANDLE_LEFT = "25%";
 const CANCELED_HANDLE_LEFT = "75%";
 
@@ -67,7 +68,7 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
 
   return (
     <Node
-      className={cn(workflowNodeClassName, selected && "border-primary")}
+      className={cn(selected && "border-primary")}
       handles={{
         target: false,
         source: [
@@ -89,6 +90,7 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
         ],
       }}
       status={status}
+      style={workflowNodeSize()}
     >
       <div
         className="pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none"
@@ -106,19 +108,13 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
         Canceled
       </div>
 
-      <div className="flex w-full flex-col items-center justify-center gap-1.5 px-3 py-2">
+      <NodeBody>
         <Play className="size-8 text-node-lifecycle" strokeWidth={1.5} />
-        <div className="flex w-full min-w-0 flex-col items-center gap-0.5 text-center">
-          <NodeTitle className="w-full truncate text-base">
-            {displayTitle}
-          </NodeTitle>
-          {displayDescription && (
-            <NodeDescription className="w-full truncate text-xs">
-              {displayDescription}
-            </NodeDescription>
-          )}
-        </div>
-      </div>
+        <NodeTitle>{displayTitle}</NodeTitle>
+        {displayDescription && (
+          <NodeDescription>{displayDescription}</NodeDescription>
+        )}
+      </NodeBody>
     </Node>
   );
 });

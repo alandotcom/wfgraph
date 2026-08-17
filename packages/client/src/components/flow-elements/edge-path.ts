@@ -1,4 +1,4 @@
-import { getSmoothStepPath, type Position } from "@xyflow/react";
+import { getSmoothStepPath } from "@xyflow/react";
 
 /**
  * Orthogonal path with rounded corners. `offset` is how far the first segment
@@ -7,17 +7,12 @@ import { getSmoothStepPath, type Position } from "@xyflow/react";
 const BORDER_RADIUS = 16;
 const OFFSET = 16;
 
-export function getWorkflowEdgePath(params: {
-  sourceX: number;
-  sourceY: number;
-  sourcePosition: Position;
-  targetX: number;
-  targetY: number;
-  targetPosition: Position;
-}): ReturnType<typeof getSmoothStepPath> {
+export function getWorkflowEdgePath(
+  params: Parameters<typeof getSmoothStepPath>[0]
+): ReturnType<typeof getSmoothStepPath> {
   return getSmoothStepPath({
+    ...params,
     borderRadius: BORDER_RADIUS,
     offset: OFFSET,
-    ...params,
   });
 }

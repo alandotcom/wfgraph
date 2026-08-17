@@ -17,6 +17,7 @@ import { Schema } from "effect";
 import { memo, useMemo, useState } from "react";
 import {
   Node,
+  NodeBody,
   NodeDescription,
   NodeTitle,
 } from "#src/components/flow-elements/node";
@@ -49,7 +50,8 @@ import {
 import { useEventSplitOutlets } from "#src/lib/event-split-outlets";
 import {
   eventSplitCardWidth,
-  workflowNodeClassName,
+  WORKFLOW_NODE_WIDTH,
+  workflowNodeSize,
 } from "#src/components/workflow/workflow-node-dimensions";
 import { useAfterPaint, useNowMs } from "#src/hooks/effects";
 import { useExecutionLogsByNode } from "#src/hooks/use-execution-logs";
@@ -488,31 +490,22 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
     const isDisabled = data.enabled === false;
     return (
       <Node
-        className={cn(
-          workflowNodeClassName,
-          selected && "border-primary",
-          isDisabled && "opacity-50"
-        )}
+        className={cn(selected && "border-primary", isDisabled && "opacity-50")}
         data-testid={`action-node-${id}`}
         handles={{ target: true, source: true }}
         status={status}
+        style={workflowNodeSize()}
       >
         {isDisabled && (
           <div className="absolute top-2 left-2 rounded-full bg-muted-foreground/50 p-1">
             <EyeOff className="size-3.5 text-background" />
           </div>
         )}
-        <div className="flex w-full flex-col items-center justify-center gap-1.5 px-3 py-2">
+        <NodeBody>
           <Zap className="size-8 text-muted-foreground" strokeWidth={1.5} />
-          <div className="flex w-full min-w-0 flex-col items-center gap-0.5 text-center">
-            <NodeTitle className="w-full truncate text-base">
-              {data.label || "Action"}
-            </NodeTitle>
-            <NodeDescription className="w-full truncate text-xs">
-              Select an action
-            </NodeDescription>
-          </div>
-        </div>
+          <NodeTitle>{data.label || "Action"}</NodeTitle>
+          <NodeDescription>Select an action</NodeDescription>
+        </NodeBody>
       </Node>
     );
   }
@@ -556,12 +549,7 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
 
   return (
     <Node
-      className={cn(
-        "relative",
-        workflowNodeClassName,
-        selected && "border-primary",
-        isDisabled && "opacity-50"
-      )}
+      className={cn(selected && "border-primary", isDisabled && "opacity-50")}
       data-testid={`action-node-${id}`}
       handles={{
         target: true,
@@ -598,14 +586,13 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
               }))
             : true,
       }}
-      // A split is as wide as its outlets. Every other node keeps the width its
-      // class names, which is what `undefined` leaves standing.
-      style={
-        isEventSplitAction && splitOutlets.length > 1
-          ? { width: eventSplitCardWidth(splitOutlets.length) }
-          : undefined
-      }
+      // A split is as wide as its outlets. Every other node keeps the default.
       status={status}
+      style={workflowNodeSize(
+        isEventSplitAction
+          ? eventSplitCardWidth(splitOutlets.length)
+          : WORKFLOW_NODE_WIDTH
+      )}
     >
       {/* Disabled badge in top left */}
       {isDisabled && (
@@ -646,28 +633,21 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
           </div>
         ))}
 
-      <div className="flex w-full flex-col items-center justify-center gap-1.5 px-3 py-2">
+      <NodeBody>
         {generatedImageBase64 ? (
           <GeneratedImageThumbnail base64={generatedImageBase64} />
         ) : (
           <ProviderLogo actionType={actionType} catalog={catalog} />
         )}
-        <div className="flex w-full min-w-0 flex-col items-center gap-0.5 text-center">
-          <NodeTitle className="w-full truncate text-base">
-            {displayTitle}
-          </NodeTitle>
-          {displayDescription && (
-            <NodeDescription
-              className={cn(
-                "w-full truncate text-xs",
-                waitPreview && "font-medium tabular-nums"
-              )}
-            >
-              {displayDescription}
-            </NodeDescription>
-          )}
-        </div>
-      </div>
+        <NodeTitle>{displayTitle}</NodeTitle>
+        {displayDescription && (
+          <NodeDescription
+            className={waitPreview ? "font-medium tabular-nums" : undefined}
+          >
+            {displayDescription}
+          </NodeDescription>
+        )}
+      </NodeBody>
     </Node>
   );
 });
