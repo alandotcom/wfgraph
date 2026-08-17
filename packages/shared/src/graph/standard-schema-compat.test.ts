@@ -334,17 +334,24 @@ describe("the derivations over a bridged schema", () => {
     // when nothing is booked, or a list that is empty. The parent is correctly
     // nullable; the derived children must be too, or the editor offers
     // comparisons against a value that is not there.
-    const child = Schema.Struct({
-      uuid: Schema.String,
-      date: Schema.String,
-    });
-
+    // Separate structs so Effect inlines each shape. Sharing one child
+    // extracts a `$ref` into `$defs`, which this reader drops.
     expect(
       requireOutputFieldsFromSchema(
         'Action "x/y"',
         Schema.Struct({
-          nested: Schema.NullOr(child),
-          list: Schema.Array(child),
+          nested: Schema.NullOr(
+            Schema.Struct({
+              uuid: Schema.String,
+              date: Schema.String,
+            })
+          ),
+          list: Schema.Array(
+            Schema.Struct({
+              uuid: Schema.String,
+              date: Schema.String,
+            })
+          ),
           scalar: Schema.NullOr(Schema.String),
         })
       )
@@ -864,12 +871,12 @@ describe("the field derivation over arktype schemas", () => {
         })
       )
     ).toEqual([
-      { path: "nested", type: "object", nullable: true },
-      { path: "nested.uuid", type: "string", nullable: true },
-      { path: "nested.date", type: "string", nullable: true },
       { path: "list", type: "array" },
-      { path: "list[0].uuid", type: "string", nullable: true },
       { path: "list[0].date", type: "string", nullable: true },
+      { path: "list[0].uuid", type: "string", nullable: true },
+      { path: "nested", type: "object", nullable: true },
+      { path: "nested.date", type: "string", nullable: true },
+      { path: "nested.uuid", type: "string", nullable: true },
       { path: "scalar", type: "string", nullable: true },
     ]);
   });
