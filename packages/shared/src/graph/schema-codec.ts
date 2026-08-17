@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { compact } from "es-toolkit/array";
+import { compact, uniq } from "es-toolkit/array";
 import { startCase } from "es-toolkit/string";
 import type { ActionConfigFieldBase } from "#src/plugins/action-fields";
 import { readAs } from "#src/types/schema";
@@ -183,7 +183,7 @@ function readJsonSchemaNode(
     description: readString(node.description),
     enum: readUnknownArray(node.enum),
     // `const` is the one keyword whose presence matters apart from its value:
-    // `resolveConstBranches` asks whether a branch declared one at all, and
+    // a closed-set collapse asks whether a branch declared one at all, and
     // `{ const: null }` is a legal branch. So the key is carried over only when
     // the document had it, rather than always written as possibly-undefined.
     ...(Object.hasOwn(node, "const") ? { const: node.const } : {}),
@@ -279,6 +279,77 @@ function normalizeJsonSchemaType(
   }
 
   return value.find(isWorkflowSchemaFieldType) ?? null;
+}
+
+/**
+ * The JSON type every member shares, or null when the list is empty, mixed, or
+ * holds something other than a string, number or boolean.
+ */
+function jsonTypeOfHomogeneousValues(
+  values: unknown[] | undefined
+): "string" | "number" | "boolean" | null {
+  if (!values || values.length === 0) {
+    return null;
+  }
+
+  const firstType = typeof values[0];
+  if (
+    (firstType !== "string" &&
+      firstType !== "number" &&
+      firstType !== "boolean") ||
+    !values.every((value) => typeof value === firstType)
+  ) {
+    return null;
+  }
+
+  return firstType;
+}
+
+/** The closed set a node declares. `const` is JSON Schema's one-value `enum`. */
+function declaredEnumOrConstValues(
+  value: JsonSchemaNode
+): unknown[] | undefined {
+  if (value.enum) {
+    return value.enum;
+  }
+
+  return "const" in value ? [value.const] : undefined;
+}
+
+/**
+ * The type a node's own keywords name, before inferring one from an enum.
+ * Mixed-union collapse uses this so an enum sibling is not mistaken for a type.
+ */
+function jsonSchemaTypeFromKeywords(
+  value: JsonSchemaNode
+): JsonSchemaType | null {
+  return (
+    normalizeJsonSchemaType(value.type) ||
+    (value.properties ? "object" : null) ||
+    (value.items ? "array" : null)
+  );
+}
+
+function jsonPrimitiveTypeOf(
+  schemaType: JsonSchemaType
+): "string" | "number" | "boolean" | null {
+  switch (schemaType) {
+    case "string":
+    case "timestamp":
+    case "duration":
+      return "string";
+    case "number":
+      return "number";
+    case "boolean":
+      return "boolean";
+    case "array":
+    case "object":
+      return null;
+    default: {
+      schemaType satisfies never;
+      return null;
+    }
+  }
 }
 
 function normalizeSchemaFormat(
@@ -465,77 +536,161 @@ export function parseWorkflowSchemaFields(
   return workflowSchemaFieldsFromRecords(readWorkflowFieldRecords(value));
 }
 
-function resolveConstBranches(
-  nonNullBranches: JsonSchemaNode[],
-  description: string | undefined
-): JsonSchemaNode | null {
-  const allConst = nonNullBranches.every((branch) => "const" in branch);
-  if (!allConst) {
-    return null;
+function withInheritedAnnotations(
+  branch: JsonSchemaNode,
+  parent: JsonSchemaNode
+): JsonSchemaNode {
+  const result: JsonSchemaNode = { ...branch };
+  if (parent.description !== undefined && !result.description) {
+    result.description = parent.description;
   }
-
-  const rawValues = nonNullBranches.map((branch) => branch.const);
-  const firstType = typeof rawValues[0];
-  if (
-    (firstType !== "string" &&
-      firstType !== "number" &&
-      firstType !== "boolean") ||
-    !rawValues.every((value) => typeof value === firstType)
-  ) {
-    return null;
-  }
-
-  const result: JsonSchemaNode = { type: firstType, enum: rawValues };
-  if (description !== undefined) {
-    result.description = description;
+  if (parent.format !== undefined && result.format === undefined) {
+    result.format = parent.format;
   }
   return result;
 }
 
 /**
- * Resolve nullable JSON Schema unions (`anyOf`/`oneOf` containing a `{ type: "null" }` branch).
- * Returns the non-null branch (preserving top-level description) so the caller can
- * parse it as a normal typed property, or `null` if the shape isn't a recognizable
- * nullable union.
+ * Homogeneous `enum`/`const` branches of one JSON type, collapsed into a closed
+ * set. Effect's `Schema.Enum` is one string enum per member rather than one
+ * `enum` array; arktype and Zod const unions are the same idea with `const`.
  */
-function resolveNullableJsonSchema(
-  value: JsonSchemaNode
+function resolveClosedSetBranches(
+  nonNullBranches: JsonSchemaNode[],
+  parent: JsonSchemaNode
 ): JsonSchemaNode | null {
+  const values: unknown[] = [];
+  let jsonType: "string" | "number" | "boolean" | null = null;
+
+  for (const branch of nonNullBranches) {
+    const declared = declaredEnumOrConstValues(branch);
+    const memberType = jsonTypeOfHomogeneousValues(declared);
+    if (!declared || !memberType) {
+      return null;
+    }
+
+    const keywordType = jsonSchemaTypeFromKeywords(branch);
+    if (keywordType && jsonPrimitiveTypeOf(keywordType) !== memberType) {
+      return null;
+    }
+
+    if (jsonType !== null && jsonType !== memberType) {
+      return null;
+    }
+    jsonType = memberType;
+    values.push(...declared);
+  }
+
+  if (!jsonType) {
+    return null;
+  }
+
+  return withInheritedAnnotations(
+    { type: jsonType, enum: uniq(values) },
+    parent
+  );
+}
+
+/**
+ * A typed branch beside `const` siblings of the same JSON type.
+ *
+ * arktype's `string.uuid` is a pattern plus the nil and max UUID, which fail
+ * the pattern. The consts are extra values of an open type, not a closed set.
+ */
+function resolveTypedAndConstBranches(
+  nonNullBranches: JsonSchemaNode[],
+  parent: JsonSchemaNode
+): JsonSchemaNode | null {
+  const typed: JsonSchemaNode[] = [];
+  const consts: JsonSchemaNode[] = [];
+  for (const branch of nonNullBranches) {
+    if ("const" in branch) {
+      consts.push(branch);
+      continue;
+    }
+    if (jsonSchemaTypeFromKeywords(branch)) {
+      typed.push(branch);
+      continue;
+    }
+    return null;
+  }
+
+  const branch = typed[0];
+  if (!branch || typed.length !== 1 || consts.length === 0) {
+    return null;
+  }
+
+  const branchType = jsonSchemaTypeFromKeywords(branch);
+  const constType = jsonTypeOfHomogeneousValues(
+    consts.map((item) => item.const)
+  );
+  if (
+    !branchType ||
+    !constType ||
+    jsonPrimitiveTypeOf(branchType) !== constType
+  ) {
+    return null;
+  }
+
+  return withInheritedAnnotations(branch, parent);
+}
+
+type ResolvedJsonSchemaUnion = {
+  node: JsonSchemaNode;
+  nullable: boolean;
+};
+
+/**
+ * Collapse an `anyOf`/`oneOf` into one typed node the rest of the reader can
+ * parse. `nullable` is whether a `{ type: "null" }` branch was among them, not
+ * whether there was more than one branch.
+ */
+function resolveJsonSchemaUnion(
+  value: JsonSchemaNode
+): ResolvedJsonSchemaUnion | null {
   const branches = value.anyOf ?? value.oneOf;
 
   if (!branches || branches.length < 2) {
     return null;
   }
 
-  const nonNullBranches = compact(branches).filter(
-    (branch) => branch.type !== "null"
-  );
+  const present = compact(branches);
+  const nullable = present.some((branch) => branch.type === "null");
+  const nonNullBranches = present.filter((branch) => branch.type !== "null");
 
   if (nonNullBranches.length === 0) {
     return null;
   }
 
-  // Single non-null branch (e.g. `"string | null"` → `{ anyOf: [{type:"string"}, {type:"null"}] }`)
   if (nonNullBranches.length === 1) {
     const branch = nonNullBranches[0];
-    if (value.description !== undefined && !branch.description) {
-      return { ...branch, description: value.description };
+    if (!branch) {
+      return null;
     }
-    return branch;
+    return { node: withInheritedAnnotations(branch, value), nullable };
   }
 
-  // Multiple non-null `const` branches (e.g. `"'A' | 'B' | null"` → treat as string)
-  return resolveConstBranches(nonNullBranches, value.description);
+  const fromClosed = resolveClosedSetBranches(nonNullBranches, value);
+  if (fromClosed) {
+    return { node: fromClosed, nullable };
+  }
+
+  const fromMixed = resolveTypedAndConstBranches(nonNullBranches, value);
+  if (fromMixed) {
+    return { node: fromMixed, nullable };
+  }
+
+  return null;
 }
 
 function parseNonNullableJsonSchemaProperty(
   name: string,
   value: JsonSchemaNode
 ): WorkflowSchemaField | null {
+  const declaredValues = declaredEnumOrConstValues(value);
   const normalizedType =
-    normalizeJsonSchemaType(value.type) ||
-    (value.properties ? "object" : null) ||
-    (value.items ? "array" : null);
+    jsonSchemaTypeFromKeywords(value) ||
+    jsonTypeOfHomogeneousValues(declaredValues);
 
   if (!normalizedType) {
     return null;
@@ -551,7 +706,7 @@ function parseNonNullableJsonSchemaProperty(
     normalizedType === "duration"
   ) {
     const enumValues =
-      normalizedType === "string" ? toEnumValues(value.enum) : undefined;
+      normalizedType === "string" ? toEnumValues(declaredValues) : undefined;
     return {
       name,
       type:
@@ -597,14 +752,22 @@ function parseNonNullableJsonSchemaProperty(
   };
 }
 
+/** Nested `anyOf` depth this reader will unwrap, e.g. `NullOr` around `Schema.Enum`. */
+const MAX_JSON_SCHEMA_UNION_DEPTH = 3;
+
 function parseJsonSchemaProperty(
   name: string,
-  value: JsonSchemaNode
+  value: JsonSchemaNode,
+  depth = 0
 ): WorkflowSchemaField | null {
-  const resolved = resolveNullableJsonSchema(value);
+  if (depth > MAX_JSON_SCHEMA_UNION_DEPTH) {
+    return parseNonNullableJsonSchemaProperty(name, value);
+  }
+
+  const resolved = resolveJsonSchemaUnion(value);
   if (resolved) {
-    const field = parseNonNullableJsonSchemaProperty(name, resolved);
-    if (field) {
+    const field = parseJsonSchemaProperty(name, resolved.node, depth + 1);
+    if (field && resolved.nullable) {
       field.nullable = true;
     }
     return field;
