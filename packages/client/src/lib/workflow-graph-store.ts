@@ -251,11 +251,15 @@ const isDraggingAtom = atom(false);
  * workflows would let pressing undo after switching write the previous
  * workflow's graph into the current one, which autosave would then persist
  * under the wrong id.
+ *
+ * Nodes are stored rest → frames → members so `displayNodesAtom` can return
+ * this array on a canvas read instead of reallocating through
+ * `orderGroupParentsFirst` on every drag frame.
  */
 export const loadWorkflowGraphAtom = atom(
   null,
   (_get, set, graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }) => {
-    set(nodesStateAtom, graph.nodes);
+    set(nodesStateAtom, orderGroupParentsFirst(graph.nodes));
     set(edgesStateAtom, graph.edges);
     set(historyAtom, []);
     set(futureAtom, []);

@@ -92,6 +92,29 @@ function actionNode(id: string, x = 0): WorkflowNode {
   };
 }
 
+function groupNode(id: string, entryId: string, exitId: string): WorkflowNode {
+  return {
+    id,
+    type: "group",
+    position: { x: 0, y: 0 },
+    data: {
+      label: "Group",
+      type: "group",
+      config: { entryNodeIds: [entryId], exitNodeId: exitId },
+    },
+  };
+}
+
+function groupedChild(id: string, groupId: string): WorkflowNode {
+  return {
+    ...actionNode(id),
+    parentId: groupId,
+    extent: "parent",
+    draggable: false,
+    connectable: false,
+  };
+}
+
 function edge(id: string, source: string, target: string): WorkflowEdge {
   return { id, source, target };
 }
@@ -410,6 +433,56 @@ describe("displayNodesAtom memoization", () => {
     for (const [index, node] of draftNodes.entries()) {
       expect(displayed[index]).toBe(node);
     }
+  });
+
+  it("orders a loaded Group graph so display can reuse the store array", () => {
+    const rest = lifecycleNode("t");
+    const frame = groupNode("g", "a", "a");
+    const child = groupedChild("a", "g");
+    const store = createGraphStore([child, rest, frame]);
+
+    const draft = store.get(nodesAtom);
+    expect(draft.map((node) => node.id)).toEqual(["t", "g", "a"]);
+    expect(store.get(displayNodesAtom)).toBe(draft);
+  });
+
+  it("orders a hydrated Group workflow the same way", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(
+      hydrateWorkflowAtom,
+      savedWorkflow("workflow_grouped", {
+        nodes: [
+          groupedChild("a", "g"),
+          lifecycleNode("t"),
+          groupNode("g", "a", "a"),
+        ],
+        edges: [],
+      })
+    );
+
+    const draft = store.get(nodesAtom);
+    expect(draft.map((node) => node.id)).toEqual(["t", "g", "a"]);
+    expect(store.get(displayNodesAtom)).toBe(draft);
+  });
+
+  it("orders a pinned Group overlay so display can reuse that array", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(propertiesPanelActiveTabAtom, "runs");
+    const rest = lifecycleNode("pinned_t");
+    const frame = groupNode("pinned_g", "pinned_a", "pinned_a");
+    const child = groupedChild("pinned_a", "pinned_g");
+    store.set(executionOverlayGraphAtom, {
+      nodes: [child, rest, frame],
+      edges: [],
+    });
+
+    const overlay = store.get(executionOverlayGraphAtom)?.nodes;
+    expect(overlay?.map((node) => node.id)).toEqual([
+      "pinned_t",
+      "pinned_g",
+      "pinned_a",
+    ]);
+    expect(store.get(displayNodesAtom)).toBe(overlay);
   });
 });
 
