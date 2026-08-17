@@ -342,7 +342,7 @@ const requiresIntegration = (
 const ProviderLogo = ({
   actionType,
   catalog,
-  className = "size-8",
+  className = "size-6",
 }: {
   actionType: string;
   catalog: ExtensionCatalog;
@@ -393,7 +393,7 @@ function GeneratedImageThumbnail({ base64 }: { base64: string }) {
   return (
     <>
       <button
-        className="relative size-8 cursor-zoom-in overflow-hidden rounded-lg transition-transform hover:scale-105"
+        className="relative size-6 cursor-zoom-in overflow-hidden rounded-lg transition-transform hover:scale-105"
         onClick={(e) => {
           e.stopPropagation();
           setDialogOpen(true);
@@ -402,10 +402,10 @@ function GeneratedImageThumbnail({ base64 }: { base64: string }) {
       >
         <img
           alt="Generated output"
-          className="size-8 object-cover"
-          height={32}
+          className="size-6 object-cover"
+          height={24}
           src={`data:image/png;base64,${base64}`}
-          width={32}
+          width={24}
         />
       </button>
 
@@ -557,7 +557,7 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
           </div>
         )}
         <NodeBody>
-          <Zap className="size-8 text-muted-foreground" strokeWidth={1.5} />
+          <Zap className="size-6 text-muted-foreground" strokeWidth={1.5} />
           <NodeTitle>{data.label || "Action"}</NodeTitle>
           <NodeDescription>Select an action</NodeDescription>
         </NodeBody>

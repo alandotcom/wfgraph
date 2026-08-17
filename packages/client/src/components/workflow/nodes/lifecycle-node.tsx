@@ -109,7 +109,7 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
       </div>
 
       <NodeBody>
-        <Play className="size-8 text-node-lifecycle" strokeWidth={1.5} />
+        <Play className="size-6 text-node-lifecycle" strokeWidth={1.5} />
         <NodeTitle>{displayTitle}</NodeTitle>
         {displayDescription && (
           <NodeDescription>{displayDescription}</NodeDescription>
