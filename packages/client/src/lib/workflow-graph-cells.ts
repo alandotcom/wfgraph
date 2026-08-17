@@ -5,6 +5,7 @@
 
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
+import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
 import { activePropertiesTabAtom } from "#src/lib/workflow-ui-store";
 import { saveWorkflowAtom } from "#src/lib/workflow-save-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -39,7 +40,15 @@ export const executionOverlayGraphAtom = atom(
     set,
     graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] } | null
   ) => {
-    set(pinnedRunGraphAtom, graph);
+    set(
+      pinnedRunGraphAtom,
+      graph === null
+        ? null
+        : {
+            nodes: orderGroupParentsFirst(graph.nodes),
+            edges: graph.edges,
+          }
+    );
   }
 );
 
