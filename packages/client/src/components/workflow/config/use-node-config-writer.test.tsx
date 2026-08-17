@@ -296,8 +296,13 @@ describe("deleteRuns", () => {
       "/workflows/wf_1?executionId=exec_1"
     );
 
+    // The button is found before `act` opens, because a find is itself an async
+    // wrapper that turns the act environment off while it polls, and React
+    // refuses an `act` that starts inside that window.
+    const deleteButton = await screen.findByRole("button", { name: "delete" });
+
     await act(async () => {
-      fireEvent.click(await screen.findByRole("button", { name: "delete" }));
+      fireEvent.click(deleteButton);
     });
 
     await waitFor(() => {

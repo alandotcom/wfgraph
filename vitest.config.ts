@@ -1,5 +1,7 @@
 import { defineConfig } from "vitest/config";
-import { workspaceSourceAliases } from "./scripts/plugins/workspace-source-aliases";
+// Keep the `.ts`: Vite's coming native config loader is node's own, which
+// guesses no extension.
+import { workspaceSourceAliases } from "./scripts/plugins/workspace-source-aliases.ts";
 
 /**
  * The test runner's own Vite config. It does not extend the client's:

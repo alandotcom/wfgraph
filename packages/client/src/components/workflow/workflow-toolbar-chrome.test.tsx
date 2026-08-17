@@ -1,3 +1,9 @@
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
 import { render } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
@@ -102,18 +108,35 @@ function renderToolbarActions(
     store.set(isGeneratingAtom, true);
   }
 
+  // The toolbar calls `useNavigate` for the workflow switcher, so it needs a
+  // router above it. One root route carries the whole tree, since no case here
+  // reads a param or a search value; the toolbar is rendered directly rather
+  // than reached by a path.
+  const rootRoute = createRootRoute({
+    component: () => (
+      <JotaiProvider store={store}>
+        <ReactFlowProvider>
+          <OverlayProvider>
+            <ToolbarActions
+              actions={baseActions()}
+              state={baseState()}
+              workflowId="workflow_1"
+            />
+          </OverlayProvider>
+        </ReactFlowProvider>
+      </JotaiProvider>
+    ),
+  });
+
   return render(
-    <JotaiProvider store={store}>
-      <ReactFlowProvider>
-        <OverlayProvider>
-          <ToolbarActions
-            actions={baseActions()}
-            state={baseState()}
-            workflowId="workflow_1"
-          />
-        </OverlayProvider>
-      </ReactFlowProvider>
-    </JotaiProvider>
+    <RouterProvider
+      router={createRouter({
+        routeTree: rootRoute,
+        history: createMemoryHistory({
+          initialEntries: ["/workflows/workflow_1"],
+        }),
+      })}
+    />
   );
 }
 
@@ -122,22 +145,27 @@ describe("ToolbarActions publish gating", () => {
     vi.restoreAllMocks();
   });
 
-  it("keeps Publish enabled with no run overlay open", () => {
-    const { getByTitle } = renderToolbarActions();
-    expect(getByTitle("Publish workflow").hasAttribute("disabled")).toBe(false);
+  // Each case awaits the button, because the router resolves its route after
+  // render returns and the toolbar is on screen only from that point.
+  it("keeps Publish enabled with no run overlay open", async () => {
+    const { findByTitle } = renderToolbarActions();
+    const publish = await findByTitle("Publish workflow");
+    expect(publish.hasAttribute("disabled")).toBe(false);
   });
 
-  it("disables Publish while a run overlay pins the canvas to a past run", () => {
-    const { getByTitle } = renderToolbarActions({ overlayActive: true });
-    expect(getByTitle("Publish workflow").hasAttribute("disabled")).toBe(true);
+  it("disables Publish while a run overlay pins the canvas to a past run", async () => {
+    const { findByTitle } = renderToolbarActions({ overlayActive: true });
+    const publish = await findByTitle("Publish workflow");
+    expect(publish.hasAttribute("disabled")).toBe(true);
   });
 
   // Publish and the canvas read one `canvasEditingLockedAtom`, so generation
   // gates both. This case would still pass if Publish kept its own copy of the
   // condition, and it fails if a later edit drops generation from the shared
   // atom while leaving the canvas reading it.
-  it("disables Publish while generation is rewriting the graph", () => {
-    const { getByTitle } = renderToolbarActions({ generating: true });
-    expect(getByTitle("Publish workflow").hasAttribute("disabled")).toBe(true);
+  it("disables Publish while generation is rewriting the graph", async () => {
+    const { findByTitle } = renderToolbarActions({ generating: true });
+    const publish = await findByTitle("Publish workflow");
+    expect(publish.hasAttribute("disabled")).toBe(true);
   });
 });
