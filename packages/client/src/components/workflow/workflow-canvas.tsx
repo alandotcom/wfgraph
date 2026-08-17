@@ -52,6 +52,7 @@ import { normalizeSourceHandleForConnection as normalizeSourceHandle } from "./c
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
 import { LifecycleNode } from "./nodes/lifecycle-node";
+import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
 import {
   type ContextMenuState,
   useContextMenuHandlers,
@@ -228,6 +229,7 @@ export function WorkflowCanvas() {
   );
 
   useDomEvent(window, "keydown", handleUndoRedoShortcut);
+  useCanvasCopyPaste(!editingLocked);
 
   const handleFitViewShortcut = useCallback(
     (event: KeyboardEvent) => {

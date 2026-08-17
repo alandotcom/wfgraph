@@ -2,6 +2,13 @@ import type { EdgeChange, NodeChange } from "@xyflow/react";
 import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
+import {
+  cloneSelection,
+  extractCopyableSelection,
+  offsetToOrigin,
+  PASTE_OFFSET,
+  type CopiedSelection,
+} from "#src/lib/copy-selection";
 import { repairNodeIntegrations } from "#src/lib/node-integration";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { SavedWorkflow } from "#src/lib/rpc-client";
@@ -202,6 +209,9 @@ type HistoryState = {
 
 const historyAtom = atom<HistoryState[]>([]);
 const futureAtom = atom<HistoryState[]>([]);
+
+const copiedSelectionAtom = atom<CopiedSelection | null>(null);
+const pasteCountAtom = atom(0);
 
 // Deep enough that no one reaches the end by hand, bounded so a long editing
 // session cannot pin two copies of the graph per step in memory forever.
@@ -511,6 +521,97 @@ export const addNodeAtom = atom(null, (get, set, node: WorkflowNode) => {
 
   requestGraphSave(get, set, { immediate: true });
 });
+
+/** Whether Cmd+V / Paste have a copied subgraph to insert. */
+export const hasCopiedSelectionAtom = atom(
+  (get) => get(copiedSelectionAtom) !== null
+);
+
+/**
+ * Snapshot the copyable selection (or the given node ids) for a later paste.
+ * Selection only, so not an undo step and not a save.
+ */
+export const copySelectionAtom = atom(
+  null,
+  (get, set, nodeIds?: Iterable<string>) => {
+    const selection = extractCopyableSelection({
+      nodes: get(nodesStateAtom),
+      edges: get(edgesStateAtom),
+      nodeIds: nodeIds ? new Set(nodeIds) : undefined,
+    });
+    if (!selection) {
+      return false;
+    }
+
+    set(copiedSelectionAtom, selection);
+    set(pasteCountAtom, 0);
+    return true;
+  }
+);
+
+/**
+ * Insert the copied subgraph with fresh ids. One undo step, like addNode.
+ *
+ * `origin` places the copied bounding-box origin at a pane click; without it
+ * each paste steps down-right from the original so repeats do not stack.
+ */
+export const pasteCopiedSelectionAtom = atom(
+  null,
+  (get, set, options?: { origin?: { x: number; y: number } }) => {
+    if (!draftEditable(get)) {
+      return false;
+    }
+
+    const copied = get(copiedSelectionAtom);
+    if (!copied) {
+      return false;
+    }
+
+    const nextCount = get(pasteCountAtom) + 1;
+    const offset = options?.origin
+      ? offsetToOrigin(copied.nodes, options.origin)
+      : { x: PASTE_OFFSET * nextCount, y: PASTE_OFFSET * nextCount };
+    const cloned = cloneSelection(copied, { offset });
+    if (cloned.nodes.length === 0) {
+      return false;
+    }
+
+    set(pasteCountAtom, nextCount);
+    pushHistory(get, set);
+
+    set(nodesStateAtom, [
+      ...get(nodesStateAtom).map((node) => ({ ...node, selected: false })),
+      ...cloned.nodes,
+    ]);
+    set(edgesStateAtom, [
+      ...get(edgesStateAtom).map((edge) => ({ ...edge, selected: false })),
+      ...cloned.edges,
+    ]);
+    set(selectedNodeAtom, cloned.nodes[0].id);
+    set(selectedEdgeAtom, null);
+
+    const only = cloned.nodes.length === 1 ? cloned.nodes[0] : undefined;
+    if (only?.data.type === "action" && !only.data.config?.actionType) {
+      set(newlyCreatedNodeIdAtom, only.id);
+    } else {
+      set(newlyCreatedNodeIdAtom, null);
+    }
+
+    requestGraphSave(get, set, { immediate: true });
+    return true;
+  }
+);
+
+/** Copy the current (or given) selection and paste it in one undo step. */
+export const duplicateSelectionAtom = atom(
+  null,
+  (get, set, nodeIds?: Iterable<string>) => {
+    if (!set(copySelectionAtom, nodeIds)) {
+      return false;
+    }
+    return set(pasteCopiedSelectionAtom);
+  }
+);
 
 /** Connect two nodes, recorded as an undo step like every graph mutation. */
 export const connectNodesAtom = atom(null, (get, set, edge: WorkflowEdge) => {

@@ -8,17 +8,21 @@ import {
   clearNodeStatusesAtom,
   clearWorkflowAtom,
   connectNodesAtom,
+  copySelectionAtom,
   deleteEdgeAtom,
   deleteNodeAtom,
   deleteSelectedItemsAtom,
   displayNodesAtom,
+  duplicateSelectionAtom,
   edgesAtom,
   executionOverlayGraphAtom,
+  hasCopiedSelectionAtom,
   hydrateWorkflowAtom,
   loadWorkflowGraphAtom,
   nodesAtom,
   onEdgesChangeAtom,
   onNodesChangeAtom,
+  pasteCopiedSelectionAtom,
   setNodeStatusesAtom,
   snapshotHistoryAtom,
   undoAtom,
@@ -37,6 +41,8 @@ import {
 } from "#src/lib/workflow-ui-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { savedWorkflow } from "./workflow-save-test-support";
+import { PASTE_OFFSET } from "#src/lib/copy-selection";
+import { formatTemplateToken } from "@wfgraph/shared/graph/node-references";
 
 type Store = ReturnType<typeof createJotaiStore>;
 
@@ -174,6 +180,25 @@ describe("graph mutations are undoable and persisted", () => {
           { type: "select", id: "a", selected: true },
         ]);
         store.set(deleteSelectedItemsAtom);
+      },
+    ],
+    [
+      "copied nodes pasted",
+      (store) => {
+        store.set(onNodesChangeAtom, [
+          { type: "select", id: "a", selected: true },
+        ]);
+        store.set(copySelectionAtom);
+        store.set(pasteCopiedSelectionAtom);
+      },
+    ],
+    [
+      "selection duplicated",
+      (store) => {
+        store.set(onNodesChangeAtom, [
+          { type: "select", id: "a", selected: true },
+        ]);
+        store.set(duplicateSelectionAtom);
       },
     ],
   ];
@@ -455,5 +480,151 @@ describe("updateNodeDataAtom refuses a status write", () => {
     // The write is rejected by the type system, not at runtime; jotai still
     // applies whatever it was handed, so this only pins the compile-time rule.
     expect(store.get(nodesAtom).some((node) => node.id === "a")).toBe(true);
+  });
+});
+
+describe("copy and paste", () => {
+  it("pastes a clone beside the original and selects it", () => {
+    const store = createGraphStore(
+      [lifecycleNode("t"), { ...actionNode("a", 100), selected: true }],
+      []
+    );
+
+    store.set(copySelectionAtom);
+    store.set(pasteCopiedSelectionAtom);
+
+    const nodes = store.get(nodesAtom);
+    const pasted = nodes.find((node) => node.id !== "t" && node.id !== "a");
+    expect(nodes).toHaveLength(3);
+    expect(pasted?.position).toEqual({
+      x: 100 + PASTE_OFFSET,
+      y: PASTE_OFFSET,
+    });
+    expect(pasted?.selected).toBe(true);
+    expect(nodes.find((node) => node.id === "a")?.selected).toBe(false);
+  });
+
+  it("keeps edges that ran between the copied nodes", () => {
+    const store = createGraphStore(
+      [
+        lifecycleNode("t"),
+        { ...actionNode("a"), selected: true },
+        { ...actionNode("b", 80), selected: true },
+      ],
+      [edge("e-a-b", "a", "b")]
+    );
+
+    store.set(copySelectionAtom);
+    store.set(pasteCopiedSelectionAtom);
+
+    const originalIds = new Set(["t", "a", "b"]);
+    const pasted = store
+      .get(nodesAtom)
+      .filter((node) => !originalIds.has(node.id));
+    expect(pasted).toHaveLength(2);
+
+    const pastedIds = new Set(pasted.map((node) => node.id));
+    const newEdges = store
+      .get(edgesAtom)
+      .filter(
+        (item) => pastedIds.has(item.source) && pastedIds.has(item.target)
+      );
+    expect(newEdges).toHaveLength(1);
+    expect(store.get(edgesAtom)).toHaveLength(2);
+  });
+
+  it("rewrites template tokens that named a copied node", () => {
+    const token = formatTemplateToken({
+      nodeId: "a",
+      nodeLabel: "Fetch",
+      fieldPath: "email",
+    });
+    const store = createGraphStore(
+      [
+        lifecycleNode("t"),
+        { ...actionNode("a"), selected: true },
+        {
+          ...actionNode("b", 80),
+          selected: true,
+          data: {
+            label: "b",
+            type: "action",
+            config: { body: token },
+          },
+        },
+      ],
+      []
+    );
+
+    store.set(copySelectionAtom);
+    store.set(pasteCopiedSelectionAtom);
+
+    const pastedB = store
+      .get(nodesAtom)
+      .find(
+        (node) =>
+          node.id !== "b" &&
+          node.data.type === "action" &&
+          typeof node.data.config?.body === "string"
+      );
+    const pastedA = store
+      .get(nodesAtom)
+      .find((node) => node.id !== "a" && node.data.label === "a");
+    expect(pastedA).toBeDefined();
+    expect(pastedB?.data.config?.body).toBe(
+      formatTemplateToken({
+        nodeId: pastedA?.id ?? "",
+        nodeLabel: "Fetch",
+        fieldPath: "email",
+      })
+    );
+  });
+
+  it("does not copy the Lifecycle Node", () => {
+    const store = createGraphStore(
+      [{ ...lifecycleNode("t"), selected: true }],
+      []
+    );
+
+    expect(store.set(copySelectionAtom)).toBe(false);
+    expect(store.get(hasCopiedSelectionAtom)).toBe(false);
+    expect(store.set(pasteCopiedSelectionAtom)).toBe(false);
+    expect(store.get(nodesAtom)).toHaveLength(1);
+  });
+
+  it("leaves the clipboard intact across a workflow load", () => {
+    const store = createGraphStore(
+      [lifecycleNode("t"), { ...actionNode("a"), selected: true }],
+      []
+    );
+    store.set(copySelectionAtom);
+
+    store.set(loadWorkflowGraphAtom, {
+      nodes: [lifecycleNode("t2")],
+      edges: [],
+    });
+
+    expect(store.get(hasCopiedSelectionAtom)).toBe(true);
+    store.set(pasteCopiedSelectionAtom);
+    expect(store.get(nodesAtom).map((node) => node.data.label)).toEqual([
+      "t2",
+      "a",
+    ]);
+  });
+
+  it("refuses to paste onto a pinned run overlay", () => {
+    const store = createGraphStore(
+      [lifecycleNode("t"), { ...actionNode("a"), selected: true }],
+      []
+    );
+    store.set(copySelectionAtom);
+    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(executionOverlayGraphAtom, {
+      nodes: [lifecycleNode("pinned")],
+      edges: [],
+    });
+
+    expect(store.set(pasteCopiedSelectionAtom)).toBe(false);
+    expect(store.get(nodesAtom)).toHaveLength(2);
   });
 });
