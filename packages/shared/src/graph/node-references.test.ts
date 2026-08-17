@@ -4,6 +4,7 @@ import {
   findTemplateTokens,
   flattenSchemaToReferenceFields,
   formatTemplateToken,
+  mapTemplateTokens,
   matchTemplateToken,
   parseTemplate,
   resolveOutputPath,
@@ -338,6 +339,61 @@ describe("parseTemplate", () => {
 
   it("produces nothing for an empty string", () => {
     expect(parseTemplate("")).toEqual([]);
+  });
+});
+
+describe("mapTemplateTokens", () => {
+  it("rewrites tokens in nested objects and arrays, and leaves the rest", () => {
+    const tokenA = formatTemplateToken({
+      nodeId: "a",
+      nodeLabel: "Fetch",
+      fieldPath: "email",
+    });
+    const tokenOutside = formatTemplateToken({
+      nodeId: "outside",
+      nodeLabel: "User",
+      fieldPath: "id",
+    });
+    const remappedA = formatTemplateToken({
+      nodeId: "a2",
+      nodeLabel: "Fetch",
+      fieldPath: "email",
+    });
+
+    expect(
+      mapTemplateTokens(
+        {
+          body: `Hello ${tokenA} and ${tokenOutside}`,
+          nested: { to: tokenA },
+          list: [tokenA],
+        },
+        (token) =>
+          token.nodeId === "a"
+            ? formatTemplateToken({
+                nodeId: "a2",
+                nodeLabel: token.nodeLabel,
+                fieldPath: token.fieldPath,
+              })
+            : undefined
+      )
+    ).toEqual({
+      body: `Hello ${remappedA} and ${tokenOutside}`,
+      nested: { to: remappedA },
+      list: [remappedA],
+    });
+  });
+
+  it("returns the same reference when nothing changed", () => {
+    const config = {
+      keep: formatTemplateToken({
+        nodeId: "a",
+        nodeLabel: "Fetch",
+        fieldPath: "email",
+      }),
+      list: ["plain"],
+    };
+
+    expect(mapTemplateTokens(config, () => undefined)).toBe(config);
   });
 });
 

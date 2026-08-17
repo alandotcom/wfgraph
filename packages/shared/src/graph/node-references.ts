@@ -279,6 +279,79 @@ export function formatTemplateToken(input: {
   return `{{@${input.nodeId}:${input.nodeLabel}${suffix}}}`;
 }
 
+/**
+ * Rewrite every template token inside a JSON value. Returning `undefined`
+ * leaves that token as it was. The same reference comes back when nothing
+ * changed, so a rename can tell a dirty config from an untouched one.
+ */
+export function mapTemplateTokens(
+  value: JsonObject,
+  rewrite: (token: TemplateToken) => string | undefined
+): JsonObject;
+export function mapTemplateTokens(
+  value: JsonValue,
+  rewrite: (token: TemplateToken) => string | undefined
+): JsonValue;
+export function mapTemplateTokens(
+  value: JsonValue,
+  rewrite: (token: TemplateToken) => string | undefined
+): JsonValue {
+  if (typeof value === "string") {
+    return mapTemplateString(value, rewrite);
+  }
+
+  if (Array.isArray(value)) {
+    let changed = false;
+    const next = value.map((item) => {
+      const mapped = mapTemplateTokens(item, rewrite);
+      if (mapped !== item) {
+        changed = true;
+      }
+      return mapped;
+    });
+    return changed ? next : value;
+  }
+
+  if (typeof value === "object" && value !== null) {
+    let changed = false;
+    const remapped: JsonObject = {};
+    for (const [key, nested] of Object.entries(value)) {
+      const mapped = mapTemplateTokens(nested, rewrite);
+      if (mapped !== nested) {
+        changed = true;
+      }
+      remapped[key] = mapped;
+    }
+    return changed ? remapped : value;
+  }
+
+  return value;
+}
+
+function mapTemplateString(
+  value: string,
+  rewrite: (token: TemplateToken) => string | undefined
+): string {
+  let changed = false;
+  const next = parseTemplate(value)
+    .map((segment) => {
+      if (segment.kind === "literal") {
+        return segment.text;
+      }
+
+      const replacement = rewrite(segment.token);
+      if (replacement === undefined || replacement === segment.token.raw) {
+        return segment.token.raw;
+      }
+
+      changed = true;
+      return replacement;
+    })
+    .join("");
+
+  return changed ? next : value;
+}
+
 const BRACKET_INDEX_PATTERN = /\[(\d+)\]/g;
 const PATH_PART_PATTERN = /^([^[]*)((?:\[\d+\])*)$/;
 

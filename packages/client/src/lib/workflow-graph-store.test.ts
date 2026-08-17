@@ -627,4 +627,91 @@ describe("copy and paste", () => {
     expect(store.set(pasteCopiedSelectionAtom)).toBe(false);
     expect(store.get(nodesAtom)).toHaveLength(2);
   });
+
+  it("copies an unselected node when given its id", () => {
+    const store = createGraphStore(
+      [
+        lifecycleNode("t"),
+        { ...actionNode("a"), selected: false },
+        { ...actionNode("b", 80), selected: true },
+      ],
+      []
+    );
+
+    expect(store.set(copySelectionAtom, "a")).toBe(true);
+    store.set(pasteCopiedSelectionAtom);
+
+    const labels = store.get(nodesAtom).map((node) => node.data.label);
+    expect(labels.filter((label) => label === "a")).toHaveLength(2);
+    expect(labels.filter((label) => label === "b")).toHaveLength(1);
+  });
+
+  it("duplicates without writing the clipboard", () => {
+    const store = createGraphStore(
+      [
+        lifecycleNode("t"),
+        { ...actionNode("a"), selected: true },
+        { ...actionNode("b", 80), selected: false },
+      ],
+      []
+    );
+
+    store.set(copySelectionAtom);
+    store.set(onNodesChangeAtom, [
+      { type: "select", id: "a", selected: false },
+      { type: "select", id: "b", selected: true },
+    ]);
+    store.set(duplicateSelectionAtom);
+
+    const afterDuplicate = store.get(nodesAtom).map((node) => node.data.label);
+    expect(afterDuplicate.filter((label) => label === "b")).toHaveLength(2);
+    expect(afterDuplicate.filter((label) => label === "a")).toHaveLength(1);
+
+    store.set(pasteCopiedSelectionAtom);
+    const afterPaste = store.get(nodesAtom).map((node) => node.data.label);
+    expect(afterPaste.filter((label) => label === "a")).toHaveLength(2);
+    expect(afterPaste.filter((label) => label === "b")).toHaveLength(2);
+  });
+});
+
+describe("updateNodeDataAtom rewrites template labels", () => {
+  it("updates tokens in nested objects and arrays", () => {
+    const token = formatTemplateToken({
+      nodeId: "a",
+      nodeLabel: "Fetch",
+      fieldPath: "email",
+    });
+    const store = createGraphStore(
+      [
+        lifecycleNode("t"),
+        {
+          ...actionNode("a"),
+          data: { label: "Fetch", type: "action" },
+        },
+        {
+          ...actionNode("b", 80),
+          data: {
+            label: "b",
+            type: "action",
+            config: { list: [token], nested: { to: token } },
+          },
+        },
+      ],
+      []
+    );
+
+    store.set(updateNodeDataAtom, { id: "a", data: { label: "Renamed" } });
+
+    const expected = formatTemplateToken({
+      nodeId: "a",
+      nodeLabel: "Renamed",
+      fieldPath: "email",
+    });
+    expect(
+      store.get(nodesAtom).find((node) => node.id === "b")?.data.config
+    ).toEqual({
+      list: [expected],
+      nested: { to: expected },
+    });
+  });
 });

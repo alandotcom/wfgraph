@@ -8,8 +8,9 @@
 import { nanoid } from "nanoid";
 import {
   formatTemplateToken,
-  parseTemplate,
+  mapTemplateTokens,
 } from "@wfgraph/shared/graph/node-references";
+import { readJsonObject } from "@wfgraph/shared/types/json";
 import {
   toEditorEdge,
   toEditorNode,
@@ -82,6 +83,11 @@ export function extractCopyableSelection(input: {
   };
 }
 
+/**
+ * Assign fresh ids, apply an offset, and rewrite tokens that named a copied
+ * node. `selection` is extractCopyableSelection's output; this does not
+ * re-filter or re-snapshot it.
+ */
 export function cloneSelection(
   selection: CopiedSelection,
   options: {
@@ -93,54 +99,31 @@ export function cloneSelection(
   const idMap = new Map<string, string>();
 
   for (const node of selection.nodes) {
-    if (isCopyableNode(node)) {
-      idMap.set(node.id, createId());
-    }
+    idMap.set(node.id, createId());
   }
 
-  const nodes = selection.nodes.flatMap((node) => {
-    const nextId = idMap.get(node.id);
-    if (!nextId) {
-      return [];
-    }
+  const nodes = selection.nodes.map((node) => ({
+    ...node,
+    id: mappedId(idMap, node.id),
+    position: {
+      x: node.position.x + options.offset.x,
+      y: node.position.y + options.offset.y,
+    },
+    selected: true,
+    dragging: false,
+    data: {
+      ...node.data,
+      config: remapConfig(node.data.config, idMap),
+    },
+  }));
 
-    const snapshotted = snapshotNode(node);
-    return [
-      {
-        ...snapshotted,
-        id: nextId,
-        position: {
-          x: snapshotted.position.x + options.offset.x,
-          y: snapshotted.position.y + options.offset.y,
-        },
-        selected: true,
-        dragging: false,
-        data: {
-          ...snapshotted.data,
-          config: remapConfig(snapshotted.data.config, idMap),
-        },
-      },
-    ];
-  });
-
-  const nodeIds = new Set(nodes.map((node) => node.id));
-  const edges = selection.edges.flatMap((edge) => {
-    const source = idMap.get(edge.source);
-    const target = idMap.get(edge.target);
-    if (!(source && target && nodeIds.has(source) && nodeIds.has(target))) {
-      return [];
-    }
-
-    return [
-      {
-        ...snapshotEdge(edge),
-        id: createId(),
-        source,
-        target,
-        selected: true,
-      },
-    ];
-  });
+  const edges = selection.edges.map((edge) => ({
+    ...edge,
+    id: createId(),
+    source: mappedId(idMap, edge.source),
+    target: mappedId(idMap, edge.target),
+    selected: true,
+  }));
 
   return { nodes, edges };
 }
@@ -156,6 +139,14 @@ export function offsetToOrigin(
     x: origin.x - Math.min(...xs),
     y: origin.y - Math.min(...ys),
   };
+}
+
+function mappedId(idMap: ReadonlyMap<string, string>, id: string): string {
+  const mapped = idMap.get(id);
+  if (mapped === undefined) {
+    throw new Error("cloneSelection expected extractCopyableSelection output");
+  }
+  return mapped;
 }
 
 function snapshotNode(node: WorkflowNode): WorkflowNode {
@@ -177,63 +168,22 @@ function remapConfig(
   config: Record<string, unknown> | undefined,
   idMap: ReadonlyMap<string, string>
 ): Record<string, unknown> | undefined {
-  if (!config) {
+  const json = readJsonObject(config);
+  if (!json) {
     return config;
   }
-  const remapped: Record<string, unknown> = {};
-  for (const [key, nested] of Object.entries(config)) {
-    remapped[key] = remapTemplatesInValue(nested, idMap);
-  }
-  return remapped;
-}
 
-function remapTemplatesInValue(
-  value: unknown,
-  idMap: ReadonlyMap<string, string>
-): unknown {
-  if (typeof value === "string") {
-    return remapTemplateString(value, idMap);
-  }
-
-  if (Array.isArray(value)) {
-    return value.map((item) => remapTemplatesInValue(item, idMap));
-  }
-
-  if (typeof value === "object" && value !== null) {
-    const remapped: Record<string, unknown> = {};
-    for (const [key, nested] of Object.entries(value)) {
-      remapped[key] = remapTemplatesInValue(nested, idMap);
+  const remapped = mapTemplateTokens(json, (token) => {
+    const nodeId = idMap.get(token.nodeId);
+    if (!nodeId) {
+      return undefined;
     }
-    return remapped;
-  }
+    return formatTemplateToken({
+      nodeId,
+      nodeLabel: token.nodeLabel,
+      fieldPath: token.fieldPath,
+    });
+  });
 
-  return value;
-}
-
-function remapTemplateString(
-  value: string,
-  idMap: ReadonlyMap<string, string>
-): string {
-  let changed = false;
-  const next = parseTemplate(value)
-    .map((segment) => {
-      if (segment.kind === "literal") {
-        return segment.text;
-      }
-
-      const remappedId = idMap.get(segment.token.nodeId);
-      if (!remappedId) {
-        return segment.token.raw;
-      }
-
-      changed = true;
-      return formatTemplateToken({
-        nodeId: remappedId,
-        nodeLabel: segment.token.nodeLabel,
-        fieldPath: segment.token.fieldPath,
-      });
-    })
-    .join("");
-
-  return changed ? next : value;
+  return remapped === json ? config : remapped;
 }

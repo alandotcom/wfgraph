@@ -1,20 +1,12 @@
 import { useSetAtom } from "jotai";
 import { useCallback } from "react";
 import { useDomEvent } from "#src/hooks/effects";
+import { isTextEntry } from "#src/lib/is-text-entry";
 import {
   copySelectionAtom,
   duplicateSelectionAtom,
   pasteCopiedSelectionAtom,
 } from "#src/lib/workflow-graph-store";
-
-function isTypingTarget(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLElement &&
-    (target.tagName === "INPUT" ||
-      target.tagName === "TEXTAREA" ||
-      target.isContentEditable)
-  );
-}
 
 /**
  * Cmd/Ctrl+C, V, and D for the canvas selection. Disabled while a run overlay
@@ -30,7 +22,7 @@ export function useCanvasCopyPaste(enabled: boolean) {
       if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) {
         return;
       }
-      if (isTypingTarget(event.target)) {
+      if (isTextEntry(event.target)) {
         return;
       }
 

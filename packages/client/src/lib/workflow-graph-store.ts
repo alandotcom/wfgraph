@@ -5,6 +5,7 @@ import { atom } from "jotai";
 import {
   cloneSelection,
   extractCopyableSelection,
+  nodeIdsForContextCopy,
   offsetToOrigin,
   PASTE_OFFSET,
   type CopiedSelection,
@@ -30,8 +31,9 @@ import {
 } from "#src/lib/workflow-ui-store";
 import {
   formatTemplateToken,
-  parseTemplate,
+  mapTemplateTokens,
 } from "@wfgraph/shared/graph/node-references";
+import { readJsonObject } from "@wfgraph/shared/types/json";
 import { inactiveCanceledBranch } from "#src/lib/inactive-canceled-branch";
 import type {
   NodeRunStatus,
@@ -210,8 +212,12 @@ type HistoryState = {
 const historyAtom = atom<HistoryState[]>([]);
 const futureAtom = atom<HistoryState[]>([]);
 
-const copiedSelectionAtom = atom<CopiedSelection | null>(null);
-const pasteCountAtom = atom(0);
+type CopiedClipboard = {
+  selection: CopiedSelection;
+  pasteCount: number;
+};
+
+const copiedSelectionAtom = atom<CopiedClipboard | null>(null);
 
 // Deep enough that no one reaches the end by hand, bounded so a long editing
 // session cannot pin two copies of the graph per step in memory forever.
@@ -499,27 +505,61 @@ export const onEdgesChangeAtom = atom(
   }
 );
 
+/**
+ * Append a subgraph as one undo step: deselect what is on the canvas, select
+ * the inserted nodes, and save. Paste, duplicate, and addNode all go through
+ * here so the history / selection / save bookkeeping cannot drift.
+ */
+function insertClonedSubgraph(
+  get: Getter,
+  set: Setter,
+  subgraph: CopiedSelection
+) {
+  const nodes = subgraph.nodes.map((node) => ({ ...node, selected: true }));
+  const edges = subgraph.edges.map((edge) => ({ ...edge, selected: true }));
+
+  pushHistory(get, set);
+  set(nodesStateAtom, [
+    ...get(nodesStateAtom).map((node) => ({ ...node, selected: false })),
+    ...nodes,
+  ]);
+  set(edgesStateAtom, [
+    ...get(edgesStateAtom).map((edge) => ({ ...edge, selected: false })),
+    ...edges,
+  ]);
+  set(selectedNodeAtom, nodes[0].id);
+  set(selectedEdgeAtom, null);
+
+  const only = nodes.length === 1 ? nodes[0] : undefined;
+  if (only?.data.type === "action" && !only.data.config?.actionType) {
+    set(newlyCreatedNodeIdAtom, only.id);
+  } else {
+    set(newlyCreatedNodeIdAtom, null);
+  }
+
+  requestGraphSave(get, set, { immediate: true });
+}
+
+function snapshotCopyable(
+  get: Getter,
+  clickedNodeId?: string
+): CopiedSelection | null {
+  const nodes = get(nodesStateAtom);
+  return extractCopyableSelection({
+    nodes,
+    edges: get(edgesStateAtom),
+    nodeIds: clickedNodeId
+      ? nodeIdsForContextCopy(nodes, clickedNodeId)
+      : undefined,
+  });
+}
+
 export const addNodeAtom = atom(null, (get, set, node: WorkflowNode) => {
   if (!draftEditable(get)) {
     return;
   }
 
-  pushHistory(get, set);
-
-  const updatedNodes = get(nodesStateAtom).map((n) => ({
-    ...n,
-    selected: false,
-  }));
-  set(nodesStateAtom, [...updatedNodes, { ...node, selected: true }]);
-  set(selectedNodeAtom, node.id);
-
-  // A brand new action node has no action picked yet, so the panel opens on its
-  // search input rather than on an empty config form.
-  if (node.data.type === "action" && !node.data.config?.actionType) {
-    set(newlyCreatedNodeIdAtom, node.id);
-  }
-
-  requestGraphSave(get, set, { immediate: true });
+  insertClonedSubgraph(get, set, { nodes: [node], edges: [] });
 });
 
 /** Whether Cmd+V / Paste have a copied subgraph to insert. */
@@ -528,23 +568,19 @@ export const hasCopiedSelectionAtom = atom(
 );
 
 /**
- * Snapshot the copyable selection (or the given node ids) for a later paste.
- * Selection only, so not an undo step and not a save.
+ * Snapshot the copyable selection for a later paste. `clickedNodeId` is the
+ * node-context Copy target; omit it to copy whatever is selected. Selection
+ * only, so not an undo step and not a save.
  */
 export const copySelectionAtom = atom(
   null,
-  (get, set, nodeIds?: Iterable<string>) => {
-    const selection = extractCopyableSelection({
-      nodes: get(nodesStateAtom),
-      edges: get(edgesStateAtom),
-      nodeIds: nodeIds ? new Set(nodeIds) : undefined,
-    });
+  (get, set, clickedNodeId?: string) => {
+    const selection = snapshotCopyable(get, clickedNodeId);
     if (!selection) {
       return false;
     }
 
-    set(copiedSelectionAtom, selection);
-    set(pasteCountAtom, 0);
+    set(copiedSelectionAtom, { selection, pasteCount: 0 });
     return true;
   }
 );
@@ -557,59 +593,55 @@ export const copySelectionAtom = atom(
  */
 export const pasteCopiedSelectionAtom = atom(
   null,
-  (get, set, options?: { origin?: { x: number; y: number } }) => {
+  (get, set, origin?: { x: number; y: number }) => {
     if (!draftEditable(get)) {
       return false;
     }
 
-    const copied = get(copiedSelectionAtom);
-    if (!copied) {
+    const clipboard = get(copiedSelectionAtom);
+    if (!clipboard) {
       return false;
     }
 
-    const nextCount = get(pasteCountAtom) + 1;
-    const offset = options?.origin
-      ? offsetToOrigin(copied.nodes, options.origin)
+    const nextCount = clipboard.pasteCount + 1;
+    const offset = origin
+      ? offsetToOrigin(clipboard.selection.nodes, origin)
       : { x: PASTE_OFFSET * nextCount, y: PASTE_OFFSET * nextCount };
-    const cloned = cloneSelection(copied, { offset });
-    if (cloned.nodes.length === 0) {
-      return false;
-    }
 
-    set(pasteCountAtom, nextCount);
-    pushHistory(get, set);
-
-    set(nodesStateAtom, [
-      ...get(nodesStateAtom).map((node) => ({ ...node, selected: false })),
-      ...cloned.nodes,
-    ]);
-    set(edgesStateAtom, [
-      ...get(edgesStateAtom).map((edge) => ({ ...edge, selected: false })),
-      ...cloned.edges,
-    ]);
-    set(selectedNodeAtom, cloned.nodes[0].id);
-    set(selectedEdgeAtom, null);
-
-    const only = cloned.nodes.length === 1 ? cloned.nodes[0] : undefined;
-    if (only?.data.type === "action" && !only.data.config?.actionType) {
-      set(newlyCreatedNodeIdAtom, only.id);
-    } else {
-      set(newlyCreatedNodeIdAtom, null);
-    }
-
-    requestGraphSave(get, set, { immediate: true });
+    set(copiedSelectionAtom, { ...clipboard, pasteCount: nextCount });
+    insertClonedSubgraph(
+      get,
+      set,
+      cloneSelection(clipboard.selection, { offset })
+    );
     return true;
   }
 );
 
-/** Copy the current (or given) selection and paste it in one undo step. */
+/**
+ * Clone the current (or context-clicked) selection in one undo step without
+ * writing the clipboard, so a later paste still inserts whatever was copied.
+ */
 export const duplicateSelectionAtom = atom(
   null,
-  (get, set, nodeIds?: Iterable<string>) => {
-    if (!set(copySelectionAtom, nodeIds)) {
+  (get, set, clickedNodeId?: string) => {
+    if (!draftEditable(get)) {
       return false;
     }
-    return set(pasteCopiedSelectionAtom);
+
+    const selection = snapshotCopyable(get, clickedNodeId);
+    if (!selection) {
+      return false;
+    }
+
+    insertClonedSubgraph(
+      get,
+      set,
+      cloneSelection(selection, {
+        offset: { x: PASTE_OFFSET, y: PASTE_OFFSET },
+      })
+    );
+    return true;
   }
 );
 
@@ -711,55 +743,23 @@ function updateTemplatesInConfig(
   oldLabel: string,
   newLabel: string
 ): Record<string, unknown> {
-  let hasChanges = false;
-  const updated: Record<string, unknown> = {};
-
-  for (const [key, value] of Object.entries(config)) {
-    if (typeof value === "string") {
-      updated[key] = parseTemplate(value)
-        .map((segment) => {
-          if (segment.kind === "literal") {
-            return segment.text;
-          }
-
-          const { token } = segment;
-          if (token.nodeId !== nodeId || token.nodeLabel !== oldLabel) {
-            return token.raw;
-          }
-
-          hasChanges = true;
-          return formatTemplateToken({
-            nodeId,
-            nodeLabel: newLabel,
-            fieldPath: token.fieldPath,
-          });
-        })
-        .join("");
-    } else if (
-      typeof value === "object" &&
-      value !== null &&
-      !Array.isArray(value)
-    ) {
-      // The recursion needs a keyed value to walk. The copy is what gets passed
-      // down, so it is also what the identity check below compares against: the
-      // recursion returns its own argument when nothing inside it was renamed.
-      const nested: Record<string, unknown> = { ...value };
-      const nestedUpdated = updateTemplatesInConfig(
-        nested,
-        nodeId,
-        oldLabel,
-        newLabel
-      );
-      if (nestedUpdated !== nested) {
-        hasChanges = true;
-      }
-      updated[key] = nestedUpdated;
-    } else {
-      updated[key] = value;
-    }
+  const json = readJsonObject(config);
+  if (!json) {
+    return config;
   }
 
-  return hasChanges ? updated : config;
+  const remapped = mapTemplateTokens(json, (token) => {
+    if (token.nodeId !== nodeId || token.nodeLabel !== oldLabel) {
+      return undefined;
+    }
+    return formatTemplateToken({
+      nodeId,
+      nodeLabel: newLabel,
+      fieldPath: token.fieldPath,
+    });
+  });
+
+  return remapped === json ? config : remapped;
 }
 
 export const deleteNodeAtom = atom(null, (get, set, nodeId: string) => {

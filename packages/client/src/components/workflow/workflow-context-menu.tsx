@@ -16,7 +16,6 @@ import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useDomEvent } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
-import { nodeIdsForContextCopy } from "#src/lib/copy-selection";
 import {
   addNodeAtom,
   copySelectionAtom,
@@ -142,22 +141,20 @@ export function WorkflowContextMenu({
 
   const handleCopyNode = useCallback(() => {
     if (menuState?.nodeId) {
-      copySelection(nodeIdsForContextCopy(nodes, menuState.nodeId));
+      copySelection(menuState.nodeId);
     }
     onClose();
-  }, [menuState, copySelection, nodes, onClose]);
+  }, [menuState, copySelection, onClose]);
 
   const handleDuplicateNode = useCallback(() => {
     if (menuState?.nodeId) {
-      duplicateSelection(nodeIdsForContextCopy(nodes, menuState.nodeId));
+      duplicateSelection(menuState.nodeId);
     }
     onClose();
-  }, [menuState, duplicateSelection, nodes, onClose]);
+  }, [menuState, duplicateSelection, onClose]);
 
   const handlePaste = useCallback(() => {
-    pasteSelection(
-      menuState?.flowPosition ? { origin: menuState.flowPosition } : undefined
-    );
+    pasteSelection(menuState?.flowPosition);
     onClose();
   }, [menuState, pasteSelection, onClose]);
 

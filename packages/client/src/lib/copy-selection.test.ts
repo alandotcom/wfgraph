@@ -167,19 +167,21 @@ describe("nodeIdsForContextCopy", () => {
 
 describe("cloneSelection", () => {
   it("assigns fresh ids, offsets positions, and remaps internal edges", () => {
-    const cloned = cloneSelection(
-      {
-        nodes: [
-          actionNode("a", { x: 10, y: 20 }),
-          actionNode("b", { x: 30, y: 40 }),
-        ],
-        edges: [edge("e-a-b", "a", "b")],
-      },
-      {
-        offset: { x: PASTE_OFFSET, y: PASTE_OFFSET },
-        createId: sequentialIds(["a2", "b2", "e2"]),
-      }
-    );
+    const extracted = extractCopyableSelection({
+      nodes: [
+        actionNode("a", { x: 10, y: 20 }),
+        actionNode("b", { x: 30, y: 40 }),
+      ],
+      edges: [edge("e-a-b", "a", "b")],
+    });
+    if (!extracted) {
+      throw new Error("expected a copyable selection");
+    }
+
+    const cloned = cloneSelection(extracted, {
+      offset: { x: PASTE_OFFSET, y: PASTE_OFFSET },
+      createId: sequentialIds(["a2", "b2", "e2"]),
+    });
 
     expect(cloned.nodes.map((node) => node.id)).toEqual(["a2", "b2"]);
     expect(cloned.nodes.map((node) => node.position)).toEqual([
@@ -210,24 +212,29 @@ describe("cloneSelection", () => {
       fieldPath: "id",
     });
 
-    const cloned = cloneSelection(
-      {
-        nodes: [
-          actionNode("a", { x: 0, y: 0 }),
-          actionNode(
-            "b",
-            { x: 0, y: 0 },
-            {
-              body: `Hello ${tokenA} and ${tokenOutside}`,
-              nested: { to: tokenA },
-              list: [tokenA],
-            }
-          ),
-        ],
-        edges: [],
-      },
-      { offset: { x: 0, y: 0 }, createId: sequentialIds(["a2", "b2"]) }
-    );
+    const extracted = extractCopyableSelection({
+      nodes: [
+        actionNode("a", { x: 0, y: 0 }),
+        actionNode(
+          "b",
+          { x: 0, y: 0 },
+          {
+            body: `Hello ${tokenA} and ${tokenOutside}`,
+            nested: { to: tokenA },
+            list: [tokenA],
+          }
+        ),
+      ],
+      edges: [],
+    });
+    if (!extracted) {
+      throw new Error("expected a copyable selection");
+    }
+
+    const cloned = cloneSelection(extracted, {
+      offset: { x: 0, y: 0 },
+      createId: sequentialIds(["a2", "b2"]),
+    });
 
     const remappedA = formatTemplateToken({
       nodeId: "a2",
