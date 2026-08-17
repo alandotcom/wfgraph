@@ -115,7 +115,7 @@ function renderHandles(
 export const Node = ({ handles, className, status, ...props }: NodeProps) => (
   <Card
     className={cn(
-      "node-container relative size-full h-auto w-sm gap-0 overflow-visible rounded-md bg-card p-0 transition-all duration-200",
+      "node-container relative flex flex-col items-center justify-center gap-0 overflow-visible rounded-md bg-card p-0 shadow-none transition-all duration-150 ease-out",
       status === "success" && "border-2 border-success",
       status === "error" && "border-2 border-destructive",
       status === "cancelled" && "border-2 border-cancelled",
@@ -133,10 +133,32 @@ export const Node = ({ handles, className, status, ...props }: NodeProps) => (
 
 export type NodeTitleProps = ComponentProps<typeof CardTitle>;
 
-export const NodeTitle = (props: NodeTitleProps) => <CardTitle {...props} />;
+export const NodeTitle = ({ className, ...props }: NodeTitleProps) => (
+  <CardTitle className={cn("w-full truncate text-base", className)} {...props} />
+);
 
 export type NodeDescriptionProps = ComponentProps<typeof CardDescription>;
 
-export const NodeDescription = (props: NodeDescriptionProps) => (
-  <CardDescription {...props} />
+export const NodeDescription = ({
+  className,
+  ...props
+}: NodeDescriptionProps) => (
+  <CardDescription
+    className={cn("w-full truncate text-xs", className)}
+    {...props}
+  />
 );
+
+export const NodeBody = ({
+  className,
+  ...props
+}: ComponentProps<"div">) => (
+  <div
+    className={cn(
+      "flex w-full flex-col items-center justify-center gap-1 px-3 py-2",
+      className
+    )}
+    {...props}
+  />
+);
+

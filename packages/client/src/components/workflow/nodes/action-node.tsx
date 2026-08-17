@@ -17,6 +17,7 @@ import { Schema } from "effect";
 import { memo, useMemo, useState } from "react";
 import {
   Node,
+  NodeBody,
   NodeDescription,
   NodeTitle,
 } from "#src/components/flow-elements/node";
@@ -47,7 +48,11 @@ import {
   isEventSplitActionType,
 } from "@wfgraph/shared/lifecycle/event-split";
 import { useEventSplitOutlets } from "#src/lib/event-split-outlets";
-import { eventSplitCardWidth } from "#src/components/workflow/workflow-node-dimensions";
+import {
+  eventSplitCardWidth,
+  WORKFLOW_NODE_WIDTH,
+  workflowNodeSize,
+} from "#src/components/workflow/workflow-node-dimensions";
 import { useAfterPaint, useNowMs } from "#src/hooks/effects";
 import { useExecutionLogsByNode } from "#src/hooks/use-execution-logs";
 import {
@@ -347,12 +352,12 @@ const ProviderLogo = ({
   switch (actionType) {
     case BUILT_IN_ACTION_IDS.condition:
       return (
-        <GitBranch className="size-12 text-node-condition" strokeWidth={1.5} />
+        <GitBranch className="size-8 text-node-condition" strokeWidth={1.5} />
       );
     case BUILT_IN_ACTION_IDS.eventSplit:
-      return <Split className="size-12 text-node-split" strokeWidth={1.5} />;
+      return <Split className="size-8 text-node-split" strokeWidth={1.5} />;
     case BUILT_IN_ACTION_IDS.wait:
-      return <Hourglass className="size-12 text-node-wait" strokeWidth={1.5} />;
+      return <Hourglass className="size-8 text-node-wait" strokeWidth={1.5} />;
     default:
       // Not a built-in, so the icon comes from its integration below.
       break;
@@ -363,23 +368,11 @@ const ProviderLogo = ({
     const ui = integrationUi[integrationType];
     if (ui) {
       const PluginIcon = ui.icon;
-      return <PluginIcon className="size-12" />;
+      return <PluginIcon className="size-8" />;
     }
   }
 
-  return <Zap className="size-12 text-node-wait" strokeWidth={1.5} />;
-};
-
-const ModelBadge = ({ model }: { model: string }) => {
-  if (!model) {
-    return null;
-  }
-
-  return (
-    <div className="rounded-full border border-muted-foreground/50 px-2 py-0.5 font-medium text-xs text-muted-foreground">
-      {getModelDisplayName(model)}
-    </div>
-  );
+  return <Zap className="size-8 text-node-wait" strokeWidth={1.5} />;
 };
 
 function GeneratedImageThumbnail({ base64 }: { base64: string }) {
@@ -388,7 +381,7 @@ function GeneratedImageThumbnail({ base64 }: { base64: string }) {
   return (
     <>
       <button
-        className="relative size-12 cursor-zoom-in overflow-hidden rounded-lg transition-transform hover:scale-105"
+        className="relative size-8 cursor-zoom-in overflow-hidden rounded-lg transition-transform hover:scale-105"
         onClick={(e) => {
           e.stopPropagation();
           setDialogOpen(true);
@@ -397,10 +390,10 @@ function GeneratedImageThumbnail({ base64 }: { base64: string }) {
       >
         <img
           alt="Generated output"
-          className="size-12 object-cover"
-          height={48}
+          className="size-8 object-cover"
+          height={32}
           src={`data:image/png;base64,${base64}`}
-          width={48}
+          width={32}
         />
       </button>
 
@@ -497,39 +490,28 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
     const isDisabled = data.enabled === false;
     return (
       <Node
-        className={cn(
-          "flex size-48 flex-col items-center justify-center shadow-none transition-all duration-150 ease-out",
-          selected && "border-primary",
-          isDisabled && "opacity-50"
-        )}
+        className={cn(selected && "border-primary", isDisabled && "opacity-50")}
         data-testid={`action-node-${id}`}
         handles={{ target: true, source: true }}
         status={status}
+        style={workflowNodeSize()}
       >
         {isDisabled && (
           <div className="absolute top-2 left-2 rounded-full bg-muted-foreground/50 p-1">
             <EyeOff className="size-3.5 text-background" />
           </div>
         )}
-        <div className="flex flex-col items-center justify-center gap-3 p-6">
-          <Zap className="size-12 text-muted-foreground" strokeWidth={1.5} />
-          <div className="flex flex-col items-center gap-1 text-center">
-            <NodeTitle className="text-base">
-              {data.label || "Action"}
-            </NodeTitle>
-            <NodeDescription className="text-xs">
-              Select an action
-            </NodeDescription>
-          </div>
-        </div>
+        <NodeBody>
+          <Zap className="size-8 text-muted-foreground" strokeWidth={1.5} />
+          <NodeTitle>{data.label || "Action"}</NodeTitle>
+          <NodeDescription>Select an action</NodeDescription>
+        </NodeBody>
       </Node>
     );
   }
 
   const actionInfo = findAction(catalog, actionType);
   const displayTitle = data.label || actionInfo?.label || actionType;
-  const displayDescription =
-    data.description || getIntegrationFromActionType(catalog, actionType);
 
   const needsIntegration = requiresIntegration(catalog, actionType);
   const configuredIntegrationId = readConfigString(
@@ -559,14 +541,15 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
 
   const aiModel = getAiModel();
   const isDisabled = data.enabled === false;
+  const displayDescription = waitPreview
+    ? waitPreview.countdown
+    : aiModel
+      ? getModelDisplayName(aiModel)
+      : data.description || getIntegrationFromActionType(catalog, actionType);
 
   return (
     <Node
-      className={cn(
-        "relative flex size-48 flex-col items-center justify-center shadow-none transition-all duration-150 ease-out",
-        selected && "border-primary",
-        isDisabled && "opacity-50"
-      )}
+      className={cn(selected && "border-primary", isDisabled && "opacity-50")}
       data-testid={`action-node-${id}`}
       handles={{
         target: true,
@@ -603,14 +586,13 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
               }))
             : true,
       }}
-      // A split is as wide as its outlets. Every other node keeps the width its
-      // class names, which is what `undefined` leaves standing.
-      style={
-        isEventSplitAction && splitOutlets.length > 1
-          ? { width: eventSplitCardWidth(splitOutlets.length) }
-          : undefined
-      }
+      // A split is as wide as its outlets. Every other node keeps the default.
       status={status}
+      style={workflowNodeSize(
+        isEventSplitAction
+          ? eventSplitCardWidth(splitOutlets.length)
+          : WORKFLOW_NODE_WIDTH
+      )}
     >
       {/* Disabled badge in top left */}
       {isDisabled && (
@@ -651,34 +633,21 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
           </div>
         ))}
 
-      <div className="flex flex-col items-center justify-center gap-3 p-6">
+      <NodeBody>
         {generatedImageBase64 ? (
           <GeneratedImageThumbnail base64={generatedImageBase64} />
         ) : (
           <ProviderLogo actionType={actionType} catalog={catalog} />
         )}
-        <div className="flex flex-col items-center gap-1 text-center">
-          <NodeTitle className="text-base">{displayTitle}</NodeTitle>
-          {waitPreview ? (
-            <div className="flex flex-col items-center gap-0.5">
-              <NodeDescription className="font-medium text-xs tabular-nums">
-                {waitPreview.countdown}
-              </NodeDescription>
-              <NodeDescription className="max-w-[10.5rem] text-xs leading-tight">
-                {waitPreview.triggerTime}
-              </NodeDescription>
-            </div>
-          ) : (
-            displayDescription && (
-              <NodeDescription className="text-xs">
-                {displayDescription}
-              </NodeDescription>
-            )
-          )}
-          {/* Model badge for AI nodes */}
-          {aiModel && <ModelBadge model={aiModel} />}
-        </div>
-      </div>
+        <NodeTitle>{displayTitle}</NodeTitle>
+        {displayDescription && (
+          <NodeDescription
+            className={waitPreview ? "font-medium tabular-nums" : undefined}
+          >
+            {displayDescription}
+          </NodeDescription>
+        )}
+      </NodeBody>
     </Node>
   );
 });
