@@ -163,7 +163,7 @@ describe("persisted node data", () => {
           data: {
             label: "Lookups",
             type: "group",
-            config: { entryNodeId: "a1", exitNodeId: "c1" },
+            config: { entryNodeIds: ["a1"], exitNodeId: "c1" },
           },
         },
         {

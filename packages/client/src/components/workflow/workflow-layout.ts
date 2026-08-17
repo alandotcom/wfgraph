@@ -20,6 +20,9 @@ import {
 } from "./workflow-node-dimensions";
 import {
   edgesForGroupLayout,
+  groupEntryIds,
+  groupMemberSlots,
+  groupSlotBounds,
   isGroupNode,
 } from "@wfgraph/shared/graph/node-group";
 import { layoutGroupChildren } from "#src/lib/node-group";
@@ -174,10 +177,21 @@ function readNodeShape(input: {
   catalog: ExtensionCatalog;
 }): { width: number; height: number; handleRanks: Map<string, number> } {
   if (isGroupNode(input.node)) {
-    const childCount = input.nodes.filter(
+    const children = input.nodes.filter(
       (node) => node.parentId === input.node.id
-    ).length;
-    const size = groupFrameSize(childCount);
+    );
+    const memberIds = children.map((child) => child.id);
+    const memberSet = new Set(memberIds);
+    const interior = input.edges.filter(
+      (edge) => memberSet.has(edge.source) && memberSet.has(edge.target)
+    );
+    const slots = groupMemberSlots(
+      memberIds,
+      interior,
+      groupEntryIds(input.node)
+    );
+    const bounds = groupSlotBounds(slots);
+    const size = groupFrameSize(bounds.columns, bounds.rows);
     return {
       width: size.width,
       height: size.height,
@@ -602,7 +616,7 @@ export function layoutWorkflowNodes(input: {
       position: next.position,
     };
   });
-  const nodes = layoutGroupChildren(positioned);
+  const nodes = layoutGroupChildren(positioned, input.edges);
   const previousById = new Map(input.nodes.map((node) => [node.id, node]));
   const changed = nodes.some((node) => {
     const previous = previousById.get(node.id);

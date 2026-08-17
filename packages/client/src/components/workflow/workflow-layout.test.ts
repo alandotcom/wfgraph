@@ -492,7 +492,7 @@ describe("layoutWorkflowNodes", () => {
       data: {
         label: "Lookups",
         type: "group",
-        config: { entryNodeId: "a", exitNodeId: "c" },
+        config: { entryNodeIds: ["a"], exitNodeId: "c" },
       },
     };
     const childA: WorkflowNode = {

@@ -2,6 +2,7 @@ import type { EdgeChange, NodeChange } from "@xyflow/react";
 import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
+import { nanoid } from "nanoid";
 import {
   cloneSelection,
   extractCopyableSelection,
@@ -38,10 +39,12 @@ import { groupSelection, ungroupNode } from "#src/lib/node-group";
 import {
   childIdsOfGroup,
   displayEdgesForGroups,
+  fanOutStoreEdgeIds,
   isGroupNode,
   groupExitId,
   orderGroupParentsFirst,
   resolveStoredEndpoint,
+  storedTargetsFor,
   undersizedGroupIds,
 } from "@wfgraph/shared/graph/node-group";
 import { isConditionNode } from "@wfgraph/shared/graph/node-config";
@@ -258,6 +261,29 @@ function dissolveUndersizedGroups(nodes: WorkflowNode[]): WorkflowNode[] {
     next = ungroupNode(next, groupId);
   }
   return next;
+}
+
+function expandEdgeRemovals(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+  changes: EdgeChange[]
+): EdgeChange[] {
+  const removedIds = new Set<string>();
+  for (const change of changes) {
+    if (change.type !== "remove") {
+      continue;
+    }
+    for (const id of fanOutStoreEdgeIds(nodes, edges, change.id)) {
+      removedIds.add(id);
+    }
+  }
+  if (removedIds.size === 0) {
+    return changes;
+  }
+  return [
+    ...changes.filter((change) => change.type !== "remove"),
+    ...[...removedIds].map((id) => ({ type: "remove" as const, id })),
+  ];
 }
 
 function idsRemovedWith(
@@ -516,7 +542,13 @@ export const onEdgesChangeAtom = atom(
 
     // No history push here; see the note in onNodesChangeAtom.
     const hasRemoval = changes.some((change) => change.type === "remove");
-    const newEdges = applyEdgeChanges(changes, get(edgesStateAtom));
+    const currentEdges = get(edgesStateAtom);
+    const expandedChanges = expandEdgeRemovals(
+      get(nodesStateAtom),
+      currentEdges,
+      changes
+    );
+    const newEdges = applyEdgeChanges(expandedChanges, currentEdges);
     set(edgesStateAtom, newEdges);
 
     const selectedEdge = newEdges.find((e) => e.selected);
@@ -677,7 +709,7 @@ export const duplicateSelectionAtom = atom(
   }
 );
 
-/** Wrap a valid SESE lookup+Condition selection in a Group frame. */
+/** Wrap a valid lookup+Condition selection in a Group frame. */
 export const groupSelectionAtom = atom(
   null,
   (get, set, clickedNodeId?: string) => {
@@ -704,6 +736,7 @@ export const groupSelectionAtom = atom(
 
     pushHistory(get, set);
     set(nodesStateAtom, grouped.nodes);
+    set(edgesStateAtom, grouped.edges);
     const frame = grouped.nodes.find(
       (node) => isGroupNode(node) && node.selected
     );
@@ -749,7 +782,7 @@ export const connectNodesAtom = atom(null, (get, set, edge: WorkflowEdge) => {
   const nodes = get(nodesStateAtom);
   const sourceNode = nodes.find((node) => node.id === edge.source);
   const source = resolveStoredEndpoint(nodes, edge.source, "source");
-  const target = resolveStoredEndpoint(nodes, edge.target, "target");
+  const targets = storedTargetsFor(nodes, edge.target);
   let sourceHandle = edge.sourceHandle;
   if (isGroupNode(sourceNode)) {
     const exit = nodes.find((node) => node.id === groupExitId(sourceNode));
@@ -758,11 +791,32 @@ export const connectNodesAtom = atom(null, (get, set, edge: WorkflowEdge) => {
     }
   }
 
+  const currentEdges = get(edgesStateAtom);
+  const existing = new Set(
+    currentEdges.map(
+      (item) => `${item.source}\0${item.sourceHandle ?? ""}\0${item.target}`
+    )
+  );
+  const additions: WorkflowEdge[] = [];
+  for (const target of targets) {
+    const key = `${source}\0${sourceHandle ?? ""}\0${target}`;
+    if (existing.has(key)) {
+      continue;
+    }
+    additions.push({
+      ...edge,
+      id: additions.length === 0 ? edge.id : nanoid(),
+      source,
+      target,
+      sourceHandle,
+    });
+  }
+  if (additions.length === 0) {
+    return;
+  }
+
   pushHistory(get, set);
-  set(edgesStateAtom, [
-    ...get(edgesStateAtom),
-    { ...edge, source, target, sourceHandle },
-  ]);
+  set(edgesStateAtom, [...currentEdges, ...additions]);
   requestGraphSave(get, set, { immediate: true });
 });
 
@@ -904,7 +958,13 @@ export const deleteEdgeAtom = atom(null, (get, set, edgeId: string) => {
   }
 
   const currentEdges = get(edgesStateAtom);
-  const remaining = currentEdges.filter((edge) => edge.id !== edgeId);
+  const removedIds = new Set(
+    fanOutStoreEdgeIds(get(nodesStateAtom), currentEdges, edgeId)
+  );
+  if (removedIds.size === 0) {
+    return;
+  }
+  const remaining = currentEdges.filter((edge) => !removedIds.has(edge.id));
   if (remaining.length === currentEdges.length) {
     return;
   }
@@ -912,7 +972,7 @@ export const deleteEdgeAtom = atom(null, (get, set, edgeId: string) => {
   pushHistory(get, set);
   set(edgesStateAtom, remaining);
 
-  if (get(selectedEdgeAtom) === edgeId) {
+  if (get(selectedEdgeAtom) && removedIds.has(get(selectedEdgeAtom) ?? "")) {
     set(selectedEdgeAtom, null);
   }
 
@@ -943,13 +1003,18 @@ export const deleteSelectedItemsAtom = atom(null, (get, set) => {
       (node) => node.data.type === "lifecycle" || !selectedNodeIds.has(node.id)
     )
   );
+  const selectedFanOut = new Set(
+    currentEdges
+      .filter((edge) => edge.selected)
+      .flatMap((edge) =>
+        fanOutStoreEdgeIds(currentNodes, currentEdges, edge.id)
+      )
+  );
   const remainingEdges = currentEdges.filter(
     (edge) =>
-      !(
-        edge.selected ||
-        selectedNodeIds.has(edge.source) ||
-        selectedNodeIds.has(edge.target)
-      )
+      !selectedFanOut.has(edge.id) &&
+      !selectedNodeIds.has(edge.source) &&
+      !selectedNodeIds.has(edge.target)
   );
 
   // Selecting only the Lifecycle Node and pressing delete removes nothing, and

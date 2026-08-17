@@ -296,7 +296,7 @@ describe("copying a Group", () => {
       data: {
         label: "Lookups",
         type: "group",
-        config: { entryNodeId: "a", exitNodeId: "c" },
+        config: { entryNodeIds: ["a"], exitNodeId: "c" },
       },
     };
   }
@@ -352,7 +352,7 @@ describe("copying a Group", () => {
       y: 80 + PASTE_OFFSET,
     });
     expect(frame?.data.config).toEqual({
-      entryNodeId: "a2",
+      entryNodeIds: ["a2"],
       exitNodeId: "c2",
     });
     expect(nested.every((node) => node.parentId === "g2")).toBe(true);

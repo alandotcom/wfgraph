@@ -14,15 +14,22 @@ export const GROUP_CHILD_HEIGHT = 56;
 export const GROUP_HEADER_HEIGHT = 36;
 export const GROUP_PAD = 12;
 export const GROUP_CHILD_GAP = 8;
-export const GROUP_WIDTH = GROUP_PAD + GROUP_CHILD_WIDTH + GROUP_PAD;
 
-export function groupFrameSize(childCount: number): {
+export function groupFrameSize(
+  columns: number,
+  rows: number
+): {
   width: number;
   height: number;
 } {
-  const stacked = Math.max(childCount, 1);
+  const cols = Math.max(columns, 1);
+  const stacked = Math.max(rows, 1);
   return {
-    width: GROUP_WIDTH,
+    width:
+      GROUP_PAD +
+      cols * GROUP_CHILD_WIDTH +
+      (cols - 1) * GROUP_CHILD_GAP +
+      GROUP_PAD,
     height:
       GROUP_HEADER_HEIGHT +
       GROUP_PAD +

@@ -175,7 +175,7 @@ const workflowAddNodeDataSchema = Schema.StructWithRest(
 );
 
 const workflowGroupConfigSchema = Schema.Struct({
-  entryNodeId: Schema.optional(NonEmptyTrimmedString),
+  entryNodeIds: Schema.optional(listOf(NonEmptyTrimmedString)),
   exitNodeId: Schema.optional(NonEmptyTrimmedString),
 }).annotate({
   message: "Group config must be an object",

@@ -51,7 +51,10 @@ import {
   showMinimapAtom,
 } from "#src/lib/workflow-ui-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-import { resolveStoredEndpoint } from "@wfgraph/shared/graph/node-group";
+import {
+  resolveStoredEndpoint,
+  storedTargetsFor,
+} from "@wfgraph/shared/graph/node-group";
 import { normalizeSourceHandleForConnection as normalizeSourceHandle } from "./connection-handle";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
@@ -347,22 +350,42 @@ export function WorkflowCanvas() {
         "id" in connection && typeof connection.id === "string"
           ? connection.id
           : null;
+      const storedSource = resolveStoredEndpoint(nodes, sourceNodeId, "source");
+      const sourceHandle = normalizeSourceHandle({
+        nodes,
+        edges,
+        sourceNodeId,
+        sourceHandle:
+          "sourceHandle" in connection ? connection.sourceHandle : undefined,
+        catalog,
+      });
+      const existing = new Set(
+        storeEdges
+          .filter((edge) => edge.id !== connectionId)
+          .map(
+            (edge) =>
+              `${edge.source}\0${edge.sourceHandle ?? ""}\0${edge.target}`
+          )
+      );
+      const additions = storedTargetsFor(nodes, targetNodeId)
+        .map((target) => ({
+          source: storedSource,
+          target,
+          sourceHandle,
+        }))
+        .filter(
+          (edge) =>
+            !existing.has(
+              `${edge.source}\0${edge.sourceHandle ?? ""}\0${edge.target}`
+            )
+        );
+      if (additions.length === 0) {
+        return false;
+      }
+
       const proposedEdges = [
         ...storeEdges.filter((edge) => edge.id !== connectionId),
-        {
-          source: resolveStoredEndpoint(nodes, sourceNodeId, "source"),
-          target: resolveStoredEndpoint(nodes, targetNodeId, "target"),
-          sourceHandle: normalizeSourceHandle({
-            nodes,
-            edges,
-            sourceNodeId,
-            sourceHandle:
-              "sourceHandle" in connection
-                ? connection.sourceHandle
-                : undefined,
-            catalog,
-          }),
-        },
+        ...additions,
       ];
 
       if (

@@ -6,8 +6,12 @@
 import { nanoid } from "nanoid";
 import {
   analyzeGroupableSelection,
+  groupEntryIds,
+  groupMemberSlots,
+  groupSlotBounds,
   isGroupNode,
   type GroupAnalysis,
+  type GroupMemberSlot,
 } from "@wfgraph/shared/graph/node-group";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
@@ -26,7 +30,12 @@ export function groupSelection(input: {
   edges: WorkflowEdge[];
   selectedIds: ReadonlySet<string>;
   createId?: () => string;
-}): { nodes: WorkflowNode[]; analysis: GroupAnalysis } | null {
+  createEdgeId?: () => string;
+}): {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  analysis: GroupAnalysis;
+} | null {
   const analysis = analyzeGroupableSelection(
     input.nodes,
     input.edges,
@@ -49,9 +58,19 @@ export function groupSelection(input: {
     x: Math.min(...members.map((node) => node.position.x)),
     y: Math.min(...members.map((node) => node.position.y)),
   };
-  const size = groupFrameSize(members.length);
-  const groupId = (input.createId ?? nanoid)();
   const memberSet = new Set(analysis.memberIds);
+  const interior = input.edges.filter(
+    (edge) => memberSet.has(edge.source) && memberSet.has(edge.target)
+  );
+  const slots = groupMemberSlots(
+    analysis.memberIds,
+    interior,
+    analysis.entryIds
+  );
+  const bounds = groupSlotBounds(slots);
+  const size = groupFrameSize(bounds.columns, bounds.rows);
+  const groupId = (input.createId ?? nanoid)();
+  const slotById = new Map(slots.map((slot) => [slot.id, slot]));
 
   const groupNode: WorkflowNode = {
     id: groupId,
@@ -65,21 +84,27 @@ export function groupSelection(input: {
       label: "Group",
       type: "group",
       config: {
-        entryNodeId: analysis.entryId,
+        entryNodeIds: analysis.entryIds,
         exitNodeId: analysis.exitId,
       },
     },
   };
 
-  const children = members.map((node, index) =>
-    nestInGroup(node, groupId, index)
-  );
+  const children = members.map((node) => {
+    const slot = slotById.get(node.id) ?? { id: node.id, row: 0, column: 0 };
+    return nestInGroup(node, groupId, slot);
+  });
   const rest = input.nodes
     .filter((node) => !memberSet.has(node.id))
     .map((node) => ({ ...node, selected: false }));
 
   return {
     nodes: [...rest, groupNode, ...children],
+    edges: alignEntryIncoming({
+      edges: input.edges,
+      entryIds: analysis.entryIds,
+      createEdgeId: input.createEdgeId ?? nanoid,
+    }),
     analysis,
   };
 }
@@ -105,7 +130,10 @@ export function ungroupNode(
   });
 }
 
-export function layoutGroupChildren(nodes: WorkflowNode[]): WorkflowNode[] {
+export function layoutGroupChildren(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[]
+): WorkflowNode[] {
   const byParent = new Map<string, WorkflowNode[]>();
   for (const node of nodes) {
     if (!node.parentId) {
@@ -121,19 +149,34 @@ export function layoutGroupChildren(nodes: WorkflowNode[]): WorkflowNode[] {
   }
 
   const childById = new Map<string, WorkflowNode>();
+  const sizeByGroup = new Map<string, { width: number; height: number }>();
   for (const [groupId, children] of byParent) {
-    const ordered = [...children].toSorted(
-      (a, b) => a.position.y - b.position.y
+    const group = nodes.find((node) => node.id === groupId);
+    const memberIds = children.map((child) => child.id);
+    const memberSet = new Set(memberIds);
+    const interior = edges.filter(
+      (edge) => memberSet.has(edge.source) && memberSet.has(edge.target)
     );
-    for (const [index, child] of ordered.entries()) {
-      childById.set(child.id, nestInGroup(child, groupId, index));
+    const slots = groupMemberSlots(memberIds, interior, groupEntryIds(group));
+    const bounds = groupSlotBounds(slots);
+    sizeByGroup.set(groupId, groupFrameSize(bounds.columns, bounds.rows));
+    const slotById = new Map(slots.map((slot) => [slot.id, slot]));
+    for (const child of children) {
+      const slot = slotById.get(child.id) ?? {
+        id: child.id,
+        row: 0,
+        column: 0,
+      };
+      childById.set(child.id, nestInGroup(child, groupId, slot));
     }
   }
 
   return nodes.map((node) => {
     if (isGroupNode(node)) {
-      const count = byParent.get(node.id)?.length ?? 0;
-      const size = groupFrameSize(count);
+      const size = sizeByGroup.get(node.id);
+      if (!size) {
+        return node;
+      }
       return {
         ...node,
         width: size.width,
@@ -145,10 +188,62 @@ export function layoutGroupChildren(nodes: WorkflowNode[]): WorkflowNode[] {
   });
 }
 
+function alignEntryIncoming(input: {
+  edges: WorkflowEdge[];
+  entryIds: readonly string[];
+  createEdgeId: () => string;
+}): WorkflowEdge[] {
+  const { edges, entryIds, createEdgeId } = input;
+  const entrySet = new Set(entryIds);
+  const incoming = edges.filter((edge) => entrySet.has(edge.target));
+  const templates: WorkflowEdge[] = [];
+  const seen = new Set<string>();
+  for (const edge of incoming) {
+    const key = `${edge.source}\0${edge.sourceHandle ?? ""}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    templates.push(edge);
+  }
+  if (templates.length !== 1) {
+    return edges;
+  }
+
+  const template = templates[0];
+  if (!template) {
+    return edges;
+  }
+  const have = new Set(
+    edges
+      .filter(
+        (edge) =>
+          edge.source === template.source &&
+          (edge.sourceHandle ?? "") === (template.sourceHandle ?? "")
+      )
+      .map((edge) => edge.target)
+  );
+  const extra: WorkflowEdge[] = [];
+  for (const entryId of entryIds) {
+    if (have.has(entryId)) {
+      continue;
+    }
+    extra.push({
+      id: createEdgeId(),
+      source: template.source,
+      target: entryId,
+      sourceHandle: template.sourceHandle,
+      targetHandle: template.targetHandle,
+      type: template.type,
+    });
+  }
+  return extra.length === 0 ? edges : [...edges, ...extra];
+}
+
 function nestInGroup(
   node: WorkflowNode,
   groupId: string,
-  index: number
+  slot: GroupMemberSlot
 ): WorkflowNode {
   return {
     ...node,
@@ -160,11 +255,11 @@ function nestInGroup(
     width: GROUP_CHILD_WIDTH,
     height: GROUP_CHILD_HEIGHT,
     position: {
-      x: GROUP_PAD,
+      x: GROUP_PAD + slot.column * (GROUP_CHILD_WIDTH + GROUP_CHILD_GAP),
       y:
         GROUP_HEADER_HEIGHT +
         GROUP_PAD +
-        index * (GROUP_CHILD_HEIGHT + GROUP_CHILD_GAP),
+        slot.row * (GROUP_CHILD_HEIGHT + GROUP_CHILD_GAP),
     },
   };
 }
