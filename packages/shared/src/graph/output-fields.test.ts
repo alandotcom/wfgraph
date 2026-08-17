@@ -159,4 +159,28 @@ describe("requireOutputFieldsFromSchema", () => {
       )
     ).toThrow(/neither an output nor an input JSON Schema/);
   });
+
+  it("keeps [0] children required when the array declares minItems", () => {
+    expect(
+      requireOutputFieldsFromSchema(
+        'Action "test/nonempty"',
+        describingItselfAs({
+          type: "object",
+          properties: {
+            items: {
+              type: "array",
+              minItems: 1,
+              items: {
+                type: "object",
+                properties: { sku: { type: "string" } },
+              },
+            },
+          },
+        })
+      )
+    ).toEqual([
+      { path: "items", type: "array" },
+      { path: "items[0].sku", type: "string" },
+    ]);
+  });
 });

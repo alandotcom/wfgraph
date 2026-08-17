@@ -69,7 +69,8 @@ export type UpstreamField = ReferenceField & {
 /** Turn one schema-tree node into the flat reference field that addresses it. */
 function schemaFieldToReferenceField(
   field: WorkflowSchemaField,
-  path: string
+  path: string,
+  nullable: boolean
 ): ReferenceField {
   const description = field.description?.trim();
 
@@ -77,7 +78,7 @@ function schemaFieldToReferenceField(
     path,
     ...(description ? { description } : {}),
     type: field.type,
-    ...(field.nullable ? { nullable: true } : {}),
+    ...(nullable ? { nullable: true } : {}),
     ...(field.enumValues ? { enumValues: field.enumValues } : {}),
   };
 }
@@ -108,17 +109,23 @@ const MAX_REFERENCE_FIELD_DEPTH = 3;
  * since there is no child to name. An object with no named properties -- an open
  * record, or one whose properties the reader could not use -- has no children to
  * emit and stays a single entry.
+ *
+ * A derived path is reachable only when every ancestor on it is present, so its
+ * nullability is the OR of its own and its ancestors'. Array `[0]` children are
+ * nullable unless the array declares `minItems >= 1`, because the schema never
+ * otherwise guarantees a first element.
  */
 export function flattenSchemaToReferenceFields(
   schema: WorkflowSchemaField[]
 ): ReferenceField[] {
-  return collectReferenceFields(schema, "", MAX_REFERENCE_FIELD_DEPTH);
+  return collectReferenceFields(schema, "", MAX_REFERENCE_FIELD_DEPTH, false);
 }
 
 function collectReferenceFields(
   schema: WorkflowSchemaField[],
   prefix: string,
-  remainingDepth: number
+  remainingDepth: number,
+  ancestorNullable: boolean
 ): ReferenceField[] {
   if (remainingDepth <= 0) {
     return [];
@@ -133,7 +140,8 @@ function collectReferenceFields(
     }
 
     const path = prefix ? `${prefix}.${name}` : name;
-    fields.push(schemaFieldToReferenceField(field, path));
+    const nullable = ancestorNullable || Boolean(field.nullable);
+    fields.push(schemaFieldToReferenceField(field, path, nullable));
 
     const children = field.fields ?? [];
     if (children.length === 0) {
@@ -142,14 +150,20 @@ function collectReferenceFields(
 
     if (field.type === "object") {
       fields.push(
-        ...collectReferenceFields(children, path, remainingDepth - 1)
+        ...collectReferenceFields(children, path, remainingDepth - 1, nullable)
       );
       continue;
     }
 
     if (field.type === "array" && field.itemType === "object") {
+      const elementNullable = nullable || (field.minItems ?? 0) < 1;
       fields.push(
-        ...collectReferenceFields(children, `${path}[0]`, remainingDepth - 1)
+        ...collectReferenceFields(
+          children,
+          `${path}[0]`,
+          remainingDepth - 1,
+          elementNullable
+        )
       );
     }
   }

@@ -50,6 +50,7 @@ export type WorkflowSchemaField = {
   description?: string;
   nullable?: boolean;
   enumValues?: string[];
+  minItems?: number;
 };
 
 type JsonSchemaType = WorkflowSchemaFieldType | WorkflowSchemaItemType;
@@ -70,6 +71,7 @@ interface JsonSchemaNode {
   default?: unknown;
   examples?: unknown[];
   minimum?: number;
+  minItems?: number;
   properties?: JsonSchemaProperties;
   items?: JsonSchemaNode;
   anyOf?: (JsonSchemaNode | undefined)[];
@@ -191,6 +193,7 @@ function readJsonSchemaNode(
     default: node.default,
     examples: readUnknownArray(node.examples),
     minimum: readNumber(node.minimum),
+    minItems: readNumber(node.minItems),
     properties: readJsonSchemaProperties(node.properties, seen),
     items: readJsonSchemaNode(node.items, seen),
     anyOf: readNodeBranches(node.anyOf, seen),
@@ -740,6 +743,13 @@ function parseNonNullableJsonSchemaProperty(
     return null;
   }
 
+  const minItems =
+    value.minItems !== undefined &&
+    Number.isFinite(value.minItems) &&
+    value.minItems >= 0
+      ? value.minItems
+      : undefined;
+
   return {
     name,
     type: "array",
@@ -749,6 +759,7 @@ function parseNonNullableJsonSchemaProperty(
         ? parseJsonSchemaProperties(items?.properties)
         : undefined,
     description,
+    ...(minItems !== undefined ? { minItems } : {}),
   };
 }
 
