@@ -440,6 +440,26 @@ function eventSplitOutletLeft(index: number, count: number): string {
   return `${((index + 0.5) / count) * 100}%`;
 }
 
+/**
+ * A nested card's handles anchor the interior edges the frame draws between its
+ * members; the frame owns the dots a person can drag from, so these render
+ * invisible and take no pointer events.
+ */
+const GROUPED_HANDLE_CLASS = "group-child-handle";
+
+const GROUPED_TARGET_HANDLES = [
+  { position: Position.Top, className: GROUPED_HANDLE_CLASS },
+];
+const GROUPED_SOURCE_HANDLES = [
+  { position: Position.Bottom, className: GROUPED_HANDLE_CLASS },
+];
+// A Condition reached by the group's own steps still branches on two handles,
+// and an interior edge names the branch it left by.
+const GROUPED_CONDITION_SOURCE_HANDLES = [
+  { id: "true", position: Position.Bottom, className: GROUPED_HANDLE_CLASS },
+  { id: "false", position: Position.Bottom, className: GROUPED_HANDLE_CLASS },
+];
+
 function GroupedActionNode({ data, selected, id }: ActionNodeProps) {
   const catalog = useExtensionCatalog();
   if (!data) {
@@ -461,7 +481,12 @@ function GroupedActionNode({ data, selected, id }: ActionNodeProps) {
         data.enabled === false && "opacity-50"
       )}
       data-testid={`action-node-${id}`}
-      handles={{ target: false, source: false }}
+      handles={{
+        target: GROUPED_TARGET_HANDLES,
+        source: isConditionActionType(actionType)
+          ? GROUPED_CONDITION_SOURCE_HANDLES
+          : GROUPED_SOURCE_HANDLES,
+      }}
       status={data.status}
     >
       <div className="flex min-w-0 flex-1 items-center gap-2 px-3">

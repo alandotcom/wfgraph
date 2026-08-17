@@ -595,7 +595,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
                 )}
               </Button>
             ) : null}
-            {selectedNode.data.type === "group" ? (
+            {selectedNode.data.type === "group" || selectedNode.parentId ? (
               <Button
                 onClick={() => ungroupSelected(selectedNode.id)}
                 size="sm"
@@ -605,10 +605,14 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
                 Ungroup
               </Button>
             ) : null}
-            <Button onClick={confirmDeleteNode} size="sm" variant="outline">
-              <Trash2 className="mr-2 size-4 text-destructive" />
-              <span className="text-destructive">Delete</span>
-            </Button>
+            {/* A member is deleted by deleting or ungrouping its frame, which
+                is what keeps the frame's entry and exit naming a live step. */}
+            {selectedNode.parentId ? null : (
+              <Button onClick={confirmDeleteNode} size="sm" variant="outline">
+                <Trash2 className="mr-2 size-4 text-destructive" />
+                <span className="text-destructive">Delete</span>
+              </Button>
+            )}
           </div>
         ) : null}
       </div>

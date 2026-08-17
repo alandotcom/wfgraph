@@ -6,6 +6,10 @@
 export const WORKFLOW_NODE_WIDTH = 192;
 export const WORKFLOW_NODE_HEIGHT = 112;
 
+/** Gap auto-layout leaves between two siblings, and between two ranks. */
+export const NODE_SPACING = 132;
+export const RANK_SPACING = 88;
+
 /** Width and height the card draws at. Event Split passes a wider width. */
 export function workflowNodeSize(width: number = WORKFLOW_NODE_WIDTH): {
   width: number;
@@ -19,7 +23,14 @@ export const GROUP_CHILD_WIDTH = 188;
 export const GROUP_CHILD_HEIGHT = 56;
 export const GROUP_HEADER_HEIGHT = 36;
 export const GROUP_PAD = 12;
-export const GROUP_CHILD_GAP = 8;
+/** Between two members of one row, which nothing is drawn in. */
+export const GROUP_COLUMN_GAP = 24;
+/**
+ * Between two rows, which the interior edge is drawn in. `edge-path.ts` turns
+ * its corner 16px out of each end, so a shorter gap would leave the fan-in with
+ * no straight run to read.
+ */
+export const GROUP_ROW_GAP = 40;
 
 export function groupFrameSize(
   columns: number,
@@ -34,13 +45,13 @@ export function groupFrameSize(
     width:
       GROUP_PAD +
       cols * GROUP_CHILD_WIDTH +
-      (cols - 1) * GROUP_CHILD_GAP +
+      (cols - 1) * GROUP_COLUMN_GAP +
       GROUP_PAD,
     height:
       GROUP_HEADER_HEIGHT +
       GROUP_PAD +
       stacked * GROUP_CHILD_HEIGHT +
-      (stacked - 1) * GROUP_CHILD_GAP +
+      (stacked - 1) * GROUP_ROW_GAP +
       GROUP_PAD,
   };
 }

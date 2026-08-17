@@ -53,6 +53,7 @@ import {
 import { WORKFLOW_EDGE_TYPE } from "#src/lib/workflow-graph-types";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { fanOutStoreEdges } from "@wfgraph/shared/graph/node-group";
+import { deletesMembersWithTheirFrame } from "#src/lib/node-group";
 import { normalizeSourceHandleForConnection as normalizeSourceHandle } from "./connection-handle";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
@@ -467,6 +468,12 @@ export function WorkflowCanvas() {
         edgesToDelete.length > 0;
 
       if (!deletesAnything) {
+        return Promise.resolve(false);
+      }
+
+      // A Group's entry and exit are derived from the members it was built
+      // from, so a member only goes when its frame does.
+      if (!deletesMembersWithTheirFrame(nodesToDelete)) {
         return Promise.resolve(false);
       }
 

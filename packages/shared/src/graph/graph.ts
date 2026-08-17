@@ -216,6 +216,17 @@ export function createSerializedWorkflowGraph(input: {
   }
 
   for (const edge of input.edges) {
+    // graphology invents a node for an end it has never seen, and that node
+    // exports with no attributes at all, so the decode below fails naming an
+    // index rather than the edge that asked for it.
+    const missing = [edge.source, edge.target].filter(
+      (end) => !graph.hasNode(end)
+    );
+    if (missing.length > 0) {
+      throw new Error(
+        `Edge '${edge.id}' names ${missing.join(" and ")}, which the graph has no node for`
+      );
+    }
     graph.mergeEdgeWithKey(edge.id, edge.source, edge.target, edge);
   }
 

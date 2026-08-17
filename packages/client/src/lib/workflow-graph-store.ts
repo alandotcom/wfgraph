@@ -36,6 +36,8 @@ import {
   dissolveUndersizedGroups,
   expandEdgeRemovals,
   idsRemovedWith,
+  lockGroupInteriorEdges,
+  refuseNodeDelete,
 } from "#src/lib/node-group";
 import {
   displayEdgesForGroups,
@@ -168,7 +170,10 @@ export const displayNodesAtom = atom((get) => {
 export const displayEdgesAtom = atom((get) => {
   const nodes = get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom);
   const edges = get(executionOverlayGraphAtom)?.edges ?? get(edgesStateAtom);
-  const painted = displayEdgesForGroups(nodes, edges);
+  const painted = lockGroupInteriorEdges(
+    nodes,
+    displayEdgesForGroups(nodes, edges)
+  );
   const { edgeIds, outletEdgeIds } = get(inactiveCanceledBranchAtom);
   if (edgeIds.size === 0) {
     return painted;
@@ -715,6 +720,9 @@ export const deleteNodeAtom = atom(null, (get, set, nodeId: string) => {
   if (nodeToDelete?.data.type === "lifecycle") {
     return;
   }
+  if (refuseNodeDelete(currentNodes, nodeId)) {
+    return;
+  }
 
   pushHistory(get, set);
 
@@ -744,9 +752,14 @@ export const deleteSelectedItemsAtom = atom(null, (get, set) => {
 
   const currentNodes = get(nodesStateAtom);
   const currentEdges = get(edgesStateAtom);
+  // A member selected on its own is left alone: the frame is what a person
+  // deletes, and it takes its members with it. `refuseNodeDelete` states why.
   const selectedNodeIds = new Set(
     currentNodes
-      .filter((node) => node.selected && node.data.type !== "lifecycle")
+      .filter(
+        (node) =>
+          node.selected && node.data.type !== "lifecycle" && !node.parentId
+      )
       .map((node) => node.id)
   );
   for (const node of currentNodes) {

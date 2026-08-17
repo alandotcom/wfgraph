@@ -366,6 +366,25 @@
   }
 }
 
+/* A Group member's handle is an anchor for the interior edge, never a place to
+   start a connection: the frame carries the two dots a person can drag from.
+   It keeps a 1px box so React Flow can still measure where the edge meets the
+   card. */
+.react-flow__handle.group-child-handle {
+  width: 1px !important;
+  height: 1px !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  cursor: default !important;
+  pointer-events: none !important;
+}
+
+.react-flow__handle.group-child-handle::after {
+  display: none !important;
+}
+
 .react-flow__handle-left {
   left: -0.5px !important;
 }

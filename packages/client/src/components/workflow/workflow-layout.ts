@@ -15,6 +15,8 @@ import {
 import {
   eventSplitCardWidth,
   groupFrameSize,
+  NODE_SPACING,
+  RANK_SPACING,
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
 } from "./workflow-node-dimensions";
@@ -27,8 +29,6 @@ import {
 import { layoutGroupChildren } from "#src/lib/node-group";
 
 const LAYOUT_DIRECTION = "TB";
-const NODE_SPACING = 132;
-const RANK_SPACING = 88;
 const GRAPH_MARGIN = 40;
 const ROOT_ID = "__workflow-root__";
 

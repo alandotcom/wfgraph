@@ -32,6 +32,7 @@ import {
   selectedNodeAtom,
   ungroupNodeAtom,
 } from "#src/lib/workflow-graph-store";
+import { refuseNodeDelete } from "#src/lib/node-group";
 import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 import { type WorkflowNode } from "#src/lib/workflow-graph-types";
 import { WORKFLOW_NODE_HEIGHT } from "#src/components/workflow/workflow-node-dimensions";
@@ -242,6 +243,9 @@ export function WorkflowContextMenu({
   const canUngroup = Boolean(
     clicked && (isGroupNode(clicked) || clicked.parentId)
   );
+  const deleteRefusal = menuState.nodeId
+    ? refuseNodeDelete(nodes, menuState.nodeId)
+    : null;
 
   const getNodeLabel = () => {
     if (!menuState.nodeId) {
@@ -296,7 +300,8 @@ export function WorkflowContextMenu({
             onClick={handleUngroup}
           />
           <MenuItem
-            disabled={isLifecycleNode}
+            disabled={isLifecycleNode || Boolean(deleteRefusal)}
+            hint={deleteRefusal ?? undefined}
             icon={<Trash2 className="size-4" />}
             label={`Delete ${getNodeLabel()}`}
             onClick={handleDeleteNode}
