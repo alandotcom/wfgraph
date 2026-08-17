@@ -50,6 +50,7 @@ import {
   rightPanelWidthAtom,
   showMinimapAtom,
 } from "#src/lib/workflow-ui-store";
+import { WORKFLOW_EDGE_TYPE } from "#src/lib/workflow-graph-types";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { fanOutStoreEdges } from "@wfgraph/shared/graph/node-group";
 import { normalizeSourceHandleForConnection as normalizeSourceHandle } from "./connection-handle";
@@ -67,7 +68,7 @@ import { layoutWorkflowNodes } from "./workflow-layout";
 import { WORKFLOW_NODE_HEIGHT } from "./workflow-node-dimensions";
 
 const edgeTypes = {
-  animated: Edge.Animated,
+  [WORKFLOW_EDGE_TYPE]: Edge.Animated,
   temporary: Edge.Temporary,
 };
 
@@ -436,7 +437,7 @@ export function WorkflowCanvas() {
         id: nanoid(),
         ...connection,
         sourceHandle,
-        type: "animated",
+        type: WORKFLOW_EDGE_TYPE,
       };
       connectNodes(newEdge);
     },

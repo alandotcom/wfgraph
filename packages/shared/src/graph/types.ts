@@ -55,7 +55,6 @@ export type WorkflowEdge = {
   sourceHandle?: string | null;
   targetHandle?: string | null;
   data?: Record<string, unknown>;
-  type?: string;
   selected?: boolean;
 };
 

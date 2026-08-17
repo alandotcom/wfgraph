@@ -34,6 +34,14 @@ export type WorkflowNodeData = EditorNodeData;
 export type WorkflowNode = Node<EditorNodeData>;
 export type WorkflowEdge = Edge<EditorEdgeData>;
 
+/**
+ * The edge component every workflow edge paints with, named as
+ * `workflow-canvas.tsx` registers it. React Flow falls back to its own bezier
+ * edge for a type it cannot resolve, so an edge reaching the canvas without
+ * this draws in a style nothing in this editor asks for.
+ */
+export const WORKFLOW_EDGE_TYPE = "animated";
+
 /** Strip editor-only fields before a node crosses into the persist path. */
 export function toPersistedNode(node: WorkflowNode): PersistedWorkflowNode {
   const { status: _status, ...data } = node.data;
@@ -76,7 +84,6 @@ export function toPersistedEdge(edge: WorkflowEdge): PersistedWorkflowEdge {
     sourceHandle: edge.sourceHandle,
     targetHandle: edge.targetHandle,
     data: Object.keys(rest).length > 0 ? rest : undefined,
-    type: edge.type,
     selected: edge.selected,
   };
 }
@@ -105,6 +112,9 @@ export function toEditorNode(node: PersistedWorkflowNode): WorkflowNode {
   return editor;
 }
 
+// The canvas decides how an edge draws, so the type is put on here rather than
+// read back off the wire. The persisted graph carries structure alone, and
+// `parseEdgeAttributes` drops every editor key a saved graph happens to hold.
 export function toEditorEdge(edge: PersistedWorkflowEdge): WorkflowEdge {
   return {
     id: edge.id,
@@ -113,7 +123,7 @@ export function toEditorEdge(edge: PersistedWorkflowEdge): WorkflowEdge {
     sourceHandle: edge.sourceHandle ?? undefined,
     targetHandle: edge.targetHandle ?? undefined,
     data: edge.data,
-    type: edge.type,
+    type: WORKFLOW_EDGE_TYPE,
     selected: edge.selected,
   };
 }
