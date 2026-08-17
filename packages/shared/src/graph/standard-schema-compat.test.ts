@@ -329,6 +329,36 @@ describe("the derivations over a bridged schema", () => {
     ]);
   });
 
+  it("marks leaves under a NullOr struct and an array index as nullable", () => {
+    // A donor's next appointment is the natural shape: an object that is null
+    // when nothing is booked, or a list that is empty. The parent is correctly
+    // nullable; the derived children must be too, or the editor offers
+    // comparisons against a value that is not there.
+    const child = Schema.Struct({
+      uuid: Schema.String,
+      date: Schema.String,
+    });
+
+    expect(
+      requireOutputFieldsFromSchema(
+        'Action "x/y"',
+        Schema.Struct({
+          nested: Schema.NullOr(child),
+          list: Schema.Array(child),
+          scalar: Schema.NullOr(Schema.String),
+        })
+      )
+    ).toEqual([
+      { path: "nested", type: "object", nullable: true },
+      { path: "nested.uuid", type: "string", nullable: true },
+      { path: "nested.date", type: "string", nullable: true },
+      { path: "list", type: "array" },
+      { path: "list[0].uuid", type: "string", nullable: true },
+      { path: "list[0].date", type: "string", nullable: true },
+      { path: "scalar", type: "string", nullable: true },
+    ]);
+  });
+
   // Without this refusal, a schema that describes the action while offering the
   // editor nothing it can address would fail silently: the derivation would
   // answer an empty list, and an action with no autocomplete looks the same to a
@@ -818,6 +848,29 @@ describe("the field derivation over arktype schemas", () => {
         type: "string",
         enumValues: ["X", "Y"],
       },
+    ]);
+  });
+
+  it("marks children of a nullable object and of an array index as nullable", () => {
+    const child = type({ uuid: "string", date: "string" });
+
+    expect(
+      requireOutputFieldsFromSchema(
+        'Action "x/y"',
+        type({
+          nested: child.or(type("null")),
+          list: child.array(),
+          scalar: "string | null",
+        })
+      )
+    ).toEqual([
+      { path: "nested", type: "object", nullable: true },
+      { path: "nested.uuid", type: "string", nullable: true },
+      { path: "nested.date", type: "string", nullable: true },
+      { path: "list", type: "array" },
+      { path: "list[0].uuid", type: "string", nullable: true },
+      { path: "list[0].date", type: "string", nullable: true },
+      { path: "scalar", type: "string", nullable: true },
     ]);
   });
 });

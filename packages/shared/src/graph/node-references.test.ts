@@ -91,11 +91,73 @@ describe("flattenSchemaToReferenceFields", () => {
 
     expect(fields).toEqual([
       { path: "items", type: "array" },
-      { path: "items[0].sku", type: "string" },
+      { path: "items[0].sku", type: "string", nullable: true },
       {
         path: "items[0].shippedAt",
         type: "timestamp",
+        nullable: true,
       },
+    ]);
+  });
+
+  it("marks children of a nullable object as nullable", () => {
+    // Reading `appointment.date` yields nothing whenever `appointment` is
+    // null, so the child path is nullable even though the leaf itself is not.
+    const fields = flattenSchemaToReferenceFields([
+      {
+        name: "appointment",
+        type: "object",
+        nullable: true,
+        fields: [
+          { name: "date", type: "timestamp" },
+          { name: "status", type: "string", nullable: true },
+        ],
+      },
+    ]);
+
+    expect(fields).toEqual([
+      { path: "appointment", type: "object", nullable: true },
+      { path: "appointment.date", type: "timestamp", nullable: true },
+      { path: "appointment.status", type: "string", nullable: true },
+    ]);
+  });
+
+  it("keeps [0] children required when the array declares minItems", () => {
+    const fields = flattenSchemaToReferenceFields([
+      {
+        name: "items",
+        type: "array",
+        itemType: "object",
+        minItems: 1,
+        fields: [
+          { name: "sku", type: "string" },
+          { name: "note", type: "string", nullable: true },
+        ],
+      },
+    ]);
+
+    expect(fields).toEqual([
+      { path: "items", type: "array" },
+      { path: "items[0].sku", type: "string" },
+      { path: "items[0].note", type: "string", nullable: true },
+    ]);
+  });
+
+  it("still marks [0] children nullable when a minItems array itself is null", () => {
+    const fields = flattenSchemaToReferenceFields([
+      {
+        name: "items",
+        type: "array",
+        itemType: "object",
+        nullable: true,
+        minItems: 1,
+        fields: [{ name: "sku", type: "string" }],
+      },
+    ]);
+
+    expect(fields).toEqual([
+      { path: "items", type: "array", nullable: true },
+      { path: "items[0].sku", type: "string", nullable: true },
     ]);
   });
 

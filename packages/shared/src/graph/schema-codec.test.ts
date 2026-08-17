@@ -192,6 +192,39 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
     ]);
   });
 
+  it("reads minItems off an array property", () => {
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: {
+        attendees: {
+          type: "array",
+          minItems: 1,
+          items: {
+            type: "object",
+            properties: { name: { type: "string" } },
+          },
+        },
+      },
+    });
+
+    expect(schema).toEqual([
+      {
+        name: "attendees",
+        type: "array",
+        itemType: "object",
+        minItems: 1,
+        fields: [
+          {
+            name: "name",
+            type: "string",
+            description: undefined,
+          },
+        ],
+        description: undefined,
+      },
+    ]);
+  });
+
   it("returns null for unsupported non-object schema roots", () => {
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "array",
