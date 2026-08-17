@@ -115,23 +115,17 @@ export type WorkflowGraphNodeInput = {
   parentId?: string;
 };
 
-function readOptionalBoolean(
-  record: { readonly [key: string]: unknown },
-  key: string
-): boolean | undefined {
-  const value = record[key];
-  return typeof value === "boolean" ? value : undefined;
-}
-
 function parseNodeAttributes(attributes: unknown): WorkflowNode {
   const parsed = decodeNodeAttributes(attributes);
 
+  // Structure and geometry only. A selection belongs to the session looking at
+  // the graph, so a `selected` an older save happens to carry lands in the
+  // open rest of `workflowNodeAttributesSchema` and is read by nobody.
   const node: WorkflowNode = {
     id: parsed.id,
     type: parsed.type,
     position: parsed.position ?? { x: 0, y: 0 },
     data: toPersistedNodeData(parsed.data),
-    selected: readOptionalBoolean(parsed, "selected"),
   };
   if (parsed.parentId !== undefined) {
     node.parentId = parsed.parentId;

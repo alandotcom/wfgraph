@@ -14,38 +14,6 @@ import {
 import { getWorkflowEdgePath } from "#src/components/flow-elements/edge-path";
 import type { WorkflowEdge } from "#src/lib/workflow-graph-types";
 
-const Temporary = memo(function Temporary({
-  id,
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
-  sourcePosition,
-  targetPosition,
-  selected,
-}: EdgeProps) {
-  const [edgePath] = getWorkflowEdgePath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-  });
-
-  return (
-    <BaseEdge
-      className="stroke-1"
-      id={id}
-      path={edgePath}
-      style={{
-        stroke: selected ? "var(--muted-foreground)" : "var(--border)",
-        strokeDasharray: "5, 5",
-      }}
-    />
-  );
-});
-
 const getHandleCoordsByPosition = (
   node: InternalNode,
   handleType: "source" | "target",
@@ -198,6 +166,5 @@ const Animated = memo(function Animated({
 });
 
 export const Edge = {
-  Temporary,
   Animated,
 };

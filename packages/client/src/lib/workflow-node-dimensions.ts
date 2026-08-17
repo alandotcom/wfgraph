@@ -1,13 +1,15 @@
 /**
- * How large a node draws on the canvas.
- * Auto-layout reserves this size before React Flow has measured the card.
+ * Every size the canvas is laid out from: how large a node draws, how far
+ * auto-layout spaces two of them, and the compact geometry inside a Group.
+ * Auto-layout reserves these before React Flow has measured a card.
  */
 
 export const WORKFLOW_NODE_WIDTH = 192;
 export const WORKFLOW_NODE_HEIGHT = 112;
 
-/** Gap auto-layout leaves between two siblings, and between two ranks. */
+/** Gap between two siblings of one rank; dagre's `nodesep`. */
 export const NODE_SPACING = 132;
+/** Gap between one rank and the next; dagre's `ranksep`. */
 export const RANK_SPACING = 88;
 
 /** Width and height the card draws at. Event Split passes a wider width. */
@@ -69,3 +71,11 @@ export function eventSplitCardWidth(outletCount: number): number {
     ? outletCount * EVENT_SPLIT_OUTLET_WIDTH
     : WORKFLOW_NODE_WIDTH;
 }
+
+/**
+ * The icon a node draws beside or above its title, as a Tailwind size. One
+ * value so a resize is one edit; `GeneratedImageThumbnail` also matches its
+ * `<img>` width and height to it in pixels.
+ */
+export const NODE_ICON_CLASS = "size-6";
+export const NODE_ICON_PX = 24;

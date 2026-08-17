@@ -71,7 +71,6 @@ type NodeHandleConfig = {
   id?: string;
   position: Position;
   style?: CSSProperties;
-  /** `group-child-handle` shrinks the dot away; see `globals.css`. */
   className?: string;
 };
 

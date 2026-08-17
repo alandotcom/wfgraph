@@ -27,7 +27,9 @@ export type PersistedNodeData = {
 
 /**
  * A graph node without React Flow. Positions and ids are required after decode;
- * bookkeeping fields the editor round-trips stay optional.
+ * geometry the editor round-trips stays optional. Nothing here describes the
+ * session looking at the graph: `workflowNodeAttributesSchema` names only these
+ * fields, so a selection or a drag written here would be dropped on decode.
  */
 export type WorkflowNode = {
   id: string;
@@ -35,8 +37,6 @@ export type WorkflowNode = {
   data: PersistedNodeData;
   /** React Flow types this as `string`; persisted values are WorkflowNodeType. */
   type?: string;
-  selected?: boolean;
-  dragging?: boolean;
   width?: number;
   height?: number;
   measured?: { width?: number; height?: number };
@@ -55,7 +55,6 @@ export type WorkflowEdge = {
   sourceHandle?: string | null;
   targetHandle?: string | null;
   data?: Record<string, unknown>;
-  selected?: boolean;
 };
 
 export type SerializedWorkflowGraph = SerializedWorkflowGraphInput;

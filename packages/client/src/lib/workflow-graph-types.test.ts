@@ -6,10 +6,12 @@ import {
 import type { WorkflowNode as PersistedWorkflowNode } from "@wfgraph/shared/graph/types";
 import {
   toEditorEdge,
+  toEditorNode,
   toPersistedEdge,
+  toPersistedNode,
   WORKFLOW_EDGE_TYPE,
 } from "#src/lib/workflow-graph-types";
-import type { WorkflowEdge } from "#src/lib/workflow-graph-types";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 function node(id: string): PersistedWorkflowNode {
   return {
@@ -22,36 +24,80 @@ function node(id: string): PersistedWorkflowNode {
 
 /**
  * The reload path: what the editor holds is saved, read back from the wire, and
- * turned into editor edges again. A page refresh runs exactly this.
+ * turned into editor elements again. A page refresh runs exactly this.
  */
-function reload(edges: WorkflowEdge[]): WorkflowEdge[] {
+function reload(input: { nodes?: WorkflowNode[]; edges?: WorkflowEdge[] }): {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+} {
   const graph = createSerializedWorkflowGraph({
-    nodes: [node("a"), node("b")],
-    edges: edges.map(toPersistedEdge),
+    nodes: input.nodes?.map(toPersistedNode) ?? [node("a"), node("b")],
+    edges: (input.edges ?? []).map(toPersistedEdge),
   });
-  return toWorkflowGraphData(graph).edges.map(toEditorEdge);
+  const data = toWorkflowGraphData(graph);
+  return {
+    nodes: data.nodes.map(toEditorNode),
+    edges: data.edges.map(toEditorEdge),
+  };
 }
 
-describe("toEditorEdge", () => {
-  it("paints a reloaded edge with the canvas edge type", () => {
-    const reloaded = reload([
-      { id: "e1", source: "a", target: "b", type: WORKFLOW_EDGE_TYPE },
-    ]);
+function editorNode(id: string, selected: boolean): WorkflowNode {
+  return {
+    id,
+    type: "action",
+    position: { x: 0, y: 0 },
+    selected,
+    dragging: selected,
+    data: { label: id, type: "action" },
+  };
+}
 
-    expect(reloaded[0]?.type).toBe(WORKFLOW_EDGE_TYPE);
-  });
-
-  it("paints an edge that was stored without one", () => {
-    const reloaded = reload([{ id: "e1", source: "a", target: "b" }]);
-
-    expect(reloaded[0]?.type).toBe(WORKFLOW_EDGE_TYPE);
-  });
-
+describe("the persist round trip", () => {
   it("keeps the handle a Condition branch left by", () => {
-    const reloaded = reload([
-      { id: "e1", source: "a", target: "b", sourceHandle: "false" },
-    ]);
+    const { edges } = reload({
+      edges: [{ id: "e1", source: "a", target: "b", sourceHandle: "false" }],
+    });
 
-    expect(reloaded[0]?.sourceHandle).toBe("false");
+    expect(edges[0]?.sourceHandle).toBe("false");
+  });
+
+  // How an edge draws is the canvas's decision, made once in
+  // `workflow-canvas.tsx` through `defaultEdgeOptions`. A stored graph that
+  // carried its own answer is what used to survive a save and paint a reload
+  // with React Flow's built-in bezier.
+  it("stores no edge type, so no saved graph can decide how one draws", () => {
+    const { edges } = reload({
+      edges: [{ id: "e1", source: "a", target: "b", type: WORKFLOW_EDGE_TYPE }],
+    });
+
+    expect(
+      toPersistedEdge({ id: "e1", source: "a", target: "b" })
+    ).not.toHaveProperty("type");
+    expect(edges[0]?.type).toBeUndefined();
+  });
+
+  it("stores nothing about the session looking at the graph", () => {
+    const selectedEdge: WorkflowEdge = {
+      id: "e1",
+      source: "a",
+      target: "b",
+      selected: true,
+    };
+
+    expect(toPersistedEdge(selectedEdge)).not.toHaveProperty("selected");
+    expect(toPersistedNode(editorNode("a", true))).not.toHaveProperty(
+      "selected"
+    );
+    expect(toPersistedNode(editorNode("a", true))).not.toHaveProperty(
+      "dragging"
+    );
+
+    const { nodes, edges } = reload({
+      nodes: [editorNode("a", true), editorNode("b", false)],
+      edges: [selectedEdge],
+    });
+
+    expect(nodes.every((item) => item.selected === undefined)).toBe(true);
+    expect(edges[0]?.selected).toBeUndefined();
   });
 });

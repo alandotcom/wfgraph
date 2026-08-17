@@ -4,6 +4,7 @@
  */
 
 import { nanoid } from "nanoid";
+import { toast } from "sonner";
 import type { EdgeChange } from "@xyflow/react";
 import { isConditionNode } from "@wfgraph/shared/graph/node-config";
 import {
@@ -12,7 +13,9 @@ import {
   fanOutStoreEdgeIds,
   groupEntryIds,
   groupInteriorLayout,
+  isEdgeBetweenMembers,
   isGroupNode,
+  isInteriorEdge,
   predecessorKey,
   undersizedGroupIds,
   type GroupAnalysis,
@@ -31,13 +34,17 @@ import {
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
   groupFrameSize,
-} from "#src/components/workflow/workflow-node-dimensions";
+} from "#src/lib/workflow-node-dimensions";
 
-/** Where a member draws when the layout somehow has no slot for it. */
-const ORIGIN_SLOT = {
-  x: GROUP_PAD,
-  y: GROUP_HEADER_HEIGHT + GROUP_PAD,
-} as const;
+/**
+ * How much wider one step of the outer canvas is than the compact card a frame
+ * packs it into. Ungrouping scales a member's offset from the frame's centre by
+ * these, which is what makes the shape a person read inside the frame survive.
+ */
+const COLUMN_PITCH_RATIO =
+  (WORKFLOW_NODE_WIDTH + NODE_SPACING) / (GROUP_CHILD_WIDTH + GROUP_COLUMN_GAP);
+const ROW_PITCH_RATIO =
+  (WORKFLOW_NODE_HEIGHT + RANK_SPACING) / (GROUP_CHILD_HEIGHT + GROUP_ROW_GAP);
 
 export function groupSelection(input: {
   nodes: WorkflowNode[];
@@ -73,8 +80,8 @@ export function groupSelection(input: {
     y: Math.min(...members.map((node) => node.position.y)),
   };
   const memberSet = new Set(analysis.memberIds);
-  const interior = input.edges.filter(
-    (edge) => memberSet.has(edge.source) && memberSet.has(edge.target)
+  const interior = input.edges.filter((edge) =>
+    isEdgeBetweenMembers(memberSet, edge)
   );
   const { slots, bounds } = groupInteriorLayout(
     analysis.memberIds,
@@ -106,7 +113,7 @@ export function groupSelection(input: {
   };
 
   const children = members.map((node) =>
-    nestInGroup(node, groupId, positionById.get(node.id) ?? ORIGIN_SLOT)
+    nestInGroup(node, groupId, childPosition(positionById, node.id))
   );
   const rest = input.nodes
     .filter((node) => !memberSet.has(node.id))
@@ -132,10 +139,6 @@ export function ungroupNode(
     return nodes;
   }
 
-  const freed = freedPositions(
-    group,
-    nodes.filter((node) => node.parentId === groupId)
-  );
   return nodes.flatMap((node) => {
     if (node.id === groupId) {
       return [];
@@ -143,7 +146,7 @@ export function ungroupNode(
     if (node.parentId !== groupId) {
       return [node];
     }
-    return [unnestFromGroup(node, freed.get(node.id) ?? group.position)];
+    return [unnestFromGroup(node, freedPosition(group, node))];
   });
 }
 
@@ -171,8 +174,8 @@ export function layoutGroupChildren(
     const group = nodes.find((node) => node.id === groupId);
     const memberIds = children.map((child) => child.id);
     const memberSet = new Set(memberIds);
-    const interior = edges.filter(
-      (edge) => memberSet.has(edge.source) && memberSet.has(edge.target)
+    const interior = edges.filter((edge) =>
+      isEdgeBetweenMembers(memberSet, edge)
     );
     const { slots, bounds } = groupInteriorLayout(
       memberIds,
@@ -184,7 +187,7 @@ export function layoutGroupChildren(
     for (const child of children) {
       childById.set(
         child.id,
-        nestInGroup(child, groupId, positionById.get(child.id) ?? ORIGIN_SLOT)
+        nestInGroup(child, groupId, childPosition(positionById, child.id))
       );
     }
   }
@@ -207,24 +210,43 @@ export function layoutGroupChildren(
 }
 
 /**
+ * One locked copy per store edge, so a recompute that changed nothing hands
+ * React Flow the same object it saw last time. The three flags never vary, so
+ * a cached copy cannot go stale: an edge that stops being interior fails the
+ * check above the cache and comes back untouched.
+ */
+const lockedInteriorEdges = new WeakMap<WorkflowEdge, WorkflowEdge>();
+
+/**
  * Mark the edges between two members of one frame as display only. They paint
  * so the interior fan-out and its join can be read, and the frame owns every
  * edit: deleting one would strand a member the analysis proved connected.
- * Returns the same array when the graph holds no group.
+ * Returns the same array when no edge is interior.
  */
 export function lockGroupInteriorEdges(
   nodes: readonly WorkflowNode[],
   edges: WorkflowEdge[]
 ): WorkflowEdge[] {
   const parentById = new Map(nodes.map((node) => [node.id, node.parentId]));
+  const parentOf = (nodeId: string) => parentById.get(nodeId);
   let locked = false;
   const next = edges.map((edge) => {
-    const parent = parentById.get(edge.source);
-    if (!parent || parent !== parentById.get(edge.target)) {
+    if (!isInteriorEdge(parentOf, edge)) {
       return edge;
     }
     locked = true;
-    return { ...edge, selectable: false, deletable: false, focusable: false };
+    const cached = lockedInteriorEdges.get(edge);
+    if (cached) {
+      return cached;
+    }
+    const lockedEdge: WorkflowEdge = {
+      ...edge,
+      selectable: false,
+      deletable: false,
+      focusable: false,
+    };
+    lockedInteriorEdges.set(edge, lockedEdge);
+    return lockedEdge;
   });
   return locked ? next : edges;
 }
@@ -240,34 +262,47 @@ export function dissolveUndersizedGroups(
 }
 
 /**
- * Why this step cannot be deleted on its own, or null when it can. A frame's
- * entry ids and exit id are derived from the members it was built from, so
- * taking one out behind the frame's back leaves a config naming a step that is
- * gone, and the next edge painted off the frame names it too. Deleting the
- * frame still takes its members with it; see `idsRemovedWith`.
+ * Why this batch cannot be deleted, or null when it can. A frame's entry ids
+ * and exit id are derived from the members it was built from, so a member that
+ * goes without its frame leaves a config naming a step that is gone, and the
+ * next edge painted off the frame names it too. A batch holding the frame is
+ * allowed, because the frame takes its members with it; see `idsRemovedWith`.
+ *
+ * Every delete path asks this one question, with a batch of one where it has
+ * one node, so the delete key, the context menu, and the panel cannot disagree.
+ * Marking a member `deletable: false` instead would not do: React Flow drops
+ * such a node before it expands a frame into its children, which would delete
+ * the frame and leave its members pointing at a frame that is gone.
  */
-export function refuseNodeDelete(
-  nodes: readonly WorkflowNode[],
-  nodeId: string
-): string | null {
-  const node = nodes.find((item) => item.id === nodeId);
-  return node?.parentId ? "Ungroup the frame before deleting this step" : null;
-}
-
-/**
- * Whether every member in this batch goes with its own frame. React Flow's
- * `onBeforeDelete` answers for the whole batch rather than filtering it, so a
- * selection reaching into a frame without taking the frame cancels outright.
- * Marking a member undeletable instead would let React Flow delete the frame
- * and leave its members behind, pointing at a frame that is gone.
- */
-export function deletesMembersWithTheirFrame(
-  batch: readonly WorkflowNode[]
-): boolean {
+export function refuseDelete(batch: readonly WorkflowNode[]): string | null {
   const frameIds = new Set(
     batch.filter((node) => isGroupNode(node)).map((node) => node.id)
   );
-  return batch.every((node) => !node.parentId || frameIds.has(node.parentId));
+  const stranded = batch.some(
+    (node) => node.parentId && !frameIds.has(node.parentId)
+  );
+  return stranded ? "Ungroup the frame before deleting a step inside it" : null;
+}
+
+/**
+ * `refuseDelete` for the paths that act rather than render: the delete key and
+ * the panel's Delete button both cancel the whole batch and say why. Refusing
+ * without a word is what let those two paths disagree, one deleting the rest of
+ * the selection while the other deleted nothing.
+ */
+export function refuseDeleteWithNotice(
+  batch: readonly WorkflowNode[]
+): string | null {
+  const refusal = refuseDelete(batch);
+  if (refusal) {
+    toast.error(refusal);
+  }
+  return refusal;
+}
+
+/** Whether this step has a frame to leave: a frame itself, or a member. */
+export function canUngroup(node: WorkflowNode | undefined): boolean {
+  return Boolean(node && (isGroupNode(node) || node.parentId));
 }
 
 export function idsRemovedWith(
@@ -344,13 +379,15 @@ function alignEntryIncoming(input: {
     if (have.has(entryId)) {
       continue;
     }
+    // No `type`: the canvas names the edge component for every edge through
+    // `defaultEdgeOptions`, and React Flow merges that under the edge, so an
+    // explicit `type: undefined` here would shadow it back to the bezier.
     extra.push({
       id: createEdgeId(),
       source: template.source,
       target: entryId,
       sourceHandle: template.sourceHandle,
       targetHandle: template.targetHandle,
-      type: template.type,
     });
   }
   return extra.length === 0 ? edges : [...edges, ...extra];
@@ -388,6 +425,22 @@ function childPositions(
   return positions;
 }
 
+/**
+ * `childPositions` is built from the slots of the very members being placed, so
+ * a miss means the two disagree about who is in the frame. Fail there rather
+ * than stack every affected member on one point and call it a layout.
+ */
+function childPosition(
+  positions: ReadonlyMap<string, { x: number; y: number }>,
+  nodeId: string
+): { x: number; y: number } {
+  const position = positions.get(nodeId);
+  if (!position) {
+    throw new Error(`Group layout has no slot for member '${nodeId}'`);
+  }
+  return position;
+}
+
 function nestInGroup(
   node: WorkflowNode,
   groupId: string,
@@ -407,39 +460,34 @@ function nestInGroup(
 }
 
 /**
- * Where each freed member lands on the open canvas. The frame packs its members
- * into compact cards; a full-size node needs the pitch auto-layout gives one, so
- * the rows are rebuilt at that pitch around the frame's own centre and the
- * shape a person read inside the frame survives the ungroup.
+ * Where one freed member lands on the open canvas. The frame packs its members
+ * into compact cards; a full-size node needs the pitch auto-layout gives one.
+ *
+ * `childPositions` places a member's centre a whole number of column pitches
+ * either side of the frame's centre, and its top a whole number of row pitches
+ * below the frame's first row. Both are linear, so stretching each offset by
+ * the ratio of the two pitches rebuilds the same arrangement at canvas scale,
+ * and the shape a person read inside the frame survives the ungroup.
  */
-function freedPositions(
+function freedPosition(
   group: WorkflowNode,
-  children: readonly WorkflowNode[]
-): Map<string, { x: number; y: number }> {
-  const rows = new Map<number, WorkflowNode[]>();
-  for (const child of children) {
-    const row = rows.get(child.position.y) ?? [];
-    row.push(child);
-    rows.set(child.position.y, row);
+  child: WorkflowNode
+): { x: number; y: number } {
+  if (typeof group.width !== "number") {
+    throw new Error(`Group '${group.id}' has no width to ungroup around`);
   }
+  const frameCentreX = group.position.x + group.width / 2;
+  const childCentreX =
+    group.position.x + child.position.x + GROUP_CHILD_WIDTH / 2;
+  const rowTop = child.position.y - GROUP_HEADER_HEIGHT - GROUP_PAD;
 
-  const centreX = group.position.x + (group.width ?? WORKFLOW_NODE_WIDTH) / 2;
-  const freed = new Map<string, { x: number; y: number }>();
-  const orderedRows = [...rows.entries()].toSorted(([a], [b]) => a - b);
-  for (const [index, [, row]] of orderedRows.entries()) {
-    const ordered = row.toSorted((a, b) => a.position.x - b.position.x);
-    for (const [column, child] of ordered.entries()) {
-      const offset = column - (ordered.length - 1) / 2;
-      freed.set(child.id, {
-        x:
-          centreX +
-          offset * (WORKFLOW_NODE_WIDTH + NODE_SPACING) -
-          WORKFLOW_NODE_WIDTH / 2,
-        y: group.position.y + index * (WORKFLOW_NODE_HEIGHT + RANK_SPACING),
-      });
-    }
-  }
-  return freed;
+  return {
+    x:
+      frameCentreX +
+      (childCentreX - frameCentreX) * COLUMN_PITCH_RATIO -
+      WORKFLOW_NODE_WIDTH / 2,
+    y: group.position.y + rowTop * ROW_PITCH_RATIO,
+  };
 }
 
 function unnestFromGroup(

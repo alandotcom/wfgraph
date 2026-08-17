@@ -50,9 +50,11 @@ import {
 import { useEventSplitOutlets } from "#src/lib/event-split-outlets";
 import {
   eventSplitCardWidth,
+  NODE_ICON_CLASS,
+  NODE_ICON_PX,
   WORKFLOW_NODE_WIDTH,
   workflowNodeSize,
-} from "#src/components/workflow/workflow-node-dimensions";
+} from "#src/lib/workflow-node-dimensions";
 import { useAfterPaint, useNowMs } from "#src/hooks/effects";
 import { useExecutionLogsByNode } from "#src/hooks/use-execution-logs";
 import {
@@ -342,7 +344,7 @@ const requiresIntegration = (
 const ProviderLogo = ({
   actionType,
   catalog,
-  className = "size-6",
+  className = NODE_ICON_CLASS,
 }: {
   actionType: string;
   catalog: ExtensionCatalog;
@@ -393,7 +395,10 @@ function GeneratedImageThumbnail({ base64 }: { base64: string }) {
   return (
     <>
       <button
-        className="relative size-6 cursor-zoom-in overflow-hidden rounded-lg transition-transform hover:scale-105"
+        className={cn(
+          NODE_ICON_CLASS,
+          "relative cursor-zoom-in overflow-hidden rounded-lg transition-transform hover:scale-105"
+        )}
         onClick={(e) => {
           e.stopPropagation();
           setDialogOpen(true);
@@ -402,10 +407,10 @@ function GeneratedImageThumbnail({ base64 }: { base64: string }) {
       >
         <img
           alt="Generated output"
-          className="size-6 object-cover"
-          height={24}
+          className={cn(NODE_ICON_CLASS, "object-cover")}
+          height={NODE_ICON_PX}
           src={`data:image/png;base64,${base64}`}
-          width={24}
+          width={NODE_ICON_PX}
         />
       </button>
 
@@ -454,19 +459,42 @@ const GROUPED_SOURCE_HANDLES = [
   { position: Position.Bottom, className: GROUPED_HANDLE_CLASS },
 ];
 // A Condition reached by the group's own steps still branches on two handles,
-// and an interior edge names the branch it left by.
+// and an interior edge names the branch it left by. They sit apart on the same
+// offsets a standalone Condition uses, so the two branches paint as two paths
+// rather than one line leaving a single point.
 const GROUPED_CONDITION_SOURCE_HANDLES = [
-  { id: "true", position: Position.Bottom, className: GROUPED_HANDLE_CLASS },
-  { id: "false", position: Position.Bottom, className: GROUPED_HANDLE_CLASS },
+  {
+    id: "true",
+    position: Position.Bottom,
+    className: GROUPED_HANDLE_CLASS,
+    style: { left: CONDITION_TRUE_HANDLE_LEFT },
+  },
+  {
+    id: "false",
+    position: Position.Bottom,
+    className: GROUPED_HANDLE_CLASS,
+    style: { left: CONDITION_FALSE_HANDLE_LEFT },
+  },
 ];
 
 function GroupedActionNode({ data, selected, id }: ActionNodeProps) {
   const catalog = useExtensionCatalog();
+  const updateNodeInternals = useUpdateNodeInternals();
+  const actionType = readConfigString(data?.config, "actionType");
+  const isConditionAction = isConditionActionType(actionType);
+
+  // Same reason as the standalone card below: a Condition renders two source
+  // handles where every other member renders one, and React Flow measures
+  // handles on its own schedule. A member's action stays editable, so this
+  // count changes under it.
+  useAfterPaint(isConditionAction, () => {
+    updateNodeInternals(id);
+  });
+
   if (!data) {
     return null;
   }
 
-  const actionType = readConfigString(data.config, "actionType");
   const displayTitle =
     data.label ||
     (actionType ? findAction(catalog, actionType)?.label : undefined) ||
@@ -483,7 +511,7 @@ function GroupedActionNode({ data, selected, id }: ActionNodeProps) {
       data-testid={`action-node-${id}`}
       handles={{
         target: GROUPED_TARGET_HANDLES,
-        source: isConditionActionType(actionType)
+        source: isConditionAction
           ? GROUPED_CONDITION_SOURCE_HANDLES
           : GROUPED_SOURCE_HANDLES,
       }}
@@ -494,11 +522,11 @@ function GroupedActionNode({ data, selected, id }: ActionNodeProps) {
           <ProviderLogo
             actionType={actionType}
             catalog={catalog}
-            className="size-6 shrink-0"
+            className={cn(NODE_ICON_CLASS, "shrink-0")}
           />
         ) : (
           <Zap
-            className="size-6 shrink-0 text-muted-foreground"
+            className={cn(NODE_ICON_CLASS, "shrink-0 text-muted-foreground")}
             strokeWidth={1.5}
           />
         )}
@@ -582,7 +610,10 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
           </div>
         )}
         <NodeBody>
-          <Zap className="size-6 text-muted-foreground" strokeWidth={1.5} />
+          <Zap
+            className={cn(NODE_ICON_CLASS, "text-muted-foreground")}
+            strokeWidth={1.5}
+          />
           <NodeTitle>{data.label || "Action"}</NodeTitle>
           <NodeDescription>Select an action</NodeDescription>
         </NodeBody>

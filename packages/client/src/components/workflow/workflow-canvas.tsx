@@ -53,7 +53,7 @@ import {
 import { WORKFLOW_EDGE_TYPE } from "#src/lib/workflow-graph-types";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { fanOutStoreEdges } from "@wfgraph/shared/graph/node-group";
-import { deletesMembersWithTheirFrame } from "#src/lib/node-group";
+import { refuseDeleteWithNotice } from "#src/lib/node-group";
 import { normalizeSourceHandleForConnection as normalizeSourceHandle } from "./connection-handle";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
@@ -66,12 +66,20 @@ import {
   WorkflowContextMenu,
 } from "./workflow-context-menu";
 import { layoutWorkflowNodes } from "./workflow-layout";
-import { WORKFLOW_NODE_HEIGHT } from "./workflow-node-dimensions";
+import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
 
 const edgeTypes = {
   [WORKFLOW_EDGE_TYPE]: Edge.Animated,
-  temporary: Edge.Temporary,
 };
+
+/**
+ * Every edge draws with the canvas edge. React Flow merges this under each edge
+ * before it resolves the component, so no edge carries a type of its own and no
+ * place that builds one can leave it off. Getting that wrong is answered with
+ * React Flow's built-in bezier, which is how a reload used to lose the
+ * orthogonal path.
+ */
+const defaultEdgeOptions = { type: WORKFLOW_EDGE_TYPE };
 
 const nodeTypes = {
   lifecycle: LifecycleNode,
@@ -438,7 +446,6 @@ export function WorkflowCanvas() {
         id: nanoid(),
         ...connection,
         sourceHandle,
-        type: WORKFLOW_EDGE_TYPE,
       };
       connectNodes(newEdge);
     },
@@ -473,7 +480,7 @@ export function WorkflowCanvas() {
 
       // A Group's entry and exit are derived from the members it was built
       // from, so a member only goes when its frame does.
-      if (!deletesMembersWithTheirFrame(nodesToDelete)) {
+      if (refuseDeleteWithNotice(nodesToDelete)) {
         return Promise.resolve(false);
       }
 
@@ -764,6 +771,7 @@ export function WorkflowCanvas() {
         className="bg-background"
         connectionLineComponent={Connection}
         connectionMode={ConnectionMode.Strict}
+        defaultEdgeOptions={defaultEdgeOptions}
         edges={edges}
         edgeTypes={edgeTypes}
         elementsSelectable={!editingLocked}

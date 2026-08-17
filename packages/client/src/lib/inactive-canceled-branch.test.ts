@@ -44,7 +44,7 @@ function edge(
   target: string,
   sourceHandle?: string
 ): WorkflowEdge {
-  return { id, source, target, sourceHandle, type: "animated" };
+  return { id, source, target, sourceHandle };
 }
 
 describe("inactiveCanceledBranch", () => {

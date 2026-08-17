@@ -75,7 +75,7 @@ function actionNode(id: string): WorkflowNode {
 }
 
 function edge(id: string, source: string, target: string): WorkflowEdge {
-  return { id, source, target, type: "animated" };
+  return { id, source, target };
 }
 
 /** Let a zero-delay debounce timer fire. */

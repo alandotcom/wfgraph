@@ -19,7 +19,7 @@ import {
   RANK_SPACING,
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
-} from "./workflow-node-dimensions";
+} from "#src/lib/workflow-node-dimensions";
 import {
   edgesForGroupLayout,
   groupEntryIds,

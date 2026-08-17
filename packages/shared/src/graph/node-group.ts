@@ -64,6 +64,27 @@ export function predecessorKey(edge: {
   return `${edge.source}\0${edge.sourceHandle ?? ""}`;
 }
 
+/**
+ * Whether both ends of this edge sit in the same frame. `parentOf` answers for
+ * a node id, and a node outside every frame answers undefined, which is why an
+ * absent parent is never a match.
+ */
+export function isInteriorEdge(
+  parentOf: (nodeId: string) => string | undefined,
+  edge: { source: string; target: string }
+): boolean {
+  const parent = parentOf(edge.source);
+  return parent !== undefined && parent === parentOf(edge.target);
+}
+
+/** `isInteriorEdge` against a fixed set of member ids. */
+export function isEdgeBetweenMembers(
+  memberIds: ReadonlySet<string>,
+  edge: { source: string; target: string }
+): boolean {
+  return memberIds.has(edge.source) && memberIds.has(edge.target);
+}
+
 export type GroupMemberSlot = {
   id: string;
   row: number;
@@ -110,8 +131,8 @@ export function analyzeGroupableSelection(
   }
 
   const memberIds = new Set(members.map((node) => node.id));
-  const interior = edges.filter(
-    (edge) => memberIds.has(edge.source) && memberIds.has(edge.target)
+  const interior = edges.filter((edge) =>
+    isEdgeBetweenMembers(memberIds, edge)
   );
 
   const incomingFromMembers = new Map<string, number>();
@@ -355,20 +376,21 @@ export function displayEdgesForGroups<E extends WorkflowEdge>(
   return collapseDuplicateDisplayEdges(remapped);
 }
 
-/** Interior edges stay off the outer layout; boundary edges sit on the frame. */
+/**
+ * Interior edges stay off the outer layout; boundary edges sit on the frame.
+ * `displayEdgesForGroups` has already moved a boundary edge's inside end onto
+ * the frame, and a frame has no parent, so an end that still names a member is
+ * what marks an edge as interior.
+ */
 export function edgesForGroupLayout<E extends WorkflowEdge>(
   nodes: readonly GroupGraphNode[],
   edges: readonly E[]
 ): E[] {
   const byId = new Map(nodes.map((node) => [node.id, node]));
-  return displayEdgesForGroups(nodes, edges).filter((edge) => {
-    const source = byId.get(edge.source);
-    const target = byId.get(edge.target);
-    if (source?.parentId && source.parentId === target?.parentId) {
-      return false;
-    }
-    return !source?.parentId && !target?.parentId;
-  });
+  return displayEdgesForGroups(nodes, edges).filter(
+    (edge) =>
+      !byId.get(edge.source)?.parentId && !byId.get(edge.target)?.parentId
+  );
 }
 
 export function expandGroupCopyIds(

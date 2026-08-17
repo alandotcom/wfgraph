@@ -11,7 +11,7 @@ import { layoutWorkflowNodes } from "./workflow-layout";
 import {
   eventSplitCardWidth,
   WORKFLOW_NODE_WIDTH,
-} from "./workflow-node-dimensions";
+} from "#src/lib/workflow-node-dimensions";
 
 /**
  * An Event Split's outlets are the Events reaching it, which the layout reads

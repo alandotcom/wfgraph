@@ -26,6 +26,7 @@ import {
   ungroupNodeAtom,
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
+import { canUngroup, refuseDelete } from "#src/lib/node-group";
 import {
   currentWorkflowIdAtom,
   currentWorkflowNameAtom,
@@ -595,7 +596,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
                 )}
               </Button>
             ) : null}
-            {selectedNode.data.type === "group" || selectedNode.parentId ? (
+            {canUngroup(selectedNode) ? (
               <Button
                 onClick={() => ungroupSelected(selectedNode.id)}
                 size="sm"
@@ -607,7 +608,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
             ) : null}
             {/* A member is deleted by deleting or ungrouping its frame, which
                 is what keeps the frame's entry and exit naming a live step. */}
-            {selectedNode.parentId ? null : (
+            {refuseDelete([selectedNode]) ? null : (
               <Button onClick={confirmDeleteNode} size="sm" variant="outline">
                 <Trash2 className="mr-2 size-4 text-destructive" />
                 <span className="text-destructive">Delete</span>

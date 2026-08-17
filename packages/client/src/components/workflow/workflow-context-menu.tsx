@@ -32,15 +32,12 @@ import {
   selectedNodeAtom,
   ungroupNodeAtom,
 } from "#src/lib/workflow-graph-store";
-import { refuseNodeDelete } from "#src/lib/node-group";
+import { canUngroup, refuseDelete } from "#src/lib/node-group";
 import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 import { type WorkflowNode } from "#src/lib/workflow-graph-types";
-import { WORKFLOW_NODE_HEIGHT } from "#src/components/workflow/workflow-node-dimensions";
+import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
 import { cn } from "@wfgraph/shared/utils";
-import {
-  analyzeGroupableSelection,
-  isGroupNode,
-} from "@wfgraph/shared/graph/node-group";
+import { analyzeGroupableSelection } from "@wfgraph/shared/graph/node-group";
 
 export type ContextMenuType = "node" | "edge" | "pane" | null;
 
@@ -229,31 +226,17 @@ export function WorkflowContextMenu({
     return null;
   }
 
-  const isLifecycleNode = Boolean(
-    menuState.nodeId &&
-    nodes.find((n) => n.id === menuState.nodeId)?.data.type === "lifecycle"
-  );
-
+  // One lookup for the clicked step; every question below reads it.
   const clicked = menuState.nodeId
     ? nodes.find((n) => n.id === menuState.nodeId)
     : undefined;
+  const isLifecycleNode = clicked?.data.type === "lifecycle";
   const groupingIds = menuState.selectedIds ?? new Set<string>();
   const grouping = analyzeGroupableSelection(nodes, edges, groupingIds);
   const canGroup = grouping.ok;
-  const canUngroup = Boolean(
-    clicked && (isGroupNode(clicked) || clicked.parentId)
-  );
-  const deleteRefusal = menuState.nodeId
-    ? refuseNodeDelete(nodes, menuState.nodeId)
-    : null;
-
-  const getNodeLabel = () => {
-    if (!menuState.nodeId) {
-      return "Step";
-    }
-    const node = nodes.find((n) => n.id === menuState.nodeId);
-    return node?.data.label || "Step";
-  };
+  const showUngroup = canUngroup(clicked);
+  const deleteRefusal = clicked ? refuseDelete([clicked]) : null;
+  const nodeLabel = clicked?.data.label || "Step";
 
   return (
     <div
@@ -268,7 +251,7 @@ export function WorkflowContextMenu({
         <>
           <MenuItem
             icon={<SlidersHorizontal className="size-4" />}
-            label={`Edit ${getNodeLabel()}`}
+            label={`Edit ${nodeLabel}`}
             onClick={handleEditNode}
           />
           <MenuItem
@@ -294,7 +277,7 @@ export function WorkflowContextMenu({
             shortcut={shortcutLabel("G")}
           />
           <MenuItem
-            disabled={!canUngroup}
+            disabled={!showUngroup}
             icon={<Ungroup className="size-4" />}
             label="Ungroup"
             onClick={handleUngroup}
@@ -303,7 +286,7 @@ export function WorkflowContextMenu({
             disabled={isLifecycleNode || Boolean(deleteRefusal)}
             hint={deleteRefusal ?? undefined}
             icon={<Trash2 className="size-4" />}
-            label={`Delete ${getNodeLabel()}`}
+            label={`Delete ${nodeLabel}`}
             onClick={handleDeleteNode}
             variant="destructive"
           />

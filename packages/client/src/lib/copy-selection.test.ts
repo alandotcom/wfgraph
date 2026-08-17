@@ -38,7 +38,7 @@ function actionNode(
 }
 
 function edge(id: string, source: string, target: string): WorkflowEdge {
-  return { id, source, target, type: "animated" };
+  return { id, source, target };
 }
 
 function sequentialIds(labels: string[]) {
@@ -193,7 +193,6 @@ describe("cloneSelection", () => {
         id: "e2",
         source: "a2",
         target: "b2",
-        type: "animated",
         selected: true,
       },
     ]);

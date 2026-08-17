@@ -1,15 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import {
-  GROUP_CHILD_WIDTH,
-  GROUP_COLUMN_GAP,
-  GROUP_PAD,
-} from "#src/components/workflow/workflow-node-dimensions";
+  NODE_SPACING,
+  RANK_SPACING,
+  WORKFLOW_NODE_HEIGHT,
+  WORKFLOW_NODE_WIDTH,
+} from "#src/lib/workflow-node-dimensions";
 import {
-  deletesMembersWithTheirFrame,
+  canUngroup,
   groupSelection,
   lockGroupInteriorEdges,
-  refuseNodeDelete,
+  refuseDelete,
   ungroupNode,
 } from "#src/lib/node-group";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -39,6 +40,48 @@ function edge(
   sourceHandle?: string
 ): WorkflowEdge {
   return { id, source, target, sourceHandle };
+}
+
+/**
+ * Two lookups running side by side into one Condition, reached from the
+ * Lifecycle Node. Grouping this gives a frame two columns wide and two rows
+ * deep, which is the shape both the nesting and the ungrouping are read from.
+ */
+function parallelNodes(): WorkflowNode[] {
+  return [
+    {
+      ...action("life", "ignored", { x: 0, y: 0 }),
+      type: "lifecycle",
+      selected: false,
+      data: { label: "Start", type: "lifecycle", config: {} },
+    },
+    action("a", "fountain/get-user", { x: 40, y: 200 }),
+    action("b", "fountain/get-appointment", { x: 240, y: 200 }),
+    action("c", BUILT_IN_ACTION_IDS.condition, { x: 140, y: 400 }),
+  ];
+}
+
+function parallelEdges(): WorkflowEdge[] {
+  return [
+    edge("in-a", "life", "a", "started"),
+    edge("a-c", "a", "c"),
+    edge("b-c", "b", "c"),
+  ];
+}
+
+/** A frame plus its members, as the store holds them after a group. */
+function framedNodes(): WorkflowNode[] {
+  const grouped = groupSelection({
+    nodes: parallelNodes(),
+    edges: parallelEdges(),
+    selectedIds: new Set(["a", "b", "c"]),
+    createId: () => "g1",
+    createEdgeId: () => "in-b",
+  });
+  if (!grouped) {
+    throw new Error("expected the parallel fixture to group");
+  }
+  return grouped.nodes;
 }
 
 describe("groupSelection", () => {
@@ -78,27 +121,9 @@ describe("groupSelection", () => {
   });
 
   it("places parallel lookups side by side and fans incoming onto both", () => {
-    const nodes = [
-      action("life", "ignored", { x: 0, y: 0 }),
-      action("a", "fountain/get-user", { x: 40, y: 200 }),
-      action("b", "fountain/get-appointment", { x: 240, y: 200 }),
-      action("c", BUILT_IN_ACTION_IDS.condition, { x: 140, y: 400 }),
-    ];
-    nodes[0] = {
-      ...nodes[0],
-      type: "lifecycle",
-      selected: false,
-      data: { label: "Start", type: "lifecycle", config: {} },
-    };
-    const edges = [
-      edge("in-a", "life", "a", "started"),
-      edge("a-c", "a", "c"),
-      edge("b-c", "b", "c"),
-    ];
-
     const grouped = groupSelection({
-      nodes,
-      edges,
+      nodes: parallelNodes(),
+      edges: parallelEdges(),
       selectedIds: new Set(["a", "b", "c"]),
       createId: () => "g1",
       createEdgeId: () => "in-b",
@@ -114,53 +139,48 @@ describe("groupSelection", () => {
       exitNodeId: "c",
       outletHandle: "true",
     });
-    expect(childA?.position).toEqual({ x: GROUP_PAD, y: childA?.position.y });
-    expect(childB?.position.x).toBe(
-      GROUP_PAD + GROUP_CHILD_WIDTH + GROUP_COLUMN_GAP
-    );
-    expect(childA?.position.y).toBe(childB?.position.y);
-    expect(childC?.position.y).toBeGreaterThan(childA?.position.y ?? 0);
-    // The join sits centred between the two lookups it joins, so the interior
-    // edges paint as a fan-in.
-    const rowCentre =
-      (childA?.position.x ?? 0) +
-      ((childB?.position.x ?? 0) +
-        GROUP_CHILD_WIDTH -
-        (childA?.position.x ?? 0)) /
-        2;
-    expect((childC?.position.x ?? 0) + GROUP_CHILD_WIDTH / 2).toBe(rowCentre);
+    // Row 0 fills the frame: `GROUP_PAD`, then one card and one gap over.
+    expect(childA?.position.x).toBe(12);
+    expect(childB?.position.x).toBe(224);
+    expect(childA?.position.y).toBe(48);
+    expect(childB?.position.y).toBe(48);
+    // Row 1 holds the join alone, indented by half a column so it sits under
+    // the centre of the row above and the interior edges paint as a fan-in.
+    expect(childC?.position.x).toBe(118);
+    expect(childC?.position.y).toBe(144);
     expect(
       grouped?.edges.map((item) => `${item.source}->${item.target}`)
     ).toEqual(["life->a", "a->c", "b->c", "life->b"]);
   });
-});
 
-describe("refuseNodeDelete", () => {
-  it("refuses a member and allows the frame and a free step", () => {
-    const nodes: WorkflowNode[] = [
-      {
-        id: "g1",
-        type: "group",
-        position: { x: 0, y: 0 },
-        data: {
-          label: "Group",
-          type: "group",
-          config: { entryNodeIds: ["a"], exitNodeId: "c" },
-        },
-      },
-      { ...action("a", "fountain/get-user", { x: 0, y: 0 }), parentId: "g1" },
-      action("free", "fountain/get-user", { x: 0, y: 0 }),
-    ];
+  it("frees the members at auto-layout's pitch, keeping the fan-in", () => {
+    const freed = ungroupNode(framedNodes(), "g1");
+    const freeA = freed.find((node) => node.id === "a");
+    const freeB = freed.find((node) => node.id === "b");
+    const freeC = freed.find((node) => node.id === "c");
 
-    expect(refuseNodeDelete(nodes, "a")).toBe(
-      "Ungroup the frame before deleting this step"
+    expect(freed.some((node) => node.id === "g1")).toBe(false);
+    expect(freed.every((node) => !node.parentId)).toBe(true);
+    // Two siblings sit one auto-layout column apart, and the rank below sits
+    // one auto-layout rank down, so nothing overlaps at the compact spacing
+    // the frame used.
+    expect((freeB?.position.x ?? 0) - (freeA?.position.x ?? 0)).toBe(
+      WORKFLOW_NODE_WIDTH + NODE_SPACING
     );
-    expect(refuseNodeDelete(nodes, "g1")).toBeNull();
-    expect(refuseNodeDelete(nodes, "free")).toBeNull();
+    expect((freeC?.position.y ?? 0) - (freeA?.position.y ?? 0)).toBe(
+      WORKFLOW_NODE_HEIGHT + RANK_SPACING
+    );
+    expect(freeA?.position.y).toBe(freeB?.position.y);
+    // The join stays centred under the two lookups it joins.
+    expect(freeC?.position.x).toBe(
+      ((freeA?.position.x ?? 0) + (freeB?.position.x ?? 0)) / 2
+    );
+    expect(freeA?.width).toBe(WORKFLOW_NODE_WIDTH);
+    expect(freeA?.height).toBe(WORKFLOW_NODE_HEIGHT);
   });
 });
 
-describe("deletesMembersWithTheirFrame", () => {
+describe("refuseDelete", () => {
   const frame: WorkflowNode = {
     id: "g1",
     type: "group",
@@ -177,25 +197,48 @@ describe("deletesMembersWithTheirFrame", () => {
   };
   const free = action("free", "fountain/get-user", { x: 0, y: 0 });
 
-  it("allows a frame taking its members and a step of its own", () => {
-    expect(deletesMembersWithTheirFrame([frame, member])).toBe(true);
-    expect(deletesMembersWithTheirFrame([free])).toBe(true);
+  it("allows a frame taking its members, and a step of its own", () => {
+    expect(refuseDelete([frame, member])).toBeNull();
+    expect(refuseDelete([free])).toBeNull();
+    expect(refuseDelete([])).toBeNull();
   });
 
-  it("refuses a member whose frame stays", () => {
-    expect(deletesMembersWithTheirFrame([member])).toBe(false);
-    expect(deletesMembersWithTheirFrame([free, member])).toBe(false);
+  it("refuses a batch reaching into a frame it does not take", () => {
+    expect(refuseDelete([member])).toBe(
+      "Ungroup the frame before deleting a step inside it"
+    );
+    expect(refuseDelete([free, member])).toBe(
+      "Ungroup the frame before deleting a step inside it"
+    );
+  });
+});
+
+describe("canUngroup", () => {
+  it("answers for a frame and for a member, and for nothing else", () => {
+    const frame: WorkflowNode = {
+      id: "g1",
+      type: "group",
+      position: { x: 0, y: 0 },
+      data: { label: "Group", type: "group", config: {} },
+    };
+    const member = {
+      ...action("a", "fountain/get-user", { x: 0, y: 0 }),
+      parentId: "g1",
+    };
+
+    expect(canUngroup(frame)).toBe(true);
+    expect(canUngroup(member)).toBe(true);
+    expect(
+      canUngroup(action("free", "fountain/get-user", { x: 0, y: 0 }))
+    ).toBe(false);
+    expect(canUngroup(undefined)).toBe(false);
   });
 });
 
 describe("lockGroupInteriorEdges", () => {
   it("locks an edge between two members and leaves the rest alone", () => {
-    const nodes: WorkflowNode[] = [
-      { ...action("a", "fountain/get-user", { x: 0, y: 0 }), parentId: "g1" },
-      {
-        ...action("c", BUILT_IN_ACTION_IDS.condition, { x: 0, y: 0 }),
-        parentId: "g1",
-      },
+    const nodes = [
+      ...framedNodes(),
       action("outside", "fountain/get-user", { x: 0, y: 0 }),
     ];
     const edges = [edge("a-c", "a", "c"), edge("c-out", "c", "outside")];
@@ -204,7 +247,21 @@ describe("lockGroupInteriorEdges", () => {
 
     expect(locked[0]?.selectable).toBe(false);
     expect(locked[0]?.deletable).toBe(false);
+    expect(locked[0]?.focusable).toBe(false);
     expect(locked[1]).toBe(edges[1]);
+  });
+
+  it("hands back the same locked object on a later recompute", () => {
+    const nodes = framedNodes();
+    const edges = [edge("a-c", "a", "c")];
+
+    // A node drag rebuilds the node array without touching parentage or the
+    // edges. React Flow re-renders an edge whose object changed, so a fresh
+    // copy per recompute would repaint every interior edge on every frame.
+    const first = lockGroupInteriorEdges(nodes, edges);
+    const second = lockGroupInteriorEdges([...nodes], edges);
+
+    expect(second[0]).toBe(first[0]);
   });
 
   it("returns the same array when nothing is nested", () => {

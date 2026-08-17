@@ -37,7 +37,7 @@ import {
   expandEdgeRemovals,
   idsRemovedWith,
   lockGroupInteriorEdges,
-  refuseNodeDelete,
+  refuseDeleteWithNotice,
 } from "#src/lib/node-group";
 import {
   displayEdgesForGroups,
@@ -720,7 +720,7 @@ export const deleteNodeAtom = atom(null, (get, set, nodeId: string) => {
   if (nodeToDelete?.data.type === "lifecycle") {
     return;
   }
-  if (refuseNodeDelete(currentNodes, nodeId)) {
+  if (nodeToDelete && refuseDeleteWithNotice([nodeToDelete])) {
     return;
   }
 
@@ -752,14 +752,17 @@ export const deleteSelectedItemsAtom = atom(null, (get, set) => {
 
   const currentNodes = get(nodesStateAtom);
   const currentEdges = get(edgesStateAtom);
-  // A member selected on its own is left alone: the frame is what a person
-  // deletes, and it takes its members with it. `refuseNodeDelete` states why.
+  // The delete key asks the same question through `onBeforeDelete`, so a
+  // selection reaching into a frame without taking the frame is refused whole
+  // here too rather than quietly losing the member and taking the rest.
+  const selectedNodes = currentNodes.filter((node) => node.selected);
+  if (refuseDeleteWithNotice(selectedNodes)) {
+    return;
+  }
+
   const selectedNodeIds = new Set(
-    currentNodes
-      .filter(
-        (node) =>
-          node.selected && node.data.type !== "lifecycle" && !node.parentId
-      )
+    selectedNodes
+      .filter((node) => node.data.type !== "lifecycle")
       .map((node) => node.id)
   );
   for (const node of currentNodes) {
