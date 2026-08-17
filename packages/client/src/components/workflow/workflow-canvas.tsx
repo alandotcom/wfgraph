@@ -20,7 +20,6 @@ import "@xyflow/react/dist/style.css";
 
 import { nanoid } from "nanoid";
 import { andJoinRefusalReason } from "@wfgraph/shared/graph/and-join";
-import type { WorkflowEdge as PersistedWorkflowEdge } from "@wfgraph/shared/graph/types";
 import { Edge } from "#src/components/flow-elements/edge";
 import { Panel } from "#src/components/flow-elements/panel";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
@@ -340,15 +339,12 @@ export function WorkflowCanvas() {
       const proposedEdges = [
         ...edges.filter((edge) => edge.id !== connectionId),
         {
-          id: connectionId ?? "proposed",
           source: sourceNodeId,
           target: targetNodeId,
           sourceHandle:
             "sourceHandle" in connection ? connection.sourceHandle : undefined,
-          targetHandle:
-            "targetHandle" in connection ? connection.targetHandle : undefined,
         },
-      ] as PersistedWorkflowEdge[];
+      ];
 
       if (
         andJoinRefusalReason({

@@ -1,10 +1,9 @@
 /**
  * AND-join rules for a node with more than one incoming edge.
  *
- * Fan-out already runs siblings side by side; these rules are what lets those
- * siblings feed one next step. A join runs only after every predecessor has
- * released it (engine), and saving / the canvas refuse the shapes that would
- * hang or cross the Canceled branch.
+ * A join is illegal when it sits behind two exclusive outlets of one node
+ * (Lifecycle, Condition, Event Split), or when a Wait sits on an arm. Saving
+ * and the canvas share this; the engine's readiness gate is separate.
  */
 
 import {
@@ -12,59 +11,37 @@ import {
   normalizeConditionBranch,
 } from "#src/conditions/condition-branch";
 import { isWaitNode } from "#src/graph/node-config";
-import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
+import type { WorkflowNode } from "#src/graph/types";
 import { upstreamNodeIds } from "#src/graph/upstream-nodes";
 import { isEventSplitNode } from "#src/lifecycle/event-split";
-import {
-  entryOutletsReaching,
-  LIFECYCLE_CANCELED_HANDLE,
-  LIFECYCLE_STARTED_HANDLE,
-} from "#src/lifecycle/lifecycle-outlets";
+
+/** The fields join policy reads off an edge. Editor and persisted edges both fit. */
+export type JoinGraphEdge = {
+  source: string;
+  target: string;
+  sourceHandle?: string | null;
+};
 
 function nodeLabel(node: WorkflowNode | undefined, fallbackId: string): string {
   return node?.data.label?.trim() || fallbackId;
 }
 
-function incomingEdgesByTarget(
-  edges: readonly WorkflowEdge[]
-): Map<string, WorkflowEdge[]> {
-  const byTarget = new Map<string, WorkflowEdge[]>();
-  for (const edge of edges) {
-    const list = byTarget.get(edge.target);
-    if (list) {
-      list.push(edge);
-    } else {
-      byTarget.set(edge.target, [edge]);
-    }
-  }
-  return byTarget;
+function isExclusiveSplit(node: WorkflowNode): boolean {
+  return (
+    node.data.type === "lifecycle" ||
+    isConditionActionNode(node) ||
+    isEventSplitNode(node)
+  );
 }
 
-function targetsReachableFrom(
-  startIds: readonly string[],
-  edges: readonly WorkflowEdge[]
-): Set<string> {
-  const targetsBySource = new Map<string, string[]>();
-  for (const edge of edges) {
-    const targets = targetsBySource.get(edge.source);
-    if (targets) {
-      targets.push(edge.target);
-    } else {
-      targetsBySource.set(edge.source, [edge.target]);
-    }
+function exclusiveHandleKey(edge: JoinGraphEdge): string {
+  const branch = normalizeConditionBranch(edge.sourceHandle);
+  if (branch) {
+    return branch;
   }
-
-  const reached = new Set<string>();
-  const pending = [...startIds];
-  while (pending.length > 0) {
-    const nodeId = pending.pop();
-    if (!nodeId || reached.has(nodeId)) {
-      continue;
-    }
-    reached.add(nodeId);
-    pending.push(...(targetsBySource.get(nodeId) ?? []));
-  }
-  return reached;
+  return typeof edge.sourceHandle === "string" && edge.sourceHandle.length > 0
+    ? edge.sourceHandle
+    : "";
 }
 
 /**
@@ -74,7 +51,7 @@ function targetsReachableFrom(
 function nodesOnJoinArms(input: {
   joinNodeId: string;
   predecessorIds: readonly string[];
-  edges: readonly WorkflowEdge[];
+  edges: readonly JoinGraphEdge[];
 }): Set<string> {
   const { joinNodeId, predecessorIds, edges } = input;
   if (predecessorIds.length === 0) {
@@ -102,97 +79,52 @@ function nodesOnJoinArms(input: {
   return onArms;
 }
 
-function exclusiveHandleKey(edge: WorkflowEdge): string {
-  const branch = normalizeConditionBranch(edge.sourceHandle);
-  if (branch) {
-    return branch;
-  }
-  return typeof edge.sourceHandle === "string" && edge.sourceHandle.length > 0
-    ? edge.sourceHandle
-    : "";
-}
-
-/**
- * Why this multi-incoming node is refused, or null when the AND-join is allowed.
- */
-export function andJoinNodeRefusalReason(input: {
+function refusalForJoin(input: {
   joinNodeId: string;
   nodes: readonly WorkflowNode[];
-  edges: readonly WorkflowEdge[];
+  edges: readonly JoinGraphEdge[];
 }): string | null {
   const { joinNodeId, nodes, edges } = input;
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const joinNode = nodeById.get(joinNodeId);
-  const joinLabel = nodeLabel(joinNode, joinNodeId);
+  const joinLabel = nodeLabel(nodeById.get(joinNodeId), joinNodeId);
+  const predecessorIds = edges
+    .filter((edge) => edge.target === joinNodeId)
+    .map((edge) => edge.source);
+  const upstream = upstreamNodeIds(joinNodeId, edges);
 
-  const incoming = edges.filter((edge) => edge.target === joinNodeId);
-  if (incoming.length <= 1) {
-    return null;
-  }
-
-  const predecessorIds = incoming.map((edge) => edge.source);
-
-  for (const node of nodes) {
-    if (node.data.type !== "lifecycle") {
+  const handlesBySplit = new Map<string, Set<string>>();
+  for (const edge of edges) {
+    if (edge.target !== joinNodeId && !upstream.has(edge.target)) {
       continue;
     }
-    const outlets = entryOutletsReaching({
-      entryNodeId: node.id,
-      targetNodeId: joinNodeId,
-      edges,
-    });
-    if (
-      outlets.has(LIFECYCLE_STARTED_HANDLE) &&
-      outlets.has(LIFECYCLE_CANCELED_HANDLE)
-    ) {
-      return `Node "${joinLabel}" cannot join the Started and Canceled branches`;
+    const source = nodeById.get(edge.source);
+    if (!source || !isExclusiveSplit(source)) {
+      continue;
     }
+    const handles = handlesBySplit.get(source.id) ?? new Set<string>();
+    handles.add(exclusiveHandleKey(edge));
+    handlesBySplit.set(source.id, handles);
   }
 
-  const armNodes = nodesOnJoinArms({
+  for (const [sourceId, handles] of handlesBySplit) {
+    if (handles.size <= 1) {
+      continue;
+    }
+    const source = nodeById.get(sourceId);
+    if (source?.data.type === "lifecycle") {
+      return `Node "${joinLabel}" cannot join the Started and Canceled branches`;
+    }
+    return `Node "${joinLabel}" cannot join mutually exclusive branches from "${nodeLabel(source, sourceId)}"`;
+  }
+
+  for (const armNodeId of nodesOnJoinArms({
     joinNodeId,
     predecessorIds,
     edges,
-  });
-  for (const armNodeId of armNodes) {
+  })) {
     const armNode = nodeById.get(armNodeId);
     if (armNode && isWaitNode(armNode)) {
       return `Node "${joinLabel}" cannot join branches that include a Wait (found "${nodeLabel(armNode, armNodeId)}")`;
-    }
-  }
-
-  for (const node of nodes) {
-    if (!isConditionActionNode(node) && !isEventSplitNode(node)) {
-      continue;
-    }
-
-    const outgoing = edges.filter((edge) => edge.source === node.id);
-    const predsReachedByHandle = new Map<string, Set<string>>();
-
-    for (const edge of outgoing) {
-      const handle = exclusiveHandleKey(edge);
-      const reached = targetsReachableFrom([edge.target], edges);
-      reached.add(edge.target);
-      const bucket = predsReachedByHandle.get(handle) ?? new Set<string>();
-      for (const predecessorId of predecessorIds) {
-        if (reached.has(predecessorId)) {
-          bucket.add(predecessorId);
-        }
-      }
-      if (bucket.size > 0) {
-        predsReachedByHandle.set(handle, bucket);
-      }
-    }
-
-    if (predsReachedByHandle.size <= 1) {
-      continue;
-    }
-
-    const handleReachingAll = [...predsReachedByHandle.values()].some((preds) =>
-      predecessorIds.every((id) => preds.has(id))
-    );
-    if (!handleReachingAll) {
-      return `Node "${joinLabel}" cannot join mutually exclusive branches from "${nodeLabel(node, node.id)}"`;
     }
   }
 
@@ -205,14 +137,18 @@ export function andJoinNodeRefusalReason(input: {
  */
 export function andJoinRefusalReason(input: {
   nodes: readonly WorkflowNode[];
-  edges: readonly WorkflowEdge[];
+  edges: readonly JoinGraphEdge[];
 }): string | null {
-  const byTarget = incomingEdgesByTarget(input.edges);
-  for (const [targetId, incoming] of byTarget) {
-    if (incoming.length <= 1) {
+  const incomingCount = new Map<string, number>();
+  for (const edge of input.edges) {
+    incomingCount.set(edge.target, (incomingCount.get(edge.target) ?? 0) + 1);
+  }
+
+  for (const [targetId, count] of incomingCount) {
+    if (count <= 1) {
       continue;
     }
-    const reason = andJoinNodeRefusalReason({
+    const reason = refusalForJoin({
       joinNodeId: targetId,
       nodes: input.nodes,
       edges: input.edges,

@@ -113,6 +113,29 @@ describe("andJoinRefusalReason", () => {
     ).toBeNull();
   });
 
+  it("allows a join entirely on one Condition branch", () => {
+    expect(
+      andJoinRefusalReason({
+        nodes: [
+          lifecycle(),
+          condition("cond"),
+          action("left"),
+          action("right"),
+          action("join"),
+          action("other"),
+        ],
+        edges: [
+          edge("e1", "lifecycle_1", "cond", LIFECYCLE_STARTED_HANDLE),
+          edge("e2", "cond", "left", "true"),
+          edge("e3", "cond", "right", "true"),
+          edge("e4", "cond", "other", "false"),
+          edge("e5", "left", "join"),
+          edge("e6", "right", "join"),
+        ],
+      })
+    ).toBeNull();
+  });
+
   it("refuses joining Condition true/false arms", () => {
     expect(
       andJoinRefusalReason({

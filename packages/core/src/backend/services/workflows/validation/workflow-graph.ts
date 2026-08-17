@@ -98,19 +98,6 @@ function validateLifecycleOutletEdges(input: {
   return null;
 }
 
-/**
- * Multi-incoming edges are AND-joins: every predecessor must complete before
- * the join runs. `andJoinRefusalReason` keeps Started↔Canceled terminal, bans
- * Wait on a join arm, and refuses joins across exclusive Condition / Event
- * Split outlets.
- */
-function validateAndJoins(input: {
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
-}): string | null {
-  return andJoinRefusalReason(input);
-}
-
 export type WorkflowGraphValidationResult =
   | {
       valid: true;
@@ -245,7 +232,7 @@ export function validateWorkflowGraph(
     };
   }
 
-  const andJoinValidationError = validateAndJoins(graphData);
+  const andJoinValidationError = andJoinRefusalReason(graphData);
   if (andJoinValidationError) {
     return {
       valid: false,

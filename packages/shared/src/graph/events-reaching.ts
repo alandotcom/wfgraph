@@ -29,6 +29,7 @@ import type {
   WorkflowNode,
 } from "#src/graph/types";
 import { fieldsVisibleForConfig } from "#src/graph/node-references";
+import { upstreamNodeIds } from "#src/graph/upstream-nodes";
 import {
   eventSplitOutletEvent,
   isEventSplitNode,
@@ -252,11 +253,10 @@ function actionOutputPaths(
  * The Events that could have put a run at this node, narrowed by the Conditions
  * it sits behind.
  *
- * A node with one incoming edge follows a single chain up to the entry node. A
- * node with several is an AND-join: every path that could complete must agree,
- * so the answer is the intersection of the Events each path admits. A node no
- * path reaches is offered nothing: the save refuses an entry edge naming no
- * outlet too, so both silences describe a graph that cannot run.
+ * Events at a node are the intersection of what each incoming edge admits, the
+ * same AND the engine uses for readiness. A parent that is the Lifecycle Node
+ * contributes its outlet's Events; anything else is narrowed by the handle the
+ * edge left on. A node no path reaches is offered nothing.
  *
  * Where the walk cannot tell, it keeps the Event. Offering a field too many is
  * noise a builder can read past; hiding one is a promise they cannot see broken.
@@ -279,99 +279,96 @@ export function eventsReaching(input: {
     }
   }
 
-  const paths = pathsToEntry({
-    targetNodeId: input.targetNodeId,
-    nodeById,
-    incomingByTarget,
-  });
-  if (paths.length === 0) {
-    return [];
-  }
-
-  let events: EventMetadata[] | null = null;
-  for (const chain of paths) {
-    const pathEvents = eventsForChain({ chain, catalog });
-    events =
-      events === null ? pathEvents : intersectEventsByName(events, pathEvents);
-  }
-  return events ?? [];
-}
-
-/** One chain from the target up to the entry node, nearest parent first. */
-type ReachChain = { parent: WorkflowNode; handle: unknown }[];
-
-function pathsToEntry(input: {
-  targetNodeId: string;
-  nodeById: Map<string, WorkflowNode>;
-  incomingByTarget: Map<string, WorkflowEdge[]>;
-}): ReachChain[] {
-  const { nodeById, incomingByTarget } = input;
-  const completed: ReachChain[] = [];
-
-  const walk = (cursor: string, chain: ReachChain, seen: Set<string>) => {
-    const incoming = incomingByTarget.get(cursor) ?? [];
-    if (incoming.length === 0) {
-      return;
-    }
-
-    for (const edge of incoming) {
-      const parent = nodeById.get(edge.source);
-      if (!parent || seen.has(parent.id)) {
-        continue;
+  const outputPathsAt = (nodeId: string): Set<string> => {
+    const paths = new Set<string>();
+    const add = (id: string) => {
+      const node = nodeById.get(id);
+      if (!node) {
+        return;
       }
-
-      const nextChain = [...chain, { parent, handle: edge.sourceHandle }];
-      if (parent.data.type === "lifecycle") {
-        completed.push(nextChain);
-        continue;
+      for (const path of actionOutputPaths(node, catalog)) {
+        paths.add(path);
       }
-
-      const nextSeen = new Set(seen);
-      nextSeen.add(parent.id);
-      walk(parent.id, nextChain, nextSeen);
+    };
+    add(nodeId);
+    for (const ancestorId of upstreamNodeIds(nodeId, input.edges)) {
+      add(ancestorId);
     }
+    return paths;
   };
 
-  walk(input.targetNodeId, [], new Set([input.targetNodeId]));
-  return completed;
+  const memo = new Map<string, EventMetadata[]>();
+
+  const eventsAt = (nodeId: string, seen: Set<string>): EventMetadata[] => {
+    const cached = memo.get(nodeId);
+    if (cached) {
+      return cached;
+    }
+    if (seen.has(nodeId)) {
+      return [];
+    }
+
+    const incoming = incomingByTarget.get(nodeId) ?? [];
+    if (incoming.length === 0) {
+      memo.set(nodeId, []);
+      return [];
+    }
+
+    const nextSeen = new Set(seen);
+    nextSeen.add(nodeId);
+
+    let acc: EventMetadata[] | null = null;
+    for (const edge of incoming) {
+      const parent = nodeById.get(edge.source);
+      if (!parent) {
+        continue;
+      }
+
+      const fromParent =
+        parent.data.type === "lifecycle"
+          ? outletEvents({
+              entryNode: parent,
+              handle: edge.sourceHandle,
+              catalog,
+            })
+          : narrowLeaving({
+              parent,
+              handle: edge.sourceHandle,
+              events: eventsAt(parent.id, nextSeen),
+              declaredElsewhere: outputPathsAt(parent.id),
+            });
+
+      acc = acc === null ? fromParent : intersectEventsByName(acc, fromParent);
+    }
+
+    const result = acc ?? [];
+    memo.set(nodeId, result);
+    return result;
+  };
+
+  return eventsAt(input.targetNodeId, new Set());
 }
 
-function eventsForChain(input: {
-  chain: ReachChain;
-  catalog: ExtensionCatalog;
+function narrowLeaving(input: {
+  parent: WorkflowNode;
+  handle: unknown;
+  events: EventMetadata[];
+  declaredElsewhere: ReadonlySet<string>;
 }): EventMetadata[] {
-  const { chain, catalog } = input;
-  const entry = chain.at(-1);
-  if (!entry) {
-    return [];
+  const { parent, handle, events } = input;
+
+  if (isEventSplitNode(parent)) {
+    const outletEvent = eventSplitOutletEvent(handle);
+    return events.filter((event) => event.name === outletEvent);
   }
 
-  let events = outletEvents({
-    entryNode: entry.parent,
-    handle: entry.handle,
-    catalog,
-  });
-
-  const declaredElsewhere = new Set<string>();
-  for (const step of chain.toReversed()) {
-    for (const path of actionOutputPaths(step.parent, catalog)) {
-      declaredElsewhere.add(path);
-    }
-
-    if (isEventSplitNode(step.parent)) {
-      const outletEvent = eventSplitOutletEvent(step.handle);
-      events = events.filter((event) => event.name === outletEvent);
-      continue;
-    }
-
-    if (events.length > 0 && isConditionActionNode(step.parent)) {
-      events = narrowThroughCondition({
-        events,
-        node: step.parent,
-        branch: normalizeConditionBranch(step.handle),
-        declaredElsewhere,
-      });
-    }
+  if (events.length > 0 && isConditionActionNode(parent)) {
+    return narrowThroughCondition({
+      events,
+      node: parent,
+      branch: normalizeConditionBranch(handle),
+      declaredElsewhere: input.declaredElsewhere,
+    });
   }
 
   return events;
