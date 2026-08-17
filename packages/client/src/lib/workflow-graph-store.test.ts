@@ -47,6 +47,7 @@ import {
   propertiesPanelActiveTabAtom,
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
+import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { savedWorkflow } from "./workflow-save-test-support";
@@ -1051,10 +1052,12 @@ describe("what the canvas paints for a step that cannot run", () => {
     );
 
     const edges = store.get(displayEdgesAtom);
-    expect(edges.find((item) => item.id === "e-in")?.style).toBeUndefined();
-    expect(edges.find((item) => item.id === "e-out")?.style).toMatchObject({
-      opacity: 0.4,
-    });
+    expect(edges.find((item) => item.id === "e-in")?.data?.inactive).toBe(
+      undefined
+    );
+    expect(edges.find((item) => item.id === "e-out")?.data?.inactive).toBe(
+      true
+    );
   });
 
   it("mutes the step below a disabled one, and leaves that one to its own face", () => {
@@ -1068,6 +1071,90 @@ describe("what the canvas paints for a step that cannot run", () => {
     expect(nodes.find((node) => node.id === "b")?.style).toMatchObject({
       opacity: 0.5,
     });
+  });
+});
+
+describe("what the canvas paints for a node the validator flagged", () => {
+  const brokenA = {
+    kind: "missing_required_field" as const,
+    severity: "blocking" as const,
+    nodeId: "a",
+    nodeLabel: "a",
+    fieldKey: "channel",
+    fieldLabel: "Channel",
+    message: 'Node "a" is missing required field "Channel"',
+  };
+
+  it("wears the badge on the flagged node and nothing on the rest", () => {
+    const store = createGraphStore([
+      lifecycleNode("t"),
+      actionNode("a"),
+      actionNode("b"),
+    ]);
+    store.set(workflowIssuesAtom, [brokenA]);
+
+    const nodes = store.get(displayNodesAtom);
+    expect(nodes.find((node) => node.id === "a")?.data.issues).toEqual({
+      severity: "blocking",
+      messages: [brokenA.message],
+    });
+    expect(nodes.find((node) => node.id === "b")?.data.issues).toBeUndefined();
+  });
+
+  /**
+   * The canvas memoises every card on `data` identity, so a clean graph has to
+   * come back by reference or the badge pass would re-render the whole canvas on
+   * every read of this atom.
+   */
+  it("hands a clean graph straight back, untouched", () => {
+    const store = createGraphStore([lifecycleNode("t"), actionNode("a")]);
+
+    const first = store.get(displayNodesAtom);
+    const second = store.get(displayNodesAtom);
+    expect(first[1]).toBe(second[1]);
+    expect(first[1]?.data.issues).toBeUndefined();
+  });
+
+  /**
+   * The regression this guards is a drag: one node moves, the atom recomputes,
+   * and every *other* flagged node must come back as the object it already was.
+   * Reading the atom twice with nothing changed in between does not test this --
+   * jotai answers that from its own cache without running the body.
+   */
+  it("repaints only the node that moved, leaving other flagged cards alone", () => {
+    const store = createGraphStore([
+      lifecycleNode("t"),
+      actionNode("a"),
+      actionNode("b"),
+    ]);
+    store.set(workflowIssuesAtom, [brokenA, { ...brokenA, nodeId: "b" }]);
+
+    const before = store.get(displayNodesAtom);
+    const flaggedBefore = before.find((node) => node.id === "b");
+
+    store.set(onNodesChangeAtom, [
+      { type: "position", id: "a", dragging: true, position: { x: 40, y: 40 } },
+    ]);
+
+    const after = store.get(displayNodesAtom);
+    expect(after.find((node) => node.id === "b")).toBe(flaggedBefore);
+    expect(after.find((node) => node.id === "a")).not.toBe(
+      before.find((node) => node.id === "a")
+    );
+  });
+
+  it("leaves a pinned run's graph unbadged", () => {
+    const store = createGraphStore([lifecycleNode("t"), actionNode("a")]);
+    store.set(workflowIssuesAtom, [brokenA]);
+    // The overlay reaches the canvas only while the Runs tab is up.
+    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(executionOverlayGraphAtom, {
+      nodes: [lifecycleNode("t"), actionNode("a")],
+      edges: [],
+    });
+
+    const nodes = store.get(displayNodesAtom);
+    expect(nodes.find((node) => node.id === "a")?.data.issues).toBeUndefined();
   });
 });
 
@@ -1154,6 +1241,6 @@ describe("setGroupEnabledAtom", () => {
     const outlet = store
       .get(displayEdgesAtom)
       .find((item) => item.target === "after");
-    expect(outlet?.style).toMatchObject({ opacity: 0.4 });
+    expect(outlet?.data?.inactive).toBe(true);
   });
 });

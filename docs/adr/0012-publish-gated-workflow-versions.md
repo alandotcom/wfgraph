@@ -86,3 +86,39 @@ table, which bounds it continuously with no scheduler. One consequence worth
 naming: content-hash dedupe misses on a graph whose row was swept, so
 republishing it mints a new row and advances the version counter. Nothing
 attaches meaning to version-number density.
+
+## Amendment, 2026-08-17: readiness is asked at publish and nowhere else on a write path
+
+This ADR said Publish "also refuses unreachable subtrees", which read as an
+addition to a battery every graph write already ran. That battery is now split,
+and publish holds all of the half worth holding.
+
+`prepareGraphSave` asked required fields, Events, Event Split outlets, template
+references and connections on every draft save. A half-built node is the
+ordinary state of an editor session, so the common case of building a workflow
+was a refused write; the editor suppressed that 400 for autosaves, which made it
+a silent one, and a reload discarded the work. The save now asks only what has to
+be true of a graph stored in a row: that it parses, and that the CEL on it agrees
+with the model that produced it. Everything else moved to `checkPublishReadiness`
+in `publish-checks.ts`, beside the unreachable-subtree check this ADR already put
+there.
+
+Nothing lost a guard, because of two properties this ADR established. No run
+reads the draft column: both start paths load the published version row and
+refuse when there is none. And publish is the sole writer of the event
+subscription index, so an Event cannot reach a draft either. Publish is therefore
+the last point at which a refusal still costs the author nothing, and the first
+at which one is worth anything. Two of the moved checks -- Event Split outlets
+and template references -- are in no run preflight, so the save battery was their
+only home outside publish. Publish ran them before this change and runs them
+still; what stopped running them is create, patch, duplicate and the editor's
+draft write.
+
+A draft save also stops costing a query. Nothing left in that path reads the
+catalog or the integration rows, so an autosave can no longer be refused by a
+connection someone deleted in another tab.
+
+The editor carries the other half: validation runs continuously against the
+graph, broken nodes wear a badge, and the toolbar counts them, so "it will not
+publish" is something the author reads while building rather than learns at the
+gate.

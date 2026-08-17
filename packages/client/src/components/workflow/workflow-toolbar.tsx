@@ -9,7 +9,9 @@ import {
   useWorkflowActions,
   useWorkflowState,
 } from "#src/components/workflow/workflow-toolbar-handlers";
+import { WorkflowIssuesChip } from "#src/components/workflow/workflow-issues-chip";
 import { WorkflowPublicationBadge } from "#src/components/workflow/workflow-publication-badge";
+import { WorkflowSaveStatus } from "#src/components/workflow/workflow-save-status";
 import { workflowPublicationQueryOptions } from "#src/lib/rpc-query";
 
 type WorkflowToolbarProps = {
@@ -65,6 +67,19 @@ export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
           {workflowId && !state.isOwner && (
             <span className="text-muted-foreground text-xs">Read-only</span>
           )}
+          {/* Both of these change width as the editor is used -- a count grows a
+              digit, a save label swaps word -- so they sit last in the
+              left-aligned status cluster. Between the action buttons, where they
+              started, every such change reflowed the row and moved a control out
+              from under the pointer. Here they grow into empty canvas and push
+              nothing. */}
+          {/* Last in the row because both change width as the editor is used,
+              and here they grow into empty canvas rather than moving a control
+              out from under the pointer. Not gated on `workflowId`, unlike the
+              badges above: a canvas nobody has saved yet has the most to lose.
+              Each is owner-only and checks that for itself. */}
+          <WorkflowIssuesChip onOpen={actions.handleShowIssues} />
+          <WorkflowSaveStatus />
         </div>
 
         {/* One line at every width, scrolling sideways when the canvas is too

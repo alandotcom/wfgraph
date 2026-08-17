@@ -60,6 +60,7 @@ import { AddNode } from "./nodes/add-node";
 import { GroupNode } from "./nodes/group-node";
 import { LifecycleNode } from "./nodes/lifecycle-node";
 import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
+import { useCollectWorkflowIssues } from "#src/hooks/use-workflow-issues";
 import {
   type ContextMenuState,
   useContextMenuHandlers,
@@ -270,6 +271,9 @@ export function WorkflowCanvas() {
 
   useDomEvent(window, "keydown", handleUndoRedoShortcut);
   useCanvasCopyPaste(!editingLocked);
+  // Mounted once, here, because the node badges and the toolbar count both read
+  // what it writes and neither should run the pass itself.
+  useCollectWorkflowIssues();
 
   const handleFitViewShortcut = useCallback(
     (event: KeyboardEvent) => {

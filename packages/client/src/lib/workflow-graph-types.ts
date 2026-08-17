@@ -21,13 +21,27 @@ export type {
   WorkflowVisibility,
 } from "@wfgraph/shared/graph/types";
 
+/**
+ * What a node's validation badge draws, folded onto the node the same way run
+ * status is. Absent when the node is clean, so a clean graph adds nothing to any
+ * node's data and the canvas keeps its `React.memo` bail-out.
+ */
+export type NodeIssueSummary = {
+  severity: "blocking" | "warning";
+  /** Every issue on this node, for the badge's tooltip and accessible name. */
+  messages: string[];
+};
+
 export type EditorNodeData = PersistedNodeData & {
   status?: NodeRunStatus;
+  issues?: NodeIssueSummary;
 };
 
 /** Display-only fields painted onto edges; never part of the draft save path. */
 export type EditorEdgeData = Record<string, unknown> & {
   displayLabel?: string;
+  /** Set on an edge landing on a node the run can never reach. */
+  inactive?: boolean;
 };
 
 export type WorkflowNodeData = EditorNodeData;
@@ -48,7 +62,7 @@ export const WORKFLOW_EDGE_TYPE = "animated";
  * a key it does not name is dropped on the way back in.
  */
 export function toPersistedNode(node: WorkflowNode): PersistedWorkflowNode {
-  const { status: _status, ...data } = node.data;
+  const { status: _status, issues: _issues, ...data } = node.data;
   const persisted: PersistedWorkflowNode = {
     id: node.id,
     position: node.position,
@@ -77,8 +91,25 @@ export function toPersistedNode(node: WorkflowNode): PersistedWorkflowNode {
   return persisted;
 }
 
+/**
+ * Every node worth persisting, in persisted shape.
+ *
+ * The one place that decides which editor node types are not real graph nodes.
+ * The save payload and the validation pass both come through here, so a second
+ * editor-only type cannot end up dropped by one and walked by the other.
+ */
+export function toPersistedNodes(
+  nodes: WorkflowNode[]
+): PersistedWorkflowNode[] {
+  return nodes.filter((node) => node.type !== "add").map(toPersistedNode);
+}
+
 export function toPersistedEdge(edge: WorkflowEdge): PersistedWorkflowEdge {
-  const { displayLabel: _displayLabel, ...rest } = edge.data ?? {};
+  const {
+    displayLabel: _displayLabel,
+    inactive: _inactive,
+    ...rest
+  } = edge.data ?? {};
   return {
     id: edge.id,
     source: edge.source,

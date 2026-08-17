@@ -160,6 +160,29 @@ export function useAfterPaint(key: unknown, run: () => void): void {
 }
 
 /**
+ * `value`, but held back until it has stopped changing for `delayMs`.
+ *
+ * For a value that is cheap to read and expensive to answer questions about, on
+ * a surface that changes it continuously. The workflow canvas rewrites its node
+ * array on every frame of a drag, and the validation pass reading that array
+ * cares about none of those frames: a position is not a config.
+ *
+ * This is a real synchronisation with time, which is why it is allowed here.
+ * It is not a substitute for deriving a value in render -- the caller still does
+ * that, one step behind.
+ */
+export function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [settled, setSettled] = useState(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+
+  return settled;
+}
+
+/**
  * Run `run` every `delayMs`. A `null` delay stops the interval.
  *
  * Not exported: a repeating fetch belongs in a query's `refetchInterval`, which

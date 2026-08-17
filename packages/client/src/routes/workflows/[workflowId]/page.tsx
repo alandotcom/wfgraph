@@ -8,7 +8,6 @@ import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay
 import { WorkflowSidebarPanel } from "#src/components/workflow/workflow-sidebar-panel";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
 import { isRunInProgress } from "#src/lib/execution-logs";
-import { isRefusal } from "#src/lib/rpc-client";
 import { orpcQuery } from "#src/lib/rpc-query";
 import {
   edgesAtom,
@@ -48,8 +47,13 @@ const WorkflowEditor = () => {
 
   // A debounced autosave has no caller waiting on it, so a failure would
   // otherwise reach only the console while the editor looked saved.
+  //
+  // Every failure is toasted, including the 400s this used to swallow. Those
+  // were half-built nodes the save battery refused, which made the common case
+  // of an editor session a silent dropped write; the battery no longer asks, so
+  // a 400 here is now something the builder has to be told about.
   useAfterCommit(lastSaveError, () => {
-    if (lastSaveError && !isRefusal(lastSaveError)) {
+    if (lastSaveError) {
       toast.error(lastSaveError.message || "Failed to save workflow");
     }
   });

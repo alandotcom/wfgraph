@@ -7,6 +7,7 @@ import {
   NodeDescription,
   NodeTitle,
 } from "#src/components/flow-elements/node";
+import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
 import {
   NODE_ICON_CLASS,
   workflowNodeSize,
@@ -110,6 +111,11 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
       >
         Canceled
       </div>
+
+      {/* The collector walks every node, not only actions: a broken template
+          token in the Lifecycle config is an issue the toolbar counts, and
+          without this it was one no card on the canvas admitted to. */}
+      <NodeIssueBadge issues={data.issues} />
 
       <NodeBody>
         <Play

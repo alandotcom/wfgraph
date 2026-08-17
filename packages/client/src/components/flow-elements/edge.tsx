@@ -7,10 +7,7 @@ import {
   useInternalNode,
 } from "@xyflow/react";
 import { memo } from "react";
-import {
-  isMutedEdgeStyle,
-  resolveEdgeLabel,
-} from "#src/components/flow-elements/edge-label";
+import { resolveEdgeLabel } from "#src/components/flow-elements/edge-label";
 import { getWorkflowEdgePath } from "#src/components/flow-elements/edge-path";
 import type { WorkflowEdge } from "#src/lib/workflow-graph-types";
 
@@ -129,9 +126,8 @@ const Animated = memo(function Animated({
     targetPosition: targetPos,
   });
   const edgeLabel = resolveEdgeLabel(sourceHandleId, data);
-  // Display atoms mute an edge landing where the run cannot go by setting
-  // style.opacity; that is the contract for dropping the dash animation here.
-  const inactive = isMutedEdgeStyle(style);
+  // `displayEdgesAtom` sets this on every edge landing where the run cannot go.
+  const inactive = data?.inactive === true;
 
   return (
     <>
@@ -140,12 +136,18 @@ const Animated = memo(function Animated({
         path={edgePath}
         style={{
           ...style,
-          stroke: selected ? "var(--muted-foreground)" : "var(--border)",
+          // Selection outranks inactivity, because an inactive edge is still
+          // selectable and deletable and has to show what Delete would take.
+          // Inactive is then said by the wider gap and the stopped march below,
+          // rather than by fading the wire toward the background.
+          stroke: selected
+            ? "var(--primary)"
+            : inactive
+              ? "var(--canvas-line-muted)"
+              : "var(--canvas-line)",
           strokeWidth: 2,
-          strokeDasharray: inactive ? "5, 5" : 5,
-          ...(inactive
-            ? {}
-            : { animation: "dashdraw 0.5s linear infinite" }),
+          strokeDasharray: inactive ? "4, 8" : "5",
+          ...(inactive ? {} : { animation: "dashdraw 0.5s linear infinite" }),
         }}
       />
       {edgeLabel && (

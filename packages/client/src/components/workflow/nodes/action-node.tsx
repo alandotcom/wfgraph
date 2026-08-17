@@ -3,16 +3,8 @@ import {
   Position,
   useUpdateNodeInternals,
 } from "@xyflow/react";
-import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
-import {
-  AlertTriangle,
-  EyeOff,
-  GitBranch,
-  Hourglass,
-  Split,
-  Zap,
-} from "lucide-react";
+import { EyeOff, GitBranch, Hourglass, Split, Zap } from "lucide-react";
 import { Schema } from "effect";
 import { memo, useMemo, useState } from "react";
 import {
@@ -21,6 +13,7 @@ import {
   NodeDescription,
   NodeTitle,
 } from "#src/components/flow-elements/node";
+import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
 import { Dialog, DialogContent, DialogTitle } from "#src/components/ui/dialog";
 import { readBase64ImageOutput } from "#src/components/workflow/workflow-run-shared";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
@@ -61,10 +54,6 @@ import {
   readConfigString,
   readConfigStringOr,
 } from "@wfgraph/shared/graph/node-config";
-import {
-  integrationIdsQueryOptions,
-  NO_INTEGRATION_IDS,
-} from "#src/lib/rpc-query";
 
 type WaitPreviewData = {
   countdown: string;
@@ -336,11 +325,6 @@ const getIntegrationFromActionType = (
     : "System";
 };
 
-const requiresIntegration = (
-  catalog: ExtensionCatalog,
-  actionType: string
-): boolean => Boolean(findAction(catalog, actionType)?.integration);
-
 const ProviderLogo = ({
   actionType,
   catalog,
@@ -531,6 +515,12 @@ function GroupedActionNode({ data, selected, id }: ActionNodeProps) {
           />
         )}
         <NodeTitle className="truncate text-sm">{displayTitle}</NodeTitle>
+        {/* A member is validated like any other node, so it has to be able to
+            say so. Inline at the end of the row, because this card is 56px tall
+            and a floated corner badge would sit on the icon. */}
+        {data.enabled !== false && (
+          <NodeIssueBadge issues={data.issues} placement="inline" />
+        )}
       </div>
     </Node>
   );
@@ -541,11 +531,6 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
   const updateNodeInternals = useUpdateNodeInternals();
   const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
   const executionLogs = useExecutionLogsByNode();
-  const {
-    data: availableIntegrationIds = NO_INTEGRATION_IDS,
-    isPending: isLoadingIntegrations,
-  } = useQuery(integrationIdsQueryOptions());
-  const integrationsLoaded = !isLoadingIntegrations;
   const nodeLog = executionLogs[id];
   const actionType = readConfigString(data?.config, "actionType");
   const isConditionAction = isConditionActionType(actionType);
@@ -609,6 +594,7 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
             <EyeOff className="size-3.5 text-background" />
           </div>
         )}
+        {!isDisabled && <NodeIssueBadge issues={data.issues} />}
         <NodeBody>
           <Zap
             className={cn(NODE_ICON_CLASS, "text-muted-foreground")}
@@ -623,18 +609,6 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
 
   const actionInfo = findAction(catalog, actionType);
   const displayTitle = data.label || actionInfo?.label || actionType;
-
-  const needsIntegration = requiresIntegration(catalog, actionType);
-  const configuredIntegrationId = readConfigString(
-    data.config,
-    "integrationId"
-  );
-  const hasValidIntegration =
-    configuredIntegrationId &&
-    availableIntegrationIds.has(configuredIntegrationId);
-  // Wait for the connection list before claiming one is missing.
-  const integrationMissing =
-    integrationsLoaded && needsIntegration && !hasValidIntegration;
 
   const getAiModel = (): string | null => {
     if (actionType === "Generate Text") {
@@ -712,12 +686,10 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
         </div>
       )}
 
-      {/* Integration warning badge in top left (only if not disabled) */}
-      {!isDisabled && integrationMissing && (
-        <div className="absolute top-2 left-2 rounded-full bg-warning/50 p-1">
-          <AlertTriangle className="size-3.5 text-background" />
-        </div>
-      )}
+      {/* Validation badge in the same corner, for every kind of issue. A
+          disabled node is excluded from validation upstream, so this is absent
+          there rather than competing with the EyeOff badge above. */}
+      {!isDisabled && <NodeIssueBadge issues={data.issues} />}
 
       {isConditionAction && (
         <>
