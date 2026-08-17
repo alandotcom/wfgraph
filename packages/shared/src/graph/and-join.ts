@@ -88,7 +88,7 @@ function nodesOnJoinArms(input: {
       commonAncestors = upstream;
       continue;
     }
-    for (const id of [...commonAncestors]) {
+    for (const id of commonAncestors) {
       if (!upstream.has(id)) {
         commonAncestors.delete(id);
       }

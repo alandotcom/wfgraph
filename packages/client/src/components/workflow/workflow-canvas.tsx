@@ -20,10 +20,7 @@ import "@xyflow/react/dist/style.css";
 
 import { nanoid } from "nanoid";
 import { andJoinRefusalReason } from "@wfgraph/shared/graph/and-join";
-import type {
-  WorkflowEdge as PersistedWorkflowEdge,
-  WorkflowNode as PersistedWorkflowNode,
-} from "@wfgraph/shared/graph/types";
+import type { WorkflowEdge as PersistedWorkflowEdge } from "@wfgraph/shared/graph/types";
 import { Edge } from "#src/components/flow-elements/edge";
 import { Panel } from "#src/components/flow-elements/panel";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
@@ -355,7 +352,7 @@ export function WorkflowCanvas() {
 
       if (
         andJoinRefusalReason({
-          nodes: nodes as PersistedWorkflowNode[],
+          nodes,
           edges: proposedEdges,
         })
       ) {
