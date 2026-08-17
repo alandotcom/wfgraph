@@ -1,5 +1,22 @@
 # @wfgraph/core
 
+## 2.0.2
+
+### Patch Changes
+
+- [#104](https://github.com/alandotcom/wfgraph/pull/104) [`8702b01`](https://github.com/alandotcom/wfgraph/commit/8702b0121b01e2b817427d1334704abffce405a4) Thanks [@alandotcom](https://github.com/alandotcom)! - Effect, `@effect/vitest` and `@effect/opentelemetry` move from `4.0.0-rc.108` to
+  `4.0.0-rc.109`. An adopter installing `@wfgraph/core` or `@wfgraph/plugins` resolves the
+  newer release candidate. The RC is a patch: inference for `Effect.fromOption`, typed
+  `SqlError` on a failed `BEGIN`, and documentation. Nothing Workflow Graph calls changed.
+
+- [#107](https://github.com/alandotcom/wfgraph/pull/107) [`95eb7d5`](https://github.com/alandotcom/wfgraph/commit/95eb7d5f491e566745cfedc149a87b780ea17a76) Thanks [@alandotcom](https://github.com/alandotcom)! - Mark flattened child paths nullable when a parent object is null or an array
+  index may be missing, so the editor offers is-empty operators on those paths.
+
+  A derived path is reachable only when every ancestor on it is present. The
+  reader already marked a nullable object and a top-level scalar correctly, but
+  children under `nested.date` or `list[0].uuid` stayed required. Array `[0]`
+  children stay required only when the array declares `minItems >= 1`.
+
 ## 2.0.1
 
 ### Patch Changes
