@@ -24,6 +24,7 @@ import { Panel } from "#src/components/flow-elements/panel";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useAfterCommit, useAfterPaint, useDomEvent } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
+import { isTextEntry } from "#src/lib/is-text-entry";
 import {
   addNodeAtom,
   applyNodeLayoutAtom,
@@ -52,6 +53,7 @@ import { normalizeSourceHandleForConnection as normalizeSourceHandle } from "./c
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
 import { LifecycleNode } from "./nodes/lifecycle-node";
+import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
 import {
   type ContextMenuState,
   useContextMenuHandlers,
@@ -202,13 +204,7 @@ export function WorkflowCanvas() {
 
       // Leave text editing alone. Node config fields are contentEditable divs,
       // so checking the tag name would miss them and steal their text undo.
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable)
-      ) {
+      if (isTextEntry(event.target)) {
         return;
       }
 
@@ -228,6 +224,7 @@ export function WorkflowCanvas() {
   );
 
   useDomEvent(window, "keydown", handleUndoRedoShortcut);
+  useCanvasCopyPaste(!editingLocked);
 
   const handleFitViewShortcut = useCallback(
     (event: KeyboardEvent) => {

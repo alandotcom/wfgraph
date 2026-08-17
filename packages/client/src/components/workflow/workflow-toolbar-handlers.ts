@@ -18,6 +18,7 @@ import { WorkflowIssuesOverlay } from "#src/components/overlays/workflow-issues-
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useDeleteWorkflow } from "#src/hooks/use-delete-workflow";
 import { useDomEvent } from "#src/hooks/effects";
+import { isTextEntry } from "#src/lib/is-text-entry";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
   cacheWorkflowPublication,
@@ -358,15 +359,6 @@ export function useWorkflowState() {
   };
 }
 
-/** Typing somewhere should not be interrupted by a workflow-level shortcut. */
-function isTextEntry(target: HTMLElement): boolean {
-  return (
-    target.tagName === "INPUT" ||
-    target.tagName === "TEXTAREA" ||
-    target.isContentEditable
-  );
-}
-
 export type WorkflowToolbarState = ReturnType<typeof useWorkflowState>;
 
 export function useWorkflowActions(state: WorkflowToolbarState) {
@@ -421,8 +413,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
       if (!((event.metaKey || event.ctrlKey) && event.key === "Enter")) {
         return;
       }
-      const target = event.target;
-      if (target instanceof HTMLElement && isTextEntry(target)) {
+      if (isTextEntry(event.target)) {
         return;
       }
       event.preventDefault();

@@ -4,6 +4,7 @@ import {
   findTemplateTokens,
   flattenSchemaToReferenceFields,
   formatTemplateToken,
+  mapTemplateTokens,
   matchTemplateToken,
   parseTemplate,
   resolveOutputPath,
@@ -338,6 +339,87 @@ describe("parseTemplate", () => {
 
   it("produces nothing for an empty string", () => {
     expect(parseTemplate("")).toEqual([]);
+  });
+});
+
+describe("mapTemplateTokens", () => {
+  it("rewrites tokens in nested objects and arrays, and leaves the rest", () => {
+    const tokenA = formatTemplateToken({
+      nodeId: "a",
+      nodeLabel: "Fetch",
+      fieldPath: "email",
+    });
+    const tokenOutside = formatTemplateToken({
+      nodeId: "outside",
+      nodeLabel: "User",
+      fieldPath: "id",
+    });
+    const remappedA = formatTemplateToken({
+      nodeId: "a2",
+      nodeLabel: "Fetch",
+      fieldPath: "email",
+    });
+
+    expect(
+      mapTemplateTokens(
+        {
+          body: `Hello ${tokenA} and ${tokenOutside}`,
+          nested: { to: tokenA },
+          list: [tokenA],
+        },
+        (token) =>
+          token.nodeId === "a"
+            ? formatTemplateToken({
+                nodeId: "a2",
+                nodeLabel: token.nodeLabel,
+                fieldPath: token.fieldPath,
+              })
+            : undefined
+      )
+    ).toEqual({
+      body: `Hello ${remappedA} and ${tokenOutside}`,
+      nested: { to: remappedA },
+      list: [remappedA],
+    });
+  });
+
+  it("returns the same reference when nothing changed", () => {
+    const config = {
+      keep: formatTemplateToken({
+        nodeId: "a",
+        nodeLabel: "Fetch",
+        fieldPath: "email",
+      }),
+      list: ["plain"],
+    };
+
+    expect(mapTemplateTokens(config, () => undefined)).toBe(config);
+  });
+
+  it("rewrites tokens in a config that still holds undefined optional keys", () => {
+    const token = formatTemplateToken({
+      nodeId: "a",
+      nodeLabel: "Fetch",
+      fieldPath: "email",
+    });
+    const remapped = formatTemplateToken({
+      nodeId: "a2",
+      nodeLabel: "Fetch",
+      fieldPath: "email",
+    });
+    const config = { integrationId: undefined, body: token };
+
+    expect(
+      mapTemplateTokens(config, (tokenMatch) =>
+        tokenMatch.nodeId === "a"
+          ? formatTemplateToken({
+              nodeId: "a2",
+              nodeLabel: tokenMatch.nodeLabel,
+              fieldPath: tokenMatch.fieldPath,
+            })
+          : undefined
+      )
+    ).toStrictEqual({ integrationId: undefined, body: remapped });
   });
 });
 

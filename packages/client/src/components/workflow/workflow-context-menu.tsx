@@ -1,6 +1,14 @@
 import type { Edge, Node, XYPosition } from "@xyflow/react";
 import { useAtomValue, useSetAtom } from "jotai";
-import { Link2Off, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
+import {
+  ClipboardPaste,
+  Copy,
+  CopyPlus,
+  Link2Off,
+  Plus,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useRef } from "react";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
@@ -10,9 +18,13 @@ import { useDomEvent } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import {
   addNodeAtom,
+  copySelectionAtom,
   deleteEdgeAtom,
   deleteNodeAtom,
+  duplicateSelectionAtom,
+  hasCopiedSelectionAtom,
   nodesAtom,
+  pasteCopiedSelectionAtom,
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
@@ -42,6 +54,10 @@ export function WorkflowContextMenu({
   const deleteNode = useSetAtom(deleteNodeAtom);
   const deleteEdge = useSetAtom(deleteEdgeAtom);
   const addNode = useSetAtom(addNodeAtom);
+  const copySelection = useSetAtom(copySelectionAtom);
+  const pasteSelection = useSetAtom(pasteCopiedSelectionAtom);
+  const duplicateSelection = useSetAtom(duplicateSelectionAtom);
+  const hasCopiedSelection = useAtomValue(hasCopiedSelectionAtom);
   const setSelectedNode = useSetAtom(selectedNodeAtom);
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
   const { open: openOverlay } = useOverlay();
@@ -123,6 +139,25 @@ export function WorkflowContextMenu({
     onClose();
   }, [menuState, addNode, setSelectedNode, setActiveTab, onClose]);
 
+  const handleCopyNode = useCallback(() => {
+    if (menuState?.nodeId) {
+      copySelection(menuState.nodeId);
+    }
+    onClose();
+  }, [menuState, copySelection, onClose]);
+
+  const handleDuplicateNode = useCallback(() => {
+    if (menuState?.nodeId) {
+      duplicateSelection(menuState.nodeId);
+    }
+    onClose();
+  }, [menuState, duplicateSelection, onClose]);
+
+  const handlePaste = useCallback(() => {
+    pasteSelection(menuState?.flowPosition);
+    onClose();
+  }, [menuState, pasteSelection, onClose]);
+
   const handleClickOutside = useCallback(
     (event: MouseEvent) => {
       const target = event.target;
@@ -194,6 +229,20 @@ export function WorkflowContextMenu({
           />
           <MenuItem
             disabled={isLifecycleNode}
+            icon={<Copy className="size-4" />}
+            label="Copy"
+            onClick={handleCopyNode}
+            shortcut={shortcutLabel("C")}
+          />
+          <MenuItem
+            disabled={isLifecycleNode}
+            icon={<CopyPlus className="size-4" />}
+            label="Duplicate"
+            onClick={handleDuplicateNode}
+            shortcut={shortcutLabel("D")}
+          />
+          <MenuItem
+            disabled={isLifecycleNode}
             icon={<Trash2 className="size-4" />}
             label={`Delete ${getNodeLabel()}`}
             onClick={handleDeleteNode}
@@ -212,11 +261,20 @@ export function WorkflowContextMenu({
       )}
 
       {menuState.type === "pane" && (
-        <MenuItem
-          icon={<Plus className="size-4" />}
-          label="Add Step"
-          onClick={handleAddStep}
-        />
+        <>
+          <MenuItem
+            icon={<Plus className="size-4" />}
+            label="Add Step"
+            onClick={handleAddStep}
+          />
+          <MenuItem
+            disabled={!hasCopiedSelection}
+            icon={<ClipboardPaste className="size-4" />}
+            label="Paste"
+            onClick={handlePaste}
+            shortcut={shortcutLabel("V")}
+          />
+        </>
       )}
     </div>
   );
@@ -228,7 +286,15 @@ type MenuItemProps = {
   onClick: () => void;
   variant?: "default" | "destructive";
   disabled?: boolean;
+  shortcut?: string;
 };
+
+function shortcutLabel(key: string): string {
+  const apple =
+    typeof navigator !== "undefined" &&
+    /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
+  return apple ? `⌘${key}` : `Ctrl+${key}`;
+}
 
 function MenuItem({
   icon,
@@ -236,6 +302,7 @@ function MenuItem({
   onClick,
   variant = "default",
   disabled,
+  shortcut,
 }: MenuItemProps) {
   return (
     <button
@@ -252,6 +319,11 @@ function MenuItem({
     >
       {icon}
       {label}
+      {shortcut ? (
+        <span className="ml-auto pl-4 text-muted-foreground text-xs tracking-widest">
+          {shortcut}
+        </span>
+      ) : null}
     </button>
   );
 }
