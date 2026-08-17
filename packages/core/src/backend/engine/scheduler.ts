@@ -155,6 +155,13 @@ export class NodeScheduler {
           return;
         }
 
+        // AND-join: a node with several predecessors waits until each has
+        // released it. The predecessor that finishes first schedules us early
+        // and we no-op; the last one finds us ready.
+        if (!traversal.isReadyToRun(nodeId)) {
+          return;
+        }
+
         const node = traversal.getNode(nodeId);
         if (!node) {
           yield* Effect.logWarning("Node not found");

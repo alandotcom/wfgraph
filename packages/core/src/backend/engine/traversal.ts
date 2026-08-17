@@ -5,11 +5,11 @@
  * Holding it in one value is what lets `markReadyForDownstream` state the rule a
  * scheduler has to follow. The scheduler itself is in `core.ts`.
  *
- * A node is reached only by the one node above it, right after that node
- * releases it: `validateSingleIncomingEdgePerNode` caps every node at one
- * incoming edge on every save path, so a saved graph is a forest rooted at its
- * entry nodes. Nothing here checks a node's readiness, because there is no
- * second way in for that check to catch.
+ * A node with one predecessor runs as soon as that node releases it. A node
+ * with several is an AND-join: `isReadyToRun` is true only once every
+ * predecessor has released, which is how two lookups can both feed the next
+ * step. Saving refuses joins that would hang (Wait on an arm, exclusive
+ * branches, Started↔Canceled).
  */
 
 import { omit } from "es-toolkit";
@@ -71,6 +71,7 @@ export class Traversal {
   private readonly nodes: readonly WorkflowNode[];
   private readonly nodeMap: Map<string, WorkflowNode>;
   private readonly edgesBySource = new Map<string, WorkflowEdge[]>();
+  private readonly edgesByTarget = new Map<string, WorkflowEdge[]>();
   private readonly completedNodes = new Set<string>();
   private readonly inheritedOutputKeys = new Set<string>();
   private readonly inProgressNodes = new Set<string>();
@@ -84,6 +85,10 @@ export class Traversal {
       const sourceEdges = this.edgesBySource.get(edge.source) || [];
       sourceEdges.push(edge);
       this.edgesBySource.set(edge.source, sourceEdges);
+
+      const targetEdges = this.edgesByTarget.get(edge.target) || [];
+      targetEdges.push(edge);
+      this.edgesByTarget.set(edge.target, targetEdges);
     }
   }
 
@@ -108,6 +113,27 @@ export class Traversal {
 
   isCompleted(nodeId: string): boolean {
     return this.completedNodes.has(nodeId);
+  }
+
+  /** Every node with an edge into this one. */
+  predecessorIds(nodeId: string): string[] {
+    return (this.edgesByTarget.get(nodeId) ?? []).map((edge) => edge.source);
+  }
+
+  /**
+   * Whether every predecessor has released this node.
+   *
+   * A root (no incoming edges) is ready when the scheduler names it. An
+   * AND-join waits until each predecessor has called `markReadyForDownstream`.
+   */
+  isReadyToRun(nodeId: string): boolean {
+    const predecessors = this.predecessorIds(nodeId);
+    if (predecessors.length === 0) {
+      return true;
+    }
+    return predecessors.every((predecessorId) =>
+      this.downstreamReadyNodes.has(predecessorId)
+    );
   }
 
   /**

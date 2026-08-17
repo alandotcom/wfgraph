@@ -18,7 +18,7 @@ import type { WorkflowEdge } from "#src/graph/types";
  */
 export function upstreamNodeIds(
   targetNodeId: string,
-  edges: readonly WorkflowEdge[]
+  edges: readonly Pick<WorkflowEdge, "source" | "target">[]
 ): Set<string> {
   const sourcesByTarget = new Map<string, string[]>();
   for (const edge of edges) {
