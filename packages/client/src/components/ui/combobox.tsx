@@ -165,11 +165,39 @@ function ComboboxItem({
   );
 }
 
+function ComboboxGroup({
+  ...props
+}: ComponentProps<typeof ComboboxPrimitive.Group>) {
+  return <ComboboxPrimitive.Group data-slot="combobox-group" {...props} />;
+}
+
+function ComboboxGroupLabel({
+  className,
+  ...props
+}: ComponentProps<typeof ComboboxPrimitive.GroupLabel>) {
+  return (
+    <ComboboxPrimitive.GroupLabel
+      className={cn("px-2 py-1.5 text-muted-foreground text-xs", className)}
+      data-slot="combobox-group-label"
+      {...props}
+    />
+  );
+}
+
+function ComboboxCollection({
+  ...props
+}: ComponentProps<typeof ComboboxPrimitive.Collection>) {
+  return <ComboboxPrimitive.Collection {...props} />;
+}
+
 export {
   Combobox,
   ComboboxClear,
+  ComboboxCollection,
   ComboboxContent,
   ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxGroupLabel,
   ComboboxInput,
   ComboboxInputGroup,
   ComboboxItem,

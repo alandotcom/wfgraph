@@ -7,15 +7,14 @@ import { Label } from "#src/components/ui/label";
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
   whenChosen,
 } from "#src/components/ui/select";
 import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
 import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
+import { ConditionFieldCombobox } from "./condition-field-combobox";
 import {
   BOOLEAN_OPERATOR_OPTIONS,
   type ConditionFieldDefinition,
@@ -169,6 +168,18 @@ function createInitialModel(field: ConditionFieldDefinition): ConditionModel {
 
 function createInitialRule(field: ConditionFieldDefinition): ConditionRule {
   return createDefaultConditionRule(field, nanoid());
+}
+
+/** A stored path the current graph no longer offers, shown so the rule is not blank. */
+function unavailableField(condition: ConditionRule): ConditionSelectableField {
+  return {
+    path: condition.field,
+    label: `${condition.field} (Unavailable)`,
+    type: condition.fieldType,
+    sourceNodeId: "",
+    sourceNodeLabel: "Unavailable",
+    sourceNodeLabels: ["Unavailable"],
+  };
 }
 
 function buildTimestampOperatorRule(input: {
@@ -693,15 +704,32 @@ export function ConditionBuilderRow({
                   );
                   const canDeleteCondition = group.conditions.length > 1;
                   const isSelectedFieldUnavailable = !selectedFieldDef;
+                  const selectedField =
+                    selectedFieldDef ?? unavailableField(condition);
+                  const fieldGroups = isSelectedFieldUnavailable
+                    ? [
+                        {
+                          value: selectedField.sourceNodeLabel,
+                          items: [selectedField],
+                        },
+                        ...availableFieldsBySource.map((fieldGroup) => ({
+                          value: fieldGroup.sourceLabel,
+                          items: fieldGroup.fields,
+                        })),
+                      ]
+                    : availableFieldsBySource.map((fieldGroup) => ({
+                        value: fieldGroup.sourceLabel,
+                        items: fieldGroup.fields,
+                      }));
 
                   return (
                     <div key={condition.id}>
                       <div className="flex flex-wrap items-center gap-2">
-                        <Select
+                        <ConditionFieldCombobox
                           disabled={disabled || availableFields.length === 0}
-                          onValueChange={whenChosen((fieldPath) => {
-                            const selectedField = fieldByPath.get(fieldPath);
-                            if (!selectedField) {
+                          groups={fieldGroups}
+                          onValueChange={(nextField) => {
+                            if (nextField.path === condition.field) {
                               return;
                             }
 
@@ -710,60 +738,13 @@ export function ConditionBuilderRow({
                               condition.id,
                               (existing) =>
                                 createDefaultConditionRule(
-                                  selectedField,
+                                  nextField,
                                   existing.id
                                 )
                             );
-                          })}
-                          value={condition.field}
-                        >
-                          <SelectTrigger className="min-w-[280px]">
-                            <SelectValue placeholder="Select field" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {isSelectedFieldUnavailable && (
-                              <SelectItem value={condition.field}>
-                                {condition.field} (Unavailable)
-                              </SelectItem>
-                            )}
-                            {availableFieldsBySource.map((fieldGroup) => (
-                              <SelectGroup key={fieldGroup.sourceLabel}>
-                                <SelectLabel>
-                                  {fieldGroup.sourceLabel}
-                                </SelectLabel>
-                                {fieldGroup.fields.map((field) => (
-                                  <SelectItem
-                                    key={field.path}
-                                    value={field.path}
-                                  >
-                                    <span className="flex w-full flex-col items-start">
-                                      <span className="flex items-center gap-1.5">
-                                        {field.label}
-                                        {field.nullable && (
-                                          <span className="rounded bg-muted px-1 py-0.5 font-normal text-xs text-muted-foreground leading-none">
-                                            nullable
-                                          </span>
-                                        )}
-                                      </span>
-                                      {field.sourceNodeLabels.length > 1 && (
-                                        <span className="text-muted-foreground text-xs">
-                                          Also from{" "}
-                                          {field.sourceNodeLabels
-                                            .filter(
-                                              (sourceLabelName) =>
-                                                sourceLabelName !==
-                                                fieldGroup.sourceLabel
-                                            )
-                                            .join(", ")}
-                                        </span>
-                                      )}
-                                    </span>
-                                  </SelectItem>
-                                ))}
-                              </SelectGroup>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          }}
+                          value={selectedField}
+                        />
 
                         <Select
                           disabled={disabled}
