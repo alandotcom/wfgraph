@@ -341,8 +341,16 @@ export function WorkflowCanvas() {
         {
           source: sourceNodeId,
           target: targetNodeId,
-          sourceHandle:
-            "sourceHandle" in connection ? connection.sourceHandle : undefined,
+          sourceHandle: normalizeSourceHandle({
+            nodes,
+            edges,
+            sourceNodeId,
+            sourceHandle:
+              "sourceHandle" in connection
+                ? connection.sourceHandle
+                : undefined,
+            catalog,
+          }),
         },
       ];
 
@@ -357,7 +365,7 @@ export function WorkflowCanvas() {
 
       return true;
     },
-    [edges, nodes]
+    [catalog, edges, nodes]
   );
 
   const normalizeSourceHandleForConnection = useCallback(

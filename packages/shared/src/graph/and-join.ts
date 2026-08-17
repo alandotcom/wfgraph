@@ -1,9 +1,7 @@
 /**
- * AND-join rules for a node with more than one incoming edge.
- *
- * A join is illegal when it sits behind two exclusive outlets of one node
- * (Lifecycle, Condition, Event Split), or when a Wait sits on an arm. Saving
- * and the canvas share this; the engine's readiness gate is separate.
+ * AND-join rules for a multi-incoming node. Illegal: two exclusive outlets of
+ * one split, a Wait on an arm, or an arm that never leaves a Lifecycle Node.
+ * Save and the canvas share this; the engine's readiness gate is separate.
  */
 
 import {
@@ -79,6 +77,22 @@ function nodesOnJoinArms(input: {
   return onArms;
 }
 
+function reachesLifecycleNode(input: {
+  nodeId: string;
+  nodeById: ReadonlyMap<string, WorkflowNode>;
+  edges: readonly JoinGraphEdge[];
+}): boolean {
+  if (input.nodeById.get(input.nodeId)?.data.type === "lifecycle") {
+    return true;
+  }
+  for (const ancestorId of upstreamNodeIds(input.nodeId, input.edges)) {
+    if (input.nodeById.get(ancestorId)?.data.type === "lifecycle") {
+      return true;
+    }
+  }
+  return false;
+}
+
 function refusalForJoin(input: {
   joinNodeId: string;
   nodes: readonly WorkflowNode[];
@@ -91,6 +105,18 @@ function refusalForJoin(input: {
     .filter((edge) => edge.target === joinNodeId)
     .map((edge) => edge.source);
   const upstream = upstreamNodeIds(joinNodeId, edges);
+
+  for (const predecessorId of predecessorIds) {
+    if (
+      !reachesLifecycleNode({
+        nodeId: predecessorId,
+        nodeById,
+        edges,
+      })
+    ) {
+      return `Node "${joinLabel}" cannot join an unreachable branch (found "${nodeLabel(nodeById.get(predecessorId), predecessorId)}")`;
+    }
+  }
 
   const handlesBySplit = new Map<string, Set<string>>();
   for (const edge of edges) {

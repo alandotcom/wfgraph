@@ -78,6 +78,32 @@ describe("andJoinRefusalReason", () => {
     ).toContain("cannot join the Started and Canceled branches");
   });
 
+  it("allows a join that includes the Lifecycle Node as a predecessor", () => {
+    expect(
+      andJoinRefusalReason({
+        nodes: [lifecycle(), action("extra"), action("join")],
+        edges: [
+          edge("e1", "lifecycle_1", "join", LIFECYCLE_STARTED_HANDLE),
+          edge("e2", "lifecycle_1", "extra", LIFECYCLE_STARTED_HANDLE),
+          edge("e3", "extra", "join"),
+        ],
+      })
+    ).toBeNull();
+  });
+
+  it("refuses a join whose predecessor never leaves a Lifecycle Node", () => {
+    expect(
+      andJoinRefusalReason({
+        nodes: [lifecycle(), action("left"), action("orphan"), action("join")],
+        edges: [
+          edge("e1", "lifecycle_1", "left", LIFECYCLE_STARTED_HANDLE),
+          edge("e2", "left", "join"),
+          edge("e3", "orphan", "join"),
+        ],
+      })
+    ).toContain("cannot join an unreachable branch");
+  });
+
   it("refuses a Wait on either arm", () => {
     expect(
       andJoinRefusalReason({
