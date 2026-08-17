@@ -10,7 +10,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { WorkflowSidebarPanel } from "#src/components/workflow/workflow-sidebar-panel";
@@ -24,6 +24,13 @@ import {
   isSidebarCollapsedAtom,
   propertiesPanelActiveTabAtom,
 } from "#src/lib/workflow-ui-store";
+import {
+  answerWorkflowRunRpc,
+  extractRpcProcedurePath,
+  parseRpcRequestInput,
+  rpcUrl,
+  type WorkflowRunRpcFixture,
+} from "#src/lib/rpc-fetch-test-support";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
 const emptyCatalog: ExtensionCatalog = {
@@ -31,6 +38,38 @@ const emptyCatalog: ExtensionCatalog = {
   actions: [],
   integrations: [],
 };
+
+/** What the run panel's procedures read. The tests here only open the tab. */
+const served: WorkflowRunRpcFixture = {
+  items: [],
+  supersededCount: 0,
+  graphs: {},
+  logsSummaryExtras: {},
+};
+
+/**
+ * The Runs tab opens on a pinned run, so four oRPC procedures fire on render.
+ * Without this the queries reach happy-dom's own origin and Node answers each
+ * one with an unattributed ECONNRESET after the test has finished.
+ */
+function stubRunQueries(): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = rpcUrl(input);
+      const procedurePath = extractRpcProcedurePath(url);
+      if (!procedurePath.startsWith("workflow/")) {
+        throw new Error(`unexpected fetch in sidebar panel test: ${url}`);
+      }
+
+      return answerWorkflowRunRpc(
+        served,
+        procedurePath,
+        await parseRpcRequestInput(init)
+      );
+    })
+  );
+}
 
 function renderPanel() {
   const store = createStore();
@@ -94,6 +133,12 @@ function renderPanel() {
 }
 
 describe("WorkflowSidebarPanel", () => {
+  beforeEach(stubRunQueries);
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   // Collapsing slides the rail behind the viewport edge without unmounting it,
   // so the Runs tab kept its state while its tab bar was out of reach: the run
   // stayed pinned to the canvas and every edit was refused with nothing on

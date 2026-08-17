@@ -12,6 +12,10 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    // For `vitest.config.ts` and `packages/client/vite.config.ts`, which spell
+    // out the `.ts` on the one import they share. Nothing is emitted from here,
+    // so the extension reaches the loader that reads those two files.
+    "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "incremental": true,
     "types": ["node"],
