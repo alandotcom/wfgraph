@@ -1,6 +1,6 @@
 {
   "name": "@wfgraph/client",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "Workflow Graph's node-based editor, built and handed to createWfGraphApp as its client bundle",
   "keywords": [
     "automation",
