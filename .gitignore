@@ -59,6 +59,7 @@ examples/wfgraph.sqlite*
 .npm-cache/
 *.log
 **/.inngest/*.db
+**/.inngest/*.db-journal
 dist/
 
 # Impeccable live-mode session journals: local recovery state, not project source

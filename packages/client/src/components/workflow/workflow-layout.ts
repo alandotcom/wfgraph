@@ -1,3 +1,10 @@
+/**
+ * Where auto-layout puts every node. Two rules the signature cannot state: an
+ * outlet a branching node draws keeps its column whether or not anything is
+ * wired to it, and a rank is as tall as the tallest node standing in it. Both
+ * belong to the tree pass; the dagre fallback holds no column open.
+ */
+
 import dagre from "@dagrejs/dagre";
 import { hierarchy, tree } from "d3-hierarchy";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
@@ -12,6 +19,10 @@ import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
 } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
+import {
+  isConditionNode,
+  isLifecycleNode,
+} from "@wfgraph/shared/graph/node-config";
 import {
   eventSplitCardWidth,
   groupFrameSize,
@@ -31,6 +42,8 @@ import { layoutGroupChildren } from "#src/lib/node-group";
 const LAYOUT_DIRECTION = "TB";
 const GRAPH_MARGIN = 40;
 const ROOT_ID = "__workflow-root__";
+
+type Position = WorkflowNode["position"];
 
 type DagreNode = {
   x: number;
@@ -69,9 +82,18 @@ type DagreLayoutGraph = dagre.graphlib.Graph<
   DagreEdgeLabel
 >;
 
+/** A node d3 places. `null` is a column held open, which no node ever fills. */
 type TreeNodeData = {
-  id: string;
+  id: string | null;
   children?: TreeNodeData[];
+};
+
+/** One node d3 has placed, with the held columns already dropped. */
+type PlacedNode = {
+  id: string;
+  /** Which rank it stands in, counting the synthetic root as rank -1. */
+  depth: number;
+  centerX: number;
 };
 
 type LayoutSpacing = {
@@ -79,24 +101,38 @@ type LayoutSpacing = {
   rankSpacing: number;
 };
 
+type NodeSize = {
+  width: number;
+  height: number;
+};
+
 /**
  * The graph as both algorithms read it.
  *
- * `nodes` is left to right by where the nodes sit now, and each node's out-edges
- * are already in the order their handles are drawn. Both orders decide what ends
- * up left of what, so they are settled once rather than per algorithm.
+ * `nodes` is left to right by where the nodes sit now, and each node's edges are
+ * already in the order their handles are drawn. Both orders decide what ends up
+ * left of what, so they are settled once rather than per algorithm.
  */
 type LayoutModel = {
   nodes: WorkflowNode[];
-  widthById: Map<string, number>;
-  heightById: Map<string, number>;
+  sizeById: Map<string, NodeSize>;
   outEdgesBySource: Map<string, WorkflowEdge[]>;
+  /**
+   * Each node's children for the tree pass, left to right: the node an edge
+   * leads to, or `null` for a column held open under an unwired outlet.
+   */
+  treeChildrenBySource: Map<string, Array<string | null>>;
 };
 
-function hasPositionChanged(
-  current: WorkflowNode["position"],
-  next: WorkflowNode["position"]
-): boolean {
+/** What one node draws: how large, and which outlets across its bottom. */
+type NodeShape = NodeSize & {
+  /** The outlets the node draws, left to right. */
+  outletHandles: readonly string[];
+  /** Whether an outlet nothing is wired to still takes a column. */
+  holdsOutletsOpen: boolean;
+};
+
+function hasPositionChanged(current: Position, next: Position): boolean {
   return current.x !== next.x || current.y !== next.y;
 }
 
@@ -146,35 +182,45 @@ function getLayoutNode(
   return { x: label.x, y: label.y };
 }
 
-/**
- * Where each branching handle sits across the bottom of the node that draws it:
- * a Condition node puts True left of False, the Lifecycle node puts Started left
- * of Canceled. Siblings are only ever compared under one parent, so the two
- * pairs share their ranks without meeting.
- */
-const HANDLE_SORT_RANK = new Map<string, number>([
-  ["true", 0],
-  ["false", 1],
-  [LIFECYCLE_STARTED_HANDLE, 0],
-  [LIFECYCLE_CANCELED_HANDLE, 1],
-]);
+/** The Lifecycle node's outlets, in the order it draws them along its bottom. */
+const LIFECYCLE_OUTLETS: readonly string[] = [
+  LIFECYCLE_STARTED_HANDLE,
+  LIFECYCLE_CANCELED_HANDLE,
+];
+/** A Condition's outlets, in that same reading order. */
+const CONDITION_OUTLETS: readonly string[] = ["true", "false"];
 
 /** A handle the node draws no slot for sorts after every one it does. */
 const UNRANKED_HANDLE = Number.MAX_SAFE_INTEGER;
 
+/** Every node but an Event Split and a Group draws at the one card size. */
+function standardCard(
+  outletHandles: readonly string[],
+  holdsOutletsOpen: boolean
+): NodeShape {
+  return {
+    width: WORKFLOW_NODE_WIDTH,
+    height: WORKFLOW_NODE_HEIGHT,
+    outletHandles,
+    holdsOutletsOpen,
+  };
+}
+
 /**
- * How wide a node draws, and where each of its handles sits across the bottom.
+ * How large a node draws, and which outlets it puts across its bottom.
  *
  * An Event Split draws a handle per Event that can reach it and grows wide
  * enough to hold them, so both answers come from the one walk that finds those
- * Events. Every other node is the standard width and draws the fixed pair above.
+ * Events. Its outlets hold no column open, because the card already carries a
+ * slot for each. The Lifecycle and Condition pairs do hold one, which is what
+ * keeps a branch in its own column while its sibling is still unwired.
  */
 function readNodeShape(input: {
   node: WorkflowNode;
   nodes: readonly WorkflowNode[];
   edges: readonly WorkflowEdge[];
   catalog: ExtensionCatalog;
-}): { width: number; height: number; handleRanks: Map<string, number> } {
+}): NodeShape {
   if (isGroupNode(input.node)) {
     const children = input.nodes.filter(
       (node) => node.parentId === input.node.id
@@ -193,16 +239,21 @@ function readNodeShape(input: {
     return {
       width: size.width,
       height: size.height,
-      handleRanks: HANDLE_SORT_RANK,
+      outletHandles: [],
+      holdsOutletsOpen: false,
     };
   }
 
+  if (isLifecycleNode(input.node)) {
+    return standardCard(LIFECYCLE_OUTLETS, true);
+  }
+
+  if (isConditionNode(input.node)) {
+    return standardCard(CONDITION_OUTLETS, true);
+  }
+
   if (!isEventSplitNode(input.node)) {
-    return {
-      width: WORKFLOW_NODE_WIDTH,
-      height: WORKFLOW_NODE_HEIGHT,
-      handleRanks: HANDLE_SORT_RANK,
-    };
+    return standardCard([], false);
   }
 
   const outlets = eventsReachingTarget({
@@ -215,10 +266,16 @@ function readNodeShape(input: {
   return {
     width: eventSplitCardWidth(outlets.length),
     height: WORKFLOW_NODE_HEIGHT,
-    handleRanks: new Map(
-      outlets.map((event, index) => [eventSplitOutlet(event.name), index])
-    ),
+    outletHandles: outlets.map((event) => eventSplitOutlet(event.name)),
+    holdsOutletsOpen: false,
   };
+}
+
+function rankOfHandle(
+  ranks: ReadonlyMap<string, number>,
+  sourceHandle: string | null | undefined
+): number {
+  return ranks.get(sourceHandle ?? "") ?? UNRANKED_HANDLE;
 }
 
 /**
@@ -233,21 +290,60 @@ function readNodeShape(input: {
  */
 function sortOutEdges(input: {
   edges: readonly WorkflowEdge[];
-  ranks: Map<string, number>;
+  ranks: ReadonlyMap<string, number>;
   positionXById: Map<string, number>;
 }): WorkflowEdge[] {
-  const rankOf = (edge: WorkflowEdge) =>
-    input.ranks.get(edge.sourceHandle ?? "") ?? UNRANKED_HANDLE;
   const positionXOf = (nodeId: string) => input.positionXById.get(nodeId) ?? 0;
 
   return input.edges.toSorted((a, b) => {
-    const rankDiff = rankOf(a) - rankOf(b);
+    const rankDiff =
+      rankOfHandle(input.ranks, a.sourceHandle) -
+      rankOfHandle(input.ranks, b.sourceHandle);
     if (rankDiff !== 0) {
       return rankDiff;
     }
 
     return positionXOf(a.target) - positionXOf(b.target);
   });
+}
+
+/**
+ * One node's children for the tree pass, left to right, with a column held open
+ * under every outlet the node draws that nothing is wired to.
+ *
+ * A node whose out-edges name none of its outlets holds nothing open. The graph
+ * is then saying it does not use the branching this node offers, and inventing
+ * both columns there would push the one child it has off to one side.
+ */
+function buildTreeChildren(input: {
+  /** This node's out-edges, already left to right. */
+  edges: readonly WorkflowEdge[];
+  shape: NodeShape;
+  ranks: ReadonlyMap<string, number>;
+}): Array<string | null> {
+  const wired = new Set(input.edges.map((edge) => edge.sourceHandle ?? ""));
+  const held = input.shape.holdsOutletsOpen
+    ? input.shape.outletHandles.filter((handle) => !wired.has(handle))
+    : [];
+
+  if (held.length === 0 || held.length === input.shape.outletHandles.length) {
+    return input.edges.map((edge) => edge.target);
+  }
+
+  const ranked: Array<{ rank: number; child: string | null }> = [
+    ...input.edges.map((edge) => ({
+      rank: rankOfHandle(input.ranks, edge.sourceHandle),
+      child: edge.target as string | null,
+    })),
+    ...held.map((handle) => ({
+      rank: rankOfHandle(input.ranks, handle),
+      child: null,
+    })),
+  ];
+
+  // A held handle carries no edge, so the two lists share no rank and the stable
+  // sort leaves the wired order the caller settled.
+  return ranked.toSorted((a, b) => a.rank - b.rank).map((entry) => entry.child);
 }
 
 function buildLayoutModel(input: {
@@ -268,8 +364,8 @@ function buildLayoutModel(input: {
     outEdgesBySource.get(edge.source)?.push(edge);
   }
 
-  const widthById = new Map<string, number>();
-  const heightById = new Map<string, number>();
+  const sizeById = new Map<string, NodeSize>();
+  const treeChildrenBySource = new Map<string, Array<string | null>>();
   for (const node of input.nodes) {
     const shape = readNodeShape({
       node,
@@ -277,35 +373,44 @@ function buildLayoutModel(input: {
       edges: input.allEdges,
       catalog: input.catalog,
     });
-    widthById.set(node.id, shape.width);
-    heightById.set(node.id, shape.height);
+    sizeById.set(node.id, { width: shape.width, height: shape.height });
 
-    outEdgesBySource.set(
+    const ranks = new Map(
+      shape.outletHandles.map((handle, index) => [handle, index])
+    );
+    const edges = sortOutEdges({
+      edges: outEdgesBySource.get(node.id) ?? [],
+      ranks,
+      positionXById,
+    });
+    outEdgesBySource.set(node.id, edges);
+    treeChildrenBySource.set(
       node.id,
-      sortOutEdges({
-        edges: outEdgesBySource.get(node.id) ?? [],
-        ranks: shape.handleRanks,
-        positionXById,
-      })
+      buildTreeChildren({ edges, shape, ranks })
     );
   }
 
   return {
     nodes: input.nodes.toSorted((a, b) => a.position.x - b.position.x),
-    widthById,
-    heightById,
+    sizeById,
     outEdgesBySource,
+    treeChildrenBySource,
   };
 }
 
+function sizeOf(model: LayoutModel, nodeId: string): NodeSize {
+  return (
+    model.sizeById.get(nodeId) ?? {
+      width: WORKFLOW_NODE_WIDTH,
+      height: WORKFLOW_NODE_HEIGHT,
+    }
+  );
+}
+
 function layoutWorkflowNodesWithDagre(input: {
-  nodes: WorkflowNode[];
   model: LayoutModel;
   spacing: LayoutSpacing;
-}): {
-  nodes: WorkflowNode[];
-  changed: boolean;
-} {
+}): Map<string, Position> {
   const graph: DagreLayoutGraph = new dagre.graphlib.Graph<
     dagre.GraphLabel,
     DagreNodeLabel,
@@ -327,20 +432,15 @@ function layoutWorkflowNodesWithDagre(input: {
   });
   graph.setDefaultEdgeLabel(() => ({}));
 
-  const widthOf = (nodeId: string) =>
-    input.model.widthById.get(nodeId) ?? WORKFLOW_NODE_WIDTH;
-  const heightOf = (nodeId: string) =>
-    input.model.heightById.get(nodeId) ?? WORKFLOW_NODE_HEIGHT;
-
   for (const node of input.model.nodes) {
-    graph.setNode(node.id, {
-      width: widthOf(node.id),
-      height: heightOf(node.id),
-    });
+    graph.setNode(node.id, sizeOf(input.model, node.id));
   }
 
   // dagre seeds its ordering pass from insertion order, so nodes and edges go in
-  // the left-to-right order the canvas already draws them in.
+  // the left-to-right order the canvas already draws them in. Held columns stay
+  // out of this graph: dagre's median heuristic reorders a rank freely, so a
+  // spare node standing in one dragged the wired branch to whichever side it
+  // happened to land on.
   for (const node of input.model.nodes) {
     for (const edge of input.model.outEdgesBySource.get(node.id) ?? []) {
       graph.setEdge(edge.source, edge.target, {
@@ -351,43 +451,29 @@ function layoutWorkflowNodesWithDagre(input: {
 
   dagre.layout(graph);
 
-  let changed = false;
-
-  const nodes = input.nodes.map((node) => {
+  const positions = new Map<string, Position>();
+  for (const node of input.model.nodes) {
     const layoutNode = getLayoutNode(graph, node.id);
     if (!layoutNode) {
-      return node;
+      continue;
     }
 
-    const nextPosition = {
-      x: Math.round(layoutNode.x - widthOf(node.id) / 2),
-      y: Math.round(layoutNode.y - heightOf(node.id) / 2),
-    };
+    const size = sizeOf(input.model, node.id);
+    positions.set(node.id, {
+      x: Math.round(layoutNode.x - size.width / 2),
+      y: Math.round(layoutNode.y - size.height / 2),
+    });
+  }
 
-    if (!hasPositionChanged(node.position, nextPosition)) {
-      return node;
-    }
-
-    changed = true;
-
-    return {
-      ...node,
-      position: nextPosition,
-    };
-  });
-
-  return { nodes, changed };
+  return positions;
 }
 
-function buildTreeLayoutData(input: {
-  nodes: WorkflowNode[];
-  model: LayoutModel;
-}): TreeNodeData | null {
+function buildTreeLayoutData(model: LayoutModel): TreeNodeData | null {
   const inDegree = new Map<string, number>(
-    input.nodes.map((node) => [node.id, 0])
+    model.nodes.map((node) => [node.id, 0])
   );
 
-  for (const edges of input.model.outEdgesBySource.values()) {
+  for (const edges of model.outEdgesBySource.values()) {
     for (const edge of edges) {
       if (edge.source === edge.target) {
         return null;
@@ -401,7 +487,7 @@ function buildTreeLayoutData(input: {
     }
   }
 
-  const roots = input.model.nodes.filter(
+  const roots = model.nodes.filter(
     (node) => (inDegree.get(node.id) ?? 0) === 0
   );
 
@@ -420,11 +506,15 @@ function buildTreeLayoutData(input: {
     visitStack.add(nodeId);
     seen.add(nodeId);
 
-    const childEdges = input.model.outEdgesBySource.get(nodeId) ?? [];
     const children: TreeNodeData[] = [];
 
-    for (const edge of childEdges) {
-      const childNode = buildNode(edge.target);
+    for (const child of model.treeChildrenBySource.get(nodeId) ?? []) {
+      if (child === null) {
+        children.push({ id: null });
+        continue;
+      }
+
+      const childNode = buildNode(child);
       if (!childNode) {
         return null;
       }
@@ -451,7 +541,7 @@ function buildTreeLayoutData(input: {
     rootChildren.push(built);
   }
 
-  if (seen.size !== input.nodes.length) {
+  if (seen.size !== model.nodes.length) {
     return null;
   }
 
@@ -461,34 +551,61 @@ function buildTreeLayoutData(input: {
   };
 }
 
+/**
+ * The top of each rank and how tall it is. d3 writes one pitch onto every rank
+ * alike, which would run a Group frame through the rank below it, so each rank
+ * is measured from the tallest node standing in it and the next starts under
+ * that. Both arrays are indexed by rank, which is a node's depth less one.
+ */
+function measureRanks(input: {
+  placed: readonly PlacedNode[];
+  heightOf: (nodeId: string) => number;
+  rankSpacing: number;
+}): { tops: number[]; heights: number[] } {
+  let rankCount = 0;
+  for (const node of input.placed) {
+    rankCount = Math.max(rankCount, node.depth);
+  }
+
+  const heights = Array.from({ length: rankCount }, () => 0);
+  for (const node of input.placed) {
+    const rank = node.depth - 1;
+    heights[rank] = Math.max(heights[rank], input.heightOf(node.id));
+  }
+
+  const tops = Array.from({ length: rankCount }, () => 0);
+  let nextTop = 0;
+  for (let rank = 0; rank < rankCount; rank += 1) {
+    tops[rank] = nextTop;
+    nextTop += heights[rank] + input.rankSpacing;
+  }
+
+  return { tops, heights };
+}
+
 function layoutWorkflowNodesWithHierarchy(input: {
-  nodes: WorkflowNode[];
   model: LayoutModel;
   spacing: LayoutSpacing;
-}): {
-  nodes: WorkflowNode[];
-  changed: boolean;
-} | null {
-  if (input.nodes.some((node) => isGroupNode(node))) {
-    return null;
-  }
-  const treeData = buildTreeLayoutData({
-    nodes: input.nodes,
-    model: input.model,
-  });
+}): Map<string, Position> | null {
+  const treeData = buildTreeLayoutData(input.model);
 
   if (!treeData) {
     return null;
   }
 
-  const widthOf = (nodeId: string) =>
-    input.model.widthById.get(nodeId) ?? WORKFLOW_NODE_WIDTH;
+  // A held column takes the room a standard card would, which is the room the
+  // branch will need once someone wires it.
+  const widthOf = (nodeId: string | null) =>
+    nodeId === null ? WORKFLOW_NODE_WIDTH : sizeOf(input.model, nodeId).width;
+  const heightOf = (nodeId: string) => sizeOf(input.model, nodeId).height;
 
   const root = hierarchy(treeData, (node) => node.children ?? []);
   // `nodeSize` is one size for every node, so a node wider than the rest asks
   // for its room through `separation`, which answers a centre-to-centre distance
   // in those units. Two default-width siblings come to 1, the pair of them a gap
-  // apart, and cousins to the same 1.4 that a fixed separation used to give.
+  // apart, and cousins to the same 1.4 that a fixed separation used to give. The
+  // height it takes is the pitch d3 writes onto every rank alike, which
+  // `measureRanks` then replaces.
   const unitWidth = WORKFLOW_NODE_WIDTH + input.spacing.nodeSpacing;
   const treeLayout = tree<TreeNodeData>()
     .nodeSize([unitWidth, WORKFLOW_NODE_HEIGHT + input.spacing.rankSpacing])
@@ -505,21 +622,38 @@ function layoutWorkflowNodesWithHierarchy(input: {
 
   treeLayout(root);
 
-  const positionedDescendants = root
-    .descendants()
-    .filter((node) => node.data.id !== ROOT_ID);
+  // A held column is placed like any other child and then dropped. Its rank is
+  // one a wired sibling already stands in, so dropping it changes no geometry.
+  const placed: PlacedNode[] = [];
+  for (const descendant of root.descendants()) {
+    const id = descendant.data.id;
+    if (id === null || id === ROOT_ID) {
+      continue;
+    }
 
-  if (positionedDescendants.length === 0) {
-    return { nodes: input.nodes, changed: false };
+    placed.push({ id, depth: descendant.depth, centerX: descendant.x ?? 0 });
   }
 
-  const topLeftById = new Map<string, { x: number; y: number }>();
-  for (const descendant of positionedDescendants) {
-    const centerX = descendant.x ?? 0;
-    const centerY = descendant.y ?? 0;
-    topLeftById.set(descendant.data.id, {
-      x: centerX - widthOf(descendant.data.id) / 2,
-      y: centerY - WORKFLOW_NODE_HEIGHT / 2,
+  if (placed.length === 0) {
+    return new Map();
+  }
+
+  const ranks = measureRanks({
+    placed,
+    heightOf,
+    rankSpacing: input.spacing.rankSpacing,
+  });
+
+  const topLeftById = new Map<string, Position>();
+  for (const node of placed) {
+    const rank = node.depth - 1;
+    topLeftById.set(node.id, {
+      x: node.centerX - widthOf(node.id) / 2,
+      // A short card sits centred in a rank a taller node set, which is what the
+      // dagre fallback does with a rank holding two heights.
+      y:
+        (ranks.tops[rank] ?? 0) +
+        ((ranks.heights[rank] ?? 0) - heightOf(node.id)) / 2,
     });
   }
 
@@ -527,32 +661,15 @@ function layoutWorkflowNodesWithHierarchy(input: {
   const minX = Math.min(...topLeftPositions.map((position) => position.x));
   const minY = Math.min(...topLeftPositions.map((position) => position.y));
 
-  let changed = false;
+  const positions = new Map<string, Position>();
+  for (const [nodeId, topLeft] of topLeftById) {
+    positions.set(nodeId, {
+      x: Math.round(topLeft.x - minX + GRAPH_MARGIN),
+      y: Math.round(topLeft.y - minY + GRAPH_MARGIN),
+    });
+  }
 
-  const nodes = input.nodes.map((node) => {
-    const rawPosition = topLeftById.get(node.id);
-    if (!rawPosition) {
-      return node;
-    }
-
-    const nextPosition = {
-      x: Math.round(rawPosition.x - minX + GRAPH_MARGIN),
-      y: Math.round(rawPosition.y - minY + GRAPH_MARGIN),
-    };
-
-    if (!hasPositionChanged(node.position, nextPosition)) {
-      return node;
-    }
-
-    changed = true;
-
-    return {
-      ...node,
-      position: nextPosition,
-    };
-  });
-
-  return { nodes, changed };
+  return positions;
 }
 
 function isLayoutableNode(node: WorkflowNode): boolean {
@@ -587,32 +704,16 @@ export function layoutWorkflowNodes(input: {
     catalog: input.catalog,
   });
 
-  const treeLayoutResult = layoutWorkflowNodesWithHierarchy({
-    nodes: layoutableNodes,
-    model,
-    spacing,
-  });
+  const positions =
+    layoutWorkflowNodesWithHierarchy({ model, spacing }) ??
+    layoutWorkflowNodesWithDagre({ model, spacing });
 
-  const positionedNodes =
-    treeLayoutResult ??
-    layoutWorkflowNodesWithDagre({
-      nodes: layoutableNodes,
-      model,
-      spacing,
-    });
-
-  const nextById = new Map(
-    positionedNodes.nodes.map((node) => [node.id, node])
-  );
   const positioned = input.nodes.map((node) => {
-    const next = nextById.get(node.id);
+    const next = positions.get(node.id);
     if (!next) {
       return node;
     }
-    return {
-      ...node,
-      position: next.position,
-    };
+    return { ...node, position: next };
   });
   const nodes = layoutGroupChildren(positioned, input.edges);
   const previousById = new Map(input.nodes.map((node) => [node.id, node]));
