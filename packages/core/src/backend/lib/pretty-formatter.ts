@@ -69,6 +69,14 @@ function formatTime(timestamp: number): string {
 }
 
 /**
+ * One physical line for tree connectors and inline width. A raw string or an
+ * `inspect` answer can carry newlines (notably an `Error` stack).
+ */
+function singleLine(text: string): string {
+  return text.replace(/\r\n|\r|\n/g, "\\n");
+}
+
+/**
  * One field value as text. A string prints bare, because the quotes `inspect`
  * adds are noise on a value the reader already knows is a string. Anything the
  * layout does not open itself goes through `inspect` with colours off, so a
@@ -76,7 +84,7 @@ function formatTime(timestamp: number): string {
  */
 function formatValue(value: unknown, depth: number): string {
   if (typeof value === "string") {
-    return value;
+    return singleLine(value);
   }
   if (value === null || value === undefined) {
     return String(value);
@@ -92,12 +100,14 @@ function formatValue(value: unknown, depth: number): string {
     return value.toISOString();
   }
 
-  return inspect(value, {
-    depth: Math.max(0, depth),
-    compact: true,
-    breakLength: Infinity,
-    colors: false,
-  });
+  return singleLine(
+    inspect(value, {
+      depth: Math.max(0, depth),
+      compact: true,
+      breakLength: Infinity,
+      colors: false,
+    })
+  );
 }
 
 /**
