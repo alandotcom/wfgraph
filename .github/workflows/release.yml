@@ -103,7 +103,7 @@ jobs:
       - uses: pnpm/action-setup@v6
         with:
           cache: true
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --ignore-scripts
       - uses: changesets/action/publish@v2
         with:
           pack-dir-artifact-id: ${{ needs.pack.outputs.pack-dir-artifact-id }}
