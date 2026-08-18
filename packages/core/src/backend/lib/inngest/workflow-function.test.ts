@@ -23,6 +23,8 @@ import {
   createWorkflowRunFunction,
 } from "#src/backend/lib/inngest/workflow-function";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
+import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
+import type { ExecutionSummary } from "#src/backend/services/executions/repo";
 
 const executeWorkflowMock = vi.fn();
 
@@ -30,7 +32,53 @@ const executeWorkflowMock = vi.fn();
 // injected, so identity is all this file needs from either.
 const testActions = noWorkflowActions;
 const testStore = noopWorkflowStore;
-const testAppRuntime = stubWfGraphRuntime();
+const testGraph = createSerializedWorkflowGraph({ nodes: [], edges: [] });
+const testWorkflow: Workflow = {
+  id: "workflow_123",
+  name: "Donor intake follow-up",
+  description: null,
+  graph: testGraph,
+  isPaused: false,
+  mode: "live",
+  visibility: "private",
+  publishedVersionId: "ver_1",
+  createdAt: new Date("2026-01-01T00:00:00.000Z"),
+  updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+};
+const testVersion: WorkflowVersion = {
+  id: "ver_1",
+  workflowId: testWorkflow.id,
+  version: 1,
+  graph: testGraph,
+  catalogFingerprint: "fp",
+  graphDigest: "digest",
+  publishedAt: new Date("2026-01-01T00:00:00.000Z"),
+};
+const testExecution: ExecutionSummary = {
+  id: "exec_123",
+  workflowId: testWorkflow.id,
+  workflowVersionId: testVersion.id,
+  status: "running",
+  startSource: "event",
+  runMode: "live",
+  startEventName: "donor/intake.submitted",
+  entityValue: null,
+  input: {},
+  output: null,
+  error: null,
+  startedAt: new Date("2026-01-01T00:00:00.000Z"),
+  completedAt: null,
+  duration: null,
+};
+const testAppRuntime = stubWfGraphRuntime({
+  executionRepo: {
+    findSummaryById: () => Effect.succeed(testExecution),
+  },
+  workflowRepo: {
+    findById: () => Effect.succeed(testWorkflow),
+    findVersionById: () => Effect.succeed(testVersion),
+  },
+});
 
 afterAll(() => testAppRuntime.dispose());
 
@@ -76,6 +124,10 @@ function runEventData(varied: Record<string, unknown> = {}) {
   };
 }
 
+function runRequestData() {
+  return { executionId: testExecution.id };
+}
+
 /**
  * Replaces the SDK's metadata builder with one that records, so a case can read
  * the values and the kind a run attaches to itself. Spied on the prototype
@@ -105,7 +157,7 @@ async function executeWorkflowFunctionForTest() {
   );
 
   const execution = await engine.execute({
-    events: [{ name: "workflow/run.requested", data: runEventData() }],
+    events: [{ name: "workflow/run.requested", data: runRequestData() }],
   });
 
   const runtime = executeWorkflowMock.mock.calls.at(-1)?.[1] as
@@ -170,10 +222,7 @@ describe("the workflow run function", () => {
       events: [
         {
           name: "workflow/run.requested",
-          data: runEventData({
-            workflowName: "Donor intake follow-up",
-            startEventName: "donor/intake.submitted",
-          }),
+          data: runRequestData(),
         },
       ],
     });
@@ -204,7 +253,7 @@ describe("the workflow run function", () => {
     const { result } = await new InngestTestEngine({
       function: createTestFunction(),
     }).execute({
-      events: [{ name: "workflow/run.requested", data: runEventData() }],
+      events: [{ name: "workflow/run.requested", data: runRequestData() }],
     });
 
     expect(result).toEqual(expectedResult);
@@ -253,7 +302,6 @@ describe("the workflow run function", () => {
 
   it("forwards event data, runtime, store and actions to executeWorkflow", async () => {
     const workflowRunRequestedFunction = createTestFunction();
-    const workflowInput = runEventData();
     const expectedResult = { success: true, outputs: {}, results: {} };
     executeWorkflowMock.mockReturnValueOnce(Effect.succeed(expectedResult));
 
@@ -262,18 +310,26 @@ describe("the workflow run function", () => {
     });
 
     const { result, ctx } = await engine.execute({
-      events: [{ name: "workflow/run.requested", data: workflowInput }],
+      events: [{ name: "workflow/run.requested", data: runRequestData() }],
     });
 
     expect(executeWorkflowMock).toHaveBeenCalledTimes(1);
     const [input, runtime, store, actions] = executeWorkflowMock.mock
       .calls[0] as [
-      typeof workflowInput,
+      ReturnType<typeof runEventData>,
       WorkflowExecutionRuntime,
       WorkflowStore,
       typeof testActions,
     ];
-    expect(input).toEqual(workflowInput);
+    expect(input).toEqual({
+      ...runEventData({
+        workflowName: testWorkflow.name,
+        startEventName: testExecution.startEventName,
+        startPayload: {},
+        requestPayload: {},
+        runMode: testExecution.runMode,
+      }),
+    });
     expect(runtime).toMatchObject({
       sleep: expect.any(Function),
       waitForEvent: expect.any(Function),
@@ -316,7 +372,7 @@ describe("the workflow run function", () => {
 
     const testEngine = new InngestTestEngine({
       function: createTestFunction(),
-      events: [{ name: "workflow/run.requested", data: runEventData() }],
+      events: [{ name: "workflow/run.requested", data: runRequestData() }],
     });
     // The rejected checkpoint rather than `execute`, which hands back the error
     // alone: whether Inngest will try again is the assertion here.
@@ -385,8 +441,13 @@ describe("the workflow run function", () => {
           graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
           workflowVersionId: "ver_1",
           catalogFingerprint: "fp",
+          startPayload: {},
+          startEventName: "donor/intake.submitted",
+          requestPayload: {},
           executionId: "exec_123",
           workflowId: "workflow_123",
+          workflowName: "Donor intake follow-up",
+          runMode: "live",
           entryNodeId: "wait_1",
           releasedNodeIds: ["entry_1"],
         },

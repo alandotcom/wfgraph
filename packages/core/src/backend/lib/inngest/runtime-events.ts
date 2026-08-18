@@ -1,6 +1,5 @@
 import type { Inngest } from "inngest";
 import type { JsonObject } from "@wfgraph/shared/types/json";
-import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 import {
   workflowBranchKillRequested,
   workflowRunCancelRequested,
@@ -9,29 +8,11 @@ import {
 } from "#src/backend/lib/inngest/events";
 
 export type WorkflowRunRequestedEventData = {
-  graph: SerializedWorkflowGraph;
-  /** The published version this run pins. */
-  workflowVersionId: string;
-  /** Catalog fingerprint at publish, compared on wake for drift. */
-  catalogFingerprint: string;
-  /**
-   * The payload that set the run going. Inngest stringifies event data before
-   * sending it, so anything here that is not JSON is lost in transit; the type
-   * says so.
-   */
-  startPayload?: JsonObject;
-  /** The Event that started the run, absent where a person or the route did. */
-  startEventName?: string;
-  workflowName?: string;
-  requestPayload?: JsonObject;
   /**
    * Every producer inserts the execution row before enqueueing, and the engine
    * requires the id, so it is never optional on the wire.
    */
   executionId: string;
-  workflowId: string;
-  workflowRunId?: string;
-  runMode?: "live" | "test";
 };
 
 /**

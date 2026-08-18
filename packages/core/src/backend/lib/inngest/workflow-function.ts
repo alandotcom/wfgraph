@@ -5,7 +5,7 @@ import {
   NonRetriableError,
   referenceFunction,
 } from "inngest";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { omit } from "es-toolkit";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import {
@@ -34,11 +34,13 @@ import {
   workflowBranchInputSchema,
   workflowBranchKillRequested,
   workflowBranchRequested,
-  workflowExecutionInputSchema,
+  workflowRunRequestSchema,
   workflowRunCancelRequested,
   workflowRunRequested,
 } from "#src/backend/lib/inngest/events";
 import type { WfGraphRuntime } from "#src/backend/runtime";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 
 /** The engine entry the run function calls; tests inject a stand-in. */
 type ExecuteWorkflow = typeof defaultExecuteWorkflow;
@@ -247,8 +249,8 @@ async function writeRunMetadata(input: {
 }
 
 /**
- * The trigger carries `workflowExecutionInputSchema`, and Inngest validates
- * against it before calling this handler, so `event.data` arrives parsed. A
+ * The trigger carries only an execution id, and Inngest validates it before
+ * calling this handler. The rest is reloaded from repositories below. A
  * payload that fails raises `EventValidationError`, which extends
  * `NonRetriableError`: a malformed run fails once instead of spending all four
  * retries re-deserializing the same bad JSON.
@@ -264,7 +266,7 @@ async function workflowRunRequestedHandler({
   executeWorkflow,
   write,
 }: {
-  event: { data: typeof workflowExecutionInputSchema.Type };
+  event: { data: typeof workflowRunRequestSchema.Type };
   actions: WorkflowActions;
   store: WorkflowStore;
   /** The application boundary that runs the whole engine Effect. */
@@ -276,7 +278,53 @@ async function workflowRunRequestedHandler({
   executeWorkflow: ExecuteWorkflow;
   write: RunMetadataWriter;
 }) {
-  const data: WorkflowExecutionInput = event.data;
+  const { execution, workflow, version } = await appRuntime.runPromise(
+    Effect.gen(function* () {
+      const executions = yield* ExecutionRepo;
+      const workflows = yield* WorkflowRepo;
+      const storedExecution = yield* executions.findSummaryById(
+        event.data.executionId
+      );
+      if (!storedExecution) {
+        return { execution: storedExecution, workflow: null, version: null };
+      }
+
+      const [storedWorkflow, storedVersion] = yield* Effect.all([
+        workflows.findById(storedExecution.workflowId),
+        workflows.findVersionById(storedExecution.workflowVersionId),
+      ]);
+      return {
+        execution: storedExecution,
+        workflow: storedWorkflow,
+        version: storedVersion,
+      };
+    })
+  );
+  if (!execution) {
+    throw new NonRetriableError(
+      "The requested workflow execution does not exist"
+    );
+  }
+  if (!workflow || !version || version.workflowId !== execution.workflowId) {
+    throw new NonRetriableError(
+      "The requested workflow version does not exist"
+    );
+  }
+
+  const data: WorkflowExecutionInput = {
+    graph: version.graph,
+    workflowVersionId: version.id,
+    catalogFingerprint: version.catalogFingerprint,
+    startPayload: execution.input ?? {},
+    requestPayload: execution.input ?? {},
+    ...(execution.startEventName
+      ? { startEventName: execution.startEventName }
+      : {}),
+    executionId: execution.id,
+    workflowId: execution.workflowId,
+    workflowName: workflow.name,
+    runMode: execution.runMode,
+  };
 
   await writeRunMetadata({ step, write, data });
 

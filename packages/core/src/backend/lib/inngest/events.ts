@@ -65,8 +65,12 @@ export const workflowExecutionInputSchema = Schema.Struct({
   runMode: Schema.optional(Schema.Literals(["live", "test"])),
 });
 
+export const workflowRunRequestSchema = Schema.Struct({
+  executionId: NonEmptyTrimmedString,
+});
+
 export const workflowRunRequested = eventType("workflow/run.requested", {
-  schema: toStandardSchema(workflowExecutionInputSchema, rejectUnknownKeys),
+  schema: toStandardSchema(workflowRunRequestSchema, rejectUnknownKeys),
 });
 
 /**
