@@ -2,49 +2,14 @@ import {
   BaseEdge,
   EdgeLabelRenderer,
   type EdgeProps,
-  getBezierPath,
-  getSimpleBezierPath,
   type InternalNode,
   Position,
   useInternalNode,
 } from "@xyflow/react";
-import {
-  isMutedEdgeStyle,
-  resolveEdgeLabel,
-} from "#src/components/flow-elements/edge-label";
+import { memo } from "react";
+import { resolveEdgeLabel } from "#src/components/flow-elements/edge-label";
+import { getWorkflowEdgePath } from "#src/components/flow-elements/edge-path";
 import type { WorkflowEdge } from "#src/lib/workflow-graph-types";
-
-const Temporary = ({
-  id,
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
-  sourcePosition,
-  targetPosition,
-  selected,
-}: EdgeProps) => {
-  const [edgePath] = getSimpleBezierPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-  });
-
-  return (
-    <BaseEdge
-      className="stroke-1"
-      id={id}
-      path={edgePath}
-      style={{
-        stroke: selected ? "var(--muted-foreground)" : "var(--border)",
-        strokeDasharray: "5, 5",
-      }}
-    />
-  );
-};
 
 const getHandleCoordsByPosition = (
   node: InternalNode,
@@ -128,7 +93,7 @@ const getEdgeParams = (
   };
 };
 
-const Animated = ({
+const Animated = memo(function Animated({
   id,
   source,
   sourceHandleId,
@@ -137,7 +102,7 @@ const Animated = ({
   style,
   selected,
   data,
-}: EdgeProps<WorkflowEdge>) => {
+}: EdgeProps<WorkflowEdge>) {
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
 
@@ -152,7 +117,7 @@ const Animated = ({
     targetHandleId
   );
 
-  const [edgePath, labelX, labelY] = getBezierPath({
+  const [edgePath, labelX, labelY] = getWorkflowEdgePath({
     sourceX: sx,
     sourceY: sy,
     sourcePosition: sourcePos,
@@ -161,9 +126,8 @@ const Animated = ({
     targetPosition: targetPos,
   });
   const edgeLabel = resolveEdgeLabel(sourceHandleId, data);
-  // Display atoms mute an inactive Canceled subtree by setting style.opacity;
-  // that is the contract for dropping the dash animation here.
-  const inactive = isMutedEdgeStyle(style);
+  // `displayEdgesAtom` sets this on every edge landing where the run cannot go.
+  const inactive = data?.inactive === true;
 
   return (
     <>
@@ -172,12 +136,18 @@ const Animated = ({
         path={edgePath}
         style={{
           ...style,
-          stroke: selected ? "var(--muted-foreground)" : "var(--border)",
+          // Selection outranks inactivity, because an inactive edge is still
+          // selectable and deletable and has to show what Delete would take.
+          // Inactive is then said by the wider gap and the stopped march below,
+          // rather than by fading the wire toward the background.
+          stroke: selected
+            ? "var(--primary)"
+            : inactive
+              ? "var(--canvas-line-muted)"
+              : "var(--canvas-line)",
           strokeWidth: 2,
-          strokeDasharray: inactive ? "5, 5" : 5,
-          ...(inactive
-            ? {}
-            : { animation: "dashdraw 0.5s linear infinite" }),
+          strokeDasharray: inactive ? "4, 8" : "5",
+          ...(inactive ? {} : { animation: "dashdraw 0.5s linear infinite" }),
         }}
       />
       {edgeLabel && (
@@ -195,9 +165,8 @@ const Animated = ({
       )}
     </>
   );
-};
+});
 
 export const Edge = {
-  Temporary,
   Animated,
 };

@@ -54,7 +54,12 @@ const decodeEdgeAttributes = Schema.decodeUnknownSync(
 );
 
 function isWorkflowNodeType(value: unknown): value is WorkflowNodeType {
-  return value === "lifecycle" || value === "action" || value === "add";
+  return (
+    value === "lifecycle" ||
+    value === "action" ||
+    value === "add" ||
+    value === "group"
+  );
 }
 
 /**
@@ -107,26 +112,31 @@ export type WorkflowGraphNodeInput = {
   width?: number;
   height?: number;
   measured?: { width?: number; height?: number };
+  parentId?: string;
 };
-
-function readOptionalBoolean(
-  record: { readonly [key: string]: unknown },
-  key: string
-): boolean | undefined {
-  const value = record[key];
-  return typeof value === "boolean" ? value : undefined;
-}
 
 function parseNodeAttributes(attributes: unknown): WorkflowNode {
   const parsed = decodeNodeAttributes(attributes);
 
-  return {
+  // Structure and geometry only. A selection belongs to the session looking at
+  // the graph, so a `selected` an older save happens to carry lands in the
+  // open rest of `workflowNodeAttributesSchema` and is read by nobody.
+  const node: WorkflowNode = {
     id: parsed.id,
     type: parsed.type,
     position: parsed.position ?? { x: 0, y: 0 },
     data: toPersistedNodeData(parsed.data),
-    selected: readOptionalBoolean(parsed, "selected"),
   };
+  if (parsed.parentId !== undefined) {
+    node.parentId = parsed.parentId;
+  }
+  if (parsed.width !== undefined) {
+    node.width = parsed.width;
+  }
+  if (parsed.height !== undefined) {
+    node.height = parsed.height;
+  }
+  return node;
 }
 
 function parseEdgeAttributes(attributes: unknown): WorkflowEdge {
@@ -200,6 +210,17 @@ export function createSerializedWorkflowGraph(input: {
   }
 
   for (const edge of input.edges) {
+    // graphology invents a node for an end it has never seen, and that node
+    // exports with no attributes at all, so the decode below fails naming an
+    // index rather than the edge that asked for it.
+    const missing = [edge.source, edge.target].filter(
+      (end) => !graph.hasNode(end)
+    );
+    if (missing.length > 0) {
+      throw new Error(
+        `Edge '${edge.id}' names ${missing.join(" and ")}, which the graph has no node for`
+      );
+    }
     graph.mergeEdgeWithKey(edge.id, edge.source, edge.target, edge);
   }
 

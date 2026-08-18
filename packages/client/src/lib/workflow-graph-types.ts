@@ -21,29 +21,53 @@ export type {
   WorkflowVisibility,
 } from "@wfgraph/shared/graph/types";
 
+/**
+ * What a node's validation badge draws, folded onto the node the same way run
+ * status is. Absent when the node is clean, so a clean graph adds nothing to any
+ * node's data and the canvas keeps its `React.memo` bail-out.
+ */
+export type NodeIssueSummary = {
+  severity: "blocking" | "warning";
+  /** Every issue on this node, for the badge's tooltip and accessible name. */
+  messages: string[];
+};
+
 export type EditorNodeData = PersistedNodeData & {
   status?: NodeRunStatus;
+  issues?: NodeIssueSummary;
 };
 
 /** Display-only fields painted onto edges; never part of the draft save path. */
 export type EditorEdgeData = Record<string, unknown> & {
   displayLabel?: string;
+  /** Set on an edge landing on a node the run can never reach. */
+  inactive?: boolean;
 };
 
 export type WorkflowNodeData = EditorNodeData;
 export type WorkflowNode = Node<EditorNodeData>;
 export type WorkflowEdge = Edge<EditorEdgeData>;
 
-/** Strip editor-only fields before a node crosses into the persist path. */
+/**
+ * The edge component every workflow edge paints with. `workflow-canvas.tsx`
+ * registers it under this name and hands it to React Flow as the default for
+ * every edge, so no edge here carries a type of its own.
+ */
+export const WORKFLOW_EDGE_TYPE = "animated";
+
+/**
+ * Strip editor-only fields before a node crosses into the persist path. What is
+ * selected and what is mid-drag belong to the session looking at the graph, so
+ * neither is written; `workflowNodeAttributesSchema` names neither either, and
+ * a key it does not name is dropped on the way back in.
+ */
 export function toPersistedNode(node: WorkflowNode): PersistedWorkflowNode {
-  const { status: _status, ...data } = node.data;
+  const { status: _status, issues: _issues, ...data } = node.data;
   const persisted: PersistedWorkflowNode = {
     id: node.id,
     position: node.position,
     data,
     type: node.type,
-    selected: node.selected,
-    dragging: node.dragging,
   };
   if (typeof node.width === "number") {
     persisted.width = node.width;
@@ -61,11 +85,31 @@ export function toPersistedNode(node: WorkflowNode): PersistedWorkflowNode {
       height: node.measured.height,
     };
   }
+  if (typeof node.parentId === "string" && node.parentId.length > 0) {
+    persisted.parentId = node.parentId;
+  }
   return persisted;
 }
 
+/**
+ * Every node worth persisting, in persisted shape.
+ *
+ * The one place that decides which editor node types are not real graph nodes.
+ * The save payload and the validation pass both come through here, so a second
+ * editor-only type cannot end up dropped by one and walked by the other.
+ */
+export function toPersistedNodes(
+  nodes: WorkflowNode[]
+): PersistedWorkflowNode[] {
+  return nodes.filter((node) => node.type !== "add").map(toPersistedNode);
+}
+
 export function toPersistedEdge(edge: WorkflowEdge): PersistedWorkflowEdge {
-  const { displayLabel: _displayLabel, ...rest } = edge.data ?? {};
+  const {
+    displayLabel: _displayLabel,
+    inactive: _inactive,
+    ...rest
+  } = edge.data ?? {};
   return {
     id: edge.id,
     source: edge.source,
@@ -73,18 +117,14 @@ export function toPersistedEdge(edge: WorkflowEdge): PersistedWorkflowEdge {
     sourceHandle: edge.sourceHandle,
     targetHandle: edge.targetHandle,
     data: Object.keys(rest).length > 0 ? rest : undefined,
-    type: edge.type,
-    selected: edge.selected,
   };
 }
 
 export function toEditorNode(node: PersistedWorkflowNode): WorkflowNode {
-  return {
+  const editor: WorkflowNode = {
     id: node.id,
     position: node.position,
     type: node.type,
-    selected: node.selected,
-    dragging: node.dragging,
     width: node.width,
     height: node.height,
     measured: node.measured,
@@ -93,8 +133,18 @@ export function toEditorNode(node: PersistedWorkflowNode): WorkflowNode {
     // display time, so this node's `data` never needs one baked in.
     data: { ...node.data },
   };
+  if (node.parentId) {
+    editor.parentId = node.parentId;
+    editor.extent = "parent";
+    editor.draggable = false;
+    editor.connectable = false;
+  }
+  return editor;
 }
 
+// The persisted graph carries structure alone. How an edge draws is the
+// canvas's decision, through `defaultEdgeOptions`, and what is selected belongs
+// to the session looking at it.
 export function toEditorEdge(edge: PersistedWorkflowEdge): WorkflowEdge {
   return {
     id: edge.id,
@@ -103,7 +153,5 @@ export function toEditorEdge(edge: PersistedWorkflowEdge): WorkflowEdge {
     sourceHandle: edge.sourceHandle ?? undefined,
     targetHandle: edge.targetHandle ?? undefined,
     data: edge.data,
-    type: edge.type,
-    selected: edge.selected,
   };
 }

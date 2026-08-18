@@ -124,7 +124,7 @@ describe("validateWorkflowGraph", () => {
       // The node's own fields stay out of the message: the editor put them
       // there, and this string is persisted as a run error.
       expect(result.error).toBe(
-        'nodes[0].attributes.data: Node data needs a type of "lifecycle", "action", or "add"'
+        'nodes[0].attributes.data: Node data needs a type of "lifecycle", "action", "add", or "group"'
       );
     }
   });
@@ -276,7 +276,7 @@ describe("validateWorkflowGraph", () => {
 
   // The Canceled branch ends the run. An edge back into the Started branch is
   // the interruptible lifecycle branch ADR-0007 rejected, drawn rather than
-  // declared, and the single-incoming-edge rule is what refuses it.
+  // declared; AND-join validation refuses a node reachable from both outlets.
   it("rejects an edge from the Canceled branch into the Started branch", () => {
     const graph = createSerializedWorkflowGraph({
       nodes: [
@@ -293,11 +293,13 @@ describe("validateWorkflowGraph", () => {
 
     expect(validateWorkflowGraph(graph)).toMatchObject({
       valid: false,
-      error: expect.stringContaining("cannot have multiple incoming edges"),
+      error: expect.stringContaining(
+        "cannot join the Started and Canceled branches"
+      ),
     });
   });
 
-  it("rejects graphs where a node has more than one incoming edge", () => {
+  it("accepts an AND-join of two action nodes behind Started", () => {
     const graph = createSerializedWorkflowGraph({
       nodes: [
         createBaseLifecycleNode("lifecycle_1"),
@@ -313,11 +315,68 @@ describe("validateWorkflowGraph", () => {
       ],
     });
 
-    const result = validateWorkflowGraph(graph);
+    expect(validateWorkflowGraph(graph).valid).toBe(true);
+  });
 
-    expect(result.valid).toBe(false);
-    if (!result.valid) {
-      expect(result.error).toContain("multiple incoming edges");
-    }
+  it("rejects an AND-join with a Wait on either arm", () => {
+    const waitNode: WorkflowNode = {
+      id: "wait_1",
+      type: "action",
+      position: { x: 100, y: 100 },
+      data: {
+        label: "Wait",
+        type: "action",
+        config: {
+          actionType: "Wait",
+          waitMode: "delay",
+          waitDuration: "1s",
+        },
+      },
+    };
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createBaseLifecycleNode("lifecycle_1"),
+        createActionNode("action_1"),
+        waitNode,
+        createActionNode("action_target"),
+      ],
+      edges: [
+        createEdge("lifecycle_1", "action_1", "edge_a"),
+        createEdge("lifecycle_1", "wait_1", "edge_w"),
+        createEdge("action_1", "action_target", "edge_join_a"),
+        createEdge("wait_1", "action_target", "edge_join_w"),
+      ],
+    });
+
+    expect(validateWorkflowGraph(graph)).toMatchObject({
+      valid: false,
+      error: expect.stringContaining(
+        "cannot join branches that include a Wait"
+      ),
+    });
+  });
+
+  it("rejects an AND-join across Condition true/false arms", () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createBaseLifecycleNode("lifecycle_1"),
+        createConditionActionNode("condition_1"),
+        createActionNode("action_true"),
+        createActionNode("action_false"),
+        createActionNode("action_target"),
+      ],
+      edges: [
+        createEdge("lifecycle_1", "condition_1", "edge_lc"),
+        createConditionEdge("condition_1", "action_true", "true", "edge_t"),
+        createConditionEdge("condition_1", "action_false", "false", "edge_f"),
+        createEdge("action_true", "action_target", "edge_join_t"),
+        createEdge("action_false", "action_target", "edge_join_f"),
+      ],
+    });
+
+    expect(validateWorkflowGraph(graph)).toMatchObject({
+      valid: false,
+      error: expect.stringContaining("cannot join mutually exclusive branches"),
+    });
   });
 });

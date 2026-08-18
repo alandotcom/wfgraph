@@ -244,3 +244,32 @@ describe("normalizeSourceHandleForConnection - Event Split", () => {
     ).toBeNull();
   });
 });
+
+describe("group outlet handle", () => {
+  it("uses the handle baked into the Group, not a graph scan", () => {
+    const group: WorkflowNode = {
+      id: "g",
+      type: "group",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Group",
+        type: "group",
+        config: {
+          entryNodeIds: ["a"],
+          exitNodeId: "c",
+          outletHandle: "true",
+        },
+      },
+    };
+
+    expect(
+      normalizeSourceHandleForConnection({
+        nodes: [group],
+        edges: [],
+        sourceNodeId: "g",
+        sourceHandle: null,
+        catalog: emptyCatalog,
+      })
+    ).toBe("true");
+  });
+});

@@ -17,9 +17,8 @@ import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 
 /**
- * Fresh ids for every node. Connection ids stay until after prepareGraphSave:
- * the copy is checked while it still names the source's connections, then the
- * keys are stripped before the row is written so the copy starts unbound.
+ * Fresh ids for every node. Connection ids are stripped separately, just before
+ * the row is written, so the copy starts unbound.
  */
 function withFreshNodeIds(nodes: WorkflowNode[]): WorkflowNode[] {
   return nodes.map((node) => ({ ...node, id: nanoid() }));
@@ -117,11 +116,10 @@ export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(
     const newWorkflowId = generateId();
 
     // The rewrite renames every node and edge, so the copy is a graph this
-    // function built rather than one it read. Checking it here is what turns our
-    // own bug into a failure the caller can read instead of a row no screen can
-    // load afterwards, and it derives the copy's own subscription rows.
-    // Connection ids are still present so the unconfigured check does not refuse
-    // a copy of a complete source; they are stripped before the insert below.
+    // function built rather than one it read. Checking its shape here turns our
+    // own bug into a failure the caller can read, instead of a row no screen can
+    // load afterwards. A copy of a half-built source duplicates as happily as
+    // that source saves, since readiness is publish's question.
     const prepared = yield* prepareGraphSave({ graph: newGraph }).pipe(
       Effect.catchIf(
         (failure) => "error" in failure,

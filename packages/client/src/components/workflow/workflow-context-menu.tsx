@@ -1,8 +1,19 @@
 import type { Edge, Node, XYPosition } from "@xyflow/react";
 import { useAtomValue, useSetAtom } from "jotai";
-import { Link2Off, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
+import {
+  ClipboardPaste,
+  Copy,
+  CopyPlus,
+  Group,
+  Link2Off,
+  Plus,
+  SlidersHorizontal,
+  Trash2,
+  Ungroup,
+} from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useRef } from "react";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
@@ -10,14 +21,24 @@ import { useDomEvent } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import {
   addNodeAtom,
+  copySelectionAtom,
   deleteEdgeAtom,
   deleteNodeAtom,
+  duplicateSelectionAtom,
+  edgesAtom,
+  groupSelectionAtom,
+  hasCopiedSelectionAtom,
   nodesAtom,
+  pasteCopiedSelectionAtom,
   selectedNodeAtom,
+  ungroupNodeAtom,
 } from "#src/lib/workflow-graph-store";
+import { canUngroup, refuseDelete } from "#src/lib/node-group";
 import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 import { type WorkflowNode } from "#src/lib/workflow-graph-types";
+import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
 import { cn } from "@wfgraph/shared/utils";
+import { analyzeGroupableSelection } from "@wfgraph/shared/graph/node-group";
 
 export type ContextMenuType = "node" | "edge" | "pane" | null;
 
@@ -27,6 +48,8 @@ export type ContextMenuState = {
   flowPosition?: XYPosition;
   nodeId?: string;
   edgeId?: string;
+  /** Selection frozen at right-pointer-down, before React Flow collapses it. */
+  selectedIds?: ReadonlySet<string>;
 } | null;
 
 type WorkflowContextMenuProps = {
@@ -39,11 +62,19 @@ export function WorkflowContextMenu({
   onClose,
 }: WorkflowContextMenuProps) {
   const nodes = useAtomValue(nodesAtom);
+  const edges = useAtomValue(edgesAtom);
   const deleteNode = useSetAtom(deleteNodeAtom);
   const deleteEdge = useSetAtom(deleteEdgeAtom);
   const addNode = useSetAtom(addNodeAtom);
+  const copySelection = useSetAtom(copySelectionAtom);
+  const pasteSelection = useSetAtom(pasteCopiedSelectionAtom);
+  const duplicateSelection = useSetAtom(duplicateSelectionAtom);
+  const groupSelected = useSetAtom(groupSelectionAtom);
+  const ungroupSelected = useSetAtom(ungroupNodeAtom);
+  const hasCopiedSelection = useAtomValue(hasCopiedSelectionAtom);
   const setSelectedNode = useSetAtom(selectedNodeAtom);
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
+  const catalog = useExtensionCatalog();
   const { open: openOverlay } = useOverlay();
   const { openSheet } = useConfigurationSheet();
   const isMobile = useIsMobile();
@@ -99,13 +130,12 @@ export function WorkflowContextMenu({
 
   const handleAddStep = useCallback(() => {
     if (menuState?.flowPosition) {
-      const nodeHeight = 192;
       const newNode: WorkflowNode = {
         id: nanoid(),
         type: "action",
         position: {
           x: menuState.flowPosition.x,
-          y: menuState.flowPosition.y - nodeHeight / 2,
+          y: menuState.flowPosition.y - WORKFLOW_NODE_HEIGHT / 2,
         },
         data: {
           label: "",
@@ -122,6 +152,41 @@ export function WorkflowContextMenu({
     }
     onClose();
   }, [menuState, addNode, setSelectedNode, setActiveTab, onClose]);
+
+  const handleCopyNode = useCallback(() => {
+    if (menuState?.nodeId) {
+      copySelection(menuState.nodeId);
+    }
+    onClose();
+  }, [menuState, copySelection, onClose]);
+
+  const handleDuplicateNode = useCallback(() => {
+    if (menuState?.nodeId) {
+      duplicateSelection(menuState.nodeId);
+    }
+    onClose();
+  }, [menuState, duplicateSelection, onClose]);
+
+  const handleGroup = useCallback(() => {
+    if (menuState?.type !== "node") {
+      onClose();
+      return;
+    }
+    groupSelected({ catalog, selectedIds: menuState.selectedIds ?? new Set() });
+    onClose();
+  }, [menuState, groupSelected, catalog, onClose]);
+
+  const handleUngroup = useCallback(() => {
+    if (menuState?.nodeId) {
+      ungroupSelected(menuState.nodeId);
+    }
+    onClose();
+  }, [menuState, ungroupSelected, onClose]);
+
+  const handlePaste = useCallback(() => {
+    pasteSelection(menuState?.flowPosition);
+    onClose();
+  }, [menuState, pasteSelection, onClose]);
 
   const handleClickOutside = useCallback(
     (event: MouseEvent) => {
@@ -163,18 +228,22 @@ export function WorkflowContextMenu({
     return null;
   }
 
-  const isLifecycleNode = Boolean(
-    menuState.nodeId &&
-    nodes.find((n) => n.id === menuState.nodeId)?.data.type === "lifecycle"
+  // One lookup for the clicked step; every question below reads it.
+  const clicked = menuState.nodeId
+    ? nodes.find((n) => n.id === menuState.nodeId)
+    : undefined;
+  const isLifecycleNode = clicked?.data.type === "lifecycle";
+  const groupingIds = menuState.selectedIds ?? new Set<string>();
+  const grouping = analyzeGroupableSelection(
+    nodes,
+    edges,
+    groupingIds,
+    catalog
   );
-
-  const getNodeLabel = () => {
-    if (!menuState.nodeId) {
-      return "Step";
-    }
-    const node = nodes.find((n) => n.id === menuState.nodeId);
-    return node?.data.label || "Step";
-  };
+  const canGroup = grouping.ok;
+  const showUngroup = canUngroup(clicked);
+  const deleteRefusal = clicked ? refuseDelete([clicked]) : null;
+  const nodeLabel = clicked?.data.label || "Step";
 
   return (
     <div
@@ -189,13 +258,42 @@ export function WorkflowContextMenu({
         <>
           <MenuItem
             icon={<SlidersHorizontal className="size-4" />}
-            label={`Edit ${getNodeLabel()}`}
+            label={`Edit ${nodeLabel}`}
             onClick={handleEditNode}
           />
           <MenuItem
             disabled={isLifecycleNode}
+            icon={<Copy className="size-4" />}
+            label="Copy"
+            onClick={handleCopyNode}
+            shortcut={shortcutLabel("C")}
+          />
+          <MenuItem
+            disabled={isLifecycleNode}
+            icon={<CopyPlus className="size-4" />}
+            label="Duplicate"
+            onClick={handleDuplicateNode}
+            shortcut={shortcutLabel("D")}
+          />
+          <MenuItem
+            disabled={!canGroup}
+            hint={!canGroup && !grouping.ok ? grouping.error : undefined}
+            icon={<Group className="size-4" />}
+            label="Group"
+            onClick={handleGroup}
+            shortcut={shortcutLabel("G")}
+          />
+          <MenuItem
+            disabled={!showUngroup}
+            icon={<Ungroup className="size-4" />}
+            label="Ungroup"
+            onClick={handleUngroup}
+          />
+          <MenuItem
+            disabled={isLifecycleNode || Boolean(deleteRefusal)}
+            hint={deleteRefusal ?? undefined}
             icon={<Trash2 className="size-4" />}
-            label={`Delete ${getNodeLabel()}`}
+            label={`Delete ${nodeLabel}`}
             onClick={handleDeleteNode}
             variant="destructive"
           />
@@ -212,11 +310,20 @@ export function WorkflowContextMenu({
       )}
 
       {menuState.type === "pane" && (
-        <MenuItem
-          icon={<Plus className="size-4" />}
-          label="Add Step"
-          onClick={handleAddStep}
-        />
+        <>
+          <MenuItem
+            icon={<Plus className="size-4" />}
+            label="Add Step"
+            onClick={handleAddStep}
+          />
+          <MenuItem
+            disabled={!hasCopiedSelection}
+            icon={<ClipboardPaste className="size-4" />}
+            label="Paste"
+            onClick={handlePaste}
+            shortcut={shortcutLabel("V")}
+          />
+        </>
       )}
     </div>
   );
@@ -228,7 +335,16 @@ type MenuItemProps = {
   onClick: () => void;
   variant?: "default" | "destructive";
   disabled?: boolean;
+  hint?: string;
+  shortcut?: string;
 };
+
+function shortcutLabel(key: string): string {
+  const apple =
+    typeof navigator !== "undefined" &&
+    /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
+  return apple ? `⌘${key}` : `Ctrl+${key}`;
+}
 
 function MenuItem({
   icon,
@@ -236,6 +352,8 @@ function MenuItem({
   onClick,
   variant = "default",
   disabled,
+  hint,
+  shortcut,
 }: MenuItemProps) {
   return (
     <button
@@ -248,17 +366,31 @@ function MenuItem({
       )}
       disabled={disabled}
       onClick={onClick}
+      title={hint}
       type="button"
     >
       {icon}
-      {label}
+      <span className="flex min-w-0 flex-col items-start">
+        {label}
+        {hint ? (
+          <span className="text-muted-foreground text-xs leading-tight">
+            {hint}
+          </span>
+        ) : null}
+      </span>
+      {shortcut ? (
+        <span className="ml-auto pl-4 text-muted-foreground text-xs tracking-widest">
+          {shortcut}
+        </span>
+      ) : null}
     </button>
   );
 }
 
 export function useContextMenuHandlers(
   screenToFlowPosition: (position: { x: number; y: number }) => XYPosition,
-  setMenuState: (state: ContextMenuState) => void
+  setMenuState: (state: ContextMenuState) => void,
+  selectedIdsAtRightClick: () => ReadonlySet<string>
 ) {
   const onNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node) => {
@@ -267,9 +399,10 @@ export function useContextMenuHandlers(
         type: "node",
         position: { x: event.clientX, y: event.clientY },
         nodeId: node.id,
+        selectedIds: selectedIdsAtRightClick(),
       });
     },
-    [setMenuState]
+    [selectedIdsAtRightClick, setMenuState]
   );
 
   const onEdgeContextMenu = useCallback(

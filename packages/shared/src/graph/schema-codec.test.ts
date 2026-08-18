@@ -192,6 +192,39 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
     ]);
   });
 
+  it("reads minItems off an array property", () => {
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: {
+        attendees: {
+          type: "array",
+          minItems: 1,
+          items: {
+            type: "object",
+            properties: { name: { type: "string" } },
+          },
+        },
+      },
+    });
+
+    expect(schema).toEqual([
+      {
+        name: "attendees",
+        type: "array",
+        itemType: "object",
+        minItems: 1,
+        fields: [
+          {
+            name: "name",
+            type: "string",
+            description: undefined,
+          },
+        ],
+        description: undefined,
+      },
+    ]);
+  });
+
   it("returns null for unsupported non-object schema roots", () => {
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "array",
@@ -228,6 +261,199 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
         id: { type: "string" },
         brokenObject: { properties: "nope" },
         brokenArray: { items: "nope" },
+      },
+    });
+
+    expect(schema).toEqual([
+      { name: "id", type: "string", description: undefined },
+    ]);
+  });
+
+  it("reads a bare string enum with no type as a closed string set", () => {
+    // JSON Schema `enum` is valid without `type`; a homogeneous string list is
+    // the instance type. arktype renders every string-literal union this way.
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: {
+        status: { enum: ["X", "Y"] },
+      },
+    });
+
+    expect(schema).toEqual([
+      {
+        name: "status",
+        type: "string",
+        description: undefined,
+        enumValues: ["X", "Y"],
+      },
+    ]);
+  });
+
+  it("reads a single const with no type as a one-value string set", () => {
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: {
+        status: { const: "X" },
+      },
+    });
+
+    expect(schema).toEqual([
+      {
+        name: "status",
+        type: "string",
+        description: undefined,
+        enumValues: ["X"],
+      },
+    ]);
+  });
+
+  it("reads an all-const anyOf without a null branch as a non-nullable closed set", () => {
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: {
+        status: {
+          anyOf: [{ const: "X" }, { const: "Y" }],
+        },
+      },
+    });
+
+    expect(schema).toEqual([
+      {
+        name: "status",
+        type: "string",
+        description: undefined,
+        enumValues: ["X", "Y"],
+      },
+    ]);
+  });
+
+  it("reads typed const anyOf without a null branch as a non-nullable closed set", () => {
+    // Zod's `z.union([z.literal("X"), z.literal("Y")])`: each branch carries
+    // both `type` and `const`. The set is still closed and not nullable.
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: {
+        status: {
+          anyOf: [
+            { type: "string", const: "X" },
+            { type: "string", const: "Y" },
+          ],
+        },
+      },
+    });
+
+    expect(schema).toEqual([
+      {
+        name: "status",
+        type: "string",
+        description: undefined,
+        enumValues: ["X", "Y"],
+      },
+    ]);
+  });
+
+  it("joins anyOf of one-value string enums into a closed set", () => {
+    // Effect's `Schema.Enum`: one `{ type, enum: [member] }` branch per value.
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: {
+        status: {
+          anyOf: [
+            { type: "string", enum: ["X"], title: "X" },
+            { type: "string", enum: ["Y"], title: "Y" },
+          ],
+        },
+      },
+    });
+
+    expect(schema).toEqual([
+      {
+        name: "status",
+        type: "string",
+        description: undefined,
+        enumValues: ["X", "Y"],
+      },
+    ]);
+  });
+
+  it("unwraps a null branch around a nested enum anyOf", () => {
+    // Effect's `Schema.NullOr(Schema.Enum(...))`: the enum anyOf is itself a
+    // branch beside `{ type: "null" }`.
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: {
+        status: {
+          anyOf: [
+            {
+              anyOf: [
+                { type: "string", enum: ["X"] },
+                { type: "string", enum: ["Y"] },
+              ],
+            },
+            { type: "null" },
+          ],
+        },
+      },
+    });
+
+    expect(schema).toEqual([
+      {
+        name: "status",
+        type: "string",
+        description: undefined,
+        enumValues: ["X", "Y"],
+        nullable: true,
+      },
+    ]);
+  });
+
+  it("reads a typed string beside same-type consts as an open string", () => {
+    // arktype `string.uuid`: a pattern branch plus the nil and max UUID, which
+    // fail the pattern. The consts are extra values of an open type.
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: {
+        a: {
+          anyOf: [
+            { type: "string", format: "uuid", pattern: "[\\da-f]{8}-..." },
+            {
+              const: "00000000-0000-0000-0000-000000000000",
+              format: "uuid",
+            },
+            {
+              const: "ffffffff-ffff-ffff-ffff-ffffffffffff",
+              format: "uuid",
+            },
+          ],
+          format: "uuid",
+        },
+      },
+    });
+
+    expect(schema).toEqual([
+      {
+        name: "a",
+        type: "string",
+        description: undefined,
+      },
+    ]);
+  });
+
+  it("drops a number beside string consts, which is no single type", () => {
+    // Effect's `Schema.Number`: a number or the strings Infinity, -Infinity
+    // and NaN. The editor has no type for that union, so the field is omitted.
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        attendeeCount: {
+          anyOf: [
+            { type: "number" },
+            { const: "Infinity" },
+            { const: "-Infinity" },
+            { const: "NaN" },
+          ],
+        },
       },
     });
 

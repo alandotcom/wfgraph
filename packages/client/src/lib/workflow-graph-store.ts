@@ -2,6 +2,14 @@ import type { EdgeChange, NodeChange } from "@xyflow/react";
 import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
+import {
+  cloneSelection,
+  extractCopyableSelection,
+  nodeIdsForContextCopy,
+  offsetToOrigin,
+  PASTE_OFFSET,
+  type CopiedSelection,
+} from "#src/lib/copy-selection";
 import { repairNodeIntegrations } from "#src/lib/node-integration";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { SavedWorkflow } from "#src/lib/rpc-client";
@@ -12,71 +20,81 @@ import {
   currentWorkflowVisibilityAtom,
   hasUnsavedChangesAtom,
   isWorkflowOwnerAtom,
-  saveWorkflowAtom,
   workflowNotFoundAtom,
   workflowLoadErrorAtom,
 } from "#src/lib/workflow-save-store";
 import {
-  activePropertiesTabAtom,
   isGeneratingAtom,
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
 import {
   formatTemplateToken,
-  parseTemplate,
+  mapTemplateTokens,
 } from "@wfgraph/shared/graph/node-references";
-import { inactiveCanceledBranch } from "#src/lib/inactive-canceled-branch";
+import { inactiveBranch } from "#src/lib/inactive-branch";
+import {
+  EMPTY_ISSUES,
+  NO_ISSUES,
+  workflowIssuesAtom,
+  workflowIssuesByNodeIdAtom,
+} from "#src/lib/workflow-issues-store";
+import {
+  dissolveUndersizedGroups,
+  dropOrphanedEdges,
+  expandEdgeRemovals,
+  idsRemovedWith,
+  lockGroupInteriorEdges,
+  refuseDeleteWithNotice,
+} from "#src/lib/node-group";
+import {
+  displayEdgesForGroups,
+  fanOutStoreEdgeIds,
+  disabledGroupIds,
+  orderGroupParentsFirst,
+} from "@wfgraph/shared/graph/node-group";
+import {
+  draftEditable,
+  edgesStateAtom,
+  executionOverlayGraphAtom,
+  futureAtom,
+  historyAtom,
+  nodesStateAtom,
+  pushHistory,
+  requestGraphSave,
+  selectedEdgeAtom,
+  selectedNodeAtom,
+} from "#src/lib/workflow-graph-cells";
 import type {
+  NodeIssueSummary,
   NodeRunStatus,
   WorkflowEdge,
   WorkflowNode,
   WorkflowNodeData,
 } from "#src/lib/workflow-graph-types";
 
+export {
+  executionOverlayGraphAtom,
+  selectedEdgeAtom,
+  selectedNodeAtom,
+} from "#src/lib/workflow-graph-cells";
+export {
+  connectNodesAtom,
+  deleteEdgeAtom,
+  groupSelectionAtom,
+  setGroupEnabledAtom,
+  ungroupNodeAtom,
+} from "#src/lib/workflow-group-store";
+
 /**
  * The graph the editor is showing, and every operation that may change it.
  *
- * The node and edge cells are private on purpose. A module writing to them
- * directly could change the graph without recording an undo step, the way
- * creating an edge or running auto-layout would. Exporting only read-only
- * views makes that mistake fail to compile, because jotai types the setter of
- * a read-only atom as `never`.
+ * The node and edge cells live in workflow-graph-cells and stay unexported
+ * from this module. A write that skipped an operation here would skip undo.
+ * Exporting only read-only views makes that mistake fail to compile, because
+ * jotai types the setter of a read-only atom as `never`.
  *
  * Add an operation here rather than reaching for the cells.
  */
-const nodesStateAtom = atom<WorkflowNode[]>([]);
-const edgesStateAtom = atom<WorkflowEdge[]>([]);
-
-const pinnedRunGraphAtom = atom<{
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
-} | null>(null);
-
-/**
- * The published graph a selected run pinned, shown on the canvas instead of the
- * draft so node statuses land on the shape the run actually walked. Cleared
- * when the run is deselected. Never saved: draft atoms stay draft-only so a
- * Cmd+S or toolbar save cannot persist the run graph over the editor's draft.
- *
- * Reads as null while the Runs tab is down, on the same `activePropertiesTabAtom`
- * gate `selectedExecutionIdAtom` reads through, because the two describe one run
- * and must go off the canvas together. This gate covers the one exit that keeps
- * the run open on purpose: the tab bar's Properties button, which writes the tab
- * and not the URL, so coming back paints the same run again without a refetch.
- * An interaction that hides the whole surface instead clears the search through
- * `useLeaveRunsSurface`, and `ExecutionOverlaySync` nulls the write side.
- */
-export const executionOverlayGraphAtom = atom(
-  (get) =>
-    get(activePropertiesTabAtom) === "runs" ? get(pinnedRunGraphAtom) : null,
-  (
-    _get,
-    set,
-    graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] } | null
-  ) => {
-    set(pinnedRunGraphAtom, graph);
-  }
-);
 
 /** Read-only draft. Mutate through the action atoms below so undo always sees it. */
 export const nodesAtom = atom((get) => get(nodesStateAtom));
@@ -89,7 +107,7 @@ export const edgesAtom = atom((get) => get(edgesStateAtom));
  * node's own `data` -- doing that is what used to force `executionOverlayGraphAtom`
  * to carry a full second copy of the graph just to hold a different status per
  * node. `displayNodesAtom` merges this onto the draft or the pinned overlay at
- * display time instead, the same way it already merges `inactiveCanceledBranchAtom`.
+ * display time instead, the same way it already merges `inactiveBranchAtom`.
  */
 const statusByNodeIdAtom = atom<ReadonlyMap<string, NodeRunStatus>>(new Map());
 
@@ -116,125 +134,168 @@ export const canvasEditingLockedAtom = atom(
  * What the canvas paints: the run overlay when a run is open, otherwise the
  * draft. Saves, publish, and config always read `nodesAtom` / `edgesAtom`.
  *
- * When no Cancel Event is declared, the Canceled subtree is muted here via
- * React Flow presentation props (`style` / `data.displayLabel`) so the draft
- * stays clean.
+ * A node the run cannot reach is muted here via React Flow presentation props
+ * (`style` / `data.displayLabel`) so the draft stays clean.
  */
-const inactiveCanceledBranchAtom = atom((get) => {
+const inactiveBranchAtom = atom((get) => {
   const nodes = get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom);
   const edges = get(executionOverlayGraphAtom)?.edges ?? get(edgesStateAtom);
-  return inactiveCanceledBranch({ nodes, edges });
+  return inactiveBranch({ nodes, edges });
 });
 
 const INACTIVE_NODE_STYLE = { opacity: 0.5 } as const;
-const INACTIVE_EDGE_STYLE = { opacity: 0.4 } as const;
+
+/**
+ * The last painted copy of a node, keyed by the node it was painted from.
+ *
+ * The fast path below covers a canvas with nothing to merge, and a validation
+ * badge takes that away as soon as one step is half-built, which is most of a
+ * canvas being built. Without this, dragging one node handed every flagged card
+ * a fresh `data` object once per frame. The four inputs are stored beside the
+ * result, since the same node has to be repainted when any of them changes.
+ */
+type PaintedNode = {
+  status: NodeRunStatus | undefined;
+  disabledFrame: boolean;
+  muted: boolean;
+  issues: NodeIssueSummary | undefined;
+  painted: WorkflowNode;
+};
+const paintedNodes = new WeakMap<WorkflowNode, PaintedNode>();
 
 export const displayNodesAtom = atom((get) => {
-  const nodes = get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom);
+  const overlay = get(executionOverlayGraphAtom);
+  const nodes = overlay?.nodes ?? get(nodesStateAtom);
   const statusByNodeId = get(statusByNodeIdAtom);
-  const { nodeIds } = get(inactiveCanceledBranchAtom);
+  const { nodeIds } = get(inactiveBranchAtom);
+  const ordered = orderGroupParentsFirst(nodes);
+  // Merged at display time like the run status above it.
+  const disabledFrameIds = disabledGroupIds(nodes);
+  // A past run's graph is not the draft, so validating it would badge nodes
+  // against a canvas the builder cannot edit.
+  const issuesByNodeId = overlay
+    ? EMPTY_ISSUES
+    : get(workflowIssuesByNodeIdAtom);
 
-  // The common case -- no run is being painted and every Cancel Event outlet
-  // is either connected or the graph has none -- has nothing to merge, so the
-  // nodes come back exactly as they went in. React.memo on ActionNode and
-  // LifecycleNode does a shallow prop comparison, and it can only bail out on
-  // a node that is `===` what it rendered last time; a fresh `data` object on
-  // every node, every recompute, defeats that on every drag frame and every
-  // keystroke, since this atom is read on every render of the canvas.
-  if (statusByNodeId.size === 0 && nodeIds.size === 0) {
-    return nodes;
+  // The common case -- no run is being painted and every node is reachable --
+  // has nothing to merge, so the nodes come back exactly as they went in.
+  // React.memo on ActionNode and LifecycleNode does a shallow prop comparison,
+  // and it can only bail out on a node that is `===` what it rendered last
+  // time; a fresh `data` object on every node, every recompute, defeats that on
+  // every drag frame and every keystroke, since this atom is read on every
+  // render of the canvas.
+  if (
+    statusByNodeId.size === 0 &&
+    nodeIds.size === 0 &&
+    disabledFrameIds.size === 0 &&
+    issuesByNodeId.size === 0
+  ) {
+    return ordered;
   }
 
-  return nodes.map((node) => {
+  // A run is painted onto every node at once, since a node with no reported
+  // status reads as idle. Muting reaches a few nodes, so the rest are handed
+  // back by reference and their cards can bail out of rendering again.
+  const paintingRun = statusByNodeId.size > 0;
+
+  return ordered.map((node) => {
+    const disabledFrame = disabledFrameIds.has(node.id);
+    // A disabled node already wears the disabled face its own card draws.
+    // Dimming it a second time here would take it to a quarter opacity.
+    const muted =
+      nodeIds.has(node.id) && !disabledFrame && node.data.enabled !== false;
+    const issues = issuesByNodeId.get(node.id);
+
+    if (!(paintingRun || disabledFrame || muted || issues)) {
+      return node;
+    }
+
+    const status = paintingRun
+      ? (statusByNodeId.get(node.id) ?? "idle")
+      : undefined;
+
+    const cached = paintedNodes.get(node);
+    if (
+      cached &&
+      cached.status === status &&
+      cached.disabledFrame === disabledFrame &&
+      cached.muted === muted &&
+      cached.issues === issues
+    ) {
+      return cached.painted;
+    }
+
     const withStatus: WorkflowNode = {
       ...node,
-      data: { ...node.data, status: statusByNodeId.get(node.id) ?? "idle" },
+      data: {
+        ...node.data,
+        ...(status ? { status } : {}),
+        ...(disabledFrame ? { enabled: false } : {}),
+        ...(issues ? { issues } : {}),
+      },
     };
-    return nodeIds.has(node.id)
+    const painted = muted
       ? {
           ...withStatus,
           style: { ...withStatus.style, ...INACTIVE_NODE_STYLE },
         }
       : withStatus;
+
+    paintedNodes.set(node, {
+      status,
+      disabledFrame,
+      muted,
+      issues,
+      painted,
+    });
+    return painted;
   });
 });
 export const displayEdgesAtom = atom((get) => {
+  const nodes = get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom);
   const edges = get(executionOverlayGraphAtom)?.edges ?? get(edgesStateAtom);
-  const { edgeIds, outletEdgeIds } = get(inactiveCanceledBranchAtom);
-  if (edgeIds.size === 0) {
-    return edges;
+  const painted = lockGroupInteriorEdges(
+    nodes,
+    displayEdgesForGroups(nodes, edges)
+  );
+  const { nodeIds, outletEdgeIds } = get(inactiveBranchAtom);
+  if (nodeIds.size === 0) {
+    return painted;
   }
-  return edges.map((edge) => {
-    if (!edgeIds.has(edge.id)) {
+  // An edge is muted by where it lands. The edge into a disabled step stays
+  // live, because the run does arrive and skip it; every edge past that step
+  // lands on a node the run can never reach.
+  return painted.map((edge) => {
+    if (!nodeIds.has(edge.target)) {
       return edge;
     }
     return {
       ...edge,
-      style: { ...edge.style, ...INACTIVE_EDGE_STYLE },
-      ...(outletEdgeIds.has(edge.id)
-        ? {
-            data: {
-              ...edge.data,
-              displayLabel: "No Cancel Event",
-            },
-          }
-        : {}),
+      data: {
+        ...edge.data,
+        inactive: true,
+        ...(outletEdgeIds.has(edge.id)
+          ? { displayLabel: "No Cancel Event" }
+          : {}),
+      },
     };
   });
 });
-
-/** Refuse draft mutations while a run overlay owns the canvas. */
-function draftEditable(get: Getter): boolean {
-  return get(executionOverlayGraphAtom) === null;
-}
-
-export const selectedNodeAtom = atom<string | null>(null);
-export const selectedEdgeAtom = atom<string | null>(null);
 
 // Tracks a just-created node so the config panel can focus its search input.
 // Cleared once the node gets an action type or loses selection.
 export const newlyCreatedNodeIdAtom = atom<string | null>(null);
 
-type HistoryState = {
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
+type CopiedClipboard = {
+  selection: CopiedSelection;
+  pasteCount: number;
 };
 
-const historyAtom = atom<HistoryState[]>([]);
-const futureAtom = atom<HistoryState[]>([]);
-
-// Deep enough that no one reaches the end by hand, bounded so a long editing
-// session cannot pin two copies of the graph per step in memory forever.
-const HISTORY_LIMIT = 50;
+const copiedSelectionAtom = atom<CopiedClipboard | null>(null);
 
 // Whether a node drag is mid-flight, so the whole drag records one undo step
 // rather than one per frame.
 const isDraggingAtom = atom(false);
-
-/** Snapshot the graph so the next change is undoable, and drop any redo branch. */
-function pushHistory(get: Getter, set: Setter) {
-  const snapshot: HistoryState = {
-    nodes: get(nodesStateAtom),
-    edges: get(edgesStateAtom),
-  };
-  const history = [...get(historyAtom), snapshot];
-
-  set(historyAtom, history.slice(-HISTORY_LIMIT));
-  set(futureAtom, []);
-}
-
-/** Hand the current nodes and edges to the save queue, which owns the flags. */
-function requestGraphSave(
-  get: Getter,
-  set: Setter,
-  options?: { immediate?: boolean }
-) {
-  void set(
-    saveWorkflowAtom,
-    { nodes: get(nodesStateAtom), edges: get(edgesStateAtom) },
-    options
-  );
-}
 
 /**
  * Replace the graph with what came back from the server.
@@ -243,11 +304,15 @@ function requestGraphSave(
  * workflows would let pressing undo after switching write the previous
  * workflow's graph into the current one, which autosave would then persist
  * under the wrong id.
+ *
+ * Nodes are stored rest → frames → members so `displayNodesAtom` can return
+ * this array on a canvas read instead of reallocating through
+ * `orderGroupParentsFirst` on every drag frame.
  */
 export const loadWorkflowGraphAtom = atom(
   null,
   (_get, set, graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }) => {
-    set(nodesStateAtom, graph.nodes);
+    set(nodesStateAtom, orderGroupParentsFirst(graph.nodes));
     set(edgesStateAtom, graph.edges);
     set(historyAtom, []);
     set(futureAtom, []);
@@ -255,6 +320,11 @@ export const loadWorkflowGraphAtom = atom(
     set(selectedEdgeAtom, null);
     set(newlyCreatedNodeIdAtom, null);
     set(hasUnsavedChangesAtom, false);
+    // Issues name the node ids of the graph being replaced. The collector is
+    // debounced, so leaving them would let the toolbar chip count the previous
+    // workflow's faults against this one until the next settle, and the badges
+    // it claims to agree with would already be gone.
+    set(workflowIssuesAtom, NO_ISSUES);
   }
 );
 
@@ -426,11 +496,25 @@ export const onNodesChangeAtom = atom(
       set(isDraggingAtom, false);
     }
 
-    const newNodes = applyNodeChanges<WorkflowNode>(
-      filteredChanges,
-      currentNodes
+    const newNodes = dissolveUndersizedGroups(
+      applyNodeChanges<WorkflowNode>(filteredChanges, currentNodes)
     );
     set(nodesStateAtom, newNodes);
+
+    // A removal here can strand an edge React Flow never offered to delete;
+    // `dropOrphanedEdges` says which and why. It answers the same array when
+    // there is nothing to drop, and jotai skips a write of the value it holds.
+    if (hasRemoval) {
+      const remainingEdges = dropOrphanedEdges(newNodes, get(edgesStateAtom));
+      set(edgesStateAtom, remainingEdges);
+      // The paths that remove an edge clear the selection naming it, and this
+      // one answers to the same rule even though today's stranded edges are all
+      // unselectable.
+      const selectedEdge = get(selectedEdgeAtom);
+      if (selectedEdge && !remainingEdges.some((e) => e.id === selectedEdge)) {
+        set(selectedEdgeAtom, null);
+      }
+    }
 
     // Mirror React Flow's own selection state onto our selection atoms.
     const selectedNode = newNodes.find((n) => n.selected);
@@ -468,7 +552,13 @@ export const onEdgesChangeAtom = atom(
 
     // No history push here; see the note in onNodesChangeAtom.
     const hasRemoval = changes.some((change) => change.type === "remove");
-    const newEdges = applyEdgeChanges(changes, get(edgesStateAtom));
+    const currentEdges = get(edgesStateAtom);
+    const expandedChanges = expandEdgeRemovals(
+      get(nodesStateAtom),
+      currentEdges,
+      changes
+    );
+    const newEdges = applyEdgeChanges(expandedChanges, currentEdges);
     set(edgesStateAtom, newEdges);
 
     const selectedEdge = newEdges.find((e) => e.selected);
@@ -489,39 +579,150 @@ export const onEdgesChangeAtom = atom(
   }
 );
 
+/**
+ * Append a subgraph as one undo step: deselect what is on the canvas, select
+ * the inserted nodes, and save. Paste, duplicate, and addNode all go through
+ * here so the history / selection / save bookkeeping cannot drift.
+ */
+function insertClonedSubgraph(
+  get: Getter,
+  set: Setter,
+  subgraph: CopiedSelection
+) {
+  const nodes = subgraph.nodes.map((node) => ({ ...node, selected: true }));
+  const edges = subgraph.edges.map((edge) => ({ ...edge, selected: true }));
+
+  pushHistory(get, set);
+  // Sorted like the other two writers: a cloned frame appended after the
+  // members already on the canvas costs `displayNodesAtom` its fast path.
+  set(
+    nodesStateAtom,
+    orderGroupParentsFirst([
+      ...get(nodesStateAtom).map((node) => ({ ...node, selected: false })),
+      ...nodes,
+    ])
+  );
+  set(edgesStateAtom, [
+    ...get(edgesStateAtom).map((edge) => ({ ...edge, selected: false })),
+    ...edges,
+  ]);
+  set(selectedNodeAtom, nodes[0].id);
+  set(selectedEdgeAtom, null);
+
+  const only = nodes.length === 1 ? nodes[0] : undefined;
+  if (only?.data.type === "action" && !only.data.config?.actionType) {
+    set(newlyCreatedNodeIdAtom, only.id);
+  } else {
+    set(newlyCreatedNodeIdAtom, null);
+  }
+
+  requestGraphSave(get, set, { immediate: true });
+}
+
+function snapshotCopyable(
+  get: Getter,
+  clickedNodeId?: string
+): CopiedSelection | null {
+  const nodes = get(nodesStateAtom);
+  return extractCopyableSelection({
+    nodes,
+    edges: get(edgesStateAtom),
+    nodeIds: clickedNodeId
+      ? nodeIdsForContextCopy(nodes, clickedNodeId)
+      : undefined,
+  });
+}
+
 export const addNodeAtom = atom(null, (get, set, node: WorkflowNode) => {
   if (!draftEditable(get)) {
     return;
   }
 
-  pushHistory(get, set);
-
-  const updatedNodes = get(nodesStateAtom).map((n) => ({
-    ...n,
-    selected: false,
-  }));
-  set(nodesStateAtom, [...updatedNodes, { ...node, selected: true }]);
-  set(selectedNodeAtom, node.id);
-
-  // A brand new action node has no action picked yet, so the panel opens on its
-  // search input rather than on an empty config form.
-  if (node.data.type === "action" && !node.data.config?.actionType) {
-    set(newlyCreatedNodeIdAtom, node.id);
-  }
-
-  requestGraphSave(get, set, { immediate: true });
+  insertClonedSubgraph(get, set, { nodes: [node], edges: [] });
 });
 
-/** Connect two nodes, recorded as an undo step like every graph mutation. */
-export const connectNodesAtom = atom(null, (get, set, edge: WorkflowEdge) => {
-  if (!draftEditable(get)) {
-    return;
-  }
+/** Whether Cmd+V / Paste have a copied subgraph to insert. */
+export const hasCopiedSelectionAtom = atom(
+  (get) => get(copiedSelectionAtom) !== null
+);
 
-  pushHistory(get, set);
-  set(edgesStateAtom, [...get(edgesStateAtom), edge]);
-  requestGraphSave(get, set, { immediate: true });
-});
+/**
+ * Snapshot the copyable selection for a later paste. `clickedNodeId` is the
+ * node-context Copy target; omit it to copy whatever is selected. Selection
+ * only, so not an undo step and not a save.
+ */
+export const copySelectionAtom = atom(
+  null,
+  (get, set, clickedNodeId?: string) => {
+    const selection = snapshotCopyable(get, clickedNodeId);
+    if (!selection) {
+      return false;
+    }
+
+    set(copiedSelectionAtom, { selection, pasteCount: 0 });
+    return true;
+  }
+);
+
+/**
+ * Insert the copied subgraph with fresh ids. One undo step, like addNode.
+ *
+ * `origin` places the copied bounding-box origin at a pane click; without it
+ * each paste steps down-right from the original so repeats do not stack.
+ */
+export const pasteCopiedSelectionAtom = atom(
+  null,
+  (get, set, origin?: { x: number; y: number }) => {
+    if (!draftEditable(get)) {
+      return false;
+    }
+
+    const clipboard = get(copiedSelectionAtom);
+    if (!clipboard) {
+      return false;
+    }
+
+    const nextCount = clipboard.pasteCount + 1;
+    const offset = origin
+      ? offsetToOrigin(clipboard.selection.nodes, origin)
+      : { x: PASTE_OFFSET * nextCount, y: PASTE_OFFSET * nextCount };
+
+    set(copiedSelectionAtom, { ...clipboard, pasteCount: nextCount });
+    insertClonedSubgraph(
+      get,
+      set,
+      cloneSelection(clipboard.selection, { offset })
+    );
+    return true;
+  }
+);
+
+/**
+ * Clone the current (or context-clicked) selection in one undo step without
+ * writing the clipboard, so a later paste still inserts whatever was copied.
+ */
+export const duplicateSelectionAtom = atom(
+  null,
+  (get, set, clickedNodeId?: string) => {
+    if (!draftEditable(get)) {
+      return false;
+    }
+
+    const selection = snapshotCopyable(get, clickedNodeId);
+    if (!selection) {
+      return false;
+    }
+
+    insertClonedSubgraph(
+      get,
+      set,
+      cloneSelection(selection, {
+        offset: { x: PASTE_OFFSET, y: PASTE_OFFSET },
+      })
+    );
+    return true;
+  }
+);
 
 /** Apply auto-layout positions. Also an undo step, for the same reason. */
 export const applyNodeLayoutAtom = atom(
@@ -610,55 +811,16 @@ function updateTemplatesInConfig(
   oldLabel: string,
   newLabel: string
 ): Record<string, unknown> {
-  let hasChanges = false;
-  const updated: Record<string, unknown> = {};
-
-  for (const [key, value] of Object.entries(config)) {
-    if (typeof value === "string") {
-      updated[key] = parseTemplate(value)
-        .map((segment) => {
-          if (segment.kind === "literal") {
-            return segment.text;
-          }
-
-          const { token } = segment;
-          if (token.nodeId !== nodeId || token.nodeLabel !== oldLabel) {
-            return token.raw;
-          }
-
-          hasChanges = true;
-          return formatTemplateToken({
-            nodeId,
-            nodeLabel: newLabel,
-            fieldPath: token.fieldPath,
-          });
-        })
-        .join("");
-    } else if (
-      typeof value === "object" &&
-      value !== null &&
-      !Array.isArray(value)
-    ) {
-      // The recursion needs a keyed value to walk. The copy is what gets passed
-      // down, so it is also what the identity check below compares against: the
-      // recursion returns its own argument when nothing inside it was renamed.
-      const nested: Record<string, unknown> = { ...value };
-      const nestedUpdated = updateTemplatesInConfig(
-        nested,
-        nodeId,
-        oldLabel,
-        newLabel
-      );
-      if (nestedUpdated !== nested) {
-        hasChanges = true;
-      }
-      updated[key] = nestedUpdated;
-    } else {
-      updated[key] = value;
+  return mapTemplateTokens(config, (token) => {
+    if (token.nodeId !== nodeId || token.nodeLabel !== oldLabel) {
+      return undefined;
     }
-  }
-
-  return hasChanges ? updated : config;
+    return formatTemplateToken({
+      nodeId,
+      nodeLabel: newLabel,
+      fieldPath: token.fieldPath,
+    });
+  });
 }
 
 export const deleteNodeAtom = atom(null, (get, set, nodeId: string) => {
@@ -672,43 +834,26 @@ export const deleteNodeAtom = atom(null, (get, set, nodeId: string) => {
   if (nodeToDelete?.data.type === "lifecycle") {
     return;
   }
+  if (nodeToDelete && refuseDeleteWithNotice([nodeToDelete])) {
+    return;
+  }
 
   pushHistory(get, set);
 
-  set(
-    nodesStateAtom,
-    currentNodes.filter((node) => node.id !== nodeId)
+  const removed = idsRemovedWith(currentNodes, nodeId);
+  const remainingNodes = dissolveUndersizedGroups(
+    currentNodes.filter((node) => !removed.has(node.id))
   );
+  set(nodesStateAtom, remainingNodes);
   set(
     edgesStateAtom,
     get(edgesStateAtom).filter(
-      (edge) => edge.source !== nodeId && edge.target !== nodeId
+      (edge) => !removed.has(edge.source) && !removed.has(edge.target)
     )
   );
 
-  if (get(selectedNodeAtom) === nodeId) {
+  if (get(selectedNodeAtom) && removed.has(get(selectedNodeAtom) ?? "")) {
     set(selectedNodeAtom, null);
-  }
-
-  requestGraphSave(get, set, { immediate: true });
-});
-
-export const deleteEdgeAtom = atom(null, (get, set, edgeId: string) => {
-  if (!draftEditable(get)) {
-    return;
-  }
-
-  const currentEdges = get(edgesStateAtom);
-  const remaining = currentEdges.filter((edge) => edge.id !== edgeId);
-  if (remaining.length === currentEdges.length) {
-    return;
-  }
-
-  pushHistory(get, set);
-  set(edgesStateAtom, remaining);
-
-  if (get(selectedEdgeAtom) === edgeId) {
-    set(selectedEdgeAtom, null);
   }
 
   requestGraphSave(get, set, { immediate: true });
@@ -721,23 +866,43 @@ export const deleteSelectedItemsAtom = atom(null, (get, set) => {
 
   const currentNodes = get(nodesStateAtom);
   const currentEdges = get(edgesStateAtom);
+  // The delete key asks the same question through `onBeforeDelete`, so a
+  // selection reaching into a frame without taking the frame is refused whole
+  // here too rather than quietly losing the member and taking the rest.
+  const selectedNodes = currentNodes.filter((node) => node.selected);
+  if (refuseDeleteWithNotice(selectedNodes)) {
+    return;
+  }
+
   const selectedNodeIds = new Set(
-    currentNodes
-      .filter((node) => node.selected && node.data.type !== "lifecycle")
+    selectedNodes
+      .filter((node) => node.data.type !== "lifecycle")
       .map((node) => node.id)
   );
+  for (const node of currentNodes) {
+    if (node.parentId && selectedNodeIds.has(node.parentId)) {
+      selectedNodeIds.add(node.id);
+    }
+  }
 
   // Lifecycle Nodes survive being selected; the graph needs an entrypoint.
-  const remainingNodes = currentNodes.filter(
-    (node) => node.data.type === "lifecycle" || !node.selected
+  const remainingNodes = dissolveUndersizedGroups(
+    currentNodes.filter(
+      (node) => node.data.type === "lifecycle" || !selectedNodeIds.has(node.id)
+    )
+  );
+  const selectedFanOut = new Set(
+    currentEdges
+      .filter((edge) => edge.selected)
+      .flatMap((edge) =>
+        fanOutStoreEdgeIds(currentNodes, currentEdges, edge.id)
+      )
   );
   const remainingEdges = currentEdges.filter(
     (edge) =>
-      !(
-        edge.selected ||
-        selectedNodeIds.has(edge.source) ||
-        selectedNodeIds.has(edge.target)
-      )
+      !selectedFanOut.has(edge.id) &&
+      !selectedNodeIds.has(edge.source) &&
+      !selectedNodeIds.has(edge.target)
   );
 
   // Selecting only the Lifecycle Node and pressing delete removes nothing, and

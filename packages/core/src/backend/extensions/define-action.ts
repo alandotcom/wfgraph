@@ -62,18 +62,27 @@ export type ActionIdentity = {
 
   /** Optional URL to a logo/icon displayed next to the action in the editor. */
   logoUrl?: string;
+
+  /**
+   * Whether running this action changes something outside the workflow: a
+   * message sent, a record written or removed. Defaults to `false`, and the
+   * editor keeps an action declaring `true` out of a Group. `ActionStepInput`
+   * separates this from the replay sense of the phrase.
+   */
+  sideEffect?: boolean;
 };
 
 /**
  * What `defineAction` hands back: identity, the fields derived from its schemas,
  * and the implementation, everything filled in.
  *
- * `category` is no longer optional, because the default has been applied by the
- * time a value of this type exists, and assembly copies it into the catalog
- * without deciding anything of its own.
+ * `category` and `sideEffect` are no longer optional, because the defaults have
+ * been applied by the time a value of this type exists, and assembly copies
+ * them into the catalog without deciding anything of its own.
  */
 export type ActionDefinition = ActionIdentity & {
   readonly category: string;
+  readonly sideEffect: boolean;
 
   /**
    * Declarative field definitions rendered as the action's configuration form,
@@ -158,7 +167,7 @@ export type DefineActionInputWithOutput<
 
 function normalizeActionIdentity(
   definition: ActionIdentity
-): ActionIdentity & { category: string } {
+): ActionIdentity & { category: string; sideEffect: boolean } {
   const actionId = definition.id.trim();
   const label = definition.label.trim();
   const description = definition.description.trim();
@@ -183,6 +192,7 @@ function normalizeActionIdentity(
     label,
     description,
     category: definition.category?.trim() || "Custom",
+    sideEffect: definition.sideEffect ?? false,
     logoUrl: logoUrl || undefined,
   };
 }
@@ -253,6 +263,7 @@ export function defineAction<TInput extends Record<string, unknown>>(
     label: definition.label,
     description: definition.description,
     category: definition.category,
+    sideEffect: definition.sideEffect,
     logoUrl: definition.logoUrl,
   });
 

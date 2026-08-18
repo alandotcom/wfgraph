@@ -19,17 +19,20 @@ import { WorkflowToolbar } from "#src/components/workflow/workflow-toolbar";
 import "@xyflow/react/dist/style.css";
 
 import { nanoid } from "nanoid";
+import { andJoinRefusalReason } from "@wfgraph/shared/graph/and-join";
 import { Edge } from "#src/components/flow-elements/edge";
 import { Panel } from "#src/components/flow-elements/panel";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useAfterCommit, useAfterPaint, useDomEvent } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
+import { isTextEntry } from "#src/lib/is-text-entry";
 import {
   addNodeAtom,
   applyNodeLayoutAtom,
   connectNodesAtom,
   displayEdgesAtom,
   displayNodesAtom,
+  edgesAtom,
   canvasEditingLockedAtom,
   onEdgesChangeAtom,
   onNodesChangeAtom,
@@ -47,27 +50,50 @@ import {
   rightPanelWidthAtom,
   showMinimapAtom,
 } from "#src/lib/workflow-ui-store";
+import { WORKFLOW_EDGE_TYPE } from "#src/lib/workflow-graph-types";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { fanOutStoreEdges } from "@wfgraph/shared/graph/node-group";
+import { refuseDeleteWithNotice } from "#src/lib/node-group";
 import { normalizeSourceHandleForConnection as normalizeSourceHandle } from "./connection-handle";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
+import { GroupNode } from "./nodes/group-node";
 import { LifecycleNode } from "./nodes/lifecycle-node";
+import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
+import { useCollectWorkflowIssues } from "#src/hooks/use-workflow-issues";
 import {
   type ContextMenuState,
   useContextMenuHandlers,
   WorkflowContextMenu,
 } from "./workflow-context-menu";
 import { layoutWorkflowNodes } from "./workflow-layout";
+import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
 
 const edgeTypes = {
-  animated: Edge.Animated,
-  temporary: Edge.Temporary,
+  [WORKFLOW_EDGE_TYPE]: Edge.Animated,
+};
+
+/**
+ * Every edge draws with the canvas edge. React Flow merges this under each edge
+ * before it resolves the component, so no edge carries a type of its own and no
+ * place that builds one can leave it off. Getting that wrong is answered with
+ * React Flow's built-in bezier, which is how a reload used to lose the
+ * orthogonal path.
+ */
+const defaultEdgeOptions = { type: WORKFLOW_EDGE_TYPE };
+
+const nodeTypes = {
+  lifecycle: LifecycleNode,
+  action: ActionNode,
+  add: AddNode,
+  group: GroupNode,
 };
 
 export function WorkflowCanvas() {
   const catalog = useExtensionCatalog();
   const nodes = useAtomValue(displayNodesAtom);
   const edges = useAtomValue(displayEdgesAtom);
+  const storeEdges = useAtomValue(edgesAtom);
   // Draft edits and run-overlay viewing are mutually exclusive: mutating while
   // the overlay is up would write the draft under a canvas that is not showing
   // it. The toolbar's Publish button reads this same atom.
@@ -110,10 +136,32 @@ export function WorkflowCanvas() {
   const [isReflowing, setIsReflowing] = useState(false);
   const [contextMenuState, setContextMenuState] =
     useState<ContextMenuState>(null);
+  const rightClickSelectionRef = useRef<ReadonlySet<string>>(new Set());
+  useDomEvent(
+    window,
+    "pointerdown",
+    (event) => {
+      if (event.button !== 2) {
+        return;
+      }
+      rightClickSelectionRef.current = new Set(
+        nodes.filter((node) => node.selected).map((node) => node.id)
+      );
+    },
+    { capture: true, enabled: !editingLocked }
+  );
+  const selectedIdsAtRightClick = useCallback(
+    () => rightClickSelectionRef.current,
+    []
+  );
 
   // Context menu handlers
   const { onNodeContextMenu, onEdgeContextMenu, onPaneContextMenu } =
-    useContextMenuHandlers(screenToFlowPosition, setContextMenuState);
+    useContextMenuHandlers(
+      screenToFlowPosition,
+      setContextMenuState,
+      selectedIdsAtRightClick
+    );
 
   const closeContextMenu = useCallback(() => {
     setContextMenuState(null);
@@ -202,13 +250,7 @@ export function WorkflowCanvas() {
 
       // Leave text editing alone. Node config fields are contentEditable divs,
       // so checking the tag name would miss them and steal their text undo.
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable)
-      ) {
+      if (isTextEntry(event.target)) {
         return;
       }
 
@@ -228,6 +270,10 @@ export function WorkflowCanvas() {
   );
 
   useDomEvent(window, "keydown", handleUndoRedoShortcut);
+  useCanvasCopyPaste(!editingLocked);
+  // Mounted once, here, because the node badges and the toolbar count both read
+  // what it writes and neither should run the pass itself.
+  useCollectWorkflowIssues();
 
   const handleFitViewShortcut = useCallback(
     (event: KeyboardEvent) => {
@@ -291,15 +337,6 @@ export function WorkflowCanvas() {
     catalog,
   ]);
 
-  const nodeTypes = useMemo(
-    () => ({
-      lifecycle: LifecycleNode,
-      action: ActionNode,
-      add: AddNode,
-    }),
-    []
-  );
-
   const nodeHasHandle = useCallback(
     (nodeId: string, handleType: "source" | "target") => {
       const node = nodes.find((n) => n.id === nodeId);
@@ -308,7 +345,7 @@ export function WorkflowCanvas() {
         return false;
       }
 
-      if (node.type === "add") {
+      if (node.type === "add" || node.parentId) {
         return false;
       }
 
@@ -334,20 +371,53 @@ export function WorkflowCanvas() {
         return false;
       }
 
+      const sourceNode = nodes.find((node) => node.id === sourceNodeId);
+      const targetNode = nodes.find((node) => node.id === targetNodeId);
+      if (sourceNode?.parentId || targetNode?.parentId) {
+        return false;
+      }
+
       const connectionId =
         "id" in connection && typeof connection.id === "string"
           ? connection.id
           : null;
-      const conflictingIncomingEdge = edges.find(
-        (edge) => edge.target === targetNodeId && edge.id !== connectionId
-      );
-      if (conflictingIncomingEdge) {
+      const sourceHandle = normalizeSourceHandle({
+        nodes,
+        edges,
+        sourceNodeId,
+        sourceHandle:
+          "sourceHandle" in connection ? connection.sourceHandle : undefined,
+        catalog,
+      });
+      const additions = fanOutStoreEdges({
+        nodes,
+        edges: storeEdges,
+        sourceId: sourceNodeId,
+        targetId: targetNodeId,
+        sourceHandle,
+        excludeEdgeId: connectionId,
+      });
+      if (additions.length === 0) {
+        return false;
+      }
+
+      const proposedEdges = [
+        ...storeEdges.filter((edge) => edge.id !== connectionId),
+        ...additions,
+      ];
+
+      if (
+        andJoinRefusalReason({
+          nodes,
+          edges: proposedEdges,
+        })
+      ) {
         return false;
       }
 
       return true;
     },
-    [edges]
+    [catalog, edges, nodes, storeEdges]
   );
 
   const normalizeSourceHandleForConnection = useCallback(
@@ -380,7 +450,6 @@ export function WorkflowCanvas() {
         id: nanoid(),
         ...connection,
         sourceHandle,
-        type: "animated",
       };
       connectNodes(newEdge);
     },
@@ -410,6 +479,12 @@ export function WorkflowCanvas() {
         edgesToDelete.length > 0;
 
       if (!deletesAnything) {
+        return Promise.resolve(false);
+      }
+
+      // A Group's entry and exit are derived from the members it was built
+      // from, so a member only goes when its frame does.
+      if (refuseDeleteWithNotice(nodesToDelete)) {
         return Promise.resolve(false);
       }
 
@@ -539,9 +614,8 @@ export function WorkflowCanvas() {
         y: adjustedY,
       });
 
-      // Center vertically on the cursor; node height is h-48 (192px).
-      const nodeHeight = 192;
-      position.y -= nodeHeight / 2;
+      // Center vertically on the cursor.
+      position.y -= WORKFLOW_NODE_HEIGHT / 2;
 
       const newNode: WorkflowNode = {
         id: nanoid(),
@@ -701,6 +775,7 @@ export function WorkflowCanvas() {
         className="bg-background"
         connectionLineComponent={Connection}
         connectionMode={ConnectionMode.Strict}
+        defaultEdgeOptions={defaultEdgeOptions}
         edges={edges}
         edgeTypes={edgeTypes}
         elementsSelectable={!editingLocked}

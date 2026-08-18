@@ -205,6 +205,7 @@ export function createLinear(createClient: CreateLinearClient) {
       "create-ticket": {
         label: "Create Ticket",
         description: "Create an issue in Linear",
+        sideEffect: true,
         input: createTicketInput,
         output: createTicketOutput,
         configFields: [

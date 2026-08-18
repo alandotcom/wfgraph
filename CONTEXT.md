@@ -82,7 +82,8 @@ anything can read it.
 **Cancel Event**:
 An Event the Lifecycle Rules list as canceling runs. When one arrives, every
 in-flight Execution with an equal Entity Value jumps to the Canceled outlet
-at its next step boundary.
+at its next step boundary. Stopping a sequence mid-graph is an unwired
+Condition False, not a Cancel Event.
 
 **Arriving Event**:
 The Event that put a run where it is: the Start Event it began on, and the
@@ -114,7 +115,26 @@ Execution behind it.
 The branch behind the Canceled outlet. Runs inside the same Execution, so it
 reads the run's earlier node outputs and the canceling payload. Terminal: a
 run inside it finishes it regardless of later Events. The Execution then ends
-with status canceled.
+with status canceled. It cannot rejoin the Started branch.
+
+**Join**:
+A node with more than one incoming edge. The run reaches it only after every
+predecessor has completed successfully and released what is below it
+(AND-join), which is how two lookups run side by side and both feed the next
+step. Fan-out onto those predecessors is unchanged: an ordinary action (or the
+Lifecycle Node's Started outlet) already schedules every outgoing edge
+together. A Wait on either arm, a join across exclusive Condition or Event
+Split outlets, and a rejoin of Started with Canceled are refused.
+
+**Group**:
+A visual single-entry single-exit bundle of lookup steps plus an optional
+Condition. The engine walks the children; the frame is editor chrome. Lookups
+inside may run side by side and AND-join at the Condition. True continues to
+the next step. False with no outgoing edge ends that path. That is how a
+sequence stops; it is not a Cancel Event. Sends stay outside the frame, which an
+action declares with `sideEffect: true` and the editor refuses on. After
+a Wait, the builder pastes the group so the next send reads a fresh fetch:
+node outputs are memoized, and nothing above a Wait re-runs.
 
 **Precedence**:
 One fixed order when an Event arrives: Lifecycle Rules apply first, then the
@@ -139,10 +159,13 @@ lives as long as that Execution; one that no Execution pins and no workflow
 names is swept once it falls outside the newest ten.
 
 **Publish**:
-The hard gate that turns a draft into a Workflow Version. Content-hash
-dedupe stops an idle editor from accreting identical versions. The event
-subscription index tracks the published graph, so a half-built draft cannot
-start runs.
+The hard gate that turns a draft into a Workflow Version, and the only place a
+graph is held to whether it can run: required fields, Events, Event Split
+outlets, template references, connections, and unreachable subtrees. A draft
+save asks none of that and stores whatever parses, because a half-built node is
+the ordinary state of an editor session. Content-hash dedupe stops an idle
+editor from accreting identical versions. The event subscription index tracks
+the published graph, so a half-built draft cannot start runs.
 
 **Execution**:
 One run of one workflow, started by a Start Event, a schedule, or a manual

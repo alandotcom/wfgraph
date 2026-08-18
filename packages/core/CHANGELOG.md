@@ -1,5 +1,131 @@
 # @wfgraph/core
 
+## 2.2.1
+
+## 2.2.0
+
+### Minor Changes
+
+- [#119](https://github.com/alandotcom/wfgraph/pull/119) [`ca0de9a`](https://github.com/alandotcom/wfgraph/commit/ca0de9a4d8be996e1430da6c7cee783be1bf76e2) Thanks [@alandotcom](https://github.com/alandotcom)! - A draft always saves; an invalid graph never publishes.
+
+  `prepareGraphSave` refused a graph whose nodes were half-built, which is the
+  ordinary state of an editor session. The editor suppressed that 400 for
+  autosaves, so the canvas sat dirty with nothing said and a reload discarded the
+  work. The battery is split: the save asks only what has to be true of a graph in
+  a row (it parses, and its stored expressions are ones the compiler produced), and
+  the readiness half moves to `checkPublishReadiness` in `publish-checks.ts`.
+
+  Nothing loses a guard. No run reads the draft column — both start paths load the
+  published version row and refuse when there is none — and publish is the sole
+  writer of the event subscription index, so an Event cannot reach a draft either.
+  Publish is the one gate that makes a graph runnable, and it now runs required
+  fields, Events, Event Split outlets, template references, connections and the
+  unreachable-subtree check together. Draft saves also stop costing a query, since
+  nothing left in that path reads the catalog or the database.
+
+  In the editor, validation runs continuously against the graph rather than only
+  when Run is pressed ([#2](https://github.com/alandotcom/wfgraph/issues/2)). Broken nodes wear a warning badge, the toolbar carries
+  an issue count that opens the existing issues list, and Publish opens that list
+  instead of spending a round trip on a refusal the canvas was already showing.
+  The connection-missing triangle each action card used to draw from its own
+  reading of the connection list is now one rule inside the shared collector, and
+  every caller normalises its nodes the same way, so the canvas and the pre-run
+  check cannot disagree about a node. Nothing is reported until the connection
+  list has actually arrived: an empty list is a real answer, and using it for
+  "not asked yet" would accuse every node that names a connection.
+
+  Save state is a word rather than a dot — "Saving", "Unsaved changes", "Saved",
+  "Save failed" — and closing or reloading the tab with an edit still in the
+  debounce window asks first. Both are owner-only: a viewer of a public workflow
+  can still nudge a node, and the refused save that follows would otherwise leave
+  them holding a dirty flag and a leave-prompt they could never clear.
+
+## 2.1.0
+
+### Minor Changes
+
+- [#115](https://github.com/alandotcom/wfgraph/pull/115) [`4f34676`](https://github.com/alandotcom/wfgraph/commit/4f34676d7049a9a2577e873c1a79da9a89d43e09) Thanks [@alandotcom](https://github.com/alandotcom)! - Let an action declare `sideEffect: true` when running it changes something
+  outside the workflow, and hold a Group to lookups on that answer. `defineAction`
+  and an integration's action literal both take the field, it defaults to `false`,
+  and it reaches the browser on the extension catalog. The seven writes the
+  built-in plugins ship now declare it, so grouping a Send Email or a Delete User
+  is refused rather than accepted against the Group contract.
+
+  Fix two Group defects on the canvas. Deleting a frame with the Delete key left
+  its interior edges and any collapsed inlet edge in the graph naming steps that
+  were gone, which the next save refused. An edge running from one frame's exit
+  into another frame's entry painted on the two members instead of the two frames,
+  so auto-layout read the frames as unconnected.
+
+  Cut some of the canvas render cost. A graph whose nodes were left out of the
+  order React Flow wants paid a re-sort and an allocation on every render, drag
+  frames included, and grouping a second selection, ungrouping one of two frames,
+  and pasting a frame each left it that way; all three now keep the order. The
+  painted edges also come back as the array they went in as for a graph with no
+  frame, though one holding a frame still rebuilds them per node change.
+
+- [#114](https://github.com/alandotcom/wfgraph/pull/114) [`2565518`](https://github.com/alandotcom/wfgraph/commit/2565518e5e16dea7f6ada86ccbb642a696d190b0) Thanks [@alandotcom](https://github.com/alandotcom)! - Allow AND-joins: two parallel action nodes can both feed one next step. Fan-out was already concurrent; saving and the canvas now accept multi-incoming edges when every predecessor completes successfully, with Wait-on-arm, Started↔Canceled, and exclusive-branch joins still refused.
+
+- [#115](https://github.com/alandotcom/wfgraph/pull/115) [`4f34676`](https://github.com/alandotcom/wfgraph/commit/4f34676d7049a9a2577e873c1a79da9a89d43e09) Thanks [@alandotcom](https://github.com/alandotcom)! - A disabled step now ends its branch, whatever kind of step it is, and the canvas
+  draws what that costs.
+
+  The engine used to stop only at a disabled Condition or Event Split. A disabled
+  lookup handed its null output on, and the step below read that null as an
+  answer. One rule replaces the two: a disabled node is skipped, recorded with a
+  null output, and nothing past it is scheduled. A saved workflow holding a
+  disabled step therefore runs less of itself than it did before, which a minor
+  bump carries because a disabled step was already a request to leave work out,
+  and the old behaviour left the step below reading a null it could not tell from
+  a real answer.
+
+  The editor mutes every step the run cannot reach, which until now was drawn only
+  for a Canceled subtree with no Cancel Event declared. A muted card sits at 50%
+  opacity and its incoming edge stops animating, so the dead part of a graph reads
+  as still. The disabled step itself keeps its own face, since a person needs to
+  tell the step they switched off from the steps that lost their path because of
+  it.
+
+  Disabled belongs to a Group as a whole. Selecting the frame offers the toggle
+  and writes the flag onto every member, which is what the engine walks. A member
+  selected on its own no longer offers it, the same way it offers no Delete, since
+  a frame with some members off and some on has no face it could honestly wear.
+  Grouping a step that was already off takes the whole frame with it.
+
+## 2.0.2
+
+### Patch Changes
+
+- [#104](https://github.com/alandotcom/wfgraph/pull/104) [`8702b01`](https://github.com/alandotcom/wfgraph/commit/8702b0121b01e2b817427d1334704abffce405a4) Thanks [@alandotcom](https://github.com/alandotcom)! - Effect, `@effect/vitest` and `@effect/opentelemetry` move from `4.0.0-rc.108` to
+  `4.0.0-rc.109`. An adopter installing `@wfgraph/core` or `@wfgraph/plugins` resolves the
+  newer release candidate. The RC is a patch: inference for `Effect.fromOption`, typed
+  `SqlError` on a failed `BEGIN`, and documentation. Nothing Workflow Graph calls changed.
+
+- [#107](https://github.com/alandotcom/wfgraph/pull/107) [`95eb7d5`](https://github.com/alandotcom/wfgraph/commit/95eb7d5f491e566745cfedc149a87b780ea17a76) Thanks [@alandotcom](https://github.com/alandotcom)! - Mark flattened child paths nullable when a parent object is null or an array
+  index may be missing, so the editor offers is-empty operators on those paths.
+
+  A derived path is reachable only when every ancestor on it is present. The
+  reader already marked a nullable object and a top-level scalar correctly, but
+  children under `nested.date` or `list[0].uuid` stayed required. Array `[0]`
+  children stay required only when the array declares `minItems >= 1`.
+
+## 2.0.1
+
+### Patch Changes
+
+- [#102](https://github.com/alandotcom/wfgraph/pull/102) [`24e0f68`](https://github.com/alandotcom/wfgraph/commit/24e0f68ed4928df74873fdc48f681457df4bc7fe) Thanks [@alandotcom](https://github.com/alandotcom)! - Keep arktype, Zod, and Effect closed sets and UUIDs in the fields the editor
+  derives, and stop marking a multi-branch `anyOf` nullable when no branch is
+  `{ type: "null" }`.
+
+  arktype renders a string-literal union as a bare `enum` with no `type`, and
+  `string.uuid` as a pattern plus the nil and max UUID consts. Zod puts `type` on
+  `z.enum` and `z.uuid`, but a literal union is `anyOf` of typed consts. Effect's
+  `Schema.Literals` is one `enum` array, while `Schema.Enum` is one `anyOf` branch
+  per member and `NullOr` wraps that in another `anyOf`. The JSON Schema reader
+  dropped the arktype shapes and Effect's `Schema.Enum`, and marked every
+  multi-branch `anyOf` nullable, so an Event threw at boot, an action output
+  silently omitted the field, and a described union offered is-empty operators on
+  a required enum.
+
 ## 2.0.0
 
 ### Major Changes

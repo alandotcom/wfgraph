@@ -174,29 +174,54 @@ const workflowAddNodeDataSchema = Schema.StructWithRest(
   unknownRest
 );
 
+const workflowGroupConfigSchema = Schema.Struct({
+  entryNodeIds: Schema.optional(listOf(NonEmptyTrimmedString)),
+  exitNodeId: Schema.optional(NonEmptyTrimmedString),
+  // Baked at nest time so GroupNode can paint its one outlet without
+  // scanning the graph for the exit Condition.
+  outletHandle: Schema.optional(Schema.Literal("true")),
+}).annotate({
+  message: "Group config must be an object",
+});
+
+const workflowGroupNodeDataSchema = Schema.StructWithRest(
+  Schema.Struct({
+    ...workflowNodeDataBaseFields,
+    type: Schema.Literal("group"),
+    config: Schema.optional(workflowGroupConfigSchema),
+  }),
+  unknownRest
+);
+
 /**
  * The message is the bound on what a rejection may say.
  *
- * When `type` holds none of the three literals, Effect selects no arm at all,
+ * When `type` holds none of the four literals, Effect selects no arm at all,
  * and a union that matched nothing renders as its own expected type beside the
  * whole value it rejected -- past the leaf hook `schema-message.ts` installs,
  * which is the only other place this project bounds a message. Node data is
  * whatever the editor drew, so that value is not something to put in a run
  * error or a log line. Saying what was expected covers every input that gets
- * here, because getting here is exactly `type` not being one of the three.
+ * here, because getting here is exactly `type` not being one of the four.
  */
 export const workflowNodeDataSchema = Schema.Union([
   workflowLifecycleNodeDataSchema,
   workflowActionNodeDataSchema,
   workflowAddNodeDataSchema,
+  workflowGroupNodeDataSchema,
 ]).annotate({
-  message: 'Node data needs a type of "lifecycle", "action", or "add"',
+  message: 'Node data needs a type of "lifecycle", "action", "add", or "group"',
 });
 
 export const workflowNodeAttributesSchema = Schema.StructWithRest(
   Schema.Struct({
     id: NonEmptyTrimmedString,
-    type: Schema.optional(Schema.Literals(["lifecycle", "action", "add"])),
+    type: Schema.optional(
+      Schema.Literals(["lifecycle", "action", "add", "group"])
+    ),
+    parentId: Schema.optional(NonEmptyTrimmedString),
+    width: Schema.optional(Schema.Finite),
+    height: Schema.optional(Schema.Finite),
     // `Schema.Finite` rejects Infinity and NaN. A node position holding either
     // is already corruption, and the editor's save store treats a rejected
     // graph as "nothing to save" rather than surfacing it.

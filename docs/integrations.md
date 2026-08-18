@@ -95,6 +95,15 @@ it, so both are written where they are read.
 **`category` defaults to the integration's `label`.** An action wanting a different
 heading in the selector still writes one.
 
+**`sideEffect: true` marks an action that changes something outside the workflow**: a
+message sent, a record written or removed. It defaults to `false`, which says the action
+only reads. The editor keeps an action carrying it out of a Group, because a Group is a
+bundle a builder pastes again after a Wait so the next send reads a fresh fetch, and a
+change to the outside world would land again with every paste. Note that this is a
+narrower question than the replay sense of the phrase the next section uses, where a
+lookup's own HTTP call counts too because `step.run` has to memoize it. `defineAction`
+takes the same field.
+
 **A handler takes one bag**, holding `input` (the decoded config), the credential reads,
 `step`, and the run's identity: `runMode`, `executionId`, `nodeId`, `nodeName`,
 `integrationId`. `defineAction` calls its handler the same way. One object rather than two

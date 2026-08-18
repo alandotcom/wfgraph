@@ -1,43 +1,25 @@
+/**
+ * The draft-save contract: a graph is stored for its shape, not its readiness.
+ *
+ * Every case below used to be a refusal. They are here as acceptances because
+ * refusing them threw the builder's work away -- the editor suppresses a refused
+ * autosave, so the canvas looked dirty and a reload dropped the edit. The
+ * matching refusals now live in `publish-checks.test.ts`.
+ */
+
 import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
-import {
-  IntegrationValidationFailed,
-  InvalidInput,
-} from "#src/backend/lib/effect/failures";
-import {
-  SilentAppLoggerLayer,
-  stubExtensionCatalog,
-  stubIntegrationRepo,
-} from "#src/backend/lib/effect/test-layers";
+import { InvalidInput } from "#src/backend/lib/effect/failures";
+import { SilentAppLoggerLayer } from "#src/backend/lib/effect/test-layers";
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import {
+  createDefaultConditionModel,
+  serializeConditionModel,
+} from "@wfgraph/shared/conditions/conditions";
 import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 
-const catalogLayer = stubExtensionCatalog({
-  actions: [
-    {
-      id: "custom/send",
-      label: "Send Message",
-      description: "Sends a message",
-      category: "Custom",
-      integration: "slack",
-      configFields: [
-        { key: "channel", label: "Channel", type: "text", required: true },
-      ],
-      outputFields: [],
-    },
-  ],
-  integrations: [
-    {
-      type: "slack",
-      label: "Slack",
-      description: "Slack",
-      credentialFields: {},
-      hasTest: false,
-    },
-  ],
-});
-
+/** A Lifecycle Node and one action wired to its Started outlet. */
 function graphWithAction(config: Record<string, unknown>) {
   return createSerializedWorkflowGraph({
     nodes: [
@@ -81,66 +63,43 @@ function graphWithAction(config: Record<string, unknown>) {
 }
 
 describe("prepareGraphSave", () => {
-  layer(
-    Layer.mergeAll(
-      SilentAppLoggerLayer,
-      catalogLayer,
-      stubIntegrationRepo({
-        typesByIds: () => Effect.succeed({ int_1: "slack" }),
-      })
-    )
-  )((it) => {
-    it.effect("refuses a missing required field", () =>
-      Effect.gen(function* () {
-        const failure = yield* prepareGraphSave({
-          graph: graphWithAction({
-            actionType: "custom/send",
-            integrationId: "int_1",
-          }),
-        }).pipe(Effect.flip);
+  layer(Layer.mergeAll(SilentAppLoggerLayer))((it) => {
+    // The four states a canvas passes through while a step is being built. Each
+    // one is a save that has to land.
+    const halfBuilt: Array<[string, Record<string, unknown>]> = [
+      ["no action selected yet", {}],
+      [
+        "an action whose required field is blank",
+        { actionType: "custom/send" },
+      ],
+      [
+        "an action naming no connection",
+        { actionType: "custom/send", channel: "#general" },
+      ],
+      [
+        "an action naming a connection nothing carries",
+        {
+          actionType: "custom/send",
+          channel: "#general",
+          integrationId: "gone",
+        },
+      ],
+    ];
 
-        assert.instanceOf(failure, InvalidInput);
-        assert.isTrue(failure.error.includes("missing required fields"));
-      })
-    );
+    for (const [name, config] of halfBuilt) {
+      it.effect(`saves a draft holding ${name}`, () =>
+        Effect.gen(function* () {
+          const prepared = yield* prepareGraphSave({
+            graph: graphWithAction(config),
+          });
 
-    it.effect("refuses an action that needs a connection and names none", () =>
-      Effect.gen(function* () {
-        const failure = yield* prepareGraphSave({
-          graph: graphWithAction({
-            actionType: "custom/send",
-            channel: "#general",
-          }),
-        }).pipe(Effect.flip);
+          assert.strictEqual(prepared.nodes.length, 2);
+          assert.strictEqual(prepared.edgeCount, 1);
+        })
+      );
+    }
 
-        assert.instanceOf(failure, InvalidInput);
-        assert.isTrue(failure.error.includes("connection"));
-      })
-    );
-
-    it.effect("refuses a present integration id nothing carries", () =>
-      Effect.gen(function* () {
-        const failure = yield* prepareGraphSave({
-          graph: graphWithAction({
-            actionType: "custom/send",
-            channel: "#general",
-            integrationId: "gone",
-          }),
-        }).pipe(
-          Effect.provide(
-            stubIntegrationRepo({
-              typesByIds: () => Effect.succeed({}),
-            })
-          ),
-          Effect.flip
-        );
-
-        assert.instanceOf(failure, IntegrationValidationFailed);
-        assert.deepStrictEqual(failure.invalidIntegrationIds, ["gone"]);
-      })
-    );
-
-    it.effect("accepts a fully configured action", () =>
+    it.effect("saves a fully configured action", () =>
       Effect.gen(function* () {
         const prepared = yield* prepareGraphSave({
           graph: graphWithAction({
@@ -152,6 +111,42 @@ describe("prepareGraphSave", () => {
 
         assert.strictEqual(prepared.nodes.length, 2);
         assert.strictEqual(prepared.edgeCount, 1);
+      })
+    );
+
+    // The shape half still refuses. A graph that does not parse is not a draft
+    // of anything, and a stored expression the compiler did not produce is one
+    // nothing downstream can repair.
+    it.effect("refuses a graph that does not parse", () =>
+      Effect.gen(function* () {
+        const failure = yield* prepareGraphSave({
+          graph: { nodes: "not a list", edges: [] },
+        }).pipe(Effect.flip);
+
+        assert.instanceOf(failure, InvalidInput);
+      })
+    );
+
+    it.effect("refuses CEL that disagrees with its own condition model", () =>
+      Effect.gen(function* () {
+        const model = createDefaultConditionModel(
+          {
+            path: "appointment.startsAt",
+            label: "appointment.startsAt",
+            type: "timestamp",
+          },
+          { groupId: "group-1", conditionId: "condition-1" }
+        );
+
+        const failure = yield* prepareGraphSave({
+          graph: graphWithAction({
+            actionType: "Condition",
+            conditionModel: serializeConditionModel(model),
+            condition: "appointment.startsAt > now + days(10)",
+          }),
+        }).pipe(Effect.flip);
+
+        assert.instanceOf(failure, InvalidInput);
       })
     );
   });

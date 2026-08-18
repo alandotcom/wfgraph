@@ -69,7 +69,8 @@ export type UpstreamField = ReferenceField & {
 /** Turn one schema-tree node into the flat reference field that addresses it. */
 function schemaFieldToReferenceField(
   field: WorkflowSchemaField,
-  path: string
+  path: string,
+  nullable: boolean
 ): ReferenceField {
   const description = field.description?.trim();
 
@@ -77,7 +78,7 @@ function schemaFieldToReferenceField(
     path,
     ...(description ? { description } : {}),
     type: field.type,
-    ...(field.nullable ? { nullable: true } : {}),
+    ...(nullable ? { nullable: true } : {}),
     ...(field.enumValues ? { enumValues: field.enumValues } : {}),
   };
 }
@@ -108,17 +109,23 @@ const MAX_REFERENCE_FIELD_DEPTH = 3;
  * since there is no child to name. An object with no named properties -- an open
  * record, or one whose properties the reader could not use -- has no children to
  * emit and stays a single entry.
+ *
+ * A derived path is reachable only when every ancestor on it is present, so its
+ * nullability is the OR of its own and its ancestors'. Array `[0]` children are
+ * nullable unless the array declares `minItems >= 1`, because the schema never
+ * otherwise guarantees a first element.
  */
 export function flattenSchemaToReferenceFields(
   schema: WorkflowSchemaField[]
 ): ReferenceField[] {
-  return collectReferenceFields(schema, "", MAX_REFERENCE_FIELD_DEPTH);
+  return collectReferenceFields(schema, "", MAX_REFERENCE_FIELD_DEPTH, false);
 }
 
 function collectReferenceFields(
   schema: WorkflowSchemaField[],
   prefix: string,
-  remainingDepth: number
+  remainingDepth: number,
+  ancestorNullable: boolean
 ): ReferenceField[] {
   if (remainingDepth <= 0) {
     return [];
@@ -133,7 +140,8 @@ function collectReferenceFields(
     }
 
     const path = prefix ? `${prefix}.${name}` : name;
-    fields.push(schemaFieldToReferenceField(field, path));
+    const nullable = ancestorNullable || Boolean(field.nullable);
+    fields.push(schemaFieldToReferenceField(field, path, nullable));
 
     const children = field.fields ?? [];
     if (children.length === 0) {
@@ -142,14 +150,20 @@ function collectReferenceFields(
 
     if (field.type === "object") {
       fields.push(
-        ...collectReferenceFields(children, path, remainingDepth - 1)
+        ...collectReferenceFields(children, path, remainingDepth - 1, nullable)
       );
       continue;
     }
 
     if (field.type === "array" && field.itemType === "object") {
+      const elementNullable = nullable || (field.minItems ?? 0) < 1;
       fields.push(
-        ...collectReferenceFields(children, `${path}[0]`, remainingDepth - 1)
+        ...collectReferenceFields(
+          children,
+          `${path}[0]`,
+          remainingDepth - 1,
+          elementNullable
+        )
       );
     }
   }
@@ -263,6 +277,83 @@ export function formatTemplateToken(input: {
 }): string {
   const suffix = input.fieldPath ? `.${input.fieldPath}` : "";
   return `{{@${input.nodeId}:${input.nodeLabel}${suffix}}}`;
+}
+
+/**
+ * Rewrite every template token inside a config or JSON value. Returning
+ * `undefined` leaves that token as it was. The same reference comes back when
+ * nothing changed, so a rename can tell a dirty config from an untouched one.
+ *
+ * Live node configs may hold `undefined` for optional keys the editor cleared
+ * (`integrationId: undefined`). Those keys stay put; a JSON codec would reject
+ * the whole object and skip the rewrite.
+ */
+export function mapTemplateTokens(
+  value: Record<string, unknown>,
+  rewrite: (token: TemplateToken) => string | undefined
+): Record<string, unknown>;
+export function mapTemplateTokens(
+  value: JsonValue,
+  rewrite: (token: TemplateToken) => string | undefined
+): JsonValue;
+export function mapTemplateTokens(
+  value: unknown,
+  rewrite: (token: TemplateToken) => string | undefined
+): unknown {
+  if (typeof value === "string") {
+    return mapTemplateString(value, rewrite);
+  }
+
+  if (Array.isArray(value)) {
+    let changed = false;
+    const next = value.map((item) => {
+      const mapped = mapTemplateTokens(item, rewrite);
+      if (mapped !== item) {
+        changed = true;
+      }
+      return mapped;
+    });
+    return changed ? next : value;
+  }
+
+  if (typeof value === "object" && value !== null) {
+    let changed = false;
+    const remapped: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value)) {
+      const mapped = mapTemplateTokens(nested, rewrite);
+      if (mapped !== nested) {
+        changed = true;
+      }
+      remapped[key] = mapped;
+    }
+    return changed ? remapped : value;
+  }
+
+  return value;
+}
+
+function mapTemplateString(
+  value: string,
+  rewrite: (token: TemplateToken) => string | undefined
+): string {
+  let changed = false;
+  const next = parseTemplate(value)
+    .map((segment) => {
+      if (segment.kind === "literal") {
+        return segment.text;
+      }
+
+      const replacement = rewrite(segment.token);
+      if (replacement === undefined || replacement === segment.token.raw) {
+        return segment.token.raw;
+      }
+
+      changed = true;
+      return replacement;
+    })
+    .join("");
+
+  return changed ? next : value;
 }
 
 const BRACKET_INDEX_PATTERN = /\[(\d+)\]/g;

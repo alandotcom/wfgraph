@@ -3,23 +3,17 @@ import {
   Position,
   useUpdateNodeInternals,
 } from "@xyflow/react";
-import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
-import {
-  AlertTriangle,
-  EyeOff,
-  GitBranch,
-  Hourglass,
-  Split,
-  Zap,
-} from "lucide-react";
+import { EyeOff, GitBranch, Hourglass, Split, Zap } from "lucide-react";
 import { Schema } from "effect";
 import { memo, useMemo, useState } from "react";
 import {
   Node,
+  NodeBody,
   NodeDescription,
   NodeTitle,
 } from "#src/components/flow-elements/node";
+import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
 import { Dialog, DialogContent, DialogTitle } from "#src/components/ui/dialog";
 import { readBase64ImageOutput } from "#src/components/workflow/workflow-run-shared";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
@@ -47,17 +41,19 @@ import {
   isEventSplitActionType,
 } from "@wfgraph/shared/lifecycle/event-split";
 import { useEventSplitOutlets } from "#src/lib/event-split-outlets";
-import { eventSplitCardWidth } from "#src/components/workflow/workflow-node-dimensions";
+import {
+  eventSplitCardWidth,
+  NODE_ICON_CLASS,
+  NODE_ICON_PX,
+  WORKFLOW_NODE_WIDTH,
+  workflowNodeSize,
+} from "#src/lib/workflow-node-dimensions";
 import { useAfterPaint, useNowMs } from "#src/hooks/effects";
 import { useExecutionLogsByNode } from "#src/hooks/use-execution-logs";
 import {
   readConfigString,
   readConfigStringOr,
 } from "@wfgraph/shared/graph/node-config";
-import {
-  integrationIdsQueryOptions,
-  NO_INTEGRATION_IDS,
-} from "#src/lib/rpc-query";
 
 type WaitPreviewData = {
   countdown: string;
@@ -329,17 +325,14 @@ const getIntegrationFromActionType = (
     : "System";
 };
 
-const requiresIntegration = (
-  catalog: ExtensionCatalog,
-  actionType: string
-): boolean => Boolean(findAction(catalog, actionType)?.integration);
-
 const ProviderLogo = ({
   actionType,
   catalog,
+  className = NODE_ICON_CLASS,
 }: {
   actionType: string;
   catalog: ExtensionCatalog;
+  className?: string;
 }) => {
   const integrationUi = useIntegrationUi();
 
@@ -347,12 +340,22 @@ const ProviderLogo = ({
   switch (actionType) {
     case BUILT_IN_ACTION_IDS.condition:
       return (
-        <GitBranch className="size-12 text-node-condition" strokeWidth={1.5} />
+        <GitBranch
+          className={cn(className, "text-node-condition")}
+          strokeWidth={1.5}
+        />
       );
     case BUILT_IN_ACTION_IDS.eventSplit:
-      return <Split className="size-12 text-node-split" strokeWidth={1.5} />;
+      return (
+        <Split className={cn(className, "text-node-split")} strokeWidth={1.5} />
+      );
     case BUILT_IN_ACTION_IDS.wait:
-      return <Hourglass className="size-12 text-node-wait" strokeWidth={1.5} />;
+      return (
+        <Hourglass
+          className={cn(className, "text-node-wait")}
+          strokeWidth={1.5}
+        />
+      );
     default:
       // Not a built-in, so the icon comes from its integration below.
       break;
@@ -363,23 +366,11 @@ const ProviderLogo = ({
     const ui = integrationUi[integrationType];
     if (ui) {
       const PluginIcon = ui.icon;
-      return <PluginIcon className="size-12" />;
+      return <PluginIcon className={className} />;
     }
   }
 
-  return <Zap className="size-12 text-node-wait" strokeWidth={1.5} />;
-};
-
-const ModelBadge = ({ model }: { model: string }) => {
-  if (!model) {
-    return null;
-  }
-
-  return (
-    <div className="rounded-full border border-muted-foreground/50 px-2 py-0.5 font-medium text-xs text-muted-foreground">
-      {getModelDisplayName(model)}
-    </div>
-  );
+  return <Zap className={cn(className, "text-node-wait")} strokeWidth={1.5} />;
 };
 
 function GeneratedImageThumbnail({ base64 }: { base64: string }) {
@@ -388,7 +379,10 @@ function GeneratedImageThumbnail({ base64 }: { base64: string }) {
   return (
     <>
       <button
-        className="relative size-12 cursor-zoom-in overflow-hidden rounded-lg transition-transform hover:scale-105"
+        className={cn(
+          NODE_ICON_CLASS,
+          "relative cursor-zoom-in overflow-hidden rounded-lg transition-transform hover:scale-105"
+        )}
         onClick={(e) => {
           e.stopPropagation();
           setDialogOpen(true);
@@ -397,10 +391,10 @@ function GeneratedImageThumbnail({ base64 }: { base64: string }) {
       >
         <img
           alt="Generated output"
-          className="size-12 object-cover"
-          height={48}
+          className={cn(NODE_ICON_CLASS, "object-cover")}
+          height={NODE_ICON_PX}
           src={`data:image/png;base64,${base64}`}
-          width={48}
+          width={NODE_ICON_PX}
         />
       </button>
 
@@ -435,16 +429,108 @@ function eventSplitOutletLeft(index: number, count: number): string {
   return `${((index + 0.5) / count) * 100}%`;
 }
 
-export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
+/**
+ * A nested card's handles anchor the interior edges the frame draws between its
+ * members; the frame owns the dots a person can drag from, so these render
+ * invisible and take no pointer events.
+ */
+const GROUPED_HANDLE_CLASS = "group-child-handle";
+
+const GROUPED_TARGET_HANDLES = [
+  { position: Position.Top, className: GROUPED_HANDLE_CLASS },
+];
+const GROUPED_SOURCE_HANDLES = [
+  { position: Position.Bottom, className: GROUPED_HANDLE_CLASS },
+];
+// A Condition reached by the group's own steps still branches on two handles,
+// and an interior edge names the branch it left by. They sit apart on the same
+// offsets a standalone Condition uses, so the two branches paint as two paths
+// rather than one line leaving a single point.
+const GROUPED_CONDITION_SOURCE_HANDLES = [
+  {
+    id: "true",
+    position: Position.Bottom,
+    className: GROUPED_HANDLE_CLASS,
+    style: { left: CONDITION_TRUE_HANDLE_LEFT },
+  },
+  {
+    id: "false",
+    position: Position.Bottom,
+    className: GROUPED_HANDLE_CLASS,
+    style: { left: CONDITION_FALSE_HANDLE_LEFT },
+  },
+];
+
+function GroupedActionNode({ data, selected, id }: ActionNodeProps) {
+  const catalog = useExtensionCatalog();
+  const updateNodeInternals = useUpdateNodeInternals();
+  const actionType = readConfigString(data?.config, "actionType");
+  const isConditionAction = isConditionActionType(actionType);
+
+  // Same reason as the standalone card below: a Condition renders two source
+  // handles where every other member renders one, and React Flow measures
+  // handles on its own schedule. A member's action stays editable, so this
+  // count changes under it.
+  useAfterPaint(isConditionAction, () => {
+    updateNodeInternals(id);
+  });
+
+  if (!data) {
+    return null;
+  }
+
+  const displayTitle =
+    data.label ||
+    (actionType ? findAction(catalog, actionType)?.label : undefined) ||
+    actionType ||
+    "Action";
+
+  return (
+    <Node
+      className={cn(
+        "nodrag flex h-14 w-[188px] flex-row items-center shadow-none transition-all duration-150 ease-out",
+        selected && "border-primary",
+        data.enabled === false && "opacity-50"
+      )}
+      data-testid={`action-node-${id}`}
+      handles={{
+        target: GROUPED_TARGET_HANDLES,
+        source: isConditionAction
+          ? GROUPED_CONDITION_SOURCE_HANDLES
+          : GROUPED_SOURCE_HANDLES,
+      }}
+      status={data.status}
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-2 px-3">
+        {actionType ? (
+          <ProviderLogo
+            actionType={actionType}
+            catalog={catalog}
+            className={cn(NODE_ICON_CLASS, "shrink-0")}
+          />
+        ) : (
+          <Zap
+            className={cn(NODE_ICON_CLASS, "shrink-0 text-muted-foreground")}
+            strokeWidth={1.5}
+          />
+        )}
+        <NodeTitle className="truncate text-sm">{displayTitle}</NodeTitle>
+        {/* A member is validated like any other node, so it has to be able to
+            say so. Inline at the end of the row, because this card is 56px tall
+            and a floated corner badge would sit on the icon. */}
+        {data.enabled !== false && (
+          <NodeIssueBadge issues={data.issues} placement="inline" />
+        )}
+      </div>
+    </Node>
+  );
+}
+
+const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
   const catalog = useExtensionCatalog();
   const updateNodeInternals = useUpdateNodeInternals();
   const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
   const executionLogs = useExecutionLogsByNode();
-  const {
-    data: availableIntegrationIds = NO_INTEGRATION_IDS,
-    isPending: isLoadingIntegrations,
-  } = useQuery(integrationIdsQueryOptions());
-  const integrationsLoaded = !isLoadingIntegrations;
   const nodeLog = executionLogs[id];
   const actionType = readConfigString(data?.config, "actionType");
   const isConditionAction = isConditionActionType(actionType);
@@ -497,51 +583,32 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
     const isDisabled = data.enabled === false;
     return (
       <Node
-        className={cn(
-          "flex size-48 flex-col items-center justify-center shadow-none transition-all duration-150 ease-out",
-          selected && "border-primary",
-          isDisabled && "opacity-50"
-        )}
+        className={cn(selected && "border-primary", isDisabled && "opacity-50")}
         data-testid={`action-node-${id}`}
         handles={{ target: true, source: true }}
         status={status}
+        style={workflowNodeSize()}
       >
         {isDisabled && (
           <div className="absolute top-2 left-2 rounded-full bg-muted-foreground/50 p-1">
             <EyeOff className="size-3.5 text-background" />
           </div>
         )}
-        <div className="flex flex-col items-center justify-center gap-3 p-6">
-          <Zap className="size-12 text-muted-foreground" strokeWidth={1.5} />
-          <div className="flex flex-col items-center gap-1 text-center">
-            <NodeTitle className="text-base">
-              {data.label || "Action"}
-            </NodeTitle>
-            <NodeDescription className="text-xs">
-              Select an action
-            </NodeDescription>
-          </div>
-        </div>
+        {!isDisabled && <NodeIssueBadge issues={data.issues} />}
+        <NodeBody>
+          <Zap
+            className={cn(NODE_ICON_CLASS, "text-muted-foreground")}
+            strokeWidth={1.5}
+          />
+          <NodeTitle>{data.label || "Action"}</NodeTitle>
+          <NodeDescription>Select an action</NodeDescription>
+        </NodeBody>
       </Node>
     );
   }
 
   const actionInfo = findAction(catalog, actionType);
   const displayTitle = data.label || actionInfo?.label || actionType;
-  const displayDescription =
-    data.description || getIntegrationFromActionType(catalog, actionType);
-
-  const needsIntegration = requiresIntegration(catalog, actionType);
-  const configuredIntegrationId = readConfigString(
-    data.config,
-    "integrationId"
-  );
-  const hasValidIntegration =
-    configuredIntegrationId &&
-    availableIntegrationIds.has(configuredIntegrationId);
-  // Wait for the connection list before claiming one is missing.
-  const integrationMissing =
-    integrationsLoaded && needsIntegration && !hasValidIntegration;
 
   const getAiModel = (): string | null => {
     if (actionType === "Generate Text") {
@@ -559,14 +626,15 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
 
   const aiModel = getAiModel();
   const isDisabled = data.enabled === false;
+  const displayDescription = waitPreview
+    ? waitPreview.countdown
+    : aiModel
+      ? getModelDisplayName(aiModel)
+      : data.description || getIntegrationFromActionType(catalog, actionType);
 
   return (
     <Node
-      className={cn(
-        "relative flex size-48 flex-col items-center justify-center shadow-none transition-all duration-150 ease-out",
-        selected && "border-primary",
-        isDisabled && "opacity-50"
-      )}
+      className={cn(selected && "border-primary", isDisabled && "opacity-50")}
       data-testid={`action-node-${id}`}
       handles={{
         target: true,
@@ -603,14 +671,13 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
               }))
             : true,
       }}
-      // A split is as wide as its outlets. Every other node keeps the width its
-      // class names, which is what `undefined` leaves standing.
-      style={
-        isEventSplitAction && splitOutlets.length > 1
-          ? { width: eventSplitCardWidth(splitOutlets.length) }
-          : undefined
-      }
+      // A split is as wide as its outlets. Every other node keeps the default.
       status={status}
+      style={workflowNodeSize(
+        isEventSplitAction
+          ? eventSplitCardWidth(splitOutlets.length)
+          : WORKFLOW_NODE_WIDTH
+      )}
     >
       {/* Disabled badge in top left */}
       {isDisabled && (
@@ -619,12 +686,10 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
         </div>
       )}
 
-      {/* Integration warning badge in top left (only if not disabled) */}
-      {!isDisabled && integrationMissing && (
-        <div className="absolute top-2 left-2 rounded-full bg-warning/50 p-1">
-          <AlertTriangle className="size-3.5 text-background" />
-        </div>
-      )}
+      {/* Validation badge in the same corner, for every kind of issue. A
+          disabled node is excluded from validation upstream, so this is absent
+          there rather than competing with the EyeOff badge above. */}
+      {!isDisabled && <NodeIssueBadge issues={data.issues} />}
 
       {isConditionAction && (
         <>
@@ -651,36 +716,32 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
           </div>
         ))}
 
-      <div className="flex flex-col items-center justify-center gap-3 p-6">
+      <NodeBody>
         {generatedImageBase64 ? (
           <GeneratedImageThumbnail base64={generatedImageBase64} />
         ) : (
           <ProviderLogo actionType={actionType} catalog={catalog} />
         )}
-        <div className="flex flex-col items-center gap-1 text-center">
-          <NodeTitle className="text-base">{displayTitle}</NodeTitle>
-          {waitPreview ? (
-            <div className="flex flex-col items-center gap-0.5">
-              <NodeDescription className="font-medium text-xs tabular-nums">
-                {waitPreview.countdown}
-              </NodeDescription>
-              <NodeDescription className="max-w-[10.5rem] text-xs leading-tight">
-                {waitPreview.triggerTime}
-              </NodeDescription>
-            </div>
-          ) : (
-            displayDescription && (
-              <NodeDescription className="text-xs">
-                {displayDescription}
-              </NodeDescription>
-            )
-          )}
-          {/* Model badge for AI nodes */}
-          {aiModel && <ModelBadge model={aiModel} />}
-        </div>
-      </div>
+        <NodeTitle>{displayTitle}</NodeTitle>
+        {displayDescription && (
+          <NodeDescription
+            className={waitPreview ? "font-medium tabular-nums" : undefined}
+          >
+            {displayDescription}
+          </NodeDescription>
+        )}
+      </NodeBody>
     </Node>
   );
+});
+
+StandaloneActionNode.displayName = "StandaloneActionNode";
+
+export const ActionNode = memo((props: ActionNodeProps) => {
+  if (props.parentId) {
+    return <GroupedActionNode {...props} />;
+  }
+  return <StandaloneActionNode {...props} />;
 });
 
 ActionNode.displayName = "ActionNode";

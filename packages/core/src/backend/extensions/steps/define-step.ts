@@ -326,6 +326,8 @@ export type ActionStep<TOutput = unknown> = {
   readonly label: string;
   readonly description: string;
   readonly category: string;
+  /** Whether running this changes the outside world; see `ActionStepInput`. */
+  readonly sideEffect: boolean;
   readonly configFields: readonly ActionConfigField[];
   /** The config shape, which the form is derived from. */
   readonly input: InputSchema<unknown>;
@@ -368,6 +370,16 @@ export type ActionStepInput<TInput, TOutput> = StepSchemas<TInput, TOutput> & {
   readonly label: string;
   readonly description: string;
   readonly category: string;
+  /**
+   * Whether running this action changes something outside the workflow: a
+   * message sent, a record written or removed. Defaults to `false`, which says
+   * the action only reads, and that is what lets a Group hold it.
+   *
+   * Narrower than the replay sense of the phrase this file uses elsewhere,
+   * where a lookup's own HTTP call is a side effect too because `step.run` has
+   * to memoize it. Here the question is only whether the outside world moved.
+   */
+  readonly sideEffect?: boolean;
   /**
    * What the input schema cannot say about the form: a placeholder, a row
    * count, a friendly option label, a group, a `showWhen`.
@@ -539,6 +551,7 @@ export function defineStep<TInput, TOutput>(
     label: definition.label,
     description: definition.description,
     category: definition.category,
+    sideEffect: definition.sideEffect ?? false,
     configFields: buildConfigForm(
       configFieldsFromInputSchema(asStandardSchema(definition.input)),
       definition.configFields ?? []

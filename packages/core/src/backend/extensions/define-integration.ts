@@ -82,6 +82,13 @@ type ActionInputSide<TCredentials, TInput, TOutput> = {
   readonly description: string;
   /** Defaults to the integration's own label, which is the usual heading. */
   readonly category?: string;
+  /**
+   * Whether running this action changes something outside the workflow: a
+   * message sent, a record written or removed. Defaults to `false`, which says
+   * the action only reads, and that is what lets a Group hold it. See
+   * `ActionStepInput` for how this differs from the replay sense of the phrase.
+   */
+  readonly sideEffect?: boolean;
   readonly input: InputSchema<TInput>;
   readonly configFields?: readonly ActionConfigFieldFor<TInput>[];
   readonly handler: (

@@ -1,6 +1,6 @@
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";
 import type { QueryClient } from "@tanstack/react-query";
-import { type Integration, rpc } from "#src/lib/rpc-client";
+import { rpc } from "#src/lib/rpc-client";
 import type { WorkflowApiPayload } from "@wfgraph/shared/graph/api-contracts";
 
 /**
@@ -23,27 +23,6 @@ export const orpcQuery = createTanstackQueryUtils(rpc);
  */
 export const integrationsQueryOptions = () =>
   orpcQuery.integration.getAll.queryOptions({ input: {} });
-
-function toIntegrationIds(integrations: Integration[]): ReadonlySet<string> {
-  return new Set(integrations.map((integration) => integration.id));
-}
-
-/** The value a node reads before the connection list has arrived. */
-export const NO_INTEGRATION_IDS: ReadonlySet<string> = new Set();
-
-/**
- * Just the ids, for the nodes on the canvas asking "does the connection I
- * point at still exist?".
- *
- * Every ActionNode subscribes to this, so identity matters: a module-level
- * select over structurally shared data hands back the same Set across a refetch
- * that changed nothing, and the canvas does not re-render.
- */
-export const integrationIdsQueryOptions = () =>
-  orpcQuery.integration.getAll.queryOptions({
-    input: {},
-    select: toIntegrationIds,
-  });
 
 /**
  * The workflow list, for the dashboard and the toolbar's switcher.

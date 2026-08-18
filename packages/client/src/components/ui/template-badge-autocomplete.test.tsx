@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { getDefaultStore } from "jotai";
 import { type ReactElement, useState } from "react";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
@@ -549,9 +549,15 @@ describe("Template badge rendering", () => {
       );
     });
 
-    getDefaultStore().set(updateNodeDataAtom, {
-      id: "lifecycle_1",
-      data: { label: "Incoming Hook" },
+    // A rename is a store write with no DOM event behind it, so the re-render
+    // it causes belongs to the test rather than to a browser. Written outside
+    // `act` it lands whenever the machine gets to it, which on a slow runner is
+    // after the case has ended.
+    act(() => {
+      getDefaultStore().set(updateNodeDataAtom, {
+        id: "lifecycle_1",
+        data: { label: "Incoming Hook" },
+      });
     });
 
     await waitFor(() => {
@@ -651,9 +657,11 @@ describe("Template badge editing", () => {
     fireEvent.input(textbox);
     await waitFor(() => expect(latestValue).toBe("abc"));
 
-    getDefaultStore().set(updateNodeDataAtom, {
-      id: "lifecycle_1",
-      data: { label: "Renamed" },
+    act(() => {
+      getDefaultStore().set(updateNodeDataAtom, {
+        id: "lifecycle_1",
+        data: { label: "Renamed" },
+      });
     });
 
     await waitFor(() => expect(textbox.textContent).toBe("abc"));

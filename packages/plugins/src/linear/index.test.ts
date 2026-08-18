@@ -42,18 +42,35 @@ describe("the linear integration", () => {
   it("offers the fields inside find-issues' list", () => {
     expect(outputFieldsOf("find-issues")).toEqual([
       { path: "issues", description: "Array of issues found", type: "array" },
-      { path: "issues[0].id", description: "Issue ID", type: "string" },
-      { path: "issues[0].title", description: "Issue title", type: "string" },
-      { path: "issues[0].url", description: "Issue URL", type: "string" },
+      {
+        path: "issues[0].id",
+        description: "Issue ID",
+        type: "string",
+        nullable: true,
+      },
+      {
+        path: "issues[0].title",
+        description: "Issue title",
+        type: "string",
+        nullable: true,
+      },
+      {
+        path: "issues[0].url",
+        description: "Issue URL",
+        type: "string",
+        nullable: true,
+      },
       {
         path: "issues[0].state",
         description: "Workflow state name",
         type: "string",
+        nullable: true,
       },
       {
         path: "issues[0].priority",
         description: "Priority, 0 (none) through 4 (low)",
         type: "number",
+        nullable: true,
       },
       {
         path: "issues[0].assigneeId",

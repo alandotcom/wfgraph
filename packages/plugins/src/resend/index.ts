@@ -265,6 +265,7 @@ export const resend = defineIntegration({
     "send-email": {
       label: "Send Email",
       description: "Send an email via Resend",
+      sideEffect: true,
       input: sendEmailInput,
       output: sendEmailOutput,
       configFields: [
