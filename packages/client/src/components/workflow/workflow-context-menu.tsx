@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
@@ -41,6 +42,20 @@ import { cn } from "@wfgraph/shared/utils";
 import { analyzeGroupableSelection } from "@wfgraph/shared/graph/node-group";
 
 export type ContextMenuType = "node" | "edge" | "pane" | null;
+
+/** The widest the menu draws (`max-w-72`), and the gap it keeps from the window
+ *  edge. A menu holding no hint is narrower than this, and clamping it as though
+ *  it were the widest one only ever leaves it further inside the window. */
+const MENU_WIDTH_PX = 288;
+const VIEWPORT_MARGIN_PX = 8;
+/**
+ * The tallest the menu gets: six rows, one of them carrying a wrapped hint.
+ * Read to decide which edge the menu hangs from, so a click near the bottom of
+ * the window opens upward the way a native context menu does. A measurement
+ * would be exact and would also cost a layout pass per open, and the only thing
+ * riding on it is which of two anchors is used.
+ */
+const MENU_HEIGHT_PX = 280;
 
 export type ContextMenuState = {
   type: ContextMenuType;
@@ -243,15 +258,27 @@ export function WorkflowContextMenu({
   const canGroup = grouping.ok;
   const showUngroup = canUngroup(clicked);
   const deleteRefusal = clicked ? refuseDelete([clicked]) : null;
+  // Below the cursor when the menu fits there, above it otherwise.
+  const opensUpward =
+    menuState.position.y + MENU_HEIGHT_PX + VIEWPORT_MARGIN_PX >
+    window.innerHeight;
   const nodeLabel = clicked?.data.label || "Step";
 
-  return (
+  // Mounted on the body rather than in place: the canvas sits inside a
+  // `fixed inset-0 z-0` layer, so a z-index written here is measured against
+  // that layer's siblings and the properties panel drew over the menu.
+  return createPortal(
     <div
-      className="fade-in-0 zoom-in-95 fixed z-50 min-w-[8rem] animate-in overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+      className="fade-in-0 zoom-in-95 fixed z-50 max-h-[calc(100vh-1rem)] w-fit min-w-[8rem] max-w-72 animate-in overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
       ref={menuRef}
       style={{
-        left: menuState.position.x,
-        top: menuState.position.y,
+        // Held inside the right edge against the widest the menu can draw, so
+        // a right-click near that edge no longer puts half the menu off the
+        // window. The item hints are what made it wide enough to matter.
+        left: `min(${menuState.position.x}px, calc(100vw - ${MENU_WIDTH_PX + VIEWPORT_MARGIN_PX}px))`,
+        ...(opensUpward
+          ? { bottom: `calc(100vh - ${menuState.position.y}px)` }
+          : { top: menuState.position.y }),
       }}
     >
       {menuState.type === "node" && (
@@ -325,7 +352,8 @@ export function WorkflowContextMenu({
           />
         </>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -369,17 +397,22 @@ function MenuItem({
       title={hint}
       type="button"
     >
-      {icon}
-      <span className="flex min-w-0 flex-col items-start">
-        {label}
+      <span className="shrink-0">{icon}</span>
+      {/* The hint wraps rather than widening the menu, and a step named longer
+          than the row truncates, since the row is what says which step this is
+          and the name is repeated in the properties panel. */}
+      <span className="flex min-w-0 flex-col items-start text-left">
+        <span className="w-full truncate">{label}</span>
         {hint ? (
           <span className="text-muted-foreground text-xs leading-tight">
             {hint}
           </span>
         ) : null}
       </span>
-      {shortcut ? (
-        <span className="ml-auto pl-4 text-muted-foreground text-xs tracking-widest">
+      {/* A disabled row drops its shortcut: the key does nothing there, and the
+          space it held is what the hint wraps into. */}
+      {shortcut && !disabled ? (
+        <span className="ml-auto shrink-0 pl-4 text-muted-foreground text-xs tracking-widest">
           {shortcut}
         </span>
       ) : null}
