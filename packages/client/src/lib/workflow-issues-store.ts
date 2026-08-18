@@ -18,7 +18,11 @@ import {
 } from "@wfgraph/shared/graph/workflow-issues";
 import type { NodeIssueSummary } from "#src/lib/workflow-graph-types";
 
-/** Written by `useCollectWorkflowIssues`, which is the only thing that may. */
+/**
+ * Written by `useCollectWorkflowIssues`, the only thing that may say what is
+ * wrong. `loadWorkflowGraphAtom` empties it, because the graph those issues
+ * describe has just been replaced.
+ */
 export const workflowIssuesAtom = atom<WorkflowIssue[]>([]);
 
 /**

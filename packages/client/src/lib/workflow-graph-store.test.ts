@@ -350,6 +350,26 @@ describe("graph history", () => {
     expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["z"]);
   });
 
+  it("drops the previous workflow's issues when a graph is loaded", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(workflowIssuesAtom, [
+      {
+        kind: "missing_required_field",
+        severity: "blocking",
+        nodeId: "a",
+        nodeLabel: "a",
+        fieldKey: "channel",
+        fieldLabel: "Channel",
+        message: 'Node "a" is missing required field "Channel"',
+      },
+    ]);
+
+    // The collector is debounced, so nothing else clears these for ~300ms and
+    // the chip would count them against a graph holding no node "a".
+    store.set(loadWorkflowGraphAtom, { nodes: [actionNode("z")], edges: [] });
+    expect(store.get(workflowIssuesAtom)).toEqual([]);
+  });
+
   it("records nothing when a delete removes nothing", () => {
     const store = createGraphStore([lifecycleNode("t")], []);
 

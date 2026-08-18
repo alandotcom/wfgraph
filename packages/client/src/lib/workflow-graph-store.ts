@@ -34,6 +34,7 @@ import {
 import { inactiveBranch } from "#src/lib/inactive-branch";
 import {
   EMPTY_ISSUES,
+  workflowIssuesAtom,
   workflowIssuesByNodeIdAtom,
 } from "#src/lib/workflow-issues-store";
 import {
@@ -318,6 +319,11 @@ export const loadWorkflowGraphAtom = atom(
     set(selectedEdgeAtom, null);
     set(newlyCreatedNodeIdAtom, null);
     set(hasUnsavedChangesAtom, false);
+    // Issues name the node ids of the graph being replaced. The collector is
+    // debounced, so leaving them would let the toolbar chip count the previous
+    // workflow's faults against this one until the next settle, and the badges
+    // it claims to agree with would already be gone.
+    set(workflowIssuesAtom, []);
   }
 );
 
