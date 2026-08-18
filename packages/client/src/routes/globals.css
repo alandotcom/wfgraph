@@ -306,7 +306,10 @@
    `border`, `background-color` and `box-shadow` declarations read. */
 .react-flow .react-flow__node-group {
   --xy-node-border: none;
+  /* Two fills to clear, not one: the shared default-node rule reads the first
+     variable, and a rule after it repaints the group alone from the second. */
   --xy-node-background-color: transparent;
+  --xy-node-group-background-color: transparent;
   --xy-node-border-radius: 0;
   --xy-node-boxshadow-hover: none;
   --xy-node-boxshadow-selected: none;
