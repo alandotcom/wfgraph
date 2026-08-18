@@ -1,5 +1,18 @@
 # @wfgraph/client
 
+## 2.2.1
+
+### Patch Changes
+
+- [#121](https://github.com/alandotcom/wfgraph/pull/121) [`b15ee18`](https://github.com/alandotcom/wfgraph/commit/b15ee184c717d8053ab8cd8f75134bbc23095c27) Thanks [@alandotcom](https://github.com/alandotcom)! - Loading a workflow drops the previous one's issues.
+
+  `loadWorkflowGraphAtom` cleared selection, undo history and the dirty flag, and
+  left `workflowIssuesAtom` holding what the last graph was accused of. The
+  collector is debounced by 300ms, so for that window the toolbar chip counted
+  faults against a canvas whose node ids no longer matched, and the badges it
+  claims to agree with had already gone with the old nodes. The load now empties
+  the list, which is the state a first open already starts in.
+
 ## 2.2.0
 
 ### Minor Changes
