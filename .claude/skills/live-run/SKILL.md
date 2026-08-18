@@ -29,12 +29,14 @@ Everything else belongs in vitest, which is faster and repeatable.
 ## 1. Start the stack
 
 ```bash
-(pnpm run dev > /tmp/wfgraph-dev.log 2>&1 &)
+(INNGEST_DEV_PORT=8388 pnpm run dev > /tmp/wfgraph-dev.log 2>&1 &)
 ```
 
 Three processes: the example app on 4017, Vite in `packages/client`, and
-`inngest dev` on 8388. Nothing else has to be running: the app opens
-`examples/wfgraph.sqlite` and creates its schema on first boot.
+`inngest dev`. That last one takes free ports unless it is told otherwise, which
+is what `INNGEST_DEV_PORT` above is for: the curl in step 3 needs a port known in
+advance. Nothing else has to be running: the app opens `examples/wfgraph.sqlite`
+and creates its schema on first boot.
 
 **Trap.** A backgrounded `pnpm run dev` returns at once, and the harness reports
 it as finished while the three processes keep running. Wait for readiness rather

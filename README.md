@@ -27,7 +27,8 @@ cat > .env.local <<EOF
 INTEGRATION_ENCRYPTION_KEY=$(openssl rand -hex 32)
 EOF
 
-# App :4017, editor :5173, Inngest CLI :8388
+# App :4017, editor :5173. The Inngest CLI takes free ports and prints its own.
+# INNGEST_DEV_PORT pins that one.
 pnpm run dev
 ```
 
