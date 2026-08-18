@@ -105,7 +105,9 @@ const child = spawn(
     "--prefix-colors",
     "blue,green,magenta",
     "pnpm run dev:app",
-    "pnpm --filter @wfgraph/client dev",
+    // Vite runs through scripts/dev-client.ts, whose header says what a plain
+    // `pnpm --filter @wfgraph/client dev` does to Ctrl+C.
+    "tsx scripts/dev-client.ts",
     "pnpm run dev:inngest",
   ],
   { stdio: "inherit", env }
