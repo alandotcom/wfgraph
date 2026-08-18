@@ -370,6 +370,17 @@ describe("graph history", () => {
     expect(store.get(workflowIssuesAtom)).toEqual([]);
   });
 
+  it("hands a clean load the empty list it already held", () => {
+    const store = createGraphStore(...standardGraph());
+    const before = store.get(workflowIssuesAtom);
+
+    // jotai compares the written value, so reusing the constant leaves
+    // `workflowIssuesByNodeIdAtom` and the canvas paint below it untouched on
+    // the frame a new graph mounts.
+    store.set(loadWorkflowGraphAtom, { nodes: [actionNode("z")], edges: [] });
+    expect(store.get(workflowIssuesAtom)).toBe(before);
+  });
+
   it("records nothing when a delete removes nothing", () => {
     const store = createGraphStore([lifecycleNode("t")], []);
 

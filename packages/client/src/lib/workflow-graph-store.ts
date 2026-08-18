@@ -34,6 +34,7 @@ import {
 import { inactiveBranch } from "#src/lib/inactive-branch";
 import {
   EMPTY_ISSUES,
+  NO_ISSUES,
   workflowIssuesAtom,
   workflowIssuesByNodeIdAtom,
 } from "#src/lib/workflow-issues-store";
@@ -323,7 +324,7 @@ export const loadWorkflowGraphAtom = atom(
     // debounced, so leaving them would let the toolbar chip count the previous
     // workflow's faults against this one until the next settle, and the badges
     // it claims to agree with would already be gone.
-    set(workflowIssuesAtom, []);
+    set(workflowIssuesAtom, NO_ISSUES);
   }
 );
 

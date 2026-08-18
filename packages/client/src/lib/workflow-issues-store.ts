@@ -19,11 +19,18 @@ import {
 import type { NodeIssueSummary } from "#src/lib/workflow-graph-types";
 
 /**
+ * The one array standing for "nothing to say", so a pass that finds nothing and
+ * a load that clears the list both write the value already there. jotai skips a
+ * write it compares equal, which spares the Map below a rebuild.
+ */
+export const NO_ISSUES: WorkflowIssue[] = [];
+
+/**
  * Written by `useCollectWorkflowIssues`, the only thing that may say what is
  * wrong. `loadWorkflowGraphAtom` empties it, because the graph those issues
  * describe has just been replaced.
  */
-export const workflowIssuesAtom = atom<WorkflowIssue[]>([]);
+export const workflowIssuesAtom = atom<WorkflowIssue[]>(NO_ISSUES);
 
 /**
  * The badge each flagged node draws, built once per collection pass.
