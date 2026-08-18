@@ -69,7 +69,6 @@
     "@effect/opentelemetry": "catalog:",
     "@hono/node-server": "^2.1.0",
     "@logtape/logtape": "catalog:",
-    "@logtape/pretty": "catalog:",
     "@marcbachmann/cel-js": "catalog:",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/resources": "^2.10.0",

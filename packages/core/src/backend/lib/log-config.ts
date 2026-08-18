@@ -4,8 +4,8 @@
  * sends every record to a `WfGraphLogger` a host passed, and the notice printed
  * when nobody configured anything.
  *
- * Nothing here imports a formatter, so the Worker bundle stays free of
- * `@logtape/pretty` and the `node:util` it reaches for. `@wfgraph/core/logging`
+ * Nothing here imports a formatter, so the Worker bundle stays free of the
+ * `node:util` that `pretty-formatter.ts` reaches for. `@wfgraph/core/logging`
  * is where the console formatters live.
  */
 
@@ -57,9 +57,10 @@ export function loggerConfigs(
 /**
  * Renders logtape's alternating template/value message array into one string.
  * The bridge target takes a message and a property bag, so the placeholders
- * have to be filled in before the record leaves.
+ * have to be filled in before the record leaves. `pretty-formatter.ts` renders
+ * a header's message through the same function.
  */
-function renderLogMessage(message: readonly unknown[]): string {
+export function renderLogMessage(message: readonly unknown[]): string {
   let result = "";
   for (let i = 0; i < message.length; i += 2) {
     result += message[i];
