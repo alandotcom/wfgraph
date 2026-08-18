@@ -290,6 +290,32 @@
   --xy-connectionline-stroke-default: var(--muted-foreground);
 }
 
+/* The editor's frame node is typed `group`, which is also one of React Flow's
+   four built-in types, so the wrapper it renders picks up
+   `.react-flow__node-group` and every default-node paint that class carries: a
+   second border and fill around the frame `GroupNode` draws, plus 10px of
+   padding that pulls that frame inward while the member nodes keep positioning
+   from the wrapper's own origin, which is what closed the frame's side gutters
+   to 2px. The wrapper is positioning alone here, so each of those defaults is
+   handed back.
+
+   `.react-flow` is in the selector to outrank the library's own rule: React
+   Flow's stylesheet is imported by the canvas module rather than by `main.tsx`,
+   so it lands after this file and wins every tie. The `--xy-*` variables need
+   no such help, since a value set on the element is what the library's own
+   `border`, `background-color` and `box-shadow` declarations read. */
+.react-flow .react-flow__node-group {
+  --xy-node-border: none;
+  --xy-node-background-color: transparent;
+  --xy-node-border-radius: 0;
+  --xy-node-boxshadow-hover: none;
+  --xy-node-boxshadow-selected: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+  text-align: left;
+}
+
 /* React Flow attribution styling */
 .react-flow__attribution {
   background: transparent !important;
