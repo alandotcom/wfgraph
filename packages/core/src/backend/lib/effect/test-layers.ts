@@ -1,5 +1,9 @@
 import { drizzle } from "drizzle-orm/pg-proxy";
 import { Effect, Layer, ManagedRuntime } from "effect";
+import {
+  type AgentSettings,
+  makeAgentConfigLayer,
+} from "#src/backend/agent/config";
 import type { WfGraphDatabase } from "#src/backend/lib/db/index";
 import { relations } from "#src/backend/lib/db/schema";
 import {
@@ -412,6 +416,8 @@ export function stubWfGraphRuntime(
     integrationRepo?: Partial<IntegrationRepo["Service"]>;
     apiKeyRepo?: Partial<ApiKeyRepo["Service"]>;
     inngestClient?: Partial<InngestClient["Service"]>;
+    /** The build agent is off unless a test turns it on. */
+    agent?: AgentSettings;
   } = {}
 ): ManagedRuntime.ManagedRuntime<WfGraphServices, never> {
   return ManagedRuntime.make(
@@ -422,6 +428,7 @@ export function stubWfGraphRuntime(
       stubExecutionRepo(overrides.executionRepo),
       stubIntegrationRepo(overrides.integrationRepo),
       stubApiKeyRepo(overrides.apiKeyRepo),
+      makeAgentConfigLayer(overrides.agent ?? { enabled: false }),
       stubInngestClient(overrides.inngestClient)
     )
   );

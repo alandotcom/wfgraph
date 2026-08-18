@@ -349,6 +349,9 @@ application's router serves static files.
 | `extensions.events`       | No       | `defineEvent` values                                                                                                                                           |
 | `extensions.actions`      | No       | `defineAction` values                                                                                                                                          |
 | `extensions.integrations` | No       | `defineIntegration` values                                                                                                                                     |
+| `agent.apiKey`            | No       | OpenAI API key. Absent or blank turns the build agent off, and the editor then shows no chat panel                                                             |
+| `agent.model`             | No       | Model id the agent runs against. Defaults to a current OpenAI model                                                                                            |
+| `agent.baseUrl`           | No       | An OpenAI-compatible endpoint that is not OpenAI's own                                                                                                         |
 | `logger`                  | No       | A `WfGraphLogger` that takes every record. See Logging below                                                                                                   |
 | `client`                  | No       | The editor bundle to serve, from `@wfgraph/client`                                                                                                             |
 

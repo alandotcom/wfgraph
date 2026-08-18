@@ -185,6 +185,11 @@ const wfgraph = await createWfGraphApp({
   encryption: {
     key: process.env.INTEGRATION_ENCRYPTION_KEY,
   },
+  // The build agent is off without a key, and the editor then shows no chat
+  // panel, so an adopter who wants no AI in their editor writes nothing here.
+  agent: {
+    apiKey: process.env.OPENAI_API_KEY,
+  },
   inngest: {
     id: process.env.INNGEST_APP_ID ?? "notifications-workflow",
     isDev: !isProduction,

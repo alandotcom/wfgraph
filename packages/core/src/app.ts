@@ -36,6 +36,10 @@ import {
 } from "#src/backend/lib/log-config";
 import { getAppLogger } from "#src/backend/lib/logger";
 import {
+  readAgentSettings,
+  type WfGraphAgentConfig,
+} from "#src/backend/agent/config";
+import {
   createWfGraphRuntime,
   type WfGraphRuntime,
 } from "#src/backend/runtime";
@@ -90,6 +94,15 @@ export type WfGraphAppOptions = {
    * a line is what turns something off.
    */
   extensions?: WfGraphExtensions;
+  /**
+   * The build agent: the chat panel in the editor that reads the catalog and
+   * edits the open workflow.
+   *
+   * Absent, or with a blank `apiKey`, the agent is off: no model is called, and
+   * the editor shows no chat panel. A host passes its own key, conventionally
+   * `process.env.OPENAI_API_KEY`.
+   */
+  agent?: WfGraphAgentConfig;
   /**
    * The workflow editor, from `import { clientBundle } from "@wfgraph/client"`.
    *
@@ -224,6 +237,7 @@ async function buildWfGraphApp(
     runtime = createWfGraphRuntime({
       inngest,
       extensions,
+      agent: readAgentSettings(options.agent),
       repositories: persistence.repositories,
     });
 

@@ -66,6 +66,7 @@
     "build": "tsdown"
   },
   "dependencies": {
+    "@effect/ai-openai": "catalog:",
     "@effect/opentelemetry": "catalog:",
     "@hono/node-server": "^2.1.0",
     "@logtape/logtape": "catalog:",
@@ -93,6 +94,7 @@
     "@inngest/test": "^1.0.0",
     "@opentelemetry/sdk-trace-base": "^2.10.0",
     "@types/express": "^5.0.6",
+    "@wfgraph/agent": "workspace:*",
     "@wfgraph/shared": "workspace:*",
     "arktype": "catalog:",
     "express": "^5.2.1",

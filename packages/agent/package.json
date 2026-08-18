@@ -1,0 +1,19 @@
+{
+  "name": "@wfgraph/agent",
+  "version": "2.2.2",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#src/*": "./src/*.js"
+  },
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "effect": "catalog:",
+    "nanoid": "catalog:"
+  },
+  "devDependencies": {
+    "@wfgraph/shared": "workspace:*"
+  }
+}
