@@ -82,9 +82,11 @@ describe("createWfGraphApp mounted at the root", () => {
           integrations: expect.any(Array),
         },
       });
-      // And it is the whole envelope. The browser reads this one member, so a
-      // second one here would be a surface the editor never sees.
-      expect(Object.keys(payload as object)).toEqual(["catalog"]);
+      // The build agent is off, because these options name no model key.
+      expect(payload).toMatchObject({ agent: { enabled: false } });
+      // And those are the whole envelope. The browser reads exactly these two
+      // members, so a third here would be a surface the editor never sees.
+      expect(Object.keys(payload as object)).toEqual(["catalog", "agent"]);
     } finally {
       await app.dispose();
     }
@@ -313,6 +315,7 @@ describe("createWfGraphApp with an auth predicate", () => {
     const runtime = createWfGraphRuntime({
       inngest,
       extensions: assembleExtensions({}),
+      agent: { enabled: false },
       repositories: makePostgresRepositories(
         database,
         createIntegrationCipher(BASE_OPTIONS.encryption)

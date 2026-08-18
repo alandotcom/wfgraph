@@ -1,6 +1,7 @@
 import { RPCHandler } from "@orpc/server/fetch";
 import { Effect, Result, Schema, type SchemaAST } from "effect";
 import { Hono } from "hono";
+import { AgentConfig } from "#src/backend/agent/config";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
 import type { InngestServeHandler } from "#src/backend/lib/inngest/client";
@@ -352,11 +353,15 @@ export function createApiApp(options: CreateApiAppOptions) {
     // The catalog is the whole surface in one document, and the only channel the
     // editor learns it through: an Event, an action and an integration all reach it
     // here, the built-in Condition and Wait and a host's own actions included.
-    .get("/extensions", async (c) =>
-      c.json({
-        catalog: (await runtime.runPromise(Extensions)).catalog,
-      })
-    )
+    .get("/extensions", async (c) => {
+      const [extensions, agent] = await runtime.runPromise(
+        Effect.all([Extensions, AgentConfig])
+      );
+      return c.json({
+        catalog: extensions.catalog,
+        agent: { enabled: agent.enabled },
+      });
+    })
     .all("/auth", (c) => c.json({ error: "Not found" }, 404))
     .all("/auth/*", (c) => c.json({ error: "Not found" }, 404))
     .all("/og", (c) => c.json({ error: "Not found" }, 404))

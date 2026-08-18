@@ -4,6 +4,10 @@ Workflow Graph: a pnpm workspace monorepo with four packages under `packages/`,
 beside `@wfgraph/example-app` (`examples/`), the host app `pnpm run dev` runs.
 
 - `@wfgraph/shared` (`packages/shared`) runtime-agnostic types, workflow contracts, utilities
+- `@wfgraph/agent` (`packages/agent`) the build agent's tools, toolkit and system prompt.
+  Private and unbuilt like `@wfgraph/shared`, and inlined into core. It depends on
+  `@wfgraph/shared` and `effect` alone, so a tool is testable with no model, no HTTP
+  and no database
 - `@wfgraph/core` (`packages/core`) library entrypoints and the backend
 - `@wfgraph/client` (`packages/client`) the React SPA, handed to `createWfGraphApp` as `client`
 - `@wfgraph/plugins` (`packages/plugins`) the five built-in integrations. Each server half
@@ -215,6 +219,13 @@ payload are each stored where they can be read whole, and one of them printed at
 a library, and never take a version from memory. Prefer latest stable. Use Base UI for UI
 primitives and do not introduce Radix. Bundle size is not a concern here.
 
+The one Radix in the tree arrives under `@assistant-ui/react`, which the build agent's
+chat panel is built on. Its own widget-level Radix sits in primitives this repo does not
+import (`assistantModal`, `actionBarMore`, `threadListItemMore`, `dropdownMenuRenderPrimitives`).
+What we write stays Base UI: the panel composes assistant-ui's headless primitives with
+`components/ui/button` and the rest of `components/ui`, which is also what the registry's
+own Base UI flavour at `r.assistant-ui.com/base/*` does.
+
 ## Pitfalls that have bitten
 
 **`vi.mock` is hoisted, and shares the worker's module graph.** vitest lifts every
@@ -362,6 +373,13 @@ Reads and writes both go through `orpcQuery` from `#src/lib/rpc-query`: a read i
 `#src/lib/rpc-client` exports the raw `rpc` client, `ApiError`, the response codec
 `toSavedWorkflow`, and `workflowApi`, which exists only for the autosave queue in
 `workflow-save-store.ts`, because that runs outside React.
+
+**One procedure streams, and it is the agent's.** `agent.chat` declares an
+`eventIterator` output, so its handler is an async generator and `RPCLink` hands the
+browser an async iterable. `rpcStreamHandler` in `backend/rpc/router.ts` is the seam,
+beside `rpcEffectHandler`. A failure raised while building the stream becomes an oRPC
+error; a failure once it is running cannot, because the response has already begun, so
+the stream carries its own bad news as an `error` part.
 
 A query key is derived from the contract path, so it cannot drift from
 `packages/shared/src/rpc/contracts.ts`. Pass a `select` as a module-level function: TanStack

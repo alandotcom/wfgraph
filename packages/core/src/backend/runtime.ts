@@ -1,4 +1,9 @@
 import { Layer, ManagedRuntime } from "effect";
+import {
+  AgentConfig,
+  type AgentSettings,
+  makeAgentConfigLayer,
+} from "#src/backend/agent/config";
 import { AppLogger, AppLoggerLayer } from "#src/backend/lib/effect/app-logger";
 import {
   Extensions,
@@ -29,6 +34,7 @@ import { WorkflowRepo } from "#src/backend/services/workflows/repo";
  */
 export type WfGraphServices =
   | AppLogger
+  | AgentConfig
   | Extensions
   | ApiKeyRepo
   | IntegrationRepo
@@ -47,6 +53,12 @@ export type WfGraphRepositories =
 export type WfGraphRuntimeParts = {
   inngest: InngestSurface;
   extensions: ExtensionSet;
+  /**
+   * The build agent's model settings, or the off state. It carries a credential
+   * and no per-request state, so it belongs on the runtime the way the Inngest
+   * client does.
+   */
+  agent: AgentSettings;
   /** One backend's complete implementation of the repository contracts. */
   repositories: Layer.Layer<WfGraphRepositories>;
 };
@@ -62,6 +74,7 @@ function buildWfGraphLayer(
     // Provides no service: it replaces the Tracer every Effect span is opened on.
     TracerBridgeLayer,
     makeExtensionsLayer(parts.extensions),
+    makeAgentConfigLayer(parts.agent),
     parts.repositories,
     makeInngestClientLayer(parts.inngest.client)
   );

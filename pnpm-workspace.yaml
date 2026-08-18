@@ -16,12 +16,15 @@ packages:
 # each other at exact versions, so a mismatched pair does not resolve; keeping the
 # version in one place is what makes "they move together" a fact rather than a rule
 # someone has to remember. A beta line also moves under you, hence the exact pin.
-# `effect` and the two `@effect/*` packages are here for the same reason: an
+# `effect` and the three `@effect/*` packages are here for the same reason: an
 # @effect/* package names one exact core release as a peer, so the whole set moves
 # as one (ADR-0002).
 catalog:
-  "@effect/opentelemetry": 4.0.0-rc.109
-  "@effect/vitest": 4.0.0-rc.109
+  # The build agent's model provider. The AI runtime itself is inside `effect`,
+  # at `effect/unstable/ai`; this package is the OpenAI half alone.
+  "@effect/ai-openai": 4.0.0-rc.110
+  "@effect/opentelemetry": 4.0.0-rc.110
+  "@effect/vitest": 4.0.0-rc.110
   # The backend and the editor both log through logtape, and @logtape/pretty
   # names one @logtape/logtape range as a peer, so the pair moves as one.
   "@logtape/logtape": ^2.3.0
@@ -40,7 +43,7 @@ catalog:
   # The second foreign Standard Schema library the schema tests are written
   # against, beside zod below.
   arktype: ^2.2.3
-  effect: 4.0.0-rc.109
+  effect: 4.0.0-rc.110
   es-toolkit: ^1.50.0
   graphology: ^0.26.0
   # The router @wfgraph/core builds its own app on, declared there as a peer

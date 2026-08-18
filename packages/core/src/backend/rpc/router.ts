@@ -1,8 +1,9 @@
 import { implement } from "@orpc/server";
-import { Effect, Schema } from "effect";
+import { Effect, Schema, Stream } from "effect";
 import type { ServiceFailure } from "#src/backend/lib/effect/failures";
 import { getAppLogger } from "#src/backend/lib/logger";
 import type { WfGraphServices } from "#src/backend/runtime";
+import { postAgentChat } from "#src/backend/services/agent/chat";
 import { deleteApiKey } from "#src/backend/services/api-keys/api-key";
 import {
   getApiKeys,
@@ -168,6 +169,54 @@ export function rpcEffectHandler<
     );
 }
 
+/**
+ * The same, for a procedure whose output is an event iterator.
+ *
+ * oRPC takes an async generator, so the Effect is run once to build the stream
+ * and the stream is then drained into yields. `Stream.toReadableStream` is the
+ * bridge: a `ReadableStream` is async-iterable on Node, and abandoning the
+ * `for await` cancels the reader, which is how a browser closing the connection
+ * stops the turn.
+ *
+ * A failure while building the stream becomes an oRPC error the same way a
+ * unary handler's does. A failure once the stream is running cannot, because the
+ * response has already begun; the stream itself is expected to carry its own
+ * bad news as a value.
+ */
+export function rpcStreamHandler<
+  TArgs extends [{ context: RpcContext }, ...unknown[]],
+  TOutput,
+  TFailure extends ServiceFailure,
+>(
+  handler: (
+    ...args: TArgs
+  ) => Effect.Effect<Stream.Stream<TOutput>, TFailure, WfGraphServices>
+): (...args: TArgs) => AsyncGenerator<TOutput, void> {
+  return async function* (...args) {
+    const stream = await args[0].context.runtime.runPromise(
+      handler(...args).pipe(
+        Effect.tapError((failure) =>
+          Effect.sync(() => {
+            recordRpcFailure(
+              args[0].context,
+              "warn",
+              `RPC stream handler returned failure [${failure.kind}]`,
+              {
+                kind: failure.kind,
+                message: failure.payload.error,
+                input: summarizeRpcInput(args),
+              }
+            );
+          })
+        ),
+        Effect.mapError(toOrpcError)
+      )
+    );
+
+    yield* Stream.toReadableStream(stream);
+  };
+}
+
 // Output schemas exist so the client infers a return type and so the OpenAPI
 // document has response bodies to describe. Every handler already returns a value
 // the schema was written from, so re-validating it on the way out only costs a
@@ -180,6 +229,17 @@ const rpc = implement(rpcContract)
   .$config({ disableOutputValidation: true });
 
 export const rpcRouter = rpc.router({
+  agent: {
+    chat: rpc.agent.chat.handler(
+      rpcStreamHandler(({ input }) =>
+        postAgentChat({
+          workflowId: input.workflowId,
+          messages: input.messages,
+          graph: input.graph,
+        })
+      )
+    ),
+  },
   apiKey: {
     getAll: rpc.apiKey.getAll.handler(rpcEffectHandler(() => getApiKeys())),
     create: rpc.apiKey.create.handler(

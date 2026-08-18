@@ -4,9 +4,11 @@ import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useCallback } from "react";
 import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
+import { AgentPanel } from "#src/components/agent/agent-panel";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
 import { WorkflowSidebarPanel } from "#src/components/workflow/workflow-sidebar-panel";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
+import { isAgentEnabled } from "#src/lib/extensions";
 import { isRunInProgress } from "#src/lib/execution-logs";
 import { orpcQuery } from "#src/lib/rpc-query";
 import {
@@ -178,6 +180,11 @@ const WorkflowEditor = () => {
       )}
 
       <WorkflowSidebarPanel />
+      {/* Absent when the host configured no model, so the editor offers no
+          control the user has no way to turn on. */}
+      {currentWorkflowId && isAgentEnabled() && (
+        <AgentPanel workflowId={currentWorkflowId} />
+      )}
     </div>
   );
 };
