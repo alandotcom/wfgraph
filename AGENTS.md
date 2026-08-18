@@ -440,7 +440,7 @@ behaviour; nothing in them is enforced by lint or tests.
 
 ### Runtime services
 
-`pnpm run dev` starts the three processes (example app `:4017`, Vite client `:5173`, Inngest CLI `:8388`). The example stores its data in SQLite at gitignored `examples/wfgraph.sqlite`, which it creates and migrates on open, so there is no service to start and no migration to apply. The update script only refreshes deps (`pnpm install`); it never runs `pnpm run dev`, so each session must start the services.
+`pnpm run dev` starts the three processes (example app `:4017`, Vite client `:5173`, and the Inngest CLI on four ports `scripts/dev.ts` reserves at startup and prints, so a second checkout never collides; `INNGEST_DEV_PORT` pins the UI one). The example stores its data in SQLite at gitignored `examples/wfgraph.sqlite`, which it creates and migrates on open, so there is no service to start and no migration to apply. The update script only refreshes deps (`pnpm install`); it never runs `pnpm run dev`, so each session must start the services.
 
 The app refuses to start without `INTEGRATION_ENCRYPTION_KEY` (64-char hex). Put it in gitignored `.env.local` at the repo root.
 
