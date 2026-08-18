@@ -17,17 +17,15 @@ import { useDebouncedValue, useAfterCommit } from "#src/hooks/effects";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { nodesAtom } from "#src/lib/workflow-graph-store";
 import { toPersistedNodes } from "#src/lib/workflow-graph-types";
-import { sameIssues, workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import {
-  collectWorkflowIssues,
-  type WorkflowIssue,
-} from "@wfgraph/shared/graph/workflow-issues";
+  NO_ISSUES,
+  sameIssues,
+  workflowIssuesAtom,
+} from "#src/lib/workflow-issues-store";
+import { collectWorkflowIssues } from "@wfgraph/shared/graph/workflow-issues";
 
 /** How long the canvas must sit still before it is validated again. */
 const SETTLE_MS = 300;
-
-/** One array for "nothing to say", so an idle pass allocates nothing. */
-const NO_ISSUES: WorkflowIssue[] = [];
 
 export function useCollectWorkflowIssues(): void {
   const nodes = useAtomValue(nodesAtom);
