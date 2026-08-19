@@ -1,5 +1,34 @@
 # @wfgraph/client
 
+## 2.2.3
+
+### Patch Changes
+
+- [#132](https://github.com/alandotcom/wfgraph/pull/132) [`da8560d`](https://github.com/alandotcom/wfgraph/commit/da8560d12d51ce7395f06c746be3db7deb1c22a6) Thanks [@alandotcom](https://github.com/alandotcom)! - Auto-layout keeps a branch in its own column. An outlet a Lifecycle or Condition
+  node draws now holds its column whether or not anything is wired to it, so a
+  workflow with no Cancel branch still reads as a tree and wiring that branch later
+  moves nothing already placed. A Group frame no longer sends the graph to the
+  dagre fallback either: a rank is now as tall as the tallest node standing in it,
+  so a frame takes a rank of its own and the chain around it stays centred.
+
+## 2.2.2
+
+### Patch Changes
+
+- [#126](https://github.com/alandotcom/wfgraph/pull/126) [`d08d43f`](https://github.com/alandotcom/wfgraph/commit/d08d43fc37687a8e767ed47493c7e9a66c56d88d) Thanks [@alandotcom](https://github.com/alandotcom)! - Keep the canvas context menu inside the window. An item that explains why it is
+  disabled now wraps its reason at a capped width rather than stretching the menu
+  off the right edge, the menu opens upward when the pointer sits near the bottom,
+  and it renders on the body so the properties panel no longer paints over it. A
+  disabled row drops its keyboard shortcut, since the key does nothing there.
+
+- [#126](https://github.com/alandotcom/wfgraph/pull/126) [`d08d43f`](https://github.com/alandotcom/wfgraph/commit/d08d43fc37687a8e767ed47493c7e9a66c56d88d) Thanks [@alandotcom](https://github.com/alandotcom)! - Paint the Group frame once, and give it back its side gutters. The frame node is
+  typed `group`, which is also a React Flow built-in type, so its wrapper was
+  picking up the library's default node border, fill and 10px of padding: a second
+  rectangle around the frame, inset far enough that the member cards left a 2px gap
+  at each edge instead of the 12px the layout reserves. The frame's label also
+  takes the theme's foreground colour in dark mode now, rather than React Flow's
+  fixed dark grey.
+
 ## 2.2.1
 
 ### Patch Changes

@@ -23,6 +23,9 @@ import {
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
 import { readConfigString } from "@wfgraph/shared/graph/node-config";
+import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
+
+export { getNodeDisplayName };
 
 export type ConditionSelectableField = ConditionFieldDefinition & {
   sourceNodeId: string;
@@ -108,33 +111,6 @@ function getPluginActionOutputFields(
   const action = findAction(catalog, actionType);
 
   return action ? [...action.outputFields] : [];
-}
-
-export function getNodeDisplayName(
-  catalog: ExtensionCatalog,
-  node: WorkflowNode
-): string {
-  if (node.data.label) {
-    return node.data.label;
-  }
-
-  if (node.data.type === "action") {
-    const actionType = readConfigString(node.data.config, "actionType");
-    if (actionType) {
-      const action = findAction(catalog, actionType);
-      if (action?.label) {
-        return action.label;
-      }
-    }
-
-    return actionType || "Action";
-  }
-
-  if (node.data.type === "lifecycle") {
-    return "Lifecycle";
-  }
-
-  return "Node";
 }
 
 /**
