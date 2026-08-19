@@ -60,6 +60,14 @@ export function isWaitNode(node: NodeConfigSource | undefined): boolean {
   return isWaitActionType(actionTypeOf(node));
 }
 
+/**
+ * The entry node, which every graph has one of. `data.type` is the field the
+ * wire schema requires; React Flow's own top-level `type` is optional there.
+ */
+export function isLifecycleNode(node: NodeConfigSource | undefined): boolean {
+  return node?.data.type === "lifecycle";
+}
+
 export function isConditionNode(node: NodeConfigSource | undefined): boolean {
   if (!node || node.data.type !== "action") {
     return false;
