@@ -1,5 +1,16 @@
 # @wfgraph/client
 
+## 2.2.3
+
+### Patch Changes
+
+- [#132](https://github.com/alandotcom/wfgraph/pull/132) [`da8560d`](https://github.com/alandotcom/wfgraph/commit/da8560d12d51ce7395f06c746be3db7deb1c22a6) Thanks [@alandotcom](https://github.com/alandotcom)! - Auto-layout keeps a branch in its own column. An outlet a Lifecycle or Condition
+  node draws now holds its column whether or not anything is wired to it, so a
+  workflow with no Cancel branch still reads as a tree and wiring that branch later
+  moves nothing already placed. A Group frame no longer sends the graph to the
+  dagre fallback either: a rank is now as tall as the tallest node standing in it,
+  so a frame takes a rank of its own and the chain around it stays centred.
+
 ## 2.2.2
 
 ### Patch Changes

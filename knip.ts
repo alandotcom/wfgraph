@@ -56,6 +56,10 @@ const config: KnipConfig = {
         //
         // Run by the afterFileEdit hook in .cursor/hooks.json:
         "scripts/format-edited-file.ts",
+
+        // Named in the concurrently command line scripts/dev.ts builds, which
+        // is a string knip cannot follow:
+        "scripts/dev-client.ts",
       ],
       project: ["*.ts", "scripts/**/*.ts"],
 
