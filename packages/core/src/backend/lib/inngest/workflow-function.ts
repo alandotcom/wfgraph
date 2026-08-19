@@ -6,7 +6,6 @@ import {
   referenceFunction,
 } from "inngest";
 import { Effect, Schema } from "effect";
-import { omit } from "es-toolkit";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import {
   type BranchHandoff,
@@ -25,6 +24,7 @@ import type {
 } from "#src/backend/engine/runtime";
 import type { WorkflowStore } from "#src/backend/engine/store";
 import { getAppLogger } from "#src/backend/lib/logger";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { readJsonObject } from "@wfgraph/shared/types/json";
 import { rejectUnknownKeys } from "@wfgraph/shared/types/schema";
@@ -32,14 +32,15 @@ import { formatSchemaFailure } from "@wfgraph/shared/types/schema-message";
 import {
   INNGEST_META_KEY,
   workflowBranchInputSchema,
+  workflowBranchInvoked,
   workflowBranchKillRequested,
-  workflowBranchRequested,
   workflowRunRequestSchema,
   workflowRunCancelRequested,
   workflowRunRequested,
 } from "#src/backend/lib/inngest/events";
 import type { WfGraphRuntime } from "#src/backend/runtime";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import type { ExecutionSummary } from "#src/backend/services/executions/repo/contracts";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 
 /** The engine entry the run function calls; tests inject a stand-in. */
@@ -138,9 +139,8 @@ function readBranchHandoff(answer: unknown): BranchHandoff {
 /**
  * The engine's durability port over Inngest's step tools.
  *
- * `data` is what the run arrived on, and a branch hand-off is that same payload
- * with the entry node named, so a branch carries the graph and the identity of
- * the run it belongs to without either being rebuilt.
+ * A branch hand-off names the execution and the Wait it starts at. The child
+ * reloads the graph from that row, so the invoke payload never carries one.
  */
 function createDurableRuntime(input: {
   step: DurableStep;
@@ -176,7 +176,11 @@ function createDurableRuntime(input: {
       readBranchHandoff(
         await step.invoke(durableStep, {
           function: workflowBranchTarget,
-          data: { ...data, entryNodeId, releasedNodeIds },
+          data: {
+            executionId: data.executionId,
+            entryNodeId,
+            releasedNodeIds: [...releasedNodeIds],
+          },
         })
       ),
     attempt,
@@ -248,13 +252,76 @@ async function writeRunMetadata(input: {
   });
 }
 
+function isInFlightStatus(status: ExecutionSummary["status"]): boolean {
+  return IN_FLIGHT_EXECUTION_STATUSES.some((inFlight) => inFlight === status);
+}
+
 /**
- * The trigger carries only an execution id, and Inngest validates it before
- * calling this handler. The rest is reloaded from repositories below. A
- * payload that fails raises `EventValidationError`, which extends
- * `NonRetriableError`: a malformed run fails once instead of spending all four
- * retries re-deserializing the same bad JSON.
+ * Reloads the engine input from the execution row and its pinned published
+ * version. The trigger is only an id: a graph or a workflow id on the event
+ * is not what this run walks, and a row that has already ended is not walked
+ * again.
+ *
+ * A payload that fails Inngest's schema check raises `EventValidationError`
+ * before this runs, which extends `NonRetriableError`: a malformed id fails
+ * once instead of spending all four retries re-deserializing the same bad JSON.
  */
+async function loadPersistedRunInput(
+  appRuntime: WfGraphRuntime,
+  executionId: string
+): Promise<WorkflowExecutionInput> {
+  const { execution, workflow, version } = await appRuntime.runPromise(
+    Effect.gen(function* () {
+      const executions = yield* ExecutionRepo;
+      const workflows = yield* WorkflowRepo;
+      const storedExecution = yield* executions.findSummaryById(executionId);
+      if (!storedExecution) {
+        return { execution: storedExecution, workflow: null, version: null };
+      }
+
+      const [storedWorkflow, storedVersion] = yield* Effect.all([
+        workflows.findById(storedExecution.workflowId),
+        workflows.findVersionById(storedExecution.workflowVersionId),
+      ]);
+      return {
+        execution: storedExecution,
+        workflow: storedWorkflow,
+        version: storedVersion,
+      };
+    })
+  );
+  if (!execution) {
+    throw new NonRetriableError(
+      "The requested workflow execution does not exist"
+    );
+  }
+  if (!isInFlightStatus(execution.status)) {
+    throw new NonRetriableError(
+      "The requested workflow execution is no longer in flight"
+    );
+  }
+  if (!workflow || !version || version.workflowId !== execution.workflowId) {
+    throw new NonRetriableError(
+      "The requested workflow version does not exist"
+    );
+  }
+
+  return {
+    graph: version.graph,
+    workflowVersionId: version.id,
+    catalogFingerprint: version.catalogFingerprint,
+    startPayload: execution.input ?? {},
+    requestPayload: execution.input ?? {},
+    ...(execution.startEventName
+      ? { startEventName: execution.startEventName }
+      : {}),
+    executionId: execution.id,
+    workflowId: execution.workflowId,
+    workflowName: workflow.name,
+    runMode: execution.runMode,
+  };
+}
+
 async function workflowRunRequestedHandler({
   event,
   step,
@@ -278,53 +345,7 @@ async function workflowRunRequestedHandler({
   executeWorkflow: ExecuteWorkflow;
   write: RunMetadataWriter;
 }) {
-  const { execution, workflow, version } = await appRuntime.runPromise(
-    Effect.gen(function* () {
-      const executions = yield* ExecutionRepo;
-      const workflows = yield* WorkflowRepo;
-      const storedExecution = yield* executions.findSummaryById(
-        event.data.executionId
-      );
-      if (!storedExecution) {
-        return { execution: storedExecution, workflow: null, version: null };
-      }
-
-      const [storedWorkflow, storedVersion] = yield* Effect.all([
-        workflows.findById(storedExecution.workflowId),
-        workflows.findVersionById(storedExecution.workflowVersionId),
-      ]);
-      return {
-        execution: storedExecution,
-        workflow: storedWorkflow,
-        version: storedVersion,
-      };
-    })
-  );
-  if (!execution) {
-    throw new NonRetriableError(
-      "The requested workflow execution does not exist"
-    );
-  }
-  if (!workflow || !version || version.workflowId !== execution.workflowId) {
-    throw new NonRetriableError(
-      "The requested workflow version does not exist"
-    );
-  }
-
-  const data: WorkflowExecutionInput = {
-    graph: version.graph,
-    workflowVersionId: version.id,
-    catalogFingerprint: version.catalogFingerprint,
-    startPayload: execution.input ?? {},
-    requestPayload: execution.input ?? {},
-    ...(execution.startEventName
-      ? { startEventName: execution.startEventName }
-      : {}),
-    executionId: execution.id,
-    workflowId: execution.workflowId,
-    workflowName: workflow.name,
-    runMode: execution.runMode,
-  };
+  const data = await loadPersistedRunInput(appRuntime, event.data.executionId);
 
   await writeRunMetadata({ step, write, data });
 
@@ -396,9 +417,15 @@ async function workflowBranchRequestedHandler({
   executeWorkflowBranch: ExecuteWorkflowBranch;
   write: RunMetadataWriter;
 }) {
-  // The invoke metadata describes the event that started this run, so it is
-  // dropped here rather than carried onto whatever branch this one hands off.
-  const data: WorkflowBranchInput = omit(event.data, [INNGEST_META_KEY]);
+  const persisted = await loadPersistedRunInput(
+    appRuntime,
+    event.data.executionId
+  );
+  const data: WorkflowBranchInput = {
+    ...persisted,
+    entryNodeId: event.data.entryNodeId,
+    releasedNodeIds: event.data.releasedNodeIds,
+  };
 
   await writeRunMetadata({ step, write, data });
 
@@ -456,15 +483,15 @@ const STEP_RETRIES = 4;
  *
  * The trigger carries no per-workflow filter, so which workflows exist is a
  * question this function never asks: one saved a moment ago runs on the same
- * registration, and Inngest needs no re-sync. Which graph a run walks is on the
- * event, put there by whoever enqueued it.
+ * registration, and Inngest needs no re-sync. Which graph a run walks is
+ * reloaded from the pinned published version of the execution id on the event.
  *
  * The Inngest dashboard therefore labels every run alike, and what tells two
  * runs apart is written by the run itself: `userland.wfgraph` metadata on its
  * Metadata tab, plus the `wfgraph.workflow.name` attribute the engine's span
  * carries. Metadata is readable per run and queryable from Insights, and it is
  * not a runs-list filter; searching the list for one workflow still means a CEL
- * expression over `event.data.workflowId`.
+ * expression over `event.data.executionId`.
  *
  * The return type is stated because declaration emit cannot name the inferred
  * one: it references types inngest keeps internal (`SendSignalResponse` under
@@ -508,7 +535,9 @@ export function createWorkflowRunFunction(
  *
  * A second registration rather than a mode of the first, because `cancelOn` is
  * declared per function: a branch is killed where it stands, and the run that
- * started it must not be.
+ * started it must not be. It is invoke-only: a public `workflow/branch.requested`
+ * event is not a trigger, and the invoke payload names the execution rather
+ * than carrying a graph.
  *
  * Both ways a run ends reach it. A Cancel Event kills the branches and leaves
  * the parent to route the Execution; a policy cancel kills the parent, and this
@@ -523,7 +552,7 @@ export function createWorkflowBranchFunction(
       id: WORKFLOW_BRANCH_FUNCTION_ID,
       name: "Workflow branch",
       retries: STEP_RETRIES,
-      triggers: [{ event: workflowBranchRequested }],
+      triggers: [workflowBranchInvoked],
       cancelOn: [
         {
           event: workflowBranchKillRequested,
