@@ -27,6 +27,7 @@ import {
 } from "#src/components/ui/tooltip";
 import { hasTouchSupport } from "#src/hooks/use-touch";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
+import { selectableActions } from "@wfgraph/shared/extensions/catalog";
 import type { ActionMetadata } from "@wfgraph/shared/extensions/catalog";
 import { cn } from "@wfgraph/shared/utils";
 
@@ -39,7 +40,7 @@ import { cn } from "@wfgraph/shared/utils";
  */
 function useAllActions(): readonly ActionMetadata[] {
   const catalog = useExtensionCatalog();
-  return useMemo(() => catalog.actions, [catalog]);
+  return useMemo(() => selectableActions(catalog), [catalog]);
 }
 
 type ActionGridProps = {

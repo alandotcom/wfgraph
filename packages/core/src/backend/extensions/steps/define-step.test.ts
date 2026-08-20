@@ -379,4 +379,33 @@ describe("defineStep and the config form", () => {
       },
     ]);
   });
+
+  it("decodes a config that predates an optional input key", async () => {
+    const evolved = defineStep({
+      ...METADATA,
+      input: Schema.Struct({
+        to: Schema.String,
+        note: Schema.optionalKey(Schema.String),
+      }),
+      output,
+      configFields: [],
+      handler: Effect.fn(function* (bag) {
+        return yield* Effect.succeed({
+          id: "evolved",
+          sentTo: bag.input.to,
+        });
+      }),
+    });
+
+    const runEvolved = runStep(evolved.implement("demo/evolved")(runner));
+    const result = await runEvolved({
+      to: "someone",
+      _context: CONTEXT,
+    });
+
+    expect(result).toEqual({
+      success: true,
+      data: { id: "evolved", sentTo: "someone" },
+    });
+  });
 });

@@ -53,6 +53,11 @@ export type ActionMetadata = {
    * phrase; `ActionStepInput` in core separates the two.
    */
   readonly sideEffect?: boolean;
+  /**
+   * When true, omitted from the action picker; the handler stays registered so
+   * pinned runs and existing nodes keep working.
+   */
+  readonly hidden?: boolean;
   readonly configFields: readonly ActionConfigField[];
   readonly outputFields: readonly ReferenceField[];
 };
@@ -147,6 +152,20 @@ export function findIntegration(
  * The record is mutable and its lists are copies, because the editor sorts and
  * filters what it is given.
  */
+/** Actions the editor may offer when choosing a new step. */
+export function selectableActions(
+  catalog: ExtensionCatalog
+): readonly ActionMetadata[] {
+  return catalog.actions.filter((action) => action.hidden !== true);
+}
+
+/** Like `actionsByCategory`, but omits hidden actions. */
+export function selectableActionsByCategory(
+  catalog: ExtensionCatalog
+): Record<string, ActionMetadata[]> {
+  return actionsByCategory({ ...catalog, actions: selectableActions(catalog) });
+}
+
 export function actionsByCategory(
   catalog: ExtensionCatalog
 ): Record<string, ActionMetadata[]> {

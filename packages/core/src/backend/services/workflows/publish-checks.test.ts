@@ -297,6 +297,17 @@ describe("version-digest", () => {
     expect(catalogFingerprint(before)).not.toBe(catalogFingerprint(after));
   });
 
+  it("ignores whether an action is hidden", () => {
+    const visible = catalogOf({
+      actions: [anAction("mail/send")],
+    });
+    const hidden = catalogOf({
+      actions: [{ ...anAction("mail/send"), hidden: true }],
+    });
+
+    expect(catalogFingerprint(visible)).toBe(catalogFingerprint(hidden));
+  });
+
   // A collision here reads a changed surface as unchanged, which is the one
   // failure this guard exists to catch, so it hashes with SHA-256 like
   // graphDigest rather than with the SHA-1 it started on.

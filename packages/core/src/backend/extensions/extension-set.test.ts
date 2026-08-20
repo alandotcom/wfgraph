@@ -126,6 +126,29 @@ describe("assembleExtensions", () => {
     expect(stepFor("Wait")).toBeUndefined();
   });
 
+  it("carries hidden on a host action the picker omits", () => {
+    const { catalog, stepFor } = assembleExtensions({
+      actions: [
+        defineAction({
+          id: "appointments/cancel-legacy",
+          label: "Cancel (legacy)",
+          description: "Retired cancel",
+          category: "Appointments",
+          hidden: true,
+          input: Schema.Struct({ appointmentId: Schema.String }),
+          handler: ({ input }) => ({ echoed: input }),
+        }),
+      ],
+    });
+
+    const hidden = catalog.actions.find(
+      (action) => action.id === "appointments/cancel-legacy"
+    );
+
+    expect(hidden?.hidden).toBe(true);
+    expect(stepFor("appointments/cancel-legacy")).toBeDefined();
+  });
+
   it("lists a host's own actions after the built-ins", () => {
     const { catalog } = assembleExtensions({
       actions: [anAction("appointments/cancel")],

@@ -35,7 +35,7 @@ import {
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import {
-  actionsByCategory,
+  selectableActionsByCategory,
   findAction,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
@@ -569,7 +569,7 @@ function SystemActionFields({
 function useCategoryData(): Record<string, CategoryActionOption[]> {
   const catalog = useExtensionCatalog();
   return useMemo(() => {
-    const grouped = actionsByCategory(catalog);
+    const grouped = selectableActionsByCategory(catalog);
 
     return Object.fromEntries(
       Object.entries(grouped).map(([category, actions]) => [

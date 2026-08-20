@@ -107,7 +107,9 @@ is added afterwards. That script is the local path only: CI never calls it, beca
 
 **No backwards compatibility.** There is no stored data and no external consumer. Make the
 stricter contract strict and let the old shape fail. A test encoding the old permissiveness
-was asserting a bug.
+was asserting a bug. **Actions are the exception:** evolve an action forward-compatibly under
+the same id (additive keys and output paths only; see `docs/integrations.md`), or ship a new
+id and set `hidden: true` on the old one so the picker drops it while runs keep working.
 
 **JSON has a type; use it.** `packages/shared/src/types/json.ts` holds `JsonValue` and
 `JsonObject`. Anything walking a value that arrived as JSON takes one of them, and narrowing
