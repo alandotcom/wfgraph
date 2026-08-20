@@ -147,25 +147,63 @@ export function findIntegration(
 }
 
 /**
- * The actions grouped for the selector, each group in catalog order.
- *
- * The record is mutable and its lists are copies, because the editor sorts and
- * filters what it is given.
+ * Actions the editor may offer when choosing a new step.
  */
-/** Actions the editor may offer when choosing a new step. */
 export function selectableActions(
   catalog: ExtensionCatalog
 ): readonly ActionMetadata[] {
   return catalog.actions.filter((action) => action.hidden !== true);
 }
 
+/**
+ * Selectable actions, plus a pinned hidden action when editing a node that
+ * already references it.
+ */
+export function actionsForPicker(
+  catalog: ExtensionCatalog,
+  pinnedActionId?: string
+): readonly ActionMetadata[] {
+  const selectable = selectableActions(catalog);
+  if (!pinnedActionId) {
+    return selectable;
+  }
+
+  const pinned = findAction(catalog, pinnedActionId);
+  if (!pinned || pinned.hidden !== true) {
+    return selectable;
+  }
+
+  if (selectable.some((action) => action.id === pinnedActionId)) {
+    return selectable;
+  }
+
+  return [...selectable, pinned];
+}
+
+/** Like `actionsByCategory`, but omits hidden actions unless one is pinned. */
+export function actionsForPickerByCategory(
+  catalog: ExtensionCatalog,
+  pinnedActionId?: string
+): Record<string, ActionMetadata[]> {
+  return actionsByCategory({
+    ...catalog,
+    actions: actionsForPicker(catalog, pinnedActionId),
+  });
+}
+
 /** Like `actionsByCategory`, but omits hidden actions. */
 export function selectableActionsByCategory(
   catalog: ExtensionCatalog
 ): Record<string, ActionMetadata[]> {
-  return actionsByCategory({ ...catalog, actions: selectableActions(catalog) });
+  return actionsForPickerByCategory(catalog);
 }
 
+/**
+ * The actions grouped for the selector, each group in catalog order.
+ *
+ * The record is mutable and its lists are copies, because the editor sorts and
+ * filters what it is given.
+ */
 export function actionsByCategory(
   catalog: ExtensionCatalog
 ): Record<string, ActionMetadata[]> {

@@ -379,7 +379,9 @@ describe("defineStep and the config form", () => {
       },
     ]);
   });
+});
 
+describe("evolving an action's input schema", () => {
   it("decodes a config that predates an optional input key", async () => {
     const evolved = defineStep({
       ...METADATA,

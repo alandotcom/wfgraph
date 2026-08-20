@@ -32,11 +32,8 @@ import type { ActionMetadata } from "@wfgraph/shared/extensions/catalog";
 import { cn } from "@wfgraph/shared/utils";
 
 /**
- * Every action the server can run, which is the whole of what this grid offers.
- *
- * The four the engine ships itself are catalog entries like any other, so there is
- * no local list to keep in step: an editor served by a different build than its
- * server draws what that server says it has.
+ * Actions the editor may offer when adding a new step. Hidden actions are
+ * omitted unless a node already references one.
  */
 function useAllActions(): readonly ActionMetadata[] {
   const catalog = useExtensionCatalog();

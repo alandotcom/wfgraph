@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   actionsByCategory,
+  actionsForPicker,
+  actionsForPickerByCategory,
   selectableActions,
   selectableActionsByCategory,
   credentialsFromConfig,
@@ -146,6 +148,40 @@ describe("selectableActions", () => {
       ],
       Twilio: [findAction(catalog, "twilio/send-sms")],
     });
+  });
+
+  it("keeps a pinned hidden action in the picker list", () => {
+    const withHidden: ExtensionCatalog = {
+      ...catalog,
+      actions: [
+        ...catalog.actions,
+        {
+          id: "twilio/send-sms-legacy",
+          label: "Send SMS (legacy)",
+          description: "Retired",
+          category: "Twilio",
+          integration: "twilio",
+          hidden: true,
+          configFields: [],
+          outputFields: [],
+        },
+      ],
+    };
+
+    expect(
+      actionsForPicker(withHidden, "twilio/send-sms-legacy").map(
+        (action) => action.id
+      )
+    ).toContain("twilio/send-sms-legacy");
+    expect(
+      actionsForPicker(withHidden).map((action) => action.id)
+    ).not.toContain("twilio/send-sms-legacy");
+    expect(
+      actionsForPickerByCategory(withHidden, "twilio/send-sms-legacy").Twilio
+    ).toEqual([
+      findAction(withHidden, "twilio/send-sms"),
+      findAction(withHidden, "twilio/send-sms-legacy"),
+    ]);
   });
 });
 
