@@ -2,7 +2,7 @@
 
 `docs/integrations.md` is the walkthrough: the `defineIntegration` shape, what it owns
 around a handler, the canonical JSON codec and which optional spelling goes on which side.
-This file holds what is specific to the five integrations in this directory.
+This file holds what is specific to the six integrations in this directory.
 
 ## The files
 
@@ -149,7 +149,7 @@ vocabulary, the action slugs, and the field list `requireOutputFieldsFromSchema`
 each output schema. What Workflow Graph itself does around a handler is covered once, in
 `packages/core/src/backend/extensions/steps/define-step.test.ts`.
 
-`src/index.test.ts` runs `checkIntegration` over all five at module level, which is every
+`src/index.test.ts` runs `checkIntegration` over all six at module level, which is every
 check `assembleExtensions` runs, so a bad definition fails that file's collection. A host
 would otherwise meet it as a startup crash, and a description missing from one field of one
 output schema would reach a reviewer as a green suite. `checkIntegration` is exported from
