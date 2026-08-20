@@ -1,16 +1,17 @@
 /**
- * The five events Workflow Graph sends to itself, with the schemas that define them.
+ * The events Workflow Graph sends to itself, with the schemas that define them.
  *
  * An `eventType` is one definition used from both ends: the sender builds its
  * payload with `.create()`, and the function that triggers on it declares the
  * same object. Inngest validates the payload on send and again before it calls
  * a handler, so a shape that drifts between the two is a failure rather than an
- * `undefined` several frames deep in the engine.
+ * `undefined` several frames deep in the engine. `invoke()` is the same crossing
+ * for a function that is not a public event.
  *
  * Inngest asks for a Standard Schema and calls `~standard.validate(payload)`
  * with nothing else to say, so each schema crosses `toStandardSchema` here with
  * the decode options baked in. That crossing happens once per schema, at the
- * `eventType` below, which is the only place these shapes are used.
+ * `eventType` or `invoke` below, which is the only place these shapes are used.
  *
  * The optional fields are `Schema.optional` rather than `Schema.optionalKey`,
  * which is the opposite of the wire schemas in `@wfgraph/shared`. Those read a
@@ -24,49 +25,30 @@
  * Inngest dependency and should not gain one.
  */
 import { Schema } from "effect";
-import { eventType } from "inngest";
+import { eventType, invoke } from "inngest";
 import { jsonObjectSchema } from "@wfgraph/shared/types/json";
 import {
   NonEmptyTrimmedString,
   rejectUnknownKeys,
   toStandardSchema,
 } from "@wfgraph/shared/types/schema";
-import { serializedWorkflowGraphSchema } from "@wfgraph/shared/graph/schemas";
 
 /**
- * The `workflow/run.requested` payload, as the engine needs it.
+ * The `workflow/run.requested` payload: the id of a row that already exists.
  *
  * Inngest serializes this to JSON when the run is enqueued and hands it back on
  * every attempt and every replay, so the handler learns nothing about its shape
  * from the type system. This schema is that boundary check, and attaching it to
- * the event type is what makes the check happen before the handler runs.
+ * the event type is what makes the check happen before the handler runs. The
+ * graph, the start payload and the workflow identity are reloaded from that
+ * row, not taken from the event.
  */
-export const workflowExecutionInputSchema = Schema.Struct({
-  graph: serializedWorkflowGraphSchema,
-  /** The published version this run pins. */
-  workflowVersionId: NonEmptyTrimmedString,
-  /**
-   * Catalog fingerprint at publish. Compared on wake so a deploy that changes
-   * the assembled surface fails the node rather than running against a different
-   * set of actions.
-   */
-  catalogFingerprint: NonEmptyTrimmedString,
-  // JSON is all that survived the trip, so JSON is what the schema accepts.
-  startPayload: Schema.optional(jsonObjectSchema),
-  startEventName: Schema.optional(NonEmptyTrimmedString),
-  requestPayload: Schema.optional(jsonObjectSchema),
-  // Both ids are required and must carry a value: every log row, timeline event,
-  // and wait state the run writes hangs off them, and the enqueue side always
-  // supplies them. An empty id would attach a run's whole trace to nothing.
+export const workflowRunRequestSchema = Schema.Struct({
   executionId: NonEmptyTrimmedString,
-  workflowId: NonEmptyTrimmedString,
-  workflowName: Schema.optional(Schema.String),
-  workflowRunId: Schema.optional(Schema.String),
-  runMode: Schema.optional(Schema.Literals(["live", "test"])),
 });
 
 export const workflowRunRequested = eventType("workflow/run.requested", {
-  schema: toStandardSchema(workflowExecutionInputSchema, rejectUnknownKeys),
+  schema: toStandardSchema(workflowRunRequestSchema, rejectUnknownKeys),
 });
 
 /**
@@ -76,13 +58,15 @@ export const workflowRunRequested = eventType("workflow/run.requested", {
 export const INNGEST_META_KEY = "_inngest";
 
 /**
- * The `workflow/branch.requested` payload: one run's own input, plus the Wait
- * node the branch starts at.
+ * The `workflow-branch` invoke payload: the execution the branch belongs to,
+ * plus the Wait node it starts at.
  *
- * What those nodes left behind stays in the store for the branch to read back,
- * because an HTTP Request step's response body is what makes those outputs
- * large and the wire is the wrong place for it. The ids below are what the
- * store cannot answer.
+ * The graph is not on this payload. The handler reloads it from the pinned
+ * published version, the same as the parent run, so an invoke cannot choose
+ * which steps fire. What those nodes left behind stays in the store for the
+ * branch to read back, because an HTTP Request step's response body is what
+ * makes those outputs large and the wire is the wrong place for it. The ids
+ * below are what the store cannot answer.
  *
  * The invoke metadata is declared rather than the shape left open: an event
  * `step.invoke` produced carries it, the decode below rejects every other
@@ -90,7 +74,7 @@ export const INNGEST_META_KEY = "_inngest";
  * than somewhere the reason is harder to see.
  */
 export const workflowBranchInputSchema = Schema.Struct({
-  ...workflowExecutionInputSchema.fields,
+  executionId: NonEmptyTrimmedString,
   entryNodeId: NonEmptyTrimmedString,
   /**
    * Which nodes above the entry have let their downstream follow. Ids alone, so
@@ -101,9 +85,15 @@ export const workflowBranchInputSchema = Schema.Struct({
   [INNGEST_META_KEY]: Schema.optional(jsonObjectSchema),
 });
 
-export const workflowBranchRequested = eventType("workflow/branch.requested", {
-  schema: toStandardSchema(workflowBranchInputSchema, rejectUnknownKeys),
-});
+/**
+ * The branch function's only trigger: `step.invoke`, not a public event.
+ *
+ * `getConfigTriggers` omits `inngest/function.invoked` from the registered
+ * trigger list, so an event key or unsigned bus cannot start a branch.
+ */
+export const workflowBranchInvoked = invoke(
+  toStandardSchema(workflowBranchInputSchema, rejectUnknownKeys)
+);
 
 /**
  * The event that kills a run's branch invocations, and only those.

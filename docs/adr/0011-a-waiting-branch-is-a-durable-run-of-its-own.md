@@ -126,8 +126,20 @@ read time. That mapping stays, as the backstop for a policy cancel, which kills
 the parent too and leaves nobody to sweep.
 
 An invoked run's event data carries Inngest's own `_inngest` routing metadata. The
-branch event declares that key so the decode admits it and nothing else, and the
-handler drops it before handing the payload to a branch of its own.
+branch invoke schema declares that key so the decode admits it and nothing else.
+
+## Amendment, 2026-08-19
+
+The branch function is invoke-only. It no longer triggers on a public
+`workflow/branch.requested` event: its trigger is Inngest's `invoke()` helper,
+which `getConfigTriggers` omits from the registered list, so an event key or
+unsigned bus cannot start a branch.
+
+The invoke payload carries `executionId`, `entryNodeId` and `releasedNodeIds`.
+The graph, the start payload and the workflow identity are reloaded from the
+execution row and its pinned published version, the same as the parent run. A
+row that is not in flight is refused before the engine walks it. The ids the
+store cannot answer remain on the wire; the graph does not.
 
 A run's trace is unchanged. Every branch writes to the same execution id, so the
 run panel shows one run whatever it took to walk it. What changed is the Inngest
