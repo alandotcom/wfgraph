@@ -15,9 +15,6 @@ catalogs:
     '@logtape/logtape':
       specifier: ^2.3.0
       version: 2.3.0
-    '@logtape/pretty':
-      specifier: ^2.3.0
-      version: 2.3.0
     '@marcbachmann/cel-js':
       specifier: ^7.6.1
       version: 7.6.1
@@ -330,9 +327,6 @@ importers:
       '@logtape/logtape':
         specifier: 'catalog:'
         version: 2.3.0
-      '@logtape/pretty':
-        specifier: 'catalog:'
-        version: 2.3.0(@logtape/logtape@2.3.0)
       '@marcbachmann/cel-js':
         specifier: 'catalog:'
         version: 7.6.1
@@ -1111,11 +1105,6 @@ packages:
 
   '@logtape/logtape@2.3.0':
     resolution: {integrity: sha512-s/pxCgf9Gg75ypTV/bRUq355Dy/JP/zUJWfgJQPO5pTkXC23X2AXBcmBBgFiWH+bSi4yiX/G06qGV8CdAWD3SA==}
-
-  '@logtape/pretty@2.3.0':
-    resolution: {integrity: sha512-rINQolEDH/dkqJE9olePl8quKS66GU4BQT0fAPRaBpyopRQct7bFGmfk7FUGT9qgSM+Cvt+cT98rK5nKyOX+mQ==}
-    peerDependencies:
-      '@logtape/logtape': ^2.3.0
 
   '@manypkg/find-root@3.1.0':
     resolution: {integrity: sha512-BcSqCyKhBVZ5YkSzOiheMCV41kqAFptW6xGqYSTjkVTl9XQpr+pqHhwgGCOHQtjDCv7Is6EFyA14Sm5GVbVABA==}
@@ -6099,10 +6088,6 @@ snapshots:
       - graphql
 
   '@logtape/logtape@2.3.0': {}
-
-  '@logtape/pretty@2.3.0(@logtape/logtape@2.3.0)':
-    dependencies:
-      '@logtape/logtape': 2.3.0
 
   '@manypkg/find-root@3.1.0':
     dependencies:

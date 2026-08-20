@@ -16,8 +16,8 @@ import {
   isLogLevel,
   type LogLevel,
 } from "@logtape/logtape";
-import { getPrettyFormatter } from "@logtape/pretty";
 import { loggerConfigs, resolveLogLevel } from "#src/backend/lib/log-config";
+import { createPrettyFormatter } from "#src/backend/lib/pretty-formatter";
 
 export type WfGraphLoggingOptions = {
   /** Lowest level the `wfgraph` category records. `LOG_LEVEL`, else `info`. */
@@ -80,23 +80,31 @@ function resolvePrettyInspectDepth(): number {
   return parsedDepth;
 }
 
-type PrettyInspectOptions = NonNullable<
-  Parameters<typeof getPrettyFormatter>[0]
->["inspectOptions"];
+/**
+ * The column a grouped field has to fit inside to stay on one line.
+ *
+ * A record groups its fields by subject, and the layout keeps a group on one
+ * line while it fits. `pnpm run dev` runs the app under concurrently, which
+ * hands the child a pipe rather than a terminal, so `columns` is undefined
+ * there and the constant is what decides.
+ */
+function resolvePrettyWidth(): number {
+  const configured = process.env.LOG_PRETTY_WIDTH?.trim();
+  const parsedWidth = configured ? Number.parseInt(configured, 10) : Number.NaN;
+  if (!Number.isNaN(parsedWidth) && parsedWidth > 0) {
+    return parsedWidth;
+  }
+
+  return process.stdout.columns ?? 120;
+}
 
 /**
- * How the pretty formatter renders one structured field.
- *
- * A record groups its fields into one object per subject, so the formatter
- * prints a line per group rather than a line per field. That only holds while a
- * group fits on one line, which is what `breakLength` decides. The formatter
- * spreads these into Node's `util.inspect`, which reads the option, while its
- * own option type lists five keys and not that one. `Object.assign` builds the
- * value rather than writing it inline, because an object literal would be
- * refused for the sixth key.
+ * Whether the layout emits ANSI escapes. `NO_COLOR` is the one switch, and the
+ * terminal is not consulted: the dev server's stdout is a pipe into
+ * concurrently, which passes the escapes through to the terminal behind it.
  */
-function prettyInspectOptions(depth: number): PrettyInspectOptions {
-  return Object.assign({ depth, compact: true }, { breakLength: 200 });
+function resolvePrettyColors(): boolean {
+  return !process.env.NO_COLOR;
 }
 
 function resolveLevel(requested: LogLevel | undefined): LogLevel {
@@ -118,17 +126,11 @@ function resolveLevel(requested: LogLevel | undefined): LogLevel {
 export function configureWfGraphLogging(
   options: WfGraphLoggingOptions = {}
 ): void {
-  const prettyFormatter = getPrettyFormatter({
-    timestamp: "time",
-    categorySeparator: ".",
-    icons: false,
-    align: true,
-    // The longest category in the tree is wfgraph.global-executions. Every line
-    // pays this width, which is why the categories are one level deep.
-    categoryWidth: 25,
+  const prettyFormatter = createPrettyFormatter({
+    colors: resolvePrettyColors(),
     properties: resolvePrettyProperties(),
-    inspectOptions: prettyInspectOptions(resolvePrettyInspectDepth()),
-    wordWrap: false,
+    depth: resolvePrettyInspectDepth(),
+    width: resolvePrettyWidth(),
   });
 
   configureSync({

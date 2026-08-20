@@ -195,19 +195,20 @@ the database, the assembled surface, Inngest, nor Drizzle.
 `configure`. Configuration lives in two places a host reaches on purpose: the published
 `@wfgraph/core/logging` entry (`configureWfGraphLogging`), and `backend/lib/log-config.ts`
 (`configureLoggingWithBridge` for the `logger` option, plus the one-time notice
-`warnWhenLoggingUnconfigured` prints when neither was used). Keep `@logtape/pretty` out of
-everything but `src/logging.ts`: the Worker bundle reaches `log-config.ts` and would carry
-`node:util` with it.
+`warnWhenLoggingUnconfigured` prints when neither was used). `backend/lib/pretty-formatter.ts`
+holds the console layout and is the one module `src/logging.ts` may import for it: it reaches
+`node:util`, and the Worker bundle reaches `log-config.ts` and would carry that with it.
 
 Two rules for a call site. Write one record per unit of work, and put the fields on it
 rather than narrating the steps that produced it; `engine/scheduler.ts`'s `logNode` is the
 worked example, and the run's two records in `engine/core.ts` are the other. Group a record's own
 fields by subject (`http`, `rpc`, `run`, `node`, `outcome`, `error`) rather than flat,
-because the pretty formatter prints a line per top-level field; a JSON line carries the
-group as a nested object a store addresses as `run.execution`. A single correlation key
-carried by `logger.with({ workflowId })` stays flat, since it is one line and grouping it
-would be replaced by any record annotating the same key. A category is one level deep
-under `wfgraph`, since `categoryWidth` is paid on every line.
+because the pretty layout prints a line per top-level field and holds a group to that one
+line while its `key=value` pairs fit `LOG_PRETTY_WIDTH`; a JSON line carries the group as a
+nested object a store addresses as `run.execution`. A single correlation key carried by
+`logger.with({ workflowId })` stays flat, since it is one line and grouping it would be
+replaced by any record annotating the same key. A category is one level deep under
+`wfgraph`, since it sits ahead of the message on every header line.
 
 **Never log a payload.** A request body, a response body, a step output and an Event
 payload are each stored where they can be read whole, and one of them printed at

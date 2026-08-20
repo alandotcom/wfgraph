@@ -92,3 +92,25 @@ is left to the trace the store writes.
 
 The measured result on the same probe run: 1070 lines carrying 63 records
 became 73 lines carrying 25, and no record occupies more than four lines.
+
+## Amendment, 2026-08-17
+
+The renderer behind the pretty layout is now Workflow Graph's own,
+`backend/lib/pretty-formatter.ts`, and `@logtape/pretty` is gone from the
+dependencies.
+
+That library right-aligns every field key against the header width. The pad it
+applies is `indentWidth - width(key) - 2`, where `indentWidth` covers the
+timestamp, the icon slot, the padded level and `categoryWidth`. The settings
+this ADR arrived at put that near 49 columns, and `concurrently` adds six more
+during `pnpm run dev`, so each field line began past column 55 and wrapped back
+to column 0 in an 80-column terminal. The library exposes no option for it;
+`align: false` keeps the same calculation and only makes the gutter change size
+per record.
+
+The layout is now flush left: a header line carrying time, level, category and
+message, then one row per field at a two-space indent under box-drawing
+connectors. The grouping decision holds. A group still prints on one line, as
+`key=value` pairs, while the line fits `LOG_PRETTY_WIDTH`; a group too wide for
+that opens into a row per member. That width replaces the `breakLength: 200`
+this ADR named.
