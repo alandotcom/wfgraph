@@ -35,7 +35,7 @@ import {
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import {
-  actionsByCategory,
+  actionsForPickerByCategory,
   findAction,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
@@ -566,10 +566,12 @@ function SystemActionFields({
  * other action, so this reads one list: an editor served by a different build
  * than its server offers what that server can run.
  */
-function useCategoryData(): Record<string, CategoryActionOption[]> {
+function useCategoryData(
+  pinnedActionId?: string
+): Record<string, CategoryActionOption[]> {
   const catalog = useExtensionCatalog();
   return useMemo(() => {
-    const grouped = actionsByCategory(catalog);
+    const grouped = actionsForPickerByCategory(catalog, pinnedActionId);
 
     return Object.fromEntries(
       Object.entries(grouped).map(([category, actions]) => [
@@ -582,7 +584,7 @@ function useCategoryData(): Record<string, CategoryActionOption[]> {
         })),
       ])
     );
-  }, [catalog]);
+  }, [catalog, pinnedActionId]);
 }
 
 function getCategoryForAction(
@@ -600,7 +602,7 @@ export function ActionConfig({
 }: ActionConfigProps) {
   const catalog = useExtensionCatalog();
   const actionType = readConfigString(config, "actionType");
-  const categories = useCategoryData();
+  const categories = useCategoryData(actionType);
   const categoryOptions = useMemo(
     () =>
       Object.keys(categories)

@@ -302,3 +302,36 @@ leaves the rest optional and nullish.
 
 For the file layout of the five built-ins, the external HTTP layer, config field types,
 and the test pattern, see `packages/plugins/src/AGENTS.md`.
+
+## Evolving an action
+
+Keep the same action id when an in-progress run should resume without failing decode
+and completed steps should keep their memoized results. Published workflows pin a
+catalog fingerprint that hashes action ids and config/output **keys**, not handler
+bodies or field types; Inngest replays completed `step.run` calls from stored JSON.
+
+**Safe under one id:**
+
+- **Add** config keys with `Schema.optionalKey` only. Never rename or remove a key:
+  removal changes the fingerprint and fails waking nodes on pinned versions.
+- **Add** output paths only. Never remove or rename a path downstream nodes may
+  reference.
+- **Tighten** validation only when every value a published graph could hold still
+  passes. Stricter rules on the same keys do not change the fingerprint — the main
+  footgun.
+- **Change** handler logic inside an existing `step.run` id for work not yet memoized.
+  Completed steps keep their cached answer.
+- **Rename** a `step.run` id (for example `"post"` to `"post-v2"`) when a side effect
+  must run again for in-flight executions.
+- **Normalize** legacy config shapes with a decode transform on the input schema
+  (see the comma-separated list example above).
+
+## Retiring an action
+
+When the contract cannot stay compatible under the same id, ship a new action
+(for example `my-service/send-v2`) and set **`hidden: true`** on the old one. Hidden
+actions stay registered for runs and in the catalog fingerprint; the editor's action
+picker omits them, so new steps cannot select them. Workflows that already reference
+the old id keep configuring and running it until you delete the action from code,
+which you should do only when no published version and no in-flight execution still
+references it.

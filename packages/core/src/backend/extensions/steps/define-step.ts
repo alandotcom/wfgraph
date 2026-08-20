@@ -328,6 +328,8 @@ export type ActionStep<TOutput = unknown> = {
   readonly category: string;
   /** Whether running this changes the outside world; see `ActionStepInput`. */
   readonly sideEffect: boolean;
+  /** When true, the editor's action picker omits this action. */
+  readonly hidden?: boolean;
   readonly configFields: readonly ActionConfigField[];
   /** The config shape, which the form is derived from. */
   readonly input: InputSchema<unknown>;
@@ -380,6 +382,8 @@ export type ActionStepInput<TInput, TOutput> = StepSchemas<TInput, TOutput> & {
    * to memoize it. Here the question is only whether the outside world moved.
    */
   readonly sideEffect?: boolean;
+  /** When true, the editor's action picker omits this action. */
+  readonly hidden?: boolean;
   /**
    * What the input schema cannot say about the form: a placeholder, a row
    * count, a friendly option label, a group, a `showWhen`.
@@ -552,6 +556,7 @@ export function defineStep<TInput, TOutput>(
     description: definition.description,
     category: definition.category,
     sideEffect: definition.sideEffect ?? false,
+    ...(definition.hidden ? { hidden: true } : {}),
     configFields: buildConfigForm(
       configFieldsFromInputSchema(asStandardSchema(definition.input)),
       definition.configFields ?? []

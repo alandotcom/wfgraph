@@ -53,6 +53,11 @@ export type ActionMetadata = {
    * phrase; `ActionStepInput` in core separates the two.
    */
   readonly sideEffect?: boolean;
+  /**
+   * When true, omitted from the action picker; the handler stays registered so
+   * pinned runs and existing nodes keep working.
+   */
+  readonly hidden?: boolean;
   readonly configFields: readonly ActionConfigField[];
   readonly outputFields: readonly ReferenceField[];
 };
@@ -139,6 +144,58 @@ export function findIntegration(
   type: string
 ): IntegrationMetadata | undefined {
   return catalog.integrations.find((integration) => integration.type === type);
+}
+
+/**
+ * Actions the editor may offer when choosing a new step.
+ */
+export function selectableActions(
+  catalog: ExtensionCatalog
+): readonly ActionMetadata[] {
+  return catalog.actions.filter((action) => action.hidden !== true);
+}
+
+/**
+ * Selectable actions, plus a pinned hidden action when editing a node that
+ * already references it.
+ */
+export function actionsForPicker(
+  catalog: ExtensionCatalog,
+  pinnedActionId?: string
+): readonly ActionMetadata[] {
+  const selectable = selectableActions(catalog);
+  if (!pinnedActionId) {
+    return selectable;
+  }
+
+  const pinned = findAction(catalog, pinnedActionId);
+  if (!pinned || pinned.hidden !== true) {
+    return selectable;
+  }
+
+  if (selectable.some((action) => action.id === pinnedActionId)) {
+    return selectable;
+  }
+
+  return [...selectable, pinned];
+}
+
+/** Like `actionsByCategory`, but omits hidden actions unless one is pinned. */
+export function actionsForPickerByCategory(
+  catalog: ExtensionCatalog,
+  pinnedActionId?: string
+): Record<string, ActionMetadata[]> {
+  return actionsByCategory({
+    ...catalog,
+    actions: actionsForPicker(catalog, pinnedActionId),
+  });
+}
+
+/** Like `actionsByCategory`, but omits hidden actions. */
+export function selectableActionsByCategory(
+  catalog: ExtensionCatalog
+): Record<string, ActionMetadata[]> {
+  return actionsForPickerByCategory(catalog);
 }
 
 /**

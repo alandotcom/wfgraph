@@ -89,6 +89,8 @@ type ActionInputSide<TCredentials, TInput, TOutput> = {
    * `ActionStepInput` for how this differs from the replay sense of the phrase.
    */
   readonly sideEffect?: boolean;
+  /** When true, the editor's action picker omits this action. */
+  readonly hidden?: boolean;
   readonly input: InputSchema<TInput>;
   readonly configFields?: readonly ActionConfigFieldFor<TInput>[];
   readonly handler: (
