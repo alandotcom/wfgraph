@@ -1,5 +1,11 @@
 # @wfgraph/plugins
 
+## 2.3.0
+
+### Minor Changes
+
+- [#135](https://github.com/alandotcom/wfgraph/pull/135) [`6b19caa`](https://github.com/alandotcom/wfgraph/commit/6b19caa92ea21447eda5dcf4e99402c44a3f91b6) Thanks [@alandotcom](https://github.com/alandotcom)! - Add optional `hidden` flag on actions so retired actions stay runnable while the editor picker omits them. Document forward-compatible action evolution in `docs/integrations.md`.
+
 ## 2.2.3
 
 ## 2.2.2
