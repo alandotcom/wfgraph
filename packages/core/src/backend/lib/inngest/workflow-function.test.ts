@@ -23,6 +23,8 @@ import {
   createWorkflowRunFunction,
 } from "#src/backend/lib/inngest/workflow-function";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
+import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
+import type { ExecutionSummary } from "#src/backend/services/executions/repo";
 
 const executeWorkflowMock = vi.fn();
 
@@ -30,7 +32,54 @@ const executeWorkflowMock = vi.fn();
 // injected, so identity is all this file needs from either.
 const testActions = noWorkflowActions;
 const testStore = noopWorkflowStore;
-const testAppRuntime = stubWfGraphRuntime();
+const testGraph = createSerializedWorkflowGraph({ nodes: [], edges: [] });
+const testWorkflow: Workflow = {
+  id: "workflow_123",
+  name: "Donor intake follow-up",
+  description: null,
+  graph: testGraph,
+  isPaused: false,
+  mode: "live",
+  visibility: "private",
+  publishedVersionId: "ver_1",
+  createdAt: new Date("2026-01-01T00:00:00.000Z"),
+  updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+};
+const testVersion: WorkflowVersion = {
+  id: "ver_1",
+  workflowId: testWorkflow.id,
+  version: 1,
+  graph: testGraph,
+  catalogFingerprint: "fp",
+  graphDigest: "digest",
+  publishedAt: new Date("2026-01-01T00:00:00.000Z"),
+};
+const testExecution: ExecutionSummary = {
+  id: "exec_123",
+  workflowId: testWorkflow.id,
+  workflowVersionId: testVersion.id,
+  status: "running",
+  startSource: "event",
+  runMode: "live",
+  startEventName: "donor/intake.submitted",
+  entityValue: null,
+  input: {},
+  output: null,
+  error: null,
+  startedAt: new Date("2026-01-01T00:00:00.000Z"),
+  completedAt: null,
+  duration: null,
+};
+const findSummaryById = vi.fn(() => Effect.succeed(testExecution));
+const testAppRuntime = stubWfGraphRuntime({
+  executionRepo: {
+    findSummaryById,
+  },
+  workflowRepo: {
+    findById: () => Effect.succeed(testWorkflow),
+    findVersionById: () => Effect.succeed(testVersion),
+  },
+});
 
 afterAll(() => testAppRuntime.dispose());
 
@@ -62,17 +111,37 @@ function createTestFunction() {
 }
 
 /**
- * The payload a run arrives on. A case spells out only what it varies, so what
- * the case is about is what stands out at its call site.
+ * The payload a run arrives on after the persisted reload. A case spells out
+ * only what it varies, so what the case is about is what stands out at its
+ * call site.
  */
-function runEventData(varied: Record<string, unknown> = {}) {
+function persistedRunInput(varied: Record<string, unknown> = {}) {
   return {
     graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
     workflowVersionId: "ver_1",
     catalogFingerprint: "fp",
+    startPayload: {},
+    requestPayload: {},
+    startEventName: testExecution.startEventName,
     executionId: "exec_123",
     workflowId: "workflow_123",
+    workflowName: testWorkflow.name,
+    runMode: testExecution.runMode,
     ...varied,
+  };
+}
+
+function runRequestData() {
+  return { executionId: testExecution.id };
+}
+
+function branchInvokeData(
+  varied: { entryNodeId?: string; releasedNodeIds?: string[] } = {}
+) {
+  return {
+    executionId: testExecution.id,
+    entryNodeId: varied.entryNodeId ?? "wait_1",
+    releasedNodeIds: varied.releasedNodeIds ?? [],
   };
 }
 
@@ -105,7 +174,7 @@ async function executeWorkflowFunctionForTest() {
   );
 
   const execution = await engine.execute({
-    events: [{ name: "workflow/run.requested", data: runEventData() }],
+    events: [{ name: "workflow/run.requested", data: runRequestData() }],
   });
 
   const runtime = executeWorkflowMock.mock.calls.at(-1)?.[1] as
@@ -122,6 +191,8 @@ describe("the workflow run function", () => {
   beforeEach(() => {
     executeWorkflowMock.mockReset();
     buildTestActions.mockClear();
+    findSummaryById.mockReset();
+    findSummaryById.mockImplementation(() => Effect.succeed(testExecution));
   });
 
   afterEach(() => {
@@ -142,7 +213,7 @@ describe("the workflow run function", () => {
    * is declared per function: a branch is killed where it stands and the run
    * that started it must not be.
    */
-  it("registers the branch as a function of its own", () => {
+  it("registers the branch as invoke-only, not a public event", () => {
     const branchFunction = createWorkflowBranchFunction(createTestClient(), {
       actions: buildTestActions,
       store: testStore,
@@ -153,6 +224,13 @@ describe("the workflow run function", () => {
 
     expect(branchFunction.id()).toBe("workflow-branch");
     expect(branchFunction.name).toBe("Workflow branch");
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    const { opts } = branchFunction as {
+      opts: { triggers: { event?: string; name?: string }[] };
+    };
+    expect(opts.triggers).toHaveLength(1);
+    expect(opts.triggers[0]?.event).toBe("inngest/function.invoked");
+    expect(opts.triggers[0]?.name).toBe("inngest/function.invoked");
   });
 
   /**
@@ -170,10 +248,7 @@ describe("the workflow run function", () => {
       events: [
         {
           name: "workflow/run.requested",
-          data: runEventData({
-            workflowName: "Donor intake follow-up",
-            startEventName: "donor/intake.submitted",
-          }),
+          data: runRequestData(),
         },
       ],
     });
@@ -204,7 +279,7 @@ describe("the workflow run function", () => {
     const { result } = await new InngestTestEngine({
       function: createTestFunction(),
     }).execute({
-      events: [{ name: "workflow/run.requested", data: runEventData() }],
+      events: [{ name: "workflow/run.requested", data: runRequestData() }],
     });
 
     expect(result).toEqual(expectedResult);
@@ -217,7 +292,7 @@ describe("the workflow run function", () => {
   it("names the entry node in a branch run's metadata", async () => {
     const update = vi.fn(() => Promise.resolve());
     recordRunMetadata(update);
-    const executeWorkflowBranch = vi.fn(() =>
+    const executeWorkflowBranch = vi.fn((..._args: [unknown, ...unknown[]]) =>
       Effect.succeed({ results: {}, outputs: {} })
     );
 
@@ -232,12 +307,8 @@ describe("the workflow run function", () => {
     }).execute({
       events: [
         {
-          name: "workflow/branch.requested",
-          data: runEventData({
-            workflowName: "Donor intake follow-up",
-            entryNodeId: "wait_1",
-            releasedNodeIds: [],
-          }),
+          name: "inngest/function.invoked",
+          data: branchInvokeData(),
         },
       ],
     });
@@ -251,9 +322,81 @@ describe("the workflow run function", () => {
     );
   });
 
+  /**
+   * The invoke payload names the Wait, not the graph. The published version
+   * the execution pins is what the branch walks, so a chosen graph on the
+   * wire cannot select HTTP or credentialed steps.
+   */
+  it("walks the persisted published graph, not a graph on the invoke", async () => {
+    const executeWorkflowBranch = vi.fn((..._args: [unknown, ...unknown[]]) =>
+      Effect.succeed({ results: {}, outputs: {} })
+    );
+
+    await new InngestTestEngine({
+      function: createWorkflowBranchFunction(createTestClient(), {
+        actions: buildTestActions,
+        store: testStore,
+        appRuntime: testAppRuntime,
+        executeWorkflow: vi.fn(),
+        executeWorkflowBranch,
+      }),
+    }).execute({
+      events: [
+        {
+          name: "inngest/function.invoked",
+          data: branchInvokeData({
+            entryNodeId: "wait_1",
+            releasedNodeIds: ["entry_1"],
+          }),
+        },
+      ],
+    });
+
+    expect(executeWorkflowBranch).toHaveBeenCalledTimes(1);
+    expect(executeWorkflowBranch.mock.calls[0]?.[0]).toEqual({
+      ...persistedRunInput(),
+      entryNodeId: "wait_1",
+      releasedNodeIds: ["entry_1"],
+    });
+  });
+
+  it.each(["completed", "canceled", "superseded", "failed"] as const)(
+    "refuses to walk a %s execution as a branch",
+    async (status) => {
+      findSummaryById.mockImplementation(() =>
+        Effect.succeed({ ...testExecution, status })
+      );
+      const executeWorkflowBranch = vi.fn();
+
+      const testEngine = new InngestTestEngine({
+        function: createWorkflowBranchFunction(createTestClient(), {
+          actions: buildTestActions,
+          store: testStore,
+          appRuntime: testAppRuntime,
+          executeWorkflow: vi.fn(),
+          executeWorkflowBranch,
+        }),
+        events: [
+          {
+            name: "inngest/function.invoked",
+            data: branchInvokeData(),
+          },
+        ],
+      });
+      const { result } = await new InngestTestRun({ testEngine }).waitFor(
+        "function-rejected"
+      );
+
+      expect(executeWorkflowBranch).not.toHaveBeenCalled();
+      expect(result.retriable).toBe(false);
+      expect(result.error).toMatchObject({
+        message: "The requested workflow execution is no longer in flight",
+      });
+    }
+  );
+
   it("forwards event data, runtime, store and actions to executeWorkflow", async () => {
     const workflowRunRequestedFunction = createTestFunction();
-    const workflowInput = runEventData();
     const expectedResult = { success: true, outputs: {}, results: {} };
     executeWorkflowMock.mockReturnValueOnce(Effect.succeed(expectedResult));
 
@@ -262,18 +405,18 @@ describe("the workflow run function", () => {
     });
 
     const { result, ctx } = await engine.execute({
-      events: [{ name: "workflow/run.requested", data: workflowInput }],
+      events: [{ name: "workflow/run.requested", data: runRequestData() }],
     });
 
     expect(executeWorkflowMock).toHaveBeenCalledTimes(1);
     const [input, runtime, store, actions] = executeWorkflowMock.mock
       .calls[0] as [
-      typeof workflowInput,
+      ReturnType<typeof persistedRunInput>,
       WorkflowExecutionRuntime,
       WorkflowStore,
       typeof testActions,
     ];
-    expect(input).toEqual(workflowInput);
+    expect(input).toEqual(persistedRunInput());
     expect(runtime).toMatchObject({
       sleep: expect.any(Function),
       waitForEvent: expect.any(Function),
@@ -316,7 +459,7 @@ describe("the workflow run function", () => {
 
     const testEngine = new InngestTestEngine({
       function: createTestFunction(),
-      events: [{ name: "workflow/run.requested", data: runEventData() }],
+      events: [{ name: "workflow/run.requested", data: runRequestData() }],
     });
     // The rejected checkpoint rather than `execute`, which hands back the error
     // alone: whether Inngest will try again is the assertion here.
@@ -330,6 +473,49 @@ describe("the workflow run function", () => {
     expect(result.error).toMatchObject({
       message: "email_1: the vendor said no",
     });
+  });
+
+  /**
+   * A forged or re-delivered `workflow/run.requested` for a row that already
+   * ended must not walk the graph again. `finishRun` will not reclaim the
+   * terminal row, but the steps would still fire.
+   */
+  it.each(["completed", "canceled", "superseded", "failed"] as const)(
+    "refuses to walk a %s execution",
+    async (status) => {
+      findSummaryById.mockImplementation(() =>
+        Effect.succeed({ ...testExecution, status })
+      );
+
+      const testEngine = new InngestTestEngine({
+        function: createTestFunction(),
+        events: [{ name: "workflow/run.requested", data: runRequestData() }],
+      });
+      const { result } = await new InngestTestRun({ testEngine }).waitFor(
+        "function-rejected"
+      );
+
+      expect(executeWorkflowMock).not.toHaveBeenCalled();
+      expect(result.retriable).toBe(false);
+      expect(result.error).toMatchObject({
+        message: "The requested workflow execution is no longer in flight",
+      });
+    }
+  );
+
+  it("still walks a waiting execution, which is how a resume replays", async () => {
+    findSummaryById.mockImplementation(() =>
+      Effect.succeed({ ...testExecution, status: "waiting" })
+    );
+    executeWorkflowMock.mockReturnValueOnce(
+      Effect.succeed({ success: true, outputs: {}, results: {} })
+    );
+
+    await new InngestTestEngine({ function: createTestFunction() }).execute({
+      events: [{ name: "workflow/run.requested", data: runRequestData() }],
+    });
+
+    expect(executeWorkflowMock).toHaveBeenCalledTimes(1);
   });
 
   it("runtime.step maps onto step.run so node work is memoized across replays", async () => {
@@ -374,19 +560,14 @@ describe("the workflow run function", () => {
       }
     );
 
-    // The branch carries the graph, the run's identity, and the ids of the nodes
-    // that let it start. What those nodes produced stays behind: it reads their
-    // outputs back from the store.
+    // The branch names the execution and the Wait it starts at. The graph stays
+    // behind: the child reloads it from the pinned published version.
     expect(invokeSpy).toHaveBeenCalledWith(
       { id: "branch-wait_1", name: "Wait for reply (branch)" },
       {
         function: expect.anything(),
         data: {
-          graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
-          workflowVersionId: "ver_1",
-          catalogFingerprint: "fp",
           executionId: "exec_123",
-          workflowId: "workflow_123",
           entryNodeId: "wait_1",
           releasedNodeIds: ["entry_1"],
         },
