@@ -6,7 +6,7 @@ beside `@wfgraph/example-app` (`examples/`), the host app `pnpm run dev` runs.
 - `@wfgraph/shared` (`packages/shared`) runtime-agnostic types, workflow contracts, utilities
 - `@wfgraph/core` (`packages/core`) library entrypoints and the backend
 - `@wfgraph/client` (`packages/client`) the React SPA, handed to `createWfGraphApp` as `client`
-- `@wfgraph/plugins` (`packages/plugins`) the five built-in integrations. Each server half
+- `@wfgraph/plugins` (`packages/plugins`) the six built-in integrations. Each server half
   builds against `@wfgraph/core/plugin` alone; the browser half is one exported record,
   `src/ui.ts`, which the editor provides through React context.
 

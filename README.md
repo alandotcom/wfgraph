@@ -153,7 +153,7 @@ can never be installed against a backend whose API contract it no longer matches
 | -------------------------------------------------------------------- | ---------------------------------------------------- |
 | [`@wfgraph/core`](https://www.npmjs.com/package/@wfgraph/core)       | Run engine, authoring vocabulary, `createWfGraphApp` |
 | [`@wfgraph/client`](https://www.npmjs.com/package/@wfgraph/client)   | The editor, as a built bundle                        |
-| [`@wfgraph/plugins`](https://www.npmjs.com/package/@wfgraph/plugins) | The five built-in integrations                       |
+| [`@wfgraph/plugins`](https://www.npmjs.com/package/@wfgraph/plugins) | The six built-in integrations                        |
 
 `@wfgraph/shared` holds types the three have in common. It stays private and is inlined at
 build time, so it never appears as a dependency of anything you install.
