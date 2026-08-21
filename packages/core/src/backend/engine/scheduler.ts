@@ -15,7 +15,11 @@ import {
   isWaitNode,
   readConfigString,
 } from "@wfgraph/shared/graph/node-config";
-import { type JsonObject, readJsonValue } from "@wfgraph/shared/types/json";
+import {
+  type JsonObject,
+  type JsonValue,
+  readJsonValue,
+} from "@wfgraph/shared/types/json";
 import { Cause, Effect } from "effect";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import type { CancelBoundary } from "#src/backend/engine/cancel-boundary";
@@ -41,6 +45,7 @@ import {
   fromUnknownPromise,
   runDurableUnit,
 } from "#src/backend/engine/durable";
+import { readResumedWaitEvent } from "#src/backend/engine/wait-shared";
 
 /** What the run log and the trace call a node. */
 function getNodeName(node: WorkflowNode, actions: WorkflowActions): string {
@@ -81,6 +86,13 @@ export type NodeSchedulerInput = {
   /** The Event that started the run: see `WorkflowExecutionInput.startEventName`. */
   startEventName: string | null;
   /**
+   * The entry nodes this run started from, whose output is the payload of the
+   * Arriving Event. An event-mode Wait that resumes overwrites that payload the
+   * same way a Cancel Event does, so a node below the Wait addresses the Event
+   * that woke it.
+   */
+  lifecycleNodes: readonly WorkflowNode[];
+  /**
    * Catalog fingerprint the published version pinned. Compared against the live
    * catalog when an action resolves.
    */
@@ -111,8 +123,16 @@ export class NodeScheduler {
    */
   private readonly drainedWaits = new Set<string>();
 
+  /**
+   * The Event the nodes running now arrived on, before a Cancel Event takes the
+   * Canceled outlet. Starts as the Start Event and becomes the Event that woke
+   * the most recent event-mode Wait.
+   */
+  private arrivingEventName: string | null;
+
   constructor(input: NodeSchedulerInput) {
     this.input = input;
+    this.arrivingEventName = input.startEventName;
     if (input.branchEntryNodeId) {
       this.drainedWaits.add(input.branchEntryNodeId);
     }
@@ -133,14 +153,40 @@ export class NodeScheduler {
 
   /**
    * The Event the nodes running now arrived on: the Cancel Event once the run
-   * has taken the Canceled outlet, and the Start Event before that. A run
+   * has taken the Canceled outlet, the Event that woke the most recent
+   * event-mode Wait below that, and the Start Event before either. A run
    * nothing named an Event for answers null, which a rule compares false
    * against.
    */
   private currentEventName(): string | null {
     return (
-      this.input.cancelBoundary.canceledByEvent() ?? this.input.startEventName
+      this.input.cancelBoundary.canceledByEvent() ?? this.arrivingEventName
     );
+  }
+
+  /**
+   * An event-mode Wait that resumed is a new Arriving Event: the Event that
+   * woke it, and the payload it carried. A timeout or a cancel wake names
+   * neither, so the Event the run was already on stays.
+   *
+   * The entry node's output becomes that payload, matching a Cancel Event: a
+   * node below the Wait addresses the Event that put it there, and the picker
+   * that offers those fields reads the same set `eventsReaching` now names.
+   */
+  private takeWaitArrival(output: JsonValue) {
+    const resumed = readResumedWaitEvent(output);
+    if (!resumed) {
+      return;
+    }
+
+    this.arrivingEventName = resumed.eventName;
+    const { traversal, lifecycleNodes } = this.input;
+    for (const lifecycleNode of lifecycleNodes) {
+      traversal.setOutput(lifecycleNode.id, {
+        label: lifecycleNode.data.label || lifecycleNode.id,
+        data: resumed.payload,
+      });
+    }
   }
 
   // The persisted graph is validated as a DAG before execution, so we avoid
@@ -463,6 +509,10 @@ export class NodeScheduler {
           label: node.data.label || nodeId,
           data: outputData,
         });
+
+        if (result.success && isWaitNode(node) && outputData !== null) {
+          this.takeWaitArrival(outputData);
+        }
 
         const failure = executionError(result);
         yield* logNode(startedAt, result.success ? "success" : "failed", {

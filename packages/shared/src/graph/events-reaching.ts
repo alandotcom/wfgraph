@@ -28,6 +28,7 @@ import type {
   WorkflowEdge,
   WorkflowNode,
 } from "#src/graph/types";
+import { isEventWaitNode } from "#src/graph/node-config";
 import { fieldsVisibleForConfig } from "#src/graph/node-references";
 import { upstreamNodeIds } from "#src/graph/upstream-nodes";
 import {
@@ -39,6 +40,7 @@ import {
   LIFECYCLE_STARTED_HANDLE,
 } from "#src/lifecycle/lifecycle-outlets";
 import { readLifecycleRules } from "#src/lifecycle/lifecycle-rules";
+import { readWaitSubscriptions } from "#src/lifecycle/wait-subscription";
 
 /**
  * Whether one rule could hold for a run that arrived on this Event.
@@ -206,6 +208,25 @@ function narrowThroughCondition(input: {
   });
 }
 
+/**
+ * The Events an event-mode Wait hands on, in the order its subscriptions name
+ * them. A delay Wait never reaches this: it is not an event source, so the walk
+ * keeps whatever reached the Wait.
+ *
+ * An Event the catalog has never heard of is skipped, matching the Lifecycle
+ * Node. Saving refuses a wait that names one.
+ */
+function waitEvents(input: {
+  node: WorkflowNode;
+  catalog: ExtensionCatalog;
+}): EventMetadata[] {
+  return compact(
+    readWaitSubscriptions(input.node.data.config).map((subscription) =>
+      findEvent(input.catalog, subscription.event)
+    )
+  );
+}
+
 /** The Events an outlet of the entry node hands on, in the order rules name them. */
 function outletEvents(input: {
   entryNode: WorkflowNode;
@@ -255,8 +276,10 @@ function actionOutputPaths(
  *
  * Events at a node are the intersection of what each incoming edge admits, the
  * same AND the engine uses for readiness. A parent that is the Lifecycle Node
- * contributes its outlet's Events; anything else is narrowed by the handle the
- * edge left on. A node no path reaches is offered nothing.
+ * contributes its outlet's Events; a parent that is an event-mode Wait
+ * contributes the Events it parks on, which is how an Event Split below it has
+ * something new to split; anything else is narrowed by the handle the edge left
+ * on. A node no path reaches is offered nothing.
  *
  * Where the walk cannot tell, it keeps the Event. Offering a field too many is
  * noise a builder can read past; hiding one is a promise they cannot see broken.
@@ -331,12 +354,14 @@ export function eventsReaching(input: {
               handle: edge.sourceHandle,
               catalog,
             })
-          : narrowLeaving({
-              parent,
-              handle: edge.sourceHandle,
-              events: eventsAt(parent.id, nextSeen),
-              declaredElsewhere: outputPathsAt(parent.id),
-            });
+          : isEventWaitNode(parent)
+            ? waitEvents({ node: parent, catalog })
+            : narrowLeaving({
+                parent,
+                handle: edge.sourceHandle,
+                events: eventsAt(parent.id, nextSeen),
+                declaredElsewhere: outputPathsAt(parent.id),
+              });
 
       acc = acc === null ? fromParent : intersectEventsByName(acc, fromParent);
     }

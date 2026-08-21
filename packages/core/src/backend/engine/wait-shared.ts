@@ -3,7 +3,13 @@
  */
 
 import { Effect } from "effect";
+import { unwrapStepOutput } from "@wfgraph/shared/graph/node-references";
 import type { WaitConfig } from "@wfgraph/shared/lifecycle/wait-subscription";
+import {
+  type JsonObject,
+  type JsonValue,
+  readJsonObject,
+} from "@wfgraph/shared/types/json";
 import type { ExecutionResult } from "#src/backend/engine/contracts";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import type { NodeContext } from "#src/backend/engine/step-log";
@@ -81,5 +87,31 @@ export function readAllowedHoursConfig(config: WaitConfig) {
     waitAllowedHoursMode: config.waitAllowedHoursMode,
     waitAllowedStartTime: config.waitAllowedStartTime,
     waitAllowedEndTime: config.waitAllowedEndTime,
+  };
+}
+
+/**
+ * Which Event woke this wait, and what it carried, off the node's stored output.
+ *
+ * A timeout or a cancel wake leaves the Event out, so null is the honest answer:
+ * the Arriving Event did not change.
+ */
+export function readResumedWaitEvent(output: JsonValue): {
+  eventName: string;
+  payload: JsonObject;
+} | null {
+  const record = unwrapStepOutput(output);
+  if (typeof record !== "object" || record === null || Array.isArray(record)) {
+    return null;
+  }
+
+  const eventName = record.event;
+  if (typeof eventName !== "string" || eventName.length === 0) {
+    return null;
+  }
+
+  return {
+    eventName,
+    payload: readJsonObject(record.payload) ?? {},
   };
 }

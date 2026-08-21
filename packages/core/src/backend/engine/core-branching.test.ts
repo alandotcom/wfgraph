@@ -983,3 +983,201 @@ describe("executeWorkflow Event Split traversal", () => {
     expect(result.results.on_rescheduled).toBeUndefined();
   });
 });
+
+describe("executeWorkflow Event Split after Wait", () => {
+  let store: RecordingWorkflowStore;
+
+  beforeEach(() => {
+    store = createRecordingWorkflowStore();
+  });
+
+  const SETTLED = "billing/payment.settled";
+  const FAILED = "billing/payment.failed";
+  const CREATED = "app/appointment.created";
+
+  function waitResumeSignal(
+    eventType: string,
+    payload: Record<string, string>
+  ) {
+    return {
+      name: "workflow/wait.signal",
+      id: "evt_signal",
+      ts: 0,
+      data: {
+        executionId: "exec_wait_split",
+        nodeId: "wait_1",
+        token: "token_1",
+        eventType,
+        signalType: "wait-resume",
+        payload,
+      },
+    };
+  }
+
+  function createWaitSplitGraph() {
+    return createSerializedWorkflowGraph({
+      nodes: [
+        createLifecycleNode("lifecycle_1"),
+        {
+          id: "wait_1",
+          type: "action",
+          position: { x: 0, y: 100 },
+          data: {
+            label: "Wait",
+            type: "action",
+            config: {
+              actionType: BUILT_IN_ACTION_IDS.wait,
+              waitMode: "event",
+              waitFor: [{ event: SETTLED }, { event: FAILED }],
+              waitTimeout: "7d",
+            },
+          },
+        },
+        {
+          id: "split_1",
+          type: "action",
+          position: { x: 0, y: 200 },
+          data: {
+            label: "Split on Event",
+            type: "action",
+            config: { actionType: BUILT_IN_ACTION_IDS.eventSplit },
+          },
+        },
+        createConditionNode("on_settled", true),
+        createConditionNode("on_failed", true),
+        createConditionNode("on_created", true),
+      ],
+      edges: [
+        {
+          id: "edge_l_w",
+          source: "lifecycle_1",
+          sourceHandle: "started",
+          target: "wait_1",
+        },
+        { id: "edge_w_s", source: "wait_1", target: "split_1" },
+        {
+          id: "edge_s_settled",
+          source: "split_1",
+          sourceHandle: eventSplitOutlet(SETTLED),
+          target: "on_settled",
+        },
+        {
+          id: "edge_s_failed",
+          source: "split_1",
+          sourceHandle: eventSplitOutlet(FAILED),
+          target: "on_failed",
+        },
+        {
+          id: "edge_s_created",
+          source: "split_1",
+          sourceHandle: eventSplitOutlet(CREATED),
+          target: "on_created",
+        },
+      ],
+    });
+  }
+
+  it("runs the branch belonging to the Event that woke the Wait", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createWaitSplitGraph(),
+        executionId: "exec_wait_split",
+        workflowId: "workflow_wait_split",
+        startEventName: CREATED,
+        startPayload: { appointmentId: "appt_1" },
+      },
+      createInMemoryWorkflowRuntime({
+        resumeEvent: waitResumeSignal(SETTLED, { amount: "40" }),
+      }),
+      store,
+      actions
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.results.on_settled?.success).toBe(true);
+    expect(result.results.on_failed).toBeUndefined();
+    // The Start Event put the run at the Wait; it is not what the split below
+    // routes on, even when that outlet is wired.
+    expect(result.results.on_created).toBeUndefined();
+    expect(executionData(result.results.split_1)).toEqual({
+      success: true,
+      data: { event: SETTLED },
+    });
+    // The entry node's output is the payload that woke the Wait, matching the
+    // Events the editor now offers below it.
+    expect(result.outputs.lifecycle_1?.data).toEqual({ amount: "40" });
+  });
+
+  it("still splits on the Start Event after a delay Wait", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createSerializedWorkflowGraph({
+          nodes: [
+            createLifecycleNode("lifecycle_1"),
+            {
+              id: "wait_1",
+              type: "action",
+              position: { x: 0, y: 100 },
+              data: {
+                label: "Wait",
+                type: "action",
+                config: {
+                  actionType: BUILT_IN_ACTION_IDS.wait,
+                  waitMode: "delay",
+                  waitDuration: "1s",
+                },
+              },
+            },
+            {
+              id: "split_1",
+              type: "action",
+              position: { x: 0, y: 200 },
+              data: {
+                label: "Split on Event",
+                type: "action",
+                config: { actionType: BUILT_IN_ACTION_IDS.eventSplit },
+              },
+            },
+            createConditionNode("on_created", true),
+            createConditionNode("on_settled", true),
+          ],
+          edges: [
+            {
+              id: "edge_l_w",
+              source: "lifecycle_1",
+              sourceHandle: "started",
+              target: "wait_1",
+            },
+            { id: "edge_w_s", source: "wait_1", target: "split_1" },
+            {
+              id: "edge_s_created",
+              source: "split_1",
+              sourceHandle: eventSplitOutlet(CREATED),
+              target: "on_created",
+            },
+            {
+              id: "edge_s_settled",
+              source: "split_1",
+              sourceHandle: eventSplitOutlet(SETTLED),
+              target: "on_settled",
+            },
+          ],
+        }),
+        executionId: "exec_delay_split",
+        workflowId: "workflow_delay_split",
+        startEventName: CREATED,
+        startPayload: { appointmentId: "appt_1" },
+      },
+      createInMemoryWorkflowRuntime({ skipSleep: true }),
+      store,
+      actions
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.results.on_created?.success).toBe(true);
+    expect(result.results.on_settled).toBeUndefined();
+    expect(result.outputs.lifecycle_1?.data).toEqual({
+      appointmentId: "appt_1",
+    });
+  });
+});

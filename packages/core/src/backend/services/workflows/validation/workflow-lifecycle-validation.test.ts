@@ -219,8 +219,8 @@ describe("validateEventSplitOutlets", () => {
   });
 
   it("refuses an outlet naming an Event that cannot reach the split", () => {
-    // The Lifecycle Rules decide which Events arrive, so an outlet for another
-    // is a branch no run travels.
+    // The Events that reach the split decide which outlets a run can take, so
+    // an outlet for another is a branch no run travels.
     const result = validateEventSplitOutlets(
       nodes,
       [
@@ -247,5 +247,48 @@ describe("validateEventSplitOutlets", () => {
     );
 
     expect(result.valid).toBe(false);
+  });
+
+  it("accepts an outlet naming an Event a Wait above the split parks on", () => {
+    const waitCatalog: ExtensionCatalog = {
+      events: [
+        ...catalog.events,
+        {
+          name: "billing/payment.settled",
+          label: "Payment settled",
+          payloadFields: [],
+        },
+      ],
+      actions: [],
+      integrations: [],
+    };
+    const wait: WorkflowNode = waitNode(["billing/payment.settled"]);
+    const splitAfterWait: WorkflowNode = {
+      ...splitNode,
+      id: "split-after-wait",
+    };
+    const target: WorkflowNode = { ...targetNode, id: "after-split" };
+
+    expect(
+      validateEventSplitOutlets(
+        [lifecycleNode(rules), wait, splitAfterWait, target],
+        [
+          {
+            id: "e1",
+            source: "lifecycle-1",
+            sourceHandle: LIFECYCLE_STARTED_HANDLE,
+            target: "wait-1",
+          },
+          { id: "e2", source: "wait-1", target: "split-after-wait" },
+          {
+            id: "e3",
+            source: "split-after-wait",
+            sourceHandle: eventSplitOutlet("billing/payment.settled"),
+            target: "after-split",
+          },
+        ],
+        waitCatalog
+      )
+    ).toEqual({ valid: true });
   });
 });
