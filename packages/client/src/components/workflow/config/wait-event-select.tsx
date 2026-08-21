@@ -1,3 +1,7 @@
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { List, ListItem } from "@astryxdesign/core/List";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 import { useAtomValue } from "jotai";
 import { X } from "lucide-react";
 import { useCallback, useId, useMemo } from "react";
@@ -86,8 +90,8 @@ export function WaitEventSelect({
   };
 
   return (
-    <div className="space-y-3">
-      <div className="space-y-2">
+    <VStack gap={3}>
+      <VStack gap={2}>
         <Label htmlFor={eventsInputId}>Resume when the event is</Label>
 
         {catalog.events.length > 0 ? (
@@ -99,12 +103,12 @@ export function WaitEventSelect({
             value={selectedNames}
           />
         ) : (
-          <p className="text-muted-foreground text-xs">
+          <Text as="p" type="supporting">
             This server declares no Events, so there is nothing for a wait to
             park on. Ask whoever runs it to declare the Event.
-          </p>
+          </Text>
         )}
-      </div>
+      </VStack>
 
       {selected.length === 0 ? (
         <WarningCallout>
@@ -112,21 +116,28 @@ export function WaitEventSelect({
           anything, and the workflow will not save.
         </WarningCallout>
       ) : (
-        selected.map((subscription) => (
-          <WaitSubscriptionRow
-            disabled={disabled}
-            key={subscription.event}
-            onMatchChange={setMatch}
-            onRemove={remove}
-            subscription={subscription}
-          />
-        ))
+        <List density="spacious" hasDividers>
+          {selected.map((subscription) => (
+            <WaitSubscriptionRow
+              disabled={disabled}
+              key={subscription.event}
+              onMatchChange={setMatch}
+              onRemove={remove}
+              subscription={subscription}
+            />
+          ))}
+        </List>
       )}
-    </div>
+    </VStack>
   );
 }
 
-/** One subscription: the Event it names, and the match that narrows it. */
+/**
+ * One subscription: the Event it names, and the match that narrows it.
+ *
+ * A row, not a box: the event name is the heading and a divider separates
+ * subscriptions, so the section card above stays the only frame on this panel.
+ */
 function WaitSubscriptionRow({
   subscription,
   onMatchChange,
@@ -207,71 +218,72 @@ function WaitSubscriptionRow({
   }, [seedPath, fields, onMatchChange, subscription.event]);
 
   return (
-    <div className="space-y-2 rounded-md border p-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0" title={subscription.event}>
-          {event ? <p className="truncate text-xs">{event.label}</p> : null}
-          <p className="truncate font-mono text-xs text-muted-foreground">
-            {subscription.event}
-          </p>
+    <ListItem
+      description={
+        <VStack gap={2}>
+          {event ? (
+            <Text maxLines={1} type="code">
+              {subscription.event}
+            </Text>
+          ) : null}
           {event ? null : (
-            <p className="text-destructive text-xs">
+            <Text as="p" className="text-destructive" type="supporting">
               This app no longer declares this Event; the workflow will not save
               until it is removed or declared again.
-            </p>
+            </Text>
           )}
-        </div>
-        <Button
-          aria-label={`Remove ${subscription.event}`}
-          className="size-7 shrink-0"
-          disabled={disabled}
+          {subscription.match ? (
+            <VStack gap={2}>
+              <ConditionBuilderRow
+                currentNodeId={selectedNodeId ?? undefined}
+                description="Only an arrival satisfying this resumes the run. Compare a payload field against a literal, or against a value from this run."
+                disabled={disabled}
+                emptyFieldsMessage="This Event declares no fields, so there is nothing to match on."
+                fields={fields}
+                label="Match"
+                onChange={handleChange}
+                value={subscription.match}
+              />
+              <Button
+                disabled={disabled}
+                onClick={handleClear}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                Resume on any {subscription.event}
+              </Button>
+            </VStack>
+          ) : (
+            <VStack gap={1}>
+              <Text as="p" type="supporting">
+                Any {subscription.event} resumes this run, whatever it carries.
+              </Text>
+              <Button
+                disabled={disabled || fields.length === 0}
+                onClick={seedMatch}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Add a match
+              </Button>
+            </VStack>
+          )}
+        </VStack>
+      }
+      endContent={
+        <IconButton
+          icon={<X className="size-3.5" />}
+          isDisabled={disabled}
+          label={`Remove ${subscription.event}`}
           onClick={() => onRemove(subscription.event)}
-          size="icon"
-          type="button"
+          size="sm"
+          tooltip={`Remove ${subscription.event}`}
           variant="ghost"
-        >
-          <X className="size-3.5" />
-        </Button>
-      </div>
-
-      {subscription.match ? (
-        <>
-          <ConditionBuilderRow
-            currentNodeId={selectedNodeId ?? undefined}
-            description="Only an arrival satisfying this resumes the run. Compare a payload field against a literal, or against a value from this run."
-            disabled={disabled}
-            emptyFieldsMessage="This Event declares no fields, so there is nothing to match on."
-            fields={fields}
-            label="Match"
-            onChange={handleChange}
-            value={subscription.match}
-          />
-          <Button
-            disabled={disabled}
-            onClick={handleClear}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            Resume on any {subscription.event}
-          </Button>
-        </>
-      ) : (
-        <div className="space-y-1">
-          <p className="text-muted-foreground text-xs">
-            Any {subscription.event} resumes this run, whatever it carries.
-          </p>
-          <Button
-            disabled={disabled || fields.length === 0}
-            onClick={seedMatch}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            Add a match
-          </Button>
-        </div>
-      )}
-    </div>
+        />
+      }
+      label={event?.label ?? subscription.event}
+    />
   );
 }

@@ -1,5 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 // The editor's React components for the built-in integrations: their icons and
 // their custom output renderers. A component cannot be serialized, so this stays
@@ -11,6 +12,10 @@ import { integrationUi } from "@wfgraph/plugins/ui";
 import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
 import "#src/routes/globals.css";
+// The wfgraph Astryx theme's built tokens and component overrides. Imported
+// after globals.css so vendor.css's @layer order statement is declared before
+// this file's layer blocks land; regenerate with `pnpm run theme:build`.
+import "#src/theme/wfgraph.css";
 import {
   CatalogLoading,
   CatalogUnavailable,
@@ -23,6 +28,7 @@ import {
   getExtensionCatalog,
   hydrateExtensionsFromApi,
 } from "#src/lib/extensions";
+import { ThemeProvider } from "#src/theme/theme-provider";
 import { router } from "./router";
 
 declare global {
@@ -96,16 +102,20 @@ if (!rootElement) {
 
 const root = createRoot(rootElement);
 
+const renderApp = (children: ReactNode) => {
+  root.render(<ThemeProvider>{children}</ThemeProvider>);
+};
+
 // Painted before the catalog request goes out, so the wait for it is a screen
 // rather than a blank document. The editor draws nothing until it knows what a
 // workflow can do, and a failed fetch takes the router's place: an editor drawn
 // from a catalog that never arrived tells a builder their server declares no
 // Events, which is a lie about somebody else's code.
-root.render(<CatalogLoading />);
+renderApp(<CatalogLoading />);
 
 const catalogLoad = await hydrateExtensionsFromApi();
 
-root.render(
+renderApp(
   catalogLoad.ok ? (
     <ExtensionCatalogProvider value={getExtensionCatalog()}>
       <IntegrationUiProvider value={integrationUi}>

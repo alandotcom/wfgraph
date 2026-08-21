@@ -10,7 +10,6 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { Provider } from "jotai";
 import { GlobalModals } from "#src/components/global-modals";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
-import { ThemeProvider } from "#src/components/theme-provider";
 import { Toaster } from "#src/components/ui/sonner";
 import { PersistentCanvas } from "#src/components/workflow/persistent-canvas";
 import { appStore } from "#src/lib/app-store";
@@ -63,20 +62,13 @@ function LayoutContent() {
 
 function RootLayout() {
   return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="system"
-      disableTransitionOnChange
-      enableSystem
-    >
-      <Provider store={appStore}>
-        <OverlayProvider>
-          <LayoutContent />
-          <Toaster />
-          <GlobalModals />
-        </OverlayProvider>
-      </Provider>
-    </ThemeProvider>
+    <Provider store={appStore}>
+      <OverlayProvider>
+        <LayoutContent />
+        <Toaster />
+        <GlobalModals />
+      </OverlayProvider>
+    </Provider>
   );
 }
 

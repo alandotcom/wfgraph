@@ -1,5 +1,4 @@
 import { Key, Moon, Plug, Sun } from "lucide-react";
-import { useTheme } from "next-themes";
 import { ApiKeysOverlay } from "#src/components/overlays/api-keys-overlay";
 import { IntegrationsOverlay } from "#src/components/overlays/integrations-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
@@ -16,9 +15,10 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "#src/components/ui/dropdown-menu";
+import { useColorMode } from "#src/theme/color-mode";
 
 export const UserMenu = () => {
-  const { theme, setTheme } = useTheme();
+  const { mode, setMode } = useColorMode();
   const { open: openOverlay } = useOverlay();
 
   return (
@@ -45,7 +45,18 @@ export const UserMenu = () => {
             <span>Theme</span>
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent>
-            <DropdownMenuRadioGroup onValueChange={setTheme} value={theme}>
+            <DropdownMenuRadioGroup
+              onValueChange={(value) => {
+                if (
+                  value === "light" ||
+                  value === "dark" ||
+                  value === "system"
+                ) {
+                  setMode(value);
+                }
+              }}
+              value={mode}
+            >
               <DropdownMenuRadioItem value="light">Light</DropdownMenuRadioItem>
               <DropdownMenuRadioItem value="dark">Dark</DropdownMenuRadioItem>
               <DropdownMenuRadioItem value="system">

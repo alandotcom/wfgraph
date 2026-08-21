@@ -133,7 +133,12 @@ const config: KnipConfig = {
       // tag there as the SPA's entry; src/index.ts, the tiny module a host
       // imports to hand the built bundle to createWfGraphApp, comes from the
       // "exports" map.
-      entry: [],
+      entry: [
+        // Run by the theme:build script as a CLI file argument, which is a
+        // string knip cannot follow. The built wfgraph.js/wfgraph.css it
+        // generates are reached through ordinary imports.
+        "src/theme/wfgraph-theme.ts",
+      ],
       project: ["src/**/*.{ts,tsx}", "**/*.css"],
 
       // components.json points shadcn's generator at src/components/ui, and what

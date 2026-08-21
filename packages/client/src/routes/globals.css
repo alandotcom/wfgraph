@@ -1,7 +1,10 @@
-@import "tailwindcss";
+/* Third-party stylesheets and their cascade-layer wiring live in vendor.css;
+   this file holds the app's own tokens. tw-animate-css stays unlayered, which
+   is what lets its animation utilities win over every named layer. */
+@import "./vendor.css";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:is([data-theme="dark"] *));
 
 @theme inline {
   --color-background: var(--background);
@@ -126,7 +129,11 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
-.dark {
+/* Dark mode is owned by Astryx's <Theme> provider, which writes
+   data-theme="dark" on <html>; see src/theme/color-mode.tsx. These legacy
+   shadcn-era tokens serve the not-yet-migrated components and re-key onto that
+   attribute so one toggle drives both systems. */
+[data-theme="dark"] {
   --background: oklch(0 0 0);
   --foreground: oklch(0.98 0 0);
   /* oklch(0.04) and oklch(0.09) both quantise to rgb(0,0,0) at 8 bits, so the
@@ -327,12 +334,12 @@
   opacity: 0.4 !important;
 }
 
-.dark .react-flow__attribution {
+[data-theme="dark"] .react-flow__attribution {
   background: transparent !important;
   color: color-mix(in oklch, var(--foreground) 40%, transparent) !important;
 }
 
-.dark .react-flow__attribution a {
+[data-theme="dark"] .react-flow__attribution a {
   color: color-mix(in oklch, var(--foreground) 50%, transparent) !important;
 }
 
