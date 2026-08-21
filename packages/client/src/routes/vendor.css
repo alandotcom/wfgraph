@@ -14,7 +14,4 @@
 @import "tailwindcss/preflight.css" layer(base);
 @import "@astryxdesign/core/reset.css";
 @import "@astryxdesign/core/astryx.css";
-/* Maps Astryx tokens onto Tailwind utilities: bg-surface, text-primary,
-   rounded-lg, so new Astryx-styled markup and legacy Tailwind share one set. */
-@import "@astryxdesign/core/tailwind-theme.css";
 @import "tailwindcss/utilities.css" layer(utilities);

@@ -34,8 +34,11 @@ export const wfgraphTheme = defineTheme({
     "--color-text-secondary": ["oklch(0.556 0 0)", "oklch(0.65 0 0)"],
     "--color-border": ["oklch(0.922 0 0)", "oklch(0.27 0 0)"],
     // The editor's "accent" is its foreground: near-black in light mode,
-    // near-white in dark. Primary buttons read as ink, not brand colour.
+    // near-white in dark. Primary buttons read as ink, not brand colour. A
+    // neutral seed cannot go through Astryx's chromatic HCT accent generator,
+    // so all three members of the accent family are explicit here.
     "--color-accent": ["oklch(0.205 0 0)", "oklch(0.98 0 0)"],
+    "--color-accent-muted": ["#1717171A", "#F8F8F83F"],
     "--color-on-accent": ["oklch(0.985 0 0)", "oklch(0.09 0 0)"],
   },
 });

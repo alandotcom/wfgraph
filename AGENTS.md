@@ -223,7 +223,8 @@ incrementally over the shadcn/Base UI layer that predates it. New UI uses Astryx
 Base UI is for what Astryx does not cover until its wrapper retires; Radix is banned.
 `packages/client/AGENTS.md` holds the Astryx working rules and CLI reference; the editor's
 visual identity lives in a custom theme built from `packages/client/src/theme/`, and Tailwind
-v4 stays for layout and custom styling through Astryx's token bridge.
+v4 stays for legacy UI and layout. Do not import Astryx's Tailwind token bridge while the
+shadcn layer still owns conflicting names such as `primary`, `secondary`, and `accent`.
 
 ## Pitfalls that have bitten
 

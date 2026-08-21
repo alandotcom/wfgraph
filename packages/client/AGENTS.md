@@ -22,7 +22,7 @@ RULES:
 - No <div> — components do all layout/spacing, page frame included.
 - Frame first: read `astryx docs layout` before writing any page or screen — page frame, region widths, breakpoint behavior.
 - Dense data = rows (Table, List/Item), never Card-wrapped list items; Card is for standalone widgets. Status = StatusDot/Token; Badge = counts only.
-- Custom styling: component props first; else Tailwind utilities backed by tokens (bg-surface, text-primary, rounded-lg) via tailwind-theme.css. No raw hex/px.
+- Custom styling: component props and theme overrides first. Tailwind remains for layout and legacy UI, but do not import `tailwind-theme.css`: its `primary`, `secondary`, `accent`, and radius names conflict with the shadcn vocabulary still in use.
 - Tokens for every value (`astryx docs tokens`). Brand/accent belongs in the theme (`astryx theme list` / `theme add <slug>`, or `astryx theme template` for a custom one) — never override --color-* in :root.
 - SELF-CHECK before you finish: re-read the file and replace any style={{…}}, raw <div>/<span> layout, imported .css/@apply, or hardcoded/arbitrary value (e.g. bg-[#fff], p-[13px]) with the component or a token-backed utility. If unsure a component/prop exists, run `astryx component <Name>` / `astryx search "<thing>"`; don't hand-roll CSS.
 
