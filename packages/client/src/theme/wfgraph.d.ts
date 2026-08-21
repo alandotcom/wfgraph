@@ -6,5 +6,5 @@
  * Core: @astryxdesign/core@0.4.5
  */
 
-import type { DefinedTheme } from '@astryxdesign/core/theme';
+import type { DefinedTheme } from "@astryxdesign/core/theme";
 export declare const wfgraphTheme: DefinedTheme;

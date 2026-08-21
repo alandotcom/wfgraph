@@ -34,7 +34,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsdown && vite build",
-    "theme:build": "astryx theme build src/theme/wfgraph-theme.ts"
+    "theme:build": "astryx theme build src/theme/wfgraph-theme.ts && oxfmt src/theme/wfgraph.css src/theme/wfgraph.d.ts src/theme/wfgraph.js"
   },
   "devDependencies": {
     "@astryxdesign/cli": "0.4.5",

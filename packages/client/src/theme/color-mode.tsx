@@ -10,9 +10,8 @@ const toColorMode = (value: string | undefined): ColorMode => {
   return "system";
 };
 
-const toResolvedColorMode = (
-  value: string | undefined
-): ResolvedColorMode => (value === "dark" ? "dark" : "light");
+const toResolvedColorMode = (value: string | undefined): ResolvedColorMode =>
+  value === "dark" ? "dark" : "light";
 
 /** The app-sized, typed surface over next-themes' open string contract. */
 export function useColorMode() {
