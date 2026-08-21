@@ -615,4 +615,80 @@ describe("upstream-node-fields events", () => {
 
     expect(fields).toEqual([]);
   });
+
+  it("offers a node below a Wait the Events that Wait parks on", () => {
+    // The Start Event put the run at the Wait; the Events the Wait wakes on
+    // are what a node below it may split or address.
+    surface.events = [
+      anEvent({
+        name: "app/appointment.created",
+        schema: Schema.Struct({
+          appointmentId: Schema.String.annotate({
+            description: "Appointment",
+          }),
+        }),
+      }),
+      anEvent({
+        name: "billing/payment.settled",
+        schema: Schema.Struct({
+          amount: Schema.String.annotate({ description: "Amount" }),
+        }),
+      }),
+      anEvent({
+        name: "billing/payment.failed",
+        schema: Schema.Struct({
+          reason: Schema.String.annotate({ description: "Why" }),
+        }),
+      }),
+    ];
+
+    const nodes: WorkflowNode[] = [
+      anEntryNode({ startEvents: ["app/appointment.created"] }),
+      createNode({
+        id: "wait-1",
+        type: "action",
+        label: "Wait",
+        config: {
+          actionType: "Wait",
+          waitMode: "event",
+          waitFor: [
+            { event: "billing/payment.settled" },
+            { event: "billing/payment.failed" },
+          ],
+        },
+      }),
+      createNode({
+        id: "after-wait",
+        type: "action",
+        label: "Decide",
+        config: { actionType: "Condition" },
+      }),
+    ];
+    const edges: WorkflowEdge[] = [
+      startedEdge("wait-1"),
+      createEdge({ id: "e2", source: "wait-1", target: "after-wait" }),
+    ];
+
+    const fields = getUpstreamConditionFields({
+      catalog: surface,
+      currentNodeId: "after-wait",
+      nodes,
+      edges,
+    });
+
+    expect(
+      fields
+        .filter(
+          (field) =>
+            field.sourceNodeId === "lifecycle-1" &&
+            field.path !== EVENT_NAME_FIELD_PATH
+        )
+        .map((field) => field.path)
+    ).toEqual(["amount", "reason"]);
+    expect(
+      fields.find((field) => field.path === EVENT_NAME_FIELD_PATH)
+    ).toMatchObject({
+      enumValues: ["billing/payment.settled", "billing/payment.failed"],
+    });
+  });
 });

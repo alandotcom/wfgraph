@@ -154,6 +154,7 @@ function runAction(ctx: NodeWorkContext) {
         return {
           result: { success: true as const, data: waitResult },
           haltBranch: waitOutcome.haltBranch,
+          arrivingEvent: waitOutcome.arrivingEvent,
         };
       }
 

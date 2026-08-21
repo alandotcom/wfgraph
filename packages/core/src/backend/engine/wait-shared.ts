@@ -4,6 +4,7 @@
 
 import { Effect } from "effect";
 import type { WaitConfig } from "@wfgraph/shared/lifecycle/wait-subscription";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import type { ExecutionResult } from "#src/backend/engine/contracts";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import type { NodeContext } from "#src/backend/engine/step-log";
@@ -60,6 +61,12 @@ export type WaitBranchContext = {
 export type WaitOutcome = {
   result: ExecutionResult;
   haltBranch: boolean;
+  /**
+   * How this Wait changes the Arriving Event. Absent means leave it. `null`
+   * means the run names none below this node (a timeout that continues). A
+   * named Event replaces the one the run was on.
+   */
+  arrivingEvent?: { eventName: string; payload: JsonObject } | null;
 };
 
 export function fromStore<A>(

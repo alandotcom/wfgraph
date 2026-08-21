@@ -59,7 +59,8 @@ export type WorkflowExecutionInput = {
   /**
    * The Event that started the run, absent for a manual start and for the
    * execute route. A Condition node reads it as the Event the run arrived on
-   * until a Cancel Event takes the run to the Canceled outlet.
+   * until an event-mode Wait resumes or a Cancel Event takes the run to the
+   * Canceled outlet.
    */
   startEventName?: string;
   /** The untouched payload as it arrived, before any mock request filled in. */
@@ -138,11 +139,7 @@ function prepareRun(
   const currentWorkflowRunId = workflowRunId || runtime.runId || executionId;
 
   const traversal = new Traversal(nodes, edges);
-
-  const nodesWithIncoming = new Set(edges.map((e) => e.target));
-  const lifecycleNodes = nodes.filter(
-    (node) => node.data.type === "lifecycle" && !nodesWithIncoming.has(node.id)
-  );
+  const lifecycleNodes = traversal.lifecycleNodes;
 
   const boundaryInput = {
     edges,

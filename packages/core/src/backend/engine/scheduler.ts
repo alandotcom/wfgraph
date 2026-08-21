@@ -111,8 +111,17 @@ export class NodeScheduler {
    */
   private readonly drainedWaits = new Set<string>();
 
+  /**
+   * The Event the nodes running now arrived on, before a Cancel Event takes the
+   * Canceled outlet. Starts as the Start Event, becomes the Event that woke the
+   * most recent event-mode Wait, and is cleared when that Wait times out and
+   * continues.
+   */
+  private arrivingEventName: string | null;
+
   constructor(input: NodeSchedulerInput) {
     this.input = input;
+    this.arrivingEventName = input.startEventName;
     if (input.branchEntryNodeId) {
       this.drainedWaits.add(input.branchEntryNodeId);
     }
@@ -133,14 +142,39 @@ export class NodeScheduler {
 
   /**
    * The Event the nodes running now arrived on: the Cancel Event once the run
-   * has taken the Canceled outlet, and the Start Event before that. A run
-   * nothing named an Event for answers null, which a rule compares false
-   * against.
+   * has taken the Canceled outlet, the Event that woke the most recent
+   * event-mode Wait below that, and the Start Event before either. A timeout
+   * that continues past an event-mode Wait, or a run nothing named an Event
+   * for, answers null, which a rule compares false against.
    */
   private currentEventName(): string | null {
     return (
-      this.input.cancelBoundary.canceledByEvent() ?? this.input.startEventName
+      this.input.cancelBoundary.canceledByEvent() ?? this.arrivingEventName
     );
+  }
+
+  /**
+   * Applies a Wait's Arriving Event change: a named Event replaces the one the
+   * run was on, and `null` clears it so an Event Split below a timed-out Wait
+   * does not take a Start Event outlet.
+   *
+   * The entry node's output becomes that payload, matching a Cancel Event. A
+   * clear writes an empty payload, so Start Event fields are not what a node
+   * below the Wait addresses. `setOwnOutput` is what lets a branch run hand
+   * the overwrite back to the run that started it.
+   */
+  private applyArrival(
+    arrivingEvent: { eventName: string; payload: JsonObject } | null
+  ) {
+    this.arrivingEventName = arrivingEvent?.eventName ?? null;
+    const payload = arrivingEvent?.payload ?? {};
+    const { traversal } = this.input;
+    for (const lifecycleNode of traversal.lifecycleNodes) {
+      traversal.setOwnOutput(lifecycleNode.id, {
+        label: lifecycleNode.data.label || lifecycleNode.id,
+        data: payload,
+      });
+    }
   }
 
   // The persisted graph is validated as a DAG before execution, so we avoid
@@ -463,6 +497,10 @@ export class NodeScheduler {
           label: node.data.label || nodeId,
           data: outputData,
         });
+
+        if (outcome.arrivingEvent !== undefined) {
+          this.applyArrival(outcome.arrivingEvent);
+        }
 
         const failure = executionError(result);
         yield* logNode(startedAt, result.success ? "success" : "failed", {

@@ -317,6 +317,22 @@ export function executeEventWait(
       })
     );
 
+    // Skip and cancel halt the branch, so the Arriving Event they would name
+    // is never read. A timeout that continues names none, which is how an
+    // Event Split below this node stops rather than taking a Start Event
+    // outlet. A resume names the Event that woke the Wait.
+    const arrivingEvent =
+      resumed.skipOnTimeout || canceled
+        ? undefined
+        : timedOut
+          ? null
+          : resumeEventName === null
+            ? undefined
+            : {
+                eventName: resumeEventName,
+                payload: readJsonObject(signal?.payload) ?? {},
+              };
+
     // A cancel wake halts the branch as a timeout skip does. The run is claimed,
     // so nothing below this node is work it still wants: a run walking its own
     // graph is sent to the Canceled outlet by the boundary read at this node,
@@ -325,6 +341,7 @@ export function executeEventWait(
     return {
       result: { success: true, data: resumed.output },
       haltBranch: resumed.skipOnTimeout || canceled,
+      arrivingEvent,
     };
   });
 }

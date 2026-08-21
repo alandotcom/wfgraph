@@ -34,8 +34,8 @@ export type WorkflowLifecycleValidationResult =
  * Every Event Split's outlets, held to the Events that can actually reach it.
  *
  * The node's outlets are derived rather than configured, so a handle naming
- * anything else belongs to a graph written before the Lifecycle Rules changed,
- * or to an API write. Either way it is a branch no run travels, which is silence
+ * anything else belongs to a graph whose Events cannot actually reach it, or
+ * to an API write. Either way it is a branch no run travels, which is silence
  * a builder cannot see, so the save says it instead.
  */
 export function validateEventSplitOutlets(
@@ -73,7 +73,7 @@ export function validateEventSplitOutlets(
       if (!reachable.has(eventName)) {
         return {
           valid: false,
-          error: `Node "${getNodeLabel(node)}" splits on "${eventName}", which cannot reach it. Remove that branch, or add the Event to the Lifecycle Rules.`,
+          error: `Node "${getNodeLabel(node)}" splits on "${eventName}", which cannot reach it. Remove that branch, or name the Event on the Lifecycle Node or a Wait above this split.`,
         };
       }
     }

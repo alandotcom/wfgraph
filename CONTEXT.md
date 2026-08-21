@@ -86,10 +86,13 @@ at its next step boundary. Stopping a sequence mid-graph is an unwired
 Condition False, not a Cancel Event.
 
 **Arriving Event**:
-The Event that put a run where it is: the Start Event it began on, and the
-Cancel Event once it has taken the Canceled outlet. A manual run names one of
-the Start Events to stand in for, or none at all, and one naming none reaches an
-Event Split and stops there, which is why such a graph refuses it outright. A
+The Event that put a run where it is: the Start Event it began on, the Cancel
+Event once it has taken the Canceled outlet, and the Event that woke an
+event-mode Wait for everything below that Wait. A timeout that continues
+below an event-mode Wait names none, so an Event Split there stops rather
+than taking a Start Event outlet. A manual run names one of the Start Events
+to stand in for, or none at all, and one naming none reaches an Event Split
+and stops there, which is why such a graph refuses it outright. A
 Condition node reads it as a field of its own, which is what lets one branch
 answer several Events, since an outlet is one outlet however many feed it. Once
 such a Condition has decided, the editor offers the nodes on each of its lines
@@ -147,6 +150,8 @@ ordering rule; a start always starts, and Concurrency resolves multiplicity.
 A Wait node's own subscription to any Event, with an optional match
 expression over the arriving payload. Independent of the Lifecycle Rules: an
 Event needs no lifecycle role to wake a wait, and waking follows Precedence.
+The Events it parks on become the Arriving Event for everything below the
+Wait, which is how an Event Split after a Wait tells those arrivals apart.
 
 ### Runs
 
