@@ -11,6 +11,10 @@ import { integrationUi } from "@wfgraph/plugins/ui";
 import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
 import "#src/routes/globals.css";
+// The wfgraph Astryx theme's built tokens and component overrides. Imported
+// after globals.css so vendor.css's @layer order statement is declared before
+// this file's layer blocks land; regenerate with `pnpm run theme:build`.
+import "#src/theme/wfgraph.css";
 import {
   CatalogLoading,
   CatalogUnavailable,

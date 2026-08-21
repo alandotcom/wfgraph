@@ -7,10 +7,10 @@ import {
   type SearchSchemaInput,
 } from "@tanstack/react-router";
 import { ReactFlowProvider } from "@xyflow/react";
+import { Theme } from "@astryxdesign/core/theme";
 import { Provider } from "jotai";
 import { GlobalModals } from "#src/components/global-modals";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
-import { ThemeProvider } from "#src/components/theme-provider";
 import { Toaster } from "#src/components/ui/sonner";
 import { PersistentCanvas } from "#src/components/workflow/persistent-canvas";
 import { appStore } from "#src/lib/app-store";
@@ -31,6 +31,8 @@ import {
   workflowPanelTab,
 } from "#src/lib/workflow-route-state";
 import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
+import { ColorModeProvider, useColorMode } from "#src/theme/color-mode";
+import { wfgraphTheme } from "#src/theme/wfgraph";
 import WorkflowEditorPage from "#src/routes/workflows/[workflowId]/page";
 import WorkflowsPage from "#src/routes/workflows/page";
 
@@ -63,12 +65,19 @@ function LayoutContent() {
 
 function RootLayout() {
   return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="system"
-      disableTransitionOnChange
-      enableSystem
-    >
+    <ColorModeProvider>
+      <ThemedShell />
+    </ColorModeProvider>
+  );
+}
+
+function ThemedShell() {
+  // An explicit mode, never "system": Astryx writes data-theme on <html> only
+  // for a resolved value, and the legacy token block keys off that attribute.
+  const { resolvedMode } = useColorMode();
+
+  return (
+    <Theme mode={resolvedMode} theme={wfgraphTheme}>
       <Provider store={appStore}>
         <OverlayProvider>
           <LayoutContent />
@@ -76,7 +85,7 @@ function RootLayout() {
           <GlobalModals />
         </OverlayProvider>
       </Provider>
-    </ThemeProvider>
+    </Theme>
   );
 }
 

@@ -112,31 +112,41 @@ export function WaitEventSelect({
           anything, and the workflow will not save.
         </WarningCallout>
       ) : (
-        selected.map((subscription) => (
-          <WaitSubscriptionRow
-            disabled={disabled}
-            key={subscription.event}
-            onMatchChange={setMatch}
-            onRemove={remove}
-            subscription={subscription}
-          />
-        ))
+        <div className="divide-y">
+          {selected.map((subscription) => (
+            <WaitSubscriptionRow
+              className="py-3 first:pt-0 last:pb-0"
+              disabled={disabled}
+              key={subscription.event}
+              onMatchChange={setMatch}
+              onRemove={remove}
+              subscription={subscription}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
 }
 
-/** One subscription: the Event it names, and the match that narrows it. */
+/**
+ * One subscription: the Event it names, and the match that narrows it.
+ *
+ * A row, not a box: the event name is the heading and a divider separates
+ * subscriptions, so the section card above stays the only frame on this panel.
+ */
 function WaitSubscriptionRow({
   subscription,
   onMatchChange,
   onRemove,
   disabled,
+  className,
 }: {
   subscription: EventSubscription;
   onMatchChange: (eventName: string, match: string) => void;
   onRemove: (eventName: string) => void;
   disabled: boolean;
+  className?: string;
 }) {
   const selectedNodeId = useAtomValue(selectedNodeAtom);
   const nodes = useAtomValue(nodesAtom);
@@ -207,10 +217,12 @@ function WaitSubscriptionRow({
   }, [seedPath, fields, onMatchChange, subscription.event]);
 
   return (
-    <div className="space-y-2 rounded-md border p-2">
-      <div className="flex items-center justify-between gap-2">
+    <div className={className ? `space-y-2 ${className}` : "space-y-2"}>
+      <div className="flex items-start justify-between gap-2">
         <div className="min-w-0" title={subscription.event}>
-          {event ? <p className="truncate text-xs">{event.label}</p> : null}
+          {event ? (
+            <p className="truncate font-medium text-sm">{event.label}</p>
+          ) : null}
           <p className="truncate font-mono text-xs text-muted-foreground">
             {subscription.event}
           </p>
@@ -235,7 +247,7 @@ function WaitSubscriptionRow({
       </div>
 
       {subscription.match ? (
-        <>
+        <div className="space-y-2">
           <ConditionBuilderRow
             currentNodeId={selectedNodeId ?? undefined}
             description="Only an arrival satisfying this resumes the run. Compare a payload field against a literal, or against a value from this run."
@@ -255,7 +267,7 @@ function WaitSubscriptionRow({
           >
             Resume on any {subscription.event}
           </Button>
-        </>
+        </div>
       ) : (
         <div className="space-y-1">
           <p className="text-muted-foreground text-xs">

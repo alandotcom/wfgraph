@@ -139,16 +139,19 @@ function ConditionFields({
   );
 
   return (
-    <ConditionBuilderRow
-      currentNodeId={selectedNodeId ?? undefined}
-      description="Build a condition from the Lifecycle Node and upstream action output fields. Timestamp fields support relative and absolute time filters."
-      disabled={disabled}
-      emptyFieldsMessage="No upstream fields available. Connect this node to the Lifecycle Node or an action with typed outputs first."
-      fields={fields}
-      label="Condition"
-      onChange={handleChange}
-      value={readConfigString(config, "conditionModel") ?? ""}
-    />
+    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+      <p className="font-medium text-sm">Condition</p>
+      <ConditionBuilderRow
+        currentNodeId={selectedNodeId ?? undefined}
+        description="Build a condition from the Lifecycle Node and upstream action output fields. Timestamp fields support relative and absolute time filters."
+        disabled={disabled}
+        emptyFieldsMessage="No upstream fields available. Connect this node to the Lifecycle Node or an action with typed outputs first."
+        fields={fields}
+        label="Condition"
+        onChange={handleChange}
+        value={readConfigString(config, "conditionModel") ?? ""}
+      />
+    </div>
   );
 }
 

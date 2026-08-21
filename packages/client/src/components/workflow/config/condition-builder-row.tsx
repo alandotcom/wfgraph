@@ -49,6 +49,11 @@ import {
  * Wait Subscription stores the model alone and compiles it at park time, against
  * a payload that has not arrived yet. So the row takes its vocabulary and its
  * value as props and hands back both halves, leaving the storing to the caller.
+ *
+ * The row draws no frame of its own: nesting a bordered box inside the caller's
+ * section card is the artifact this builder was rethought to remove. The caller
+ * frames it — the Condition node wraps it in a section card like any other
+ * panel region; the Wait subscription renders it bare under its event heading.
  */
 type ConditionBuilderRowProps = {
   label: string;
@@ -608,7 +613,7 @@ export function ConditionBuilderRow({
 
   if (!parsedModel) {
     return (
-      <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+      <div className="space-y-2">
         <Label className="text-sm">{label}</Label>
         <p className="text-muted-foreground text-xs">{description}</p>
         {availableFields.length > 0 ? (
@@ -632,7 +637,7 @@ export function ConditionBuilderRow({
   }
 
   return (
-    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+    <div className="space-y-3">
       <div className="space-y-1">
         <Label className="text-sm">{label}</Label>
         <p className="text-muted-foreground text-xs">{description}</p>
@@ -641,8 +646,8 @@ export function ConditionBuilderRow({
       <div className="space-y-3">
         {parsedModel.groups.map((group, groupIndex) => (
           <div key={group.id}>
-            <div className="rounded-lg border bg-card">
-              <div className="flex items-center justify-between border-b px-3 py-2">
+            <div className="rounded-lg bg-card">
+              <div className="flex items-center justify-between px-3 py-2">
                 <div className="flex items-center gap-2">
                   <span className="rounded-md bg-muted px-2 py-1 font-medium text-xs">
                     {groupIndex + 1}
@@ -664,7 +669,7 @@ export function ConditionBuilderRow({
                 </Button>
               </div>
 
-              <div className="space-y-3 p-3">
+              <div className="space-y-3 px-3 pb-3">
                 {group.conditions.map((condition, conditionIndex) => {
                   const selectedFieldDef = fieldByPath.get(condition.field);
                   const operatorOptions = getOperatorOptionsByFieldType(
