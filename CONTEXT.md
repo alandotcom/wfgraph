@@ -88,9 +88,11 @@ Condition False, not a Cancel Event.
 **Arriving Event**:
 The Event that put a run where it is: the Start Event it began on, the Cancel
 Event once it has taken the Canceled outlet, and the Event that woke an
-event-mode Wait for everything below that Wait. A manual run names one of the
-Start Events to stand in for, or none at all, and one naming none reaches an
-Event Split and stops there, which is why such a graph refuses it outright. A
+event-mode Wait for everything below that Wait. A timeout that continues
+below an event-mode Wait names none, so an Event Split there stops rather
+than taking a Start Event outlet. A manual run names one of the Start Events
+to stand in for, or none at all, and one naming none reaches an Event Split
+and stops there, which is why such a graph refuses it outright. A
 Condition node reads it as a field of its own, which is what lets one branch
 answer several Events, since an outlet is one outlet however many feed it. Once
 such a Condition has decided, the editor offers the nodes on each of its lines

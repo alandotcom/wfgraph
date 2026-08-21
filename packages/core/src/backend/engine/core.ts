@@ -139,11 +139,7 @@ function prepareRun(
   const currentWorkflowRunId = workflowRunId || runtime.runId || executionId;
 
   const traversal = new Traversal(nodes, edges);
-
-  const nodesWithIncoming = new Set(edges.map((e) => e.target));
-  const lifecycleNodes = nodes.filter(
-    (node) => node.data.type === "lifecycle" && !nodesWithIncoming.has(node.id)
-  );
+  const lifecycleNodes = traversal.lifecycleNodes;
 
   const boundaryInput = {
     edges,
@@ -170,7 +166,6 @@ function prepareRun(
     startEventName,
     catalogFingerprint: input.catalogFingerprint,
     branchEntryNodeId,
-    lifecycleNodes,
   });
 
   return {

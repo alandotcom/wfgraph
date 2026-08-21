@@ -36,6 +36,13 @@ export type NodeWorkOutcome = {
    * everything underneath.
    */
   haltBranch?: boolean;
+  /**
+   * How this node changes the Arriving Event. Absent means leave it. `null`
+   * means the run names none below this node (a timeout that continues past
+   * an event-mode Wait). A named Event replaces the one the run was on, and
+   * its payload overwrites the entry node's output the way a Cancel Event does.
+   */
+  arrivingEvent?: { eventName: string; payload: JsonObject } | null;
 };
 
 export type NodeWorkContext = {

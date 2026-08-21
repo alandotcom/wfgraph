@@ -28,7 +28,7 @@ import type {
   WorkflowEdge,
   WorkflowNode,
 } from "#src/graph/types";
-import { isEventWaitNode } from "#src/graph/node-config";
+import { isEventWaitNode, isLifecycleNode } from "#src/graph/node-config";
 import { fieldsVisibleForConfig } from "#src/graph/node-references";
 import { upstreamNodeIds } from "#src/graph/upstream-nodes";
 import {
@@ -347,21 +347,13 @@ export function eventsReaching(input: {
         continue;
       }
 
-      const fromParent =
-        parent.data.type === "lifecycle"
-          ? outletEvents({
-              entryNode: parent,
-              handle: edge.sourceHandle,
-              catalog,
-            })
-          : isEventWaitNode(parent)
-            ? waitEvents({ node: parent, catalog })
-            : narrowLeaving({
-                parent,
-                handle: edge.sourceHandle,
-                events: eventsAt(parent.id, nextSeen),
-                declaredElsewhere: outputPathsAt(parent.id),
-              });
+      const fromParent = eventsFromParent({
+        parent,
+        handle: edge.sourceHandle,
+        catalog,
+        eventsAbove: eventsAt(parent.id, nextSeen),
+        declaredElsewhere: outputPathsAt(parent.id),
+      });
 
       acc = acc === null ? fromParent : intersectEventsByName(acc, fromParent);
     }
@@ -372,6 +364,42 @@ export function eventsReaching(input: {
   };
 
   return eventsAt(input.targetNodeId, new Set());
+}
+
+/**
+ * What one parent contributes to the Events at a child.
+ *
+ * A Lifecycle Node and an event-mode Wait are sources: they name the Events
+ * they hand on, and the walk does not keep what reached them. Everything else
+ * narrows the inherited set.
+ */
+function eventsFromParent(input: {
+  parent: WorkflowNode;
+  handle: unknown;
+  catalog: ExtensionCatalog;
+  eventsAbove: EventMetadata[];
+  declaredElsewhere: ReadonlySet<string>;
+}): EventMetadata[] {
+  const { parent, catalog } = input;
+
+  if (isLifecycleNode(parent)) {
+    return outletEvents({
+      entryNode: parent,
+      handle: input.handle,
+      catalog,
+    });
+  }
+
+  if (isEventWaitNode(parent)) {
+    return waitEvents({ node: parent, catalog });
+  }
+
+  return narrowLeaving({
+    parent,
+    handle: input.handle,
+    events: input.eventsAbove,
+    declaredElsewhere: input.declaredElsewhere,
+  });
 }
 
 function narrowLeaving(input: {
