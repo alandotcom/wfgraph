@@ -1,4 +1,18 @@
-import { render, screen } from "@testing-library/react";
+import { Link as AstryxLink } from "@astryxdesign/core/Link";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useColorMode } from "./color-mode";
 import { ThemeProvider } from "./theme-provider";
@@ -67,5 +81,43 @@ describe("ThemeProvider", () => {
         </ThemeProvider>
       )
     ).not.toThrow();
+  });
+
+  it("routes Astryx links through TanStack Router", async () => {
+    const rootRoute = createRootRoute();
+    const homeRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: "/",
+      component: () => (
+        <AstryxLink href="/destination" isStandalone>
+          Open destination
+        </AstryxLink>
+      ),
+    });
+    const destinationRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: "/destination",
+      component: () => <p>Destination</p>,
+    });
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([homeRoute, destinationRoute]),
+      history: createMemoryHistory({ initialEntries: ["/"] }),
+    });
+
+    render(
+      <ThemeProvider>
+        <RouterProvider router={router} />
+      </ThemeProvider>
+    );
+
+    await act(async () => {
+      fireEvent.click(
+        await screen.findByRole("link", { name: "Open destination" })
+      );
+    });
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/destination");
+    });
   });
 });

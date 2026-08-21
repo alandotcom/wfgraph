@@ -1,3 +1,4 @@
+import { Section } from "@astryxdesign/core/Section";
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
 import { HelpCircle, Plus, Settings, Zap } from "lucide-react";
@@ -139,7 +140,7 @@ function ConditionFields({
   );
 
   return (
-    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+    <Section padding={3} variant="muted">
       <ConditionBuilderRow
         currentNodeId={selectedNodeId ?? undefined}
         description="Build a condition from the Lifecycle Node and upstream action output fields. Timestamp fields support relative and absolute time filters."
@@ -150,7 +151,7 @@ function ConditionFields({
         onChange={handleChange}
         value={readConfigString(config, "conditionModel") ?? ""}
       />
-    </div>
+    </Section>
   );
 }
 

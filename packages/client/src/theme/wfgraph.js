@@ -14,7 +14,7 @@
  *   import './wfgraph.css';
  */
 export const wfgraphTheme = {
-  name: "wfgraph",
+  name: 'wfgraph',
   __built: true,
   tokens: {
     "--color-neutral": "light-dark(#1B1B1F1A, #E2E2E833)",
@@ -41,30 +41,28 @@ export const wfgraphTheme = {
     "--color-track": "light-dark(#AAAAB5, #46464F)",
     "--color-shadow": "light-dark(#0000001A, #0000004D)",
     "--color-tint-hover": "light-dark(black, white)",
-    "--font-family-body":
-      '"Geist Variable", ui-sans-serif, system-ui, -apple-system, sans-serif',
-    "--font-family-heading":
-      '"Geist Variable", ui-sans-serif, system-ui, -apple-system, sans-serif',
-    "--font-family-code":
-      '"Geist Mono Variable", ui-monospace, SFMono-Regular, monospace',
+    "--font-family-body": "\"Geist Variable\", ui-sans-serif, system-ui, -apple-system, sans-serif",
+    "--font-family-heading": "\"Geist Variable\", ui-sans-serif, system-ui, -apple-system, sans-serif",
+    "--font-family-code": "\"Geist Mono Variable\", ui-monospace, SFMono-Regular, monospace",
     "--color-accent": "light-dark(oklch(0.205 0 0), oklch(0.98 0 0))",
     "--color-accent-muted": "light-dark(#1717171A, #F8F8F83F)",
-    "--color-on-accent": "light-dark(oklch(0.985 0 0), oklch(0.09 0 0))",
+    "--color-on-accent": "light-dark(oklch(0.985 0 0), oklch(0.09 0 0))"
   },
   __onDark: {
-    tokens: {
+    "tokens": {
       "color-scheme": "dark",
       "--color-text-primary": "var(--color-on-dark)",
       "--color-icon-primary": "var(--color-on-dark)",
-      "--color-accent": "var(--color-on-dark)",
-    },
+      "--color-accent": "var(--color-on-dark)"
+    }
   },
   __onLight: {
-    tokens: {
+    "tokens": {
       "color-scheme": "light",
       "--color-text-primary": "var(--color-on-light)",
       "--color-icon-primary": "var(--color-on-light)",
-      "--color-accent": "var(--color-on-light)",
-    },
+      "--color-accent": "var(--color-on-light)"
+    }
   },
+
 };

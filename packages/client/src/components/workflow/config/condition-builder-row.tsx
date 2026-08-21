@@ -1,3 +1,6 @@
+import { HStack } from "@astryxdesign/core/HStack";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 import { Plus, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useMemo } from "react";
@@ -613,9 +616,11 @@ export function ConditionBuilderRow({
 
   if (!parsedModel) {
     return (
-      <div className="space-y-2">
+      <VStack gap={2}>
         <Label className="text-sm">{label}</Label>
-        <p className="text-muted-foreground text-xs">{description}</p>
+        <Text as="p" type="supporting">
+          {description}
+        </Text>
         {availableFields.length > 0 ? (
           <Button
             disabled={disabled}
@@ -627,37 +632,40 @@ export function ConditionBuilderRow({
             Configure condition
           </Button>
         ) : (
-          <p className="text-muted-foreground text-xs">{emptyFieldsMessage}</p>
+          <Text as="p" type="supporting">
+            {emptyFieldsMessage}
+          </Text>
         )}
         {modelValue && !modelParseResult.valid && (
-          <p className="text-destructive text-xs">{modelParseResult.error}</p>
+          <Text as="p" className="text-destructive" type="supporting">
+            {modelParseResult.error}
+          </Text>
         )}
-      </div>
+      </VStack>
     );
   }
 
   return (
-    <div className="space-y-3">
-      <div className="space-y-1">
+    <VStack gap={3}>
+      <VStack gap={1}>
         <Label className="text-sm">{label}</Label>
-        <p className="text-muted-foreground text-xs">{description}</p>
-      </div>
+        <Text as="p" type="supporting">
+          {description}
+        </Text>
+      </VStack>
 
-      <div className="space-y-3">
+      <VStack gap={3}>
         {parsedModel.groups.map((group, groupIndex) => (
-          <div key={group.id}>
-            <div className="rounded-lg bg-card">
-              <div className="flex items-center justify-between px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <span className="rounded-md bg-muted px-2 py-1 font-medium text-xs">
-                    {groupIndex + 1}
-                  </span>
-                  <span className="font-medium text-sm">Filter group</span>
-                  <span className="text-muted-foreground text-xs">
+          <VStack gap={2} key={group.id}>
+            <VStack className="rounded-lg bg-card" gap={3} padding={3}>
+              <HStack align="center" gap={2} justify="between">
+                <HStack align="center" gap={2} wrap="wrap">
+                  <Text type="label">Filter group {groupIndex + 1}</Text>
+                  <Text type="supporting">
                     {group.conditions.length}{" "}
                     {group.conditions.length === 1 ? "condition" : "conditions"}
-                  </span>
-                </div>
+                  </Text>
+                </HStack>
                 <Button
                   disabled={disabled || parsedModel.groups.length <= 1}
                   onClick={() => removeGroup(group.id)}
@@ -667,9 +675,9 @@ export function ConditionBuilderRow({
                 >
                   <Trash2 className="size-4" />
                 </Button>
-              </div>
+              </HStack>
 
-              <div className="space-y-3 px-3 pb-3">
+              <VStack gap={3}>
                 {group.conditions.map((condition, conditionIndex) => {
                   const selectedFieldDef = fieldByPath.get(condition.field);
                   const operatorOptions = getOperatorOptionsByFieldType(
@@ -679,8 +687,8 @@ export function ConditionBuilderRow({
                   const canDeleteCondition = group.conditions.length > 1;
 
                   return (
-                    <div key={condition.id}>
-                      <div className="flex flex-wrap items-center gap-2">
+                    <VStack gap={2} key={condition.id}>
+                      <HStack align="center" gap={2} wrap="wrap">
                         <ConditionFieldCombobox
                           disabled={disabled || availableFields.length === 0}
                           fields={availableFields}
@@ -761,10 +769,10 @@ export function ConditionBuilderRow({
                         >
                           <Trash2 className="size-4" />
                         </Button>
-                      </div>
+                      </HStack>
 
                       {conditionIndex < group.conditions.length - 1 && (
-                        <div className="py-2 pl-2">
+                        <HStack paddingBlock={2} paddingInline={2}>
                           <LogicToggle
                             disabled={disabled}
                             onChange={(value) => {
@@ -775,9 +783,9 @@ export function ConditionBuilderRow({
                             }}
                             value={group.logic}
                           />
-                        </div>
+                        </HStack>
                       )}
-                    </div>
+                    </VStack>
                   );
                 })}
 
@@ -791,11 +799,11 @@ export function ConditionBuilderRow({
                   <Plus className="size-4" />
                   Add condition
                 </Button>
-              </div>
-            </div>
+              </VStack>
+            </VStack>
 
             {groupIndex < parsedModel.groups.length - 1 && (
-              <div className="flex justify-center py-2">
+              <HStack justify="center" paddingBlock={2}>
                 <LogicToggle
                   disabled={disabled}
                   onChange={(value) => {
@@ -806,13 +814,13 @@ export function ConditionBuilderRow({
                   }}
                   value={parsedModel.groupLogic}
                 />
-              </div>
+              </HStack>
             )}
-          </div>
+          </VStack>
         ))}
-      </div>
+      </VStack>
 
-      <div className="flex justify-center">
+      <HStack justify="center">
         <Button
           disabled={disabled || !seedField}
           onClick={addGroup}
@@ -823,16 +831,18 @@ export function ConditionBuilderRow({
           <Plus className="size-4" />
           Add group
         </Button>
-      </div>
+      </HStack>
 
       {compiled?.valid === false && (
-        <p className="text-destructive text-xs">{compiled.error}</p>
+        <Text as="p" className="text-destructive" type="supporting">
+          {compiled.error}
+        </Text>
       )}
       {compiled?.valid && (
-        <p className="text-muted-foreground text-xs">
+        <Text as="p" type="supporting">
           Compiled CEL: {compiled.expression}
-        </p>
+        </Text>
       )}
-    </div>
+    </VStack>
   );
 }
