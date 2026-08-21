@@ -140,7 +140,6 @@ function ConditionFields({
 
   return (
     <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-      <p className="font-medium text-sm">Condition</p>
       <ConditionBuilderRow
         currentNodeId={selectedNodeId ?? undefined}
         description="Build a condition from the Lifecycle Node and upstream action output fields. Timestamp fields support relative and absolute time filters."
