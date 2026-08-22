@@ -3,7 +3,6 @@ import { createStore } from "jotai";
 import type { SavedWorkflow } from "#src/lib/rpc-client";
 import {
   autosaveDelayAtom,
-  createWorkflowAtom,
   currentWorkflowIdAtom,
   currentWorkflowNameAtom,
   hasUnsavedChangesAtom,
@@ -46,17 +45,10 @@ const updateMock = vi.fn((_workflowId: string, _payload: unknown) => {
   return deferred.promise;
 });
 
-const createMock = vi.fn((input: { name: string }) =>
-  Promise.resolve(savedWorkflow(input.name))
-);
-
 /** A store wired to the mock API, which is the only thing tests substitute. */
 function createSaveStore(workflowId: string | null = "workflow_1") {
   const store = createStore();
-  store.set(workflowApiAtom, {
-    create: createMock as never,
-    update: updateMock as never,
-  });
+  store.set(workflowApiAtom, { update: updateMock as never });
   store.set(currentWorkflowIdAtom, workflowId);
   return store;
 }
@@ -366,19 +358,99 @@ describe("saveWorkflowAtom", () => {
   });
 });
 
-describe("createWorkflowAtom", () => {
-  it("adopts the created workflow's identity", async () => {
-    const store = createSaveStore(null);
+describe("renameWorkflowAtom", () => {
+  it("puts the old name back and keeps a refused one out of every later save", async () => {
+    const store = createSaveStore();
+    store.set(autosaveDelayAtom, 0);
+    store.set(currentWorkflowNameAtom, "Appointment reminders");
 
-    const outcome = await store.set(createWorkflowAtom, {
-      name: "Fresh",
-      nodes: [actionNode("node_1")],
-      edges: [],
+    const rename = store.set(renameWorkflowAtom, "Onboarding drip");
+    await waitForCalls(1);
+    pending
+      .shift()
+      ?.reject(new Error('Workflow name "Onboarding drip" already exists'));
+    const failure = await rename;
+
+    expect(failure?.message).toContain("already exists");
+    expect(store.get(currentWorkflowNameAtom)).toBe("Appointment reminders");
+
+    // The queue retries a failed patch with the next write, which for a name
+    // the server will never accept means every later save fails too. One
+    // rejected rename used to stop the editor saving for the rest of the
+    // session, and the graph went with it.
+    store.set(saveWorkflowAtom, { nodes: [actionNode("node_1")], edges: [] });
+    await waitForCalls(2);
+    pending.shift()?.resolve(savedWorkflow("workflow_1"));
+
+    expect(updateMock.mock.calls[1]?.[1]).not.toHaveProperty("name");
+  });
+
+  it("does not roll a failed rename into the workflow opened while it was saving", async () => {
+    const store = createSaveStore("workflow_a");
+    store.set(currentWorkflowNameAtom, "Workflow A");
+
+    const rename = store.set(renameWorkflowAtom, "Renamed A");
+    await waitForCalls(1);
+
+    store.set(currentWorkflowIdAtom, "workflow_b");
+    store.set(currentWorkflowNameAtom, "Workflow B");
+    pending.shift()?.reject(new Error("name refused"));
+    await rename;
+
+    expect(store.get(currentWorkflowNameAtom)).toBe("Workflow B");
+  });
+
+  it("does not let an older failed rename replace a newer one", async () => {
+    const store = createSaveStore();
+    store.set(currentWorkflowNameAtom, "Original");
+
+    const firstRename = store.set(renameWorkflowAtom, "First");
+    await waitForCalls(1);
+    const secondRename = store.set(renameWorkflowAtom, "Second");
+
+    pending.shift()?.reject(new Error("first name refused"));
+    await waitForCalls(2);
+    pending.shift()?.resolve({
+      ...savedWorkflow("workflow_1"),
+      name: "Second",
     });
+    await Promise.all([firstRename, secondRename]);
 
-    expect(outcome.ok).toBe(true);
-    expect(store.get(currentWorkflowIdAtom)).toBe("Fresh");
-    expect(store.get(currentWorkflowNameAtom)).toBe("Fresh");
-    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+    expect(store.get(currentWorkflowNameAtom)).toBe("Second");
+  });
+
+  it("restores the last saved name when concurrent renames both fail", async () => {
+    const store = createSaveStore();
+    store.set(currentWorkflowNameAtom, "Original");
+
+    const firstRename = store.set(renameWorkflowAtom, "First");
+    await waitForCalls(1);
+    const secondRename = store.set(renameWorkflowAtom, "Second");
+
+    pending.shift()?.reject(new Error("first name refused"));
+    await waitForCalls(2);
+    pending.shift()?.reject(new Error("second name refused"));
+    await Promise.all([firstRename, secondRename]);
+
+    expect(store.get(currentWorkflowNameAtom)).toBe("Original");
+  });
+
+  it("does not let an older identical request roll back a newer success", async () => {
+    const store = createSaveStore();
+    store.set(currentWorkflowNameAtom, "Original");
+
+    const firstRename = store.set(renameWorkflowAtom, "Same");
+    await waitForCalls(1);
+    const secondRename = store.set(renameWorkflowAtom, "Same");
+
+    pending.shift()?.reject(new Error("first request refused"));
+    await waitForCalls(2);
+    pending.shift()?.resolve({
+      ...savedWorkflow("workflow_1"),
+      name: "Same",
+    });
+    await Promise.all([firstRename, secondRename]);
+
+    expect(store.get(currentWorkflowNameAtom)).toBe("Same");
   });
 });

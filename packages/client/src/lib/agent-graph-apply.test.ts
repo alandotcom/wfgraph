@@ -36,7 +36,6 @@ function actionNode(id: string, label = id): WorkflowNode {
 function createGraphStore(nodes: WorkflowNode[]) {
   const store = createStore();
   store.set(workflowApiAtom, {
-    create: vi.fn() as never,
     update: vi.fn(() => Promise.resolve(savedWorkflow("workflow_1"))) as never,
   });
   store.set(autosaveDelayAtom, 0);

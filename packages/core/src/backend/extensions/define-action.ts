@@ -70,6 +70,12 @@ export type ActionIdentity = {
    * separates this from the replay sense of the phrase.
    */
   sideEffect?: boolean;
+
+  /**
+   * When true, the editor's action picker omits this action; the handler stays
+   * registered for runs and existing nodes.
+   */
+  hidden?: boolean;
 };
 
 /**
@@ -265,6 +271,7 @@ export function defineAction<TInput extends Record<string, unknown>>(
     category: definition.category,
     sideEffect: definition.sideEffect,
     logoUrl: definition.logoUrl,
+    hidden: definition.hidden,
   });
 
   return {

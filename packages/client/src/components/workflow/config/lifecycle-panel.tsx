@@ -1,46 +1,26 @@
-import { compact, uniq } from "es-toolkit";
-import { X } from "lucide-react";
-import { type ReactNode, useId } from "react";
-import { Button } from "#src/components/ui/button";
-import { WarningCallout } from "#src/components/ui/callout";
-import { Checkbox } from "#src/components/ui/checkbox";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "#src/components/ui/select";
-import { Label } from "#src/components/ui/label";
-import { Radio, RadioGroup } from "#src/components/ui/radio-group";
+import { useId, useState } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
-import {
-  type ExtensionCatalog,
-  findEvent,
-} from "@wfgraph/shared/extensions/catalog";
-import { cn } from "@wfgraph/shared/utils";
+import { WarningCallout } from "#src/components/ui/callout";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import {
   checkLifecycleRules,
   type Concurrency,
-  correlationPathRequestFor,
-  type CorrelationPathRequest,
   initialLifecycleRules,
   type LifecycleRules,
   pruneCorrelationPaths,
   readLifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
-import { EventMultiCombobox } from "./event-combobox";
+import { ConfigSection } from "./config-section";
+import { LifecycleConcurrencyGroup } from "./lifecycle-concurrency-group";
+import { LifecycleEventGroup } from "./lifecycle-event-group";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
+export { CONCURRENCY_OPTIONS } from "./lifecycle-concurrency-group";
+
 /**
- * The Lifecycle Node's panel: what starts a run of this workflow, and what
- * happens to the runs already going (ADR-0007).
- *
- * The rules are one object on the entry node's config, so every control here
- * writes the whole of it. Reads fall back to `initialLifecycleRules` rather than
- * writing them on mount: opening a panel is not an edit, and an autosave nobody
- * asked for is how a builder loses the difference between "never configured" and
- * "configured this way".
+ * The Lifecycle Node's panel: what starts a run and what happens to runs already
+ * in progress. Every control writes the complete Lifecycle Rules object. Reads
+ * use the initial rules as a fallback; opening the panel never persists them.
  */
 export function LifecyclePanel({
   config,
@@ -53,24 +33,16 @@ export function LifecyclePanel({
 }) {
   const startEventId = useId();
   const cancelEventsId = useId();
-  const concurrencyLabelId = useId();
   const manualStartId = useId();
   const catalog = useExtensionCatalog();
   const rules = readLifecycleRules(config) ?? initialLifecycleRules;
-
-  // The same function the save is refused by, over the same catalog, so the
-  // sentence a builder reads here is the sentence the server would answer with
-  // rather than a second opinion about the rules.
+  const [editing, setEditing] = useState(false);
   const check = checkLifecycleRules({ rules, catalog });
 
   const write = (next: LifecycleRules) => {
     onUpdateConfig({ lifecycleRules: next });
   };
 
-  // Every setter that can change which Events hold a role, or whether a Start
-  // Event matches by entity, prunes through `pruneCorrelationPaths`: an override
-  // for an Event that just lost its reason to have one should not keep governing
-  // runs once its own control has left the screen.
   const setStartEvents = (eventNames: string[]) => {
     write(pruneCorrelationPaths({ ...rules, startEvents: eventNames }));
   };
@@ -98,148 +70,34 @@ export function LifecyclePanel({
     });
   };
 
+  const groupProps = {
+    rules,
+    catalog,
+    disabled,
+    startEventId,
+    cancelEventsId,
+    manualStartId,
+    onStartEventsChange: setStartEvents,
+    onCancelEventsChange: setCancelEvents,
+    onConcurrencyChange: setConcurrency,
+    onManualStartChange: (allowed: boolean) =>
+      write({ ...rules, allowManualStart: allowed }),
+    onCorrelationPathChange: setCorrelationPath,
+  };
+
   return (
     <div className="space-y-4">
-      <EventField
-        help="A run starts when one of these Events arrives. Naming several is how one workflow answers an appointment being booked and being moved: Concurrency decides what happens to the run already going."
-        hasEvents={catalog.events.length > 0}
-        inputId={startEventId}
-        label="Start Events"
+      <ConfigSection
+        editable={!disabled}
+        editing={editing}
+        help={<p>{LIFECYCLE_RULES_HELP}</p>}
+        label="Lifecycle Rules"
+        onEditingChange={setEditing}
+        stickyHeader
+        view={<LifecycleGroups editing={false} {...groupProps} />}
       >
-        <EventMultiCombobox
-          choices={catalog.events}
-          disabled={disabled}
-          inputId={startEventId}
-          onValueChange={setStartEvents}
-          value={rules.startEvents}
-        />
-        {/* Each request is looked up by the Event and role the control owns
-            rather than found in a list: `correlationPathRequestFor` answers
-            undefined for a Start Event nothing currently compares, which is what
-            leaves an unlimited workflow unasked about a value nothing reads. */}
-        {rules.startEvents.map((eventName) => (
-          <ChosenEvent
-            catalog={catalog}
-            disabled={disabled}
-            eventName={eventName}
-            key={eventName}
-            label={findEvent(catalog, eventName)?.label}
-            onCommitPath={setCorrelationPath}
-            onRemove={() =>
-              setStartEvents(
-                rules.startEvents.filter((entry) => entry !== eventName)
-              )
-            }
-            request={correlationPathRequestFor({
-              rules,
-              catalog,
-              eventName,
-              role: "start",
-            })}
-          />
-        ))}
-      </EventField>
-
-      <div className="space-y-2">
-        <Label id={concurrencyLabelId}>Concurrency</Label>
-        <RadioGroup
-          aria-labelledby={concurrencyLabelId}
-          disabled={disabled}
-          onValueChange={setConcurrency}
-          value={rules.concurrency}
-        >
-          {CONCURRENCY_OPTIONS.map((option) => (
-            <label
-              className={cn(
-                "flex w-full cursor-pointer items-start gap-2 rounded-md border p-2 transition-colors",
-                rules.concurrency === option.value
-                  ? "border-primary bg-muted/50"
-                  : "border-input hover:bg-muted/30",
-                disabled && "pointer-events-none opacity-50"
-              )}
-              key={option.value}
-            >
-              <Radio className="mt-0.5" value={option.value} />
-              <div>
-                <p className="font-medium text-sm">{option.label}</p>
-                <p className="text-muted-foreground text-xs">
-                  {option.description}
-                </p>
-              </div>
-            </label>
-          ))}
-        </RadioGroup>
-        <p className="text-muted-foreground text-xs">
-          The entity is the value at the Correlation Path. A start carrying no
-          payload uses the workflow itself, so every manual run is about the
-          same entity.
-        </p>
-      </div>
-
-      <div className="flex items-start gap-2">
-        <Checkbox
-          checked={rules.allowManualStart === true}
-          disabled={disabled}
-          id={manualStartId}
-          onCheckedChange={(checked) =>
-            write({ ...rules, allowManualStart: checked })
-          }
-        />
-        <div className="space-y-0.5">
-          <Label htmlFor={manualStartId}>Allow manual runs</Label>
-          <p className="text-muted-foreground text-xs">
-            The Run button and the execute route. With this off, only a Start
-            Event starts a run.
-          </p>
-          {/* The editor derives what downstream nodes may reference from the
-              Start Events' payloads, and a manual run carries whatever its caller
-              posted. Saying so is what keeps the picker's silence from reading as
-              a missing feature. */}
-          {rules.startEvents.length === 0 ? (
-            <p className="text-muted-foreground text-xs">
-              A manual run's payload is described by nothing, so downstream
-              nodes are offered no fields to reference. Add a Start Event to
-              give them its payload.
-            </p>
-          ) : null}
-        </div>
-      </div>
-
-      <EventField
-        hasEvents={catalog.events.length > 0}
-        help="When one of these arrives, Workflow Graph reads its Entity Value at the Correlation Path you set for it and cancels the runs already going for that entity. A canceled run leaves through the Canceled outlet."
-        inputId={cancelEventsId}
-        label="Cancel Events"
-      >
-        <EventMultiCombobox
-          choices={catalog.events}
-          disabled={disabled}
-          inputId={cancelEventsId}
-          onValueChange={setCancelEvents}
-          value={rules.cancelEvents}
-        />
-        {rules.cancelEvents.map((eventName) => (
-          <ChosenEvent
-            catalog={catalog}
-            disabled={disabled}
-            eventName={eventName}
-            key={eventName}
-            label={findEvent(catalog, eventName)?.label}
-            onCommitPath={setCorrelationPath}
-            onRemove={() =>
-              setCancelEvents(
-                rules.cancelEvents.filter((entry) => entry !== eventName)
-              )
-            }
-            request={correlationPathRequestFor({
-              rules,
-              catalog,
-              eventName,
-              role: "cancel",
-            })}
-          />
-        ))}
-      </EventField>
+        <LifecycleGroups editing {...groupProps} />
+      </ConfigSection>
 
       {check.valid ? null : (
         <WarningCallout title="This will not save">
@@ -250,224 +108,66 @@ export function LifecyclePanel({
   );
 }
 
-/**
- * A labelled Event picker, or the sentence that stands in for one where the app
- * declares no Events at all.
- */
-function EventField({
-  label,
-  inputId,
-  hasEvents,
-  help,
-  children,
-}: {
-  label: string;
-  inputId: string;
-  hasEvents: boolean;
-  help: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={inputId}>{label}</Label>
-      {hasEvents ? (
-        children
-      ) : (
-        <p className="text-muted-foreground text-xs">
-          This server declares no Events. Whoever runs it passes them to
-          <code className="mx-1 font-mono text-xs">createWfGraphApp</code>, and
-          they appear here.
-        </p>
-      )}
-      <p className="text-muted-foreground text-xs">{help}</p>
-    </div>
-  );
-}
-
-/**
- * One chosen Event, with the path its Entity Value is read at.
- *
- * The path is what an arriving payload is compared against, so it is editable
- * here rather than reported here: an Event declaring the wrong field for this
- * workflow would otherwise be a rule the builder can read and cannot fix. An
- * absent `request` is a Start Event nothing currently compares by entity, which
- * has a role to show and no path to ask for.
- */
-function ChosenEvent({
-  eventName,
-  label,
-  request,
-  catalog,
-  onCommitPath,
-  onRemove,
-  disabled,
-}: {
-  eventName: string;
-  label: string | undefined;
-  request: CorrelationPathRequest | undefined;
-  catalog: ExtensionCatalog;
-  onCommitPath: (eventName: string, path: string) => void;
-  onRemove: () => void;
-  disabled: boolean;
-}) {
-  return (
-    <div className="space-y-2 rounded-md border p-2">
-      <div className="flex items-start justify-between gap-2">
-        <p className="min-w-0 truncate text-xs" title={eventName}>
-          {label ?? eventName}
-        </p>
-        <Button
-          aria-label={`Remove ${eventName}`}
-          className="size-7 shrink-0"
-          disabled={disabled}
-          onClick={onRemove}
-          size="icon"
-          type="button"
-          variant="ghost"
-        >
-          <X className="size-3.5" />
-        </Button>
-      </div>
-      {request ? (
-        <CorrelationPathInput
-          catalog={catalog}
-          disabled={disabled}
-          onCommit={onCommitPath}
-          request={request}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * One Event's Correlation Path for this workflow, chosen out of the paths that
- * Event's payload carries.
- *
- * A path is a value the payload walker reads, so the Event's own field list is
- * the whole of what can be valid, and typing one was how a builder learned
- * otherwise from a run that never matched.
- *
- * The trigger shows the path in force rather than an empty field, so a builder
- * reads what the workflow matches on without knowing whether it came from the
- * declaration or from an override. Choosing the declared path commits no
- * override, which is what keeps a builder who only opened the panel from
- * writing one.
- *
- * The caller renders the Event's own heading; this owns the field and its help
- * line alone, with the Event's name kept as the picker's accessible label.
- */
-function CorrelationPathInput({
-  request,
+function LifecycleGroups({
+  editing,
+  rules,
   catalog,
   disabled,
-  onCommit,
+  startEventId,
+  cancelEventsId,
+  manualStartId,
+  onStartEventsChange,
+  onCancelEventsChange,
+  onConcurrencyChange,
+  onManualStartChange,
+  onCorrelationPathChange,
 }: {
-  request: CorrelationPathRequest;
+  editing: boolean;
+  rules: LifecycleRules;
   catalog: ExtensionCatalog;
   disabled: boolean;
-  onCommit: (eventName: string, path: string) => void;
+  startEventId: string;
+  cancelEventsId: string;
+  manualStartId: string;
+  onStartEventsChange: (eventNames: string[]) => void;
+  onCancelEventsChange: (eventNames: string[]) => void;
+  onConcurrencyChange: (value: Concurrency) => void;
+  onManualStartChange: (allowed: boolean) => void;
+  onCorrelationPathChange: (eventName: string, path: string) => void;
 }) {
-  const inputId = useId();
-  const { eventName, declaredPath, suppliedPath } = request;
-  const paths = correlationPathChoices(
-    catalog,
-    eventName,
-    declaredPath,
-    suppliedPath
-  );
-
   return (
-    <div className="space-y-1">
-      <Label className="sr-only" htmlFor={inputId}>
-        {eventName}
-      </Label>
-      <Select
+    <div className="divide-y">
+      <LifecycleEventGroup
+        catalog={catalog}
         disabled={disabled}
-        // Choosing the path the Event already declares is the same as declaring
-        // no override, so it commits the empty string and the declaration stands.
-        onValueChange={(next) =>
-          onCommit(
-            eventName,
-            next === declaredPath || next === null ? "" : next
-          )
-        }
-        value={suppliedPath ?? declaredPath ?? null}
-      >
-        <SelectTrigger className="w-full" id={inputId}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {declaredPath ? null : (
-            // An Event declaring no path has none to choose back to, so this is
-            // the only way to undo a choice and leave the workflow saying so.
-            <SelectItem value={null}>Choose a path</SelectItem>
-          )}
-          {paths.map((path) => (
-            <SelectItem key={path} value={path}>
-              {path}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <p className="text-muted-foreground text-xs">
-        {declaredPath
-          ? `Runs are matched on this payload path. The Event declares ${declaredPath}; a path here is read instead.`
-          : "Runs are matched on this payload path. This Event declares none, so choose the one holding the value that identifies the entity."}
-      </p>
+        editing={editing}
+        inputId={startEventId}
+        onCorrelationPathChange={onCorrelationPathChange}
+        onEventNamesChange={onStartEventsChange}
+        role="start"
+        rules={rules}
+      />
+      <LifecycleConcurrencyGroup
+        disabled={disabled}
+        editing={editing}
+        manualStartId={manualStartId}
+        onConcurrencyChange={onConcurrencyChange}
+        onManualStartChange={onManualStartChange}
+        rules={rules}
+      />
+      <LifecycleEventGroup
+        catalog={catalog}
+        disabled={disabled}
+        editing={editing}
+        inputId={cancelEventsId}
+        onCorrelationPathChange={onCorrelationPathChange}
+        onEventNamesChange={onCancelEventsChange}
+        role="cancel"
+        rules={rules}
+      />
     </div>
   );
 }
 
-/** The payload paths that can identify an entity, which is what a run matches on. */
-const IDENTIFYING_FIELD_TYPES = new Set(["string", "number"]);
-
-/**
- * The payload paths this Event offers, plus any path already in effect.
- *
- * A path the Event does not declare is kept rather than dropped, so a workflow
- * saved against an older payload shape shows what it is matching on instead of
- * appearing to match on something else.
- */
-function correlationPathChoices(
-  catalog: ExtensionCatalog,
-  eventName: string,
-  declaredPath: string | undefined,
-  suppliedPath: string | undefined
-): string[] {
-  const offered = (findEvent(catalog, eventName)?.payloadFields ?? [])
-    .filter((field) => IDENTIFYING_FIELD_TYPES.has(field.type ?? ""))
-    .map((field) => field.path);
-
-  return uniq(compact([...offered, declaredPath, suppliedPath]));
-}
-
-/**
- * The three settings, with the consequence each one has.
- *
- * Exported so the test drives itself off these pairs: a fourth setting would
- * otherwise be a control nothing asserts.
- */
-export const CONCURRENCY_OPTIONS: ReadonlyArray<{
-  value: Concurrency;
-  label: string;
-  description: string;
-}> = [
-  {
-    value: "unlimited",
-    label: "Unlimited",
-    description: "Every Event starts its own run.",
-  },
-  {
-    value: "newest-wins",
-    label: "Newest wins",
-    description:
-      "A new run for the same entity supersedes the ones already going, which end with that status.",
-  },
-  {
-    value: "first-wins",
-    label: "First wins",
-    description:
-      "A run already going for the same entity keeps it. The arriving Event is recorded as a Refused Start.",
-  },
-];
+const LIFECYCLE_RULES_HELP =
+  "What starts a run of this workflow, and what happens to the runs already going when another start arrives.";

@@ -200,22 +200,13 @@ export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
 ) {
   const repo = yield* ExecutionRepo;
   const inngest = yield* InngestClient;
-  const { workflow, start, runMode, payload } = input;
+  const { workflow, start, runMode } = input;
   const logger = yield* loggerFor(workflow.id);
   const execution = { id: input.executionId };
 
   const run = yield* inngest
     .sendRunRequested({
-      graph: workflow.graph,
-      workflowVersionId: workflow.versionId,
-      catalogFingerprint: workflow.catalogFingerprint,
-      startPayload: payload,
-      ...(start.eventName ? { startEventName: start.eventName } : {}),
-      requestPayload: input.requestPayload ?? payload,
       executionId: execution.id,
-      workflowId: workflow.id,
-      workflowName: workflow.name,
-      runMode,
     })
     .pipe(Effect.tapError((failure) => closeRefusedEnqueue(input, failure)));
 

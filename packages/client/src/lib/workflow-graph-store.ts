@@ -16,6 +16,7 @@ import type { SavedWorkflow } from "#src/lib/rpc-client";
 import {
   currentWorkflowIdAtom,
   currentWorkflowModeAtom,
+  lastSavedAtAtom,
   currentWorkflowNameAtom,
   currentWorkflowVisibilityAtom,
   hasUnsavedChangesAtom,
@@ -360,6 +361,9 @@ export const hydrateWorkflowAtom = atom(
     set(selectedExecutionIdAtom, null);
     set(currentWorkflowIdAtom, workflow.id);
     set(currentWorkflowNameAtom, workflow.name);
+    // The clock reading belongs to the workflow just left, so the strip would
+    // otherwise open this one on a save that happened to a different graph.
+    set(lastSavedAtAtom, null);
     set(currentWorkflowVisibilityAtom, workflow.visibility ?? "private");
     set(currentWorkflowModeAtom, workflow.mode ?? "live");
     set(isWorkflowOwnerAtom, workflow.isOwner !== false);

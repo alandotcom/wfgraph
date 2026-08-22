@@ -213,6 +213,31 @@ export function toExecutionOverlaySource(payload: ExecutionLogsResult): {
   };
 }
 
+/**
+ * The little the status strip says about the run pinned to the canvas: which run
+ * it is, and when it started.
+ *
+ * A third narrow select on the logs key, beside the panel's detail select and
+ * the overlay sync's. Neither field moves once the run exists, so this observer
+ * carries no `refetchInterval` and reads whatever the other two fetched.
+ *
+ * `startedAt` crosses the wire as a plain string, so it is parsed defensively
+ * here rather than at the strip: the other two selects hand their `Date` to a
+ * relative-time helper that says "just now" for an unparseable one, while the
+ * strip prints the parts and would render "NaN undefined, NaN:NaN".
+ */
+export function toPinnedRunSummary(payload: ExecutionLogsResult): {
+  id: string;
+  startedAt: Date | null;
+} {
+  const startedAt = new Date(payload.execution.startedAt);
+
+  return {
+    id: payload.execution.id,
+    startedAt: Number.isNaN(startedAt.getTime()) ? null : startedAt,
+  };
+}
+
 export function toExecutionEvents(
   payload: RawExecutionEvents
 ): ExecutionEvent[] {

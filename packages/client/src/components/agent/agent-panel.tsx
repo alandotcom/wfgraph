@@ -1,11 +1,9 @@
 /**
- * The build agent's panel: a card floating over the bottom-left of the canvas,
- * and the pill that opens it.
+ * The build agent's panel: a dismissible card over the canvas and the button
+ * that opens it.
  *
- * Floating rather than docked, so the canvas keeps its full width and the one
- * expression that subtracts the right sidebar stays the only one. The user
- * watches the graph change while they talk to the agent, so the panel deliberately
- * covers as little of it as it can and is resizable when it covers too much.
+ * The user watches the graph change while they talk to the agent, so the panel
+ * leaves the canvas at full width and can be resized when it covers too much.
  *
  * Absent entirely when the host configured no model: the runtime says so, and a
  * disabled control the user cannot enable is worse than no control.
@@ -133,7 +131,7 @@ function AgentCard({ onClose }: { onClose: () => void }) {
     <div
       aria-label="Build agent"
       className={cn(
-        "pointer-events-auto relative flex flex-col overflow-hidden rounded-xl border bg-popover shadow-md",
+        "pointer-events-auto relative flex flex-col overflow-hidden rounded-xl border bg-popover shadow-lg",
         // On a narrow viewport the card takes the width it can get rather than
         // the width the user last chose on a desktop.
         isMobile && "w-[calc(100vw-1.5rem)]"
@@ -148,7 +146,7 @@ function AgentCard({ onClose }: { onClose: () => void }) {
       {!isMobile && (
         <ResizeGrip onResize={onResize} onResizeEnd={onResizeEnd} />
       )}
-      <header className="flex items-center justify-between gap-2 border-b px-3 py-2">
+      <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b px-3">
         <span className="flex items-center gap-2 font-medium text-sm">
           <SparklesIcon aria-hidden className="size-4" />
           Agent
@@ -175,9 +173,8 @@ export function AgentPanel({ workflowId }: { workflowId: string }) {
   const runtime = useAgentRuntime(workflowId);
 
   return (
-    // Cleared to the right of the canvas zoom controls, which React Flow puts
-    // in the same bottom-left corner. On a narrow viewport those controls move
-    // up out of the way, so the panel takes the full width it can get.
+    // Cleared to the right of the canvas controls. On a narrow viewport the
+    // panel takes the width available inside the canvas.
     <div className="pointer-events-none absolute bottom-4 left-4 z-20 flex flex-col items-start gap-2 md:left-[4.25rem]">
       {isOpen ? (
         <AssistantRuntimeProvider runtime={runtime}>

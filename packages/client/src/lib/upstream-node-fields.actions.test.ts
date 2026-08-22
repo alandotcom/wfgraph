@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   getUpstreamConditionFields,
   getUpstreamFields,
@@ -10,11 +10,19 @@ import {
   anEntryNode,
   createEdge,
   createNode,
-  surface,
+  createSurface,
+  type MutableCatalog,
 } from "#src/lib/upstream-node-fields-test-support";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 describe("upstream-node-fields actions", () => {
+  // A catalog of its own per case: nothing here outlives the `it` that
+  // wrote it, which is what keeps one file's Events out of another's.
+  let surface: MutableCatalog;
+  beforeEach(() => {
+    surface = createSurface();
+  });
+
   it("surfaces an action field with no declared type as a string", () => {
     surface.actions = [
       anAction({

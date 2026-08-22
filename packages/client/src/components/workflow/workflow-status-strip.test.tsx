@@ -1,0 +1,279 @@
+/**
+ * The strip's two states, and the three things it is the only surface for: the
+ * way out of a pinned run with no panel on screen (#96), the unload guard that
+ * used to unmount with the draft state, and the mode label that must say nothing
+ * until it knows what to say.
+ */
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+  type SearchSchemaInput,
+} from "@tanstack/react-router";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { createStore, Provider as JotaiProvider } from "jotai";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
+import { OverlayProvider } from "#src/components/overlays/overlay-provider";
+import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
+import { WorkflowStatusStrip } from "#src/components/workflow/workflow-status-strip";
+import {
+  answerWorkflowRunRpc,
+  extractRpcProcedurePath,
+  parseRpcRequestInput,
+  rpcJsonResponse,
+  rpcUrl,
+  type WorkflowRunRpcFixture,
+} from "#src/lib/rpc-fetch-test-support";
+import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
+import {
+  currentWorkflowIdAtom,
+  currentWorkflowModeAtom,
+  hasUnsavedChangesAtom,
+  isWorkflowOwnerAtom,
+} from "#src/lib/workflow-save-store";
+import { workflowPanelTab } from "#src/lib/workflow-route-state";
+import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+
+const emptyCatalog: ExtensionCatalog = {
+  events: [],
+  actions: [],
+  integrations: [],
+};
+
+const WORKFLOW_ID = "wf_1";
+const EXECUTION_ID = "exec_1";
+
+const served: WorkflowRunRpcFixture = {
+  items: [
+    {
+      id: EXECUTION_ID,
+      workflowId: WORKFLOW_ID,
+      workflowRunId: "run_1",
+      status: "completed",
+      startedAt: "2026-03-01T10:00:00.000Z",
+      completedAt: "2026-03-01T10:00:30.000Z",
+      waitingAt: null,
+      cancelledAt: null,
+      duration: "30s",
+      error: null,
+      entityValue: null,
+      startEventName: null,
+      runMode: "live",
+      startSource: "event",
+    },
+  ],
+  supersededCount: 0,
+  graphs: {},
+  logsSummaryExtras: {},
+};
+
+/** The one workflow the strip's publication badge reads. */
+function workflowPayload(overrides: {
+  publishedVersionId?: string;
+  hasUnpublishedChanges: boolean;
+  mode: "live" | "test";
+}) {
+  return {
+    id: WORKFLOW_ID,
+    name: "Workflow",
+    isPaused: false,
+    mode: overrides.mode,
+    visibility: "private",
+    createdAt: "2026-03-01T09:00:00.000Z",
+    updatedAt: "2026-03-01T09:30:00.000Z",
+    isOwner: true,
+    graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+    hasUnpublishedChanges: overrides.hasUnpublishedChanges,
+    ...(overrides.publishedVersionId
+      ? { publishedVersionId: overrides.publishedVersionId }
+      : {}),
+  };
+}
+
+function stubRpc(payload: ReturnType<typeof workflowPayload>): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const procedurePath = extractRpcProcedurePath(rpcUrl(input));
+      const requestInput = await parseRpcRequestInput(init);
+
+      if (procedurePath === "workflow/getById") {
+        return rpcJsonResponse(payload);
+      }
+
+      // The issue count's opener reads the operator's connection list.
+      if (procedurePath === "integration/getAll") {
+        return rpcJsonResponse([]);
+      }
+
+      return answerWorkflowRunRpc(served, procedurePath, requestInput);
+    })
+  );
+}
+
+function renderStrip(
+  options: {
+    executionId?: string;
+    hasUnsavedChanges?: boolean;
+    mode?: "live" | "test";
+    published?: boolean;
+  } = {}
+) {
+  const store = createStore();
+  store.set(isWorkflowOwnerAtom, true);
+  store.set(currentWorkflowIdAtom, WORKFLOW_ID);
+  store.set(hasUnsavedChangesAtom, options.hasUnsavedChanges ?? false);
+  // The route loader's hydrate writes the id and the mode together, so the
+  // strip reads mode from the atom and takes the payload's arrival as the
+  // signal that a workflow has been loaded into it. The fixture pairs them the
+  // same way.
+  store.set(currentWorkflowModeAtom, options.mode ?? "live");
+
+  stubRpc(
+    workflowPayload({
+      hasUnpublishedChanges: true,
+      mode: options.mode ?? "live",
+      ...(options.published ? { publishedVersionId: "ver_1" } : {}),
+    })
+  );
+
+  const addEventListener = vi.spyOn(window, "addEventListener");
+
+  const rootRoute = createRootRoute({ component: () => <Outlet /> });
+  const workflowRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/workflows/$workflowId",
+    validateSearch: (search: { executionId?: string } & SearchSchemaInput) => ({
+      executionId:
+        typeof search.executionId === "string" && search.executionId.length > 0
+          ? search.executionId
+          : undefined,
+    }),
+    beforeLoad: ({ search }) => {
+      const tab = workflowPanelTab(search.executionId);
+      if (tab !== null) {
+        store.set(propertiesPanelActiveTabAtom, tab);
+      }
+    },
+    // The editor shell's arrangement, minus the panel: the sync owns URL →
+    // overlay, and the strip is the only thing on screen that can undo it.
+    component: () => (
+      <>
+        <ExecutionOverlaySync />
+        <WorkflowStatusStrip workflowId={WORKFLOW_ID} />
+      </>
+    ),
+  });
+
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([workflowRoute]),
+    history: createMemoryHistory({
+      initialEntries: [
+        options.executionId
+          ? `/workflows/${WORKFLOW_ID}?executionId=${options.executionId}`
+          : `/workflows/${WORKFLOW_ID}`,
+      ],
+    }),
+  });
+
+  const view = render(
+    <JotaiProvider store={store}>
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <ExtensionCatalogProvider value={emptyCatalog}>
+          <OverlayProvider>
+            <RouterProvider router={router} />
+          </OverlayProvider>
+        </ExtensionCatalogProvider>
+      </QueryClientProvider>
+    </JotaiProvider>
+  );
+
+  return {
+    view,
+    store,
+    router,
+    armedUnloadGuard: () =>
+      addEventListener.mock.calls.some(([type]) => type === "beforeunload"),
+  };
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe("WorkflowStatusStrip", () => {
+  it("reports the draft's mode, publication and save state", async () => {
+    const { view } = renderStrip({ mode: "test", published: true });
+
+    await waitFor(() => {
+      expect(view.getByText("Test mode")).toBeTruthy();
+    });
+    expect(view.getByText("Unpublished changes")).toBeTruthy();
+    expect(view.getByText("Saved")).toBeTruthy();
+    expect(view.queryByText("Back to draft")).toBeNull();
+  });
+
+  it("says nothing about the mode until the workflow payload has arrived", () => {
+    // `currentWorkflowModeAtom` answers "live" before anything is hydrated into
+    // it, and "Live mode" is an affirmative claim about whether real email and
+    // SMS go out. The first paint is before the query resolves, so this is the
+    // window the strip used to fill with a guess.
+    const { view } = renderStrip({ mode: "test" });
+
+    expect(view.queryByText("Live mode")).toBeNull();
+    expect(view.queryByText("Test mode")).toBeNull();
+  });
+
+  it("switches to the run state and offers the way back to the draft", async () => {
+    const { view, store, router } = renderStrip({
+      executionId: EXECUTION_ID,
+    });
+
+    await waitFor(() => {
+      expect(view.getByText("Viewing a past run")).toBeTruthy();
+    });
+    expect(view.getByText("Editing is off")).toBeTruthy();
+    expect(store.get(canvasEditingLockedAtom)).toBe(true);
+
+    // #96: no run panel is mounted in this tree at all, which is the state a
+    // collapsed rail leaves behind. The strip is the only way out.
+    await act(async () => {
+      fireEvent.click(view.getByText("Back to draft"));
+    });
+
+    await waitFor(() => {
+      expect(store.get(canvasEditingLockedAtom)).toBe(false);
+    });
+    expect(router.state.location.search).toEqual({});
+    expect(view.queryByText("Viewing a past run")).toBeNull();
+  });
+
+  it("arms the reload guard while a run is pinned over an unsaved draft", async () => {
+    // The guard used to live inside the save label, which the run state does
+    // not mount: an edit made inside the 1s autosave debounce and followed by a
+    // click on a run was dropped on reload with no prompt.
+    const { view, armedUnloadGuard } = renderStrip({
+      executionId: EXECUTION_ID,
+      hasUnsavedChanges: true,
+    });
+
+    await waitFor(() => {
+      expect(view.getByText("Viewing a past run")).toBeTruthy();
+    });
+
+    expect(armedUnloadGuard()).toBe(true);
+  });
+});

@@ -40,5 +40,6 @@ export {
 } from "#src/conditions/condition-schema";
 export {
   compileConditionModel,
+  compileConditionRule,
   compileSerializedConditionModel,
 } from "#src/conditions/condition-compile";

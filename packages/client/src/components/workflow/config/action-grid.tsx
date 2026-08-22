@@ -27,19 +27,18 @@ import {
 } from "#src/components/ui/tooltip";
 import { hasTouchSupport } from "#src/hooks/use-touch";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
+import { stepGroups, stepMatchesQuery } from "#src/lib/step-types";
+import { selectableActions } from "@wfgraph/shared/extensions/catalog";
 import type { ActionMetadata } from "@wfgraph/shared/extensions/catalog";
 import { cn } from "@wfgraph/shared/utils";
 
 /**
- * Every action the server can run, which is the whole of what this grid offers.
- *
- * The four the engine ships itself are catalog entries like any other, so there is
- * no local list to keep in step: an editor served by a different build than its
- * server draws what that server says it has.
+ * Actions the editor may offer when adding a new step. Hidden actions are
+ * omitted unless a node already references one.
  */
 function useAllActions(): readonly ActionMetadata[] {
   const catalog = useExtensionCatalog();
-  return useMemo(() => catalog.actions, [catalog]);
+  return useMemo(() => selectableActions(catalog), [catalog]);
 }
 
 type ActionGridProps = {
@@ -70,7 +69,7 @@ function GroupIcon({
   return <Zap className="size-4" />;
 }
 
-function ActionIcon({
+export function ActionIcon({
   action,
   className,
 }: {
@@ -166,42 +165,19 @@ export function ActionGrid({
     });
   };
 
-  const filteredActions = actions.filter((action) => {
-    const searchTerm = filter.toLowerCase();
-    return (
-      action.label.toLowerCase().includes(searchTerm) ||
-      action.description.toLowerCase().includes(searchTerm) ||
-      action.category.toLowerCase().includes(searchTerm)
-    );
-  });
+  // The same two rules the command palette lists node types by, from the same
+  // module: what an action answers to, and what order the categories come in.
+  // These were a copy here, and the copies had already drifted -- "delay" found
+  // Wait in the palette and nothing in this grid.
+  const filteredActions = useMemo(
+    () => actions.filter((action) => stepMatchesQuery(action, filter)),
+    [actions, filter]
+  );
 
-  // Group actions by category
-  const groupedActions = useMemo(() => {
-    const groups: Record<string, ActionMetadata[]> = {};
-
-    for (const action of filteredActions) {
-      const category = action.category;
-      if (!groups[category]) {
-        groups[category] = [];
-      }
-      groups[category].push(action);
-    }
-
-    const sortedCategories = Object.keys(groups).toSorted((a, b) => {
-      if (a === "System") {
-        return -1;
-      }
-      if (b === "System") {
-        return 1;
-      }
-      return a.localeCompare(b);
-    });
-
-    return sortedCategories.map((category) => ({
-      category,
-      actions: groups[category],
-    }));
-  }, [filteredActions]);
+  const groupedActions = useMemo(
+    () => stepGroups(filteredActions),
+    [filteredActions]
+  );
 
   const visibleGroups = useMemo(() => {
     if (showHidden) {

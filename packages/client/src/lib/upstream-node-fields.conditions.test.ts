@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   getUpstreamConditionFields,
   getUpstreamNodes,
@@ -10,11 +10,19 @@ import {
   anEvent,
   createEdge,
   createNode,
-  surface,
+  createSurface,
+  type MutableCatalog,
 } from "#src/lib/upstream-node-fields-test-support";
 import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 describe("upstream-node-fields conditions", () => {
+  // A catalog of its own per case: nothing here outlives the `it` that
+  // wrote it, which is what keeps one file's Events out of another's.
+  let surface: MutableCatalog;
+  beforeEach(() => {
+    surface = createSurface();
+  });
+
   it("discovers transitive upstream nodes and condition fields", () => {
     surface.events = [
       anEvent({

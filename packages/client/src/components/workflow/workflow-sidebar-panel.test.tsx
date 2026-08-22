@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -23,6 +25,8 @@ import { workflowPanelTab } from "#src/lib/workflow-route-state";
 import {
   isSidebarCollapsedAtom,
   propertiesPanelActiveTabAtom,
+  sidebarWidthCss,
+  sidebarWidthPercentAtom,
 } from "#src/lib/workflow-ui-store";
 import {
   answerWorkflowRunRpc,
@@ -132,11 +136,135 @@ function renderPanel() {
   return { view, store, router };
 }
 
+/**
+ * The inset the stylesheet actually declares, read from the file so that
+ * renaming or removing the variable fails here rather than silently changing
+ * what the panel is a share of. Two values are declared, the phone's zero and
+ * the desktop's; this wants the desktop one.
+ */
+function declaredEditorInsetPx(): number {
+  const css = readFileSync(
+    join(import.meta.dirname, "../../routes/globals.css"),
+    "utf8"
+  );
+  const declared = [...css.matchAll(/--editor-inset:\s*([\d.]+)px/g)].map(
+    (match) => Number(match[1])
+  );
+  if (declared.length === 0) {
+    throw new Error("globals.css declares no --editor-inset");
+  }
+  return Math.max(...declared);
+}
+
+/**
+ * What a browser resolves one of `sidebarWidthCss`'s expressions to: enough of
+ * `var()`, `calc()`, `min()` and `max()` for that one string.
+ *
+ * The test needs the width the panel renders, and the point of it is that the
+ * rendered width and the drag agree about which rectangle they are a share of.
+ * Reading the expression is the only way to ask that question without a
+ * browser: recomputing the width from the percentage would be repeating the
+ * arithmetic the drag just did, and would pass whichever rectangle either side
+ * chose.
+ */
+function resolveCssWidthPx(
+  css: string,
+  viewport: { width: number; insetPx: number }
+): number {
+  const tokens = css
+    .replace(/var\(--editor-inset,\s*0px\)/g, String(viewport.insetPx))
+    .replace(
+      /([\d.]+)vw/g,
+      (_, share: string) => `${(viewport.width * Number(share)) / 100}`
+    )
+    .replace(/([\d.]+)px/g, "$1")
+    .match(/min|max|calc|[(),]|[-+*/]|[\d.]+/g);
+
+  if (!tokens) {
+    throw new Error(`no width expression in ${css}`);
+  }
+
+  let at = 0;
+  const take = (expected?: string): string => {
+    const token = tokens[at];
+    at += 1;
+    if (expected !== undefined && token !== expected) {
+      throw new Error(`expected ${expected} at ${at} of ${css}`);
+    }
+    return token;
+  };
+
+  const expression = (): number => {
+    let value = term();
+    while (tokens[at] === "+" || tokens[at] === "-") {
+      const operator = take();
+      value = operator === "+" ? value + term() : value - term();
+    }
+    return value;
+  };
+
+  const term = (): number => {
+    let value = factor();
+    while (tokens[at] === "*" || tokens[at] === "/") {
+      const operator = take();
+      value = operator === "*" ? value * factor() : value / factor();
+    }
+    return value;
+  };
+
+  const factor = (): number => {
+    const token = take();
+    if (token === "(" || token === "calc") {
+      if (token === "calc") {
+        take("(");
+      }
+      const value = expression();
+      take(")");
+      return value;
+    }
+    if (token === "min" || token === "max") {
+      take("(");
+      const first = expression();
+      take(",");
+      const second = expression();
+      take(")");
+      return token === "min"
+        ? Math.min(first, second)
+        : Math.max(first, second);
+    }
+    return Number(token);
+  };
+
+  const width = expression();
+  if (at !== tokens.length) {
+    throw new Error(`unread tokens in ${css}`);
+  }
+  return width;
+}
+
+/** The viewport happy-dom answers a media query from. */
+function setViewportWidth(width: number): void {
+  (
+    window as unknown as {
+      happyDOM: { setViewport: (viewport: { width: number }) => void };
+    }
+  ).happyDOM.setViewport({ width });
+}
+
 describe("WorkflowSidebarPanel", () => {
-  beforeEach(stubRunQueries);
+  beforeEach(() => {
+    stubRunQueries();
+    // The window is shared across every file in this worker, and the rail is
+    // desktop-only, so the width it renders at is stated here rather than
+    // inherited from whichever test ran last.
+    setViewportWidth(1280);
+  });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    // The suite runs with `isolate: false`, so a variable left on the document
+    // is still there for the next file in this worker.
+    document.documentElement.style.removeProperty("--editor-inset");
   });
 
   // Collapsing slides the rail behind the viewport edge without unmounting it,
@@ -178,6 +306,68 @@ describe("WorkflowSidebarPanel", () => {
     expect(store.get(propertiesPanelActiveTabAtom)).toBe("properties");
     expect(router.state.location.search).toEqual({});
   });
+
+  // The percentage the drag stores is a share of the editor shell, which is the
+  // viewport less its inset on each side, and `sidebarWidthCss` has to say the
+  // same thing for the released edge to land under the pointer. A drag measured
+  // against `window.innerWidth` agreed with it only while the shell was the
+  // whole viewport; inset, it put the edge an inset away, which nothing but a
+  // ruler on screen would have reported.
+  //
+  // Both clamps are in here too, because the edge follows the pointer only
+  // between them: `sidebarWidthCss` holds the rendered width to 320-460px, so
+  // outside that band the panel stops where the clamp puts it however far the
+  // pointer goes.
+  it.each([
+    { name: "inside the band", dragTo: 370, renders: 370 },
+    { name: "past the cap", dragTo: 520, renders: 460 },
+    { name: "under the floor", dragTo: 260, renders: 320 },
+  ])(
+    "a resize released $dragTo px from the shell's edge renders $renders px ($name)",
+    async ({ dragTo, renders }) => {
+      const { view, store } = renderPanel();
+
+      await waitFor(() => {
+        expect(view.getByLabelText("Collapse panel")).toBeTruthy();
+      });
+
+      const insetPx = declaredEditorInsetPx();
+      document.documentElement.style.setProperty(
+        "--editor-inset",
+        `${insetPx}px`
+      );
+
+      const panelRight = window.innerWidth - insetPx;
+      const column = document.querySelector(
+        ".workflow-sidebar-panel"
+      )?.parentElement;
+      if (!column) {
+        throw new Error("the panel column did not render");
+      }
+      // happy-dom lays nothing out, so the one measurement the drag takes is
+      // given an answer: the inner edge of the shell, where the column ends.
+      column.getBoundingClientRect = () => ({ right: panelRight }) as DOMRect;
+
+      const releasedAt = panelRight - dragTo;
+      const separator = view.getByLabelText(
+        "Resize properties panel. Click to collapse."
+      );
+
+      await act(async () => {
+        // Away from the release point, so this is a drag rather than the click
+        // that collapses the panel.
+        fireEvent.pointerDown(separator, { clientX: panelRight - 300 });
+        fireEvent.pointerMove(document, { clientX: releasedAt });
+        fireEvent.pointerUp(document, { clientX: releasedAt });
+      });
+
+      const renderedWidth = resolveCssWidthPx(
+        sidebarWidthCss(store.get(sidebarWidthPercentAtom)),
+        { width: window.innerWidth, insetPx }
+      );
+      expect(renderedWidth).toBeCloseTo(renders, 6);
+    }
+  );
 
   // Expanding is not an exit. The same handler runs, and reading the collapse
   // flag the wrong way round would close a run every time the rail came back.

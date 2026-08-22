@@ -3,10 +3,8 @@ import {
   ComboboxContent,
   ComboboxEmpty,
   ComboboxInput,
-  ComboboxInputGroup,
   ComboboxItem,
   ComboboxList,
-  ComboboxTrigger,
 } from "#src/components/ui/combobox";
 
 /** One choice: what the builder reads, and the name a sender posts. */
@@ -48,10 +46,11 @@ function EventComboboxBody({
 }) {
   return (
     <>
-      <ComboboxInputGroup>
-        <ComboboxInput id={inputId} placeholder={placeholder} />
-        <ComboboxTrigger aria-label="Show the Events" />
-      </ComboboxInputGroup>
+      <ComboboxInput
+        id={inputId}
+        placeholder={placeholder}
+        triggerLabel="Show the Events"
+      />
       <ComboboxContent>
         <ComboboxEmpty>No Event matches that.</ComboboxEmpty>
         <ComboboxList>

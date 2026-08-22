@@ -1,20 +1,21 @@
 import { Plus, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Button } from "#src/components/ui/button";
 import { Input } from "#src/components/ui/input";
-import { Label } from "#src/components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-  whenChosen,
 } from "#src/components/ui/select";
+import { whenChosen } from "#src/lib/select-choice";
 import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
 import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
 import { ConditionFieldCombobox } from "./condition-field-combobox";
+import { ConfigSection } from "./config-section";
+import { ConditionSummary } from "./condition-summary";
 import {
   BOOLEAN_OPERATOR_OPTIONS,
   type ConditionFieldDefinition,
@@ -52,6 +53,10 @@ import {
  */
 type ConditionBuilderRowProps = {
   label: string;
+  /** See `ConfigSection`: what the Edit and Done buttons name. */
+  editActionName?: string;
+  /** See `ConfigSection`: only a row mounted in the panel column may pin. */
+  stickyHeader?: boolean;
   description: string;
   /** The fields rules may be built from, already typed. */
   fields: ConditionSelectableField[];
@@ -62,6 +67,12 @@ type ConditionBuilderRowProps = {
   onChange: (next: { model: string; expression: string }) => void;
   /** Excluded from a value field's template autocomplete, being its own node. */
   currentNodeId?: string;
+  /**
+   * Whether the row opens in edit mode rather than in view mode. Read once, on
+   * mount, for the caller that seeds a model with its own button: without it,
+   * one click would produce a summary of a rule nobody has filled in yet.
+   */
+  defaultEditing?: boolean;
   disabled: boolean;
 };
 
@@ -341,6 +352,7 @@ function ConditionValueInput(input: {
           />
           <Select
             disabled={disabled}
+            items={TIME_UNIT_OPTIONS}
             onValueChange={whenChosen((value) => {
               if (!isTimeUnitValue(value)) {
                 return;
@@ -399,6 +411,7 @@ function ConditionValueInput(input: {
       return (
         <Select
           disabled={disabled}
+          items={enumValues.map((value) => ({ label: value, value }))}
           onValueChange={whenChosen((value) => {
             onConditionChange({ ...condition, value });
           })}
@@ -462,15 +475,21 @@ function ConditionValueInput(input: {
 
 export function ConditionBuilderRow({
   label,
+  editActionName,
+  stickyHeader,
   description,
   fields: availableFields,
   emptyFieldsMessage,
   value: storedValue,
   onChange,
   currentNodeId,
+  defaultEditing = false,
   disabled,
 }: ConditionBuilderRowProps) {
   const seedField = availableFields[0] ?? null;
+  // The mode is this row's own, and it belongs to no workflow: a fresh open
+  // starts where `defaultEditing` says, whatever the last one was left in.
+  const [editing, setEditing] = useState(defaultEditing);
 
   const fieldByPath = useMemo(
     () => new Map(availableFields.map((field) => [field.path, field])),
@@ -606,48 +625,81 @@ export function ConditionBuilderRow({
     });
   };
 
-  if (!parsedModel) {
-    return (
-      <div className="space-y-2 rounded-md border bg-muted/30 p-3">
-        <Label className="text-sm">{label}</Label>
-        <p className="text-muted-foreground text-xs">{description}</p>
-        {availableFields.length > 0 ? (
-          <Button
-            disabled={disabled}
-            onClick={addConditionModel}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            Configure condition
-          </Button>
-        ) : (
-          <p className="text-muted-foreground text-xs">{emptyFieldsMessage}</p>
-        )}
-        {modelValue && !modelParseResult.valid && (
-          <p className="text-destructive text-xs">{modelParseResult.error}</p>
-        )}
-      </div>
-    );
-  }
+  // The section is what holds the two modes, and it offers Edit only once
+  // there is a model to edit: a row with nothing configured has no view to
+  // show, so its one button both seeds a model and opens the editor.
+  const editable = !disabled && parsedModel !== null;
 
   return (
-    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-      <div className="space-y-1">
-        <Label className="text-sm">{label}</Label>
-        <p className="text-muted-foreground text-xs">{description}</p>
-      </div>
+    <ConfigSection
+      editable={editable}
+      editActionName={editActionName}
+      editing={editing}
+      help={<p>{description}</p>}
+      label={label}
+      onEditingChange={setEditing}
+      stickyHeader={stickyHeader}
+      view={
+        parsedModel ? (
+          <ConditionSummary fields={availableFields} model={parsedModel} />
+        ) : (
+          <div className="space-y-2">
+            {availableFields.length > 0 ? (
+              <Button
+                disabled={disabled}
+                onClick={() => {
+                  addConditionModel();
+                  setEditing(true);
+                }}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Configure condition
+              </Button>
+            ) : (
+              <p className="text-muted-foreground text-xs">
+                {emptyFieldsMessage}
+              </p>
+            )}
+            {modelValue && !modelParseResult.valid && (
+              <p className="text-destructive text-xs">
+                {modelParseResult.error}
+              </p>
+            )}
+          </div>
+        )
+      }
+    >
+      {parsedModel ? (
+        <>
+          {parsedModel.groups.map((group, groupIndex) => (
+            <div key={group.id}>
+              {/* The joiner sits on the divider between two groups rather than
+                  floating over it, which is what lets a group be a gutter rule
+                  instead of a card. */}
+              {groupIndex > 0 && (
+                <div className="flex items-center gap-2 py-2">
+                  <span className="h-px flex-1 bg-border" />
+                  <LogicToggle
+                    disabled={disabled}
+                    onChange={(value) => {
+                      persistModel({
+                        ...parsedModel,
+                        groupLogic: value,
+                      });
+                    }}
+                    value={parsedModel.groupLogic}
+                  />
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+              )}
 
-      <div className="space-y-3">
-        {parsedModel.groups.map((group, groupIndex) => (
-          <div key={group.id}>
-            <div className="rounded-lg border bg-card">
-              <div className="flex items-center justify-between border-b px-3 py-2">
+              <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="rounded-md bg-muted px-2 py-1 font-medium text-xs">
+                  <span className="rounded-md bg-muted px-1.5 py-0.5 font-medium text-xs">
                     {groupIndex + 1}
                   </span>
-                  <span className="font-medium text-sm">Filter group</span>
                   <span className="text-muted-foreground text-xs">
                     {group.conditions.length}{" "}
                     {group.conditions.length === 1 ? "condition" : "conditions"}
@@ -664,7 +716,9 @@ export function ConditionBuilderRow({
                 </Button>
               </div>
 
-              <div className="space-y-3 p-3">
+              {/* The gutter: a left rule with the rows indented behind it, in
+                  place of the bordered card these used to sit in. */}
+              <div className="mt-1 ml-2.5 space-y-2 border-l pl-3">
                 {group.conditions.map((condition, conditionIndex) => {
                   const selectedFieldDef = fieldByPath.get(condition.field);
                   const operatorOptions = getOperatorOptionsByFieldType(
@@ -699,6 +753,7 @@ export function ConditionBuilderRow({
 
                         <Select
                           disabled={disabled}
+                          items={operatorOptions}
                           onValueChange={whenChosen((operatorValue) => {
                             const nextCondition = applyOperatorValueToCondition(
                               condition,
@@ -759,7 +814,7 @@ export function ConditionBuilderRow({
                       </div>
 
                       {conditionIndex < group.conditions.length - 1 && (
-                        <div className="py-2 pl-2">
+                        <div className="pt-2">
                           <LogicToggle
                             disabled={disabled}
                             onChange={(value) => {
@@ -788,46 +843,31 @@ export function ConditionBuilderRow({
                 </Button>
               </div>
             </div>
+          ))}
 
-            {groupIndex < parsedModel.groups.length - 1 && (
-              <div className="flex justify-center py-2">
-                <LogicToggle
-                  disabled={disabled}
-                  onChange={(value) => {
-                    persistModel({
-                      ...parsedModel,
-                      groupLogic: value,
-                    });
-                  }}
-                  value={parsedModel.groupLogic}
-                />
-              </div>
-            )}
+          <div className="flex justify-center pt-1">
+            <Button
+              disabled={disabled || !seedField}
+              onClick={addGroup}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <Plus className="size-4" />
+              Add group
+            </Button>
           </div>
-        ))}
-      </div>
 
-      <div className="flex justify-center">
-        <Button
-          disabled={disabled || !seedField}
-          onClick={addGroup}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          <Plus className="size-4" />
-          Add group
-        </Button>
-      </div>
-
-      {compiled?.valid === false && (
-        <p className="text-destructive text-xs">{compiled.error}</p>
-      )}
-      {compiled?.valid && (
-        <p className="text-muted-foreground text-xs">
-          Compiled CEL: {compiled.expression}
-        </p>
-      )}
-    </div>
+          {compiled?.valid === false && (
+            <p className="text-destructive text-xs">{compiled.error}</p>
+          )}
+          {compiled?.valid && (
+            <p className="text-muted-foreground text-xs">
+              Compiled CEL: {compiled.expression}
+            </p>
+          )}
+        </>
+      ) : null}
+    </ConfigSection>
   );
 }

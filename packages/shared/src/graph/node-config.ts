@@ -60,6 +60,14 @@ export function isWaitNode(node: NodeConfigSource | undefined): boolean {
   return isWaitActionType(actionTypeOf(node));
 }
 
+/** A Wait node that parks on Events rather than on a clock. */
+export function isEventWaitNode(node: NodeConfigSource | undefined): boolean {
+  return (
+    isWaitNode(node) &&
+    readConfigString(node?.data.config, "waitMode") === "event"
+  );
+}
+
 /**
  * The entry node, which every graph has one of. `data.type` is the field the
  * wire schema requires; React Flow's own top-level `type` is optional there.

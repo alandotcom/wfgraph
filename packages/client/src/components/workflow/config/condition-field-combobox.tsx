@@ -5,12 +5,10 @@ import {
   ComboboxContent,
   ComboboxEmpty,
   ComboboxGroup,
-  ComboboxGroupLabel,
   ComboboxInput,
-  ComboboxInputGroup,
   ComboboxItem,
+  ComboboxLabel,
   ComboboxList,
-  ComboboxTrigger,
 } from "#src/components/ui/combobox";
 import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
 
@@ -21,13 +19,23 @@ type ConditionFieldGroup = {
 };
 
 /**
+ * How a stored path the current graph no longer offers is named, wherever it is
+ * shown. Exported so the read-only summary marks it the same way this picker
+ * does: a path marked here and bare there is two surfaces disagreeing about
+ * whether a rule still points at anything.
+ */
+export function unavailableFieldLabel(path: string): string {
+  return `${path} (Unavailable)`;
+}
+
+/**
  * A stored path the current graph no longer offers, shown so the input is not
  * blank. Type is unused: the row never writes this object onto a rule.
  */
 function unavailableField(path: string): ConditionSelectableField {
   return {
     path,
-    label: `${path} (Unavailable)`,
+    label: unavailableFieldLabel(path),
     type: "string",
     sourceNodeId: "",
     sourceNodeLabel: "Unavailable",
@@ -145,16 +153,18 @@ export function ConditionFieldCombobox({
       }}
       value={selected}
     >
-      <ComboboxInputGroup className="min-w-[280px]">
-        <ComboboxInput aria-label="Select field" placeholder="Select field" />
-        <ComboboxTrigger aria-label="Show the fields" />
-      </ComboboxInputGroup>
+      <ComboboxInput
+        aria-label="Select field"
+        className="min-w-[280px]"
+        placeholder="Select field"
+        triggerLabel="Show the fields"
+      />
       <ComboboxContent className="w-max min-w-(--anchor-width)">
         <ComboboxEmpty>No field matches that.</ComboboxEmpty>
         <ComboboxList>
           {(group: ConditionFieldGroup) => (
             <ComboboxGroup items={group.items} key={group.value}>
-              <ComboboxGroupLabel>{group.value}</ComboboxGroupLabel>
+              <ComboboxLabel>{group.value}</ComboboxLabel>
               <ComboboxCollection>
                 {(field: ConditionSelectableField) => (
                   <ComboboxItem

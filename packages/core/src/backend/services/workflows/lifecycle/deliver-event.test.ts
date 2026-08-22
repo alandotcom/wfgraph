@@ -364,10 +364,9 @@ describe("applyLifecycleRules", () => {
           startForEntityMock.mock.calls[0]?.[0].execution.workflowVersionId,
           "ver_1"
         );
-        assert.strictEqual(
-          sendRunRequestedMock.mock.calls[0]?.[0].catalogFingerprint,
-          "fp"
-        );
+        assert.deepStrictEqual(sendRunRequestedMock.mock.calls[0]?.[0], {
+          executionId: "exec_new",
+        });
       })
     );
 

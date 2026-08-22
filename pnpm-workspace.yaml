@@ -25,10 +25,8 @@ catalog:
   "@effect/ai-openai": 4.0.0-rc.110
   "@effect/opentelemetry": 4.0.0-rc.110
   "@effect/vitest": 4.0.0-rc.110
-  # The backend and the editor both log through logtape, and @logtape/pretty
-  # names one @logtape/logtape range as a peer, so the pair moves as one.
+  # The backend and the editor both log through logtape.
   "@logtape/logtape": ^2.3.0
-  "@logtape/pretty": ^2.3.0
   "@marcbachmann/cel-js": ^7.6.1
   "@orpc/client": 2.0.0-beta.21
   "@orpc/contract": 2.0.0-beta.21
@@ -141,3 +139,4 @@ minimumReleaseAgeExclude:
   - "@changesets/should-skip-package@1.0.0"
   - "@changesets/types@7.0.0"
   - "@changesets/write@1.0.0"
+  - shadcn@4.19.0

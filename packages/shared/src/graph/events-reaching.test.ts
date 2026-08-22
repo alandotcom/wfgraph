@@ -84,6 +84,29 @@ function actionNode(id: string, actionType = "custom/notify"): WorkflowNode {
   };
 }
 
+function waitNode(
+  id: string,
+  waitFor: string[],
+  waitMode: "delay" | "event" = "event"
+): WorkflowNode {
+  return {
+    id,
+    type: "action",
+    position: { x: 0, y: 0 },
+    data: {
+      label: id,
+      type: "action",
+      config: {
+        actionType: BUILT_IN_ACTION_IDS.wait,
+        waitMode,
+        ...(waitMode === "event"
+          ? { waitFor: waitFor.map((event) => ({ event })) }
+          : {}),
+      },
+    },
+  };
+}
+
 /** A Condition node carrying the model these rules make, ANDed in one group. */
 function conditionNode(id: string, conditions: ConditionRule[]): WorkflowNode {
   const model: ConditionModel = {
@@ -264,6 +287,88 @@ describe("eventsReaching", () => {
     ];
 
     expect(namesReaching("split-1", nodes, edges)).toEqual([
+      CREATED,
+      RESCHEDULED,
+    ]);
+  });
+
+  it("keeps the Start Events at an event-mode Wait, and hands its subscriptions on", () => {
+    // The Wait is where those Events arrive, so a node sitting on it still sees
+    // whatever put the run there. Everything below sees the Events it parks on,
+    // which is how an Event Split after a Wait has something new to split.
+    const nodes = [
+      entryNode({ startEvents: [CREATED] }),
+      waitNode("wait-1", [CANCELED, RESCHEDULED]),
+      actionNode("after-wait"),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
+      edge("e2", "wait-1", "after-wait"),
+    ];
+
+    expect(namesReaching("wait-1", nodes, edges)).toEqual([CREATED]);
+    expect(namesReaching("after-wait", nodes, edges)).toEqual([
+      CANCELED,
+      RESCHEDULED,
+    ]);
+  });
+
+  it("leaves one Event behind each Event Split outlet below a Wait", () => {
+    const nodes = [
+      entryNode({ startEvents: [CREATED] }),
+      waitNode("wait-1", [CANCELED, RESCHEDULED]),
+      actionNode("split-1", BUILT_IN_ACTION_IDS.eventSplit),
+      actionNode("on-canceled"),
+      actionNode("on-rescheduled"),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
+      edge("e2", "wait-1", "split-1"),
+      edge("e3", "split-1", "on-canceled", eventSplitOutlet(CANCELED)),
+      edge("e4", "split-1", "on-rescheduled", eventSplitOutlet(RESCHEDULED)),
+    ];
+
+    expect(namesReaching("split-1", nodes, edges)).toEqual([
+      CANCELED,
+      RESCHEDULED,
+    ]);
+    expect(namesReaching("on-canceled", nodes, edges)).toEqual([CANCELED]);
+    expect(namesReaching("on-rescheduled", nodes, edges)).toEqual([
+      RESCHEDULED,
+    ]);
+  });
+
+  it("leaves a Start Event outlet empty when the Wait replaced the set", () => {
+    // The Start Event put the run at the Wait; it is not what wakes it. An
+    // Event Split below the Wait offering that Event would be a branch no
+    // resume travels.
+    const nodes = [
+      entryNode({ startEvents: [CREATED] }),
+      waitNode("wait-1", [CANCELED]),
+      actionNode("split-1", BUILT_IN_ACTION_IDS.eventSplit),
+      actionNode("on-created"),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
+      edge("e2", "wait-1", "split-1"),
+      edge("e3", "split-1", "on-created", eventSplitOutlet(CREATED)),
+    ];
+
+    expect(namesReaching("on-created", nodes, edges)).toEqual([]);
+  });
+
+  it("carries the Start Events through a Wait that parks on a clock", () => {
+    const nodes = [
+      entryNode({ startEvents: [CREATED, RESCHEDULED] }),
+      waitNode("wait-1", [], "delay"),
+      actionNode("after-wait"),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
+      edge("e2", "wait-1", "after-wait"),
+    ];
+
+    expect(namesReaching("after-wait", nodes, edges)).toEqual([
       CREATED,
       RESCHEDULED,
     ]);

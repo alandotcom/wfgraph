@@ -111,6 +111,7 @@ function SelectField({ field, value, onChange, disabled }: FieldProps) {
   return (
     <Select
       disabled={disabled}
+      items={field.options}
       onValueChange={onChange}
       value={typeof value === "string" ? value : ""}
     >

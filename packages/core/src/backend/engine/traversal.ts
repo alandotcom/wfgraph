@@ -15,6 +15,7 @@
 import { omit } from "es-toolkit";
 import { Effect } from "effect";
 import { normalizeConditionBranch } from "@wfgraph/shared/conditions/condition-branch";
+import { isLifecycleNode } from "@wfgraph/shared/graph/node-config";
 import type {
   ConditionBranch,
   WorkflowEdge,
@@ -95,8 +96,9 @@ export class Traversal {
   /**
    * Every finished node's output, which templates and CEL conditions read.
    *
-   * Read-only to everyone outside, so `setOutput` and `markCompleted` stay the
-   * only way a node's output is written and the run's state has one author.
+   * Read-only to everyone outside, so `setOutput`, `setOwnOutput`, and
+   * `markCompleted` stay the only way a node's output is written and the run's
+   * state has one author.
    */
   get outputs(): Readonly<NodeOutputs> {
     return this.nodeOutputs;
@@ -242,6 +244,29 @@ export class Traversal {
   /** Writes a node's output without closing the node. */
   setOutput(nodeId: string, output: NodeOutputs[string]) {
     writeOutput(this.nodeOutputs, nodeId, output);
+  }
+
+  /**
+   * Writes a node's output as this run's own, even when the node was inherited.
+   *
+   * A branch run inherits the entry node's Start Event payload, then an
+   * event-mode Wait overwrites it with the Event that woke the Wait. Without
+   * taking ownership, `ownOutputs` would omit the write and the parent run
+   * would keep the payload it already has.
+   */
+  setOwnOutput(nodeId: string, output: NodeOutputs[string]) {
+    writeOutput(this.nodeOutputs, nodeId, output);
+    this.inheritedOutputKeys.delete(outputKey(nodeId));
+  }
+
+  /**
+   * The entry nodes of this graph, whose output is the Arriving Event payload.
+   */
+  get lifecycleNodes(): readonly WorkflowNode[] {
+    return this.nodes.filter(
+      (node) =>
+        isLifecycleNode(node) && this.predecessorIds(node.id).length === 0
+    );
   }
 
   /**

@@ -422,9 +422,16 @@ configureWfGraphLogging();
 
 `LOG_LEVEL` names the level (default `info`), `LOG_FORMAT` picks `pretty` or `json`, and
 with neither set an attached terminal gets `pretty` while a pipe gets one JSON object per
-line. `LOG_PRETTY_PROPERTIES=off` drops the structured fields from the pretty layout, and
-`LOG_PRETTY_INSPECT_DEPTH` sets how deep it walks one (default 3). The call takes `level`
-and `format` as options for a host that would rather say so in code.
+line. The call takes `level` and `format` as options for a host that would rather say so
+in code.
+
+The pretty layout writes one flush-left header line per record, then stacks the record's
+fields below it in a small tree. A grouped field stays on one line as `key=value` pairs
+while it fits, and opens into a row per member when it does not.
+`LOG_PRETTY_PROPERTIES=off` drops the field lines, `LOG_PRETTY_INSPECT_DEPTH` sets how
+deep the layout walks one field (default 3), `LOG_PRETTY_WIDTH` sets the column a group
+has to fit inside (default `stdout.columns`, else 120), and `NO_COLOR` turns the ANSI
+escapes off.
 
 ```ts
 // 2. An application logger of your own, as one option.

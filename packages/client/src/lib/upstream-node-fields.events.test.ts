@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   getUpstreamConditionFields,
   getUpstreamFields,
@@ -16,7 +16,8 @@ import {
   createEdge,
   createNode,
   startedEdge,
-  surface,
+  createSurface,
+  type MutableCatalog,
 } from "#src/lib/upstream-node-fields-test-support";
 import {
   LIFECYCLE_CANCELED_HANDLE,
@@ -25,6 +26,13 @@ import {
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 describe("upstream-node-fields events", () => {
+  // A catalog of its own per case: nothing here outlives the `it` that
+  // wrote it, which is what keeps one file's Events out of another's.
+  let surface: MutableCatalog;
+  beforeEach(() => {
+    surface = createSurface();
+  });
+
   it("offers a Start Event's datetime fields as timestamps", () => {
     // The acceptance case for the condition builder: a field an Event declared as
     // a moment in time arrives typed `timestamp`, which is what gets it the
@@ -614,5 +622,81 @@ describe("upstream-node-fields events", () => {
     });
 
     expect(fields).toEqual([]);
+  });
+
+  it("offers a node below a Wait the Events that Wait parks on", () => {
+    // The Start Event put the run at the Wait; the Events the Wait wakes on
+    // are what a node below it may split or address.
+    surface.events = [
+      anEvent({
+        name: "app/appointment.created",
+        schema: Schema.Struct({
+          appointmentId: Schema.String.annotate({
+            description: "Appointment",
+          }),
+        }),
+      }),
+      anEvent({
+        name: "billing/payment.settled",
+        schema: Schema.Struct({
+          amount: Schema.String.annotate({ description: "Amount" }),
+        }),
+      }),
+      anEvent({
+        name: "billing/payment.failed",
+        schema: Schema.Struct({
+          reason: Schema.String.annotate({ description: "Why" }),
+        }),
+      }),
+    ];
+
+    const nodes: WorkflowNode[] = [
+      anEntryNode({ startEvents: ["app/appointment.created"] }),
+      createNode({
+        id: "wait-1",
+        type: "action",
+        label: "Wait",
+        config: {
+          actionType: "Wait",
+          waitMode: "event",
+          waitFor: [
+            { event: "billing/payment.settled" },
+            { event: "billing/payment.failed" },
+          ],
+        },
+      }),
+      createNode({
+        id: "after-wait",
+        type: "action",
+        label: "Decide",
+        config: { actionType: "Condition" },
+      }),
+    ];
+    const edges: WorkflowEdge[] = [
+      startedEdge("wait-1"),
+      createEdge({ id: "e2", source: "wait-1", target: "after-wait" }),
+    ];
+
+    const fields = getUpstreamConditionFields({
+      catalog: surface,
+      currentNodeId: "after-wait",
+      nodes,
+      edges,
+    });
+
+    expect(
+      fields
+        .filter(
+          (field) =>
+            field.sourceNodeId === "lifecycle-1" &&
+            field.path !== EVENT_NAME_FIELD_PATH
+        )
+        .map((field) => field.path)
+    ).toEqual(["amount", "reason"]);
+    expect(
+      fields.find((field) => field.path === EVENT_NAME_FIELD_PATH)
+    ).toMatchObject({
+      enumValues: ["billing/payment.settled", "billing/payment.failed"],
+    });
   });
 });

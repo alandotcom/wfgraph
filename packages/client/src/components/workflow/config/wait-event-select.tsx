@@ -1,6 +1,6 @@
 import { useAtomValue } from "jotai";
 import { X } from "lucide-react";
-import { useCallback, useId, useMemo } from "react";
+import { useCallback, useId, useMemo, useState } from "react";
 import { Button } from "#src/components/ui/button";
 import { WarningCallout } from "#src/components/ui/callout";
 import { Label } from "#src/components/ui/label";
@@ -167,8 +167,17 @@ function WaitSubscriptionRow({
     [onMatchChange, subscription.event]
   );
 
+  /**
+   * Whether this row's match was seeded by the button below rather than loaded
+   * with the workflow. The rule builder mounts the moment a match exists, and
+   * this is what has it open on its controls: one click for a match the builder
+   * still has to fill in, rather than a summary and then an Edit.
+   */
+  const [seededHere, setSeededHere] = useState(false);
+
   const handleClear = useCallback(() => {
     onMatchChange(subscription.event, "");
+    setSeededHere(false);
   }, [onMatchChange, subscription.event]);
 
   // The comparison the common case wants, offered as one click: the arriving
@@ -204,6 +213,7 @@ function WaitSubscriptionRow({
         })
       )
     );
+    setSeededHere(true);
   }, [seedPath, fields, onMatchChange, subscription.event]);
 
   return (
@@ -238,6 +248,7 @@ function WaitSubscriptionRow({
         <>
           <ConditionBuilderRow
             currentNodeId={selectedNodeId ?? undefined}
+            defaultEditing={seededHere}
             description="Only an arrival satisfying this resumes the run. Compare a payload field against a literal, or against a value from this run."
             disabled={disabled}
             emptyFieldsMessage="This Event declares no fields, so there is nothing to match on."
