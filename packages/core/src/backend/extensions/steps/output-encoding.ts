@@ -53,7 +53,7 @@ export function encodeThroughOutputSchema(
  * Standard Schema publishes no encode direction. What it does publish is
  * `~standard.validate`, and that call's returned `value` is what the node keeps:
  * a library that strips undeclared keys (Zod's default object) trims here the
- * way Effect's encode does, and a library that keeps them (Zod `.passthrough()`)
+ * way Effect's encode does, and a library that keeps them (`z.looseObject`)
  * keeps them because the author said so in the schema.
  */
 export function validateThroughOutputSchema<TOutput>(

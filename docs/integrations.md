@@ -263,7 +263,7 @@ naming the field path, and keeps its retries for a failure that might clear.
 runs `~standard.validate` on the way in (config) and on the way out (the handler's
 answer), and derives the form and field list as usual. The value that validate returns is
 what the node keeps, so a library that strips undeclared keys (Zod's default object)
-trims here too, and one that keeps them (Zod `.passthrough()`) keeps them because the
+trims here too, and one that keeps them (`z.looseObject`) keeps them because the
 author said so. Answer with JSON either way: the engine memoizes a step result and
 replays it.
 
@@ -271,7 +271,7 @@ replays it.
 the keys the schema declares, so a step that hands back a whole object from a system must
 describe each field it means to pass on. `Schema.StructWithRest` over a `Schema.Record`
 rest is the other spelling, for a shape that is genuinely open. A foreign library follows
-its own object policy for the same question.
+its own object policy for the same question (`z.looseObject` in Zod, for example).
 
 **Each side takes its own optional spelling.** The codec rewrites `optional(X)` to
 `optionalKey(NullOr(X))`.

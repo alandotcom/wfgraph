@@ -268,13 +268,13 @@ describe("defineStep and a schema from another library", () => {
     });
   });
 
-  // `.passthrough()` is how an author says undeclared keys should survive. The
+  // `z.looseObject` is how an author says undeclared keys should survive. The
   // validate still runs; it just keeps what the schema's policy keeps.
   it("keeps undeclared keys when the output schema says so", async () => {
     const open = defineStep({
       ...METADATA,
       input: z.object({ to: z.string() }),
-      output: z.object({ id: z.string() }).passthrough(),
+      output: z.looseObject({ id: z.string() }),
       handler: () =>
         Effect.succeed({
           id: "public-123",

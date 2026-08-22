@@ -42,7 +42,11 @@ import {
   type InputSchema,
   isPromiseLike,
 } from "#src/backend/extensions/schema-io";
-import { asStandardSchema, isEffectSchema } from "@wfgraph/shared/types/schema";
+import {
+  asStandardSchema,
+  isEffectSchema,
+  type StandardSchema,
+} from "@wfgraph/shared/types/schema";
 import type { OutputSchema } from "@wfgraph/shared/graph/output-fields";
 import type {
   ActionConfigField,
@@ -367,7 +371,7 @@ type StepSchemas<TInput, TOutput> = {
    * A schema from another library has no encode direction, so the answer runs
    * through `~standard.validate` instead. The value that call returns is what
    * the node keeps: a library that strips undeclared keys trims here too, and
-   * one that keeps them (Zod `.passthrough()`, for example) keeps them because
+   * one that keeps them (`z.looseObject`, for example) keeps them because
    * the author said so. Answer with JSON either way: the engine memoizes a step
    * result and replays it.
    */
@@ -466,12 +470,22 @@ export function buildStep<TInput, TOutput>(
   // Schema library publishes no encode direction, so the answer runs through
   // `~standard.validate` and keeps the value that call returns. No output
   // schema (a host `defineAction` addressable by node alone) passes through.
+  //
+  // `isEffectSchema<T, never>` is what the encode half needs; TypeScript then
+  // cannot subtract `ConstraintDecoder` from `OutputSchema`, so the foreign
+  // arm names `StandardSchema` itself -- the same discrimination
+  // `asStandardSchema` documents.
+  const output = definition.output;
   const encodeOutput =
-    definition.output === undefined
+    output === undefined
       ? Result.succeed
-      : isEffectSchema<TOutput, never>(definition.output)
-        ? encodeThroughOutputSchema(subject, definition.output)
-        : validateThroughOutputSchema(subject, definition.output);
+      : isEffectSchema<TOutput, never>(output)
+        ? encodeThroughOutputSchema(subject, output)
+        : validateThroughOutputSchema(
+            subject,
+            // eslint-disable-next-line typescript/no-unsafe-type-assertion -- OutputSchema's remaining arm after isEffectSchema
+            output as StandardSchema<TOutput>
+          );
 
   function runStep(
     app: StepEnvironment,
