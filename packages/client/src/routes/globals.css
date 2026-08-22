@@ -1,4 +1,11 @@
 @import "tailwindcss";
+/* The nine `data-*` custom variants (data-open, data-checked, data-disabled and
+   the rest) that every current shadcn component styles its states with, plus the
+   scroll-fade utilities and accordion keyframes they use. Tailwind v4 resolves a
+   variant at compile time, so without this the state classes compile to nothing
+   and a dropdown looks identical open and closed. Carries no colour or radius
+   tokens; those stay in this file's own @theme block below. */
+@import "shadcn/tailwind.css";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));

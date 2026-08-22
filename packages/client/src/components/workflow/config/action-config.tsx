@@ -16,8 +16,8 @@ import {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
-  whenChosen,
 } from "#src/components/ui/select";
+import { whenChosen } from "#src/lib/select-choice";
 import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
 import { TimezoneSelect } from "#src/components/ui/timezone-select";
 import {

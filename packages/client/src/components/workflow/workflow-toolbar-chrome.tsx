@@ -103,12 +103,12 @@ function SaveButton({
 
   return (
     <Button
-      className="relative border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
+      className="relative"
       disabled={!hasRealNodes || state.isGenerating || state.isSaving}
       onClick={handleSave}
       size="icon"
       title={state.isSaving ? "Saving..." : "Save workflow"}
-      variant="secondary"
+      variant="outline"
     >
       {state.isSaving ? (
         <Loader2 className="size-4 animate-spin" />
@@ -135,12 +135,11 @@ function RunButtonGroup({
   return (
     <ButtonGroup className="flex" orientation="horizontal">
       <Button
-        className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
         disabled={isDisabled}
         onClick={() => actions.handleExecute()}
         size="icon"
         title="Run Workflow"
-        variant="secondary"
+        variant="outline"
       >
         {state.isExecuting ? (
           <Loader2 className="size-4 animate-spin" />
@@ -161,12 +160,11 @@ export function DuplicateButton({
 }) {
   return (
     <Button
-      className="h-9 border hover:bg-secondary dark:hover:bg-secondary"
       disabled={isDuplicating}
       onClick={onDuplicate}
       size="sm"
       title="Duplicate to your workflows"
-      variant="secondary"
+      variant="outline"
     >
       {isDuplicating ? (
         <Loader2 className="mr-2 size-4 animate-spin" />
@@ -302,12 +300,11 @@ export function ToolbarActions({
           scrolls instead. */}
       <ButtonGroup className="flex" orientation="horizontal">
         <Button
-          className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
           disabled={state.isGenerating}
           onClick={handleAddStep}
           size="icon"
           title="Add Step"
-          variant="secondary"
+          variant="outline"
         >
           <Plus className="size-4" />
         </Button>
@@ -323,21 +320,19 @@ export function ToolbarActions({
         orientation="horizontal"
       >
         <Button
-          className="border hover:bg-secondary dark:hover:bg-secondary"
           onClick={openSheet}
           size="icon"
           title="Configuration"
-          variant="secondary"
+          variant="outline"
         >
           <Settings2 className="size-4" />
         </Button>
         {hasSelection && (
           <Button
-            className="border hover:bg-secondary dark:hover:bg-secondary"
             onClick={handleDeleteConfirm}
             size="icon"
             title="Delete"
-            variant="secondary"
+            variant="outline"
           >
             <Trash2 className="size-4" />
           </Button>
@@ -346,22 +341,20 @@ export function ToolbarActions({
 
       <ButtonGroup className="flex" orientation="horizontal">
         <Button
-          className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
           disabled={!state.canUndo || state.isGenerating}
           onClick={() => state.undo()}
           size="icon"
           title="Undo"
-          variant="secondary"
+          variant="outline"
         >
           <Undo2 className="size-4" />
         </Button>
         <Button
-          className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
           disabled={!state.canRedo || state.isGenerating}
           onClick={() => state.redo()}
           size="icon"
           title="Redo"
-          variant="secondary"
+          variant="outline"
         >
           <Redo2 className="size-4" />
         </Button>

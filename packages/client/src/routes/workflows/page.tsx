@@ -444,7 +444,7 @@ export default function WorkflowsPage() {
             const modeClass =
               workflow.mode === "test"
                 ? "border-destructive/30 bg-destructive/10 text-destructive"
-                : "border-zinc-500/30 bg-zinc-500/10 text-zinc-700";
+                : "border-border bg-muted text-muted-foreground";
             const modeLabel = workflow.mode === "test" ? "Test" : "Live";
             const toggleAction = workflow.isPaused ? "resume" : "pause";
             const toggleActionLabel = workflow.isPaused ? "Resume" : "Pause";

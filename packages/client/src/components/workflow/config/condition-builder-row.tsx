@@ -10,8 +10,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  whenChosen,
 } from "#src/components/ui/select";
+import { whenChosen } from "#src/lib/select-choice";
 import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
 import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
 import { ConditionFieldCombobox } from "./condition-field-combobox";

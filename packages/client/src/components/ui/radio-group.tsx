@@ -1,44 +1,38 @@
-import { Radio as RadioPrimitive } from "@base-ui/react/radio";
-import { RadioGroup as RadioGroupPrimitive } from "@base-ui/react/radio-group";
-import { cn } from "@wfgraph/shared/utils";
+"use client"
 
-/**
- * One exclusive choice, in the house style over Base UI.
- *
- * The primitive is what carries the group semantics and the roving tab stop, so
- * a keyboard user arrows within the group rather than tabbing through every
- * option. Hang the group name on it with `aria-labelledby`.
- */
-function RadioGroup<Value>({
-  className,
-  ...props
-}: RadioGroupPrimitive.Props<Value>) {
+import { Radio as RadioPrimitive } from "@base-ui/react/radio"
+import { RadioGroup as RadioGroupPrimitive } from "@base-ui/react/radio-group"
+
+import { cn } from "@wfgraph/shared/utils"
+
+function RadioGroup({ className, ...props }: RadioGroupPrimitive.Props) {
   return (
     <RadioGroupPrimitive
-      className={cn("space-y-1.5", className)}
       data-slot="radio-group"
+      className={cn("grid w-full gap-3", className)}
       {...props}
     />
-  );
+  )
 }
 
-/** The dot itself. Pair it with its label inside a `<label>`. */
-function Radio<Value>({
-  className,
-  ...props
-}: RadioPrimitive.Root.Props<Value>) {
+function RadioGroupItem({ className, ...props }: RadioPrimitive.Root.Props) {
   return (
     <RadioPrimitive.Root
+      data-slot="radio-group-item"
       className={cn(
-        "flex size-4 shrink-0 items-center justify-center rounded-full border border-input bg-background outline-none transition-shadow focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[checked]:border-primary data-[checked]:bg-primary data-[checked]:text-primary-foreground data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50",
+        "group/radio-group-item peer relative flex aspect-square size-4 shrink-0 rounded-full border border-input outline-none group-has-[:focus-visible]/field-label:ring-0 group-has-[:focus-visible]/field-label:not-data-checked:border-input after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 aria-invalid:aria-checked:border-primary dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground group-has-[:focus-visible]/field-label:data-checked:border-primary dark:data-checked:bg-primary",
         className
       )}
-      data-slot="radio"
       {...props}
     >
-      <RadioPrimitive.Indicator className="flex items-center justify-center before:size-1.5 before:rounded-full before:bg-current data-[unchecked]:hidden" />
+      <RadioPrimitive.Indicator
+        data-slot="radio-group-indicator"
+        className="flex size-4 items-center justify-center"
+      >
+        <span className="absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-foreground" />
+      </RadioPrimitive.Indicator>
     </RadioPrimitive.Root>
-  );
+  )
 }
 
-export { Radio, RadioGroup };
+export { RadioGroup, RadioGroupItem }

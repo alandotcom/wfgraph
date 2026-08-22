@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "#src/components/ui/select";
 import { Label } from "#src/components/ui/label";
-import { Radio, RadioGroup } from "#src/components/ui/radio-group";
+import { RadioGroup, RadioGroupItem } from "#src/components/ui/radio-group";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
   type ExtensionCatalog,
@@ -159,7 +159,7 @@ export function LifecyclePanel({
               )}
               key={option.value}
             >
-              <Radio className="mt-0.5" value={option.value} />
+              <RadioGroupItem className="mt-0.5" value={option.value} />
               <div>
                 <p className="font-medium text-sm">{option.label}</p>
                 <p className="text-muted-foreground text-xs">

@@ -40,38 +40,34 @@ export const Controls = ({ onReflow, canReflow = true }: ControlsProps) => {
   return (
     <ButtonGroup orientation="vertical">
       <Button
-        className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
         onClick={handleZoomIn}
         size="icon"
         title="Zoom in"
-        variant="secondary"
+        variant="outline"
       >
         <ZoomIn className="size-4" />
       </Button>
       <Button
-        className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
         onClick={handleZoomOut}
         size="icon"
         title="Zoom out"
-        variant="secondary"
+        variant="outline"
       >
         <ZoomOut className="size-4" />
       </Button>
       <Button
-        className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
         onClick={handleFitView}
         size="icon"
         title="Fit view"
-        variant="secondary"
+        variant="outline"
       >
         <Maximize2 className="size-4" />
       </Button>
       <Button
-        className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
         onClick={handleToggleMinimap}
         size="icon"
         title={showMinimap ? "Hide minimap" : "Show minimap"}
-        variant="secondary"
+        variant="outline"
       >
         {showMinimap ? (
           <MapPin className="size-4" />
@@ -82,12 +78,11 @@ export const Controls = ({ onReflow, canReflow = true }: ControlsProps) => {
       {onReflow ? (
         <Button
           aria-label="Reflow nodes"
-          className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
-          disabled={!canReflow}
+            disabled={!canReflow}
           onClick={onReflow}
           size="icon"
           title="Reflow nodes"
-          variant="secondary"
+          variant="outline"
         >
           <RefreshCcw className="size-4" />
         </Button>

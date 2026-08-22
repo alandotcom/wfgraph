@@ -8,8 +8,8 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-  whenChosen,
 } from "#src/components/ui/select";
+import { whenChosen } from "#src/lib/select-choice";
 
 interface TimezoneSelectProps {
   value: string;

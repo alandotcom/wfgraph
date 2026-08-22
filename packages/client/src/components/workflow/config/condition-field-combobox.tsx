@@ -5,12 +5,10 @@ import {
   ComboboxContent,
   ComboboxEmpty,
   ComboboxGroup,
-  ComboboxGroupLabel,
   ComboboxInput,
-  ComboboxInputGroup,
   ComboboxItem,
+  ComboboxLabel,
   ComboboxList,
-  ComboboxTrigger,
 } from "#src/components/ui/combobox";
 import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
 
@@ -145,16 +143,18 @@ export function ConditionFieldCombobox({
       }}
       value={selected}
     >
-      <ComboboxInputGroup className="min-w-[280px]">
-        <ComboboxInput aria-label="Select field" placeholder="Select field" />
-        <ComboboxTrigger aria-label="Show the fields" />
-      </ComboboxInputGroup>
+      <ComboboxInput
+        aria-label="Select field"
+        className="min-w-[280px]"
+        placeholder="Select field"
+        triggerLabel="Show the fields"
+      />
       <ComboboxContent className="w-max min-w-(--anchor-width)">
         <ComboboxEmpty>No field matches that.</ComboboxEmpty>
         <ComboboxList>
           {(group: ConditionFieldGroup) => (
             <ComboboxGroup items={group.items} key={group.value}>
-              <ComboboxGroupLabel>{group.value}</ComboboxGroupLabel>
+              <ComboboxLabel>{group.value}</ComboboxLabel>
               <ComboboxCollection>
                 {(field: ConditionSelectableField) => (
                   <ComboboxItem
