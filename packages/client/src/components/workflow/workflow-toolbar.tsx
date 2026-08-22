@@ -42,8 +42,8 @@ export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
           width this row actually has; a viewport-width `lg:` was stacking nine
           icon buttons down the middle of the graph while the viewport was still
           wide. */}
-      <div className="pointer-events-none absolute inset-x-4 top-4 z-10 flex flex-col items-stretch gap-2 @container @xl:flex-row @xl:items-start @xl:justify-between">
-        <div className="pointer-events-auto flex min-w-0 flex-wrap items-center gap-2">
+      <div className="flex flex-col items-stretch gap-2 @container @xl:flex-row @xl:items-start @xl:justify-between">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <WorkflowMenuComponent
             actions={actions}
             state={state}
@@ -87,7 +87,7 @@ export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
             `justify-end` only once there is room: on an overflowing scroll
             container it pins content to the right and pushes the first controls
             off the left edge, where no scroll position can reach them. */}
-        <div className="pointer-events-auto flex items-center gap-2 overflow-x-auto @xl:justify-end">
+        <div className="flex items-center gap-2 overflow-x-auto @xl:justify-end">
           <ToolbarActions
             actions={actions}
             state={state}

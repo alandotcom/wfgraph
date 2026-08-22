@@ -614,7 +614,7 @@ export default function WorkflowsPage() {
   };
 
   return (
-    <div className="pointer-events-auto h-dvh overflow-auto bg-background">
+    <div className="h-dvh overflow-auto bg-background">
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 p-6">
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center justify-between gap-3">

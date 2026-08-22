@@ -5,7 +5,9 @@ import { useCallback } from "react";
 import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
+import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
 import { WorkflowSidebarPanel } from "#src/components/workflow/workflow-sidebar-panel";
+import { WorkflowToolbar } from "#src/components/workflow/workflow-toolbar";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
 import { isRunInProgress } from "#src/lib/execution-logs";
 import { orpcQuery } from "#src/lib/rpc-query";
@@ -147,14 +149,17 @@ const WorkflowEditor = () => {
   );
 
   return (
-    <div className="flex h-dvh w-full flex-col overflow-hidden">
+    // The editor shell: one row, the canvas column beside the panel column.
+    // `relative` because the two failure overlays and the panel's collapsed
+    // expand button all measure themselves against the whole editor.
+    <div className="relative flex h-dvh w-full overflow-hidden">
       {/* URL → selection + pinned-graph overlay. Sibling of the sidebar so it
           outlives the Runs panel; the status projection above reads what it writes. */}
       <ExecutionOverlaySync />
 
       {/* Workflow not found overlay */}
       {workflowNotFound && (
-        <div className="pointer-events-auto absolute inset-0 z-20 flex items-center justify-center">
+        <div className="absolute inset-0 z-20 flex items-center justify-center">
           <div className="rounded-lg border bg-background p-8 text-center shadow-lg">
             <h1 className="mb-2 font-semibold text-2xl">Workflow Not Found</h1>
             <p className="mb-6 text-muted-foreground">
@@ -166,7 +171,7 @@ const WorkflowEditor = () => {
       )}
 
       {workflowLoadError && (
-        <div className="pointer-events-auto absolute inset-0 z-20 flex items-center justify-center">
+        <div className="absolute inset-0 z-20 flex items-center justify-center">
           <div className="rounded-lg border bg-background p-8 text-center shadow-lg">
             <h1 className="mb-2 font-semibold text-2xl">
               Couldn't Load Workflow
@@ -176,6 +181,24 @@ const WorkflowEditor = () => {
           </div>
         </div>
       )}
+
+      {/* The canvas column: menu bar above, graph below. The menu bar belongs to
+          this column rather than to the shell, because the panel beside it runs
+          the full height of the viewport.
+
+          `relative` gives the toolbar's test-mode banner a box to sit at the
+          bottom of, and `min-w-0` stops the graph from widening the column past
+          the space the panel leaves it. */}
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <div className="shrink-0 p-4">
+          <WorkflowToolbar workflowId={currentWorkflowId ?? undefined} />
+        </div>
+        {/* `min-h-0` so this box is bounded by the column rather than by the
+            graph inside it: React Flow measures whatever height it is given. */}
+        <div className="min-h-0 flex-1">
+          <WorkflowCanvas />
+        </div>
+      </div>
 
       <WorkflowSidebarPanel />
     </div>

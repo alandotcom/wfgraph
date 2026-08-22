@@ -12,7 +12,6 @@ import { GlobalModals } from "#src/components/global-modals";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { ThemeProvider } from "#src/components/theme-provider";
 import { Toaster } from "#src/components/ui/sonner";
-import { PersistentCanvas } from "#src/components/workflow/persistent-canvas";
 import { appStore } from "#src/lib/app-store";
 import { getBasePath } from "#src/lib/base-path";
 import { repairNodeIntegrations } from "#src/lib/node-integration";
@@ -50,13 +49,15 @@ function validateWorkflowSearch(
   };
 }
 
+/**
+ * The provider sits above the router outlet so React Flow's store outlives a
+ * navigation between two workflows; the canvas itself is the editor route's,
+ * and there is no canvas on any other route.
+ */
 function LayoutContent() {
   return (
     <ReactFlowProvider>
-      <PersistentCanvas />
-      <div className="pointer-events-none relative z-10">
-        <Outlet />
-      </div>
+      <Outlet />
     </ReactFlowProvider>
   );
 }

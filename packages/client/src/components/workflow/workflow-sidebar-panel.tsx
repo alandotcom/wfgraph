@@ -181,52 +181,65 @@ export function WorkflowSidebarPanel() {
         </button>
       )}
 
-      {/* Right panel overlay (desktop only) */}
+      {/* The panel column (desktop only). The outer box is the width the canvas
+          column gives up; the inner one is the surface, which slides out on
+          collapse instead of unmounting so the Runs tab keeps its state.
+
+          Splitting the two is what lets the space go back to the canvas in a
+          single step while the surface animates: React Flow observes the canvas
+          box, and a width transition next to it is what produces ResizeObserver
+          loop warnings. */}
       {!isMobile && (
         <div
-          className="workflow-sidebar-panel pointer-events-auto absolute inset-y-0 right-0 z-20 border-l bg-sidebar transition-transform duration-200 ease-out"
-          style={{
-            // Same expression the canvas reserves with, from one helper, so the
-            // two can never disagree and leave a gap. The Panel tone is what
-            // makes this read as a separate plane, which a 1.00:1 fill against
-            // the canvas in dark mode was not doing.
-            width: sidebarWidthCss(panelWidth),
-            transform: panelCollapsed ? "translateX(100%)" : "translateX(0)",
-          }}
+          className="relative shrink-0"
+          style={{ width: panelCollapsed ? 0 : sidebarWidthCss(panelWidth) }}
         >
-          {/* Resize handle with collapse button */}
           <div
-            aria-label="Resize properties panel. Click to collapse."
-            aria-orientation="vertical"
-            aria-valuenow={panelWidth}
-            className="group absolute inset-y-0 left-0 z-10 w-3 cursor-col-resize"
-            onPointerDown={handleResizeStart}
-            role="separator"
-            tabIndex={0}
+            className="workflow-sidebar-panel absolute inset-y-0 right-0 z-20 border-l bg-sidebar transition-transform duration-200 ease-out"
+            style={{
+              // The same expression the box above reserves with, from one
+              // helper, so the surface and its space can never disagree and
+              // leave a strip of bare page between them. The Panel tone is what
+              // makes this read as a separate plane, which a 1.00:1 fill against
+              // the canvas in dark mode was not doing.
+              width: sidebarWidthCss(panelWidth),
+              transform: panelCollapsed ? "translateX(100%)" : "translateX(0)",
+            }}
           >
-            {/* Hover indicator */}
-            <div className="absolute inset-y-0 left-0 w-1 bg-transparent transition-colors group-hover:bg-ring group-active:bg-primary" />
-            {/* Collapse button - hidden while resizing */}
-            {!(isDraggingResize || panelCollapsed) && (
-              <button
-                aria-label="Collapse panel"
-                className="absolute top-1/2 left-0 flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-background shadow-sm transition-opacity hover:bg-muted focus-visible:opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setPanelCollapsed(true);
-                }}
-                // Must match the event the strip starts a resize on. While this
-                // guard was still on mousedown, pointerdown reached the strip,
-                // began a drag, and its preventDefault swallowed the click, so
-                // the button did nothing at all.
-                onPointerDown={(e) => e.stopPropagation()}
-                type="button"
-              >
-                <ChevronRight className="size-4" />
-              </button>
-            )}
+            {/* Resize handle with collapse button */}
+            <div
+              aria-label="Resize properties panel. Click to collapse."
+              aria-orientation="vertical"
+              aria-valuenow={panelWidth}
+              className="group absolute inset-y-0 left-0 z-10 w-3 cursor-col-resize"
+              onPointerDown={handleResizeStart}
+              role="separator"
+              tabIndex={0}
+            >
+              {/* Hover indicator */}
+              <div className="absolute inset-y-0 left-0 w-1 bg-transparent transition-colors group-hover:bg-ring group-active:bg-primary" />
+              {/* Collapse button - hidden while resizing */}
+              {!(isDraggingResize || panelCollapsed) && (
+                <button
+                  aria-label="Collapse panel"
+                  className="absolute top-1/2 left-0 flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-background shadow-sm transition-opacity hover:bg-muted focus-visible:opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPanelCollapsed(true);
+                  }}
+                  // Must match the event the strip starts a resize on. While this
+                  // guard was still on mousedown, pointerdown reached the strip,
+                  // began a drag, and its preventDefault swallowed the click, so
+                  // the button did nothing at all.
+                  onPointerDown={(e) => e.stopPropagation()}
+                  type="button"
+                >
+                  <ChevronRight className="size-4" />
+                </button>
+              )}
+            </div>
+            <NodeConfigRail />
           </div>
-          <NodeConfigRail />
         </div>
       )}
     </>

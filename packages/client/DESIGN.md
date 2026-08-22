@@ -231,7 +231,7 @@ A step the run can never reach is muted: the card drops to 50% opacity, its inco
 
 ### Navigation
 
-A quiet toolbar over the canvas and a Panel-toned sidebar for workflow lists and run history. Selection state uses Graphite Wash fills; the active workflow is marked by tone, never by an accent stripe.
+A quiet menu bar above the canvas and a Panel-toned sidebar for workflow lists and run history. Selection state uses Graphite Wash fills; the active workflow is marked by tone, never by an accent stripe.
 
 ## 6. Do's and Don'ts
 

@@ -15,7 +15,6 @@ import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { Canvas } from "#src/components/flow-elements/canvas";
 import { Connection } from "#src/components/flow-elements/connection";
 import { Controls } from "#src/components/flow-elements/controls";
-import { WorkflowToolbar } from "#src/components/workflow/workflow-toolbar";
 import "@xyflow/react/dist/style.css";
 
 import { nanoid } from "nanoid";
@@ -47,7 +46,6 @@ import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   isTransitioningFromHomepageAtom,
   propertiesPanelActiveTabAtom,
-  rightPanelWidthAtom,
   showMinimapAtom,
 } from "#src/lib/workflow-ui-store";
 import { WORKFLOW_EDGE_TYPE } from "#src/lib/workflow-graph-types";
@@ -100,12 +98,10 @@ export function WorkflowCanvas() {
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
-  // The sidebar renders nothing on a narrow viewport, so the canvas keeps the
-  // whole width. Whether the viewport is narrow is the canvas's own question.
+  // Below the mobile breakpoint the config rail is gone, so clicking a node has
+  // to open the bottom sheet instead.
   const isMobile = useIsMobile();
   const { openSheet } = useConfigurationSheet();
-  const sidebarWidth = useAtomValue(rightPanelWidthAtom);
-  const rightPanelWidth = isMobile ? null : sidebarWidth;
   const [isTransitioningFromHomepage, setIsTransitioningFromHomepage] = useAtom(
     isTransitioningFromHomepageAtom
   );
@@ -753,23 +749,19 @@ export function WorkflowCanvas() {
   );
 
   return (
+    // Size comes from the editor shell, which gives this box whatever the panel
+    // beside it leaves over. Nothing here animates that width: React Flow
+    // observes the parent box, and a width transition on it is what produces
+    // ResizeObserver loop warnings.
     <div
-      className="relative h-full bg-background"
+      className="relative h-full w-full bg-background"
       data-testid="workflow-canvas"
       ref={canvasContainerRef}
       style={{
         opacity: isCanvasReady ? 1 : 0,
-        width: rightPanelWidth ? `calc(100% - ${rightPanelWidth})` : "100%",
-        // Avoid animating container width: React Flow observes parent size and
-        // width transitions can trigger noisy ResizeObserver loop warnings.
         transition: "opacity 300ms",
       }}
     >
-      {/* Toolbar */}
-      <div className="pointer-events-auto">
-        <WorkflowToolbar workflowId={currentWorkflowId ?? undefined} />
-      </div>
-
       {/* React Flow Canvas */}
       <Canvas
         className="bg-background"
