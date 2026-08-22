@@ -1,0 +1,16 @@
+{
+  "name": "@wfgraph/evals",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#src/*": "./src/*.js"
+  },
+  "devDependencies": {
+    "@wfgraph/agent": "workspace:*",
+    "@wfgraph/core": "workspace:*",
+    "@wfgraph/shared": "workspace:*",
+    "effect": "catalog:",
+    "vitest-evals": "catalog:"
+  }
+}

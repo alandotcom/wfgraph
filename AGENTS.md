@@ -1,6 +1,6 @@
 # Agent Instructions
 
-Workflow Graph: a pnpm workspace monorepo with four packages under `packages/`,
+Workflow Graph: a pnpm workspace monorepo with six packages under `packages/`,
 beside `@wfgraph/example-app` (`examples/`), the host app `pnpm run dev` runs.
 
 - `@wfgraph/shared` (`packages/shared`) runtime-agnostic types, workflow contracts, utilities
@@ -8,6 +8,9 @@ beside `@wfgraph/example-app` (`examples/`), the host app `pnpm run dev` runs.
   Private and unbuilt like `@wfgraph/shared`, and inlined into core. It depends on
   `@wfgraph/shared` and `effect` alone, so a tool is testable with no model, no HTTP
   and no database
+- `@wfgraph/evals` (`packages/evals`) the private Vitest Evals harness, judges and
+  scenarios for the build agent. `pnpm run evals` runs it manually against a live model;
+  it is neither built nor published
 - `@wfgraph/core` (`packages/core`) library entrypoints and the backend
 - `@wfgraph/client` (`packages/client`) the React SPA, handed to `createWfGraphApp` as `client`
 - `@wfgraph/plugins` (`packages/plugins`) the five built-in integrations. Each server half
@@ -64,8 +67,8 @@ is why a `@wfgraph/shared` change reaches the registry at all: shared is inlined
 other three at build time and is declared only as their devDependency, which on its own
 would bump nothing.
 
-`@wfgraph/shared` is private, so it is versioned for the lockstep and never published, and
-`@wfgraph/example-app` is in `ignore` so it stays at 0.0.0.
+`@wfgraph/shared` is private, so it is versioned for the lockstep and never published.
+`@wfgraph/evals` and `@wfgraph/example-app` are in `ignore`, so they stay at 0.0.0.
 
 **Each published manifest keeps its `devDependencies`, including `@wfgraph/shared` at a
 version no registry serves. Leave it there.** The three packages import that source, so

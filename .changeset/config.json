@@ -21,7 +21,7 @@
     ]
   ],
   "linked": [],
-  "ignore": ["@wfgraph/example-app"],
+  "ignore": ["@wfgraph/evals", "@wfgraph/example-app"],
   "privatePackages": {
     "version": true,
     "tag": false

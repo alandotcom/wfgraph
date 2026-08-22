@@ -17,6 +17,7 @@ import { workspaceSourceAliases } from "./scripts/plugins/workspace-source-alias
 // tests then run from the day they are written.
 const PACKAGE_TESTS = "packages/*/src/**/*.test.{ts,tsx}";
 const CLIENT_TESTS = "packages/client/src/**/*.test.{ts,tsx}";
+const EVAL_SUPPORT_TESTS = "packages/evals/src/**/*.test.ts";
 const ALWAYS_EXCLUDED = ["**/node_modules/**", "**/dist/**"];
 
 export default defineConfig({
@@ -34,7 +35,7 @@ export default defineConfig({
         test: {
           name: "node",
           environment: "node",
-          include: [PACKAGE_TESTS],
+          include: [PACKAGE_TESTS, EVAL_SUPPORT_TESTS],
           exclude: [...ALWAYS_EXCLUDED, CLIENT_TESTS],
         },
       },

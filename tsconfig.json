@@ -49,6 +49,7 @@
   },
   "include": [
     "vitest.config.ts",
+    "vitest.evals.config.ts",
     "test-setup.ts",
     "examples/**/*.ts",
     "scripts/**/*.ts",
@@ -64,7 +65,8 @@
     "packages/client/tsdown.config.ts",
     "packages/client/vite.config.ts",
     "packages/plugins/src/**/*.ts",
-    "packages/plugins/src/**/*.tsx"
+    "packages/plugins/src/**/*.tsx",
+    "packages/evals/src/**/*.ts"
   ],
   "exclude": ["node_modules", "_upstream_template/**/*", "tmp/**/*"]
 }
