@@ -1,5 +1,174 @@
 # @wfgraph/client
 
+## 2.5.0
+
+### Minor Changes
+
+- [#142](https://github.com/alandotcom/wfgraph/pull/142) [`5bae4ed`](https://github.com/alandotcom/wfgraph/commit/5bae4edec32749af8ae82b978e258042370e0f0f) Thanks [@alandotcom](https://github.com/alandotcom)! - ⌘K opens a command palette whose first job is adding a step and choosing its type.
+
+  The search box slice 3 put in the menu bar was decoration; it is now the palette's trigger and
+  carries the chord it answers to. ⌘K reaches it from anywhere in the editor, on the capture
+  phase so a focused canvas field cannot eat the keystroke, and leaves the chord alone while
+  somebody is typing in a text field. The palette opens at a root page holding "Add step" beside
+  the Actions menu's own commands, each carrying that menu's disabled rule so a pinned run or a
+  generation in flight refuses them in both places alike.
+
+  "Add step" leads to the node types the extension catalog offers, grouped by category with
+  System first. They answer to more than their labels: "delay" finds Wait, "branch" finds
+  Condition, and "race" finds Event Split. Choosing one creates the step, selects it, and opens
+  its configuration, which is one stage where it used to be two.
+
+  The canvas skips the root. "Add Step" in the graph's context menu opens the palette straight on
+  the node types, carrying the spot that was right-clicked. The Actions menu's own "Add step"
+  opens the same page and puts the step in the middle of the canvas, moved clear of whatever is
+  already there.
+
+  Escape is contested and the palette wins the first press: it goes back a page while there is
+  one to go back to, and closes at the root. Backspace on an empty search box does the same. Both
+  clear what was typed, because a word typed on one page filters the next one to nothing.
+
+  Built on Base UI's Autocomplete inside a Dialog, which is the shape their own command-palette
+  example takes. shadcn's `command` is backed by cmdk, which declares four `@radix-ui/*` packages
+  this repository has none of.
+
+  The palette names itself for a screen reader: the search box, the option list, the page it is
+  on as a live region, and a close control for a touch reader with no Escape key. It refuses to
+  open whenever the Actions menu would refuse "Add step" — a run pinned to the canvas, or a
+  generation rewriting the graph — and says which, rather than swallowing the keystroke. A
+  non-owner is offered no way into it, opening another workflow throws a held one away, and a
+  workflow that has not been saved yet has no palette.
+
+  The action grid in the config panel now searches and groups node types through the same module
+  the palette does, so "delay" finds Wait in both. It used to read three fields of its own.
+
+- [#142](https://github.com/alandotcom/wfgraph/pull/142) [`5bae4ed`](https://github.com/alandotcom/wfgraph/commit/5bae4edec32749af8ae82b978e258042370e0f0f) Thanks [@alandotcom](https://github.com/alandotcom)! - The editor's primitives are current shadcn, in the `mira` style.
+
+  `components.json` moves into `packages/client`, where its `#src/*` aliases resolve; from the
+  repository root the CLI could not read them at all. Its `style` becomes `base-mira`, which now
+  names both the primitive family and the visual style, and `rsc` becomes false for a Vite SPA.
+  Sixteen registry components are re-pulled at that style, bringing `textarea` and `input-group`
+  with them, and `shadcn/tailwind.css` is imported for the nine `data-*` variants their state
+  styling compiles against.
+
+  `mira` is a dense style: a default button is 28px against the previous 36px, and body text
+  12px against 14px. Every control in the editor and the dashboard is smaller. The canvas is
+  untouched, node geometry included.
+
+  Three behaviours moved with the primitives. `whenChosen` is now in `#src/lib/select-choice`,
+  outside the file the CLI overwrites, and each Select feeds its explicit options to Base UI's
+  own `items` prop so the trigger and popup share one label source. `ComboboxInputGroup` and
+  `ComboboxClear` are gone, absorbed into `ComboboxInput` behind `showTrigger` and `showClear`,
+  which takes a `triggerLabel` so the button it renders has an accessible name. `Radio` is
+  `RadioGroupItem` and `ComboboxGroupLabel` is `ComboboxLabel`.
+
+  Two defects fixed on the way. A Select trigger rendered a stray `▼` inside its chevron, because
+  Base UI's `Select.Icon` defaults its children to that glyph and the registry component passes
+  only `render`. And the dashboard's mode badge was `text-zinc-700` with no dark counterpart, so
+  it was unreadable against a dark row.
+
+- [#142](https://github.com/alandotcom/wfgraph/pull/142) [`5bae4ed`](https://github.com/alandotcom/wfgraph/commit/5bae4edec32749af8ae82b978e258042370e0f0f) Thanks [@alandotcom](https://github.com/alandotcom)! - Replace the editor's icon toolbar with two menus on a fixed-height bar.
+
+  Nine controls, six of them identical grey squares you had to hover to identify,
+  become one 44px line: the dashboard, a menu on the workflow's name, an Actions
+  menu, the command palette's trigger, and Publish with a written label. The
+  Actions menu names what it does and shows the shortcut each item is bound to,
+  and the Live/Test pair becomes a single "Switch to <other> mode", since the
+  status strip already says which mode the workflow is in. The workflow menu adds
+  Rename and Delete Workflow beside the switcher and prints the workflow's id.
+
+  The Save button is gone. Autosave writes the draft, the strip says when it last
+  landed, and Cmd+S still forces one.
+
+  Renaming a workflow now waits on the request rather than on the autosave
+  debounce, and a name the server refuses is taken back off the editor and out of
+  the save queue. Left parked, a refused name rode along with every later graph
+  write and failed it too, so one rejected rename stopped the editor saving
+  anything for the rest of the session.
+
+  "Tidy layout" in the Actions menu and the reflow control at the canvas's bottom
+  left now run one shared pass, and Add step, Undo, Redo and Tidy layout all
+  refuse while a past run is pinned to the canvas, which the buttons they replace
+  did not.
+
+- [#142](https://github.com/alandotcom/wfgraph/pull/142) [`5bae4ed`](https://github.com/alandotcom/wfgraph/commit/5bae4edec32749af8ae82b978e258042370e0f0f) Thanks [@alandotcom](https://github.com/alandotcom)! - Add a status strip along the bottom of the editor canvas.
+
+  The workflow's state used to be assembled from chips scattered through the menu
+  bar, and a run pinned to the canvas refused every edit with nothing on screen
+  saying why. One fixed-height row now states mode, publication and save state
+  with the issue count; when a past run is pinned it reports that run and carries
+  the way back to the draft, which was previously reachable only from inside the
+  run panel. The menu bar keeps the controls and loses the badges, and the
+  bottom-centre test-mode banner is gone: what it explained is on the mode label.
+
+- [#142](https://github.com/alandotcom/wfgraph/pull/142) [`5bae4ed`](https://github.com/alandotcom/wfgraph/commit/5bae4edec32749af8ae82b978e258042370e0f0f) Thanks [@alandotcom](https://github.com/alandotcom)! - Give a node's configuration a view mode.
+
+  A node's configuration now reads back as plain text and opens all of its
+  controls on one Edit button, which becomes Done. The Lifecycle Node's rules are
+  one block of it; so is a condition builder.
+  A Start Event reads as its name and the path runs are correlated on. A condition
+  reads as one line per rule, with its group shown as a left rule with the rows
+  indented behind it and the and/or joiner sitting on the divider between groups.
+
+  A rule that is not finished, points at a field the graph no longer offers, or
+  compares against a value its field no longer names says so on its own line, so
+  reading a configuration back tells you as much as opening it does.
+
+  The explanatory paragraphs that ran between the controls, including
+  Concurrency's three option descriptions, moved into a help popover beside each
+  block's label. It opens on a click, with the option in force listed first.
+
+  The Condition node's builder is now headed "Continue when".
+
+  With nothing selected the panel shows an empty state. Everything it used to
+  offer about the workflow itself lives in the menu beside the workflow's name,
+  which gains a Clear workflow item.
+
+### Patch Changes
+
+- [#142](https://github.com/alandotcom/wfgraph/pull/142) [`5bae4ed`](https://github.com/alandotcom/wfgraph/commit/5bae4edec32749af8ae82b978e258042370e0f0f) Thanks [@alandotcom](https://github.com/alandotcom)! - The editor's mobile sheet is Base UI's Drawer, and `vaul` is gone from the dependency tree.
+
+  `vaul` was the last package pulling Radix into an install of Workflow Graph: 64 `@radix-ui`
+  entries in the lockfile, now zero. Base UI's Drawer covers what it did, and `@base-ui/react`
+  was already installed for the rest of the editor's primitives.
+
+  The parts map one to one except for the frame. `Drawer.Viewport` has no vaul counterpart and
+  is required: it owns the swipe gesture and the touch scroll lock, so it is now the fixed,
+  full-screen, bottom-aligned box and the sheet inside it is a laid-out flex item rather than a
+  fixed one. Its bounds are unchanged at `max-h-[90vh]`, and the sheet is still a bounded flex
+  column, which is what the node config panel's internal scrollers need.
+
+  Base UI animates the sheet from CSS rather than from JS: `data-starting-style` and
+  `data-ending-style` carry the enter and exit frames, `--drawer-swipe-movement-y` follows the
+  finger, and `--drawer-swipe-progress` fades the backdrop in step with a drag.
+
+  The sheet's bottom inset now works. It was a spacer div classed `h-safe-area-inset-bottom`,
+  which compiles to nothing under Tailwind v4, and is `pb-[env(safe-area-inset-bottom,0px)]` on
+  the sheet itself.
+
+  Dismissal is unchanged: the close button and the sheet's own dismiss reach `closeAll`, Escape
+  reaches `pop`, and a press outside the sheet closes it.
+
+- [#142](https://github.com/alandotcom/wfgraph/pull/142) [`5bae4ed`](https://github.com/alandotcom/wfgraph/commit/5bae4edec32749af8ae82b978e258042370e0f0f) Thanks [@alandotcom](https://github.com/alandotcom)! - Sit the editor inside a margin, on a page a step off the shell.
+
+  The editor used to fill the viewport edge to edge, which left it looking like
+  the window rather than something in it. It now sits 12px in on all four sides,
+  with a `--radius-xl` corner, a hairline border and a whisper of shadow. The
+  surface behind it is a new token, `--page` (`bg-page`), a step off the base
+  surface in whichever direction the theme layers: down from Paper in light, and
+  up from Void in dark, where nothing renders darker and the shell has to stay
+  Void because that is the field the graph floats on. Below `md` the inset, the
+  corner and the border all go, since 24px of a phone's width buys nothing and the
+  status strip needs the bottom edge of the screen for the home indicator.
+
+  The properties panel's width is now a share of that inset shell rather than of
+  the window, and its resize drag measures the same box, so the released edge
+  still lands under the pointer.
+
+  Dropping a connection on empty canvas now creates the node under the cursor. The
+  release point was being measured from the canvas pane's own corner and handed to
+  a converter that wanted window coordinates, which placed every such node up and
+  to the left by however far the pane sat from the window's corner.
+
 ## 2.4.0
 
 ## 2.3.0
