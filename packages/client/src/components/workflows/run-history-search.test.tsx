@@ -9,7 +9,7 @@ function Harness({ resultCount = 4 }: { resultCount?: number }) {
   const [filters, setFilters] = useState<RunFilter[]>([]);
 
   return (
-    <RunHistorySearch
+    <RunHistorySearch.Provider
       entitySuggestions={["user_1"]}
       eventSuggestions={["user.created"]}
       filters={filters}
@@ -21,7 +21,16 @@ function Harness({ resultCount = 4 }: { resultCount?: number }) {
         { id: "wf_1", name: "Onboarding" },
         { id: "wf_2", name: "New Workflow" },
       ]}
-    />
+    >
+      <RunHistorySearch.Root>
+        <RunHistorySearch.Frame>
+          <RunHistorySearch.Pills />
+          <RunHistorySearch.Input />
+          <RunHistorySearch.ResultCount />
+        </RunHistorySearch.Frame>
+        <RunHistorySearch.Menu />
+      </RunHistorySearch.Root>
+    </RunHistorySearch.Provider>
   );
 }
 

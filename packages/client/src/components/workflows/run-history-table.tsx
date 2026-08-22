@@ -187,6 +187,18 @@ function createRunHistoryColumns(onOpenRun: (run: RunHistoryTableRow) => void) {
   ]);
 }
 
+function RunHistoryTableLoading() {
+  return (
+    <div className="p-6 text-muted-foreground text-sm">Loading runs...</div>
+  );
+}
+
+function RunHistoryTableEmpty() {
+  return (
+    <div className="p-6 text-muted-foreground text-sm">No runs found.</div>
+  );
+}
+
 type RunHistoryTableProps = {
   runs: readonly RunHistoryTableRow[];
   isLoading: boolean;
@@ -249,15 +261,11 @@ export function RunHistoryTable({
   };
 
   if (isLoading && runs.length === 0) {
-    return (
-      <div className="p-6 text-muted-foreground text-sm">Loading runs...</div>
-    );
+    return <RunHistoryTableLoading />;
   }
 
   if (runs.length === 0) {
-    return (
-      <div className="p-6 text-muted-foreground text-sm">No runs found.</div>
-    );
+    return <RunHistoryTableEmpty />;
   }
 
   const pageCount = table.getPageCount();
