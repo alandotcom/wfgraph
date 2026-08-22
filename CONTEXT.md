@@ -130,14 +130,16 @@ together. A Wait on either arm, a join across exclusive Condition or Event
 Split outlets, and a rejoin of Started with Canceled are refused.
 
 **Group**:
-A visual single-entry single-exit bundle of lookup steps plus an optional
-Condition. The engine walks the children; the frame is editor chrome. Lookups
-inside may run side by side and AND-join at the Condition. True continues to
-the next step. False with no outgoing edge ends that path. That is how a
-sequence stops; it is not a Cancel Event. Sends stay outside the frame, which an
-action declares with `sideEffect: true` and the editor refuses on. After
-a Wait, the builder pastes the group so the next send reads a fresh fetch:
-node outputs are memoized, and nothing above a Wait re-runs.
+A visual bundle of lookup steps plus an optional Condition. The engine walks
+the children; the frame is editor chrome with one visible inlet and outlet.
+Parallel entries share one predecessor. Lookup exits can remain separate when
+their outgoing edges share a target and target handle; the visible outlet
+represents every such edge. A Condition is the only exit and only True can
+continue. False with no outgoing edge ends that path. That is how a sequence
+stops; it is not a Cancel Event. Sends stay outside the frame, which an action
+declares with `sideEffect: true` and the editor refuses on. After a Wait, the
+builder pastes the group so the next send reads a fresh fetch: node outputs are
+memoized, and nothing above a Wait re-runs.
 
 **Precedence**:
 One fixed order when an Event arrives: Lifecycle Rules apply first, then the

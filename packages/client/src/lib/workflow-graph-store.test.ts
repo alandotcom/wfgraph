@@ -98,7 +98,20 @@ function groupNode(id: string, entryId: string, exitId: string): WorkflowNode {
     data: {
       label: "Group",
       type: "group",
-      config: { entryNodeIds: [entryId], exitNodeId: exitId },
+      config: { entryNodeIds: [entryId], exitNodeIds: [exitId] },
+    },
+  };
+}
+
+function multiExitGroupNode(id: string): WorkflowNode {
+  return {
+    id,
+    type: "group",
+    position: { x: 0, y: 0 },
+    data: {
+      label: "Group",
+      type: "group",
+      config: { entryNodeIds: ["a", "b"], exitNodeIds: ["a", "b"] },
     },
   };
 }
@@ -391,6 +404,47 @@ describe("graph history", () => {
 
     expect(store.get(canUndoAtom)).toBe(false);
     expect(updateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("multi-exit Group outlet", () => {
+  function groupedLookup(id: string): WorkflowNode {
+    return groupedChild(id, "g");
+  }
+
+  it("connects the visible outlet from every lookup exit", () => {
+    const store = createGraphStore([
+      multiExitGroupNode("g"),
+      groupedLookup("a"),
+      groupedLookup("b"),
+      actionNode("next"),
+    ]);
+
+    store.set(connectNodesAtom, edge("new-a", "g", "next"));
+
+    expect(
+      store
+        .get(edgesAtom)
+        .map((item) => `${item.source}->${item.target}`)
+        .sort()
+    ).toEqual(["a->next", "b->next"]);
+  });
+
+  it("deletes every stored edge represented by the collapsed outlet", () => {
+    const store = createGraphStore(
+      [
+        multiExitGroupNode("g"),
+        groupedLookup("a"),
+        groupedLookup("b"),
+        actionNode("next"),
+      ],
+      [edge("out-a", "a", "next"), edge("out-b", "b", "next")]
+    );
+
+    expect(store.get(displayEdgesAtom)).toHaveLength(1);
+    store.set(deleteEdgeAtom, "out-a");
+
+    expect(store.get(edgesAtom)).toEqual([]);
   });
 });
 
@@ -969,7 +1023,7 @@ describe("groupSelectionAtom", () => {
     const frame = store.get(nodesAtom).find((node) => isGroupNode(node));
     expect(frame?.data.config).toMatchObject({
       entryNodeIds: ["a", "b"],
-      exitNodeId: "c",
+      exitNodeIds: ["c"],
       outletHandle: "true",
     });
   });
@@ -1218,7 +1272,7 @@ describe("setGroupEnabledAtom", () => {
         edge("e-start-b", "life", "b"),
         edge("e-a", "a", "c"),
         edge("e-b", "b", "c"),
-        edge("e-after", "c", "after"),
+        { ...edge("e-after", "c", "after"), sourceHandle: "true" },
       ]
     );
     store.set(groupSelectionAtom, { catalog: emptyCatalog });

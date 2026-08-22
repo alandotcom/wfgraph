@@ -163,7 +163,7 @@ describe("persisted node data", () => {
           data: {
             label: "Lookups",
             type: "group",
-            config: { entryNodeIds: ["a1"], exitNodeId: "c1" },
+            config: { entryNodeIds: ["a1"], exitNodeIds: ["c1"] },
           },
         },
         {
@@ -185,6 +185,26 @@ describe("persisted node data", () => {
     expect(loaded.nodes[0]?.data.type).toBe("group");
     expect(loaded.nodes[0]?.width).toBe(212);
     expect(loaded.nodes[1]?.parentId).toBe("g1");
+  });
+
+  it("rejects the singular Group exit field", () => {
+    expect(() =>
+      createSerializedWorkflowGraph({
+        nodes: [
+          {
+            id: "g1",
+            type: "group",
+            position: { x: 10, y: 20 },
+            data: {
+              label: "Lookups",
+              type: "group",
+              config: { entryNodeIds: ["a1"], exitNodeId: "a1" },
+            },
+          },
+        ],
+        edges: [],
+      })
+    ).toThrow();
   });
 
   it("accepts a closed Condition config and rejects a stray key", () => {

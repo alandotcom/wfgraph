@@ -185,7 +185,7 @@ describe("groupSelection", () => {
     const children = grouped?.nodes.filter((node) => node.parentId === "g1");
     expect(frame?.data.config).toEqual({
       entryNodeIds: ["a"],
-      exitNodeId: "c",
+      exitNodeIds: ["c"],
       outletHandle: "true",
     });
     expect(frame?.position).toEqual({ x: 100, y: 200 });
@@ -217,7 +217,7 @@ describe("groupSelection", () => {
     const childC = grouped?.nodes.find((node) => node.id === "c");
     expect(frame?.data.config).toEqual({
       entryNodeIds: ["a", "b"],
-      exitNodeId: "c",
+      exitNodeIds: ["c"],
       outletHandle: "true",
     });
     // Row 0 fills the frame: `GROUP_PAD`, then one card and one gap over.
@@ -269,7 +269,7 @@ describe("refuseDelete", () => {
     data: {
       label: "Group",
       type: "group",
-      config: { entryNodeIds: ["a"], exitNodeId: "a" },
+      config: { entryNodeIds: ["a"], exitNodeIds: ["a"] },
     },
   };
   const member: WorkflowNode = {

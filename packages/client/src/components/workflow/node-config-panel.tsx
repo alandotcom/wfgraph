@@ -448,9 +448,9 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
       <div className="space-y-4 p-4">
         {selectedNode.data.type === "group" ? (
           <p className="text-muted-foreground text-sm">
-            Lookups and a Condition in a single-entry, single-exit frame.
-            Lookups may run side by side and join at the Condition. True
-            continues; False with no outgoing edge ends that path.
+            Lookups in a frame share an incoming step. They can join at one
+            Condition or leave separately for the same target and target handle.
+            Only Condition True can continue.
           </p>
         ) : null}
 
