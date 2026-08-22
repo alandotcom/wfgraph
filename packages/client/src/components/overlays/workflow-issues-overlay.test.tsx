@@ -6,6 +6,7 @@ import {
   repairIntegrationsAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { workflowIssueCount } from "#src/components/overlays/workflow-issues-overlay";
 
 /**
  * The issues dialog's Add button creates a connection and then repairs the
@@ -64,5 +65,52 @@ describe("repairIntegrationsAtom", () => {
     expect(store.get(nodesAtom)[0]?.data.config?.integrationId).toBe(
       "int_linear"
     );
+  });
+});
+
+describe("workflowIssueCount", () => {
+  it("counts issue instances rather than grouped rows", () => {
+    expect(
+      workflowIssueCount({
+        totalIssues: 6,
+        missingIntegrations: [
+          {
+            integrationType: "linear",
+            integrationLabel: "Linear",
+            nodeNames: ["Find issues", "Create issue"],
+          },
+        ],
+        brokenReferences: [
+          {
+            nodeId: "notify",
+            nodeLabel: "Notify",
+            brokenReferences: [
+              {
+                fieldKey: "message",
+                fieldLabel: "Message",
+                referencedNodeId: "missing-a",
+                displayText: "Missing A",
+              },
+              {
+                fieldKey: "channel",
+                fieldLabel: "Channel",
+                referencedNodeId: "missing-b",
+                displayText: "Missing B",
+              },
+            ],
+          },
+        ],
+        missingRequiredFields: [
+          {
+            nodeId: "send",
+            nodeLabel: "Send",
+            missingFields: [
+              { fieldKey: "to", fieldLabel: "To" },
+              { fieldKey: "subject", fieldLabel: "Subject" },
+            ],
+          },
+        ],
+      })
+    ).toBe(6);
   });
 });

@@ -19,7 +19,12 @@ function commandInput(
       ...overrides,
     },
     shortcuts: {
+      copy: "Cmd+C",
+      duplicate: "Cmd+D",
+      fitView: "Cmd+/",
+      group: "Cmd+G",
       palette: "Cmd+K",
+      paste: "Cmd+V",
       redo: "Cmd+Shift+Z",
       run: "Cmd+Enter",
       undo: "Cmd+Z",

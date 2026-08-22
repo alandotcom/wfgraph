@@ -20,12 +20,22 @@ describe("isApplePlatform", () => {
 describe("editorShortcutLabels", () => {
   it("spells each chord for the keyboard it will be read on", () => {
     expect(editorShortcutLabels(true)).toEqual({
+      copy: "⌘C",
+      duplicate: "⌘D",
+      fitView: "⌘/",
+      group: "⌘G",
+      paste: "⌘V",
       run: "⌘↵",
       undo: "⌘Z",
       redo: "⇧⌘Z",
       palette: "⌘K",
     });
     expect(editorShortcutLabels(false)).toEqual({
+      copy: "Ctrl+C",
+      duplicate: "Ctrl+D",
+      fitView: "Ctrl+/",
+      group: "Ctrl+G",
+      paste: "Ctrl+V",
       run: "Ctrl+Enter",
       undo: "Ctrl+Z",
       redo: "Ctrl+Shift+Z",

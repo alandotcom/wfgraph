@@ -437,10 +437,18 @@ function eventSplitOutletLeft(index: number, count: number): string {
 const GROUPED_HANDLE_CLASS = "group-child-handle";
 
 const GROUPED_TARGET_HANDLES = [
-  { position: Position.Top, className: GROUPED_HANDLE_CLASS },
+  {
+    position: Position.Top,
+    className: GROUPED_HANDLE_CLASS,
+    label: "Input handle",
+  },
 ];
 const GROUPED_SOURCE_HANDLES = [
-  { position: Position.Bottom, className: GROUPED_HANDLE_CLASS },
+  {
+    position: Position.Bottom,
+    className: GROUPED_HANDLE_CLASS,
+    label: "Output handle",
+  },
 ];
 // A Condition reached by the group's own steps still branches on two handles,
 // and an interior edge names the branch it left by. They sit apart on the same
@@ -449,12 +457,14 @@ const GROUPED_SOURCE_HANDLES = [
 const GROUPED_CONDITION_SOURCE_HANDLES = [
   {
     id: "true",
+    label: "True outlet",
     position: Position.Bottom,
     className: GROUPED_HANDLE_CLASS,
     style: { left: CONDITION_TRUE_HANDLE_LEFT },
   },
   {
     id: "false",
+    label: "False outlet",
     position: Position.Bottom,
     className: GROUPED_HANDLE_CLASS,
     style: { left: CONDITION_FALSE_HANDLE_LEFT },
@@ -488,8 +498,7 @@ function GroupedActionNode({ data, selected, id }: ActionNodeProps) {
   return (
     <Node
       className={cn(
-        "nodrag flex h-14 w-[188px] flex-row items-center shadow-none transition-all duration-150 ease-out",
-        selected && "border-primary",
+        "nodrag flex h-14 w-[188px] flex-row items-center shadow-none",
         data.enabled === false && "opacity-50"
       )}
       data-testid={`action-node-${id}`}
@@ -499,6 +508,7 @@ function GroupedActionNode({ data, selected, id }: ActionNodeProps) {
           ? GROUPED_CONDITION_SOURCE_HANDLES
           : GROUPED_SOURCE_HANDLES,
       }}
+      selected={selected}
       status={data.status}
     >
       <div className="flex min-w-0 flex-1 items-center gap-2 px-3">
@@ -583,9 +593,10 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
     const isDisabled = data.enabled === false;
     return (
       <Node
-        className={cn(selected && "border-primary", isDisabled && "opacity-50")}
+        className={cn(isDisabled && "opacity-50")}
         data-testid={`action-node-${id}`}
         handles={{ target: true, source: true }}
+        selected={selected}
         status={status}
         style={workflowNodeSize()}
       >
@@ -634,7 +645,7 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
 
   return (
     <Node
-      className={cn(selected && "border-primary", isDisabled && "opacity-50")}
+      className={cn(isDisabled && "opacity-50")}
       data-testid={`action-node-${id}`}
       handles={{
         target: true,
@@ -642,6 +653,7 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
           ? [
               {
                 id: "true",
+                label: "True outlet",
                 position: Position.Bottom,
                 style: {
                   left: CONDITION_TRUE_HANDLE_LEFT,
@@ -651,6 +663,7 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
               },
               {
                 id: "false",
+                label: "False outlet",
                 position: Position.Bottom,
                 style: {
                   left: CONDITION_FALSE_HANDLE_LEFT,
@@ -662,6 +675,7 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
           : isEventSplitAction
             ? splitOutlets.map((event, index) => ({
                 id: eventSplitOutlet(event.name),
+                label: `${event.label} outlet`,
                 position: Position.Bottom,
                 style: {
                   left: eventSplitOutletLeft(index, splitOutlets.length),
@@ -672,6 +686,7 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
             : true,
       }}
       // A split is as wide as its outlets. Every other node keeps the default.
+      selected={selected}
       status={status}
       style={workflowNodeSize(
         isEventSplitAction

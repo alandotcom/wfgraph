@@ -4,6 +4,7 @@ import {
   type Node,
   type NodeMouseHandler,
   type OnConnect,
+  type OnConnectEnd,
   type OnConnectStartParams,
   useReactFlow,
   type Connection as XYFlowConnection,
@@ -18,7 +19,7 @@ import { Controls } from "#src/components/flow-elements/controls";
 import "@xyflow/react/dist/style.css";
 
 import { nanoid } from "nanoid";
-import { andJoinRefusalReason } from "@wfgraph/shared/graph/and-join";
+import { toast } from "sonner";
 import { Edge } from "#src/components/flow-elements/edge";
 import { Panel } from "#src/components/flow-elements/panel";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
@@ -46,9 +47,11 @@ import {
   propertiesPanelActiveTabAtom,
   showMinimapAtom,
 } from "#src/lib/workflow-ui-store";
-import { WORKFLOW_EDGE_TYPE } from "#src/lib/workflow-graph-types";
-import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-import { fanOutStoreEdges } from "@wfgraph/shared/graph/node-group";
+import {
+  workflowNodeAriaLabel,
+  WORKFLOW_EDGE_TYPE,
+} from "#src/lib/workflow-graph-types";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { refuseDeleteWithNotice } from "#src/lib/node-group";
 import { normalizeSourceHandleForConnection as normalizeSourceHandle } from "./connection-handle";
 import { ActionNode } from "./nodes/action-node";
@@ -64,6 +67,11 @@ import {
   WorkflowContextMenu,
 } from "./workflow-context-menu";
 import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
+import {
+  connectionHandleTypesMatch,
+  connectionRefusalReason,
+} from "./connection-validation";
+import { workflowEdgeAriaLabel } from "#src/components/flow-elements/edge-label";
 
 const edgeTypes = {
   [WORKFLOW_EDGE_TYPE]: Edge.Animated,
@@ -84,6 +92,95 @@ const nodeTypes = {
   add: AddNode,
   group: GroupNode,
 };
+
+const accessibleNodeCache = new WeakMap<
+  WorkflowNode,
+  { label: string; node: WorkflowNode }
+>();
+const accessibleEdgeCache = new WeakMap<
+  WorkflowEdge,
+  { label: string; edge: WorkflowEdge }
+>();
+const accessibleNodeArrayCache = new WeakMap<
+  WorkflowNode[],
+  { labelKey: string; nodes: WorkflowNode[] }
+>();
+const accessibleEdgeArrayCache = new WeakMap<
+  WorkflowEdge[],
+  { labelKey: string; edges: WorkflowEdge[] }
+>();
+
+function withNodeAriaLabel(node: WorkflowNode, label: string): WorkflowNode {
+  if (node.ariaLabel === label) {
+    return node;
+  }
+  const cached = accessibleNodeCache.get(node);
+  if (cached?.label === label) {
+    return cached.node;
+  }
+  const accessible = { ...node, ariaLabel: label };
+  accessibleNodeCache.set(node, { label, node: accessible });
+  return accessible;
+}
+
+function withEdgeAriaLabel(edge: WorkflowEdge, label: string): WorkflowEdge {
+  if (edge.ariaLabel === label) {
+    return edge;
+  }
+  const cached = accessibleEdgeCache.get(edge);
+  if (cached?.label === label) {
+    return cached.edge;
+  }
+  const accessible = { ...edge, ariaLabel: label };
+  accessibleEdgeCache.set(edge, { label, edge: accessible });
+  return accessible;
+}
+
+function accessibleGraphElements(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+  catalog: ReturnType<typeof useExtensionCatalog>
+): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+  const labels = nodes.map(
+    (node) => [node.id, workflowNodeAriaLabel(node.data, catalog)] as const
+  );
+  const labelKey = labels
+    .map(([id, label]) => `${id}\u0000${label}`)
+    .join("\u0001");
+  const nodeLabels = new Map(labels);
+
+  const cachedNodes = accessibleNodeArrayCache.get(nodes);
+  const accessibleNodes =
+    cachedNodes?.labelKey === labelKey
+      ? cachedNodes.nodes
+      : nodes.map((node) =>
+          withNodeAriaLabel(node, nodeLabels.get(node.id) ?? "Unknown step")
+        );
+  if (cachedNodes?.labelKey !== labelKey) {
+    accessibleNodeArrayCache.set(nodes, { labelKey, nodes: accessibleNodes });
+  }
+
+  const cachedEdges = accessibleEdgeArrayCache.get(edges);
+  const accessibleEdges =
+    cachedEdges?.labelKey === labelKey
+      ? cachedEdges.edges
+      : edges.map((edge) =>
+          withEdgeAriaLabel(
+            edge,
+            workflowEdgeAriaLabel({
+              sourceLabel: nodeLabels.get(edge.source) ?? "Unknown step",
+              targetLabel: nodeLabels.get(edge.target) ?? "Unknown step",
+              sourceHandleId: edge.sourceHandle,
+              data: edge.data,
+            })
+          )
+        );
+  if (cachedEdges?.labelKey !== labelKey) {
+    accessibleEdgeArrayCache.set(edges, { labelKey, edges: accessibleEdges });
+  }
+
+  return { nodes: accessibleNodes, edges: accessibleEdges };
+}
 
 export function WorkflowCanvas() {
   const catalog = useExtensionCatalog();
@@ -114,6 +211,10 @@ export function WorkflowCanvas() {
   const { screenToFlowPosition, fitView } = useReactFlow();
   // The same pass the Actions menu's "Tidy layout" runs.
   const { canReflow, reflow } = useReflowLayout();
+  // React Flow owns the semantic wrappers around custom nodes and edges. Build
+  // their names from the same catalog labels the cards render, while preserving
+  // element identity until the graph or catalog actually changes.
+  const accessibleGraph = accessibleGraphElements(nodes, edges, catalog);
 
   const connectingNodeId = useRef<string | null>(null);
   const connectingHandleType = useRef<"source" | "target" | null>(null);
@@ -215,86 +316,15 @@ export function WorkflowCanvas() {
 
   useDomEvent(window, "keydown", handleFitViewShortcut);
 
-  const nodeHasHandle = useCallback(
-    (nodeId: string, handleType: "source" | "target") => {
-      const node = nodes.find((n) => n.id === nodeId);
-
-      if (!node) {
-        return false;
-      }
-
-      if (node.type === "add" || node.parentId) {
-        return false;
-      }
-
-      if (handleType === "target") {
-        return node.type !== "lifecycle";
-      }
-
-      return true;
-    },
-    [nodes]
-  );
-
   const isValidConnection = useCallback(
-    (connection: XYFlowConnection | XYFlowEdge) => {
-      const sourceNodeId = connection.source;
-      const targetNodeId = connection.target;
-
-      if (!(sourceNodeId && targetNodeId)) {
-        return false;
-      }
-
-      if (sourceNodeId === targetNodeId) {
-        return false;
-      }
-
-      const sourceNode = nodes.find((node) => node.id === sourceNodeId);
-      const targetNode = nodes.find((node) => node.id === targetNodeId);
-      if (sourceNode?.parentId || targetNode?.parentId) {
-        return false;
-      }
-
-      const connectionId =
-        "id" in connection && typeof connection.id === "string"
-          ? connection.id
-          : null;
-      const sourceHandle = normalizeSourceHandle({
+    (connection: XYFlowConnection | XYFlowEdge) =>
+      connectionRefusalReason({
+        connection,
         nodes,
         edges,
-        sourceNodeId,
-        sourceHandle:
-          "sourceHandle" in connection ? connection.sourceHandle : undefined,
+        storeEdges,
         catalog,
-      });
-      const additions = fanOutStoreEdges({
-        nodes,
-        edges: storeEdges,
-        sourceId: sourceNodeId,
-        targetId: targetNodeId,
-        sourceHandle,
-        excludeEdgeId: connectionId,
-      });
-      if (additions.length === 0) {
-        return false;
-      }
-
-      const proposedEdges = [
-        ...storeEdges.filter((edge) => edge.id !== connectionId),
-        ...additions,
-      ];
-
-      if (
-        andJoinRefusalReason({
-          nodes,
-          edges: proposedEdges,
-        })
-      ) {
-        return false;
-      }
-
-      return true;
-    },
+      }) === null,
     [catalog, edges, nodes, storeEdges]
   );
 
@@ -316,7 +346,15 @@ export function WorkflowCanvas() {
         return;
       }
 
-      if (!isValidConnection(connection)) {
+      const refusal = connectionRefusalReason({
+        connection,
+        nodes,
+        edges,
+        storeEdges,
+        catalog,
+      });
+      if (refusal) {
+        toast.info(refusal, { id: "connection-refused" });
         return;
       }
 
@@ -331,7 +369,14 @@ export function WorkflowCanvas() {
       };
       connectNodes(newEdge);
     },
-    [normalizeSourceHandleForConnection, isValidConnection, connectNodes]
+    [
+      normalizeSourceHandleForConnection,
+      connectNodes,
+      nodes,
+      edges,
+      storeEdges,
+      catalog,
+    ]
   );
 
   /**
@@ -412,15 +457,9 @@ export function WorkflowCanvas() {
     (nodeElement: Element) => {
       const targetNodeId = nodeElement.getAttribute("data-id");
       const fromSource = connectingHandleType.current === "source";
-      const requiredHandle = fromSource ? "target" : "source";
       const connectingId = connectingNodeId.current;
 
-      if (
-        targetNodeId &&
-        connectingId &&
-        targetNodeId !== connectingId &&
-        nodeHasHandle(targetNodeId, requiredHandle)
-      ) {
+      if (targetNodeId && connectingId) {
         const sourceId = fromSource ? connectingId : targetNodeId;
         const targetId = fromSource ? targetNodeId : connectingId;
         const sourceHandle = normalizeSourceHandleForConnection(
@@ -436,7 +475,7 @@ export function WorkflowCanvas() {
         });
       }
     },
-    [nodeHasHandle, normalizeSourceHandleForConnection, onConnect]
+    [normalizeSourceHandleForConnection, onConnect]
   );
 
   const handleConnectionToNewNode = useCallback(
@@ -484,6 +523,13 @@ export function WorkflowCanvas() {
           config: {},
           status: "idle",
         },
+        ariaLabel: workflowNodeAriaLabel({
+          label: "",
+          description: "",
+          type: "action",
+          config: {},
+          status: "idle",
+        }),
         selected: true,
       };
 
@@ -529,8 +575,8 @@ export function WorkflowCanvas() {
     ]
   );
 
-  const onConnectEnd = useCallback(
-    (event: MouseEvent | TouchEvent) => {
+  const onConnectEnd: OnConnectEnd = useCallback(
+    (event, connectionState) => {
       if (!connectingNodeId.current) {
         return;
       }
@@ -557,8 +603,34 @@ export function WorkflowCanvas() {
 
       const nodeElement = target.closest(".react-flow__node");
       const isHandle = target.closest(".react-flow__handle");
+      const droppedHandleType = isHandle?.classList.contains("source")
+        ? "source"
+        : isHandle?.classList.contains("target")
+          ? "target"
+          : null;
 
-      if (nodeElement && !isHandle && connectingHandleType.current) {
+      if (
+        connectingHandleType.current &&
+        droppedHandleType &&
+        !connectionHandleTypesMatch(
+          connectingHandleType.current,
+          droppedHandleType
+        )
+      ) {
+        toast.info("Connect an output handle to an input handle.", {
+          id: "connection-refused",
+        });
+        connectingNodeId.current = null;
+        connectingHandleType.current = null;
+        connectingHandleId.current = null;
+        return;
+      }
+
+      if (
+        nodeElement &&
+        connectingHandleType.current &&
+        (!isHandle || !connectionState.isValid)
+      ) {
         handleConnectionToExistingNode(nodeElement);
         connectingNodeId.current = null;
         connectingHandleType.current = null;
@@ -626,11 +698,11 @@ export function WorkflowCanvas() {
         connectionLineComponent={Connection}
         connectionMode={ConnectionMode.Strict}
         defaultEdgeOptions={defaultEdgeOptions}
-        edges={edges}
+        edges={accessibleGraph.edges}
         edgeTypes={edgeTypes}
         elementsSelectable={!editingLocked}
         isValidConnection={isValidConnection}
-        nodes={nodes}
+        nodes={accessibleGraph.nodes}
         nodesConnectable={!editingLocked}
         nodesDraggable={!editingLocked}
         nodeTypes={nodeTypes}

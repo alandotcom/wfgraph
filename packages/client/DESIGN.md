@@ -18,6 +18,7 @@ colors:
   signal-green: "oklch(0.526 0.148 149.58)"
   signal-amber: "oklch(0.546 0.12 70.08)"
   signal-blue: "oklch(0.482 0.18 259.8)"
+  selection-blue: "oklch(0.56 0.21 264)"
   signal-slate: "oklch(0.52 0.046 257.417)"
   node-lifecycle: "oklch(0.646 0.19 259.815)"
   node-split: "oklch(0.646 0.13 232.661)"
@@ -142,6 +143,7 @@ Each signal is one token carrying both the fill and the text form, and each ligh
 - **Signal Green** (oklch(0.526 0.148 149.58)): Successful runs. `--success`.
 - **Signal Amber** (oklch(0.546 0.12 70.08)): Waiting runs, test mode, and unmet prerequisites. `--warning`.
 - **Signal Blue** (oklch(0.482 0.18 259.8)): Work in progress, including the running-node border sweep, and live template variables. `--info`.
+- **Selection Blue** (oklch(0.56 0.21 264), oklch(0.72 0.17 264) in dark): The persistent outer halo on the selected canvas object. `--selection`. It stays separate from Signal Blue so selection never reads as execution state, and it leaves the node surface unchanged.
 - **Signal Slate** (oklch(0.52 0.046 257.417)): Cancelled and superseded runs. `--cancelled`.
 
 ### Node-type accents

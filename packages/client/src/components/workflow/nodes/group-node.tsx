@@ -30,12 +30,18 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
         // Paper canvas, recessed frame, Paper member cards -- and it inverts on
         // its own in dark, where Void, 0.15 and 0.205 stack the same way.
         "flex h-full w-full flex-col rounded-md border-[1.5px] border-canvas-line bg-muted shadow-none",
-        selected && "border-primary",
+        "group-node-container",
         isDisabled && "opacity-50"
       )}
+      data-selected={selected}
       data-testid={`group-node-${id}`}
     >
-      <Handle position={Position.Top} type="target" />
+      <Handle
+        aria-label="Group input"
+        position={Position.Top}
+        role="img"
+        type="target"
+      />
       {/* The rule under the title is what separates the frame's own chrome from
           the members below it; without it the header floats in the fill. */}
       <div className="flex h-9 shrink-0 items-center gap-2 border-canvas-line/60 border-b px-3 font-medium text-sm">
@@ -47,8 +53,10 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
         {data.label || "Group"}
       </div>
       <Handle
+        aria-label="Group output"
         id={groupOutletHandle({ data, id })}
         position={Position.Bottom}
+        role="img"
         type="source"
       />
     </div>

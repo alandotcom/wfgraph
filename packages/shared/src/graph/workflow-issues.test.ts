@@ -177,6 +177,7 @@ describe("collectWorkflowIssues", () => {
     });
 
     const grouped = groupWorkflowIssuesForOverlay(issues);
+    expect(grouped.totalIssues).toBe(issues.length);
     expect(grouped.missingRequiredFields[0]?.missingFields).toEqual(
       expect.arrayContaining([expect.objectContaining({ fieldKey: "channel" })])
     );

@@ -28,6 +28,11 @@ export function currentPlatform(): string {
 }
 
 export type EditorShortcutLabels = {
+  copy: string;
+  duplicate: string;
+  fitView: string;
+  group: string;
+  paste: string;
   run: string;
   undo: string;
   redo: string;
@@ -37,8 +42,23 @@ export type EditorShortcutLabels = {
 /** The chords the menu bar prints, spelled for this keyboard. */
 export function editorShortcutLabels(onApple: boolean): EditorShortcutLabels {
   return onApple
-    ? { run: "⌘↵", undo: "⌘Z", redo: "⇧⌘Z", palette: "⌘K" }
+    ? {
+        copy: "⌘C",
+        duplicate: "⌘D",
+        fitView: "⌘/",
+        group: "⌘G",
+        paste: "⌘V",
+        run: "⌘↵",
+        undo: "⌘Z",
+        redo: "⇧⌘Z",
+        palette: "⌘K",
+      }
     : {
+        copy: "Ctrl+C",
+        duplicate: "Ctrl+D",
+        fitView: "Ctrl+/",
+        group: "Ctrl+G",
+        paste: "Ctrl+V",
         run: "Ctrl+Enter",
         undo: "Ctrl+Z",
         redo: "Ctrl+Shift+Z",

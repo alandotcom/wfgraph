@@ -61,13 +61,13 @@ describe("LifecycleNode handles", () => {
     positionAbsoluteY: 0,
   } as const;
 
-  function renderLifecycleNode(data: WorkflowNodeData) {
+  function renderLifecycleNode(data: WorkflowNodeData, selected = false) {
     return render(
       <ReactFlowProvider>
         <LifecycleNode
           data={data}
           id="entry"
-          selected={false}
+          selected={selected}
           type="lifecycle"
           {...requiredNodeProps}
         />
@@ -96,6 +96,36 @@ describe("LifecycleNode handles", () => {
     ).toBeTruthy();
     expect(view.getByText("Started")).toBeTruthy();
     expect(view.getByText("Canceled")).toBeTruthy();
+    expect(
+      view.container
+        .querySelector(`[data-handleid="${LIFECYCLE_STARTED_HANDLE}"]`)
+        ?.getAttribute("aria-label")
+    ).toBe("Started outlet");
+    expect(
+      view.container
+        .querySelector(`[data-handleid="${LIFECYCLE_STARTED_HANDLE}"]`)
+        ?.getAttribute("role")
+    ).toBe("img");
+    expect(
+      view.container
+        .querySelector(`[data-handleid="${LIFECYCLE_CANCELED_HANDLE}"]`)
+        ?.getAttribute("aria-label")
+    ).toBe("Canceled outlet");
+  });
+
+  it("marks the shared node surface when selected", () => {
+    const view = renderLifecycleNode(
+      {
+        label: "Lifecycle",
+        description: "",
+        type: "lifecycle",
+        config: {},
+        status: "idle",
+      },
+      true
+    );
+
+    expect(view.container.querySelector("[data-selected='true']")).toBeTruthy();
   });
 
   it("uses the start summary as the subtitle on a compact card", () => {

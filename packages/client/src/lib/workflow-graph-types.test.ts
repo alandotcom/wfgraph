@@ -9,6 +9,7 @@ import {
   toEditorNode,
   toPersistedEdge,
   toPersistedNode,
+  workflowNodeAriaLabel,
   WORKFLOW_EDGE_TYPE,
 } from "#src/lib/workflow-graph-types";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -53,6 +54,36 @@ function editorNode(id: string, selected: boolean): WorkflowNode {
 }
 
 describe("the persist round trip", () => {
+  it("gives React Flow a visible node name rather than an internal id", () => {
+    expect(toEditorNode(node("Find issues")).ariaLabel).toBe("Find issues");
+  });
+
+  it("uses the catalog label for an action with no custom label", () => {
+    const action = node("action_1");
+    action.data = {
+      ...action.data,
+      label: "",
+      config: { actionType: "linear/find-issues" },
+    };
+
+    expect(
+      workflowNodeAriaLabel(action.data, {
+        events: [],
+        integrations: [],
+        actions: [
+          {
+            id: "linear/find-issues",
+            label: "Find issues",
+            description: "Find matching issues",
+            category: "Linear",
+            configFields: [],
+            outputFields: [],
+          },
+        ],
+      })
+    ).toBe("Find issues");
+  });
+
   it("keeps the handle a Condition branch left by", () => {
     const { edges } = reload({
       edges: [{ id: "e1", source: "a", target: "b", sourceHandle: "false" }],
