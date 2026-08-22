@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { WorkflowExecutionStartSource } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
   addRunFilter,
+  autofillRemainder,
   createRunFilter,
   DEFAULT_STATUS_OPTIONS,
   filterRuns,
   formatRunFilterValue,
+  isLabelPrefix,
   operatorsForField,
   removeRunFilter,
   toExecutionsQueryInput,
@@ -252,6 +254,22 @@ describe("toExecutionsQueryInput", () => {
 
     expect(query.workflowIds).toBeUndefined();
     expect(query.statuses).toEqual([...DEFAULT_STATUS_OPTIONS].toSorted());
+  });
+});
+
+describe("isLabelPrefix", () => {
+  it("matches a workflow name as it is typed", () => {
+    expect(isLabelPrefix("new wor", "New Workflow")).toBe(true);
+    expect(isLabelPrefix("Onb", "Onboarding")).toBe(true);
+    expect(isLabelPrefix("board", "Onboarding")).toBe(false);
+  });
+});
+
+describe("autofillRemainder", () => {
+  it("returns the untyped tail, keeping the label's own casing", () => {
+    expect(autofillRemainder("new wor", "New Workflow")).toBe("kflow");
+    expect(autofillRemainder("Onb", "Onboarding")).toBe("oarding");
+    expect(autofillRemainder("Onboarding", "Onboarding")).toBe("");
   });
 });
 

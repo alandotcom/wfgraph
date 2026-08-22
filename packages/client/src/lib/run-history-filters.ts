@@ -302,6 +302,20 @@ function uniqueSorted(values: readonly string[]): string[] {
   return [...new Set(values)].toSorted();
 }
 
+const EXECUTION_STATUS_SET: ReadonlySet<string> = new Set(
+  WORKFLOW_EXECUTION_STATUSES
+);
+
+function isExecutionStatus(value: string): value is WorkflowExecutionStatus {
+  return EXECUTION_STATUS_SET.has(value);
+}
+
+function uniqueSortedStatuses(
+  values: readonly WorkflowExecutionStatus[]
+): WorkflowExecutionStatus[] {
+  return [...new Set(values)].toSorted();
+}
+
 /**
  * Status and workflow predicates the list API already understands. Mode, source,
  * event, entity, and the free-text query stay on the client over the pages that
@@ -315,7 +329,8 @@ export function toExecutionsQueryInput(input: {
 }): RunHistoryServerQuery {
   const statusIs = input.filters
     .filter((filter) => filter.field === "status" && filter.operator === "is")
-    .map((filter) => filter.value as WorkflowExecutionStatus);
+    .map((filter) => filter.value)
+    .filter(isExecutionStatus);
   const statusIsNot = new Set(
     input.filters
       .filter(
@@ -348,12 +363,33 @@ export function toExecutionsQueryInput(input: {
   }
 
   return {
-    statuses: uniqueSorted(statuses) as WorkflowExecutionStatus[],
+    statuses: uniqueSortedStatuses(statuses),
     limit: input.limit,
     ...(workflowIds !== undefined && workflowIds.length > 0
       ? { workflowIds }
       : {}),
   };
+}
+
+/** True when `query` is a prefix of `label`, ignoring case and edge spaces. */
+export function isLabelPrefix(query: string, label: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (needle === "") {
+    return false;
+  }
+  return label.toLowerCase().startsWith(needle);
+}
+
+/**
+ * The untyped tail of a Tokenizer-style completion. Empty when `query` is not a
+ * prefix of `label`, so the ghost never invents characters the match does not
+ * continue with.
+ */
+export function autofillRemainder(query: string, label: string): string {
+  if (!isLabelPrefix(query, label)) {
+    return "";
+  }
+  return label.slice(query.length);
 }
 
 export function uniqueNonEmpty(

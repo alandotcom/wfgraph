@@ -9,8 +9,10 @@ import {
 import { useDomEvent } from "#src/hooks/effects";
 import {
   addRunFilter,
+  autofillRemainder,
   createRunFilter,
   formatRunFilterValue,
+  isLabelPrefix,
   MODE_VALUE_OPTIONS,
   operatorsForField,
   removeRunFilter,
@@ -36,6 +38,8 @@ type MenuItem = {
   label: string;
   detail?: string;
   icon: "search" | "list";
+  /** Untyped tail of a Tokenizer completion, shown as ghost text in the input. */
+  ghost?: string;
   activate: () => void;
 };
 
@@ -110,6 +114,20 @@ function matchesQuery(label: string, query: string): boolean {
   return label.toLowerCase().includes(query.trim().toLowerCase());
 }
 
+function sortByPrefixFirst(
+  options: readonly RunFilterValueOption[],
+  query: string
+): RunFilterValueOption[] {
+  return options.toSorted((left, right) => {
+    const leftPrefix = isLabelPrefix(query, left.label) ? 0 : 1;
+    const rightPrefix = isLabelPrefix(query, right.label) ? 0 : 1;
+    if (leftPrefix !== rightPrefix) {
+      return leftPrefix - rightPrefix;
+    }
+    return left.label.localeCompare(right.label);
+  });
+}
+
 function MenuIcon({ kind }: { kind: "search" | "list" }) {
   if (kind === "search") {
     return <Search className="size-3.5 text-muted-foreground" />;
@@ -150,11 +168,41 @@ export function RunHistorySearch({
     onQueryChange("");
     setHighlighted(0);
     setMenuOpen(true);
-    inputRef.current?.focus();
   };
 
   const menuItems: readonly MenuItem[] = (() => {
     if (draft.step === "field") {
+      const shortcuts: MenuItem[] = [];
+      if (query.trim() !== "") {
+        for (const field of RUN_FILTER_FIELDS) {
+          for (const option of filterValueOptions({
+            field,
+            workflows,
+            eventSuggestions,
+            entitySuggestions,
+          })) {
+            if (!isLabelPrefix(query, option.label)) {
+              continue;
+            }
+            shortcuts.push({
+              id: `shortcut:${field}:${option.value}`,
+              label: option.label,
+              detail: `${RUN_FILTER_FIELD_LABELS[field]} is`,
+              icon: fieldIcon(field),
+              ghost: autofillRemainder(query, option.label),
+              activate: () => {
+                commitFilter(
+                  field,
+                  "is",
+                  option.value,
+                  option.label === option.value ? undefined : option.label
+                );
+              },
+            });
+          }
+        }
+      }
+
       const fields = RUN_FILTER_FIELDS.filter((field) =>
         matchesQuery(RUN_FILTER_FIELD_LABELS[field], query)
       ).map((field) => ({
@@ -170,6 +218,8 @@ export function RunHistorySearch({
 
       if (query.trim() !== "") {
         return [
+          ...shortcuts,
+          ...fields,
           {
             id: "search",
             label: `Search runs for “${query.trim()}”`,
@@ -179,7 +229,6 @@ export function RunHistorySearch({
               setDraft(FIELD_STEP);
             },
           },
-          ...fields,
         ];
       }
       return fields;
@@ -203,18 +252,21 @@ export function RunHistorySearch({
         }));
     }
 
-    const options = filterValueOptions({
-      field: draft.field,
-      workflows,
-      eventSuggestions,
-      entitySuggestions,
-    }).filter((option) => matchesQuery(option.label, query));
+    const options = sortByPrefixFirst(
+      filterValueOptions({
+        field: draft.field,
+        workflows,
+        eventSuggestions,
+        entitySuggestions,
+      }).filter((option) => matchesQuery(option.label, query)),
+      query
+    );
 
-    const typed = query.trim();
     const items: MenuItem[] = options.map((option) => ({
       id: `value:${option.value}`,
       label: option.label,
       icon: fieldIcon(draft.field),
+      ghost: autofillRemainder(query, option.label),
       activate: () => {
         commitFilter(
           draft.field,
@@ -225,8 +277,12 @@ export function RunHistorySearch({
       },
     }));
 
+    const typed = query.trim();
+    const canTypeValue = operatorsForField(draft.field).includes("contains");
     if (
       typed !== "" &&
+      items.length === 0 &&
+      canTypeValue &&
       !options.some(
         (option) => option.value === typed || option.label === typed
       )
@@ -317,6 +373,20 @@ export function RunHistorySearch({
       return;
     }
 
+    if (event.key === "Tab" && menuItems[safeHighlight]?.id !== "search") {
+      const item = menuItems[safeHighlight];
+      if (
+        item &&
+        (item.ghost ||
+          draft.step === "value" ||
+          item.id.startsWith("shortcut:"))
+      ) {
+        event.preventDefault();
+        item.activate();
+      }
+      return;
+    }
+
     if (event.key === "Enter") {
       event.preventDefault();
       const item = menuItems[safeHighlight];
@@ -355,9 +425,11 @@ export function RunHistorySearch({
     menuOpen && menuItems[safeHighlight]
       ? `${listId}-${menuItems[safeHighlight].id}`
       : undefined;
+  const ghost =
+    menuOpen && query !== "" ? (menuItems[safeHighlight]?.ghost ?? "") : "";
 
   return (
-    <div className="relative" ref={rootRef}>
+    <div className="relative z-20" ref={rootRef}>
       <div
         className={cn(
           "flex min-h-8 flex-wrap items-center gap-1 rounded-md border border-input bg-input/20 px-2 py-1 shadow-xs transition-colors",
@@ -393,27 +465,43 @@ export function RunHistorySearch({
             </button>
           </span>
         ))}
-        <input
-          aria-activedescendant={activeDescendant}
-          aria-autocomplete="list"
-          aria-controls={listId}
-          aria-expanded={menuOpen}
-          aria-label="Search and filter runs"
-          className="min-w-16 flex-1 bg-transparent py-0.5 text-xs/relaxed outline-none placeholder:text-muted-foreground"
-          onChange={(event) => {
-            onQueryChange(event.target.value);
-            setMenuOpen(true);
-            setHighlighted(0);
-          }}
-          onFocus={() => {
-            setMenuOpen(true);
-          }}
-          onKeyDown={onKeyDown}
-          placeholder={placeholder()}
-          ref={inputRef}
-          role="combobox"
-          value={query}
-        />
+        <div className="relative min-w-16 flex-1">
+          {ghost !== "" ? (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-0 overflow-hidden py-0.5 text-xs/relaxed"
+            >
+              <span className="invisible whitespace-pre">{query}</span>
+              <span className="whitespace-pre text-muted-foreground">
+                {ghost}
+              </span>
+            </span>
+          ) : null}
+          <input
+            aria-activedescendant={activeDescendant}
+            aria-autocomplete="both"
+            aria-controls={listId}
+            aria-expanded={menuOpen}
+            aria-label="Search and filter runs"
+            autoCapitalize="off"
+            autoCorrect="off"
+            className="relative w-full min-w-0 bg-transparent py-0.5 text-xs/relaxed outline-none placeholder:text-muted-foreground"
+            onChange={(event) => {
+              onQueryChange(event.target.value);
+              setMenuOpen(true);
+              setHighlighted(0);
+            }}
+            onFocus={() => {
+              setMenuOpen(true);
+            }}
+            onKeyDown={onKeyDown}
+            placeholder={placeholder()}
+            ref={inputRef}
+            role="combobox"
+            spellCheck={false}
+            value={query}
+          />
+        </div>
         <span className="shrink-0 pr-0.5 text-muted-foreground text-xs/relaxed tabular-nums">
           {resultCount} {resultCount === 1 ? "result" : "results"}
         </span>
@@ -449,9 +537,11 @@ export function RunHistorySearch({
                   )}
                   id={`${listId}-${item.id}`}
                   key={item.id}
+                  onClick={() => {
+                    item.activate();
+                  }}
                   onMouseDown={(event) => {
                     event.preventDefault();
-                    item.activate();
                   }}
                   onMouseEnter={() => {
                     setHighlighted(index);

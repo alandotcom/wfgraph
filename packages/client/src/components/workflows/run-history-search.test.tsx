@@ -17,7 +17,10 @@ function Harness({ resultCount = 4 }: { resultCount?: number }) {
       onQueryChange={setQuery}
       query={query}
       resultCount={resultCount}
-      workflows={[{ id: "wf_1", name: "Onboarding" }]}
+      workflows={[
+        { id: "wf_1", name: "Onboarding" },
+        { id: "wf_2", name: "New Workflow" },
+      ]}
     />
   );
 }
@@ -43,9 +46,9 @@ describe("RunHistorySearch", () => {
     fireEvent.focus(
       view.getByRole("combobox", { name: "Search and filter runs" })
     );
-    fireEvent.mouseDown(view.getByRole("option", { name: "Status" }));
-    fireEvent.mouseDown(view.getByRole("option", { name: "Status is" }));
-    fireEvent.mouseDown(view.getByRole("option", { name: "Failed" }));
+    fireEvent.click(view.getByRole("option", { name: "Status" }));
+    fireEvent.click(view.getByRole("option", { name: "Status is" }));
+    fireEvent.click(view.getByRole("option", { name: "Failed" }));
 
     expect(
       view.getByRole("button", { name: "Remove Status is Failed" })
@@ -58,9 +61,9 @@ describe("RunHistorySearch", () => {
     fireEvent.focus(
       view.getByRole("combobox", { name: "Search and filter runs" })
     );
-    fireEvent.mouseDown(view.getByRole("option", { name: "Mode" }));
-    fireEvent.mouseDown(view.getByRole("option", { name: "Mode is" }));
-    fireEvent.mouseDown(view.getByRole("option", { name: "Test" }));
+    fireEvent.click(view.getByRole("option", { name: "Mode" }));
+    fireEvent.click(view.getByRole("option", { name: "Mode is" }));
+    fireEvent.click(view.getByRole("option", { name: "Test" }));
 
     fireEvent.click(view.getByRole("button", { name: "Remove Mode is Test" }));
 
@@ -82,5 +85,44 @@ describe("RunHistorySearch", () => {
     expect(
       view.getByRole("option", { name: "Search runs for “stat”" })
     ).toBeTruthy();
+  });
+
+  it("autofills a workflow name from the first letters", () => {
+    const view = render(<Harness />);
+    const input = view.getByRole("combobox", {
+      name: "Search and filter runs",
+    });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "new wor" } });
+
+    expect(view.getByRole("option", { name: /New Workflow/ })).toBeTruthy();
+    expect(
+      view.queryByRole("option", { name: /Workflow is new wor/ })
+    ).toBeNull();
+    expect(view.getByText("kflow")).toBeTruthy();
+
+    fireEvent.keyDown(input, { key: "Tab" });
+
+    expect(
+      view.getByRole("button", { name: "Remove Workflow is New Workflow" })
+    ).toBeTruthy();
+  });
+
+  it("does not offer the typed fragment as a workflow value", () => {
+    const view = render(<Harness />);
+    fireEvent.focus(
+      view.getByRole("combobox", { name: "Search and filter runs" })
+    );
+    fireEvent.click(view.getByRole("option", { name: "Workflow" }));
+    fireEvent.click(view.getByRole("option", { name: "Workflow is" }));
+    fireEvent.change(
+      view.getByRole("combobox", { name: "Search and filter runs" }),
+      { target: { value: "new wor" } }
+    );
+
+    expect(view.getByRole("option", { name: "New Workflow" })).toBeTruthy();
+    expect(
+      view.queryByRole("option", { name: /Workflow is new wor/ })
+    ).toBeNull();
   });
 });
