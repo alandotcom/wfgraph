@@ -297,7 +297,10 @@ describe("keys beside a badge", () => {
 
   it("keeps the caret out of a badge when a redraw restores it", () => {
     const { container: root } = renderWithCatalog(
-      <TemplateBadgeInput onChange={() => {}} value={`${TOKEN_A} hi ${TOKEN_B}`} />
+      <TemplateBadgeInput
+        onChange={() => {}}
+        value={`${TOKEN_A} hi ${TOKEN_B}`}
+      />
     );
     const textbox = findTextbox(root);
     const first = findBadge(textbox, 0);

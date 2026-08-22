@@ -1,11 +1,5 @@
-import { type ClassValue, clsx } from "clsx";
 import { Schema } from "effect";
-import { twMerge } from "tailwind-merge";
 import { readAs } from "#src/types/schema";
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
 
 /**
  * The two typed reads every walk below ends in.

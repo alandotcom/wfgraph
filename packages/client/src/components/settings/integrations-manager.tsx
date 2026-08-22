@@ -6,9 +6,7 @@ import {
   EditConnectionOverlay,
 } from "#src/components/overlays/edit-connection-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
-import { Button } from "#src/components/ui/button";
-import { IntegrationIcon } from "#src/components/ui/integration-icon";
-import { Spinner } from "#src/components/ui/spinner";
+import { IntegrationIcon } from "#src/components/integration-icon";
 import { announceTestResult } from "#src/lib/connection-credentials";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions, orpcQuery } from "#src/lib/rpc-query";
@@ -87,96 +85,79 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
     : undefined;
 
   if (isPending) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <Spinner />
-      </div>
-    );
+    return <Spinner label="Loading connections" />;
   }
 
   const renderIntegrationsList = () => {
     if (integrations.length === 0) {
-      return (
-        <div className="py-8 text-center">
-          <p className="text-muted-foreground text-sm">
-            No connections configured yet
-          </p>
-        </div>
-      );
+      return <EmptyState isCompact title="No connections configured yet" />;
     }
 
     if (integrationsWithLabels.length === 0) {
-      return (
-        <div className="py-8 text-center">
-          <p className="text-muted-foreground text-sm">
-            No connections match your filter
-          </p>
-        </div>
-      );
+      return <EmptyState isCompact title="No connections match your filter" />;
     }
 
     return (
-      <div className="space-y-1">
+      <List density="balanced" hasDividers>
         {integrationsWithLabels.map((integration) => (
-          <div
-            className="flex items-center justify-between rounded-md px-2 py-1.5"
-            key={integration.id}
-          >
-            <div className="flex items-center gap-2">
-              <IntegrationIcon
-                className="size-4"
-                integration={integration.type}
-              />
-              <span className="font-medium text-sm">{integration.label}</span>
-              <span className="text-muted-foreground text-sm">
-                {integration.name}
-              </span>
-              {integration.known ? null : (
-                <span className="text-muted-foreground text-xs">
-                  Not available in this build
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              {integration.hasTest && (
-                <Button
-                  className="h-7 px-2"
-                  disabled={testingId === integration.id}
-                  onClick={() =>
-                    testConnection.mutate({ integrationId: integration.id })
-                  }
+          <ListItem
+            description={
+              <VStack gap={0.5}>
+                <Text color="secondary">{integration.name}</Text>
+                {integration.known ? null : (
+                  <Text color="secondary" type="supporting">
+                    Not available in this build
+                  </Text>
+                )}
+              </VStack>
+            }
+            endContent={
+              <HStack gap={1}>
+                {integration.hasTest ? (
+                  <Button
+                    isDisabled={testingId === integration.id}
+                    isLoading={testingId === integration.id}
+                    label="Test"
+                    onClick={() =>
+                      testConnection.mutate({ integrationId: integration.id })
+                    }
+                    size="sm"
+                    variant="secondary"
+                  />
+                ) : null}
+                <IconButton
+                  icon={<Icon icon={Pencil} size="sm" />}
+                  label={`Edit ${integration.name}`}
+                  onClick={() => handleEdit(integration)}
                   size="sm"
-                  variant="outline"
-                >
-                  {testingId === integration.id ? (
-                    <Spinner className="size-3" />
-                  ) : (
-                    <span className="text-xs">Test</span>
-                  )}
-                </Button>
-              )}
-              <Button
-                className="size-7"
-                onClick={() => handleEdit(integration)}
-                size="icon"
-                variant="outline"
-              >
-                <Pencil className="size-3" />
-              </Button>
-              <Button
-                className="size-7"
-                onClick={() => handleDelete(integration)}
-                size="icon"
-                variant="outline"
-              >
-                <Trash2 className="size-3" />
-              </Button>
-            </div>
-          </div>
+                  variant="ghost"
+                />
+                <IconButton
+                  icon={<Icon icon={Trash2} size="sm" />}
+                  label={`Delete ${integration.name}`}
+                  onClick={() => handleDelete(integration)}
+                  size="sm"
+                  variant="ghost"
+                />
+              </HStack>
+            }
+            key={integration.id}
+            label={integration.label}
+            startContent={<IntegrationIcon integration={integration.type} />}
+          />
         ))}
-      </div>
+      </List>
     );
   };
 
-  return <div className="space-y-1">{renderIntegrationsList()}</div>;
+  return renderIntegrationsList();
 }
+import { Button } from "@astryxdesign/core/Button";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { List, ListItem } from "@astryxdesign/core/List";
+import { Spinner } from "@astryxdesign/core/Spinner";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";

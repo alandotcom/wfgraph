@@ -20,10 +20,11 @@ packages:
 # @effect/* package names one exact core release as a peer, so the whole set moves
 # as one (ADR-0002).
 catalog:
-  # The design system @wfgraph/client adopts (AGENTS.md, "UI primitives"). A beta
+  # The design system @wfgraph/client uses (AGENTS.md, "UI primitives"). A beta
   # line moves under you, hence the exact pin; @stylexjs/stylex is its peer
   # dependency and must stay inside the range core names.
   "@astryxdesign/core": 0.4.5
+  "@stylexjs/unplugin": 0.19.0
   "@effect/opentelemetry": 4.0.0-rc.109
   "@effect/vitest": 4.0.0-rc.109
   # The backend and the editor both log through logtape.
@@ -64,6 +65,7 @@ catalog:
   react: 19.2.8
   react-dom: 19.2.8
   tsx: ^4.23.1
+  unplugin: 2.3.11
   vite: ^8.2.1
   # The example app writes its Events and its custom action in it, and the schema
   # tests in packages/core and packages/shared use it as the foreign Standard
@@ -114,8 +116,8 @@ overrides:
 # msgpackr uses the JavaScript path when the addon is absent, so it stays off.
 #
 # Both @astryxdesign packages' postinstall prints a one-line "run astryx init"
-# nudge and nothing else. We run init deliberately when adopting, so the nudge
-# has nothing to say.
+# nudge and nothing else. The repository configuration is explicit, so the
+# nudge has nothing to add.
 allowBuilds:
   "@astryxdesign/cli": false
   "@astryxdesign/core": false

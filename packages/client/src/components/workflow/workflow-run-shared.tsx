@@ -1,8 +1,19 @@
-import { Check, ChevronDown, ChevronRight, Copy } from "lucide-react";
+import * as stylex from "@stylexjs/stylex";
+import { Card } from "@astryxdesign/core/Card";
+import { Collapsible } from "@astryxdesign/core/Collapsible";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { VStack } from "@astryxdesign/core/VStack";
+import {
+  colorVars,
+  radiusVars,
+  spacingVars,
+} from "@astryxdesign/core/theme/tokens.stylex";
+import { Check, Copy } from "lucide-react";
 import { Schema } from "effect";
 import { type ComponentType, useState } from "react";
 import type { IntegrationUi, ResultComponentProps } from "@wfgraph/plugins/ui";
-import { Button } from "#src/components/ui/button";
 import { useIntegrationUi } from "#src/components/integration-ui-provider";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { getClientLogger } from "#src/lib/logger";
@@ -54,15 +65,6 @@ function toneOf(status: string): StatusTone {
   );
 }
 
-const DOT_CLASSES: Record<StatusTone, string> = {
-  good: "bg-success",
-  bad: "bg-destructive",
-  info: "bg-info",
-  pending: "bg-warning",
-  quiet: "bg-cancelled",
-  muted: "bg-muted-foreground",
-};
-
 /**
  * How each status reads, keyed by the status rather than by its tone.
  *
@@ -89,17 +91,15 @@ const NODE_STATUS_LABELS = {
   cancelled: "Cancelled",
 } satisfies Record<NodeStatus, string>;
 
-const BADGE_CLASSES: Record<StatusTone, string> = {
-  good: "border-success/30 bg-success/10 text-success",
-  bad: "border-destructive/30 bg-destructive/10 text-destructive",
-  info: "border-info/30 bg-info/10 text-info",
-  pending: "border-warning/30 bg-warning/10 text-warning",
-  quiet: "border-cancelled/30 bg-cancelled/10 text-cancelled",
-  muted: "border-muted bg-muted/40 text-muted-foreground",
-};
-
-export function getStatusDotClass(status: string): string {
-  return DOT_CLASSES[toneOf(status)];
+export function getStatusDotVariant(
+  status: string
+): "success" | "error" | "accent" | "warning" | "neutral" {
+  const tone = toneOf(status);
+  if (tone === "good") return "success";
+  if (tone === "bad") return "error";
+  if (tone === "info") return "accent";
+  if (tone === "pending") return "warning";
+  return "neutral";
 }
 
 export function getStatusLabel(status: string): string {
@@ -110,8 +110,15 @@ export function getStatusLabel(status: string): string {
   );
 }
 
-export function getStatusBadgeClass(status: string): string {
-  return BADGE_CLASSES[toneOf(status)];
+export function getStatusTokenColor(
+  status: string
+): "green" | "red" | "blue" | "yellow" | "gray" {
+  const tone = toneOf(status);
+  if (tone === "good") return "green";
+  if (tone === "bad") return "red";
+  if (tone === "info") return "blue";
+  if (tone === "pending") return "yellow";
+  return "gray";
 }
 
 export function formatDuration(duration: string): string {
@@ -160,11 +167,11 @@ export function JsonWithLinks({ data }: { data: unknown }) {
           if (isUrl(innerValue)) {
             return (
               <a
-                className="text-info underline underline-offset-2 hover:text-info/80"
                 href={innerValue}
                 key={innerValue}
                 rel="noopener noreferrer"
                 target="_blank"
+                {...stylex.props(styles.link)}
               >
                 {part}
               </a>
@@ -199,19 +206,13 @@ export function CopyButton({
   };
 
   return (
-    <Button
-      className="h-7 px-2"
+    <IconButton
+      icon={<Icon icon={copied ? Check : Copy} size="sm" />}
+      label={copied ? "Copied" : "Copy"}
       onClick={handleCopy}
       size="sm"
-      type="button"
       variant="ghost"
-    >
-      {copied ? (
-        <Check className="size-3 text-success" />
-      ) : (
-        <Copy className="size-3" />
-      )}
-    </Button>
+    />
   );
 }
 
@@ -228,33 +229,21 @@ export function CollapsibleSection({
   copyData?: unknown;
   isError?: boolean;
 }) {
-  const [isOpen, setIsOpen] = useState(defaultExpanded);
-
   return (
-    <div>
-      <div className="mb-2 flex w-full items-center justify-between">
-        <button
-          className="flex items-center gap-1.5"
-          onClick={() => setIsOpen(!isOpen)}
-          type="button"
+    <VStack gap={2}>
+      <HStack align="center" gap={1} justify="between">
+        <Collapsible
+          defaultIsOpen={defaultExpanded}
+          trigger={title}
+          xstyle={styles.collapsible}
         >
-          {isOpen ? (
-            <ChevronDown className="size-3 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="size-3 text-muted-foreground" />
-          )}
-          <span className="font-medium text-muted-foreground text-sm">
-            {title}
-          </span>
-        </button>
-        <div className="flex items-center gap-1">
-          {copyData !== undefined ? (
-            <CopyButton data={copyData} isError={isError} />
-          ) : null}
-        </div>
-      </div>
-      {isOpen ? children : null}
-    </div>
+          {children}
+        </Collapsible>
+        {copyData !== undefined ? (
+          <CopyButton data={copyData} isError={isError} />
+        ) : null}
+      </HStack>
+    </VStack>
   );
 }
 
@@ -307,23 +296,23 @@ export function OutputDisplay({
   const renderRichResult = () => {
     if (CustomComponent) {
       return (
-        <div className="overflow-hidden rounded-lg border bg-muted/50 p-3">
+        <Card padding={3}>
           <CustomComponent input={input} output={output} />
-        </div>
+        </Card>
       );
     }
 
     if (base64Image) {
       return (
-        <div className="overflow-hidden rounded-lg border bg-muted/50 p-3">
+        <Card padding={3}>
           <img
             alt="Step output"
-            className="max-h-96 w-auto rounded"
             height={384}
             src={`data:image/png;base64,${base64Image}`}
             width={384}
+            {...stylex.props(styles.image)}
           />
-        </div>
+        </Card>
       );
     }
 
@@ -335,7 +324,7 @@ export function OutputDisplay({
   return (
     <>
       <CollapsibleSection copyData={output} title="Output">
-        <pre className="overflow-auto rounded-lg border bg-muted/50 p-3 font-mono text-xs leading-relaxed">
+        <pre {...stylex.props(styles.codeBlock)}>
           <JsonWithLinks data={output} />
         </pre>
       </CollapsibleSection>
@@ -348,3 +337,35 @@ export function OutputDisplay({
     </>
   );
 }
+
+const styles = stylex.create({
+  link: {
+    color: colorVars["--color-text-accent"],
+    textDecoration: "underline",
+    textUnderlineOffset: 2,
+  },
+  collapsible: {
+    flex: 1,
+    minWidth: 0,
+  },
+  image: {
+    borderRadius: radiusVars["--radius-element"],
+    height: "auto",
+    maxHeight: 384,
+    maxWidth: "100%",
+    width: "auto",
+  },
+  codeBlock: {
+    backgroundColor: colorVars["--color-neutral"],
+    borderColor: colorVars["--color-border"],
+    borderRadius: radiusVars["--radius-container"],
+    borderStyle: "solid",
+    borderWidth: 1,
+    fontFamily: "monospace",
+    fontSize: 12,
+    lineHeight: 1.6,
+    margin: 0,
+    overflow: "auto",
+    padding: spacingVars["--spacing-3"],
+  },
+});

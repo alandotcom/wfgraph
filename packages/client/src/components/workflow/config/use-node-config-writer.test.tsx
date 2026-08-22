@@ -17,7 +17,7 @@ import {
 } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import type { JSX } from "react";
-import { toast } from "sonner";
+import { notifications as toast } from "#src/lib/notifications";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import type { NodeConfigPatch } from "#src/components/workflow/config/node-config-patch";
 import { useNodeConfigWriter } from "#src/components/workflow/config/use-node-config-writer";

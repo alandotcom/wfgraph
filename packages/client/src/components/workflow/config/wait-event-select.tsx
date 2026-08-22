@@ -1,13 +1,15 @@
+import * as stylex from "@stylexjs/stylex";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
+import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { List, ListItem } from "@astryxdesign/core/List";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
+import { colorVars } from "@astryxdesign/core/theme/tokens.stylex";
 import { useAtomValue } from "jotai";
 import { X } from "lucide-react";
-import { useCallback, useId, useMemo } from "react";
-import { Button } from "#src/components/ui/button";
-import { WarningCallout } from "#src/components/ui/callout";
-import { Label } from "#src/components/ui/label";
+import { useCallback, useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { getEventConditionFields } from "#src/lib/upstream-node-fields";
 import { nodesAtom, selectedNodeAtom } from "#src/lib/workflow-graph-store";
@@ -51,8 +53,6 @@ export function WaitEventSelect({
   onUpdateConfig: UpdateNodeConfig;
   disabled: boolean;
 }) {
-  const eventsInputId = useId();
-
   const selected = readWaitSubscriptions(config);
   const catalog = useExtensionCatalog();
 
@@ -92,18 +92,19 @@ export function WaitEventSelect({
   return (
     <VStack gap={3}>
       <VStack gap={2}>
-        <Label htmlFor={eventsInputId}>Resume when the event is</Label>
+        <Text type="label">Resume when the event is</Text>
 
         {catalog.events.length > 0 ? (
           <EventMultiCombobox
             choices={catalog.events}
             disabled={disabled}
-            inputId={eventsInputId}
+            inputId="wait-events"
+            label="Resume when the event is"
             onValueChange={setEvents}
             value={selectedNames}
           />
         ) : (
-          <Text as="p" type="supporting">
+          <Text color="secondary" type="supporting">
             This server declares no Events, so there is nothing for a wait to
             park on. Ask whoever runs it to declare the Event.
           </Text>
@@ -111,10 +112,11 @@ export function WaitEventSelect({
       </VStack>
 
       {selected.length === 0 ? (
-        <WarningCallout>
-          Name at least one event. A wait with none cannot be resumed by
-          anything, and the workflow will not save.
-        </WarningCallout>
+        <Banner
+          description="A wait with none cannot be resumed by anything, and the workflow will not save."
+          status="warning"
+          title="Name at least one event"
+        />
       ) : (
         <List density="spacious" hasDividers>
           {selected.map((subscription) => (
@@ -227,7 +229,7 @@ function WaitSubscriptionRow({
             </Text>
           ) : null}
           {event ? null : (
-            <Text as="p" className="text-destructive" type="supporting">
+            <Text type="supporting" xstyle={styles.errorText}>
               This app no longer declares this Event; the workflow will not save
               until it is removed or declared again.
             </Text>
@@ -245,36 +247,32 @@ function WaitSubscriptionRow({
                 value={subscription.match}
               />
               <Button
-                disabled={disabled}
+                isDisabled={disabled}
+                label={`Resume on any ${subscription.event}`}
                 onClick={handleClear}
                 size="sm"
-                type="button"
                 variant="ghost"
-              >
-                Resume on any {subscription.event}
-              </Button>
+              />
             </VStack>
           ) : (
             <VStack gap={1}>
-              <Text as="p" type="supporting">
+              <Text color="secondary" type="supporting">
                 Any {subscription.event} resumes this run, whatever it carries.
               </Text>
               <Button
-                disabled={disabled || fields.length === 0}
+                isDisabled={disabled || fields.length === 0}
+                label="Add a match"
                 onClick={seedMatch}
                 size="sm"
-                type="button"
-                variant="outline"
-              >
-                Add a match
-              </Button>
+                variant="secondary"
+              />
             </VStack>
           )}
         </VStack>
       }
       endContent={
         <IconButton
-          icon={<X className="size-3.5" />}
+          icon={<Icon icon={X} size="sm" />}
           isDisabled={disabled}
           label={`Remove ${subscription.event}`}
           onClick={() => onRemove(subscription.event)}
@@ -287,3 +285,9 @@ function WaitSubscriptionRow({
     />
   );
 }
+
+const styles = stylex.create({
+  errorText: {
+    color: colorVars["--color-text-red"],
+  },
+});

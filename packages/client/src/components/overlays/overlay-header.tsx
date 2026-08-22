@@ -1,6 +1,11 @@
-import { ChevronLeftIcon, XIcon } from "lucide-react";
-import { Button } from "#src/components/ui/button";
-import { cn } from "@wfgraph/shared/utils";
+import * as stylex from "@stylexjs/stylex";
+import { Heading } from "@astryxdesign/core/Heading";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
+import { ChevronLeft, X } from "lucide-react";
 import { useOverlay, useOverlayPosition } from "./overlay-provider";
 import type { OverlayHeaderProps } from "./types";
 
@@ -11,7 +16,6 @@ export function OverlayHeader({
   showCloseButton = true,
   onBack,
   onClose,
-  className,
   overlayId,
 }: OverlayHeaderProps & { overlayId?: string }) {
   const { pop, closeAll } = useOverlay();
@@ -35,48 +39,47 @@ export function OverlayHeader({
   };
 
   return (
-    <div className={cn("relative flex flex-col gap-1.5 p-6 pb-0", className)}>
-      {/* Fixed min-height to prevent layout shift when back button appears */}
-      <div className="flex min-h-8 items-center gap-2">
+    <VStack gap={1.5} padding={6} paddingBlock={6} xstyle={styles.header}>
+      <HStack align="center" gap={2} minHeight={32}>
         {showBackButton && (
-          <Button
-            aria-label="Go back"
-            className="ml-[-8px] size-8 shrink-0"
+          <IconButton
+            icon={<Icon icon={ChevronLeft} size="sm" />}
+            label="Go back"
             onClick={handleBack}
-            size="icon"
             variant="ghost"
-          >
-            <ChevronLeftIcon className="size-5" />
-          </Button>
+          />
         )}
         {title && (
-          // The container points aria-labelledby here, so the id has to track
-          // the overlay's own id rather than being generated per render.
-          <h2
-            className="flex-1 font-semibold text-base leading-none"
+          <Heading
             id={overlayId ? `overlay-title-${overlayId}` : undefined}
+            level={2}
+            xstyle={styles.title}
           >
             {title}
-          </h2>
+          </Heading>
         )}
         {showCloseButton && (
-          <Button
-            aria-label="Close"
-            className="absolute top-4 right-4 size-8 shrink-0 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          <IconButton
+            icon={<Icon icon={X} size="sm" />}
+            label="Close"
             onClick={handleClose}
-            size="icon"
             variant="ghost"
-          >
-            <XIcon className="size-4" />
-          </Button>
+          />
         )}
-      </div>
-      {description && (
-        <p className="text-muted-foreground text-sm">{description}</p>
-      )}
-    </div>
+      </HStack>
+      {description && <Text color="secondary">{description}</Text>}
+    </VStack>
   );
 }
+
+const styles = stylex.create({
+  header: {
+    paddingBlockEnd: 0,
+  },
+  title: {
+    flex: 1,
+  },
+});
 
 /** Back button follows stack depth unless the caller overrides it. */
 export function SmartOverlayHeader({

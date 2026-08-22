@@ -126,8 +126,10 @@ function renderSelectWithGraph(
  * is the one a builder filtering a long list takes anyway.
  */
 function chooseEvent(view: RenderResult, query: string) {
-  const input = view.getByLabelText("Resume when the event is");
-  fireEvent.keyDown(input, { key: "ArrowDown" });
+  fireEvent.click(
+    view.getByRole("button", { name: "Resume when the event is" })
+  );
+  const input = view.getByPlaceholderText("Search Events");
   fireEvent.change(input, { target: { value: query } });
 
   const option = view.getAllByRole("option").at(0);
@@ -141,14 +143,15 @@ describe("WaitEventSelect", () => {
   it("offers every Event the app declares", () => {
     const { view } = renderSelect({ waitFor: [] });
 
-    const input = view.getByLabelText("Resume when the event is");
-    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.click(
+      view.getByRole("button", { name: "Resume when the event is" })
+    );
 
     expect(
       view.getAllByRole("option").map((option) => option.textContent)
     ).toEqual([
-      "Payment settledbilling/payment.settled",
-      "Nightly sweepops/nightly.swept",
+      "Payment settled (billing/payment.settled)",
+      "Nightly sweep (ops/nightly.swept)",
     ]);
   });
 

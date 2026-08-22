@@ -53,9 +53,19 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
   );
 
   return (
-    <div className="flex h-full max-h-[80vh] flex-col">
+    <div {...stylex.props(styles.frame)}>
       <SmartOverlayHeader overlayId={overlayId} title={title} />
       <NodeConfigPanel frame={frame} />
     </div>
   );
 }
+
+const styles = stylex.create({
+  frame: {
+    display: "flex",
+    flexDirection: "column",
+    height: "100%",
+    maxHeight: "80vh",
+  },
+});
+import * as stylex from "@stylexjs/stylex";

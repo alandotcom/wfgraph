@@ -33,6 +33,7 @@
     "@changesets/cli": "3.0.0",
     "@effect/tsgo": "0.36.4",
     "@effect/vitest": "catalog:",
+    "@stylexjs/unplugin": "catalog:",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "catalog:",
     "@types/d3-hierarchy": "^3.1.7",
@@ -51,6 +52,7 @@
     "tsdown": "^0.22.14",
     "tsx": "catalog:",
     "typescript": "^7.0.2",
+    "unplugin": "catalog:",
     "vite": "catalog:",
     "vitest": "^4.1.10"
   },

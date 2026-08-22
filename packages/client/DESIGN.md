@@ -103,7 +103,7 @@ components:
 
 Workflow Graph's editor is a cockpit for automation. The chrome recedes into graphite so the workflow graph owns the screen, and every light that comes on means something: a green border is a successful run, a red border is a failure, an animated border is work in progress. The user should feel they are reading gauges, never decoration.
 
-The system is built from shadcn/ui (new-york style) on Base UI primitives, styled with Tailwind v4 tokens declared in OKLCH. It is deliberately conventional where convention earns trust: standard buttons, standard dialogs, standard form controls, in the vocabulary a Linear or Vercel user already speaks. The strategic anti-references from PRODUCT.md hold here: this must never resemble the colorful n8n/Zapier canvas where every node shouts its brand, and it must never drift into SaaS-generic gradients and cream tints.
+The system is built from Astryx components and a Workflow Graph theme, with token-backed StyleX rules for canvas geometry. It is deliberately conventional where convention earns trust: standard buttons, dialogs, and form controls in the vocabulary a Linear or Vercel user already speaks. The strategic anti-references from PRODUCT.md hold here: this must never resemble the colorful n8n/Zapier canvas where every node shouts its brand, and it must never drift into SaaS-generic gradients and cream tints.
 
 **Key Characteristics:**
 
@@ -176,7 +176,7 @@ Both families are self-hosted through Fontsource variable packages, imported in 
 
 ## 4. Elevation
 
-Depth follows shadcn's native vocabulary and nothing more: hairline borders define structure, a whisper of shadow keeps surfaces from feeling painted on, and real shadow is reserved for things that genuinely float. In dark mode, tonal layering does most of the work (Void background, 0.205-lightness cards, 0.15 washes) because shadows read poorly on black. The card step has to survive 8-bit quantisation to do that job: anything under about oklch(0.12) rounds to the same rgb(0,0,0) as the background and separates by nothing at all.
+Depth follows Astryx's elevation vocabulary and nothing more: hairline borders define structure, a whisper of shadow keeps surfaces from feeling painted on, and real shadow is reserved for things that genuinely float. In dark mode, tonal layering does most of the work because shadows read poorly on black. The card step has to survive 8-bit quantisation to do that job: anything under about oklch(0.12) rounds to the same rgb(0,0,0) as the background and separates by nothing at all.
 
 ### Shadow Vocabulary
 
@@ -192,7 +192,7 @@ Depth follows shadcn's native vocabulary and nothing more: hairline borders defi
 
 ## 5. Components
 
-All primitives are shadcn/ui new-york on Base UI, refined and restrained: quiet at rest, precise on interaction. Focus is always the 3px `ring-ring/50` halo with a border-color shift; hover is always a fill change, never movement.
+All primitives are Astryx, refined and restrained: quiet at rest, precise on interaction. Focus follows the theme's visible halo and border shift; hover is always a fill change, never movement.
 
 ### Buttons
 
@@ -240,7 +240,7 @@ A quiet toolbar over the canvas and a Panel-toned sidebar for workflow lists and
 ### Do:
 
 - **Do** keep every neutral at zero chroma; the graphite ramp is the entire field.
-- **Do** route every status color through its token (`--destructive`, `--success`, `--warning`, `--info`, `--cancelled`). A Tailwind palette class like `green-500` in the editor is a defect.
+- **Do** route every status color through Astryx semantic tokens. A raw palette value in the editor is a defect.
 - **Do** hold body and muted text at or above 4.5:1: Graphite Mid (oklch(0.556 0 0)) is the lightness floor for text on Paper.
 - **Do** use the standard component vocabulary everywhere; a save button looks identical on every screen.
 - **Do** keep motion in the 150–250ms band, easing out, conveying state (the running-node border sweep is the model).

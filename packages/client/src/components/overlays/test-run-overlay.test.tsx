@@ -69,9 +69,12 @@ describe("TestRunOverlay", () => {
   it("opens on the first Start Event and draws its declared fields", () => {
     renderOverlay();
 
-    expect(screen.getByText("Appointment created")).toBeTruthy();
+    expect(
+      screen.getByLabelText("Which Event does this run stand in for?")
+        .textContent
+    ).toContain("Appointment created");
     expect(screen.getByLabelText(/appointment\.id/)).toBeTruthy();
-    expect(screen.getByLabelText(/appointment\.startsAt/)).toBeTruthy();
+    expect(screen.getAllByLabelText(/appointment\.startsAt/)).toHaveLength(2);
   });
 
   // The payload is the whole point: a run sent without one resolves every
@@ -115,7 +118,7 @@ describe("TestRunOverlay", () => {
   it("reports JSON it cannot read instead of sending it", () => {
     const { onRun } = renderOverlay();
 
-    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    fireEvent.click(screen.getByRole("radio", { name: "JSON" }));
     fireEvent.change(screen.getByLabelText("Payload JSON"), {
       target: { value: "{oops" },
     });

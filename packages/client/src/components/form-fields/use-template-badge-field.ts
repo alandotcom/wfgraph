@@ -147,7 +147,10 @@ export function useTemplateBadgeField(input: {
     onChange?.(nextValue);
 
     if (before === after) {
-      syncAutocomplete(nextValue, editor.readCaret()?.offset ?? nextValue.length);
+      syncAutocomplete(
+        nextValue,
+        editor.readCaret()?.offset ?? nextValue.length
+      );
       return;
     }
 
@@ -219,7 +222,9 @@ export function useTemplateBadgeField(input: {
   const handlePaste = useCallback(
     (event: React.ClipboardEvent) => {
       event.preventDefault();
-      if (editorRef.current?.insertText(event.clipboardData.getData("text/plain"))) {
+      if (
+        editorRef.current?.insertText(event.clipboardData.getData("text/plain"))
+      ) {
         handleInput();
       }
     },
@@ -281,8 +286,10 @@ export function useTemplateBadgeField(input: {
         return;
       }
 
-      const reachesBackward = event.key === "Backspace" || event.key === "ArrowLeft";
-      const reachesForward = event.key === "Delete" || event.key === "ArrowRight";
+      const reachesBackward =
+        event.key === "Backspace" || event.key === "ArrowLeft";
+      const reachesForward =
+        event.key === "Delete" || event.key === "ArrowRight";
       if (!(reachesBackward || reachesForward)) {
         return;
       }

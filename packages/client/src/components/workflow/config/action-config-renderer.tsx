@@ -1,17 +1,19 @@
-import { ChevronDown, Plus, X } from "lucide-react";
+import * as stylex from "@stylexjs/stylex";
+import { Button } from "@astryxdesign/core/Button";
+import { Collapsible } from "@astryxdesign/core/Collapsible";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { NumberInput } from "@astryxdesign/core/NumberInput";
+import { Selector } from "@astryxdesign/core/Selector";
+import { Text } from "@astryxdesign/core/Text";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { VStack } from "@astryxdesign/core/VStack";
+import { colorVars, spacingVars } from "@astryxdesign/core/theme/tokens.stylex";
+import { Plus, X } from "lucide-react";
 import { useState } from "react";
-import { Button } from "#src/components/ui/button";
-import { Input } from "#src/components/ui/input";
-import { Label } from "#src/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "#src/components/ui/select";
-import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
-import { TemplateBadgeTextarea } from "#src/components/ui/template-badge-textarea";
+import { TemplateBadgeInput } from "#src/components/form-fields/template-badge-input";
+import { TemplateBadgeTextarea } from "#src/components/form-fields/template-badge-textarea";
 import {
   type ActionConfigField,
   type ActionConfigFieldBase,
@@ -63,42 +65,39 @@ function TemplateTextareaField({
 
 function TextInputField({ field, value, onChange, disabled }: FieldProps) {
   return (
-    <Input
-      disabled={disabled}
-      id={field.key}
-      onChange={(e) => onChange(e.target.value)}
+    <TextInput
+      isDisabled={disabled}
+      isLabelHidden
+      isRequired={field.required}
+      label={field.label ?? field.key}
+      onChange={onChange}
       placeholder={field.placeholder}
       value={typeof value === "string" ? value : ""}
+      width="100%"
     />
   );
 }
 
 function NumberInputField({ field, value, onChange, disabled }: FieldProps) {
   const displayValue =
-    typeof value === "number" || typeof value === "string" ? `${value}` : "";
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim()
+        ? Number(value)
+        : null;
 
   return (
-    <Input
-      disabled={disabled}
-      id={field.key}
+    <NumberInput
+      hasClear
+      isDisabled={disabled}
+      isLabelHidden
+      isRequired={field.required}
+      label={field.label ?? field.key}
       min={field.min}
-      onChange={(event) => {
-        const next = event.target.value.trim();
-        if (!next) {
-          onChange(undefined);
-          return;
-        }
-
-        const parsed = Number.parseFloat(next);
-        if (!Number.isFinite(parsed)) {
-          return;
-        }
-
-        onChange(parsed);
-      }}
+      onChange={(next) => onChange(next ?? undefined)}
       placeholder={field.placeholder}
-      type="number"
       value={displayValue}
+      width="100%"
     />
   );
 }
@@ -109,22 +108,21 @@ function SelectField({ field, value, onChange, disabled }: FieldProps) {
   }
 
   return (
-    <Select
-      disabled={disabled}
-      onValueChange={onChange}
+    <Selector
+      isDisabled={disabled}
+      isLabelHidden
+      isRequired={field.required}
+      label={field.label ?? field.key}
+      onChange={onChange}
+      options={field.options.map((option) => ({
+        value: option.value,
+        label: option.label,
+      }))}
+      placement="below"
+      placeholder={field.placeholder}
       value={typeof value === "string" ? value : ""}
-    >
-      <SelectTrigger className="w-full" id={field.key}>
-        <SelectValue placeholder={field.placeholder} />
-      </SelectTrigger>
-      <SelectContent>
-        {field.options.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            {option.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+      width="100%"
+    />
   );
 }
 
@@ -190,48 +188,46 @@ function KeyValueField({ value, onChange, disabled }: FieldProps) {
   }
 
   return (
-    <div className="space-y-2">
+    <VStack gap={2}>
       {rows.map((entry) => (
-        <div className="flex items-center gap-2" key={entry._id}>
-          <Input
-            className="flex-1"
-            disabled={disabled}
-            onChange={(e) => updateEntry(entry._id, "name", e.target.value)}
+        <HStack align="end" gap={2} key={entry._id}>
+          <TextInput
+            isDisabled={disabled}
+            isLabelHidden
+            label="Name"
+            onChange={(next) => updateEntry(entry._id, "name", next)}
             placeholder="Name"
             value={entry.name}
+            width="100%"
+            xstyle={styles.flexField}
           />
           <TemplateBadgeInput
             ariaLabel="Value"
-            className="flex-1"
             disabled={disabled}
             onChange={(val) => updateEntry(entry._id, "value", val ?? "")}
             placeholder="Value"
             value={entry.value}
+            xstyle={styles.flexField}
           />
-          <Button
-            className="size-8 shrink-0"
-            disabled={disabled}
+          <IconButton
+            icon={<Icon icon={X} size="sm" />}
+            isDisabled={disabled}
+            label="Remove entry"
             onClick={() => removeEntry(entry._id)}
-            size="icon"
-            type="button"
+            size="sm"
             variant="ghost"
-          >
-            <X className="size-4" />
-          </Button>
-        </div>
+          />
+        </HStack>
       ))}
       <Button
-        className="h-8"
-        disabled={disabled}
+        icon={<Icon icon={Plus} size="sm" />}
+        isDisabled={disabled}
+        label="Add"
         onClick={addEntry}
         size="sm"
-        type="button"
-        variant="outline"
-      >
-        <Plus className="mr-1 size-3.5" />
-        Add
-      </Button>
-    </div>
+        variant="secondary"
+      />
+    </VStack>
   );
 }
 
@@ -266,19 +262,19 @@ function renderField(
   const FieldRenderer = FIELD_RENDERERS[field.type];
 
   return (
-    <div className="flex flex-col gap-2" key={field.key}>
+    <VStack gap={2} key={field.key}>
       {field.label && (
         // The id is what names the template fields, whose editor is a
         // contenteditable div that `htmlFor` cannot reach. The asterisk is
         // decorative once `required` reaches the control as `aria-required`.
-        <Label className="ml-1" htmlFor={field.key} id={`${field.key}-label`}>
+        <Text id={`${field.key}-label`} type="label">
           {field.label}
           {field.required && (
-            <span aria-hidden="true" className="text-destructive">
+            <span aria-hidden="true" {...stylex.props(styles.required)}>
               *
             </span>
           )}
-        </Label>
+        </Text>
       )}
       <FieldRenderer
         disabled={disabled}
@@ -286,7 +282,7 @@ function renderField(
         onChange={(val) => onUpdateConfig({ [field.key]: val })}
         value={value}
       />
-    </div>
+    </VStack>
   );
 }
 
@@ -308,30 +304,14 @@ function FieldGroup({
   disabled?: boolean;
   defaultExpanded?: boolean;
 }) {
-  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
-
   return (
-    <div className="space-y-2">
-      <button
-        className="ml-1 flex items-center gap-1 text-left"
-        onClick={() => setIsExpanded(!isExpanded)}
-        type="button"
-      >
-        <span className="font-medium text-sm">{label}</span>
-        <ChevronDown
-          className={`size-3.5 text-muted-foreground transition-transform duration-200 ${
-            isExpanded ? "" : "-rotate-90"
-          }`}
-        />
-      </button>
-      {isExpanded && (
-        <div className="ml-1 space-y-4 border-primary/50 border-l-2 py-2 pl-3">
-          {fields.map((field) =>
-            renderField(field, config, onUpdateConfig, disabled)
-          )}
-        </div>
-      )}
-    </div>
+    <Collapsible defaultIsOpen={defaultExpanded} trigger={label}>
+      <VStack gap={4} xstyle={styles.groupContent}>
+        {fields.map((field) =>
+          renderField(field, config, onUpdateConfig, disabled)
+        )}
+      </VStack>
+    </Collapsible>
   );
 }
 
@@ -374,3 +354,22 @@ export function ActionConfigRenderer({
     </>
   );
 }
+
+const styles = stylex.create({
+  flexField: {
+    flex: 1,
+    minWidth: 0,
+  },
+  required: {
+    color: colorVars["--color-error"],
+    marginInlineStart: spacingVars["--spacing-1"],
+  },
+  groupContent: {
+    borderInlineStartColor: colorVars["--color-accent"],
+    borderInlineStartStyle: "solid",
+    borderInlineStartWidth: 2,
+    marginInlineStart: spacingVars["--spacing-1"],
+    paddingBlock: spacingVars["--spacing-2"],
+    paddingInlineStart: spacingVars["--spacing-3"],
+  },
+});

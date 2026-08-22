@@ -1,4 +1,7 @@
 import { type NodeProps, Position } from "@xyflow/react";
+import * as stylex from "@stylexjs/stylex";
+import { Icon } from "@astryxdesign/core/Icon";
+import { colorVars } from "@astryxdesign/core/theme/tokens.stylex";
 import { Play } from "lucide-react";
 import { memo } from "react";
 import {
@@ -8,11 +11,7 @@ import {
   NodeTitle,
 } from "#src/components/flow-elements/node";
 import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
-import {
-  NODE_ICON_CLASS,
-  workflowNodeSize,
-} from "#src/lib/workflow-node-dimensions";
-import { cn } from "@wfgraph/shared/utils";
+import { workflowNodeSize } from "#src/lib/workflow-node-dimensions";
 import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
@@ -72,7 +71,6 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
 
   return (
     <Node
-      className={cn(selected && "border-primary")}
       handles={{
         target: false,
         source: [
@@ -95,17 +93,19 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
       }}
       status={status}
       style={workflowNodeSize()}
+      xstyle={selected ? styles.selected : undefined}
     >
       <div
-        className="pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none"
+        {...stylex.props(styles.outletLabel)}
         style={{ left: STARTED_HANDLE_LEFT }}
       >
         Started
       </div>
       <div
-        className={cn(
-          "pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none",
-          canceledInactive && "opacity-50"
+        data-inactive={canceledInactive || undefined}
+        {...stylex.props(
+          styles.outletLabel,
+          canceledInactive && styles.inactive
         )}
         style={{ left: CANCELED_HANDLE_LEFT }}
       >
@@ -118,10 +118,7 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
       <NodeIssueBadge issues={data.issues} />
 
       <NodeBody>
-        <Play
-          className={cn(NODE_ICON_CLASS, "text-node-lifecycle")}
-          strokeWidth={1.5}
-        />
+        <Icon icon={Play} size="md" xstyle={styles.icon} />
         <NodeTitle>{displayTitle}</NodeTitle>
         {displayDescription && (
           <NodeDescription>{displayDescription}</NodeDescription>
@@ -132,3 +129,23 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
 });
 
 LifecycleNode.displayName = "LifecycleNode";
+
+const styles = stylex.create({
+  selected: { borderColor: colorVars["--color-accent"] },
+  inactive: { opacity: 0.5 },
+  icon: { color: colorVars["--color-text-green"] },
+  outletLabel: {
+    backgroundColor: colorVars["--color-background-card"],
+    border: `1px solid ${colorVars["--color-border"]}`,
+    borderRadius: 4,
+    bottom: -32,
+    color: colorVars["--color-text-secondary"],
+    fontSize: 12,
+    lineHeight: 1,
+    paddingBlock: 4,
+    paddingInline: 6,
+    pointerEvents: "none",
+    position: "absolute",
+    transform: "translateX(-50%)",
+  },
+});

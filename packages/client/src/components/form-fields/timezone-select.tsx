@@ -1,21 +1,10 @@
-"use client";
-
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-  whenChosen,
-} from "#src/components/ui/select";
+import { Selector } from "@astryxdesign/core/Selector";
 
 interface TimezoneSelectProps {
   value: string;
   onValueChange: (value: string) => void;
   disabled?: boolean;
-  id?: string;
+  label?: string;
 }
 
 const TIMEZONES = [
@@ -103,29 +92,25 @@ export function TimezoneSelect({
   value,
   onValueChange,
   disabled,
-  id,
+  label = "Timezone",
 }: TimezoneSelectProps) {
   return (
-    <Select
-      disabled={disabled}
-      onValueChange={whenChosen(onValueChange)}
+    <Selector
+      hasSearch
+      isDisabled={disabled}
+      label={label}
+      onChange={onValueChange}
+      options={TIMEZONES.flatMap((group) =>
+        group.zones.map((zone) => ({
+          value: zone.value,
+          label: `${zone.label} — ${group.label}`,
+        }))
+      )}
+      placement="below"
+      placeholder="Select timezone"
+      searchPlaceholder="Search timezones"
       value={value}
-    >
-      <SelectTrigger className="w-full" id={id}>
-        <SelectValue placeholder="Select timezone" />
-      </SelectTrigger>
-      <SelectContent>
-        {TIMEZONES.map((group) => (
-          <SelectGroup key={group.label}>
-            <SelectLabel>{group.label}</SelectLabel>
-            {group.zones.map((zone) => (
-              <SelectItem key={zone.value} value={zone.value}>
-                {zone.label}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        ))}
-      </SelectContent>
-    </Select>
+      width="100%"
+    />
   );
 }

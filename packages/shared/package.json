@@ -13,12 +13,10 @@
     "@marcbachmann/cel-js": "catalog:",
     "@orpc/contract": "catalog:",
     "@orpc/openapi": "catalog:",
-    "clsx": "^2.1.1",
     "effect": "catalog:",
     "es-toolkit": "catalog:",
     "graphology": "catalog:",
-    "nanoid": "catalog:",
-    "tailwind-merge": "^3.6.0"
+    "nanoid": "catalog:"
   },
   "devDependencies": {
     "@standard-schema/spec": "catalog:",

@@ -2,6 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <!-- The StyleX dev stylesheet is injected at the end of this head. Declare
+         its priority layers first so consumer xstyle rules outrank Astryx
+         component defaults in both development and production. -->
+    <style>
+      @layer reset, theme, base, astryx-base, astryx-theme, components, utilities, priority1, priority2, priority3, priority4;
+    </style>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       http-equiv="Cache-Control"
@@ -12,7 +18,7 @@
     <base href="/" />
     <title>Workflow Graph</title>
   </head>
-  <body class="antialiased">
+  <body>
     <div id="root"></div>
     <script type="module" src="./main.tsx"></script>
   </body>

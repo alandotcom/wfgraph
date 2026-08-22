@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { getDefaultStore } from "jotai";
 import { type ReactElement, useState } from "react";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
@@ -122,7 +128,7 @@ async function seedTemplateContext(selectedNodeId = "wait_1") {
  * timestamp: ranking puts it ahead of the plain string beside it.
  */
 function findTimestampOption(): HTMLElement {
-  const option = document.body.querySelector(".cursor-pointer");
+  const option = screen.queryAllByRole("option").at(0);
 
   if (!(option instanceof HTMLElement)) {
     throw new Error("Failed to find autocomplete option");
@@ -133,15 +139,13 @@ function findTimestampOption(): HTMLElement {
 
 /** The menu as it reads, top to bottom. */
 function menuRows(): string[] {
-  return Array.from(document.body.querySelectorAll(".cursor-pointer")).map(
-    (option) => option.textContent ?? ""
-  );
+  return screen
+    .queryAllByRole("option")
+    .map((option) => option.textContent ?? "");
 }
 
 function findAutocompleteOptionByText(text: string): HTMLElement {
-  const options = Array.from(
-    document.body.querySelectorAll(".cursor-pointer")
-  ).filter((option): option is HTMLElement => option instanceof HTMLElement);
+  const options = screen.queryAllByRole("option");
   const match = options.find((option) => option.textContent?.includes(text));
 
   if (!match) {
@@ -177,7 +181,9 @@ function ControlledTemplateBadgeInput({
 }
 
 function DurationTemplateBadgeInput() {
-  return <TemplateBadgeInput fieldType="duration" onChange={() => {}} value="" />;
+  return (
+    <TemplateBadgeInput fieldType="duration" onChange={() => {}} value="" />
+  );
 }
 
 function ControlledTemplateBadgeInputWithNodeContext({
@@ -221,7 +227,13 @@ function PlaceholderTemplateBadgeInput({
 }
 
 function UncontrolledTemplateBadgeInput({ value }: { value: string }) {
-  return <TemplateBadgeInput fieldType="timestamp" onChange={() => {}} value={value} />;
+  return (
+    <TemplateBadgeInput
+      fieldType="timestamp"
+      onChange={() => {}}
+      value={value}
+    />
+  );
 }
 
 function ControlledTemplateBadgeTextarea({
@@ -727,7 +739,11 @@ describe("Template badge autocomplete node rows", () => {
         {
           id: "wait_1",
           position: { x: 0, y: 300 },
-          data: { label: "Wait", type: "action", config: { actionType: "Wait" } },
+          data: {
+            label: "Wait",
+            type: "action",
+            config: { actionType: "Wait" },
+          },
           selected: true,
         },
       ],

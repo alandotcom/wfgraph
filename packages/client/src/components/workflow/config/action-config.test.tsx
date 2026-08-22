@@ -44,6 +44,9 @@ describe("ActionConfig", () => {
       </QueryClientProvider>
     );
 
-    expect(view.getAllByText("Condition")).toHaveLength(2);
+    const conditionFieldLabels = Array.from(
+      view.container.querySelectorAll('[data-type="label"]')
+    ).filter((label) => label.textContent === "Condition");
+    expect(conditionFieldLabels).toHaveLength(1);
   });
 });

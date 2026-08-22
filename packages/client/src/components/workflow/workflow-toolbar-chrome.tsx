@@ -7,10 +7,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useReactFlow } from "@xyflow/react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
-  Check,
-  ChevronDown,
   Copy,
-  Loader2,
   Play,
   Plus,
   Redo2,
@@ -19,6 +16,7 @@ import {
   Trash2,
   Undo2,
   Upload,
+  Workflow as WorkflowGlyph,
 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useState } from "react";
@@ -26,16 +24,18 @@ import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useIsMobile } from "#src/hooks/use-mobile";
-import { Button } from "#src/components/ui/button";
-import { ButtonGroup } from "#src/components/ui/button-group";
+import { Button } from "@astryxdesign/core/Button";
+import { ButtonGroup } from "@astryxdesign/core/ButtonGroup";
+import { DropdownMenu } from "@astryxdesign/core/DropdownMenu";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "#src/components/ui/dropdown-menu";
-import { WorkflowIcon } from "#src/components/ui/workflow-icon";
+  SegmentedControl,
+  SegmentedControlItem,
+} from "@astryxdesign/core/SegmentedControl";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-dialog";
 import {
   WORKFLOW_NODE_HEIGHT,
@@ -55,7 +55,6 @@ import {
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-import { cn } from "@wfgraph/shared/utils";
 
 function PublishButton({
   isPublishing,
@@ -71,24 +70,14 @@ function PublishButton({
     // and it used to be the fifth identical 36px square in a row of six. It gets
     // the primary fill and a written label so it stops reading like Redo.
     <Button
-      className="relative gap-1.5"
-      disabled={disabled || isPublishing}
+      icon={<Icon icon={Upload} size="sm" />}
+      isDisabled={disabled}
+      isLoading={isPublishing}
+      label={isPublishing ? "Publishing" : "Publish"}
       onClick={handlePublish}
-      size="default"
-      title={isPublishing ? "Publishing..." : "Publish workflow"}
-      variant="default"
-    >
-      {isPublishing ? (
-        <Loader2 className="size-4 animate-spin" data-icon="inline-start" />
-      ) : (
-        <Upload className="size-4" data-icon="inline-start" />
-      )}
-      {/* Same breakpoint the toolbar row uses to go horizontal, so the label
-          appears exactly when there is a row wide enough to hold it. */}
-      <span className="hidden @xl:inline">
-        {isPublishing ? "Publishing" : "Publish"}
-      </span>
-    </Button>
+      tooltip="Publish workflow"
+      variant="primary"
+    />
   );
 }
 
@@ -102,20 +91,15 @@ function SaveButton({
   const hasRealNodes = state.nodes.some((node) => node.type !== "add");
 
   return (
-    <Button
-      className="relative border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
-      disabled={!hasRealNodes || state.isGenerating || state.isSaving}
+    <IconButton
+      icon={<Icon icon={Save} size="sm" />}
+      isDisabled={!hasRealNodes || state.isGenerating}
+      isLoading={state.isSaving}
+      label="Save workflow"
       onClick={handleSave}
-      size="icon"
-      title={state.isSaving ? "Saving..." : "Save workflow"}
+      tooltip={state.isSaving ? "Saving workflow" : "Save workflow"}
       variant="secondary"
-    >
-      {state.isSaving ? (
-        <Loader2 className="size-4 animate-spin" />
-      ) : (
-        <Save className="size-4" />
-      )}
-    </Button>
+    />
   );
 }
 
@@ -133,22 +117,15 @@ function RunButtonGroup({
     !state.currentWorkflowId;
 
   return (
-    <ButtonGroup className="flex" orientation="horizontal">
-      <Button
-        className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
-        disabled={isDisabled}
-        onClick={() => actions.handleExecute()}
-        size="icon"
-        title="Run Workflow"
-        variant="secondary"
-      >
-        {state.isExecuting ? (
-          <Loader2 className="size-4 animate-spin" />
-        ) : (
-          <Play className="size-4" />
-        )}
-      </Button>
-    </ButtonGroup>
+    <IconButton
+      icon={<Icon icon={Play} size="sm" />}
+      isDisabled={isDisabled}
+      isLoading={state.isExecuting}
+      label="Run workflow"
+      onClick={() => actions.handleExecute()}
+      tooltip="Run workflow"
+      variant="secondary"
+    />
   );
 }
 
@@ -161,20 +138,13 @@ export function DuplicateButton({
 }) {
   return (
     <Button
-      className="h-9 border hover:bg-secondary dark:hover:bg-secondary"
-      disabled={isDuplicating}
+      icon={<Icon icon={Copy} size="sm" />}
+      isLoading={isDuplicating}
+      label="Duplicate"
       onClick={onDuplicate}
-      size="sm"
-      title="Duplicate to your workflows"
+      tooltip="Duplicate to your workflows"
       variant="secondary"
-    >
-      {isDuplicating ? (
-        <Loader2 className="mr-2 size-4 animate-spin" />
-      ) : (
-        <Copy className="mr-2 size-4" />
-      )}
-      Duplicate
-    </Button>
+    />
   );
 }
 
@@ -300,81 +270,66 @@ export function ToolbarActions({
           into a 368px column over the graph and reversed the control order
           against desktop, so muscle memory broke at the breakpoint. The row
           scrolls instead. */}
-      <ButtonGroup className="flex" orientation="horizontal">
-        <Button
-          className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
-          disabled={state.isGenerating}
-          onClick={handleAddStep}
-          size="icon"
-          title="Add Step"
-          variant="secondary"
-        >
-          <Plus className="size-4" />
-        </Button>
-      </ButtonGroup>
+      <IconButton
+        icon={<Icon icon={Plus} size="sm" />}
+        isDisabled={state.isGenerating}
+        label="Add step"
+        onClick={handleAddStep}
+        tooltip="Add step"
+        variant="secondary"
+      />
 
       {/* Config and Delete, shown only while the properties rail is absent.
           Gated on the same test the rail uses, not on the toolbar's container
           width: those two disagreed, so a narrow canvas on a wide window showed
           the sheet button while the rail was still mounted, and both edited the
           same node. */}
-      <ButtonGroup
-        className={cn("flex", isMobile ? "" : "hidden")}
-        orientation="horizontal"
-      >
-        <Button
-          className="border hover:bg-secondary dark:hover:bg-secondary"
-          onClick={openSheet}
-          size="icon"
-          title="Configuration"
-          variant="secondary"
-        >
-          <Settings2 className="size-4" />
-        </Button>
-        {hasSelection && (
-          <Button
-            className="border hover:bg-secondary dark:hover:bg-secondary"
-            onClick={handleDeleteConfirm}
-            size="icon"
-            title="Delete"
+      {isMobile ? (
+        <ButtonGroup label="Mobile editor actions" orientation="horizontal">
+          <IconButton
+            icon={<Icon icon={Settings2} size="sm" />}
+            label="Configuration"
+            onClick={openSheet}
+            tooltip="Configuration"
             variant="secondary"
-          >
-            <Trash2 className="size-4" />
-          </Button>
-        )}
-      </ButtonGroup>
+          />
+          {hasSelection ? (
+            <IconButton
+              icon={<Icon icon={Trash2} size="sm" />}
+              label="Delete selection"
+              onClick={handleDeleteConfirm}
+              tooltip="Delete selection"
+              variant="secondary"
+            />
+          ) : null}
+        </ButtonGroup>
+      ) : null}
 
-      <ButtonGroup className="flex" orientation="horizontal">
-        <Button
-          className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
-          disabled={!state.canUndo || state.isGenerating}
+      <ButtonGroup label="History actions" orientation="horizontal">
+        <IconButton
+          icon={<Icon icon={Undo2} size="sm" />}
+          isDisabled={!state.canUndo || state.isGenerating}
+          label="Undo"
           onClick={() => state.undo()}
-          size="icon"
-          title="Undo"
+          tooltip="Undo"
           variant="secondary"
-        >
-          <Undo2 className="size-4" />
-        </Button>
-        <Button
-          className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
-          disabled={!state.canRedo || state.isGenerating}
+        />
+        <IconButton
+          icon={<Icon icon={Redo2} size="sm" />}
+          isDisabled={!state.canRedo || state.isGenerating}
+          label="Redo"
           onClick={() => state.redo()}
-          size="icon"
-          title="Redo"
+          tooltip="Redo"
           variant="secondary"
-        >
-          <Redo2 className="size-4" />
-        </Button>
-      </ButtonGroup>
-
-      <ButtonGroup className="flex" orientation="horizontal">
-        <SaveButton handleSave={actions.handleSave} state={state} />
-        <PublishButton
-          disabled={publishDisabled}
-          handlePublish={actions.handlePublish}
-          isPublishing={actions.isPublishing}
         />
       </ButtonGroup>
+
+      <SaveButton handleSave={actions.handleSave} state={state} />
+      <PublishButton
+        disabled={publishDisabled}
+        handlePublish={actions.handlePublish}
+        isPublishing={actions.isPublishing}
+      />
 
       <RunButtonGroup actions={actions} state={state} />
       {workflowId && (
@@ -382,30 +337,19 @@ export function ToolbarActions({
         // workflow sends real SMS and email, and it previously reported no state
         // at all to a screen reader while distinguishing the two visually by a
         // 3% fill difference.
-        <ButtonGroup
-          aria-label="Workflow mode"
-          className="flex"
-          orientation="horizontal"
-          role="radiogroup"
+        <SegmentedControl
+          isDisabled={state.isSaving || state.isGenerating}
+          label="Workflow mode"
+          onChange={(mode) => {
+            if (mode === "live" || mode === "test") {
+              void actions.handleSetWorkflowMode(mode);
+            }
+          }}
+          value={state.workflowMode}
         >
-          {(["live", "test"] as const).map((mode) => {
-            const isSelected = state.workflowMode === mode;
-            return (
-              <Button
-                aria-checked={isSelected}
-                className="border"
-                disabled={state.isSaving || state.isGenerating}
-                key={mode}
-                onClick={() => actions.handleSetWorkflowMode(mode)}
-                role="radio"
-                size="default"
-                variant={isSelected ? "default" : "outline"}
-              >
-                {mode === "live" ? "Live" : "Test"}
-              </Button>
-            );
-          })}
-        </ButtonGroup>
+          <SegmentedControlItem label="Live" value="live" />
+          <SegmentedControlItem label="Test" value="test" />
+        </SegmentedControl>
       )}
     </>
   );
@@ -428,103 +372,75 @@ export function WorkflowMenuComponent({
 
   return (
     <>
-      <div className="flex flex-col gap-1">
-        {/* A breadcrumb rather than one dropdown: the way out of the editor used
-            to be the first item inside this menu, which is a place nobody looks
-            for navigation. The crumb leaves; the trigger beside it still
-            switches workflows. */}
-        <div className="flex h-9 max-w-[260px] items-center overflow-hidden rounded-md border bg-secondary text-secondary-foreground sm:max-w-none">
-          <button
-            className="flex h-full shrink-0 cursor-pointer items-center gap-2 px-3 font-medium text-sm transition-all hover:bg-accent dark:hover:bg-accent"
+      <VStack gap={1}>
+        <HStack gap={1}>
+          <Button
+            icon={<Icon icon={WorkflowGlyph} size="sm" />}
+            label="Dashboard"
             onClick={() => navigate({ to: "/" })}
-            type="button"
-          >
-            <WorkflowIcon className="size-4 shrink-0" />
-            <span className="hidden @xl:inline">Dashboard</span>
-          </button>
-          <span aria-hidden="true" className="text-muted-foreground/60">
-            /
-          </span>
+            variant="secondary"
+          />
           <DropdownMenu
-            onOpenChange={(open) => open && actions.loadWorkflows()}
-          >
-            <DropdownMenuTrigger className="flex h-full min-w-0 cursor-pointer items-center gap-2 px-3 font-medium text-sm transition-all hover:bg-accent dark:hover:bg-accent">
-              {/* Named for what it is when there is no id yet: a canvas nobody
-                  has saved. It used to read "Workflow Dashboard" here, which
-                  named a screen the user was not on. */}
-              <p className="truncate font-medium text-sm">
-                {state.workflowName || "Untitled workflow"}
-              </p>
-              <ChevronDown className="size-3 shrink-0 opacity-50" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-64">
-              <DropdownMenuItem
-                className="flex items-center gap-2"
-                onClick={() => {
+            button={{
+              label: state.workflowName || "Untitled workflow",
+              variant: "secondary",
+              width: 220,
+            }}
+            items={[
+              {
+                icon: Plus,
+                label: "New workflow...",
+                onClick: () => {
                   setCreateDialogSession((session) => session + 1);
                   setIsCreateDialogOpen(true);
-                }}
-              >
-                <Plus className="size-4" />
-                New Workflow...
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {state.allWorkflows.length === 0 ? (
-                <DropdownMenuItem disabled>No workflows found</DropdownMenuItem>
-              ) : (
-                state.allWorkflows
-                  .filter((w) => w.name !== "__current__")
-                  .map((workflow) => (
-                    <DropdownMenuItem
-                      className="flex items-center justify-between"
-                      key={workflow.id}
-                      onClick={() =>
+                },
+              },
+              { type: "divider" },
+              ...(state.allWorkflows.length === 0
+                ? [{ label: "No workflows found", isDisabled: true }]
+                : state.allWorkflows
+                    .filter((workflow) => workflow.name !== "__current__")
+                    .map((workflow) => ({
+                      endContent:
+                        workflow.id === state.currentWorkflowId ? (
+                          <Icon color="accent" icon="check" size="sm" />
+                        ) : undefined,
+                      id: workflow.id,
+                      label: workflow.name,
+                      onClick: () =>
                         navigate({
                           to: "/workflows/$workflowId",
                           params: { workflowId: workflow.id },
-                        })
-                      }
-                    >
-                      <span className="truncate">{workflow.name}</span>
-                      {workflow.id === state.currentWorkflowId && (
-                        <Check className="size-4 shrink-0" />
-                      )}
-                    </DropdownMenuItem>
-                  ))
-              )}
-              {workflowId && state.isOwner && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="flex items-center gap-2"
-                    disabled={actions.isDuplicating}
-                    onClick={actions.handleDuplicate}
-                  >
-                    {actions.isDuplicating ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Copy className="size-4" />
-                    )}
-                    Duplicate
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="flex items-center gap-2 text-destructive focus:text-destructive"
-                    onClick={actions.handleDeleteWorkflow}
-                  >
-                    <Trash2 className="size-4" />
-                    Delete Workflow
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-        {workflowId && !state.isOwner && (
-          <span className="text-muted-foreground text-xs @xl:hidden">
+                        }),
+                    }))),
+              ...(workflowId && state.isOwner
+                ? [
+                    { type: "divider" as const },
+                    {
+                      icon: Copy,
+                      isDisabled: actions.isDuplicating,
+                      label: "Duplicate",
+                      onClick: actions.handleDuplicate,
+                    },
+                    {
+                      icon: Trash2,
+                      label: "Delete workflow",
+                      onClick: actions.handleDeleteWorkflow,
+                      variant: "destructive" as const,
+                    },
+                  ]
+                : []),
+            ]}
+            menuWidth={256}
+            onClick={actions.loadWorkflows}
+          />
+        </HStack>
+        {workflowId && !state.isOwner ? (
+          <Text color="secondary" type="supporting">
             Read-only
-          </span>
-        )}
-      </div>
+          </Text>
+        ) : null}
+      </VStack>
       <CreateWorkflowDialog
         key={createDialogSession}
         existingWorkflowNames={state.allWorkflows.map(

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { toast } from "sonner";
+import { notifications as toast } from "#src/lib/notifications";
 import {
   orpcQuery,
   refreshRunHistory,

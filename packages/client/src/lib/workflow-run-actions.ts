@@ -6,7 +6,7 @@
  * only drives a run once the builder has cleared (or bypassed) those checks.
  */
 
-import { toast } from "sonner";
+import { notifications as toast } from "#src/lib/notifications";
 import { getClientLogger } from "#src/lib/logger";
 import type { TestRunRequest } from "#src/components/overlays/test-run-overlay";
 import type { WorkflowExecuteResult } from "#src/lib/rpc-client";

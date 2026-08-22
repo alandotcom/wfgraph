@@ -35,9 +35,8 @@ describe("WorkflowRunSummaryRow", () => {
     );
 
     const row = view.getByTestId("workflow-run-summary-row");
-    expect(row.className).toContain("grid-cols-[1.5rem_minmax(0,1fr)_5rem]");
-    expect(row.className).toContain("py-3");
-    expect(row.className).toContain("bg-muted/50");
+    expect(row.tagName).toBe("BUTTON");
+    expect(row.getAttribute("data-selected")).toBe("true");
 
     fireEvent.click(row);
     expect(onClick).toHaveBeenCalledTimes(1);

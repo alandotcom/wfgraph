@@ -1,3 +1,11 @@
+import * as stylex from "@stylexjs/stylex";
+import { Banner } from "@astryxdesign/core/Banner";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Text } from "@astryxdesign/core/Text";
+import { Token } from "@astryxdesign/core/Token";
+import { Toolbar } from "@astryxdesign/core/Toolbar";
+import { VStack } from "@astryxdesign/core/VStack";
+import { spacingVars } from "@astryxdesign/core/theme/tokens.stylex";
 import { useQuery } from "@tanstack/react-query";
 import { UserMenu } from "#src/components/workflows/user-menu";
 import {
@@ -33,89 +41,104 @@ export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
     enabled: Boolean(workflowId),
   });
 
+  const startContent = (
+    <HStack gap={2} wrap="nowrap" xstyle={styles.nonShrinkingRow}>
+      <WorkflowMenuComponent
+        actions={actions}
+        state={state}
+        workflowId={workflowId}
+      />
+      {workflowId && state.workflowMode === "test" ? (
+        <Token color="yellow" label="Test mode" size="sm" />
+      ) : null}
+      {workflowId ? (
+        <WorkflowPublicationBadge
+          hasUnpublishedChanges={hasUnpublishedChanges}
+          isPublished={isPublished}
+        />
+      ) : null}
+      {workflowId && !state.isOwner ? (
+        <Text color="secondary" type="supporting">
+          Read-only
+        </Text>
+      ) : null}
+      <WorkflowIssuesChip onOpen={actions.handleShowIssues} />
+      <WorkflowSaveStatus />
+    </HStack>
+  );
+
+  const actionsContent = (
+    <HStack gap={2} wrap="nowrap" xstyle={styles.nonShrinkingRow}>
+      <ToolbarActions actions={actions} state={state} workflowId={workflowId} />
+      {workflowId && !state.isOwner ? (
+        <DuplicateButton
+          isDuplicating={actions.isDuplicating}
+          onDuplicate={actions.handleDuplicate}
+        />
+      ) : null}
+      <UserMenu />
+    </HStack>
+  );
+
   return (
     <>
-      {/* One row spanning the canvas rather than two independent corner layers.
-          The right-hand group used to be its own absolutely positioned stack, so
-          at 1024px it painted over 67 of the Test Mode badge's 74px. The
-          container query switches to a column on canvas width, which is the
-          width this row actually has; a viewport-width `lg:` was stacking nine
-          icon buttons down the middle of the graph while the viewport was still
-          wide. */}
-      <div className="pointer-events-none absolute inset-x-4 top-4 z-10 flex flex-col items-stretch gap-2 @container @xl:flex-row @xl:items-start @xl:justify-between">
-        <div className="pointer-events-auto flex min-w-0 flex-wrap items-center gap-2">
-          <WorkflowMenuComponent
-            actions={actions}
-            state={state}
-            workflowId={workflowId}
-          />
-          {workflowId &&
-            state.workflowMode === "test" && (
-              // Warning rather than destructive: test mode destroys nothing, and
-              // spending the failure colour here lit the failure signal before any
-              // run had failed.
-              <span className="rounded-md border border-warning/40 bg-warning/10 px-2 py-1 font-medium text-warning text-xs">
-                Test mode
-              </span>
-            )}
-          {workflowId && (
-            <WorkflowPublicationBadge
-              hasUnpublishedChanges={hasUnpublishedChanges}
-              isPublished={isPublished}
-            />
-          )}
-          {workflowId && !state.isOwner && (
-            <span className="text-muted-foreground text-xs">Read-only</span>
-          )}
-          {/* Both of these change width as the editor is used -- a count grows a
-              digit, a save label swaps word -- so they sit last in the
-              left-aligned status cluster. Between the action buttons, where they
-              started, every such change reflowed the row and moved a control out
-              from under the pointer. Here they grow into empty canvas and push
-              nothing. */}
-          {/* Last in the row because both change width as the editor is used,
-              and here they grow into empty canvas rather than moving a control
-              out from under the pointer. Not gated on `workflowId`, unlike the
-              badges above: a canvas nobody has saved yet has the most to lose.
-              Each is owner-only and checks that for itself. */}
-          <WorkflowIssuesChip onOpen={actions.handleShowIssues} />
-          <WorkflowSaveStatus />
-        </div>
-
-        {/* One line at every width, scrolling sideways when the canvas is too
-            narrow to hold it. Wrapping put the toolbar over the graph.
-            `justify-end` only once there is room: on an overflowing scroll
-            container it pins content to the right and pushes the first controls
-            off the left edge, where no scroll position can reach them. */}
-        <div className="pointer-events-auto flex items-center gap-2 overflow-x-auto @xl:justify-end">
-          <ToolbarActions
-            actions={actions}
-            state={state}
-            workflowId={workflowId}
-          />
-          <div className="flex items-center gap-2">
-            {workflowId && !state.isOwner && (
-              <DuplicateButton
-                isDuplicating={actions.isDuplicating}
-                onDuplicate={actions.handleDuplicate}
-              />
-            )}
-            <UserMenu />
-          </div>
-        </div>
-      </div>
-      {workflowId &&
-        state.workflowMode === "test" && (
-          // Bottom-centre, so it stops sharing the bottom-right corner with the
-          // minimap; the two overlapped by 199x50px.
-          <div className="-translate-x-1/2 pointer-events-none absolute bottom-4 left-1/2 z-10 max-w-xl rounded-md border border-warning/30 bg-warning/10 px-4 py-2 text-xs">
-            <p className="font-medium text-warning">Test mode active</p>
-            <p className="font-medium text-foreground">
-              No real email or SMS is sent unless a node is configured to route
-              to a test recipient.
-            </p>
-          </div>
-        )}
+      <VStack gap={2} xstyle={styles.frame}>
+        <Toolbar
+          gap={2}
+          label="Workflow navigation and status"
+          size="md"
+          startContent={startContent}
+          variant="transparent"
+          xstyle={styles.toolbar}
+        />
+        <Toolbar
+          gap={2}
+          label="Workflow actions"
+          size="md"
+          startContent={actionsContent}
+          variant="transparent"
+          xstyle={styles.toolbar}
+        />
+      </VStack>
+      {workflowId && state.workflowMode === "test" ? (
+        <Banner
+          container="card"
+          description="No real email or SMS is sent unless a node routes to a test recipient."
+          elevation="low"
+          status="warning"
+          title="Test mode active"
+          xstyle={styles.testModeBanner}
+        />
+      ) : null}
     </>
   );
 };
+
+const styles = stylex.create({
+  frame: {
+    insetInline: spacingVars["--spacing-4"],
+    maxWidth: `calc(100% - ${spacingVars["--spacing-8"]})`,
+    pointerEvents: "none",
+    position: "absolute",
+    top: spacingVars["--spacing-4"],
+    zIndex: 10,
+  },
+  toolbar: {
+    overflowX: "auto",
+    pointerEvents: "auto",
+  },
+  nonShrinkingRow: {
+    flexShrink: 0,
+    minWidth: "max-content",
+  },
+  testModeBanner: {
+    bottom: spacingVars["--spacing-4"],
+    insetInlineStart: "50%",
+    maxWidth: "40rem",
+    pointerEvents: "none",
+    position: "absolute",
+    transform: "translateX(-50%)",
+    width: `calc(100% - ${spacingVars["--spacing-8"]})`,
+    zIndex: 10,
+  },
+});

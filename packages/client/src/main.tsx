@@ -7,8 +7,7 @@ import { createRoot } from "react-dom/client";
 // an import; everything else about an integration arrives over the wire, as the
 // one catalog `hydrateExtensionsFromApi` below decodes.
 import { integrationUi } from "@wfgraph/plugins/ui";
-// Self-hosted variable fonts. The theme's --font-geist-sans/--font-geist-mono
-// variables in globals.css point at the families these register.
+// Self-hosted variable fonts used by the editor theme.
 import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
 import "#src/routes/globals.css";

@@ -1,16 +1,19 @@
-import { useState } from "react";
-import { Button } from "#src/components/ui/button";
-import { Checkbox } from "#src/components/ui/checkbox";
-import { Input } from "#src/components/ui/input";
-import { Label } from "#src/components/ui/label";
+import * as stylex from "@stylexjs/stylex";
+import { CheckboxInput } from "@astryxdesign/core/CheckboxInput";
+import { DateTimeInput } from "@astryxdesign/core/DateTimeInput";
+import { NumberInput } from "@astryxdesign/core/NumberInput";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  whenChosen,
-} from "#src/components/ui/select";
+  SegmentedControl,
+  SegmentedControlItem,
+} from "@astryxdesign/core/SegmentedControl";
+import { Selector } from "@astryxdesign/core/Selector";
+import { Text } from "@astryxdesign/core/Text";
+import { TextArea } from "@astryxdesign/core/TextArea";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { VStack } from "@astryxdesign/core/VStack";
+import { colorVars } from "@astryxdesign/core/theme/tokens.stylex";
+import { useState } from "react";
+import { toISODateTimeString } from "#src/lib/astryx-input-values";
 import {
   formValuesFromPayload,
   parseTestPayload,
@@ -75,43 +78,65 @@ function FieldControl({
 }) {
   if (field.control === "checkbox") {
     return (
-      <Checkbox
-        checked={value === "true"}
-        id={field.path}
-        onCheckedChange={(checked) => onChange(checked ? "true" : "false")}
+      <CheckboxInput
+        isLabelHidden
+        label={field.path}
+        onChange={(checked) => onChange(checked ? "true" : "false")}
+        value={value === "true"}
       />
     );
   }
 
   if (field.control === "select") {
     return (
-      <Select onValueChange={whenChosen(onChange)} value={value}>
-        <SelectTrigger className="w-full" id={field.path}>
-          <SelectValue placeholder="Choose a value" />
-        </SelectTrigger>
-        <SelectContent>
-          {(field.options ?? []).map((option) => (
-            <SelectItem key={option} value={option}>
-              {option}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <Selector
+        isLabelHidden
+        label={field.path}
+        onChange={onChange}
+        options={(field.options ?? []).map((option) => ({
+          value: option,
+          label: option,
+        }))}
+        placement="below"
+        placeholder="Choose a value"
+        value={value}
+        width="100%"
+      />
+    );
+  }
+
+  if (field.control === "number") {
+    return (
+      <NumberInput
+        hasClear
+        isLabelHidden
+        label={field.path}
+        onChange={(next) => onChange(next === null ? "" : String(next))}
+        value={value.trim() ? Number(value) : null}
+        width="100%"
+      />
+    );
+  }
+
+  if (field.control === "datetime") {
+    return (
+      <DateTimeInput
+        isLabelHidden
+        label={field.path}
+        onChange={(next) => onChange(next ?? "")}
+        value={toISODateTimeString(value || undefined)}
+        width="100%"
+      />
     );
   }
 
   return (
-    <Input
-      id={field.path}
-      onChange={(event) => onChange(event.target.value)}
-      type={
-        field.control === "number"
-          ? "number"
-          : field.control === "datetime"
-            ? "datetime-local"
-            : "text"
-      }
+    <TextInput
+      isLabelHidden
+      label={field.path}
+      onChange={onChange}
       value={value}
+      width="100%"
     />
   );
 }
@@ -127,36 +152,39 @@ function PayloadForm({
 }) {
   if (fields.length === 0) {
     return (
-      <p className="text-muted-foreground text-sm">
+      <Text color="secondary">
         This Event declares no payload field the form can draw. Use the JSON tab
         to write the payload.
-      </p>
+      </Text>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <VStack gap={4}>
       {fields.map((field) => (
-        <div className="space-y-2" key={field.path}>
-          <Label className="font-mono text-xs" htmlFor={field.path}>
+        <VStack gap={2} key={field.path}>
+          <Text type="code">
             {field.path}
             {field.optional && (
-              <span className="ml-2 font-sans text-muted-foreground">
+              <Text color="secondary" type="supporting">
+                {" "}
                 optional
-              </span>
+              </Text>
             )}
-          </Label>
+          </Text>
           <FieldControl
             field={field}
             onChange={(next) => onChange(field.path, next)}
             value={values[field.path] ?? ""}
           />
           {field.description && (
-            <p className="text-muted-foreground text-xs">{field.description}</p>
+            <Text color="secondary" type="supporting">
+              {field.description}
+            </Text>
           )}
-        </div>
+        </VStack>
       ))}
-    </div>
+    </VStack>
   );
 }
 
@@ -268,63 +296,54 @@ export function TestRunOverlay({
   return (
     <Overlay
       actions={[
-        { label: "Cancel", variant: "outline", onClick: closeAll },
+        { label: "Cancel", variant: "secondary", onClick: closeAll },
         { label: "Run", onClick: handleRun, disabled: !canRun },
       ]}
       description="A test run carries the payload an Event would have sent, so every template downstream resolves the way it will in production."
       overlayId={overlayId}
       title="Test run"
     >
-      <div className="space-y-6">
-        <div className="space-y-2">
-          <Label htmlFor="testRunEvent">
-            Which Event does this run stand in for?
-          </Label>
-          <Select onValueChange={whenChosen(chooseEvent)} value={selectedEvent}>
-            <SelectTrigger className="w-full" id="testRunEvent">
-              <SelectValue placeholder="Choose an Event" />
-            </SelectTrigger>
-            <SelectContent>
-              {startEvents.map((name) => (
-                <SelectItem key={name} value={name}>
-                  {eventLabel(catalog, name)}
-                </SelectItem>
-              ))}
-              {allowManualStart && (
-                <SelectItem disabled={hasEventSplit} value={NO_EVENT}>
-                  No Event (manual start)
-                </SelectItem>
-              )}
-            </SelectContent>
-          </Select>
-          {hasEventSplit && (
-            <p className="text-muted-foreground text-xs">
-              This workflow splits on the Event a run is on, so a run has to
-              name one.
-            </p>
-          )}
-        </div>
+      <VStack gap={6}>
+        <Selector
+          description={
+            hasEventSplit
+              ? "This workflow splits on the Event a run is on, so a run has to name one."
+              : undefined
+          }
+          label="Which Event does this run stand in for?"
+          onChange={chooseEvent}
+          options={[
+            ...startEvents.map((name) => ({
+              value: name,
+              label: eventLabel(catalog, name),
+            })),
+            ...(allowManualStart
+              ? [
+                  {
+                    value: NO_EVENT,
+                    label: "No Event (manual start)",
+                    isDisabled: hasEventSplit,
+                  },
+                ]
+              : []),
+          ]}
+          placement="below"
+          placeholder="Choose an Event"
+          value={selectedEvent}
+          width="100%"
+        />
 
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="font-medium text-sm">Payload</span>
-            <div className="flex gap-1">
-              <Button
-                onClick={showForm}
-                size="sm"
-                variant={pane === "form" ? "secondary" : "ghost"}
-              >
-                Form
-              </Button>
-              <Button
-                onClick={showJson}
-                size="sm"
-                variant={pane === "json" ? "secondary" : "ghost"}
-              >
-                JSON
-              </Button>
-            </div>
-          </div>
+        <VStack gap={3}>
+          <Text type="label">Payload</Text>
+          <SegmentedControl
+            label="Payload editor"
+            onChange={(next) => (next === "form" ? showForm() : showJson())}
+            size="sm"
+            value={pane}
+          >
+            <SegmentedControlItem label="Form" value="form" />
+            <SegmentedControlItem label="JSON" value="json" />
+          </SegmentedControl>
 
           {pane === "form" ? (
             <PayloadForm
@@ -335,21 +354,31 @@ export function TestRunOverlay({
               values={values}
             />
           ) : (
-            <textarea
-              aria-label="Payload JSON"
-              className="min-h-64 w-full rounded-md border border-input bg-transparent p-3 font-mono text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-              onChange={(event) => {
-                setJsonText(event.target.value);
+            <TextArea
+              label="Payload JSON"
+              onChange={(next) => {
+                setJsonText(next);
                 setJsonError(null);
               }}
-              spellCheck={false}
+              rows={12}
               value={jsonText}
+              width="100%"
             />
           )}
 
-          {jsonError && <p className="text-destructive text-xs">{jsonError}</p>}
-        </div>
-      </div>
+          {jsonError && (
+            <Text type="supporting" xstyle={styles.errorText}>
+              {jsonError}
+            </Text>
+          )}
+        </VStack>
+      </VStack>
     </Overlay>
   );
 }
+
+const styles = stylex.create({
+  errorText: {
+    color: colorVars["--color-text-red"],
+  },
+});

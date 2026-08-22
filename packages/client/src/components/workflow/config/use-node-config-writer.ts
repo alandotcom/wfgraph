@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useCallback } from "react";
-import { toast } from "sonner";
+import { notifications as toast } from "#src/lib/notifications";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { repairNodeIntegration } from "#src/lib/node-integration";
 import {

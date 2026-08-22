@@ -125,7 +125,9 @@ describe("LifecycleNode handles", () => {
       status: "idle",
     });
 
-    expect(view.getByText("Canceled").className).toContain("opacity-50");
+    expect(view.getByText("Canceled").getAttribute("data-inactive")).toBe(
+      "true"
+    );
   });
 
   it("keeps the Canceled chip full strength when a Cancel Event is declared", () => {

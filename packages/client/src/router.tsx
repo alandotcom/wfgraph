@@ -8,9 +8,11 @@ import {
 } from "@tanstack/react-router";
 import { ReactFlowProvider } from "@xyflow/react";
 import { Provider } from "jotai";
+import { AppShell } from "@astryxdesign/core/AppShell";
+import * as stylex from "@stylexjs/stylex";
 import { GlobalModals } from "#src/components/global-modals";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
-import { Toaster } from "#src/components/ui/sonner";
+import { NotificationViewport } from "#src/lib/notifications";
 import { PersistentCanvas } from "#src/components/workflow/persistent-canvas";
 import { appStore } from "#src/lib/app-store";
 import { getBasePath } from "#src/lib/base-path";
@@ -53,20 +55,26 @@ function LayoutContent() {
   return (
     <ReactFlowProvider>
       <PersistentCanvas />
-      <div className="pointer-events-none relative z-10">
+      <div {...stylex.props(styles.routes)}>
         <Outlet />
       </div>
     </ReactFlowProvider>
   );
 }
 
+const styles = stylex.create({
+  routes: { pointerEvents: "none", position: "relative", zIndex: 10 },
+});
+
 function RootLayout() {
   return (
     <Provider store={appStore}>
       <OverlayProvider>
-        <LayoutContent />
-        <Toaster />
-        <GlobalModals />
+        <AppShell contentPadding={0} height="fill" variant="surface">
+          <LayoutContent />
+          <NotificationViewport />
+          <GlobalModals />
+        </AppShell>
       </OverlayProvider>
     </Provider>
   );

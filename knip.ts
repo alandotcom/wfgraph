@@ -16,8 +16,8 @@ import type { KnipConfig } from "knip";
  *    core's own source. Those are named in ignoreDependencies with the reason.
  */
 const config: KnipConfig = {
-  // The SPA's stylesheet pulls Tailwind and its animation plugin in with CSS
-  // `@import`, which is the only way those two dependencies are ever named. A
+  // The SPA's stylesheet pulls its design-system styles in with CSS `@import`,
+  // which is the only way those dependencies are named there. A
   // knip compiler turns a file of any extension into something knip can parse,
   // and lifting the `@` off each `@import` leaves a plain import statement.
   // knip 6.29 documents a built-in `.css` compiler but ships none, so setting
@@ -140,14 +140,6 @@ const config: KnipConfig = {
         "src/theme/wfgraph-theme.ts",
       ],
       project: ["src/**/*.{ts,tsx}", "**/*.css"],
-
-      // components.json points shadcn's generator at src/components/ui, and what
-      // it writes there is the primitive's whole surface. A name pruned out of
-      // one of those export blocks comes back the next time the component is
-      // added or updated, so export reports are muted for that one directory.
-      // File reports still apply, which is how the six unused components in it
-      // were found.
-      ignoreIssues: { "src/components/ui/**": ["exports", "types"] },
     },
 
     "packages/plugins": {

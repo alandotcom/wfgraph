@@ -1,34 +1,27 @@
+import * as stylex from "@stylexjs/stylex";
+import { Grid } from "@astryxdesign/core/Grid";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { Selector } from "@astryxdesign/core/Selector";
 import { Section } from "@astryxdesign/core/Section";
+import { Text } from "@astryxdesign/core/Text";
+import { TimeInput } from "@astryxdesign/core/TimeInput";
+import { Tooltip } from "@astryxdesign/core/Tooltip";
+import { VStack } from "@astryxdesign/core/VStack";
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
 import { HelpCircle, Plus, Settings, Zap } from "lucide-react";
 import { type ReactNode, useCallback, useMemo } from "react";
 import { ConfigureConnectionOverlay } from "#src/components/overlays/add-connection-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
-import { Button } from "#src/components/ui/button";
-import { Input } from "#src/components/ui/input";
-import { IntegrationIcon } from "#src/components/ui/integration-icon";
-import { IntegrationSelector } from "#src/components/ui/integration-selector";
-import { Label } from "#src/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-  whenChosen,
-} from "#src/components/ui/select";
-import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
-import { TimezoneSelect } from "#src/components/ui/timezone-select";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "#src/components/ui/tooltip";
+import { IntegrationIcon } from "#src/components/integration-icon";
+import { IntegrationSelector } from "#src/components/form-fields/integration-selector";
+import { TemplateBadgeInput } from "#src/components/form-fields/template-badge-input";
+import { TimezoneSelect } from "#src/components/form-fields/timezone-select";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useEventSplitOutlets } from "#src/lib/event-split-outlets";
+import { toISOTimeString } from "#src/lib/astryx-input-values";
 import { getUpstreamConditionFields } from "#src/lib/upstream-node-fields";
 import {
   edgesAtom,
@@ -89,11 +82,11 @@ function OptionLogo({
   return (
     <img
       alt={`${label} logo`}
-      className="size-4 rounded-sm object-contain"
       height={16}
       loading="lazy"
       src={normalizedLogoUrl}
       width={16}
+      {...stylex.props(styles.logo)}
     />
   );
 }
@@ -169,33 +162,37 @@ function EventSplitFields() {
   const outlets = useEventSplitOutlets(selectedNodeId);
 
   return (
-    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-      <p className="font-medium text-sm">Splits On Event</p>
+    <Section padding={3} variant="muted">
+      <VStack gap={3}>
+        <Text type="label">Splits on Event</Text>
 
-      {outlets.length === 0 ? (
-        <p className="text-muted-foreground text-xs">
-          No Event reaches this node yet. Connect it below the Lifecycle Node,
-          and it draws one outlet per Start Event.
-        </p>
-      ) : (
-        <>
-          <ul className="space-y-1">
-            {outlets.map((event) => (
-              <li className="text-sm" key={event.name}>
-                {event.label}
-                <span className="ml-2 text-muted-foreground text-xs">
-                  {event.name}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <p className="text-muted-foreground text-xs">
-            A run leaves by the outlet naming the Event it arrived on. An outlet
-            with nothing connected ends the run there.
-          </p>
-        </>
-      )}
-    </div>
+        {outlets.length === 0 ? (
+          <Text color="secondary" type="supporting">
+            No Event reaches this node yet. Connect it below the Lifecycle Node,
+            and it draws one outlet per Start Event.
+          </Text>
+        ) : (
+          <>
+            <VStack as="ul" gap={1} xstyle={styles.list}>
+              {outlets.map((event) => (
+                <li key={event.name}>
+                  <HStack gap={2}>
+                    <Text>{event.label}</Text>
+                    <Text color="secondary" type="supporting">
+                      {event.name}
+                    </Text>
+                  </HStack>
+                </li>
+              ))}
+            </VStack>
+            <Text color="secondary" type="supporting">
+              A run leaves by the outlet naming the Event it arrived on. An
+              outlet with nothing connected ends the run there.
+            </Text>
+          </>
+        )}
+      </VStack>
+    </Section>
   );
 }
 
@@ -225,232 +222,210 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   };
 
   return (
-    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-      <p className="font-medium text-sm">Time-Based Wait</p>
+    <Section padding={3} variant="muted">
+      <VStack gap={3}>
+        <Text type="label">Time-based wait</Text>
 
-      <div className="space-y-2">
-        <Label htmlFor="waitDelayTimingMode">Time input mode</Label>
-        <Select
-          disabled={disabled}
-          onValueChange={whenChosen(handleDelayTimingModeChange)}
+        <Selector
+          description="Pick one mode. Switching modes clears fields that do not apply."
+          isDisabled={disabled}
+          label="Time input mode"
+          onChange={handleDelayTimingModeChange}
+          options={[
+            { value: "duration", label: "Wait for duration" },
+            { value: "until", label: "Wait until date/time" },
+          ]}
+          placement="below"
           value={delayTimingMode}
-        >
-          <SelectTrigger className="w-full" id="waitDelayTimingMode">
-            <SelectValue placeholder="Select time input mode" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="duration">Wait for duration</SelectItem>
-            <SelectItem value="until">Wait until date/time</SelectItem>
-          </SelectContent>
-        </Select>
-        <p className="text-muted-foreground text-xs">
-          Pick one mode. Switching modes clears fields that do not apply.
-        </p>
-      </div>
-
-      {delayTimingMode === "duration" ? (
-        <div className="space-y-2">
-          <Label htmlFor="waitDuration">Wait for (duration)</Label>
-          <TemplateBadgeInput
-            disabled={disabled}
-            fieldType={WAIT_VALUE_TARGETS.waitDuration.type}
-            id="waitDuration"
-            onChange={(value) => onUpdateConfig({ waitDuration: value })}
-            placeholder="24h, 90m, 3600000, or P1D"
-            value={configuredWaitDuration}
-          />
-          <p className="text-muted-foreground text-xs">
-            Example: use <code>24h</code> to continue one day later.
-          </p>
-        </div>
-      ) : (
-        <>
-          <div className="space-y-2">
-            <Label htmlFor="waitUntil">Wait until this date/time</Label>
-            <TemplateBadgeInput
-              disabled={disabled}
-              fieldType={WAIT_VALUE_TARGETS.waitUntil.type}
-              id="waitUntil"
-              onChange={(value) => onUpdateConfig({ waitUntil: value })}
-              placeholder="2026-03-10T09:00:00-05:00 or {{@lifecycle_1:Lifecycle.appointment.startsAt}}"
-              value={configuredWaitUntil}
-            />
-            <p className="text-muted-foreground text-xs">
-              Use this when timing comes from payload data, like an appointment
-              start time.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="waitOffset">
-              Send before/after that time (optional)
-            </Label>
-            <TemplateBadgeInput
-              disabled={disabled}
-              fieldType={WAIT_VALUE_TARGETS.waitOffset.type}
-              id="waitOffset"
-              onChange={(value) => onUpdateConfig({ waitOffset: value })}
-              placeholder="-1d, 6h, 30m"
-              value={readConfigString(config, "waitOffset")}
-            />
-            <p className="text-muted-foreground text-xs">
-              Example: <code>-1d</code> sends one day before the target time.
-            </p>
-          </div>
-        </>
-      )}
-
-      <div className="space-y-2">
-        <Label htmlFor="waitGateMode">
-          Continue only if time actually elapsed
-        </Label>
-        <Select
-          disabled={disabled}
-          onValueChange={(value) => onUpdateConfig({ waitGateMode: value })}
-          value={waitGateMode}
-        >
-          <SelectTrigger className="w-full" id="waitGateMode">
-            <SelectValue placeholder="Select behavior" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="off">Off (continue immediately)</SelectItem>
-            <SelectItem value="require_actual_wait">
-              Skip branch when already due
-            </SelectItem>
-          </SelectContent>
-        </Select>
-        <p className="text-muted-foreground text-xs">
-          Prevents immediate sends when the computed time is now or in the past
-          after an update/reschedule.
-        </p>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="waitAllowedHoursMode">Allowed send window</Label>
-        <Select
-          disabled={disabled}
-          onValueChange={(value) =>
-            onUpdateConfig({ waitAllowedHoursMode: value })
-          }
-          value={readConfigStringOr(config, "waitAllowedHoursMode", "off")}
-        >
-          <SelectTrigger className="w-full" id="waitAllowedHoursMode">
-            <SelectValue placeholder="Select window mode" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="off">Off (allow any time)</SelectItem>
-            <SelectItem value="daily_window">Daily window</SelectItem>
-          </SelectContent>
-        </Select>
-        <p className="text-muted-foreground text-xs">
-          When enabled, times outside the window shift to the next allowed
-          start.
-        </p>
-      </div>
-
-      {isWindowEnabled && (
-        <div className="grid grid-cols-2 gap-2">
-          <div className="space-y-2">
-            <Label htmlFor="waitAllowedStartTime">Window start</Label>
-            <Input
-              disabled={disabled}
-              id="waitAllowedStartTime"
-              onChange={(e) =>
-                onUpdateConfig({ waitAllowedStartTime: e.target.value })
-              }
-              placeholder="09:00"
-              value={readConfigString(config, "waitAllowedStartTime")}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="waitAllowedEndTime">Window end</Label>
-            <Input
-              disabled={disabled}
-              id="waitAllowedEndTime"
-              onChange={(e) =>
-                onUpdateConfig({ waitAllowedEndTime: e.target.value })
-              }
-              placeholder="17:00"
-              value={readConfigString(config, "waitAllowedEndTime")}
-            />
-          </div>
-          <p className="col-span-2 text-muted-foreground text-xs">
-            Use 24-hour format (HH:MM). Start must be before end. Requires
-            timezone below.
-          </p>
-        </div>
-      )}
-
-      <div className="space-y-2">
-        <Label htmlFor="waitTimezone">
-          Timezone
-          {isWindowEnabled ? " (required for send window)" : " (optional)"}
-        </Label>
-        <TimezoneSelect
-          disabled={disabled}
-          id="waitTimezone"
-          onValueChange={(value) => onUpdateConfig({ waitTimezone: value })}
-          value={readConfigStringOr(config, "waitTimezone", "UTC")}
+          width="100%"
         />
-        <p className="text-muted-foreground text-xs">
-          Used when the target date/time does not include an offset.
-          {isWindowEnabled &&
-            " Also determines when the daily send window applies."}
-        </p>
-      </div>
-    </div>
+
+        {delayTimingMode === "duration" ? (
+          <VStack gap={2}>
+            <Text id="waitDuration-label" type="label">
+              Wait for (duration)
+            </Text>
+            <TemplateBadgeInput
+              disabled={disabled}
+              fieldType={WAIT_VALUE_TARGETS.waitDuration.type}
+              id="waitDuration"
+              labelledBy="waitDuration-label"
+              onChange={(value) => onUpdateConfig({ waitDuration: value })}
+              placeholder="24h, 90m, 3600000, or P1D"
+              value={configuredWaitDuration}
+            />
+            <Text color="secondary" type="supporting">
+              Example: use 24h to continue one day later.
+            </Text>
+          </VStack>
+        ) : (
+          <>
+            <VStack gap={2}>
+              <Text id="waitUntil-label" type="label">
+                Wait until this date/time
+              </Text>
+              <TemplateBadgeInput
+                disabled={disabled}
+                fieldType={WAIT_VALUE_TARGETS.waitUntil.type}
+                id="waitUntil"
+                labelledBy="waitUntil-label"
+                onChange={(value) => onUpdateConfig({ waitUntil: value })}
+                placeholder="2026-03-10T09:00:00-05:00 or {{@lifecycle_1:Lifecycle.appointment.startsAt}}"
+                value={configuredWaitUntil}
+              />
+              <Text color="secondary" type="supporting">
+                Use this when timing comes from payload data, like an
+                appointment start time.
+              </Text>
+            </VStack>
+
+            <VStack gap={2}>
+              <Text id="waitOffset-label" type="label">
+                Send before/after that time (optional)
+              </Text>
+              <TemplateBadgeInput
+                disabled={disabled}
+                fieldType={WAIT_VALUE_TARGETS.waitOffset.type}
+                id="waitOffset"
+                labelledBy="waitOffset-label"
+                onChange={(value) => onUpdateConfig({ waitOffset: value })}
+                placeholder="-1d, 6h, 30m"
+                value={readConfigString(config, "waitOffset")}
+              />
+              <Text color="secondary" type="supporting">
+                Example: -1d sends one day before the target time.
+              </Text>
+            </VStack>
+          </>
+        )}
+
+        <Selector
+          description="Prevents immediate sends when the computed time is now or in the past after an update or reschedule."
+          isDisabled={disabled}
+          label="Continue only if time actually elapsed"
+          onChange={(value) => onUpdateConfig({ waitGateMode: value })}
+          options={[
+            { value: "off", label: "Off (continue immediately)" },
+            {
+              value: "require_actual_wait",
+              label: "Skip branch when already due",
+            },
+          ]}
+          placement="below"
+          value={waitGateMode}
+          width="100%"
+        />
+
+        <Selector
+          description="When enabled, times outside the window shift to the next allowed start."
+          isDisabled={disabled}
+          label="Allowed send window"
+          onChange={(value) => onUpdateConfig({ waitAllowedHoursMode: value })}
+          options={[
+            { value: "off", label: "Off (allow any time)" },
+            { value: "daily_window", label: "Daily window" },
+          ]}
+          placement="below"
+          value={readConfigStringOr(config, "waitAllowedHoursMode", "off")}
+          width="100%"
+        />
+
+        {isWindowEnabled && (
+          <VStack gap={2}>
+            <Grid columns={2} gap={2}>
+              <TimeInput
+                isDisabled={disabled}
+                label="Window start"
+                onChange={(value) =>
+                  onUpdateConfig({ waitAllowedStartTime: value ?? "" })
+                }
+                placeholder="09:00"
+                value={toISOTimeString(
+                  readConfigString(config, "waitAllowedStartTime")
+                )}
+              />
+              <TimeInput
+                isDisabled={disabled}
+                label="Window end"
+                onChange={(value) =>
+                  onUpdateConfig({ waitAllowedEndTime: value ?? "" })
+                }
+                placeholder="17:00"
+                value={toISOTimeString(
+                  readConfigString(config, "waitAllowedEndTime")
+                )}
+              />
+            </Grid>
+            <Text color="secondary" type="supporting">
+              Use 24-hour format (HH:MM). Start must be before end. Requires
+              timezone below.
+            </Text>
+          </VStack>
+        )}
+
+        <VStack gap={2}>
+          <TimezoneSelect
+            disabled={disabled}
+            label={`Timezone${isWindowEnabled ? " (required for send window)" : " (optional)"}`}
+            onValueChange={(value) => onUpdateConfig({ waitTimezone: value })}
+            value={readConfigStringOr(config, "waitTimezone", "UTC")}
+          />
+          <Text color="secondary" type="supporting">
+            Used when the target date/time does not include an offset.
+            {isWindowEnabled &&
+              " Also determines when the daily send window applies."}
+          </Text>
+        </VStack>
+      </VStack>
+    </Section>
   );
 }
 
 function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   return (
-    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-      <p className="font-medium text-sm">Wait for Event</p>
-      <WaitEventSelect
-        config={config}
-        disabled={disabled}
-        onUpdateConfig={onUpdateConfig}
-      />
-
-      <div className="space-y-2">
-        <Label htmlFor="waitTimeout">Stop waiting after</Label>
-        <TemplateBadgeInput
+    <Section padding={3} variant="muted">
+      <VStack gap={3}>
+        <Text type="label">Wait for Event</Text>
+        <WaitEventSelect
+          config={config}
           disabled={disabled}
-          fieldType={WAIT_VALUE_TARGETS.waitTimeout.type}
-          id="waitTimeout"
-          onChange={(value) => onUpdateConfig({ waitTimeout: value })}
-          placeholder={DEFAULT_WAIT_TIMEOUT}
-          value={readConfigString(config, "waitTimeout")}
+          onUpdateConfig={onUpdateConfig}
         />
-        <p className="text-muted-foreground text-xs">
-          Required. A wait with no end holds a run, and a place in the run list,
-          until somebody notices.
-        </p>
-      </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="waitTimeoutBehavior">On timeout</Label>
-        <Select
-          disabled={disabled}
-          onValueChange={(value) =>
-            onUpdateConfig({ waitTimeoutBehavior: value })
-          }
+        <VStack gap={2}>
+          <Text id="waitTimeout-label" type="label">
+            Stop waiting after
+          </Text>
+          <TemplateBadgeInput
+            disabled={disabled}
+            fieldType={WAIT_VALUE_TARGETS.waitTimeout.type}
+            id="waitTimeout"
+            labelledBy="waitTimeout-label"
+            onChange={(value) => onUpdateConfig({ waitTimeout: value })}
+            placeholder={DEFAULT_WAIT_TIMEOUT}
+            value={readConfigString(config, "waitTimeout")}
+          />
+          <Text color="secondary" type="supporting">
+            Required. A wait with no end holds a run, and a place in the run
+            list, until somebody notices.
+          </Text>
+        </VStack>
+
+        <Selector
+          description="Choose whether to continue downstream nodes or halt the branch when the timeout expires."
+          isDisabled={disabled}
+          label="On timeout"
+          onChange={(value) => onUpdateConfig({ waitTimeoutBehavior: value })}
+          options={[
+            { value: "continue", label: "Continue workflow" },
+            { value: "skip", label: "Skip remaining branch" },
+          ]}
+          placement="below"
           value={readConfigStringOr(config, "waitTimeoutBehavior", "continue")}
-        >
-          <SelectTrigger className="w-full" id="waitTimeoutBehavior">
-            <SelectValue placeholder="Select timeout behavior" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="continue">Continue workflow</SelectItem>
-            <SelectItem value="skip">Skip remaining branch</SelectItem>
-          </SelectContent>
-        </Select>
-        <p className="text-muted-foreground text-xs">
-          Choose whether to continue downstream nodes or halt the branch when
-          the timeout expires.
-        </p>
-      </div>
-    </div>
+          width="100%"
+        />
+      </VStack>
+    </Section>
   );
 }
 
@@ -486,26 +461,19 @@ function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
 
   return (
     <>
-      <div className="space-y-2">
-        <Label htmlFor="waitMode">How should this step wait?</Label>
-        <Select
-          disabled={disabled}
-          onValueChange={whenChosen(handleModeChange)}
-          value={waitMode}
-        >
-          <SelectTrigger className="w-full" id="waitMode">
-            <SelectValue placeholder="Select wait mode" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="delay">Wait for time</SelectItem>
-            <SelectItem value="event">Wait for an event</SelectItem>
-          </SelectContent>
-        </Select>
-        <p className="text-muted-foreground text-xs">
-          Resume on a clock, or when an event arrives that this step's match
-          accepts.
-        </p>
-      </div>
+      <Selector
+        description="Resume on a clock, or when an event arrives that this step's match accepts."
+        isDisabled={disabled}
+        label="How should this step wait?"
+        onChange={handleModeChange}
+        options={[
+          { value: "delay", label: "Wait for time" },
+          { value: "event", label: "Wait for an Event" },
+        ]}
+        placement="below"
+        value={waitMode}
+        width="100%"
+      />
 
       {waitMode === "delay" && (
         <DelayWaitFields
@@ -662,155 +630,116 @@ export function ActionConfig({
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-2">
-        <div className="space-y-2">
-          <Label className="ml-1" htmlFor="actionCategory">
-            Service
-          </Label>
-          <Select
-            disabled={disabled}
-            onValueChange={whenChosen(handleCategoryChange)}
-            value={category || undefined}
-          >
-            <SelectTrigger className="w-full" id="actionCategory">
-              <SelectValue placeholder="Select category" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="System">
-                <div className="flex items-center gap-2">
-                  <Settings className="size-4" />
-                  <span>System</span>
-                </div>
-              </SelectItem>
-              {categoryOptions.length > 0 && <SelectSeparator />}
-              {categoryOptions.map((categoryName) => {
-                const actionsInCategory = categories[categoryName];
-                // A category groups the actions that declared it, so the icon comes
-                // off one of them. Matching the category name against an
-                // integration's label worked only because the two happen to agree.
-                const categoryIntegration = actionsInCategory?.[0]?.integration;
-                const categoryLogoUrl = actionsInCategory
-                  ?.map((action) => action.logoUrl)
-                  .find(
-                    (value) =>
-                      typeof value === "string" && value.trim().length > 0
-                  );
-
-                const fallbackIcon = categoryIntegration ? (
-                  <IntegrationIcon
-                    className="size-4"
-                    integration={categoryIntegration}
+      <Grid columns={2} gap={2}>
+        <Selector
+          isDisabled={disabled}
+          label="Service"
+          onChange={handleCategoryChange}
+          options={[
+            {
+              value: "System",
+              label: "System",
+              icon: <Icon icon={Settings} size="sm" />,
+            },
+            ...categoryOptions.map((categoryName) => {
+              const actionsInCategory = categories[categoryName];
+              const categoryIntegration = actionsInCategory?.[0]?.integration;
+              const categoryLogoUrl = actionsInCategory
+                ?.map((action) => action.logoUrl)
+                .find(
+                  (value) =>
+                    typeof value === "string" && value.trim().length > 0
+                );
+              const fallbackIcon = categoryIntegration ? (
+                <IntegrationIcon integration={categoryIntegration} />
+              ) : (
+                <Icon icon={Zap} size="sm" />
+              );
+              return {
+                value: categoryName,
+                label: categoryName,
+                icon: (
+                  <OptionLogo
+                    fallback={fallbackIcon}
+                    label={categoryName}
+                    logoUrl={categoryLogoUrl}
                   />
+                ),
+              };
+            }),
+          ]}
+          placement="below"
+          placeholder="Select service"
+          value={category || undefined}
+          width="100%"
+        />
+
+        <Selector
+          isDisabled={disabled || !category}
+          label="Action"
+          onChange={handleActionTypeChange}
+          options={(category ? (categories[category] ?? []) : []).map(
+            (action) => {
+              const fallbackIcon =
+                category === "System" ? (
+                  <Icon icon={Settings} size="sm" />
+                ) : action.integration ? (
+                  <IntegrationIcon integration={action.integration} />
                 ) : (
-                  <Zap className="size-4" />
+                  <Icon icon={Zap} size="sm" />
                 );
-
-                return (
-                  <SelectItem key={categoryName} value={categoryName}>
-                    <div className="flex items-center gap-2">
-                      <OptionLogo
-                        fallback={fallbackIcon}
-                        label={categoryName}
-                        logoUrl={categoryLogoUrl}
-                      />
-                      <span>{categoryName}</span>
-                    </div>
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label className="ml-1" htmlFor="actionType">
-            Action
-          </Label>
-          <Select
-            disabled={disabled || !category}
-            onValueChange={whenChosen(handleActionTypeChange)}
-            value={actionType || undefined}
-          >
-            <SelectTrigger className="w-full" id="actionType">
-              <SelectValue placeholder="Select action" />
-            </SelectTrigger>
-            <SelectContent>
-              {category &&
-                categories[category]?.map((action) => {
-                  let fallbackIcon: ReactNode;
-                  if (category === "System") {
-                    fallbackIcon = <Settings className="size-4" />;
-                  } else if (action.integration) {
-                    fallbackIcon = (
-                      <IntegrationIcon
-                        className="size-4"
-                        integration={action.integration}
-                      />
-                    );
-                  } else {
-                    fallbackIcon = <Zap className="size-4" />;
-                  }
-
-                  return (
-                    <SelectItem key={action.id} value={action.id}>
-                      <div className="flex items-center gap-2">
-                        <OptionLogo
-                          fallback={fallbackIcon}
-                          label={action.label}
-                          logoUrl={action.logoUrl}
-                        />
-                        <span>{action.label}</span>
-                      </div>
-                    </SelectItem>
-                  );
-                })}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+              return {
+                value: action.id,
+                label: action.label,
+                icon: (
+                  <OptionLogo
+                    fallback={fallbackIcon}
+                    label={action.label}
+                    logoUrl={action.logoUrl}
+                  />
+                ),
+              };
+            }
+          )}
+          placement="below"
+          placeholder="Select action"
+          value={actionType || undefined}
+          width="100%"
+        />
+      </Grid>
 
       {integrationType && isOwner && (
-        <div className="space-y-2">
-          <div className="ml-1 flex items-center justify-between">
-            <div className="flex items-center gap-1">
-              <Label>Connection</Label>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <span className="inline-flex">
-                        <HelpCircle className="size-3.5 text-muted-foreground" />
-                      </span>
-                    }
-                  >
-                    <span className="sr-only">Connection help</span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>API key or OAuth credentials for this service</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
+        <VStack gap={2}>
+          <HStack align="center" justify="between">
+            <HStack align="center" gap={1}>
+              <Text type="label">Connection</Text>
+              <Tooltip content="API key or OAuth credentials for this service">
+                <IconButton
+                  icon={<Icon icon={HelpCircle} size="sm" />}
+                  label="Connection help"
+                  size="sm"
+                  variant="ghost"
+                />
+              </Tooltip>
+            </HStack>
             {hasExistingConnections && (
-              <Button
-                aria-label="Add connection"
-                className="size-6"
-                disabled={disabled}
+              <IconButton
+                icon={<Icon icon={Plus} size="sm" />}
+                isDisabled={disabled}
+                label="Add connection"
                 onClick={openConnectionOverlay}
-                size="icon"
+                size="sm"
                 variant="ghost"
-              >
-                <Plus className="size-4" />
-              </Button>
+              />
             )}
-          </div>
+          </HStack>
           <IntegrationSelector
             disabled={disabled}
             integrationType={integrationType}
             onChange={(id) => onUpdateConfig({ integrationId: id })}
             value={readConfigString(config, "integrationId")}
           />
-        </div>
+        </VStack>
       )}
 
       {/* System actions - hardcoded config fields */}
@@ -834,3 +763,17 @@ export function ActionConfig({
     </>
   );
 }
+
+const styles = stylex.create({
+  logo: {
+    borderRadius: "var(--radius-element)",
+    height: 16,
+    objectFit: "contain",
+    width: 16,
+  },
+  list: {
+    listStyle: "none",
+    margin: 0,
+    padding: 0,
+  },
+});

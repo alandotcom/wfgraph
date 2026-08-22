@@ -1,3 +1,16 @@
+import * as stylex from "@stylexjs/stylex";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from "@astryxdesign/core/SegmentedControl";
+import { Text } from "@astryxdesign/core/Text";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { VStack } from "@astryxdesign/core/VStack";
+import { colorVars, spacingVars } from "@astryxdesign/core/theme/tokens.stylex";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   Eraser,
@@ -9,9 +22,6 @@ import {
   Trash2,
   Ungroup,
 } from "lucide-react";
-import { Button } from "#src/components/ui/button";
-import { Input } from "#src/components/ui/input";
-import { Label } from "#src/components/ui/label";
 import { useDeleteWorkflow } from "#src/hooks/use-delete-workflow";
 import {
   clearWorkflowAtom,
@@ -129,65 +139,41 @@ function TabBar({
   propertiesLabel,
   showRuns,
 }: TabBarProps) {
-  if (placement === "bottom") {
-    return (
-      <div className="flex shrink-0 items-center justify-around border-t bg-background pb-safe">
-        <button
-          className={`flex flex-1 flex-col items-center gap-1 py-3 font-medium text-xs transition-colors ${
-            activeTab === "properties"
-              ? "text-foreground"
-              : "text-muted-foreground"
-          }`}
-          onClick={() => onSelect("properties")}
-          type="button"
-        >
-          <Settings2 className="size-5" />
-          {propertiesLabel}
-        </button>
-        {showRuns ? (
-          <button
-            className={`flex flex-1 flex-col items-center gap-1 py-3 font-medium text-xs transition-colors ${
-              activeTab === "runs" ? "text-foreground" : "text-muted-foreground"
-            }`}
-            onClick={() => onSelect("runs")}
-            type="button"
-          >
-            <Play className="size-5" />
-            Runs
-          </button>
-        ) : null}
-      </div>
-    );
-  }
-
   return (
-    <div className="shrink-0 border-b px-4 py-2.5">
-      <div className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-muted p-[3px] text-muted-foreground">
-        <button
-          className={`inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 py-1 font-medium text-sm transition-[color,box-shadow] ${
-            activeTab === "properties"
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground"
-          }`}
-          onClick={() => onSelect("properties")}
-          type="button"
-        >
-          {propertiesLabel}
-        </button>
+    <div
+      {...stylex.props(
+        styles.tabBar,
+        placement === "bottom" ? styles.bottomTabBar : styles.topTabBar
+      )}
+    >
+      <SegmentedControl
+        label="Configuration view"
+        layout="fill"
+        onChange={onSelect}
+        size={placement === "bottom" ? "lg" : "md"}
+        value={activeTab}
+      >
+        <SegmentedControlItem
+          icon={
+            placement === "bottom" ? (
+              <Icon icon={Settings2} size="sm" />
+            ) : undefined
+          }
+          label={propertiesLabel}
+          value="properties"
+        />
         {showRuns ? (
-          <button
-            className={`inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 py-1 font-medium text-sm transition-[color,box-shadow] ${
-              activeTab === "runs"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground"
-            }`}
-            onClick={() => onSelect("runs")}
-            type="button"
-          >
-            Runs
-          </button>
+          <SegmentedControlItem
+            icon={
+              placement === "bottom" ? (
+                <Icon icon={Play} size="sm" />
+              ) : undefined
+            }
+            label="Runs"
+            value="runs"
+          />
         ) : null}
-      </div>
+      </SegmentedControl>
     </div>
   );
 }
@@ -394,121 +380,104 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
     isOwner;
 
   const publicWorkflowNotice = (
-    <div className="rounded-lg border border-muted bg-muted/30 p-3">
-      <p className="text-muted-foreground text-sm">
-        You are viewing a public workflow. Duplicate it to make changes.
-      </p>
-    </div>
+    <Banner
+      description="Duplicate it to make changes."
+      status="info"
+      title="You are viewing a public workflow"
+    />
   );
 
   const renderPropertiesContent = () => {
     if (hasMultipleSelections) {
       return (
-        <div className="space-y-4 p-4">
-          <div className="space-y-2">
-            <Label>Selection</Label>
-            <p className="text-muted-foreground text-sm">
-              {selectionText} selected
-            </p>
-          </div>
+        <VStack gap={4} padding={4}>
+          <VStack gap={1}>
+            <Text type="label">Selection</Text>
+            <Text color="secondary">{selectionText} selected</Text>
+          </VStack>
           {isOwner ? (
-            <div className="flex items-center gap-2 pt-4">
+            <HStack gap={2} xstyle={styles.actionRow}>
               <Button
+                label="Delete"
                 onClick={confirmDeleteSelection}
                 size="sm"
-                variant="outline"
-              >
-                <Trash2 className="mr-2 size-4 text-destructive" />
-                <span className="text-destructive">Delete</span>
-              </Button>
-            </div>
+                icon={<Icon icon={Trash2} size="sm" />}
+                variant="destructive"
+              />
+            </HStack>
           ) : null}
-        </div>
+        </VStack>
       );
     }
 
     if (selectedEdge && !selectedNode) {
       return (
-        <div className="space-y-4 p-4">
-          <div className="space-y-2">
-            <Label htmlFor="edge-id">Connection ID</Label>
-            <Input disabled id="edge-id" value={selectedEdge.id} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edge-source">Source</Label>
-            <Input disabled id="edge-source" value={selectedEdge.source} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edge-target">Target</Label>
-            <Input disabled id="edge-target" value={selectedEdge.target} />
-          </div>
+        <VStack gap={4} padding={4}>
+          <TextInput isReadOnly label="Connection ID" value={selectedEdge.id} />
+          <TextInput isReadOnly label="Source" value={selectedEdge.source} />
+          <TextInput isReadOnly label="Target" value={selectedEdge.target} />
 
           {isOwner ? (
-            <div className="flex items-center gap-2 pt-4">
-              <Button onClick={confirmDeleteEdge} size="sm" variant="outline">
-                <Trash2 className="mr-2 size-4 text-destructive" />
-                <span className="text-destructive">Delete</span>
-              </Button>
-            </div>
+            <HStack gap={2} xstyle={styles.actionRow}>
+              <Button
+                label="Delete"
+                onClick={confirmDeleteEdge}
+                size="sm"
+                icon={<Icon icon={Trash2} size="sm" />}
+                variant="destructive"
+              />
+            </HStack>
           ) : null}
-        </div>
+        </VStack>
       );
     }
 
     // Workflow-level properties, which is what nothing being selected means.
     if (!selectedNode) {
       return (
-        <div className="space-y-4 p-4">
-          <div className="space-y-2">
-            <Label htmlFor="workflow-name">Workflow Name</Label>
-            <Input
-              className={workflowNameError ? "border-destructive" : undefined}
-              disabled={!isOwner}
-              id="workflow-name"
-              onChange={(e) => handleUpdateWorkflowName(e.target.value)}
-              value={currentWorkflowName}
-            />
-            {workflowNameError ? (
-              <p className="text-destructive text-xs">{workflowNameError}</p>
-            ) : null}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="workflow-id">Workflow ID</Label>
-            <Input
-              disabled
-              id="workflow-id"
-              value={currentWorkflowId || "Not saved"}
-            />
-          </div>
+        <VStack gap={4} padding={4}>
+          <TextInput
+            isDisabled={!isOwner}
+            label="Workflow Name"
+            onChange={handleUpdateWorkflowName}
+            status={
+              workflowNameError
+                ? { type: "error", message: workflowNameError }
+                : undefined
+            }
+            value={currentWorkflowName}
+          />
+          <TextInput
+            isReadOnly
+            label="Workflow ID"
+            value={currentWorkflowId || "Not saved"}
+          />
           {isOwner ? null : publicWorkflowNotice}
           {isOwner ? (
-            <div className="flex items-center gap-2 pt-4">
+            <HStack gap={2} xstyle={styles.actionRow}>
               <Button
-                className="text-muted-foreground"
+                label="Clear"
                 onClick={confirmClearWorkflow}
                 size="sm"
+                icon={<Icon icon={Eraser} size="sm" />}
                 variant="ghost"
-              >
-                <Eraser className="mr-2 size-4" />
-                Clear
-              </Button>
+              />
               <Button
+                label="Delete"
                 onClick={confirmDeleteWorkflow}
                 size="sm"
-                variant="outline"
-              >
-                <Trash2 className="mr-2 size-4 text-destructive" />
-                <span className="text-destructive">Delete</span>
-              </Button>
-            </div>
+                icon={<Icon icon={Trash2} size="sm" />}
+                variant="destructive"
+              />
+            </HStack>
           ) : null}
-        </div>
+        </VStack>
       );
     }
 
     if (showActionGrid) {
       return (
-        <div className="px-4 pt-4">
+        <div {...stylex.props(styles.actionGrid)}>
           <ActionGrid
             disabled={isGenerating}
             isNewlyCreated={selectedNode.id === newlyCreatedNodeId}
@@ -528,13 +497,13 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
     }
 
     return (
-      <div className="space-y-4 p-4">
+      <VStack gap={4} padding={4}>
         {selectedNode.data.type === "group" ? (
-          <p className="text-muted-foreground text-sm">
+          <Text color="secondary">
             Lookups and a Condition in a single-entry, single-exit frame.
             Lookups may run side by side and join at the Condition. True
             continues; False with no outgoing edge ends that path.
-          </p>
+          </Text>
         ) : null}
 
         {selectedNode.data.type === "lifecycle" ? (
@@ -550,11 +519,11 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
 
         {selectedNode.data.type === "action" &&
         !selectedNode.data.config?.actionType ? (
-          <div className="rounded-lg border border-muted bg-muted/30 p-3">
-            <p className="text-muted-foreground text-sm">
-              No action configured for this step.
-            </p>
-          </div>
+          <Banner
+            description="Choose an action to configure this step."
+            status="info"
+            title="No action configured"
+          />
         ) : null}
 
         {selectedNode.data.type === "action" &&
@@ -570,88 +539,82 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
 
         {selectedNode.data.type !== "action" ||
         selectedNode.data.config?.actionType ? (
-          <div
-            className={
+          <VStack
+            gap={selectedNode.data.type === "lifecycle" ? 3 : 4}
+            padding={selectedNode.data.type === "lifecycle" ? 3 : 0}
+            xstyle={
               selectedNode.data.type === "lifecycle"
-                ? "space-y-3 rounded-md border border-muted/70 bg-muted/20 p-3"
-                : "space-y-4"
+                ? styles.metadata
+                : undefined
             }
           >
             {selectedNode.data.type === "lifecycle" ? (
-              <p className="font-medium text-muted-foreground text-sm">
-                Node Metadata
-              </p>
+              <Text color="secondary" type="label">
+                Node metadata
+              </Text>
             ) : null}
 
-            <div className="space-y-2">
-              <Label htmlFor="label">Label</Label>
-              <Input
-                disabled={isGenerating || !isOwner}
-                id="label"
-                onChange={(e) => handleUpdateLabel(e.target.value)}
-                value={selectedNode.data.label}
-              />
-            </div>
+            <TextInput
+              isDisabled={isGenerating || !isOwner}
+              label="Label"
+              onChange={handleUpdateLabel}
+              value={selectedNode.data.label}
+            />
 
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Input
-                disabled={isGenerating || !isOwner}
-                id="description"
-                onChange={(e) => handleUpdateDescription(e.target.value)}
-                placeholder="Optional description"
-                value={selectedNode.data.description || ""}
-              />
-            </div>
-          </div>
+            <TextInput
+              isDisabled={isGenerating || !isOwner}
+              label="Description"
+              onChange={handleUpdateDescription}
+              placeholder="Optional description"
+              value={selectedNode.data.description || ""}
+            />
+          </VStack>
         ) : null}
 
         {isOwner ? null : publicWorkflowNotice}
 
         {isOwner && selectedNode.parentId ? (
-          <p className="pt-4 text-muted-foreground text-xs">
+          <Text color="secondary" type="supporting">
             This step runs with its Group. Select the frame to switch it off.
-          </p>
+          </Text>
         ) : null}
 
         {isOwner ? (
-          <div className="flex items-center gap-2 pt-4">
+          <HStack gap={2} wrap="wrap" xstyle={styles.actionRow}>
             {showDisabledToggle ? (
-              <Button onClick={handleToggleEnabled} size="sm" variant="outline">
-                {isSelectionDisabled ? (
-                  <>
-                    <EyeOff className="mr-2 size-4" />
-                    Disabled
-                  </>
-                ) : (
-                  <>
-                    <Eye className="mr-2 size-4" />
-                    Enabled
-                  </>
-                )}
-              </Button>
+              <Button
+                label={isSelectionDisabled ? "Disabled" : "Enabled"}
+                onClick={handleToggleEnabled}
+                size="sm"
+                icon={
+                  <Icon icon={isSelectionDisabled ? EyeOff : Eye} size="sm" />
+                }
+                variant="secondary"
+              />
             ) : null}
             {canUngroup(selectedNode) ? (
               <Button
+                label="Ungroup"
                 onClick={() => ungroupSelected(selectedNode.id)}
                 size="sm"
-                variant="outline"
-              >
-                <Ungroup className="mr-2 size-4" />
-                Ungroup
-              </Button>
+                icon={<Icon icon={Ungroup} size="sm" />}
+                variant="secondary"
+              />
             ) : null}
             {/* A member is deleted by deleting or ungrouping its frame, which
                 is what keeps the frame's entry and exit naming a live step. */}
             {refuseDelete([selectedNode]) ? null : (
-              <Button onClick={confirmDeleteNode} size="sm" variant="outline">
-                <Trash2 className="mr-2 size-4 text-destructive" />
-                <span className="text-destructive">Delete</span>
-              </Button>
+              <Button
+                label="Delete"
+                onClick={confirmDeleteNode}
+                size="sm"
+                icon={<Icon icon={Trash2} size="sm" />}
+                variant="destructive"
+              />
             )}
-          </div>
+          </HStack>
         ) : null}
-      </div>
+      </VStack>
     );
   };
 
@@ -670,36 +633,37 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
   );
 
   return (
-    // `flex-1` rather than a full height: both frames are flex columns, and the
-    // sheet puts a header above this.
-    <div
-      className="flex min-h-0 flex-1 flex-col"
-      data-testid="properties-panel"
-    >
+    <div data-testid="properties-panel" {...stylex.props(styles.panel)}>
       {frame.tabs === "top" ? tabBar : null}
 
       {validActiveTab === "properties" ? (
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable_both-edges]">
+        <div {...stylex.props(styles.scrollArea)}>
           {renderPropertiesContent()}
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2">
-            <Button onClick={handleRefreshRuns} size="sm" variant="outline">
-              <RefreshCw className="mr-2 size-4" />
-              Refresh
-            </Button>
+        <div {...stylex.props(styles.panel)}>
+          <HStack
+            gap={2}
+            paddingBlock={2}
+            paddingInline={4}
+            xstyle={styles.runActions}
+          >
             <Button
-              className="text-muted-foreground"
+              label="Refresh"
+              onClick={handleRefreshRuns}
+              size="sm"
+              icon={<Icon icon={RefreshCw} size="sm" />}
+              variant="secondary"
+            />
+            <Button
+              label="Clear all"
               onClick={confirmDeleteAllRuns}
               size="sm"
+              icon={<Icon icon={Eraser} size="sm" />}
               variant="ghost"
-            >
-              <Eraser className="mr-2 size-4" />
-              Clear All
-            </Button>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 [scrollbar-gutter:stable_both-edges]">
+            />
+          </HStack>
+          <div {...stylex.props(styles.runList)}>
             <WorkflowRuns />
           </div>
         </div>
@@ -709,3 +673,64 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
     </div>
   );
 }
+
+const styles = stylex.create({
+  panel: {
+    display: "flex",
+    flex: 1,
+    flexDirection: "column",
+    minHeight: 0,
+  },
+  tabBar: {
+    flexShrink: 0,
+    paddingInline: spacingVars["--spacing-4"],
+  },
+  topTabBar: {
+    borderBottomColor: colorVars["--color-border"],
+    borderBottomStyle: "solid",
+    borderBottomWidth: 1,
+    paddingBlock: spacingVars["--spacing-2"],
+  },
+  bottomTabBar: {
+    borderTopColor: colorVars["--color-border"],
+    borderTopStyle: "solid",
+    borderTopWidth: 1,
+    paddingBlock: spacingVars["--spacing-3"],
+    paddingBottom: `max(${spacingVars["--spacing-3"]}, env(safe-area-inset-bottom))`,
+  },
+  scrollArea: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    overscrollBehavior: "contain",
+    scrollbarGutter: "stable both-edges",
+  },
+  actionGrid: {
+    paddingInline: spacingVars["--spacing-4"],
+    paddingTop: spacingVars["--spacing-4"],
+  },
+  actionRow: {
+    paddingTop: spacingVars["--spacing-4"],
+  },
+  metadata: {
+    backgroundColor: colorVars["--color-neutral"],
+    borderColor: colorVars["--color-border"],
+    borderRadius: "var(--radius-container)",
+    borderStyle: "solid",
+    borderWidth: 1,
+  },
+  runActions: {
+    borderBottomColor: colorVars["--color-border"],
+    borderBottomStyle: "solid",
+    borderBottomWidth: 1,
+    flexShrink: 0,
+  },
+  runList: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    overscrollBehavior: "contain",
+    padding: spacingVars["--spacing-4"],
+    scrollbarGutter: "stable both-edges",
+  },
+});

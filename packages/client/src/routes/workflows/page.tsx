@@ -6,31 +6,10 @@ import {
 } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { isNil, omitBy } from "es-toolkit";
-import { MoreHorizontalIcon } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import { toast } from "sonner";
+import { notifications as toast } from "#src/lib/notifications";
 import { getClientLogger } from "#src/lib/logger";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "#src/components/ui/alert-dialog";
-import { Button } from "#src/components/ui/button";
-import { Checkbox } from "#src/components/ui/checkbox";
-import { Input } from "#src/components/ui/input";
-import { Label } from "#src/components/ui/label";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "#src/components/ui/dropdown-menu";
 import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-dialog";
 import type { WorkflowExecutionsGlobalResult } from "#src/lib/rpc-client";
 import type { WorkflowSummaryPayload } from "@wfgraph/shared/graph/api-contracts";
@@ -39,7 +18,6 @@ import {
   refreshRunHistory,
   refreshWorkflowList,
 } from "#src/lib/rpc-query";
-import { getStatusBadgeClass } from "#src/components/workflow/workflow-run-shared";
 import type { WorkflowExecutionStatus } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
 
@@ -136,6 +114,24 @@ function getCompletedActionLabel(action: "pause" | "resume" | "delete") {
 
 function pluralize(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : plural;
+}
+
+function getRunTokenColor(
+  status: WorkflowExecutionStatus
+): "blue" | "gray" | "green" | "red" | "yellow" {
+  if (status === "failed" || status === "canceled") {
+    return "red";
+  }
+  if (status === "completed") {
+    return "green";
+  }
+  if (status === "running" || status === "waiting") {
+    return "blue";
+  }
+  if (status === "pending") {
+    return "yellow";
+  }
+  return "gray";
 }
 
 export default function WorkflowsPage() {
@@ -399,199 +395,240 @@ export default function WorkflowsPage() {
   const renderWorkflowContent = () => {
     if (isLoadingWorkflows && workflowRows.length === 0) {
       return (
-        <div className="p-6 text-muted-foreground text-sm">
-          Loading workflows...
-        </div>
+        <HStack align="center" gap={2} padding={6}>
+          <Spinner size="sm" />
+          <Text color="secondary">Loading workflows...</Text>
+        </HStack>
       );
     }
 
     if (workflowRows.length === 0) {
       return (
-        <div className="p-6 text-muted-foreground text-sm">
-          No workflows found.
-        </div>
+        <EmptyState
+          description="Create a workflow to start building and reviewing runs."
+          headingLevel={3}
+          isCompact
+          title="No workflows yet"
+        />
       );
     }
 
     return (
-      <table className="w-full text-left text-sm">
-        <thead className="sticky top-0 bg-card">
-          <tr className="border-b">
-            <th className="w-10 px-4 py-2">
-              <Checkbox
-                aria-label="Select all workflows"
-                checked={allSelected}
-                onCheckedChange={(checked) => {
+      <Table
+        density="compact"
+        dividers="rows"
+        hasHover
+        xstyle={styles.workflowTable}
+      >
+        <thead>
+          <TableRow isHeaderRow>
+            <TableHeaderCell xstyle={styles.selectionCell}>
+              <CheckboxInput
+                isLabelHidden
+                label="Select all workflows"
+                onChange={(checked) => {
                   toggleSelectAll(checked);
                 }}
+                size="sm"
+                value={allSelected}
               />
-            </th>
-            <th className="px-2 py-2">Name</th>
-            <th className="px-2 py-2">State</th>
-            <th className="px-2 py-2">Mode</th>
-            <th className="px-2 py-2">Updated</th>
-            <th className="w-10" />
-          </tr>
+            </TableHeaderCell>
+            <TableHeaderCell xstyle={styles.workflowNameCell}>
+              Name
+            </TableHeaderCell>
+            <TableHeaderCell xstyle={styles.stateCell}>State</TableHeaderCell>
+            <TableHeaderCell xstyle={styles.modeCell}>Mode</TableHeaderCell>
+            <TableHeaderCell xstyle={styles.updatedCell}>
+              Updated
+            </TableHeaderCell>
+            <TableHeaderCell xstyle={styles.actionsCell}>
+              Actions
+            </TableHeaderCell>
+          </TableRow>
         </thead>
         <tbody>
           {workflowRows.map((workflow) => {
             const isSelected = selectedWorkflowIds.has(workflow.id);
             const canMutate = workflow.isOwner !== false;
-            const stateClass = workflow.isPaused
-              ? "border-amber-500/30 bg-amber-500/10 text-amber-700"
-              : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700";
             const stateLabel = workflow.isPaused ? "Paused" : "Active";
-            const modeClass =
-              workflow.mode === "test"
-                ? "border-destructive/30 bg-destructive/10 text-destructive"
-                : "border-zinc-500/30 bg-zinc-500/10 text-zinc-700";
             const modeLabel = workflow.mode === "test" ? "Test" : "Live";
             const toggleAction = workflow.isPaused ? "resume" : "pause";
             const toggleActionLabel = workflow.isPaused ? "Resume" : "Pause";
 
             return (
-              <tr className="border-b last:border-b-0" key={workflow.id}>
-                <td className="px-4 py-3">
-                  <Checkbox
-                    aria-label={`Select ${workflow.name}`}
-                    checked={isSelected}
-                    onCheckedChange={(checked) => {
+              <TableRow key={workflow.id}>
+                <TableCell xstyle={styles.selectionCell}>
+                  <CheckboxInput
+                    isLabelHidden
+                    label={`Select ${workflow.name}`}
+                    onChange={(checked) => {
                       toggleSelectOne(workflow.id, checked);
                     }}
+                    size="sm"
+                    value={isSelected}
                   />
-                </td>
-                <td className="px-2 py-3">
-                  <button
-                    className="text-left font-medium text-foreground hover:underline"
-                    onClick={() => {
-                      void navigate({
-                        to: "/workflows/$workflowId",
-                        params: { workflowId: workflow.id },
-                      });
+                </TableCell>
+                <TableCell xstyle={styles.workflowNameCell}>
+                  <VStack gap={0.5}>
+                    <Button
+                      label={workflow.name}
+                      onClick={() => {
+                        void navigate({
+                          to: "/workflows/$workflowId",
+                          params: { workflowId: workflow.id },
+                        });
+                      }}
+                      size="sm"
+                      variant="ghost"
+                    />
+                    <Text color="secondary" type="supporting">
+                      {workflow.id}
+                    </Text>
+                  </VStack>
+                </TableCell>
+                <TableCell xstyle={styles.stateCell}>
+                  <Token
+                    color={workflow.isPaused ? "yellow" : "green"}
+                    label={stateLabel}
+                    size="sm"
+                  />
+                </TableCell>
+                <TableCell xstyle={styles.modeCell}>
+                  <Token
+                    color={workflow.mode === "test" ? "red" : "gray"}
+                    label={modeLabel}
+                    size="sm"
+                  />
+                </TableCell>
+                <TableCell xstyle={styles.updatedCell}>
+                  <Text color="secondary" type="supporting">
+                    {getRelativeTime(workflow.updatedAt)}
+                  </Text>
+                </TableCell>
+                <TableCell xstyle={styles.actionsCell}>
+                  <DropdownMenu
+                    alignment="end"
+                    button={{
+                      icon: <Icon icon={MoreHorizontal} size="sm" />,
+                      isDisabled: !canMutate || lifecycleAction !== null,
+                      isIconOnly: true,
+                      label: `Actions for ${workflow.name}`,
+                      variant: "ghost",
                     }}
-                    type="button"
-                  >
-                    {workflow.name}
-                  </button>
-                  <div className="font-mono text-muted-foreground text-xs">
-                    {workflow.id}
-                  </div>
-                </td>
-                <td className="px-2 py-3">
-                  <span
-                    className={`inline-flex rounded border px-2 py-0.5 font-medium text-xs transition-colors duration-200 ${stateClass}`}
-                  >
-                    {stateLabel}
-                  </span>
-                </td>
-                <td className="px-2 py-3">
-                  <span
-                    className={`inline-flex rounded border px-2 py-0.5 font-medium text-xs uppercase transition-colors duration-200 ${modeClass}`}
-                  >
-                    {modeLabel}
-                  </span>
-                </td>
-                <td className="px-2 py-3 text-muted-foreground text-xs">
-                  {getRelativeTime(workflow.updatedAt)}
-                </td>
-                <td className="px-2 py-3">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      className="inline-flex size-8 items-center justify-center rounded-md border border-input bg-background text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
-                      disabled={!canMutate || lifecycleAction !== null}
-                    >
-                      <MoreHorizontalIcon className="size-4" />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={() => {
+                    items={[
+                      {
+                        label:
+                          workflow.mode === "test"
+                            ? "Switch to Live"
+                            : "Switch to Test",
+                        onClick: () => {
                           switchMode.mutate({
                             workflowId: workflow.id,
                             mode: workflow.mode === "test" ? "live" : "test",
                           });
-                        }}
-                      >
-                        {workflow.mode === "test"
-                          ? "Switch to Live"
-                          : "Switch to Test"}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => {
+                        },
+                      },
+                      {
+                        label: toggleActionLabel,
+                        onClick: () => {
                           runLifecycleAction(toggleAction, [workflow.id]);
-                        }}
-                      >
-                        {toggleActionLabel}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => {
+                        },
+                      },
+                      { type: "divider" },
+                      {
+                        label: "Delete",
+                        onClick: () => {
                           openDeleteConfirmation([workflow.id]);
-                        }}
-                        variant="destructive"
-                      >
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </td>
-              </tr>
+                        },
+                        variant: "destructive",
+                      },
+                    ]}
+                  />
+                </TableCell>
+              </TableRow>
             );
           })}
         </tbody>
-      </table>
+      </Table>
     );
   };
 
   const renderRunsContent = () => {
     if (isLoadingRuns && runs.length === 0) {
       return (
-        <div className="p-6 text-muted-foreground text-sm">Loading runs...</div>
+        <HStack align="center" gap={2} padding={6}>
+          <Spinner size="sm" />
+          <Text color="secondary">Loading runs...</Text>
+        </HStack>
       );
     }
 
     if (runs.length === 0) {
       return (
-        <div className="p-6 text-muted-foreground text-sm">No runs found.</div>
+        <EmptyState
+          description="Runs matching the current filters will appear here."
+          headingLevel={3}
+          isCompact
+          title="No runs found"
+        />
       );
     }
 
     return (
-      <table className="w-full text-left text-sm">
-        <thead className="sticky top-0 bg-card">
-          <tr className="border-b">
-            <th className="px-4 py-2">Workflow</th>
-            <th className="px-2 py-2">Status</th>
-            <th className="px-2 py-2">Started</th>
-            <th className="px-2 py-2">Duration</th>
-            <th className="px-4 py-2 text-right">Open</th>
-          </tr>
+      <Table
+        density="compact"
+        dividers="rows"
+        hasHover
+        xstyle={styles.runsTable}
+      >
+        <thead>
+          <TableRow isHeaderRow>
+            <TableHeaderCell xstyle={styles.runWorkflowCell}>
+              Workflow
+            </TableHeaderCell>
+            <TableHeaderCell xstyle={styles.runStatusCell}>
+              Status
+            </TableHeaderCell>
+            <TableHeaderCell xstyle={styles.runStartedCell}>
+              Started
+            </TableHeaderCell>
+            <TableHeaderCell xstyle={styles.runDurationCell}>
+              Duration
+            </TableHeaderCell>
+            <TableHeaderCell xstyle={styles.runOpenCell}>Open</TableHeaderCell>
+          </TableRow>
         </thead>
         <tbody>
           {runs.map((run) => (
-            <tr className="border-b last:border-b-0" key={run.id}>
-              <td className="px-4 py-3">
-                <div className="font-medium text-foreground text-sm">
-                  {run.workflowName}
-                </div>
-                <div className="font-mono text-muted-foreground text-xs">
-                  {run.workflowId}
-                </div>
-              </td>
-              <td className="px-2 py-3">
-                <span
-                  className={`inline-flex rounded border px-2 py-0.5 font-medium text-xs uppercase ${getStatusBadgeClass(run.status)}`}
-                >
-                  {run.status}
-                </span>
-              </td>
-              <td className="px-2 py-3 text-muted-foreground text-xs">
-                {getRelativeTime(run.startedAt)}
-              </td>
-              <td className="px-2 py-3 text-muted-foreground text-xs">
-                {formatDuration(run.duration)}
-              </td>
-              <td className="px-4 py-3 text-right">
+            <TableRow key={run.id}>
+              <TableCell xstyle={styles.runWorkflowCell}>
+                <VStack gap={0.5}>
+                  <Text weight="medium">{run.workflowName}</Text>
+                  <Text color="secondary" type="supporting">
+                    {run.workflowId}
+                  </Text>
+                </VStack>
+              </TableCell>
+              <TableCell xstyle={styles.runStatusCell}>
+                <Token
+                  color={getRunTokenColor(run.status)}
+                  label={run.status}
+                  size="sm"
+                />
+              </TableCell>
+              <TableCell xstyle={styles.runStartedCell}>
+                <Text color="secondary" type="supporting">
+                  {getRelativeTime(run.startedAt)}
+                </Text>
+              </TableCell>
+              <TableCell xstyle={styles.runDurationCell}>
+                <Text color="secondary" type="supporting">
+                  {formatDuration(run.duration)}
+                </Text>
+              </TableCell>
+              <TableCell xstyle={styles.runOpenCell}>
                 <Button
+                  label="Open"
                   onClick={() => {
                     void navigate({
                       to: "/workflows/$workflowId",
@@ -600,271 +637,275 @@ export default function WorkflowsPage() {
                     });
                   }}
                   size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  Open
-                </Button>
-              </td>
-            </tr>
+                  variant="secondary"
+                />
+              </TableCell>
+            </TableRow>
           ))}
         </tbody>
-      </table>
+      </Table>
     );
   };
 
   return (
-    <div className="pointer-events-auto h-dvh overflow-auto bg-background">
-      <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 p-6">
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h1 className="font-semibold text-2xl text-foreground">
-              Workflow Dashboard
-            </h1>
+    <VStack height="100dvh" isScrollable xstyle={styles.page}>
+      <VStack gap={6} padding={6} width="100%" xstyle={styles.pageContent}>
+        <VStack gap={2}>
+          <HStack align="center" gap={3} justify="between" wrap="wrap">
+            <Heading level={1}>Workflow Dashboard</Heading>
             <Button
+              label="New workflow"
               onClick={() => {
                 setCreateDialogSession((session) => session + 1);
                 setIsCreateDialogOpen(true);
               }}
-              type="button"
-            >
-              New Workflow
-            </Button>
-          </div>
-          <p className="text-muted-foreground text-sm">
+              variant="primary"
+            />
+          </HStack>
+          <Text color="secondary">
             Manage workflows in bulk and review runs across every workflow.
             Paused workflows block new starts. Test mode makes runs execute with
             test-mode action behavior.
-          </p>
-        </div>
+          </Text>
+        </VStack>
 
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1.5fr]">
-          <section className="rounded-xl border bg-card">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-              <div>
-                <h2 className="font-medium text-foreground text-sm">
-                  Workflows
-                </h2>
-                <p className="text-muted-foreground text-xs">
+        <div {...stylex.props(styles.dashboardGrid)}>
+          <Card padding={0}>
+            <HStack
+              align="center"
+              gap={2}
+              justify="between"
+              padding={4}
+              wrap="wrap"
+            >
+              <VStack gap={0.5}>
+                <Heading level={2}>Workflows</Heading>
+                <Text color="secondary" type="supporting">
                   Select one or more workflows to run bulk actions.
-                </p>
-              </div>
+                </Text>
+              </VStack>
               <Button
-                disabled={isLoadingWorkflows || lifecycleAction !== null}
+                isDisabled={isLoadingWorkflows || lifecycleAction !== null}
+                label="Refresh workflows"
                 onClick={refreshWorkflows}
                 size="sm"
-                type="button"
-                variant="outline"
-              >
-                Refresh
-              </Button>
-            </div>
+                variant="secondary"
+              />
+            </HStack>
 
-            <div className="border-b px-4 py-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  disabled={
-                    selectedActionableIds.length === 0 ||
-                    lifecycleAction !== null
-                  }
-                  onClick={() => {
-                    runLifecycleAction("pause", selectedActionableIds);
-                  }}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  Pause Selected
-                </Button>
-                <Button
-                  disabled={
-                    selectedActionableIds.length === 0 ||
-                    lifecycleAction !== null
-                  }
-                  onClick={() => {
-                    runLifecycleAction("resume", selectedActionableIds);
-                  }}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  Resume Selected
-                </Button>
-                <Button
-                  disabled={
-                    selectedActionableIds.length === 0 ||
-                    lifecycleAction !== null
-                  }
-                  onClick={() => {
-                    openDeleteConfirmation(selectedActionableIds);
-                  }}
-                  size="sm"
-                  type="button"
-                  variant="destructive"
-                >
-                  Delete Selected
-                </Button>
-              </div>
-            </div>
+            <Divider />
+            <HStack gap={2} padding={4} wrap="wrap">
+              <Button
+                isDisabled={
+                  selectedActionableIds.length === 0 || lifecycleAction !== null
+                }
+                label="Pause selected"
+                onClick={() => {
+                  runLifecycleAction("pause", selectedActionableIds);
+                }}
+                size="sm"
+                variant="secondary"
+              />
+              <Button
+                isDisabled={
+                  selectedActionableIds.length === 0 || lifecycleAction !== null
+                }
+                label="Resume selected"
+                onClick={() => {
+                  runLifecycleAction("resume", selectedActionableIds);
+                }}
+                size="sm"
+                variant="secondary"
+              />
+              <Button
+                isDisabled={
+                  selectedActionableIds.length === 0 || lifecycleAction !== null
+                }
+                label="Delete selected"
+                onClick={() => {
+                  openDeleteConfirmation(selectedActionableIds);
+                }}
+                size="sm"
+                variant="destructive"
+              />
+            </HStack>
 
-            <div className="max-h-[65vh] overflow-auto">
+            <Divider />
+            <div {...stylex.props(styles.tableViewport)}>
               {renderWorkflowContent()}
             </div>
-          </section>
+          </Card>
 
-          <section className="rounded-xl border bg-card">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-              <div>
-                <h2 className="font-medium text-foreground text-sm">
-                  All Runs
-                </h2>
-                <p className="text-muted-foreground text-xs">
+          <Card padding={0}>
+            <HStack
+              align="center"
+              gap={2}
+              justify="between"
+              padding={4}
+              wrap="wrap"
+            >
+              <VStack gap={0.5}>
+                <Heading level={2}>All Runs</Heading>
+                <Text color="secondary" type="supporting">
                   Combined run history across workflows.
-                </p>
-              </div>
+                </Text>
+              </VStack>
               <Button
-                disabled={isLoadingRuns || isLoadingMoreRuns}
+                isDisabled={isLoadingRuns || isLoadingMoreRuns}
+                label="Refresh runs"
                 onClick={() => {
                   void refreshRuns();
                 }}
                 size="sm"
-                type="button"
-                variant="outline"
-              >
-                Refresh
-              </Button>
-            </div>
+                variant="secondary"
+              />
+            </HStack>
 
-            <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
-              <Button
-                onClick={() => {
-                  setStatusFilters(new Set());
-                }}
+            <Divider />
+            <HStack gap={2} padding={4} wrap="wrap">
+              <ToggleButton
+                isPressed={statusFilters.size === 0}
+                label="All statuses"
+                onPressedChange={() => setStatusFilters(new Set())}
                 size="sm"
-                type="button"
-                variant={statusFilters.size === 0 ? "secondary" : "outline"}
-              >
-                All statuses
-              </Button>
+              />
               {STATUS_OPTIONS.map((status) => (
-                <Button
+                <ToggleButton
+                  isPressed={statusFilters.has(status)}
                   key={status}
-                  onClick={() => {
-                    toggleStatusFilter(status);
-                  }}
+                  label={status}
+                  onPressedChange={() => toggleStatusFilter(status)}
                   size="sm"
-                  type="button"
-                  variant={statusFilters.has(status) ? "secondary" : "outline"}
-                >
-                  {status}
-                </Button>
+                />
               ))}
-              <Button
-                disabled={selectedActionableIds.length === 0}
-                onClick={() => {
-                  setShowSelectedRunsOnly((prev) => !prev);
-                }}
+              <ToggleButton
+                isDisabled={selectedActionableIds.length === 0}
+                isPressed={showSelectedRunsOnly}
+                label="Selected workflows only"
+                onPressedChange={setShowSelectedRunsOnly}
                 size="sm"
-                type="button"
-                variant={showSelectedRunsOnly ? "secondary" : "outline"}
-              >
-                {showSelectedRunsOnly
-                  ? "Showing selected workflows"
-                  : "Show selected workflows only"}
-              </Button>
-            </div>
+              />
+            </HStack>
 
-            <div className="max-h-[65vh] overflow-auto">
+            <Divider />
+            <div {...stylex.props(styles.tableViewport)}>
               {renderRunsContent()}
             </div>
 
             {runsQuery.hasNextPage ? (
-              <div className="border-t px-4 py-3">
-                <Button
-                  disabled={isLoadingMoreRuns}
-                  onClick={() => {
-                    void runsQuery.fetchNextPage();
-                  }}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  {isLoadingMoreRuns ? "Loading..." : "Load more"}
-                </Button>
-              </div>
+              <>
+                <Divider />
+                <HStack padding={4}>
+                  <Button
+                    isDisabled={isLoadingMoreRuns}
+                    isLoading={isLoadingMoreRuns}
+                    label={isLoadingMoreRuns ? "Loading" : "Load more"}
+                    onClick={() => {
+                      void runsQuery.fetchNextPage();
+                    }}
+                    size="sm"
+                    variant="secondary"
+                  />
+                </HStack>
+              </>
             ) : null}
-          </section>
+          </Card>
         </div>
-      </div>
+      </VStack>
 
-      <AlertDialog
+      <Dialog
+        isOpen={confirmDelete !== null}
         onOpenChange={(open) => {
           if (!open) {
             setConfirmDelete(null);
             setDeleteChallenge("");
           }
         }}
-        open={confirmDelete !== null}
+        purpose="form"
       >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{confirmDelete?.title}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmDelete?.description}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {confirmDelete && confirmDelete.workflowNames.length > 1 ? (
-            <ul className="list-disc pl-5 text-muted-foreground text-sm">
-              {confirmDelete.workflowIds.slice(0, 3).map((id, index) => (
-                <li key={id}>{confirmDelete.workflowNames[index]}</li>
-              ))}
-              {confirmDelete.workflowNames.length > 3 ? (
-                <li>and {confirmDelete.workflowNames.length - 3} more</li>
-              ) : null}
-            </ul>
-          ) : null}
-          {confirmDelete &&
-          confirmDelete.workflowIds.length > DELETE_CHALLENGE_THRESHOLD ? (
-            <div className="space-y-2">
-              <Label htmlFor="delete-challenge">
-                Type {confirmDelete.workflowIds.length} to confirm
-              </Label>
-              <Input
-                autoComplete="off"
-                id="delete-challenge"
-                inputMode="numeric"
-                onChange={(event) => {
-                  setDeleteChallenge(event.target.value);
-                }}
-                value={deleteChallenge}
-              />
-            </div>
-          ) : null}
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={
-                confirmDelete !== null &&
-                confirmDelete.workflowIds.length > DELETE_CHALLENGE_THRESHOLD &&
-                deleteChallenge.trim() !==
-                  String(confirmDelete.workflowIds.length)
-              }
-              onClick={() => {
-                if (!confirmDelete) {
-                  return;
-                }
+        <Layout
+          content={
+            <LayoutContent>
+              <VStack gap={4}>
+                {confirmDelete && confirmDelete.workflowNames.length > 1 ? (
+                  <ul {...stylex.props(styles.deleteList)}>
+                    {confirmDelete.workflowIds.slice(0, 3).map((id, index) => (
+                      <li key={id}>
+                        <Text color="secondary">
+                          {confirmDelete.workflowNames[index]}
+                        </Text>
+                      </li>
+                    ))}
+                    {confirmDelete.workflowNames.length > 3 ? (
+                      <li>
+                        <Text color="secondary">
+                          and {confirmDelete.workflowNames.length - 3} more
+                        </Text>
+                      </li>
+                    ) : null}
+                  </ul>
+                ) : null}
+                {confirmDelete &&
+                confirmDelete.workflowIds.length >
+                  DELETE_CHALLENGE_THRESHOLD ? (
+                  <TextInput
+                    label={`Type ${confirmDelete.workflowIds.length} to confirm`}
+                    onChange={setDeleteChallenge}
+                    value={deleteChallenge}
+                    width="100%"
+                  />
+                ) : null}
+              </VStack>
+            </LayoutContent>
+          }
+          footer={
+            <LayoutFooter hasDivider>
+              <HStack gap={2} justify="end">
+                <Button
+                  label="Cancel"
+                  onClick={() => {
+                    setConfirmDelete(null);
+                    setDeleteChallenge("");
+                  }}
+                  variant="secondary"
+                />
+                <Button
+                  isDisabled={
+                    confirmDelete !== null &&
+                    confirmDelete.workflowIds.length >
+                      DELETE_CHALLENGE_THRESHOLD &&
+                    deleteChallenge.trim() !==
+                      String(confirmDelete.workflowIds.length)
+                  }
+                  label="Delete"
+                  onClick={() => {
+                    if (!confirmDelete) {
+                      return;
+                    }
 
-                runLifecycleAction("delete", confirmDelete.workflowIds);
-                setConfirmDelete(null);
-                setDeleteChallenge("");
+                    runLifecycleAction("delete", confirmDelete.workflowIds);
+                    setConfirmDelete(null);
+                    setDeleteChallenge("");
+                  }}
+                  variant="destructive"
+                />
+              </HStack>
+            </LayoutFooter>
+          }
+          header={
+            <DialogHeader
+              onOpenChange={(open) => {
+                if (!open) {
+                  setConfirmDelete(null);
+                  setDeleteChallenge("");
+                }
               }}
-              variant="destructive"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              subtitle={confirmDelete?.description}
+              title={confirmDelete?.title ?? "Delete workflows"}
+            />
+          }
+        />
+      </Dialog>
       <CreateWorkflowDialog
         key={createDialogSession}
         existingWorkflowNames={workflows.map((workflow) => workflow.name)}
@@ -874,6 +915,99 @@ export default function WorkflowsPage() {
         onOpenChange={setIsCreateDialogOpen}
         open={isCreateDialogOpen}
       />
-    </div>
+    </VStack>
   );
 }
+
+const styles = stylex.create({
+  page: {
+    pointerEvents: "auto",
+  },
+  pageContent: {
+    marginInline: "auto",
+    maxWidth: "1600px",
+  },
+  dashboardGrid: {
+    display: "grid",
+    gap: spacingVars["--spacing-6"],
+    gridTemplateColumns: {
+      default: "minmax(0, 1fr)",
+      "@media (min-width: 1280px)": "minmax(0, 1fr) minmax(0, 1.5fr)",
+    },
+  },
+  tableViewport: {
+    maxHeight: "65vh",
+    overflow: "auto",
+  },
+  deleteList: {
+    listStyleType: "disc",
+    margin: 0,
+    paddingInlineStart: spacingVars["--spacing-5"],
+  },
+  workflowTable: {
+    minWidth: "640px",
+  },
+  runsTable: {
+    minWidth: "620px",
+  },
+  selectionCell: {
+    minWidth: "48px",
+    width: "48px",
+  },
+  workflowNameCell: {
+    minWidth: "220px",
+  },
+  stateCell: {
+    minWidth: "88px",
+  },
+  modeCell: {
+    minWidth: "72px",
+  },
+  updatedCell: {
+    minWidth: "112px",
+  },
+  actionsCell: {
+    minWidth: "72px",
+    width: "72px",
+  },
+  runWorkflowCell: {
+    minWidth: "220px",
+  },
+  runStatusCell: {
+    minWidth: "112px",
+  },
+  runStartedCell: {
+    minWidth: "120px",
+  },
+  runDurationCell: {
+    minWidth: "88px",
+  },
+  runOpenCell: {
+    minWidth: "72px",
+  },
+});
+import * as stylex from "@stylexjs/stylex";
+import { Button } from "@astryxdesign/core/Button";
+import { Card } from "@astryxdesign/core/Card";
+import { CheckboxInput } from "@astryxdesign/core/CheckboxInput";
+import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
+import { Divider } from "@astryxdesign/core/Divider";
+import { DropdownMenu } from "@astryxdesign/core/DropdownMenu";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { Heading } from "@astryxdesign/core/Heading";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
+import { Spinner } from "@astryxdesign/core/Spinner";
+import {
+  Table,
+  TableCell,
+  TableHeaderCell,
+  TableRow,
+} from "@astryxdesign/core/Table";
+import { Text } from "@astryxdesign/core/Text";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { ToggleButton } from "@astryxdesign/core/ToggleButton";
+import { Token } from "@astryxdesign/core/Token";
+import { VStack } from "@astryxdesign/core/VStack";
+import { spacingVars } from "@astryxdesign/core/theme/tokens.stylex";

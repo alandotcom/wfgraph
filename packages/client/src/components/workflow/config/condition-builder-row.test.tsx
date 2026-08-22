@@ -1,4 +1,9 @@
-import { fireEvent, render, type RenderResult } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  type RenderResult,
+  within,
+} from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
@@ -102,19 +107,11 @@ function renderRow(
   );
 }
 
-/**
- * Search the field picker and take the first path it offers.
- *
- * The popup opens on an arrow key rather than a click: a pointer press reaches
- * the list through events happy-dom does not deliver whole, and the keyboard path
- * is the one a builder filtering a long list takes anyway.
- */
 function chooseField(view: RenderResult, query: string) {
-  const input = view.getByLabelText("Select field");
-  fireEvent.keyDown(input, { key: "ArrowDown" });
+  const input = openFieldPicker(view);
   fireEvent.change(input, { target: { value: query } });
 
-  const option = view.getAllByRole("option").at(0);
+  const option = fieldOptions(input).at(0);
   if (!option) {
     throw new Error(`No field matched "${query}"`);
   }
@@ -122,9 +119,17 @@ function chooseField(view: RenderResult, query: string) {
 }
 
 function openFieldPicker(view: RenderResult) {
-  const input = view.getByLabelText("Select field");
-  fireEvent.keyDown(input, { key: "ArrowDown" });
-  return input;
+  fireEvent.click(view.getByRole("button", { name: "Field" }));
+  return view.getByPlaceholderText("Search fields");
+}
+
+function fieldOptions(input: HTMLElement) {
+  const listboxId = input.getAttribute("aria-controls");
+  const listbox = listboxId ? document.getElementById(listboxId) : null;
+  if (!listbox) {
+    throw new Error("Field picker listbox was not rendered");
+  }
+  return within(listbox).queryAllByRole("option");
 }
 
 describe("ConditionBuilderRow field picker", () => {
@@ -134,17 +139,13 @@ describe("ConditionBuilderRow field picker", () => {
       storedModel("becsRef")
     );
 
-    openFieldPicker(view);
+    const input = openFieldPicker(view);
 
-    expect(view.getByText("Look Up Donor")).toBeTruthy();
-    expect(view.getByText("Created")).toBeTruthy();
-    expect(
-      view.getAllByRole("option").map((option) => option.textContent)
-    ).toEqual([
-      "appointment.id",
-      "becsRefnullable",
-      "emailnullable",
-      "firstName",
+    expect(fieldOptions(input).map((option) => option.textContent)).toEqual([
+      "Created: appointment.id",
+      "Look Up Donor: becsRef (nullable)",
+      "Look Up Donor: email (nullable)",
+      "Look Up Donor: firstName",
     ]);
   });
 
@@ -154,9 +155,9 @@ describe("ConditionBuilderRow field picker", () => {
 
     fireEvent.change(input, { target: { value: "email" } });
 
-    expect(
-      view.getAllByRole("option").map((option) => option.textContent)
-    ).toEqual(["emailnullable"]);
+    expect(fieldOptions(input).map((option) => option.textContent)).toEqual([
+      "Look Up Donor: email (nullable)",
+    ]);
   });
 
   it("finds a field by the node that produced it", () => {
@@ -168,9 +169,9 @@ describe("ConditionBuilderRow field picker", () => {
 
     fireEvent.change(input, { target: { value: "Created" } });
 
-    expect(
-      view.getAllByRole("option").map((option) => option.textContent)
-    ).toEqual(["appointment.id"]);
+    expect(fieldOptions(input).map((option) => option.textContent)).toEqual([
+      "Created: appointment.id",
+    ]);
   });
 
   it("says when nothing matches the query", () => {
@@ -179,8 +180,8 @@ describe("ConditionBuilderRow field picker", () => {
 
     fireEvent.change(input, { target: { value: "zzzz" } });
 
-    expect(view.getByText("No field matches that.")).toBeTruthy();
-    expect(view.queryAllByRole("option")).toEqual([]);
+    expect(view.getByText(/No results/i)).toBeTruthy();
+    expect(fieldOptions(input)).toEqual([]);
   });
 
   it("writes the chosen field onto the rule", () => {
@@ -202,9 +203,9 @@ describe("ConditionBuilderRow field picker", () => {
   it("keeps a stored path the graph no longer offers", () => {
     const view = renderRow(DONOR_FIELDS, storedModel("gone.path"));
 
-    expect(
-      (view.getByLabelText("Select field") as HTMLInputElement).value
-    ).toBe("gone.path (Unavailable)");
+    expect(view.getByRole("button", { name: "Field" }).textContent).toContain(
+      "gone.path (Unavailable)"
+    );
 
     openFieldPicker(view);
 

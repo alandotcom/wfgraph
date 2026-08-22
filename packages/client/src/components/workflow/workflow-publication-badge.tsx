@@ -20,16 +20,15 @@ export function WorkflowPublicationBadge({
   // already names the run mode two controls to the right, and two meanings for
   // it read as one switch.
   if (!isPublished) {
-    return (
-      <span className="rounded-md border bg-card px-2 py-1 font-medium text-muted-foreground text-xs">
-        Never published
-      </span>
-    );
+    return <Token color="gray" label="Never published" size="sm" />;
   }
 
   return (
-    <span className="rounded-md border bg-card px-2 py-1 font-medium text-muted-foreground text-xs">
-      {hasUnpublishedChanges ? "Unpublished changes" : "Published"}
-    </span>
+    <Token
+      color={hasUnpublishedChanges ? "yellow" : "green"}
+      label={hasUnpublishedChanges ? "Unpublished changes" : "Published"}
+      size="sm"
+    />
   );
 }
+import { Token } from "@astryxdesign/core/Token";

@@ -1,10 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Pencil, X } from "lucide-react";
+import { Pencil, X } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
-import { Button } from "#src/components/ui/button";
-import { Input } from "#src/components/ui/input";
-import { Label } from "#src/components/ui/label";
+import { notifications as toast } from "#src/lib/notifications";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import {
   announceTestResult,
@@ -38,7 +35,7 @@ type EditConnectionOverlayProps = {
  * Secret field with "Configured" state for edit mode
  */
 function SecretField({
-  fieldId,
+  fieldId: _fieldId,
   label,
   configKey,
   placeholder,
@@ -62,69 +59,61 @@ function SecretField({
 
   if (!(isEditing || hasNewValue)) {
     return (
-      <div className="space-y-2">
-        <Label htmlFor={fieldId}>{label}</Label>
-        <div className="flex items-center gap-2">
-          <div className="flex h-9 flex-1 items-center gap-2 rounded-md border bg-muted/30 px-3">
-            <Check className="size-4 text-success" />
-            <span className="text-muted-foreground text-sm">Configured</span>
-          </div>
+      <VStack gap={2}>
+        <Text type="label">{label}</Text>
+        <HStack align="center" gap={2}>
+          <Banner
+            description="A credential is stored for this field."
+            status="success"
+            title="Configured"
+          />
           <Button
+            icon={<Icon icon={Pencil} size="sm" />}
+            label="Change"
             onClick={() => setIsEditing(true)}
-            type="button"
-            variant="outline"
-          >
-            <Pencil className="mr-1.5 size-3" />
-            Change
-          </Button>
-        </div>
-      </div>
+            variant="secondary"
+          />
+        </HStack>
+      </VStack>
     );
   }
 
   return (
-    <div className="space-y-2">
-      <Label htmlFor={fieldId}>{label}</Label>
-      <div className="flex items-center gap-2">
-        <Input
-          autoFocus={isEditing && !isMobile}
-          className="flex-1"
-          id={fieldId}
-          onChange={(e) => onChange(configKey, e.target.value)}
+    <VStack gap={2}>
+      <HStack align="end" gap={2}>
+        <TextInput
+          hasAutoFocus={isEditing && !isMobile}
+          label={label}
+          onChange={(next) => onChange(configKey, next)}
           placeholder={placeholder}
           type="password"
           value={value}
+          width="100%"
         />
         {(isEditing || hasNewValue) && (
-          <Button
+          <IconButton
+            icon={<Icon icon={X} size="sm" />}
+            label="Keep stored credential"
             onClick={() => {
               onChange(configKey, "");
               setIsEditing(false);
             }}
-            size="icon"
-            type="button"
+            size="sm"
             variant="ghost"
-          >
-            <X className="size-4" />
-          </Button>
+          />
         )}
-      </div>
+      </HStack>
       {(helpText || helpLink) && (
-        <p className="text-muted-foreground text-xs">
+        <Text color="secondary" type="supporting">
           {helpText}
           {helpLink && (
-            <a
-              className="underline hover:text-foreground"
-              href={helpLink.url}
-              rel="noopener noreferrer"
-              target="_blank"
-            >
+            <a href={helpLink.url} rel="noopener noreferrer" target="_blank">
               {helpLink.text}
             </a>
           )}
-        </p>
+        </Text>
       )}
-    </div>
+    </VStack>
   );
 }
 
@@ -281,21 +270,20 @@ export function EditConnectionOverlay({
       }
 
       return (
-        <div className="space-y-2" key={configKey}>
-          <Label htmlFor={configKey}>{field.label}</Label>
-          <Input
-            id={configKey}
-            onChange={(e) => updateConfig(configKey, e.target.value)}
+        <VStack gap={2} key={configKey}>
+          <TextInput
+            label={field.label}
+            onChange={(next) => updateConfig(configKey, next)}
             placeholder={field.placeholder}
-            type={field.type}
+            type="text"
             value={config[configKey] || ""}
+            width="100%"
           />
           {(field.helpText || field.helpLink) && (
-            <p className="text-muted-foreground text-xs">
+            <Text color="secondary" type="supporting">
               {field.helpText}
               {field.helpLink && (
                 <a
-                  className="underline hover:text-foreground"
                   href={field.helpLink.url}
                   rel="noopener noreferrer"
                   target="_blank"
@@ -303,9 +291,9 @@ export function EditConnectionOverlay({
                   {field.helpLink.text}
                 </a>
               )}
-            </p>
+            </Text>
           )}
-        </div>
+        </VStack>
       );
     });
   };
@@ -323,7 +311,7 @@ export function EditConnectionOverlay({
           ? [
               {
                 label: "Test",
-                variant: "outline" as const,
+                variant: "secondary" as const,
                 onClick: handleTest,
                 loading: testing,
                 disabled: saving,
@@ -335,23 +323,20 @@ export function EditConnectionOverlay({
       overlayId={overlayId}
       title={`Edit ${integrationLabel(catalogEntry, integration.type)}`}
     >
-      <p className="-mt-2 mb-4 text-muted-foreground text-sm">
-        Update your connection credentials
-      </p>
+      <Text color="secondary">Update your connection credentials</Text>
 
-      <div className="space-y-4">
+      <VStack gap={4}>
         {renderConfigFields()}
 
-        <div className="space-y-2">
-          <Label htmlFor="name">Label (Optional)</Label>
-          <Input
-            id="name"
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Production, Personal, Work"
-            value={name}
-          />
-        </div>
-      </div>
+        <TextInput
+          isOptional
+          label="Label"
+          onChange={setName}
+          placeholder="e.g. Production, Personal, Work"
+          value={name}
+          width="100%"
+        />
+      </VStack>
     </Overlay>
   );
 }
@@ -403,7 +388,7 @@ export function DeleteConnectionOverlay({
   return (
     <Overlay
       actions={[
-        { label: "Cancel", variant: "outline", onClick: pop },
+        { label: "Cancel", variant: "secondary", onClick: pop },
         {
           label: "Delete",
           variant: "destructive",
@@ -415,10 +400,18 @@ export function DeleteConnectionOverlay({
       overlayId={overlayId}
       title="Delete Connection"
     >
-      <p className="text-muted-foreground text-sm">
+      <Text color="secondary">
         Are you sure you want to delete this connection? Workflows using it will
         fail until a new one is configured.
-      </p>
+      </Text>
     </Overlay>
   );
 }
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { Text } from "@astryxdesign/core/Text";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { VStack } from "@astryxdesign/core/VStack";

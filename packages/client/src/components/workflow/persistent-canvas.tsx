@@ -1,4 +1,5 @@
 import { useRouterState } from "@tanstack/react-router";
+import * as stylex from "@stylexjs/stylex";
 import { WorkflowCanvas } from "./workflow-canvas";
 
 const WORKFLOW_EDITOR_PATH_PATTERN = /^\/workflows\/[^/]+$/;
@@ -15,8 +16,12 @@ export function PersistentCanvas() {
   }
 
   return (
-    <div className="fixed inset-0 z-0">
+    <div {...stylex.props(styles.canvas)}>
       <WorkflowCanvas />
     </div>
   );
 }
+
+const styles = stylex.create({
+  canvas: { inset: 0, position: "fixed", zIndex: 0 },
+});

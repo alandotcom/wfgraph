@@ -1,5 +1,10 @@
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
+import { Card } from "@astryxdesign/core/Card";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
-import { Button } from "#src/components/ui/button";
 import {
   type ExecutionEvent,
   type ExecutionLog,
@@ -14,7 +19,6 @@ import { WorkflowRunTimeline } from "./workflow-run-timeline";
 type WorkflowRunDetailProps = {
   execution: WorkflowExecution;
   runNumber: number;
-  /** Why this run is no longer in the list behind it, when it has left. */
   notice?: string;
   logs: ExecutionLog[];
   events: ExecutionEvent[];
@@ -44,7 +48,7 @@ export function WorkflowRunDetail({
   );
 
   return (
-    <div className="space-y-4">
+    <VStack gap={4}>
       <WorkflowRunSummaryRow
         execution={execution}
         leading={{ onBack, type: "back" }}
@@ -52,77 +56,69 @@ export function WorkflowRunDetail({
         showStartEventName
         trailing={
           isRunInProgress(execution.status)
-            ? {
-                isCanceling,
-                onCancel,
-                type: "cancel",
-              }
+            ? { isCanceling, onCancel, type: "cancel" }
             : { type: "spacer" }
         }
       />
 
       {notice ? (
-        <p className="rounded-md border bg-muted/30 p-2 text-muted-foreground text-xs">
-          {notice}
-        </p>
+        <Banner
+          description={notice}
+          status="info"
+          title="Run no longer listed"
+        />
       ) : null}
 
       {waits.map((wait) => (
-        <div
-          className="space-y-1.5 rounded-md border bg-muted/30 p-2"
-          key={wait.id}
-        >
-          <p className="font-medium text-xs">Parked at {wait.nodeName}</p>
-          <p className="text-xs text-muted-foreground">
-            {wait.subscribedEvents.length > 0
-              ? `Waiting for ${wait.subscribedEvents.join(", ")}`
-              : "Waiting on a timer"}
-          </p>
-          {wait.resumeToken ? (
-            <Button
-              disabled={isResuming}
-              // The operator's way past an Event that is never going to come.
-              // It carries no payload, so a match downstream of it reads an
-              // empty object; that is the point of forcing the run onward.
-              onClick={() => onResume(wait.resumeToken ?? "")}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              Resume now
-            </Button>
-          ) : null}
-        </div>
+        <Card key={wait.id} padding={3}>
+          <VStack gap={2}>
+            <Text size="sm" weight="medium">
+              Parked at {wait.nodeName}
+            </Text>
+            <Text color="secondary" size="sm">
+              {wait.subscribedEvents.length > 0
+                ? `Waiting for ${wait.subscribedEvents.join(", ")}`
+                : "Waiting on a timer"}
+            </Text>
+            {wait.resumeToken ? (
+              <Button
+                isDisabled={isResuming}
+                isLoading={isResuming}
+                label="Resume now"
+                onClick={() => onResume(wait.resumeToken ?? "")}
+                size="sm"
+                variant="secondary"
+              />
+            ) : null}
+          </VStack>
+        </Card>
       ))}
 
-      {/* Timeline */}
       <WorkflowRunTimeline logs={sortedLogs} />
 
-      {/* Audit events */}
       {events.length > 0 ? (
-        <CollapsibleSection title="Audit Events">
-          <div className="space-y-2">
+        <CollapsibleSection title="Audit events">
+          <VStack gap={2}>
             {events.map((event) => (
-              <div
-                className="flex items-center justify-between rounded-md border bg-muted/30 px-2 py-1.5"
-                key={event.id}
-              >
-                <div className="min-w-0">
-                  <div className="truncate font-medium text-xs">
-                    {event.message}
-                  </div>
-                  <div className="truncate text-xs text-muted-foreground">
-                    {event.eventType}
-                  </div>
-                </div>
-                <div className="ml-3 shrink-0 text-xs text-muted-foreground">
-                  {getRelativeTime(event.createdAt)}
-                </div>
-              </div>
+              <Card key={event.id} padding={2}>
+                <HStack align="center" gap={3} justify="between">
+                  <VStack gap={1}>
+                    <Text size="sm" weight="medium">
+                      {event.message}
+                    </Text>
+                    <Text color="secondary" size="sm">
+                      {event.eventType}
+                    </Text>
+                  </VStack>
+                  <Text color="secondary" size="sm">
+                    {getRelativeTime(event.createdAt)}
+                  </Text>
+                </HStack>
+              </Card>
             ))}
-          </div>
+          </VStack>
         </CollapsibleSection>
       ) : null}
-    </div>
+    </VStack>
   );
 }

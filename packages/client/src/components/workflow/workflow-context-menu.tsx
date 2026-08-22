@@ -1,4 +1,8 @@
 import type { Edge, Node, XYPosition } from "@xyflow/react";
+import * as stylex from "@stylexjs/stylex";
+import { Icon } from "@astryxdesign/core/Icon";
+import { Text } from "@astryxdesign/core/Text";
+import { colorVars, spacingVars } from "@astryxdesign/core/theme/tokens.stylex";
 import { useAtomValue, useSetAtom } from "jotai";
 import {
   ClipboardPaste,
@@ -38,12 +42,11 @@ import { canUngroup, refuseDelete } from "#src/lib/node-group";
 import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 import { type WorkflowNode } from "#src/lib/workflow-graph-types";
 import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
-import { cn } from "@wfgraph/shared/utils";
 import { analyzeGroupableSelection } from "@wfgraph/shared/graph/node-group";
 
 export type ContextMenuType = "node" | "edge" | "pane" | null;
 
-/** The widest the menu draws (`max-w-72`), and the gap it keeps from the window
+/** The widest the menu draws, and the gap it keeps from the window
  *  edge. A menu holding no hint is narrower than this, and clamping it as though
  *  it were the widest one only ever leaves it further inside the window. */
 const MENU_WIDTH_PX = 288;
@@ -269,7 +272,7 @@ export function WorkflowContextMenu({
   // that layer's siblings and the properties panel drew over the menu.
   return createPortal(
     <div
-      className="fade-in-0 zoom-in-95 fixed z-50 max-h-[calc(100vh-1rem)] w-fit min-w-[8rem] max-w-72 animate-in overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+      {...stylex.props(styles.menu)}
       ref={menuRef}
       style={{
         // Held inside the right edge against the widest the menu can draw, so
@@ -284,20 +287,20 @@ export function WorkflowContextMenu({
       {menuState.type === "node" && (
         <>
           <MenuItem
-            icon={<SlidersHorizontal className="size-4" />}
+            icon={<Icon icon={SlidersHorizontal} size="sm" />}
             label={`Edit ${nodeLabel}`}
             onClick={handleEditNode}
           />
           <MenuItem
             disabled={isLifecycleNode}
-            icon={<Copy className="size-4" />}
+            icon={<Icon icon={Copy} size="sm" />}
             label="Copy"
             onClick={handleCopyNode}
             shortcut={shortcutLabel("C")}
           />
           <MenuItem
             disabled={isLifecycleNode}
-            icon={<CopyPlus className="size-4" />}
+            icon={<Icon icon={CopyPlus} size="sm" />}
             label="Duplicate"
             onClick={handleDuplicateNode}
             shortcut={shortcutLabel("D")}
@@ -305,21 +308,21 @@ export function WorkflowContextMenu({
           <MenuItem
             disabled={!canGroup}
             hint={!canGroup && !grouping.ok ? grouping.error : undefined}
-            icon={<Group className="size-4" />}
+            icon={<Icon icon={Group} size="sm" />}
             label="Group"
             onClick={handleGroup}
             shortcut={shortcutLabel("G")}
           />
           <MenuItem
             disabled={!showUngroup}
-            icon={<Ungroup className="size-4" />}
+            icon={<Icon icon={Ungroup} size="sm" />}
             label="Ungroup"
             onClick={handleUngroup}
           />
           <MenuItem
             disabled={isLifecycleNode || Boolean(deleteRefusal)}
             hint={deleteRefusal ?? undefined}
-            icon={<Trash2 className="size-4" />}
+            icon={<Icon icon={Trash2} size="sm" />}
             label={`Delete ${nodeLabel}`}
             onClick={handleDeleteNode}
             variant="destructive"
@@ -329,7 +332,7 @@ export function WorkflowContextMenu({
 
       {menuState.type === "edge" && (
         <MenuItem
-          icon={<Link2Off className="size-4" />}
+          icon={<Icon icon={Link2Off} size="sm" />}
           label="Delete Connection"
           onClick={handleDeleteEdge}
           variant="destructive"
@@ -339,13 +342,13 @@ export function WorkflowContextMenu({
       {menuState.type === "pane" && (
         <>
           <MenuItem
-            icon={<Plus className="size-4" />}
+            icon={<Icon icon={Plus} size="sm" />}
             label="Add Step"
             onClick={handleAddStep}
           />
           <MenuItem
             disabled={!hasCopiedSelection}
-            icon={<ClipboardPaste className="size-4" />}
+            icon={<Icon icon={ClipboardPaste} size="sm" />}
             label="Paste"
             onClick={handlePaste}
             shortcut={shortcutLabel("V")}
@@ -385,40 +388,102 @@ function MenuItem({
 }: MenuItemProps) {
   return (
     <button
-      className={cn(
-        "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none",
-        "hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground",
-        variant === "destructive" &&
-          "text-destructive hover:bg-destructive/10 hover:text-destructive focus:bg-destructive/10 focus:text-destructive",
-        disabled && "pointer-events-none opacity-50"
+      {...stylex.props(
+        styles.item,
+        variant === "destructive" && styles.destructiveItem,
+        disabled && styles.disabledItem
       )}
       disabled={disabled}
       onClick={onClick}
       title={hint}
       type="button"
     >
-      <span className="shrink-0">{icon}</span>
+      <span {...stylex.props(styles.icon)}>{icon}</span>
       {/* The hint wraps rather than widening the menu, and a step named longer
           than the row truncates, since the row is what says which step this is
           and the name is repeated in the properties panel. */}
-      <span className="flex min-w-0 flex-col items-start text-left">
-        <span className="w-full truncate">{label}</span>
+      <span {...stylex.props(styles.itemContent)}>
+        <Text size="sm" xstyle={styles.label}>
+          {label}
+        </Text>
         {hint ? (
-          <span className="text-muted-foreground text-xs leading-tight">
+          <Text color="secondary" size="sm">
             {hint}
-          </span>
+          </Text>
         ) : null}
       </span>
       {/* A disabled row drops its shortcut: the key does nothing there, and the
           space it held is what the hint wraps into. */}
       {shortcut && !disabled ? (
-        <span className="ml-auto shrink-0 pl-4 text-muted-foreground text-xs tracking-widest">
-          {shortcut}
-        </span>
+        <span {...stylex.props(styles.shortcut)}>{shortcut}</span>
       ) : null}
     </button>
   );
 }
+
+const styles = stylex.create({
+  menu: {
+    backgroundColor: colorVars["--color-background-popover"],
+    border: `1px solid ${colorVars["--color-border"]}`,
+    borderRadius: 8,
+    boxShadow: "0 12px 28px rgba(0, 0, 0, 0.2)",
+    color: colorVars["--color-text-primary"],
+    maxHeight: "calc(100vh - 1rem)",
+    maxWidth: 288,
+    minWidth: 128,
+    overflowY: "auto",
+    padding: spacingVars["--spacing-1"],
+    position: "fixed",
+    width: "fit-content",
+    zIndex: 50,
+  },
+  item: {
+    alignItems: "center",
+    backgroundColor: {
+      default: "transparent",
+      ":hover": colorVars["--color-background-muted"],
+      ":focus": colorVars["--color-background-muted"],
+    },
+    border: 0,
+    borderRadius: 4,
+    color: colorVars["--color-text-primary"],
+    cursor: "default",
+    display: "flex",
+    gap: spacingVars["--spacing-2"],
+    outline: "none",
+    paddingBlock: 6,
+    paddingInline: spacingVars["--spacing-2"],
+    position: "relative",
+    textAlign: "left",
+    userSelect: "none",
+    width: "100%",
+  },
+  destructiveItem: { color: colorVars["--color-text-red"] },
+  disabledItem: { opacity: 0.5, pointerEvents: "none" },
+  icon: { flexShrink: 0 },
+  itemContent: {
+    alignItems: "flex-start",
+    display: "flex",
+    flexDirection: "column",
+    minWidth: 0,
+    textAlign: "left",
+  },
+  label: {
+    maxWidth: "100%",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    width: "100%",
+  },
+  shortcut: {
+    color: colorVars["--color-text-secondary"],
+    flexShrink: 0,
+    fontSize: 12,
+    letterSpacing: "0.08em",
+    marginInlineStart: "auto",
+    paddingInlineStart: spacingVars["--spacing-4"],
+  },
+});
 
 export function useContextMenuHandlers(
   screenToFlowPosition: (position: { x: number; y: number }) => XYPosition,

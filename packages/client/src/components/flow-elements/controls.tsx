@@ -1,97 +1,24 @@
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { VStack } from "@astryxdesign/core/VStack";
 import { useReactFlow } from "@xyflow/react";
 import { useAtom } from "jotai";
-import {
-  MapPin,
-  MapPinXInside,
-  Maximize2,
-  RefreshCcw,
-  ZoomIn,
-  ZoomOut,
-} from "lucide-react";
-import { Button } from "#src/components/ui/button";
-import { ButtonGroup } from "#src/components/ui/button-group";
+import { MapPin, MapPinXInside, Maximize2, RefreshCcw, ZoomIn, ZoomOut } from "lucide-react";
 import { showMinimapAtom } from "#src/lib/workflow-ui-store";
 
-type ControlsProps = {
-  onReflow?: () => void;
-  canReflow?: boolean;
-};
+type ControlsProps = { onReflow?: () => void; canReflow?: boolean };
 
 export const Controls = ({ onReflow, canReflow = true }: ControlsProps) => {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
   const [showMinimap, setShowMinimap] = useAtom(showMinimapAtom);
 
-  const handleZoomIn = () => {
-    void zoomIn();
-  };
-
-  const handleZoomOut = () => {
-    void zoomOut();
-  };
-
-  const handleFitView = () => {
-    void fitView({ padding: 0.2, duration: 300 });
-  };
-
-  const handleToggleMinimap = () => {
-    setShowMinimap(!showMinimap);
-  };
-
   return (
-    <ButtonGroup orientation="vertical">
-      <Button
-        className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
-        onClick={handleZoomIn}
-        size="icon"
-        title="Zoom in"
-        variant="secondary"
-      >
-        <ZoomIn className="size-4" />
-      </Button>
-      <Button
-        className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
-        onClick={handleZoomOut}
-        size="icon"
-        title="Zoom out"
-        variant="secondary"
-      >
-        <ZoomOut className="size-4" />
-      </Button>
-      <Button
-        className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
-        onClick={handleFitView}
-        size="icon"
-        title="Fit view"
-        variant="secondary"
-      >
-        <Maximize2 className="size-4" />
-      </Button>
-      <Button
-        className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
-        onClick={handleToggleMinimap}
-        size="icon"
-        title={showMinimap ? "Hide minimap" : "Show minimap"}
-        variant="secondary"
-      >
-        {showMinimap ? (
-          <MapPin className="size-4" />
-        ) : (
-          <MapPinXInside className="size-4" />
-        )}
-      </Button>
-      {onReflow ? (
-        <Button
-          aria-label="Reflow nodes"
-          className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
-          disabled={!canReflow}
-          onClick={onReflow}
-          size="icon"
-          title="Reflow nodes"
-          variant="secondary"
-        >
-          <RefreshCcw className="size-4" />
-        </Button>
-      ) : null}
-    </ButtonGroup>
+    <VStack gap={1}>
+      <IconButton icon={<Icon icon={ZoomIn} size="sm" />} label="Zoom in" onClick={() => void zoomIn()} size="sm" variant="secondary" />
+      <IconButton icon={<Icon icon={ZoomOut} size="sm" />} label="Zoom out" onClick={() => void zoomOut()} size="sm" variant="secondary" />
+      <IconButton icon={<Icon icon={Maximize2} size="sm" />} label="Fit view" onClick={() => void fitView({ padding: 0.2, duration: 300 })} size="sm" variant="secondary" />
+      <IconButton icon={<Icon icon={showMinimap ? MapPin : MapPinXInside} size="sm" />} label={showMinimap ? "Hide minimap" : "Show minimap"} onClick={() => setShowMinimap(!showMinimap)} size="sm" variant="secondary" />
+      {onReflow ? <IconButton icon={<Icon icon={RefreshCcw} size="sm" />} isDisabled={!canReflow} label="Reflow nodes" onClick={onReflow} size="sm" variant="secondary" /> : null}
+    </VStack>
   );
 };

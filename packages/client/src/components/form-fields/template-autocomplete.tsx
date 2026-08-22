@@ -1,4 +1,8 @@
 import { useAtom } from "jotai";
+import * as stylex from "@stylexjs/stylex";
+import { Icon } from "@astryxdesign/core/Icon";
+import { Text } from "@astryxdesign/core/Text";
+import { colorVars, spacingVars } from "@astryxdesign/core/theme/tokens.stylex";
 import { Check } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -11,7 +15,6 @@ import {
   type SourcedField,
 } from "#src/lib/upstream-node-fields";
 import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
-import { cn } from "@wfgraph/shared/utils";
 import {
   formatTemplateToken,
   type ReferenceField,
@@ -68,7 +71,10 @@ function unusableReason(
     return undefined;
   }
 
-  if (targetType && !clash.types.some((type) => offeredFor({ type }, targetType))) {
+  if (
+    targetType &&
+    !clash.types.some((type) => offeredFor({ type }, targetType))
+  ) {
     return undefined;
   }
 
@@ -260,7 +266,7 @@ export function TemplateAutocomplete({
     return null;
   }
 
-  // Menu is w-80 (320px); leave ~300px above the bottom edge.
+  // The menu is 320px wide; leave about 300px above the bottom edge.
   const adjustedPosition = {
     top: Math.min(position.top, window.innerHeight - 300),
     left: Math.min(position.left, window.innerWidth - 320),
@@ -268,29 +274,32 @@ export function TemplateAutocomplete({
 
   const menuContent = (
     <div
-      className="fixed z-50 w-80 rounded-lg border bg-popover p-1 text-popover-foreground shadow-md"
+      {...stylex.props(styles.menu)}
       style={{
         top: `${adjustedPosition.top}px`,
         left: `${adjustedPosition.left}px`,
       }}
     >
-      <div className="max-h-60 overflow-y-auto" ref={optionListRef}>
+      <div
+        {...stylex.props(styles.list)}
+        aria-label="Template references"
+        ref={optionListRef}
+        role="listbox"
+      >
         {emptyMessage && (
-          <div className="px-2 py-1.5 text-muted-foreground text-sm">
+          <Text color="secondary" size="sm" xstyle={styles.empty}>
             {emptyMessage}
-          </div>
+          </Text>
         )}
         {filteredOptions.map((option, index) => (
           <div
-            className={cn(
-              "flex items-center justify-between rounded px-2 py-1.5 text-sm transition-colors",
-              option.unusable
-                ? "cursor-not-allowed opacity-60"
-                : "cursor-pointer",
-              index === selectedOptionIndex
-                ? "bg-accent text-accent-foreground"
-                : !option.unusable && "hover:bg-accent/50"
+            {...stylex.props(
+              styles.option,
+              option.unusable ? styles.unusable : styles.usable,
+              index === selectedOptionIndex && styles.selected
             )}
+            aria-disabled={option.unusable ? true : undefined}
+            aria-selected={index === selectedOptionIndex}
             key={`${option.nodeId}-${option.field || "root"}`}
             onMouseDown={(event) => {
               // Select on pointer down so contentEditable inputs don't blur first.
@@ -300,38 +309,39 @@ export function TemplateAutocomplete({
               }
             }}
             onMouseEnter={() => setSelectedIndex(index)}
+            role="option"
           >
-            <div className="flex-1">
-              <div className="font-medium">
+            <div {...stylex.props(styles.optionContent)}>
+              <Text size="sm" weight="medium">
                 {option.type === "node" ? (
                   option.nodeName
                 ) : (
                   <>
-                    <span className="text-muted-foreground">
+                    <span {...stylex.props(styles.secondary)}>
                       {option.nodeName}.
                     </span>
                     {option.field}
                   </>
                 )}
-              </div>
+              </Text>
               {option.description && (
-                <div className="text-muted-foreground text-xs">
+                <Text color="secondary" size="sm">
                   {option.description}
-                </div>
+                </Text>
               )}
               {option.absentOn && (
-                <div className="text-warning text-xs dark:text-warning">
+                <Text size="sm" xstyle={styles.warning}>
                   Absent on {option.absentOn.join(", ")}
-                </div>
+                </Text>
               )}
               {option.unusable && (
-                <div className="text-muted-foreground text-xs">
+                <Text color="secondary" size="sm">
                   {option.unusable}
-                </div>
+                </Text>
               )}
             </div>
             {index === selectedOptionIndex && !option.unusable && (
-              <Check className="size-4" />
+              <Icon icon={Check} size="sm" />
             )}
           </div>
         ))}
@@ -342,3 +352,34 @@ export function TemplateAutocomplete({
   // Use portal to render at document root to avoid clipping issues
   return createPortal(menuContent, document.body);
 }
+
+const styles = stylex.create({
+  menu: {
+    backgroundColor: colorVars["--color-background-popover"],
+    border: `1px solid ${colorVars["--color-border"]}`,
+    borderRadius: 8,
+    boxShadow: "0 12px 28px rgba(0, 0, 0, 0.2)",
+    color: colorVars["--color-text-primary"],
+    padding: spacingVars["--spacing-1"],
+    position: "fixed",
+    width: 320,
+    zIndex: 50,
+  },
+  list: { maxHeight: 240, overflowY: "auto" },
+  empty: { paddingBlock: 6, paddingInline: spacingVars["--spacing-2"] },
+  option: {
+    alignItems: "center",
+    borderRadius: 4,
+    display: "flex",
+    gap: spacingVars["--spacing-2"],
+    justifyContent: "space-between",
+    paddingBlock: 6,
+    paddingInline: spacingVars["--spacing-2"],
+  },
+  usable: { cursor: "pointer" },
+  unusable: { cursor: "not-allowed", opacity: 0.6 },
+  selected: { backgroundColor: colorVars["--color-background-muted"] },
+  optionContent: { flex: 1, minWidth: 0 },
+  secondary: { color: colorVars["--color-text-secondary"] },
+  warning: { color: colorVars["--color-text-yellow"] },
+});

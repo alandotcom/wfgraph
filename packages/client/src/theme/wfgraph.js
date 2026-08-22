@@ -25,7 +25,7 @@ export const wfgraphTheme = {
     "--color-overlay-pressed": "light-dark(#1B1B1F1A, #FFFFFF1A)",
     "--color-background-muted": "light-dark(oklch(0.97 0 0), oklch(0.15 0 0))",
     "--color-text-primary": "light-dark(oklch(0.145 0 0), oklch(0.98 0 0))",
-    "--color-text-secondary": "light-dark(oklch(0.556 0 0), oklch(0.65 0 0))",
+    "--color-text-secondary": "light-dark(oklch(0.556 0 0), oklch(0.72 0 0))",
     "--color-text-disabled": "light-dark(#8F909A, #5D5E67)",
     "--color-text-accent": "var(--color-accent)",
     "--color-icon-accent": "var(--color-accent)",

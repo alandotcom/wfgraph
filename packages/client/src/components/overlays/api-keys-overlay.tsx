@@ -1,11 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Key, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
-import { Button } from "#src/components/ui/button";
-import { Input } from "#src/components/ui/input";
-import { Label } from "#src/components/ui/label";
-import { Spinner } from "#src/components/ui/spinner";
+import { notifications as toast } from "#src/lib/notifications";
 import { orpcQuery } from "#src/lib/rpc-query";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
@@ -74,18 +70,17 @@ function CreateApiKeyOverlay({
       overlayId={overlayId}
       title="Create API Key"
     >
-      <p className="mb-4 text-muted-foreground text-sm">
+      <Text color="secondary">
         Create a new API key for webhook authentication
-      </p>
-      <div className="space-y-2">
-        <Label htmlFor="key-name">Label (optional)</Label>
-        <Input
-          id="key-name"
-          onChange={(e) => setKeyName(e.target.value)}
-          placeholder="e.g., Production, Testing"
-          value={keyName}
-        />
-      </div>
+      </Text>
+      <TextInput
+        isOptional
+        label="Label"
+        onChange={setKeyName}
+        placeholder="e.g., Production, Testing"
+        value={keyName}
+        width="100%"
+      />
     </Overlay>
   );
 }
@@ -138,7 +133,7 @@ export function ApiKeysOverlay({ overlayId }: ApiKeysOverlayProps) {
       actions={[
         {
           label: "New API Key",
-          variant: "outline",
+          variant: "secondary",
           onClick: () =>
             push(CreateApiKeyOverlay, { onCreated: setNewlyCreatedKey }),
         },
@@ -147,94 +142,124 @@ export function ApiKeysOverlay({ overlayId }: ApiKeysOverlayProps) {
       overlayId={overlayId}
       title="API Keys"
     >
-      <p className="-mt-2 mb-4 text-muted-foreground text-sm">
-        Manage API keys for webhook authentication
-      </p>
+      <Text color="secondary">Manage API keys for webhook authentication</Text>
 
       {isPending ? (
-        <div className="flex items-center justify-center py-8">
-          <Spinner />
-        </div>
+        <Spinner label="Loading API keys" />
       ) : (
-        <div className="space-y-4">
+        <VStack gap={4}>
           {/* Newly created key warning */}
           {newlyCreatedKey && (
-            <div className="rounded-md border border-warning/50 bg-warning/10 p-3">
-              <p className="mb-2 font-medium text-sm text-warning">
-                Copy your API key now. You won't be able to see it again!
-              </p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 rounded bg-muted px-2 py-1 font-mono text-xs">
-                  {newlyCreatedKey}
-                </code>
+            <Banner
+              description={
+                <HStack align="center" gap={2}>
+                  <code {...stylex.props(styles.keyValue)}>
+                    {newlyCreatedKey}
+                  </code>
+                  <IconButton
+                    icon={<Icon icon={Copy} size="sm" />}
+                    label="Copy API key"
+                    onClick={() => copyToClipboard(newlyCreatedKey)}
+                    size="sm"
+                    variant="ghost"
+                  />
+                </HStack>
+              }
+              endContent={
                 <Button
-                  onClick={() => copyToClipboard(newlyCreatedKey)}
+                  label="Dismiss"
+                  onClick={() => setNewlyCreatedKey(null)}
                   size="sm"
-                  variant="outline"
-                >
-                  <Copy className="size-4" />
-                </Button>
-              </div>
-              <Button
-                className="mt-2"
-                onClick={() => setNewlyCreatedKey(null)}
-                size="sm"
-                variant="ghost"
-              >
-                Dismiss
-              </Button>
-            </div>
+                  variant="ghost"
+                />
+              }
+              status="warning"
+              title="Copy your API key now. You will not be able to see it again."
+            />
           )}
 
           {/* API Keys list */}
           {apiKeys.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground text-sm">
-              <Key className="mx-auto mb-2 size-8 opacity-50" />
-              <p>No API keys yet</p>
-              <p className="text-xs">
-                Create an API key to authenticate webhook requests
-              </p>
-            </div>
+            <EmptyState
+              description="Create an API key to authenticate webhook requests."
+              icon={<Icon icon={Key} size="lg" />}
+              isCompact
+              title="No API keys yet"
+            />
           ) : (
-            <div className="space-y-2">
+            <List density="balanced" hasDividers>
               {apiKeys.map((apiKey) => (
-                <div
-                  className="flex items-center justify-between rounded-md border p-3"
-                  key={apiKey.id}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
-                        {apiKey.keyPrefix}...
-                      </code>
-                      {apiKey.name && (
-                        <span className="truncate text-sm">{apiKey.name}</span>
-                      )}
-                    </div>
-                    <p className="mt-1 text-muted-foreground text-xs">
+                <ListItem
+                  description={
+                    <Text color="secondary" type="supporting">
                       Created {formatDate(apiKey.createdAt)}
                       {apiKey.lastUsedAt &&
                         ` · Last used ${formatDate(apiKey.lastUsedAt)}`}
-                    </p>
-                  </div>
-                  <Button
-                    disabled={deletingId === apiKey.id}
-                    onClick={() => openDeleteConfirm(apiKey.id)}
-                    size="sm"
-                    variant="ghost"
-                  >
-                    {deletingId === apiKey.id ? (
-                      <Spinner className="size-4" />
-                    ) : (
-                      <Trash2 className="size-4 text-destructive" />
-                    )}
-                  </Button>
-                </div>
+                    </Text>
+                  }
+                  endContent={
+                    <IconButton
+                      icon={<Icon icon={Trash2} size="sm" />}
+                      isDisabled={deletingId === apiKey.id}
+                      isLoading={deletingId === apiKey.id}
+                      label={`Delete ${apiKey.name ?? apiKey.keyPrefix}`}
+                      onClick={() => openDeleteConfirm(apiKey.id)}
+                      size="sm"
+                      variant="ghost"
+                    />
+                  }
+                  key={apiKey.id}
+                  label={apiKey.name ?? `${apiKey.keyPrefix}…`}
+                  startContent={
+                    <code {...stylex.props(styles.keyPrefix)}>
+                      {apiKey.keyPrefix}...
+                    </code>
+                  }
+                />
               ))}
-            </div>
+            </List>
           )}
-        </div>
+        </VStack>
       )}
     </Overlay>
   );
 }
+
+const styles = stylex.create({
+  keyValue: {
+    backgroundColor: colorVars["--color-neutral"],
+    borderRadius: radiusVars["--radius-element"],
+    flex: 1,
+    fontFamily: "monospace",
+    fontSize: 12,
+    minWidth: 0,
+    overflowWrap: "anywhere",
+    paddingBlock: spacingVars["--spacing-1"],
+    paddingInline: spacingVars["--spacing-2"],
+  },
+  keyPrefix: {
+    backgroundColor: colorVars["--color-neutral"],
+    borderRadius: radiusVars["--radius-element"],
+    fontFamily: "monospace",
+    fontSize: 12,
+    paddingBlock: spacingVars["--spacing-0-5"],
+    paddingInline: spacingVars["--spacing-1"],
+  },
+});
+import * as stylex from "@stylexjs/stylex";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { List, ListItem } from "@astryxdesign/core/List";
+import { Spinner } from "@astryxdesign/core/Spinner";
+import { Text } from "@astryxdesign/core/Text";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { VStack } from "@astryxdesign/core/VStack";
+import {
+  colorVars,
+  radiusVars,
+  spacingVars,
+} from "@astryxdesign/core/theme/tokens.stylex";

@@ -1,15 +1,10 @@
 import type { ComponentType, ReactNode } from "react";
 
-/**
- * Button variant types matching shadcn/ui Button
- */
 export type OverlayActionVariant =
-  | "default"
+  | "primary"
   | "destructive"
-  | "outline"
   | "secondary"
-  | "ghost"
-  | "link";
+  | "ghost";
 
 /**
  * Action button configuration for overlay footer
@@ -110,8 +105,6 @@ export type OverlayProps = {
   actions?: OverlayAction[];
   /** Content to render inside the overlay */
   children?: ReactNode;
-  /** Additional class name for the content container */
-  className?: string;
 };
 
 /**
@@ -130,8 +123,6 @@ export type OverlayHeaderProps = {
   onBack?: () => void;
   /** Custom close button handler (defaults to closeAll) */
   onClose?: () => void;
-  /** Additional class name */
-  className?: string;
 };
 
 /**
@@ -140,8 +131,6 @@ export type OverlayHeaderProps = {
 export type OverlayFooterProps = {
   /** Action buttons to render */
   actions?: OverlayAction[];
-  /** Additional class name */
-  className?: string;
   /** Children to render (alternative to actions) */
   children?: ReactNode;
 };

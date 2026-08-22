@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { toast } from "sonner";
+import { notifications as toast } from "#src/lib/notifications";
 import {
   executeWorkflowRun,
   updateNodesStatus,

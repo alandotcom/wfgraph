@@ -1,54 +1,42 @@
+import { Card } from "@astryxdesign/core/Card";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { List } from "@astryxdesign/core/List";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 import { Ban } from "lucide-react";
 import type { RefusedStart } from "#src/lib/execution-logs";
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
 
-/**
- * The Refused Starts: arrivals this workflow declined, which have no run to be
- * listed under.
- *
- * A refusal writes an audit row and no execution row -- first-wins Concurrency
- * found a run for the entity already going, the payload carried nothing at the
- * Correlation Path Concurrency needs, or a manual start is not allowed here -- and
- * without this the only trace was the server log, which is the class of invisible
- * behaviour ADR-0007 exists to remove.
- *
- * The rows arrive with the runs they belong beside, so this renders and reads
- * nothing of its own.
- */
 export function WorkflowRefusedStarts({
   refusedStarts,
 }: {
   refusedStarts: RefusedStart[];
 }) {
-  if (refusedStarts.length === 0) {
-    return null;
-  }
+  if (refusedStarts.length === 0) return null;
 
   return (
-    <div className="space-y-2 rounded-md border p-3">
-      <div className="flex items-center gap-2">
-        <Ban className="size-3.5 shrink-0 text-muted-foreground" />
-        <p className="font-medium text-sm">Refused Starts</p>
-      </div>
-      <div className="divide-y">
-        {refusedStarts.map((refusal) => (
-          <div
-            className="flex items-start justify-between gap-3 py-2"
-            key={refusal.id}
-          >
-            <p className="text-foreground text-xs">{refusal.message}</p>
-            {/* Relative, like the runs listed under this block: refusals are
-                not capped to today, and a bare clock time reads as recent for
-                one that happened last week. */}
-            <p
-              className="shrink-0 text-muted-foreground text-xs tabular-nums"
-              title={refusal.createdAt.toLocaleString()}
-            >
-              {getRelativeTime(refusal.createdAt)}
-            </p>
-          </div>
-        ))}
-      </div>
-    </div>
+    <Card padding={3}>
+      <VStack gap={2}>
+        <HStack align="center" gap={2}>
+          <Icon icon={Ban} size="sm" />
+          <Text size="sm" weight="medium">
+            Refused Starts
+          </Text>
+        </HStack>
+        <List density="compact" hasDividers>
+          {refusedStarts.map((refusal) => (
+            <li key={refusal.id}>
+              <HStack align="start" gap={3} justify="between">
+                <Text size="sm">{refusal.message}</Text>
+                <Text color="secondary" size="sm">
+                  {getRelativeTime(refusal.createdAt)}
+                </Text>
+              </HStack>
+            </li>
+          ))}
+        </List>
+      </VStack>
+    </Card>
   );
 }

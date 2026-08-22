@@ -6,6 +6,8 @@ import {
   Position,
   useInternalNode,
 } from "@xyflow/react";
+import * as stylex from "@stylexjs/stylex";
+import { colorVars } from "@astryxdesign/core/theme/tokens.stylex";
 import { memo } from "react";
 import { resolveEdgeLabel } from "#src/components/flow-elements/edge-label";
 import { getWorkflowEdgePath } from "#src/components/flow-elements/edge-path";
@@ -141,10 +143,10 @@ const Animated = memo(function Animated({
           // Inactive is then said by the wider gap and the stopped march below,
           // rather than by fading the wire toward the background.
           stroke: selected
-            ? "var(--primary)"
+            ? "var(--color-accent)"
             : inactive
-              ? "var(--canvas-line-muted)"
-              : "var(--canvas-line)",
+              ? "var(--color-border)"
+              : "var(--color-border)",
           strokeWidth: 2,
           strokeDasharray: inactive ? "4, 8" : "5",
           ...(inactive ? {} : { animation: "dashdraw 0.5s linear infinite" }),
@@ -153,7 +155,7 @@ const Animated = memo(function Animated({
       {edgeLabel && (
         <EdgeLabelRenderer>
           <div
-            className="pointer-events-none absolute rounded-sm border bg-background px-1.5 py-0.5 font-medium text-xs text-muted-foreground leading-none"
+            {...stylex.props(styles.label)}
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
               ...(inactive ? { opacity: 0.7 } : {}),
@@ -170,3 +172,19 @@ const Animated = memo(function Animated({
 export const Edge = {
   Animated,
 };
+
+const styles = stylex.create({
+  label: {
+    backgroundColor: colorVars["--color-background-card"],
+    border: `1px solid ${colorVars["--color-border"]}`,
+    borderRadius: 4,
+    color: colorVars["--color-text-secondary"],
+    fontSize: 12,
+    fontWeight: 500,
+    lineHeight: 1,
+    paddingBlock: 4,
+    paddingInline: 6,
+    pointerEvents: "none",
+    position: "absolute",
+  },
+});

@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import stylexVite from "@stylexjs/unplugin/vite";
 // Keep the `.ts`: Vite's coming native config loader is node's own, which
 // guesses no extension.
 import { workspaceSourceAliases } from "./scripts/plugins/workspace-source-aliases.ts";
@@ -20,6 +21,7 @@ const CLIENT_TESTS = "packages/client/src/**/*.test.{ts,tsx}";
 const ALWAYS_EXCLUDED = ["**/node_modules/**", "**/dist/**"];
 
 export default defineConfig({
+  plugins: [stylexVite({ useCSSLayers: true })],
   resolve: {
     alias: [...workspaceSourceAliases],
   },

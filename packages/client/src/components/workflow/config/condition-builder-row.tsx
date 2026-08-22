@@ -1,21 +1,24 @@
+import * as stylex from "@stylexjs/stylex";
+import { Button } from "@astryxdesign/core/Button";
+import { DateTimeInput } from "@astryxdesign/core/DateTimeInput";
 import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { NumberInput } from "@astryxdesign/core/NumberInput";
+import { Section } from "@astryxdesign/core/Section";
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from "@astryxdesign/core/SegmentedControl";
+import { Selector } from "@astryxdesign/core/Selector";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
+import { colorVars } from "@astryxdesign/core/theme/tokens.stylex";
 import { Plus, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useMemo } from "react";
-import { Button } from "#src/components/ui/button";
-import { Input } from "#src/components/ui/input";
-import { Label } from "#src/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  whenChosen,
-} from "#src/components/ui/select";
-import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
+import { TemplateBadgeInput } from "#src/components/form-fields/template-badge-input";
+import { toISODateTimeString } from "#src/lib/astryx-input-values";
 import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
 import { ConditionFieldCombobox } from "./condition-field-combobox";
 import {
@@ -291,26 +294,27 @@ function LogicToggle({
   disabled: boolean;
 }) {
   return (
-    <div className="inline-flex items-center rounded-full border bg-card p-0.5">
+    <SegmentedControl
+      isDisabled={disabled}
+      label="Condition logic"
+      onChange={(next) => {
+        if (next === "and" || next === "or") {
+          onChange(next);
+        }
+      }}
+      size="sm"
+      value={value}
+    >
       {GROUP_LOGIC_OPTIONS.map((option) => {
-        const active = option.value === value;
         return (
-          <button
-            className={`rounded-full px-3 py-1 font-medium text-xs transition-colors ${
-              active
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-            disabled={disabled}
+          <SegmentedControlItem
             key={option.value}
-            onClick={() => onChange(option.value)}
-            type="button"
-          >
-            {option.label}
-          </button>
+            label={option.label}
+            value={option.value}
+          />
         );
       })}
-    </div>
+    </SegmentedControl>
   );
 }
 
@@ -333,23 +337,25 @@ function ConditionValueInput(input: {
     if (isTimestampRelativeConditionRule(condition)) {
       return (
         <>
-          <Input
-            className="w-24"
-            disabled={disabled}
+          <NumberInput
+            isDisabled={disabled}
+            isLabelHidden
+            label="Amount"
             min={1}
-            onChange={(event) => {
-              const parsed = Number.parseInt(event.target.value, 10);
+            onChange={(next) => {
               onConditionChange({
                 ...condition,
-                amount: Number.isNaN(parsed) ? 1 : Math.max(parsed, 1),
+                amount: Math.max(next, 1),
               });
             }}
-            type="number"
             value={condition.amount}
+            width={96}
           />
-          <Select
-            disabled={disabled}
-            onValueChange={whenChosen((value) => {
+          <Selector
+            isDisabled={disabled}
+            isLabelHidden
+            label="Time unit"
+            onChange={(value) => {
               if (!isTimeUnitValue(value)) {
                 return;
               }
@@ -357,42 +363,38 @@ function ConditionValueInput(input: {
                 ...condition,
                 unit: value,
               });
-            })}
+            }}
+            options={TIME_UNIT_OPTIONS.map((option) => ({
+              value: option.value,
+              label: option.label,
+            }))}
+            placement="below"
             value={condition.unit}
-          >
-            <SelectTrigger className="w-36">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TIME_UNIT_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            width={144}
+          />
         </>
       );
     }
 
     return (
-      <Input
-        disabled={disabled}
-        onChange={(event) => {
+      <DateTimeInput
+        isDisabled={disabled}
+        isLabelHidden
+        label="Date and time"
+        onChange={(value) => {
           if (!isTimestampAbsoluteConditionRule(condition)) {
             return;
           }
 
           onConditionChange({
             ...condition,
-            dateTime: toIsoDateTime(event.target.value),
+            dateTime: toIsoDateTime(value ?? ""),
           });
         }}
-        type="datetime-local"
         value={
           isTimestampAbsoluteConditionRule(condition)
-            ? toLocalDateTimeInput(condition.dateTime)
-            : ""
+            ? toISODateTimeString(toLocalDateTimeInput(condition.dateTime))
+            : undefined
         }
       />
     );
@@ -405,34 +407,33 @@ function ConditionValueInput(input: {
       (condition.operator === "equals" || condition.operator === "not_equals")
     ) {
       return (
-        <Select
-          disabled={disabled}
-          onValueChange={whenChosen((value) => {
+        <Selector
+          isDisabled={disabled}
+          isLabelHidden
+          label="Value"
+          onChange={(value) => {
             onConditionChange({ ...condition, value });
-          })}
+          }}
+          options={enumValues.map((option) => ({
+            value: option,
+            label: option,
+          }))}
+          placement="below"
+          placeholder="Select value"
           // The field declares the whole of what this picker offers. A rule
           // still holding a value the field no longer names selects nothing,
           // which leaves the placeholder standing and the rule invalid until
           // one of the offered values is chosen.
-          value={enumValues.includes(condition.value) ? condition.value : null}
-        >
-          <SelectTrigger className="min-w-[240px]">
-            <SelectValue placeholder="Select value" />
-          </SelectTrigger>
-          <SelectContent>
-            {enumValues.map((opt) => (
-              <SelectItem key={opt} value={opt}>
-                {opt}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          value={
+            enumValues.includes(condition.value) ? condition.value : undefined
+          }
+          width={240}
+        />
       );
     }
 
     return (
       <TemplateBadgeInput
-        className="min-w-[240px]"
         currentNodeId={currentNodeId}
         disabled={disabled}
         onChange={(value) => {
@@ -443,24 +444,25 @@ function ConditionValueInput(input: {
         }}
         placeholder="value"
         value={condition.value}
+        xstyle={styles.valueField}
       />
     );
   }
 
   if (condition.fieldType === "number") {
     return (
-      <Input
-        disabled={disabled}
-        onChange={(event) => {
-          const parsed = Number.parseFloat(event.target.value);
+      <NumberInput
+        isDisabled={disabled}
+        isLabelHidden
+        label="Value"
+        onChange={(next) => {
           onConditionChange({
             ...condition,
-            value: Number.isNaN(parsed) ? 0 : parsed,
+            value: next,
           });
         }}
         placeholder="0"
-        type="number"
-        value={String(condition.value)}
+        value={condition.value}
       />
     );
   }
@@ -617,27 +619,25 @@ export function ConditionBuilderRow({
   if (!parsedModel) {
     return (
       <VStack gap={2}>
-        <Label className="text-sm">{label}</Label>
-        <Text as="p" type="supporting">
+        <Text type="label">{label}</Text>
+        <Text color="secondary" type="supporting">
           {description}
         </Text>
         {availableFields.length > 0 ? (
           <Button
-            disabled={disabled}
+            isDisabled={disabled}
+            label="Configure condition"
             onClick={addConditionModel}
             size="sm"
-            type="button"
-            variant="outline"
-          >
-            Configure condition
-          </Button>
+            variant="secondary"
+          />
         ) : (
-          <Text as="p" type="supporting">
+          <Text color="secondary" type="supporting">
             {emptyFieldsMessage}
           </Text>
         )}
         {modelValue && !modelParseResult.valid && (
-          <Text as="p" className="text-destructive" type="supporting">
+          <Text type="supporting" xstyle={styles.errorText}>
             {modelParseResult.error}
           </Text>
         )}
@@ -648,8 +648,8 @@ export function ConditionBuilderRow({
   return (
     <VStack gap={3}>
       <VStack gap={1}>
-        <Label className="text-sm">{label}</Label>
-        <Text as="p" type="supporting">
+        <Text type="label">{label}</Text>
+        <Text color="secondary" type="supporting">
           {description}
         </Text>
       </VStack>
@@ -657,150 +657,146 @@ export function ConditionBuilderRow({
       <VStack gap={3}>
         {parsedModel.groups.map((group, groupIndex) => (
           <VStack gap={2} key={group.id}>
-            <VStack className="rounded-lg bg-card" gap={3} padding={3}>
-              <HStack align="center" gap={2} justify="between">
-                <HStack align="center" gap={2} wrap="wrap">
-                  <Text type="label">Filter group {groupIndex + 1}</Text>
-                  <Text type="supporting">
-                    {group.conditions.length}{" "}
-                    {group.conditions.length === 1 ? "condition" : "conditions"}
-                  </Text>
-                </HStack>
-                <Button
-                  disabled={disabled || parsedModel.groups.length <= 1}
-                  onClick={() => removeGroup(group.id)}
-                  size="icon-sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </HStack>
-
+            <Section padding={3} variant="section">
               <VStack gap={3}>
-                {group.conditions.map((condition, conditionIndex) => {
-                  const selectedFieldDef = fieldByPath.get(condition.field);
-                  const operatorOptions = getOperatorOptionsByFieldType(
-                    condition.fieldType,
-                    selectedFieldDef?.nullable
-                  );
-                  const canDeleteCondition = group.conditions.length > 1;
+                <HStack align="center" gap={2} justify="between">
+                  <HStack align="center" gap={2} wrap="wrap">
+                    <Text type="label">Filter group {groupIndex + 1}</Text>
+                    <Text type="supporting">
+                      {group.conditions.length}{" "}
+                      {group.conditions.length === 1
+                        ? "condition"
+                        : "conditions"}
+                    </Text>
+                  </HStack>
+                  <IconButton
+                    icon={<Icon icon={Trash2} size="sm" />}
+                    isDisabled={disabled || parsedModel.groups.length <= 1}
+                    label={`Remove filter group ${groupIndex + 1}`}
+                    onClick={() => removeGroup(group.id)}
+                    size="sm"
+                    variant="ghost"
+                  />
+                </HStack>
 
-                  return (
-                    <VStack gap={2} key={condition.id}>
-                      <HStack align="center" gap={2} wrap="wrap">
-                        <ConditionFieldCombobox
-                          disabled={disabled || availableFields.length === 0}
-                          fields={availableFields}
-                          onValueChange={(nextField) => {
-                            if (nextField.path === condition.field) {
-                              return;
-                            }
+                <VStack gap={3}>
+                  {group.conditions.map((condition, conditionIndex) => {
+                    const selectedFieldDef = fieldByPath.get(condition.field);
+                    const operatorOptions = getOperatorOptionsByFieldType(
+                      condition.fieldType,
+                      selectedFieldDef?.nullable
+                    );
+                    const canDeleteCondition = group.conditions.length > 1;
 
-                            updateCondition(
-                              group.id,
-                              condition.id,
-                              (existing) =>
-                                createDefaultConditionRule(
-                                  nextField,
-                                  existing.id
-                                )
-                            );
-                          }}
-                          valuePath={condition.field}
-                        />
+                    return (
+                      <VStack gap={2} key={condition.id}>
+                        <HStack align="center" gap={2} wrap="wrap">
+                          <ConditionFieldCombobox
+                            disabled={disabled || availableFields.length === 0}
+                            fields={availableFields}
+                            onValueChange={(nextField) => {
+                              if (nextField.path === condition.field) {
+                                return;
+                              }
 
-                        <Select
-                          disabled={disabled}
-                          onValueChange={whenChosen((operatorValue) => {
-                            const nextCondition = applyOperatorValueToCondition(
-                              condition,
-                              operatorValue
-                            );
-                            if (!nextCondition) {
-                              return;
-                            }
-
-                            updateCondition(
-                              group.id,
-                              condition.id,
-                              () => nextCondition
-                            );
-                          })}
-                          value={condition.operator}
-                        >
-                          <SelectTrigger className="min-w-[190px]">
-                            <SelectValue placeholder="Select operator" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {operatorOptions.map((option) => (
-                              <SelectItem
-                                key={option.value}
-                                value={option.value}
-                              >
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-
-                        <ConditionValueInput
-                          condition={condition}
-                          currentNodeId={currentNodeId}
-                          disabled={disabled}
-                          enumValues={selectedFieldDef?.enumValues}
-                          onConditionChange={(nextCondition) => {
-                            updateCondition(
-                              group.id,
-                              condition.id,
-                              () => nextCondition
-                            );
-                          }}
-                        />
-
-                        <Button
-                          disabled={disabled || !canDeleteCondition}
-                          onClick={() =>
-                            removeConditionFromGroup(group.id, condition.id)
-                          }
-                          size="icon-sm"
-                          type="button"
-                          variant="ghost"
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </HStack>
-
-                      {conditionIndex < group.conditions.length - 1 && (
-                        <HStack paddingBlock={2} paddingInline={2}>
-                          <LogicToggle
-                            disabled={disabled}
-                            onChange={(value) => {
-                              updateGroup(group.id, (existing) => ({
-                                ...existing,
-                                logic: value,
-                              }));
+                              updateCondition(
+                                group.id,
+                                condition.id,
+                                (existing) =>
+                                  createDefaultConditionRule(
+                                    nextField,
+                                    existing.id
+                                  )
+                              );
                             }}
-                            value={group.logic}
+                            valuePath={condition.field}
+                          />
+
+                          <Selector
+                            isDisabled={disabled}
+                            isLabelHidden
+                            label="Operator"
+                            onChange={(operatorValue) => {
+                              const nextCondition =
+                                applyOperatorValueToCondition(
+                                  condition,
+                                  operatorValue
+                                );
+                              if (!nextCondition) {
+                                return;
+                              }
+
+                              updateCondition(
+                                group.id,
+                                condition.id,
+                                () => nextCondition
+                              );
+                            }}
+                            options={operatorOptions.map((option) => ({
+                              value: option.value,
+                              label: option.label,
+                            }))}
+                            placement="below"
+                            placeholder="Select operator"
+                            value={condition.operator}
+                            width={190}
+                          />
+
+                          <ConditionValueInput
+                            condition={condition}
+                            currentNodeId={currentNodeId}
+                            disabled={disabled}
+                            enumValues={selectedFieldDef?.enumValues}
+                            onConditionChange={(nextCondition) => {
+                              updateCondition(
+                                group.id,
+                                condition.id,
+                                () => nextCondition
+                              );
+                            }}
+                          />
+
+                          <IconButton
+                            icon={<Icon icon={Trash2} size="sm" />}
+                            isDisabled={disabled || !canDeleteCondition}
+                            label="Remove condition"
+                            onClick={() =>
+                              removeConditionFromGroup(group.id, condition.id)
+                            }
+                            size="sm"
+                            variant="ghost"
                           />
                         </HStack>
-                      )}
-                    </VStack>
-                  );
-                })}
 
-                <Button
-                  disabled={disabled || !seedField}
-                  onClick={() => addConditionToGroup(group.id)}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  <Plus className="size-4" />
-                  Add condition
-                </Button>
+                        {conditionIndex < group.conditions.length - 1 && (
+                          <HStack paddingBlock={2} paddingInline={2}>
+                            <LogicToggle
+                              disabled={disabled}
+                              onChange={(value) => {
+                                updateGroup(group.id, (existing) => ({
+                                  ...existing,
+                                  logic: value,
+                                }));
+                              }}
+                              value={group.logic}
+                            />
+                          </HStack>
+                        )}
+                      </VStack>
+                    );
+                  })}
+
+                  <Button
+                    icon={<Icon icon={Plus} size="sm" />}
+                    isDisabled={disabled || !seedField}
+                    label="Add condition"
+                    onClick={() => addConditionToGroup(group.id)}
+                    size="sm"
+                    variant="ghost"
+                  />
+                </VStack>
               </VStack>
-            </VStack>
+            </Section>
 
             {groupIndex < parsedModel.groups.length - 1 && (
               <HStack justify="center" paddingBlock={2}>
@@ -822,27 +818,34 @@ export function ConditionBuilderRow({
 
       <HStack justify="center">
         <Button
-          disabled={disabled || !seedField}
+          icon={<Icon icon={Plus} size="sm" />}
+          isDisabled={disabled || !seedField}
+          label="Add group"
           onClick={addGroup}
           size="sm"
-          type="button"
-          variant="outline"
-        >
-          <Plus className="size-4" />
-          Add group
-        </Button>
+          variant="secondary"
+        />
       </HStack>
 
       {compiled?.valid === false && (
-        <Text as="p" className="text-destructive" type="supporting">
+        <Text type="supporting" xstyle={styles.errorText}>
           {compiled.error}
         </Text>
       )}
       {compiled?.valid && (
-        <Text as="p" type="supporting">
+        <Text color="secondary" type="supporting">
           Compiled CEL: {compiled.expression}
         </Text>
       )}
     </VStack>
   );
 }
+
+const styles = stylex.create({
+  valueField: {
+    minWidth: 240,
+  },
+  errorText: {
+    color: colorVars["--color-text-red"],
+  },
+});

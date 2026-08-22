@@ -36,7 +36,7 @@ function NodeConfigRail() {
   );
 
   return (
-    <aside className="flex size-full flex-col overflow-hidden bg-card">
+    <aside {...stylex.props(styles.rail)}>
       <NodeConfigPanel frame={frame} />
       <DeleteConfirmDialog
         confirmLabel={request?.confirmLabel}
@@ -170,21 +170,21 @@ export function WorkflowSidebarPanel() {
     <>
       {/* Expand button when panel is collapsed */}
       {!isMobile && panelCollapsed && (
-        <button
-          className="pointer-events-auto absolute top-1/2 right-0 z-20 flex size-6 -translate-y-1/2 items-center justify-center rounded-l-full border border-r-0 bg-background shadow-sm transition-colors hover:bg-muted"
+        <IconButton
+          icon={<Icon icon={ChevronLeft} size="sm" />}
+          label="Expand properties panel"
           onClick={() => {
             setPanelCollapsed(false);
           }}
-          type="button"
-        >
-          <ChevronLeft className="size-4" />
-        </button>
+          size="sm"
+          variant="secondary"
+          xstyle={styles.expandButton}
+        />
       )}
 
       {/* Right panel overlay (desktop only) */}
       {!isMobile && (
         <div
-          className="workflow-sidebar-panel pointer-events-auto absolute inset-y-0 right-0 z-20 border-l bg-sidebar transition-transform duration-200 ease-out"
           style={{
             // Same expression the canvas reserves with, from one helper, so the
             // two can never disagree and leave a gap. The Panel tone is what
@@ -193,24 +193,38 @@ export function WorkflowSidebarPanel() {
             width: sidebarWidthCss(panelWidth),
             transform: panelCollapsed ? "translateX(100%)" : "translateX(0)",
           }}
+          {...stylex.props(styles.panelFrame)}
         >
           {/* Resize handle with collapse button */}
           <div
             aria-label="Resize properties panel. Click to collapse."
             aria-orientation="vertical"
             aria-valuenow={panelWidth}
-            className="group absolute inset-y-0 left-0 z-10 w-3 cursor-col-resize"
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setPanelCollapsed(true);
+              }
+              if (event.key === "ArrowLeft") {
+                event.preventDefault();
+                setPanelWidth(Math.min(50, panelWidth + 1));
+              }
+              if (event.key === "ArrowRight") {
+                event.preventDefault();
+                setPanelWidth(Math.max(20, panelWidth - 1));
+              }
+            }}
             onPointerDown={handleResizeStart}
             role="separator"
             tabIndex={0}
+            {...stylex.props(styles.resizeHandle)}
           >
-            {/* Hover indicator */}
-            <div className="absolute inset-y-0 left-0 w-1 bg-transparent transition-colors group-hover:bg-ring group-active:bg-primary" />
+            <div {...stylex.props(styles.resizeIndicator)} />
             {/* Collapse button - hidden while resizing */}
             {!(isDraggingResize || panelCollapsed) && (
-              <button
-                aria-label="Collapse panel"
-                className="absolute top-1/2 left-0 flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-background shadow-sm transition-opacity hover:bg-muted focus-visible:opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+              <IconButton
+                icon={<Icon icon={ChevronRight} size="sm" />}
+                label="Collapse panel"
                 onClick={(e) => {
                   e.stopPropagation();
                   setPanelCollapsed(true);
@@ -220,10 +234,10 @@ export function WorkflowSidebarPanel() {
                 // began a drag, and its preventDefault swallowed the click, so
                 // the button did nothing at all.
                 onPointerDown={(e) => e.stopPropagation()}
-                type="button"
-              >
-                <ChevronRight className="size-4" />
-              </button>
+                size="sm"
+                variant="secondary"
+                xstyle={styles.collapseButton}
+              />
             )}
           </div>
           <NodeConfigRail />
@@ -232,3 +246,68 @@ export function WorkflowSidebarPanel() {
     </>
   );
 }
+
+const styles = stylex.create({
+  rail: {
+    backgroundColor: colorVars["--color-background-card"],
+    display: "flex",
+    flexDirection: "column",
+    height: "100%",
+    overflow: "hidden",
+    width: "100%",
+  },
+  panelFrame: {
+    backgroundColor: colorVars["--color-background-card"],
+    borderLeftColor: colorVars["--color-border"],
+    borderLeftStyle: "solid",
+    borderLeftWidth: 1,
+    bottom: 0,
+    pointerEvents: "auto",
+    position: "absolute",
+    right: 0,
+    top: 0,
+    transitionDuration: "200ms",
+    transitionProperty: "transform",
+    transitionTimingFunction: "ease-out",
+    zIndex: 20,
+  },
+  expandButton: {
+    borderBottomRightRadius: 0,
+    borderTopRightRadius: 0,
+    boxShadow: shadowVars["--shadow-low"],
+    pointerEvents: "auto",
+    position: "absolute",
+    right: 0,
+    top: "50%",
+    transform: "translateY(-50%)",
+    zIndex: 20,
+  },
+  resizeHandle: {
+    bottom: 0,
+    cursor: "col-resize",
+    left: 0,
+    position: "absolute",
+    top: 0,
+    width: 12,
+    zIndex: 10,
+  },
+  resizeIndicator: {
+    backgroundColor: colorVars["--color-border"],
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    top: 0,
+    width: 1,
+  },
+  collapseButton: {
+    boxShadow: shadowVars["--shadow-low"],
+    left: 0,
+    position: "absolute",
+    top: "50%",
+    transform: "translate(-50%, -50%)",
+  },
+});
+import * as stylex from "@stylexjs/stylex";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { colorVars, shadowVars } from "@astryxdesign/core/theme/tokens.stylex";

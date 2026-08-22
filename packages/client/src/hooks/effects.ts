@@ -1,9 +1,7 @@
 import {
-  type RefObject,
   useCallback,
   useEffect,
   useInsertionEffect,
-  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -87,6 +85,12 @@ export function useDomEvent<K extends keyof DocumentEventMap>(
   target: Document,
   type: K,
   handler: (event: DocumentEventMap[K]) => void,
+  options?: DomEventOptions
+): void;
+export function useDomEvent(
+  target: Window | Document,
+  type: string,
+  handler: (event: Event) => void,
   options?: DomEventOptions
 ): void;
 export function useDomEvent(
@@ -217,118 +221,4 @@ export function useNowMs(options: {
   useInterval(() => setNowMs(Date.now()), enabled ? intervalMs : null);
 
   return nowMs;
-}
-
-/**
- * The pixel height of `ref`'s element, sampled after layout while `enabled`,
- * and 0 once it is not.
- *
- * A measurement of 0 while enabled means the element is not laid out yet, so
- * the last real height stands rather than the box collapsing to nothing
- * mid-transition. Turning `enabled` off clears it, so the next thing to open
- * grows from zero instead of from whatever was there before.
- *
- * Deliberately a sample rather than a live subscription: the overlay stack
- * renders the outgoing panel absolutely positioned while it slides away, so a
- * live measurement would always report the incoming panel's height and the
- * container would have no previous height to animate from.
- */
-export function useMeasuredHeight(
-  ref: RefObject<HTMLElement | null>,
-  enabled: boolean
-): number {
-  const [height, setHeight] = useState(0);
-
-  useLayoutEffect(() => {
-    if (!enabled) {
-      setHeight(0);
-      return;
-    }
-    const measured = ref.current?.offsetHeight ?? 0;
-    if (measured > 0) {
-      setHeight(measured);
-    }
-  }, [ref, enabled]);
-
-  return height;
-}
-
-/** Focusable descendants, in tab order, skipping anything hidden or disabled. */
-const FOCUSABLE =
-  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"]),[contenteditable="true"]';
-
-function focusableWithin(root: HTMLElement): HTMLElement[] {
-  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-    (el) =>
-      el.offsetWidth > 0 || el.offsetHeight > 0 || el === document.activeElement
-  );
-}
-
-/**
- * Hold keyboard focus inside `ref`'s element while `enabled`, and give it back
- * to whatever had it once the element goes away.
- *
- * The editor's overlays are a hand-rolled surface rather than a mounted popup,
- * so nothing was scoping Tab: focus walked out of the dialog and onto the canvas
- * behind the backdrop, where a keyboard user could act on controls they believed
- * were in front of them. This is the trap that surface never got.
- *
- * Not a substitute for the dialog role and `aria-modal`, which the container
- * sets; those tell a screen reader what the element is, and this decides where
- * Tab may go.
- */
-export function useFocusTrap(
-  ref: RefObject<HTMLElement | null>,
-  enabled: boolean
-): void {
-  const restoreTo = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    const root = enabled ? ref.current : null;
-    if (root) {
-      restoreTo.current =
-        document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null;
-
-      // Move focus in, so the first Tab lands inside rather than after the trap.
-      if (!root.contains(document.activeElement)) {
-        (focusableWithin(root)[0] ?? root).focus();
-      }
-    }
-
-    return () => {
-      restoreTo.current?.focus();
-      restoreTo.current = null;
-    };
-  }, [ref, enabled]);
-
-  const onKeyDown = useLatestEvent((event: KeyboardEvent) => {
-    const root = ref.current;
-    if (event.key !== "Tab" || !root) {
-      return;
-    }
-    const items = focusableWithin(root);
-    if (items.length === 0) {
-      event.preventDefault();
-      return;
-    }
-    const first = items[0];
-    const last = items.at(-1);
-    const active = document.activeElement;
-
-    // Wrap at each end, and pull focus back in if it has already escaped.
-    if (!root.contains(active)) {
-      event.preventDefault();
-      (event.shiftKey ? last : first)?.focus();
-    } else if (event.shiftKey && active === first) {
-      event.preventDefault();
-      last?.focus();
-    } else if (!event.shiftKey && active === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  });
-
-  useDomEvent(document, "keydown", onKeyDown, { enabled });
 }

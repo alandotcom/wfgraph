@@ -9,6 +9,8 @@ import {
   type Connection as XYFlowConnection,
   type Edge as XYFlowEdge,
 } from "@xyflow/react";
+import * as stylex from "@stylexjs/stylex";
+import { colorVars } from "@astryxdesign/core/theme/tokens.stylex";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
@@ -754,7 +756,7 @@ export function WorkflowCanvas() {
 
   return (
     <div
-      className="relative h-full bg-background"
+      {...stylex.props(styles.canvasContainer)}
       data-testid="workflow-canvas"
       ref={canvasContainerRef}
       style={{
@@ -766,13 +768,13 @@ export function WorkflowCanvas() {
       }}
     >
       {/* Toolbar */}
-      <div className="pointer-events-auto">
+      <div {...stylex.props(styles.toolbar)}>
         <WorkflowToolbar workflowId={currentWorkflowId ?? undefined} />
       </div>
 
       {/* React Flow Canvas */}
       <Canvas
-        className="bg-background"
+        className={stylex.props(styles.canvas).className}
         connectionLineComponent={Connection}
         connectionMode={ConnectionMode.Strict}
         defaultEdgeOptions={defaultEdgeOptions}
@@ -797,10 +799,7 @@ export function WorkflowCanvas() {
         onPaneContextMenu={editingLocked ? undefined : onPaneContextMenu}
         onSelectionChange={editingLocked ? undefined : onSelectionChange}
       >
-        <Panel
-          className="workflow-controls-panel border-none bg-transparent p-0"
-          position="bottom-left"
-        >
+        <Panel position="bottom-left" xstyle={styles.controlsPanel}>
           <Controls
             canReflow={!editingLocked && realNodeCount > 1 && !isReflowing}
             onReflow={editingLocked ? undefined : handleReflow}
@@ -812,11 +811,11 @@ export function WorkflowCanvas() {
           // and a bright reversed frame in dark (6.58:1). The test-mode banner
           // moved to bottom-centre, so this corner is no longer contested.
           <MiniMap
-            bgColor="var(--sidebar)"
-            className="rounded-lg border shadow-sm"
-            maskColor="color-mix(in oklch, var(--muted) 60%, transparent)"
-            nodeColor="var(--muted-foreground)"
-            nodeStrokeColor="var(--border)"
+            bgColor="var(--color-background-muted)"
+            className={stylex.props(styles.minimap).className}
+            maskColor="color-mix(in oklch, var(--color-neutral) 60%, transparent)"
+            nodeColor="var(--color-text-secondary)"
+            nodeStrokeColor="var(--color-border)"
           />
         )}
       </Canvas>
@@ -829,3 +828,18 @@ export function WorkflowCanvas() {
     </div>
   );
 }
+
+const styles = stylex.create({
+  canvasContainer: {
+    backgroundColor: colorVars["--color-background-muted"],
+    height: "100%",
+    position: "relative",
+  },
+  toolbar: { pointerEvents: "auto" },
+  canvas: { backgroundColor: colorVars["--color-background-muted"] },
+  controlsPanel: { backgroundColor: "transparent", border: 0, padding: 0 },
+  minimap: {
+    border: `1px solid ${colorVars["--color-border"]}`,
+    borderRadius: 8,
+  },
+});

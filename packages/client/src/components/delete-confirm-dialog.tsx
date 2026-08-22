@@ -1,13 +1,4 @@
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "#src/components/ui/alert-dialog";
+import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 
 interface DeleteConfirmDialogProps {
   open: boolean;
@@ -28,19 +19,13 @@ export function DeleteConfirmDialog({
   confirmLabel = "Delete",
 }: DeleteConfirmDialogProps) {
   return (
-    <AlertDialog onOpenChange={onOpenChange} open={open}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm} variant="destructive">
-            {confirmLabel}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <AlertDialog
+      actionLabel={confirmLabel}
+      description={description}
+      isOpen={open}
+      onAction={onConfirm}
+      onOpenChange={onOpenChange}
+      title={title}
+    />
   );
 }

@@ -1,17 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { toast } from "sonner";
-import { Button } from "#src/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "#src/components/ui/dialog";
-import { Input } from "#src/components/ui/input";
-import { Label } from "#src/components/ui/label";
+import { notifications as toast } from "#src/lib/notifications";
 import { ApiError } from "#src/lib/rpc-client";
 import { orpcQuery, refreshWorkflowList } from "#src/lib/rpc-query";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
@@ -105,58 +94,73 @@ export function CreateWorkflowDialog({
   };
 
   return (
-    <Dialog onOpenChange={handleOpenChange} open={open}>
-      <DialogContent showCloseButton={!isCreating}>
-        <DialogHeader>
-          <DialogTitle>Create Workflow</DialogTitle>
-          <DialogDescription>
-            Choose a name for the new workflow.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-2">
-          <Label htmlFor="create-workflow-name">Name</Label>
-          <Input
-            aria-invalid={errorMessage ? true : undefined}
-            autoFocus
-            disabled={isCreating}
-            id="create-workflow-name"
-            onChange={(event) => {
-              setWorkflowName(event.target.value);
-              if (errorMessage) {
-                setErrorMessage(null);
-              }
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
+    <Dialog isOpen={open} onOpenChange={handleOpenChange} purpose="form">
+      <Layout
+        content={
+          <LayoutContent>
+            <VStack
+              as="form"
+              gap={4}
+              onSubmit={(event) => {
                 event.preventDefault();
                 createWorkflow();
-              }
-            }}
-            placeholder="Workflow name"
-            value={workflowName}
+              }}
+            >
+              <TextInput
+                hasAutoFocus
+                isDisabled={isCreating}
+                label="Name"
+                onChange={(value) => {
+                  setWorkflowName(value);
+                  if (errorMessage) {
+                    setErrorMessage(null);
+                  }
+                }}
+                placeholder="Workflow name"
+                status={
+                  errorMessage
+                    ? { type: "error", message: errorMessage }
+                    : undefined
+                }
+                value={workflowName}
+                width="100%"
+              />
+            </VStack>
+          </LayoutContent>
+        }
+        footer={
+          <LayoutFooter hasDivider>
+            <HStack gap={2} justify="end">
+              <Button
+                isDisabled={isCreating}
+                label="Cancel"
+                onClick={() => onOpenChange(false)}
+                variant="secondary"
+              />
+              <Button
+                isDisabled={isCreating}
+                isLoading={isCreating}
+                label={isCreating ? "Creating" : "Create workflow"}
+                onClick={createWorkflow}
+                variant="primary"
+              />
+            </HStack>
+          </LayoutFooter>
+        }
+        header={
+          <DialogHeader
+            onOpenChange={isCreating ? undefined : handleOpenChange}
+            subtitle="Choose a name for the new workflow."
+            title="Create workflow"
           />
-          {errorMessage ? (
-            <p className="text-destructive text-xs">{errorMessage}</p>
-          ) : null}
-        </div>
-
-        <DialogFooter>
-          <Button
-            disabled={isCreating}
-            onClick={() => {
-              onOpenChange(false);
-            }}
-            type="button"
-            variant="outline"
-          >
-            Cancel
-          </Button>
-          <Button disabled={isCreating} onClick={createWorkflow} type="button">
-            {isCreating ? "Creating..." : "Create Workflow"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
+        }
+      />
     </Dialog>
   );
 }
+import { Button } from "@astryxdesign/core/Button";
+import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { VStack } from "@astryxdesign/core/VStack";

@@ -72,10 +72,5 @@ export function eventSplitCardWidth(outletCount: number): number {
     : WORKFLOW_NODE_WIDTH;
 }
 
-/**
- * The icon a node draws beside or above its title, as a Tailwind size. One
- * value so a resize is one edit; `GeneratedImageThumbnail` also matches its
- * `<img>` width and height to it in pixels.
- */
-export const NODE_ICON_CLASS = "size-5";
+/** The pixel size shared by node icons and generated-image thumbnails. */
 export const NODE_ICON_PX = 20;

@@ -149,15 +149,15 @@ describe("ToolbarActions publish gating", () => {
   // Each case awaits the button, because the router resolves its route after
   // render returns and the toolbar is on screen only from that point.
   it("keeps Publish enabled with no run overlay open", async () => {
-    const { findByTitle } = renderToolbarActions();
-    const publish = await findByTitle("Publish workflow");
+    const { findByRole } = renderToolbarActions();
+    const publish = await findByRole("button", { name: "Publish" });
     expect(publish.hasAttribute("disabled")).toBe(false);
   });
 
   it("disables Publish while a run overlay pins the canvas to a past run", async () => {
-    const { findByTitle } = renderToolbarActions({ overlayActive: true });
-    const publish = await findByTitle("Publish workflow");
-    expect(publish.hasAttribute("disabled")).toBe(true);
+    const { findByRole } = renderToolbarActions({ overlayActive: true });
+    const publish = await findByRole("button", { name: "Publish" });
+    expect(publish.getAttribute("aria-disabled")).toBe("true");
   });
 
   // Publish and the canvas read one `canvasEditingLockedAtom`, so generation
@@ -165,8 +165,8 @@ describe("ToolbarActions publish gating", () => {
   // condition, and it fails if a later edit drops generation from the shared
   // atom while leaving the canvas reading it.
   it("disables Publish while generation is rewriting the graph", async () => {
-    const { findByTitle } = renderToolbarActions({ generating: true });
-    const publish = await findByTitle("Publish workflow");
-    expect(publish.hasAttribute("disabled")).toBe(true);
+    const { findByRole } = renderToolbarActions({ generating: true });
+    const publish = await findByRole("button", { name: "Publish" });
+    expect(publish.getAttribute("aria-disabled")).toBe("true");
   });
 });

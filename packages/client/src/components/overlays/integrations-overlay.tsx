@@ -1,7 +1,6 @@
 import { Search } from "lucide-react";
 import { useCallback, useState } from "react";
 import { IntegrationsManager } from "#src/components/settings/integrations-manager";
-import { Input } from "#src/components/ui/input";
 import { AddConnectionOverlay } from "./add-connection-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
@@ -25,7 +24,7 @@ export function IntegrationsOverlay({ overlayId }: IntegrationsOverlayProps) {
       actions={[
         {
           label: "Add Connection",
-          variant: "outline",
+          variant: "secondary",
           onClick: handleAddConnection,
         },
         { label: "Done", onClick: handleClose },
@@ -33,24 +32,36 @@ export function IntegrationsOverlay({ overlayId }: IntegrationsOverlayProps) {
       overlayId={overlayId}
       title="Connections"
     >
-      <p className="-mt-2 mb-4 text-muted-foreground text-sm">
+      <Text color="secondary">
         Manage API keys and credentials used by your workflows
-      </p>
+      </Text>
 
-      <div className="space-y-4">
-        <div className="relative">
-          <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter connections..."
-            value={filter}
-          />
-        </div>
-        <div className="max-h-[300px] overflow-y-auto">
+      <VStack gap={4}>
+        <TextInput
+          isLabelHidden
+          label="Filter connections"
+          onChange={setFilter}
+          placeholder="Filter connections..."
+          startIcon={<Icon icon={Search} size="sm" />}
+          value={filter}
+          width="100%"
+        />
+        <div {...stylex.props(styles.list)}>
           <IntegrationsManager filter={filter} />
         </div>
-      </div>
+      </VStack>
     </Overlay>
   );
 }
+
+const styles = stylex.create({
+  list: {
+    maxHeight: 300,
+    overflowY: "auto",
+  },
+});
+import * as stylex from "@stylexjs/stylex";
+import { Icon } from "@astryxdesign/core/Icon";
+import { Text } from "@astryxdesign/core/Text";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { VStack } from "@astryxdesign/core/VStack";

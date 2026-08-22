@@ -1,5 +1,10 @@
-import { Button } from "#src/components/ui/button";
-import { Spinner } from "#src/components/ui/spinner";
+import { Button } from "@astryxdesign/core/Button";
+import { Card } from "@astryxdesign/core/Card";
+import { Center } from "@astryxdesign/core/Center";
+import { Heading } from "@astryxdesign/core/Heading";
+import { Spinner } from "@astryxdesign/core/Spinner";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 import type { CatalogLoadFailure } from "#src/lib/extensions";
 
 /**
@@ -12,9 +17,9 @@ import type { CatalogLoadFailure } from "#src/lib/extensions";
  */
 export function CatalogLoading() {
   return (
-    <div className="flex h-dvh items-center justify-center">
-      <Spinner className="size-6 text-muted-foreground" />
-    </div>
+    <Center height="100dvh">
+      <Spinner label="Loading editor" />
+    </Center>
   );
 }
 
@@ -36,25 +41,23 @@ export function CatalogUnavailable({
   reason: CatalogLoadFailure;
 }) {
   return (
-    <div className="flex h-dvh items-center justify-center p-6">
-      <div className="max-w-md space-y-3 rounded-lg border p-6">
-        <h1 className="font-medium text-base">The editor cannot start</h1>
-        <p className="text-muted-foreground text-sm">
-          {FAILURE_SENTENCES[reason]}
-        </p>
-        <p className="text-muted-foreground text-sm">
-          It asks <code className="font-mono text-xs">GET {endpoint}</code> for
-          the Events, actions and integrations this server carries.
-        </p>
-        <Button
-          onClick={() => window.location.reload()}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          Try again
-        </Button>
-      </div>
-    </div>
+    <Center height="100dvh" padding={6}>
+      <Card maxWidth={448} padding={6}>
+        <VStack gap={3}>
+          <Heading level={1}>The editor cannot start</Heading>
+          <Text color="secondary">{FAILURE_SENTENCES[reason]}</Text>
+          <Text color="secondary">
+            It asks GET {endpoint} for the Events, actions and integrations this
+            server carries.
+          </Text>
+          <Button
+            label="Try again"
+            onClick={() => window.location.reload()}
+            size="sm"
+            variant="secondary"
+          />
+        </VStack>
+      </Card>
+    </Center>
   );
 }

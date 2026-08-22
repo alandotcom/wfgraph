@@ -6,10 +6,13 @@ import {
 } from "@tanstack/react-query";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useAtomValue } from "jotai";
-import { Play } from "lucide-react";
 import { useState } from "react";
-import { Button } from "#src/components/ui/button";
-import { Spinner } from "#src/components/ui/spinner";
+import { Button } from "@astryxdesign/core/Button";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Spinner } from "@astryxdesign/core/Spinner";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 import {
   isRunInProgress,
   toExecutionDetail,
@@ -137,32 +140,30 @@ export function WorkflowRuns() {
 
   if (executionsQuery.isPending && executionId === undefined) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Spinner />
-      </div>
+      <HStack align="center" gap={2} padding={6}>
+        <Spinner label="Loading runs" />
+      </HStack>
     );
   }
 
   const supersededToggle =
     supersededCount > 0 ? (
-      <div className="flex items-center justify-between gap-2 border-b px-1 pb-2">
-        <p className="text-muted-foreground text-xs">
+      <HStack align="center" gap={2} justify="between" paddingBlock={2}>
+        <Text color="secondary" size="sm">
           {supersededCount === 1
             ? "1 run was superseded by a newer start"
             : `${supersededCount} runs were superseded by newer starts`}
           {supersededCount > EXECUTIONS_PAGE_CAP
             ? `, of which the newest ${EXECUTIONS_PAGE_CAP} can be shown`
             : ""}
-        </p>
+        </Text>
         <Button
+          label={showSuperseded ? "Hide" : "Show"}
           onClick={() => setShowSuperseded((shown) => !shown)}
           size="sm"
-          type="button"
           variant="ghost"
-        >
-          {showSuperseded ? "Hide" : "Show"}
-        </Button>
-      </div>
+        />
+      </HStack>
     ) : null;
 
   // Detail view is keyed off the search param. Ahead of the empty-list branch,
@@ -176,27 +177,19 @@ export function WorkflowRuns() {
         (detailQuery.isPending || executionsQuery.isPending)
       ) {
         return (
-          <div className="flex items-center justify-center py-12">
-            <Spinner />
-          </div>
+          <HStack align="center" gap={2} padding={6}>
+            <Spinner label="Loading run" />
+          </HStack>
         );
       }
 
       return (
-        <div className="space-y-2 px-1 py-2">
-          <Button
-            aria-label="Back to runs list"
-            onClick={exitRun}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            Back
-          </Button>
-          <p className="text-muted-foreground text-sm">
+        <VStack gap={2} padding={2}>
+          <Button label="Back" onClick={exitRun} size="sm" variant="ghost" />
+          <Text color="secondary" size="sm">
             This run could not be loaded.
-          </p>
-        </div>
+          </Text>
+        </VStack>
       );
     }
 
@@ -224,25 +217,21 @@ export function WorkflowRuns() {
 
   if (executions.length === 0) {
     return (
-      <div className="space-y-2">
+      <VStack gap={2}>
         {supersededToggle}
         <WorkflowRefusedStarts refusedStarts={refusedStarts} />
-        <div className="flex flex-col items-center justify-center py-16">
-          <div className="mb-3 rounded-lg border border-dashed p-4">
-            <Play className="size-6 text-muted-foreground" />
-          </div>
-          <div className="font-medium text-foreground text-sm">No runs yet</div>
-          <div className="mt-1 text-muted-foreground text-xs">
-            Execute your workflow to see runs here
-          </div>
-        </div>
-      </div>
+        <EmptyState
+          description="Execute your workflow to see runs here."
+          isCompact
+          title="No runs yet"
+        />
+      </VStack>
     );
   }
 
   // List view
   return (
-    <div className="space-y-2">
+    <VStack gap={2}>
       {supersededToggle}
       <WorkflowRefusedStarts refusedStarts={refusedStarts} />
       <WorkflowRunsList
@@ -250,6 +239,6 @@ export function WorkflowRuns() {
         onSelect={handleSelectRun}
         selectedId={selectedExecutionId}
       />
-    </div>
+    </VStack>
   );
 }

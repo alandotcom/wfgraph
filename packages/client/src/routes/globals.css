@@ -1,227 +1,31 @@
-/* Third-party stylesheets and their cascade-layer wiring live in vendor.css;
-   this file holds the app's own tokens. tw-animate-css stays unlayered, which
-   is what lets its animation utilities win over every named layer. */
 @import "./vendor.css";
-@import "tw-animate-css";
-
-@custom-variant dark (&:is([data-theme="dark"] *));
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  /* The canvas structural stroke: a node's border and the wire between two of
-     them. Solved for the 3:1 that WCAG 1.4.11 asks of a graphic carrying
-     meaning, which a hairline `--border` misses by a wide margin on a white
-     canvas. See DESIGN.md section 2. */
-  --color-canvas-line: var(--canvas-line);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  /* Run-status signals. Every value is solved so the text form clears 4.5:1 on
-     its own 10% tint, which is the `bg-x/10 text-x` pattern the editor uses. */
-  --color-success: var(--success);
-  --color-success-foreground: var(--success-foreground);
-  --color-warning: var(--warning);
-  --color-warning-foreground: var(--warning-foreground);
-  --color-info: var(--info);
-  --color-info-foreground: var(--info-foreground);
-  --color-cancelled: var(--cancelled);
-  /* Node-type identity. The one sanctioned tinted-neutral and decorative-hue
-     exception in the system; see DESIGN.md section 2. Each clears 3:1 on both
-     card surfaces, so one value serves both themes. */
-  --color-node-lifecycle: var(--node-lifecycle);
-  --color-node-split: var(--node-split);
-  --color-node-wait: var(--node-wait);
-  --color-node-condition: var(--node-condition);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-}
 
 :root {
-  --font-geist-sans:
-    "Geist Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-geist-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
   --font-geist-mono:
     "Geist Mono Variable", ui-monospace, SFMono-Regular, monospace;
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --success: oklch(0.526 0.148 149.58);
-  --success-foreground: oklch(0.985 0 0);
-  --warning: oklch(0.546 0.12 70.08);
-  --warning-foreground: oklch(0.985 0 0);
-  --info: oklch(0.482 0.18 259.8);
-  --info-foreground: oklch(0.985 0 0);
-  --cancelled: oklch(0.52 0.046 257.417);
-  --node-lifecycle: oklch(0.646 0.19 259.815);
-  --node-split: oklch(0.646 0.13 232.661);
-  --node-wait: oklch(0.661 0.14 66.29);
-  --node-condition: oklch(0.673 0.16 346.018);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  /* 3.95:1 on Paper. A node card is Paper on a Paper canvas, so this stroke is
-     the only thing drawing its edge; `--border` sits at 1.20:1 and vanishes. */
-  --canvas-line: oklch(0.6 0 0);
-  /* 2.00:1: an edge into a subtree the run cannot reach. Quieter than a live
-     wire and still followable. It is its own value per theme rather than a
-     `color-mix` toward the background, because mixing toward Paper lightens and
-     mixing toward Void darkens, so one expression cannot serve both. */
-  --canvas-line-muted: oklch(0.78 0 0);
-  /* Solved for SC 1.4.11: the old oklch(0.708) put the focus border at 2.59:1
-     on Paper, under the 3:1 floor for a non-text indicator. */
-  --ring: oklch(0.6 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
 }
 
-/* Dark mode is owned by Astryx's <Theme> provider, which writes
-   data-theme="dark" on <html>; see src/theme/color-mode.tsx. These legacy
-   shadcn-era tokens serve the not-yet-migrated components and re-key onto that
-   attribute so one toggle drives both systems. */
-[data-theme="dark"] {
-  --background: oklch(0 0 0);
-  --foreground: oklch(0.98 0 0);
-  /* oklch(0.04) and oklch(0.09) both quantise to rgb(0,0,0) at 8 bits, so the
-     tonal layering this theme relies on rendered as nothing. 0.205 is the first
-     step that separates from Void on screen (#171717, 1.17:1). */
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.98 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.98 0 0);
-  --primary: oklch(0.98 0 0);
-  --primary-foreground: oklch(0.09 0 0);
-  --secondary: oklch(0.1 0 0);
-  --secondary-foreground: oklch(0.98 0 0);
-  --muted: oklch(0.15 0 0);
-  --muted-foreground: oklch(0.65 0 0);
-  --accent: oklch(0.15 0 0);
-  --accent-foreground: oklch(0.98 0 0);
-  --destructive: oklch(0.65 0.25 29);
-  --destructive-foreground: oklch(0.09 0 0);
-  --success: oklch(0.8 0.15 149.58);
-  --success-foreground: oklch(0.09 0 0);
-  --warning: oklch(0.79 0.15 70.08);
-  --warning-foreground: oklch(0.09 0 0);
-  --info: oklch(0.7 0.15 259.8);
-  --info-foreground: oklch(0.09 0 0);
-  --cancelled: oklch(0.7 0.046 257.417);
-  --border: oklch(0.27 0 0);
-  --input: oklch(0.27 0 0);
-  /* 3.21:1 on Void, where the light theme's 0.6 would measure 8.4:1 and paint a
-     brighter wire than the node it connects. oklch(0.45) misses the floor at
-     2.82:1, so 0.48 is the first step that clears it. */
-  --canvas-line: oklch(0.48 0 0);
-  /* 2.01:1 on Void, the same step down from live that the light theme takes. */
-  --canvas-line-muted: oklch(0.37 0 0);
-  --ring: oklch(0.8 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0 0 0);
-  --sidebar-foreground: oklch(0.65 0 0);
-  --sidebar-primary: oklch(0.98 0 0);
-  --sidebar-primary-foreground: oklch(0 0 0);
-  --sidebar-accent: oklch(0.1 0 0);
-  --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(0.18 0 0);
-  --sidebar-ring: oklch(0.8 0 0);
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
-  html,
-  body {
-    @apply overflow-hidden;
-  }
+body {
+  background: var(--color-background-muted);
+  color: var(--color-text-primary);
+  font-family: var(--font-geist-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* This layer is by next-forge */
-@layer base {
-  ::after,
-  ::before,
-  ::backdrop,
-  ::file-selector-button {
-    @apply border-border;
-  }
-  * {
-    @apply min-w-0;
-  }
-  html {
-    text-rendering: optimizelegibility;
-  }
-  body {
-    @apply min-h-dvh;
-  }
-  input::placeholder,
-  textarea::placeholder {
-    @apply text-muted-foreground;
-  }
-  button:not(:disabled),
-  [role="button"]:not(:disabled) {
-    @apply cursor-pointer;
-  }
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
 }
 
 @keyframes dashdraw {
@@ -233,231 +37,121 @@
   }
 }
 
-/* The running-node border sweep. Lives here rather than in a `<style>` inside
-   AnimatedBorder, which re-emitted these rules once per running node. */
-@property --angle {
-  syntax: "<angle>";
-  initial-value: 0deg;
-  inherits: false;
-}
-
-@keyframes border-rotate {
-  from {
-    --angle: 0deg;
-  }
-  to {
-    --angle: 360deg;
-  }
-}
-
-.animate-border-mask {
-  animation: border-rotate 2s linear infinite;
-  mask-image: conic-gradient(
-    from var(--angle),
-    transparent 70%,
-    black 90%,
-    transparent 100%
-  );
-}
-
-/* DESIGN.md commits to a static alternative for every animation and names the
-   node border sweep specifically. Each rule below keeps the state visible and
-   drops only the movement: the sweep becomes a solid ring, the active edge
-   keeps its dash pattern without marching, spinners hold still. */
 @media (prefers-reduced-motion: reduce) {
-  .animate-border-mask {
-    animation: none;
-    mask-image: none;
-    opacity: 0.65;
-  }
-
-  /* The dash pattern stays, so an active edge still reads as active. Only the
-     marching stops. The inline style on the edge needs the !important. */
   .react-flow__edge-path {
     animation: none !important;
   }
-
-  /* Panel and node transitions collapse to an instant state change rather than
-     being removed, so hierarchy and position still update. */
   .node-container,
   .workflow-sidebar-panel {
     transition-duration: 1ms !important;
   }
 }
 
-/* React Flow ships a blue-tinted grey edge stroke that is identical in both
-   themes. Against Void it measured 9.84:1 while the node border it connects
-   measured 1.39:1, so the wire read louder than the node. Both now come off
-   `--canvas-line`, so they invert with the theme and sit at one weight: a wire
-   and the card it lands on are the same kind of line, and neither should
-   out-shout the other. */
 .react-flow {
-  --xy-edge-stroke-default: var(--canvas-line);
-  --xy-edge-stroke-selected-default: var(--primary);
-  --xy-connectionline-stroke-default: var(--muted-foreground);
+  --xy-edge-stroke-default: var(--color-border);
+  --xy-edge-stroke-selected-default: var(--color-accent);
+  --xy-connectionline-stroke-default: var(--color-text-secondary);
 }
 
-/* The editor's frame node is typed `group`, which is also one of React Flow's
-   four built-in types, so the wrapper it renders picks up
-   `.react-flow__node-group` and every default-node paint that class carries: a
-   second border and fill around the frame `GroupNode` draws, plus 10px of
-   padding that pulls that frame inward while the member nodes keep positioning
-   from the wrapper's own origin, which is what closed the frame's side gutters
-   to 2px. The wrapper is positioning alone here, so each of those defaults is
-   handed back.
-
-   `.react-flow` is in the selector to outrank the library's own rule: React
-   Flow's stylesheet is imported by the canvas module rather than by `main.tsx`,
-   so it lands after this file and wins every tie. The `--xy-*` variables need
-   no such help, since a value set on the element is what the library's own
-   `border`, `background-color` and `box-shadow` declarations read. */
 .react-flow .react-flow__node-group {
   --xy-node-border: none;
-  /* Two fills to clear, not one: the shared default-node rule reads the first
-     variable, and a rule after it repaints the group alone from the second. */
   --xy-node-background-color: transparent;
   --xy-node-group-background-color: transparent;
   --xy-node-border-radius: 0;
   --xy-node-boxshadow-hover: none;
   --xy-node-boxshadow-selected: none;
-  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
   color: inherit;
   font-size: inherit;
+  padding: 0;
   text-align: left;
 }
 
-/* React Flow attribution styling */
 .react-flow__attribution {
   background: transparent !important;
-  padding: 2px 4px !important;
   font-size: 0.75rem !important;
   opacity: 0.4 !important;
+  padding: 2px 4px !important;
 }
 
-[data-theme="dark"] .react-flow__attribution {
-  background: transparent !important;
-  color: color-mix(in oklch, var(--foreground) 40%, transparent) !important;
-}
-
-[data-theme="dark"] .react-flow__attribution a {
-  color: color-mix(in oklch, var(--foreground) 50%, transparent) !important;
-}
-
-/* React Flow pane cursor */
 .react-flow__pane {
   cursor: grab !important;
 }
-
-.react-flow__pane:active {
+.react-flow__pane:active,
+.react-flow__node.dragging {
   cursor: grabbing !important;
 }
-
-/* React Flow node and edge cursor */
-.react-flow__node {
+.react-flow__node,
+.react-flow__edge {
   cursor: pointer !important;
 }
 
-/* React Flow puts `tabindex=0` on every node and edge, so both already take
-   keyboard focus. Neither drew anything when it arrived, which left the canvas
-   focusable and unreadable at the same time. This is the system's own focus
-   treatment, applied where React Flow had put the tab stop. */
 .react-flow__node:focus-visible,
 .react-flow__edge:focus-visible {
   outline: none;
 }
 
-/* The border shifts to `--foreground` rather than the `--ring` every other focus
-   treatment uses, because a node at rest is already drawn in `--canvas-line`,
-   which is the same value as `--ring` in light mode. Shifting one to the other
-   would change nothing and leave the halo carrying focus alone, which DESIGN.md
-   section 5 says it must not. */
 .react-flow__node:focus-visible .node-container {
-  border-color: var(--foreground);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent);
+  border-color: var(--color-text-primary);
+  box-shadow: 0 0 0 3px
+    color-mix(in oklch, var(--color-accent) 50%, transparent);
 }
 
 .react-flow__edge:focus-visible .react-flow__edge-path {
-  stroke: var(--ring);
+  stroke: var(--color-accent);
   stroke-width: 3;
 }
 
-/* When dragging a node, show grabbing cursor */
-.react-flow__node.dragging {
-  cursor: grabbing !important;
-}
-
-.react-flow__edge {
-  cursor: pointer !important;
-}
-
-/* React Flow handle positioning and styling.
-   `group-child-handle` is carved out rather than overridden: a Group member's
-   handle is an anchor for the interior edge the frame draws, never a place to
-   start a connection, so it takes none of the dot, the hit area, or the
-   crosshair. It keeps a 1px box so React Flow can still measure where the edge
-   meets the card. */
 .react-flow__handle:not(.group-child-handle) {
-  width: 12px !important;
-  height: 12px !important;
-  border: 2px solid var(--border) !important;
-  background: var(--primary) !important;
+  background: var(--color-accent) !important;
+  border: 2px solid var(--color-border) !important;
   cursor: crosshair !important;
+  height: 12px !important;
+  width: 12px !important;
   z-index: 20 !important;
 }
 
 .react-flow__handle.group-child-handle {
-  width: 1px !important;
   height: 1px !important;
   pointer-events: none !important;
+  width: 1px !important;
 }
 
-/* Invisible hit area for desktop.
-   The pseudo-element lives inside `.react-flow__viewport`, which carries the
-   pan/zoom scale transform, so a flat px size shrinks with the zoom: the 44px
-   mobile rule below was measuring 24.6px on a phone after fitView. Dividing by
-   the live zoom keeps the on-screen target at its nominal size. `--rf-zoom` is
-   published by the canvas on every viewport move; the fallback of 1 keeps this
-   correct before the first move fires. The cap stops a zoomed-out canvas from
-   growing hit areas until neighbouring handles overlap. */
 .react-flow__handle:not(.group-child-handle)::after {
   content: "" !important;
+  height: min(calc(24px / var(--rf-zoom, 1)), 48px) !important;
+  left: 50% !important;
   position: absolute !important;
   top: 50% !important;
-  left: 50% !important;
   transform: translate(-50%, -50%) !important;
   width: min(calc(24px / var(--rf-zoom, 1)), 48px) !important;
-  height: min(calc(24px / var(--rf-zoom, 1)), 48px) !important;
 }
 
-/* Invisible hit area for touch, at the WCAG 2.5.5 target size.
-   767.98px rather than 768px so this agrees with `useIsMobile`, which is an
-   exclusive `innerWidth < 768`. */
 @media (max-width: 767.98px) {
   .react-flow__handle:not(.group-child-handle)::after {
-    width: min(calc(44px / var(--rf-zoom, 1)), 88px) !important;
     height: min(calc(44px / var(--rf-zoom, 1)), 88px) !important;
+    width: min(calc(44px / var(--rf-zoom, 1)), 88px) !important;
   }
 }
 
 .react-flow__handle-left {
   left: -0.5px !important;
 }
-
 .react-flow__handle-right {
   right: -0.5px !important;
 }
 
-/* Safe area support for mobile devices */
-@supports (height: 100dvh) {
-  html,
-  body {
-    height: 100dvh;
-  }
+.template-reference {
+  background: var(--color-accent-muted);
+  border-radius: 4px;
+  color: var(--color-text-accent);
+  padding: 1px 3px;
 }
 
-/* Safe area support for mobile devices */
-@media (max-width: 768px) {
-  .workflow-controls-panel {
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 5.5rem) !important;
-  }
+.template-reference--broken {
+  background: var(--color-background-red);
+  color: var(--color-text-red);
+  text-decoration: line-through;
 }

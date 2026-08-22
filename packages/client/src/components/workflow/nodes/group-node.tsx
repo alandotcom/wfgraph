@@ -1,51 +1,43 @@
+import * as stylex from "@stylexjs/stylex";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { Text } from "@astryxdesign/core/Text";
+import { colorVars, spacingVars } from "@astryxdesign/core/theme/tokens.stylex";
 import { Handle, type NodeProps, Position } from "@xyflow/react";
 import { EyeOff } from "lucide-react";
 import { memo } from "react";
-import { cn } from "@wfgraph/shared/utils";
 import {
   groupOutletHandle,
   isGroupNode,
 } from "@wfgraph/shared/graph/node-group";
 import type { WorkflowNodeData } from "#src/lib/workflow-graph-types";
 
-type GroupNodeProps = NodeProps & {
-  data?: WorkflowNodeData;
-  id: string;
-};
+type GroupNodeProps = NodeProps & { data?: WorkflowNodeData; id: string };
 
 export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
-  if (!data || !isGroupNode({ data })) {
-    return null;
-  }
-
-  // Stamped onto the frame by `displayNodesAtom`; the members hold the flag.
+  if (!data || !isGroupNode({ data })) return null;
   const isDisabled = data.enabled === false;
 
   return (
     <div
-      className={cn(
-        // A solid fill, not the old `bg-muted/40`: 40% of oklch(0.97) over the
-        // Paper canvas lands near oklch(0.988), which is why the frame read as
-        // transparent. Solid `--muted` gives the canvas three tones to order --
-        // Paper canvas, recessed frame, Paper member cards -- and it inverts on
-        // its own in dark, where Void, 0.15 and 0.205 stack the same way.
-        "flex h-full w-full flex-col rounded-md border-[1.5px] border-canvas-line bg-muted shadow-none",
-        selected && "border-primary",
-        isDisabled && "opacity-50"
+      {...stylex.props(
+        styles.frame,
+        selected && styles.selected,
+        isDisabled && styles.disabled
       )}
       data-testid={`group-node-${id}`}
     >
       <Handle position={Position.Top} type="target" />
-      {/* The rule under the title is what separates the frame's own chrome from
-          the members below it; without it the header floats in the fill. */}
-      <div className="flex h-9 shrink-0 items-center gap-2 border-canvas-line/60 border-b px-3 font-medium text-sm">
-        {isDisabled && (
-          <span className="rounded-full bg-muted-foreground/50 p-1">
-            <EyeOff className="size-3.5 text-background" />
+      <HStack align="center" gap={2} xstyle={styles.header}>
+        {isDisabled ? (
+          <span {...stylex.props(styles.disabledBadge)}>
+            <Icon icon={EyeOff} size="sm" />
           </span>
-        )}
-        {data.label || "Group"}
-      </div>
+        ) : null}
+        <Text size="sm" weight="medium">
+          {data.label || "Group"}
+        </Text>
+      </HStack>
       <Handle
         id={groupOutletHandle({ data, id })}
         position={Position.Bottom}
@@ -56,3 +48,31 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
 });
 
 GroupNode.displayName = "GroupNode";
+
+const styles = stylex.create({
+  frame: {
+    backgroundColor: colorVars["--color-background-muted"],
+    border: `1.5px solid ${colorVars["--color-border"]}`,
+    borderRadius: 8,
+    display: "flex",
+    flexDirection: "column",
+    height: "100%",
+    width: "100%",
+  },
+  selected: { borderColor: colorVars["--color-accent"] },
+  disabled: { opacity: 0.5 },
+  header: {
+    borderBottom: `1px solid ${colorVars["--color-border"]}`,
+    flexShrink: 0,
+    height: 36,
+    paddingInline: spacingVars["--spacing-3"],
+  },
+  disabledBadge: {
+    alignItems: "center",
+    backgroundColor: colorVars["--color-text-secondary"],
+    borderRadius: 999,
+    color: colorVars["--color-background-card"],
+    display: "flex",
+    padding: spacingVars["--spacing-1"],
+  },
+});

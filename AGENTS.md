@@ -218,13 +218,11 @@ payload are each stored where they can be read whole, and one of them printed at
 a library, and never take a version from memory. Prefer latest stable. Bundle size is not a
 concern here.
 
-**UI primitives.** The editor's design system is Astryx (`@astryxdesign/core`), adopted
-incrementally over the shadcn/Base UI layer that predates it. New UI uses Astryx components;
-Base UI is for what Astryx does not cover until its wrapper retires; Radix is banned.
-`packages/client/AGENTS.md` holds the Astryx working rules and CLI reference; the editor's
-visual identity lives in a custom theme built from `packages/client/src/theme/`, and Tailwind
-v4 stays for legacy UI and layout. Do not import Astryx's Tailwind token bridge while the
-shadcn layer still owns conflicting names such as `primary`, `secondary`, and `accent`.
+**UI primitives.** The editor's design system is Astryx (`@astryxdesign/core`). Use its
+components for controls, layout and interaction; use StyleX with Astryx tokens for canvas
+geometry or styling Astryx does not expose. Radix and alternative primitive systems are
+banned. `packages/client/AGENTS.md` holds the working rules and CLI reference, and the
+editor's visual identity lives in the custom theme under `packages/client/src/theme/`.
 
 ## Pitfalls that have bitten
 

@@ -1,3 +1,4 @@
+import { List } from "@astryxdesign/core/List";
 import type { WorkflowExecution } from "#src/lib/execution-logs";
 import { WorkflowRunSummaryRow } from "./workflow-run-summary-row";
 
@@ -13,23 +14,19 @@ export function WorkflowRunsList({
   onSelect,
 }: WorkflowRunsListProps) {
   return (
-    <div className="divide-y">
-      {executions.map((execution, index) => {
-        const isSelected = selectedId === execution.id;
-        const runNumber = executions.length - index;
-
-        return (
+    <List density="balanced" hasDividers>
+      {executions.map((execution, index) => (
+        <li key={execution.id}>
           <WorkflowRunSummaryRow
             execution={execution}
-            key={execution.id}
             leading={{ type: "spacer" }}
             onClick={() => onSelect(execution.id)}
-            runNumber={runNumber}
-            selected={isSelected}
+            runNumber={executions.length - index}
+            selected={selectedId === execution.id}
             trailing={{ type: "spacer" }}
           />
-        );
-      })}
-    </div>
+        </li>
+      ))}
+    </List>
   );
 }

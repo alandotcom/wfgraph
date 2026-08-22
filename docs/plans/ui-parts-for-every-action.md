@@ -14,7 +14,7 @@ Three readers reach an action's React parts through the integration that owns it
 
 | Reader                                                                | What it looks up         | Fallback when the key is absent |
 | --------------------------------------------------------------------- | ------------------------ | ------------------------------- |
-| `packages/client/src/components/ui/integration-icon.tsx:30`           | `icon`                   | `HelpCircle`                    |
+| `packages/client/src/components/integration-icon.tsx`                 | `icon`                   | `HelpCircle`                    |
 | `packages/client/src/components/workflow/nodes/action-node.tsx:349`   | `icon`                   | a generic node icon             |
 | `packages/client/src/components/workflow/workflow-run-shared.tsx:269` | `outputComponents[slug]` | the plain base64 image view     |
 

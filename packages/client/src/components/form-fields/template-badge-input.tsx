@@ -1,4 +1,11 @@
-import { cn } from "@wfgraph/shared/utils";
+import * as stylex from "@stylexjs/stylex";
+import {
+  colorVars,
+  radiusVars,
+  shadowVars,
+  spacingVars,
+  typeScaleVars,
+} from "@astryxdesign/core/theme/tokens.stylex";
 import { TemplateAutocomplete } from "./template-autocomplete";
 import { useTemplateBadgeField } from "./use-template-badge-field";
 
@@ -7,7 +14,7 @@ export interface TemplateBadgeInputProps {
   onChange?: (value: string) => void;
   placeholder?: string;
   disabled?: boolean;
-  className?: string;
+  xstyle?: stylex.StyleXStyles;
   id?: string;
   fieldType?: "duration" | "timestamp";
   currentNodeId?: string;
@@ -35,7 +42,7 @@ export function TemplateBadgeInput({
   onChange,
   placeholder,
   disabled,
-  className,
+  xstyle,
   id,
   fieldType,
   currentNodeId,
@@ -63,25 +70,19 @@ export function TemplateBadgeInput({
   return (
     <>
       <div
-        className={cn(
-          // Matches the shared Input: shadow-xs at rest, and on focus a border
-          // shift plus the 3px ring-ring/50 halo. This wrapper used to draw a
-          // 1px opaque ring with no border change, so the one field type that
-          // needed the most attention had the least visible focus.
-          "flex min-h-9 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs transition-colors focus-within:border-ring focus-within:outline-none focus-within:ring-[3px] focus-within:ring-ring/50 lg:text-sm",
-          invalid &&
-            "border-destructive focus-within:border-destructive focus-within:ring-destructive/20",
-          disabled && "cursor-not-allowed opacity-50",
-          className
-        )}
         data-invalid={invalid || undefined}
+        {...stylex.props(
+          styles.field,
+          invalid && styles.invalid,
+          disabled && styles.disabled,
+          xstyle
+        )}
       >
         <div
           aria-invalid={invalid || undefined}
           aria-label={ariaLabel}
           aria-labelledby={labelledBy}
           aria-required={required || undefined}
-          className="w-full outline-none"
           contentEditable={!disabled}
           id={id}
           onBlur={handleBlur}
@@ -92,6 +93,7 @@ export function TemplateBadgeInput({
           ref={attachEditor}
           role="textbox"
           suppressContentEditableWarning
+          {...stylex.props(styles.editor)}
         />
       </div>
 
@@ -107,3 +109,36 @@ export function TemplateBadgeInput({
     </>
   );
 }
+
+const styles = stylex.create({
+  field: {
+    backgroundColor: "transparent",
+    borderColor: {
+      default: colorVars["--color-border"],
+      ":focus-within": colorVars["--color-accent"],
+    },
+    borderRadius: radiusVars["--radius-element"],
+    borderStyle: "solid",
+    borderWidth: 1,
+    boxShadow: shadowVars["--shadow-low"],
+    display: "flex",
+    fontSize: typeScaleVars["--text-body-size"],
+    minHeight: 36,
+    paddingBlock: spacingVars["--spacing-2"],
+    paddingInline: spacingVars["--spacing-3"],
+    transitionProperty: "border-color, box-shadow",
+    width: "100%",
+  },
+  invalid: {
+    borderColor: colorVars["--color-error"],
+  },
+  disabled: {
+    cursor: "not-allowed",
+    opacity: 0.5,
+  },
+  editor: {
+    minWidth: 0,
+    outline: "none",
+    width: "100%",
+  },
+});

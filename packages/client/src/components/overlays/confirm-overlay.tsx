@@ -1,5 +1,4 @@
-import { AlertTriangleIcon } from "lucide-react";
-import { cn } from "@wfgraph/shared/utils";
+import { Banner } from "@astryxdesign/core/Banner";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
 import type { OverlayAction, OverlayActionVariant } from "./types";
@@ -49,7 +48,7 @@ export function ConfirmOverlay({
   message,
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
-  confirmVariant = "default",
+  confirmVariant = "primary",
   destructive = false,
   onConfirm,
   onCancel,
@@ -69,7 +68,7 @@ export function ConfirmOverlay({
   const actions: OverlayAction[] = [
     {
       label: cancelLabel,
-      variant: "outline",
+      variant: "secondary",
       onClick: handleCancel,
     },
     {
@@ -81,18 +80,11 @@ export function ConfirmOverlay({
 
   return (
     <Overlay actions={actions} overlayId={overlayId} title={title}>
-      <div className="flex gap-4">
-        {destructive && (
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
-            <AlertTriangleIcon className="size-5 text-destructive" />
-          </div>
-        )}
-        <p
-          className={cn("text-muted-foreground text-sm", destructive && "pt-2")}
-        >
-          {message}
-        </p>
-      </div>
+      <Banner
+        description={message}
+        status={destructive ? "error" : "warning"}
+        title={destructive ? "This action cannot be undone" : "Confirm action"}
+      />
     </Overlay>
   );
 }

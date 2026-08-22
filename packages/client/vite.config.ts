@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import babel from "@rolldown/plugin-babel";
-import tailwindcss from "@tailwindcss/vite";
+import stylexVite from "@stylexjs/unplugin/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 // Keep the `.ts`: Vite's coming native config loader is node's own, which
@@ -50,13 +50,13 @@ export default defineConfig({
   // from serving an unrelated directory in development.
   publicDir: false,
   plugins: [
+    stylexVite({ useCSSLayers: true }),
     react(),
     // The React Compiler memoizes components and hooks, which is why almost
     // nothing in the client reaches for useMemo or useCallback by hand.
     // `panicThreshold: "none"` leaves a component the compiler cannot handle
     // uncompiled instead of failing the build over it.
     babel({ presets: [reactCompilerPreset({ panicThreshold: "none" })] }),
-    tailwindcss(),
   ],
   resolve: {
     alias: [...workspaceSourceAliases],

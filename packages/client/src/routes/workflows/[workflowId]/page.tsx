@@ -1,9 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
+import * as stylex from "@stylexjs/stylex";
+import { Button } from "@astryxdesign/core/Button";
+import { Card } from "@astryxdesign/core/Card";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
+import { colorVars } from "@astryxdesign/core/theme/tokens.stylex";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useCallback } from "react";
-import { toast } from "sonner";
-import { Button } from "#src/components/ui/button";
+import { notifications as toast } from "#src/lib/notifications";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
 import { WorkflowSidebarPanel } from "#src/components/workflow/workflow-sidebar-panel";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
@@ -44,6 +49,7 @@ const WorkflowEditor = () => {
   const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
   const workflowNotFound = useAtomValue(workflowNotFoundAtom);
   const workflowLoadError = useAtomValue(workflowLoadErrorAtom);
+  const navigate = useNavigate();
 
   // A debounced autosave has no caller waiting on it, so a failure would
   // otherwise reach only the console while the editor looked saved.
@@ -147,33 +153,44 @@ const WorkflowEditor = () => {
   );
 
   return (
-    <div className="flex h-dvh w-full flex-col overflow-hidden">
+    <div {...stylex.props(styles.editor)}>
       {/* URL → selection + pinned-graph overlay. Sibling of the sidebar so it
           outlives the Runs panel; the status projection above reads what it writes. */}
       <ExecutionOverlaySync />
 
       {/* Workflow not found overlay */}
       {workflowNotFound && (
-        <div className="pointer-events-auto absolute inset-0 z-20 flex items-center justify-center">
-          <div className="rounded-lg border bg-background p-8 text-center shadow-lg">
-            <h1 className="mb-2 font-semibold text-2xl">Workflow Not Found</h1>
-            <p className="mb-6 text-muted-foreground">
-              The workflow you're looking for doesn't exist or has been deleted.
-            </p>
-            <Button render={<Link to="/" />}>Go to Dashboard</Button>
-          </div>
+        <div {...stylex.props(styles.messageBackdrop)}>
+          <Card padding={6} xstyle={styles.messageCard}>
+            <VStack align="center" gap={4}>
+              <Text type="display-3">Workflow not found</Text>
+              <Text color="secondary">
+                The workflow you're looking for doesn't exist or has been
+                deleted.
+              </Text>
+              <Button
+                label="Go to dashboard"
+                onClick={() => void navigate({ to: "/" })}
+                variant="primary"
+              />
+            </VStack>
+          </Card>
         </div>
       )}
 
       {workflowLoadError && (
-        <div className="pointer-events-auto absolute inset-0 z-20 flex items-center justify-center">
-          <div className="rounded-lg border bg-background p-8 text-center shadow-lg">
-            <h1 className="mb-2 font-semibold text-2xl">
-              Couldn't Load Workflow
-            </h1>
-            <p className="mb-6 text-muted-foreground">{workflowLoadError}</p>
-            <Button onClick={() => window.location.reload()}>Try Again</Button>
-          </div>
+        <div {...stylex.props(styles.messageBackdrop)}>
+          <Card padding={6} xstyle={styles.messageCard}>
+            <VStack align="center" gap={4}>
+              <Text type="display-3">Couldn't load workflow</Text>
+              <Text color="secondary">{workflowLoadError}</Text>
+              <Button
+                label="Try again"
+                onClick={() => window.location.reload()}
+                variant="primary"
+              />
+            </VStack>
+          </Card>
         </div>
       )}
 
@@ -183,3 +200,28 @@ const WorkflowEditor = () => {
 };
 
 export default WorkflowEditor;
+
+const styles = stylex.create({
+  editor: {
+    display: "flex",
+    flexDirection: "column",
+    height: "100dvh",
+    overflow: "hidden",
+    width: "100%",
+  },
+  messageBackdrop: {
+    alignItems: "center",
+    backgroundColor: colorVars["--color-background-muted"],
+    display: "flex",
+    inset: 0,
+    justifyContent: "center",
+    pointerEvents: "auto",
+    position: "absolute",
+    zIndex: 20,
+  },
+  messageCard: {
+    maxWidth: 480,
+    textAlign: "center",
+    width: "calc(100% - 2rem)",
+  },
+});

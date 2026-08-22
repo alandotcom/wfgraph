@@ -8,7 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useCallback, useState } from "react";
-import { toast } from "sonner";
+import { notifications as toast } from "#src/lib/notifications";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import {
   TestRunOverlay,

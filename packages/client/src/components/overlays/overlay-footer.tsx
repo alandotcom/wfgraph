@@ -1,6 +1,5 @@
-import { Loader2 } from "lucide-react";
-import { Button } from "#src/components/ui/button";
-import { cn } from "@wfgraph/shared/utils";
+import { Button } from "@astryxdesign/core/Button";
+import { HStack } from "@astryxdesign/core/HStack";
 import type { OverlayAction, OverlayFooterProps } from "./types";
 
 /**
@@ -9,36 +8,41 @@ import type { OverlayAction, OverlayFooterProps } from "./types";
 function ActionButton({ action }: { action: OverlayAction }) {
   return (
     <Button
-      disabled={action.disabled || action.loading}
+      isDisabled={action.disabled}
+      isLoading={action.loading}
+      label={action.label}
       onClick={action.onClick}
-      variant={action.variant ?? "default"}
-    >
-      {action.loading && <Loader2 className="mr-2 size-4 animate-spin" />}
-      {action.label}
-    </Button>
+      variant={toButtonVariant(action.variant)}
+    />
   );
+}
+
+function toButtonVariant(
+  variant: OverlayAction["variant"]
+): "destructive" | "ghost" | "primary" | "secondary" {
+  if (variant === "destructive") {
+    return "destructive";
+  }
+  if (variant === "ghost") {
+    return "ghost";
+  }
+  if (variant === "secondary") {
+    return "secondary";
+  }
+  return "primary";
 }
 
 /**
  * Standardized footer component for overlays.
  * Renders action buttons in a consistent layout.
  */
-export function OverlayFooter({
-  actions,
-  className,
-  children,
-}: OverlayFooterProps) {
+export function OverlayFooter({ actions, children }: OverlayFooterProps) {
   // If children are provided, render them directly
   if (children) {
     return (
-      <div
-        className={cn(
-          "flex flex-col-reverse gap-2 p-6 pt-4 sm:flex-row sm:justify-end",
-          className
-        )}
-      >
+      <HStack gap={2} justify="end" padding={6}>
         {children}
-      </div>
+      </HStack>
     );
   }
 
@@ -50,47 +54,42 @@ export function OverlayFooter({
   // Ghost buttons go on the left (additional actions like Delete)
   const leftActions = actions.filter((a) => a.variant === "ghost");
 
-  // Right side: secondary (outline) then primary (default/destructive)
-  const rightSecondary = actions.filter(
-    (a) => a.variant === "outline" || a.variant === "secondary"
-  );
+  // Right side: secondary then primary/destructive.
+  const rightSecondary = actions.filter((a) => a.variant === "secondary");
   const rightPrimary = actions.filter(
-    (a) => !a.variant || a.variant === "default" || a.variant === "destructive"
+    (a) => !a.variant || a.variant === "primary" || a.variant === "destructive"
   );
 
   const hasLeftActions = leftActions.length > 0;
   const hasRightActions = rightSecondary.length > 0 || rightPrimary.length > 0;
 
   return (
-    <div
-      className={cn(
-        "flex flex-col-reverse gap-2 p-6 pt-4 sm:flex-row",
-        hasLeftActions && hasRightActions
-          ? "sm:justify-between"
-          : "sm:justify-end",
-        className
-      )}
+    <HStack
+      gap={2}
+      justify={hasLeftActions && hasRightActions ? "between" : "end"}
+      padding={6}
+      wrap="wrap"
     >
       {/* Ghost actions on the left */}
       {hasLeftActions && (
-        <div className="flex flex-col-reverse gap-2 sm:flex-row">
+        <HStack gap={2} wrap="wrap">
           {leftActions.map((action) => (
             <ActionButton action={action} key={action.label} />
           ))}
-        </div>
+        </HStack>
       )}
 
       {/* Secondary + Primary actions on the right: [secondary] [primary] */}
       {hasRightActions && (
-        <div className="flex flex-col-reverse gap-2 sm:flex-row">
+        <HStack gap={2} wrap="wrap">
           {rightSecondary.map((action) => (
             <ActionButton action={action} key={action.label} />
           ))}
           {rightPrimary.map((action) => (
             <ActionButton action={action} key={action.label} />
           ))}
-        </div>
+        </HStack>
       )}
-    </div>
+    </HStack>
   );
 }

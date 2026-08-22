@@ -122,15 +122,22 @@ function rulesOf(config: Record<string, unknown>): LifecycleRules {
  * role="option" set, since two comboboxes can be open on this screen at once.
  */
 function chooseEvent(view: RenderResult, label: string, query: string) {
-  const input = view.getByLabelText(label);
-  fireEvent.keyDown(input, { key: "ArrowDown" });
-  fireEvent.change(input, { target: { value: query } });
+  const trigger = view.getByRole("button", { name: label });
+  fireEvent.click(trigger);
 
-  const listboxId = input.getAttribute("aria-controls");
+  const listboxId = trigger.getAttribute("aria-controls");
   const listbox = listboxId && document.getElementById(listboxId);
   if (!listbox) {
     throw new Error(`The ${label} picker's popup never opened`);
   }
+
+  const input = view
+    .getAllByPlaceholderText("Search Events")
+    .find((candidate) => candidate.getAttribute("aria-controls") === listboxId);
+  if (!input) {
+    throw new Error(`The ${label} picker's search input was not rendered`);
+  }
+  fireEvent.change(input, { target: { value: query } });
 
   const option = within(listbox).queryAllByRole("option").at(0);
   if (!option) {
@@ -154,27 +161,37 @@ function pathInForce(view: RenderResult, eventName: string): string {
   return pathPicker(view, eventName).textContent ?? "";
 }
 
-/**
- * Open one Event's Correlation Path picker and take the option named.
- *
- * Base UI mounts the popup only while it is open, so the options are looked up
- * after the trigger rather than up front. The press starts with a pointer event:
- * an option ignores a click that began nowhere on it, which is how it survives a
- * popup opening under a stationary cursor.
- */
 function choosePath(view: RenderResult, eventName: string, option: string) {
-  fireEvent.click(pathPicker(view, eventName));
+  const trigger = pathPicker(view, eventName);
+  if (option === "Choose a path") {
+    fireEvent.click(view.getByRole("button", { name: `Clear ${eventName}` }));
+    return;
+  }
+  fireEvent.click(trigger);
 
-  const choice = view.getByRole("option", { name: option });
-  fireEvent.pointerDown(choice);
+  const choice = within(pathListbox(trigger)).getByRole("option", {
+    name: option,
+  });
   fireEvent.click(choice);
 }
 
 /** Every path the picker offers, in the order it lists them. */
 function pathChoices(view: RenderResult, eventName: string): string[] {
-  fireEvent.click(pathPicker(view, eventName));
+  const trigger = pathPicker(view, eventName);
+  fireEvent.click(trigger);
 
-  return view.getAllByRole("option").map((option) => option.textContent ?? "");
+  return within(pathListbox(trigger))
+    .getAllByRole("option")
+    .map((option) => option.textContent ?? "");
+}
+
+function pathListbox(trigger: HTMLElement): HTMLElement {
+  const listboxId = trigger.getAttribute("aria-controls");
+  const listbox = listboxId ? document.getElementById(listboxId) : null;
+  if (!listbox) {
+    throw new Error("Correlation Path listbox was not rendered");
+  }
+  return listbox;
 }
 
 describe("LifecyclePanel", () => {
@@ -229,12 +246,15 @@ describe("LifecyclePanel", () => {
       <LifecyclePanel config={{}} disabled={false} onUpdateConfig={vi.fn()} />
     );
 
-    fireEvent.click(
-      view.getAllByRole("button", { name: "Show the Events" })[0]
-    );
+    const trigger = view
+      .getAllByRole("button", { name: "Start Events" })
+      .at(0)!;
+    fireEvent.click(trigger);
 
     expect(
-      view.getByRole("option", { name: /Appointment created/ })
+      within(pathListbox(trigger)).getByRole("option", {
+        name: /Appointment created/,
+      })
     ).toBeTruthy();
   });
 

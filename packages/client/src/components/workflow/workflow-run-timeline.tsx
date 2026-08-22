@@ -1,10 +1,17 @@
+import * as stylex from "@stylexjs/stylex";
+import { Button } from "@astryxdesign/core/Button";
+import { Card } from "@astryxdesign/core/Card";
+import { HStack } from "@astryxdesign/core/HStack";
+import { StatusDot } from "@astryxdesign/core/StatusDot";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
+import { colorVars, spacingVars } from "@astryxdesign/core/theme/tokens.stylex";
 import { useState } from "react";
-import { cn } from "@wfgraph/shared/utils";
 import { type ExecutionLog } from "#src/lib/execution-logs";
 import {
   CollapsibleSection,
   formatDuration,
-  getStatusDotClass,
+  getStatusDotVariant,
   getStatusLabel,
   JsonWithLinks,
   OutputDisplay,
@@ -20,49 +27,38 @@ function TimelineEntry({
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
-    <div className="relative flex gap-3">
-      {/* Vertical connecting line */}
-      {isLast ? null : (
-        <div className="absolute top-5 bottom-0 left-2 w-px bg-border" />
-      )}
-
-      {/* Status dot */}
-      <div className="relative z-10 mt-1.5 flex shrink-0 items-center justify-center">
-        <div
-          className={cn(
-            "size-4 rounded-full ring-2 ring-background",
-            getStatusDotClass(log.status)
-          )}
+    <div {...stylex.props(styles.entry)}>
+      {isLast ? null : <span aria-hidden {...stylex.props(styles.connector)} />}
+      <span {...stylex.props(styles.dot)}>
+        <StatusDot
+          label={getStatusLabel(log.status)}
+          variant={getStatusDotVariant(log.status)}
         />
-      </div>
-
-      {/* Step content */}
-      <div className="min-w-0 flex-1 pb-4">
-        <button
-          className="group w-full text-left"
+      </span>
+      <VStack gap={3} xstyle={styles.content}>
+        <Button
+          label={log.nodeName || log.nodeType}
           onClick={() => setIsExpanded(!isExpanded)}
-          type="button"
-        >
-          <div className="flex items-center gap-2">
-            <span className="truncate font-medium text-sm transition-colors group-hover:text-foreground">
-              {log.nodeName || log.nodeType}
-            </span>
-            <span className="text-muted-foreground text-xs">
-              {getStatusLabel(log.status)}
-            </span>
-            {log.duration ? (
-              <span className="shrink-0 font-mono text-muted-foreground text-xs tabular-nums">
-                {formatDuration(log.duration)}
-              </span>
-            ) : null}
-          </div>
-        </button>
+          size="sm"
+          variant="ghost"
+          xstyle={styles.trigger}
+        />
+        <HStack align="center" gap={2}>
+          <Text color="secondary" size="sm">
+            {getStatusLabel(log.status)}
+          </Text>
+          {log.duration ? (
+            <Text color="secondary" size="sm" xstyle={styles.monospace}>
+              {formatDuration(log.duration)}
+            </Text>
+          ) : null}
+        </HStack>
 
         {isExpanded ? (
-          <div className="mt-2 space-y-3">
+          <VStack gap={3}>
             {log.input !== null && log.input !== undefined ? (
               <CollapsibleSection copyData={log.input} title="Input">
-                <pre className="overflow-auto rounded-lg border bg-muted/50 p-3 font-mono text-xs leading-relaxed">
+                <pre {...stylex.props(styles.codeBlock)}>
                   <JsonWithLinks data={log.input} />
                 </pre>
               </CollapsibleSection>
@@ -81,19 +77,19 @@ function TimelineEntry({
                 isError
                 title="Error"
               >
-                <pre className="overflow-auto rounded-lg border border-destructive/20 bg-destructive/5 p-3 font-mono text-destructive text-xs leading-relaxed">
-                  {log.error}
-                </pre>
+                <pre {...stylex.props(styles.errorBlock)}>{log.error}</pre>
               </CollapsibleSection>
             ) : null}
             {log.input || log.output || log.error ? null : (
-              <div className="rounded-lg border bg-muted/30 py-4 text-center text-muted-foreground text-xs">
-                No data recorded
-              </div>
+              <Card padding={3}>
+                <Text color="secondary" size="sm">
+                  No data recorded
+                </Text>
+              </Card>
             )}
-          </div>
+          </VStack>
         ) : null}
-      </div>
+      </VStack>
     </div>
   );
 }
@@ -101,14 +97,16 @@ function TimelineEntry({
 export function WorkflowRunTimeline({ logs }: { logs: ExecutionLog[] }) {
   if (logs.length === 0) {
     return (
-      <div className="py-8 text-center text-muted-foreground text-xs">
-        No steps recorded
-      </div>
+      <Card padding={4}>
+        <Text color="secondary" size="sm">
+          No steps recorded
+        </Text>
+      </Card>
     );
   }
 
   return (
-    <div className="pl-1">
+    <VStack gap={0}>
       {logs.map((log, index) => (
         <TimelineEntry
           isLast={index === logs.length - 1}
@@ -116,6 +114,55 @@ export function WorkflowRunTimeline({ logs }: { logs: ExecutionLog[] }) {
           log={log}
         />
       ))}
-    </div>
+    </VStack>
   );
 }
+
+const styles = stylex.create({
+  entry: {
+    display: "grid",
+    gap: spacingVars["--spacing-3"],
+    gridTemplateColumns: "1rem minmax(0, 1fr)",
+    paddingBlockEnd: spacingVars["--spacing-4"],
+    position: "relative",
+  },
+  connector: {
+    backgroundColor: colorVars["--color-border"],
+    bottom: 0,
+    left: 7,
+    position: "absolute",
+    top: 16,
+    width: 1,
+  },
+  dot: {
+    paddingBlockStart: spacingVars["--spacing-2"],
+    position: "relative",
+    zIndex: 1,
+  },
+  content: { minWidth: 0 },
+  trigger: { justifyContent: "flex-start", maxWidth: "100%" },
+  monospace: { fontFamily: "monospace", fontVariantNumeric: "tabular-nums" },
+  codeBlock: {
+    backgroundColor: colorVars["--color-neutral"],
+    border: `1px solid ${colorVars["--color-border"]}`,
+    borderRadius: 8,
+    fontFamily: "monospace",
+    fontSize: 12,
+    lineHeight: 1.6,
+    margin: 0,
+    overflow: "auto",
+    padding: spacingVars["--spacing-3"],
+  },
+  errorBlock: {
+    backgroundColor: colorVars["--color-neutral"],
+    border: `1px solid ${colorVars["--color-error"]}`,
+    borderRadius: 8,
+    color: colorVars["--color-text-red"],
+    fontFamily: "monospace",
+    fontSize: 12,
+    lineHeight: 1.6,
+    margin: 0,
+    overflow: "auto",
+    padding: spacingVars["--spacing-3"],
+  },
+});

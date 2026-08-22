@@ -1,4 +1,4 @@
-import { cn } from "@wfgraph/shared/utils";
+import { VStack } from "@astryxdesign/core/VStack";
 import { OverlayFooter } from "./overlay-footer";
 import { SmartOverlayHeader } from "./overlay-header";
 import type { OverlayProps } from "./types";
@@ -23,7 +23,7 @@ type OverlayComponentProps = OverlayProps & {
  *       title="Settings"
  *       description="Manage your preferences"
  *       actions={[
- *         { label: "Cancel", variant: "outline", onClick: pop },
+ *         { label: "Cancel", variant: "secondary", onClick: pop },
  *         { label: "Save", onClick: handleSave },
  *       ]}
  *     >
@@ -39,10 +39,9 @@ export function Overlay({
   description,
   actions,
   children,
-  className,
 }: OverlayComponentProps) {
   return (
-    <div className={cn("flex min-h-0 flex-col", className)}>
+    <VStack minHeight={0} xstyle={styles.overlay}>
       {/* Header with smart back button detection */}
       {(title || description) && (
         <SmartOverlayHeader
@@ -55,11 +54,24 @@ export function Overlay({
       {/* Content area. `min-h-0` lets this scroll inside a height-capped card
           rather than pushing the footer actions off the bottom of the screen. */}
       {children && (
-        <div className="min-h-0 flex-1 overflow-y-auto p-6">{children}</div>
+        <VStack isScrollable minHeight={0} padding={6} xstyle={styles.content}>
+          {children}
+        </VStack>
       )}
 
       {/* Footer with actions */}
       <OverlayFooter actions={actions} />
-    </div>
+    </VStack>
   );
 }
+
+import * as stylex from "@stylexjs/stylex";
+
+const styles = stylex.create({
+  overlay: {
+    flex: 1,
+  },
+  content: {
+    flex: 1,
+  },
+});

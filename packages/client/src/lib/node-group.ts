@@ -4,7 +4,7 @@
  */
 
 import { nanoid } from "nanoid";
-import { toast } from "sonner";
+import { notifications as toast } from "#src/lib/notifications";
 import type { EdgeChange } from "@xyflow/react";
 import { isConditionNode } from "@wfgraph/shared/graph/node-config";
 import {

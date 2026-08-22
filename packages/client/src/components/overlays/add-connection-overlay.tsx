@@ -1,10 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
-import { Input } from "#src/components/ui/input";
-import { IntegrationIcon } from "#src/components/ui/integration-icon";
-import { Label } from "#src/components/ui/label";
+import { notifications as toast } from "#src/lib/notifications";
+import { IntegrationIcon } from "#src/components/integration-icon";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import {
   announceTestResult,
@@ -66,52 +64,47 @@ export function AddConnectionOverlay({
 
   return (
     <Overlay overlayId={overlayId} title="Add Connection">
-      <p className="-mt-2 mb-4 text-muted-foreground text-sm">
-        Select a service to connect
-      </p>
+      <Text color="secondary">Select a service to connect</Text>
 
-      <div className="space-y-3">
-        <div className="relative">
-          <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            autoFocus={!isMobile}
-            className="pl-9"
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search services..."
-            value={searchQuery}
-          />
-        </div>
-        <div className="max-h-[300px] space-y-1 overflow-y-auto">
+      <VStack gap={3}>
+        <TextInput
+          hasAutoFocus={!isMobile}
+          isLabelHidden
+          label="Search services"
+          onChange={setSearchQuery}
+          placeholder="Search services"
+          startIcon={<Icon icon={Search} size="sm" />}
+          value={searchQuery}
+          width="100%"
+        />
+        <VStack gap={1} xstyle={styles.serviceList}>
           {filtered.length === 0 ? (
-            <p className="py-4 text-center text-muted-foreground text-sm">
-              No services found
-            </p>
+            <Text color="secondary">No services found</Text>
           ) : (
             filtered.map((integration) => (
-              <button
-                className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-muted/50"
+              <ClickableCard
                 key={integration.type}
+                label={integration.label}
                 onClick={() => handleSelectType(integration.type)}
-                type="button"
+                padding={2}
+                variant="transparent"
               >
-                <IntegrationIcon
-                  className="size-5 shrink-0"
-                  integration={integration.type}
-                />
-                <span className="min-w-0 flex-1 truncate">
-                  <span className="font-medium">{integration.label}</span>
-                  {integration.description && (
-                    <span className="text-muted-foreground text-xs">
-                      {" "}
-                      - {integration.description}
-                    </span>
-                  )}
-                </span>
-              </button>
+                <HStack align="center" gap={3}>
+                  <IntegrationIcon integration={integration.type} />
+                  <VStack gap={0.5}>
+                    <Text type="label">{integration.label}</Text>
+                    {integration.description ? (
+                      <Text color="secondary" maxLines={2} type="supporting">
+                        {integration.description}
+                      </Text>
+                    ) : null}
+                  </VStack>
+                </HStack>
+              </ClickableCard>
             ))
           )}
-        </div>
-      </div>
+        </VStack>
+      </VStack>
     </Overlay>
   );
 }
@@ -126,7 +119,7 @@ type ConfigureConnectionOverlayProps = {
  * Secret field component for password inputs
  */
 function SecretField({
-  fieldId,
+  fieldId: _fieldId,
   label,
   configKey,
   placeholder,
@@ -145,32 +138,26 @@ function SecretField({
   onChange: (key: string, value: string) => void;
 }) {
   return (
-    <div className="space-y-2">
-      <Label htmlFor={fieldId}>{label}</Label>
-      <Input
-        className="flex-1"
-        id={fieldId}
-        onChange={(e) => onChange(configKey, e.target.value)}
+    <VStack gap={2}>
+      <TextInput
+        label={label}
+        onChange={(next) => onChange(configKey, next)}
         placeholder={placeholder}
         type="password"
         value={value}
+        width="100%"
       />
       {(helpText || helpLink) && (
-        <p className="text-muted-foreground text-xs">
+        <Text color="secondary" type="supporting">
           {helpText}
           {helpLink && (
-            <a
-              className="underline hover:text-foreground"
-              href={helpLink.url}
-              rel="noopener noreferrer"
-              target="_blank"
-            >
+            <a href={helpLink.url} rel="noopener noreferrer" target="_blank">
               {helpLink.text}
             </a>
           )}
-        </p>
+        </Text>
       )}
-    </div>
+    </VStack>
   );
 }
 
@@ -304,21 +291,20 @@ export function ConfigureConnectionOverlay({
       }
 
       return (
-        <div className="space-y-2" key={configKey}>
-          <Label htmlFor={configKey}>{field.label}</Label>
-          <Input
-            id={configKey}
-            onChange={(e) => updateConfig(configKey, e.target.value)}
+        <VStack gap={2} key={configKey}>
+          <TextInput
+            label={field.label}
+            onChange={(next) => updateConfig(configKey, next)}
             placeholder={field.placeholder}
-            type={field.type}
+            type="text"
             value={config[configKey] || ""}
+            width="100%"
           />
           {(field.helpText || field.helpLink) && (
-            <p className="text-muted-foreground text-xs">
+            <Text color="secondary" type="supporting">
               {field.helpText}
               {field.helpLink && (
                 <a
-                  className="underline hover:text-foreground"
                   href={field.helpLink.url}
                   rel="noopener noreferrer"
                   target="_blank"
@@ -326,9 +312,9 @@ export function ConfigureConnectionOverlay({
                   {field.helpLink.text}
                 </a>
               )}
-            </p>
+            </Text>
           )}
-        </div>
+        </VStack>
       );
     });
   };
@@ -340,7 +326,7 @@ export function ConfigureConnectionOverlay({
           ? [
               {
                 label: "Test",
-                variant: "outline" as const,
+                variant: "secondary" as const,
                 onClick: handleTest,
                 loading: testNewCredentials.isPending,
                 disabled: saving,
@@ -352,23 +338,34 @@ export function ConfigureConnectionOverlay({
       overlayId={overlayId}
       title={`Add ${getLabel(catalog, type)}`}
     >
-      <p className="-mt-2 mb-4 text-muted-foreground text-sm">
-        Enter your credentials
-      </p>
+      <Text color="secondary">Enter your credentials</Text>
 
-      <div className="space-y-4">
+      <VStack gap={4}>
         {renderConfigFields()}
 
-        <div className="space-y-2">
-          <Label htmlFor="name">Label (Optional)</Label>
-          <Input
-            id="name"
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Production, Personal, Work"
-            value={name}
-          />
-        </div>
-      </div>
+        <TextInput
+          isOptional
+          label="Label"
+          onChange={setName}
+          placeholder="e.g. Production, Personal, Work"
+          value={name}
+          width="100%"
+        />
+      </VStack>
     </Overlay>
   );
 }
+
+const styles = stylex.create({
+  serviceList: {
+    maxHeight: 300,
+    overflowY: "auto",
+  },
+});
+import { ClickableCard } from "@astryxdesign/core/ClickableCard";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { Text } from "@astryxdesign/core/Text";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { VStack } from "@astryxdesign/core/VStack";
+import * as stylex from "@stylexjs/stylex";

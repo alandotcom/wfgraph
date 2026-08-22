@@ -4,7 +4,7 @@ import { createStore, Provider as JotaiProvider } from "jotai";
 import { describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
-import { IntegrationSelector } from "#src/components/ui/integration-selector";
+import { IntegrationSelector } from "#src/components/form-fields/integration-selector";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
@@ -86,10 +86,8 @@ describe("IntegrationSelector", () => {
     });
 
     expect(
-      screen
-        .getByRole("radio", { name: "Linear Testing" })
-        .getAttribute("aria-checked")
-    ).toBe("false");
+      screen.getByRole("radio", { name: "Linear Testing" }).matches(":checked")
+    ).toBe(false);
   });
 
   it("binds the node to the sole connection when it is clicked", () => {
@@ -110,10 +108,8 @@ describe("IntegrationSelector", () => {
     });
 
     expect(
-      screen
-        .getByRole("radio", { name: "Linear Testing" })
-        .getAttribute("aria-checked")
-    ).toBe("true");
+      screen.getByRole("radio", { name: "Linear Testing" }).matches(":checked")
+    ).toBe(true);
   });
 
   it("marks only the chosen one of several connections", () => {
@@ -126,14 +122,10 @@ describe("IntegrationSelector", () => {
     });
 
     expect(
-      screen
-        .getByRole("radio", { name: "First Linear" })
-        .getAttribute("aria-checked")
-    ).toBe("false");
+      screen.getByRole("radio", { name: "First Linear" }).matches(":checked")
+    ).toBe(false);
     expect(
-      screen
-        .getByRole("radio", { name: "Second Linear" })
-        .getAttribute("aria-checked")
-    ).toBe("true");
+      screen.getByRole("radio", { name: "Second Linear" }).matches(":checked")
+    ).toBe(true);
   });
 });

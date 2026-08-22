@@ -26,10 +26,9 @@ export const Connection: ConnectionLineComponent<WorkflowNode> = ({
   return (
     <g>
       <path
-        className="animated"
         d={path}
         fill="none"
-        stroke="var(--color-ring)"
+        stroke="var(--color-accent)"
         strokeDasharray="5, 5"
         strokeWidth={1}
       />
@@ -38,7 +37,7 @@ export const Connection: ConnectionLineComponent<WorkflowNode> = ({
         cy={toY}
         fill="#fff"
         r={3}
-        stroke="var(--color-ring)"
+        stroke="var(--color-accent)"
         strokeWidth={1}
       />
     </g>

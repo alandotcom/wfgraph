@@ -8,7 +8,10 @@
  */
 
 import { useAtomValue } from "jotai";
-import { Loader2 } from "lucide-react";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Spinner } from "@astryxdesign/core/Spinner";
+import { StatusDot } from "@astryxdesign/core/StatusDot";
+import { Text } from "@astryxdesign/core/Text";
 import { useDomEvent } from "#src/hooks/effects";
 import {
   hasUnsavedChangesAtom,
@@ -16,7 +19,6 @@ import {
   isWorkflowOwnerAtom,
   lastSaveErrorAtom,
 } from "#src/lib/workflow-save-store";
-import { cn } from "@wfgraph/shared/utils";
 
 type SaveState = "saving" | "unsaved" | "failed" | "saved";
 
@@ -50,11 +52,13 @@ const LABELS: Record<SaveState, string> = {
   saved: "Saved",
 };
 
-const TONES: Record<SaveState, string> = {
-  saving: "text-muted-foreground",
-  unsaved: "text-warning",
-  failed: "text-destructive",
-  saved: "text-muted-foreground",
+const STATUS_VARIANTS: Record<
+  Exclude<SaveState, "saving">,
+  "error" | "neutral" | "success" | "warning"
+> = {
+  unsaved: "warning",
+  failed: "error",
+  saved: "success",
 };
 
 export function WorkflowSaveStatus() {
@@ -90,15 +94,17 @@ export function WorkflowSaveStatus() {
   return (
     // A live region, because this is the one control that changes on its own
     // while the user is looking somewhere else.
-    <output
-      aria-live="polite"
-      className={cn(
-        "flex shrink-0 items-center gap-1.5 whitespace-nowrap px-1 font-medium text-xs",
-        TONES[state]
-      )}
-    >
-      {state === "saving" && <Loader2 className="size-3 animate-spin" />}
-      {LABELS[state]}
+    <output aria-live="polite">
+      <HStack gap={1.5}>
+        {state === "saving" ? (
+          <Spinner aria-label="Saving workflow" size="sm" />
+        ) : (
+          <StatusDot label={LABELS[state]} variant={STATUS_VARIANTS[state]} />
+        )}
+        <Text color="secondary" type="supporting">
+          {LABELS[state]}
+        </Text>
+      </HStack>
     </output>
   );
 }

@@ -3,6 +3,11 @@ import {
   Position,
   useUpdateNodeInternals,
 } from "@xyflow/react";
+import * as stylex from "@stylexjs/stylex";
+import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
+import { Icon } from "@astryxdesign/core/Icon";
+import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
+import { colorVars, spacingVars } from "@astryxdesign/core/theme/tokens.stylex";
 import { useAtomValue } from "jotai";
 import { EyeOff, GitBranch, Hourglass, Split, Zap } from "lucide-react";
 import { Schema } from "effect";
@@ -14,7 +19,6 @@ import {
   NodeTitle,
 } from "#src/components/flow-elements/node";
 import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
-import { Dialog, DialogContent, DialogTitle } from "#src/components/ui/dialog";
 import { readBase64ImageOutput } from "#src/components/workflow/workflow-run-shared";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
 import {
@@ -29,7 +33,6 @@ import {
 } from "@wfgraph/shared/extensions/catalog";
 import { useIntegrationUi } from "#src/components/integration-ui-provider";
 import { readAs } from "@wfgraph/shared/types/schema";
-import { cn } from "@wfgraph/shared/utils";
 import {
   parseTimestampWithTimezone,
   resolveWaitUntil,
@@ -43,7 +46,6 @@ import {
 import { useEventSplitOutlets } from "#src/lib/event-split-outlets";
 import {
   eventSplitCardWidth,
-  NODE_ICON_CLASS,
   NODE_ICON_PX,
   WORKFLOW_NODE_WIDTH,
   workflowNodeSize,
@@ -328,7 +330,7 @@ const getIntegrationFromActionType = (
 const ProviderLogo = ({
   actionType,
   catalog,
-  className = NODE_ICON_CLASS,
+  className,
 }: {
   actionType: string;
   catalog: ExtensionCatalog;
@@ -339,23 +341,11 @@ const ProviderLogo = ({
   // Check for system actions first (non-plugin)
   switch (actionType) {
     case BUILT_IN_ACTION_IDS.condition:
-      return (
-        <GitBranch
-          className={cn(className, "text-node-condition")}
-          strokeWidth={1.5}
-        />
-      );
+      return <Icon icon={GitBranch} size="md" xstyle={styles.conditionIcon} />;
     case BUILT_IN_ACTION_IDS.eventSplit:
-      return (
-        <Split className={cn(className, "text-node-split")} strokeWidth={1.5} />
-      );
+      return <Icon icon={Split} size="md" xstyle={styles.splitIcon} />;
     case BUILT_IN_ACTION_IDS.wait:
-      return (
-        <Hourglass
-          className={cn(className, "text-node-wait")}
-          strokeWidth={1.5}
-        />
-      );
+      return <Icon icon={Hourglass} size="md" xstyle={styles.waitIcon} />;
     default:
       // Not a built-in, so the icon comes from its integration below.
       break;
@@ -366,11 +356,15 @@ const ProviderLogo = ({
     const ui = integrationUi[integrationType];
     if (ui) {
       const PluginIcon = ui.icon;
-      return <PluginIcon className={className} />;
+      return (
+        <PluginIcon
+          className={className ?? stylex.props(styles.providerIcon).className}
+        />
+      );
     }
   }
 
-  return <Zap className={cn(className, "text-node-wait")} strokeWidth={1.5} />;
+  return <Icon icon={Zap} size="md" xstyle={styles.waitIcon} />;
 };
 
 function GeneratedImageThumbnail({ base64 }: { base64: string }) {
@@ -379,10 +373,7 @@ function GeneratedImageThumbnail({ base64 }: { base64: string }) {
   return (
     <>
       <button
-        className={cn(
-          NODE_ICON_CLASS,
-          "relative cursor-zoom-in overflow-hidden rounded-lg transition-transform hover:scale-105"
-        )}
+        {...stylex.props(styles.thumbnailButton)}
         onClick={(e) => {
           e.stopPropagation();
           setDialogOpen(true);
@@ -391,26 +382,40 @@ function GeneratedImageThumbnail({ base64 }: { base64: string }) {
       >
         <img
           alt="Generated output"
-          className={cn(NODE_ICON_CLASS, "object-cover")}
+          {...stylex.props(styles.thumbnail)}
           height={NODE_ICON_PX}
           src={`data:image/png;base64,${base64}`}
           width={NODE_ICON_PX}
         />
       </button>
 
-      <Dialog onOpenChange={setDialogOpen} open={dialogOpen}>
-        <DialogContent className="max-w-3xl p-2" showCloseButton={false}>
-          <DialogTitle className="sr-only">Generated Image</DialogTitle>
-          <div className="relative aspect-square w-full overflow-hidden rounded-lg">
-            <img
-              alt="Generated output"
-              className="h-auto w-full object-contain"
-              height={768}
-              src={`data:image/png;base64,${base64}`}
-              width={768}
+      <Dialog
+        isOpen={dialogOpen}
+        onOpenChange={setDialogOpen}
+        purpose="info"
+        width="min(48rem, calc(100vw - 2rem))"
+      >
+        <Layout
+          content={
+            <LayoutContent>
+              <div {...stylex.props(styles.imageDialog)}>
+                <img
+                  alt="Generated output"
+                  height={768}
+                  src={`data:image/png;base64,${base64}`}
+                  width={768}
+                  {...stylex.props(styles.fullImage)}
+                />
+              </div>
+            </LayoutContent>
+          }
+          header={
+            <DialogHeader
+              onOpenChange={setDialogOpen}
+              title="Generated image"
             />
-          </div>
-        </DialogContent>
+          }
+        />
       </Dialog>
     </>
   );
@@ -487,11 +492,7 @@ function GroupedActionNode({ data, selected, id }: ActionNodeProps) {
 
   return (
     <Node
-      className={cn(
-        "nodrag flex h-14 w-[188px] flex-row items-center shadow-none transition-all duration-150 ease-out",
-        selected && "border-primary",
-        data.enabled === false && "opacity-50"
-      )}
+      className="nodrag"
       data-testid={`action-node-${id}`}
       handles={{
         target: GROUPED_TARGET_HANDLES,
@@ -500,21 +501,23 @@ function GroupedActionNode({ data, selected, id }: ActionNodeProps) {
           : GROUPED_SOURCE_HANDLES,
       }}
       status={data.status}
+      xstyle={[
+        styles.groupedNode,
+        selected && styles.selectedNode,
+        data.enabled === false && styles.disabledNode,
+      ]}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2 px-3">
+      <div {...stylex.props(styles.groupedContent)}>
         {actionType ? (
           <ProviderLogo
             actionType={actionType}
             catalog={catalog}
-            className={cn(NODE_ICON_CLASS, "shrink-0")}
+            className={stylex.props(styles.providerIcon).className}
           />
         ) : (
-          <Zap
-            className={cn(NODE_ICON_CLASS, "shrink-0 text-muted-foreground")}
-            strokeWidth={1.5}
-          />
+          <Icon icon={Zap} size="md" xstyle={styles.mutedIcon} />
         )}
-        <NodeTitle className="truncate text-sm">{displayTitle}</NodeTitle>
+        <NodeTitle>{displayTitle}</NodeTitle>
         {/* A member is validated like any other node, so it has to be able to
             say so. Inline at the end of the row, because this card is 56px tall
             and a floated corner badge would sit on the icon. */}
@@ -583,23 +586,23 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
     const isDisabled = data.enabled === false;
     return (
       <Node
-        className={cn(selected && "border-primary", isDisabled && "opacity-50")}
         data-testid={`action-node-${id}`}
         handles={{ target: true, source: true }}
         status={status}
         style={workflowNodeSize()}
+        xstyle={[
+          selected && styles.selectedNode,
+          isDisabled && styles.disabledNode,
+        ]}
       >
         {isDisabled && (
-          <div className="absolute top-2 left-2 rounded-full bg-muted-foreground/50 p-1">
-            <EyeOff className="size-3.5 text-background" />
-          </div>
+          <span {...stylex.props(styles.disabledBadge)}>
+            <Icon icon={EyeOff} size="sm" />
+          </span>
         )}
         {!isDisabled && <NodeIssueBadge issues={data.issues} />}
         <NodeBody>
-          <Zap
-            className={cn(NODE_ICON_CLASS, "text-muted-foreground")}
-            strokeWidth={1.5}
-          />
+          <Icon icon={Zap} size="md" xstyle={styles.mutedIcon} />
           <NodeTitle>{data.label || "Action"}</NodeTitle>
           <NodeDescription>Select an action</NodeDescription>
         </NodeBody>
@@ -634,7 +637,6 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
 
   return (
     <Node
-      className={cn(selected && "border-primary", isDisabled && "opacity-50")}
       data-testid={`action-node-${id}`}
       handles={{
         target: true,
@@ -678,12 +680,16 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
           ? eventSplitCardWidth(splitOutlets.length)
           : WORKFLOW_NODE_WIDTH
       )}
+      xstyle={[
+        selected && styles.selectedNode,
+        isDisabled && styles.disabledNode,
+      ]}
     >
       {/* Disabled badge in top left */}
       {isDisabled && (
-        <div className="absolute top-2 left-2 rounded-full bg-muted-foreground/50 p-1">
-          <EyeOff className="size-3.5 text-background" />
-        </div>
+        <span {...stylex.props(styles.disabledBadge)}>
+          <Icon icon={EyeOff} size="sm" />
+        </span>
       )}
 
       {/* Validation badge in the same corner, for every kind of issue. A
@@ -693,10 +699,16 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
 
       {isConditionAction && (
         <>
-          <div className="pointer-events-none absolute -bottom-8 left-[38%] -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none">
+          <div
+            {...stylex.props(styles.outletLabel)}
+            style={{ left: CONDITION_TRUE_HANDLE_LEFT }}
+          >
             True
           </div>
-          <div className="pointer-events-none absolute -bottom-8 left-[62%] -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none">
+          <div
+            {...stylex.props(styles.outletLabel)}
+            style={{ left: CONDITION_FALSE_HANDLE_LEFT }}
+          >
             False
           </div>
         </>
@@ -705,7 +717,7 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
       {isEventSplitAction &&
         splitOutlets.map((event, index) => (
           <div
-            className="pointer-events-none absolute -bottom-8 max-w-28 -translate-x-1/2 truncate rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none"
+            {...stylex.props(styles.outletLabel, styles.eventOutletLabel)}
             key={event.name}
             style={{
               left: eventSplitOutletLeft(index, splitOutlets.length),
@@ -725,7 +737,7 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
         <NodeTitle>{displayTitle}</NodeTitle>
         {displayDescription && (
           <NodeDescription
-            className={waitPreview ? "font-medium tabular-nums" : undefined}
+            xstyle={waitPreview ? styles.waitPreview : undefined}
           >
             {displayDescription}
           </NodeDescription>
@@ -745,3 +757,80 @@ export const ActionNode = memo((props: ActionNodeProps) => {
 });
 
 ActionNode.displayName = "ActionNode";
+
+const styles = stylex.create({
+  providerIcon: { flexShrink: 0, height: 20, width: 20 },
+  conditionIcon: { color: colorVars["--color-text-purple"] },
+  splitIcon: { color: colorVars["--color-text-blue"] },
+  waitIcon: { color: colorVars["--color-text-yellow"] },
+  mutedIcon: { color: colorVars["--color-text-secondary"] },
+  thumbnailButton: {
+    backgroundColor: "transparent",
+    border: 0,
+    borderRadius: 8,
+    cursor: "zoom-in",
+    height: 20,
+    overflow: "hidden",
+    padding: 0,
+    width: 20,
+  },
+  thumbnail: { height: 20, objectFit: "cover", width: 20 },
+  imageDialog: {
+    aspectRatio: "1",
+    borderRadius: 8,
+    overflow: "hidden",
+    position: "relative",
+    width: "100%",
+  },
+  fullImage: { height: "auto", objectFit: "contain", width: "100%" },
+  groupedNode: {
+    alignItems: "center",
+    display: "flex",
+    flexDirection: "row",
+    height: 56,
+    transition: "border-color 150ms ease-out, opacity 150ms ease-out",
+    width: 188,
+  },
+  groupedContent: {
+    alignItems: "center",
+    display: "flex",
+    flex: 1,
+    gap: spacingVars["--spacing-2"],
+    minWidth: 0,
+    paddingInline: spacingVars["--spacing-3"],
+  },
+  selectedNode: { borderColor: colorVars["--color-accent"] },
+  disabledNode: { opacity: 0.5 },
+  disabledBadge: {
+    alignItems: "center",
+    backgroundColor: colorVars["--color-text-secondary"],
+    borderRadius: 999,
+    color: colorVars["--color-background-card"],
+    display: "flex",
+    left: spacingVars["--spacing-2"],
+    padding: spacingVars["--spacing-1"],
+    position: "absolute",
+    top: spacingVars["--spacing-2"],
+  },
+  outletLabel: {
+    backgroundColor: colorVars["--color-background-card"],
+    border: `1px solid ${colorVars["--color-border"]}`,
+    borderRadius: 4,
+    bottom: -32,
+    color: colorVars["--color-text-secondary"],
+    fontSize: 12,
+    lineHeight: 1,
+    paddingBlock: 4,
+    paddingInline: 6,
+    pointerEvents: "none",
+    position: "absolute",
+    transform: "translateX(-50%)",
+  },
+  eventOutletLabel: {
+    maxWidth: 112,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  waitPreview: { fontVariantNumeric: "tabular-nums", fontWeight: 500 },
+});

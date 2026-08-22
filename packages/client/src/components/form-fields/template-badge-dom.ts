@@ -1,6 +1,9 @@
 import { findAction } from "@wfgraph/shared/extensions/catalog";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import { parseTemplate, type TemplateToken } from "@wfgraph/shared/graph/node-references";
+import {
+  parseTemplate,
+  type TemplateToken,
+} from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { readConfigString } from "@wfgraph/shared/graph/node-config";
 
@@ -84,11 +87,8 @@ const PLACEHOLDER_ATTRIBUTE = "data-placeholder";
 /** Marks the line an empty field shows its caret on. Not the user's text. */
 const FILLER_ATTRIBUTE = "data-filler";
 
-const LIVE_BADGE_CLASS =
-  "inline-flex items-center gap-1 rounded bg-info/10 px-1.5 py-0.5 text-info font-mono text-xs border border-info/20 mx-0.5";
-const BROKEN_BADGE_CLASS =
-  "inline-flex items-center gap-1 rounded bg-destructive/10 px-1.5 py-0.5 text-destructive font-mono text-xs border border-destructive/20 mx-0.5";
-
+const LIVE_BADGE_CLASS = "template-reference";
+const BROKEN_BADGE_CLASS = "template-reference template-reference--broken";
 
 /**
  * Badge text for a token. The label baked into the token can be stale, so the
@@ -490,7 +490,10 @@ export function createBadgeEditor(
       const trailingText = document.createTextNode("");
       range.insertNode(lineBreak);
       lineBreak.parentNode?.insertBefore(trailingText, lineBreak.nextSibling);
-      lineBreak.parentNode?.insertBefore(document.createTextNode(""), lineBreak);
+      lineBreak.parentNode?.insertBefore(
+        document.createTextNode(""),
+        lineBreak
+      );
       range.setStart(trailingText, 0);
       range.collapse(true);
       selection.removeAllRanges();

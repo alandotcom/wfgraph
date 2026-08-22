@@ -1,24 +1,21 @@
 import { compact, uniq } from "es-toolkit";
 import { X } from "lucide-react";
-import { type ReactNode, useId } from "react";
-import { Button } from "#src/components/ui/button";
-import { WarningCallout } from "#src/components/ui/callout";
-import { Checkbox } from "#src/components/ui/checkbox";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "#src/components/ui/select";
-import { Label } from "#src/components/ui/label";
-import { Radio, RadioGroup } from "#src/components/ui/radio-group";
+import type { ReactNode } from "react";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Card } from "@astryxdesign/core/Card";
+import { CheckboxInput } from "@astryxdesign/core/CheckboxInput";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { RadioList, RadioListItem } from "@astryxdesign/core/RadioList";
+import { Selector } from "@astryxdesign/core/Selector";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
   type ExtensionCatalog,
   findEvent,
 } from "@wfgraph/shared/extensions/catalog";
-import { cn } from "@wfgraph/shared/utils";
 import {
   checkLifecycleRules,
   type Concurrency,
@@ -51,10 +48,8 @@ export function LifecyclePanel({
   onUpdateConfig: UpdateNodeConfig;
   disabled: boolean;
 }) {
-  const startEventId = useId();
-  const cancelEventsId = useId();
-  const concurrencyLabelId = useId();
-  const manualStartId = useId();
+  const startEventId = "lifecycle-start-events";
+  const cancelEventsId = "lifecycle-cancel-events";
   const catalog = useExtensionCatalog();
   const rules = readLifecycleRules(config) ?? initialLifecycleRules;
 
@@ -99,7 +94,7 @@ export function LifecyclePanel({
   };
 
   return (
-    <div className="space-y-4">
+    <VStack gap={4}>
       <EventField
         help="A run starts when one of these Events arrives. Naming several is how one workflow answers an appointment being booked and being moved: Concurrency decides what happens to the run already going."
         hasEvents={catalog.events.length > 0}
@@ -110,6 +105,7 @@ export function LifecyclePanel({
           choices={catalog.events}
           disabled={disabled}
           inputId={startEventId}
+          label="Start Events"
           onValueChange={setStartEvents}
           value={rules.startEvents}
         />
@@ -140,70 +136,51 @@ export function LifecyclePanel({
         ))}
       </EventField>
 
-      <div className="space-y-2">
-        <Label id={concurrencyLabelId}>Concurrency</Label>
-        <RadioGroup
-          aria-labelledby={concurrencyLabelId}
-          disabled={disabled}
-          onValueChange={setConcurrency}
-          value={rules.concurrency}
-        >
-          {CONCURRENCY_OPTIONS.map((option) => (
-            <label
-              className={cn(
-                "flex w-full cursor-pointer items-start gap-2 rounded-md border p-2 transition-colors",
-                rules.concurrency === option.value
-                  ? "border-primary bg-muted/50"
-                  : "border-input hover:bg-muted/30",
-                disabled && "pointer-events-none opacity-50"
-              )}
-              key={option.value}
-            >
-              <Radio className="mt-0.5" value={option.value} />
-              <div>
-                <p className="font-medium text-sm">{option.label}</p>
-                <p className="text-muted-foreground text-xs">
-                  {option.description}
-                </p>
-              </div>
-            </label>
-          ))}
-        </RadioGroup>
-        <p className="text-muted-foreground text-xs">
-          The entity is the value at the Correlation Path. A start carrying no
-          payload uses the workflow itself, so every manual run is about the
-          same entity.
-        </p>
-      </div>
-
-      <div className="flex items-start gap-2">
-        <Checkbox
-          checked={rules.allowManualStart === true}
-          disabled={disabled}
-          id={manualStartId}
-          onCheckedChange={(checked) =>
-            write({ ...rules, allowManualStart: checked })
+      <RadioList
+        description="The entity is the value at the Correlation Path. A start carrying no payload uses the workflow itself, so every manual run is about the same entity."
+        isDisabled={disabled}
+        label="Concurrency"
+        onChange={(value) => {
+          if (
+            value === "unlimited" ||
+            value === "newest-wins" ||
+            value === "first-wins"
+          ) {
+            setConcurrency(value);
           }
+        }}
+        value={rules.concurrency}
+      >
+        {CONCURRENCY_OPTIONS.map((option) => (
+          <RadioListItem
+            description={option.description}
+            key={option.value}
+            label={option.label}
+            value={option.value}
+          />
+        ))}
+      </RadioList>
+
+      <VStack gap={1}>
+        <CheckboxInput
+          description="The Run button and the execute route. With this off, only a Start Event starts a run."
+          isDisabled={disabled}
+          label="Allow manual runs"
+          onChange={(checked) => write({ ...rules, allowManualStart: checked })}
+          value={rules.allowManualStart === true}
         />
-        <div className="space-y-0.5">
-          <Label htmlFor={manualStartId}>Allow manual runs</Label>
-          <p className="text-muted-foreground text-xs">
-            The Run button and the execute route. With this off, only a Start
-            Event starts a run.
-          </p>
-          {/* The editor derives what downstream nodes may reference from the
+        {/* The editor derives what downstream nodes may reference from the
               Start Events' payloads, and a manual run carries whatever its caller
               posted. Saying so is what keeps the picker's silence from reading as
               a missing feature. */}
-          {rules.startEvents.length === 0 ? (
-            <p className="text-muted-foreground text-xs">
-              A manual run's payload is described by nothing, so downstream
-              nodes are offered no fields to reference. Add a Start Event to
-              give them its payload.
-            </p>
-          ) : null}
-        </div>
-      </div>
+        {rules.startEvents.length === 0 ? (
+          <Text color="secondary" type="supporting">
+            A manual run's payload is described by nothing, so downstream nodes
+            are offered no fields to reference. Add a Start Event to give them
+            its payload.
+          </Text>
+        ) : null}
+      </VStack>
 
       <EventField
         hasEvents={catalog.events.length > 0}
@@ -215,6 +192,7 @@ export function LifecyclePanel({
           choices={catalog.events}
           disabled={disabled}
           inputId={cancelEventsId}
+          label="Cancel Events"
           onValueChange={setCancelEvents}
           value={rules.cancelEvents}
         />
@@ -242,11 +220,13 @@ export function LifecyclePanel({
       </EventField>
 
       {check.valid ? null : (
-        <WarningCallout title="This will not save">
-          {check.error}
-        </WarningCallout>
+        <Banner
+          description={check.error}
+          status="warning"
+          title="This will not save"
+        />
       )}
-    </div>
+    </VStack>
   );
 }
 
@@ -256,7 +236,6 @@ export function LifecyclePanel({
  */
 function EventField({
   label,
-  inputId,
   hasEvents,
   help,
   children,
@@ -268,19 +247,20 @@ function EventField({
   children: ReactNode;
 }) {
   return (
-    <div className="space-y-2">
-      <Label htmlFor={inputId}>{label}</Label>
+    <VStack gap={2}>
+      <Text type="label">{label}</Text>
       {hasEvents ? (
         children
       ) : (
-        <p className="text-muted-foreground text-xs">
+        <Text color="secondary" type="supporting">
           This server declares no Events. Whoever runs it passes them to
-          <code className="mx-1 font-mono text-xs">createWfGraphApp</code>, and
-          they appear here.
-        </p>
+          {" createWfGraphApp"}, and they appear here.
+        </Text>
       )}
-      <p className="text-muted-foreground text-xs">{help}</p>
-    </div>
+      <Text color="secondary" type="supporting">
+        {help}
+      </Text>
+    </VStack>
   );
 }
 
@@ -311,32 +291,29 @@ function ChosenEvent({
   disabled: boolean;
 }) {
   return (
-    <div className="space-y-2 rounded-md border p-2">
-      <div className="flex items-start justify-between gap-2">
-        <p className="min-w-0 truncate text-xs" title={eventName}>
-          {label ?? eventName}
-        </p>
-        <Button
-          aria-label={`Remove ${eventName}`}
-          className="size-7 shrink-0"
-          disabled={disabled}
-          onClick={onRemove}
-          size="icon"
-          type="button"
-          variant="ghost"
-        >
-          <X className="size-3.5" />
-        </Button>
-      </div>
-      {request ? (
-        <CorrelationPathInput
-          catalog={catalog}
-          disabled={disabled}
-          onCommit={onCommitPath}
-          request={request}
-        />
-      ) : null}
-    </div>
+    <Card padding={2}>
+      <VStack gap={2}>
+        <HStack align="center" justify="between">
+          <Text type="supporting">{label ?? eventName}</Text>
+          <IconButton
+            icon={<Icon icon={X} size="sm" />}
+            isDisabled={disabled}
+            label={`Remove ${eventName}`}
+            onClick={onRemove}
+            size="sm"
+            variant="ghost"
+          />
+        </HStack>
+        {request ? (
+          <CorrelationPathInput
+            catalog={catalog}
+            disabled={disabled}
+            onCommit={onCommitPath}
+            request={request}
+          />
+        ) : null}
+      </VStack>
+    </Card>
   );
 }
 
@@ -368,7 +345,6 @@ function CorrelationPathInput({
   disabled: boolean;
   onCommit: (eventName: string, path: string) => void;
 }) {
-  const inputId = useId();
   const { eventName, declaredPath, suppliedPath } = request;
   const paths = correlationPathChoices(
     catalog,
@@ -376,46 +352,44 @@ function CorrelationPathInput({
     declaredPath,
     suppliedPath
   );
+  const options = paths.map((path) => ({ value: path, label: path }));
+  const commitPath = (next: string | null) =>
+    onCommit(eventName, next === declaredPath || next === null ? "" : next);
 
   return (
-    <div className="space-y-1">
-      <Label className="sr-only" htmlFor={inputId}>
-        {eventName}
-      </Label>
-      <Select
-        disabled={disabled}
-        // Choosing the path the Event already declares is the same as declaring
-        // no override, so it commits the empty string and the declaration stands.
-        onValueChange={(next) =>
-          onCommit(
-            eventName,
-            next === declaredPath || next === null ? "" : next
-          )
-        }
-        value={suppliedPath ?? declaredPath ?? null}
-      >
-        <SelectTrigger className="w-full" id={inputId}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {declaredPath ? null : (
-            // An Event declaring no path has none to choose back to, so this is
-            // the only way to undo a choice and leave the workflow saying so.
-            <SelectItem value={null}>Choose a path</SelectItem>
-          )}
-          {paths.map((path) => (
-            <SelectItem key={path} value={path}>
-              {path}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <p className="text-muted-foreground text-xs">
+    <VStack gap={1}>
+      {declaredPath ? (
+        <Selector
+          isDisabled={disabled}
+          isLabelHidden
+          label={eventName}
+          onChange={commitPath}
+          options={options}
+          placement="below"
+          placeholder="Choose a path"
+          value={suppliedPath ?? declaredPath}
+          width="100%"
+        />
+      ) : (
+        <Selector
+          hasClear
+          isDisabled={disabled}
+          isLabelHidden
+          label={eventName}
+          onChange={commitPath}
+          options={options}
+          placement="below"
+          placeholder="Choose a path"
+          value={suppliedPath ?? null}
+          width="100%"
+        />
+      )}
+      <Text color="secondary" type="supporting">
         {declaredPath
           ? `Runs are matched on this payload path. The Event declares ${declaredPath}; a path here is read instead.`
           : "Runs are matched on this payload path. This Event declares none, so choose the one holding the value that identifies the entity."}
-      </p>
-    </div>
+      </Text>
+    </VStack>
   );
 }
 

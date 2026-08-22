@@ -1,5 +1,5 @@
 import { omitBy } from "es-toolkit/object";
-import { toast } from "sonner";
+import { notifications as toast } from "#src/lib/notifications";
 
 /**
  * The two things a connection form does with credentials.

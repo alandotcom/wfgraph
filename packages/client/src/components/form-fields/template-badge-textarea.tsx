@@ -1,4 +1,11 @@
-import { cn } from "@wfgraph/shared/utils";
+import * as stylex from "@stylexjs/stylex";
+import {
+  colorVars,
+  radiusVars,
+  shadowVars,
+  spacingVars,
+  typeScaleVars,
+} from "@astryxdesign/core/theme/tokens.stylex";
 import { TemplateAutocomplete } from "./template-autocomplete";
 import { useTemplateBadgeField } from "./use-template-badge-field";
 
@@ -7,7 +14,7 @@ export interface TemplateBadgeTextareaProps {
   onChange?: (value: string) => void;
   placeholder?: string;
   disabled?: boolean;
-  className?: string;
+  xstyle?: stylex.StyleXStyles;
   id?: string;
   rows?: number;
   fieldType?: "duration" | "timestamp";
@@ -32,7 +39,7 @@ export function TemplateBadgeTextarea({
   onChange,
   placeholder,
   disabled,
-  className,
+  xstyle,
   id,
   rows = 3,
   fieldType,
@@ -64,23 +71,19 @@ export function TemplateBadgeTextarea({
   return (
     <>
       <div
-        className={cn(
-          // Matches the shared Textarea: shadow-xs at rest, and on focus a
-          // border shift plus the 3px ring-ring/50 halo.
-          "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs transition-colors focus-within:border-ring focus-within:outline-none focus-within:ring-[3px] focus-within:ring-ring/50 lg:text-sm",
-          invalid &&
-            "border-destructive focus-within:border-destructive focus-within:ring-destructive/20",
-          disabled && "cursor-not-allowed opacity-50",
-          className
-        )}
         data-invalid={invalid || undefined}
         style={{ minHeight: `${rows * 1.5}rem` }}
+        {...stylex.props(
+          styles.field,
+          invalid && styles.invalid,
+          disabled && styles.disabled,
+          xstyle
+        )}
       >
         <div
           aria-invalid={invalid || undefined}
           aria-labelledby={labelledBy}
           aria-required={required || undefined}
-          className="w-full whitespace-pre-wrap break-words outline-none"
           contentEditable={!disabled}
           id={id}
           onBlur={handleBlur}
@@ -91,6 +94,7 @@ export function TemplateBadgeTextarea({
           ref={attachEditor}
           role="textbox"
           suppressContentEditableWarning
+          {...stylex.props(styles.editor)}
         />
       </div>
 
@@ -106,3 +110,37 @@ export function TemplateBadgeTextarea({
     </>
   );
 }
+
+const styles = stylex.create({
+  field: {
+    backgroundColor: "transparent",
+    borderColor: {
+      default: colorVars["--color-border"],
+      ":focus-within": colorVars["--color-accent"],
+    },
+    borderRadius: radiusVars["--radius-element"],
+    borderStyle: "solid",
+    borderWidth: 1,
+    boxShadow: shadowVars["--shadow-low"],
+    display: "flex",
+    fontSize: typeScaleVars["--text-body-size"],
+    paddingBlock: spacingVars["--spacing-2"],
+    paddingInline: spacingVars["--spacing-3"],
+    transitionProperty: "border-color, box-shadow",
+    width: "100%",
+  },
+  invalid: {
+    borderColor: colorVars["--color-error"],
+  },
+  disabled: {
+    cursor: "not-allowed",
+    opacity: 0.5,
+  },
+  editor: {
+    minWidth: 0,
+    overflowWrap: "anywhere",
+    outline: "none",
+    whiteSpace: "pre-wrap",
+    width: "100%",
+  },
+});

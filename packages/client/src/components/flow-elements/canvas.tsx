@@ -50,8 +50,8 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
     >
       <ZoomPublisher />
       <Background
-        bgColor="var(--sidebar)"
-        color="var(--border)"
+        bgColor="var(--color-background-muted)"
+        color="var(--color-border)"
         gap={24}
         size={2}
       />
