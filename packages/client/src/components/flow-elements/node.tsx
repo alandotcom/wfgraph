@@ -11,6 +11,7 @@ export type NodeProps = ComponentProps<typeof Card> & {
     source: boolean | NodeHandleConfig[];
   };
   status?: "idle" | "running" | "success" | "error" | "cancelled";
+  selected?: boolean;
 };
 
 // Run status is worn as a border color, which a colorblind user cannot read and
@@ -69,6 +70,7 @@ const NodeStatusChip = ({ status }: { status?: NodeProps["status"] }) => {
 
 type NodeHandleConfig = {
   id?: string;
+  label?: string;
   position: Position;
   style?: CSSProperties;
   className?: string;
@@ -85,7 +87,9 @@ function renderHandles(
   if (config === true) {
     return (
       <Handle
+        aria-label={handleType === "source" ? "Output handle" : "Input handle"}
         position={handleType === "source" ? Position.Bottom : Position.Top}
+        role="img"
         type={handleType}
       />
     );
@@ -103,10 +107,15 @@ function renderHandles(
 
     return (
       <Handle
+        aria-label={
+          handleConfig.label ??
+          (handleType === "source" ? "Output handle" : "Input handle")
+        }
         className={handleConfig.className}
         id={handleConfig.id}
         key={handleConfig.id ?? fallbackKey}
         position={handleConfig.position}
+        role="img"
         style={handleConfig.style}
         type={handleType}
       />
@@ -114,19 +123,26 @@ function renderHandles(
   });
 }
 
-export const Node = ({ handles, className, status, ...props }: NodeProps) => (
+export const Node = ({
+  handles,
+  className,
+  selected = false,
+  status,
+  ...props
+}: NodeProps) => (
   <Card
     className={cn(
       // The resting border is heavier and darker than Card's hairline: a node is
       // Paper on a Paper canvas, so this stroke is the whole card edge. Status
       // still steps up to 2px below, so a run reads as a change in weight and
       // not only in colour.
-      "node-container relative flex flex-col items-center justify-center gap-0 overflow-visible rounded-md border-[1.5px] border-canvas-line bg-card p-0 shadow-none transition-all duration-150 ease-out",
+      "node-container relative flex flex-col items-center justify-center gap-0 overflow-visible rounded-md border-[1.5px] border-canvas-line bg-card p-0 shadow-none transition-[background-color,border-color,opacity] duration-150 ease-out",
       status === "success" && "border-2 border-success",
       status === "error" && "border-2 border-destructive",
       status === "cancelled" && "border-2 border-cancelled",
       className
     )}
+    data-selected={selected}
     {...props}
   >
     {status === "running" && <AnimatedBorder />}
@@ -167,4 +183,3 @@ export const NodeBody = ({ className, ...props }: ComponentProps<"div">) => (
     {...props}
   />
 );
-

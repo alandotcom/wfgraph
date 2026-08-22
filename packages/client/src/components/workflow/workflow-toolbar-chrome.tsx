@@ -9,17 +9,22 @@
  */
 
 import { Link, useNavigate } from "@tanstack/react-router";
+import { useReactFlow } from "@xyflow/react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   Check,
   ChevronDown,
+  ClipboardPaste,
   Copy,
+  CopyPlus,
   Eraser,
   Loader2,
+  Maximize2,
   Pencil,
   Plus,
   Search,
   Settings2,
+  Group as GroupIcon,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -39,6 +44,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "#src/components/ui/dropdown-menu";
 import { WorkflowIcon } from "#src/components/ui/workflow-icon";
@@ -46,6 +54,7 @@ import { CommandPalette } from "#src/components/workflow/command-palette";
 import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-dialog";
 import { RenameWorkflowDialog } from "#src/components/workflow/rename-workflow-dialog";
 import { useReflowLayout } from "#src/components/workflow/use-reflow-layout";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
   currentPlatform,
   editorShortcutLabels,
@@ -66,13 +75,19 @@ import {
 import {
   deleteEdgeAtom,
   deleteNodeAtom,
+  copySelectionAtom,
+  duplicateSelectionAtom,
   edgesAtom,
   canvasEditingLockedAtom,
+  groupSelectionAtom,
+  hasCopiedSelectionAtom,
   nodesAtom,
   selectedEdgeAtom,
   selectedNodeAtom,
+  pasteCopiedSelectionAtom,
 } from "#src/lib/workflow-graph-store";
 import { cn } from "@wfgraph/shared/utils";
+import { analyzeGroupableSelection } from "@wfgraph/shared/graph/node-group";
 
 /**
  * Put the workflow's id on the clipboard.
@@ -230,10 +245,30 @@ function ActionsMenu({
   onAddStep: () => void;
 }) {
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
+  const hasCopiedSelection = useAtomValue(hasCopiedSelectionAtom);
+  const copySelection = useSetAtom(copySelectionAtom);
+  const pasteSelection = useSetAtom(pasteCopiedSelectionAtom);
+  const duplicateSelection = useSetAtom(duplicateSelectionAtom);
+  const groupSelection = useSetAtom(groupSelectionAtom);
+  const catalog = useExtensionCatalog();
+  const { fitView } = useReactFlow();
   const { canReflow, reflow } = useReflowLayout();
   // Every handler behind these takes either modifier, so the label is the only
   // thing that has to know which key this keyboard has.
   const shortcuts = editorShortcutLabels(isApplePlatform(currentPlatform()));
+  const selectedIds = new Set(
+    state.nodes.filter((node) => node.selected).map((node) => node.id)
+  );
+  const hasCopyableSelection = state.nodes.some(
+    (node) =>
+      node.selected && node.data.type !== "lifecycle" && node.type !== "add"
+  );
+  const grouping = analyzeGroupableSelection(
+    state.nodes,
+    state.edges,
+    selectedIds,
+    catalog
+  );
 
   const commands = workflowCommands({
     state: {
@@ -287,6 +322,54 @@ function ActionsMenu({
             </DropdownMenuItem>
           </Fragment>
         ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            <Maximize2 />
+            Keyboard shortcuts
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-56">
+            <DropdownMenuItem
+              onClick={() => void fitView({ padding: 0.2, duration: 300 })}
+            >
+              <Maximize2 />
+              Fit view
+              <DropdownMenuShortcut>{shortcuts.fitView}</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!hasCopyableSelection || editingLocked}
+              onClick={() => void copySelection()}
+            >
+              <Copy />
+              Copy selection
+              <DropdownMenuShortcut>{shortcuts.copy}</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!hasCopiedSelection || editingLocked}
+              onClick={() => void pasteSelection()}
+            >
+              <ClipboardPaste />
+              Paste
+              <DropdownMenuShortcut>{shortcuts.paste}</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!hasCopyableSelection || editingLocked}
+              onClick={() => void duplicateSelection()}
+            >
+              <CopyPlus />
+              Duplicate selection
+              <DropdownMenuShortcut>{shortcuts.duplicate}</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!grouping.ok || editingLocked}
+              onClick={() => void groupSelection({ catalog })}
+            >
+              <GroupIcon />
+              Group selection
+              <DropdownMenuShortcut>{shortcuts.group}</DropdownMenuShortcut>
+            </DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
       </DropdownMenuContent>
     </DropdownMenu>
   );

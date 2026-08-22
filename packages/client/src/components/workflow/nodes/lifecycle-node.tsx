@@ -72,17 +72,18 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
 
   return (
     <Node
-      className={cn(selected && "border-primary")}
       handles={{
         target: false,
         source: [
           {
             id: LIFECYCLE_STARTED_HANDLE,
+            label: "Started outlet",
             position: Position.Bottom,
             style: { left: STARTED_HANDLE_LEFT, width: 12, height: 12 },
           },
           {
             id: LIFECYCLE_CANCELED_HANDLE,
+            label: "Canceled outlet",
             position: Position.Bottom,
             style: {
               left: CANCELED_HANDLE_LEFT,
@@ -93,6 +94,7 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
           },
         ],
       }}
+      selected={selected}
       status={status}
       style={workflowNodeSize()}
     >

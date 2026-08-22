@@ -294,6 +294,7 @@ describe("ToolbarActions menu", () => {
       /^Undo/,
       /^Redo/,
       /^Tidy layout/,
+      /^Keyboard shortcuts/,
     ]) {
       expect(getByRole("menuitem", { name: label })).toBeTruthy();
     }

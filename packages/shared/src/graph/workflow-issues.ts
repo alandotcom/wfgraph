@@ -98,6 +98,7 @@ export type MissingIntegrationGroup = {
 };
 
 export type WorkflowIssuesOverlayModel = {
+  totalIssues: number;
   brokenReferences: BrokenReferenceGroup[];
   missingRequiredFields: MissingRequiredFieldGroup[];
   missingIntegrations: MissingIntegrationGroup[];
@@ -453,6 +454,7 @@ export function groupWorkflowIssuesForOverlay(
   }
 
   return {
+    totalIssues: issues.length,
     missingRequiredFields: Array.from(missingRequiredByNode.values()),
     missingIntegrations: Array.from(missingByType.values()),
     brokenReferences: Array.from(brokenByNode.values()),

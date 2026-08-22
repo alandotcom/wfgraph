@@ -17,6 +17,11 @@ type WorkflowIssuesOverlayProps = OverlayComponentProps<{
   allowRunAnyway?: boolean;
 }>;
 
+/** Count the individual repairs represented by the overlay's grouped rows. */
+export function workflowIssueCount(issues: WorkflowIssuesOverlayModel): number {
+  return issues.totalIssues;
+}
+
 export function WorkflowIssuesOverlay({
   overlayId,
   issues,
@@ -32,10 +37,7 @@ export function WorkflowIssuesOverlay({
   const { brokenReferences, missingRequiredFields, missingIntegrations } =
     issues;
 
-  const totalIssues =
-    brokenReferences.length +
-    missingRequiredFields.length +
-    missingIntegrations.length;
+  const totalIssues = workflowIssueCount(issues);
 
   const handleGoToStep = (nodeId: string, fieldKey?: string) => {
     // Select the node and set tab (this is handled by onGoToStep)

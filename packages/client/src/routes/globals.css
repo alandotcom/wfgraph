@@ -63,6 +63,7 @@
   --color-warning-foreground: var(--warning-foreground);
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
+  --color-selection: var(--selection);
   --color-cancelled: var(--cancelled);
   /* Node-type identity. The one sanctioned tinted-neutral and decorative-hue
      exception in the system; see DESIGN.md section 2. Each clears 3:1 on both
@@ -128,6 +129,7 @@
   --warning-foreground: oklch(0.985 0 0);
   --info: oklch(0.482 0.18 259.8);
   --info-foreground: oklch(0.985 0 0);
+  --selection: oklch(0.56 0.21 264);
   --cancelled: oklch(0.52 0.046 257.417);
   --node-lifecycle: oklch(0.646 0.19 259.815);
   --node-split: oklch(0.646 0.13 232.661);
@@ -200,6 +202,7 @@
   --warning-foreground: oklch(0.09 0 0);
   --info: oklch(0.7 0.15 259.8);
   --info-foreground: oklch(0.09 0 0);
+  --selection: oklch(0.72 0.17 264);
   --cancelled: oklch(0.7 0.046 257.417);
   --border: oklch(0.27 0 0);
   --input: oklch(0.27 0 0);
@@ -367,6 +370,19 @@
   --xy-connectionline-stroke-default: var(--muted-foreground);
 }
 
+/* Selection owns an outer signal, leaving the card surface and status border
+   unchanged. Dividing by the live zoom keeps the halo legible after fitView
+   scales a large workflow down. */
+.node-container[data-selected="true"] {
+  outline: calc(4px / var(--rf-zoom, 1)) solid var(--selection);
+  outline-offset: calc(3px / var(--rf-zoom, 1));
+}
+
+.group-node-container[data-selected="true"] {
+  outline: calc(4px / var(--rf-zoom, 1)) solid var(--selection);
+  outline-offset: calc(3px / var(--rf-zoom, 1));
+}
+
 /* The editor's frame node is typed `group`, which is also one of React Flow's
    four built-in types, so the wrapper it renders picks up
    `.react-flow__node-group` and every default-node paint that class carries: a
@@ -399,9 +415,15 @@
 /* React Flow attribution styling */
 .react-flow__attribution {
   background: transparent !important;
+  color: var(--muted-foreground) !important;
   padding: 2px 4px !important;
   font-size: 0.75rem !important;
-  opacity: 0.4 !important;
+  opacity: 1 !important;
+}
+
+.react-flow__attribution a {
+  color: var(--muted-foreground) !important;
+  opacity: 1 !important;
 }
 
 .dark .react-flow__attribution {

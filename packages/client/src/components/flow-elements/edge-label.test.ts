@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolveEdgeLabel } from "#src/components/flow-elements/edge-label";
+import {
+  resolveEdgeLabel,
+  workflowEdgeAriaLabel,
+} from "#src/components/flow-elements/edge-label";
 
 describe("resolveEdgeLabel", () => {
   it("reads True/False from a condition branch handle", () => {
@@ -16,5 +19,18 @@ describe("resolveEdgeLabel", () => {
   it("answers null when nothing labels the edge", () => {
     expect(resolveEdgeLabel(undefined, undefined)).toBeNull();
     expect(resolveEdgeLabel("other", undefined)).toBeNull();
+  });
+});
+
+describe("workflowEdgeAriaLabel", () => {
+  it("names both steps and the outlet when one is visible", () => {
+    expect(
+      workflowEdgeAriaLabel({
+        sourceLabel: "Condition",
+        targetLabel: "Send message",
+        sourceHandleId: "false",
+        data: undefined,
+      })
+    ).toBe("Condition to Send message, False branch");
   });
 });

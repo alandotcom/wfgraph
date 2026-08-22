@@ -12,6 +12,10 @@ import type {
   WorkflowNode as PersistedWorkflowNode,
   WorkflowEdge as PersistedWorkflowEdge,
 } from "@wfgraph/shared/graph/types";
+import {
+  findAction,
+  type ExtensionCatalog,
+} from "@wfgraph/shared/extensions/catalog";
 
 export type { NodeRunStatus, PersistedNodeData };
 export type {
@@ -54,6 +58,34 @@ export type WorkflowEdge = Edge<EditorEdgeData>;
  * every edge, so no edge here carries a type of its own.
  */
 export const WORKFLOW_EDGE_TYPE = "animated";
+
+/** The visible workflow name React Flow announces for a node. */
+export function workflowNodeAriaLabel(
+  data: WorkflowNodeData,
+  catalog?: ExtensionCatalog
+): string {
+  const label = data.label?.trim();
+  if (label) {
+    return label;
+  }
+
+  const actionType = data.config?.actionType;
+  if (typeof actionType === "string" && actionType.trim()) {
+    return (
+      (catalog ? findAction(catalog, actionType)?.label : undefined) ??
+      actionType
+    );
+  }
+
+  switch (data.type) {
+    case "lifecycle":
+      return "Lifecycle";
+    case "group":
+      return "Group";
+    default:
+      return "Action";
+  }
+}
 
 /**
  * Strip editor-only fields before a node crosses into the persist path. What is
@@ -128,6 +160,7 @@ export function toEditorNode(node: PersistedWorkflowNode): WorkflowNode {
     width: node.width,
     height: node.height,
     measured: node.measured,
+    ariaLabel: workflowNodeAriaLabel(node.data),
     // No status: a freshly converted node carries no run of its own. The
     // graph store merges a run's status onto whichever graph is on screen at
     // display time, so this node's `data` never needs one baked in.
