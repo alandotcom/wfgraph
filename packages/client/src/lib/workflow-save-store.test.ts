@@ -3,7 +3,6 @@ import { createStore } from "jotai";
 import type { SavedWorkflow } from "#src/lib/rpc-client";
 import {
   autosaveDelayAtom,
-  createWorkflowAtom,
   currentWorkflowIdAtom,
   currentWorkflowNameAtom,
   hasUnsavedChangesAtom,
@@ -46,17 +45,10 @@ const updateMock = vi.fn((_workflowId: string, _payload: unknown) => {
   return deferred.promise;
 });
 
-const createMock = vi.fn((input: { name: string }) =>
-  Promise.resolve(savedWorkflow(input.name))
-);
-
 /** A store wired to the mock API, which is the only thing tests substitute. */
 function createSaveStore(workflowId: string | null = "workflow_1") {
   const store = createStore();
-  store.set(workflowApiAtom, {
-    create: createMock as never,
-    update: updateMock as never,
-  });
+  store.set(workflowApiAtom, { update: updateMock as never });
   store.set(currentWorkflowIdAtom, workflowId);
   return store;
 }
@@ -391,22 +383,5 @@ describe("renameWorkflowAtom", () => {
     pending.shift()?.resolve(savedWorkflow("workflow_1"));
 
     expect(updateMock.mock.calls[1]?.[1]).not.toHaveProperty("name");
-  });
-});
-
-describe("createWorkflowAtom", () => {
-  it("adopts the created workflow's identity", async () => {
-    const store = createSaveStore(null);
-
-    const outcome = await store.set(createWorkflowAtom, {
-      name: "Fresh",
-      nodes: [actionNode("node_1")],
-      edges: [],
-    });
-
-    expect(outcome.ok).toBe(true);
-    expect(store.get(currentWorkflowIdAtom)).toBe("Fresh");
-    expect(store.get(currentWorkflowNameAtom)).toBe("Fresh");
-    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
   });
 });

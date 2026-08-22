@@ -46,7 +46,6 @@ function readInitialSidebarPercent(): number {
 
 export const propertiesPanelActiveTabAtom = atom<string>("properties");
 export const showMinimapAtom = atom(false);
-export const isTransitioningFromHomepageAtom = atom<boolean>(false);
 
 const sidebarCollapsedStateAtom = atom(
   readCookie(SIDEBAR_COLLAPSED_COOKIE) === "true"

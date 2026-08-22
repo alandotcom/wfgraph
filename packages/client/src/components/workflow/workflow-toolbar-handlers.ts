@@ -1,7 +1,7 @@
 /**
- * Toolbar behaviour: save/create, pre-run issue collection, execute, and the
- * workflow-level menu actions. Chrome components live beside this file; run
- * animation and payload memory live in `workflow-run-actions`.
+ * Toolbar behaviour: pre-run issue collection, execute, and the workflow-level
+ * menu actions. Chrome components live beside this file; run animation and
+ * payload memory live in `workflow-run-actions`.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -43,28 +43,25 @@ import {
   redoAtom,
   undoAtom,
 } from "#src/lib/workflow-graph-store";
-import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   executeWorkflowRun,
   rememberTestPayload,
   type UpdateNodeData,
 } from "#src/lib/workflow-run-actions";
 import {
-  createWorkflowAtom,
   currentWorkflowIdAtom,
   currentWorkflowModeAtom,
   currentWorkflowNameAtom,
   hasUnsavedChangesAtom,
   isSavingAtom,
   isWorkflowOwnerAtom,
-  saveWorkflowAtom,
   setWorkflowModeAtom,
 } from "#src/lib/workflow-save-store";
 import { toSerializedGraph } from "#src/lib/rpc-client";
 import {
   isExecutingAtom,
   isGeneratingAtom,
-  isTransitioningFromHomepageAtom,
   propertiesPanelActiveTabAtom,
 } from "#src/lib/workflow-ui-store";
 import {
@@ -85,14 +82,10 @@ import { toPersistedNodes } from "#src/lib/workflow-graph-types";
 
 type WorkflowHandlerParams = {
   currentWorkflowId: string | null;
-  workflowName: string;
   nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
   updateNodeData: UpdateNodeData;
   isExecuting: boolean;
   setIsExecuting: (value: boolean) => void;
-  setCurrentWorkflowName: (name: string) => void;
-  setIsTransitioningFromHomepage: (value: boolean) => void;
   setActiveTab: (value: string) => void;
   setSelectedNodeId: (id: string | null) => void;
   userIntegrations: Array<{ id: string; type: string }>;
@@ -100,14 +93,10 @@ type WorkflowHandlerParams = {
 
 function useWorkflowHandlers({
   currentWorkflowId,
-  workflowName,
   nodes,
-  edges,
   updateNodeData,
   isExecuting,
   setIsExecuting,
-  setCurrentWorkflowName,
-  setIsTransitioningFromHomepage,
   setActiveTab,
   setSelectedNodeId,
   userIntegrations,
@@ -125,8 +114,6 @@ function useWorkflowHandlers({
   const clearGraphSelection = useSetAtom(clearGraphSelectionAtom);
   const setExecutionOverlay = useSetAtom(executionOverlayGraphAtom);
   const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
-  const saveWorkflow = useSetAtom(saveWorkflowAtom);
-  const createWorkflow = useSetAtom(createWorkflowAtom);
   // No errorMessage: a rejected run carries a server message worth reading, and
   // the mutation cache falls back to it. Every other outcome arrives as a
   // successful response with a status on it, which executeWorkflowRun reads.
@@ -137,74 +124,6 @@ function useWorkflowHandlers({
       onSuccess: () => refreshRunHistory(queryClient),
     })
   );
-
-  /**
-   * Save the draft, creating the workflow if this canvas has never been one.
-   *
-   * Nothing calls this. Its only caller was the toolbar's Save button, which
-   * autosave made pointless, and the editor route's Cmd+S has its own smaller
-   * save that skips the name checks below. knip does not see it, because a
-   * property of a returned object is not an unused export.
-   *
-   * It is left standing rather than deleted because the create branch is the
-   * only writer of `isTransitioningFromHomepageAtom`, which the canvas still
-   * reads for its opening viewport: removing this means rewriting that, and
-   * that is a different change from this one.
-   */
-  const handleSave = async () => {
-    // The `add` node is a placeholder, so a canvas holding only one has nothing
-    // worth saving. The save itself strips it; this is the emptiness check.
-    if (!nodes.some((node) => node.type !== "add")) {
-      toast.error("Add at least one step before saving.");
-      return;
-    }
-
-    const trimmedWorkflowName = workflowName.trim();
-    if (!trimmedWorkflowName) {
-      toast.error("Workflow name is required.");
-      return;
-    }
-
-    // The save queue drives the saving indicator, so there is nothing to
-    // bracket here — it already covers autosaves this handler never sees.
-    if (currentWorkflowId) {
-      const outcome = await saveWorkflow(
-        { name: trimmedWorkflowName, nodes, edges },
-        { immediate: true }
-      );
-
-      if (outcome && !outcome.ok) {
-        toast.error(
-          outcome.error.message || "Failed to save workflow. Please try again."
-        );
-        return;
-      }
-
-      setCurrentWorkflowName(trimmedWorkflowName);
-      return;
-    }
-
-    // Creating adopts the new workflow's identity inside the save store.
-    const outcome = await createWorkflow({
-      name: trimmedWorkflowName,
-      nodes,
-      edges,
-    });
-
-    if (!outcome.ok) {
-      toast.error(
-        outcome.error.message || "Failed to save workflow. Please try again."
-      );
-      return;
-    }
-
-    setIsTransitioningFromHomepage(true);
-    await navigate({
-      to: "/workflows/$workflowId",
-      params: { workflowId: outcome.workflow.id },
-      replace: true,
-    });
-  };
 
   const executeWorkflow = async (request: TestRunRequest) => {
     if (!currentWorkflowId) {
@@ -292,7 +211,6 @@ function useWorkflowHandlers({
   };
 
   return {
-    handleSave,
     handleExecute,
     handleGoToStep,
   };
@@ -306,14 +224,9 @@ export function useWorkflowState() {
   const clearWorkflow = useSetAtom(clearWorkflowAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const [currentWorkflowId] = useAtom(currentWorkflowIdAtom);
-  const [workflowName, setCurrentWorkflowName] = useAtom(
-    currentWorkflowNameAtom
-  );
+  const workflowName = useAtomValue(currentWorkflowNameAtom);
   const [workflowMode, setCurrentWorkflowMode] = useAtom(
     currentWorkflowModeAtom
-  );
-  const setIsTransitioningFromHomepage = useSetAtom(
-    isTransitioningFromHomepageAtom
   );
   const isOwner = useAtomValue(isWorkflowOwnerAtom);
   const isSaving = useAtomValue(isSavingAtom);
@@ -339,9 +252,7 @@ export function useWorkflowState() {
     currentWorkflowId,
     workflowName,
     workflowMode,
-    setCurrentWorkflowName,
     setCurrentWorkflowMode,
-    setIsTransitioningFromHomepage,
     isOwner,
     isSaving,
     hasUnsavedChanges,
@@ -369,9 +280,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     currentWorkflowId,
     workflowName,
     workflowMode,
-    setCurrentWorkflowName,
     setCurrentWorkflowMode,
-    setIsTransitioningFromHomepage,
     nodes,
     edges,
     updateNodeData,
@@ -383,16 +292,12 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     userIntegrations,
   } = state;
 
-  const { handleSave, handleExecute, handleGoToStep } = useWorkflowHandlers({
+  const { handleExecute, handleGoToStep } = useWorkflowHandlers({
     currentWorkflowId,
-    workflowName,
     nodes,
-    edges,
     updateNodeData,
     isExecuting,
     setIsExecuting,
-    setCurrentWorkflowName,
-    setIsTransitioningFromHomepage,
     setActiveTab,
     setSelectedNodeId,
     userIntegrations,
@@ -541,7 +446,6 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
   };
 
   return {
-    handleSave,
     handleExecute,
     handleClearWorkflow,
     handleDeleteWorkflow,

@@ -253,28 +253,14 @@ export type Integration = RpcOutput<typeof rpc.integration.create>;
  * Saving a workflow, for the save store.
  *
  * Everything a component writes goes through `orpcQuery`, where the cache
- * consequences of a write live beside the write. These two stay because the
- * autosave queue in `workflow-save-store.ts` runs outside React, and because
- * both reshape their arguments: a graph is assembled from nodes and edges, and
- * the response is deserialised back into a `SavedWorkflow`. The store swaps this
- * object out in its tests, which is the other reason it is one object.
+ * consequences of a write live beside the write. This one stays because the
+ * autosave queue in `workflow-save-store.ts` runs outside React, and because it
+ * reshapes its arguments both ways: a graph is assembled from nodes and edges,
+ * and the response is deserialised back into a `SavedWorkflow`. The store swaps
+ * this object out in its tests, which is the other reason it is an object
+ * rather than a bare function.
  */
 export const workflowApi = {
-  create: (workflow: {
-    name: string;
-    description?: string;
-    graph?: SerializedWorkflowGraph;
-    nodes?: WorkflowNode[];
-    edges?: WorkflowEdge[];
-  }): Promise<SavedWorkflow> =>
-    rpc.workflow
-      .create({
-        name: workflow.name,
-        graph: toGraphPayload(workflow),
-        ...omitBy({ description: workflow.description }, isNil),
-      })
-      .then(toSavedWorkflow),
-
   update: (
     id: string,
     workflow: Partial<WorkflowData>

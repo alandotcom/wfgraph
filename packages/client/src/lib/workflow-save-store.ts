@@ -64,7 +64,7 @@ export const lastSaveErrorAtom = atom<Error | null>(null);
  * The subset of the workflow API this module calls, as an atom so a test can
  * substitute it per store rather than reassigning the shared client singleton.
  */
-type WorkflowSaveApi = Pick<typeof workflowApi, "create" | "update">;
+type WorkflowSaveApi = Pick<typeof workflowApi, "update">;
 export const workflowApiAtom = atom<WorkflowSaveApi>(workflowApi);
 
 /**
@@ -415,47 +415,4 @@ export const setWorkflowModeAtom = atom(
   null,
   async (_get, set, mode: WorkflowMode): Promise<SaveOutcome | null> =>
     await set(saveWorkflowAtom, { mode }, { immediate: true })
-);
-
-/**
- * Create the workflow the editor has been drafting.
- *
- * Separate from the queue because there is no workflow id to key a patch on
- * yet; the queue only ever updates a workflow that already exists.
- */
-export const createWorkflowAtom = atom(
-  null,
-  async (
-    get,
-    set,
-    input: {
-      name: string;
-      description?: string;
-      nodes: WorkflowNode[];
-      edges: WorkflowEdge[];
-    }
-  ): Promise<SaveOutcome> => {
-    try {
-      const workflow = await get(workflowApiAtom).create({
-        name: input.name,
-        description: input.description ?? "",
-        nodes: input.nodes.filter((node) => node.type !== "add"),
-        edges: input.edges,
-      });
-      // The draft is now a real workflow, so this module adopts it. Leaving
-      // that to the caller is how identity and the dirty flag drift apart.
-      set(currentWorkflowIdAtom, workflow.id);
-      set(currentWorkflowNameAtom, workflow.name);
-      set(hasUnsavedChangesAtom, false);
-      set(lastSaveErrorAtom, null);
-      set(lastSavedAtAtom, new Date());
-      markWorkflowListStale();
-      cacheWorkflowPublication(queryClient, workflow);
-      return { ok: true, workflow };
-    } catch (error) {
-      const saveError = toError(error);
-      set(lastSaveErrorAtom, saveError);
-      return { ok: false, error: saveError };
-    }
-  }
 );

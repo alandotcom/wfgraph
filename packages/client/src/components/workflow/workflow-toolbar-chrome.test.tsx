@@ -104,9 +104,7 @@ function baseState(): WorkflowToolbarState {
     currentWorkflowId: "workflow_1",
     workflowName: "Workflow",
     workflowMode: "live",
-    setCurrentWorkflowName: vi.fn(),
     setCurrentWorkflowMode: vi.fn(),
-    setIsTransitioningFromHomepage: vi.fn(),
     isOwner: true,
     isSaving: false,
     hasUnsavedChanges: false,
@@ -123,7 +121,6 @@ function baseState(): WorkflowToolbarState {
 
 function baseActions(): WorkflowToolbarActions {
   return {
-    handleSave: vi.fn(async () => {}),
     handleExecute: vi.fn(async () => {}),
     handleClearWorkflow: vi.fn(),
     handleDeleteWorkflow: vi.fn(),

@@ -22,7 +22,7 @@ import { andJoinRefusalReason } from "@wfgraph/shared/graph/and-join";
 import { Edge } from "#src/components/flow-elements/edge";
 import { Panel } from "#src/components/flow-elements/panel";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
-import { useAfterCommit, useAfterPaint, useDomEvent } from "#src/hooks/effects";
+import { useAfterPaint, useDomEvent } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { isTextEntry } from "#src/lib/is-text-entry";
 import {
@@ -43,7 +43,6 @@ import {
 } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
-  isTransitioningFromHomepageAtom,
   propertiesPanelActiveTabAtom,
   showMinimapAtom,
 } from "#src/lib/workflow-ui-store";
@@ -101,9 +100,6 @@ export function WorkflowCanvas() {
   // to open the bottom sheet instead.
   const isMobile = useIsMobile();
   const { openSheet } = useConfigurationSheet();
-  const [isTransitioningFromHomepage, setIsTransitioningFromHomepage] = useAtom(
-    isTransitioningFromHomepageAtom
-  );
   const onNodesChange = useSetAtom(onNodesChangeAtom);
   const onEdgesChange = useSetAtom(onEdgesChangeAtom);
   const setSelectedNode = useSetAtom(selectedNodeAtom);
@@ -115,8 +111,7 @@ export function WorkflowCanvas() {
   const undo = useSetAtom(undoAtom);
   const redo = useSetAtom(redoAtom);
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
-  const { screenToFlowPosition, fitView, getViewport, setViewport } =
-    useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
   // The same pass the Actions menu's "Tidy layout" runs.
   const { canReflow, reflow } = useReflowLayout();
 
@@ -124,7 +119,6 @@ export function WorkflowCanvas() {
   const connectingHandleType = useRef<"source" | "target" | null>(null);
   const connectingHandleId = useRef<string | null>(null);
   const justCreatedNodeFromConnection = useRef(false);
-  const viewportInitialized = useRef(false);
   const [isCanvasReady, setIsCanvasReady] = useState(false);
   const [contextMenuState, setContextMenuState] =
     useState<ContextMenuState>(null);
@@ -159,68 +153,15 @@ export function WorkflowCanvas() {
     setContextMenuState(null);
   }, []);
 
-  // Track if we have real nodes (not just placeholder "add" node)
-  const hasRealNodes = nodes.some((n) => n.type !== "add");
-  // Pre-shift viewport when transitioning from homepage (before sidebar animates)
-  const hasPreShiftedRef = useRef(false);
-  useAfterCommit(isTransitioningFromHomepage, () => {
-    if (!isTransitioningFromHomepage || hasPreShiftedRef.current) {
-      return;
-    }
-    hasPreShiftedRef.current = true;
-
-    // Check if sidebar is collapsed from cookie (atom may not be initialized yet)
-    const collapsedCookie = document.cookie
-      .split("; ")
-      .find((row) => row.startsWith("sidebar-collapsed="));
-    const isCollapsed = collapsedCookie?.split("=")[1] === "true";
-
-    // Skip if sidebar is collapsed - content should stay centered
-    if (isCollapsed) {
-      return;
-    }
-
-    // Shift viewport left to center content in the future visible area
-    // Default sidebar is 30%, so shift by 15% of window width
-    const viewport = getViewport();
-    const defaultSidebarPercent = 0.3;
-    const shiftPixels = (window.innerWidth * defaultSidebarPercent) / 2;
-    // React Flow's viewport commands resolve when their animation finishes.
-    // Nothing here waits for the camera, so the promise is dropped on purpose.
-    void setViewport(
-      { ...viewport, x: viewport.x - shiftPixels },
-      { duration: 0 }
-    );
-  });
-
   // Fit the view once per workflow. Keying on the id is the whole rule: a
   // workflow that has already been fitted does not get fitted again, and
   // switching to another one does. After paint rather than during the commit,
   // because React Flow measures node sizes then and fitView would otherwise
   // frame geometry that is a frame out of date.
   useAfterPaint(currentWorkflowId, () => {
-    // Homepage -> workflow keeps the viewport the homepage already set.
-    if (isTransitioningFromHomepage && viewportInitialized.current) {
-      setIsCanvasReady(true);
-      setIsTransitioningFromHomepage(false);
-      return;
-    }
-
     void fitView({ maxZoom: 1, minZoom: 0.5, padding: 0.2, duration: 0 });
-    viewportInitialized.current = true;
-    // Show canvas immediately so width animation can be seen
-    setIsCanvasReady(true);
-    setIsTransitioningFromHomepage(false);
-  });
-
-  // On the homepage the canvas starts as a lone placeholder, so the moment a
-  // real node appears there is something worth framing.
-  useAfterPaint(!currentWorkflowId && hasRealNodes, () => {
-    if (currentWorkflowId || !hasRealNodes) {
-      return;
-    }
-    void fitView({ maxZoom: 1, minZoom: 0.5, padding: 0.2, duration: 0 });
-    viewportInitialized.current = true;
+    // The canvas is transparent until this has run, so the one frame of
+    // unframed graph between mount and the fit is never on screen.
     setIsCanvasReady(true);
   });
 
