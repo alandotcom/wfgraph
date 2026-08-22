@@ -5,8 +5,8 @@ import {
   OctagonXIcon,
   TriangleAlertIcon,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
-import { useColorMode } from "#src/theme/color-mode";
 
 type ToasterStyle = React.CSSProperties &
   Record<
@@ -21,10 +21,15 @@ const toasterStyle: ToasterStyle = {
   "--border-radius": "var(--radius)",
 };
 
+const resolveToasterTheme = (value: unknown): ToasterProps["theme"] => {
+  if (value === "light" || value === "dark" || value === "system") {
+    return value;
+  }
+  return "system";
+};
+
 const Toaster = ({ ...props }: ToasterProps) => {
-  // The resolved mode, so sonner never re-resolves "system" against its own
-  // media query and disagrees with the Theme provider by a frame.
-  const { resolvedMode } = useColorMode();
+  const { theme = "system" } = useTheme();
 
   return (
     <Sonner
@@ -37,7 +42,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
         loading: <Loader2Icon className="size-4 animate-spin" />,
       }}
       style={toasterStyle}
-      theme={resolvedMode}
+      theme={resolveToasterTheme(theme)}
       {...props}
     />
   );

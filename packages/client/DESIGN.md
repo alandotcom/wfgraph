@@ -188,8 +188,6 @@ Depth follows shadcn's native vocabulary and nothing more: hairline borders defi
 
 **The Overlay Rule.** Anything at shadow-lg must be dismissible. If it can't be dismissed, it isn't floating, and it doesn't get the shadow.
 
-**The One-Frame Rule.** A properties panel region is framed once, by its section card. Hierarchy below that frame steps by fill — a white card on the wash, plain text on the card — never by another border: concentric boxes read as chrome, not structure. The condition builder (`condition-builder-row.tsx`) draws no frame of its own for this reason; its caller frames it.
-
 ## 5. Components
 
 All primitives are shadcn/ui new-york on Base UI, refined and restrained: quiet at rest, precise on interaction. Focus is always the 3px `ring-ring/50` halo with a border-color shift; hover is always a fill change, never movement.

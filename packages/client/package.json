@@ -33,13 +33,9 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "pnpm run theme:check && tsdown && vite build",
-    "theme:build": "astryx theme build src/theme/wfgraph-theme.ts",
-    "theme:check": "astryx theme build src/theme/wfgraph-theme.ts --check"
+    "build": "tsdown && vite build"
   },
   "devDependencies": {
-    "@astryxdesign/cli": "0.4.5",
-    "@astryxdesign/core": "catalog:",
     "@babel/core": "^7.29.7",
     "@base-ui/react": "1.7.0",
     "@dagrejs/dagre": "^2.0.4",
@@ -50,7 +46,6 @@
     "@orpc/contract": "catalog:",
     "@orpc/tanstack-query": "catalog:",
     "@rolldown/plugin-babel": "^0.2.3",
-    "@stylexjs/stylex": "catalog:",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-query": "^5.101.4",
     "@tanstack/react-router": "^1.170.25",

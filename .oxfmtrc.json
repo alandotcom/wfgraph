@@ -17,11 +17,6 @@
     "packages/client/src/components/ui",
     "packages/client/src/components/flow-elements",
     "packages/client/src/hooks/use-mobile.ts",
-    // Astryx owns these generated theme artifacts. Keeping its output byte-for-byte
-    // intact lets `astryx theme build --check` detect a stale committed theme.
-    "packages/client/src/theme/wfgraph.css",
-    "packages/client/src/theme/wfgraph.d.ts",
-    "packages/client/src/theme/wfgraph.js",
     // drizzle-kit owns these generated snapshots; reformatting them makes
     // every db:generate a permanent diff the next generation undoes.
     "packages/core/drizzle"
