@@ -1,5 +1,27 @@
 # @wfgraph/core
 
+## 2.4.0
+
+### Minor Changes
+
+- [#120](https://github.com/alandotcom/wfgraph/pull/120) [`f548cd2`](https://github.com/alandotcom/wfgraph/commit/f548cd2d28b7dc73743fe01d1f9c23240b1cbd82) Thanks [@alandotcom](https://github.com/alandotcom)! - Left-align the pretty console layout and stack a record's fields beneath it.
+
+  `configureWfGraphLogging` now renders through Workflow Graph's own formatter.
+  `@logtape/pretty` right-aligned every field key against the header width, which
+  put each field line past column 55 of a terminal and wrapped it back to column 0. That library exposes no option for it.
+
+  A record now prints one flush-left header line carrying time, level, category
+  and message, then one row per field at a two-space indent under box-drawing
+  connectors. A grouped field stays on one line as `key=value` pairs while it
+  fits, and opens into a row per member when it does not. `LOG_PRETTY_WIDTH` sets
+  the column it has to fit inside, and `NO_COLOR` turns the escapes off.
+
+### Patch Changes
+
+- [#138](https://github.com/alandotcom/wfgraph/pull/138) [`7aac428`](https://github.com/alandotcom/wfgraph/commit/7aac428a4d20e1425cccbb2a2606c848a8fb8938) Thanks [@alandotcom](https://github.com/alandotcom)! - An event-mode Wait is an Arriving Event source.
+
+  `eventsReaching` now hands on the Events a Wait parks on, so an Event Split below it offers those Events rather than the Start Events that put the run at the Wait. The engine routes on the Event that woke the Wait, and the entry node's output becomes that payload, matching a Cancel Event. A timeout that continues names no Arriving Event, so an Event Split below the Wait stops rather than taking a Start Event outlet.
+
 ## 2.3.0
 
 ### Minor Changes
