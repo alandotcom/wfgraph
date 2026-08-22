@@ -4,8 +4,9 @@
 
 Give a node's configuration a view mode.
 
-Each block of the Lifecycle Node's panel, and each condition builder, now reads
-back as plain text and opens its controls on an Edit button that becomes Done.
+A node's configuration now reads back as plain text and opens all of its
+controls on one Edit button, which becomes Done. The Lifecycle Node's rules are
+one block of it; so is a condition builder.
 A Start Event reads as its name and the path runs are correlated on. A condition
 reads as one line per rule, with its group shown as a left rule with the rows
 indented behind it and the and/or joiner sitting on the divider between groups.

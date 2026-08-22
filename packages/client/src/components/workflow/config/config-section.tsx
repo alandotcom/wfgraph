@@ -122,6 +122,45 @@ export function ConfigSection({
 }
 
 /**
+ * One labelled block inside a section, sharing the section's single edit mode.
+ *
+ * A node's configuration has one Edit button, on the section header, and it
+ * switches every group under it at once. So a group carries a label and nothing
+ * that changes mode. It keeps its own help, because the three explanations a
+ * Lifecycle node holds answer three different questions.
+ *
+ * The label renders identically in both modes, which is what keeps it still
+ * while the controls below it appear.
+ */
+export function ConfigGroup({
+  label,
+  help,
+  className,
+  children,
+}: {
+  label: string;
+  /** Long-form explanation, behind the icon beside the label. */
+  help?: ReactNode;
+  /** Spacing the caller's list of groups owns, such as its separators. */
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className={cn("space-y-1.5", className)}>
+      <div className="flex min-w-0 items-center gap-1">
+        {/* Subordinate to the section's own <h3> by colour rather than size:
+            at this scale a smaller heading is a heading nobody reads. */}
+        <h4 className="truncate font-medium text-muted-foreground text-xs/relaxed">
+          {label}
+        </h4>
+        {help ? <HelpPopover label={label}>{help}</HelpPopover> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/**
  * The explanation a section used to carry as paragraphs in the column.
  *
  * On click rather than hover: the content is long enough to want to stay open

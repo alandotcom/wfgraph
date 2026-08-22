@@ -31,6 +31,7 @@ import {
   readLifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
+  ConfigGroup,
   ConfigSection,
   ConfigViewEmpty,
   ConfigViewRow,
@@ -48,9 +49,11 @@ import type { UpdateNodeConfig } from "./node-config-patch";
  * asked for is how a builder loses the difference between "never configured" and
  * "configured this way".
  *
- * Three sections, each in view mode until its Edit button is pressed. The
- * refusal below them is outside that, because a configuration a save would
- * reject has to say so without anything being opened first.
+ * One section, in view mode until its Edit button is pressed, holding the three
+ * groups the rules divide into. The node's configuration has one editing state,
+ * so Edit swaps all three groups at once. The refusal below them is outside
+ * that, because a configuration a save would reject has to say so without
+ * anything being opened first.
  */
 export function LifecyclePanel({
   config,
@@ -67,11 +70,10 @@ export function LifecyclePanel({
   const catalog = useExtensionCatalog();
   const rules = readLifecycleRules(config) ?? initialLifecycleRules;
 
-  // Held here rather than in a store: it is a state of this panel while it is
-  // open, belonging to no workflow and worth restoring in none.
-  const [editingStart, setEditingStart] = useState(false);
-  const [editingConcurrency, setEditingConcurrency] = useState(false);
-  const [editingCancel, setEditingCancel] = useState(false);
+  // One state for the whole node, held here rather than in a store: it is a
+  // state of this panel while it is open, belonging to no workflow and worth
+  // restoring in none.
+  const [editing, setEditing] = useState(false);
 
   // The same function the save is refused by, over the same catalog, so the
   // sentence a builder reads here is the sentence the server would answer with
@@ -113,172 +115,185 @@ export function LifecyclePanel({
     });
   };
 
+  // Each group is declared once, with its label, help, and both of its two
+  // faces together, so the section can render whichever face its one editing
+  // state calls for without the labels being written out twice.
+  const groups: readonly LifecycleGroup[] = [
+    {
+      label: "Start Events",
+      help: <p>{START_EVENTS_HELP}</p>,
+      view: (
+        <ChosenEventSummary
+          catalog={catalog}
+          empty="No Start Events."
+          eventNames={rules.startEvents}
+          role="start"
+          rules={rules}
+        />
+      ),
+      edit: (
+        <div className="space-y-2">
+          <EventPicker hasEvents={catalog.events.length > 0}>
+            <Label className="sr-only" htmlFor={startEventId}>
+              Start Events
+            </Label>
+            <EventMultiCombobox
+              choices={catalog.events}
+              disabled={disabled}
+              inputId={startEventId}
+              onValueChange={setStartEvents}
+              value={rules.startEvents}
+            />
+          </EventPicker>
+          {/* Each request is looked up by the Event and role the control owns
+              rather than found in a list: `correlationPathRequestFor` answers
+              undefined for a Start Event nothing currently compares, which is
+              what leaves an unlimited workflow unasked about a value nothing
+              reads. */}
+          {rules.startEvents.map((eventName) => (
+            <ChosenEvent
+              catalog={catalog}
+              disabled={disabled}
+              eventName={eventName}
+              key={eventName}
+              label={findEvent(catalog, eventName)?.label}
+              onCommitPath={setCorrelationPath}
+              onRemove={() =>
+                setStartEvents(
+                  rules.startEvents.filter((entry) => entry !== eventName)
+                )
+              }
+              request={correlationPathRequestFor({
+                rules,
+                catalog,
+                eventName,
+                role: "start",
+              })}
+            />
+          ))}
+        </div>
+      ),
+    },
+    {
+      label: "Concurrency",
+      help: <ConcurrencyHelp concurrency={rules.concurrency} />,
+      view: (
+        <div className="space-y-1">
+          <p className="text-sm">{concurrencyLabel(rules.concurrency)}</p>
+          <ConfigViewRow label="Allow manual runs">
+            {rules.allowManualStart === true ? "Allowed" : "Not allowed"}
+          </ConfigViewRow>
+          <ManualRunPayloadNotice rules={rules} />
+        </div>
+      ),
+      edit: (
+        <div className="space-y-2">
+          <RadioGroup
+            aria-label="Concurrency"
+            disabled={disabled}
+            onValueChange={setConcurrency}
+            value={rules.concurrency}
+          >
+            {CONCURRENCY_OPTIONS.map((option) => (
+              // The consequence of each setting is in the help popover rather
+              // than under its radio: three descriptions in the column were the
+              // single largest block of prose in the panel.
+              <label
+                className={cn(
+                  "flex w-full cursor-pointer items-center gap-2 rounded-md border p-2 transition-colors",
+                  rules.concurrency === option.value
+                    ? "border-primary bg-muted/50"
+                    : "border-input hover:bg-muted/30",
+                  disabled && "pointer-events-none opacity-50"
+                )}
+                key={option.value}
+              >
+                <RadioGroupItem value={option.value} />
+                <span className="font-medium text-sm">{option.label}</span>
+              </label>
+            ))}
+          </RadioGroup>
+
+          <div className="flex items-center gap-2">
+            <Checkbox
+              checked={rules.allowManualStart === true}
+              disabled={disabled}
+              id={manualStartId}
+              onCheckedChange={(checked) =>
+                write({ ...rules, allowManualStart: checked })
+              }
+            />
+            <Label htmlFor={manualStartId}>Allow manual runs</Label>
+          </div>
+
+          <ManualRunPayloadNotice rules={rules} />
+        </div>
+      ),
+    },
+    {
+      label: "Cancel Events",
+      help: <p>{CANCEL_EVENTS_HELP}</p>,
+      view: (
+        <ChosenEventSummary
+          catalog={catalog}
+          empty="No Cancel Events."
+          eventNames={rules.cancelEvents}
+          role="cancel"
+          rules={rules}
+        />
+      ),
+      edit: (
+        <div className="space-y-2">
+          <EventPicker hasEvents={catalog.events.length > 0}>
+            <Label className="sr-only" htmlFor={cancelEventsId}>
+              Cancel Events
+            </Label>
+            <EventMultiCombobox
+              choices={catalog.events}
+              disabled={disabled}
+              inputId={cancelEventsId}
+              onValueChange={setCancelEvents}
+              value={rules.cancelEvents}
+            />
+          </EventPicker>
+          {rules.cancelEvents.map((eventName) => (
+            <ChosenEvent
+              catalog={catalog}
+              disabled={disabled}
+              eventName={eventName}
+              key={eventName}
+              label={findEvent(catalog, eventName)?.label}
+              onCommitPath={setCorrelationPath}
+              onRemove={() =>
+                setCancelEvents(
+                  rules.cancelEvents.filter((entry) => entry !== eventName)
+                )
+              }
+              request={correlationPathRequestFor({
+                rules,
+                catalog,
+                eventName,
+                role: "cancel",
+              })}
+            />
+          ))}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-4">
       <ConfigSection
         editable={!disabled}
+        editing={editing}
+        help={<p>{LIFECYCLE_RULES_HELP}</p>}
+        label="Lifecycle Rules"
+        onEditingChange={setEditing}
         stickyHeader
-        editing={editingStart}
-        help={<p>{START_EVENTS_HELP}</p>}
-        label="Start Events"
-        onEditingChange={setEditingStart}
-        view={
-          <ChosenEventSummary
-            catalog={catalog}
-            empty="No Start Events."
-            eventNames={rules.startEvents}
-            role="start"
-            rules={rules}
-          />
-        }
+        view={<LifecycleGroups groups={groups} mode="view" />}
       >
-        <EventPicker hasEvents={catalog.events.length > 0}>
-          <Label className="sr-only" htmlFor={startEventId}>
-            Start Events
-          </Label>
-          <EventMultiCombobox
-            choices={catalog.events}
-            disabled={disabled}
-            inputId={startEventId}
-            onValueChange={setStartEvents}
-            value={rules.startEvents}
-          />
-        </EventPicker>
-        {/* Each request is looked up by the Event and role the control owns
-            rather than found in a list: `correlationPathRequestFor` answers
-            undefined for a Start Event nothing currently compares, which is what
-            leaves an unlimited workflow unasked about a value nothing reads. */}
-        {rules.startEvents.map((eventName) => (
-          <ChosenEvent
-            catalog={catalog}
-            disabled={disabled}
-            eventName={eventName}
-            key={eventName}
-            label={findEvent(catalog, eventName)?.label}
-            onCommitPath={setCorrelationPath}
-            onRemove={() =>
-              setStartEvents(
-                rules.startEvents.filter((entry) => entry !== eventName)
-              )
-            }
-            request={correlationPathRequestFor({
-              rules,
-              catalog,
-              eventName,
-              role: "start",
-            })}
-          />
-        ))}
-      </ConfigSection>
-
-      <ConfigSection
-        editable={!disabled}
-        stickyHeader
-        editing={editingConcurrency}
-        help={<ConcurrencyHelp concurrency={rules.concurrency} />}
-        label="Concurrency"
-        onEditingChange={setEditingConcurrency}
-        view={
-          <div className="space-y-1">
-            <p className="text-sm">{concurrencyLabel(rules.concurrency)}</p>
-            <ConfigViewRow label="Allow manual runs">
-              {rules.allowManualStart === true ? "Allowed" : "Not allowed"}
-            </ConfigViewRow>
-            <ManualRunPayloadNotice rules={rules} />
-          </div>
-        }
-      >
-        <RadioGroup
-          aria-label="Concurrency"
-          disabled={disabled}
-          onValueChange={setConcurrency}
-          value={rules.concurrency}
-        >
-          {CONCURRENCY_OPTIONS.map((option) => (
-            // The consequence of each setting is in the help popover rather
-            // than under its radio: three descriptions in the column were the
-            // single largest block of prose in the panel.
-            <label
-              className={cn(
-                "flex w-full cursor-pointer items-center gap-2 rounded-md border p-2 transition-colors",
-                rules.concurrency === option.value
-                  ? "border-primary bg-muted/50"
-                  : "border-input hover:bg-muted/30",
-                disabled && "pointer-events-none opacity-50"
-              )}
-              key={option.value}
-            >
-              <RadioGroupItem value={option.value} />
-              <span className="font-medium text-sm">{option.label}</span>
-            </label>
-          ))}
-        </RadioGroup>
-
-        <div className="flex items-center gap-2">
-          <Checkbox
-            checked={rules.allowManualStart === true}
-            disabled={disabled}
-            id={manualStartId}
-            onCheckedChange={(checked) =>
-              write({ ...rules, allowManualStart: checked })
-            }
-          />
-          <Label htmlFor={manualStartId}>Allow manual runs</Label>
-        </div>
-
-        <ManualRunPayloadNotice rules={rules} />
-      </ConfigSection>
-
-      <ConfigSection
-        editable={!disabled}
-        stickyHeader
-        editing={editingCancel}
-        help={<p>{CANCEL_EVENTS_HELP}</p>}
-        label="Cancel Events"
-        onEditingChange={setEditingCancel}
-        view={
-          <ChosenEventSummary
-            catalog={catalog}
-            empty="No Cancel Events."
-            eventNames={rules.cancelEvents}
-            role="cancel"
-            rules={rules}
-          />
-        }
-      >
-        <EventPicker hasEvents={catalog.events.length > 0}>
-          <Label className="sr-only" htmlFor={cancelEventsId}>
-            Cancel Events
-          </Label>
-          <EventMultiCombobox
-            choices={catalog.events}
-            disabled={disabled}
-            inputId={cancelEventsId}
-            onValueChange={setCancelEvents}
-            value={rules.cancelEvents}
-          />
-        </EventPicker>
-        {rules.cancelEvents.map((eventName) => (
-          <ChosenEvent
-            catalog={catalog}
-            disabled={disabled}
-            eventName={eventName}
-            key={eventName}
-            label={findEvent(catalog, eventName)?.label}
-            onCommitPath={setCorrelationPath}
-            onRemove={() =>
-              setCancelEvents(
-                rules.cancelEvents.filter((entry) => entry !== eventName)
-              )
-            }
-            request={correlationPathRequestFor({
-              rules,
-              catalog,
-              eventName,
-              role: "cancel",
-            })}
-          />
-        ))}
+        <LifecycleGroups groups={groups} mode="edit" />
       </ConfigSection>
 
       {check.valid ? null : (
@@ -289,6 +304,55 @@ export function LifecyclePanel({
     </div>
   );
 }
+
+/**
+ * One of the three parts the rules divide into, with both of the faces it can
+ * be rendered as.
+ *
+ * Declaring the pair together is what keeps a group's label written once: the
+ * section renders the list twice, in the two modes, off this one declaration.
+ */
+type LifecycleGroup = {
+  label: string;
+  help: ReactNode;
+  /** What the group reads as when the section is not being edited. */
+  view: ReactNode;
+  /** The group's controls. */
+  edit: ReactNode;
+};
+
+/**
+ * The groups in one of the section's two modes, ruled off from each other.
+ *
+ * Every group's label sits in the same place in both modes, so the mode the
+ * section is in shows in what is under the labels rather than in where they are.
+ */
+function LifecycleGroups({
+  groups,
+  mode,
+}: {
+  groups: readonly LifecycleGroup[];
+  mode: "view" | "edit";
+}) {
+  return (
+    <div className="divide-y">
+      {groups.map((group) => (
+        <ConfigGroup
+          className="py-3 first:pt-0 last:pb-0"
+          help={group.help}
+          key={group.label}
+          label={group.label}
+        >
+          {mode === "view" ? group.view : group.edit}
+        </ConfigGroup>
+      ))}
+    </div>
+  );
+}
+
+/** What the section as a whole is for, behind the icon on its header. */
+const LIFECYCLE_RULES_HELP =
+  "What starts a run of this workflow, and what happens to the runs already going when another start arrives.";
 
 /** What the panel says about each role, moved out of the column. */
 const START_EVENTS_HELP =

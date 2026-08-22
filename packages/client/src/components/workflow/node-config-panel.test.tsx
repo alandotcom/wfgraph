@@ -198,13 +198,13 @@ describe("NodeConfigPanel with nothing selected", () => {
 });
 
 describe("NodeConfigPanel config scoping", () => {
-  // The Lifecycle panel holds a view/edit mode per section, and that mode
-  // belongs to the node being configured rather than to the panel. Selecting
-  // anything of another type unmounts the panel whatever its key, so the case
-  // the key answers for is one entry node replaced by another in the same
-  // slot -- which is what opening a second workflow does. Two of them in one
-  // graph is the fixture for that; a real workflow has one.
-  it("starts another entry node's sections on view", async () => {
+  // The Lifecycle panel holds one view/edit mode, and that mode belongs to the
+  // node being configured rather than to the panel. Selecting anything of
+  // another type unmounts the panel whatever its key, so the case the key
+  // answers for is one entry node replaced by another in the same slot -- which
+  // is what opening a second workflow does. Two of them in one graph is the
+  // fixture for that; a real workflow has one.
+  it("starts another entry node's configuration on view", async () => {
     const { view, store } = renderPanel({
       nodes: [lifecycleNode(), lifecycleNode("lifecycle_2")],
       selected: "lifecycle_1",
@@ -212,11 +212,11 @@ describe("NodeConfigPanel config scoping", () => {
 
     await waitFor(() => {
       expect(
-        view.getByRole("button", { name: "Edit Start Events" })
+        view.getByRole("button", { name: "Edit Lifecycle Rules" })
       ).toBeTruthy();
     });
 
-    fireEvent.click(view.getByRole("button", { name: "Edit Start Events" }));
+    fireEvent.click(view.getByRole("button", { name: "Edit Lifecycle Rules" }));
     expect(view.getByLabelText("Start Events")).toBeTruthy();
 
     await act(async () => {
@@ -227,7 +227,7 @@ describe("NodeConfigPanel config scoping", () => {
     // the second node opens on controls its builder never asked for.
     expect(view.queryByLabelText("Start Events")).toBeNull();
     expect(
-      view.getByRole("button", { name: "Edit Start Events" })
+      view.getByRole("button", { name: "Edit Lifecycle Rules" })
     ).toBeTruthy();
   });
 });

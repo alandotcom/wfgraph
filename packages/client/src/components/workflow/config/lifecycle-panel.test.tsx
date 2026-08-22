@@ -56,14 +56,14 @@ function renderWithCatalog(ui: ReactElement) {
 const NO_CONFIG: Record<string, unknown> = {};
 
 /**
- * Open one section's controls.
+ * Open the panel's controls.
  *
- * Each of the three sections renders as text until its own Edit button is
- * pressed, and each button names the section it opens, which is what tells the
- * three of them apart here and to a screen reader alike.
+ * The node's configuration is one section with one Edit button, so this opens
+ * all three groups at once: a test wanting the Concurrency radios and the Start
+ * Event picker together presses this once, not twice.
  */
-function editSection(view: RenderResult, label: string) {
-  fireEvent.click(view.getByRole("button", { name: `Edit ${label}` }));
+function editRules(view: RenderResult) {
+  fireEvent.click(view.getByRole("button", { name: "Edit Lifecycle Rules" }));
 }
 
 function ControlledPanel({
@@ -201,7 +201,7 @@ describe("LifecyclePanel", () => {
       />
     );
 
-    editSection(view, "Start Events");
+    editRules(view);
     chooseEvent(view, "Start Events", "Appointment created");
 
     await waitFor(() => {
@@ -231,7 +231,7 @@ describe("LifecyclePanel", () => {
 
     // Opening a section is not an edit either: the panel is now two modes deep
     // and neither of the two doors writes anything on the way through.
-    editSection(view, "Start Events");
+    editRules(view);
     expect(onUpdateConfig).not.toHaveBeenCalled();
 
     chooseEvent(view, "Start Events", "Appointment created");
@@ -246,7 +246,7 @@ describe("LifecyclePanel", () => {
       <LifecyclePanel config={{}} disabled={false} onUpdateConfig={vi.fn()} />
     );
 
-    editSection(view, "Start Events");
+    editRules(view);
     fireEvent.click(
       view.getAllByRole("button", { name: "Show the Events" })[0]
     );
@@ -268,7 +268,7 @@ describe("LifecyclePanel", () => {
       />
     );
 
-    editSection(view, "Start Events");
+    editRules(view);
     chooseEvent(view, "Start Events", "ops/nightly");
 
     await waitFor(() => {
@@ -296,7 +296,7 @@ describe("LifecyclePanel", () => {
       />
     );
 
-    editSection(view, "Start Events");
+    editRules(view);
     chooseEvent(view, "Start Events", "Nightly sweep");
 
     await waitFor(() => {
@@ -326,7 +326,7 @@ describe("LifecyclePanel", () => {
         />
       );
 
-      editSection(view, "Concurrency");
+      editRules(view);
       fireEvent.click(
         view.getByRole("radio", { name: new RegExp(`^${label}`) })
       );
@@ -355,13 +355,12 @@ describe("LifecyclePanel", () => {
       />
     );
 
-    editSection(view, "Concurrency");
+    editRules(view);
     fireEvent.click(view.getByRole("checkbox", { name: "Allow manual runs" }));
     await waitFor(() => {
       expect(rulesOf(latest).allowManualStart).toBe(false);
     });
 
-    editSection(view, "Start Events");
     fireEvent.click(
       view.getByRole("button", { name: "Remove app/appointment.created" })
     );
@@ -393,7 +392,7 @@ describe("LifecyclePanel", () => {
 
     expect(view.queryByText(/described by nothing/)).toBeNull();
 
-    editSection(view, "Start Events");
+    editRules(view);
     fireEvent.click(
       view.getByRole("button", { name: "Remove app/appointment.created" })
     );
@@ -425,7 +424,7 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
-    editSection(view, "Cancel Events");
+    editRules(view);
     chooseEvent(view, "Cancel Events", "Appointment created");
 
     await waitFor(() => {
@@ -452,7 +451,7 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
-    editSection(view, "Cancel Events");
+    editRules(view);
     fireEvent.click(
       view.getByRole("button", { name: "Remove app/appointment.created" })
     );
@@ -479,7 +478,7 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
-    editSection(view, "Cancel Events");
+    editRules(view);
     expect(pathInForce(view, "app/appointment.created")).toBe("appointment.id");
     expect(pathInForce(view, "ops/nightly.swept")).toBe("Choose a path");
   });
@@ -499,7 +498,7 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
-    editSection(view, "Cancel Events");
+    editRules(view);
     expect(pathInForce(view, "ops/nightly.swept")).toBe("sweep.id");
   });
 
@@ -523,7 +522,7 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
-    editSection(view, "Cancel Events");
+    editRules(view);
     choosePath(view, "app/appointment.created", "patient.id");
 
     await waitFor(() => {
@@ -555,7 +554,7 @@ describe("LifecyclePanel Cancel Events", () => {
 
     expect(view.queryByText("This will not save")).toBeNull();
 
-    editSection(view, "Cancel Events");
+    editRules(view);
     chooseEvent(view, "Cancel Events", "Appointment created");
 
     await waitFor(() => {
@@ -588,7 +587,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    editSection(view, "Start Events");
+    editRules(view);
     choosePath(view, "ops/nightly.swept", "sweep.id");
 
     await waitFor(() => {
@@ -621,7 +620,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    editSection(view, "Start Events");
+    editRules(view);
     choosePath(view, "ops/nightly.swept", "Choose a path");
 
     await waitFor(() => {
@@ -655,7 +654,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    editSection(view, "Start Events");
+    editRules(view);
     choosePath(view, "app/appointment.created", "appointment.id");
 
     await waitFor(() => {
@@ -685,7 +684,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    editSection(view, "Start Events");
+    editRules(view);
     choosePath(view, "ops/nightly.swept", "Choose a path");
 
     await waitFor(() => {
@@ -709,7 +708,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    editSection(view, "Start Events");
+    editRules(view);
     expect(pathChoices(view, "app/appointment.created")).toEqual([
       "appointment.id",
       "appointment.duration",
@@ -734,7 +733,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    editSection(view, "Start Events");
+    editRules(view);
     expect(pathInForce(view, "app/appointment.created")).toBe(
       "legacy.reference"
     );
@@ -766,10 +765,9 @@ describe("LifecyclePanel Correlation Paths", () => {
     );
 
     // Concurrency now compares, so the field appears; the builder overrides it.
-    // Both sections stay open, which is how one panel shows the switch and the
-    // field it brings with it.
-    editSection(view, "Concurrency");
-    editSection(view, "Start Events");
+    // One Edit opens the whole configuration, which is how one panel shows the
+    // switch and the field it brings with it.
+    editRules(view);
     fireEvent.click(view.getByRole("radio", { name: /^Newest wins/ }));
     await waitFor(() => {
       expect(rulesOf(latest).concurrency).toBe("newest-wins");
@@ -812,7 +810,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    editSection(view, "Start Events");
+    editRules(view);
     expect(pathInForce(view, "app/appointment.created")).toBe("appointment.id");
     expect(onConfigChange).not.toHaveBeenCalled();
     expect(view.queryByText("This will not save")).toBeNull();
@@ -832,7 +830,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    editSection(view, "Start Events");
+    editRules(view);
     expect(view.queryByLabelText("ops/nightly.swept")).toBeNull();
   });
 
@@ -853,7 +851,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    editSection(view, "Cancel Events");
+    editRules(view);
     expect(view.getByLabelText("ops/nightly.swept")).toBeTruthy();
     expect(view.getByText("Nightly sweep")).toBeTruthy();
   });
@@ -877,8 +875,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       )
     );
 
-    editSection(view, "Start Events");
-    editSection(view, "Cancel Events");
+    editRules(view);
     expect(view.queryByLabelText("ops/nightly.swept")).toBeNull();
     expect(view.queryByText("This will not save")).toBeNull();
   });
@@ -958,24 +955,44 @@ describe("LifecyclePanel view mode", () => {
     expect(view.queryAllByRole("radio")).toEqual([]);
   });
 
-  // Edit opens one section, Done closes it, and the two beside it are left
-  // where they were: the panel's height moves into the section being worked on
-  // rather than into all three at once.
-  it("switches one section between its two modes", () => {
+  // Edit swaps every group at once and Done swaps them all back: the panel is
+  // one configuration in one of two modes, not three blocks a builder opens and
+  // closes one at a time.
+  it("switches the whole section between its two modes", () => {
     const view = renderWithCatalog(
       <ControlledPanel initialConfig={CONFIGURED} />
     );
 
-    editSection(view, "Start Events");
+    editRules(view);
     expect(view.getByLabelText("Start Events")).toBeTruthy();
-    expect(view.queryAllByRole("radio")).toEqual([]);
+    expect(view.getByLabelText("Cancel Events")).toBeTruthy();
+    expect(view.queryAllByRole("radio")).toHaveLength(
+      CONCURRENCY_OPTIONS.length
+    );
 
     fireEvent.click(
-      view.getByRole("button", { name: "Done editing Start Events" })
+      view.getByRole("button", { name: "Done editing Lifecycle Rules" })
     );
 
     expect(view.queryByLabelText("Start Events")).toBeNull();
+    expect(view.queryAllByRole("radio")).toEqual([]);
     expect(view.getByText("Appointment created")).toBeTruthy();
+  });
+
+  // The regression this section exists to prevent. Each group used to carry its
+  // own Edit button, so a Lifecycle node offered three of them for one
+  // configuration.
+  it("offers one Edit button for the whole configuration", () => {
+    const view = renderWithCatalog(
+      <ControlledPanel initialConfig={CONFIGURED} />
+    );
+
+    expect(view.getAllByRole("button", { name: /^Edit / })).toHaveLength(1);
+
+    editRules(view);
+    expect(
+      view.getAllByRole("button", { name: /^Done editing / })
+    ).toHaveLength(1);
   });
 
   // A panel whose writes would be refused offers no Edit at all, so view mode
