@@ -11,7 +11,6 @@ import {
   Trash2,
   Ungroup,
 } from "lucide-react";
-import { nanoid } from "nanoid";
 import { useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
@@ -21,7 +20,6 @@ import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useDomEvent } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import {
-  addNodeAtom,
   copySelectionAtom,
   deleteEdgeAtom,
   deleteNodeAtom,
@@ -34,9 +32,9 @@ import {
   selectedNodeAtom,
   ungroupNodeAtom,
 } from "#src/lib/workflow-graph-store";
+import { openCommandPaletteAtom } from "#src/lib/command-palette-store";
 import { canUngroup, refuseDelete } from "#src/lib/node-group";
 import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
-import { type WorkflowNode } from "#src/lib/workflow-graph-types";
 import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
 import { cn } from "@wfgraph/shared/utils";
 import { analyzeGroupableSelection } from "@wfgraph/shared/graph/node-group";
@@ -80,7 +78,7 @@ export function WorkflowContextMenu({
   const edges = useAtomValue(edgesAtom);
   const deleteNode = useSetAtom(deleteNodeAtom);
   const deleteEdge = useSetAtom(deleteEdgeAtom);
-  const addNode = useSetAtom(addNodeAtom);
+  const openPalette = useSetAtom(openCommandPaletteAtom);
   const copySelection = useSetAtom(copySelectionAtom);
   const pasteSelection = useSetAtom(pasteCopiedSelectionAtom);
   const duplicateSelection = useSetAtom(duplicateSelectionAtom);
@@ -143,30 +141,21 @@ export function WorkflowContextMenu({
     }
   }, [menuState, deleteEdge, onClose, openOverlay]);
 
+  // Straight to the node types, carrying the spot the user right-clicked:
+  // someone who opened this menu on the graph has already said where the step
+  // goes, so the palette's root page has nothing left to ask.
   const handleAddStep = useCallback(() => {
     if (menuState?.flowPosition) {
-      const newNode: WorkflowNode = {
-        id: nanoid(),
-        type: "action",
-        position: {
+      openPalette({
+        id: "add-step",
+        at: {
           x: menuState.flowPosition.x,
           y: menuState.flowPosition.y - WORKFLOW_NODE_HEIGHT / 2,
         },
-        data: {
-          label: "",
-          description: "",
-          type: "action",
-          config: {},
-          status: "idle",
-        },
-        selected: true,
-      };
-      addNode(newNode);
-      setSelectedNode(newNode.id);
-      setActiveTab("properties");
+      });
     }
     onClose();
-  }, [menuState, addNode, setSelectedNode, setActiveTab, onClose]);
+  }, [menuState, openPalette, onClose]);
 
   const handleCopyNode = useCallback(() => {
     if (menuState?.nodeId) {

@@ -31,11 +31,17 @@ export type EditorShortcutLabels = {
   run: string;
   undo: string;
   redo: string;
+  palette: string;
 };
 
-/** The three chords the Actions menu prints, spelled for this keyboard. */
+/** The chords the menu bar prints, spelled for this keyboard. */
 export function editorShortcutLabels(onApple: boolean): EditorShortcutLabels {
   return onApple
-    ? { run: "⌘↵", undo: "⌘Z", redo: "⇧⌘Z" }
-    : { run: "Ctrl+Enter", undo: "Ctrl+Z", redo: "Ctrl+Shift+Z" };
+    ? { run: "⌘↵", undo: "⌘Z", redo: "⇧⌘Z", palette: "⌘K" }
+    : {
+        run: "Ctrl+Enter",
+        undo: "Ctrl+Z",
+        redo: "Ctrl+Shift+Z",
+        palette: "Ctrl+K",
+      };
 }

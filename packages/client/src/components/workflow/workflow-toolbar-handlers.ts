@@ -38,7 +38,6 @@ import {
   selectedNodeAtom,
   setNodeStatusesAtom,
   updateNodeDataAtom,
-  addNodeAtom,
   canRedoAtom,
   canUndoAtom,
   redoAtom,
@@ -321,7 +320,6 @@ export function useWorkflowState() {
   const hasUnsavedChanges = useAtomValue(hasUnsavedChangesAtom);
   const undo = useSetAtom(undoAtom);
   const redo = useSetAtom(redoAtom);
-  const addNode = useSetAtom(addNodeAtom);
   const [canUndo] = useAtom(canUndoAtom);
   const [canRedo] = useAtom(canRedoAtom);
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
@@ -349,7 +347,6 @@ export function useWorkflowState() {
     hasUnsavedChanges,
     undo,
     redo,
-    addNode,
     canUndo,
     canRedo,
     allWorkflows,

@@ -23,11 +23,13 @@ describe("editorShortcutLabels", () => {
       run: "⌘↵",
       undo: "⌘Z",
       redo: "⇧⌘Z",
+      palette: "⌘K",
     });
     expect(editorShortcutLabels(false)).toEqual({
       run: "Ctrl+Enter",
       undo: "Ctrl+Z",
       redo: "Ctrl+Shift+Z",
+      palette: "Ctrl+K",
     });
   });
 });

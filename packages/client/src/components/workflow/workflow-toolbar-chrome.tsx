@@ -9,7 +9,6 @@
  */
 
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useReactFlow } from "@xyflow/react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   ArrowLeftRight,
@@ -29,7 +28,6 @@ import {
   Undo2,
   Upload,
 } from "lucide-react";
-import { nanoid } from "nanoid";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
@@ -49,6 +47,7 @@ import {
   DropdownMenuTrigger,
 } from "#src/components/ui/dropdown-menu";
 import { WorkflowIcon } from "#src/components/ui/workflow-icon";
+import { CommandPalette } from "#src/components/workflow/command-palette";
 import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-dialog";
 import { RenameWorkflowDialog } from "#src/components/workflow/rename-workflow-dialog";
 import { useReflowLayout } from "#src/components/workflow/use-reflow-layout";
@@ -57,14 +56,14 @@ import {
   editorShortcutLabels,
   isApplePlatform,
 } from "#src/lib/shortcut-label";
-import {
-  WORKFLOW_NODE_HEIGHT,
-  WORKFLOW_NODE_WIDTH,
-} from "#src/lib/workflow-node-dimensions";
 import type {
   WorkflowToolbarActions,
   WorkflowToolbarState,
 } from "#src/components/workflow/workflow-toolbar-handlers";
+import {
+  commandPaletteRefusalAtom,
+  openCommandPaletteAtom,
+} from "#src/lib/command-palette-store";
 import {
   deleteEdgeAtom,
   deleteNodeAtom,
@@ -74,7 +73,6 @@ import {
   selectedEdgeAtom,
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
-import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { cn } from "@wfgraph/shared/utils";
 
 /**
@@ -148,31 +146,47 @@ function PublishButton({
 }
 
 /**
- * Where the command palette will go, standing in for a palette that does not
- * exist yet.
- *
- * Decoration, not a control: neither a text field that would take focus and
- * swallow everything typed into it, nor a disabled button announcing a name to
- * a screen reader for a feature nothing has built. It shows no ⌘K hint either,
- * because nothing is bound to ⌘K until the palette lands.
+ * The palette's trigger: a search box in name and shape, a button in fact.
  *
  * It shrinks, and it appears only once the row has the width for it. Everything
  * else in the bar is fixed, so this is the one thing that can give: a fixed
  * 256px here is what used to push Publish and the settings menu off the end of
  * a row whose scrollbar is hidden.
+ *
+ * Disabled rather than hidden whenever the palette would refuse to open, with
+ * the reason on the control: a button that vanishes teaches nothing about why,
+ * and this one at least says it under the pointer.
  */
-function CommandPalettePlaceholder() {
+function CommandPaletteTrigger() {
+  const openPalette = useSetAtom(openCommandPaletteAtom);
+  const refusal = useAtomValue(commandPaletteRefusalAtom);
+  const onApple = isApplePlatform(currentPlatform());
+  const shortcuts = editorShortcutLabels(onApple);
+
   return (
-    <div
-      aria-hidden="true"
-      className={cn(
-        buttonVariants({ size: BAR_CONTROL_SIZE, variant: "outline" }),
-        "hidden w-64 min-w-0 shrink cursor-default select-none justify-start font-normal text-muted-foreground opacity-70 @3xl:inline-flex"
-      )}
+    <Button
+      // One chord, the one this keyboard has. The visible hint already picked a
+      // platform, and naming both here would have the button announce a key the
+      // reader does not have.
+      aria-keyshortcuts={onApple ? "Meta+K" : "Control+K"}
+      className="hidden w-64 min-w-0 shrink justify-start font-normal text-muted-foreground @3xl:inline-flex"
+      disabled={refusal !== null}
+      onClick={() => openPalette({ id: "root" })}
+      size={BAR_CONTROL_SIZE}
+      title={refusal ?? undefined}
+      variant="outline"
     >
       <Search className="size-3.5" data-icon="inline-start" />
       <span className="truncate">Search or add a step</span>
-    </div>
+      {/* Hidden from the name: `aria-keyshortcuts` above already says this, and
+          in the accessible name it read as part of what the button is called. */}
+      <kbd
+        aria-hidden="true"
+        className="ml-auto shrink-0 rounded-sm bg-muted-foreground/10 px-1 font-sans text-[0.625rem]"
+      >
+        {shortcuts.palette}
+      </kbd>
+    </Button>
   );
 }
 
@@ -312,7 +326,7 @@ export function ToolbarActions({
   const edges = useAtomValue(edgesAtom);
   const deleteNode = useSetAtom(deleteNodeAtom);
   const deleteEdge = useSetAtom(deleteEdgeAtom);
-  const { screenToFlowPosition } = useReactFlow();
+  const openPalette = useSetAtom(openCommandPaletteAtom);
   const isMobile = useIsMobile();
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
 
@@ -353,61 +367,12 @@ export function ToolbarActions({
     });
   };
 
+  // Adding a step is the palette's own job, so the menu item opens it on the
+  // node-type page rather than dropping a node with no action on it and leaving
+  // the picker to the config panel. Placement is the palette's too: it lands in
+  // the middle of the canvas, moved clear of whatever is already there.
   const handleAddStep = () => {
-    const flowWrapper = document.querySelector(".react-flow");
-    if (!flowWrapper) {
-      return;
-    }
-
-    const rect = flowWrapper.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-
-    const position = screenToFlowPosition({ x: centerX, y: centerY });
-
-    position.x -= WORKFLOW_NODE_WIDTH / 2;
-    position.y -= WORKFLOW_NODE_HEIGHT / 2;
-
-    const offset = 20;
-
-    const finalPosition = { ...position };
-    let hasOverlap = true;
-    let attempts = 0;
-    const maxAttempts = 20;
-
-    while (hasOverlap && attempts < maxAttempts) {
-      // Full rectangles, not top-left corners. Comparing corners against a 20px
-      // threshold meant a node offset by 21px counted as clear, so a new step
-      // landed on top of a neighbour it overlapped by nearly its whole width.
-      hasOverlap = state.nodes.some(
-        (node) =>
-          Math.abs(node.position.x - finalPosition.x) < WORKFLOW_NODE_WIDTH &&
-          Math.abs(node.position.y - finalPosition.y) < WORKFLOW_NODE_HEIGHT
-      );
-
-      if (hasOverlap) {
-        finalPosition.x += offset;
-        finalPosition.y += offset;
-        attempts += 1;
-      }
-    }
-
-    const newNode: WorkflowNode = {
-      id: nanoid(),
-      type: "action",
-      position: finalPosition,
-      data: {
-        label: "",
-        description: "",
-        type: "action",
-        config: {},
-        status: "idle",
-      },
-    };
-
-    state.addNode(newNode);
-    state.setSelectedNodeId(newNode.id);
-    state.setActiveTab("properties");
+    openPalette({ id: "add-step" });
   };
 
   return (
@@ -419,7 +384,8 @@ export function ToolbarActions({
         workflowId={workflowId}
       />
 
-      <CommandPalettePlaceholder />
+      <CommandPaletteTrigger />
+      <CommandPalette actions={actions} state={state} />
 
       <PublishButton
         disabled={publishDisabled}
