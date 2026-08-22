@@ -5,7 +5,6 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { isNil, omitBy } from "es-toolkit";
 import { MoreHorizontalIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -32,15 +31,21 @@ import {
   DropdownMenuTrigger,
 } from "#src/components/ui/dropdown-menu";
 import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-dialog";
+import { RunHistorySearch } from "#src/components/workflows/run-history-search";
+import { RunHistoryTable } from "#src/components/workflows/run-history-table";
 import type { WorkflowExecutionsGlobalResult } from "#src/lib/rpc-client";
 import type { WorkflowSummaryPayload } from "@wfgraph/shared/graph/api-contracts";
+import {
+  filterRuns,
+  toExecutionsQueryInput,
+  uniqueNonEmpty,
+  type RunFilter,
+} from "#src/lib/run-history-filters";
 import {
   orpcQuery,
   refreshRunHistory,
   refreshWorkflowList,
 } from "#src/lib/rpc-query";
-import { getStatusBadgeClass } from "#src/components/workflow/workflow-run-shared";
-import type { WorkflowExecutionStatus } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
 
 type GlobalExecutionItem = WorkflowExecutionsGlobalResult["items"][number];
@@ -61,46 +66,6 @@ type ConfirmDeleteState = {
 const logger = getClientLogger("workflows");
 
 const DELETE_CHALLENGE_THRESHOLD = 3;
-
-/**
- * The statuses this list offers as filters, and the ones it asks for when nothing
- * is ticked.
- *
- * `superseded` is a filter a builder can tick but never part of the default set: a
- * newest-wins workflow produces one on every reschedule, and unticked they would
- * bury the rows someone came to read. The editor's own runs panel says how many
- * there are per workflow.
- */
-const DEFAULT_STATUS_OPTIONS: WorkflowExecutionStatus[] = [
-  "running",
-  "waiting",
-  "failed",
-  "completed",
-  "canceled",
-  "pending",
-];
-
-const STATUS_OPTIONS: WorkflowExecutionStatus[] = [
-  ...DEFAULT_STATUS_OPTIONS,
-  "superseded",
-];
-
-function formatDuration(duration: string | null): string {
-  if (!duration) {
-    return "-";
-  }
-
-  const durationMs = Number.parseInt(duration, 10);
-  if (Number.isNaN(durationMs)) {
-    return duration;
-  }
-
-  if (durationMs < 1000) {
-    return `${durationMs}ms`;
-  }
-
-  return `${(durationMs / 1000).toFixed(2)}s`;
-}
 
 /** One page of runs. The list is long enough that it is paged, not sliced. */
 const RUNS_PAGE_SIZE = 100;
@@ -144,9 +109,8 @@ export default function WorkflowsPage() {
   const [selectedWorkflowIds, setSelectedWorkflowIds] = useState<Set<string>>(
     new Set()
   );
-  const [statusFilters, setStatusFilters] = useState<
-    Set<WorkflowExecutionStatus>
-  >(new Set());
+  const [runFilters, setRunFilters] = useState<RunFilter[]>([]);
+  const [runQuery, setRunQuery] = useState("");
   const [showSelectedRunsOnly, setShowSelectedRunsOnly] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   // Bumped on every open so the dialog remounts and re-suggests a name. It stays
@@ -201,23 +165,13 @@ export default function WorkflowsPage() {
   // reordering the same selection would refetch.
   const runsFilter = useMemo(
     () =>
-      omitBy(
-        {
-          workflowIds: hasSelectedRunsFilter
-            ? selectedActionableIds.toSorted()
-            : undefined,
-          // With no filter ticked the list asks for everything except superseded
-          // runs, rather than for everything: a newest-wins workflow makes one on
-          // every reschedule and they would bury the rest.
-          statuses:
-            statusFilters.size > 0
-              ? Array.from(statusFilters).toSorted()
-              : DEFAULT_STATUS_OPTIONS.toSorted(),
-          limit: RUNS_PAGE_SIZE,
-        },
-        isNil
-      ),
-    [hasSelectedRunsFilter, selectedActionableIds, statusFilters]
+      toExecutionsQueryInput({
+        filters: runFilters,
+        selectedWorkflowIds: selectedActionableIds,
+        selectedOnly: hasSelectedRunsFilter,
+        limit: RUNS_PAGE_SIZE,
+      }),
+    [hasSelectedRunsFilter, runFilters, selectedActionableIds]
   );
 
   // The filters are part of the key, so changing one refetches by itself. That
@@ -234,6 +188,18 @@ export default function WorkflowsPage() {
   const runs: GlobalExecutionItem[] = useMemo(
     () => runsQuery.data?.pages.flatMap((page) => page.items) ?? [],
     [runsQuery.data]
+  );
+  const visibleRuns = useMemo(
+    () => filterRuns(runs, { query: runQuery, filters: runFilters }),
+    [runFilters, runQuery, runs]
+  );
+  const eventSuggestions = useMemo(
+    () => uniqueNonEmpty(runs.map((item) => item.startEventName)),
+    [runs]
+  );
+  const entitySuggestions = useMemo(
+    () => uniqueNonEmpty(runs.map((item) => item.entityValue)),
+    [runs]
   );
   const isLoadingRuns = runsQuery.isPending;
   const isLoadingMoreRuns = runsQuery.isFetchingNextPage;
@@ -285,17 +251,16 @@ export default function WorkflowsPage() {
     });
   };
 
-  const toggleStatusFilter = (status: WorkflowExecutionStatus) => {
-    setStatusFilters((prev) => {
-      const next = new Set(prev);
-      if (next.has(status)) {
-        next.delete(status);
-      } else {
-        next.add(status);
-      }
-      return next;
-    });
-  };
+  const openRun = useCallback(
+    (item: GlobalExecutionItem) => {
+      void navigate({
+        to: "/workflows/$workflowId",
+        params: { workflowId: item.workflowId },
+        search: { executionId: item.id },
+      });
+    },
+    [navigate]
+  );
 
   const lifecycle = useMutation(
     orpcQuery.workflow.bulkLifecycle.mutationOptions({
@@ -542,76 +507,7 @@ export default function WorkflowsPage() {
     );
   };
 
-  const renderRunsContent = () => {
-    if (isLoadingRuns && runs.length === 0) {
-      return (
-        <div className="p-6 text-muted-foreground text-sm">Loading runs...</div>
-      );
-    }
-
-    if (runs.length === 0) {
-      return (
-        <div className="p-6 text-muted-foreground text-sm">No runs found.</div>
-      );
-    }
-
-    return (
-      <table className="w-full text-left text-sm">
-        <thead className="sticky top-0 bg-card">
-          <tr className="border-b">
-            <th className="px-4 py-2">Workflow</th>
-            <th className="px-2 py-2">Status</th>
-            <th className="px-2 py-2">Started</th>
-            <th className="px-2 py-2">Duration</th>
-            <th className="px-4 py-2 text-right">Open</th>
-          </tr>
-        </thead>
-        <tbody>
-          {runs.map((run) => (
-            <tr className="border-b last:border-b-0" key={run.id}>
-              <td className="px-4 py-3">
-                <div className="font-medium text-foreground text-sm">
-                  {run.workflowName}
-                </div>
-                <div className="font-mono text-muted-foreground text-xs">
-                  {run.workflowId}
-                </div>
-              </td>
-              <td className="px-2 py-3">
-                <span
-                  className={`inline-flex rounded border px-2 py-0.5 font-medium text-xs uppercase ${getStatusBadgeClass(run.status)}`}
-                >
-                  {run.status}
-                </span>
-              </td>
-              <td className="px-2 py-3 text-muted-foreground text-xs">
-                {getRelativeTime(run.startedAt)}
-              </td>
-              <td className="px-2 py-3 text-muted-foreground text-xs">
-                {formatDuration(run.duration)}
-              </td>
-              <td className="px-4 py-3 text-right">
-                <Button
-                  onClick={() => {
-                    void navigate({
-                      to: "/workflows/$workflowId",
-                      params: { workflowId: run.workflowId },
-                      search: { executionId: run.id },
-                    });
-                  }}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  Open
-                </Button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    );
-  };
+  const runHistoryTableKey = `${runQuery}:${runFilters.map((filter) => filter.id).join(",")}`;
 
   return (
     <div className="h-dvh overflow-auto bg-background">
@@ -735,64 +631,48 @@ export default function WorkflowsPage() {
               </Button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
-              <Button
-                onClick={() => {
-                  setStatusFilters(new Set());
-                }}
-                size="sm"
-                type="button"
-                variant={statusFilters.size === 0 ? "secondary" : "outline"}
-              >
-                All statuses
-              </Button>
-              {STATUS_OPTIONS.map((status) => (
+            <div className="flex flex-col gap-2 border-b px-4 py-2">
+              <RunHistorySearch
+                entitySuggestions={entitySuggestions}
+                eventSuggestions={eventSuggestions}
+                filters={runFilters}
+                onFiltersChange={setRunFilters}
+                onQueryChange={setRunQuery}
+                query={runQuery}
+                resultCount={visibleRuns.length}
+                workflows={workflowRows.map((workflow) => ({
+                  id: workflow.id,
+                  name: workflow.name,
+                }))}
+              />
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
-                  key={status}
+                  disabled={selectedActionableIds.length === 0}
                   onClick={() => {
-                    toggleStatusFilter(status);
+                    setShowSelectedRunsOnly((prev) => !prev);
                   }}
                   size="sm"
                   type="button"
-                  variant={statusFilters.has(status) ? "secondary" : "outline"}
+                  variant={showSelectedRunsOnly ? "secondary" : "outline"}
                 >
-                  {status}
-                </Button>
-              ))}
-              <Button
-                disabled={selectedActionableIds.length === 0}
-                onClick={() => {
-                  setShowSelectedRunsOnly((prev) => !prev);
-                }}
-                size="sm"
-                type="button"
-                variant={showSelectedRunsOnly ? "secondary" : "outline"}
-              >
-                {showSelectedRunsOnly
-                  ? "Showing selected workflows"
-                  : "Show selected workflows only"}
-              </Button>
-            </div>
-
-            <div className="max-h-[65vh] overflow-auto">
-              {renderRunsContent()}
-            </div>
-
-            {runsQuery.hasNextPage ? (
-              <div className="border-t px-4 py-3">
-                <Button
-                  disabled={isLoadingMoreRuns}
-                  onClick={() => {
-                    void runsQuery.fetchNextPage();
-                  }}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  {isLoadingMoreRuns ? "Loading..." : "Load more"}
+                  {showSelectedRunsOnly
+                    ? "Showing selected workflows"
+                    : "Show selected workflows only"}
                 </Button>
               </div>
-            ) : null}
+            </div>
+
+            <RunHistoryTable
+              hasNextPage={Boolean(runsQuery.hasNextPage)}
+              isLoading={isLoadingRuns}
+              isLoadingMore={isLoadingMoreRuns}
+              key={runHistoryTableKey}
+              onLoadMore={() => {
+                void runsQuery.fetchNextPage();
+              }}
+              onOpenRun={openRun}
+              runs={visibleRuns}
+            />
           </section>
         </div>
       </div>

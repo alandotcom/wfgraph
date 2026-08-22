@@ -1,0 +1,86 @@
+import { fireEvent, render } from "@testing-library/react";
+import { useState } from "react";
+import { describe, expect, it } from "vitest";
+import { RunHistorySearch } from "#src/components/workflows/run-history-search";
+import type { RunFilter } from "#src/lib/run-history-filters";
+
+function Harness({ resultCount = 4 }: { resultCount?: number }) {
+  const [query, setQuery] = useState("");
+  const [filters, setFilters] = useState<RunFilter[]>([]);
+
+  return (
+    <RunHistorySearch
+      entitySuggestions={["user_1"]}
+      eventSuggestions={["user.created"]}
+      filters={filters}
+      onFiltersChange={setFilters}
+      onQueryChange={setQuery}
+      query={query}
+      resultCount={resultCount}
+      workflows={[{ id: "wf_1", name: "Onboarding" }]}
+    />
+  );
+}
+
+describe("RunHistorySearch", () => {
+  it("opens field choices when the search is focused", () => {
+    const view = render(<Harness />);
+    fireEvent.focus(
+      view.getByRole("combobox", { name: "Search and filter runs" })
+    );
+
+    expect(view.getByRole("option", { name: "Status" })).toBeTruthy();
+    expect(view.getByRole("option", { name: "Workflow" })).toBeTruthy();
+    expect(view.getByRole("option", { name: "Mode" })).toBeTruthy();
+    expect(view.getByRole("option", { name: "Source" })).toBeTruthy();
+    expect(view.getByRole("option", { name: "Event" })).toBeTruthy();
+    expect(view.getByRole("option", { name: "Entity" })).toBeTruthy();
+    expect(view.getByText("4 results")).toBeTruthy();
+  });
+
+  it("builds a status filter pill through field, operator, and value", () => {
+    const view = render(<Harness />);
+    fireEvent.focus(
+      view.getByRole("combobox", { name: "Search and filter runs" })
+    );
+    fireEvent.mouseDown(view.getByRole("option", { name: "Status" }));
+    fireEvent.mouseDown(view.getByRole("option", { name: "Status is" }));
+    fireEvent.mouseDown(view.getByRole("option", { name: "Failed" }));
+
+    expect(
+      view.getByRole("button", { name: "Remove Status is Failed" })
+    ).toBeTruthy();
+    expect(view.getByText("Failed")).toBeTruthy();
+  });
+
+  it("removes a pill from its button", () => {
+    const view = render(<Harness />);
+    fireEvent.focus(
+      view.getByRole("combobox", { name: "Search and filter runs" })
+    );
+    fireEvent.mouseDown(view.getByRole("option", { name: "Mode" }));
+    fireEvent.mouseDown(view.getByRole("option", { name: "Mode is" }));
+    fireEvent.mouseDown(view.getByRole("option", { name: "Test" }));
+
+    fireEvent.click(view.getByRole("button", { name: "Remove Mode is Test" }));
+
+    expect(
+      view.queryByRole("button", { name: "Remove Mode is Test" })
+    ).toBeNull();
+  });
+
+  it("narrows field choices as the query is typed", () => {
+    const view = render(<Harness />);
+    const input = view.getByRole("combobox", {
+      name: "Search and filter runs",
+    });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "stat" } });
+
+    expect(view.getByRole("option", { name: "Status" })).toBeTruthy();
+    expect(view.queryByRole("option", { name: "Workflow" })).toBeNull();
+    expect(
+      view.getByRole("option", { name: "Search runs for “stat”" })
+    ).toBeTruthy();
+  });
+});
