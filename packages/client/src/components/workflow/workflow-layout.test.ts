@@ -152,7 +152,7 @@ function buildFramedChain(input: {
     data: {
       label: "Lookups",
       type: "group",
-      config: { entryNodeIds: input.entryIds, exitNodeId: "exit" },
+      config: { entryNodeIds: input.entryIds, exitNodeIds: ["exit"] },
     },
   };
   const children = input.members.map((id, index) => ({
@@ -823,7 +823,7 @@ describe("layoutWorkflowNodes", () => {
       data: {
         label: "Lookups",
         type: "group",
-        config: { entryNodeIds: ["a"], exitNodeId: "c" },
+        config: { entryNodeIds: ["a"], exitNodeIds: ["c"] },
       },
     };
     const childA: WorkflowNode = {
