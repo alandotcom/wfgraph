@@ -35,6 +35,7 @@ import {
   snapshotHistoryAtom,
   undoAtom,
   updateNodeDataAtom,
+  workflowHydrateGenerationAtom,
 } from "#src/lib/workflow-graph-store";
 import {
   autosaveDelayAtom,
@@ -496,6 +497,17 @@ describe("hydrateWorkflowAtom", () => {
       store.get(displayNodesAtom).find((node) => node.id === "a")?.data
         .status ?? "idle"
     ).toBe("idle");
+  });
+
+  it("bumps the hydrate generation so overlay sync can re-run after a same-workflow reload", () => {
+    const store = createStore();
+    expect(store.get(workflowHydrateGenerationAtom)).toBe(0);
+
+    store.set(hydrateWorkflowAtom, savedWorkflow("wf_1"));
+    expect(store.get(workflowHydrateGenerationAtom)).toBe(1);
+
+    store.set(hydrateWorkflowAtom, savedWorkflow("wf_1"));
+    expect(store.get(workflowHydrateGenerationAtom)).toBe(2);
   });
 });
 

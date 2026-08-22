@@ -20,6 +20,7 @@ import {
   executionOverlayGraphAtom,
   hydrateWorkflowAtom,
   setNodeStatusesAtom,
+  workflowHydrateGenerationAtom,
 } from "#src/lib/workflow-graph-store";
 import {
   answerWorkflowRunRpc,
@@ -471,6 +472,45 @@ describe("ExecutionOverlaySync", () => {
       expect(
         store.get(executionOverlayGraphAtom)?.nodes.map((n) => n.id)
       ).toEqual(["b_lifecycle"]);
+    });
+  });
+
+  // Coming back to a waiting run (dashboard round-trip, or the loader's
+  // stale-while-revalidate of the still-open editor) hydrates the same
+  // workflow again. That clears the overlay; without the generation in the
+  // sync key the canvas would stay on the draft, which is how a run in
+  // progress lost its running animation after navigating back to it.
+  it("re-applies the pinned graph after a same-workflow hydrate", async () => {
+    served.items = [execution("exec_1", "waiting")];
+    served.graphs = { [versionIdFor("exec_1")]: pinnedGraph("v1_lifecycle") };
+    const { store } = renderRuns({
+      executionId: "exec_1",
+      panel: false,
+    });
+
+    await waitFor(() => {
+      expect(
+        store.get(executionOverlayGraphAtom)?.nodes.map((n) => n.id)
+      ).toEqual(["v1_lifecycle"]);
+    });
+    expect(store.get(workflowHydrateGenerationAtom)).toBe(0);
+
+    await act(() => {
+      store.set(
+        hydrateWorkflowAtom,
+        savedWorkflow("wf_1", {
+          nodes: [draftNode("draft_lifecycle")],
+          edges: [],
+        })
+      );
+    });
+
+    expect(store.get(workflowHydrateGenerationAtom)).toBe(1);
+
+    await waitFor(() => {
+      expect(
+        store.get(executionOverlayGraphAtom)?.nodes.map((n) => n.id)
+      ).toEqual(["v1_lifecycle"]);
     });
   });
 

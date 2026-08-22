@@ -332,6 +332,17 @@ export const loadWorkflowGraphAtom = atom(
 );
 
 /**
+ * Counts how many times the editor has been handed a workflow from the loader.
+ *
+ * Hydrate clears the run overlay, and a same-workflow reload (coming back from
+ * the dashboard, or a stale-while-revalidate of the still-open editor) does not
+ * change `currentWorkflowId` or the URL. Overlay sync's key used to ignore that,
+ * so a late hydrate left the canvas on the draft while the Runs panel still
+ * showed the open run. Bumping this is what makes that key move.
+ */
+export const workflowHydrateGenerationAtom = atom(0);
+
+/**
  * Put a workflow on screen: the graph, its identity, and who may edit it.
  *
  * Called from the route's loader, before the editor renders. A loader avoids
@@ -342,7 +353,7 @@ export const loadWorkflowGraphAtom = atom(
  */
 export const hydrateWorkflowAtom = atom(
   null,
-  (_get, set, workflow: SavedWorkflow) => {
+  (get, set, workflow: SavedWorkflow) => {
     // Clearing selection stops a node from arriving pre-selected in a
     // workflow the user has just opened.
     const nodes = workflow.nodes.map((node) => ({
@@ -372,6 +383,7 @@ export const hydrateWorkflowAtom = atom(
     set(isWorkflowOwnerAtom, workflow.isOwner !== false);
     set(workflowNotFoundAtom, false);
     set(workflowLoadErrorAtom, null);
+    set(workflowHydrateGenerationAtom, get(workflowHydrateGenerationAtom) + 1);
   }
 );
 

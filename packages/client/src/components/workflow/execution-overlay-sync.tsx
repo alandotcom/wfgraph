@@ -7,6 +7,7 @@ import { orpcQuery } from "#src/lib/rpc-query";
 import {
   executionOverlayGraphAtom,
   resetNodeStatusesAtom,
+  workflowHydrateGenerationAtom,
 } from "#src/lib/workflow-graph-store";
 import { toEditorEdge, toEditorNode } from "#src/lib/workflow-graph-types";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
@@ -28,6 +29,7 @@ function useExecutionOverlaySync(): void {
   );
   const setExecutionOverlay = useSetAtom(executionOverlayGraphAtom);
   const resetNodeStatuses = useSetAtom(resetNodeStatusesAtom);
+  const hydrateGeneration = useAtomValue(workflowHydrateGenerationAtom);
   const { executionId } = workflowRouteApi.useSearch();
 
   // Identity fields for the overlay. The panel's observer of this key owns
@@ -60,8 +62,10 @@ function useExecutionOverlaySync(): void {
   // pinned-graph overlay. Paint only when the run's workflowId matches the
   // hydrated editor (`currentWorkflowId`) — never before, or a late hydrate
   // clears the overlay while the key stays `ready` and the canvas sticks on
-  // the draft. Key is closed | open:exec:wf | ready:exec:wf; never fetch
-  // timestamps, so a logs poll cannot rebuild nodes as idle and wipe statuses.
+  // the draft. `hydrateGeneration` is in the key so a same-workflow reload
+  // (dashboard round-trip, stale-while-revalidate) re-runs this after hydrate
+  // has cleared the overlay. Never fetch timestamps, so a logs poll cannot
+  // rebuild nodes as idle and wipe statuses.
   const detail = detailQuery.data;
   const graph = graphQuery.data;
   const workflowAligned =
@@ -70,14 +74,15 @@ function useExecutionOverlaySync(): void {
     detail.workflowId === currentWorkflowId;
   useAfterCommit(
     executionId === undefined
-      ? "closed"
+      ? `closed:${hydrateGeneration}`
       : workflowAligned
-        ? `ready:${executionId}:${currentWorkflowId}`
-        : `open:${executionId}:${currentWorkflowId ?? ""}`,
+        ? `ready:${executionId}:${currentWorkflowId}:${hydrateGeneration}`
+        : `open:${executionId}:${currentWorkflowId ?? ""}:${hydrateGeneration}`,
     () => {
       if (executionId === undefined) {
         setSelectedExecutionId(null);
         setExecutionOverlay(null);
+        resetNodeStatuses();
         return;
       }
 
