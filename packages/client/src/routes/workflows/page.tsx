@@ -636,6 +636,7 @@ export default function WorkflowsPage() {
                 entitySuggestions={entitySuggestions}
                 eventSuggestions={eventSuggestions}
                 filters={runFilters}
+                loadedCount={runs.length}
                 onFiltersChange={setRunFilters}
                 onQueryChange={setRunQuery}
                 query={runQuery}

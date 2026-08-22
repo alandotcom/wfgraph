@@ -89,22 +89,6 @@ const OPERATORS_BY_FIELD: Record<RunFilterField, readonly RunFilterOperator[]> =
     entity: ["is", "is_not", "contains"],
   };
 
-const STATUS_LABELS: Record<WorkflowExecutionStatus, string> = {
-  pending: "Pending",
-  running: "Running",
-  waiting: "Waiting",
-  completed: "Completed",
-  canceled: "Canceled",
-  superseded: "Superseded",
-  failed: "Failed",
-};
-
-export const STATUS_VALUE_OPTIONS: readonly RunFilterValueOption[] =
-  WORKFLOW_EXECUTION_STATUSES.map((value) => ({
-    value,
-    label: STATUS_LABELS[value],
-  }));
-
 export const MODE_VALUE_OPTIONS: readonly RunFilterValueOption[] = [
   { value: "live", label: "Live" },
   { value: "test", label: "Test" },
@@ -298,7 +282,7 @@ export type RunHistoryServerQuery = {
   limit: number;
 };
 
-function uniqueSorted(values: readonly string[]): string[] {
+function uniqueSorted<T extends string>(values: readonly T[]): T[] {
   return [...new Set(values)].toSorted();
 }
 
@@ -308,12 +292,6 @@ const EXECUTION_STATUS_SET: ReadonlySet<string> = new Set(
 
 function isExecutionStatus(value: string): value is WorkflowExecutionStatus {
   return EXECUTION_STATUS_SET.has(value);
-}
-
-function uniqueSortedStatuses(
-  values: readonly WorkflowExecutionStatus[]
-): WorkflowExecutionStatus[] {
-  return [...new Set(values)].toSorted();
 }
 
 /**
@@ -363,7 +341,7 @@ export function toExecutionsQueryInput(input: {
   }
 
   return {
-    statuses: uniqueSortedStatuses(statuses),
+    statuses: uniqueSorted(statuses),
     limit: input.limit,
     ...(workflowIds !== undefined && workflowIds.length > 0
       ? { workflowIds }
@@ -389,7 +367,7 @@ export function autofillRemainder(query: string, label: string): string {
   if (!isLabelPrefix(query, label)) {
     return "";
   }
-  return label.slice(query.length);
+  return label.slice(query.trim().length);
 }
 
 export function uniqueNonEmpty(

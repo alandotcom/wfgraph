@@ -15,6 +15,7 @@ import { ArrowDown, ArrowUp } from "lucide-react";
 import { useMemo, useRef } from "react";
 import { Button } from "#src/components/ui/button";
 import {
+  formatDuration,
   getStatusBadgeClass,
   getStatusLabel,
 } from "#src/components/workflow/workflow-run-shared";
@@ -85,14 +86,10 @@ function formatRunDuration(duration: string | null): string {
   if (!duration) {
     return "—";
   }
-  const parsed = Number.parseInt(duration, 10);
-  if (Number.isNaN(parsed)) {
+  if (Number.isNaN(Number.parseInt(duration, 10))) {
     return duration;
   }
-  if (parsed < 1000) {
-    return `${parsed}ms`;
-  }
-  return `${(parsed / 1000).toFixed(2)}s`;
+  return formatDuration(duration);
 }
 
 function modeLabel(mode: "live" | "test"): string {

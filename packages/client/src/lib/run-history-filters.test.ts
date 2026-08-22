@@ -270,6 +270,7 @@ describe("autofillRemainder", () => {
     expect(autofillRemainder("new wor", "New Workflow")).toBe("kflow");
     expect(autofillRemainder("Onb", "Onboarding")).toBe("oarding");
     expect(autofillRemainder("Onboarding", "Onboarding")).toBe("");
+    expect(autofillRemainder("  new wor", "New Workflow")).toBe("kflow");
   });
 });
 

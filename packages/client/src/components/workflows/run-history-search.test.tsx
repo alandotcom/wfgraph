@@ -4,15 +4,22 @@ import { describe, expect, it } from "vitest";
 import { RunHistorySearch } from "#src/components/workflows/run-history-search";
 import type { RunFilter } from "#src/lib/run-history-filters";
 
-function Harness({ resultCount = 4 }: { resultCount?: number }) {
+function Harness({
+  resultCount = 4,
+  loadedCount = 4,
+}: {
+  resultCount?: number;
+  loadedCount?: number;
+}) {
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<RunFilter[]>([]);
 
   return (
-    <RunHistorySearch.Provider
+    <RunHistorySearch
       entitySuggestions={["user_1"]}
       eventSuggestions={["user.created"]}
       filters={filters}
+      loadedCount={loadedCount}
       onFiltersChange={setFilters}
       onQueryChange={setQuery}
       query={query}
@@ -21,16 +28,7 @@ function Harness({ resultCount = 4 }: { resultCount?: number }) {
         { id: "wf_1", name: "Onboarding" },
         { id: "wf_2", name: "New Workflow" },
       ]}
-    >
-      <RunHistorySearch.Root>
-        <RunHistorySearch.Frame>
-          <RunHistorySearch.Pills />
-          <RunHistorySearch.Input />
-          <RunHistorySearch.ResultCount />
-        </RunHistorySearch.Frame>
-        <RunHistorySearch.Menu />
-      </RunHistorySearch.Root>
-    </RunHistorySearch.Provider>
+    />
   );
 }
 
@@ -48,6 +46,11 @@ describe("RunHistorySearch", () => {
     expect(view.getByRole("option", { name: "Event" })).toBeTruthy();
     expect(view.getByRole("option", { name: "Entity" })).toBeTruthy();
     expect(view.getByText("4 results")).toBeTruthy();
+  });
+
+  it("says how many of the loaded rows matched", () => {
+    const view = render(<Harness loadedCount={12} resultCount={4} />);
+    expect(view.getByText("4 of 12 loaded")).toBeTruthy();
   });
 
   it("builds a status filter pill through field, operator, and value", () => {

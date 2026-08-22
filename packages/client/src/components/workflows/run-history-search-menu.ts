@@ -1,3 +1,4 @@
+import { getStatusLabel } from "#src/components/workflow/workflow-run-shared";
 import {
   autofillRemainder,
   isLabelPrefix,
@@ -7,11 +8,11 @@ import {
   RUN_FILTER_FIELDS,
   RUN_FILTER_OPERATOR_LABELS,
   SOURCE_VALUE_OPTIONS,
-  STATUS_VALUE_OPTIONS,
   type RunFilterField,
   type RunFilterOperator,
   type RunFilterValueOption,
 } from "#src/lib/run-history-filters";
+import { WORKFLOW_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 
 export type RunHistoryDraft =
   | { step: "field" }
@@ -75,7 +76,10 @@ function filterValueOptions(input: {
 }): readonly RunFilterValueOption[] {
   switch (input.field) {
     case "status":
-      return STATUS_VALUE_OPTIONS;
+      return WORKFLOW_EXECUTION_STATUSES.map((value) => ({
+        value,
+        label: getStatusLabel(value),
+      }));
     case "mode":
       return MODE_VALUE_OPTIONS;
     case "source":
@@ -232,13 +236,7 @@ export function buildRunHistoryMenuItems(input: {
   });
 
   const typed = input.query.trim();
-  const canTypeValue = operatorsForField(draft.field).includes("contains");
-  if (
-    typed !== "" &&
-    items.length === 0 &&
-    canTypeValue &&
-    !options.some((option) => option.value === typed || option.label === typed)
-  ) {
+  if (typed !== "" && items.length === 0 && draft.operator === "contains") {
     items.unshift({
       id: "value:typed",
       label: typed,
