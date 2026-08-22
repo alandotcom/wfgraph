@@ -234,6 +234,30 @@ describe("groupSelection", () => {
     ).toEqual(["life->a", "a->c", "b->c", "life->b"]);
   });
 
+  it("groups parallel terminal lookups side by side", () => {
+    const grouped = groupSelection({
+      nodes: [
+        action("a", "fountain/get-user", { x: 100, y: 200 }),
+        action("b", "fountain/get-appointment", { x: 400, y: 200 }),
+      ],
+      edges: [],
+      selectedIds: new Set(["a", "b"]),
+      catalog: emptyCatalog,
+      createId: () => "g1",
+    });
+
+    expect(grouped).not.toBeNull();
+    const frame = grouped?.nodes.find((node) => node.id === "g1");
+    const childA = grouped?.nodes.find((node) => node.id === "a");
+    const childB = grouped?.nodes.find((node) => node.id === "b");
+    expect(frame?.data.config).toEqual({
+      entryNodeIds: ["a", "b"],
+      exitNodeIds: ["a", "b"],
+    });
+    expect(childA?.position.y).toBe(childB?.position.y);
+    expect(childA?.position.x).toBeLessThan(childB?.position.x ?? 0);
+  });
+
   it("frees the members at auto-layout's pitch, keeping the fan-in", () => {
     const freed = ungroupNode(framedNodes(), "g1");
     const freeA = freed.find((node) => node.id === "a");

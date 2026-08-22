@@ -210,6 +210,21 @@ describe("analyzeGroupableSelection", () => {
     });
   });
 
+  it("refuses a partial outgoing edge from parallel lookup exits", () => {
+    expect(
+      analyzeGroupableSelection(
+        [lookupA, lookupB],
+        [edge("e-a-out", "a", "sms")],
+        new Set(["a", "b"]),
+        catalog
+      )
+    ).toMatchObject({
+      ok: false,
+      error:
+        "Parallel lookup exits must share the same target and target handle",
+    });
+  });
+
   it("refuses a Condition among multiple exits", () => {
     expect(
       analyzeGroupableSelection(
@@ -270,7 +285,7 @@ describe("analyzeGroupableSelection", () => {
     });
   });
 
-  it("refuses lookup exits without a shared outgoing step, or one step", () => {
+  it("accepts parallel lookup exits with no outgoing edges", () => {
     expect(
       analyzeGroupableSelection(
         [lookupA, lookupB],
@@ -278,12 +293,15 @@ describe("analyzeGroupableSelection", () => {
         new Set(["a", "b"]),
         catalog
       )
-    ).toMatchObject({
-      ok: false,
-      error:
-        "Parallel lookup exits must share the same target and target handle",
+    ).toEqual({
+      ok: true,
+      entryIds: ["a", "b"],
+      exitIds: ["a", "b"],
+      memberIds: ["a", "b"],
     });
+  });
 
+  it("refuses grouping one step", () => {
     expect(
       analyzeGroupableSelection([lookupA], [], new Set(["a"]), catalog)
     ).toMatchObject({ ok: false, error: "Select at least two steps" });

@@ -234,10 +234,10 @@ export function analyzeGroupableSelection(
     if (exits.some((exit) => isConditionNode(exit))) {
       return { ok: false, error: "A Condition must be the only exit step" };
     }
-    if (
-      exitsWithOutgoing.size !== exitIds.length ||
-      outgoingEndpoints.size !== 1
-    ) {
+    const exitsAreTerminal = exitsWithOutgoing.size === 0;
+    const exitsShareEndpoint =
+      exitsWithOutgoing.size === exitIds.length && outgoingEndpoints.size === 1;
+    if (!exitsAreTerminal && !exitsShareEndpoint) {
       return {
         ok: false,
         error:
