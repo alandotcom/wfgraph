@@ -97,7 +97,7 @@ describe("RunHistoryTable", () => {
     expect(view.getByText("Test")).toBeTruthy();
   });
 
-  it("opens a run when the row is clicked", () => {
+  it("opens a run from the workflow name", () => {
     const onOpenRun = vi.fn(() => undefined);
     const view = render(
       <RunHistoryTable
@@ -110,7 +110,7 @@ describe("RunHistoryTable", () => {
       />
     );
 
-    fireEvent.click(view.getByRole("button", { name: "Open Onboarding run" }));
+    fireEvent.click(view.getByRole("button", { name: "Onboarding" }));
     expect(onOpenRun).toHaveBeenCalledWith(ROWS[0]);
   });
 
@@ -127,9 +127,9 @@ describe("RunHistoryTable", () => {
     );
 
     const names = () =>
-      view
-        .getAllByRole("button", { name: /Open .+ run/ })
-        .map((button) => button.textContent ?? "");
+      [...view.container.querySelectorAll("button")]
+        .map((button) => button.textContent ?? "")
+        .filter((label) => label === "Onboarding" || label === "Billing");
 
     expect(names()[0]).toContain("Onboarding");
     fireEvent.click(view.getByRole("button", { name: "Started" }));

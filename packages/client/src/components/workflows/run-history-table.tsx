@@ -12,7 +12,7 @@ import {
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp } from "lucide-react";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { Button } from "#src/components/ui/button";
 import {
   formatDuration,
@@ -50,8 +50,6 @@ const PAGE_SIZE = 50;
 const VIEWPORT_HEIGHT_PX = 512;
 
 const GRID_TEMPLATE = "minmax(0,1.6fr) 7.5rem 4.5rem 7rem 5.5rem";
-const ROW_CLASS =
-  "grid w-full cursor-pointer appearance-none items-center border-b bg-transparent px-4 py-0 text-left last:border-b-0 hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30";
 
 /**
  * Reports the scroller's size immediately. The library observer waits on
@@ -106,67 +104,75 @@ function durationMs(duration: string | null): number {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-const RUN_HISTORY_COLUMNS = columnHelper.columns([
-  columnHelper.accessor("workflowName", {
-    header: "Workflow",
-    sortFn: "alphanumeric",
-    cell: (info) => {
-      const run = info.row.original;
-      return (
-        <div className="min-w-0">
-          <div className="truncate font-medium text-foreground text-sm">
-            {run.workflowName}
+function createRunHistoryColumns(onOpenRun: (run: RunHistoryTableRow) => void) {
+  return columnHelper.columns([
+    columnHelper.accessor("workflowName", {
+      header: "Workflow",
+      sortFn: "alphanumeric",
+      cell: (info) => {
+        const run = info.row.original;
+        return (
+          <div className="min-w-0">
+            <button
+              className="max-w-full truncate text-left font-medium text-foreground text-sm hover:underline"
+              onClick={() => {
+                onOpenRun(run);
+              }}
+              type="button"
+            >
+              {run.workflowName}
+            </button>
+            <div className="truncate font-mono text-muted-foreground text-xs">
+              {run.startEventName ?? run.entityValue ?? run.workflowId}
+            </div>
           </div>
-          <div className="truncate font-mono text-muted-foreground text-xs">
-            {run.startEventName ?? run.entityValue ?? run.workflowId}
-          </div>
-        </div>
-      );
-    },
-  }),
-  columnHelper.accessor("status", {
-    header: "Status",
-    sortFn: "alphanumeric",
-    cell: (info) => (
-      <span
-        className={cn(
-          "inline-flex rounded border px-2 py-0.5 font-medium text-xs",
-          getStatusBadgeClass(info.getValue())
-        )}
-      >
-        {getStatusLabel(info.getValue())}
-      </span>
-    ),
-  }),
-  columnHelper.accessor("runMode", {
-    header: "Mode",
-    sortFn: "alphanumeric",
-    cell: (info) => (
-      <span className="text-muted-foreground text-xs">
-        {modeLabel(info.getValue())}
-      </span>
-    ),
-  }),
-  columnHelper.accessor("startedAt", {
-    header: "Started",
-    sortFn: "datetime",
-    cell: (info) => (
-      <span className="text-muted-foreground text-xs">
-        {getRelativeTime(info.getValue())}
-      </span>
-    ),
-  }),
-  columnHelper.accessor((row) => durationMs(row.duration), {
-    id: "duration",
-    header: "Duration",
-    sortFn: "basic",
-    cell: (info) => (
-      <span className="text-muted-foreground text-xs tabular-nums">
-        {formatRunDuration(info.row.original.duration)}
-      </span>
-    ),
-  }),
-]);
+        );
+      },
+    }),
+    columnHelper.accessor("status", {
+      header: "Status",
+      sortFn: "alphanumeric",
+      cell: (info) => (
+        <span
+          className={cn(
+            "inline-flex rounded border px-2 py-0.5 font-medium text-xs",
+            getStatusBadgeClass(info.getValue())
+          )}
+        >
+          {getStatusLabel(info.getValue())}
+        </span>
+      ),
+    }),
+    columnHelper.accessor("runMode", {
+      header: "Mode",
+      sortFn: "alphanumeric",
+      cell: (info) => (
+        <span className="text-muted-foreground text-xs">
+          {modeLabel(info.getValue())}
+        </span>
+      ),
+    }),
+    columnHelper.accessor("startedAt", {
+      header: "Started",
+      sortFn: "datetime",
+      cell: (info) => (
+        <span className="text-muted-foreground text-xs">
+          {getRelativeTime(info.getValue())}
+        </span>
+      ),
+    }),
+    columnHelper.accessor((row) => durationMs(row.duration), {
+      id: "duration",
+      header: "Duration",
+      sortFn: "basic",
+      cell: (info) => (
+        <span className="text-muted-foreground text-xs tabular-nums">
+          {formatRunDuration(info.row.original.duration)}
+        </span>
+      ),
+    }),
+  ]);
+}
 
 function RunHistoryTableLoading() {
   return (
@@ -198,11 +204,15 @@ export function RunHistoryTable({
   onOpenRun,
 }: RunHistoryTableProps) {
   const data = runs.length === 0 ? EMPTY_RUNS : [...runs];
+  const columns = useMemo(
+    () => createRunHistoryColumns(onOpenRun),
+    [onOpenRun]
+  );
 
   const table = useTable(
     {
       features: runHistoryTableFeatures,
-      columns: RUN_HISTORY_COLUMNS,
+      columns,
       data,
       autoResetPageIndex: false,
       initialState: {
@@ -296,22 +306,17 @@ export function RunHistoryTable({
       >
         {virtualItems.length === 0 ? (
           rows.map((row) => (
-            <button
-              aria-label={`Open ${row.original.workflowName} run`}
-              className={ROW_CLASS}
+            <div
+              className="grid w-full items-center border-b px-4 last:border-b-0"
               key={row.id}
-              onClick={() => {
-                onOpenRun(row.original);
-              }}
               style={{ gridTemplateColumns: GRID_TEMPLATE }}
-              type="button"
             >
               {row.getAllCells().map((cell) => (
                 <div className="min-w-0 py-2" key={cell.id}>
                   <table.FlexRender cell={cell} />
                 </div>
               ))}
-            </button>
+            </div>
           ))
         ) : (
           <div
@@ -324,28 +329,23 @@ export function RunHistoryTable({
                 return null;
               }
               return (
-                <button
-                  aria-label={`Open ${row.original.workflowName} run`}
-                  className={cn("absolute", ROW_CLASS)}
+                <div
+                  className="absolute grid w-full items-center border-b px-4 last:border-b-0"
                   data-index={virtualRow.index}
                   key={row.id}
-                  onClick={() => {
-                    onOpenRun(row.original);
-                  }}
                   ref={rowVirtualizer.measureElement}
                   style={{
                     height: virtualRow.size,
                     transform: `translateY(${virtualRow.start}px)`,
                     gridTemplateColumns: GRID_TEMPLATE,
                   }}
-                  type="button"
                 >
                   {row.getAllCells().map((cell) => (
                     <div className="min-w-0 py-2" key={cell.id}>
                       <table.FlexRender cell={cell} />
                     </div>
                   ))}
-                </button>
+                </div>
               );
             })}
           </div>
