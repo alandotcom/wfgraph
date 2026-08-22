@@ -207,15 +207,16 @@ function remapGroupEndpoints(
         .map((id) => (typeof id === "string" ? idMap.get(id) : undefined))
         .filter((id): id is string => typeof id === "string")
     : [];
-  const exitId =
-    typeof config.exitNodeId === "string"
-      ? idMap.get(config.exitNodeId)
-      : undefined;
+  const exitIds = Array.isArray(config.exitNodeIds)
+    ? config.exitNodeIds
+        .map((id) => (typeof id === "string" ? idMap.get(id) : undefined))
+        .filter((id): id is string => typeof id === "string")
+    : [];
   if (entryIds.length > 0) {
     next.entryNodeIds = entryIds;
   }
-  if (exitId) {
-    next.exitNodeId = exitId;
+  if (exitIds.length > 0) {
+    next.exitNodeIds = exitIds;
   }
   return next;
 }

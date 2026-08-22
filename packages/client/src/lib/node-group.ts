@@ -96,7 +96,9 @@ export function groupSelection(input: {
   const size = groupFrameSize(bounds.columns, bounds.rows);
   const groupId = (input.createId ?? nanoid)();
   const positionById = childPositions(slots, bounds.columns);
-  const exit = byId.get(analysis.exitId);
+  const conditionExit = analysis.exitIds
+    .map((id) => byId.get(id))
+    .find((node) => isConditionNode(node));
 
   const groupNode: WorkflowNode = {
     id: groupId,
@@ -111,8 +113,8 @@ export function groupSelection(input: {
       type: "group",
       config: {
         entryNodeIds: analysis.entryIds,
-        exitNodeId: analysis.exitId,
-        ...(isConditionNode(exit) ? { outletHandle: "true" as const } : {}),
+        exitNodeIds: analysis.exitIds,
+        ...(conditionExit ? { outletHandle: "true" as const } : {}),
       },
     },
   };
@@ -284,7 +286,7 @@ export function dissolveUndersizedGroups(
 
 /**
  * Why this batch cannot be deleted, or null when it can. A frame's entry ids
- * and exit id are derived from the members it was built from, so a member that
+ * and exit ids are derived from the members it was built from, so a member that
  * goes without its frame leaves a config naming a step that is gone, and the
  * next edge painted off the frame names it too. A batch holding the frame is
  * allowed, because the frame takes its members with it; see `idsRemovedWith`.

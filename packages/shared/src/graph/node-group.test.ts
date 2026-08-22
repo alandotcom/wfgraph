@@ -12,7 +12,7 @@ import {
   groupOutletHandle,
   isGroupNode,
   orderGroupParentsFirst,
-  resolveStoredSource,
+  resolveStoredSources,
   storedTargetsFor,
   undersizedGroupIds,
   type GroupGraphNode,
@@ -39,7 +39,7 @@ function action(
 function group(
   id: string,
   entryNodeIds: string[],
-  exitNodeId: string,
+  exitNodeIds: string[],
   outletHandle?: "true"
 ): GroupGraphNode {
   return {
@@ -49,7 +49,7 @@ function group(
       label: "Group",
       config: {
         entryNodeIds,
-        exitNodeId,
+        exitNodeIds,
         ...(outletHandle ? { outletHandle } : {}),
       },
     },
@@ -124,7 +124,7 @@ describe("analyzeGroupableSelection", () => {
     expect(result).toEqual({
       ok: true,
       entryIds: ["a"],
-      exitId: "c",
+      exitIds: ["c"],
       memberIds: ["a", "b", "c"],
     });
   });
@@ -144,7 +144,7 @@ describe("analyzeGroupableSelection", () => {
     expect(result).toEqual({
       ok: true,
       entryIds: ["a", "b"],
-      exitId: "c",
+      exitIds: ["c"],
       memberIds: ["a", "b", "c"],
     });
   });
@@ -165,7 +165,85 @@ describe("analyzeGroupableSelection", () => {
     expect(result).toMatchObject({
       ok: true,
       entryIds: ["a", "b"],
-      exitId: "c",
+      exitIds: ["c"],
+    });
+  });
+
+  it("accepts disconnected lookups with a shared predecessor and outgoing target", () => {
+    const result = analyzeGroupableSelection(
+      [lookupA, lookupB],
+      [
+        edge("e-start-a", "life", "a", "started"),
+        edge("e-start-b", "life", "b", "started"),
+        { ...edge("e-a-out", "a", "sms"), targetHandle: "input" },
+        { ...edge("e-b-out", "b", "sms"), targetHandle: "input" },
+      ],
+      new Set(["a", "b"]),
+      catalog
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      entryIds: ["a", "b"],
+      exitIds: ["a", "b"],
+      memberIds: ["a", "b"],
+    });
+  });
+
+  it("refuses parallel lookup exits with different target handles", () => {
+    expect(
+      analyzeGroupableSelection(
+        [lookupA, lookupB],
+        [
+          edge("e-start-a", "life", "a", "started"),
+          edge("e-start-b", "life", "b", "started"),
+          { ...edge("e-a-out", "a", "sms"), targetHandle: "one" },
+          { ...edge("e-b-out", "b", "sms"), targetHandle: "two" },
+        ],
+        new Set(["a", "b"]),
+        catalog
+      )
+    ).toMatchObject({
+      ok: false,
+      error:
+        "Parallel lookup exits must share the same target and target handle",
+    });
+  });
+
+  it("refuses a partial outgoing edge from parallel lookup exits", () => {
+    expect(
+      analyzeGroupableSelection(
+        [lookupA, lookupB],
+        [edge("e-a-out", "a", "sms")],
+        new Set(["a", "b"]),
+        catalog
+      )
+    ).toMatchObject({
+      ok: false,
+      error:
+        "Parallel lookup exits must share the same target and target handle",
+    });
+  });
+
+  it("refuses a Condition among multiple exits", () => {
+    expect(
+      analyzeGroupableSelection(
+        [lookupA, condition],
+        [
+          edge("e-start-a", "life", "a", "started"),
+          edge("e-start-c", "life", "c", "started"),
+          { ...edge("e-a-out", "a", "sms"), targetHandle: "input" },
+          {
+            ...edge("e-c-out", "c", "sms", "true"),
+            targetHandle: "input",
+          },
+        ],
+        new Set(["a", "c"]),
+        catalog
+      )
+    ).toMatchObject({
+      ok: false,
+      error: "A Condition must be the only exit step",
     });
   });
 
@@ -207,7 +285,7 @@ describe("analyzeGroupableSelection", () => {
     });
   });
 
-  it("refuses two exits or one step", () => {
+  it("accepts parallel lookup exits with no outgoing edges", () => {
     expect(
       analyzeGroupableSelection(
         [lookupA, lookupB],
@@ -215,8 +293,15 @@ describe("analyzeGroupableSelection", () => {
         new Set(["a", "b"]),
         catalog
       )
-    ).toMatchObject({ ok: false, error: "Needs exactly one exit step" });
+    ).toEqual({
+      ok: true,
+      entryIds: ["a", "b"],
+      exitIds: ["a", "b"],
+      memberIds: ["a", "b"],
+    });
+  });
 
+  it("refuses grouping one step", () => {
     expect(
       analyzeGroupableSelection([lookupA], [], new Set(["a"]), catalog)
     ).toMatchObject({ ok: false, error: "Select at least two steps" });
@@ -288,7 +373,7 @@ describe("display and store endpoints", () => {
       action("life", "ignored", {
         data: { type: "lifecycle", label: "Start" },
       }),
-      group("g", ["a"], "c"),
+      group("g", ["a"], ["c"]),
       { ...lookupA, parentId: "g" },
       { ...lookupB, parentId: "g" },
       { ...condition, parentId: "g" },
@@ -313,7 +398,7 @@ describe("display and store endpoints", () => {
       "out",
     ]);
 
-    expect(resolveStoredSource(nodes, "g")).toBe("c");
+    expect(resolveStoredSources(nodes, "g")).toEqual(["c"]);
     expect(storedTargetsFor(nodes, "g")).toEqual(["a"]);
   });
 
@@ -334,10 +419,10 @@ describe("display and store endpoints", () => {
     // end whose other side is unframed left it naming both children, which the
     // layout below then dropped as if it were interior.
     const nodes: GroupGraphNode[] = [
-      group("g1", ["a"], "b"),
+      group("g1", ["a"], ["b"]),
       { ...lookupA, parentId: "g1" },
       { ...lookupB, parentId: "g1" },
-      group("g2", ["c"], "d"),
+      group("g2", ["c"], ["d"]),
       { ...condition, parentId: "g2" },
       { ...action("d", "fountain/get-user"), parentId: "g2" },
     ];
@@ -362,7 +447,7 @@ describe("display and store endpoints", () => {
       action("life", "ignored", {
         data: { type: "lifecycle", label: "Start" },
       }),
-      group("g", ["a", "b"], "c"),
+      group("g", ["a", "b"], ["c"]),
       { ...lookupA, parentId: "g" },
       { ...lookupB, parentId: "g" },
       { ...condition, parentId: "g" },
@@ -403,6 +488,41 @@ describe("display and store endpoints", () => {
       { source: "life", target: "b", sourceHandle: "started" },
     ]);
   });
+
+  it("collapses parallel lookup exits and expands their outlet operations", () => {
+    const nodes: GroupGraphNode[] = [
+      group("g", ["a", "b"], ["a", "b"]),
+      { ...lookupA, parentId: "g" },
+      { ...lookupB, parentId: "g" },
+      action("sms", "resend/send-email"),
+      action("next", "resend/send-email"),
+    ];
+    const edges = [
+      { ...edge("out-a", "a", "sms"), targetHandle: "input" },
+      { ...edge("out-b", "b", "sms"), targetHandle: "input" },
+    ];
+
+    expect(displayEdgesForGroups(nodes, edges)).toEqual([
+      { ...edges[0], source: "g" },
+    ]);
+    expect(resolveStoredSources(nodes, "g")).toEqual(["a", "b"]);
+    expect(fanOutStoreEdgeIds(nodes, edges, "out-a")).toEqual([
+      "out-a",
+      "out-b",
+    ]);
+    expect(
+      fanOutStoreEdges({
+        nodes,
+        edges,
+        sourceId: "g",
+        targetId: "next",
+        sourceHandle: undefined,
+      })
+    ).toEqual([
+      { source: "a", target: "next", sourceHandle: undefined },
+      { source: "b", target: "next", sourceHandle: undefined },
+    ]);
+  });
 });
 
 describe("groupMemberSlots", () => {
@@ -424,7 +544,7 @@ describe("groupMemberSlots", () => {
 describe("expandGroupCopyIds", () => {
   it("takes the frame and every child when either is selected", () => {
     const nodes = [
-      group("g", ["a"], "c"),
+      group("g", ["a"], ["c"]),
       { ...lookupA, parentId: "g" },
       { ...condition, parentId: "g" },
       action("sms", "resend/send-email"),
@@ -445,22 +565,22 @@ describe("expandGroupCopyIds", () => {
 
 describe("isGroupNode", () => {
   it("reads data.type, not the React Flow type field", () => {
-    expect(isGroupNode(group("g", ["a"], "c"))).toBe(true);
+    expect(isGroupNode(group("g", ["a"], ["c"]))).toBe(true);
     expect(isGroupNode(lookupA)).toBe(false);
   });
 });
 
 describe("undersizedGroupIds", () => {
   it("names a group that no longer holds two children", () => {
-    const nodes = [group("g", ["a"], "c"), { ...lookupA, parentId: "g" }];
+    const nodes = [group("g", ["a"], ["c"]), { ...lookupA, parentId: "g" }];
     expect(undersizedGroupIds(nodes)).toEqual(["g"]);
   });
 });
 
 describe("groupOutletHandle", () => {
   it("reads the baked Condition outlet and ignores an absent one", () => {
-    expect(groupOutletHandle(group("g", ["a"], "c", "true"))).toBe("true");
-    expect(groupOutletHandle(group("g", ["a"], "c"))).toBeUndefined();
+    expect(groupOutletHandle(group("g", ["a"], ["c"], "true"))).toBe("true");
+    expect(groupOutletHandle(group("g", ["a"], ["c"]))).toBeUndefined();
   });
 });
 
@@ -470,7 +590,7 @@ describe("orderGroupParentsFirst", () => {
       action("life", "ignored", {
         data: { type: "lifecycle", label: "Start" },
       }),
-      group("g", ["a"], "c"),
+      group("g", ["a"], ["c"]),
       { ...lookupA, parentId: "g" },
     ];
     expect(orderGroupParentsFirst(nodes)).toBe(nodes);
@@ -478,7 +598,7 @@ describe("orderGroupParentsFirst", () => {
 
   it("reorders when a child sits before its group", () => {
     const child = { ...lookupA, parentId: "g" };
-    const frame = group("g", ["a"], "c");
+    const frame = group("g", ["a"], ["c"]);
     const rest = action("sms", "resend/send-email");
     expect(orderGroupParentsFirst([child, rest, frame])).toEqual([
       rest,

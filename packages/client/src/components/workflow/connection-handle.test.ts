@@ -256,7 +256,7 @@ describe("group outlet handle", () => {
         type: "group",
         config: {
           entryNodeIds: ["a"],
-          exitNodeId: "c",
+          exitNodeIds: ["c"],
           outletHandle: "true",
         },
       },

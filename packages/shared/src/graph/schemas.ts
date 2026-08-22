@@ -176,7 +176,7 @@ const workflowAddNodeDataSchema = Schema.StructWithRest(
 
 const workflowGroupConfigSchema = Schema.Struct({
   entryNodeIds: Schema.optional(listOf(NonEmptyTrimmedString)),
-  exitNodeId: Schema.optional(NonEmptyTrimmedString),
+  exitNodeIds: Schema.optional(listOf(NonEmptyTrimmedString)),
   // Baked at nest time so GroupNode can paint its one outlet without
   // scanning the graph for the exit Condition.
   outletHandle: Schema.optional(Schema.Literal("true")),
