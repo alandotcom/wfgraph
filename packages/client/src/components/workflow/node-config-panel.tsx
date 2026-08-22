@@ -152,10 +152,13 @@ function TabBar({ placement, activeTab, onSelect, showRuns }: TabBarProps) {
   }
 
   return (
-    <div className="shrink-0 border-b px-4 py-2.5">
-      <div className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-muted p-[3px] text-muted-foreground">
+    <div className="shrink-0 border-b px-4 py-2">
+      {/* mira sizes every control in the editor at 28px; this segmented control
+          predates that adoption and was 36px with 14px labels, which put the
+          panel a density step away from the menu bar directly above it. */}
+      <div className="inline-flex h-7 w-full items-center justify-center rounded-md bg-muted p-[3px] text-muted-foreground">
         <button
-          className={`inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 py-1 font-medium text-sm transition-[color,box-shadow] ${
+          className={`inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 font-medium text-xs transition-[color,box-shadow] ${
             activeTab === "properties"
               ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground"
@@ -167,7 +170,7 @@ function TabBar({ placement, activeTab, onSelect, showRuns }: TabBarProps) {
         </button>
         {showRuns ? (
           <button
-            className={`inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 py-1 font-medium text-sm transition-[color,box-shadow] ${
+            className={`inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 font-medium text-xs transition-[color,box-shadow] ${
               activeTab === "runs"
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground"
