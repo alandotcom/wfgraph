@@ -233,6 +233,8 @@ A step the run can never reach is muted: the card drops to 50% opacity, its inco
 
 A quiet menu bar above the canvas and a Panel-toned sidebar for workflow lists and run history. Selection state uses Graphite Wash fills; the active workflow is marked by tone, never by an accent stripe.
 
+A Panel-toned status strip closes the canvas column: 32px tall, Caption type, a hairline top border, one line that never wraps. It states what the editor is doing rather than offering anything to press, so the only control on it is the way out of a run. With a past run pinned to the canvas it tints toward `--info` and carries that run's identity; the height is the same in both states, because the strip and the graph share the column's height between them.
+
 ## 6. Do's and Don'ts
 
 ### Do:

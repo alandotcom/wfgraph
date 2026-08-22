@@ -83,7 +83,6 @@ function baseActions(): WorkflowToolbarActions {
   return {
     handleSave: vi.fn(async () => {}),
     handleExecute: vi.fn(async () => {}),
-    handleShowIssues: vi.fn(),
     handleClearWorkflow: vi.fn(),
     handleDeleteWorkflow: vi.fn(),
     loadWorkflows: vi.fn(async () => {}),

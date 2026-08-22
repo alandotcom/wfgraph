@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   getUpstreamConditionFields,
   getUpstreamFields,
@@ -16,7 +16,8 @@ import {
   createEdge,
   createNode,
   startedEdge,
-  surface,
+  createSurface,
+  type MutableCatalog,
 } from "#src/lib/upstream-node-fields-test-support";
 import {
   LIFECYCLE_CANCELED_HANDLE,
@@ -25,6 +26,13 @@ import {
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 describe("upstream-node-fields events", () => {
+  // A catalog of its own per case: nothing here outlives the `it` that
+  // wrote it, which is what keeps one file's Events out of another's.
+  let surface: MutableCatalog;
+  beforeEach(() => {
+    surface = createSurface();
+  });
+
   it("offers a Start Event's datetime fields as timestamps", () => {
     // The acceptance case for the condition builder: a field an Event declared as
     // a moment in time arrives typed `timestamp`, which is what gets it the

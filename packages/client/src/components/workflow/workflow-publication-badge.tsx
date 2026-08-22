@@ -3,7 +3,7 @@
  *
  * Driven by the publication digest on `getById`, not the save queue. Kept as its
  * own component so the badge's three states can be tested through props without
- * standing up the rest of the toolbar.
+ * standing up the rest of the status strip.
  */
 
 type WorkflowPublicationBadgeProps = {
@@ -11,25 +11,28 @@ type WorkflowPublicationBadgeProps = {
   hasUnpublishedChanges: boolean;
 };
 
-export function WorkflowPublicationBadge({
+/**
+ * Answers "is the draft what is running", which nothing on this screen said
+ * once the publish toast faded.
+ *
+ * Worded away from "Live" on purpose: that word already names the run mode, and
+ * the strip now prints the two of them inches apart, so a second meaning for it
+ * would read as one switch.
+ */
+export function publicationLabel({
   isPublished,
   hasUnpublishedChanges,
-}: WorkflowPublicationBadgeProps) {
-  // Answers "is the draft what is running", which nothing on this screen said
-  // once the publish toast faded. Worded away from "Live" on purpose: that word
-  // already names the run mode two controls to the right, and two meanings for
-  // it read as one switch.
+}: WorkflowPublicationBadgeProps): string {
   if (!isPublished) {
-    return (
-      <span className="rounded-md border bg-card px-2 py-1 font-medium text-muted-foreground text-xs">
-        Never published
-      </span>
-    );
+    return "Never published";
   }
+  return hasUnpublishedChanges ? "Unpublished changes" : "Published";
+}
 
+export function WorkflowPublicationBadge(props: WorkflowPublicationBadgeProps) {
   return (
-    <span className="rounded-md border bg-card px-2 py-1 font-medium text-muted-foreground text-xs">
-      {hasUnpublishedChanges ? "Unpublished changes" : "Published"}
+    <span className="shrink-0 whitespace-nowrap">
+      {publicationLabel(props)}
     </span>
   );
 }

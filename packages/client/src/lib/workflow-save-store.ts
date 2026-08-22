@@ -43,6 +43,16 @@ export const isSavingAtom = atom(false);
 export const hasUnsavedChangesAtom = atom(false);
 
 /**
+ * When the last write landed, or null before the first one of the session.
+ *
+ * The status strip says "Saved 14:32" rather than "Saved", because a workflow
+ * left open all afternoon says "Saved" whether the last edit went out a second
+ * ago or was dropped an hour ago. Written only where a save succeeds, so a
+ * failure leaves the previous time standing beside the failure wording.
+ */
+export const lastSavedAtAtom = atom<Date | null>(null);
+
+/**
  * The last save failure, or null after a save succeeds.
  *
  * A debounced save has no caller waiting on it, so without this a failed
@@ -236,6 +246,15 @@ export const saveWorkflowAtom = atom(
             markWorkflowListStale();
             cacheWorkflowPublication(queryClient, workflow);
 
+            // The queue drains workflows the editor may already have left, so
+            // the clock reading is only true of the workflow on screen. Written
+            // under the same guard as the dirty flag below: without it, saving
+            // A at 12:04 and then opening B had B's strip claiming a write that
+            // never happened to it.
+            if (get(currentWorkflowIdAtom) === next.workflowId) {
+              set(lastSavedAtAtom, new Date());
+            }
+
             // Clear the dirty flag only when nothing newer is queued and the
             // saved workflow is still the one on screen.
             if (
@@ -381,6 +400,7 @@ export const createWorkflowAtom = atom(
       set(workflowNameErrorAtom, null);
       set(hasUnsavedChangesAtom, false);
       set(lastSaveErrorAtom, null);
+      set(lastSavedAtAtom, new Date());
       markWorkflowListStale();
       cacheWorkflowPublication(queryClient, workflow);
       return { ok: true, workflow };

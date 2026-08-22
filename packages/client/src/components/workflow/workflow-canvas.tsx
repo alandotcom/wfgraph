@@ -789,7 +789,7 @@ export function WorkflowCanvas() {
         onSelectionChange={editingLocked ? undefined : onSelectionChange}
       >
         <Panel
-          className="workflow-controls-panel border-none bg-transparent p-0"
+          className="border-none bg-transparent p-0"
           position="bottom-left"
         >
           <Controls

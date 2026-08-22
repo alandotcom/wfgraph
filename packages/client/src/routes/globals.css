@@ -455,9 +455,21 @@
   }
 }
 
-/* Safe area support for mobile devices */
+/* The status strip is the bottom of the editor on every device, so the phone's
+   home indicator is its problem rather than the canvas controls'. The controls
+   used to carry a matching offset because they sat at the bottom of the screen
+   with a test-mode banner beside them; both of those are now above the strip,
+   which cannot be overlapped because it is a sibling of the canvas rather than
+   a layer over it.
+
+   This is the one place the strip is not `h-8`. The inset is a constant of the
+   device, so the height it produces never changes under the user and React
+   Flow is measured against it once, which is the property the strip's own
+   header promises. Padding as well as height, so the text stays clear of the
+   home indicator rather than sitting under it. */
 @media (max-width: 768px) {
-  .workflow-controls-panel {
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 5.5rem) !important;
+  .workflow-status-strip {
+    height: calc(2rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }

@@ -7,6 +7,7 @@ import { Button } from "#src/components/ui/button";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
 import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
 import { WorkflowSidebarPanel } from "#src/components/workflow/workflow-sidebar-panel";
+import { WorkflowStatusStrip } from "#src/components/workflow/workflow-status-strip";
 import { WorkflowToolbar } from "#src/components/workflow/workflow-toolbar";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
 import { isRunInProgress } from "#src/lib/execution-logs";
@@ -182,31 +183,34 @@ const WorkflowEditor = () => {
         </div>
       )}
 
-      {/* The canvas column: menu bar above, graph below. The menu bar belongs to
-          this column rather than to the shell, because the panel beside it runs
-          the full height of the viewport.
+      {/* The canvas column: menu bar above, graph in the middle, status strip
+          below. All three belong to this column rather than to the shell,
+          because the panel beside it runs the full height of the viewport.
 
-          `relative` gives the toolbar's test-mode banner a box to sit at the
-          bottom of, and `min-w-0` stops the graph from widening the column past
-          the space the panel leaves it. */}
-      <div className="relative flex min-w-0 flex-1 flex-col">
+          `min-w-0` stops the graph from widening the column past the space the
+          panel leaves it. */}
+      <div className="flex min-w-0 flex-1 flex-col">
         <div className="shrink-0 p-4">
           <WorkflowToolbar workflowId={currentWorkflowId ?? undefined} />
         </div>
-        {/* `min-h-0` so this box is bounded by the column rather than by the
-            graph inside it: React Flow measures whatever height it is given.
+        {/* This box is bounded by the column rather than by the graph inside
+            it: React Flow measures whatever height it is given.
 
-            The floor is what stops the bar above from eating the canvas. That
-            row is `shrink-0`, so anything that grows it -- the save status
-            swapping "Saved" for "Saving", the issue count gaining a digit, the
-            row wrapping to two lines on a narrow canvas -- comes straight out of
-            this box, and React Flow reacts to every one of those. The floor
-            holds the graph at a workable size and lets the shell clip the
-            overflow, which is a far better failure than handing React Flow a
-            parent of zero height. */}
-        <div className="min-h-80 flex-1">
+            The floor is what stops the two `shrink-0` rows around it from
+            eating the canvas -- the menu bar stacking to a column on a narrow
+            canvas is the case that does it -- and it yields on a short viewport
+            rather than pushing the strip past the shell's clip. At 390px of
+            height, a 20rem floor plus a stacked menu bar leaves the strip
+            outside the clip, which takes "Back to draft" off screen exactly
+            where the run panel is most likely to be collapsed. 40dvh keeps the
+            graph workable on a desktop and lets the strip survive on a phone in
+            landscape; the shell clips whatever is left over, which is still a
+            far better failure than handing React Flow a parent of zero
+            height. */}
+        <div className="min-h-[min(20rem,40dvh)] flex-1">
           <WorkflowCanvas />
         </div>
+        <WorkflowStatusStrip workflowId={currentWorkflowId ?? undefined} />
       </div>
 
       <WorkflowSidebarPanel />

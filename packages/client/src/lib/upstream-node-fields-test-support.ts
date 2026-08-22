@@ -17,11 +17,24 @@ export type MutableCatalog = {
   integrations: ExtensionCatalog["integrations"];
 };
 
-export const surface: MutableCatalog = {
-  events: [],
-  actions: [],
-  integrations: [],
-};
+/**
+ * A fresh empty catalog, one per case.
+ *
+ * A factory rather than a module-level object every file writes into. The suite
+ * runs with `isolate: false`, so a shared object is one object for every test
+ * file a worker evaluates: an Event left behind by the events file was still in
+ * the catalog when the actions file asked a Wait what it offers downstream, and
+ * the Wait's `event` field expanded into that Event's payload. A reset hook
+ * would have fixed those three files and left the next file that forgets to call
+ * it holding the same bug; there is nothing here to forget.
+ */
+export function createSurface(): MutableCatalog {
+  return {
+    events: [],
+    actions: [],
+    integrations: [],
+  };
+}
 
 /** One catalog action, with the fields a case cares about and defaults elsewhere. */
 export function anAction(
