@@ -84,7 +84,15 @@ function SelectContent({
   sideOffset = 4,
   align = "center",
   alignOffset = 0,
-  alignItemWithTrigger = true,
+  // Local change, re-apply after a `shadcn add select`: Base UI defaults this
+  // on, which overlaps the popup on its trigger so the chosen item's text sits
+  // over the trigger's. It is meant to fall back when the viewport cannot hold
+  // that, but the fallback is governed by a min-height on the positioner and
+  // does not fire here -- a Service picker near the top of the panel with the
+  // third of four options chosen opened upward, ran out of room, and scrolled,
+  // so most of the list was unreachable. Base UI's own guidance is to turn this
+  // off when the popup should not cover its trigger.
+  alignItemWithTrigger = false,
   ...props
 }: SelectPrimitive.Popup.Props &
   Pick<
