@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { readSaveState } from "#src/components/workflow/workflow-save-status";
+import {
+  readSaveState,
+  saveStatusLabel,
+} from "#src/components/workflow/workflow-save-status";
 
 const clean = {
   isSaving: false,
@@ -41,5 +44,26 @@ describe("readSaveState", () => {
     expect(readSaveState({ ...clean, hasUnsavedChanges: true })).toBe(
       "unsaved"
     );
+  });
+});
+
+describe("saveStatusLabel", () => {
+  it("says when the settled state settled", () => {
+    expect(saveStatusLabel("saved", new Date(2026, 7, 12, 12, 4))).toBe(
+      "Saved 12:04"
+    );
+  });
+
+  it("says plain Saved before this session has written anything", () => {
+    expect(saveStatusLabel("saved", null)).toBe("Saved");
+  });
+
+  it("leaves the in-flight states timeless", () => {
+    // These three are about a write happening now, so a clock reading beside
+    // them would be the time of some earlier write.
+    const savedAt = new Date(2026, 7, 12, 12, 4);
+    expect(saveStatusLabel("saving", savedAt)).toBe("Saving");
+    expect(saveStatusLabel("unsaved", savedAt)).toBe("Unsaved changes");
+    expect(saveStatusLabel("failed", savedAt)).toBe("Save failed");
   });
 });

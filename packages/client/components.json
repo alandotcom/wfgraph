@@ -1,11 +1,11 @@
 {
   "$schema": "https://ui.shadcn.com/schema.json",
-  "style": "new-york",
-  "rsc": true,
+  "style": "base-mira",
+  "rsc": false,
   "tsx": true,
   "tailwind": {
     "config": "",
-    "css": "packages/client/src/routes/globals.css",
+    "css": "src/routes/globals.css",
     "baseColor": "neutral",
     "cssVariables": true,
     "prefix": ""
@@ -13,7 +13,7 @@
   "iconLibrary": "lucide",
   "aliases": {
     "components": "#src/components",
-    "utils": "#src/lib/utils",
+    "utils": "@wfgraph/shared/utils",
     "ui": "#src/components/ui",
     "lib": "#src/lib",
     "hooks": "#src/hooks"

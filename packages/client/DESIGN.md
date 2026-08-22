@@ -7,6 +7,8 @@ colors:
   graphite-mid: "oklch(0.556 0 0)"
   graphite-line: "oklch(0.922 0 0)"
   graphite-wash: "oklch(0.97 0 0)"
+  page: "oklch(0.96 0 0)"
+  page-dark: "oklch(0.18 0 0)"
   panel: "oklch(0.985 0 0)"
   void: "oklch(0 0 0)"
   paper-dark: "oklch(0.98 0 0)"
@@ -125,6 +127,7 @@ An achromatic graphite ramp carries the entire interface; saturated hues exist o
 - **Paper** (oklch(1 0 0)): The content surface and card background in light mode.
 - **Panel** (oklch(0.985 0 0)): The sidebar layer, half a step off Paper so panels read as a separate plane without a border doing all the work.
 - **Graphite Wash** (oklch(0.97 0 0)): Secondary and muted fills: hover states, secondary buttons, muted badges.
+- **Page** (oklch(0.96 0 0), oklch(0.18 0 0) in dark): The surface the editor shell is inset on, and the only thing that uses it. `--page`. Solved for the step against the two surfaces the shell shows at its edge, Paper and Panel, which measures 1.12:1 and 1.08:1. It is its own step on the ramp rather than a reuse of Graphite Wash, because a page and a fill inside a panel are different things and one value cannot be retuned for both; at three levels of 255 apart nobody would tell them apart where they met, so the separation is in what each token means. In dark mode the step goes up rather than down, as Graphite Wash Dark and the card step do, because nothing renders darker than Void: it sits between those two, above the wash so a fill inside the shell never matches the page and below the card so the page never reads as a surface something could sit on. The shell is what stays Void there, since the canvas is Void by design and lifting the shell would repaint the field the graph floats on.
 - **Graphite Line** (oklch(0.922 0 0)): Hairline borders and input strokes (oklch(0.27 0 0) in dark mode).
 - **Graphite Mid** (oklch(0.556 0 0)): Muted foreground for descriptions and placeholders. This is the darkest gray allowed to carry text on Paper (4.5:1 floor); anything lighter is decorative only.
 - **Canvas Line** (oklch(0.6 0 0), oklch(0.48 0 0) in dark): The structural stroke on the React Flow canvas, carrying a node's resting border and the wire between two nodes. `--canvas-line`. It is a separate step from Graphite Line because a node card is Paper on a Paper canvas, so this stroke is the whole card edge rather than a hairline over a fill; it is solved for the 3:1 WCAG 1.4.11 asks of a graphic carrying meaning, which Graphite Line misses at 1.20:1. Canvas only. A border inside a panel or a card is still Graphite Line.
@@ -177,6 +180,8 @@ Both families are self-hosted through Fontsource variable packages, imported in 
 ## 4. Elevation
 
 Depth follows shadcn's native vocabulary and nothing more: hairline borders define structure, a whisper of shadow keeps surfaces from feeling painted on, and real shadow is reserved for things that genuinely float. In dark mode, tonal layering does most of the work (Void background, 0.205-lightness cards, 0.15 washes) because shadows read poorly on black. The card step has to survive 8-bit quantisation to do that job: anything under about oklch(0.12) rounds to the same rgb(0,0,0) as the background and separates by nothing at all.
+
+The editor shell is inset 12px from the viewport on all four sides at `md` and above, with a `--radius-xl` corner, a hairline border and shadow-xs over the Page surface. That inset is the app's one structural elevation: it says the editor is a thing on a page rather than the window itself. In dark mode the Page step carries it alone, since shadow-xs is invisible against any of these tones. Below `md` the inset is dropped entirely, along with the border and the radius, since 24px of a phone's width is a real cost and the status strip needs the bottom edge of the screen for the home indicator.
 
 ### Shadow Vocabulary
 
@@ -231,7 +236,9 @@ A step the run can never reach is muted: the card drops to 50% opacity, its inco
 
 ### Navigation
 
-A quiet toolbar over the canvas and a Panel-toned sidebar for workflow lists and run history. Selection state uses Graphite Wash fills; the active workflow is marked by tone, never by an accent stripe.
+A quiet menu bar above the canvas and a Panel-toned sidebar for workflow lists and run history. Selection state uses Graphite Wash fills; the active workflow is marked by tone, never by an accent stripe.
+
+A Panel-toned status strip closes the canvas column: 32px tall, Caption type, a hairline top border, one line that never wraps. It states what the editor is doing rather than offering anything to press, so the only control on it is the way out of a run. With a past run pinned to the canvas it tints toward `--info` and carries that run's identity; the height is the same in both states, because the strip and the graph share the column's height between them.
 
 ## 6. Do's and Don'ts
 

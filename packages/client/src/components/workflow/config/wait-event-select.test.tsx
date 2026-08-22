@@ -1,6 +1,6 @@
 import { fireEvent, render, type RenderResult } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import type { NodeConfigPatch } from "#src/components/workflow/config/node-config-patch";
@@ -116,6 +116,30 @@ function renderSelectWithGraph(
         | Subscription[]
         | undefined,
   };
+}
+
+/**
+ * The select with its own writes fed back, which is what the editor does.
+ *
+ * The harness above is enough for a case about the patch a control emits; a
+ * case about what the panel shows afterwards needs that patch to land.
+ */
+function renderControlledSelect(initialConfig: Record<string, unknown>) {
+  function Controlled() {
+    const [config, setConfig] = useState(initialConfig);
+
+    return (
+      <WaitEventSelect
+        config={config}
+        disabled={false}
+        onUpdateConfig={(patch) =>
+          setConfig((previous) => ({ ...previous, ...patch }))
+        }
+      />
+    );
+  }
+
+  return render(withGraph([], <Controlled />));
 }
 
 /**
@@ -278,6 +302,10 @@ describe("WaitEventSelect match editor", () => {
       ],
     });
 
+    // The compiled expression is a detail of the editor rather than of the
+    // rule, so it sits behind Edit with the controls it describes.
+    fireEvent.click(view.getByRole("button", { name: "Edit Match" }));
+
     expect(view.getByText(/Compiled CEL/).textContent).toContain(
       'payload.settledAt < date("2026-07-01T00:00:00.000Z")'
     );
@@ -336,5 +364,54 @@ describe("WaitEventSelect empty selection", () => {
     });
 
     expect(view.queryByText(/Name at least one event/)).toBeNull();
+  });
+});
+
+describe("WaitEventSelect seeded match", () => {
+  // The rule builder mounts the moment a match exists, and a seed leaves the
+  // right side of the comparison empty. Landing on a summary of a rule nobody
+  // has finished would make "Add a match" one click short of an editor.
+  it("opens the rule builder on its controls after a seed", () => {
+    const view = renderControlledSelect({
+      waitFor: [{ event: "billing/payment.settled" }],
+    });
+
+    fireEvent.click(view.getByRole("button", { name: "Add a match" }));
+
+    expect(view.getByLabelText("Select field")).toBeTruthy();
+  });
+
+  // A match loaded with the workflow is a rule already made, so it reads as one.
+  it("opens a stored match in view mode", () => {
+    const view = renderControlledSelect({
+      waitFor: [
+        {
+          event: "billing/payment.settled",
+          match: JSON.stringify({
+            version: 2,
+            groupLogic: "and",
+            groups: [
+              {
+                id: "g",
+                logic: "and",
+                conditions: [
+                  {
+                    id: "r",
+                    field: "appointmentId",
+                    fieldType: "string",
+                    operator: "equals",
+                    value: "abc",
+                  },
+                ],
+              },
+            ],
+          }),
+        },
+      ],
+    });
+
+    expect(view.queryByLabelText("Select field")).toBeNull();
+    expect(view.getByText("1 condition")).toBeTruthy();
+    expect(view.getByRole("button", { name: "Edit Match" })).toBeTruthy();
   });
 });

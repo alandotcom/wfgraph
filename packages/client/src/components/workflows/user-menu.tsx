@@ -23,9 +23,7 @@ export const UserMenu = () => {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        render={<Button className="h-9" size="sm" variant="outline" />}
-      >
+      <DropdownMenuTrigger render={<Button variant="outline" />}>
         Settings
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">

@@ -1,13 +1,13 @@
 /**
- * Toolbar behaviour: save/create, pre-run issue collection, execute, and the
- * workflow-level menu actions. Chrome components live beside this file; run
- * animation and payload memory live in `workflow-run-actions`.
+ * Toolbar behaviour: pre-run issue collection, execute, and the workflow-level
+ * menu actions. Chrome components live beside this file; run animation and
+ * payload memory live in `workflow-run-actions`.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { toast } from "sonner";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import {
@@ -17,7 +17,8 @@ import {
 import { WorkflowIssuesOverlay } from "#src/components/overlays/workflow-issues-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useDeleteWorkflow } from "#src/hooks/use-delete-workflow";
-import { useAfterPaint, useDomEvent } from "#src/hooks/effects";
+import { useGoToStep } from "#src/hooks/use-workflow-issues";
+import { useDomEvent } from "#src/hooks/effects";
 import { isTextEntry } from "#src/lib/is-text-entry";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
@@ -37,35 +38,30 @@ import {
   selectedNodeAtom,
   setNodeStatusesAtom,
   updateNodeDataAtom,
-  addNodeAtom,
   canRedoAtom,
   canUndoAtom,
   redoAtom,
   undoAtom,
 } from "#src/lib/workflow-graph-store";
-import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   executeWorkflowRun,
   rememberTestPayload,
   type UpdateNodeData,
 } from "#src/lib/workflow-run-actions";
 import {
-  createWorkflowAtom,
   currentWorkflowIdAtom,
   currentWorkflowModeAtom,
   currentWorkflowNameAtom,
   hasUnsavedChangesAtom,
   isSavingAtom,
   isWorkflowOwnerAtom,
-  saveWorkflowAtom,
   setWorkflowModeAtom,
-  workflowNameErrorAtom,
 } from "#src/lib/workflow-save-store";
 import { toSerializedGraph } from "#src/lib/rpc-client";
 import {
   isExecutingAtom,
   isGeneratingAtom,
-  isTransitioningFromHomepageAtom,
   propertiesPanelActiveTabAtom,
 } from "#src/lib/workflow-ui-store";
 import {
@@ -86,15 +82,10 @@ import { toPersistedNodes } from "#src/lib/workflow-graph-types";
 
 type WorkflowHandlerParams = {
   currentWorkflowId: string | null;
-  workflowName: string;
   nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
   updateNodeData: UpdateNodeData;
   isExecuting: boolean;
   setIsExecuting: (value: boolean) => void;
-  setCurrentWorkflowName: (name: string) => void;
-  setWorkflowNameError: (message: string | null) => void;
-  setIsTransitioningFromHomepage: (value: boolean) => void;
   setActiveTab: (value: string) => void;
   setSelectedNodeId: (id: string | null) => void;
   userIntegrations: Array<{ id: string; type: string }>;
@@ -102,35 +93,27 @@ type WorkflowHandlerParams = {
 
 function useWorkflowHandlers({
   currentWorkflowId,
-  workflowName,
   nodes,
-  edges,
   updateNodeData,
   isExecuting,
   setIsExecuting,
-  setCurrentWorkflowName,
-  setWorkflowNameError,
-  setIsTransitioningFromHomepage,
   setActiveTab,
   setSelectedNodeId,
   userIntegrations,
 }: WorkflowHandlerParams) {
   const catalog = useExtensionCatalog();
-  // The field a "Fix" link is heading for. The panel holding it mounts in the
-  // commit `handleGoToStep` triggers, so the focus waits for that paint rather
-  // than for the 100ms timeout this replaced, which was a race the panel won
-  // only because it is fast.
-  const [pendingFieldFocus, setPendingFieldFocus] = useState<string | null>(
-    null
-  );
+  // The same implementation the status strip's issue count reaches for, so
+  // "Fix" means one thing wherever the list was opened from. The hook is
+  // instantiated per caller and each instance owns its own pending-focus state;
+  // that state is write-then-consume within a single click, so only the
+  // instance whose overlay was clicked ever holds one.
+  const handleGoToStep = useGoToStep();
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const clearGraphSelection = useSetAtom(clearGraphSelectionAtom);
   const setExecutionOverlay = useSetAtom(executionOverlayGraphAtom);
   const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
-  const saveWorkflow = useSetAtom(saveWorkflowAtom);
-  const createWorkflow = useSetAtom(createWorkflowAtom);
   // No errorMessage: a rejected run carries a server message worth reading, and
   // the mutation cache falls back to it. Every other outcome arrives as a
   // successful response with a status on it, which executeWorkflowRun reads.
@@ -141,62 +124,6 @@ function useWorkflowHandlers({
       onSuccess: () => refreshRunHistory(queryClient),
     })
   );
-
-  const handleSave = async () => {
-    // The `add` node is a placeholder, so a canvas holding only one has nothing
-    // worth saving. The save itself strips it; this is the emptiness check.
-    if (!nodes.some((node) => node.type !== "add")) {
-      setWorkflowNameError("Add at least one step before saving.");
-      return;
-    }
-
-    const trimmedWorkflowName = workflowName.trim();
-    if (!trimmedWorkflowName) {
-      setWorkflowNameError("Workflow name is required.");
-      return;
-    }
-
-    // The save queue drives the saving indicator, so there is nothing to
-    // bracket here — it already covers autosaves this handler never sees.
-    if (currentWorkflowId) {
-      const outcome = await saveWorkflow(
-        { name: trimmedWorkflowName, nodes, edges },
-        { immediate: true }
-      );
-
-      if (outcome && !outcome.ok) {
-        setWorkflowNameError(
-          outcome.error.message || "Failed to save workflow. Please try again."
-        );
-        return;
-      }
-
-      setCurrentWorkflowName(trimmedWorkflowName);
-      setWorkflowNameError(null);
-      return;
-    }
-
-    // Creating adopts the new workflow's identity inside the save store.
-    const outcome = await createWorkflow({
-      name: trimmedWorkflowName,
-      nodes,
-      edges,
-    });
-
-    if (!outcome.ok) {
-      setWorkflowNameError(
-        outcome.error.message || "Failed to save workflow. Please try again."
-      );
-      return;
-    }
-
-    setIsTransitioningFromHomepage(true);
-    await navigate({
-      to: "/workflows/$workflowId",
-      params: { workflowId: outcome.workflow.id },
-      replace: true,
-    });
-  };
 
   const executeWorkflow = async (request: TestRunRequest) => {
     if (!currentWorkflowId) {
@@ -257,25 +184,6 @@ function useWorkflowHandlers({
     });
   };
 
-  const handleGoToStep = (nodeId: string, fieldKey?: string) => {
-    setSelectedNodeId(nodeId);
-    setActiveTab("properties");
-    setPendingFieldFocus(fieldKey ?? null);
-  };
-
-  useAfterPaint(pendingFieldFocus, () => {
-    if (!pendingFieldFocus) {
-      return;
-    }
-    setPendingFieldFocus(null);
-    const element = document.getElementById(pendingFieldFocus);
-    if (!element) {
-      return;
-    }
-    element.focus();
-    element.scrollIntoView({ behavior: "smooth", block: "center" });
-  });
-
   const handleExecute = async () => {
     // Guard against concurrent executions
     if (isExecuting) {
@@ -302,25 +210,8 @@ function useWorkflowHandlers({
     openTestRunOverlay();
   };
 
-  /** The issues list, opened from the toolbar chip rather than by running. */
-  const handleShowIssues = () => {
-    const issues = collectWorkflowIssues({
-      nodes: toPersistedNodes(nodes),
-      catalog,
-      integrations: userIntegrations,
-    });
-
-    openOverlay(WorkflowIssuesOverlay, {
-      issues: groupWorkflowIssuesForOverlay(issues),
-      onGoToStep: handleGoToStep,
-      allowRunAnyway: false,
-    });
-  };
-
   return {
-    handleSave,
     handleExecute,
-    handleShowIssues,
     handleGoToStep,
   };
 }
@@ -333,22 +224,15 @@ export function useWorkflowState() {
   const clearWorkflow = useSetAtom(clearWorkflowAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const [currentWorkflowId] = useAtom(currentWorkflowIdAtom);
-  const [workflowName, setCurrentWorkflowName] = useAtom(
-    currentWorkflowNameAtom
-  );
+  const workflowName = useAtomValue(currentWorkflowNameAtom);
   const [workflowMode, setCurrentWorkflowMode] = useAtom(
     currentWorkflowModeAtom
-  );
-  const setWorkflowNameError = useSetAtom(workflowNameErrorAtom);
-  const setIsTransitioningFromHomepage = useSetAtom(
-    isTransitioningFromHomepageAtom
   );
   const isOwner = useAtomValue(isWorkflowOwnerAtom);
   const isSaving = useAtomValue(isSavingAtom);
   const hasUnsavedChanges = useAtomValue(hasUnsavedChangesAtom);
   const undo = useSetAtom(undoAtom);
   const redo = useSetAtom(redoAtom);
-  const addNode = useSetAtom(addNodeAtom);
   const [canUndo] = useAtom(canUndoAtom);
   const [canRedo] = useAtom(canRedoAtom);
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
@@ -368,16 +252,12 @@ export function useWorkflowState() {
     currentWorkflowId,
     workflowName,
     workflowMode,
-    setCurrentWorkflowName,
     setCurrentWorkflowMode,
-    setWorkflowNameError,
-    setIsTransitioningFromHomepage,
     isOwner,
     isSaving,
     hasUnsavedChanges,
     undo,
     redo,
-    addNode,
     canUndo,
     canRedo,
     allWorkflows,
@@ -400,10 +280,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     currentWorkflowId,
     workflowName,
     workflowMode,
-    setCurrentWorkflowName,
     setCurrentWorkflowMode,
-    setWorkflowNameError,
-    setIsTransitioningFromHomepage,
     nodes,
     edges,
     updateNodeData,
@@ -415,22 +292,16 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     userIntegrations,
   } = state;
 
-  const { handleSave, handleExecute, handleShowIssues, handleGoToStep } =
-    useWorkflowHandlers({
-      currentWorkflowId,
-      workflowName,
-      nodes,
-      edges,
-      updateNodeData,
-      isExecuting,
-      setIsExecuting,
-      setCurrentWorkflowName,
-      setWorkflowNameError,
-      setIsTransitioningFromHomepage,
-      setActiveTab,
-      setSelectedNodeId,
-      userIntegrations,
-    });
+  const { handleExecute, handleGoToStep } = useWorkflowHandlers({
+    currentWorkflowId,
+    nodes,
+    updateNodeData,
+    isExecuting,
+    setIsExecuting,
+    setActiveTab,
+    setSelectedNodeId,
+    userIntegrations,
+  });
 
   // Cmd+Enter runs the workflow. The listener lives here, beside handleExecute,
   // so the shortcut and the Run button are the same call rather than a store
@@ -575,9 +446,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
   };
 
   return {
-    handleSave,
     handleExecute,
-    handleShowIssues,
     handleClearWorkflow,
     handleDeleteWorkflow,
     loadWorkflows,

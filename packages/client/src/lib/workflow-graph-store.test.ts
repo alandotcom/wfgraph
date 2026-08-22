@@ -65,10 +65,7 @@ const updateMock = vi.fn(() => Promise.resolve(savedWorkflow("workflow_1")));
  */
 function createGraphStore(nodes: WorkflowNode[], edges: WorkflowEdge[] = []) {
   const store = createStore();
-  store.set(workflowApiAtom, {
-    create: vi.fn() as never,
-    update: updateMock as never,
-  });
+  store.set(workflowApiAtom, { update: updateMock as never });
   store.set(autosaveDelayAtom, 0);
   store.set(currentWorkflowIdAtom, "workflow_1");
   store.set(loadWorkflowGraphAtom, { nodes, edges });

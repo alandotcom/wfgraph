@@ -34,24 +34,31 @@ export const workflowListQueryOptions = () =>
   orpcQuery.workflow.getAll.queryOptions({ input: {} });
 
 /** Module-level select: TanStack memoises by identity. */
-export function selectHasUnpublishedChanges(
-  payload: WorkflowApiPayload
-): boolean {
-  return payload.hasUnpublishedChanges;
+export function selectPublicationState(payload: WorkflowApiPayload): {
+  isPublished: boolean;
+  hasUnpublishedChanges: boolean;
+} {
+  return {
+    isPublished: Boolean(payload.publishedVersionId),
+    hasUnpublishedChanges: payload.hasUnpublishedChanges,
+  };
 }
 
 /**
- * The open workflow's publication flag, for the toolbar badge.
+ * The open workflow's publication state, for the status strip's badge.
+ *
+ * Both halves come off this one payload rather than one from here and one from
+ * the workflow list, because `cacheWorkflowPublication` patches this entry on
+ * every save and publish, and the list it used to read is only marked stale.
  *
  * Lives in the getById cache (server state), not in jotai. The loader seeds the
- * entry; save and publish patch it via `cacheWorkflowPublication`. `staleTime:
- * Infinity` keeps the badge off the network: the flag only moves when a write
- * patches the cache.
+ * entry; save and publish patch it. `staleTime: Infinity` keeps the badge off
+ * the network: neither field moves except when a write patches the cache.
  */
 export function workflowPublicationQueryOptions(workflowId: string) {
   return orpcQuery.workflow.getById.queryOptions({
     input: { workflowId },
-    select: selectHasUnpublishedChanges,
+    select: selectPublicationState,
     staleTime: Number.POSITIVE_INFINITY,
   });
 }

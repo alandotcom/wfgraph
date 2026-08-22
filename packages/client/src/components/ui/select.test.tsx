@@ -9,15 +9,16 @@ import {
 } from "#src/components/ui/select";
 
 function renderSelect(value: string | null, items: string[] = ["a"]) {
+  const choices = items.map((item) => ({ label: item.toUpperCase(), value: item }));
   return render(
-    <Select value={value}>
+    <Select items={choices} value={value}>
       <SelectTrigger>
         <SelectValue placeholder="Select value" />
       </SelectTrigger>
       <SelectContent>
-        {items.map((item) => (
-          <SelectItem key={item} value={item}>
-            {item.toUpperCase()}
+        {choices.map((item) => (
+          <SelectItem key={item.value} value={item.value}>
+            {item.label}
           </SelectItem>
         ))}
       </SelectContent>

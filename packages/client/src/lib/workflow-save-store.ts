@@ -34,13 +34,22 @@ export const currentWorkflowVisibilityAtom =
   atom<WorkflowVisibility>("private");
 export const currentWorkflowModeAtom = atom<WorkflowMode>("live");
 export const isWorkflowOwnerAtom = atom<boolean>(true);
-export const workflowNameErrorAtom = atom<string | null>(null);
 export const workflowNotFoundAtom = atom(false);
 export const workflowLoadErrorAtom = atom<string | null>(null);
 
 // Save status, read by the toolbar and the unsaved-changes indicator.
 export const isSavingAtom = atom(false);
 export const hasUnsavedChangesAtom = atom(false);
+
+/**
+ * When the last write landed, or null before the first one of the session.
+ *
+ * The status strip says "Saved 14:32" rather than "Saved", because a workflow
+ * left open all afternoon says "Saved" whether the last edit went out a second
+ * ago or was dropped an hour ago. Written only where a save succeeds, so a
+ * failure leaves the previous time standing beside the failure wording.
+ */
+export const lastSavedAtAtom = atom<Date | null>(null);
 
 /**
  * The last save failure, or null after a save succeeds.
@@ -55,7 +64,7 @@ export const lastSaveErrorAtom = atom<Error | null>(null);
  * The subset of the workflow API this module calls, as an atom so a test can
  * substitute it per store rather than reassigning the shared client singleton.
  */
-type WorkflowSaveApi = Pick<typeof workflowApi, "create" | "update">;
+type WorkflowSaveApi = Pick<typeof workflowApi, "update">;
 export const workflowApiAtom = atom<WorkflowSaveApi>(workflowApi);
 
 /**
@@ -121,6 +130,16 @@ type SaveQueue = {
    * look clean while the failed graph fields are still absent on the server.
    */
   failedPatches: Map<string, WorkflowPatch>;
+  /** Rename state shared by overlapping callers until the last one settles. */
+  renames: Map<
+    string,
+    {
+      activeCount: number;
+      latestRequestId: number;
+      confirmedName: string;
+    }
+  >;
+  nextRenameRequestId: number;
   isFlushing: boolean;
 };
 
@@ -146,6 +165,8 @@ const saveQueueAtom = atom((): SaveQueue => ({
   timeoutId: null,
   pending: [],
   failedPatches: new Map(),
+  renames: new Map(),
+  nextRenameRequestId: 0,
   isFlushing: false,
 }));
 
@@ -232,9 +253,22 @@ export const saveWorkflowAtom = atom(
               toUpdatePayload(next.patch)
             );
             outcome = { ok: true, workflow };
+            const rename = queue.renames.get(next.workflowId);
+            if (rename) {
+              rename.confirmedName = workflow.name;
+            }
             set(lastSaveErrorAtom, null);
             markWorkflowListStale();
             cacheWorkflowPublication(queryClient, workflow);
+
+            // The queue drains workflows the editor may already have left, so
+            // the clock reading is only true of the workflow on screen. Written
+            // under the same guard as the dirty flag below: without it, saving
+            // A at 12:04 and then opening B had B's strip claiming a write that
+            // never happened to it.
+            if (get(currentWorkflowIdAtom) === next.workflowId) {
+              set(lastSavedAtAtom, new Date());
+            }
 
             // Clear the dirty flag only when nothing newer is queued and the
             // saved workflow is still the one on screen.
@@ -327,18 +361,97 @@ export const saveWorkflowAtom = atom(
 );
 
 /**
- * Persist a rename. Debounced, so holding a key down is still one request.
+ * Take a name the server refused back out of the queue.
+ *
+ * The queue retries a failed patch by folding it into the next write for the
+ * same workflow, which is right for a dropped connection and wrong for a name
+ * the server will never accept: the refused name rides along with every later
+ * graph write and fails that too, so one rejected rename stops the editor
+ * saving anything for the rest of the session. Only the exact name that was
+ * refused is dropped, so a rename typed again while this one was in flight
+ * survives.
+ */
+function forgetRefusedName(
+  queue: SaveQueue,
+  workflowId: string,
+  refusedName: string
+) {
+  const parked = queue.failedPatches.get(workflowId);
+  // Only the exact name that was refused is dropped, so a rename typed again
+  // while this one was in flight survives. The parked patch is the only place
+  // to look: an immediate save resolves once the whole queue has drained, so
+  // there is nothing still pending by the time this runs.
+  if (parked?.name !== refusedName) {
+    return;
+  }
+
+  const { name: _refused, ...remaining } = parked;
+  if (Object.keys(remaining).length === 0) {
+    queue.failedPatches.delete(workflowId);
+  } else {
+    queue.failedPatches.set(workflowId, remaining);
+  }
+}
+
+/**
+ * Persist a rename, and put the old name back if the server refuses the new one.
+ *
+ * Immediate, because a caller is waiting on the answer: the dialog this comes
+ * from refuses to close until it settles, and a debounce would hold that dialog
+ * shut for the whole autosave window.
  *
  * Resolves with the failure, or null when the rename landed. Callers only ever
- * want the message, so the saved workflow is not worth handing back.
+ * want the message, so the saved workflow is not worth handing back. On a
+ * failure nothing of the rename is left standing anywhere: not on the name the
+ * editor renders, and not in the queue.
  */
 export const renameWorkflowAtom = atom(
   null,
-  async (_get, set, name: string): Promise<Error | null> => {
+  async (get, set, name: string): Promise<Error | null> => {
+    const previousName = get(currentWorkflowNameAtom);
+    const workflowId = get(currentWorkflowIdAtom);
+    const queue = get(saveQueueAtom);
+    const requestId = ++queue.nextRenameRequestId;
+    let rename = workflowId ? queue.renames.get(workflowId) : undefined;
+    if (workflowId) {
+      if (rename) {
+        rename.activeCount += 1;
+        rename.latestRequestId = requestId;
+      } else {
+        rename = {
+          activeCount: 1,
+          latestRequestId: requestId,
+          confirmedName: previousName,
+        };
+        queue.renames.set(workflowId, rename);
+      }
+    }
+
     set(currentWorkflowNameAtom, name);
-    set(workflowNameErrorAtom, null);
-    const outcome = await set(saveWorkflowAtom, { name });
-    return outcome?.ok === false ? outcome.error : null;
+
+    const outcome = await set(saveWorkflowAtom, { name }, { immediate: true });
+    if (outcome?.ok === false) {
+      if (
+        get(currentWorkflowIdAtom) === workflowId &&
+        get(currentWorkflowNameAtom) === name &&
+        rename?.latestRequestId === requestId
+      ) {
+        set(currentWorkflowNameAtom, rename.confirmedName);
+      }
+      if (workflowId) {
+        forgetRefusedName(queue, workflowId, name);
+      }
+      if (workflowId && rename && --rename.activeCount === 0) {
+        queue.renames.delete(workflowId);
+      }
+      return outcome.error;
+    }
+
+    if (workflowId && rename && --rename.activeCount === 0) {
+      queue.renames.delete(workflowId);
+    }
+
+    return null;
   }
 );
 
@@ -347,47 +460,4 @@ export const setWorkflowModeAtom = atom(
   null,
   async (_get, set, mode: WorkflowMode): Promise<SaveOutcome | null> =>
     await set(saveWorkflowAtom, { mode }, { immediate: true })
-);
-
-/**
- * Create the workflow the editor has been drafting.
- *
- * Separate from the queue because there is no workflow id to key a patch on
- * yet; the queue only ever updates a workflow that already exists.
- */
-export const createWorkflowAtom = atom(
-  null,
-  async (
-    get,
-    set,
-    input: {
-      name: string;
-      description?: string;
-      nodes: WorkflowNode[];
-      edges: WorkflowEdge[];
-    }
-  ): Promise<SaveOutcome> => {
-    try {
-      const workflow = await get(workflowApiAtom).create({
-        name: input.name,
-        description: input.description ?? "",
-        nodes: input.nodes.filter((node) => node.type !== "add"),
-        edges: input.edges,
-      });
-      // The draft is now a real workflow, so this module adopts it. Leaving
-      // that to the caller is how identity and the dirty flag drift apart.
-      set(currentWorkflowIdAtom, workflow.id);
-      set(currentWorkflowNameAtom, workflow.name);
-      set(workflowNameErrorAtom, null);
-      set(hasUnsavedChangesAtom, false);
-      set(lastSaveErrorAtom, null);
-      markWorkflowListStale();
-      cacheWorkflowPublication(queryClient, workflow);
-      return { ok: true, workflow };
-    } catch (error) {
-      const saveError = toError(error);
-      set(lastSaveErrorAtom, saveError);
-      return { ok: false, error: saveError };
-    }
-  }
 );

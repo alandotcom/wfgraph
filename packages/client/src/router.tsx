@@ -12,7 +12,6 @@ import { GlobalModals } from "#src/components/global-modals";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { ThemeProvider } from "#src/components/theme-provider";
 import { Toaster } from "#src/components/ui/sonner";
-import { PersistentCanvas } from "#src/components/workflow/persistent-canvas";
 import { appStore } from "#src/lib/app-store";
 import { getBasePath } from "#src/lib/base-path";
 import { repairNodeIntegrations } from "#src/lib/node-integration";
@@ -50,13 +49,17 @@ function validateWorkflowSearch(
   };
 }
 
+/**
+ * The canvas belongs to the editor route and no other route has one, but the
+ * provider sits above the outlet rather than beside the canvas. Two workflows
+ * share a route, so the route component stays mounted between them either way;
+ * what this position buys is leaving the dashboard and coming back, where the
+ * canvas does unmount and would otherwise take the store with it.
+ */
 function LayoutContent() {
   return (
     <ReactFlowProvider>
-      <PersistentCanvas />
-      <div className="pointer-events-none relative z-10">
-        <Outlet />
-      </div>
+      <Outlet />
     </ReactFlowProvider>
   );
 }

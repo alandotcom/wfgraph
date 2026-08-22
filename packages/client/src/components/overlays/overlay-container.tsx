@@ -6,7 +6,7 @@ import {
   useReducedMotion,
 } from "motion/react";
 import { useCallback, useRef } from "react";
-import { Drawer as DrawerPrimitive } from "vaul";
+import { Drawer as DrawerPrimitive } from "@base-ui/react/drawer";
 import { Dialog, DialogPortal } from "#src/components/ui/dialog";
 import {
   useDomEvent,
@@ -261,82 +261,97 @@ function MobileOverlayContainer() {
       open={isOpen}
     >
       <DrawerPrimitive.Portal>
-        {/* Backdrop - let Vaul handle animations */}
-        <DrawerPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60" />
+        {/* Base UI animates from CSS rather than from JS the way vaul did:
+            `data-starting-style` is the frame the sheet enters from and
+            `data-ending-style` the one it leaves to, and while a finger is on
+            the sheet `--drawer-swipe-progress` (0 to 1) fades the backdrop out
+            in step with the drag. */}
+        <DrawerPrimitive.Backdrop className="fixed inset-0 z-50 bg-black opacity-[calc(0.6*(1-var(--drawer-swipe-progress)))] transition-opacity duration-[450ms] ease-[cubic-bezier(0.32,0.72,0,1)] data-swiping:duration-0 data-starting-style:opacity-0 data-ending-style:opacity-0 data-ending-style:duration-[calc(var(--drawer-swipe-strength)*400ms)] motion-reduce:transition-none" />
 
-        {/* Drawer container - let Vaul handle open/close animations */}
-        <DrawerPrimitive.Content
-          aria-labelledby={
-            currentItem ? `overlay-title-${currentItem.id}` : undefined
-          }
-          className={cn(
-            "fixed inset-x-0 bottom-0 z-50 flex max-h-[90vh] flex-col",
-            "rounded-t-xl border-t bg-card shadow-lg"
-          )}
-        >
-          {/* Vaul requires a Title, and the overlays that render their own
+        {/* Viewport has no vaul counterpart and is not optional: it owns the
+            swipe gesture and the touch scroll lock, and it is what holds the
+            sheet against the bottom edge, so the sheet itself is a laid-out
+            flex item rather than a fixed one. */}
+        <DrawerPrimitive.Viewport className="fixed inset-0 z-50 flex items-end justify-center">
+          <DrawerPrimitive.Popup
+            aria-labelledby={
+              currentItem ? `overlay-title-${currentItem.id}` : undefined
+            }
+            className={cn(
+              "flex max-h-[90vh] w-full flex-col outline-none",
+              "rounded-t-xl border-t bg-card shadow-lg",
+              // The bottom inset the home indicator needs. This used to be a
+              // spacer div classed `h-safe-area-inset-bottom`, which Tailwind
+              // v4 compiles to nothing, so the inset was never applied.
+              "pb-[env(safe-area-inset-bottom,0px)]",
+              // Follows the finger during a swipe, and slides fully off screen
+              // for the enter and exit frames. `--drawer-swipe-strength` is the
+              // release velocity, so a fast flick leaves faster than a slow one.
+              "[transform:translateY(var(--drawer-swipe-movement-y))] transition-transform duration-[450ms] ease-[cubic-bezier(0.32,0.72,0,1)]",
+              "data-swiping:select-none data-starting-style:[transform:translateY(calc(100%+2px))] data-ending-style:[transform:translateY(calc(100%+2px))] data-ending-style:duration-[calc(var(--drawer-swipe-strength)*400ms)] motion-reduce:transition-none"
+            )}
+          >
+            {/* Base UI requires a Title, and the overlays that render their own
               visible header already carry one with a stable id, which is what
               aria-labelledby above points at. This stays as the fallback for an
               overlay with no header of its own; it used to read the literal
               word "Dialog" to a screen reader even when a real title existed. */}
-          <DrawerPrimitive.Title className="sr-only">
-            {currentItem?.options.title || "Overlay"}
-          </DrawerPrimitive.Title>
+            <DrawerPrimitive.Title className="sr-only">
+              {currentItem?.options.title || "Overlay"}
+            </DrawerPrimitive.Title>
 
-          {/* Drag handle */}
-          <div className="mx-auto mt-3 h-1.5 w-12 shrink-0 rounded-full bg-muted-foreground/20" />
+            {/* Drag handle */}
+            <div className="mx-auto mt-3 h-1.5 w-12 shrink-0 rounded-full bg-muted-foreground/20" />
 
-          {/* Content area with height animation */}
-          <LayoutGroup>
-            <motion.div
-              className="relative flex-1 overflow-hidden"
-              layout="position"
-              style={{ minHeight: minHeight > 0 ? minHeight : "auto" }}
-              transition={drawerSpring}
-            >
-              {/* Content wrapper - all items rendered persistently to preserve state */}
-              <div className="relative" ref={contentRef}>
-                {renderStack.map((item, index) => {
-                  const isCurrent = index === currentIndex;
-                  const isPrevious = index < currentIndex;
+            {/* Content area with height animation */}
+            <LayoutGroup>
+              <motion.div
+                className="relative flex-1 overflow-hidden"
+                layout="position"
+                style={{ minHeight: minHeight > 0 ? minHeight : "auto" }}
+                transition={drawerSpring}
+              >
+                {/* Content wrapper - all items rendered persistently to preserve state */}
+                <div className="relative" ref={contentRef}>
+                  {renderStack.map((item, index) => {
+                    const isCurrent = index === currentIndex;
+                    const isPrevious = index < currentIndex;
 
-                  // For push onto existing stack: new current item slides in from right
-                  // For first overlay (fresh open): no slide, drawer container handles entrance
-                  // For pop: returning item is already at -35%, animates to 0%
-                  const shouldSlideIn = isCurrent && renderStack.length > 1;
-                  const initialValue = shouldSlideIn
-                    ? { x: "100%", scale: 1, opacity: 1 }
-                    : false;
+                    // For push onto existing stack: new current item slides in from right
+                    // For first overlay (fresh open): no slide, drawer container handles entrance
+                    // For pop: returning item is already at -35%, animates to 0%
+                    const shouldSlideIn = isCurrent && renderStack.length > 1;
+                    const initialValue = shouldSlideIn
+                      ? { x: "100%", scale: 1, opacity: 1 }
+                      : false;
 
-                  return (
-                    <motion.div
-                      animate={{
-                        x: getOverlayXPosition(isCurrent, isPrevious),
-                        scale: isCurrent ? 1 : 0.94,
-                        opacity: isCurrent ? 1 : 0,
-                      }}
-                      aria-hidden={!isCurrent}
-                      className={cn(
-                        "w-full",
-                        isCurrent
-                          ? "relative"
-                          : "pointer-events-none absolute inset-0"
-                      )}
-                      initial={initialValue}
-                      key={item.id}
-                      transition={springTransition}
-                    >
-                      <item.component overlayId={item.id} {...item.props} />
-                    </motion.div>
-                  );
-                })}
-              </div>
-            </motion.div>
-          </LayoutGroup>
-
-          {/* Safe area padding for iOS */}
-          <div className="h-safe-area-inset-bottom" />
-        </DrawerPrimitive.Content>
+                    return (
+                      <motion.div
+                        animate={{
+                          x: getOverlayXPosition(isCurrent, isPrevious),
+                          scale: isCurrent ? 1 : 0.94,
+                          opacity: isCurrent ? 1 : 0,
+                        }}
+                        aria-hidden={!isCurrent}
+                        className={cn(
+                          "w-full",
+                          isCurrent
+                            ? "relative"
+                            : "pointer-events-none absolute inset-0"
+                        )}
+                        initial={initialValue}
+                        key={item.id}
+                        transition={springTransition}
+                      >
+                        <item.component overlayId={item.id} {...item.props} />
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            </LayoutGroup>
+          </DrawerPrimitive.Popup>
+        </DrawerPrimitive.Viewport>
       </DrawerPrimitive.Portal>
     </DrawerPrimitive.Root>
   );

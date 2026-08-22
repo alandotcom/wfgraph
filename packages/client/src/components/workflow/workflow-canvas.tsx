@@ -10,12 +10,11 @@ import {
   type Edge as XYFlowEdge,
 } from "@xyflow/react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { Canvas } from "#src/components/flow-elements/canvas";
 import { Connection } from "#src/components/flow-elements/connection";
 import { Controls } from "#src/components/flow-elements/controls";
-import { WorkflowToolbar } from "#src/components/workflow/workflow-toolbar";
 import "@xyflow/react/dist/style.css";
 
 import { nanoid } from "nanoid";
@@ -23,12 +22,11 @@ import { andJoinRefusalReason } from "@wfgraph/shared/graph/and-join";
 import { Edge } from "#src/components/flow-elements/edge";
 import { Panel } from "#src/components/flow-elements/panel";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
-import { useAfterCommit, useAfterPaint, useDomEvent } from "#src/hooks/effects";
+import { useAfterPaint, useDomEvent } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { isTextEntry } from "#src/lib/is-text-entry";
 import {
   addNodeAtom,
-  applyNodeLayoutAtom,
   connectNodesAtom,
   displayEdgesAtom,
   displayNodesAtom,
@@ -45,9 +43,7 @@ import {
 } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
-  isTransitioningFromHomepageAtom,
   propertiesPanelActiveTabAtom,
-  rightPanelWidthAtom,
   showMinimapAtom,
 } from "#src/lib/workflow-ui-store";
 import { WORKFLOW_EDGE_TYPE } from "#src/lib/workflow-graph-types";
@@ -60,13 +56,13 @@ import { AddNode } from "./nodes/add-node";
 import { GroupNode } from "./nodes/group-node";
 import { LifecycleNode } from "./nodes/lifecycle-node";
 import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
+import { useReflowLayout } from "./use-reflow-layout";
 import { useCollectWorkflowIssues } from "#src/hooks/use-workflow-issues";
 import {
   type ContextMenuState,
   useContextMenuHandlers,
   WorkflowContextMenu,
 } from "./workflow-context-menu";
-import { layoutWorkflowNodes } from "./workflow-layout";
 import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
 
 const edgeTypes = {
@@ -100,40 +96,30 @@ export function WorkflowCanvas() {
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
-  // The sidebar renders nothing on a narrow viewport, so the canvas keeps the
-  // whole width. Whether the viewport is narrow is the canvas's own question.
+  // Below the mobile breakpoint the config rail is gone, so clicking a node has
+  // to open the bottom sheet instead.
   const isMobile = useIsMobile();
   const { openSheet } = useConfigurationSheet();
-  const sidebarWidth = useAtomValue(rightPanelWidthAtom);
-  const rightPanelWidth = isMobile ? null : sidebarWidth;
-  const [isTransitioningFromHomepage, setIsTransitioningFromHomepage] = useAtom(
-    isTransitioningFromHomepageAtom
-  );
   const onNodesChange = useSetAtom(onNodesChangeAtom);
   const onEdgesChange = useSetAtom(onEdgesChangeAtom);
   const setSelectedNode = useSetAtom(selectedNodeAtom);
   const setSelectedEdge = useSetAtom(selectedEdgeAtom);
   const addNode = useSetAtom(addNodeAtom);
-  const applyNodeLayout = useSetAtom(applyNodeLayoutAtom);
   const connectNodes = useSetAtom(connectNodesAtom);
   const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
   const snapshotHistory = useSetAtom(snapshotHistoryAtom);
   const undo = useSetAtom(undoAtom);
   const redo = useSetAtom(redoAtom);
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
-  const { screenToFlowPosition, fitView, getViewport, setViewport } =
-    useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
+  // The same pass the Actions menu's "Tidy layout" runs.
+  const { canReflow, reflow } = useReflowLayout();
 
   const connectingNodeId = useRef<string | null>(null);
   const connectingHandleType = useRef<"source" | "target" | null>(null);
   const connectingHandleId = useRef<string | null>(null);
   const justCreatedNodeFromConnection = useRef(false);
-  const viewportInitialized = useRef(false);
-  const canvasContainerRef = useRef<HTMLDivElement | null>(null);
-  const reflowRequestId = useRef(0);
-  const isReflowingRef = useRef(false);
   const [isCanvasReady, setIsCanvasReady] = useState(false);
-  const [isReflowing, setIsReflowing] = useState(false);
   const [contextMenuState, setContextMenuState] =
     useState<ContextMenuState>(null);
   const rightClickSelectionRef = useRef<ReadonlySet<string>>(new Set());
@@ -167,78 +153,20 @@ export function WorkflowCanvas() {
     setContextMenuState(null);
   }, []);
 
-  // Track if we have real nodes (not just placeholder "add" node)
-  const hasRealNodes = nodes.some((n) => n.type !== "add");
-  const realNodeCount = useMemo(
-    () => nodes.filter((node) => node.type !== "add").length,
-    [nodes]
-  );
-  // Pre-shift viewport when transitioning from homepage (before sidebar animates)
-  const hasPreShiftedRef = useRef(false);
-  useAfterCommit(isTransitioningFromHomepage, () => {
-    if (!isTransitioningFromHomepage || hasPreShiftedRef.current) {
-      return;
-    }
-    hasPreShiftedRef.current = true;
-
-    // Check if sidebar is collapsed from cookie (atom may not be initialized yet)
-    const collapsedCookie = document.cookie
-      .split("; ")
-      .find((row) => row.startsWith("sidebar-collapsed="));
-    const isCollapsed = collapsedCookie?.split("=")[1] === "true";
-
-    // Skip if sidebar is collapsed - content should stay centered
-    if (isCollapsed) {
-      return;
-    }
-
-    // Shift viewport left to center content in the future visible area
-    // Default sidebar is 30%, so shift by 15% of window width
-    const viewport = getViewport();
-    const defaultSidebarPercent = 0.3;
-    const shiftPixels = (window.innerWidth * defaultSidebarPercent) / 2;
-    // React Flow's viewport commands resolve when their animation finishes.
-    // Nothing here waits for the camera, so the promise is dropped on purpose.
-    void setViewport(
-      { ...viewport, x: viewport.x - shiftPixels },
-      { duration: 0 }
-    );
-  });
-
   // Fit the view once per workflow. Keying on the id is the whole rule: a
   // workflow that has already been fitted does not get fitted again, and
   // switching to another one does. After paint rather than during the commit,
   // because React Flow measures node sizes then and fitView would otherwise
   // frame geometry that is a frame out of date.
   useAfterPaint(currentWorkflowId, () => {
-    // Homepage -> workflow keeps the viewport the homepage already set.
-    if (isTransitioningFromHomepage && viewportInitialized.current) {
-      setIsCanvasReady(true);
-      setIsTransitioningFromHomepage(false);
-      return;
-    }
-
     void fitView({ maxZoom: 1, minZoom: 0.5, padding: 0.2, duration: 0 });
-    viewportInitialized.current = true;
-    // Show canvas immediately so width animation can be seen
-    setIsCanvasReady(true);
-    setIsTransitioningFromHomepage(false);
-  });
-
-  // On the homepage the canvas starts as a lone placeholder, so the moment a
-  // real node appears there is something worth framing.
-  useAfterPaint(!currentWorkflowId && hasRealNodes, () => {
-    if (currentWorkflowId || !hasRealNodes) {
-      return;
-    }
-    void fitView({ maxZoom: 1, minZoom: 0.5, padding: 0.2, duration: 0 });
-    viewportInitialized.current = true;
+    // The canvas is transparent until this has run, so the one frame of
+    // unframed graph between mount and the fit is never on screen.
     setIsCanvasReady(true);
   });
 
-  // Undo/redo (Cmd+Z, Cmd+Shift+Z). Lives on the canvas rather than the editor
-  // route so it works on the homepage too, which is where the toolbar's undo
-  // button already works.
+  // Undo/redo (Cmd+Z, Cmd+Shift+Z). Lives beside the graph it acts on rather
+  // than on the editor route, so the two cannot drift apart.
   const handleUndoRedoShortcut = useCallback(
     (event: KeyboardEvent) => {
       if (
@@ -286,56 +214,6 @@ export function WorkflowCanvas() {
   );
 
   useDomEvent(window, "keydown", handleFitViewShortcut);
-
-  const handleReflow = useCallback(() => {
-    if (editingLocked || realNodeCount < 2 || isReflowingRef.current) {
-      return;
-    }
-
-    isReflowingRef.current = true;
-    setIsReflowing(true);
-    const requestId = reflowRequestId.current + 1;
-    reflowRequestId.current = requestId;
-
-    try {
-      const containerWidth =
-        canvasContainerRef.current?.getBoundingClientRect().width ??
-        (typeof window !== "undefined" ? window.innerWidth : undefined);
-      const { nodes: nextNodes, changed } = layoutWorkflowNodes({
-        nodes,
-        edges,
-        availableWidth: containerWidth,
-        catalog,
-      });
-
-      if (requestId !== reflowRequestId.current) {
-        return;
-      }
-
-      if (changed) {
-        applyNodeLayout(nextNodes);
-      }
-
-      window.requestAnimationFrame(() => {
-        Promise.resolve(
-          fitView({ maxZoom: 1, minZoom: 0.5, padding: 0.2, duration: 300 })
-        ).catch(() => undefined);
-      });
-    } finally {
-      if (requestId === reflowRequestId.current) {
-        isReflowingRef.current = false;
-        setIsReflowing(false);
-      }
-    }
-  }, [
-    applyNodeLayout,
-    edges,
-    fitView,
-    editingLocked,
-    nodes,
-    realNodeCount,
-    catalog,
-  ]);
 
   const nodeHasHandle = useCallback(
     (nodeId: string, handleType: "source" | "target") => {
@@ -530,26 +408,6 @@ export function WorkflowCanvas() {
     return { clientX, clientY };
   }, []);
 
-  const calculateMenuPosition = useCallback(
-    (event: MouseEvent | TouchEvent, clientX: number, clientY: number) => {
-      const eventTarget =
-        event.target instanceof Element ? event.target : undefined;
-      const reactFlowBounds = eventTarget
-        ?.closest(".react-flow")
-        ?.getBoundingClientRect();
-
-      const adjustedX = reactFlowBounds
-        ? clientX - reactFlowBounds.left
-        : clientX;
-      const adjustedY = reactFlowBounds
-        ? clientY - reactFlowBounds.top
-        : clientY;
-
-      return { adjustedX, adjustedY };
-    },
-    []
-  );
-
   const handleConnectionToExistingNode = useCallback(
     (nodeElement: Element) => {
       const targetNodeId = nodeElement.getAttribute("data-id");
@@ -582,7 +440,7 @@ export function WorkflowCanvas() {
   );
 
   const handleConnectionToNewNode = useCallback(
-    (event: MouseEvent | TouchEvent, clientX: number, clientY: number) => {
+    (clientX: number, clientY: number) => {
       const sourceNodeId = connectingNodeId.current;
       if (!sourceNodeId) {
         return;
@@ -603,16 +461,14 @@ export function WorkflowCanvas() {
         return;
       }
 
-      const { adjustedX, adjustedY } = calculateMenuPosition(
-        event,
-        clientX,
-        clientY
-      );
-
-      const position = screenToFlowPosition({
-        x: adjustedX,
-        y: adjustedY,
-      });
+      // Client coordinates, which is what `screenToFlowPosition` takes: it
+      // subtracts the pane's own rect itself. This used to hand it the release
+      // point already measured from the pane's top-left, which put every node
+      // made by dropping a connection up and to the left of the cursor by
+      // however far the pane sat from the window's corner, over the zoom. That
+      // was the menu bar's 44px, and the shell's inset and border since added
+      // 13px across.
+      const position = screenToFlowPosition({ x: clientX, y: clientY });
 
       // Center vertically on the cursor.
       position.y -= WORKFLOW_NODE_HEIGHT / 2;
@@ -662,7 +518,6 @@ export function WorkflowCanvas() {
       }, 100);
     },
     [
-      calculateMenuPosition,
       screenToFlowPosition,
       addNode,
       selectOnlyNode,
@@ -712,7 +567,7 @@ export function WorkflowCanvas() {
       }
 
       if (!(nodeElement || isHandle)) {
-        handleConnectionToNewNode(event, clientX, clientY);
+        handleConnectionToNewNode(clientX, clientY);
       }
 
       connectingNodeId.current = null;
@@ -753,23 +608,18 @@ export function WorkflowCanvas() {
   );
 
   return (
+    // Size comes from the editor shell, which gives this box whatever the panel
+    // beside it leaves over. The shell is also where the rule against animating
+    // that size lives, because React Flow observes the parent box and a
+    // transition on it is what produces ResizeObserver loop warnings.
     <div
-      className="relative h-full bg-background"
+      className="relative h-full w-full bg-background"
       data-testid="workflow-canvas"
-      ref={canvasContainerRef}
       style={{
         opacity: isCanvasReady ? 1 : 0,
-        width: rightPanelWidth ? `calc(100% - ${rightPanelWidth})` : "100%",
-        // Avoid animating container width: React Flow observes parent size and
-        // width transitions can trigger noisy ResizeObserver loop warnings.
         transition: "opacity 300ms",
       }}
     >
-      {/* Toolbar */}
-      <div className="pointer-events-auto">
-        <WorkflowToolbar workflowId={currentWorkflowId ?? undefined} />
-      </div>
-
       {/* React Flow Canvas */}
       <Canvas
         className="bg-background"
@@ -798,13 +648,10 @@ export function WorkflowCanvas() {
         onSelectionChange={editingLocked ? undefined : onSelectionChange}
       >
         <Panel
-          className="workflow-controls-panel border-none bg-transparent p-0"
+          className="border-none bg-transparent p-0"
           position="bottom-left"
         >
-          <Controls
-            canReflow={!editingLocked && realNodeCount > 1 && !isReflowing}
-            onReflow={editingLocked ? undefined : handleReflow}
-          />
+          <Controls canReflow={canReflow} onReflow={reflow} />
         </Panel>
         {showMinimap && (
           // maskColor and nodeColor default to hardcoded light-mode values that

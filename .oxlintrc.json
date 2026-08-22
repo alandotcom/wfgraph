@@ -156,7 +156,9 @@
                 "importNames": ["useEffect", "useLayoutEffect"],
                 // The UI primitives write `import type * as React` for
                 // `ComponentProps`, and a type-only import cannot call
-                // anything, so it is not what this rule is aimed at.
+                // anything, so it is not what this rule is aimed at. `shadcn
+                // add` writes a value namespace import instead; narrowing it
+                // back to a type import is part of taking a component.
                 "allowTypeImports": true,
                 "message": "Use a named hook from #src/hooks/effects. If none of them fits, the work probably belongs in an event handler, in render, or in a query."
               }

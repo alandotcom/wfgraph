@@ -444,7 +444,7 @@ export default function WorkflowsPage() {
             const modeClass =
               workflow.mode === "test"
                 ? "border-destructive/30 bg-destructive/10 text-destructive"
-                : "border-zinc-500/30 bg-zinc-500/10 text-zinc-700";
+                : "border-border bg-muted text-muted-foreground";
             const modeLabel = workflow.mode === "test" ? "Test" : "Live";
             const toggleAction = workflow.isPaused ? "resume" : "pause";
             const toggleActionLabel = workflow.isPaused ? "Resume" : "Pause";
@@ -614,7 +614,7 @@ export default function WorkflowsPage() {
   };
 
   return (
-    <div className="pointer-events-auto h-dvh overflow-auto bg-background">
+    <div className="h-dvh overflow-auto bg-background">
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 p-6">
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center justify-between gap-3">
