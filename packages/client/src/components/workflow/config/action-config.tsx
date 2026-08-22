@@ -144,9 +144,17 @@ function ConditionFields({
       description="Build a condition from the Lifecycle Node and upstream action output fields. Timestamp fields support relative and absolute time filters."
       disabled={disabled}
       emptyFieldsMessage="No upstream fields available. Connect this node to the Lifecycle Node or an action with typed outputs first."
+      // The heading is a clause, so the Edit and Done buttons name the thing
+      // instead: "Edit Continue when" is not a sentence anybody would say.
+      editActionName="condition"
       fields={fields}
-      label="Condition"
+      // Named for what it does rather than for the node it sits on: "Condition"
+      // on a node called Condition said nothing about which way True leads.
+      label="Continue when"
       onChange={handleChange}
+      // The one condition row mounted straight into the panel's column, so its
+      // header is the one that may pin while the rules below it scroll.
+      stickyHeader
       value={readConfigString(config, "conditionModel") ?? ""}
     />
   );

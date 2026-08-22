@@ -55,6 +55,17 @@ function renderWithCatalog(ui: ReactElement) {
 
 const NO_CONFIG: Record<string, unknown> = {};
 
+/**
+ * Open one section's controls.
+ *
+ * Each of the three sections renders as text until its own Edit button is
+ * pressed, and each button names the section it opens, which is what tells the
+ * three of them apart here and to a screen reader alike.
+ */
+function editSection(view: RenderResult, label: string) {
+  fireEvent.click(view.getByRole("button", { name: `Edit ${label}` }));
+}
+
 function ControlledPanel({
   initialConfig = NO_CONFIG,
   onConfigChange,
@@ -190,6 +201,7 @@ describe("LifecyclePanel", () => {
       />
     );
 
+    editSection(view, "Start Events");
     chooseEvent(view, "Start Events", "Appointment created");
 
     await waitFor(() => {
@@ -217,6 +229,11 @@ describe("LifecyclePanel", () => {
 
     expect(onUpdateConfig).not.toHaveBeenCalled();
 
+    // Opening a section is not an edit either: the panel is now two modes deep
+    // and neither of the two doors writes anything on the way through.
+    editSection(view, "Start Events");
+    expect(onUpdateConfig).not.toHaveBeenCalled();
+
     chooseEvent(view, "Start Events", "Appointment created");
 
     expect(onUpdateConfig).toHaveBeenCalledTimes(1);
@@ -229,6 +246,7 @@ describe("LifecyclePanel", () => {
       <LifecyclePanel config={{}} disabled={false} onUpdateConfig={vi.fn()} />
     );
 
+    editSection(view, "Start Events");
     fireEvent.click(
       view.getAllByRole("button", { name: "Show the Events" })[0]
     );
@@ -250,6 +268,7 @@ describe("LifecyclePanel", () => {
       />
     );
 
+    editSection(view, "Start Events");
     chooseEvent(view, "Start Events", "ops/nightly");
 
     await waitFor(() => {
@@ -277,6 +296,7 @@ describe("LifecyclePanel", () => {
       />
     );
 
+    editSection(view, "Start Events");
     chooseEvent(view, "Start Events", "Nightly sweep");
 
     await waitFor(() => {
@@ -306,6 +326,7 @@ describe("LifecyclePanel", () => {
         />
       );
 
+      editSection(view, "Concurrency");
       fireEvent.click(
         view.getByRole("radio", { name: new RegExp(`^${label}`) })
       );
@@ -334,11 +355,13 @@ describe("LifecyclePanel", () => {
       />
     );
 
+    editSection(view, "Concurrency");
     fireEvent.click(view.getByRole("checkbox", { name: "Allow manual runs" }));
     await waitFor(() => {
       expect(rulesOf(latest).allowManualStart).toBe(false);
     });
 
+    editSection(view, "Start Events");
     fireEvent.click(
       view.getByRole("button", { name: "Remove app/appointment.created" })
     );
@@ -370,10 +393,13 @@ describe("LifecyclePanel", () => {
 
     expect(view.queryByText(/described by nothing/)).toBeNull();
 
+    editSection(view, "Start Events");
     fireEvent.click(
       view.getByRole("button", { name: "Remove app/appointment.created" })
     );
 
+    // A consequence of the configuration rather than an explanation of a
+    // control, so it stays in the column and shows in view mode.
     await waitFor(() => {
       expect(view.getByText(/described by nothing/)).toBeTruthy();
     });
@@ -399,6 +425,7 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
+    editSection(view, "Cancel Events");
     chooseEvent(view, "Cancel Events", "Appointment created");
 
     await waitFor(() => {
@@ -425,6 +452,7 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
+    editSection(view, "Cancel Events");
     fireEvent.click(
       view.getByRole("button", { name: "Remove app/appointment.created" })
     );
@@ -451,6 +479,7 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
+    editSection(view, "Cancel Events");
     expect(pathInForce(view, "app/appointment.created")).toBe("appointment.id");
     expect(pathInForce(view, "ops/nightly.swept")).toBe("Choose a path");
   });
@@ -470,6 +499,7 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
+    editSection(view, "Cancel Events");
     expect(pathInForce(view, "ops/nightly.swept")).toBe("sweep.id");
   });
 
@@ -493,6 +523,7 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
+    editSection(view, "Cancel Events");
     choosePath(view, "app/appointment.created", "patient.id");
 
     await waitFor(() => {
@@ -524,6 +555,7 @@ describe("LifecyclePanel Cancel Events", () => {
 
     expect(view.queryByText("This will not save")).toBeNull();
 
+    editSection(view, "Cancel Events");
     chooseEvent(view, "Cancel Events", "Appointment created");
 
     await waitFor(() => {
@@ -556,6 +588,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
+    editSection(view, "Start Events");
     choosePath(view, "ops/nightly.swept", "sweep.id");
 
     await waitFor(() => {
@@ -588,6 +621,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
+    editSection(view, "Start Events");
     choosePath(view, "ops/nightly.swept", "Choose a path");
 
     await waitFor(() => {
@@ -621,6 +655,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
+    editSection(view, "Start Events");
     choosePath(view, "app/appointment.created", "appointment.id");
 
     await waitFor(() => {
@@ -650,6 +685,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
+    editSection(view, "Start Events");
     choosePath(view, "ops/nightly.swept", "Choose a path");
 
     await waitFor(() => {
@@ -673,6 +709,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
+    editSection(view, "Start Events");
     expect(pathChoices(view, "app/appointment.created")).toEqual([
       "appointment.id",
       "appointment.duration",
@@ -697,6 +734,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
+    editSection(view, "Start Events");
     expect(pathInForce(view, "app/appointment.created")).toBe(
       "legacy.reference"
     );
@@ -728,6 +766,10 @@ describe("LifecyclePanel Correlation Paths", () => {
     );
 
     // Concurrency now compares, so the field appears; the builder overrides it.
+    // Both sections stay open, which is how one panel shows the switch and the
+    // field it brings with it.
+    editSection(view, "Concurrency");
+    editSection(view, "Start Events");
     fireEvent.click(view.getByRole("radio", { name: /^Newest wins/ }));
     await waitFor(() => {
       expect(rulesOf(latest).concurrency).toBe("newest-wins");
@@ -770,6 +812,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
+    editSection(view, "Start Events");
     expect(pathInForce(view, "app/appointment.created")).toBe("appointment.id");
     expect(onConfigChange).not.toHaveBeenCalled();
     expect(view.queryByText("This will not save")).toBeNull();
@@ -789,6 +832,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
+    editSection(view, "Start Events");
     expect(view.queryByLabelText("ops/nightly.swept")).toBeNull();
   });
 
@@ -809,6 +853,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
+    editSection(view, "Cancel Events");
     expect(view.getByLabelText("ops/nightly.swept")).toBeTruthy();
     expect(view.getByText("Nightly sweep")).toBeTruthy();
   });
@@ -832,6 +877,8 @@ describe("LifecyclePanel Correlation Paths", () => {
       )
     );
 
+    editSection(view, "Start Events");
+    editSection(view, "Cancel Events");
     expect(view.queryByLabelText("ops/nightly.swept")).toBeNull();
     expect(view.queryByText("This will not save")).toBeNull();
   });
@@ -878,5 +925,103 @@ describe("LifecyclePanel refusals", () => {
     expect(
       view.getByText(/^No Event named "app\/appointment\.moved" is defined/)
     ).toBeTruthy();
+  });
+});
+
+describe("LifecyclePanel view mode", () => {
+  const CONFIGURED: Record<string, unknown> = {
+    lifecycleRules: {
+      startEvents: ["app/appointment.created"],
+      cancelEvents: ["ops/nightly.swept"],
+      concurrency: "newest-wins",
+      allowManualStart: true,
+      correlationPaths: { "ops/nightly.swept": "sweep.id" },
+    },
+  };
+
+  // What the panel is for, most of the time, is reading back what it was set
+  // to. Every value is a line of text and no control is mounted until asked
+  // for.
+  it("reads the configuration back as text", () => {
+    const view = renderWithCatalog(
+      <ControlledPanel initialConfig={CONFIGURED} />
+    );
+
+    expect(view.getByText("Appointment created")).toBeTruthy();
+    expect(view.getByText("appointment.id")).toBeTruthy();
+    expect(view.getByText("Nightly sweep")).toBeTruthy();
+    expect(view.getByText("sweep.id")).toBeTruthy();
+    expect(view.getByText("Newest wins")).toBeTruthy();
+    expect(view.getByText("Allowed")).toBeTruthy();
+
+    expect(view.queryByLabelText("Start Events")).toBeNull();
+    expect(view.queryAllByRole("radio")).toEqual([]);
+  });
+
+  // Edit opens one section, Done closes it, and the two beside it are left
+  // where they were: the panel's height moves into the section being worked on
+  // rather than into all three at once.
+  it("switches one section between its two modes", () => {
+    const view = renderWithCatalog(
+      <ControlledPanel initialConfig={CONFIGURED} />
+    );
+
+    editSection(view, "Start Events");
+    expect(view.getByLabelText("Start Events")).toBeTruthy();
+    expect(view.queryAllByRole("radio")).toEqual([]);
+
+    fireEvent.click(
+      view.getByRole("button", { name: "Done editing Start Events" })
+    );
+
+    expect(view.queryByLabelText("Start Events")).toBeNull();
+    expect(view.getByText("Appointment created")).toBeTruthy();
+  });
+
+  // A panel whose writes would be refused offers no Edit at all, so view mode
+  // never implies an edit a non-owner cannot make.
+  it("gives a disabled panel no way into edit mode", () => {
+    const view = renderWithCatalog(
+      <LifecyclePanel config={CONFIGURED} disabled onUpdateConfig={vi.fn()} />
+    );
+
+    expect(view.queryAllByRole("button", { name: /^Edit / })).toEqual([]);
+    expect(view.getByText("Newest wins")).toBeTruthy();
+  });
+
+  // The prose that used to sit under the controls is behind the icon beside the
+  // label, and it opens on a click rather than on hover: the content is long
+  // enough to want to stay open, and hover does not exist on touch.
+  it("opens a section's help on a click", () => {
+    const view = renderWithCatalog(
+      <ControlledPanel initialConfig={CONFIGURED} />
+    );
+
+    expect(
+      view.queryByText(/A run starts when one of these Events/)
+    ).toBeNull();
+
+    fireEvent.click(view.getByRole("button", { name: "About Start Events" }));
+
+    expect(
+      view.getByText(/A run starts when one of these Events/)
+    ).toBeTruthy();
+  });
+
+  // Chosen option first, because a builder opening this has already chosen and
+  // the sentence describing what their workflow does now is the one they want.
+  it("puts the concurrency setting in force at the top of its help", () => {
+    const view = renderWithCatalog(
+      <ControlledPanel initialConfig={CONFIGURED} />
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "About Concurrency" }));
+
+    const described = view
+      .getAllByText(
+        /supersedes the ones already going|Every Event starts its own run/
+      )
+      .map((node) => node.textContent ?? "");
+    expect(described.at(0)).toContain("supersedes the ones already going");
   });
 });

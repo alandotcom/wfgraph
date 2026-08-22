@@ -3,6 +3,7 @@ import {
   Eraser,
   Eye,
   EyeOff,
+  MousePointerClick,
   Play,
   RefreshCw,
   Settings2,
@@ -12,9 +13,7 @@ import {
 import { Button } from "#src/components/ui/button";
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
-import { useDeleteWorkflow } from "#src/hooks/use-delete-workflow";
 import {
-  clearWorkflowAtom,
   deleteEdgeAtom,
   deleteNodeAtom,
   deleteSelectedItemsAtom,
@@ -34,10 +33,7 @@ import {
 } from "@wfgraph/shared/graph/node-group";
 import {
   currentWorkflowIdAtom,
-  currentWorkflowNameAtom,
   isWorkflowOwnerAtom,
-  renameWorkflowAtom,
-  workflowNameErrorAtom,
 } from "#src/lib/workflow-save-store";
 import {
   activePropertiesTabAtom,
@@ -107,28 +103,23 @@ export function useNodeConfigTitle(): string {
   if (validActiveTab === "runs") {
     return "Runs";
   }
-  if (selectedNodeId) {
-    return "Properties";
+  // An edge on its own is the one selection with a title of its own. Everything
+  // else is Properties, including nothing at all: "Workflow" named a set of
+  // fields this panel no longer holds.
+  if (selectedEdgeId && !selectedNodeId) {
+    return "Connection";
   }
-  return selectedEdgeId ? "Connection" : "Workflow";
+  return "Properties";
 }
 
 type TabBarProps = {
   placement: NodeConfigFrame["tabs"];
   activeTab: string;
   onSelect: (tab: string) => void;
-  /** "Workflow" when nothing on the canvas is selected, "Properties" otherwise. */
-  propertiesLabel: string;
   showRuns: boolean;
 };
 
-function TabBar({
-  placement,
-  activeTab,
-  onSelect,
-  propertiesLabel,
-  showRuns,
-}: TabBarProps) {
+function TabBar({ placement, activeTab, onSelect, showRuns }: TabBarProps) {
   if (placement === "bottom") {
     return (
       <div className="flex shrink-0 items-center justify-around border-t bg-background pb-safe">
@@ -142,7 +133,7 @@ function TabBar({
           type="button"
         >
           <Settings2 className="size-5" />
-          {propertiesLabel}
+          Properties
         </button>
         {showRuns ? (
           <button
@@ -172,7 +163,7 @@ function TabBar({
           onClick={() => onSelect("properties")}
           type="button"
         >
-          {propertiesLabel}
+          Properties
         </button>
         {showRuns ? (
           <button
@@ -205,11 +196,6 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
   const edges = useAtomValue(edgesAtom);
   const isGenerating = useAtomValue(isGeneratingAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
-  const currentWorkflowName = useAtomValue(currentWorkflowNameAtom);
-  const renameWorkflow = useSetAtom(renameWorkflowAtom);
-  const [workflowNameError, setWorkflowNameError] = useAtom(
-    workflowNameErrorAtom
-  );
   const isOwner = useAtomValue(isWorkflowOwnerAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const deleteNode = useSetAtom(deleteNodeAtom);
@@ -217,8 +203,6 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
   const setGroupEnabled = useSetAtom(setGroupEnabledAtom);
   const deleteEdge = useSetAtom(deleteEdgeAtom);
   const deleteSelectedItems = useSetAtom(deleteSelectedItemsAtom);
-  const clearWorkflow = useSetAtom(clearWorkflowAtom);
-  const deleteWorkflow = useDeleteWorkflow();
   const [newlyCreatedNodeId, setNewlyCreatedNodeId] = useAtom(
     newlyCreatedNodeIdAtom
   );
@@ -289,15 +273,6 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
     });
   };
 
-  const handleUpdateWorkflowName = async (newName: string) => {
-    // Debounced inside the save queue, which also merges the rename with any
-    // graph edit pending in the same window into a single request.
-    const error = await renameWorkflow(newName);
-    if (error) {
-      setWorkflowNameError(error.message || "Failed to update workflow name");
-    }
-  };
-
   const confirmDeleteNode = () => {
     if (!selectedNode) {
       return;
@@ -353,35 +328,6 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
         if (currentWorkflowId) {
           deleteRuns.mutate({ workflowId: currentWorkflowId });
         }
-      },
-    });
-  };
-
-  const confirmClearWorkflow = () => {
-    frame.confirm({
-      title: "Clear Workflow",
-      message:
-        "Remove every step and connection? The Lifecycle Node is kept, and this saves right away.",
-      confirmLabel: "Clear Workflow",
-      onConfirm: () => clearWorkflow(),
-    });
-  };
-
-  const confirmDeleteWorkflow = () => {
-    frame.confirm({
-      title: "Delete Workflow",
-      message: `Are you sure you want to delete "${currentWorkflowName}"? This will permanently delete the workflow. This cannot be undone.`,
-      confirmLabel: "Delete Workflow",
-      onConfirm: () => {
-        if (!currentWorkflowId) {
-          return;
-        }
-        // The overlay stack sits above the router, so a sheet survives the
-        // hook's navigation and has to be closed by hand once the delete lands.
-        deleteWorkflow.mutate(
-          { workflowId: currentWorkflowId },
-          { onSuccess: () => frame.dismiss?.() }
-        );
       },
     });
   };
@@ -455,53 +401,21 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
       );
     }
 
-    // Workflow-level properties, which is what nothing being selected means.
+    // Nothing selected. The workflow's own settings moved into the menu beside
+    // its name, so this is an empty state rather than a second place to rename
+    // or delete the workflow from.
     if (!selectedNode) {
       return (
-        <div className="space-y-4 p-4">
-          <div className="space-y-2">
-            <Label htmlFor="workflow-name">Workflow Name</Label>
-            <Input
-              className={workflowNameError ? "border-destructive" : undefined}
-              disabled={!isOwner}
-              id="workflow-name"
-              onChange={(e) => handleUpdateWorkflowName(e.target.value)}
-              value={currentWorkflowName}
-            />
-            {workflowNameError ? (
-              <p className="text-destructive text-xs">{workflowNameError}</p>
-            ) : null}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="workflow-id">Workflow ID</Label>
-            <Input
-              disabled
-              id="workflow-id"
-              value={currentWorkflowId || "Not saved"}
-            />
-          </div>
+        <div className="flex min-h-full flex-col items-center justify-center gap-2 p-8 text-center">
+          <MousePointerClick className="size-5 text-muted-foreground" />
+          <p className="font-medium text-sm">Nothing selected</p>
+          <p className="text-muted-foreground text-sm">
+            Select a step on the canvas to configure it.
+          </p>
+          <p className="text-muted-foreground text-xs">
+            This workflow's own settings are in the menu beside its name.
+          </p>
           {isOwner ? null : publicWorkflowNotice}
-          {isOwner ? (
-            <div className="flex items-center gap-2 pt-4">
-              <Button
-                className="text-muted-foreground"
-                onClick={confirmClearWorkflow}
-                size="sm"
-                variant="ghost"
-              >
-                <Eraser className="mr-2 size-4" />
-                Clear
-              </Button>
-              <Button
-                onClick={confirmDeleteWorkflow}
-                size="sm"
-                variant="outline"
-              >
-                <Trash2 className="mr-2 size-4 text-destructive" />
-                <span className="text-destructive">Delete</span>
-              </Button>
-            </div>
-          ) : null}
         </div>
       );
     }
@@ -544,6 +458,10 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
           <LifecyclePanel
             config={selectedNode.data.config || {}}
             disabled={isGenerating || !isOwner}
+            // Keyed to the node, which is what scopes the view/edit mode each
+            // section holds to the workflow being configured: opening another
+            // workflow brings its own entry node, and this starts on view.
+            key={selectedNode.id}
             onUpdateConfig={handleUpdateConfig}
           />
         ) : null}
@@ -660,11 +578,6 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
       activeTab={validActiveTab}
       onSelect={setActiveTab}
       placement={frame.tabs}
-      propertiesLabel={
-        selectedNode || selectedEdge || hasMultipleSelections
-          ? "Properties"
-          : "Workflow"
-      }
       showRuns={isOwner}
     />
   );

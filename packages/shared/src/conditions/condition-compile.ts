@@ -312,7 +312,17 @@ function compileEventNameRule(rule: ConditionRule): ConditionCompileResult {
   return compileComparisonRule(rule, field);
 }
 
-function compileConditionRule(rule: ConditionRule): ConditionCompileResult {
+/**
+ * One rule on its own, for a caller that has to answer for that rule rather
+ * than for the model holding it.
+ *
+ * The editor's read-only summary renders a line per rule, and an unfinished one
+ * has to say so there: `incomplete` on the failure is what separates a rule the
+ * builder has not filled in from a model that is malformed.
+ */
+export function compileConditionRule(
+  rule: ConditionRule
+): ConditionCompileResult {
   const path = rule.field.trim();
   if (!path) {
     return { valid: false, error: "Condition field is required" };

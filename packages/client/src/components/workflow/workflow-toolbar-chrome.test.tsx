@@ -105,7 +105,6 @@ function baseState(): WorkflowToolbarState {
     workflowMode: "live",
     setCurrentWorkflowName: vi.fn(),
     setCurrentWorkflowMode: vi.fn(),
-    setWorkflowNameError: vi.fn(),
     setIsTransitioningFromHomepage: vi.fn(),
     isOwner: true,
     isSaving: false,
@@ -144,6 +143,8 @@ function renderChrome(
     generating?: boolean;
     graph?: WorkflowToolbarState["nodes"];
     state?: Partial<WorkflowToolbarState>;
+    /** Null is a draft nobody has saved yet, which has no id to act on. */
+    workflowId?: string | undefined;
   } = {}
 ) {
   const store = createStore();
@@ -169,6 +170,12 @@ function renderChrome(
     store.set(isGeneratingAtom, true);
   }
 
+  // Built once rather than inside the route component, so a case can assert on
+  // the spy the chrome was actually handed: re-created per render, every click
+  // would land on an object the test never saw.
+  const actions = baseActions();
+  const workflowId = "workflowId" in lock ? lock.workflowId : "workflow_1";
+
   // The toolbar calls `useNavigate` for the workflow switcher, so it needs a
   // router above it. One root route carries the whole tree, since no case here
   // reads a param or a search value; the toolbar is rendered directly rather
@@ -188,9 +195,9 @@ function renderChrome(
                   route, and this element is on screen exactly then. */}
                 <div data-testid="toolbar-actions-host">
                   <Chrome
-                    actions={baseActions()}
+                    actions={actions}
                     state={{ ...baseState(), ...lock.state }}
-                    workflowId="workflow_1"
+                    workflowId={workflowId}
                   />
                 </div>
               </OverlayProvider>
@@ -201,16 +208,19 @@ function renderChrome(
     ),
   });
 
-  return render(
-    <RouterProvider
-      router={createRouter({
-        routeTree: rootRoute,
-        history: createMemoryHistory({
-          initialEntries: ["/workflows/workflow_1"],
-        }),
-      })}
-    />
-  );
+  return {
+    ...render(
+      <RouterProvider
+        router={createRouter({
+          routeTree: rootRoute,
+          history: createMemoryHistory({
+            initialEntries: ["/workflows/workflow_1"],
+          }),
+        })}
+      />
+    ),
+    actions,
+  };
 }
 
 describe("ToolbarActions publish gating", () => {
@@ -309,6 +319,19 @@ describe("ToolbarActions menu under a pinned run", () => {
   });
 });
 
+/**
+ * Open the workflow menu, which renders nothing until it is. The keyboard is
+ * the path: a pointer press reaches the menu through events happy-dom does not
+ * deliver whole.
+ */
+async function openWorkflowMenu(
+  findByRole: ReturnType<typeof renderChrome>["findByRole"]
+) {
+  const trigger = await findByRole("button", { expanded: false });
+  fireEvent.keyDown(trigger, { key: "ArrowDown" });
+  fireEvent.keyUp(trigger, { key: "ArrowDown" });
+}
+
 describe("WorkflowMenuComponent", () => {
   // The menu's contents render only when it opens, and a `Menu.GroupLabel`
   // written outside a `Menu.Group` throws there rather than at import: the
@@ -324,20 +347,62 @@ describe("WorkflowMenuComponent", () => {
       },
     });
 
-    const trigger = await findByRole("button", {
-      name: "Appointment reminders",
-    });
-    fireEvent.keyDown(trigger, { key: "ArrowDown" });
-    fireEvent.keyUp(trigger, { key: "ArrowDown" });
+    await openWorkflowMenu(findByRole);
 
     for (const label of [
       "Rename",
       "Duplicate workflow",
       "Onboarding drip",
       "New workflow",
+      "Clear workflow",
       "Delete workflow",
     ]) {
       expect(getByRole("menuitem", { name: label })).toBeTruthy();
     }
+  });
+
+  // Clear moved here off the properties panel, so the item has to reach the
+  // same handler the panel's button did. An item that only reads right is one
+  // nothing has ever pressed.
+  it("clears the workflow through the handler the panel used", async () => {
+    const { findByRole, getByRole, actions } = renderChrome(
+      WorkflowMenuComponent
+    );
+
+    await openWorkflowMenu(findByRole);
+    fireEvent.click(getByRole("menuitem", { name: "Clear workflow" }));
+
+    expect(actions.handleClearWorkflow).toHaveBeenCalledTimes(1);
+  });
+
+  // The panel gated Clear on ownership alone. A draft nobody has saved yet has
+  // no id and every reason to want emptying, so gating it with Delete would
+  // have taken the control off the canvas most likely to need it.
+  it("still offers Clear on a draft with no id, and no Delete", async () => {
+    const { findByRole, getByRole, queryByRole } = renderChrome(
+      WorkflowMenuComponent,
+      { workflowId: undefined, state: { currentWorkflowId: null } }
+    );
+
+    await openWorkflowMenu(findByRole);
+
+    expect(getByRole("menuitem", { name: "Clear workflow" })).toBeTruthy();
+    expect(queryByRole("menuitem", { name: "Delete workflow" })).toBeNull();
+  });
+
+  // `clearWorkflowAtom` returns early while a past run is pinned to the canvas.
+  // Enabled, the item spends a destructive confirmation on nothing at all.
+  it("refuses Clear while a past run pins the canvas", async () => {
+    const { findByRole, getByRole } = renderChrome(WorkflowMenuComponent, {
+      overlayActive: true,
+    });
+
+    await openWorkflowMenu(findByRole);
+
+    expect(
+      getByRole("menuitem", { name: "Clear workflow" }).getAttribute(
+        "data-disabled"
+      )
+    ).not.toBeNull();
   });
 });

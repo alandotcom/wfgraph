@@ -1,6 +1,6 @@
 import { compact, uniq } from "es-toolkit";
 import { X } from "lucide-react";
-import { type ReactNode, useId } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { Button } from "#src/components/ui/button";
 import { WarningCallout } from "#src/components/ui/callout";
 import { Checkbox } from "#src/components/ui/checkbox";
@@ -22,6 +22,7 @@ import { cn } from "@wfgraph/shared/utils";
 import {
   checkLifecycleRules,
   type Concurrency,
+  type CorrelationPathRole,
   correlationPathRequestFor,
   type CorrelationPathRequest,
   initialLifecycleRules,
@@ -29,6 +30,11 @@ import {
   pruneCorrelationPaths,
   readLifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import {
+  ConfigSection,
+  ConfigViewEmpty,
+  ConfigViewRow,
+} from "./config-section";
 import { EventMultiCombobox } from "./event-combobox";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
@@ -41,6 +47,10 @@ import type { UpdateNodeConfig } from "./node-config-patch";
  * writing them on mount: opening a panel is not an edit, and an autosave nobody
  * asked for is how a builder loses the difference between "never configured" and
  * "configured this way".
+ *
+ * Three sections, each in view mode until its Edit button is pressed. The
+ * refusal below them is outside that, because a configuration a save would
+ * reject has to say so without anything being opened first.
  */
 export function LifecyclePanel({
   config,
@@ -53,10 +63,15 @@ export function LifecyclePanel({
 }) {
   const startEventId = useId();
   const cancelEventsId = useId();
-  const concurrencyLabelId = useId();
   const manualStartId = useId();
   const catalog = useExtensionCatalog();
   const rules = readLifecycleRules(config) ?? initialLifecycleRules;
+
+  // Held here rather than in a store: it is a state of this panel while it is
+  // open, belonging to no workflow and worth restoring in none.
+  const [editingStart, setEditingStart] = useState(false);
+  const [editingConcurrency, setEditingConcurrency] = useState(false);
+  const [editingCancel, setEditingCancel] = useState(false);
 
   // The same function the save is refused by, over the same catalog, so the
   // sentence a builder reads here is the sentence the server would answer with
@@ -100,19 +115,35 @@ export function LifecyclePanel({
 
   return (
     <div className="space-y-4">
-      <EventField
-        help="A run starts when one of these Events arrives. Naming several is how one workflow answers an appointment being booked and being moved: Concurrency decides what happens to the run already going."
-        hasEvents={catalog.events.length > 0}
-        inputId={startEventId}
+      <ConfigSection
+        editable={!disabled}
+        stickyHeader
+        editing={editingStart}
+        help={<p>{START_EVENTS_HELP}</p>}
         label="Start Events"
+        onEditingChange={setEditingStart}
+        view={
+          <ChosenEventSummary
+            catalog={catalog}
+            empty="No Start Events."
+            eventNames={rules.startEvents}
+            role="start"
+            rules={rules}
+          />
+        }
       >
-        <EventMultiCombobox
-          choices={catalog.events}
-          disabled={disabled}
-          inputId={startEventId}
-          onValueChange={setStartEvents}
-          value={rules.startEvents}
-        />
+        <EventPicker hasEvents={catalog.events.length > 0}>
+          <Label className="sr-only" htmlFor={startEventId}>
+            Start Events
+          </Label>
+          <EventMultiCombobox
+            choices={catalog.events}
+            disabled={disabled}
+            inputId={startEventId}
+            onValueChange={setStartEvents}
+            value={rules.startEvents}
+          />
+        </EventPicker>
         {/* Each request is looked up by the Event and role the control owns
             rather than found in a list: `correlationPathRequestFor` answers
             undefined for a Start Event nothing currently compares, which is what
@@ -138,20 +169,38 @@ export function LifecyclePanel({
             })}
           />
         ))}
-      </EventField>
+      </ConfigSection>
 
-      <div className="space-y-2">
-        <Label id={concurrencyLabelId}>Concurrency</Label>
+      <ConfigSection
+        editable={!disabled}
+        stickyHeader
+        editing={editingConcurrency}
+        help={<ConcurrencyHelp concurrency={rules.concurrency} />}
+        label="Concurrency"
+        onEditingChange={setEditingConcurrency}
+        view={
+          <div className="space-y-1">
+            <p className="text-sm">{concurrencyLabel(rules.concurrency)}</p>
+            <ConfigViewRow label="Allow manual runs">
+              {rules.allowManualStart === true ? "Allowed" : "Not allowed"}
+            </ConfigViewRow>
+            <ManualRunPayloadNotice rules={rules} />
+          </div>
+        }
+      >
         <RadioGroup
-          aria-labelledby={concurrencyLabelId}
+          aria-label="Concurrency"
           disabled={disabled}
           onValueChange={setConcurrency}
           value={rules.concurrency}
         >
           {CONCURRENCY_OPTIONS.map((option) => (
+            // The consequence of each setting is in the help popover rather
+            // than under its radio: three descriptions in the column were the
+            // single largest block of prose in the panel.
             <label
               className={cn(
-                "flex w-full cursor-pointer items-start gap-2 rounded-md border p-2 transition-colors",
+                "flex w-full cursor-pointer items-center gap-2 rounded-md border p-2 transition-colors",
                 rules.concurrency === option.value
                   ? "border-primary bg-muted/50"
                   : "border-input hover:bg-muted/30",
@@ -159,65 +208,56 @@ export function LifecyclePanel({
               )}
               key={option.value}
             >
-              <RadioGroupItem className="mt-0.5" value={option.value} />
-              <div>
-                <p className="font-medium text-sm">{option.label}</p>
-                <p className="text-muted-foreground text-xs">
-                  {option.description}
-                </p>
-              </div>
+              <RadioGroupItem value={option.value} />
+              <span className="font-medium text-sm">{option.label}</span>
             </label>
           ))}
         </RadioGroup>
-        <p className="text-muted-foreground text-xs">
-          The entity is the value at the Correlation Path. A start carrying no
-          payload uses the workflow itself, so every manual run is about the
-          same entity.
-        </p>
-      </div>
 
-      <div className="flex items-start gap-2">
-        <Checkbox
-          checked={rules.allowManualStart === true}
-          disabled={disabled}
-          id={manualStartId}
-          onCheckedChange={(checked) =>
-            write({ ...rules, allowManualStart: checked })
-          }
-        />
-        <div className="space-y-0.5">
+        <div className="flex items-center gap-2">
+          <Checkbox
+            checked={rules.allowManualStart === true}
+            disabled={disabled}
+            id={manualStartId}
+            onCheckedChange={(checked) =>
+              write({ ...rules, allowManualStart: checked })
+            }
+          />
           <Label htmlFor={manualStartId}>Allow manual runs</Label>
-          <p className="text-muted-foreground text-xs">
-            The Run button and the execute route. With this off, only a Start
-            Event starts a run.
-          </p>
-          {/* The editor derives what downstream nodes may reference from the
-              Start Events' payloads, and a manual run carries whatever its caller
-              posted. Saying so is what keeps the picker's silence from reading as
-              a missing feature. */}
-          {rules.startEvents.length === 0 ? (
-            <p className="text-muted-foreground text-xs">
-              A manual run's payload is described by nothing, so downstream
-              nodes are offered no fields to reference. Add a Start Event to
-              give them its payload.
-            </p>
-          ) : null}
         </div>
-      </div>
 
-      <EventField
-        hasEvents={catalog.events.length > 0}
-        help="When one of these arrives, Workflow Graph reads its Entity Value at the Correlation Path you set for it and cancels the runs already going for that entity. A canceled run leaves through the Canceled outlet."
-        inputId={cancelEventsId}
+        <ManualRunPayloadNotice rules={rules} />
+      </ConfigSection>
+
+      <ConfigSection
+        editable={!disabled}
+        stickyHeader
+        editing={editingCancel}
+        help={<p>{CANCEL_EVENTS_HELP}</p>}
         label="Cancel Events"
+        onEditingChange={setEditingCancel}
+        view={
+          <ChosenEventSummary
+            catalog={catalog}
+            empty="No Cancel Events."
+            eventNames={rules.cancelEvents}
+            role="cancel"
+            rules={rules}
+          />
+        }
       >
-        <EventMultiCombobox
-          choices={catalog.events}
-          disabled={disabled}
-          inputId={cancelEventsId}
-          onValueChange={setCancelEvents}
-          value={rules.cancelEvents}
-        />
+        <EventPicker hasEvents={catalog.events.length > 0}>
+          <Label className="sr-only" htmlFor={cancelEventsId}>
+            Cancel Events
+          </Label>
+          <EventMultiCombobox
+            choices={catalog.events}
+            disabled={disabled}
+            inputId={cancelEventsId}
+            onValueChange={setCancelEvents}
+            value={rules.cancelEvents}
+          />
+        </EventPicker>
         {rules.cancelEvents.map((eventName) => (
           <ChosenEvent
             catalog={catalog}
@@ -239,7 +279,7 @@ export function LifecyclePanel({
             })}
           />
         ))}
-      </EventField>
+      </ConfigSection>
 
       {check.valid ? null : (
         <WarningCallout title="This will not save">
@@ -250,37 +290,145 @@ export function LifecyclePanel({
   );
 }
 
+/** What the panel says about each role, moved out of the column. */
+const START_EVENTS_HELP =
+  "A run starts when one of these Events arrives. Naming several is how one workflow answers an appointment being booked and being moved: Concurrency decides what happens to the run already going.";
+
+const CANCEL_EVENTS_HELP =
+  "When one of these arrives, Workflow Graph reads its Entity Value at the Correlation Path you set for it and cancels the runs already going for that entity. A canceled run leaves through the Canceled outlet.";
+
+const ENTITY_HELP =
+  "The entity is the value at the Correlation Path. A start carrying no payload uses the workflow itself, so every manual run is about the same entity.";
+
+const MANUAL_RUNS_HELP =
+  "The Run button and the execute route. With this off, only a Start Event starts a run.";
+
 /**
- * A labelled Event picker, or the sentence that stands in for one where the app
+ * Concurrency's three consequences, the one in force first.
+ *
+ * A builder opening this has already chosen, so the sentence describing what
+ * their workflow does now is the one they are checking.
+ */
+function ConcurrencyHelp({ concurrency }: { concurrency: Concurrency }) {
+  const chosenFirst = [
+    ...CONCURRENCY_OPTIONS.filter((option) => option.value === concurrency),
+    ...CONCURRENCY_OPTIONS.filter((option) => option.value !== concurrency),
+  ];
+
+  return (
+    <>
+      {chosenFirst.map((option) => (
+        <p key={option.value}>
+          <span className="font-medium text-foreground">{option.label}</span>{" "}
+          {option.description}
+        </p>
+      ))}
+      <p>{ENTITY_HELP}</p>
+      <p>
+        <span className="font-medium text-foreground">Allow manual runs</span>{" "}
+        {MANUAL_RUNS_HELP}
+      </p>
+    </>
+  );
+}
+
+/**
+ * The Events holding one role, read as text.
+ *
+ * The path a run is matched on is part of the sentence rather than a second
+ * line, because it is the half of the rule a builder cannot infer from the
+ * Event's name. An Event owing a path and carrying none says nothing here: the
+ * refusal below the sections is what names it.
+ */
+function ChosenEventSummary({
+  eventNames,
+  role,
+  rules,
+  catalog,
+  empty,
+}: {
+  eventNames: readonly string[];
+  role: CorrelationPathRole;
+  rules: LifecycleRules;
+  catalog: ExtensionCatalog;
+  empty: string;
+}) {
+  if (eventNames.length === 0) {
+    return <ConfigViewEmpty>{empty}</ConfigViewEmpty>;
+  }
+
+  return (
+    <ul className="space-y-1">
+      {eventNames.map((eventName) => {
+        const request = correlationPathRequestFor({
+          rules,
+          catalog,
+          eventName,
+          role,
+        });
+        const path = request?.suppliedPath ?? request?.declaredPath;
+
+        return (
+          <li className="text-sm" key={eventName}>
+            <span title={eventName}>
+              {findEvent(catalog, eventName)?.label ?? eventName}
+            </span>
+            {path ? (
+              <span className="text-muted-foreground text-xs">
+                {" correlated on "}
+                <span className="font-mono">{path}</span>
+              </span>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
+ * What the editor can offer a downstream node comes off the Start Events'
+ * payloads, and a manual run carries whatever its caller posted. Saying so is
+ * what keeps the picker's silence from reading as a missing feature.
+ *
+ * A consequence of the configuration rather than an explanation of the control,
+ * so it stays in the column in both modes instead of moving into the popover.
+ */
+function ManualRunPayloadNotice({ rules }: { rules: LifecycleRules }) {
+  if (rules.startEvents.length > 0) {
+    return null;
+  }
+
+  return (
+    <p className="text-muted-foreground text-xs">
+      A manual run's payload is described by nothing, so downstream nodes are
+      offered no fields to reference. Add a Start Event to give them its
+      payload.
+    </p>
+  );
+}
+
+/**
+ * The Event picker, or the sentence that stands in for one where the app
  * declares no Events at all.
  */
-function EventField({
-  label,
-  inputId,
+function EventPicker({
   hasEvents,
-  help,
   children,
 }: {
-  label: string;
-  inputId: string;
   hasEvents: boolean;
-  help: string;
   children: ReactNode;
 }) {
+  if (hasEvents) {
+    return children;
+  }
+
   return (
-    <div className="space-y-2">
-      <Label htmlFor={inputId}>{label}</Label>
-      {hasEvents ? (
-        children
-      ) : (
-        <p className="text-muted-foreground text-xs">
-          This server declares no Events. Whoever runs it passes them to
-          <code className="mx-1 font-mono text-xs">createWfGraphApp</code>, and
-          they appear here.
-        </p>
-      )}
-      <p className="text-muted-foreground text-xs">{help}</p>
-    </div>
+    <p className="text-muted-foreground text-xs">
+      This server declares no Events. Whoever runs it passes them to
+      <code className="mx-1 font-mono text-xs">createWfGraphApp</code>, and they
+      appear here.
+    </p>
   );
 }
 
@@ -440,6 +588,14 @@ function correlationPathChoices(
     .map((field) => field.path);
 
   return uniq(compact([...offered, declaredPath, suppliedPath]));
+}
+
+/** The setting in force, as the radio group words it. */
+function concurrencyLabel(concurrency: Concurrency): string {
+  return (
+    CONCURRENCY_OPTIONS.find((option) => option.value === concurrency)?.label ??
+    concurrency
+  );
 }
 
 /**

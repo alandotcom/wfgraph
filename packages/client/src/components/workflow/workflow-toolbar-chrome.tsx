@@ -16,6 +16,7 @@ import {
   Check,
   ChevronDown,
   Copy,
+  Eraser,
   Loader2,
   Pencil,
   Play,
@@ -462,8 +463,8 @@ export function ToolbarActions({
  * The workflow's own menu: what can be done to this workflow, which workflow is
  * open, and its id.
  *
- * Rename and Delete are here because slice 5 takes the panel that held them off
- * screen whenever nothing is selected. The panel still offers both today.
+ * Rename, Clear and Delete are here because the properties panel that used to
+ * hold them shows an empty state whenever nothing is selected.
  */
 export function WorkflowMenuComponent({
   workflowId,
@@ -475,6 +476,7 @@ export function WorkflowMenuComponent({
   actions: WorkflowToolbarActions;
 }) {
   const navigate = useNavigate();
+  const editingLocked = useAtomValue(canvasEditingLockedAtom);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   // Bumped on every open so the dialog remounts and re-reads what it starts
@@ -580,17 +582,39 @@ export function WorkflowMenuComponent({
             </DropdownMenuItem>
           </DropdownMenuGroup>
 
-          {canEditWorkflow && (
+          {/* Clear empties the graph and keeps the workflow; Delete takes the
+              workflow with it. Both were on the properties panel until that
+              panel got an empty state, and this menu is where the rest of its
+              workflow-level controls went.
+
+              Clear asks only for ownership, as the panel's button did: a draft
+              nobody has saved yet has a graph to empty and no id, so gating it
+              on `canEditWorkflow` would leave the one canvas most likely to
+              need clearing unable to. It reads the same lock every graph write
+              in the Actions menu does, because `clearWorkflowAtom` returns
+              early under a pinned run and a menu item that only looks enabled
+              spends a destructive confirmation on nothing. */}
+          {state.isOwner && (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={actions.handleDeleteWorkflow}
-                variant="destructive"
+                disabled={editingLocked}
+                onClick={actions.handleClearWorkflow}
               >
-                <Trash2 />
-                Delete workflow
+                <Eraser />
+                Clear workflow
               </DropdownMenuItem>
             </>
+          )}
+
+          {canEditWorkflow && (
+            <DropdownMenuItem
+              onClick={actions.handleDeleteWorkflow}
+              variant="destructive"
+            >
+              <Trash2 />
+              Delete workflow
+            </DropdownMenuItem>
           )}
 
           {currentWorkflowId && (

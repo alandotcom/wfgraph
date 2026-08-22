@@ -34,7 +34,6 @@ export const currentWorkflowVisibilityAtom =
   atom<WorkflowVisibility>("private");
 export const currentWorkflowModeAtom = atom<WorkflowMode>("live");
 export const isWorkflowOwnerAtom = atom<boolean>(true);
-export const workflowNameErrorAtom = atom<string | null>(null);
 export const workflowNotFoundAtom = atom(false);
 export const workflowLoadErrorAtom = atom<string | null>(null);
 
@@ -397,7 +396,6 @@ export const renameWorkflowAtom = atom(
     const workflowId = get(currentWorkflowIdAtom);
 
     set(currentWorkflowNameAtom, name);
-    set(workflowNameErrorAtom, null);
 
     const outcome = await set(saveWorkflowAtom, { name }, { immediate: true });
     if (outcome?.ok === false) {
@@ -448,7 +446,6 @@ export const createWorkflowAtom = atom(
       // that to the caller is how identity and the dirty flag drift apart.
       set(currentWorkflowIdAtom, workflow.id);
       set(currentWorkflowNameAtom, workflow.name);
-      set(workflowNameErrorAtom, null);
       set(hasUnsavedChangesAtom, false);
       set(lastSaveErrorAtom, null);
       set(lastSavedAtAtom, new Date());

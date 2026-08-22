@@ -60,7 +60,6 @@ import {
   isWorkflowOwnerAtom,
   saveWorkflowAtom,
   setWorkflowModeAtom,
-  workflowNameErrorAtom,
 } from "#src/lib/workflow-save-store";
 import { toSerializedGraph } from "#src/lib/rpc-client";
 import {
@@ -94,7 +93,6 @@ type WorkflowHandlerParams = {
   isExecuting: boolean;
   setIsExecuting: (value: boolean) => void;
   setCurrentWorkflowName: (name: string) => void;
-  setWorkflowNameError: (message: string | null) => void;
   setIsTransitioningFromHomepage: (value: boolean) => void;
   setActiveTab: (value: string) => void;
   setSelectedNodeId: (id: string | null) => void;
@@ -110,7 +108,6 @@ function useWorkflowHandlers({
   isExecuting,
   setIsExecuting,
   setCurrentWorkflowName,
-  setWorkflowNameError,
   setIsTransitioningFromHomepage,
   setActiveTab,
   setSelectedNodeId,
@@ -159,13 +156,13 @@ function useWorkflowHandlers({
     // The `add` node is a placeholder, so a canvas holding only one has nothing
     // worth saving. The save itself strips it; this is the emptiness check.
     if (!nodes.some((node) => node.type !== "add")) {
-      setWorkflowNameError("Add at least one step before saving.");
+      toast.error("Add at least one step before saving.");
       return;
     }
 
     const trimmedWorkflowName = workflowName.trim();
     if (!trimmedWorkflowName) {
-      setWorkflowNameError("Workflow name is required.");
+      toast.error("Workflow name is required.");
       return;
     }
 
@@ -178,14 +175,13 @@ function useWorkflowHandlers({
       );
 
       if (outcome && !outcome.ok) {
-        setWorkflowNameError(
+        toast.error(
           outcome.error.message || "Failed to save workflow. Please try again."
         );
         return;
       }
 
       setCurrentWorkflowName(trimmedWorkflowName);
-      setWorkflowNameError(null);
       return;
     }
 
@@ -197,7 +193,7 @@ function useWorkflowHandlers({
     });
 
     if (!outcome.ok) {
-      setWorkflowNameError(
+      toast.error(
         outcome.error.message || "Failed to save workflow. Please try again."
       );
       return;
@@ -317,7 +313,6 @@ export function useWorkflowState() {
   const [workflowMode, setCurrentWorkflowMode] = useAtom(
     currentWorkflowModeAtom
   );
-  const setWorkflowNameError = useSetAtom(workflowNameErrorAtom);
   const setIsTransitioningFromHomepage = useSetAtom(
     isTransitioningFromHomepageAtom
   );
@@ -348,7 +343,6 @@ export function useWorkflowState() {
     workflowMode,
     setCurrentWorkflowName,
     setCurrentWorkflowMode,
-    setWorkflowNameError,
     setIsTransitioningFromHomepage,
     isOwner,
     isSaving,
@@ -380,7 +374,6 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     workflowMode,
     setCurrentWorkflowName,
     setCurrentWorkflowMode,
-    setWorkflowNameError,
     setIsTransitioningFromHomepage,
     nodes,
     edges,
@@ -402,7 +395,6 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     isExecuting,
     setIsExecuting,
     setCurrentWorkflowName,
-    setWorkflowNameError,
     setIsTransitioningFromHomepage,
     setActiveTab,
     setSelectedNodeId,
