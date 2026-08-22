@@ -214,9 +214,10 @@ function normalizeActionIdentity(
  * fails it with a `StepFailure`. Either message becomes the run log's sentence.
  *
  * An `output` written in a foreign Standard Schema library derives the field
- * list but encodes nothing on the way out, since only an Effect schema carries
- * an encoder: a `Date` in a result then survives to JSONB by accident and comes
- * back a string on the replay.
+ * list and validates the handler's answer through `~standard.validate` on the
+ * way out. Only an Effect schema carries an encoder, so a `Date` in a Zod
+ * result still survives to JSONB by accident and comes back a string on the
+ * replay: answer with JSON there.
  *
  * @example
  * ```ts

@@ -259,15 +259,19 @@ output: Schema.Struct({
 A handler that answers with something its output schema cannot encode fails the node once,
 naming the field path, and keeps its retries for a failure that might clear.
 
-**A schema from another library** publishes a validator and a JSON Schema. Both of those
-run in the decode direction only. Workflow Graph validates its config, and its form and field list
-derive as usual. What the handler answered passes on as it stands, so answer with JSON
-there, because the engine memoizes a step result and replays it.
+**A schema from another library** publishes a validator and a JSON Schema. Workflow Graph
+runs `~standard.validate` on the way in (config) and on the way out (the handler's
+answer), and derives the form and field list as usual. The value that validate returns is
+what the node keeps, so a library that strips undeclared keys (Zod's default object)
+trims here too, and one that keeps them (Zod `.passthrough()`) keeps them because the
+author said so. Answer with JSON either way: the engine memoizes a step result and
+replays it.
 
-**That encode is a trim.** The output keeps the keys the schema declares, so a step that
-hands back a whole object from a system must describe each field it means to pass on.
-`Schema.StructWithRest` over a `Schema.Record` rest is the other spelling, for a shape that
-is genuinely open. The other arm passes the object through whole.
+**That encode (or validate) is a trim when the schema says so.** An Effect encode keeps
+the keys the schema declares, so a step that hands back a whole object from a system must
+describe each field it means to pass on. `Schema.StructWithRest` over a `Schema.Record`
+rest is the other spelling, for a shape that is genuinely open. A foreign library follows
+its own object policy for the same question.
 
 **Each side takes its own optional spelling.** The codec rewrites `optional(X)` to
 `optionalKey(NullOr(X))`.
