@@ -97,7 +97,7 @@ describe("RunHistoryTable", () => {
     expect(view.getByText("Test")).toBeTruthy();
   });
 
-  it("opens a run from the row action", () => {
+  it("opens a run when the row is clicked", () => {
     const onOpenRun = vi.fn(() => undefined);
     const view = render(
       <RunHistoryTable
@@ -110,7 +110,7 @@ describe("RunHistoryTable", () => {
       />
     );
 
-    fireEvent.click(view.getAllByRole("button", { name: "Open" })[0]!);
+    fireEvent.click(view.getByRole("button", { name: "Open Onboarding run" }));
     expect(onOpenRun).toHaveBeenCalledWith(ROWS[0]);
   });
 
@@ -128,8 +128,8 @@ describe("RunHistoryTable", () => {
 
     const names = () =>
       view
-        .getAllByRole("button", { name: "Open" })
-        .map((button) => button.closest("[class*='grid']")?.textContent ?? "");
+        .getAllByRole("button", { name: /Open .+ run/ })
+        .map((button) => button.textContent ?? "");
 
     expect(names()[0]).toContain("Onboarding");
     fireEvent.click(view.getByRole("button", { name: "Started" }));
