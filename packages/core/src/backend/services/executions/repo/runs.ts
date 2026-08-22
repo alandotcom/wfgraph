@@ -23,7 +23,30 @@ import type {
   NewTerminalExecution,
   PendingCancel,
   WorkflowExecution,
+  WorkflowExecutionListRow,
 } from "#src/backend/services/executions/repo/contracts";
+
+/**
+ * The columns both run-list queries select. JSONB payloads and routing columns
+ * the lists never paint stay off it, so a poll does not pull TOAST the panel
+ * would discard.
+ */
+const EXECUTION_LIST_COLUMNS = {
+  id: true,
+  workflowId: true,
+  status: true,
+  startSource: true,
+  runMode: true,
+  startEventName: true,
+  entityValue: true,
+  workflowRunId: true,
+  error: true,
+  startedAt: true,
+  waitingAt: true,
+  cancelledAt: true,
+  completedAt: true,
+  duration: true,
+} as const satisfies Record<keyof WorkflowExecutionListRow, true>;
 
 /** The most recent runs one workflow's panel shows. */
 const WORKFLOW_EXECUTIONS_LIMIT = 50;
@@ -83,7 +106,7 @@ export type RunsRepoMethods = {
   readonly listByWorkflow: (input: {
     workflowId: string;
     includeSuperseded: boolean;
-  }) => Effect.Effect<WorkflowExecution[], DatabaseError>;
+  }) => Effect.Effect<WorkflowExecutionListRow[], DatabaseError>;
   /** How many runs of this workflow a newer start displaced. */
   readonly countSuperseded: (
     workflowId: string
@@ -220,6 +243,7 @@ export function makeRunsMethods(
 
         return db.query.workflowExecutions.findMany({
           where,
+          columns: EXECUTION_LIST_COLUMNS,
           orderBy: { startedAt: "desc" },
           limit: WORKFLOW_EXECUTIONS_LIMIT,
         });
@@ -255,20 +279,13 @@ export function makeRunsMethods(
             runMode: workflowExecutions.runMode,
             startEventName: workflowExecutions.startEventName,
             entityValue: workflowExecutions.entityValue,
-            deliveryId: workflowExecutions.deliveryId,
             workflowRunId: workflowExecutions.workflowRunId,
-            enqueuedAt: workflowExecutions.enqueuedAt,
-            input: workflowExecutions.input,
-            output: workflowExecutions.output,
             error: workflowExecutions.error,
             startedAt: workflowExecutions.startedAt,
             waitingAt: workflowExecutions.waitingAt,
             cancelledAt: workflowExecutions.cancelledAt,
             completedAt: workflowExecutions.completedAt,
             duration: workflowExecutions.duration,
-            cancelRequestedAt: workflowExecutions.cancelRequestedAt,
-            cancelEventName: workflowExecutions.cancelEventName,
-            workflowVersionId: workflowExecutions.workflowVersionId,
           })
           .from(workflowExecutions)
           .innerJoin(workflows, eq(workflowExecutions.workflowId, workflows.id))

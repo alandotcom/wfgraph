@@ -2,6 +2,7 @@ import { readJsonValue, type JsonValue } from "@wfgraph/shared/types/json";
 import type {
   WorkflowExecution,
   WorkflowExecutionEvent,
+  WorkflowExecutionListRow,
   WorkflowExecutionLog,
   WorkflowWaitState,
 } from "#src/backend/services/executions/repo";
@@ -50,29 +51,37 @@ function runMode(value: string): WorkflowExecution["runMode"] {
   return value;
 }
 
-export function sqliteExecution(
+export function sqliteExecutionListRow(
   row: Record<string, unknown>
-): WorkflowExecution {
+): WorkflowExecutionListRow {
   return {
     id: requiredString(row, "id"),
     workflowId: requiredString(row, "workflow_id"),
-    workflowVersionId: requiredString(row, "workflow_version_id"),
-    workflowRunId: optionalString(row, "workflow_run_id"),
     status: sqliteExecutionStatus(requiredString(row, "status")),
     startSource: startSource(optionalString(row, "start_source")),
-    deliveryId: optionalString(row, "delivery_id"),
-    enqueuedAt: optionalDate(row, "enqueued_at"),
     runMode: runMode(requiredString(row, "run_mode")),
     startEventName: optionalString(row, "start_event_name"),
     entityValue: optionalString(row, "entity_value"),
-    input: optionalJsonObject(row, "input"),
-    output: optionalJsonValue(row, "output"),
+    workflowRunId: optionalString(row, "workflow_run_id"),
     error: optionalString(row, "error"),
     startedAt: requiredDate(row, "started_at"),
     waitingAt: optionalDate(row, "waiting_at"),
     cancelledAt: optionalDate(row, "cancelled_at"),
     completedAt: optionalDate(row, "completed_at"),
     duration: optionalString(row, "duration"),
+  };
+}
+
+export function sqliteExecution(
+  row: Record<string, unknown>
+): WorkflowExecution {
+  return {
+    ...sqliteExecutionListRow(row),
+    workflowVersionId: requiredString(row, "workflow_version_id"),
+    deliveryId: optionalString(row, "delivery_id"),
+    enqueuedAt: optionalDate(row, "enqueued_at"),
+    input: optionalJsonObject(row, "input"),
+    output: optionalJsonValue(row, "output"),
     cancelRequestedAt: optionalDate(row, "cancel_requested_at"),
     cancelEventName: optionalString(row, "cancel_event_name"),
     cancelPayload: optionalJsonObject(row, "cancel_payload"),

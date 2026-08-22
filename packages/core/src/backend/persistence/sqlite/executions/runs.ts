@@ -20,11 +20,21 @@ import {
 } from "#src/backend/persistence/sqlite/database";
 import {
   sqliteExecution,
+  sqliteExecutionListRow,
   sqliteExecutionStatus,
 } from "#src/backend/persistence/sqlite/executions/rows";
 
 const IN_FLIGHT = "'pending', 'running', 'waiting'";
 const WORKFLOW_EXECUTIONS_LIMIT = 50;
+
+/**
+ * The columns both run-list queries select. JSONB payloads and routing columns
+ * the lists never paint stay off it, so a poll does not pull blobs the panel
+ * would discard.
+ */
+const EXECUTION_LIST_SELECT = `id, workflow_id, status, start_source, run_mode,
+         start_event_name, entity_value, workflow_run_id, error, started_at,
+         waiting_at, cancelled_at, completed_at, duration`;
 
 export function insertExecution(
   database: import("node:sqlite").DatabaseSync,
@@ -89,9 +99,8 @@ function executionSummary(row: Record<string, unknown>): ExecutionSummary {
 }
 
 function globalExecution(row: Record<string, unknown>): GlobalExecutionRow {
-  const { cancelPayload: _, ...execution } = sqliteExecution(row);
   return {
-    ...execution,
+    ...sqliteExecutionListRow(row),
     workflowName: requiredString(row, "workflow_name"),
     workflowIsPaused: requiredBoolean(row, "workflow_is_paused"),
   };
@@ -103,12 +112,12 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
       store.read((database) =>
         database
           .prepare(
-            `SELECT * FROM workflow_executions
+            `SELECT ${EXECUTION_LIST_SELECT} FROM workflow_executions
              WHERE workflow_id = ? ${includeSuperseded ? "" : "AND status <> 'superseded'"}
              ORDER BY started_at DESC, id DESC LIMIT ${WORKFLOW_EXECUTIONS_LIMIT}`
           )
           .all(workflowId)
-          .map(sqliteExecution)
+          .map(sqliteExecutionListRow)
       ),
     countSuperseded: (workflowId) =>
       store.read((database) => {
@@ -143,7 +152,10 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
         values.push(query.limit);
         return database
           .prepare(
-            `SELECT e.*, w.name AS workflow_name,
+            `SELECT e.id, e.workflow_id, e.status, e.start_source, e.run_mode,
+                    e.start_event_name, e.entity_value, e.workflow_run_id, e.error,
+                    e.started_at, e.waiting_at, e.cancelled_at, e.completed_at,
+                    e.duration, w.name AS workflow_name,
                     w.is_paused AS workflow_is_paused
              FROM workflow_executions e
              JOIN workflows w ON w.id = e.workflow_id

@@ -3,10 +3,7 @@ import { uniq } from "es-toolkit/array";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { InvalidInput } from "#src/backend/lib/effect/failures";
-import {
-  redactSensitiveData,
-  redactSensitiveText,
-} from "#src/backend/lib/utils/redact";
+import { redactSensitiveText } from "#src/backend/lib/utils/redact";
 import {
   ExecutionRepo,
   type GlobalExecutionRow,
@@ -44,8 +41,6 @@ type GlobalExecutionItem = {
   startEventName: string | null;
   entityValue: string | null;
   workflowRunId: string | null;
-  input: unknown;
-  output: unknown;
   error: string | null;
   startedAt: string;
   waitingAt: string | null;
@@ -87,8 +82,6 @@ function toGlobalExecutionItem(row: GlobalExecutionRow): GlobalExecutionItem {
     startEventName: row.startEventName,
     entityValue: row.entityValue,
     workflowRunId: row.workflowRunId,
-    input: redactSensitiveData(row.input),
-    output: redactSensitiveData(row.output),
     error: redactSensitiveText(row.error),
     startedAt: row.startedAt.toISOString(),
     waitingAt: toIso(row.waitingAt),
