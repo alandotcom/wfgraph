@@ -58,10 +58,9 @@ function useExecutionOverlaySync(): void {
 
   // URL search owns which run is open. One sync: selection and the
   // pinned-graph overlay. Paint only when the run's workflowId matches the
-  // hydrated editor (`currentWorkflowId`) — never before, or a late hydrate
-  // clears the overlay while the key stays `ready` and the canvas sticks on
-  // the draft. Key is closed | open:exec:wf | ready:exec:wf; never fetch
-  // timestamps, so a logs poll cannot rebuild nodes as idle and wipe statuses.
+  // hydrated editor (`currentWorkflowId`) — never before, or the new run's
+  // graph lands on the previous workflow's canvas. Never fetch timestamps, so
+  // a logs poll cannot rebuild nodes as idle and wipe statuses.
   const detail = detailQuery.data;
   const graph = graphQuery.data;
   const workflowAligned =
@@ -78,6 +77,7 @@ function useExecutionOverlaySync(): void {
       if (executionId === undefined) {
         setSelectedExecutionId(null);
         setExecutionOverlay(null);
+        resetNodeStatuses();
         return;
       }
 

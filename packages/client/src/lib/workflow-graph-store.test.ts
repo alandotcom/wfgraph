@@ -497,6 +497,37 @@ describe("hydrateWorkflowAtom", () => {
         .status ?? "idle"
     ).toBe("idle");
   });
+
+  it("keeps the open run when the same workflow is hydrated again", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(isWorkflowOwnerAtom, true);
+    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(selectedExecutionIdAtom, "exec_1");
+    store.set(executionOverlayGraphAtom, {
+      nodes: [lifecycleNode("v1_lifecycle")],
+      edges: [],
+    });
+    store.set(setNodeStatusesAtom, [
+      { nodeId: "v1_lifecycle", status: "running" },
+    ]);
+
+    store.set(
+      hydrateWorkflowAtom,
+      savedWorkflow("workflow_1", {
+        nodes: [actionNode("draft_a")],
+        edges: [],
+      })
+    );
+
+    expect(store.get(selectedExecutionIdAtom)).toBe("exec_1");
+    expect(
+      store.get(executionOverlayGraphAtom)?.nodes.map((node) => node.id)
+    ).toEqual(["v1_lifecycle"]);
+    expect(
+      store.get(displayNodesAtom).find((node) => node.id === "v1_lifecycle")
+        ?.data.status
+    ).toBe("running");
+  });
 });
 
 describe("displayNodesAtom memoization", () => {

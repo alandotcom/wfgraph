@@ -474,6 +474,48 @@ describe("ExecutionOverlaySync", () => {
     });
   });
 
+  // Coming back to a waiting run (dashboard round-trip, or the loader's
+  // stale-while-revalidate of the still-open editor) hydrates the same
+  // workflow again. Run overlay, selection and statuses belong to that run,
+  // so hydrate must leave them; wiping them is how a run in progress lost
+  // its running animation after navigating back to it.
+  it("keeps the pinned graph after a same-workflow hydrate", async () => {
+    served.items = [execution("exec_1", "waiting")];
+    served.graphs = { [versionIdFor("exec_1")]: pinnedGraph("v1_lifecycle") };
+    const { store } = renderRuns({
+      executionId: "exec_1",
+      panel: false,
+    });
+
+    await waitFor(() => {
+      expect(
+        store.get(executionOverlayGraphAtom)?.nodes.map((n) => n.id)
+      ).toEqual(["v1_lifecycle"]);
+    });
+
+    store.set(setNodeStatusesAtom, [
+      { nodeId: "v1_lifecycle", status: "running" },
+    ]);
+
+    await act(() => {
+      store.set(
+        hydrateWorkflowAtom,
+        savedWorkflow("wf_1", {
+          nodes: [draftNode("draft_lifecycle")],
+          edges: [],
+        })
+      );
+    });
+
+    expect(
+      store.get(executionOverlayGraphAtom)?.nodes.map((n) => n.id)
+    ).toEqual(["v1_lifecycle"]);
+    expect(
+      store.get(displayNodesAtom).find((node) => node.id === "v1_lifecycle")
+        ?.data.status
+    ).toBe("running");
+  });
+
   // The server's node-status list is not exhaustive: it reports only nodes
   // that have an execution-log row for that run, so a node the new run has
   // not reached is simply absent from it rather than reported idle. Nothing
@@ -552,9 +594,9 @@ describe("ExecutionOverlaySync", () => {
     // visible as that node returning. Hydrating an empty workflow would satisfy
     // the assertion below with the run graph merely gone.
     //
-    // Synchronous, and deliberately outside `act`: hydrate clears the overlay,
-    // so it has to land before the sync paints the run. An await here would let
-    // the queries settle first and wipe what this case is about to measure.
+    // Same-workflow hydrate leaves the overlay in place and writes the draft
+    // underneath it. The draft has to be installed before we leave the tab, or
+    // the assertion would see an empty canvas rather than this node returning.
     store.set(
       hydrateWorkflowAtom,
       savedWorkflow("wf_1", {
