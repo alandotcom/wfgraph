@@ -1,5 +1,4 @@
 import type { TranscriptEvent } from "vitest-evals";
-import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import type { DeterministicAssessment } from "#src/agent/judges/graph";
 
 const WRITE_TOOLS = new Set([
@@ -12,7 +11,54 @@ const WRITE_TOOLS = new Set([
   "set_condition",
 ]);
 
-const BUILT_INS = new Set<string>(Object.values(BUILT_IN_ACTION_IDS));
+type EvalToolCall = {
+  readonly name: string;
+  readonly status: string;
+  readonly arguments?: unknown;
+};
+
+/** Distinguishes a repaired refusal from a turn that stayed stuck or crashed. */
+export function assessConfusion(input: {
+  readonly errors: readonly string[];
+  readonly finalText: string;
+  readonly toolCalls: readonly EvalToolCall[];
+}): DeterministicAssessment {
+  const failed = input.toolCalls.filter((call) => call.status === "error");
+  const unfinished = input.toolCalls.filter(
+    (call) => call.status === "pending"
+  );
+  const repeatedFailure = failed.some((call, index) =>
+    failed
+      .slice(0, index)
+      .some(
+        (earlier) =>
+          earlier.name === call.name &&
+          JSON.stringify(earlier.arguments) === JSON.stringify(call.arguments)
+      )
+  );
+  const endedWithoutAnswer = input.finalText.trim().length === 0;
+  if (
+    input.errors.length === 0 &&
+    unfinished.length === 0 &&
+    !repeatedFailure &&
+    !endedWithoutAnswer
+  ) {
+    return failed.length === 0
+      ? {
+          score: 1,
+          rationale: "The turn completed without signs of confusion.",
+        }
+      : {
+          score: 1,
+          rationale: `The turn recovered from ${failed.length} refused tool calls and completed.`,
+        };
+  }
+
+  return {
+    score: 0,
+    rationale: `The turn had ${failed.length} refused tool calls and ${input.errors.length} stream errors${repeatedFailure ? ", including a repeated refusal" : ""}${unfinished.length > 0 ? `, with ${unfinished.length} unfinished tool call${unfinished.length === 1 ? "" : "s"}` : ""}${endedWithoutAnswer ? ", then ended without an answer" : ""}.`,
+  };
+}
 
 /** Checks the evidence-gathering and validation sequence in one turn. */
 export function assessToolBehavior(
@@ -21,10 +67,10 @@ export function assessToolBehavior(
   const calls = events.filter((event) => event.type === "tool_call");
   const issues: string[] = [];
 
-  if (calls[0]?.name !== "read_workflow") {
-    issues.push(
-      `The first tool was ${calls[0]?.name ?? "none"}, not read_workflow`
-    );
+  const firstWrite = calls.findIndex((call) => WRITE_TOOLS.has(call.name));
+  const firstRead = calls.findIndex((call) => call.name === "read_workflow");
+  if (firstWrite >= 0 && (firstRead < 0 || firstRead > firstWrite)) {
+    issues.push("the graph was edited before read_workflow");
   }
 
   for (let index = 0; index < calls.length; index += 1) {
@@ -33,22 +79,17 @@ export function assessToolBehavior(
       continue;
     }
     const actionId = call.arguments?.actionId;
-    if (typeof actionId !== "string" || BUILT_INS.has(actionId)) {
+    if (typeof actionId !== "string") {
       continue;
     }
     const earlier = calls.slice(0, index);
-    const listed = earlier.some(
-      (candidate) => candidate.name === "list_actions"
-    );
     const described = earlier.some(
       (candidate) =>
         candidate.name === "describe_action" &&
         candidate.arguments?.actionId === actionId
     );
-    if (!(listed && described)) {
-      issues.push(
-        `${actionId} was added before list_actions and describe_action`
-      );
+    if (!described) {
+      issues.push(`${actionId} was added before describe_action`);
     }
   }
 

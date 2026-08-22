@@ -75,6 +75,14 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("Event Split");
   });
 
+  it("requires inspection of built-ins and reuse of available references", () => {
+    const prompt = unwrapped(buildSystemPrompt(emptyExtensionCatalog));
+
+    expect(prompt).toContain("including built-in steps");
+    expect(prompt).toContain("Use an existing upstream reference");
+    expect(prompt).toContain("Add a lookup action only when");
+  });
+
   it("explains how an always-run action and a conditional action fan out", () => {
     const prompt = unwrapped(buildSystemPrompt(emptyExtensionCatalog));
 

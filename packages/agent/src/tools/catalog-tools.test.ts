@@ -70,6 +70,22 @@ describe("list_actions", () => {
 });
 
 describe("describe_action", () => {
+  it.effect("describes how to author a built-in Event Split", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({ catalog });
+      const result = yield* tools.describe_action({
+        actionId: "Event Split",
+      });
+
+      expect(result.action).toMatchObject({
+        id: "Event Split",
+        category: "System",
+      });
+      expect(result.authoringInstructions).toContain("event:<Event name>");
+      expect(result.needsIntegration).toBe(false);
+    })
+  );
+
   it.effect("flattens field groups so every config key is one entry", () =>
     Effect.gen(function* () {
       const { tools } = yield* agentToolsFor({ catalog });
@@ -120,6 +136,17 @@ describe("describe_action", () => {
       );
 
       expect(failure.reason).toContain("slack/no-such-action");
+    })
+  );
+
+  it.effect("does not treat inherited object keys as built-in actions", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({ catalog });
+      const failure = yield* Effect.flip(
+        tools.describe_action({ actionId: "toString" })
+      );
+
+      expect(failure.reason).toContain("toString");
     })
   );
 

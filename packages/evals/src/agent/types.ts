@@ -17,6 +17,10 @@ export type AgentEvalExpectations = {
     target: EvalNodeSelector;
     sourceHandle?: string;
   }>;
+  requiredPaths?: Array<{
+    source: EvalNodeSelector;
+    target: EvalNodeSelector;
+  }>;
   preserveNodeIds?: string[];
 };
 

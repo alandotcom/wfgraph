@@ -1,6 +1,9 @@
 import { createJudge } from "vitest-evals";
 import type { AgentEvalInput, AgentEvalOutput } from "#src/agent/types";
-import { assessToolBehavior } from "#src/agent/judges/tool-behavior";
+import {
+  assessConfusion,
+  assessToolBehavior,
+} from "#src/agent/judges/tool-behavior";
 
 export const PublishableGraphJudge = createJudge<
   AgentEvalInput,
@@ -40,25 +43,14 @@ export const ToolProtocolJudge = createJudge<AgentEvalInput, AgentEvalOutput>(
 export const ConfusionJudge = createJudge<AgentEvalInput, AgentEvalOutput>(
   "ConfusionJudge",
   ({ output, toolCalls }) => {
-    const failed = toolCalls.filter((call) => call.status === "error");
-    const repeatedFailure = failed.some((call, index) =>
-      failed
-        .slice(0, index)
-        .some(
-          (earlier) =>
-            earlier.name === call.name &&
-            JSON.stringify(earlier.arguments) === JSON.stringify(call.arguments)
-        )
-    );
-    const passed =
-      output.errors.length === 0 && failed.length <= 1 && !repeatedFailure;
+    const assessment = assessConfusion({
+      errors: output.errors,
+      finalText: output.finalText,
+      toolCalls,
+    });
     return {
-      score: passed ? 1 : 0,
-      metadata: {
-        rationale: passed
-          ? "The turn completed without signs of confusion."
-          : `The turn had ${failed.length} refused tool calls and ${output.errors.length} stream errors${repeatedFailure ? ", including a repeated refusal" : ""}.`,
-      },
+      score: assessment.score,
+      metadata: { rationale: assessment.rationale },
     };
   }
 );

@@ -83,4 +83,70 @@ describe("assessScenarioSemantics", () => {
         "Expected 1 score-applicant node, found 0; missing Start Event applicant.created; missing required flow lifecycle -> score-applicant through started.",
     });
   });
+
+  it("accepts a required path with an intermediate action", () => {
+    const document = completedDocument();
+    document.nodes.push(
+      {
+        id: "profile",
+        type: "action",
+        position: { x: 0, y: 0 },
+        data: {
+          label: "Get applicant profile",
+          type: "action",
+          config: { actionType: "crm/get-applicant" },
+        },
+      },
+      {
+        id: "condition",
+        type: "action",
+        position: { x: 0, y: 0 },
+        data: {
+          label: "Score at least 80",
+          type: "action",
+          config: { actionType: "Condition" },
+        },
+      }
+    );
+    document.edges.push(
+      { id: "score-profile", source: "score", target: "profile" },
+      { id: "profile-condition", source: "profile", target: "condition" }
+    );
+
+    const pathInput: AgentEvalInput = {
+      ...input,
+      expected: {
+        requiredPaths: [
+          {
+            source: { kind: "action", actionId: "score-applicant" },
+            target: { kind: "action", actionId: "Condition" },
+          },
+        ],
+      },
+    };
+
+    expect(assessScenarioSemantics(pathInput, document)).toEqual({
+      score: 1,
+      rationale: "The graph satisfies the scenario constraints.",
+    });
+  });
+
+  it("reports a missing required path", () => {
+    const pathInput: AgentEvalInput = {
+      ...input,
+      expected: {
+        requiredPaths: [
+          {
+            source: { kind: "action", actionId: "score-applicant" },
+            target: { kind: "action", actionId: "Condition" },
+          },
+        ],
+      },
+    };
+
+    expect(assessScenarioSemantics(pathInput, completedDocument())).toEqual({
+      score: 0,
+      rationale: "missing required path score-applicant -> Condition.",
+    });
+  });
 });

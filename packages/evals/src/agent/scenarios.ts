@@ -288,11 +288,13 @@ export const complexScenarios: Array<{
         },
         startEvents: ["applicant.created"],
         cancelEvents: ["applicant.withdrawn"],
-        requiredFlows: [
+        requiredPaths: [
           {
             source: { kind: "action", actionId: "score-applicant" },
             target: { kind: "action", actionId: BUILT_IN_ACTION_IDS.condition },
           },
+        ],
+        requiredFlows: [
           {
             source: { kind: "action", actionId: BUILT_IN_ACTION_IDS.condition },
             target: { kind: "action", actionId: "linear/create-issue" },

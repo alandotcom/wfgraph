@@ -28,6 +28,47 @@ function selectorName(selector: EvalNodeSelector): string {
   return selector.label ?? selector.actionId;
 }
 
+function hasPath(input: {
+  source: EvalNodeSelector;
+  target: EvalNodeSelector;
+  document: AgentEvalDocument;
+}): boolean {
+  const sourceIds = input.document.nodes
+    .filter((node) => matchesSelector(node, input.source))
+    .map((node) => node.id);
+  const targetIds = new Set(
+    input.document.nodes
+      .filter((node) => matchesSelector(node, input.target))
+      .map((node) => node.id)
+  );
+  const targetsBySource = new Map<string, string[]>();
+  for (const edge of input.document.edges) {
+    const targets = targetsBySource.get(edge.source);
+    if (targets) {
+      targets.push(edge.target);
+    } else {
+      targetsBySource.set(edge.source, [edge.target]);
+    }
+  }
+
+  for (const sourceId of sourceIds) {
+    const pending = [...(targetsBySource.get(sourceId) ?? [])];
+    const visited = new Set([sourceId]);
+    while (pending.length > 0) {
+      const nodeId = pending.shift();
+      if (nodeId === undefined || visited.has(nodeId)) {
+        continue;
+      }
+      if (targetIds.has(nodeId)) {
+        return true;
+      }
+      visited.add(nodeId);
+      pending.push(...(targetsBySource.get(nodeId) ?? []));
+    }
+  }
+  return false;
+}
+
 /** Checks the graph facts a scenario declares, allowing other valid graph details. */
 export function assessScenarioSemantics(
   input: AgentEvalInput,
@@ -82,6 +123,14 @@ export function assessScenarioSemantics(
     if (!found) {
       issues.push(
         `missing required flow ${selectorName(flow.source)} -> ${selectorName(flow.target)}${flow.sourceHandle === undefined ? "" : ` through ${flow.sourceHandle}`}`
+      );
+    }
+  }
+
+  for (const path of input.expected.requiredPaths ?? []) {
+    if (!hasPath({ ...path, document })) {
+      issues.push(
+        `missing required path ${selectorName(path.source)} -> ${selectorName(path.target)}`
       );
     }
   }

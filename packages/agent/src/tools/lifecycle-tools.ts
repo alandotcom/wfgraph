@@ -23,6 +23,7 @@ import type {
   ConditionRule,
   GroupLogic,
 } from "@wfgraph/shared/conditions/condition-model";
+import { EVENT_NAME_FIELD_PATH } from "@wfgraph/shared/conditions/condition-model";
 import { serializeConditionModel } from "@wfgraph/shared/conditions/condition-schema";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
@@ -32,6 +33,7 @@ import {
   type LifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { WorkflowDraft } from "#src/document";
+import { referencesForNode } from "#src/tools/reference-tools";
 
 const failureSchema = Schema.Struct({ reason: Schema.String });
 const writeResultSchema = Schema.Struct({ summary: Schema.String });
@@ -87,7 +89,7 @@ export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
 const conditionRuleSchema = Schema.Struct({
   field: Schema.String.annotate({
     description:
-      "The path being tested, exactly as list_references reported it, without the surrounding braces.",
+      'The path property exactly as list_references reported it, such as "score". The token and its node prefix are separate fields and do not belong here.',
   }),
   fieldType: Schema.Literals([
     "string",
@@ -449,6 +451,16 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
           });
         }
 
+        const availableReferences =
+          referencesForNode({
+            nodeId: input.nodeId,
+            document,
+            catalog: draft.catalog,
+          }) ?? [];
+        const availablePaths = new Set(
+          availableReferences.map((reference) => reference.path)
+        );
+
         const groups: ConditionGroup[] = [];
         for (const group of input.groups) {
           if (group.rules.length === 0) {
@@ -459,6 +471,42 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
 
           const rules: ConditionRule[] = [];
           for (const rule of group.rules) {
+            if (
+              rule.field !== EVENT_NAME_FIELD_PATH &&
+              availablePaths.size === 0
+            ) {
+              return Effect.fail({
+                reason:
+                  "This Condition has no available references. Connect its inputs, then call list_references.",
+              });
+            }
+            if (
+              rule.field !== EVENT_NAME_FIELD_PATH &&
+              !availablePaths.has(rule.field)
+            ) {
+              return Effect.fail({
+                reason: `That condition field is unavailable. Use the path property from list_references: ${[...availablePaths].join(", ")}.`,
+              });
+            }
+            const expectedTypes = new Set<ConditionFieldType>(
+              rule.field === EVENT_NAME_FIELD_PATH
+                ? ["string"]
+                : availableReferences
+                    .filter((reference) => reference.path === rule.field)
+                    .flatMap((reference) => reference.conditionFieldType ?? [])
+            );
+            if (expectedTypes.size !== 1) {
+              return Effect.fail({
+                reason:
+                  "That reference does not have one condition-compatible type.",
+              });
+            }
+            const [expectedType] = expectedTypes;
+            if (rule.fieldType !== expectedType) {
+              return Effect.fail({
+                reason: `Use fieldType ${expectedType} for ${rule.field}, as list_references reports.`,
+              });
+            }
             const reading = readRule(rule);
             if (!reading.ok) {
               return Effect.fail({ reason: reading.reason });

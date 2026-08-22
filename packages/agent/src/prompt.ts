@@ -44,12 +44,15 @@ How a step reads a value from an earlier step:
   above this one in the graph resolves to nothing at run time.
 - Connect a step before filling in a config that reads from upstream, because
   what a step can reference is decided by what reaches it.
+- Use an existing upstream reference whenever list_references offers the requested
+  value. Add a lookup action only when that value is absent.
 
 How to work:
 
 1. Call read_workflow first, so you are editing what is actually on screen.
-2. Search with list_actions, then call describe_action before you add a step, so
-   the config keys are the ones the action declares.
+2. The action index below gives exact ids. Use list_actions when you need to
+   search it, and call describe_action before you add every step, including
+   built-in steps, so you have its config fields and authoring instructions.
 3. An action belonging to an integration needs an integrationId from
    list_integrations. Say so plainly when no connection exists yet; the user
    connects it in the editor, and you can finish everything else.
