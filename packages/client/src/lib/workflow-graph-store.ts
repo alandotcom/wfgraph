@@ -332,17 +332,6 @@ export const loadWorkflowGraphAtom = atom(
 );
 
 /**
- * Counts how many times the editor has been handed a workflow from the loader.
- *
- * Hydrate clears the run overlay, and a same-workflow reload (coming back from
- * the dashboard, or a stale-while-revalidate of the still-open editor) does not
- * change `currentWorkflowId` or the URL. Overlay sync's key used to ignore that,
- * so a late hydrate left the canvas on the draft while the Runs panel still
- * showed the open run. Bumping this is what makes that key move.
- */
-export const workflowHydrateGenerationAtom = atom(0);
-
-/**
  * Put a workflow on screen: the graph, its identity, and who may edit it.
  *
  * Called from the route's loader, before the editor renders. A loader avoids
@@ -364,13 +353,16 @@ export const hydrateWorkflowAtom = atom(
     // Also clears undo history, so undo cannot reach back past the switch and
     // write the previous workflow's graph into this one.
     set(loadWorkflowGraphAtom, { nodes, edges: workflow.edges });
-    // Statuses belong to a run, not to the workflow, so a freshly loaded graph
-    // shows none of the previous run's progress -- even if a node id happens
-    // to be reused, which id generation makes exceedingly unlikely but the
-    // status map cannot otherwise rule out.
-    set(statusByNodeIdAtom, new Map());
-    set(executionOverlayGraphAtom, null);
-    set(selectedExecutionIdAtom, null);
+    // Overlay, selection and statuses belong to the open run. Switching
+    // workflows has to drop them — a reused node id would otherwise keep the
+    // previous run's badges. Reloading the same workflow (dashboard round-trip,
+    // stale-while-revalidate) must not: wiping them is how a waiting canvas
+    // lost its animation while the Runs panel still showed the run.
+    if (get(currentWorkflowIdAtom) !== workflow.id) {
+      set(statusByNodeIdAtom, new Map());
+      set(executionOverlayGraphAtom, null);
+      set(selectedExecutionIdAtom, null);
+    }
     set(activeAgentTurnIdAtom, null);
     set(isGeneratingAtom, false);
     set(currentWorkflowIdAtom, workflow.id);
@@ -383,7 +375,6 @@ export const hydrateWorkflowAtom = atom(
     set(isWorkflowOwnerAtom, workflow.isOwner !== false);
     set(workflowNotFoundAtom, false);
     set(workflowLoadErrorAtom, null);
-    set(workflowHydrateGenerationAtom, get(workflowHydrateGenerationAtom) + 1);
   }
 );
 
