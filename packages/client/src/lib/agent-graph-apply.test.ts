@@ -9,6 +9,7 @@ import {
   executionOverlayGraphAtom,
   loadWorkflowGraphAtom,
   nodesAtom,
+  undoAtom,
 } from "#src/lib/workflow-graph-store";
 import { savedWorkflow } from "./workflow-save-test-support";
 import {
@@ -18,11 +19,13 @@ import {
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
 import {
+  activeAgentTurnIdAtom,
   isGeneratingAtom,
   propertiesPanelActiveTabAtom,
 } from "#src/lib/workflow-ui-store";
 
 const catalog = emptyExtensionCatalog;
+const turnId = Symbol("agent-turn");
 
 function actionNode(id: string, label = id): WorkflowNode {
   return {
@@ -40,6 +43,7 @@ function createGraphStore(nodes: WorkflowNode[]) {
   });
   store.set(autosaveDelayAtom, 0);
   store.set(currentWorkflowIdAtom, "workflow_1");
+  store.set(activeAgentTurnIdAtom, turnId);
   store.set(loadWorkflowGraphAtom, { nodes, edges: [] });
   return store;
 }
@@ -49,6 +53,9 @@ describe("applyAgentGraphAtom", () => {
     const store = createGraphStore([actionNode("a")]);
 
     store.set(applyAgentGraphAtom, {
+      workflowId: "workflow_1",
+      turnId,
+      recordHistory: true,
       nodes: [actionNode("a"), actionNode("b")],
       edges: [{ id: "e1", source: "a", target: "b" }],
       catalog,
@@ -66,6 +73,9 @@ describe("applyAgentGraphAtom", () => {
     // about what happens from there: a turn calls several write tools, and each
     // one sends the whole graph back.
     store.set(applyAgentGraphAtom, {
+      workflowId: "workflow_1",
+      turnId,
+      recordHistory: true,
       nodes: [actionNode("a"), actionNode("b")],
       edges: [],
       catalog,
@@ -73,6 +83,9 @@ describe("applyAgentGraphAtom", () => {
     const settled = store.get(nodesAtom);
 
     store.set(applyAgentGraphAtom, {
+      workflowId: "workflow_1",
+      turnId,
+      recordHistory: false,
       nodes: [actionNode("a"), actionNode("b", "Renamed")],
       edges: [],
       catalog,
@@ -95,6 +108,9 @@ describe("applyAgentGraphAtom", () => {
     expect(store.get(canUndoAtom)).toBe(false);
 
     store.set(applyAgentGraphAtom, {
+      workflowId: "workflow_1",
+      turnId,
+      recordHistory: true,
       nodes: [actionNode("a"), actionNode("b")],
       edges: [],
       catalog,
@@ -111,6 +127,9 @@ describe("applyAgentGraphAtom", () => {
     store.set(isGeneratingAtom, true);
 
     store.set(applyAgentGraphAtom, {
+      workflowId: "workflow_1",
+      turnId,
+      recordHistory: true,
       nodes: [actionNode("a"), actionNode("b")],
       edges: [],
       catalog,
@@ -131,11 +150,92 @@ describe("applyAgentGraphAtom", () => {
     });
 
     store.set(applyAgentGraphAtom, {
+      workflowId: "workflow_1",
+      turnId,
+      recordHistory: true,
       nodes: [actionNode("a"), actionNode("b")],
       edges: [],
       catalog,
     });
 
     expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["a"]);
+  });
+
+  it("refuses a graph from a workflow that is no longer open", () => {
+    const store = createGraphStore([actionNode("current")]);
+
+    store.set(applyAgentGraphAtom, {
+      workflowId: "workflow_that_was_left",
+      turnId,
+      recordHistory: true,
+      nodes: [actionNode("stale")],
+      edges: [],
+      catalog,
+    });
+
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["current"]);
+    expect(store.get(canUndoAtom)).toBe(false);
+  });
+
+  it("records one undo boundary across all graph updates in a turn", () => {
+    const store = createGraphStore([actionNode("a")]);
+
+    store.set(applyAgentGraphAtom, {
+      workflowId: "workflow_1",
+      turnId,
+      recordHistory: true,
+      nodes: [actionNode("a"), actionNode("b")],
+      edges: [],
+      catalog,
+    });
+    store.set(applyAgentGraphAtom, {
+      workflowId: "workflow_1",
+      turnId,
+      recordHistory: false,
+      nodes: [actionNode("a"), actionNode("b"), actionNode("c")],
+      edges: [],
+      catalog,
+    });
+
+    store.set(undoAtom);
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["a"]);
+    expect(store.get(canUndoAtom)).toBe(false);
+  });
+
+  it("keeps existing node positions while placing a new node", () => {
+    const positioned = {
+      ...actionNode("a"),
+      position: { x: 725, y: 315 },
+    };
+    const store = createGraphStore([positioned]);
+
+    store.set(applyAgentGraphAtom, {
+      workflowId: "workflow_1",
+      turnId,
+      recordHistory: true,
+      nodes: [actionNode("a"), actionNode("b")],
+      edges: [{ id: "e1", source: "a", target: "b" }],
+      catalog,
+    });
+
+    expect(
+      store.get(nodesAtom).find((node) => node.id === "a")?.position
+    ).toEqual(positioned.position);
+  });
+
+  it("refuses a graph from a turn that has already been replaced", () => {
+    const store = createGraphStore([actionNode("current")]);
+    store.set(activeAgentTurnIdAtom, Symbol("newer-turn"));
+
+    store.set(applyAgentGraphAtom, {
+      workflowId: "workflow_1",
+      turnId,
+      recordHistory: true,
+      nodes: [actionNode("stale")],
+      edges: [],
+      catalog,
+    });
+
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["current"]);
   });
 });

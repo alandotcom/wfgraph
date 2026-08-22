@@ -25,6 +25,8 @@ pnpm install
 # Root .env.local (gitignored)
 cat > .env.local <<EOF
 INTEGRATION_ENCRYPTION_KEY=$(openssl rand -hex 32)
+# Optional: enables the build agent in the editor.
+OPENAI_API_KEY=your-openai-api-key
 EOF
 
 # App :4017, editor :5173. The Inngest CLI takes free ports and prints its own.
@@ -38,6 +40,10 @@ in `examples/app.ts`.
 It stores its data in SQLite, at `examples/wfgraph.sqlite`, which is gitignored and created
 on first boot. There is no migration step and no separate service. Point `SQLITE_PATH`
 somewhere else to move the file, and delete it to start over.
+
+The build agent is optional. Set `OPENAI_API_KEY` in `.env.local` to enable the Agent panel.
+The key stays on the server; the browser sends chat requests to the host app, which calls the
+configured model. Leave the variable empty to run the editor without the agent.
 
 Production-style single process (built client handed to the app):
 
@@ -106,6 +112,7 @@ const wfgraph = await createWfGraphApp({
     migrations: { runOnStartup: true },
   }),
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
+  agent: { apiKey: process.env.OPENAI_API_KEY },
   auth: (request) => hasValidSession(request),
   client: clientBundle,
   inngest: { id: "my-wfgraph-app", connect: true },

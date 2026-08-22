@@ -359,13 +359,46 @@ const workflowBulkLifecycleResultSchema = Schema.Struct({
  * The turn carries the whole conversation and the whole graph, because neither
  * is kept on the server. Nothing about a turn outlives the request that ran it.
  */
-const agentChatInput = contractSchema(
-  Schema.Struct({
-    workflowId: idSchema,
-    messages: listOf(agentMessageSchema),
-    graph: serializedWorkflowGraphSchema,
-  })
+export const MAX_AGENT_MESSAGES = 100;
+export const MAX_AGENT_MESSAGE_CHARS = 32_000;
+export const MAX_AGENT_GRAPH_NODES = 500;
+export const MAX_AGENT_GRAPH_EDGES = 2_000;
+export const MAX_AGENT_REQUEST_CHARS = 1_000_000;
+
+const boundedAgentMessageSchema = agentMessageSchema.check(
+  Schema.makeFilter(
+    (message) => message.content.length <= MAX_AGENT_MESSAGE_CHARS,
+    { expected: `a message of at most ${MAX_AGENT_MESSAGE_CHARS} characters` }
+  )
 );
+
+const boundedAgentGraphSchema = serializedWorkflowGraphSchema.check(
+  Schema.makeFilter(
+    (graph) =>
+      graph.nodes.length <= MAX_AGENT_GRAPH_NODES &&
+      graph.edges.length <= MAX_AGENT_GRAPH_EDGES,
+    {
+      expected: `a graph with at most ${MAX_AGENT_GRAPH_NODES} nodes and ${MAX_AGENT_GRAPH_EDGES} edges`,
+    }
+  )
+);
+
+export const agentChatInputSchema = Schema.Struct({
+  workflowId: idSchema,
+  messages: listOf(boundedAgentMessageSchema).check(
+    Schema.isMaxLength(MAX_AGENT_MESSAGES)
+  ),
+  graph: boundedAgentGraphSchema,
+}).check(
+  Schema.makeFilter(
+    (input) => JSON.stringify(input).length <= MAX_AGENT_REQUEST_CHARS,
+    {
+      expected: `an agent request of at most ${MAX_AGENT_REQUEST_CHARS} characters`,
+    }
+  )
+);
+
+const agentChatInput = contractSchema(agentChatInputSchema);
 
 export const rpcContract = {
   agent: {

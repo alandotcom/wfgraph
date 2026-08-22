@@ -25,6 +25,7 @@ import {
   workflowLoadErrorAtom,
 } from "#src/lib/workflow-save-store";
 import {
+  activeAgentTurnIdAtom,
   isGeneratingAtom,
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
@@ -359,6 +360,8 @@ export const hydrateWorkflowAtom = atom(
     set(statusByNodeIdAtom, new Map());
     set(executionOverlayGraphAtom, null);
     set(selectedExecutionIdAtom, null);
+    set(activeAgentTurnIdAtom, null);
+    set(isGeneratingAtom, false);
     set(currentWorkflowIdAtom, workflow.id);
     set(currentWorkflowNameAtom, workflow.name);
     // The clock reading belongs to the workflow just left, so the strip would
@@ -732,9 +735,9 @@ export const duplicateSelectionAtom = atom(
 /**
  * Put the build agent's version of the workflow on the canvas.
  *
- * One undo step per applied graph, because a turn is what the user asked for and
- * what they would want back. The agent chooses no coordinates, so every node it
- * added arrives at the origin and the layout pass here is what places them.
+ * The caller marks the first graph in a turn as its undo boundary. The agent
+ * chooses no coordinates, so every node it added arrives at the origin and the
+ * layout pass here is what places new nodes.
  *
  * Node identity is preserved for anything the agent left alone: `displayNodesAtom`
  * keeps a paint cache keyed on it, so rebuilding every node would re-render every
@@ -746,13 +749,20 @@ export const applyAgentGraphAtom = atom(
     get,
     set,
     input: {
+      workflowId: string;
+      turnId: symbol;
+      recordHistory: boolean;
       nodes: WorkflowNode[];
       edges: WorkflowEdge[];
       catalog: ExtensionCatalog;
     }
   ) => {
-    if (!draftEditable(get)) {
-      return;
+    if (
+      input.workflowId !== get(currentWorkflowIdAtom) ||
+      input.turnId !== get(activeAgentTurnIdAtom) ||
+      !draftEditable(get)
+    ) {
+      return false;
     }
 
     const existingById = new Map(
@@ -773,19 +783,27 @@ export const applyAgentGraphAtom = atom(
       catalog: input.catalog,
     });
 
+    const positioned = laidOut.map((node) => {
+      const existing = existingById.get(node.id);
+      return existing ? { ...node, position: existing.position } : node;
+    });
+
     // `layoutWorkflowNodes` rebuilds every node it is given, so identity is
     // restored here rather than assumed. `displayNodesAtom` keeps a paint cache
     // keyed on it, and a turn calls several write tools, each sending the whole
     // graph back: without this every card on the canvas repaints per tool call.
-    const reconciled = laidOut.map((node) => {
+    const reconciled = positioned.map((node) => {
       const existing = existingById.get(node.id);
       return existing && isSameNode(existing, node) ? existing : node;
     });
 
-    pushHistory(get, set);
+    if (input.recordHistory) {
+      pushHistory(get, set);
+    }
     set(nodesStateAtom, orderGroupParentsFirst(reconciled));
     set(edgesStateAtom, input.edges);
     requestGraphSave(get, set, { immediate: true });
+    return true;
   }
 );
 

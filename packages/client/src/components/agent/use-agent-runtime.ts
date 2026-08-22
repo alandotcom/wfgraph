@@ -28,7 +28,11 @@ import {
   nodesAtom,
 } from "#src/lib/workflow-graph-store";
 import { toEditorEdge, toEditorNode } from "#src/lib/workflow-graph-types";
-import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
+import {
+  activeAgentTurnIdAtom,
+  isGeneratingAtom,
+} from "#src/lib/workflow-ui-store";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 
 /**
  * The conversation as the server takes it.
@@ -111,8 +115,11 @@ export function useAgentRuntime(workflowId: string) {
           edges: appStore.get(edgesAtom),
         });
 
+        const turnId = Symbol("agent-turn");
+        appStore.set(activeAgentTurnIdAtom, turnId);
         setIsGenerating(true);
         let content: TurnContent = [];
+        let hasAppliedGraph = false;
 
         try {
           const stream = await rpc.agent.chat(
@@ -159,11 +166,15 @@ export function useAgentRuntime(workflowId: string) {
                 // The canvas redraws mid-turn, which is the point: the user
                 // watches the workflow being built rather than waiting for it.
                 const { nodes, edges } = toWorkflowGraphData(part.graph);
-                applyGraph({
+                const applied = applyGraph({
+                  workflowId,
+                  turnId,
+                  recordHistory: !hasAppliedGraph,
                   nodes: nodes.map(toEditorNode),
                   edges: edges.map(toEditorEdge),
                   catalog,
                 });
+                hasAppliedGraph ||= applied;
                 break;
               }
 
@@ -190,7 +201,13 @@ export function useAgentRuntime(workflowId: string) {
             yield { content };
           }
         } finally {
-          setIsGenerating(false);
+          if (
+            appStore.get(currentWorkflowIdAtom) === workflowId &&
+            appStore.get(activeAgentTurnIdAtom) === turnId
+          ) {
+            appStore.set(activeAgentTurnIdAtom, null);
+            setIsGenerating(false);
+          }
         }
       },
     }),

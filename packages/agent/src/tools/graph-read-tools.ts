@@ -15,6 +15,7 @@ import {
   collectWorkflowIssues,
   hasBlockingWorkflowIssues,
 } from "@wfgraph/shared/graph/workflow-issues";
+import { workflowTopologyRefusalReason } from "@wfgraph/shared/graph/workflow-topology";
 import {
   type JsonObject,
   jsonObjectSchema,
@@ -78,9 +79,12 @@ export const ReadWorkflow = Tool.make("read_workflow", {
 
 export const ValidateWorkflow = Tool.make("validate_workflow", {
   description:
-    "Check the workflow for missing required fields, actions whose integration has no connection, and template references pointing at nodes that are gone. Run this before telling the user the workflow is ready.",
+    "Check whether the graph can be saved and whether it has missing required fields, unconnected integrations, or references to deleted nodes. Run this before telling the user the workflow is ready.",
   success: Schema.Struct({
     issues: Schema.Array(issueSchema),
+    topologyError: Schema.optionalKey(Schema.String).annotate({
+      description: "Why the graph structure cannot be saved.",
+    }),
     /** True when at least one issue would stop the workflow being published. */
     hasBlockingIssues: Schema.Boolean,
   }),
@@ -120,6 +124,7 @@ export const graphReadToolHandlers = Effect.gen(function* () {
 
     validate_workflow: () =>
       Effect.map(draft.current, (document) => {
+        const topologyError = workflowTopologyRefusalReason(document);
         const issues = collectWorkflowIssues({
           nodes: [...document.nodes],
           catalog: draft.catalog,
@@ -127,6 +132,7 @@ export const graphReadToolHandlers = Effect.gen(function* () {
         });
 
         return {
+          ...(topologyError === null ? {} : { topologyError }),
           issues: issues.map((issue) => ({
             kind: issue.kind,
             severity: issue.severity,
@@ -134,7 +140,8 @@ export const graphReadToolHandlers = Effect.gen(function* () {
             nodeLabel: issue.nodeLabel,
             message: issue.message,
           })),
-          hasBlockingIssues: hasBlockingWorkflowIssues(issues),
+          hasBlockingIssues:
+            topologyError !== null || hasBlockingWorkflowIssues(issues),
         };
       }),
   };

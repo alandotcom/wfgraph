@@ -13,6 +13,7 @@
 import { Context, Effect, Layer, Ref } from "effect";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
+import { workflowTopologyRefusalReason } from "@wfgraph/shared/graph/workflow-topology";
 
 /** The graph as one turn sees it: the nodes and edges, and nothing about layout. */
 export type AgentDocument = {
@@ -33,13 +34,17 @@ export type WorkflowDraftInput = {
   readonly integrations: readonly ConnectedIntegration[];
 };
 
+type DraftUpdateResult =
+  | { readonly ok: true; readonly document: AgentDocument }
+  | { readonly ok: false; readonly reason: string };
+
 export type WorkflowDraftService = {
   /** The graph as it stands after every edit made so far in this turn. */
   readonly current: Effect.Effect<AgentDocument>;
   /** Replace the graph and answer what it became. */
   readonly update: (
     edit: (document: AgentDocument) => AgentDocument
-  ) => Effect.Effect<AgentDocument>;
+  ) => Effect.Effect<AgentDocument, { readonly reason: string }>;
   /** The extension surface, fixed for the turn. */
   readonly catalog: ExtensionCatalog;
   /** The connections the operator can bind an action to, fixed for the turn. */
@@ -67,7 +72,20 @@ export function makeWorkflowDraft(
 
     return {
       current: Ref.get(state),
-      update: (edit) => Ref.updateAndGet(state, edit),
+      update: (edit) =>
+        Ref.modify(state, (current): [DraftUpdateResult, AgentDocument] => {
+          const candidate = edit(current);
+          const reason = workflowTopologyRefusalReason(candidate);
+          return reason
+            ? [{ ok: false as const, reason }, current]
+            : [{ ok: true as const, document: candidate }, candidate];
+        }).pipe(
+          Effect.flatMap((result) =>
+            result.ok
+              ? Effect.succeed(result.document)
+              : Effect.fail({ reason: result.reason })
+          )
+        ),
       catalog: input.catalog,
       integrations: input.integrations,
     };

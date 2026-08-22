@@ -1,6 +1,7 @@
 import { Layer, ManagedRuntime } from "effect";
 import {
   AgentConfig,
+  AgentCapacity,
   type AgentSettings,
   makeAgentConfigLayer,
 } from "#src/backend/agent/config";
@@ -34,6 +35,7 @@ import { WorkflowRepo } from "#src/backend/services/workflows/repo";
  */
 export type WfGraphServices =
   | AppLogger
+  | AgentCapacity
   | AgentConfig
   | Extensions
   | ApiKeyRepo

@@ -84,7 +84,6 @@
     "effect": "catalog:",
     "es-toolkit": "catalog:",
     "graphology": "catalog:",
-    "graphology-dag": "^0.4.1",
     "nanoid": "catalog:",
     "postgres": "catalog:"
   },

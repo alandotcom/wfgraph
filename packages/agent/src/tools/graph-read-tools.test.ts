@@ -188,6 +188,61 @@ describe("validate_workflow", () => {
     })
   );
 
+  it.effect("blocks on a join across mutually exclusive Condition paths", () =>
+    Effect.gen(function* () {
+      const condition: WorkflowNode = {
+        id: "condition",
+        position: { x: 0, y: 0 },
+        type: "action",
+        data: {
+          label: "Is Jerry?",
+          type: "action",
+          config: { actionType: "Condition" },
+        },
+      };
+      const linear: WorkflowNode = {
+        ...slackNode,
+        id: "linear",
+        data: {
+          ...slackNode.data,
+          label: "Create Linear ticket",
+          config: { actionType: "linear/create-issue" },
+        },
+      };
+      const edges: WorkflowEdge[] = [
+        {
+          id: "entry-condition",
+          source: "entry",
+          target: "condition",
+          sourceHandle: "started",
+        },
+        {
+          id: "condition-true",
+          source: "condition",
+          target: "notify",
+          sourceHandle: "true",
+        },
+        {
+          id: "condition-false",
+          source: "condition",
+          target: "linear",
+          sourceHandle: "false",
+        },
+        { id: "notify-linear", source: "notify", target: "linear" },
+      ];
+      const { tools } = yield* agentToolsFor({
+        nodes: [lifecycle, condition, slackNode, linear],
+        edges,
+        catalog,
+      });
+
+      const result = yield* tools.validate_workflow();
+
+      expect(result.topologyError).toContain("mutually exclusive branches");
+      expect(result.hasBlockingIssues).toBe(true);
+    })
+  );
+
   it.effect("blocks on a required field the config leaves empty", () =>
     Effect.gen(function* () {
       const missingText: WorkflowNode = {

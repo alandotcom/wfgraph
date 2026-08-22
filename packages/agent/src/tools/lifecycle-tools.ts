@@ -27,6 +27,7 @@ import { serializeConditionModel } from "@wfgraph/shared/conditions/condition-sc
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import {
+  checkLifecycleRules,
   emptyLifecycleRules,
   type LifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
@@ -208,7 +209,11 @@ function readNumberRule(base: RuleBase, input: RuleInput): RuleReading {
   }
 
   const value = Number(input.value);
-  if (input.value === undefined || Number.isNaN(value)) {
+  if (
+    input.value === undefined ||
+    input.value.trim().length === 0 ||
+    !Number.isFinite(value)
+  ) {
     return {
       ok: false,
       reason: `The ${input.operator} operator on ${input.field} needs a numeric value.`,
@@ -387,6 +392,11 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
                 ),
               }),
         };
+
+        const check = checkLifecycleRules({ rules, catalog: draft.catalog });
+        if (!check.valid) {
+          return Effect.fail({ reason: check.error });
+        }
 
         const entry = entryNodeOf(document.nodes);
         const created = !document.nodes.some((node) => node.id === entry.id);

@@ -74,4 +74,13 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("Wait");
     expect(prompt).toContain("Event Split");
   });
+
+  it("explains how an always-run action and a conditional action fan out", () => {
+    const prompt = unwrapped(buildSystemPrompt(emptyExtensionCatalog));
+
+    expect(prompt).toContain(
+      "Every node with multiple incoming edges is an AND-join"
+    );
+    expect(prompt).toContain("fan both paths out independently");
+  });
 });

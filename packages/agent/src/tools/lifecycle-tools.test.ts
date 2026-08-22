@@ -35,7 +35,10 @@ describe("set_lifecycle_rules", () => {
         startEvents: ["applicant.created"],
         cancelEvents: ["applicant.withdrawn"],
         concurrency: "newest-wins",
-        correlationPaths: [{ event: "applicant.created", path: "applicantId" }],
+        correlationPaths: [
+          { event: "applicant.created", path: "applicantId" },
+          { event: "applicant.withdrawn", path: "applicantId" },
+        ],
       });
 
       const document = yield* draft.current;
@@ -47,7 +50,10 @@ describe("set_lifecycle_rules", () => {
         startEvents: ["applicant.created"],
         cancelEvents: ["applicant.withdrawn"],
         concurrency: "newest-wins",
-        correlationPaths: { "applicant.created": "applicantId" },
+        correlationPaths: {
+          "applicant.created": "applicantId",
+          "applicant.withdrawn": "applicantId",
+        },
       });
       expect(result.summary).toContain("Created");
     })
@@ -109,13 +115,44 @@ describe("set_lifecycle_rules", () => {
       ).toMatchObject({ startEvents: [], allowManualStart: true });
     })
   );
+
+  it.effect("refuses one Event holding both lifecycle roles", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({ catalog });
+      const failure = yield* Effect.flip(
+        tools.set_lifecycle_rules({
+          startEvents: ["applicant.created"],
+          cancelEvents: ["applicant.created"],
+        })
+      );
+
+      expect(failure.reason).toContain("both start and cancel");
+      expect((yield* draft.current).nodes).toEqual([]);
+    })
+  );
+
+  it.effect("refuses a missing correlation path", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({ catalog });
+      const failure = yield* Effect.flip(
+        tools.set_lifecycle_rules({
+          startEvents: ["applicant.created"],
+          cancelEvents: ["applicant.withdrawn"],
+        })
+      );
+
+      expect(failure.reason).toContain("applicant.withdrawn");
+      expect(failure.reason).toContain("Correlation Path");
+      expect((yield* draft.current).nodes).toEqual([]);
+    })
+  );
 });
 
 describe("set_condition", () => {
   it.effect("writes the model and the CEL it compiles to together", () =>
     Effect.gen(function* () {
       const { tools, draft } = yield* agentToolsFor({
-        nodes: [condition],
+        nodes: [entry, condition],
         catalog,
       });
       yield* tools.set_condition({
@@ -134,7 +171,7 @@ describe("set_condition", () => {
         ],
       });
 
-      const config = (yield* draft.current).nodes[0]?.data.config;
+      const config = (yield* draft.current).nodes[1]?.data.config;
       const expression = readConfigString(config, "condition");
       const serialized = readConfigString(config, "conditionModel") ?? "";
 
@@ -149,7 +186,7 @@ describe("set_condition", () => {
   it.effect("joins groups and rules by the logic it is given", () =>
     Effect.gen(function* () {
       const { tools, draft } = yield* agentToolsFor({
-        nodes: [condition],
+        nodes: [entry, condition],
         catalog,
       });
       yield* tools.set_condition({
@@ -183,7 +220,7 @@ describe("set_condition", () => {
 
       const expression =
         readConfigString(
-          (yield* draft.current).nodes[0]?.data.config,
+          (yield* draft.current).nodes[1]?.data.config,
           "condition"
         ) ?? "";
       expect(expression).toContain("||");
@@ -194,7 +231,7 @@ describe("set_condition", () => {
   it.effect("escapes a value that would otherwise break the expression", () =>
     Effect.gen(function* () {
       const { tools, draft } = yield* agentToolsFor({
-        nodes: [condition],
+        nodes: [entry, condition],
         catalog,
       });
       yield* tools.set_condition({
@@ -215,7 +252,7 @@ describe("set_condition", () => {
 
       const expression =
         readConfigString(
-          (yield* draft.current).nodes[0]?.data.config,
+          (yield* draft.current).nodes[1]?.data.config,
           "condition"
         ) ?? "";
       // The raw newline and quote never reach the expression; a hand-rolled
@@ -284,6 +321,25 @@ describe("set_condition", () => {
         })
       );
       expect(missingValue.reason).toContain("numeric value");
+
+      const blankValue = yield* Effect.flip(
+        tools.set_condition({
+          nodeId: "branch",
+          groups: [
+            {
+              rules: [
+                {
+                  field: "score",
+                  fieldType: "number",
+                  operator: "equals",
+                  value: "   ",
+                },
+              ],
+            },
+          ],
+        })
+      );
+      expect(blankValue.reason).toContain("numeric value");
 
       const missingAmount = yield* Effect.flip(
         tools.set_condition({

@@ -95,6 +95,32 @@ describe("validateWorkflowGraph", () => {
     expect(result.valid).toBe(true);
   });
 
+  it("rejects parallel edges between the same nodes", () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [createBaseLifecycleNode(), createActionNode()],
+      edges: [createEdge("lifecycle_1", "action_1")],
+    });
+    const firstEdge = graph.edges[0];
+    if (!firstEdge) {
+      throw new Error("Expected the fixture graph to contain an edge");
+    }
+    const parallelEdge = {
+      ...firstEdge,
+      key: "edge_2",
+      attributes: { ...firstEdge.attributes, id: "edge_2" },
+    };
+
+    const result = validateWorkflowGraph({
+      ...graph,
+      edges: [...graph.edges, parallelEdge],
+    });
+
+    expect(result).toMatchObject({
+      valid: false,
+      error: expect.stringContaining("parallel edges"),
+    });
+  });
+
   it("rejects malformed node attributes", () => {
     const graph = {
       nodes: [

@@ -37,7 +37,10 @@ const firstToSecond: WorkflowEdge = {
 describe("add_node", () => {
   it.effect("adds an action node carrying its action type", () =>
     Effect.gen(function* () {
-      const { tools, draft } = yield* agentToolsFor({ catalog });
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [entry],
+        catalog,
+      });
       const result = yield* tools.add_node({
         actionId: "slack/send-message",
         label: "Notify the team",
@@ -46,8 +49,10 @@ describe("add_node", () => {
       });
 
       const document = yield* draft.current;
-      const [node] = document.nodes;
-      expect(document.nodes).toHaveLength(1);
+      const node = document.nodes.find(
+        (candidate) => candidate.id === result.nodeId
+      );
+      expect(document.nodes).toHaveLength(2);
       expect(node?.id).toBe(result.nodeId);
       expect(node?.data).toMatchObject({
         label: "Notify the team",
@@ -60,18 +65,19 @@ describe("add_node", () => {
 
   it.effect("accepts the three built-in steps", () =>
     Effect.gen(function* () {
-      const { tools, draft } = yield* agentToolsFor({ catalog });
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [entry],
+        catalog,
+      });
 
       for (const actionId of ["Condition", "Wait", "Event Split"]) {
         yield* tools.add_node({ actionId, label: actionId });
       }
 
       const document = yield* draft.current;
-      expect(document.nodes.map((node) => actionTypeOf(node))).toEqual([
-        "Condition",
-        "Wait",
-        "Event Split",
-      ]);
+      expect(
+        document.nodes.flatMap((node) => actionTypeOf(node) ?? [])
+      ).toEqual(["Condition", "Wait", "Event Split"]);
     })
   );
 
@@ -87,12 +93,34 @@ describe("add_node", () => {
     })
   );
 
+  it.effect("refuses config that tries to replace the action id", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [entry],
+        catalog,
+      });
+      const failure = yield* Effect.flip(
+        tools.add_node({
+          actionId: "slack/send-message",
+          label: "Notify",
+          config: [{ key: "actionType", value: "score-applicant" }],
+        })
+      );
+
+      expect(failure.reason).toContain("actionType");
+      expect((yield* draft.current).nodes).toEqual([entry]);
+    })
+  );
+
   it.effect("leaves the node unplaced for the editor to lay out", () =>
     Effect.gen(function* () {
-      const { tools, draft } = yield* agentToolsFor({ catalog });
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [entry],
+        catalog,
+      });
       yield* tools.add_node({ actionId: "score-applicant", label: "Score" });
 
-      expect((yield* draft.current).nodes[0]?.position).toEqual({ x: 0, y: 0 });
+      expect((yield* draft.current).nodes[1]?.position).toEqual({ x: 0, y: 0 });
     })
   );
 });
@@ -101,7 +129,7 @@ describe("update_node", () => {
   it.effect("merges config over what the node already holds", () =>
     Effect.gen(function* () {
       const { tools, draft } = yield* agentToolsFor({
-        nodes: [second],
+        nodes: [entry, second],
         catalog,
       });
       yield* tools.update_node({
@@ -110,7 +138,9 @@ describe("update_node", () => {
         config: [{ key: "channel", value: "#general" }],
       });
 
-      const [node] = (yield* draft.current).nodes;
+      const node = (yield* draft.current).nodes.find(
+        (candidate) => candidate.id === "second"
+      );
       expect(node?.data.label).toBe("Announce");
       expect(node?.data.config).toEqual({
         actionType: "slack/send-message",
@@ -130,7 +160,7 @@ describe("update_node", () => {
       };
 
       const { tools, draft } = yield* agentToolsFor({
-        nodes: [withChannel],
+        nodes: [entry, withChannel],
         catalog,
       });
       yield* tools.update_node({
@@ -138,7 +168,7 @@ describe("update_node", () => {
         clearConfigKeys: ["channel"],
       });
 
-      expect((yield* draft.current).nodes[0]?.data.config).toEqual({
+      expect((yield* draft.current).nodes[1]?.data.config).toEqual({
         actionType: "slack/send-message",
       });
     })
@@ -154,20 +184,67 @@ describe("update_node", () => {
       expect(failure.reason).toContain("ghost");
     })
   );
+
+  it.effect("refuses config that changes or clears the action id", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [entry, second],
+        catalog,
+      });
+
+      const changed = yield* Effect.flip(
+        tools.update_node({
+          nodeId: "second",
+          config: [{ key: "actionType", value: "score-applicant" }],
+        })
+      );
+      const cleared = yield* Effect.flip(
+        tools.update_node({
+          nodeId: "second",
+          clearConfigKeys: ["actionType"],
+        })
+      );
+
+      expect(changed.reason).toContain("actionType");
+      expect(cleared.reason).toContain("actionType");
+      expect((yield* draft.current).nodes[1]).toEqual(second);
+    })
+  );
+
+  it.effect("keeps Lifecycle config behind the lifecycle tool", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [entry],
+        catalog,
+      });
+      const failure = yield* Effect.flip(
+        tools.update_node({
+          nodeId: "entry",
+          config: [{ key: "channel", value: "#general" }],
+        })
+      );
+
+      expect(failure.reason).toContain("set_lifecycle_rules");
+      expect((yield* draft.current).nodes).toEqual([entry]);
+    })
+  );
 });
 
 describe("delete_node", () => {
   it.effect("takes every edge touching the node with it", () =>
     Effect.gen(function* () {
       const { tools, draft } = yield* agentToolsFor({
-        nodes: [first, second],
+        nodes: [entry, first, second],
         edges: [firstToSecond],
         catalog,
       });
       const result = yield* tools.delete_node({ nodeId: "first" });
 
       const document = yield* draft.current;
-      expect(document.nodes.map((node) => node.id)).toEqual(["second"]);
+      expect(document.nodes.map((node) => node.id)).toEqual([
+        "entry",
+        "second",
+      ]);
       expect(document.edges).toEqual([]);
       expect(result.summary).toContain("1 edge");
     })
@@ -183,13 +260,37 @@ describe("delete_node", () => {
       expect(failure.reason).toContain("ghost");
     })
   );
+
+  it.effect("refuses to remove the only Lifecycle Node", () =>
+    Effect.gen(function* () {
+      const started: WorkflowEdge = {
+        id: "started",
+        source: "entry",
+        target: "first",
+        sourceHandle: LIFECYCLE_STARTED_HANDLE,
+      };
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [entry, first],
+        edges: [started],
+        catalog,
+      });
+
+      const failure = yield* Effect.flip(
+        tools.delete_node({ nodeId: "entry" })
+      );
+
+      expect(failure.reason).toContain("Lifecycle Node");
+      expect((yield* draft.current).nodes).toEqual([entry, first]);
+      expect((yield* draft.current).edges).toEqual([started]);
+    })
+  );
 });
 
 describe("connect_nodes", () => {
   it.effect("draws an edge between two plain steps", () =>
     Effect.gen(function* () {
       const { tools, draft } = yield* agentToolsFor({
-        nodes: [first, second],
+        nodes: [entry, first, second],
         catalog,
       });
       yield* tools.connect_nodes({ source: "first", target: "second" });
@@ -214,7 +315,7 @@ describe("connect_nodes", () => {
   it.effect("refuses an edge that would make a loop", () =>
     Effect.gen(function* () {
       const { tools, draft } = yield* agentToolsFor({
-        nodes: [first, second],
+        nodes: [entry, first, second],
         edges: [firstToSecond],
         catalog,
       });
@@ -245,7 +346,7 @@ describe("connect_nodes", () => {
   it.effect("holds an edge out of a Condition to a named branch", () =>
     Effect.gen(function* () {
       const { tools, draft } = yield* agentToolsFor({
-        nodes: [condition, second],
+        nodes: [entry, condition, second],
         catalog,
       });
 
@@ -287,7 +388,7 @@ describe("connect_nodes", () => {
   it.effect("refuses an outlet name on a step that has none", () =>
     Effect.gen(function* () {
       const { tools } = yield* agentToolsFor({
-        nodes: [first, second],
+        nodes: [entry, first, second],
         catalog,
       });
       const failure = yield* Effect.flip(
@@ -301,13 +402,55 @@ describe("connect_nodes", () => {
       expect(failure.reason).toContain("takes no sourceHandle");
     })
   );
+
+  it.effect("refuses joining the true and false paths of a Condition", () =>
+    Effect.gen(function* () {
+      const trueAction = actionNode("true-action", "slack/send-message");
+      const afterCondition = actionNode("after-condition", "linear/create");
+      const edges: WorkflowEdge[] = [
+        {
+          id: "entry-condition",
+          source: "entry",
+          target: "branch",
+          sourceHandle: LIFECYCLE_STARTED_HANDLE,
+        },
+        {
+          id: "condition-true",
+          source: "branch",
+          target: "true-action",
+          sourceHandle: "true",
+        },
+        {
+          id: "condition-false",
+          source: "branch",
+          target: "after-condition",
+          sourceHandle: "false",
+        },
+      ];
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [entry, condition, trueAction, afterCondition],
+        edges,
+        catalog,
+      });
+
+      const failure = yield* Effect.flip(
+        tools.connect_nodes({
+          source: "true-action",
+          target: "after-condition",
+        })
+      );
+
+      expect(failure.reason).toContain("mutually exclusive branches");
+      expect((yield* draft.current).edges).toEqual(edges);
+    })
+  );
 });
 
 describe("disconnect_nodes", () => {
   it.effect("removes the edge and leaves both steps", () =>
     Effect.gen(function* () {
       const { tools, draft } = yield* agentToolsFor({
-        nodes: [first, second],
+        nodes: [entry, first, second],
         edges: [firstToSecond],
         catalog,
       });
@@ -315,7 +458,7 @@ describe("disconnect_nodes", () => {
 
       const document = yield* draft.current;
       expect(document.edges).toEqual([]);
-      expect(document.nodes).toHaveLength(2);
+      expect(document.nodes).toHaveLength(3);
     })
   );
 

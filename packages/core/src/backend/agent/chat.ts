@@ -12,7 +12,7 @@
  * even when a tool reports one sentence.
  */
 
-import { Cause, Effect, Layer, Stream } from "effect";
+import { Effect, Layer, Stream } from "effect";
 import {
   Chat,
   type LanguageModel,
@@ -37,7 +37,6 @@ import type {
   AgentMessage,
   AgentStreamPart,
 } from "@wfgraph/shared/rpc/agent-stream";
-import { getErrorMessage } from "@wfgraph/shared/utils";
 import type { EnabledAgentSettings } from "#src/backend/agent/config";
 import { agentModelLayer } from "#src/backend/agent/model";
 import { toAgentStreamPart } from "#src/backend/agent/stream";
@@ -99,7 +98,7 @@ function graphPartOf(document: AgentDocument): AgentStreamPart {
  */
 export function runAgentTurn(
   input: AgentTurnInput
-): Effect.Effect<Stream.Stream<AgentStreamPart>> {
+): Effect.Effect<Stream.Stream<AgentStreamPart, unknown>> {
   return Effect.gen(function* () {
     const draft = yield* makeWorkflowDraft({
       document: input.document,
@@ -189,7 +188,7 @@ function agenticSteps(input: {
 function withGraphParts(
   parts: Stream.Stream<AgentStreamPartIn, unknown>,
   draft: WorkflowDraftService
-): Stream.Stream<AgentStreamPart> {
+): Stream.Stream<AgentStreamPart, unknown> {
   return parts.pipe(
     Stream.mapEffect((part) =>
       Effect.gen(function* () {
@@ -209,18 +208,6 @@ function withGraphParts(
         return [mapped];
       })
     ),
-    Stream.flattenIterable,
-    // A failed turn ends with a sentence rather than a broken connection, so the
-    // panel can show what went wrong where the user is already looking.
-    //
-    // The cause is squashed before it is read: `getErrorMessage` walks a thrown
-    // value, and a `Cause` is a wrapper around one rather than the thing itself,
-    // so reading it directly answers "Unknown error" for every failure there is.
-    Stream.catchCause((cause) =>
-      Stream.succeed<AgentStreamPart>({
-        type: "error",
-        message: getErrorMessage(Cause.squash(cause)),
-      })
-    )
+    Stream.flattenIterable
   );
 }

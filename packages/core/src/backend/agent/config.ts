@@ -9,7 +9,9 @@
  * so a second app in the same process cannot read the first one's credential.
  */
 
-import { Context, Layer } from "effect";
+import { Context, Layer, Semaphore } from "effect";
+
+export const MAX_CONCURRENT_AGENT_TURNS = 4;
 
 /**
  * The environment variable a host conventionally reads this from. Named only in
@@ -55,6 +57,12 @@ export class AgentConfig extends Context.Service<AgentConfig, AgentSettings>()(
   "@wfgraph/core/AgentConfig"
 ) {}
 
+/** Shared capacity for model-backed turns in one application runtime. */
+export class AgentCapacity extends Context.Service<
+  AgentCapacity,
+  Semaphore.Semaphore
+>()("@wfgraph/core/AgentCapacity") {}
+
 /**
  * Reads the host's option into the settings the runtime carries.
  *
@@ -80,8 +88,11 @@ export function readAgentSettings(
 
 export function makeAgentConfigLayer(
   settings: AgentSettings
-): Layer.Layer<AgentConfig> {
-  return Layer.succeed(AgentConfig, settings);
+): Layer.Layer<AgentConfig | AgentCapacity> {
+  return Layer.merge(
+    Layer.succeed(AgentConfig, settings),
+    Layer.effect(AgentCapacity, Semaphore.make(MAX_CONCURRENT_AGENT_TURNS))
+  );
 }
 
 /** What the chat route says when no key was configured. */

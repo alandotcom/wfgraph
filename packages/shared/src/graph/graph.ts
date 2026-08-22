@@ -44,23 +44,10 @@ const decodeNodeAttributes = Schema.decodeUnknownSync(
   workflowNodeAttributesSchema,
   rejectUnknownKeys
 );
-const readNodeAttributes = Schema.decodeUnknownResult(
-  workflowNodeAttributesSchema,
-  rejectUnknownKeys
-);
 const decodeEdgeAttributes = Schema.decodeUnknownSync(
   workflowEdgeAttributesSchema,
   rejectUnknownKeys
 );
-
-function isWorkflowNodeType(value: unknown): value is WorkflowNodeType {
-  return (
-    value === "lifecycle" ||
-    value === "action" ||
-    value === "add" ||
-    value === "group"
-  );
-}
 
 /**
  * Drop editor/run overlay keys that StructWithRest may have admitted from an
@@ -233,19 +220,6 @@ export function parseSerializedWorkflowGraph(
   return decodeGraph(value);
 }
 
-export function createGraphFromSerialized(
-  serializedGraph: SerializedWorkflowGraph
-): DirectedGraph {
-  const graph = new DirectedGraph({
-    allowSelfLoops: WORKFLOW_GRAPH_OPTIONS.allowSelfLoops,
-    multi: WORKFLOW_GRAPH_OPTIONS.multi,
-  });
-
-  graph.import(parseSerializedWorkflowGraph(serializedGraph));
-
-  return graph;
-}
-
 export function toWorkflowGraphData(serializedGraph: SerializedWorkflowGraph): {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
@@ -264,22 +238,6 @@ export function isSerializedWorkflowGraph(
   value: unknown
 ): value is SerializedWorkflowGraph {
   return Result.isSuccess(readGraph(value));
-}
-
-export function getNodeTypeFromSerializedNode(
-  node: SerializedWorkflowNode
-): WorkflowNodeType | undefined {
-  const parsed = readNodeAttributes(node.attributes);
-  if (Result.isFailure(parsed)) {
-    return undefined;
-  }
-
-  const dataType = parsed.success.data.type;
-  if (isWorkflowNodeType(dataType)) {
-    return dataType;
-  }
-
-  return undefined;
 }
 
 export function getSerializedWorkflowGraphError(graph: unknown): string {

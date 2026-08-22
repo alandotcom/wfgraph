@@ -15,6 +15,9 @@ import type { LanguageModel } from "effect/unstable/ai";
 import { FetchHttpClient } from "effect/unstable/http";
 import type { EnabledAgentSettings } from "#src/backend/agent/config";
 
+/** Maximum provider output for one model call inside a turn. */
+export const MAX_AGENT_OUTPUT_TOKENS = 8_192;
+
 /**
  * The model layer for this turn.
  *
@@ -30,5 +33,7 @@ export function agentModelLayer(
     ...(settings.baseUrl === undefined ? {} : { apiUrl: settings.baseUrl }),
   }).pipe(Layer.provide(FetchHttpClient.layer));
 
-  return OpenAiLanguageModel.model(settings.model).pipe(Layer.provide(client));
+  return OpenAiLanguageModel.model(settings.model, {
+    max_output_tokens: MAX_AGENT_OUTPUT_TOKENS,
+  }).pipe(Layer.provide(client));
 }

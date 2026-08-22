@@ -55,6 +55,10 @@ type ConfigBag = typeof configBagSchema.Type;
 function toConfigRecord(entries: ConfigBag): Record<string, string> {
   return Object.fromEntries(entries.map((entry) => [entry.key, entry.value]));
 }
+
+function configNamesKey(entries: ConfigBag | undefined, key: string): boolean {
+  return entries?.some((entry) => entry.key === key) ?? false;
+}
 import { type AgentDocument, WorkflowDraft } from "#src/document";
 
 const builtInActionIds: readonly string[] = Object.values(BUILT_IN_ACTION_IDS);
@@ -262,6 +266,13 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
           });
         }
 
+        if (configNamesKey(input.config, "actionType")) {
+          return Effect.fail({
+            reason:
+              "actionType is set by actionId. Remove it from config and call add_node again.",
+          });
+        }
+
         const nodeId = nanoid();
         const node: WorkflowNode = {
           id: nodeId,
@@ -305,6 +316,26 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
         if (!node) {
           return Effect.fail({
             reason: `No node with id ${input.nodeId}. Call read_workflow to see what the graph holds.`,
+          });
+        }
+
+        if (
+          configNamesKey(input.config, "actionType") ||
+          input.clearConfigKeys?.includes("actionType")
+        ) {
+          return Effect.fail({
+            reason:
+              "actionType identifies the step and cannot be changed through config.",
+          });
+        }
+        if (
+          node.data.type === "lifecycle" &&
+          ((input.config?.length ?? 0) > 0 ||
+            (input.clearConfigKeys?.length ?? 0) > 0)
+        ) {
+          return Effect.fail({
+            reason:
+              "Lifecycle config is owned by set_lifecycle_rules. Use update_node only for its label, description, or enabled state.",
           });
         }
 

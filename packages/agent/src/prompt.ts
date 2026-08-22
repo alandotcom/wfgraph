@@ -29,6 +29,11 @@ How a workflow is shaped:
   for a delay or until an Event arrives. "${BUILT_IN_ACTION_IDS.eventSplit}"
   routes a run by which Event started it.
 - The graph runs forwards. It cannot contain a loop.
+- Every node with multiple incoming edges is an AND-join: it runs after every
+  incoming path finishes. Exclusive outlets from a Condition or Event Split
+  cannot feed the same later node.
+- When one action always runs and another is conditional, fan both paths out independently
+  from their common predecessor. End the conditional path at its last conditional action.
 
 How a step reads a value from an earlier step:
 

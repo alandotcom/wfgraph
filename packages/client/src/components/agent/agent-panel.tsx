@@ -168,7 +168,7 @@ function AgentCard({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function AgentPanel({ workflowId }: { workflowId: string }) {
+function WorkflowAgentPanel({ workflowId }: { workflowId: string }) {
   const [isOpen, setIsOpen] = useAtom(isAgentPanelOpenAtom);
   const runtime = useAgentRuntime(workflowId);
 
@@ -193,4 +193,8 @@ export function AgentPanel({ workflowId }: { workflowId: string }) {
       )}
     </div>
   );
+}
+
+export function AgentPanel({ workflowId }: { workflowId: string }) {
+  return <WorkflowAgentPanel key={workflowId} workflowId={workflowId} />;
 }
