@@ -61,6 +61,9 @@ type RunHistorySearchProps = {
 
 const FIELD_STEP: Draft = { step: "field" };
 
+/** Shared so the ghost overlay and the input paint on the same baseline. */
+const SEARCH_FIELD_TYPE = "h-5 font-sans text-xs leading-5";
+
 function fieldIcon(field: RunFilterField): "search" | "list" {
   switch (field) {
     case "event":
@@ -465,11 +468,14 @@ export function RunHistorySearch({
             </button>
           </span>
         ))}
-        <div className="relative min-w-16 flex-1">
+        <div className="relative grid h-5 min-w-16 flex-1 items-center">
           {ghost !== "" ? (
             <span
               aria-hidden
-              className="pointer-events-none absolute inset-0 overflow-hidden py-0.5 text-xs/relaxed"
+              className={cn(
+                "pointer-events-none col-start-1 row-start-1 overflow-hidden",
+                SEARCH_FIELD_TYPE
+              )}
             >
               <span className="invisible whitespace-pre">{query}</span>
               <span className="whitespace-pre text-muted-foreground">
@@ -485,7 +491,10 @@ export function RunHistorySearch({
             aria-label="Search and filter runs"
             autoCapitalize="off"
             autoCorrect="off"
-            className="relative w-full min-w-0 bg-transparent py-0.5 text-xs/relaxed outline-none placeholder:text-muted-foreground"
+            className={cn(
+              "col-start-1 row-start-1 w-full min-w-0 appearance-none border-0 bg-transparent p-0 outline-none placeholder:text-muted-foreground",
+              SEARCH_FIELD_TYPE
+            )}
             onChange={(event) => {
               onQueryChange(event.target.value);
               setMenuOpen(true);
