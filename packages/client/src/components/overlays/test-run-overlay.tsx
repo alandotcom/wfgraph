@@ -84,8 +84,12 @@ function FieldControl({
   }
 
   if (field.control === "select") {
+    const items = (field.options ?? []).map((option) => ({
+      label: option,
+      value: option,
+    }));
     return (
-      <Select onValueChange={whenChosen(onChange)} value={value}>
+      <Select items={items} onValueChange={whenChosen(onChange)} value={value}>
         <SelectTrigger className="w-full" id={field.path}>
           <SelectValue placeholder="Choose a value" />
         </SelectTrigger>
@@ -265,6 +269,16 @@ export function TestRunOverlay({
     closeAll();
   };
 
+  const eventItems = [
+    ...startEvents.map((name) => ({
+      label: eventLabel(catalog, name),
+      value: name,
+    })),
+    ...(allowManualStart
+      ? [{ label: "No Event (manual start)", value: NO_EVENT }]
+      : []),
+  ];
+
   return (
     <Overlay
       actions={[
@@ -280,7 +294,11 @@ export function TestRunOverlay({
           <Label htmlFor="testRunEvent">
             Which Event does this run stand in for?
           </Label>
-          <Select onValueChange={whenChosen(chooseEvent)} value={selectedEvent}>
+          <Select
+            items={eventItems}
+            onValueChange={whenChosen(chooseEvent)}
+            value={selectedEvent}
+          >
             <SelectTrigger className="w-full" id="testRunEvent">
               <SelectValue placeholder="Choose an Event" />
             </SelectTrigger>

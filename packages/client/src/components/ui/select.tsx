@@ -2,20 +2,25 @@ import type * as React from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
 
 import { cn } from "@wfgraph/shared/utils"
-import { selectItemsFromChildren } from "#src/lib/select-choice"
+import type { SelectItemLabel } from "#src/lib/select-choice"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
 /**
- * Local addition to the registry component. Base UI shows the raw stored value
- * in the trigger unless the root is handed an `items` map, and this app spells
- * its labels out as `SelectItem` children rather than as a prop. Re-apply after
- * a `shadcn add select`.
+ * Local addition to the registry component. Base UI needs the same explicit
+ * item data used to render the popup before it can show a selected label in the
+ * trigger. Re-apply this required `items` contract after a `shadcn add select`.
  */
-function Select({ children, ...props }: SelectPrimitive.Root.Props<string>) {
+function Select({
+  children,
+  items,
+  ...props
+}: Omit<SelectPrimitive.Root.Props<string>, "items"> & {
+  items: readonly SelectItemLabel[]
+}) {
   return (
     <SelectPrimitive.Root
       data-slot="select"
-      items={selectItemsFromChildren(children)}
+      items={items}
       {...props}
     >
       {children}

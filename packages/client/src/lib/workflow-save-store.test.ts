@@ -384,4 +384,73 @@ describe("renameWorkflowAtom", () => {
 
     expect(updateMock.mock.calls[1]?.[1]).not.toHaveProperty("name");
   });
+
+  it("does not roll a failed rename into the workflow opened while it was saving", async () => {
+    const store = createSaveStore("workflow_a");
+    store.set(currentWorkflowNameAtom, "Workflow A");
+
+    const rename = store.set(renameWorkflowAtom, "Renamed A");
+    await waitForCalls(1);
+
+    store.set(currentWorkflowIdAtom, "workflow_b");
+    store.set(currentWorkflowNameAtom, "Workflow B");
+    pending.shift()?.reject(new Error("name refused"));
+    await rename;
+
+    expect(store.get(currentWorkflowNameAtom)).toBe("Workflow B");
+  });
+
+  it("does not let an older failed rename replace a newer one", async () => {
+    const store = createSaveStore();
+    store.set(currentWorkflowNameAtom, "Original");
+
+    const firstRename = store.set(renameWorkflowAtom, "First");
+    await waitForCalls(1);
+    const secondRename = store.set(renameWorkflowAtom, "Second");
+
+    pending.shift()?.reject(new Error("first name refused"));
+    await waitForCalls(2);
+    pending.shift()?.resolve({
+      ...savedWorkflow("workflow_1"),
+      name: "Second",
+    });
+    await Promise.all([firstRename, secondRename]);
+
+    expect(store.get(currentWorkflowNameAtom)).toBe("Second");
+  });
+
+  it("restores the last saved name when concurrent renames both fail", async () => {
+    const store = createSaveStore();
+    store.set(currentWorkflowNameAtom, "Original");
+
+    const firstRename = store.set(renameWorkflowAtom, "First");
+    await waitForCalls(1);
+    const secondRename = store.set(renameWorkflowAtom, "Second");
+
+    pending.shift()?.reject(new Error("first name refused"));
+    await waitForCalls(2);
+    pending.shift()?.reject(new Error("second name refused"));
+    await Promise.all([firstRename, secondRename]);
+
+    expect(store.get(currentWorkflowNameAtom)).toBe("Original");
+  });
+
+  it("does not let an older identical request roll back a newer success", async () => {
+    const store = createSaveStore();
+    store.set(currentWorkflowNameAtom, "Original");
+
+    const firstRename = store.set(renameWorkflowAtom, "Same");
+    await waitForCalls(1);
+    const secondRename = store.set(renameWorkflowAtom, "Same");
+
+    pending.shift()?.reject(new Error("first request refused"));
+    await waitForCalls(2);
+    pending.shift()?.resolve({
+      ...savedWorkflow("workflow_1"),
+      name: "Same",
+    });
+    await Promise.all([firstRename, secondRename]);
+
+    expect(store.get(currentWorkflowNameAtom)).toBe("Same");
+  });
 });

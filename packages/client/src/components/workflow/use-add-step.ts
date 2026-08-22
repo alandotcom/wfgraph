@@ -28,7 +28,10 @@ import {
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
 } from "#src/lib/workflow-node-dimensions";
-import { positionClearOfNodes } from "#src/lib/workflow-node-placement";
+import {
+  positionClearOfNodes,
+  workflowNodeRectangles,
+} from "#src/lib/workflow-node-placement";
 import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 
 export type AddStepRequest = {
@@ -53,12 +56,17 @@ export function useAddStep(): (request: AddStepRequest) => void {
   const addNode = useSetAtom(addNodeAtom);
   const setSelectedNode = useSetAtom(selectedNodeAtom);
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
-  const { screenToFlowPosition } = useReactFlow();
+  const { getInternalNode, screenToFlowPosition } = useReactFlow();
 
   return useCallback(
     ({ actionType, at }: AddStepRequest) => {
       const position =
-        at ?? canvasCentre(store.get(nodesAtom), screenToFlowPosition);
+        at ??
+        canvasCentre(
+          store.get(nodesAtom),
+          screenToFlowPosition,
+          (nodeId) => getInternalNode(nodeId)?.internals.positionAbsolute
+        );
       if (!position) {
         return;
       }
@@ -101,6 +109,7 @@ export function useAddStep(): (request: AddStepRequest) => void {
       addNode,
       setSelectedNode,
       setActiveTab,
+      getInternalNode,
       screenToFlowPosition,
     ]
   );
@@ -117,7 +126,10 @@ function canvasCentre(
   screenToFlowPosition: (point: { x: number; y: number }) => {
     x: number;
     y: number;
-  }
+  },
+  absolutePositionForId: (
+    nodeId: string
+  ) => { readonly x: number; readonly y: number } | undefined
 ): { x: number; y: number } | null {
   const pane = document.querySelector(".react-flow");
   if (!pane) {
@@ -136,6 +148,6 @@ function canvasCentre(
       x: centre.x - WORKFLOW_NODE_WIDTH / 2,
       y: centre.y - WORKFLOW_NODE_HEIGHT / 2,
     },
-    nodes
+    workflowNodeRectangles(nodes, absolutePositionForId)
   );
 }

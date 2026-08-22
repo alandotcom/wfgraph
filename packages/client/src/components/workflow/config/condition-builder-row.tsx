@@ -352,6 +352,7 @@ function ConditionValueInput(input: {
           />
           <Select
             disabled={disabled}
+            items={TIME_UNIT_OPTIONS}
             onValueChange={whenChosen((value) => {
               if (!isTimeUnitValue(value)) {
                 return;
@@ -410,6 +411,7 @@ function ConditionValueInput(input: {
       return (
         <Select
           disabled={disabled}
+          items={enumValues.map((value) => ({ label: value, value }))}
           onValueChange={whenChosen((value) => {
             onConditionChange({ ...condition, value });
           })}
@@ -751,6 +753,7 @@ export function ConditionBuilderRow({
 
                         <Select
                           disabled={disabled}
+                          items={operatorOptions}
                           onValueChange={whenChosen((operatorValue) => {
                             const nextCondition = applyOperatorValueToCondition(
                               condition,

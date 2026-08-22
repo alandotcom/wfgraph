@@ -15,9 +15,9 @@ styling compiles against.
 12px against 14px. Every control in the editor and the dashboard is smaller. The canvas is
 untouched, node geometry included.
 
-Three behaviours moved with the primitives. `whenChosen` and the label lookup that renders a
-chosen item in a Select trigger are now `#src/lib/select-choice`, outside the file the CLI
-overwrites, and the Select root feeds Base UI's own `items` prop. `ComboboxInputGroup` and
+Three behaviours moved with the primitives. `whenChosen` is now in `#src/lib/select-choice`,
+outside the file the CLI overwrites, and each Select feeds its explicit options to Base UI's
+own `items` prop so the trigger and popup share one label source. `ComboboxInputGroup` and
 `ComboboxClear` are gone, absorbed into `ComboboxInput` behind `showTrigger` and `showClear`,
 which takes a `triggerLabel` so the button it renders has an accessible name. `Radio` is
 `RadioGroupItem` and `ComboboxGroupLabel` is `ComboboxLabel`.

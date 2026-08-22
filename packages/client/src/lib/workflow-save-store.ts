@@ -130,6 +130,16 @@ type SaveQueue = {
    * look clean while the failed graph fields are still absent on the server.
    */
   failedPatches: Map<string, WorkflowPatch>;
+  /** Rename state shared by overlapping callers until the last one settles. */
+  renames: Map<
+    string,
+    {
+      activeCount: number;
+      latestRequestId: number;
+      confirmedName: string;
+    }
+  >;
+  nextRenameRequestId: number;
   isFlushing: boolean;
 };
 
@@ -155,6 +165,8 @@ const saveQueueAtom = atom((): SaveQueue => ({
   timeoutId: null,
   pending: [],
   failedPatches: new Map(),
+  renames: new Map(),
+  nextRenameRequestId: 0,
   isFlushing: false,
 }));
 
@@ -241,6 +253,10 @@ export const saveWorkflowAtom = atom(
               toUpdatePayload(next.patch)
             );
             outcome = { ok: true, workflow };
+            const rename = queue.renames.get(next.workflowId);
+            if (rename) {
+              rename.confirmedName = workflow.name;
+            }
             set(lastSaveErrorAtom, null);
             markWorkflowListStale();
             cacheWorkflowPublication(queryClient, workflow);
@@ -394,16 +410,45 @@ export const renameWorkflowAtom = atom(
   async (get, set, name: string): Promise<Error | null> => {
     const previousName = get(currentWorkflowNameAtom);
     const workflowId = get(currentWorkflowIdAtom);
+    const queue = get(saveQueueAtom);
+    const requestId = ++queue.nextRenameRequestId;
+    let rename = workflowId ? queue.renames.get(workflowId) : undefined;
+    if (workflowId) {
+      if (rename) {
+        rename.activeCount += 1;
+        rename.latestRequestId = requestId;
+      } else {
+        rename = {
+          activeCount: 1,
+          latestRequestId: requestId,
+          confirmedName: previousName,
+        };
+        queue.renames.set(workflowId, rename);
+      }
+    }
 
     set(currentWorkflowNameAtom, name);
 
     const outcome = await set(saveWorkflowAtom, { name }, { immediate: true });
     if (outcome?.ok === false) {
-      set(currentWorkflowNameAtom, previousName);
+      if (
+        get(currentWorkflowIdAtom) === workflowId &&
+        get(currentWorkflowNameAtom) === name &&
+        rename?.latestRequestId === requestId
+      ) {
+        set(currentWorkflowNameAtom, rename.confirmedName);
+      }
       if (workflowId) {
-        forgetRefusedName(get(saveQueueAtom), workflowId, name);
+        forgetRefusedName(queue, workflowId, name);
+      }
+      if (workflowId && rename && --rename.activeCount === 0) {
+        queue.renames.delete(workflowId);
       }
       return outcome.error;
+    }
+
+    if (workflowId && rename && --rename.activeCount === 0) {
+      queue.renames.delete(workflowId);
     }
 
     return null;

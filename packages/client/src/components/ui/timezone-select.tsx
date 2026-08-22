@@ -108,6 +108,7 @@ export function TimezoneSelect({
   return (
     <Select
       disabled={disabled}
+      items={TIMEZONES.flatMap((group) => group.zones)}
       onValueChange={whenChosen(onValueChange)}
       value={value}
     >

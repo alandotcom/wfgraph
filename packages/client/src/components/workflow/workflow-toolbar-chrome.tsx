@@ -11,24 +11,19 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
-  ArrowLeftRight,
   Check,
   ChevronDown,
   Copy,
   Eraser,
   Loader2,
   Pencil,
-  Play,
   Plus,
-  Redo2,
-  RefreshCcw,
   Search,
   Settings2,
   Trash2,
-  Undo2,
   Upload,
 } from "lucide-react";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
@@ -56,6 +51,10 @@ import {
   editorShortcutLabels,
   isApplePlatform,
 } from "#src/lib/shortcut-label";
+import {
+  WorkflowCommandIcon,
+  workflowCommands,
+} from "#src/lib/workflow-commands";
 import type {
   WorkflowToolbarActions,
   WorkflowToolbarState,
@@ -222,12 +221,10 @@ export function DuplicateButton({
  * could only do on hover. Only shortcuts that are bound appear beside an item.
  */
 function ActionsMenu({
-  workflowId,
   state,
   actions,
   onAddStep,
 }: {
-  workflowId?: string;
   state: WorkflowToolbarState;
   actions: WorkflowToolbarActions;
   onAddStep: () => void;
@@ -238,14 +235,29 @@ function ActionsMenu({
   // thing that has to know which key this keyboard has.
   const shortcuts = editorShortcutLabels(isApplePlatform(currentPlatform()));
 
-  const runDisabled =
-    state.isExecuting ||
-    state.nodes.length === 0 ||
-    state.isGenerating ||
-    !state.currentWorkflowId;
-  // One item rather than a two-state control: the status strip already says
-  // which mode the workflow is in, so a radiogroup here would say it twice.
-  const otherMode = state.workflowMode === "live" ? "test" : "live";
+  const commands = workflowCommands({
+    state: {
+      currentWorkflowId: state.currentWorkflowId,
+      workflowMode: state.workflowMode,
+      isExecuting: state.isExecuting,
+      isGenerating: state.isGenerating,
+      isSaving: state.isSaving,
+      hasNodes: state.nodes.some((node) => node.type !== "add"),
+      canUndo: state.canUndo,
+      canRedo: state.canRedo,
+      canReflow,
+      editingLocked,
+    },
+    shortcuts,
+    callbacks: {
+      addStep: onAddStep,
+      run: () => void actions.handleExecute(),
+      switchMode: (mode) => void actions.handleSetWorkflowMode(mode),
+      undo: state.undo,
+      redo: state.redo,
+      reflow,
+    },
+  });
 
   return (
     <DropdownMenu>
@@ -256,54 +268,25 @@ function ActionsMenu({
         <ChevronDown className="size-3 opacity-50" data-icon="inline-end" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-60">
-        {/* Every graph write is gated on the same atom the canvas reads, so a
-            run pinned to the canvas refuses these the way it refuses a drag.
-            The buttons this replaced checked only generation, which left the
-            menu editing a draft nobody could see. */}
-        <DropdownMenuItem disabled={editingLocked} onClick={onAddStep}>
-          <Plus />
-          Add step
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          disabled={runDisabled}
-          onClick={() => void actions.handleExecute()}
-        >
-          <Play />
-          Run workflow
-          <DropdownMenuShortcut>{shortcuts.run}</DropdownMenuShortcut>
-        </DropdownMenuItem>
-        {workflowId && (
-          <DropdownMenuItem
-            disabled={state.isSaving || state.isGenerating}
-            onClick={() => void actions.handleSetWorkflowMode(otherMode)}
-          >
-            <ArrowLeftRight />
-            Switch to {otherMode === "live" ? "Live" : "Test"} mode
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          disabled={!state.canUndo || editingLocked}
-          onClick={() => state.undo()}
-        >
-          <Undo2 />
-          Undo
-          <DropdownMenuShortcut>{shortcuts.undo}</DropdownMenuShortcut>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          disabled={!state.canRedo || editingLocked}
-          onClick={() => state.redo()}
-        >
-          <Redo2 />
-          Redo
-          <DropdownMenuShortcut>{shortcuts.redo}</DropdownMenuShortcut>
-        </DropdownMenuItem>
-        {/* The same pass as the reflow control at the canvas's bottom left. */}
-        <DropdownMenuItem disabled={!canReflow} onClick={reflow}>
-          <RefreshCcw />
-          Tidy layout
-        </DropdownMenuItem>
+        {commands.map((command, index) => (
+          <Fragment key={command.id}>
+            {index > 0 &&
+            (command.group !== commands[index - 1]?.group ||
+              command.id === "undo") ? (
+              <DropdownMenuSeparator />
+            ) : null}
+            <DropdownMenuItem
+              disabled={command.disabled}
+              onClick={command.execute}
+            >
+              <WorkflowCommandIcon id={command.id} />
+              {command.label}
+              {command.hint ? (
+                <DropdownMenuShortcut>{command.hint}</DropdownMenuShortcut>
+              ) : null}
+            </DropdownMenuItem>
+          </Fragment>
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -377,12 +360,7 @@ export function ToolbarActions({
 
   return (
     <>
-      <ActionsMenu
-        actions={actions}
-        onAddStep={handleAddStep}
-        state={state}
-        workflowId={workflowId}
-      />
+      <ActionsMenu actions={actions} onAddStep={handleAddStep} state={state} />
 
       <CommandPaletteTrigger />
       <CommandPalette actions={actions} state={state} />

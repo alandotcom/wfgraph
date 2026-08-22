@@ -1,12 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { positionClearOfNodes } from "#src/lib/workflow-node-placement";
+import {
+  positionClearOfNodes,
+  workflowNodeRectangles,
+} from "#src/lib/workflow-node-placement";
 import {
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
 } from "#src/lib/workflow-node-dimensions";
 
 function at(x: number, y: number) {
-  return { position: { x, y } };
+  return {
+    x,
+    y,
+    width: WORKFLOW_NODE_WIDTH,
+    height: WORKFLOW_NODE_HEIGHT,
+  };
 }
 
 describe("positionClearOfNodes", () => {
@@ -54,15 +62,83 @@ describe("positionClearOfNodes", () => {
     ).toEqual({ x: 0, y: 0 });
   });
 
-  it("gives up rather than walking forever across a dense graph", () => {
-    // A node every 20px along the diagonal, further than the walk can escape.
+  it("walks beyond a dense run until the candidate is clear", () => {
     const crowded = Array.from({ length: 60 }, (_, index) =>
       at(index * 20, index * 20)
     );
 
-    expect(positionClearOfNodes({ x: 0, y: 0 }, crowded)).toEqual({
-      x: 400,
-      y: 400,
+    const placed = positionClearOfNodes({ x: 0, y: 0 }, crowded);
+    expect(
+      crowded.some(
+        (node) =>
+          placed.x < node.x + node.width &&
+          placed.x + WORKFLOW_NODE_WIDTH > node.x &&
+          placed.y < node.y + node.height &&
+          placed.y + WORKFLOW_NODE_HEIGHT > node.y
+      )
+    ).toBe(false);
+  });
+
+  it("uses the occupied node's measured width", () => {
+    const placed = positionClearOfNodes({ x: 250, y: 0 }, [
+      { x: 0, y: 0, width: 400, height: WORKFLOW_NODE_HEIGHT },
+    ]);
+
+    expect(placed).not.toEqual({ x: 250, y: 0 });
+  });
+
+  it("escapes a group larger than the old cascade limit", () => {
+    const placed = positionClearOfNodes({ x: 0, y: 0 }, [
+      { x: 0, y: 0, width: 1000, height: 1000 },
+    ]);
+
+    expect(placed.x >= 1000 || placed.y >= 1000).toBe(true);
+  });
+});
+
+describe("workflowNodeRectangles", () => {
+  it("resolves a child position relative to its parent", () => {
+    const rectangles = workflowNodeRectangles([
+      {
+        id: "group",
+        type: "group",
+        position: { x: 500, y: 300 },
+        width: 420,
+        height: 260,
+        data: { label: "Group", type: "group" },
+      },
+      {
+        id: "child",
+        type: "action",
+        parentId: "group",
+        position: { x: 20, y: 40 },
+        measured: { width: 188, height: 56 },
+        data: { label: "Child", type: "action", config: {} },
+      },
+    ]);
+
+    expect(rectangles).toContainEqual({
+      x: 520,
+      y: 340,
+      width: 188,
+      height: 56,
     });
+  });
+
+  it("prefers React Flow's absolute position", () => {
+    const rectangles = workflowNodeRectangles(
+      [
+        {
+          id: "child",
+          type: "action",
+          parentId: "group",
+          position: { x: 20, y: 40 },
+          data: { label: "Child", type: "action", config: {} },
+        },
+      ],
+      () => ({ x: 720, y: 440 })
+    );
+
+    expect(rectangles[0]).toMatchObject({ x: 720, y: 440 });
   });
 });

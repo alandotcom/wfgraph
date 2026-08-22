@@ -70,6 +70,27 @@ type CategoryActionOption = {
   integration?: string;
 };
 
+const WAIT_DELAY_TIMING_OPTIONS = [
+  { value: "duration", label: "Wait for duration" },
+  { value: "until", label: "Wait until date/time" },
+];
+const WAIT_GATE_OPTIONS = [
+  { value: "off", label: "Off (continue immediately)" },
+  { value: "require_actual_wait", label: "Skip branch when already due" },
+];
+const WAIT_WINDOW_OPTIONS = [
+  { value: "off", label: "Off (allow any time)" },
+  { value: "daily_window", label: "Daily window" },
+];
+const WAIT_TIMEOUT_OPTIONS = [
+  { value: "continue", label: "Continue workflow" },
+  { value: "skip", label: "Skip remaining branch" },
+];
+const WAIT_MODE_OPTIONS = [
+  { value: "delay", label: "Wait for time" },
+  { value: "event", label: "Wait for an event" },
+];
+
 function OptionLogo({
   logoUrl,
   label,
@@ -237,6 +258,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         <Label htmlFor="waitDelayTimingMode">Time input mode</Label>
         <Select
           disabled={disabled}
+          items={WAIT_DELAY_TIMING_OPTIONS}
           onValueChange={whenChosen(handleDelayTimingModeChange)}
           value={delayTimingMode}
         >
@@ -244,8 +266,11 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             <SelectValue placeholder="Select time input mode" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="duration">Wait for duration</SelectItem>
-            <SelectItem value="until">Wait until date/time</SelectItem>
+            {WAIT_DELAY_TIMING_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <p className="text-muted-foreground text-xs">
@@ -311,6 +336,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         </Label>
         <Select
           disabled={disabled}
+          items={WAIT_GATE_OPTIONS}
           onValueChange={(value) => onUpdateConfig({ waitGateMode: value })}
           value={waitGateMode}
         >
@@ -318,10 +344,11 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             <SelectValue placeholder="Select behavior" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="off">Off (continue immediately)</SelectItem>
-            <SelectItem value="require_actual_wait">
-              Skip branch when already due
-            </SelectItem>
+            {WAIT_GATE_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <p className="text-muted-foreground text-xs">
@@ -334,6 +361,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         <Label htmlFor="waitAllowedHoursMode">Allowed send window</Label>
         <Select
           disabled={disabled}
+          items={WAIT_WINDOW_OPTIONS}
           onValueChange={(value) =>
             onUpdateConfig({ waitAllowedHoursMode: value })
           }
@@ -343,8 +371,11 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             <SelectValue placeholder="Select window mode" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="off">Off (allow any time)</SelectItem>
-            <SelectItem value="daily_window">Daily window</SelectItem>
+            {WAIT_WINDOW_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <p className="text-muted-foreground text-xs">
@@ -437,6 +468,7 @@ function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         <Label htmlFor="waitTimeoutBehavior">On timeout</Label>
         <Select
           disabled={disabled}
+          items={WAIT_TIMEOUT_OPTIONS}
           onValueChange={(value) =>
             onUpdateConfig({ waitTimeoutBehavior: value })
           }
@@ -446,8 +478,11 @@ function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             <SelectValue placeholder="Select timeout behavior" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="continue">Continue workflow</SelectItem>
-            <SelectItem value="skip">Skip remaining branch</SelectItem>
+            {WAIT_TIMEOUT_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <p className="text-muted-foreground text-xs">
@@ -495,6 +530,7 @@ function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         <Label htmlFor="waitMode">How should this step wait?</Label>
         <Select
           disabled={disabled}
+          items={WAIT_MODE_OPTIONS}
           onValueChange={whenChosen(handleModeChange)}
           value={waitMode}
         >
@@ -502,8 +538,11 @@ function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             <SelectValue placeholder="Select wait mode" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="delay">Wait for time</SelectItem>
-            <SelectItem value="event">Wait for an event</SelectItem>
+            {WAIT_MODE_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <p className="text-muted-foreground text-xs">
@@ -622,6 +661,15 @@ export function ActionConfig({
   const category = actionType
     ? getCategoryForAction(catalog, actionType) || ""
     : "";
+  const categoryItems = [
+    { value: "System", label: "System" },
+    ...categoryOptions.map((value) => ({ value, label: value })),
+  ];
+  const actionOptions = category ? (categories[category] ?? []) : [];
+  const actionItems = actionOptions.map((action) => ({
+    value: action.id,
+    label: action.label,
+  }));
   const { data: globalIntegrations = [] } = useQuery(
     integrationsQueryOptions()
   );
@@ -674,6 +722,7 @@ export function ActionConfig({
           </Label>
           <Select
             disabled={disabled}
+            items={categoryItems}
             onValueChange={whenChosen(handleCategoryChange)}
             value={category || undefined}
           >
@@ -733,6 +782,7 @@ export function ActionConfig({
           </Label>
           <Select
             disabled={disabled || !category}
+            items={actionItems}
             onValueChange={whenChosen(handleActionTypeChange)}
             value={actionType || undefined}
           >
@@ -741,7 +791,7 @@ export function ActionConfig({
             </SelectTrigger>
             <SelectContent>
               {category &&
-                categories[category]?.map((action) => {
+                actionOptions.map((action) => {
                   let fallbackIcon: ReactNode;
                   if (category === "System") {
                     fallbackIcon = <Settings className="size-4" />;

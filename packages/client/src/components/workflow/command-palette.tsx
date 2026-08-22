@@ -15,16 +15,7 @@
 import { Autocomplete } from "@base-ui/react/autocomplete";
 import type { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { useAtomValue, useSetAtom } from "jotai";
-import {
-  ArrowLeftRight,
-  ChevronLeft,
-  Play,
-  Plus,
-  Redo2,
-  RefreshCcw,
-  Search,
-  Undo2,
-} from "lucide-react";
+import { ChevronLeft, Search } from "lucide-react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -71,6 +62,10 @@ import {
   isApplePlatform,
 } from "#src/lib/shortcut-label";
 import { stepGroups, stepSearchText } from "#src/lib/step-types";
+import {
+  WorkflowCommandIcon,
+  workflowCommands,
+} from "#src/lib/workflow-commands";
 import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { selectableActions } from "@wfgraph/shared/extensions/catalog";
@@ -275,102 +270,74 @@ function CommandPaletteDialog({
     }));
   }, [onStepPage, stepAt, catalog, editingLocked, addStep, setPalette]);
 
+  const commands = workflowCommands({
+    state: {
+      currentWorkflowId: state.currentWorkflowId,
+      workflowMode: state.workflowMode,
+      isExecuting: state.isExecuting,
+      isGenerating: state.isGenerating,
+      isSaving: state.isSaving,
+      hasNodes: state.nodes.some((node) => node.type !== "add"),
+      canUndo: state.canUndo,
+      canRedo: state.canRedo,
+      canReflow,
+      editingLocked,
+    },
+    shortcuts,
+    callbacks: {
+      addStep: () => setPalette(pushPalettePage(palette, { id: "add-step" })),
+      run: () => {
+        close();
+        void actions.handleExecute();
+      },
+      switchMode: (mode) => {
+        close();
+        void actions.handleSetWorkflowMode(mode);
+      },
+      undo: () => {
+        close();
+        state.undo();
+      },
+      redo: () => {
+        close();
+        state.redo();
+      },
+      reflow: () => {
+        close();
+        reflow();
+      },
+    },
+  });
+
+  const rootPageGroups: readonly PaletteGroup[] = [
+    { id: "steps", label: "Steps" },
+    { id: "workflow", label: "Workflow" },
+  ].map((group) => ({
+    ...group,
+    items: commands
+      .filter((command) => command.group === group.id)
+      .map((command) => ({
+        id: command.id,
+        label: command.label,
+        detail: command.detail,
+        hint: command.id === "add-step" ? "→" : command.hint,
+        keywords: command.keywords,
+        disabled: command.disabled,
+        icon: (
+          <WorkflowCommandIcon
+            className="size-3.5 text-muted-foreground"
+            id={command.id}
+          />
+        ),
+        select: command.execute,
+      })),
+  }));
+
   let groups: readonly PaletteGroup[];
   if (onStepPage) {
     groups = stepPageGroups;
   } else {
-    // Every graph write here carries the Actions menu's own disabled rule, so a
-    // pinned run or a generation in flight refuses them in both places alike.
-    const runDisabled =
-      state.isExecuting ||
-      state.nodes.length === 0 ||
-      state.isGenerating ||
-      !state.currentWorkflowId;
-    const otherMode = state.workflowMode === "live" ? "test" : "live";
-
-    groups = [
-      {
-        id: "steps",
-        label: "Steps",
-        items: [
-          {
-            id: "add-step",
-            label: "Add step",
-            detail: "Pick what the new step does",
-            hint: "→",
-            keywords: "Add step node action new create insert",
-            disabled: editingLocked,
-            icon: <Plus className="size-3.5 text-muted-foreground" />,
-            select: () =>
-              setPalette(pushPalettePage(palette, { id: "add-step" })),
-          },
-        ],
-      },
-      {
-        id: "workflow",
-        label: "Workflow",
-        items: [
-          {
-            id: "run",
-            label: "Run workflow",
-            hint: shortcuts.run,
-            keywords: "Run workflow execute test start trigger",
-            disabled: runDisabled,
-            icon: <Play className="size-3.5 text-muted-foreground" />,
-            select: () => {
-              setPalette(null);
-              void actions.handleExecute();
-            },
-          },
-          {
-            id: "mode",
-            label: `Switch to ${otherMode === "live" ? "Live" : "Test"} mode`,
-            keywords: `Switch mode live test ${otherMode}`,
-            disabled: state.isSaving || state.isGenerating,
-            icon: <ArrowLeftRight className="size-3.5 text-muted-foreground" />,
-            select: () => {
-              setPalette(null);
-              void actions.handleSetWorkflowMode(otherMode);
-            },
-          },
-          {
-            id: "undo",
-            label: "Undo",
-            hint: shortcuts.undo,
-            keywords: "Undo revert back",
-            disabled: !state.canUndo || editingLocked,
-            icon: <Undo2 className="size-3.5 text-muted-foreground" />,
-            select: () => {
-              setPalette(null);
-              state.undo();
-            },
-          },
-          {
-            id: "redo",
-            label: "Redo",
-            hint: shortcuts.redo,
-            keywords: "Redo forward again",
-            disabled: !state.canRedo || editingLocked,
-            icon: <Redo2 className="size-3.5 text-muted-foreground" />,
-            select: () => {
-              setPalette(null);
-              state.redo();
-            },
-          },
-          {
-            id: "reflow",
-            label: "Tidy layout",
-            keywords: "Tidy layout arrange align auto layout clean up",
-            disabled: !canReflow,
-            icon: <RefreshCcw className="size-3.5 text-muted-foreground" />,
-            select: () => {
-              setPalette(null);
-              reflow();
-            },
-          },
-        ],
-      },
-    ];
+    groups = rootPageGroups;
   }
 
   // An empty list is two different facts, and the reader is owed the right one:

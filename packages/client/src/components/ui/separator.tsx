@@ -7,10 +7,12 @@ import { cn } from "@wfgraph/shared/utils"
 function Separator({
   className,
   orientation = "horizontal",
+  decorative = true,
   ...props
-}: SeparatorPrimitive.Props) {
+}: SeparatorPrimitive.Props & { decorative?: boolean }) {
   return (
     <SeparatorPrimitive
+      aria-hidden={decorative ? true : undefined}
       data-slot="separator"
       orientation={orientation}
       className={cn(
