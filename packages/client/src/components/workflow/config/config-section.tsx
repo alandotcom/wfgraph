@@ -1,4 +1,4 @@
-import { CircleQuestionMark } from "lucide-react";
+import { Check, CircleQuestionMark, Pencil } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "#src/components/ui/button";
 import {
@@ -70,8 +70,11 @@ export function ConfigSection({
           the rail's <aside> and on the sheet's drawer. */}
       <div
         className={cn(
-          "flex items-center justify-between gap-2",
-          stickyHeader && isEditing && "sticky top-0 z-20 bg-card py-1"
+          // The padding is unconditional. Applied with the sticky state it
+          // appeared on the click that entered edit mode, moving the title down
+          // and everything below it twice as far.
+          "flex items-center justify-between gap-2 py-1",
+          stickyHeader && isEditing && "sticky top-0 z-20 bg-card"
         )}
       >
         <div className="flex min-w-0 items-center gap-1">
@@ -92,11 +95,22 @@ export function ConfigSection({
                 ? `Done editing ${editActionName}`
                 : `Edit ${editActionName}`
             }
+            // Outline rather than ghost, and a fixed width. A ghost button is
+            // a bare word until it is hovered, which is no affordance at all
+            // for the one control that changes what the panel is for; and
+            // "Edit" and "Done" are different widths in Geist, so an unpinned
+            // button moved under the pointer as it was pressed.
+            className="w-[4.5rem] justify-center"
             onClick={() => onEditingChange(!isEditing)}
             size="sm"
             type="button"
-            variant={isEditing ? "outline" : "ghost"}
+            variant="outline"
           >
+            {isEditing ? (
+              <Check data-icon="inline-start" />
+            ) : (
+              <Pencil data-icon="inline-start" />
+            )}
             {isEditing ? "Done" : "Edit"}
           </Button>
         ) : null}
