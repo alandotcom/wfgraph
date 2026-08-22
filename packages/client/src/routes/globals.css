@@ -10,9 +10,23 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* The one width the editor changes shape at, declared rather than inherited so
+   it is a variable at runtime too. Tailwind's `md:` variant reads it, the media
+   queries below ask for it by name through `theme()`, and `hooks/use-mobile.ts`
+   reads it off `:root` to decide whether the properties rail is on screen. The
+   value is Tailwind's own default: a rem, so a reader who has scaled their font
+   up reaches the phone layout at a proportionally wider window, and everything
+   here moves together when they do. */
+@theme static {
+  --breakpoint-md: 48rem;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  /* The surface the editor shell is inset on. Nothing inside the shell uses
+     it; it is what shows through the margin. */
+  --color-page: var(--page);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -80,6 +94,17 @@
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
+  /* The page behind the inset editor shell. Solved for the step against the two
+     surfaces the shell shows at its own edge: Paper at the menu bar and the
+     canvas (1.12:1) and Panel at the strip and the rail (1.08:1), which is the
+     shallower of the two and the one that has to survive.
+
+     It is its own step on the ramp rather than a reuse of `--muted`, because a
+     page and a fill inside a panel are different things and one value cannot be
+     retuned for both. Three levels of 255 separate the two, so nobody would
+     tell them apart where they met; the separation is in what each token means,
+     not in what it measures. */
+  --page: oklch(0.96 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
@@ -136,6 +161,19 @@
 .dark {
   --background: oklch(0 0 0);
   --foreground: oklch(0.98 0 0);
+  /* Nothing renders darker than Void, so this step goes the way the theme
+     layers instead: up, as `--muted` and `--card` do from the same base. That
+     makes the page the lighter plane in dark and the darker one in light, which
+     is the inversion every other neutral here already makes.
+
+     It is the shell that stays Void rather than the page, because the canvas is
+     Void by design and lifting the shell would repaint the field the graph
+     floats on. 1.12:1 against Void, the same order of separation the card step
+     below is solved for, and placed between `--muted` (0.15) and `--card`
+     (0.205) so a fill inside the shell never matches the page and the page
+     never reads as a surface something could sit on. The tonal step is also all
+     there is here: `shadow-xs` on the frame is invisible against any of these. */
+  --page: oklch(0.18 0 0);
   /* oklch(0.04) and oklch(0.09) both quantise to rgb(0,0,0) at 8 bits, so the
      tonal layering this theme relies on rendered as nothing. 0.205 is the first
      step that separates from Void on screen (#171717, 1.17:1). */
@@ -182,6 +220,35 @@
   --sidebar-accent-foreground: oklch(0.98 0 0);
   --sidebar-border: oklch(0.18 0 0);
   --sidebar-ring: oklch(0.8 0 0);
+}
+
+/* The editor shell's inset from the viewport edge.
+
+   A variable rather than a padding utility because three things have to agree
+   on it: the padding in `routes/workflows/[workflowId]/page.tsx`, the panel
+   width `sidebarWidthCss` writes, and the panel's resize drag. The last two
+   measure the shell rectangle, which is the viewport less this inset per side,
+   so a drag that measured the viewport instead would release the panel edge a
+   whole inset away from the pointer.
+
+   Zero below the breakpoint, where the shell is the screen: 24px of a phone's
+   width buys nothing, and the status strip's home-indicator padding assumes the
+   shell reaches the bottom edge. The frame's border, radius and shadow are
+   `md:` utilities on the same breakpoint, so all five turn over together. */
+:root {
+  --editor-inset: 0px;
+  /* What `rounded-xl` compiles to. It is restated here because `@theme inline`
+     inlines a radius into the utilities that use it and never emits it as a
+     variable, and the shell's `clip-path` has to be able to read one. Nothing
+     else may use this: the radius itself is `rounded-xl` wherever a utility can
+     say it. */
+  --editor-shell-radius: calc(var(--radius) + 4px);
+}
+
+@media (width >= theme(--breakpoint-md)) {
+  :root {
+    --editor-inset: 12px;
+  }
 }
 
 @layer base {
@@ -429,10 +496,10 @@
   height: min(calc(24px / var(--rf-zoom, 1)), 48px) !important;
 }
 
-/* Invisible hit area for touch, at the WCAG 2.5.5 target size.
-   767.98px rather than 768px so this agrees with `useIsMobile`, which is an
-   exclusive `innerWidth < 768`. */
-@media (max-width: 767.98px) {
+/* Invisible hit area for touch, at the WCAG 2.5.5 target size. Below the same
+   breakpoint everything else turns over at, which is also where `useIsMobile`
+   stops rendering the properties rail. */
+@media (width < theme(--breakpoint-md)) {
   .react-flow__handle:not(.group-child-handle)::after {
     width: min(calc(44px / var(--rf-zoom, 1)), 88px) !important;
     height: min(calc(44px / var(--rf-zoom, 1)), 88px) !important;
@@ -466,8 +533,12 @@
    device, so the height it produces never changes under the user and React
    Flow is measured against it once, which is the property the strip's own
    header promises. Padding as well as height, so the text stays clear of the
-   home indicator rather than sitting under it. */
-@media (max-width: 768px) {
+   home indicator rather than sitting under it.
+
+   Below the breakpoint only, which is exactly where the shell reaches the
+   bottom of the screen. Above it the shell is inset and the home indicator is
+   the page's problem rather than the strip's. */
+@media (width < theme(--breakpoint-md)) {
   .workflow-status-strip {
     height: calc(2rem + env(safe-area-inset-bottom, 0px));
     padding-bottom: env(safe-area-inset-bottom, 0px);

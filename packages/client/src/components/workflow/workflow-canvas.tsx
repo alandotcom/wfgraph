@@ -467,26 +467,6 @@ export function WorkflowCanvas() {
     return { clientX, clientY };
   }, []);
 
-  const calculateMenuPosition = useCallback(
-    (event: MouseEvent | TouchEvent, clientX: number, clientY: number) => {
-      const eventTarget =
-        event.target instanceof Element ? event.target : undefined;
-      const reactFlowBounds = eventTarget
-        ?.closest(".react-flow")
-        ?.getBoundingClientRect();
-
-      const adjustedX = reactFlowBounds
-        ? clientX - reactFlowBounds.left
-        : clientX;
-      const adjustedY = reactFlowBounds
-        ? clientY - reactFlowBounds.top
-        : clientY;
-
-      return { adjustedX, adjustedY };
-    },
-    []
-  );
-
   const handleConnectionToExistingNode = useCallback(
     (nodeElement: Element) => {
       const targetNodeId = nodeElement.getAttribute("data-id");
@@ -519,7 +499,7 @@ export function WorkflowCanvas() {
   );
 
   const handleConnectionToNewNode = useCallback(
-    (event: MouseEvent | TouchEvent, clientX: number, clientY: number) => {
+    (clientX: number, clientY: number) => {
       const sourceNodeId = connectingNodeId.current;
       if (!sourceNodeId) {
         return;
@@ -540,16 +520,14 @@ export function WorkflowCanvas() {
         return;
       }
 
-      const { adjustedX, adjustedY } = calculateMenuPosition(
-        event,
-        clientX,
-        clientY
-      );
-
-      const position = screenToFlowPosition({
-        x: adjustedX,
-        y: adjustedY,
-      });
+      // Client coordinates, which is what `screenToFlowPosition` takes: it
+      // subtracts the pane's own rect itself. This used to hand it the release
+      // point already measured from the pane's top-left, which put every node
+      // made by dropping a connection up and to the left of the cursor by
+      // however far the pane sat from the window's corner, over the zoom. That
+      // was the menu bar's 44px, and the shell's inset and border since added
+      // 13px across.
+      const position = screenToFlowPosition({ x: clientX, y: clientY });
 
       // Center vertically on the cursor.
       position.y -= WORKFLOW_NODE_HEIGHT / 2;
@@ -599,7 +577,6 @@ export function WorkflowCanvas() {
       }, 100);
     },
     [
-      calculateMenuPosition,
       screenToFlowPosition,
       addNode,
       selectOnlyNode,
@@ -649,7 +626,7 @@ export function WorkflowCanvas() {
       }
 
       if (!(nodeElement || isHandle)) {
-        handleConnectionToNewNode(event, clientX, clientY);
+        handleConnectionToNewNode(clientX, clientY);
       }
 
       connectingNodeId.current = null;

@@ -9,6 +9,7 @@ import { useLeaveRunsSurface } from "#src/hooks/use-exit-run";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import {
+  editorShellWidth,
   isSidebarCollapsedAtom,
   sidebarWidthCss,
   sidebarWidthPercentAtom,
@@ -101,6 +102,13 @@ export function WorkflowSidebarPanel() {
 
   const [isDraggingResize, setIsDraggingResize] = useState(false);
   const isResizing = useRef(false);
+  /**
+   * The column the panel's surface sits in, which a resize measures against.
+   * The column rather than the surface, because the surface slides on
+   * `transform` and its measured edge would be wherever that animation had got
+   * to; the column's right edge is the shell's inner edge in every state.
+   */
+  const columnRef = useRef<HTMLDivElement>(null);
 
   const handleToggleShortcut = useCallback(
     (e: KeyboardEvent) => {
@@ -119,6 +127,14 @@ export function WorkflowSidebarPanel() {
   // with the collapse button hidden behind hover, undismissable.
   const handleResizeStart = useCallback(
     (e: React.PointerEvent) => {
+      // Ahead of the drag state, so a press that cannot be measured leaves
+      // nothing latched on. The strip that starts this is inside the column,
+      // so in practice the ref is always there.
+      const column = columnRef.current;
+      if (!column) {
+        return;
+      }
+
       e.preventDefault();
       isResizing.current = true;
       setIsDraggingResize(true);
@@ -139,8 +155,16 @@ export function WorkflowSidebarPanel() {
         if (!travelled) {
           return;
         }
-        const newWidth =
-          ((window.innerWidth - moveEvent.clientX) / window.innerWidth) * 100;
+        // Both halves of this are read per move, as the window width the old
+        // version divided by was. The share is of the editor shell rather than
+        // of the window, because the shell is inset from the viewport and a
+        // percentage of `window.innerWidth` would release the panel's edge a
+        // whole inset away from the cursor. The edge it grows from is measured
+        // rather than derived, since the shell's hairline border leaves the
+        // column starting a pixel inside the rectangle that width describes.
+        const shellWidth = editorShellWidth();
+        const panelRight = column.getBoundingClientRect().right;
+        const newWidth = ((panelRight - moveEvent.clientX) / shellWidth) * 100;
         setPanelWidth(Math.min(50, Math.max(20, newWidth)));
       };
 
@@ -192,6 +216,7 @@ export function WorkflowSidebarPanel() {
       {!isMobile && (
         <div
           className="relative shrink-0"
+          ref={columnRef}
           style={{ width: panelCollapsed ? 0 : sidebarWidthCss(panelWidth) }}
         >
           <div

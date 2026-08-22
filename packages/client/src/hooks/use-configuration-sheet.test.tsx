@@ -48,12 +48,18 @@ function pinRun(store: ReturnType<typeof createStore>): void {
   });
 }
 
+/**
+ * The viewport itself rather than `window.innerWidth` alone, because the width
+ * is read through a media query: `useIsMobile` asks `matchMedia` for Tailwind's
+ * `md` breakpoint, and happy-dom answers that from its own viewport, which an
+ * assignment to `innerWidth` does not touch.
+ */
 function setViewportWidth(width: number): void {
-  Object.defineProperty(window, "innerWidth", {
-    value: width,
-    configurable: true,
-    writable: true,
-  });
+  (
+    window as unknown as {
+      happyDOM: { setViewport: (viewport: { width: number }) => void };
+    }
+  ).happyDOM.setViewport({ width });
 }
 
 /** Any other overlay, standing in for Test Run or a delete confirmation. */
