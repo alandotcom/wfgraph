@@ -631,7 +631,7 @@ export default function WorkflowsPage() {
               </Button>
             </div>
 
-            <div className="flex flex-col gap-2 border-b px-4 py-2">
+            <div className="relative z-20 flex flex-col gap-2 border-b px-4 py-2">
               <RunHistorySearch
                 entitySuggestions={entitySuggestions}
                 eventSuggestions={eventSuggestions}
@@ -663,7 +663,7 @@ export default function WorkflowsPage() {
             </div>
 
             <RunHistoryTable
-              hasNextPage={Boolean(runsQuery.hasNextPage)}
+              hasNextPage={runsQuery.hasNextPage}
               isLoading={isLoadingRuns}
               isLoadingMore={isLoadingMoreRuns}
               key={runHistoryTableKey}

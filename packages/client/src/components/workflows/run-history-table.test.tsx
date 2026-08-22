@@ -16,8 +16,6 @@ function run(
     startEventName: null,
     entityValue: null,
     workflowRunId: null,
-    input: null,
-    output: null,
     error: null,
     startedAt: "2026-08-22T10:00:00.000Z",
     waitingAt: null,

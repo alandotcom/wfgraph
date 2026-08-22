@@ -58,10 +58,10 @@ const GRID_TEMPLATE = "minmax(0,1.6fr) 7.5rem 4.5rem 7rem 5.5rem 4.75rem";
 function observeScrollRect(
   instance: { scrollElement: Element | Window | null },
   callback: (rect: { width: number; height: number }) => void
-) {
+): () => void {
   const element = instance.scrollElement;
   if (!element || !(element instanceof HTMLElement)) {
-    return;
+    return () => undefined;
   }
   const report = () => {
     callback({
@@ -74,7 +74,7 @@ function observeScrollRect(
     element.ownerDocument.defaultView?.ResizeObserver ??
     globalThis.ResizeObserver;
   if (typeof Observer === "undefined") {
-    return;
+    return () => undefined;
   }
   const observer = new Observer(report);
   observer.observe(element);
@@ -85,14 +85,14 @@ function formatRunDuration(duration: string | null): string {
   if (!duration) {
     return "—";
   }
-  const durationMs = Number.parseInt(duration, 10);
-  if (Number.isNaN(durationMs)) {
+  const parsed = Number.parseInt(duration, 10);
+  if (Number.isNaN(parsed)) {
     return duration;
   }
-  if (durationMs < 1000) {
-    return `${durationMs}ms`;
+  if (parsed < 1000) {
+    return `${parsed}ms`;
   }
-  return `${(durationMs / 1000).toFixed(2)}s`;
+  return `${(parsed / 1000).toFixed(2)}s`;
 }
 
 function modeLabel(mode: "live" | "test"): string {
@@ -204,7 +204,7 @@ export function RunHistoryTable({
   onLoadMore,
   onOpenRun,
 }: RunHistoryTableProps) {
-  const data = runs.length === 0 ? EMPTY_RUNS : (runs as RunHistoryTableRow[]);
+  const data = runs.length === 0 ? EMPTY_RUNS : [...runs];
   const columns = useMemo(
     () => createRunHistoryColumns(onOpenRun),
     [onOpenRun]
