@@ -25,6 +25,7 @@ import {
   workflowLoadErrorAtom,
 } from "#src/lib/workflow-save-store";
 import {
+  activeAgentTurnIdAtom,
   isGeneratingAtom,
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
@@ -32,6 +33,7 @@ import {
   formatTemplateToken,
   mapTemplateTokens,
 } from "@wfgraph/shared/graph/node-references";
+import { layoutWorkflowNodes } from "#src/components/workflow/workflow-layout";
 import { inactiveBranch } from "#src/lib/inactive-branch";
 import {
   EMPTY_ISSUES,
@@ -358,6 +360,8 @@ export const hydrateWorkflowAtom = atom(
     set(statusByNodeIdAtom, new Map());
     set(executionOverlayGraphAtom, null);
     set(selectedExecutionIdAtom, null);
+    set(activeAgentTurnIdAtom, null);
+    set(isGeneratingAtom, false);
     set(currentWorkflowIdAtom, workflow.id);
     set(currentWorkflowNameAtom, workflow.name);
     // The clock reading belongs to the workflow just left, so the strip would
@@ -727,6 +731,96 @@ export const duplicateSelectionAtom = atom(
     return true;
   }
 );
+
+/**
+ * Put the build agent's version of the workflow on the canvas.
+ *
+ * The caller marks the first graph in a turn as its undo boundary. The agent
+ * chooses no coordinates, so every node it added arrives at the origin and the
+ * layout pass here is what places new nodes.
+ *
+ * Node identity is preserved for anything the agent left alone: `displayNodesAtom`
+ * keeps a paint cache keyed on it, so rebuilding every node would re-render every
+ * card on the canvas for an edit that touched one.
+ */
+export const applyAgentGraphAtom = atom(
+  null,
+  (
+    get,
+    set,
+    input: {
+      workflowId: string;
+      turnId: symbol;
+      recordHistory: boolean;
+      nodes: WorkflowNode[];
+      edges: WorkflowEdge[];
+      catalog: ExtensionCatalog;
+    }
+  ) => {
+    if (
+      input.workflowId !== get(currentWorkflowIdAtom) ||
+      input.turnId !== get(activeAgentTurnIdAtom) ||
+      !draftEditable(get)
+    ) {
+      return false;
+    }
+
+    const existingById = new Map(
+      get(nodesStateAtom).map((node) => [node.id, node] as const)
+    );
+
+    // The agent chooses no coordinates, so the position it sends is absence
+    // rather than a move. Carrying the one already on screen forward is what
+    // stops the layout below reflowing the whole canvas around one edited step.
+    const placed = input.nodes.map((node) => {
+      const existing = existingById.get(node.id);
+      return existing ? { ...node, position: existing.position } : node;
+    });
+
+    const { nodes: laidOut } = layoutWorkflowNodes({
+      nodes: placed,
+      edges: input.edges,
+      catalog: input.catalog,
+    });
+
+    const positioned = laidOut.map((node) => {
+      const existing = existingById.get(node.id);
+      return existing ? { ...node, position: existing.position } : node;
+    });
+
+    // `layoutWorkflowNodes` rebuilds every node it is given, so identity is
+    // restored here rather than assumed. `displayNodesAtom` keeps a paint cache
+    // keyed on it, and a turn calls several write tools, each sending the whole
+    // graph back: without this every card on the canvas repaints per tool call.
+    const reconciled = positioned.map((node) => {
+      const existing = existingById.get(node.id);
+      return existing && isSameNode(existing, node) ? existing : node;
+    });
+
+    if (input.recordHistory) {
+      pushHistory(get, set);
+    }
+    set(nodesStateAtom, orderGroupParentsFirst(reconciled));
+    set(edgesStateAtom, input.edges);
+    requestGraphSave(get, set, { immediate: true });
+    return true;
+  }
+);
+
+/** Whether the agent's node is, in every way the canvas paints, the one already there. */
+function isSameNode(existing: WorkflowNode, incoming: WorkflowNode): boolean {
+  return (
+    existing.type === incoming.type &&
+    existing.parentId === incoming.parentId &&
+    existing.position.x === incoming.position.x &&
+    existing.position.y === incoming.position.y &&
+    existing.data.label === incoming.data.label &&
+    existing.data.description === incoming.data.description &&
+    existing.data.enabled === incoming.data.enabled &&
+    JSON.stringify(existing.data.config ?? {}) ===
+      JSON.stringify(incoming.data.config ?? {})
+  );
+}
 
 /** Apply auto-layout positions. Also an undo step, for the same reason. */
 export const applyNodeLayoutAtom = atom(

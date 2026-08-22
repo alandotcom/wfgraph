@@ -25,6 +25,17 @@ import {
 const logger = getClientLogger("extensions");
 
 let catalog: ExtensionCatalog = emptyExtensionCatalog;
+let agentEnabled = false;
+
+/**
+ * Whether this server has a build agent configured.
+ *
+ * Read after `hydrateExtensionsFromApi`, alongside the catalog and from the same
+ * one request, so the editor asks the server what it offers exactly once.
+ */
+export function isAgentEnabled(): boolean {
+  return agentEnabled;
+}
 
 export function getExtensionCatalog(): ExtensionCatalog {
   return catalog;
@@ -90,5 +101,9 @@ export async function hydrateExtensionsFromApi(): Promise<CatalogLoadResult> {
   }
 
   catalog = decoded;
+  // Absent from an older server's answer, which reads as off: an editor that
+  // shows no agent against a server that has one is a missing feature, where the
+  // reverse is a control that refuses every click.
+  agentEnabled = envelope?.agent?.enabled === true;
   return { ok: true };
 }

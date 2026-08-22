@@ -198,3 +198,25 @@ the boundary guarantees)
 One set of stored credentials for one External System, with an id and a name.
 An application may hold several for the same system, which is two Slack
 workspaces or two Twilio accounts. An action node names the one it runs as.
+
+### Build Agent
+
+**Build Agent**:
+The chat panel in the editor that reads the extension catalog and the open
+workflow, then edits the canvas on the Workflow Builder's behalf. It writes
+through the same tools a person's clicks write through, so what it produces is
+a workflow like any other. Turned on by a host passing a model key; absent
+otherwise, panel and all.
+_Avoid_: assistant, copilot (neither says what it acts on)
+
+**Draft Document**:
+The nodes and edges one turn of the Build Agent reads and edits. It arrives
+with the request, lives for that request, and is handed back for the editor to
+apply. It is never the canonical workflow: that stays in the editor and in the
+database, and the Draft Document is a copy a turn is allowed to change.
+
+**Turn**:
+One exchange: the Workflow Builder's message, the model calls it makes, the
+tools those calls run, and the answer it writes. A turn may go back to the
+model many times, because reading the catalog and then writing a step are
+separate steps of one request. Nothing of a turn is kept once it ends.

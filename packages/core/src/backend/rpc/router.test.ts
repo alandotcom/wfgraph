@@ -1,6 +1,7 @@
 import { ORPCError } from "@orpc/server";
 import { afterAll, assert, beforeEach, describe, it } from "@effect/vitest";
 import { Effect, Layer, ManagedRuntime } from "effect";
+import { makeAgentConfigLayer } from "#src/backend/agent/config";
 import { NotFound } from "#src/backend/lib/effect/failures";
 import {
   SilentAppLoggerLayer,
@@ -35,6 +36,7 @@ function createStubRuntime(): WfGraphRuntime {
       stubIntegrationRepo(),
       stubWorkflowRepo(),
       stubExecutionRepo(),
+      makeAgentConfigLayer({ enabled: false }),
       stubInngestClient()
     )
   );

@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useCallback } from "react";
 import { toast } from "sonner";
+import { AgentPanel } from "#src/components/agent/agent-panel";
 import { Button } from "#src/components/ui/button";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
 import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
@@ -10,6 +11,7 @@ import { WorkflowSidebarPanel } from "#src/components/workflow/workflow-sidebar-
 import { WorkflowStatusStrip } from "#src/components/workflow/workflow-status-strip";
 import { WorkflowToolbar } from "#src/components/workflow/workflow-toolbar";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
+import { isAgentEnabled } from "#src/lib/extensions";
 import { isRunInProgress } from "#src/lib/execution-logs";
 import { orpcQuery } from "#src/lib/rpc-query";
 import {
@@ -246,8 +248,14 @@ const WorkflowEditor = () => {
                 graph at. Whatever is left over the shell clips, which is a far
                 better failure than handing React Flow a parent of zero
                 height. */}
-            <div className="min-h-[min(20rem,40dvh)] flex-1">
+            <div className="relative min-h-[min(20rem,40dvh)] flex-1">
               <WorkflowCanvas />
+              {/* The agent belongs to the canvas rather than the editor shell.
+                  This keeps its card above the status strip and out of the
+                  properties rail while the graph remains visible behind it. */}
+              {currentWorkflowId && isAgentEnabled() && (
+                <AgentPanel workflowId={currentWorkflowId} />
+              )}
             </div>
             <WorkflowStatusStrip workflowId={currentWorkflowId ?? undefined} />
           </div>

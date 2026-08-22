@@ -7,6 +7,9 @@
    tokens; those stay in this file's own @theme block below. */
 @import "shadcn/tailwind.css";
 @import "tw-animate-css";
+/* Prose styling for the build agent's replies. Imported after Tailwind so its
+   element rules win over the preflight reset. */
+@import "./typeset.css";
 
 @custom-variant dark (&:is(.dark *));
 

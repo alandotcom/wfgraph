@@ -24,6 +24,10 @@ import {
   configureLoggingWithBridge,
   warnWhenLoggingUnconfigured,
 } from "#src/backend/lib/log-config";
+import {
+  readAgentSettings,
+  type WfGraphAgentConfig,
+} from "#src/backend/agent/config";
 import { createWfGraphRuntime } from "#src/backend/runtime";
 import type { WfGraphPersistence } from "#src/backend/persistence/types";
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
@@ -34,6 +38,11 @@ export type WfGraphWorkerRequestConfig = {
   persistence: WfGraphPersistence;
   encryption: EncryptionRuntimeConfig;
   inngest: WfGraphInngestConfig;
+  /**
+   * The build agent's model settings. Per request like every other secret here,
+   * since a Worker reads its bindings from the environment it was invoked with.
+   */
+  agent?: WfGraphAgentConfig;
 };
 
 export type WfGraphWorkerOptions<Env> = {
@@ -90,6 +99,7 @@ export function wfWorker<Env>(
         runtime = createWfGraphRuntime({
           inngest,
           extensions,
+          agent: readAgentSettings(config.agent),
           repositories: persistence.repositories,
         });
         const functions = await buildInngestFunctions(inngest.client, runtime);

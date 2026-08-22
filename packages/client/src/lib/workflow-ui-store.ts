@@ -17,6 +17,8 @@ import { isWorkflowOwnerAtom } from "#src/lib/workflow-save-store";
 
 const SIDEBAR_WIDTH_COOKIE = "sidebar-width";
 const SIDEBAR_COLLAPSED_COOKIE = "sidebar-collapsed";
+const AGENT_PANEL_OPEN_COOKIE = "agent-panel-open";
+const AGENT_PANEL_SIZE_COOKIE = "agent-panel-size";
 const COOKIE_MAX_AGE_SECONDS = 31_536_000; // one year
 
 const MIN_SIDEBAR_PERCENT = 20;
@@ -119,6 +121,67 @@ export function editorShellWidth(): number {
 
 export const isExecutingAtom = atom(false);
 export const isGeneratingAtom = atom(false);
+/** Identifies the only agent turn allowed to change the open workflow. */
+export const activeAgentTurnIdAtom = atom<symbol | null>(null);
+
+/**
+ * The build agent's panel: whether it is open, and how big the user made it.
+ *
+ * It floats over the bottom-left of the canvas, so it reserves no canvas width.
+ */
+const AGENT_PANEL_MIN = { width: 320, height: 280 } as const;
+const AGENT_PANEL_MAX = { width: 720, height: 900 } as const;
+const AGENT_PANEL_DEFAULT = { width: 400, height: 520 } as const;
+
+export type AgentPanelSize = { width: number; height: number };
+
+function clampAgentPanelSize(size: AgentPanelSize): AgentPanelSize {
+  return {
+    width: Math.min(
+      Math.max(size.width, AGENT_PANEL_MIN.width),
+      AGENT_PANEL_MAX.width
+    ),
+    height: Math.min(
+      Math.max(size.height, AGENT_PANEL_MIN.height),
+      AGENT_PANEL_MAX.height
+    ),
+  };
+}
+
+function readInitialAgentPanelSize(): AgentPanelSize {
+  const [width, height] = (readCookie(AGENT_PANEL_SIZE_COOKIE) ?? "")
+    .split("x")
+    .map((part) => Number.parseFloat(part));
+
+  return Number.isFinite(width) && Number.isFinite(height)
+    ? clampAgentPanelSize({ width, height })
+    : AGENT_PANEL_DEFAULT;
+}
+
+const agentPanelOpenStateAtom = atom(
+  readCookie(AGENT_PANEL_OPEN_COOKIE) === "true"
+);
+
+export const isAgentPanelOpenAtom = atom(
+  (get) => get(agentPanelOpenStateAtom),
+  (get, set, next: boolean | ((previous: boolean) => boolean)) => {
+    const value =
+      typeof next === "function" ? next(get(agentPanelOpenStateAtom)) : next;
+    set(agentPanelOpenStateAtom, value);
+    writeCookie(AGENT_PANEL_OPEN_COOKIE, String(value));
+  }
+);
+
+const agentPanelSizeStateAtom = atom(readInitialAgentPanelSize());
+
+export const agentPanelSizeAtom = atom(
+  (get) => get(agentPanelSizeStateAtom),
+  (_get, set, size: AgentPanelSize) => {
+    const clamped = clampAgentPanelSize(size);
+    set(agentPanelSizeStateAtom, clamped);
+    writeCookie(AGENT_PANEL_SIZE_COOKIE, `${clamped.width}x${clamped.height}`);
+  }
+);
 
 /**
  * The tab the panel actually shows: the stored one, unless it is the owner-only

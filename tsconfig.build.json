@@ -26,6 +26,7 @@
     "jsx": "react-jsx",
     "types": ["node"],
     "paths": {
+      "@wfgraph/agent/*": ["./packages/agent/src/*"],
       "@wfgraph/shared/*": ["./packages/shared/src/*"],
       "@wfgraph/plugins": ["./packages/plugins/src/index.ts"],
       "@wfgraph/plugins/*": ["./packages/plugins/src/*"]
@@ -36,6 +37,7 @@
   // Sources in packages/shared and packages/plugins enter the program as
   // imports of these files.
   "include": [
+    "packages/agent/src/**/*.ts",
     "packages/core/src/**/*.ts",
     "packages/core/src/**/*.tsx",
     "packages/plugins/src/**/*.ts",

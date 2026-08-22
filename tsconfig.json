@@ -38,6 +38,7 @@
       }
     ],
     "paths": {
+      "@wfgraph/agent/*": ["./packages/agent/src/*"],
       "@wfgraph/shared/*": ["./packages/shared/src/*"],
       "@wfgraph/core": ["./packages/core/src/index.ts"],
       "@wfgraph/core/*": ["./packages/core/src/*"],
@@ -51,6 +52,7 @@
     "test-setup.ts",
     "examples/**/*.ts",
     "scripts/**/*.ts",
+    "packages/agent/src/**/*.ts",
     "packages/shared/src/**/*.ts",
     "packages/shared/src/**/*.tsx",
     "packages/core/src/**/*.ts",

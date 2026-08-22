@@ -166,5 +166,11 @@ export const readExtensionCatalog = readAs(extensionCatalogSchema);
 export const readExtensionsResponse = readAs(
   Schema.Struct({
     catalog: Schema.optionalKey(Schema.Unknown),
+    /**
+     * Whether this server has a build agent configured. The editor asks here
+     * rather than by calling the agent and reading the refusal, because a
+     * control the user cannot enable is worse than no control.
+     */
+    agent: Schema.optionalKey(Schema.Struct({ enabled: Schema.Boolean })),
   })
 );

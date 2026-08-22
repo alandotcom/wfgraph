@@ -1,4 +1,4 @@
-import { oc } from "@orpc/contract";
+import { eventIterator, oc } from "@orpc/contract";
 import { openapi } from "@orpc/openapi";
 import { Schema } from "effect";
 import { jsonObjectSchema } from "#src/types/json";
@@ -15,6 +15,10 @@ import {
   WORKFLOW_EXECUTION_STATUSES,
 } from "#src/lifecycle/execution-contracts";
 import { serializedWorkflowGraphSchema } from "#src/graph/schemas";
+import {
+  agentMessageSchema,
+  agentStreamPartSchema,
+} from "#src/rpc/agent-stream";
 
 /**
  * Declares a procedure's REST shape. Routing metadata moved off the contract
@@ -345,7 +349,63 @@ const workflowBulkLifecycleResultSchema = Schema.Struct({
   ),
 });
 
+/**
+ * The build agent's one procedure, and the only streaming contract in the repo.
+ *
+ * `eventIterator` is oRPC's async-iterator output: the handler is a generator
+ * and `RPCLink` hands the browser an async iterable, so the chat panel reads a
+ * turn as it is produced without a second transport beside the RPC client.
+ *
+ * The turn carries the whole conversation and the whole graph, because neither
+ * is kept on the server. Nothing about a turn outlives the request that ran it.
+ */
+export const MAX_AGENT_MESSAGES = 100;
+export const MAX_AGENT_MESSAGE_CHARS = 32_000;
+export const MAX_AGENT_GRAPH_NODES = 500;
+export const MAX_AGENT_GRAPH_EDGES = 2_000;
+export const MAX_AGENT_REQUEST_CHARS = 1_000_000;
+
+const boundedAgentMessageSchema = agentMessageSchema.check(
+  Schema.makeFilter(
+    (message) => message.content.length <= MAX_AGENT_MESSAGE_CHARS,
+    { expected: `a message of at most ${MAX_AGENT_MESSAGE_CHARS} characters` }
+  )
+);
+
+const boundedAgentGraphSchema = serializedWorkflowGraphSchema.check(
+  Schema.makeFilter(
+    (graph) =>
+      graph.nodes.length <= MAX_AGENT_GRAPH_NODES &&
+      graph.edges.length <= MAX_AGENT_GRAPH_EDGES,
+    {
+      expected: `a graph with at most ${MAX_AGENT_GRAPH_NODES} nodes and ${MAX_AGENT_GRAPH_EDGES} edges`,
+    }
+  )
+);
+
+export const agentChatInputSchema = Schema.Struct({
+  workflowId: idSchema,
+  messages: listOf(boundedAgentMessageSchema).check(
+    Schema.isMaxLength(MAX_AGENT_MESSAGES)
+  ),
+  graph: boundedAgentGraphSchema,
+}).check(
+  Schema.makeFilter(
+    (input) => JSON.stringify(input).length <= MAX_AGENT_REQUEST_CHARS,
+    {
+      expected: `an agent request of at most ${MAX_AGENT_REQUEST_CHARS} characters`,
+    }
+  )
+);
+
+const agentChatInput = contractSchema(agentChatInputSchema);
+
 export const rpcContract = {
+  agent: {
+    chat: route("POST", "/agent/chat")
+      .input(agentChatInput)
+      .output(eventIterator(contractSchema(agentStreamPartSchema))),
+  },
   apiKey: {
     getAll: route("GET", "/api-keys")
       .input(noInput)

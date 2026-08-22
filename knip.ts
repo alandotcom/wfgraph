@@ -84,6 +84,17 @@ const config: KnipConfig = {
       project: ["*.ts"],
     },
 
+    "packages/agent": {
+      // The build agent's toolkit, reached from packages/core by the
+      // `@wfgraph/agent/*` path alias, the same way @wfgraph/shared is. This
+      // package's "exports" map points straight at source, so knip would take
+      // every file as an entry and exempt its exports; the flag below turns the
+      // dead-export check back on. Nothing outside the repo consumes it.
+      entry: [],
+      project: ["src/**/*.{ts,tsx}"],
+      includeEntryExports: true,
+    },
+
     "packages/shared": {
       // Core and plugins reach into this tree by the `@wfgraph/shared/*` specifier,
       // which the root tsconfig maps to these sources, so leaving entry empty

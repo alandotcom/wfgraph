@@ -1,0 +1,133 @@
+/*
+ * Prose styling for rendered markdown, in the shadcn Typeset shape: one CSS file
+ * the project owns, switched on by the `typeset` class and tuned by a preset
+ * class beside it.
+ *
+ * The editor renders markdown in exactly one place, the build agent's replies,
+ * so there is one preset. It reads at the body size DESIGN.md names and keeps
+ * every colour on the existing tokens, because prose here is chrome around the
+ * canvas rather than a document in its own right.
+ *
+ * Add `not-typeset` to a subtree that should be left alone.
+ */
+
+.typeset {
+  --typeset-size: 0.875rem;
+  --typeset-leading: 1.5;
+  --typeset-flow: 0.75em;
+  --typeset-font-body: var(--font-sans);
+  --typeset-font-heading: var(--font-sans);
+  --typeset-font-mono: var(--font-mono);
+
+  color: var(--foreground);
+  font-family: var(--typeset-font-body);
+  font-size: var(--typeset-size);
+  line-height: var(--typeset-leading);
+}
+
+.typeset-chat {
+  --typeset-flow: 0.625em;
+}
+
+.typeset :where(.not-typeset, [data-not-typeset]),
+.typeset :where(.not-typeset, [data-not-typeset]) * {
+  all: revert;
+}
+
+/* One rhythm rule rather than a margin per element: every block gets the same
+   space above it, and the first one in a message gets none. */
+.typeset > * + * {
+  margin-top: var(--typeset-flow);
+}
+
+.typeset :where(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--typeset-font-heading);
+  font-weight: 600;
+  line-height: 1.375;
+}
+
+.typeset :where(h1) {
+  font-size: 1rem;
+}
+
+.typeset :where(h2, h3, h4, h5, h6) {
+  font-size: 0.875rem;
+}
+
+.typeset :where(ul, ol) {
+  padding-left: 1.25em;
+}
+
+.typeset :where(ul) {
+  list-style: disc;
+}
+
+.typeset :where(ol) {
+  list-style: decimal;
+}
+
+.typeset :where(li) + :where(li) {
+  margin-top: 0.25em;
+}
+
+.typeset :where(a) {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.typeset :where(strong) {
+  font-weight: 600;
+}
+
+.typeset :where(code) {
+  background-color: var(--muted);
+  border-radius: 4px;
+  font-family: var(--typeset-font-mono);
+  font-size: 0.8125rem;
+  padding: 0.1em 0.32em;
+}
+
+.typeset :where(pre) {
+  background-color: var(--muted);
+  border-radius: 6px;
+  overflow-x: auto;
+  padding: 0.75em;
+}
+
+.typeset :where(pre code) {
+  background-color: transparent;
+  padding: 0;
+}
+
+.typeset :where(blockquote) {
+  border-left: 2px solid var(--border);
+  color: var(--muted-foreground);
+  padding-left: 0.75em;
+}
+
+.typeset :where(hr) {
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+/* A wide table scrolls inside its own box rather than widening the panel. */
+.typeset :where(.typeset-scroll) {
+  overflow-x: auto;
+}
+
+.typeset :where(table) {
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  width: 100%;
+}
+
+.typeset :where(th, td) {
+  border: 1px solid var(--border);
+  padding: 0.35em 0.5em;
+  text-align: left;
+}
+
+.typeset :where(th) {
+  font-weight: 500;
+}
