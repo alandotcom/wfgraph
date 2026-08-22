@@ -94,13 +94,37 @@ export type ExecutionSummary = Pick<
 export type ExecutionStatusRow = Pick<WorkflowExecution, "id" | "status">;
 
 /**
+ * A run as the two list queries return it: identity, status, timing, and how
+ * it was started. Start and result payloads, the cancel Event's payload, and
+ * the routing columns the lists never paint stay off this shape so a two-second
+ * poll does not read JSONB the panel discards.
+ */
+export type WorkflowExecutionListRow = Pick<
+  WorkflowExecution,
+  | "id"
+  | "workflowId"
+  | "status"
+  | "startSource"
+  | "runMode"
+  | "startEventName"
+  | "entityValue"
+  | "workflowRunId"
+  | "error"
+  | "startedAt"
+  | "waitingAt"
+  | "cancelledAt"
+  | "completedAt"
+  | "duration"
+>;
+
+/**
  * An execution carrying the two columns of its workflow the cross-workflow runs
  * list shows beside it, which is what the join in `listPage` is for.
  *
  * The canceling Event's payload is left out: it is arbitrary host JSON, and no
  * runs-list row shows it. The engine reads it through `findPendingCancel`.
  */
-export type GlobalExecutionRow = Omit<WorkflowExecution, "cancelPayload"> & {
+export type GlobalExecutionRow = WorkflowExecutionListRow & {
   workflowName: string;
   workflowIsPaused: boolean;
 };

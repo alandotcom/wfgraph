@@ -15,8 +15,6 @@ const rawExecution = {
   startEventName: "app/appointment.created",
   entityValue: "appt_1",
   workflowRunId: null,
-  input: null,
-  output: null,
   error: null,
   startedAt: "2026-03-01T10:00:00.000Z",
   waitingAt: null,

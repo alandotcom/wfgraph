@@ -190,6 +190,13 @@ const workflowExecutionStatusSchema = Schema.Literals(
   WORKFLOW_EXECUTION_STATUSES
 );
 
+/**
+ * A run as the two list procedures carry it.
+ *
+ * Start and result payloads stay off this shape: both lists poll (the editor
+ * every two seconds while the Runs tab is open), and neither paints them. They
+ * ride `getExecutionLogs` instead, which is fetched for one open run.
+ */
 const workflowExecutionFields = {
   id: idSchema,
   workflowId: idSchema,
@@ -199,8 +206,6 @@ const workflowExecutionFields = {
   startEventName: Schema.NullOr(Schema.String),
   entityValue: Schema.NullOr(Schema.String),
   workflowRunId: Schema.NullOr(Schema.String),
-  input: Schema.Unknown,
-  output: Schema.Unknown,
   error: Schema.NullOr(Schema.String),
   startedAt: Schema.String,
   waitingAt: Schema.NullOr(Schema.String),

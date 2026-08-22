@@ -50,3 +50,37 @@ describe("finishRun", () => {
     expect(statements[0]?.query).toMatch(/"duration" = [^,]*started_at/i);
   });
 });
+
+describe("listByWorkflow", () => {
+  it("does not read the JSONB columns the list never shows", async () => {
+    const { service: database, statements } = stubDatabase();
+
+    await Effect.runPromise(
+      makeRunsMethods(database).listByWorkflow({
+        workflowId: "wf_1",
+        includeSuperseded: false,
+      })
+    );
+
+    const [statement] = statements;
+    expect(statement?.query).not.toMatch(/"input"/);
+    expect(statement?.query).not.toMatch(/"output"/);
+    expect(statement?.query).not.toMatch(/"cancel_payload"/);
+    expect(statement?.query).toContain('"status"');
+    expect(statement?.params).toContain("wf_1");
+  });
+});
+
+describe("listPage", () => {
+  it("does not read the JSONB columns the list never shows", async () => {
+    const { service: database, statements } = stubDatabase();
+
+    await Effect.runPromise(makeRunsMethods(database).listPage({ limit: 10 }));
+
+    const [statement] = statements;
+    expect(statement?.query).not.toMatch(/"input"/);
+    expect(statement?.query).not.toMatch(/"output"/);
+    expect(statement?.query).not.toMatch(/"cancel_payload"/);
+    expect(statement?.query).toContain('"workflow_executions"');
+  });
+});

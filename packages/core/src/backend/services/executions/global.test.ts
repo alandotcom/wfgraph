@@ -26,18 +26,11 @@ function createRow(
     startEventName: null,
     entityValue: null,
     workflowRunId: null,
-    deliveryId: null,
-    enqueuedAt: null,
-    input: null,
-    output: null,
     error: null,
     waitingAt: null,
     cancelledAt: null,
     completedAt: null,
     duration: null,
-    cancelRequestedAt: null,
-    cancelEventName: null,
-    workflowVersionId: "ver_1",
     ...overrides,
   };
 }
@@ -49,7 +42,6 @@ const page = [
     workflowName: "Workflow A",
     status: "running",
     workflowRunId: "run_3",
-    input: { id: 3 },
     startedAt: new Date("2026-02-18T19:40:00.000Z"),
   }),
   createRow({
@@ -63,7 +55,6 @@ const page = [
     startEventName: "order.updated",
     entityValue: "ord_2",
     workflowRunId: "run_2",
-    input: { id: 2 },
     startedAt: new Date("2026-02-18T19:39:00.000Z"),
     waitingAt: new Date("2026-02-18T19:39:10.000Z"),
   }),
@@ -72,8 +63,6 @@ const page = [
     workflowId: "wf_3",
     workflowName: "Workflow C",
     workflowRunId: "run_1",
-    input: { id: 1 },
-    output: { ok: true },
     startedAt: new Date("2026-02-18T19:38:00.000Z"),
     completedAt: new Date("2026-02-18T19:38:20.000Z"),
     duration: "20000",
@@ -126,14 +115,12 @@ describe("getWorkflowExecutionsGlobal", () => {
       })
     );
 
-    it.effect("redacts execution payloads in global run history", () =>
+    it.effect("leaves start and result payloads off the list", () =>
       Effect.gen(function* () {
         const repo = makeExecutionRepo([
           createRow({
             id: "exec_secret",
             startedAt: new Date("2026-02-18T19:40:00.000Z"),
-            input: { password: "input-secret" },
-            output: { apiToken: "output-secret" },
             error: "Authorization: Bearer error-secret",
           }),
         ]);
@@ -142,12 +129,8 @@ describe("getWorkflowExecutionsGlobal", () => {
           Effect.provide(repo.layer)
         );
 
-        assert.deepStrictEqual(result.items[0]?.input, {
-          password: "********cret",
-        });
-        assert.deepStrictEqual(result.items[0]?.output, {
-          apiToken: "********cret",
-        });
+        assert.strictEqual("input" in (result.items[0] ?? {}), false);
+        assert.strictEqual("output" in (result.items[0] ?? {}), false);
         assert.notInclude(result.items[0]?.error ?? "", "error-secret");
       })
     );

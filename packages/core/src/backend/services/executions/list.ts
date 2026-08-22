@@ -2,11 +2,11 @@ import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
+import { redactSensitiveText } from "#src/backend/lib/utils/redact";
 import {
-  redactSensitiveData,
-  redactSensitiveText,
-} from "#src/backend/lib/utils/redact";
-import { ExecutionRepo } from "#src/backend/services/executions/repo";
+  ExecutionRepo,
+  type WorkflowExecutionListRow,
+} from "#src/backend/services/executions/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type {
   WorkflowExecutionStartSource,
@@ -22,8 +22,6 @@ type WorkflowExecutionItem = {
   startEventName: string | null;
   entityValue: string | null;
   workflowRunId: string | null;
-  input: unknown;
-  output: unknown;
   error: string | null;
   startedAt: string;
   waitingAt: string | null;
@@ -36,33 +34,24 @@ function toIso(value: Date | null): string | null {
   return value?.toISOString() ?? null;
 }
 
-function toWorkflowExecutionItem(input: {
-  id: string;
-  workflowId: string;
-  status: WorkflowExecutionStatus;
-  startSource: WorkflowExecutionStartSource | null;
-  runMode: "live" | "test";
-  startEventName: string | null;
-  entityValue: string | null;
-  workflowRunId: string | null;
-  input: unknown;
-  output: unknown;
-  error: string | null;
-  startedAt: Date;
-  waitingAt: Date | null;
-  cancelledAt: Date | null;
-  completedAt: Date | null;
-  duration: string | null;
-}): WorkflowExecutionItem {
+function toWorkflowExecutionItem(
+  row: WorkflowExecutionListRow
+): WorkflowExecutionItem {
   return {
-    ...input,
-    input: redactSensitiveData(input.input),
-    output: redactSensitiveData(input.output),
-    error: redactSensitiveText(input.error),
-    startedAt: input.startedAt.toISOString(),
-    waitingAt: toIso(input.waitingAt),
-    cancelledAt: toIso(input.cancelledAt),
-    completedAt: toIso(input.completedAt),
+    id: row.id,
+    workflowId: row.workflowId,
+    status: row.status,
+    startSource: row.startSource,
+    runMode: row.runMode,
+    startEventName: row.startEventName,
+    entityValue: row.entityValue,
+    workflowRunId: row.workflowRunId,
+    error: redactSensitiveText(row.error),
+    startedAt: row.startedAt.toISOString(),
+    waitingAt: toIso(row.waitingAt),
+    cancelledAt: toIso(row.cancelledAt),
+    completedAt: toIso(row.completedAt),
+    duration: row.duration,
   };
 }
 
@@ -95,6 +84,11 @@ const loggerFor = (workflowId: string) =>
  * opened no run at all. One payload rather than three procedures because the panel
  * polls every two seconds: a separate refusals read would double that traffic for
  * a list that is empty on most workflows.
+ *
+ * Start and result payloads stay off the rows: the panel never paints them, and
+ * a poll that retransmitted JSONB for fifty runs would be the same shape of
+ * waste `getVersionGraph` already moved off the logs payload. They ride
+ * `getExecutionLogs` for the one open run.
  *
  * `supersededCount` is counted whether or not the rows are asked for, because a
  * builder deciding whether to look needs the number first.

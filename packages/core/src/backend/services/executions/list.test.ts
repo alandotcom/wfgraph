@@ -2,7 +2,7 @@
 // provides, so nothing here imports the bare one.
 import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
-import type { WorkflowExecution } from "#src/backend/services/executions/repo";
+import type { WorkflowExecutionListRow } from "#src/backend/services/executions/repo";
 import {
   SilentAppLoggerLayer,
   stubExecutionRepo,
@@ -12,36 +12,28 @@ import { getWorkflowExecutions } from "#src/backend/services/executions/list";
 
 function execution(
   id: string,
-  status: WorkflowExecution["status"]
-): WorkflowExecution {
+  status: WorkflowExecutionListRow["status"]
+): WorkflowExecutionListRow {
   return {
     id,
     workflowId: "wf_1",
-    workflowRunId: null,
-    deliveryId: null,
-    enqueuedAt: null,
     status,
-    startSource: "event" as const,
-    runMode: "live" as const,
+    startSource: "event",
+    runMode: "live",
     startEventName: "app/appointment.created",
     entityValue: "appt_1",
-    input: null,
-    output: null,
+    workflowRunId: null,
     error: null,
     startedAt: new Date("2026-03-01T10:00:00.000Z"),
     waitingAt: null,
     cancelledAt: null,
     completedAt: null,
     duration: null,
-    cancelRequestedAt: null,
-    cancelEventName: null,
-    cancelPayload: null,
-    workflowVersionId: "ver_1",
   };
 }
 
 /** The two reads this service makes, with what each was asked recorded. */
-function makeRepos(rows: WorkflowExecution[]) {
+function makeRepos(rows: WorkflowExecutionListRow[]) {
   const listCalls: Array<{ workflowId: string; includeSuperseded: boolean }> =
     [];
 
@@ -119,24 +111,17 @@ describe("getWorkflowExecutions", () => {
       })
     );
 
-    it.effect("redacts execution payloads in the workflow history", () =>
+    it.effect("leaves start and result payloads off the list", () =>
       Effect.gen(function* () {
-        const row = execution("exec_1", "completed");
-        row.input = { password: "input-secret" };
-        row.output = { apiToken: "output-secret" };
-        const repos = makeRepos([row]);
+        const repos = makeRepos([execution("exec_1", "completed")]);
 
         const result = yield* getWorkflowExecutions({
           workflowId: "wf_1",
           includeSuperseded: false,
         }).pipe(Effect.provide(repos.layer));
 
-        assert.deepStrictEqual(result.items[0]?.input, {
-          password: "********cret",
-        });
-        assert.deepStrictEqual(result.items[0]?.output, {
-          apiToken: "********cret",
-        });
+        assert.strictEqual("input" in (result.items[0] ?? {}), false);
+        assert.strictEqual("output" in (result.items[0] ?? {}), false);
       })
     );
 
