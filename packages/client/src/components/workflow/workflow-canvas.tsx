@@ -232,9 +232,8 @@ export function WorkflowCanvas() {
     setIsCanvasReady(true);
   });
 
-  // Undo/redo (Cmd+Z, Cmd+Shift+Z). Lives on the canvas rather than the editor
-  // route so it works on the homepage too, which is where the toolbar's undo
-  // button already works.
+  // Undo/redo (Cmd+Z, Cmd+Shift+Z). Lives beside the graph it acts on rather
+  // than on the editor route, so the two cannot drift apart.
   const handleUndoRedoShortcut = useCallback(
     (event: KeyboardEvent) => {
       if (
@@ -750,9 +749,9 @@ export function WorkflowCanvas() {
 
   return (
     // Size comes from the editor shell, which gives this box whatever the panel
-    // beside it leaves over. Nothing here animates that width: React Flow
-    // observes the parent box, and a width transition on it is what produces
-    // ResizeObserver loop warnings.
+    // beside it leaves over. The shell is also where the rule against animating
+    // that size lives, because React Flow observes the parent box and a
+    // transition on it is what produces ResizeObserver loop warnings.
     <div
       className="relative h-full w-full bg-background"
       data-testid="workflow-canvas"

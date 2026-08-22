@@ -194,8 +194,17 @@ const WorkflowEditor = () => {
           <WorkflowToolbar workflowId={currentWorkflowId ?? undefined} />
         </div>
         {/* `min-h-0` so this box is bounded by the column rather than by the
-            graph inside it: React Flow measures whatever height it is given. */}
-        <div className="min-h-0 flex-1">
+            graph inside it: React Flow measures whatever height it is given.
+
+            The floor is what stops the bar above from eating the canvas. That
+            row is `shrink-0`, so anything that grows it -- the save status
+            swapping "Saved" for "Saving", the issue count gaining a digit, the
+            row wrapping to two lines on a narrow canvas -- comes straight out of
+            this box, and React Flow reacts to every one of those. The floor
+            holds the graph at a workable size and lets the shell clip the
+            overflow, which is a far better failure than handing React Flow a
+            parent of zero height. */}
+        <div className="min-h-80 flex-1">
           <WorkflowCanvas />
         </div>
       </div>

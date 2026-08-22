@@ -50,9 +50,11 @@ function validateWorkflowSearch(
 }
 
 /**
- * The provider sits above the router outlet so React Flow's store outlives a
- * navigation between two workflows; the canvas itself is the editor route's,
- * and there is no canvas on any other route.
+ * The canvas belongs to the editor route and no other route has one, but the
+ * provider sits above the outlet rather than beside the canvas. Two workflows
+ * share a route, so the route component stays mounted between them either way;
+ * what this position buys is leaving the dashboard and coming back, where the
+ * canvas does unmount and would otherwise take the store with it.
  */
 function LayoutContent() {
   return (

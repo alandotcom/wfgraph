@@ -171,7 +171,7 @@ export function WorkflowSidebarPanel() {
       {/* Expand button when panel is collapsed */}
       {!isMobile && panelCollapsed && (
         <button
-          className="pointer-events-auto absolute top-1/2 right-0 z-20 flex size-6 -translate-y-1/2 items-center justify-center rounded-l-full border border-r-0 bg-background shadow-sm transition-colors hover:bg-muted"
+          className="absolute top-1/2 right-0 z-20 flex size-6 -translate-y-1/2 items-center justify-center rounded-l-full border border-r-0 bg-background shadow-sm transition-colors hover:bg-muted"
           onClick={() => {
             setPanelCollapsed(false);
           }}
@@ -196,6 +196,13 @@ export function WorkflowSidebarPanel() {
         >
           <div
             className="workflow-sidebar-panel absolute inset-y-0 right-0 z-20 border-l bg-sidebar transition-transform duration-200 ease-out"
+            // Collapsing slides the surface past the shell's right edge rather
+            // than unmounting it, so the Runs tab keeps its state. Everything
+            // inside stays focusable without this: tabbing to it makes the
+            // browser scroll it into view, and since the shell is an
+            // `overflow: hidden` scrollport holding the canvas, that carries the
+            // graph off screen with no scrollbar to bring it back.
+            inert={panelCollapsed}
             style={{
               // The same expression the box above reserves with, from one
               // helper, so the surface and its space can never disagree and
