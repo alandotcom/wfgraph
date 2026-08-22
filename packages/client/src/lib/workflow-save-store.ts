@@ -346,18 +346,69 @@ export const saveWorkflowAtom = atom(
 );
 
 /**
- * Persist a rename. Debounced, so holding a key down is still one request.
+ * Take a name the server refused back out of the queue.
+ *
+ * The queue retries a failed patch by folding it into the next write for the
+ * same workflow, which is right for a dropped connection and wrong for a name
+ * the server will never accept: the refused name rides along with every later
+ * graph write and fails that too, so one rejected rename stops the editor
+ * saving anything for the rest of the session. Only the exact name that was
+ * refused is dropped, so a rename typed again while this one was in flight
+ * survives.
+ */
+function forgetRefusedName(
+  queue: SaveQueue,
+  workflowId: string,
+  refusedName: string
+) {
+  const parked = queue.failedPatches.get(workflowId);
+  // Only the exact name that was refused is dropped, so a rename typed again
+  // while this one was in flight survives. The parked patch is the only place
+  // to look: an immediate save resolves once the whole queue has drained, so
+  // there is nothing still pending by the time this runs.
+  if (parked?.name !== refusedName) {
+    return;
+  }
+
+  const { name: _refused, ...remaining } = parked;
+  if (Object.keys(remaining).length === 0) {
+    queue.failedPatches.delete(workflowId);
+  } else {
+    queue.failedPatches.set(workflowId, remaining);
+  }
+}
+
+/**
+ * Persist a rename, and put the old name back if the server refuses the new one.
+ *
+ * Immediate, because a caller is waiting on the answer: the dialog this comes
+ * from refuses to close until it settles, and a debounce would hold that dialog
+ * shut for the whole autosave window.
  *
  * Resolves with the failure, or null when the rename landed. Callers only ever
- * want the message, so the saved workflow is not worth handing back.
+ * want the message, so the saved workflow is not worth handing back. On a
+ * failure nothing of the rename is left standing anywhere: not on the name the
+ * editor renders, and not in the queue.
  */
 export const renameWorkflowAtom = atom(
   null,
-  async (_get, set, name: string): Promise<Error | null> => {
+  async (get, set, name: string): Promise<Error | null> => {
+    const previousName = get(currentWorkflowNameAtom);
+    const workflowId = get(currentWorkflowIdAtom);
+
     set(currentWorkflowNameAtom, name);
     set(workflowNameErrorAtom, null);
-    const outcome = await set(saveWorkflowAtom, { name });
-    return outcome?.ok === false ? outcome.error : null;
+
+    const outcome = await set(saveWorkflowAtom, { name }, { immediate: true });
+    if (outcome?.ok === false) {
+      set(currentWorkflowNameAtom, previousName);
+      if (workflowId) {
+        forgetRefusedName(get(saveQueueAtom), workflowId, name);
+      }
+      return outcome.error;
+    }
+
+    return null;
   }
 );
 

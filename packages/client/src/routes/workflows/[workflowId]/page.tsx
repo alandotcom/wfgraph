@@ -190,23 +190,19 @@ const WorkflowEditor = () => {
           `min-w-0` stops the graph from widening the column past the space the
           panel leaves it. */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="shrink-0 p-4">
-          <WorkflowToolbar workflowId={currentWorkflowId ?? undefined} />
-        </div>
+        <WorkflowToolbar workflowId={currentWorkflowId ?? undefined} />
         {/* This box is bounded by the column rather than by the graph inside
             it: React Flow measures whatever height it is given.
 
             The floor is what stops the two `shrink-0` rows around it from
-            eating the canvas -- the menu bar stacking to a column on a narrow
-            canvas is the case that does it -- and it yields on a short viewport
-            rather than pushing the strip past the shell's clip. At 390px of
-            height, a 20rem floor plus a stacked menu bar leaves the strip
-            outside the clip, which takes "Back to draft" off screen exactly
-            where the run panel is most likely to be collapsed. 40dvh keeps the
-            graph workable on a desktop and lets the strip survive on a phone in
-            landscape; the shell clips whatever is left over, which is still a
-            far better failure than handing React Flow a parent of zero
-            height. */}
+            eating the canvas, and it yields on a short viewport rather than
+            pushing the strip past the shell's clip. At 390px of height, a 20rem
+            floor plus the menu bar leaves the strip outside the clip, which
+            takes "Back to draft" off screen exactly where the run panel is most
+            likely to be collapsed. 40dvh keeps the graph workable on a desktop
+            and lets the strip survive on a phone in landscape; the shell clips
+            whatever is left over, which is still a far better failure than
+            handing React Flow a parent of zero height. */}
         <div className="min-h-[min(20rem,40dvh)] flex-1">
           <WorkflowCanvas />
         </div>

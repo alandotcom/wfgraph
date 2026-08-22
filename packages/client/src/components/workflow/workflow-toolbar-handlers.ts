@@ -142,6 +142,19 @@ function useWorkflowHandlers({
     })
   );
 
+  /**
+   * Save the draft, creating the workflow if this canvas has never been one.
+   *
+   * Nothing calls this. Its only caller was the toolbar's Save button, which
+   * autosave made pointless, and the editor route's Cmd+S has its own smaller
+   * save that skips the name checks below. knip does not see it, because a
+   * property of a returned object is not an unused export.
+   *
+   * It is left standing rather than deleted because the create branch is the
+   * only writer of `isTransitioningFromHomepageAtom`, which the canvas still
+   * reads for its opening viewport: removing this means rewriting that, and
+   * that is a different change from this one.
+   */
   const handleSave = async () => {
     // The `add` node is a placeholder, so a canvas holding only one has nothing
     // worth saving. The save itself strips it; this is the emptiness check.

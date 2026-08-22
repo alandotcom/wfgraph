@@ -10,7 +10,7 @@ import {
   type Edge as XYFlowEdge,
 } from "@xyflow/react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { Canvas } from "#src/components/flow-elements/canvas";
 import { Connection } from "#src/components/flow-elements/connection";
@@ -27,7 +27,6 @@ import { useIsMobile } from "#src/hooks/use-mobile";
 import { isTextEntry } from "#src/lib/is-text-entry";
 import {
   addNodeAtom,
-  applyNodeLayoutAtom,
   connectNodesAtom,
   displayEdgesAtom,
   displayNodesAtom,
@@ -58,13 +57,13 @@ import { AddNode } from "./nodes/add-node";
 import { GroupNode } from "./nodes/group-node";
 import { LifecycleNode } from "./nodes/lifecycle-node";
 import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
+import { useReflowLayout } from "./use-reflow-layout";
 import { useCollectWorkflowIssues } from "#src/hooks/use-workflow-issues";
 import {
   type ContextMenuState,
   useContextMenuHandlers,
   WorkflowContextMenu,
 } from "./workflow-context-menu";
-import { layoutWorkflowNodes } from "./workflow-layout";
 import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
 
 const edgeTypes = {
@@ -110,7 +109,6 @@ export function WorkflowCanvas() {
   const setSelectedNode = useSetAtom(selectedNodeAtom);
   const setSelectedEdge = useSetAtom(selectedEdgeAtom);
   const addNode = useSetAtom(addNodeAtom);
-  const applyNodeLayout = useSetAtom(applyNodeLayoutAtom);
   const connectNodes = useSetAtom(connectNodesAtom);
   const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
   const snapshotHistory = useSetAtom(snapshotHistoryAtom);
@@ -119,17 +117,15 @@ export function WorkflowCanvas() {
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
   const { screenToFlowPosition, fitView, getViewport, setViewport } =
     useReactFlow();
+  // The same pass the Actions menu's "Tidy layout" runs.
+  const { canReflow, reflow } = useReflowLayout();
 
   const connectingNodeId = useRef<string | null>(null);
   const connectingHandleType = useRef<"source" | "target" | null>(null);
   const connectingHandleId = useRef<string | null>(null);
   const justCreatedNodeFromConnection = useRef(false);
   const viewportInitialized = useRef(false);
-  const canvasContainerRef = useRef<HTMLDivElement | null>(null);
-  const reflowRequestId = useRef(0);
-  const isReflowingRef = useRef(false);
   const [isCanvasReady, setIsCanvasReady] = useState(false);
-  const [isReflowing, setIsReflowing] = useState(false);
   const [contextMenuState, setContextMenuState] =
     useState<ContextMenuState>(null);
   const rightClickSelectionRef = useRef<ReadonlySet<string>>(new Set());
@@ -165,10 +161,6 @@ export function WorkflowCanvas() {
 
   // Track if we have real nodes (not just placeholder "add" node)
   const hasRealNodes = nodes.some((n) => n.type !== "add");
-  const realNodeCount = useMemo(
-    () => nodes.filter((node) => node.type !== "add").length,
-    [nodes]
-  );
   // Pre-shift viewport when transitioning from homepage (before sidebar animates)
   const hasPreShiftedRef = useRef(false);
   useAfterCommit(isTransitioningFromHomepage, () => {
@@ -281,56 +273,6 @@ export function WorkflowCanvas() {
   );
 
   useDomEvent(window, "keydown", handleFitViewShortcut);
-
-  const handleReflow = useCallback(() => {
-    if (editingLocked || realNodeCount < 2 || isReflowingRef.current) {
-      return;
-    }
-
-    isReflowingRef.current = true;
-    setIsReflowing(true);
-    const requestId = reflowRequestId.current + 1;
-    reflowRequestId.current = requestId;
-
-    try {
-      const containerWidth =
-        canvasContainerRef.current?.getBoundingClientRect().width ??
-        (typeof window !== "undefined" ? window.innerWidth : undefined);
-      const { nodes: nextNodes, changed } = layoutWorkflowNodes({
-        nodes,
-        edges,
-        availableWidth: containerWidth,
-        catalog,
-      });
-
-      if (requestId !== reflowRequestId.current) {
-        return;
-      }
-
-      if (changed) {
-        applyNodeLayout(nextNodes);
-      }
-
-      window.requestAnimationFrame(() => {
-        Promise.resolve(
-          fitView({ maxZoom: 1, minZoom: 0.5, padding: 0.2, duration: 300 })
-        ).catch(() => undefined);
-      });
-    } finally {
-      if (requestId === reflowRequestId.current) {
-        isReflowingRef.current = false;
-        setIsReflowing(false);
-      }
-    }
-  }, [
-    applyNodeLayout,
-    edges,
-    fitView,
-    editingLocked,
-    nodes,
-    realNodeCount,
-    catalog,
-  ]);
 
   const nodeHasHandle = useCallback(
     (nodeId: string, handleType: "source" | "target") => {
@@ -755,7 +697,6 @@ export function WorkflowCanvas() {
     <div
       className="relative h-full w-full bg-background"
       data-testid="workflow-canvas"
-      ref={canvasContainerRef}
       style={{
         opacity: isCanvasReady ? 1 : 0,
         transition: "opacity 300ms",
@@ -792,10 +733,7 @@ export function WorkflowCanvas() {
           className="border-none bg-transparent p-0"
           position="bottom-left"
         >
-          <Controls
-            canReflow={!editingLocked && realNodeCount > 1 && !isReflowing}
-            onReflow={editingLocked ? undefined : handleReflow}
-          />
+          <Controls canReflow={canReflow} onReflow={reflow} />
         </Panel>
         {showMinimap && (
           // maskColor and nodeColor default to hardcoded light-mode values that

@@ -366,6 +366,34 @@ describe("saveWorkflowAtom", () => {
   });
 });
 
+describe("renameWorkflowAtom", () => {
+  it("puts the old name back and keeps a refused one out of every later save", async () => {
+    const store = createSaveStore();
+    store.set(autosaveDelayAtom, 0);
+    store.set(currentWorkflowNameAtom, "Appointment reminders");
+
+    const rename = store.set(renameWorkflowAtom, "Onboarding drip");
+    await waitForCalls(1);
+    pending
+      .shift()
+      ?.reject(new Error('Workflow name "Onboarding drip" already exists'));
+    const failure = await rename;
+
+    expect(failure?.message).toContain("already exists");
+    expect(store.get(currentWorkflowNameAtom)).toBe("Appointment reminders");
+
+    // The queue retries a failed patch with the next write, which for a name
+    // the server will never accept means every later save fails too. One
+    // rejected rename used to stop the editor saving for the rest of the
+    // session, and the graph went with it.
+    store.set(saveWorkflowAtom, { nodes: [actionNode("node_1")], edges: [] });
+    await waitForCalls(2);
+    pending.shift()?.resolve(savedWorkflow("workflow_1"));
+
+    expect(updateMock.mock.calls[1]?.[1]).not.toHaveProperty("name");
+  });
+});
+
 describe("createWorkflowAtom", () => {
   it("adopts the created workflow's identity", async () => {
     const store = createSaveStore(null);
