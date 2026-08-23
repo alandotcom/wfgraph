@@ -11,6 +11,7 @@ export function OverlayHeader({
   showCloseButton = true,
   onBack,
   onClose,
+  trailing,
   className,
   overlayId,
 }: OverlayHeaderProps & { overlayId?: string }) {
@@ -37,7 +38,12 @@ export function OverlayHeader({
   return (
     <div className={cn("relative flex flex-col gap-1.5 p-6 pb-0", className)}>
       {/* Fixed min-height to prevent layout shift when back button appears */}
-      <div className="flex min-h-8 items-center gap-2">
+      <div
+        className={cn(
+          "flex min-h-8 items-center gap-2",
+          showCloseButton && "pr-10"
+        )}
+      >
         {showBackButton && (
           <Button
             aria-label="Go back"
@@ -59,6 +65,9 @@ export function OverlayHeader({
             {title}
           </h2>
         )}
+        {trailing ? (
+          <div className="flex shrink-0 items-center">{trailing}</div>
+        ) : null}
         {showCloseButton && (
           <Button
             aria-label="Close"

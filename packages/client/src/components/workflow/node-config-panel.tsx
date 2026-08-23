@@ -10,6 +10,8 @@ import {
   Trash2,
   Ungroup,
 } from "lucide-react";
+import type { ReactNode } from "react";
+import { cn } from "@wfgraph/shared/utils";
 import { Button } from "#src/components/ui/button";
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
@@ -112,14 +114,71 @@ export function useNodeConfigTitle(): string {
   return "Properties";
 }
 
+/**
+ * Refresh and Clear All for the Runs surface. On the rail they trail the
+ * Properties / Runs control; on the sheet they trail the header title. The
+ * confirm callback is the frame's, so the rail and the sheet can each ask in
+ * their own way.
+ */
+export function RunsPanelActions({
+  confirm,
+}: {
+  confirm: NodeConfigFrame["confirm"];
+}) {
+  const { refreshRuns, deleteRuns } = useNodeConfigWriter();
+  const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
+
+  return (
+    <div className="flex shrink-0 items-center">
+      <Button
+        aria-label="Refresh"
+        onClick={refreshRuns}
+        size="icon"
+        type="button"
+        variant="ghost"
+      >
+        <RefreshCw />
+      </Button>
+      <Button
+        aria-label="Clear All"
+        onClick={() => {
+          confirm({
+            title: "Delete All Runs",
+            message:
+              "Are you sure you want to delete all workflow runs? This action cannot be undone.",
+            confirmLabel: "Delete",
+            onConfirm: () => {
+              if (currentWorkflowId) {
+                deleteRuns.mutate({ workflowId: currentWorkflowId });
+              }
+            },
+          });
+        }}
+        size="icon"
+        type="button"
+        variant="ghost"
+      >
+        <Eraser />
+      </Button>
+    </div>
+  );
+}
+
 type TabBarProps = {
   placement: NodeConfigFrame["tabs"];
   activeTab: string;
   onSelect: (tab: string) => void;
   showRuns: boolean;
+  trailing?: ReactNode;
 };
 
-function TabBar({ placement, activeTab, onSelect, showRuns }: TabBarProps) {
+function TabBar({
+  placement,
+  activeTab,
+  onSelect,
+  showRuns,
+  trailing,
+}: TabBarProps) {
   if (placement === "bottom") {
     return (
       <div className="flex shrink-0 items-center justify-around border-t bg-background pb-safe">
@@ -152,15 +211,23 @@ function TabBar({ placement, activeTab, onSelect, showRuns }: TabBarProps) {
   }
 
   return (
-    <div className="shrink-0 border-b px-4 py-2">
+    <div className="flex shrink-0 items-center gap-1 border-b px-4 py-2">
       {/* mira sizes every control in the editor at 28px; this segmented control
           predates that adoption and was 36px with 14px labels, which put the
           panel a density step away from the menu bar directly above it. */}
-      <div className="inline-flex h-7 w-full items-center justify-center rounded-md bg-muted p-[3px] text-muted-foreground">
+      <div className="relative inline-flex h-7 min-w-0 flex-1 items-center justify-center rounded-md bg-muted p-[3px] text-muted-foreground">
+        <span
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute inset-y-[3px] left-[3px] rounded-sm bg-background shadow-sm transition-transform duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:duration-100",
+            showRuns ? "w-[calc(50%-3px)]" : "w-[calc(100%-6px)]",
+            activeTab === "runs" && "translate-x-full"
+          )}
+        />
         <button
-          className={`inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 font-medium text-xs transition-[color,box-shadow] ${
+          className={`relative z-10 inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 font-medium text-xs transition-colors duration-[180ms] ${
             activeTab === "properties"
-              ? "bg-background text-foreground shadow-sm"
+              ? "text-foreground"
               : "text-muted-foreground"
           }`}
           onClick={() => onSelect("properties")}
@@ -170,10 +237,8 @@ function TabBar({ placement, activeTab, onSelect, showRuns }: TabBarProps) {
         </button>
         {showRuns ? (
           <button
-            className={`inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 font-medium text-xs transition-[color,box-shadow] ${
-              activeTab === "runs"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground"
+            className={`relative z-10 inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 font-medium text-xs transition-colors duration-[180ms] ${
+              activeTab === "runs" ? "text-foreground" : "text-muted-foreground"
             }`}
             onClick={() => onSelect("runs")}
             type="button"
@@ -182,23 +247,19 @@ function TabBar({ placement, activeTab, onSelect, showRuns }: TabBarProps) {
           </button>
         ) : null}
       </div>
+      {trailing}
     </div>
   );
 }
 
 export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
-  const {
-    updateConfig: handleUpdateConfig,
-    refreshRuns: handleRefreshRuns,
-    deleteRuns,
-  } = useNodeConfigWriter();
+  const { updateConfig: handleUpdateConfig } = useNodeConfigWriter();
   const { validActiveTab, setActiveTab } = useValidActiveTab();
   const selectedNodeId = useAtomValue(selectedNodeAtom);
   const selectedEdgeId = useAtomValue(selectedEdgeAtom);
   const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
   const isGenerating = useAtomValue(isGeneratingAtom);
-  const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const isOwner = useAtomValue(isWorkflowOwnerAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const deleteNode = useSetAtom(deleteNodeAtom);
@@ -317,20 +378,6 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
       onConfirm: () => {
         deleteSelectedItems();
         frame.dismiss?.();
-      },
-    });
-  };
-
-  const confirmDeleteAllRuns = () => {
-    frame.confirm({
-      title: "Delete All Runs",
-      message:
-        "Are you sure you want to delete all workflow runs? This action cannot be undone.",
-      confirmLabel: "Delete",
-      onConfirm: () => {
-        if (currentWorkflowId) {
-          deleteRuns.mutate({ workflowId: currentWorkflowId });
-        }
       },
     });
   };
@@ -582,6 +629,11 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
       onSelect={setActiveTab}
       placement={frame.tabs}
       showRuns={isOwner}
+      trailing={
+        validActiveTab === "runs" ? (
+          <RunsPanelActions confirm={frame.confirm} />
+        ) : null
+      }
     />
   );
 
@@ -599,25 +651,8 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
           {renderPropertiesContent()}
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2">
-            <Button onClick={handleRefreshRuns} size="sm" variant="outline">
-              <RefreshCw className="mr-2 size-4" />
-              Refresh
-            </Button>
-            <Button
-              className="text-muted-foreground"
-              onClick={confirmDeleteAllRuns}
-              size="sm"
-              variant="ghost"
-            >
-              <Eraser className="mr-2 size-4" />
-              Clear All
-            </Button>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 [scrollbar-gutter:stable_both-edges]">
-            <WorkflowRuns />
-          </div>
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <WorkflowRuns />
         </div>
       )}
 

@@ -86,6 +86,8 @@ export type WorkflowRunRpcFixture = {
       entityValue?: string | null;
     }
   >;
+  logsByExecutionId: Record<string, unknown[]>;
+  waitsByExecutionId: Record<string, unknown[]>;
 };
 
 function versionIdFor(executionId: string): string {
@@ -130,8 +132,8 @@ export async function answerWorkflowRunRpc(
           output: {},
           ...extras,
         },
-        logs: [],
-        waits: [],
+        logs: served.logsByExecutionId[executionId] ?? [],
+        waits: served.waitsByExecutionId[executionId] ?? [],
       });
     }
 

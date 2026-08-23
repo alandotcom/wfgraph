@@ -5,11 +5,10 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import { useAtomValue } from "jotai";
-import { Play } from "lucide-react";
+import { useAtomValue, useSetAtom } from "jotai";
 import { useState } from "react";
 import { Button } from "#src/components/ui/button";
-import { Spinner } from "#src/components/ui/spinner";
+import { cn } from "@wfgraph/shared/utils";
 import {
   isRunInProgress,
   toExecutionDetail,
@@ -17,8 +16,10 @@ import {
   toWorkflowExecutions,
 } from "#src/lib/execution-logs";
 import { useExitRun } from "#src/hooks/use-exit-run";
+import { useAfterCommit } from "#src/hooks/effects";
 import { orpcQuery, refreshRunHistory } from "#src/lib/rpc-query";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
 import { WorkflowRefusedStarts } from "./workflow-refused-starts";
 import { WorkflowRunDetail } from "./workflow-run-detail";
@@ -39,21 +40,66 @@ const LEFT_THE_LIST_NOTICE =
 
 const workflowRouteApi = getRouteApi("/workflows/$workflowId");
 
+function RunsSkeleton({ detail = false }: { detail?: boolean }) {
+  return (
+    <div
+      aria-label="Loading runs"
+      aria-busy="true"
+      className="flex h-full min-h-0 flex-col"
+    >
+      <div className="shrink-0 space-y-2 border-b px-3 py-3">
+        <div className="h-4 w-2/3 animate-pulse rounded-sm bg-muted motion-reduce:animate-none" />
+        <div className="h-3 w-1/2 animate-pulse rounded-sm bg-muted motion-reduce:animate-none" />
+        {detail ? (
+          <div className="mt-3 h-16 animate-pulse rounded-sm bg-muted/70 motion-reduce:animate-none" />
+        ) : null}
+      </div>
+      <div className="min-h-0 flex-1 px-3 py-2">
+        {Array.from({ length: detail ? 4 : 6 }, (_, index) => (
+          <div className="flex h-13 items-center gap-3 border-b" key={index}>
+            <div className="size-2 animate-pulse rounded-full bg-muted motion-reduce:animate-none" />
+            <div className="flex-1 space-y-2">
+              <div className="h-3 w-2/3 animate-pulse rounded-sm bg-muted motion-reduce:animate-none" />
+              <div className="h-2.5 w-1/2 animate-pulse rounded-sm bg-muted/70 motion-reduce:animate-none" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RunsListHeader() {
+  return (
+    <header className="shrink-0 border-b bg-background px-3 py-3">
+      <h2 className="font-semibold text-sm">Execution Inspector</h2>
+      <p className="mt-0.5 text-muted-foreground text-xs">
+        Select a run to inspect its journey on the canvas.
+      </p>
+    </header>
+  );
+}
+
 export function WorkflowRuns() {
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
+  const setSelectedNode = useSetAtom(selectedNodeAtom);
   const queryClient = useQueryClient();
   // Which run is open is URL state. ExecutionOverlaySync on the editor shell
   // derives the selection atom and pinned graph; this panel only reads search.
   const { executionId } = workflowRouteApi.useSearch();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const exitRun = useExitRun();
+  useAfterCommit(executionId, () => {
+    setSelectedNode(null);
+  });
 
   // Superseded runs are the ones a newer start displaced. They are hidden by
   // default because a newest-wins workflow makes one on every reschedule, and a
   // builder opens this panel to see what ran, not what was replaced. Opening a
   // specific run via the URL includes them so a superseded id can still resolve.
   const [showSuperseded, setShowSuperseded] = useState(false);
+  const [returnFocusRunId, setReturnFocusRunId] = useState<string | null>(null);
   const includeSuperseded = showSuperseded || executionId !== undefined;
 
   const executionsQuery = useQuery({
@@ -132,13 +178,32 @@ export function WorkflowRuns() {
   );
 
   const handleSelectRun = (id: string) => {
+    setReturnFocusRunId(id);
     void navigate({ search: { executionId: id } });
   };
 
   if (executionsQuery.isPending && executionId === undefined) {
+    return <RunsSkeleton />;
+  }
+
+  if (executionsQuery.isError && executionId === undefined) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Spinner />
+      <div className="flex h-full min-h-0 flex-col">
+        <RunsListHeader />
+        <div className="p-3">
+          <p className="text-muted-foreground text-sm">
+            Runs could not be loaded.
+          </p>
+          <Button
+            className="mt-2"
+            onClick={() => executionsQuery.refetch()}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            Retry
+          </Button>
+        </div>
       </div>
     );
   }
@@ -175,27 +240,37 @@ export function WorkflowRuns() {
         !detailQuery.isError &&
         (detailQuery.isPending || executionsQuery.isPending)
       ) {
-        return (
-          <div className="flex items-center justify-center py-12">
-            <Spinner />
-          </div>
-        );
+        return <RunsSkeleton detail />;
       }
 
       return (
-        <div className="space-y-2 px-1 py-2">
-          <Button
-            aria-label="Back to runs list"
-            onClick={exitRun}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            Back
-          </Button>
-          <p className="text-muted-foreground text-sm">
-            This run could not be loaded.
-          </p>
+        <div className="flex h-full min-h-0 flex-col">
+          <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
+            <Button
+              aria-label="Back to runs list"
+              onClick={exitRun}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              Back
+            </Button>
+            <h2 className="font-semibold text-sm">Run unavailable</h2>
+          </header>
+          <div className="p-3">
+            <p className="text-muted-foreground text-sm">
+              This run could not be loaded.
+            </p>
+            <Button
+              className="mt-2"
+              onClick={() => detailQuery.refetch()}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              Retry
+            </Button>
+          </div>
         </div>
       );
     }
@@ -224,16 +299,25 @@ export function WorkflowRuns() {
 
   if (executions.length === 0) {
     return (
-      <div className="space-y-2">
-        {supersededToggle}
-        <WorkflowRefusedStarts refusedStarts={refusedStarts} />
-        <div className="flex flex-col items-center justify-center py-16">
-          <div className="mb-3 rounded-lg border border-dashed p-4">
-            <Play className="size-6 text-muted-foreground" />
-          </div>
-          <div className="font-medium text-foreground text-sm">No runs yet</div>
-          <div className="mt-1 text-muted-foreground text-xs">
-            Execute your workflow to see runs here
+      <div
+        className={cn(
+          "flex h-full min-h-0 flex-col motion-reduce:animate-[run-panel-fade_100ms_ease-out]",
+          returnFocusRunId
+            ? "motion-safe:animate-[run-panel-back_160ms_cubic-bezier(0.16,1,0.3,1)]"
+            : "motion-safe:animate-[run-panel-forward_200ms_cubic-bezier(0.16,1,0.3,1)]"
+        )}
+      >
+        <RunsListHeader />
+        <div className="min-h-0 flex-1 overflow-y-auto p-3 [scrollbar-gutter:stable_both-edges]">
+          <div className="space-y-2">
+            {supersededToggle}
+            <WorkflowRefusedStarts refusedStarts={refusedStarts} />
+            <div className="py-8 text-center">
+              <p className="font-medium text-sm">No runs yet</p>
+              <p className="mt-1 text-muted-foreground text-xs">
+                Runs appear after this workflow starts.
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -242,14 +326,27 @@ export function WorkflowRuns() {
 
   // List view
   return (
-    <div className="space-y-2">
-      {supersededToggle}
-      <WorkflowRefusedStarts refusedStarts={refusedStarts} />
-      <WorkflowRunsList
-        executions={executions}
-        onSelect={handleSelectRun}
-        selectedId={selectedExecutionId}
-      />
+    <div
+      className={cn(
+        "flex h-full min-h-0 flex-col motion-reduce:animate-[run-panel-fade_100ms_ease-out]",
+        returnFocusRunId
+          ? "motion-safe:animate-[run-panel-back_160ms_cubic-bezier(0.16,1,0.3,1)]"
+          : "motion-safe:animate-[run-panel-forward_200ms_cubic-bezier(0.16,1,0.3,1)]"
+      )}
+    >
+      <RunsListHeader />
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 [scrollbar-gutter:stable_both-edges]">
+        <div className="space-y-2 py-2">
+          {supersededToggle}
+          <WorkflowRefusedStarts refusedStarts={refusedStarts} />
+        </div>
+        <WorkflowRunsList
+          executions={executions}
+          focusId={returnFocusRunId}
+          onSelect={handleSelectRun}
+          selectedId={selectedExecutionId}
+        />
+      </div>
     </div>
   );
 }

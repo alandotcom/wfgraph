@@ -186,12 +186,20 @@ export const displayNodesAtom = atom((get) => {
   // and it can only bail out on a node that is `===` what it rendered last
   // time; a fresh `data` object on every node, every recompute, defeats that on
   // every drag frame and every keystroke, since this atom is read on every
-  // render of the canvas.
+  // render of the canvas. A pinned overlay uses the same path when the
+  // inspector has not selected a node, so the overlay array keeps its identity.
+  const overlaySelectedId = overlay ? get(selectedNodeAtom) : null;
+  const selectionAlreadyMatches =
+    !overlay ||
+    ordered.every(
+      (node) => Boolean(node.selected) === (node.id === overlaySelectedId)
+    );
   if (
     statusByNodeId.size === 0 &&
     nodeIds.size === 0 &&
     disabledFrameIds.size === 0 &&
-    issuesByNodeId.size === 0
+    issuesByNodeId.size === 0 &&
+    selectionAlreadyMatches
   ) {
     return ordered;
   }
@@ -201,7 +209,7 @@ export const displayNodesAtom = atom((get) => {
   // back by reference and their cards can bail out of rendering again.
   const paintingRun = statusByNodeId.size > 0;
 
-  return ordered.map((node) => {
+  const painted = ordered.map((node) => {
     const disabledFrame = disabledFrameIds.has(node.id);
     // A disabled node already wears the disabled face its own card draws.
     // Dimming it a second time here would take it to a quarter opacity.
@@ -237,7 +245,7 @@ export const displayNodesAtom = atom((get) => {
         ...(issues ? { issues } : {}),
       },
     };
-    const painted = muted
+    const paintedNode = muted
       ? {
           ...withStatus,
           style: { ...withStatus.style, ...INACTIVE_NODE_STYLE },
@@ -249,9 +257,18 @@ export const displayNodesAtom = atom((get) => {
       disabledFrame,
       muted,
       issues,
-      painted,
+      painted: paintedNode,
     });
+    return paintedNode;
+  });
+
+  if (!overlay) {
     return painted;
+  }
+
+  return painted.map((node) => {
+    const selected = node.id === overlaySelectedId;
+    return Boolean(node.selected) === selected ? node : { ...node, selected };
   });
 });
 export const displayEdgesAtom = atom((get) => {

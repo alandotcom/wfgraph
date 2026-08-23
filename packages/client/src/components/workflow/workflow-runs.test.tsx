@@ -12,6 +12,8 @@ import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
+import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
 import { WorkflowRuns } from "#src/components/workflow/workflow-runs";
 import {
@@ -19,6 +21,7 @@ import {
   displayNodesAtom,
   executionOverlayGraphAtom,
   hydrateWorkflowAtom,
+  selectedNodeAtom,
   setNodeStatusesAtom,
 } from "#src/lib/workflow-graph-store";
 import {
@@ -35,6 +38,7 @@ import {
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { savedWorkflow } from "#src/lib/workflow-save-test-support";
 import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
+import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 
@@ -71,6 +75,8 @@ const served: WorkflowRunRpcFixture = {
       entityValue?: string | null;
     }
   >,
+  logsByExecutionId: {},
+  waitsByExecutionId: {},
 };
 
 /** The mock logs endpoint's version id for one execution: a run pins a version,
@@ -203,7 +209,11 @@ function renderRuns(options?: { executionId?: string; panel?: boolean }) {
   const view = render(
     <JotaiProvider store={store}>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <ExtensionCatalogProvider value={emptyExtensionCatalog}>
+          <IntegrationUiProvider value={{}}>
+            <RouterProvider router={router} />
+          </IntegrationUiProvider>
+        </ExtensionCatalogProvider>
       </QueryClientProvider>
     </JotaiProvider>
   );
@@ -216,6 +226,8 @@ function resetServed(): void {
   served.supersededCount = 0;
   served.graphs = {};
   served.logsSummaryExtras = {};
+  served.logsByExecutionId = {};
+  served.waitsByExecutionId = {};
   stubRunQueries();
 }
 
@@ -292,7 +304,7 @@ describe("WorkflowRuns", () => {
   it("opens a search-param run past the list from the logs summary", async () => {
     served.items = [execution("exec_other", "completed")];
     // Past the newest-50 cap the list has no row; the logs summary alone must
-    // still paint Test Mode and the start source. Use "manual" so the source
+    // still paint Test and the start source. Use "manual" so the source
     // assertion cannot be satisfied by the mock's "event" default.
     served.logsSummaryExtras = {
       exec_past_cap: {
@@ -308,8 +320,8 @@ describe("WorkflowRuns", () => {
       await view.findByRole("button", { name: "Back to runs list" })
     ).toBeTruthy();
     expect(view.getByText(/has left the runs list/)).toBeTruthy();
-    expect(view.getByText("Test Mode")).toBeTruthy();
-    expect(view.getByText("manual")).toBeTruthy();
+    expect(view.getByText("Test")).toBeTruthy();
+    expect(view.getByText("Manual")).toBeTruthy();
   });
 
   it("clears the search param when going back to the list", async () => {
@@ -326,7 +338,6 @@ describe("WorkflowRuns", () => {
     expect(
       view.queryByRole("button", { name: "Back to runs list" })
     ).toBeNull();
-
     // #40: the panel's own Back must replace the run's history entry, not
     // push a new one on top of it — otherwise the browser Back button undoes
     // this exit and reopens the run the user just closed.
@@ -337,6 +348,132 @@ describe("WorkflowRuns", () => {
     await waitFor(() => {
       expect(router.state.location.search).toEqual({});
     });
+  });
+
+  it("restores focus to the run row after returning from its overview", async () => {
+    served.items = [execution("exec_1", "completed")];
+    const { view } = renderRuns();
+
+    const row = await view.findByTestId("workflow-run-summary-row");
+    fireEvent.click(row);
+    fireEvent.click(
+      await view.findByRole("button", { name: "Back to runs list" })
+    );
+
+    await waitFor(() => {
+      expect(view.getByTestId("workflow-run-summary-row")).toBe(
+        document.activeElement
+      );
+    });
+  });
+
+  it("opens the node inspector from a canvas selection without leaving Runs", async () => {
+    served.items = [execution("exec_1", "completed")];
+    served.logsByExecutionId = {
+      exec_1: [
+        {
+          id: "log_wait",
+          nodeId: "wait_1",
+          nodeName: "Wait",
+          nodeType: "wait",
+          status: "success",
+          startedAt: "2026-03-01T10:00:00.000Z",
+          completedAt: "2026-03-01T10:00:09.000Z",
+          duration: "9030",
+          input: { invoiceId: "inv_1" },
+          output: { ok: true },
+          error: null,
+        },
+      ],
+    };
+    const { view, store } = renderRuns({ executionId: "exec_1" });
+
+    expect(
+      await view.findByRole("button", { name: "Back to runs list" })
+    ).toBeTruthy();
+
+    act(() => {
+      store.set(selectedNodeAtom, "wait_1");
+    });
+
+    expect(await view.findByRole("heading", { name: "Wait" })).toBeTruthy();
+    fireEvent.click(view.getByRole("button", { name: "Technical details" }));
+    fireEvent.click(view.getByRole("tab", { name: "Input" }));
+    expect(view.getByText(/invoiceId/)).toBeTruthy();
+    expect(store.get(propertiesPanelActiveTabAtom)).toBe("runs");
+
+    fireEvent.click(view.getByRole("button", { name: "Back to run overview" }));
+
+    expect(
+      await view.findByRole("button", { name: "Back to runs list" })
+    ).toBeTruthy();
+    expect(store.get(selectedNodeAtom)).toBeNull();
+    expect(view.queryByRole("heading", { name: "Wait" })).toBeNull();
+  });
+
+  it("selects the canvas node from an executed-node row", async () => {
+    served.items = [execution("exec_1", "completed")];
+    served.logsByExecutionId = {
+      exec_1: [
+        {
+          id: "log_life",
+          nodeId: "lifecycle_1",
+          nodeName: "Lifecycle",
+          nodeType: "lifecycle",
+          status: "success",
+          startedAt: "2026-03-01T10:00:00.000Z",
+          completedAt: "2026-03-01T10:00:00.000Z",
+          duration: "0",
+          input: {},
+          output: {},
+          error: null,
+        },
+      ],
+    };
+    const { view, store } = renderRuns({ executionId: "exec_1" });
+
+    fireEvent.click(await view.findByRole("button", { name: /Lifecycle/ }));
+
+    await waitFor(() => {
+      expect(store.get(selectedNodeAtom)).toBe("lifecycle_1");
+    });
+    expect(
+      await view.findByRole("heading", { name: "Lifecycle" })
+    ).toBeTruthy();
+  });
+
+  it("shows stored Wait input in the inspector", async () => {
+    served.items = [execution("exec_1", "waiting")];
+    served.logsByExecutionId = {
+      exec_1: [
+        {
+          id: "log_wait",
+          nodeId: "wait_1",
+          nodeName: "Wait",
+          nodeType: "wait",
+          status: "success",
+          startedAt: "2026-03-01T10:00:00.000Z",
+          completedAt: "2026-03-01T10:00:09.000Z",
+          duration: "9030",
+          input: { invoiceId: "inv_9" },
+          output: {},
+          error: null,
+        },
+      ],
+    };
+    const { view, store } = renderRuns({ executionId: "exec_1" });
+
+    expect(
+      await view.findByRole("button", { name: "Back to runs list" })
+    ).toBeTruthy();
+
+    act(() => {
+      store.set(selectedNodeAtom, "wait_1");
+    });
+
+    fireEvent.click(view.getByRole("button", { name: "Technical details" }));
+    fireEvent.click(view.getByRole("tab", { name: "Input" }));
+    expect(await view.findByText(/inv_9/)).toBeTruthy();
   });
 });
 

@@ -49,6 +49,8 @@ const served: WorkflowRunRpcFixture = {
   supersededCount: 0,
   graphs: {},
   logsSummaryExtras: {},
+  logsByExecutionId: {},
+  waitsByExecutionId: {},
 };
 
 /**

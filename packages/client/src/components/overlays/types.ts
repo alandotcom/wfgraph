@@ -130,6 +130,8 @@ export type OverlayHeaderProps = {
   onBack?: () => void;
   /** Custom close button handler (defaults to closeAll) */
   onClose?: () => void;
+  /** Extra controls, such as Runs Refresh / Clear All, trailing the title. */
+  trailing?: ReactNode;
   /** Additional class name */
   className?: string;
 };
