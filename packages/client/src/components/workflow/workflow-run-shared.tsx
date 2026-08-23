@@ -1,4 +1,4 @@
-import { Check, ChevronDown, ChevronRight, Copy } from "lucide-react";
+import { Check, ChevronRight, Copy } from "lucide-react";
 import { Schema } from "effect";
 import { type ComponentType, useState } from "react";
 import type { IntegrationUi, ResultComponentProps } from "@wfgraph/plugins/ui";
@@ -6,11 +6,13 @@ import { Button } from "#src/components/ui/button";
 import { useIntegrationUi } from "#src/components/integration-ui-provider";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { getClientLogger } from "#src/lib/logger";
+import { cn } from "@wfgraph/shared/utils";
 import {
   type ActionMetadata,
   findAction,
 } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowExecutionStatus } from "@wfgraph/shared/lifecycle/execution-contracts";
+import { type JsonValue, readJsonValue } from "@wfgraph/shared/types/json";
 import { readAs } from "@wfgraph/shared/types/schema";
 
 /**
@@ -143,6 +145,9 @@ export function nodeKindLabel(nodeType: string): string {
 }
 
 export function formatDuration(duration: string): string {
+  if (!/^\d+$/.test(duration)) {
+    return duration;
+  }
   const ms = Number.parseInt(duration, 10);
   return ms < 1000 ? `${duration}ms` : `${(ms / 1000).toFixed(2)}s`;
 }
@@ -229,6 +234,7 @@ export function CopyButton({
   return (
     <Button
       aria-label="Copy"
+      className="max-md:size-11"
       onClick={handleCopy}
       size="icon-sm"
       type="button"
@@ -262,15 +268,17 @@ export function CollapsibleSection({
     <div>
       <div className="mb-2 flex w-full items-center justify-between">
         <button
-          className="flex items-center gap-1.5"
-          onClick={() => setIsOpen(!isOpen)}
+          aria-expanded={isOpen}
+          className="flex min-h-11 items-center gap-1.5 rounded-sm px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 md:min-h-9"
+          onClick={() => setIsOpen((current) => !current)}
           type="button"
         >
-          {isOpen ? (
-            <ChevronDown className="size-3 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="size-3 text-muted-foreground" />
-          )}
+          <ChevronRight
+            className={cn(
+              "size-3 text-muted-foreground transition-transform duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]",
+              isOpen && "rotate-90"
+            )}
+          />
           <span className="font-medium text-muted-foreground text-sm">
             {title}
           </span>
@@ -281,7 +289,11 @@ export function CollapsibleSection({
           ) : null}
         </div>
       </div>
-      {isOpen ? children : null}
+      {isOpen ? (
+        <div className="motion-safe:animate-[run-disclosure_160ms_cubic-bezier(0.16,1,0.3,1)] motion-reduce:animate-[run-panel-fade_100ms_ease-out]">
+          {children}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -314,19 +326,219 @@ function findOutputComponent(
 }
 
 export const JSON_PRE_CLASS =
-  "overflow-x-auto bg-muted/50 p-3 font-mono text-[0.8125rem] leading-relaxed";
+  "min-w-max whitespace-pre p-3 font-mono text-[0.8125rem] leading-relaxed";
+
+const UPPERCASE_KEY_WORDS = new Set([
+  "api",
+  "http",
+  "https",
+  "id",
+  "uri",
+  "url",
+]);
+
+function humanizeKey(key: string): string {
+  return key
+    .replaceAll(/[_-]+/g, " ")
+    .replaceAll(/([a-z\d])([A-Z])/g, "$1 $2")
+    .trim()
+    .split(/\s+/)
+    .map((word) => {
+      const lower = word.toLowerCase();
+      if (UPPERCASE_KEY_WORDS.has(lower)) {
+        return lower.toUpperCase();
+      }
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(" ");
+}
+
+function ScalarValue({ value }: { value: string | number | boolean | null }) {
+  if (value === null || value === "") {
+    return <span className="text-muted-foreground italic">Empty</span>;
+  }
+  if (typeof value === "boolean") {
+    return <span>{value ? "Yes" : "No"}</span>;
+  }
+  if (typeof value === "number") {
+    return <span className="font-mono tabular-nums">{value}</span>;
+  }
+  if (isUrl(value)) {
+    return (
+      <a
+        className="break-all text-info underline underline-offset-2 hover:text-info/80"
+        href={value}
+        rel="noopener noreferrer"
+        target="_blank"
+      >
+        {value}
+      </a>
+    );
+  }
+  return <span className="break-words">{value}</span>;
+}
+
+function isScalar(value: JsonValue): value is string | number | boolean | null {
+  return value === null || typeof value !== "object";
+}
+
+function areScalars(
+  values: JsonValue[]
+): values is Array<string | number | boolean | null> {
+  return values.every(isScalar);
+}
+
+function withJsonKeys<Value extends JsonValue>(values: Value[]) {
+  const occurrences = new Map<string, number>();
+  return values.map((value) => {
+    const serialized = JSON.stringify(value);
+    const occurrence = (occurrences.get(serialized) ?? 0) + 1;
+    occurrences.set(serialized, occurrence);
+    return { key: `${serialized}:${occurrence}`, value };
+  });
+}
+
+function JsonFields({ value }: { value: { [key: string]: JsonValue } }) {
+  const entries = Object.entries(value);
+  if (entries.length === 0) {
+    return <span className="text-muted-foreground text-xs italic">Empty</span>;
+  }
+
+  return (
+    <dl className="divide-y divide-border/70 border-y">
+      {entries.map(([key, fieldValue]) => (
+        <JsonProperty key={key} label={humanizeKey(key)} value={fieldValue} />
+      ))}
+    </dl>
+  );
+}
+
+function CollectionDisclosure({
+  label,
+  summary,
+  children,
+}: {
+  label: string;
+  summary: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="border-t first:border-t-0">
+      <button
+        aria-expanded={open}
+        className="grid min-h-11 w-full grid-cols-[minmax(5.5rem,0.85fr)_minmax(0,1.15fr)] items-center gap-3 py-2 text-left transition-colors duration-100 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30 md:min-h-9"
+        onClick={() => setOpen((current) => !current)}
+        type="button"
+      >
+        <span className="text-muted-foreground text-xs">{label}</span>
+        <span className="flex min-w-0 items-center justify-between gap-2 text-xs">
+          <span>{summary}</span>
+          <ChevronRight
+            className={cn(
+              "size-3 shrink-0 text-muted-foreground transition-transform duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]",
+              open && "rotate-90"
+            )}
+          />
+        </span>
+      </button>
+      {open ? (
+        <div className="border-t bg-muted/20 py-1 pl-3 motion-safe:animate-[run-disclosure_160ms_cubic-bezier(0.16,1,0.3,1)] motion-reduce:animate-[run-panel-fade_100ms_ease-out]">
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function JsonProperty({ label, value }: { label: string; value: JsonValue }) {
+  if (isScalar(value)) {
+    return (
+      <div className="grid min-h-9 grid-cols-[minmax(5.5rem,0.85fr)_minmax(0,1.15fr)] items-start gap-3 py-2 text-xs">
+        <dt className="text-muted-foreground">{label}</dt>
+        <dd className="min-w-0">
+          <ScalarValue value={value} />
+        </dd>
+      </div>
+    );
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return <JsonProperty label={label} value={null} />;
+    }
+    if (value.length <= 4 && areScalars(value)) {
+      return (
+        <div className="grid min-h-9 grid-cols-[minmax(5.5rem,0.85fr)_minmax(0,1.15fr)] items-start gap-3 py-2 text-xs">
+          <dt className="text-muted-foreground">{label}</dt>
+          <dd className="flex min-w-0 flex-wrap gap-x-1.5">
+            {withJsonKeys(value).map((entry, index) => (
+              <span className="inline-flex gap-1.5" key={entry.key}>
+                {index > 0 ? <span aria-hidden="true">·</span> : null}
+                <ScalarValue value={entry.value} />
+              </span>
+            ))}
+          </dd>
+        </div>
+      );
+    }
+
+    return (
+      <CollectionDisclosure
+        label={label}
+        summary={`${value.length} ${value.length === 1 ? "item" : "items"}`}
+      >
+        <div className="divide-y divide-border/70">
+          {withJsonKeys(value).map((entry, index) => (
+            <JsonProperty
+              key={entry.key}
+              label={`Item ${index + 1}`}
+              value={entry.value}
+            />
+          ))}
+        </div>
+      </CollectionDisclosure>
+    );
+  }
+
+  const fieldCount = Object.keys(value).length;
+  return (
+    <CollectionDisclosure
+      label={label}
+      summary={`${fieldCount} ${fieldCount === 1 ? "field" : "fields"}`}
+    >
+      <JsonFields value={value} />
+    </CollectionDisclosure>
+  );
+}
+
+export function JsonPropertyInspector({ value }: { value: unknown }) {
+  const json = readJsonValue(value);
+  if (json === null && value !== null) {
+    return <p className="text-muted-foreground text-xs">Result unavailable.</p>;
+  }
+  if (isScalar(json)) {
+    return (
+      <div className="text-sm">
+        <ScalarValue value={json} />
+      </div>
+    );
+  }
+  if (Array.isArray(json)) {
+    return <JsonProperty label="Items" value={json} />;
+  }
+  return <JsonFields value={json} />;
+}
 
 export function OutputDisplay({
   output,
   input,
   actionType,
-  compact = false,
 }: {
   output: unknown;
   input?: unknown;
   actionType?: string;
-  /** Skip the titled Output wrapper when a ConfigSection already names it. */
-  compact?: boolean;
 }) {
   const catalog = useExtensionCatalog();
   const integrationUi = useIntegrationUi();
@@ -338,60 +550,43 @@ export function OutputDisplay({
     : undefined;
   const base64Image = CustomComponent ? null : readBase64ImageOutput(output);
 
-  const renderRichResult = () => {
-    if (CustomComponent) {
-      return (
-        <div className="overflow-hidden rounded-lg border bg-muted/50 p-3">
-          <CustomComponent input={input} output={output} />
-        </div>
-      );
-    }
-
-    if (base64Image) {
-      return (
-        <div className="overflow-hidden rounded-lg border bg-muted/50 p-3">
-          <img
-            alt="Step output"
-            className="max-h-96 w-auto rounded"
-            height={384}
-            src={`data:image/png;base64,${base64Image}`}
-            width={384}
-          />
-        </div>
-      );
-    }
-
-    return null;
-  };
-
-  const richResult = renderRichResult();
-
-  const jsonBlock = (
-    <pre className={JSON_PRE_CLASS}>
-      <JsonWithLinks data={output} />
-    </pre>
-  );
-
-  if (compact) {
+  if (CustomComponent) {
     return (
-      <div className="space-y-3">
-        {jsonBlock}
-        {richResult}
+      <div className="overflow-hidden rounded-lg border bg-muted/50 p-3">
+        <CustomOutput
+          component={CustomComponent}
+          input={input}
+          output={output}
+        />
       </div>
     );
   }
 
-  return (
-    <>
-      <CollapsibleSection copyData={output} title="Output">
-        {jsonBlock}
-      </CollapsibleSection>
+  if (base64Image) {
+    return (
+      <div className="overflow-hidden rounded-lg border bg-muted/50 p-3">
+        <img
+          alt="Step output"
+          className="max-h-96 w-auto rounded"
+          height={384}
+          src={`data:image/png;base64,${base64Image}`}
+          width={384}
+        />
+      </div>
+    );
+  }
 
-      {richResult ? (
-        <CollapsibleSection defaultExpanded title="Result">
-          {richResult}
-        </CollapsibleSection>
-      ) : null}
-    </>
-  );
+  return <JsonPropertyInspector value={output} />;
+}
+
+function CustomOutput({
+  component: Component,
+  input,
+  output,
+}: {
+  component: ComponentType<ResultComponentProps>;
+  input: unknown;
+  output: unknown;
+}) {
+  return <Component input={input} output={output} />;
 }

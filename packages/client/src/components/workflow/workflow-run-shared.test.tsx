@@ -1,9 +1,12 @@
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { IntegrationUi } from "@wfgraph/plugins/ui";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
-import { OutputDisplay } from "#src/components/workflow/workflow-run-shared";
+import {
+  JsonPropertyInspector,
+  OutputDisplay,
+} from "#src/components/workflow/workflow-run-shared";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
 const testCatalog: ExtensionCatalog = {
@@ -75,5 +78,54 @@ describe("OutputDisplay", () => {
     const view = renderOutput("post-message");
 
     expect(view.queryByText("slack renderer")).toBeNull();
+  });
+
+  it("shows a friendly property inspector when an action has no custom result", () => {
+    const view = renderOutput("slack/notify");
+
+    expect(view.getByText("Ok")).toBeTruthy();
+    expect(view.getByText("Yes")).toBeTruthy();
+    expect(view.queryByText(/"ok"/)).toBeNull();
+  });
+});
+
+describe("JsonPropertyInspector", () => {
+  it("humanizes keys and formats common scalar values", () => {
+    const view = render(
+      <JsonPropertyInspector
+        value={{
+          appointment_url: "https://example.com/appointments/42",
+          isConfirmed: true,
+          note: "",
+          retryCount: 3,
+        }}
+      />
+    );
+
+    expect(view.getByText("Appointment URL")).toBeTruthy();
+    expect(view.getByRole("link", { name: /example.com/ })).toBeTruthy();
+    expect(view.getByText("Is Confirmed")).toBeTruthy();
+    expect(view.getByText("Yes")).toBeTruthy();
+    expect(view.getByText("Empty")).toBeTruthy();
+    expect(view.getByText("3").className).toContain("tabular-nums");
+  });
+
+  it("keeps nested collections behind explicit disclosures", () => {
+    const view = render(
+      <JsonPropertyInspector
+        value={{
+          customer: { id: "cus_1", preferences: { locale: "en" } },
+          deliveries: [{ id: "del_1" }, { id: "del_2" }, { id: "del_3" }],
+        }}
+      />
+    );
+
+    expect(view.queryByText("cus_1")).toBeNull();
+    fireEvent.click(view.getByRole("button", { name: /Customer.*2 fields/ }));
+    expect(view.getByText("cus_1")).toBeTruthy();
+    expect(view.queryByText("en")).toBeNull();
+    expect(
+      view.getByRole("button", { name: /Deliveries.*3 items/ })
+    ).toBeTruthy();
   });
 });

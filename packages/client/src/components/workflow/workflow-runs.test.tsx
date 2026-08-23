@@ -321,7 +321,7 @@ describe("WorkflowRuns", () => {
     ).toBeTruthy();
     expect(view.getByText(/has left the runs list/)).toBeTruthy();
     expect(view.getByText("Test")).toBeTruthy();
-    expect(view.getByText("manual")).toBeTruthy();
+    expect(view.getByText("Manual")).toBeTruthy();
   });
 
   it("clears the search param when going back to the list", async () => {
@@ -338,7 +338,6 @@ describe("WorkflowRuns", () => {
     expect(
       view.queryByRole("button", { name: "Back to runs list" })
     ).toBeNull();
-
     // #40: the panel's own Back must replace the run's history entry, not
     // push a new one on top of it — otherwise the browser Back button undoes
     // this exit and reopens the run the user just closed.
@@ -348,6 +347,23 @@ describe("WorkflowRuns", () => {
     });
     await waitFor(() => {
       expect(router.state.location.search).toEqual({});
+    });
+  });
+
+  it("restores focus to the run row after returning from its overview", async () => {
+    served.items = [execution("exec_1", "completed")];
+    const { view } = renderRuns();
+
+    const row = await view.findByTestId("workflow-run-summary-row");
+    fireEvent.click(row);
+    fireEvent.click(
+      await view.findByRole("button", { name: "Back to runs list" })
+    );
+
+    await waitFor(() => {
+      expect(view.getByTestId("workflow-run-summary-row")).toBe(
+        document.activeElement
+      );
     });
   });
 
@@ -381,6 +397,8 @@ describe("WorkflowRuns", () => {
     });
 
     expect(await view.findByRole("heading", { name: "Wait" })).toBeTruthy();
+    fireEvent.click(view.getByRole("button", { name: "Technical details" }));
+    fireEvent.click(view.getByRole("tab", { name: "Input" }));
     expect(view.getByText(/invoiceId/)).toBeTruthy();
     expect(store.get(propertiesPanelActiveTabAtom)).toBe("runs");
 
@@ -453,6 +471,8 @@ describe("WorkflowRuns", () => {
       store.set(selectedNodeAtom, "wait_1");
     });
 
+    fireEvent.click(view.getByRole("button", { name: "Technical details" }));
+    fireEvent.click(view.getByRole("tab", { name: "Input" }));
     expect(await view.findByText(/inv_9/)).toBeTruthy();
   });
 });

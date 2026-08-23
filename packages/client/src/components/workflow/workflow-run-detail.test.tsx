@@ -114,15 +114,30 @@ describe("WorkflowRunDetail", () => {
     );
 
     fireEvent.click(view.getByRole("button", { name: /Wait/ }));
-    expect(view.getByRole("heading", { name: "Wait" })).toBeTruthy();
-    expect(view.queryByText("This node did not run.")).toBeNull();
+    expect(view.getByRole("heading", { name: "Wait" })).toBe(
+      document.activeElement
+    );
+    expect(view.queryByText("This node was not reached")).toBeNull();
+    expect(view.queryByText(/invoiceId/)).toBeNull();
+    expect(
+      view
+        .getByRole("button", { name: "Technical details" })
+        .getAttribute("aria-expanded")
+    ).toBe("false");
+
+    fireEvent.click(view.getByRole("button", { name: "Technical details" }));
+    expect(view.getByRole("tab", { name: "Input" })).toBeTruthy();
+    expect(view.getByRole("tab", { name: "Output" })).toBeTruthy();
+    fireEvent.click(view.getByRole("tab", { name: "Input" }));
     expect(view.getByText(/invoiceId/)).toBeTruthy();
 
     fireEvent.click(view.getByRole("button", { name: "Back to run overview" }));
     expect(
       view.getByRole("button", { name: "Back to runs list" })
     ).toBeTruthy();
-    expect(view.getByRole("button", { name: /Wait/ })).toBeTruthy();
+    expect(view.getByRole("button", { name: /Wait/ })).toBe(
+      document.activeElement
+    );
   });
 
   it("shows an empty inspector for a canvas node that never ran", () => {
@@ -131,7 +146,77 @@ describe("WorkflowRunDetail", () => {
       { selectedNodeId: "action_never" }
     );
 
-    expect(view.getByText("This node did not run.")).toBeTruthy();
+    expect(view.getByText("This node was not reached")).toBeTruthy();
     expect(view.queryByText("Input")).toBeNull();
+  });
+
+  it("shows friendly output while keeping raw payloads in the console", () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const logs: WorkflowRunDetailLogs = [
+      {
+        id: "log_action",
+        nodeId: "action_1",
+        nodeName: "Create appointment",
+        nodeType: "host/create-appointment",
+        status: "success",
+        startedAt: new Date("2026-02-22T10:00:00Z"),
+        completedAt: new Date("2026-02-22T10:00:01Z"),
+        duration: "1000",
+        input: { customerId: "cus_1" },
+        output: {
+          appointment_url: "https://example.com/appointments/42",
+          confirmed: true,
+        },
+        error: null,
+      },
+    ];
+    const view = renderDetail(
+      { ...BASE_EXECUTION, status: "completed" },
+      { logs, selectedNodeId: "action_1" }
+    );
+
+    expect(view.getByText("Appointment URL")).toBeTruthy();
+    expect(view.getByText("Yes")).toBeTruthy();
+    expect(view.queryByText(/customerId/)).toBeNull();
+
+    fireEvent.click(view.getByRole("button", { name: "Technical details" }));
+    expect(view.getByRole("tab", { name: "Output" })).toBeTruthy();
+    expect(view.queryByText(/customerId/)).toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "Copy" }));
+    expect(writeText).toHaveBeenCalledWith(
+      JSON.stringify(logs[0]!.output, null, 2)
+    );
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(view.queryByRole("tab", { name: "Output" })).toBeNull();
+  });
+
+  it("omits unavailable technical detail tabs", () => {
+    const logs: WorkflowRunDetailLogs = [
+      {
+        id: "log_action",
+        nodeId: "action_1",
+        nodeName: "Create appointment",
+        nodeType: "action",
+        status: "success",
+        startedAt: new Date("2026-02-22T10:00:00Z"),
+        completedAt: new Date("2026-02-22T10:00:01Z"),
+        duration: "1000",
+        output: { id: "appt_1" },
+        error: null,
+      },
+    ];
+    const view = renderDetail(
+      { ...BASE_EXECUTION, status: "completed" },
+      { logs, selectedNodeId: "action_1" }
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Technical details" }));
+    expect(view.queryByRole("tab", { name: "Input" })).toBeNull();
+    expect(view.getByRole("tab", { name: "Output" })).toBeTruthy();
   });
 });

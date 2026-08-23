@@ -11,6 +11,7 @@ import {
   Ungroup,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { cn } from "@wfgraph/shared/utils";
 import { Button } from "#src/components/ui/button";
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
@@ -214,11 +215,19 @@ function TabBar({
       {/* mira sizes every control in the editor at 28px; this segmented control
           predates that adoption and was 36px with 14px labels, which put the
           panel a density step away from the menu bar directly above it. */}
-      <div className="inline-flex h-7 min-w-0 flex-1 items-center justify-center rounded-md bg-muted p-[3px] text-muted-foreground">
+      <div className="relative inline-flex h-7 min-w-0 flex-1 items-center justify-center rounded-md bg-muted p-[3px] text-muted-foreground">
+        <span
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute inset-y-[3px] left-[3px] rounded-sm bg-background shadow-sm transition-transform duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:duration-100",
+            showRuns ? "w-[calc(50%-3px)]" : "w-[calc(100%-6px)]",
+            activeTab === "runs" && "translate-x-full"
+          )}
+        />
         <button
-          className={`inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 font-medium text-xs transition-[color,box-shadow] ${
+          className={`relative z-10 inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 font-medium text-xs transition-colors duration-[180ms] ${
             activeTab === "properties"
-              ? "bg-background text-foreground shadow-sm"
+              ? "text-foreground"
               : "text-muted-foreground"
           }`}
           onClick={() => onSelect("properties")}
@@ -228,10 +237,8 @@ function TabBar({
         </button>
         {showRuns ? (
           <button
-            className={`inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 font-medium text-xs transition-[color,box-shadow] ${
-              activeTab === "runs"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground"
+            className={`relative z-10 inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 font-medium text-xs transition-colors duration-[180ms] ${
+              activeTab === "runs" ? "text-foreground" : "text-muted-foreground"
             }`}
             onClick={() => onSelect("runs")}
             type="button"
@@ -644,7 +651,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
           {renderPropertiesContent()}
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 [scrollbar-gutter:stable_both-edges]">
+        <div className="min-h-0 flex-1 overflow-hidden">
           <WorkflowRuns />
         </div>
       )}
