@@ -27,11 +27,26 @@ export type ConnectedIntegration = {
   readonly type: string;
 };
 
+export type AgentValidationIssue = {
+  readonly kind: string;
+  readonly message: string;
+  readonly nodeId?: string | undefined;
+  readonly nodeLabel?: string | undefined;
+};
+
+export type AgentPublicationValidation = {
+  readonly publishBlockers: readonly AgentValidationIssue[];
+  readonly warnings: readonly AgentValidationIssue[];
+};
+
 /** What `layerFromDocument` needs to answer every tool in the toolkit. */
 export type WorkflowDraftInput = {
   readonly document: AgentDocument;
   readonly catalog: ExtensionCatalog;
   readonly integrations: readonly ConnectedIntegration[];
+  readonly validatePublication: (
+    document: AgentDocument
+  ) => AgentPublicationValidation;
 };
 
 type DraftUpdateResult =
@@ -49,6 +64,10 @@ export type WorkflowDraftService = {
   readonly catalog: ExtensionCatalog;
   /** The connections the operator can bind an action to, fixed for the turn. */
   readonly integrations: readonly ConnectedIntegration[];
+  /** Runs the host's canonical publication checks against the current snapshot. */
+  readonly validatePublication: (
+    document: AgentDocument
+  ) => AgentPublicationValidation;
 };
 
 export class WorkflowDraft extends Context.Service<
@@ -88,6 +107,7 @@ export function makeWorkflowDraft(
         ),
       catalog: input.catalog,
       integrations: input.integrations,
+      validatePublication: input.validatePublication,
     };
   });
 }

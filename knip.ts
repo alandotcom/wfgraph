@@ -95,6 +95,14 @@ const config: KnipConfig = {
       includeEntryExports: true,
     },
 
+    "packages/evals": {
+      // Vitest discovers these files through vitest.evals.config.ts. Naming the
+      // pattern here makes each eval suite an entry while helper files still
+      // have to be imported by a suite or a deterministic support test.
+      entry: ["src/**/*.eval.ts"],
+      project: ["src/**/*.ts"],
+    },
+
     "packages/shared": {
       // Core and plugins reach into this tree by the `@wfgraph/shared/*` specifier,
       // which the root tsconfig maps to these sources, so leaving entry empty

@@ -16,6 +16,8 @@
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+/.vitest-evals/
+/vitest-results.json
 
 # next.js
 /.next/

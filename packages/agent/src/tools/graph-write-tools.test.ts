@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
+import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
 import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import { fixtureCatalog } from "#src/tools/catalog-fixture";
 import { agentToolsFor } from "#src/testing";
@@ -27,6 +28,7 @@ const entry: WorkflowNode = {
 const first = actionNode("first", "score-applicant");
 const second = actionNode("second", "slack/send-message");
 const condition = actionNode("branch", "Condition");
+const eventSplit = actionNode("event-split", "Event Split");
 
 const firstToSecond: WorkflowEdge = {
   id: "e1",
@@ -382,6 +384,55 @@ describe("connect_nodes", () => {
         sourceHandle: LIFECYCLE_STARTED_HANDLE,
       });
       expect((yield* draft.current).edges[0]?.sourceHandle).toBe("started");
+    })
+  );
+
+  it.effect("holds an edge out of an Event Split to a reachable Event", () =>
+    Effect.gen(function* () {
+      const lifecycle: WorkflowNode = {
+        ...entry,
+        data: {
+          ...entry.data,
+          config: {
+            lifecycleRules: {
+              startEvents: ["applicant.created"],
+              cancelEvents: [],
+              concurrency: "unlimited",
+              allowManualStart: false,
+            },
+          },
+        },
+      };
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [lifecycle, eventSplit, second],
+        edges: [
+          {
+            id: "entry-split",
+            source: "entry",
+            target: "event-split",
+            sourceHandle: LIFECYCLE_STARTED_HANDLE,
+          },
+        ],
+        catalog,
+      });
+
+      const wrongEvent = yield* Effect.flip(
+        tools.connect_nodes({
+          source: "event-split",
+          target: "second",
+          sourceHandle: eventSplitOutlet("applicant.withdrawn"),
+        })
+      );
+      expect(wrongEvent.reason).toContain("does not reach");
+
+      yield* tools.connect_nodes({
+        source: "event-split",
+        target: "second",
+        sourceHandle: eventSplitOutlet("applicant.created"),
+      });
+      expect((yield* draft.current).edges[1]?.sourceHandle).toBe(
+        "event:applicant.created"
+      );
     })
   );
 

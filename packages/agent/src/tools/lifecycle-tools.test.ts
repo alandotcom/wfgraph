@@ -2,18 +2,63 @@ import { describe, expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { parseConditionModel } from "@wfgraph/shared/conditions/condition-schema";
 import { readConfigString } from "@wfgraph/shared/graph/node-config";
-import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
+import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { fixtureCatalog } from "#src/tools/catalog-fixture";
 import { agentToolsFor } from "#src/testing";
 
 const catalog = fixtureCatalog;
+const catalogWithTimestamp = {
+  ...catalog,
+  events: catalog.events.map((event) =>
+    event.name === "applicant.created"
+      ? {
+          ...event,
+          payloadFields: [
+            ...event.payloadFields,
+            { path: "createdAt", type: "timestamp" as const },
+          ],
+        }
+      : event
+  ),
+};
+const catalogWithTypeClash = {
+  ...catalog,
+  events: [
+    {
+      name: "first.received",
+      label: "First received",
+      payloadFields: [{ path: "shared", type: "string" as const }],
+    },
+    {
+      name: "second.received",
+      label: "Second received",
+      payloadFields: [{ path: "shared", type: "number" as const }],
+    },
+  ],
+};
 
 const entry: WorkflowNode = {
   id: "entry",
   position: { x: 0, y: 0 },
   type: "lifecycle",
   data: { label: "Lifecycle", type: "lifecycle", config: {} },
+};
+
+const conditionLifecycle: WorkflowNode = {
+  ...entry,
+  data: {
+    ...entry.data,
+    config: {
+      lifecycleRules: {
+        startEvents: ["applicant.created"],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        allowManualStart: false,
+      },
+    },
+  },
 };
 
 const condition: WorkflowNode = {
@@ -26,6 +71,27 @@ const condition: WorkflowNode = {
     config: { actionType: "Condition" },
   },
 };
+
+const score: WorkflowNode = {
+  id: "score",
+  position: { x: 0, y: 0 },
+  type: "action",
+  data: {
+    label: "Score applicant",
+    type: "action",
+    config: { actionType: "score-applicant" },
+  },
+};
+
+const conditionEdges: WorkflowEdge[] = [
+  {
+    id: "entry-score",
+    source: "entry",
+    target: "score",
+    sourceHandle: LIFECYCLE_STARTED_HANDLE,
+  },
+  { id: "score-condition", source: "score", target: "branch" },
+];
 
 describe("set_lifecycle_rules", () => {
   it.effect("creates the Lifecycle Node when the workflow has none", () =>
@@ -55,6 +121,7 @@ describe("set_lifecycle_rules", () => {
           "applicant.withdrawn": "applicantId",
         },
       });
+      expect(result.nodeId).toBe(node?.id);
       expect(result.summary).toContain("Created");
     })
   );
@@ -65,13 +132,14 @@ describe("set_lifecycle_rules", () => {
         nodes: [entry],
         catalog,
       });
-      yield* tools.set_lifecycle_rules({
+      const result = yield* tools.set_lifecycle_rules({
         startEvents: ["applicant.created"],
       });
 
       const document = yield* draft.current;
       expect(document.nodes).toHaveLength(1);
       expect(document.nodes[0]?.id).toBe("entry");
+      expect(result.nodeId).toBe("entry");
       expect(readLifecycleRules(document.nodes[0]?.data.config)).toMatchObject({
         startEvents: ["applicant.created"],
         concurrency: "unlimited",
@@ -149,10 +217,149 @@ describe("set_lifecycle_rules", () => {
 });
 
 describe("set_condition", () => {
+  it.effect("refuses a field when the Condition has no references", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({
+        nodes: [entry, condition],
+        catalog,
+      });
+      const failure = yield* Effect.flip(
+        tools.set_condition({
+          nodeId: "branch",
+          groups: [
+            {
+              rules: [
+                {
+                  field: "score",
+                  fieldType: "number",
+                  operator: "greater_or_equal",
+                  value: "80",
+                },
+              ],
+            },
+          ],
+        })
+      );
+
+      expect(failure.reason).toContain("no available references");
+    })
+  );
+
+  it.effect(
+    "refuses a token-derived field when list_references gives a path",
+    () =>
+      Effect.gen(function* () {
+        const { tools } = yield* agentToolsFor({
+          nodes: [conditionLifecycle, score, condition],
+          edges: conditionEdges,
+          catalog,
+        });
+
+        const failure = yield* Effect.flip(
+          tools.set_condition({
+            nodeId: "branch",
+            groups: [
+              {
+                rules: [
+                  {
+                    field: "score:Score applicant.score",
+                    fieldType: "number",
+                    operator: "greater_or_equal",
+                    value: "80",
+                  },
+                ],
+              },
+            ],
+          })
+        );
+
+        expect(failure.reason).toContain("path property");
+        expect(failure.reason).toContain("score");
+      })
+  );
+
+  it.effect("refuses a field type that disagrees with the reference", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({
+        nodes: [conditionLifecycle, score, condition],
+        edges: conditionEdges,
+        catalog,
+      });
+      const failure = yield* Effect.flip(
+        tools.set_condition({
+          nodeId: "branch",
+          groups: [
+            {
+              rules: [
+                {
+                  field: "email",
+                  fieldType: "timestamp",
+                  operator: "is_set",
+                },
+              ],
+            },
+          ],
+        })
+      );
+
+      expect(failure.reason).toContain("fieldType string");
+    })
+  );
+
+  it.effect("refuses a field whose reaching Events disagree on its type", () =>
+    Effect.gen(function* () {
+      const lifecycle: WorkflowNode = {
+        ...conditionLifecycle,
+        data: {
+          ...conditionLifecycle.data,
+          config: {
+            lifecycleRules: {
+              startEvents: ["first.received", "second.received"],
+              cancelEvents: [],
+              concurrency: "unlimited",
+              allowManualStart: false,
+            },
+          },
+        },
+      };
+      const { tools } = yield* agentToolsFor({
+        nodes: [lifecycle, condition],
+        edges: [
+          {
+            id: "entry-condition",
+            source: "entry",
+            target: "branch",
+            sourceHandle: LIFECYCLE_STARTED_HANDLE,
+          },
+        ],
+        catalog: catalogWithTypeClash,
+      });
+      const failure = yield* Effect.flip(
+        tools.set_condition({
+          nodeId: "branch",
+          groups: [
+            {
+              rules: [
+                {
+                  field: "shared",
+                  fieldType: "string",
+                  operator: "is_set",
+                },
+              ],
+            },
+          ],
+        })
+      );
+
+      expect(failure.reason).toContain("condition-compatible type");
+    })
+  );
+
   it.effect("writes the model and the CEL it compiles to together", () =>
     Effect.gen(function* () {
       const { tools, draft } = yield* agentToolsFor({
-        nodes: [entry, condition],
+        nodes: [conditionLifecycle, score, condition],
+        edges: conditionEdges,
         catalog,
       });
       yield* tools.set_condition({
@@ -171,7 +378,9 @@ describe("set_condition", () => {
         ],
       });
 
-      const config = (yield* draft.current).nodes[1]?.data.config;
+      const config = (yield* draft.current).nodes.find(
+        (node) => node.id === "branch"
+      )?.data.config;
       const expression = readConfigString(config, "condition");
       const serialized = readConfigString(config, "conditionModel") ?? "";
 
@@ -186,7 +395,8 @@ describe("set_condition", () => {
   it.effect("joins groups and rules by the logic it is given", () =>
     Effect.gen(function* () {
       const { tools, draft } = yield* agentToolsFor({
-        nodes: [entry, condition],
+        nodes: [conditionLifecycle, score, condition],
+        edges: conditionEdges,
         catalog,
       });
       yield* tools.set_condition({
@@ -220,7 +430,8 @@ describe("set_condition", () => {
 
       const expression =
         readConfigString(
-          (yield* draft.current).nodes[1]?.data.config,
+          (yield* draft.current).nodes.find((node) => node.id === "branch")
+            ?.data.config,
           "condition"
         ) ?? "";
       expect(expression).toContain("||");
@@ -231,7 +442,8 @@ describe("set_condition", () => {
   it.effect("escapes a value that would otherwise break the expression", () =>
     Effect.gen(function* () {
       const { tools, draft } = yield* agentToolsFor({
-        nodes: [entry, condition],
+        nodes: [conditionLifecycle, score, condition],
+        edges: conditionEdges,
         catalog,
       });
       yield* tools.set_condition({
@@ -252,7 +464,8 @@ describe("set_condition", () => {
 
       const expression =
         readConfigString(
-          (yield* draft.current).nodes[1]?.data.config,
+          (yield* draft.current).nodes.find((node) => node.id === "branch")
+            ?.data.config,
           "condition"
         ) ?? "";
       // The raw newline and quote never reach the expression; a hand-rolled
@@ -292,7 +505,11 @@ describe("set_condition", () => {
 
   it.effect("names the operator and the field when a rule cannot be read", () =>
     Effect.gen(function* () {
-      const { tools } = yield* agentToolsFor({ nodes: [condition], catalog });
+      const { tools } = yield* agentToolsFor({
+        nodes: [conditionLifecycle, score, condition],
+        edges: conditionEdges,
+        catalog,
+      });
 
       const wrongOperator = yield* Effect.flip(
         tools.set_condition({
@@ -341,8 +558,13 @@ describe("set_condition", () => {
       );
       expect(blankValue.reason).toContain("numeric value");
 
+      const { tools: timestampTools } = yield* agentToolsFor({
+        nodes: [conditionLifecycle, score, condition],
+        edges: conditionEdges,
+        catalog: catalogWithTimestamp,
+      });
       const missingAmount = yield* Effect.flip(
-        tools.set_condition({
+        timestampTools.set_condition({
           nodeId: "branch",
           groups: [
             {

@@ -14,6 +14,8 @@
     "start": "pnpm --filter @wfgraph/example-app start",
     "test": "vitest run",
     "test:watch": "vitest",
+    "evals": "vitest run --config vitest.evals.config.ts --reporter=vitest-evals/reporter --reporter=json --outputFile.json=vitest-results.json",
+    "evals:ui": "vitest-evals serve vitest-results.json",
     "type-check": "pnpm exec tsc --noEmit",
     "typecheck": "pnpm exec tsc --noEmit",
     "lint": "oxlint --type-aware .",
@@ -52,7 +54,8 @@
     "tsx": "catalog:",
     "typescript": "^7.0.2",
     "vite": "catalog:",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "vitest-evals": "catalog:"
   },
   "optionalDependencies": {
     "inngest-cli": "^1.41.1"

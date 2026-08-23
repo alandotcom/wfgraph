@@ -10,6 +10,7 @@
 
 import { Effect, Schema } from "effect";
 import { Tool } from "effect/unstable/ai";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import {
   actionsByCategory,
   findAction,
@@ -51,6 +52,36 @@ const referenceFieldSchema = Schema.Struct({
   nullable: Schema.optionalKey(Schema.Boolean),
   enumValues: Schema.optionalKey(Schema.Array(Schema.String)),
 });
+
+const BUILT_IN_AUTHORING = new Map<
+  string,
+  { readonly description: string; readonly instructions: string }
+>([
+  [
+    BUILT_IN_ACTION_IDS.condition,
+    {
+      description: "Branch based on a condition.",
+      instructions:
+        'Add the node, connect its inputs, then call set_condition. Connect outgoing branches with sourceHandle "true" or "false".',
+    },
+  ],
+  [
+    BUILT_IN_ACTION_IDS.eventSplit,
+    {
+      description: "Send a run down the branch belonging to its Event.",
+      instructions:
+        'The node has no config. Connect each outgoing branch with sourceHandle "event:<Event name>". The Event must reach the split.',
+    },
+  ],
+  [
+    BUILT_IN_ACTION_IDS.wait,
+    {
+      description: "Delay execution or wait for an Event.",
+      instructions:
+        "Add and connect the node, then call set_wait. Use delay mode for a duration. Use list_events before Event mode; Event waits carry waitFor subscriptions and a timeout.",
+    },
+  ],
+]);
 
 function toActionSummary(action: ActionMetadata) {
   return {
@@ -126,10 +157,11 @@ export const ListActions = Tool.make("list_actions", {
 
 export const DescribeAction = Tool.make("describe_action", {
   description:
-    "The full definition of one action: every config field it accepts and every output field it produces. Read this before add_node or update_node so the config keys are the ones the action declares.",
+    "The full definition of one action or built-in step: its config fields, output fields, and any special authoring instructions. Read this before add_node or update_node.",
   parameters: Schema.Struct({
     actionId: Schema.String.annotate({
-      description: "The action id, exactly as list_actions returned it.",
+      description:
+        "The action id from the system prompt or exactly as list_actions returned it.",
     }),
   }),
   success: Schema.Struct({
@@ -139,6 +171,7 @@ export const DescribeAction = Tool.make("describe_action", {
     outputFields: Schema.Array(referenceFieldSchema),
     /** True when the action needs a connected integration before it can run. */
     needsIntegration: Schema.Boolean,
+    authoringInstructions: Schema.optionalKey(Schema.String),
   }),
   failure: Schema.Struct({ reason: Schema.String }),
   failureMode: "return",
@@ -194,32 +227,44 @@ export const catalogToolHandlers = Effect.gen(function* () {
 
     describe_action: (input: { readonly actionId: string }) => {
       const action = findAction(catalog, input.actionId);
-      if (!action) {
+      const builtIn = BUILT_IN_AUTHORING.get(input.actionId);
+      if (!action && !builtIn) {
         return Effect.fail({
           reason: `No action with id ${input.actionId}. Call list_actions to see what exists.`,
         });
       }
 
       return Effect.succeed({
-        action: toActionSummary(action),
-        configFields: flattenConfigFields(action.configFields).map((field) => ({
-          key: field.key,
-          label: field.label,
-          type: field.type,
-          ...(field.required === undefined ? {} : { required: field.required }),
-          ...(field.placeholder === undefined
-            ? {}
-            : { placeholder: field.placeholder }),
-          ...(field.example === undefined ? {} : { example: field.example }),
-          ...(field.defaultValue === undefined
-            ? {}
-            : { defaultValue: field.defaultValue }),
-          ...(field.options === undefined
-            ? {}
-            : { options: field.options.map((option) => option.value) }),
-          ...(field.literal === undefined ? {} : { literal: field.literal }),
-        })),
-        outputFields: action.outputFields.map((field) => ({
+        action: action
+          ? toActionSummary(action)
+          : {
+              id: input.actionId,
+              label: input.actionId,
+              category: "System",
+              description: builtIn?.description ?? input.actionId,
+            },
+        configFields: flattenConfigFields(action?.configFields ?? []).map(
+          (field) => ({
+            key: field.key,
+            label: field.label,
+            type: field.type,
+            ...(field.required === undefined
+              ? {}
+              : { required: field.required }),
+            ...(field.placeholder === undefined
+              ? {}
+              : { placeholder: field.placeholder }),
+            ...(field.example === undefined ? {} : { example: field.example }),
+            ...(field.defaultValue === undefined
+              ? {}
+              : { defaultValue: field.defaultValue }),
+            ...(field.options === undefined
+              ? {}
+              : { options: field.options.map((option) => option.value) }),
+            ...(field.literal === undefined ? {} : { literal: field.literal }),
+          })
+        ),
+        outputFields: (action?.outputFields ?? []).map((field) => ({
           path: field.path,
           ...(field.type === undefined ? {} : { type: field.type }),
           ...(field.description === undefined
@@ -230,7 +275,10 @@ export const catalogToolHandlers = Effect.gen(function* () {
             ? {}
             : { enumValues: field.enumValues }),
         })),
-        needsIntegration: action.integration !== undefined,
+        needsIntegration: action?.integration !== undefined,
+        ...(builtIn === undefined
+          ? {}
+          : { authoringInstructions: builtIn.instructions }),
       });
     },
 

@@ -162,8 +162,12 @@ describe("validate_workflow", () => {
       });
       const result = yield* tools.validate_workflow();
 
-      expect(result.issues).toEqual([]);
-      expect(result.hasBlockingIssues).toBe(false);
+      expect(result).toEqual({
+        draftValid: true,
+        structuralIssues: [],
+        publishBlockers: [],
+        warnings: [],
+      });
     })
   );
 
@@ -177,8 +181,9 @@ describe("validate_workflow", () => {
       });
       const result = yield* tools.validate_workflow();
 
-      expect(result.hasBlockingIssues).toBe(true);
-      expect(result.issues).toContainEqual(
+      expect(result.draftValid).toBe(true);
+      expect(result.structuralIssues).toEqual([]);
+      expect(result.publishBlockers).toContainEqual(
         expect.objectContaining({
           kind: "missing_integration",
           severity: "blocking",
@@ -238,8 +243,10 @@ describe("validate_workflow", () => {
 
       const result = yield* tools.validate_workflow();
 
-      expect(result.topologyError).toContain("mutually exclusive branches");
-      expect(result.hasBlockingIssues).toBe(true);
+      expect(result.draftValid).toBe(false);
+      expect(result.structuralIssues[0]).toContain(
+        "mutually exclusive branches"
+      );
     })
   );
 
@@ -265,7 +272,8 @@ describe("validate_workflow", () => {
       });
       const result = yield* tools.validate_workflow();
 
-      expect(result.issues).toContainEqual(
+      expect(result.draftValid).toBe(true);
+      expect(result.publishBlockers).toContainEqual(
         expect.objectContaining({
           kind: "missing_required_field",
           severity: "blocking",
@@ -298,15 +306,14 @@ describe("validate_workflow", () => {
       });
       const result = yield* tools.validate_workflow();
 
-      expect(result.issues).toContainEqual(
+      expect(result.warnings).toContainEqual(
         expect.objectContaining({
           kind: "broken_reference",
-          severity: "warning",
           nodeId: "notify",
         })
       );
-      // A warning alone leaves the workflow publishable.
-      expect(result.hasBlockingIssues).toBe(false);
+      expect(result.draftValid).toBe(true);
+      expect(result.publishBlockers).toEqual([]);
     })
   );
 });

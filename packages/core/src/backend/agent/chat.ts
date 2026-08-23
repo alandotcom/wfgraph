@@ -40,6 +40,7 @@ import type {
 import type { EnabledAgentSettings } from "#src/backend/agent/config";
 import { agentModelLayer } from "#src/backend/agent/model";
 import { toAgentStreamPart } from "#src/backend/agent/stream";
+import { validateAgentPublication } from "#src/backend/agent/publication-validation";
 
 /**
  * How many times a turn may go back to the model.
@@ -104,6 +105,12 @@ export function runAgentTurn(
       document: input.document,
       catalog: input.catalog,
       integrations: input.integrations,
+      validatePublication: (document) =>
+        validateAgentPublication({
+          document,
+          catalog: input.catalog,
+          integrations: input.integrations,
+        }),
     });
 
     // The toolkit is resolved here, with the draft this turn writes through,

@@ -7,6 +7,12 @@
       "skillPath": "skills/effect-ts/SKILL.md",
       "computedHash": "261b9f3f0a89038cd7e4f581755b79c839ca747c7607c14b41c083db0ca467d6"
     },
+    "eval-audit": {
+      "source": "ai-evals-course/evals-skills",
+      "sourceType": "github",
+      "skillPath": "skills/eval-audit/SKILL.md",
+      "computedHash": "bf5f20b6921ba2d876c45c55211783f2bb6f952623b3d7336b5f272e6bcb6430"
+    },
     "react-flow": {
       "source": "existential-birds/beagle",
       "sourceType": "github",
@@ -31,6 +37,12 @@
       "source": "wshobson/agents",
       "sourceType": "github",
       "computedHash": "ab7ca5f3ff515b873a8446bdf88b9edc156741cf32c07accbbb3804f25543179"
+    },
+    "vitest-evals": {
+      "source": "getsentry/vitest-evals",
+      "sourceType": "github",
+      "skillPath": "skills/vitest-evals/SKILL.md",
+      "computedHash": "84a65b5b4f02424e0ee337cb6ae6149b5dafe698a9f297268d301106f1f61b05"
     }
   }
 }

@@ -16,9 +16,14 @@ import { nanoid } from "nanoid";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { findAction } from "@wfgraph/shared/extensions/catalog";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
+import {
+  eventSplitOutletEvent,
+  isEventSplitNode,
+} from "@wfgraph/shared/lifecycle/event-split";
 import { isLifecycleOutlet } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 /**
  * A config bag as the model fills it in: a list of entries, not a record.
@@ -174,7 +179,7 @@ export const DeleteNode = Tool.make("delete_node", {
 
 export const ConnectNodes = Tool.make("connect_nodes", {
   description:
-    'Draw an edge so a run flows from one step into the next. Out of a Condition, name sourceHandle "true" or "false". Out of the Lifecycle Node, name "started" or "canceled".',
+    'Draw an edge so a run flows from one step into the next. Out of a Condition, name sourceHandle "true" or "false". Out of the Lifecycle Node, name "started" or "canceled". Out of an Event Split, name "event:<Event name>".',
   parameters: Schema.Struct({
     source: Schema.String.annotate({
       description: "The node the run leaves.",
@@ -184,7 +189,7 @@ export const ConnectNodes = Tool.make("connect_nodes", {
     }),
     sourceHandle: Schema.optionalKey(Schema.String).annotate({
       description:
-        'Which outlet of the source the edge leaves by: "true" or "false" on a Condition, "started" or "canceled" on the Lifecycle Node.',
+        'Which outlet of the source the edge leaves by: "true" or "false" on a Condition, "started" or "canceled" on the Lifecycle Node, or "event:<Event name>" on an Event Split.',
     }),
   }),
   success: writeResultSchema,
@@ -214,6 +219,8 @@ export const DisconnectNodes = Tool.make("disconnect_nodes", {
 function outletRefusal(input: {
   readonly source: WorkflowNode;
   readonly sourceHandle: string | undefined;
+  readonly document: AgentDocument;
+  readonly catalog: ExtensionCatalog;
 }): string | undefined {
   const { source, sourceHandle } = input;
 
@@ -227,6 +234,23 @@ function outletRefusal(input: {
     return sourceHandle === "true" || sourceHandle === "false"
       ? undefined
       : 'An edge out of a Condition must name sourceHandle "true" or "false".';
+  }
+
+  if (isEventSplitNode(source)) {
+    const eventName = eventSplitOutletEvent(sourceHandle);
+    if (!eventName) {
+      return 'An edge out of an Event Split must name sourceHandle "event:<Event name>".';
+    }
+
+    const reachesSplit = eventsReaching({
+      targetNodeId: source.id,
+      nodes: input.document.nodes,
+      edges: input.document.edges,
+      catalog: input.catalog,
+    }).some((event) => event.name === eventName);
+    return reachesSplit
+      ? undefined
+      : `Event ${eventName} does not reach ${source.data.label || source.id}.`;
   }
 
   return sourceHandle === undefined
@@ -417,6 +441,8 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
         const refusal = outletRefusal({
           source,
           sourceHandle: input.sourceHandle,
+          document,
+          catalog: draft.catalog,
         });
         if (refusal) {
           return Effect.fail({ reason: refusal });

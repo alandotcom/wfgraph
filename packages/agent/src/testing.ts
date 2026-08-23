@@ -15,6 +15,7 @@
 import { Effect } from "effect";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
+import { collectWorkflowIssues } from "@wfgraph/shared/graph/workflow-issues";
 import {
   type ConnectedIntegration,
   layerFromDraft,
@@ -46,6 +47,19 @@ export function agentToolsFor(
       document: { nodes: input.nodes ?? [], edges: input.edges ?? [] },
       catalog: input.catalog,
       integrations: input.integrations ?? [],
+      validatePublication: (document) => {
+        const issues = collectWorkflowIssues({
+          nodes: [...document.nodes],
+          catalog: input.catalog,
+          integrations: input.integrations ?? [],
+        });
+        return {
+          publishBlockers: issues.filter(
+            (issue) => issue.severity === "blocking"
+          ),
+          warnings: issues.filter((issue) => issue.severity === "warning"),
+        };
+      },
     });
 
     const tools = yield* Effect.provide(

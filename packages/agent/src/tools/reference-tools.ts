@@ -15,6 +15,7 @@
 
 import { Effect, Schema } from "effect";
 import { Tool } from "effect/unstable/ai";
+import type { ConditionFieldType } from "@wfgraph/shared/conditions/condition-model";
 import { findAction } from "@wfgraph/shared/extensions/catalog";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
@@ -28,7 +29,7 @@ import { reachableEventFields } from "@wfgraph/shared/graph/reachable-fields";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import { readConfigString } from "@wfgraph/shared/graph/node-config";
 import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
-import { WorkflowDraft } from "#src/document";
+import { type AgentDocument, WorkflowDraft } from "#src/document";
 
 const referenceSchema = Schema.Struct({
   /** Paste this straight into a config field. */
@@ -41,7 +42,31 @@ const referenceSchema = Schema.Struct({
   /** True when a run may reach this node without the value being set. */
   nullable: Schema.optionalKey(Schema.Boolean),
   enumValues: Schema.optionalKey(Schema.Array(Schema.String)),
+  /** Pass this exact value to set_condition; absence means the field cannot be tested. */
+  conditionFieldType: Schema.optionalKey(
+    Schema.Literals(["string", "number", "boolean", "timestamp"])
+  ),
 });
+
+/** The condition type a reference supports, absent for objects and type clashes. */
+function conditionFieldTypeOf(
+  field: ReferenceField
+): ConditionFieldType | null {
+  if ("typeClash" in field && field.typeClash) {
+    return null;
+  }
+  if (
+    field.type === "string" ||
+    field.type === "number" ||
+    field.type === "boolean" ||
+    field.type === "timestamp"
+  ) {
+    return field.type;
+  }
+  return field.type === undefined || field.type === "duration"
+    ? "string"
+    : null;
+}
 
 /**
  * The fields one upstream node offers.
@@ -97,55 +122,72 @@ export const ListReferences = Tool.make("list_references", {
   failureMode: "return",
 });
 
+/** The same reference entries the tool returns, for write tools that validate one. */
+export function referencesForNode(input: {
+  readonly nodeId: string;
+  readonly document: AgentDocument;
+  readonly catalog: ExtensionCatalog;
+}) {
+  const target = input.document.nodes.find((node) => node.id === input.nodeId);
+  if (!target) {
+    return undefined;
+  }
+
+  const upstream = upstreamNodeIds(input.nodeId, input.document.edges);
+  return input.document.nodes
+    .filter((node) => upstream.has(node.id))
+    .flatMap((node) => {
+      const sourceNodeLabel = getNodeDisplayName(input.catalog, node);
+
+      return outputFieldsOf({
+        node,
+        targetNodeId: input.nodeId,
+        nodes: input.document.nodes,
+        edges: input.document.edges,
+        catalog: input.catalog,
+      }).map((field) => {
+        const conditionFieldType = conditionFieldTypeOf(field);
+        return {
+          token: formatTemplateToken({
+            nodeId: node.id,
+            nodeLabel: sourceNodeLabel,
+            fieldPath: field.path,
+          }),
+          sourceNodeId: node.id,
+          sourceNodeLabel,
+          path: field.path,
+          ...(field.type === undefined ? {} : { type: field.type }),
+          ...(field.description === undefined
+            ? {}
+            : { description: field.description }),
+          ...(field.nullable === undefined ? {} : { nullable: field.nullable }),
+          ...(field.enumValues === undefined
+            ? {}
+            : { enumValues: field.enumValues }),
+          ...(conditionFieldType === null ? {} : { conditionFieldType }),
+        };
+      });
+    });
+}
+
 export const referenceToolHandlers = Effect.gen(function* () {
   const draft = yield* WorkflowDraft;
 
   return {
     list_references: (input: { readonly nodeId: string }) =>
       Effect.flatMap(draft.current, (document) => {
-        const target = document.nodes.find((node) => node.id === input.nodeId);
-        if (!target) {
+        const references = referencesForNode({
+          nodeId: input.nodeId,
+          document,
+          catalog: draft.catalog,
+        });
+        if (!references) {
           return Effect.fail({
             reason: `No node with id ${input.nodeId}. Call read_workflow to see what the graph holds.`,
           });
         }
 
-        const upstream = upstreamNodeIds(input.nodeId, document.edges);
-
-        return Effect.succeed({
-          references: document.nodes
-            .filter((node) => upstream.has(node.id))
-            .flatMap((node) => {
-              const sourceNodeLabel = getNodeDisplayName(draft.catalog, node);
-
-              return outputFieldsOf({
-                node,
-                targetNodeId: input.nodeId,
-                nodes: document.nodes,
-                edges: document.edges,
-                catalog: draft.catalog,
-              }).map((field) => ({
-                token: formatTemplateToken({
-                  nodeId: node.id,
-                  nodeLabel: sourceNodeLabel,
-                  fieldPath: field.path,
-                }),
-                sourceNodeId: node.id,
-                sourceNodeLabel,
-                path: field.path,
-                ...(field.type === undefined ? {} : { type: field.type }),
-                ...(field.description === undefined
-                  ? {}
-                  : { description: field.description }),
-                ...(field.nullable === undefined
-                  ? {}
-                  : { nullable: field.nullable }),
-                ...(field.enumValues === undefined
-                  ? {}
-                  : { enumValues: field.enumValues }),
-              }));
-            }),
-        });
+        return Effect.succeed({ references });
       }),
   };
 });
