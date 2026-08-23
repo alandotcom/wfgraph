@@ -1,5 +1,17 @@
 # @wfgraph/shared
 
+## 3.0.0
+
+### Patch Changes
+
+- [#148](https://github.com/alandotcom/wfgraph/pull/148) [`01da8e0`](https://github.com/alandotcom/wfgraph/commit/01da8e01080e2c7847f4d43663f9552515a76d06) Thanks [@alandotcom](https://github.com/alandotcom)! - Stop sending start and result payloads on the run-list procedures.
+
+  `getExecutions` polls every two seconds while the Runs tab is open, and
+  `getExecutionsGlobal` pages the dashboard. Neither list paints `input` or
+  `output`, yet both selected those JSONB columns and redacted them on every
+  answer. Payloads stay on `getExecutionLogs`, which is fetched for the one open
+  run.
+
 ## 2.5.0
 
 ## 2.4.0

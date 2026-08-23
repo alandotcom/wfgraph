@@ -1,5 +1,49 @@
 # @wfgraph/client
 
+## 3.0.0
+
+### Minor Changes
+
+- [#128](https://github.com/alandotcom/wfgraph/pull/128) [`c2ae17b`](https://github.com/alandotcom/wfgraph/commit/c2ae17b9da06d723443386d04cd1852b800fedf2) Thanks [@alandotcom](https://github.com/alandotcom)! - Add a build agent to the workflow editor: a chat panel that reads the extension
+  catalog and the open workflow, then edits the canvas as it answers.
+
+  A host turns it on with a new `agent` option on `createWfGraphApp`, carrying an
+  OpenAI API key and optionally a model id and an OpenAI-compatible endpoint.
+  Absent or blank, the agent is off: no model is called and the editor shows no
+  panel, so an adopter who wants no AI in their editor writes nothing.
+
+  The agent has fourteen tools. Seven read (search the action catalog, describe one
+  action's config and output fields, list Events and integrations, read the graph,
+  list the template tokens a step may reference, and validate the workflow) and
+  seven write (add, update and delete a step, connect and disconnect steps, declare
+  the Lifecycle Rules, and write a Condition's test). They run on the server against
+  the graph the editor sends with each turn, and the resulting graph streams back
+  so the canvas redraws as the agent works. The edit lands through the editor's own
+  save path, so it is one undo step and the autosave persists it.
+
+  `GET /api/extensions` now answers `agent: { enabled }` beside `catalog`, which is
+  how the editor knows whether to offer the panel. `agent.chat` is the first
+  streaming RPC procedure in the contract, declared as an oRPC event iterator.
+
+  The `effect` catalog moves to `4.0.0-rc.110`, which the `@effect/ai-openai`
+  provider names as its peer.
+
+### Patch Changes
+
+- [#146](https://github.com/alandotcom/wfgraph/pull/146) [`04f4fd1`](https://github.com/alandotcom/wfgraph/commit/04f4fd1fb4c1c437550dbac7b83705d1d0d81dd2) Thanks [@alandotcom](https://github.com/alandotcom)! - Improve canvas selection, connection feedback, issue counts, keyboard shortcut discovery, and graph accessibility.
+
+- [#150](https://github.com/alandotcom/wfgraph/pull/150) [`60caf9a`](https://github.com/alandotcom/wfgraph/commit/60caf9a27252e8027ead65281a1dedb83aad3c21) Thanks [@alandotcom](https://github.com/alandotcom)! - Restore a run's pinned graph and running animation after navigating back to it. A same-workflow hydrate was clearing the overlay, so the canvas stayed on the draft while the Runs panel still showed the open run.
+
+- [#148](https://github.com/alandotcom/wfgraph/pull/148) [`01da8e0`](https://github.com/alandotcom/wfgraph/commit/01da8e01080e2c7847f4d43663f9552515a76d06) Thanks [@alandotcom](https://github.com/alandotcom)! - Stop sending start and result payloads on the run-list procedures.
+
+  `getExecutions` polls every two seconds while the Runs tab is open, and
+  `getExecutionsGlobal` pages the dashboard. Neither list paints `input` or
+  `output`, yet both selected those JSONB columns and redacted them on every
+  answer. Payloads stay on `getExecutionLogs`, which is fetched for the one open
+  run.
+
+- [#149](https://github.com/alandotcom/wfgraph/pull/149) [`384e8ca`](https://github.com/alandotcom/wfgraph/commit/384e8ca64274ffdb47439f77e3802444ea91be38) Thanks [@alandotcom](https://github.com/alandotcom)! - Replace the dashboard run-history status chips with a searchable, filterable, virtualized table.
+
 ## 2.5.0
 
 ### Minor Changes
