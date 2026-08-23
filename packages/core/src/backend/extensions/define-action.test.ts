@@ -375,6 +375,51 @@ describe("defineAction with an output schema", () => {
       },
     });
   });
+
+  // A foreign output has no encode direction, but `~standard.validate` still
+  // runs, and Zod's default object returns only the declared keys.
+  it("trims undeclared keys through a Zod output schema", async () => {
+    const action = defineAction({
+      id: "custom/zod-trim",
+      label: "Zod Trim",
+      description: "Answers with more than its Zod output declares",
+      input: z.object({}),
+      output: z.object({ id: z.string() }),
+      handler() {
+        return {
+          id: "public-123",
+          apiToken: "should-not-leak",
+        } as { id: string };
+      },
+    });
+
+    expect(await call(action)).toEqual({
+      success: true,
+      data: { id: "public-123" },
+    });
+  });
+
+  it("fails the node when a Zod output schema refuses the answer", async () => {
+    const action = defineAction({
+      id: "custom/zod-refuse",
+      label: "Zod Refuse",
+      description: "Answers outside its Zod output schema",
+      input: z.object({}),
+      output: z.object({ id: z.string() }),
+      handler() {
+        // eslint-disable-next-line typescript/no-unsafe-type-assertion -- the lie this case is about
+        return { id: 7 } as unknown as { id: string };
+      },
+    });
+
+    expect(await call(action)).toEqual({
+      success: false,
+      error: {
+        message:
+          'Action "custom/zod-refuse" returned a value its output schema does not accept: id',
+      },
+    });
+  });
 });
 
 /**

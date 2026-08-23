@@ -2,9 +2,10 @@
  * What both authoring functions do with an author's schema, written once.
  *
  * `defineAction` and `defineStep` accept a schema from any Standard Schema
- * library, so each of them reads a resolved config through it and derives the
- * editor's config form from its JSON Schema. The read must be synchronous: a
- * step boundary answers the engine and has no await to spend.
+ * library, so each of them reads a resolved config through it, validates a
+ * foreign output through the same `~standard.validate`, and derives the
+ * editor's config form from its JSON Schema. Those reads must be synchronous:
+ * a step boundary answers the engine and has no await to spend.
  */
 
 import { Result, Schema } from "effect";
@@ -82,27 +83,36 @@ export function buildConfigReader<TPayload>(
       );
   }
 
-  return (raw) => validateConfig(schema, stripInternalFields(raw));
+  return (raw) =>
+    validateStandardSchema(
+      schema,
+      stripInternalFields(raw),
+      "A config schema must validate synchronously. Async Standard Schema validators are not supported."
+    );
 }
 
 /**
- * The resolved config as a foreign library reads it, or the paths that refused
- * it.
+ * What a foreign Standard Schema library answers for one value, or the paths
+ * that refused it.
  *
  * Paths and no messages: a foreign library words its own issues and is free to
  * quote the value in them, and this string is persisted as the node's run error.
- * What places the fault is the path.
+ * What places the fault is the path. The library's returned `value` is what
+ * survives: a Zod object that strips undeclared keys, for example, hands that
+ * trimmed shape back here rather than the author's oversized object.
+ *
+ * `asyncRefusal` is the sentence a Promise-returning validate throws: config and
+ * output each name their own side of the boundary.
  */
-function validateConfig<TPayload>(
+export function validateStandardSchema<TPayload>(
   schema: StandardSchema<TPayload>,
-  payload: Record<string, unknown>
+  payload: unknown,
+  asyncRefusal: string
 ): Result.Result<TPayload, string> {
   const parsed = schema["~standard"].validate(payload);
 
   if (isPromiseLike(parsed)) {
-    throw new Error(
-      "A config schema must validate synchronously. Async Standard Schema validators are not supported."
-    );
+    throw new Error(asyncRefusal);
   }
 
   if (

@@ -2,8 +2,8 @@
  * An Effect schema crosses `Schema.toCodecJson` in both directions, so a
  * transform an author writes (a comma-separated field to a list, a `Date` to an
  * ISO string) runs on the way in and out rather than on the bare schema. A
- * schema from another library validates on the way in and passes through on the
- * way out, because that is the whole of what Standard Schema publishes.
+ * schema from another library validates through `~standard.validate` in both
+ * directions, because that is the whole of what Standard Schema publishes.
  * `docs/integrations.md` ("Schemas at a step boundary") owns the full contract.
  */
 
@@ -13,7 +13,10 @@ import {
   CredentialsUnavailable,
   type WorkflowCredentials,
 } from "#src/backend/extensions/credential-fetcher";
-import { encodeThroughOutputSchema } from "#src/backend/extensions/steps/output-encoding";
+import {
+  encodeThroughOutputSchema,
+  validateThroughOutputSchema,
+} from "#src/backend/extensions/steps/output-encoding";
 import {
   readIntegrationId,
   readStepContext,
@@ -39,7 +42,11 @@ import {
   type InputSchema,
   isPromiseLike,
 } from "#src/backend/extensions/schema-io";
-import { asStandardSchema, isEffectSchema } from "@wfgraph/shared/types/schema";
+import {
+  asStandardSchema,
+  isEffectSchema,
+  type StandardSchema,
+} from "@wfgraph/shared/types/schema";
 import type { OutputSchema } from "@wfgraph/shared/graph/output-fields";
 import type {
   ActionConfigField,
@@ -361,9 +368,12 @@ type StepSchemas<TInput, TOutput> = {
    * whole therefore describes every field it means to pass on, or says so in its
    * shape with `Schema.StructWithRest` over a `Schema.Record` rest.
    *
-   * A schema from another library publishes no encoder, so what the handler
-   * answered is passed on as it stands and the trim does not apply. Answer with
-   * JSON there: the engine memoizes a step result and replays it.
+   * A schema from another library has no encode direction, so the answer runs
+   * through `~standard.validate` instead. The value that call returns is what
+   * the node keeps: a library that strips undeclared keys trims here too, and
+   * one that keeps them (`z.looseObject`, for example) keeps them because
+   * the author said so. Answer with JSON either way: the engine memoizes a step
+   * result and replays it.
    */
   readonly output: OutputSchema<TOutput>;
 };
@@ -456,15 +466,26 @@ export function buildStep<TInput, TOutput>(
   const readConfig = buildConfigReader(definition.input);
   const toFailure = stepFailureFrom(subject);
 
-  // Only an Effect output schema has an encoder. A foreign Standard Schema
-  // library publishes a validator and a JSON Schema and nothing that runs in
-  // this direction, so its answers pass through as they stand. That is the
-  // same call `output-fields.ts` makes for the field list: what a schema
-  // cannot say about itself is not said.
+  // An Effect output schema encodes through its JSON codec. A foreign Standard
+  // Schema library publishes no encode direction, so the answer runs through
+  // `~standard.validate` and keeps the value that call returns. No output
+  // schema (a host `defineAction` addressable by node alone) passes through.
+  //
+  // `isEffectSchema<T, never>` is what the encode half needs; TypeScript then
+  // cannot subtract `ConstraintDecoder` from `OutputSchema`, so the foreign
+  // arm names `StandardSchema` itself -- the same discrimination
+  // `asStandardSchema` documents.
+  const output = definition.output;
   const encodeOutput =
-    definition.output && isEffectSchema<TOutput, never>(definition.output)
-      ? encodeThroughOutputSchema(subject, definition.output)
-      : Result.succeed;
+    output === undefined
+      ? Result.succeed
+      : isEffectSchema<TOutput, never>(output)
+        ? encodeThroughOutputSchema(subject, output)
+        : validateThroughOutputSchema(
+            subject,
+            // eslint-disable-next-line typescript/no-unsafe-type-assertion -- OutputSchema's remaining arm after isEffectSchema
+            output as StandardSchema<TOutput>
+          );
 
   function runStep(
     app: StepEnvironment,

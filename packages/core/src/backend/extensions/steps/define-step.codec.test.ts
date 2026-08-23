@@ -172,9 +172,11 @@ describe("defineStep and an optional config field", () => {
  * A step whose schemas came from somewhere other than Effect.
  *
  * Zod stands in for any Standard Schema library. What it publishes is a
- * validator and a JSON Schema, so the form derives and the config is checked,
- * and the encode the Effect arm runs has no counterpart here. The handler is
- * still an Effect here; the suite below writes one without.
+ * validator and a JSON Schema, so the form derives, the config is checked, and
+ * the handler's answer runs through the same validate on the way out. The
+ * encode the Effect arm runs has no counterpart here; the returned `value` is
+ * what the node keeps. The handler is still an Effect here; the suite below
+ * writes one without.
  */
 describe("defineStep and a schema from another library", () => {
   const step = defineStep({
@@ -212,6 +214,82 @@ describe("defineStep and a schema from another library", () => {
       error: {
         message: 'Step "demo/foreign" received an invalid configuration: to',
       },
+    });
+  });
+
+  // Zod's default object strips undeclared keys in `~standard.validate`, so the
+  // oversized vendor object the handler answered with does not reach the envelope.
+  it("keeps only the keys the output schema's validate returns", async () => {
+    const leaky = defineStep({
+      ...METADATA,
+      input: z.object({ to: z.string() }),
+      output: z.object({ id: z.string() }),
+      handler: () =>
+        Effect.succeed({
+          id: "public-123",
+          apiToken: "should-not-leak",
+          rawVendorResponse: { nested: true },
+        }),
+    });
+
+    expect(
+      await runStep(leaky.implement("demo/trim")(runner))({
+        to: "someone",
+        _context: CONTEXT,
+      })
+    ).toEqual({
+      success: true,
+      data: { id: "public-123" },
+    });
+  });
+
+  // A handler answering outside its output schema fails the node once, the same
+  // way the Effect encode arm does for a value it cannot encode.
+  it("fails the node when the answer does not satisfy the output schema", async () => {
+    const bad = defineStep({
+      ...METADATA,
+      input: z.object({ to: z.string() }),
+      output: z.object({ id: z.string() }),
+      // The return type is the decoded side; reaching a wrong shape takes a cast.
+      handler: () => Effect.succeed({ id: 7 } as unknown as { id: string }),
+    });
+
+    expect(
+      await runStep(bad.implement("demo/bad-output")(runner))({
+        to: "someone",
+        _context: CONTEXT,
+      })
+    ).toEqual({
+      success: false,
+      error: {
+        message:
+          'Step "demo/bad-output" returned a value its output schema does not accept: id',
+      },
+    });
+  });
+
+  // `z.looseObject` is how an author says undeclared keys should survive. The
+  // validate still runs; it just keeps what the schema's policy keeps.
+  it("keeps undeclared keys when the output schema says so", async () => {
+    const open = defineStep({
+      ...METADATA,
+      input: z.object({ to: z.string() }),
+      output: z.looseObject({ id: z.string() }),
+      handler: () =>
+        Effect.succeed({
+          id: "public-123",
+          extra: "kept",
+        }),
+    });
+
+    expect(
+      await runStep(open.implement("demo/passthrough")(runner))({
+        to: "someone",
+        _context: CONTEXT,
+      })
+    ).toEqual({
+      success: true,
+      data: { id: "public-123", extra: "kept" },
     });
   });
 });
