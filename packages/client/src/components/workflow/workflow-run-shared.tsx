@@ -171,6 +171,9 @@ export function readBase64ImageOutput(output: unknown): string | null {
 
 // URL detection helper
 function isUrl(str: string): boolean {
+  if (str.trim() !== str) {
+    return false;
+  }
   try {
     const url = new URL(str);
     return url.protocol === "http:" || url.protocol === "https:";
@@ -375,7 +378,7 @@ function ScalarValue({ value }: { value: string | number | boolean | null }) {
       </a>
     );
   }
-  return <span className="break-words">{value}</span>;
+  return <span className="break-words whitespace-pre-wrap">{value}</span>;
 }
 
 function isScalar(value: JsonValue): value is string | number | boolean | null {

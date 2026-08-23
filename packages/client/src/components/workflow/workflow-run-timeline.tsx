@@ -13,23 +13,23 @@ import {
 
 export function WorkflowRunNodeIndex({
   logs,
-  focusNodeId,
+  focusLogId,
   onFocusRestored,
   onSelect,
 }: {
   logs: ExecutionLog[];
-  focusNodeId?: string | null;
+  focusLogId?: string | null;
   onFocusRestored?: () => void;
-  onSelect?: (nodeId: string) => void;
+  onSelect?: (log: ExecutionLog) => void;
 }) {
   const setSelectedNode = useSetAtom(selectedNodeAtom);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
 
-  useAfterCommit(focusNodeId, () => {
-    if (!focusNodeId) {
+  useAfterCommit(focusLogId, () => {
+    if (!focusLogId) {
       return;
     }
-    rowRefs.current.get(focusNodeId)?.focus();
+    rowRefs.current.get(focusLogId)?.focus();
     onFocusRestored?.();
   });
 
@@ -41,9 +41,9 @@ export function WorkflowRunNodeIndex({
     );
   }
 
-  const selectNode = (nodeId: string) => {
-    onSelect?.(nodeId);
-    setSelectedNode(nodeId);
+  const selectLog = (log: ExecutionLog) => {
+    onSelect?.(log);
+    setSelectedNode(log.nodeId);
   };
 
   return (
@@ -71,12 +71,13 @@ export function WorkflowRunNodeIndex({
               aria-label={`${log.nodeName || log.nodeType}, ${getStatusLabel(log.status)}`}
               className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 rounded-sm px-2 py-1.5 text-left transition-colors duration-100 hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
               data-run-node-id={log.nodeId}
-              onClick={() => selectNode(log.nodeId)}
+              data-run-log-id={log.id}
+              onClick={() => selectLog(log)}
               ref={(element) => {
                 if (element) {
-                  rowRefs.current.set(log.nodeId, element);
+                  rowRefs.current.set(log.id, element);
                 } else {
-                  rowRefs.current.delete(log.nodeId);
+                  rowRefs.current.delete(log.id);
                 }
               }}
               type="button"

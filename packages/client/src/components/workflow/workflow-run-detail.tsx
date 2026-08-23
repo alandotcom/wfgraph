@@ -3,6 +3,7 @@ import { useState } from "react";
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
 import { cn } from "@wfgraph/shared/utils";
 import { Button } from "#src/components/ui/button";
+import { useAfterCommit } from "#src/hooks/effects";
 import {
   type ExecutionEvent,
   type ExecutionLog,
@@ -61,22 +62,39 @@ export function WorkflowRunDetail({
   onResume,
 }: WorkflowRunDetailProps) {
   const selectedNodeId = useAtomValue(selectedNodeAtom);
-  const [returnFocusNodeId, setReturnFocusNodeId] = useState<string | null>(
-    null
-  );
+  const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
+  const [returnFocusLogId, setReturnFocusLogId] = useState<string | null>(null);
   const sortedLogs = logs.toSorted(
     (a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime()
   );
+  useAfterCommit(selectedNodeId, () => {
+    const selectedLog = selectedLogId
+      ? sortedLogs.find((log) => log.id === selectedLogId)
+      : undefined;
+    // The canvas owns node selection, so an override from another node is stale
+    // as soon as a direct canvas selection commits.
+    if (selectedLogId !== null && selectedLog?.nodeId !== selectedNodeId) {
+      setSelectedLogId(null);
+    }
+  });
 
   if (selectedNodeId) {
     return (
       <div className="h-full motion-safe:animate-[run-panel-forward_200ms_cubic-bezier(0.16,1,0.3,1)] motion-reduce:animate-[run-panel-fade_100ms_ease-out]">
         <WorkflowRunNodeInspector
-          key={selectedNodeId}
+          key={`${selectedNodeId}:${selectedLogId ?? ""}`}
           logs={sortedLogs}
+          selectedLogId={selectedLogId}
           onBack={() => {
-            if (returnFocusNodeId !== selectedNodeId) {
-              setReturnFocusNodeId(null);
+            setSelectedLogId(null);
+            const selectedLog = sortedLogs.find(
+              (log) => log.id === selectedLogId
+            );
+            if (
+              returnFocusLogId !== selectedLogId ||
+              selectedLog?.nodeId !== selectedNodeId
+            ) {
+              setReturnFocusLogId(null);
             }
           }}
         />
@@ -95,14 +113,14 @@ export function WorkflowRunDetail({
     <div
       className={cn(
         "flex h-full min-h-0 flex-col motion-reduce:animate-[run-panel-fade_100ms_ease-out]",
-        returnFocusNodeId
+        returnFocusLogId
           ? "motion-safe:animate-[run-panel-back_160ms_cubic-bezier(0.16,1,0.3,1)]"
           : "motion-safe:animate-[run-panel-forward_200ms_cubic-bezier(0.16,1,0.3,1)]"
       )}
     >
       <WorkflowRunSummaryRow
         execution={execution}
-        focusOnMount={returnFocusNodeId === null}
+        focusOnMount={returnFocusLogId === null}
         isCanceling={isCanceling}
         onBack={onBack}
         onCancel={isRunInProgress(execution.status) ? onCancel : undefined}
@@ -157,9 +175,12 @@ export function WorkflowRunDetail({
           ) : null}
 
           <WorkflowRunNodeIndex
-            focusNodeId={returnFocusNodeId}
+            focusLogId={returnFocusLogId}
             logs={sortedLogs}
-            onSelect={setReturnFocusNodeId}
+            onSelect={(log) => {
+              setSelectedLogId(log.id);
+              setReturnFocusLogId(log.id);
+            }}
           />
 
           {events.length > 0 ? (

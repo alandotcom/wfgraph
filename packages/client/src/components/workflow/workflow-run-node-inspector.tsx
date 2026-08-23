@@ -2,7 +2,7 @@ import { ArrowLeft, ChevronDown, ChevronRight } from "lucide-react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useRef, useState } from "react";
 import { Button } from "#src/components/ui/button";
-import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
+import { useAfterCommit } from "#src/hooks/effects";
 import {
   displayNodesAtom,
   selectedNodeAtom,
@@ -46,18 +46,6 @@ function TechnicalDetails({ log }: { log: ExecutionLog }) {
   const activeTab =
     payloads.find((payload) => payload.id === requestedTab) ?? payloads[0];
 
-  useDomEvent(
-    document,
-    "keydown",
-    (event) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setOpen(false);
-      }
-    },
-    { enabled: open }
-  );
-
   if (!activeTab) {
     return null;
   }
@@ -81,63 +69,88 @@ function TechnicalDetails({ log }: { log: ExecutionLog }) {
         "shrink-0 border-t bg-background transition-[height] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-opacity motion-reduce:duration-100",
         open ? "h-[min(35vh,18rem)] md:h-[38%]" : "h-11 md:h-9"
       )}
+      onKeyDown={(event) => {
+        if (open && event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          setOpen(false);
+        }
+      }}
     >
-      {open ? (
-        <div className="flex h-full min-h-0 flex-col">
-          <div className="flex h-11 shrink-0 items-center border-b px-2 md:h-9">
-            <button
-              aria-controls="technical-details-panel"
-              aria-expanded="true"
-              className="flex h-full items-center gap-1.5 px-1 font-medium text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-              onClick={() => setOpen(false)}
-              type="button"
-            >
+      <div className="flex h-full min-h-0 flex-col">
+        <div
+          className={cn(
+            "flex h-11 shrink-0 items-center md:h-9",
+            open ? "border-b px-2" : ""
+          )}
+        >
+          <button
+            aria-controls="technical-details-panel"
+            aria-expanded={open}
+            className={cn(
+              "flex h-full items-center gap-1.5 font-medium text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
+              open
+                ? "px-1"
+                : "w-full px-3 text-left transition-colors duration-100 hover:bg-muted/60 focus-visible:ring-inset focus-visible:ring-ring/30"
+            )}
+            onClick={() => setOpen((current) => !current)}
+            type="button"
+          >
+            {open ? (
               <ChevronDown className="size-3 text-muted-foreground" />
-              Technical details
-            </button>
-            <div
-              aria-label="Technical payload"
-              className="ml-auto flex h-full items-end gap-1"
-              role="tablist"
-            >
-              {payloads.map((payload) => (
-                <button
-                  aria-controls="technical-details-panel"
-                  aria-selected={activeTab.id === payload.id}
-                  className={cn(
-                    "h-11 border-b-2 border-transparent px-2 text-muted-foreground text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 md:h-8",
-                    activeTab.id === payload.id &&
-                      "border-foreground text-foreground"
-                  )}
-                  id={`technical-tab-${payload.id}`}
-                  key={payload.id}
-                  onClick={() => setRequestedTab(payload.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "ArrowLeft") {
-                      event.preventDefault();
-                      moveTabFocus(-1);
-                    } else if (event.key === "ArrowRight") {
-                      event.preventDefault();
-                      moveTabFocus(1);
-                    }
-                  }}
-                  ref={(element) => {
-                    if (element) {
-                      tabRefs.current.set(payload.id, element);
-                    } else {
-                      tabRefs.current.delete(payload.id);
-                    }
-                  }}
-                  role="tab"
-                  tabIndex={activeTab.id === payload.id ? 0 : -1}
-                  type="button"
-                >
-                  {payload.label}
-                </button>
-              ))}
-            </div>
-            <CopyButton data={activeTab.value} />
-          </div>
+            ) : (
+              <ChevronRight className="size-3 text-muted-foreground" />
+            )}
+            Technical details
+          </button>
+          {open ? (
+            <>
+              <div
+                aria-label="Technical payload"
+                className="ml-auto flex h-full items-end gap-1"
+                role="tablist"
+              >
+                {payloads.map((payload) => (
+                  <button
+                    aria-controls="technical-details-panel"
+                    aria-selected={activeTab.id === payload.id}
+                    className={cn(
+                      "h-11 border-b-2 border-transparent px-2 text-muted-foreground text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 md:h-8",
+                      activeTab.id === payload.id &&
+                        "border-foreground text-foreground"
+                    )}
+                    id={`technical-tab-${payload.id}`}
+                    key={payload.id}
+                    onClick={() => setRequestedTab(payload.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "ArrowLeft") {
+                        event.preventDefault();
+                        moveTabFocus(-1);
+                      } else if (event.key === "ArrowRight") {
+                        event.preventDefault();
+                        moveTabFocus(1);
+                      }
+                    }}
+                    ref={(element) => {
+                      if (element) {
+                        tabRefs.current.set(payload.id, element);
+                      } else {
+                        tabRefs.current.delete(payload.id);
+                      }
+                    }}
+                    role="tab"
+                    tabIndex={activeTab.id === payload.id ? 0 : -1}
+                    type="button"
+                  >
+                    {payload.label}
+                  </button>
+                ))}
+              </div>
+              <CopyButton data={activeTab.value} />
+            </>
+          ) : null}
+        </div>
+        {open ? (
           <div
             aria-labelledby={`technical-tab-${activeTab.id}`}
             className="min-h-0 flex-1 overflow-auto bg-muted/30"
@@ -148,28 +161,19 @@ function TechnicalDetails({ log }: { log: ExecutionLog }) {
               <JsonWithLinks data={activeTab.value} />
             </pre>
           </div>
-        </div>
-      ) : (
-        <button
-          aria-controls="technical-details-panel"
-          aria-expanded="false"
-          className="flex h-11 w-full items-center gap-1.5 px-3 text-left font-medium text-xs transition-colors duration-100 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30 md:h-9"
-          onClick={() => setOpen(true)}
-          type="button"
-        >
-          <ChevronRight className="size-3 text-muted-foreground" />
-          Technical details
-        </button>
-      )}
+        ) : null}
+      </div>
     </section>
   );
 }
 
 export function WorkflowRunNodeInspector({
   logs,
+  selectedLogId,
   onBack,
 }: {
   logs: ExecutionLog[];
+  selectedLogId?: string | null;
   onBack?: () => void;
 }) {
   const selectedNodeId = useAtomValue(selectedNodeAtom);
@@ -177,14 +181,22 @@ export function WorkflowRunNodeInspector({
   const setSelectedNode = useSetAtom(selectedNodeAtom);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
-  useAfterCommit(selectedNodeId, () => headingRef.current?.focus());
+  useAfterCommit(`${selectedNodeId}:${selectedLogId ?? ""}`, () =>
+    headingRef.current?.focus()
+  );
 
   if (!selectedNodeId) {
     return null;
   }
 
   const canvasNode = displayNodes.find((node) => node.id === selectedNodeId);
-  const log = logs.findLast((entry) => entry.nodeId === selectedNodeId);
+  const selectedLog = selectedLogId
+    ? logs.find(
+        (entry) => entry.id === selectedLogId && entry.nodeId === selectedNodeId
+      )
+    : undefined;
+  const log =
+    selectedLog ?? logs.findLast((entry) => entry.nodeId === selectedNodeId);
   const title =
     canvasNode?.data.label?.trim() || log?.nodeName || log?.nodeType || "Node";
   const kind = nodeKindLabel(

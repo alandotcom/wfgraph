@@ -82,6 +82,34 @@ describe("WorkflowRunSummaryRow", () => {
     ).toBe("customer_7");
   });
 
+  it("labels an eventless manual run instead of its internal workflow entity", () => {
+    expect(
+      getRunIdentity(
+        {
+          ...BASE_EXECUTION,
+          entityValue: "workflow:wf_1",
+          startEventName: null,
+          startSource: "manual",
+        },
+        8
+      )
+    ).toEqual({ title: "Manual run", context: null });
+  });
+
+  it("keeps a correlated workflow entity as the run title", () => {
+    expect(
+      getRunIdentity(
+        {
+          ...BASE_EXECUTION,
+          entityValue: "workflow:customer_7",
+          startEventName: null,
+          startSource: "manual",
+        },
+        8
+      )
+    ).toEqual({ title: "workflow:customer_7", context: null });
+  });
+
   it("describes terminal and active outcomes from the execution logs", () => {
     const failedLog = {
       id: "log_1",

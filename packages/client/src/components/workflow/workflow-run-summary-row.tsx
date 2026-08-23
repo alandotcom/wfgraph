@@ -38,6 +38,12 @@ export function getRunIdentity(
   if (eventName) {
     return { title: eventName, context: entity || null };
   }
+  if (
+    execution.startSource === "manual" &&
+    entity === `workflow:${execution.workflowId}`
+  ) {
+    return { title: "Manual run", context: null };
+  }
   if (entity) {
     return { title: entity, context: null };
   }

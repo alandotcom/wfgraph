@@ -110,6 +110,31 @@ describe("JsonPropertyInspector", () => {
     expect(view.getByText("3").className).toContain("tabular-nums");
   });
 
+  it("preserves line breaks and repeated whitespace in string values", () => {
+    const value = "First line\n  second  line";
+    const view = render(<JsonPropertyInspector value={value} />);
+
+    const scalar = view.getByText(
+      (_, element) =>
+        element?.tagName === "SPAN" && element.textContent === value
+    );
+
+    expect(scalar.className).toContain("whitespace-pre-wrap");
+  });
+
+  it("preserves surrounding whitespace in URL-shaped string values", () => {
+    const value = "  https://example.com/a  ";
+    const view = render(<JsonPropertyInspector value={value} />);
+
+    const scalar = view.getByText(
+      (_, element) =>
+        element?.tagName === "SPAN" && element.textContent === value
+    );
+
+    expect(scalar.className).toContain("whitespace-pre-wrap");
+    expect(view.queryByRole("link")).toBeNull();
+  });
+
   it("keeps nested collections behind explicit disclosures", () => {
     const view = render(
       <JsonPropertyInspector
