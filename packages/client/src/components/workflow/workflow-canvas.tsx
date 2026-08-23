@@ -33,6 +33,7 @@ import {
   displayNodesAtom,
   edgesAtom,
   canvasEditingLockedAtom,
+  isExecutionOverlayActiveAtom,
   onEdgesChangeAtom,
   onNodesChangeAtom,
   redoAtom,
@@ -44,6 +45,7 @@ import {
 } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
+  isGeneratingAtom,
   propertiesPanelActiveTabAtom,
   showMinimapAtom,
 } from "#src/lib/workflow-ui-store";
@@ -191,6 +193,8 @@ export function WorkflowCanvas() {
   // the overlay is up would write the draft under a canvas that is not showing
   // it. The toolbar's Publish button reads this same atom.
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
+  const overlayActive = useAtomValue(isExecutionOverlayActiveAtom);
+  const isGenerating = useAtomValue(isGeneratingAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
   // Below the mobile breakpoint the config rail is gone, so clicking a node has
@@ -420,6 +424,9 @@ export function WorkflowCanvas() {
   const onNodeClick: NodeMouseHandler = useCallback(
     (_event, node) => {
       setSelectedNode(node.id);
+      if (overlayActive) {
+        return;
+      }
       setActiveTab("properties");
       // Below the rail's breakpoint there is no panel mounted to receive the
       // selection, so selecting a node used to look like nothing happening: the
@@ -429,7 +436,7 @@ export function WorkflowCanvas() {
         openSheet();
       }
     },
-    [setSelectedNode, setActiveTab, isMobile, openSheet]
+    [overlayActive, setSelectedNode, setActiveTab, isMobile, openSheet]
   );
 
   const onConnectStart = useCallback(
@@ -712,7 +719,7 @@ export function WorkflowCanvas() {
         onConnectStart={editingLocked ? undefined : onConnectStart}
         onEdgeContextMenu={editingLocked ? undefined : onEdgeContextMenu}
         onEdgesChange={editingLocked ? undefined : onEdgesChange}
-        onNodeClick={editingLocked ? undefined : onNodeClick}
+        onNodeClick={isGenerating ? undefined : onNodeClick}
         onNodeContextMenu={editingLocked ? undefined : onNodeContextMenu}
         onNodesChange={editingLocked ? undefined : onNodesChange}
         onPaneClick={onPaneClick}

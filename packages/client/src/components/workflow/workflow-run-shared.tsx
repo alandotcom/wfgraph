@@ -114,6 +114,34 @@ export function getStatusBadgeClass(status: string): string {
   return BADGE_CLASSES[toneOf(status)];
 }
 
+const TEXT_CLASSES: Record<StatusTone, string> = {
+  good: "text-success",
+  bad: "text-destructive",
+  info: "text-info",
+  pending: "text-warning",
+  quiet: "text-cancelled",
+  muted: "text-muted-foreground",
+};
+
+export function getStatusTextClass(status: string): string {
+  return TEXT_CLASSES[toneOf(status)];
+}
+
+export function nodeKindLabel(nodeType: string): string {
+  switch (nodeType) {
+    case "lifecycle":
+      return "Lifecycle";
+    case "wait":
+      return "Wait";
+    case "condition":
+      return "Condition";
+    case "group":
+      return "Group";
+    default:
+      return "Action";
+  }
+}
+
 export function formatDuration(duration: string): string {
   const ms = Number.parseInt(duration, 10);
   return ms < 1000 ? `${duration}ms` : `${(ms / 1000).toFixed(2)}s`;
@@ -200,9 +228,9 @@ export function CopyButton({
 
   return (
     <Button
-      className="h-7 px-2"
+      aria-label="Copy"
       onClick={handleCopy}
-      size="sm"
+      size="icon-sm"
       type="button"
       variant="ghost"
     >
@@ -285,14 +313,20 @@ function findOutputComponent(
   ];
 }
 
+export const JSON_PRE_CLASS =
+  "overflow-x-auto bg-muted/50 p-3 font-mono text-[0.8125rem] leading-relaxed";
+
 export function OutputDisplay({
   output,
   input,
   actionType,
+  compact = false,
 }: {
   output: unknown;
   input?: unknown;
   actionType?: string;
+  /** Skip the titled Output wrapper when a ConfigSection already names it. */
+  compact?: boolean;
 }) {
   const catalog = useExtensionCatalog();
   const integrationUi = useIntegrationUi();
@@ -332,12 +366,25 @@ export function OutputDisplay({
 
   const richResult = renderRichResult();
 
+  const jsonBlock = (
+    <pre className={JSON_PRE_CLASS}>
+      <JsonWithLinks data={output} />
+    </pre>
+  );
+
+  if (compact) {
+    return (
+      <div className="space-y-3">
+        {jsonBlock}
+        {richResult}
+      </div>
+    );
+  }
+
   return (
     <>
       <CollapsibleSection copyData={output} title="Output">
-        <pre className="overflow-auto rounded-lg border bg-muted/50 p-3 font-mono text-xs leading-relaxed">
-          <JsonWithLinks data={output} />
-        </pre>
+        {jsonBlock}
       </CollapsibleSection>
 
       {richResult ? (

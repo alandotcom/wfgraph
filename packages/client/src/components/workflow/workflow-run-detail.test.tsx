@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
+import { createStore, Provider as JotaiProvider } from "jotai";
+import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
+import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import type { WorkflowExecution } from "#src/lib/execution-logs";
+import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
+import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { WorkflowRunDetail } from "./workflow-run-detail";
 
 const BASE_EXECUTION: WorkflowExecution = {
@@ -21,22 +26,43 @@ const BASE_EXECUTION: WorkflowExecution = {
 };
 
 /** The props every case shares, so a case only names what it varies. */
-function renderDetail(execution: WorkflowExecution) {
-  return render(
-    <WorkflowRunDetail
-      execution={execution}
-      events={[]}
-      isCanceling={false}
-      isResuming={false}
-      logs={[]}
-      onBack={vi.fn(() => undefined)}
-      onCancel={vi.fn(() => undefined)}
-      onResume={vi.fn(() => undefined)}
-      runNumber={1}
-      waits={[]}
-    />
-  );
+function renderDetail(
+  execution: WorkflowExecution,
+  extras?: {
+    logs?: WorkflowRunDetailLogs;
+    selectedNodeId?: string;
+  }
+) {
+  const store = createStore();
+  if (extras?.selectedNodeId) {
+    store.set(selectedNodeAtom, extras.selectedNodeId);
+  }
+  return {
+    store,
+    ...render(
+      <JotaiProvider store={store}>
+        <ExtensionCatalogProvider value={emptyExtensionCatalog}>
+          <IntegrationUiProvider value={{}}>
+            <WorkflowRunDetail
+              events={[]}
+              execution={execution}
+              isCanceling={false}
+              isResuming={false}
+              logs={extras?.logs ?? []}
+              onBack={vi.fn(() => undefined)}
+              onCancel={vi.fn(() => undefined)}
+              onResume={vi.fn(() => undefined)}
+              runNumber={1}
+              waits={[]}
+            />
+          </IntegrationUiProvider>
+        </ExtensionCatalogProvider>
+      </JotaiProvider>
+    ),
+  };
 }
+
+type WorkflowRunDetailLogs = Parameters<typeof WorkflowRunDetail>[0]["logs"];
 
 describe("WorkflowRunDetail", () => {
   // A Lifecycle Rules Cancel Event reaches every in-flight status (ADR-0007),
@@ -64,5 +90,48 @@ describe("WorkflowRunDetail", () => {
     const view = renderDetail({ ...BASE_EXECUTION, status: "completed" });
 
     expect(view.queryByRole("button", { name: "Cancel" })).toBeNull();
+  });
+
+  it("opens the inspector from an executed-node row and back returns to overview", () => {
+    const logs: WorkflowRunDetailLogs = [
+      {
+        id: "log_wait",
+        nodeId: "wait_1",
+        nodeName: "Wait",
+        nodeType: "wait",
+        status: "success",
+        startedAt: new Date("2026-02-22T10:00:00Z"),
+        completedAt: new Date("2026-02-22T10:00:09Z"),
+        duration: "9030",
+        input: { invoiceId: "inv_1" },
+        output: {},
+        error: null,
+      },
+    ];
+    const view = renderDetail(
+      { ...BASE_EXECUTION, status: "completed" },
+      { logs }
+    );
+
+    fireEvent.click(view.getByRole("button", { name: /Wait/ }));
+    expect(view.getByRole("heading", { name: "Wait" })).toBeTruthy();
+    expect(view.queryByText("This node did not run.")).toBeNull();
+    expect(view.getByText(/invoiceId/)).toBeTruthy();
+
+    fireEvent.click(view.getByRole("button", { name: "Back to run overview" }));
+    expect(
+      view.getByRole("button", { name: "Back to runs list" })
+    ).toBeTruthy();
+    expect(view.getByRole("button", { name: /Wait/ })).toBeTruthy();
+  });
+
+  it("shows an empty inspector for a canvas node that never ran", () => {
+    const view = renderDetail(
+      { ...BASE_EXECUTION, status: "completed" },
+      { selectedNodeId: "action_never" }
+    );
+
+    expect(view.getByText("This node did not run.")).toBeTruthy();
+    expect(view.queryByText("Input")).toBeNull();
   });
 });

@@ -5,8 +5,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import { useAtomValue } from "jotai";
-import { Play } from "lucide-react";
+import { useAtomValue, useSetAtom } from "jotai";
 import { useState } from "react";
 import { Button } from "#src/components/ui/button";
 import { Spinner } from "#src/components/ui/spinner";
@@ -17,8 +16,10 @@ import {
   toWorkflowExecutions,
 } from "#src/lib/execution-logs";
 import { useExitRun } from "#src/hooks/use-exit-run";
+import { useAfterCommit } from "#src/hooks/effects";
 import { orpcQuery, refreshRunHistory } from "#src/lib/rpc-query";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
 import { WorkflowRefusedStarts } from "./workflow-refused-starts";
 import { WorkflowRunDetail } from "./workflow-run-detail";
@@ -42,12 +43,16 @@ const workflowRouteApi = getRouteApi("/workflows/$workflowId");
 export function WorkflowRuns() {
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
+  const setSelectedNode = useSetAtom(selectedNodeAtom);
   const queryClient = useQueryClient();
   // Which run is open is URL state. ExecutionOverlaySync on the editor shell
   // derives the selection atom and pinned graph; this panel only reads search.
   const { executionId } = workflowRouteApi.useSearch();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const exitRun = useExitRun();
+  useAfterCommit(executionId, () => {
+    setSelectedNode(null);
+  });
 
   // Superseded runs are the ones a newer start displaced. They are hidden by
   // default because a newest-wins workflow makes one on every reschedule, and a
@@ -227,15 +232,9 @@ export function WorkflowRuns() {
       <div className="space-y-2">
         {supersededToggle}
         <WorkflowRefusedStarts refusedStarts={refusedStarts} />
-        <div className="flex flex-col items-center justify-center py-16">
-          <div className="mb-3 rounded-lg border border-dashed p-4">
-            <Play className="size-6 text-muted-foreground" />
-          </div>
-          <div className="font-medium text-foreground text-sm">No runs yet</div>
-          <div className="mt-1 text-muted-foreground text-xs">
-            Execute your workflow to see runs here
-          </div>
-        </div>
+        <p className="py-8 text-center text-muted-foreground text-xs">
+          No runs yet
+        </p>
       </div>
     );
   }

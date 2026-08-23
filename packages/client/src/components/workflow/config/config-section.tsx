@@ -30,6 +30,7 @@ export function ConfigSection({
   editing,
   onEditingChange,
   stickyHeader = false,
+  trailing,
   view,
   children,
 }: {
@@ -52,6 +53,8 @@ export function ConfigSection({
    * the box it names and paints the column's own fill across a tinted card.
    */
   stickyHeader?: boolean;
+  /** Extra header control, such as copy, shown beside Edit when there is one. */
+  trailing?: ReactNode;
   /** What the section reads as when it is not being edited. */
   view: ReactNode;
   children: ReactNode;
@@ -84,36 +87,39 @@ export function ConfigSection({
           <h3 className="truncate font-medium text-xs/relaxed">{label}</h3>
           {help ? <HelpPopover label={label}>{help}</HelpPopover> : null}
         </div>
-        {editable ? (
-          // A panel shows several of these at once, so the accessible name
-          // carries the section: a list of three buttons all called "Edit" says
-          // nothing about which block each one opens. The visible word leads it,
-          // which is what keeps voice control working on what is on screen.
-          <Button
-            aria-label={
-              isEditing
-                ? `Done editing ${editActionName}`
-                : `Edit ${editActionName}`
-            }
-            // Outline rather than ghost, and a fixed width. A ghost button is
-            // a bare word until it is hovered, which is no affordance at all
-            // for the one control that changes what the panel is for; and
-            // "Edit" and "Done" are different widths in Geist, so an unpinned
-            // button moved under the pointer as it was pressed.
-            className="w-[4.5rem] justify-center"
-            onClick={() => onEditingChange(!isEditing)}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            {isEditing ? (
-              <Check data-icon="inline-start" />
-            ) : (
-              <Pencil data-icon="inline-start" />
-            )}
-            {isEditing ? "Done" : "Edit"}
-          </Button>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-1">
+          {trailing}
+          {editable ? (
+            // A panel shows several of these at once, so the accessible name
+            // carries the section: a list of three buttons all called "Edit" says
+            // nothing about which block each one opens. The visible word leads it,
+            // which is what keeps voice control working on what is on screen.
+            <Button
+              aria-label={
+                isEditing
+                  ? `Done editing ${editActionName}`
+                  : `Edit ${editActionName}`
+              }
+              // Outline rather than ghost, and a fixed width. A ghost button is
+              // a bare word until it is hovered, which is no affordance at all
+              // for the one control that changes what the panel is for; and
+              // "Edit" and "Done" are different widths in Geist, so an unpinned
+              // button moved under the pointer as it was pressed.
+              className="w-[4.5rem] justify-center"
+              onClick={() => onEditingChange(!isEditing)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {isEditing ? (
+                <Check data-icon="inline-start" />
+              ) : (
+                <Pencil data-icon="inline-start" />
+              )}
+              {isEditing ? "Done" : "Edit"}
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {isEditing ? <div className="space-y-2">{children}</div> : view}

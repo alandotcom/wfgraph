@@ -21,48 +21,58 @@ const BASE_EXECUTION: WorkflowExecution = {
 };
 
 describe("WorkflowRunSummaryRow", () => {
-  it("renders list mode with fixed layout and click behavior", () => {
+  it("renders a wrapping list row without a cancel gutter", () => {
     const onClick = vi.fn(() => undefined);
     const view = render(
       <WorkflowRunSummaryRow
         execution={BASE_EXECUTION}
-        leading={{ type: "spacer" }}
         onClick={onClick}
         runNumber={1}
         selected
-        trailing={{ type: "spacer" }}
       />
     );
 
     const row = view.getByTestId("workflow-run-summary-row");
-    expect(row.className).toContain("grid-cols-[1.5rem_minmax(0,1fr)_5rem]");
-    expect(row.className).toContain("py-3");
-    expect(row.className).toContain("bg-muted/50");
+    expect(row.className).not.toContain(
+      "grid-cols-[1.5rem_minmax(0,1fr)_5rem]"
+    );
+    expect(row.className).toContain("py-2.5");
+    expect(row.className).toContain("bg-muted");
+    expect(view.getByText("Test")).toBeTruthy();
+    expect(view.queryByText("Test Mode")).toBeNull();
+    expect(view.queryByRole("button", { name: "Cancel" })).toBeNull();
 
     fireEvent.click(row);
     expect(onClick).toHaveBeenCalledTimes(1);
-    expect(view.queryByRole("button", { name: "Cancel" })).toBeNull();
   });
 
-  it("renders back button in detail mode", () => {
+  it("stacks header metadata so a long event name wraps on its own line", () => {
     const onBack = vi.fn(() => undefined);
     const view = render(
       <WorkflowRunSummaryRow
-        execution={BASE_EXECUTION}
-        leading={{ onBack, type: "back" }}
+        execution={{
+          ...BASE_EXECUTION,
+          startEventName: "app/appointment.created.with.a.very.long.path",
+        }}
+        onBack={onBack}
         runNumber={2}
-        showStartEventName
-        trailing={{ type: "spacer" }}
+        variant="header"
       />
     );
 
     const backButton = view.getByRole("button", { name: "Back to runs list" });
     fireEvent.click(backButton);
     expect(onBack).toHaveBeenCalledTimes(1);
-    expect(view.getByText("appointment.updated")).toBeTruthy();
+    expect(
+      view.getByText("app/appointment.created.with.a.very.long.path")
+    ).toBeTruthy();
+    expect(
+      view.getByTestId("workflow-run-summary-row").className
+    ).not.toContain("5rem");
+    expect(view.queryByRole("button", { name: "Cancel" })).toBeNull();
   });
 
-  it("renders cancel button for waiting runs", () => {
+  it("renders a full-width cancel button only while the run can still stop", () => {
     const onCancel = vi.fn(() => undefined);
     const waitingExecution: WorkflowExecution = {
       ...BASE_EXECUTION,
@@ -74,38 +84,17 @@ describe("WorkflowRunSummaryRow", () => {
     const view = render(
       <WorkflowRunSummaryRow
         execution={waitingExecution}
-        leading={{ onBack: vi.fn(() => undefined), type: "back" }}
+        isCanceling={false}
+        onBack={vi.fn(() => undefined)}
+        onCancel={onCancel}
         runNumber={3}
-        trailing={{ isCanceling: false, onCancel, type: "cancel" }}
+        variant="header"
       />
     );
 
     const cancelButton = view.getByRole("button", { name: "Cancel" });
+    expect(cancelButton.className).toContain("w-full");
     fireEvent.click(cancelButton);
     expect(onCancel).toHaveBeenCalledWith("exec_waiting");
-  });
-
-  it("shows test mode badge only for test executions", () => {
-    const view = render(
-      <WorkflowRunSummaryRow
-        execution={BASE_EXECUTION}
-        leading={{ type: "spacer" }}
-        runNumber={4}
-        trailing={{ type: "spacer" }}
-      />
-    );
-
-    expect(view.getByText("Test Mode")).toBeTruthy();
-
-    view.rerender(
-      <WorkflowRunSummaryRow
-        execution={{ ...BASE_EXECUTION, id: "exec_live", runMode: "live" }}
-        leading={{ type: "spacer" }}
-        runNumber={5}
-        trailing={{ type: "spacer" }}
-      />
-    );
-
-    expect(view.queryByText("Test Mode")).toBeNull();
   });
 });

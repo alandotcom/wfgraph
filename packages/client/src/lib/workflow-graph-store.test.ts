@@ -30,6 +30,7 @@ import {
   onEdgesChangeAtom,
   onNodesChangeAtom,
   pasteCopiedSelectionAtom,
+  selectedNodeAtom,
   setGroupEnabledAtom,
   setNodeStatusesAtom,
   snapshotHistoryAtom,
@@ -597,6 +598,26 @@ describe("displayNodesAtom memoization", () => {
       "pinned_a",
     ]);
     expect(store.get(displayNodesAtom)).toBe(overlay);
+  });
+
+  it("paints the inspector's selected node onto a pinned overlay", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(executionOverlayGraphAtom, {
+      nodes: [lifecycleNode("pinned_t"), actionNode("pinned_a")],
+      edges: [],
+    });
+
+    store.set(selectedNodeAtom, "pinned_a");
+
+    expect(
+      store.get(displayNodesAtom).find((node) => node.id === "pinned_a")
+        ?.selected
+    ).toBe(true);
+    expect(
+      store.get(displayNodesAtom).find((node) => node.id === "pinned_t")
+        ?.selected
+    ).not.toBe(true);
   });
 });
 

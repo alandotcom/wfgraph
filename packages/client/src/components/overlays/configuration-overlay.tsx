@@ -5,6 +5,7 @@ import { useOverlay } from "#src/components/overlays/overlay-provider";
 import {
   type NodeConfigFrame,
   NodeConfigPanel,
+  RunsPanelActions,
   useNodeConfigTitle,
 } from "#src/components/workflow/node-config-panel";
 import { useAfterCommit } from "#src/hooks/effects";
@@ -54,7 +55,15 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
 
   return (
     <div className="flex h-full max-h-[80vh] flex-col">
-      <SmartOverlayHeader overlayId={overlayId} title={title} />
+      <SmartOverlayHeader
+        overlayId={overlayId}
+        title={title}
+        trailing={
+          title === "Runs" ? (
+            <RunsPanelActions confirm={frame.confirm} />
+          ) : undefined
+        }
+      />
       <NodeConfigPanel frame={frame} />
     </div>
   );

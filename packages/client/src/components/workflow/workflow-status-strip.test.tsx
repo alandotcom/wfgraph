@@ -73,6 +73,8 @@ const served: WorkflowRunRpcFixture = {
   supersededCount: 0,
   graphs: {},
   logsSummaryExtras: {},
+  logsByExecutionId: {},
+  waitsByExecutionId: {},
 };
 
 /** The one workflow the strip's publication badge reads. */

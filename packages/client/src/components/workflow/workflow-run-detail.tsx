@@ -1,5 +1,7 @@
+import { useAtomValue } from "jotai";
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
 import { Button } from "#src/components/ui/button";
+import { ConfigSection } from "#src/components/workflow/config/config-section";
 import {
   type ExecutionEvent,
   type ExecutionLog,
@@ -7,9 +9,11 @@ import {
   isRunInProgress,
   type WorkflowExecution,
 } from "#src/lib/execution-logs";
+import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import { CollapsibleSection } from "./workflow-run-shared";
+import { WorkflowRunNodeInspector } from "./workflow-run-node-inspector";
 import { WorkflowRunSummaryRow } from "./workflow-run-summary-row";
-import { WorkflowRunTimeline } from "./workflow-run-timeline";
+import { WorkflowRunNodeIndex } from "./workflow-run-timeline";
 
 type WorkflowRunDetailProps = {
   execution: WorkflowExecution;
@@ -26,6 +30,8 @@ type WorkflowRunDetailProps = {
   onResume: (token: string) => void;
 };
 
+const ignoreEditingChange = (_editing: boolean) => undefined;
+
 export function WorkflowRunDetail({
   execution,
   runNumber,
@@ -39,26 +45,24 @@ export function WorkflowRunDetail({
   onCancel,
   onResume,
 }: WorkflowRunDetailProps) {
+  const selectedNodeId = useAtomValue(selectedNodeAtom);
   const sortedLogs = logs.toSorted(
     (a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime()
   );
+
+  if (selectedNodeId) {
+    return <WorkflowRunNodeInspector logs={sortedLogs} />;
+  }
 
   return (
     <div className="space-y-4">
       <WorkflowRunSummaryRow
         execution={execution}
-        leading={{ onBack, type: "back" }}
+        isCanceling={isCanceling}
+        onBack={onBack}
+        onCancel={isRunInProgress(execution.status) ? onCancel : undefined}
         runNumber={runNumber}
-        showStartEventName
-        trailing={
-          isRunInProgress(execution.status)
-            ? {
-                isCanceling,
-                onCancel,
-                type: "cancel",
-              }
-            : { type: "spacer" }
-        }
+        variant="header"
       />
 
       {notice ? (
@@ -67,55 +71,63 @@ export function WorkflowRunDetail({
         </p>
       ) : null}
 
-      {waits.map((wait) => (
-        <div
-          className="space-y-1.5 rounded-md border bg-muted/30 p-2"
-          key={wait.id}
+      {waits.length > 0 ? (
+        <ConfigSection
+          editable={false}
+          editing={false}
+          label="Waiting"
+          onEditingChange={ignoreEditingChange}
+          view={
+            <div className="space-y-3">
+              {waits.map((wait) => (
+                <div className="space-y-1.5" key={wait.id}>
+                  <p className="font-medium text-xs">
+                    Parked at {wait.nodeName}
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    {wait.subscribedEvents.length > 0
+                      ? `Waiting for ${wait.subscribedEvents.join(", ")}`
+                      : "Waiting on a timer"}
+                  </p>
+                  {wait.resumeToken ? (
+                    <Button
+                      disabled={isResuming}
+                      onClick={() => onResume(wait.resumeToken ?? "")}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      Resume now
+                    </Button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          }
         >
-          <p className="font-medium text-xs">Parked at {wait.nodeName}</p>
-          <p className="text-xs text-muted-foreground">
-            {wait.subscribedEvents.length > 0
-              ? `Waiting for ${wait.subscribedEvents.join(", ")}`
-              : "Waiting on a timer"}
-          </p>
-          {wait.resumeToken ? (
-            <Button
-              disabled={isResuming}
-              // The operator's way past an Event that is never going to come.
-              // It carries no payload, so a match downstream of it reads an
-              // empty object; that is the point of forcing the run onward.
-              onClick={() => onResume(wait.resumeToken ?? "")}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              Resume now
-            </Button>
-          ) : null}
-        </div>
-      ))}
+          {null}
+        </ConfigSection>
+      ) : null}
 
-      {/* Timeline */}
-      <WorkflowRunTimeline logs={sortedLogs} />
+      <WorkflowRunNodeIndex logs={sortedLogs} />
 
-      {/* Audit events */}
       {events.length > 0 ? (
         <CollapsibleSection title="Audit Events">
           <div className="space-y-2">
             {events.map((event) => (
               <div
-                className="flex items-center justify-between rounded-md border bg-muted/30 px-2 py-1.5"
+                className="flex items-center justify-between gap-2"
                 key={event.id}
               >
                 <div className="min-w-0">
                   <div className="truncate font-medium text-xs">
                     {event.message}
                   </div>
-                  <div className="truncate text-xs text-muted-foreground">
+                  <div className="truncate text-muted-foreground text-xs">
                     {event.eventType}
                   </div>
                 </div>
-                <div className="ml-3 shrink-0 text-xs text-muted-foreground">
+                <div className="shrink-0 text-muted-foreground text-xs">
                   {getRelativeTime(event.createdAt)}
                 </div>
               </div>
