@@ -104,6 +104,27 @@ function templateIssues(input: GraphAssessmentInput): string[] {
           issues.push(
             `non-upstream reference ${token.nodeId} on ${node.data.label || node.id}`
           );
+        } else {
+          const source = input.document.nodes.find(
+            (candidate) => candidate.id === token.nodeId
+          );
+          const sourceAction = source ? actionTypeOf(source) : undefined;
+          const exposesPath =
+            source?.data.type === "lifecycle"
+              ? input.catalog.events.some((event) =>
+                  event.payloadFields.some(
+                    (field) => field.path === token.fieldPath
+                  )
+                )
+              : sourceAction !== undefined &&
+                findAction(input.catalog, sourceAction)?.outputFields.some(
+                  (field) => field.path === token.fieldPath
+                );
+          if (!exposesPath) {
+            issues.push(
+              `unknown reference path ${token.fieldPath} on ${node.data.label || node.id}`
+            );
+          }
         }
       }
     }
@@ -133,6 +154,7 @@ export function assessGraphGrounding(
     const integrationId = node.data.config?.integrationId;
     if (
       typeof integrationId === "string" &&
+      integrationId.trim().length > 0 &&
       !input.integrations.some(
         (integration) => integration.id === integrationId
       )
@@ -157,6 +179,21 @@ export function assessGraphGrounding(
   }
 
   issues.push(...templateIssues(input));
+
+  for (const check of [
+    () => validateWorkflowEvents(input.document.nodes, input.catalog),
+    () =>
+      validateEventSplitOutlets(
+        input.document.nodes,
+        input.document.edges,
+        input.catalog
+      ),
+  ]) {
+    const result = check();
+    if (!result.valid) {
+      issues.push(result.error);
+    }
+  }
 
   return issues.length === 0
     ? { score: 1, rationale: "Every graph identifier is grounded." }

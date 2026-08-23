@@ -67,6 +67,21 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("label it carries on the canvas");
   });
 
+  it("distinguishes a useful blocked draft from publish readiness", () => {
+    const prompt = unwrapped(buildSystemPrompt(emptyExtensionCatalog));
+
+    expect(prompt).toContain("draft is complete");
+    expect(prompt).toContain("remaining human work");
+    expect(prompt).toContain("ready to publish");
+    expect(prompt).toContain("publishBlockers is empty");
+    expect(prompt).toContain("leave that field empty");
+    expect(prompt).toContain("remaining human work");
+    expect(prompt).toContain("required identifier or destination");
+    expect(prompt).toContain("Draft descriptive text");
+    expect(prompt).toContain("requires a connection");
+    expect(prompt).toContain("requires a channel");
+  });
+
   it("carries the built-in action ids the tools accept", () => {
     const prompt = buildSystemPrompt(emptyExtensionCatalog);
 
@@ -81,6 +96,21 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("including built-in steps");
     expect(prompt).toContain("Use an existing upstream reference");
     expect(prompt).toContain("Add a lookup action only when");
+  });
+
+  it("requires a fresh graph read before recovering from a refusal", () => {
+    const prompt = unwrapped(buildSystemPrompt(emptyExtensionCatalog));
+
+    expect(prompt).toContain("After a tool refusal, call read_workflow");
+    expect(prompt).toContain("Never repeat the refused call unchanged");
+  });
+
+  it("routes structured Wait configuration through set_wait", () => {
+    const prompt = unwrapped(buildSystemPrompt(emptyExtensionCatalog));
+
+    expect(prompt).toContain("set_wait");
+    expect(prompt).toContain("list_events");
+    expect(prompt).toContain("Event wait needs a timeout");
   });
 
   it("explains how an always-run action and a conditional action fan out", () => {

@@ -106,4 +106,28 @@ describe("assessGraphGrounding", () => {
         "Unknown action invented/send-message on Score applicant; unknown integration invented-connection on Score applicant.",
     });
   });
+
+  it("treats a blank integration id as unconfigured", () => {
+    const document = validDocument();
+    document.nodes[1] = {
+      ...document.nodes[1],
+      data: {
+        ...document.nodes[1].data,
+        config: {
+          actionType: "slack/send-message",
+          integrationId: "",
+          channel: "#recruiting",
+          text: "Applicant created",
+        },
+      },
+    };
+
+    expect(
+      assessGraphGrounding({
+        document,
+        catalog: fixtureCatalog,
+        integrations: [],
+      })
+    ).toEqual({ score: 1, rationale: "Every graph identifier is grounded." });
+  });
 });

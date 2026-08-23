@@ -1,15 +1,28 @@
-import { Effect } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
 import { createJudge, createJudgeHarness } from "vitest-evals";
 import { agentModelLayer } from "@wfgraph/core/backend/agent/model";
 import { readEvalModelSettings } from "#src/agent/harness";
 import type { AgentEvalInput, AgentEvalOutput } from "#src/agent/types";
 
-type IntentVerdict = {
-  verdict: "pass" | "fail" | "na";
-  rationale: string;
-  evidence: string[];
-};
+const intentVerdictSchema = Schema.Struct({
+  verdict: Schema.Literals(["pass", "fail", "na"]),
+  rationale: Schema.String,
+  evidence: Schema.mutable(Schema.Array(Schema.String)),
+});
+
+type IntentVerdict = typeof intentVerdictSchema.Type;
+const decodeIntentVerdict = Schema.decodeUnknownResult(intentVerdictSchema);
+
+export function keepIntentJudgeAdvisory<E, R>(
+  effect: Effect.Effect<IntentVerdict, E, R>
+): Effect.Effect<IntentVerdict, never, R> {
+  return Effect.orElseSucceed(effect, () => ({
+    verdict: "na" as const,
+    rationale: "The intent judge request failed.",
+    evidence: [],
+  }));
+}
 
 export function parseIntentVerdict(value: unknown): IntentVerdict {
   try {
@@ -18,31 +31,16 @@ export function parseIntentVerdict(value: unknown): IntentVerdict {
         ? value.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")
         : JSON.stringify(value);
     const parsed: unknown = JSON.parse(text);
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      "verdict" in parsed &&
-      (parsed.verdict === "pass" ||
-        parsed.verdict === "fail" ||
-        parsed.verdict === "na") &&
-      "rationale" in parsed &&
-      typeof parsed.rationale === "string" &&
-      "evidence" in parsed &&
-      Array.isArray(parsed.evidence) &&
-      parsed.evidence.every((item) => typeof item === "string")
-    ) {
-      return {
-        verdict: parsed.verdict,
-        rationale: parsed.rationale,
-        evidence: parsed.evidence,
-      };
+    const decoded = decodeIntentVerdict(parsed);
+    if (Result.isSuccess(decoded)) {
+      return decoded.success;
     }
   } catch {
     // The diagnostic below keeps judge formatting failures visible in reports.
   }
 
   return {
-    verdict: "fail",
+    verdict: "na",
     rationale: "The intent judge returned malformed output.",
     evidence: [],
   };
@@ -54,8 +52,14 @@ export const workflowIntentJudgeHarness = createJudgeHarness({
     const modelPrompt = Prompt.make([{ role: "user", content: prompt }]).pipe(
       Prompt.setSystem(system ?? "Evaluate the supplied workflow evidence.")
     );
-    const response = await Effect.runPromise(
-      LanguageModel.generateText({ prompt: modelPrompt }).pipe(
+    const verdict = await Effect.runPromise(
+      LanguageModel.generateObject({
+        objectName: "intent_verdict",
+        prompt: modelPrompt,
+        schema: intentVerdictSchema,
+      }).pipe(
+        Effect.map((response) => response.value),
+        keepIntentJudgeAdvisory,
         Effect.provide(
           agentModelLayer(
             readEvalModelSettings(process.env.WFGRAPH_EVAL_JUDGE_MODEL)
@@ -63,7 +67,7 @@ export const workflowIntentJudgeHarness = createJudgeHarness({
         )
       )
     );
-    return response.text;
+    return verdict;
   },
 });
 

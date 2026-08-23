@@ -2,4 +2,4 @@
 "@wfgraph/core": patch
 ---
 
-Improve build-agent authoring for built-in steps, Event Split outlets, and condition reference fields.
+Improve build-agent authoring for Wait steps, Event Split outlets, condition reference fields, and draft publication blockers.

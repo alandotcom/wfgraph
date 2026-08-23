@@ -11,24 +11,55 @@ export const evalCatalog: ExtensionCatalog = {
   events: [
     ...fixtureCatalog.events,
     {
-      name: "appointment.booked",
-      label: "Appointment booked",
-      correlationPath: "appointmentId",
+      name: "app/appointment.created",
+      label: "Appointment created",
+      description: "Raised when a new appointment is booked.",
+      correlationPath: "appointment.id",
       payloadFields: [
-        { path: "appointmentId", type: "string" },
-        { path: "customer.email", type: "string" },
-        { path: "startsAt", type: "timestamp" },
+        { path: "appointment.id", type: "string" },
+        { path: "appointment.startsAt", type: "timestamp" },
+        { path: "appointment.patientName", type: "string" },
+        { path: "appointment.status", type: "string" },
+        { path: "occurredAt", type: "timestamp" },
       ],
     },
     {
-      name: "appointment.rescheduled",
+      name: "app/appointment.rescheduled",
       label: "Appointment rescheduled",
+      description: "Raised when an appointment moves to a new time.",
+      correlationPath: "appointment.id",
+      payloadFields: [
+        { path: "appointment.id", type: "string" },
+        { path: "appointment.startsAt", type: "timestamp" },
+        { path: "appointment.patientName", type: "string" },
+        { path: "appointment.status", type: "string" },
+        { path: "occurredAt", type: "timestamp" },
+        { path: "previousStartsAt", type: "timestamp" },
+      ],
+    },
+    {
+      name: "app/appointment.canceled",
+      label: "Appointment canceled",
+      description: "Raised when an appointment is called off.",
+      correlationPath: "appointment.id",
+      payloadFields: [
+        { path: "appointment.id", type: "string" },
+        { path: "appointment.startsAt", type: "timestamp" },
+        { path: "appointment.patientName", type: "string" },
+        { path: "appointment.status", type: "string" },
+        { path: "occurredAt", type: "timestamp" },
+        { path: "reason", type: "string" },
+      ],
+    },
+    {
+      name: "billing/payment.settled",
+      label: "Payment settled",
+      description: "Raised by the billing service when a charge clears.",
       correlationPath: "appointmentId",
       payloadFields: [
         { path: "appointmentId", type: "string" },
-        { path: "customer.email", type: "string" },
-        { path: "startsAt", type: "timestamp" },
-        { path: "previousStartsAt", type: "timestamp" },
+        { path: "amountCents", type: "number" },
+        { path: "settledAt", type: "timestamp" },
       ],
     },
   ],
@@ -50,6 +81,33 @@ export const evalCatalog: ExtensionCatalog = {
       outputFields: [
         { path: "email", type: "string" },
         { path: "department", type: "string", nullable: true },
+      ],
+    },
+    {
+      id: "appointments/cancel",
+      label: "Cancel Appointment",
+      description: "Cancels an appointment and records the reason.",
+      category: "Appointments",
+      sideEffect: true,
+      configFields: [
+        {
+          key: "appointmentId",
+          label: "Appointment ID",
+          type: "template-input",
+          required: true,
+        },
+        {
+          key: "reason",
+          label: "Reason",
+          type: "text",
+          required: true,
+        },
+      ],
+      outputFields: [
+        { path: "appointmentId", type: "string" },
+        { path: "status", type: "string" },
+        { path: "reason", type: "string" },
+        { path: "cancelledAt", type: "timestamp" },
       ],
     },
   ],
@@ -142,6 +200,7 @@ export const focusedScenarios: Array<{
       integrations: [],
       expected: {
         requiredActions: { "score-applicant": 1 },
+        exactActions: { "score-applicant": 1 },
         startEvents: ["applicant.created"],
         requiredFlows: [
           {
@@ -150,7 +209,15 @@ export const focusedScenarios: Array<{
             sourceHandle: "started",
           },
         ],
+        requiredReferences: [
+          {
+            node: { kind: "action", actionId: "score-applicant" },
+            key: "applicantId",
+            path: "applicantId",
+          },
+        ],
       },
+      expectedCompletion: { outcome: "ready" },
       intentCriteria: ["Each applicant is scored after it starts a run."],
     }),
   },
@@ -168,7 +235,26 @@ export const focusedScenarios: Array<{
       integrations: [],
       expected: {
         requiredActions: { "slack/send-message": 1 },
+        exactActions: { "slack/send-message": 1 },
         startEvents: ["applicant.created"],
+        requiredConfigs: [
+          {
+            node: { kind: "action", actionId: "slack/send-message" },
+            values: { channel: "#recruiting" },
+          },
+        ],
+        requiredReferences: [
+          {
+            node: { kind: "action", actionId: "slack/send-message" },
+            key: "text",
+            path: "email",
+          },
+        ],
+      },
+      expectedCompletion: {
+        outcome: "blocked",
+        answerMustMention: ["slack", "requires a connection"],
+        publishBlockerMustMention: ["connected slack integration"],
       },
       intentCriteria: [
         "The workflow is built as far as possible.",
@@ -190,10 +276,188 @@ export const focusedScenarios: Array<{
       integrations: [],
       expected: {
         forbiddenActions: ["sms/send-message", "twilio/send-message"],
+        allowedActions: [],
+      },
+      expectedCompletion: {
+        outcome: "unsupported",
       },
       intentCriteria: [
         "The answer explains that the available actions cannot send SMS.",
         "The graph contains no invented SMS action.",
+      ],
+    }),
+  },
+  {
+    name: "builds an Event Split draft with an unspecified channel",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            "Start when an appointment is created or rescheduled. Split by which Event arrived and post a different Slack message for each path using the appointment start time. Use our primary Slack connection.",
+        },
+      ],
+      document: emptyDocument,
+      integrations: connectedIntegrations,
+      expected: {
+        requiredActions: {
+          [BUILT_IN_ACTION_IDS.eventSplit]: 1,
+          "slack/send-message": 2,
+        },
+        exactActions: {
+          [BUILT_IN_ACTION_IDS.eventSplit]: 1,
+          "slack/send-message": 2,
+        },
+        startEvents: ["app/appointment.created", "app/appointment.rescheduled"],
+        requiredFlows: [
+          {
+            source: {
+              kind: "action",
+              actionId: BUILT_IN_ACTION_IDS.eventSplit,
+            },
+            target: { kind: "action", actionId: "slack/send-message" },
+            sourceHandle: "event:app/appointment.created",
+          },
+          {
+            source: {
+              kind: "action",
+              actionId: BUILT_IN_ACTION_IDS.eventSplit,
+            },
+            target: { kind: "action", actionId: "slack/send-message" },
+            sourceHandle: "event:app/appointment.rescheduled",
+          },
+        ],
+        requiredNonEmptyConfigs: [
+          {
+            node: { kind: "action", actionId: "slack/send-message" },
+            keys: ["text"],
+            allMatches: true,
+          },
+        ],
+        distinctConfigValues: [
+          {
+            nodes: { kind: "action", actionId: "slack/send-message" },
+            key: "text",
+            count: 2,
+          },
+        ],
+      },
+      expectedCompletion: {
+        outcome: "blocked",
+        answerMustMention: ["channel"],
+        publishBlockerMustMention: ["missing required fields", "channel"],
+      },
+      intentCriteria: [
+        "Each Start Event reaches only its matching Slack message.",
+        "The answer identifies the missing Slack channel as remaining human configuration.",
+      ],
+    }),
+  },
+  {
+    name: "uses the host appointment cancellation action",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            'When an appointment is created, cancel it with the reason "Follow-up required".',
+        },
+      ],
+      document: emptyDocument,
+      integrations: [],
+      expected: {
+        requiredActions: { "appointments/cancel": 1 },
+        exactActions: { "appointments/cancel": 1 },
+        startEvents: ["app/appointment.created"],
+        requiredConfigs: [
+          {
+            node: { kind: "action", actionId: "appointments/cancel" },
+            values: { reason: "Follow-up required" },
+          },
+        ],
+        requiredReferences: [
+          {
+            node: { kind: "action", actionId: "appointments/cancel" },
+            key: "appointmentId",
+            path: "appointment.id",
+          },
+        ],
+        requiredFlows: [
+          {
+            source: { kind: "lifecycle" },
+            target: { kind: "action", actionId: "appointments/cancel" },
+            sourceHandle: "started",
+          },
+        ],
+      },
+      expectedCompletion: { outcome: "ready" },
+      intentCriteria: [
+        "The cancellation uses the appointment id from the Start Event.",
+        "The cancellation reason is Follow-up required.",
+      ],
+    }),
+  },
+  {
+    name: "waits for a production Event with a timeout",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            'When an appointment is created, wait up to 7 days for the next payment settled Event, then post "Payment settled" to #billing in Slack. Use our primary Slack connection.',
+        },
+      ],
+      document: emptyDocument,
+      integrations: connectedIntegrations,
+      expected: {
+        requiredActions: {
+          [BUILT_IN_ACTION_IDS.wait]: 1,
+          "slack/send-message": 1,
+        },
+        exactActions: {
+          [BUILT_IN_ACTION_IDS.wait]: 1,
+          "slack/send-message": 1,
+        },
+        startEvents: ["app/appointment.created"],
+        requiredFlows: [
+          {
+            source: { kind: "lifecycle" },
+            target: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            sourceHandle: "started",
+          },
+          {
+            source: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            target: { kind: "action", actionId: "slack/send-message" },
+          },
+        ],
+        requiredConfigs: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            values: { waitMode: "event" },
+          },
+          {
+            node: { kind: "action", actionId: "slack/send-message" },
+            values: { channel: "#billing", text: "Payment settled" },
+          },
+        ],
+        requiredDurations: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            key: "waitTimeout",
+            duration: "7d",
+          },
+        ],
+        requiredWaitEvents: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            events: ["billing/payment.settled"],
+            exact: true,
+          },
+        ],
+      },
+      expectedCompletion: { outcome: "ready" },
+      intentCriteria: [
+        "The Wait resumes on the payment settled Event and times out after seven days.",
       ],
     }),
   },
@@ -227,8 +491,20 @@ export const focusedScenarios: Array<{
           "score-applicant": 1,
           "slack/send-message": 1,
         },
+        exactActions: {
+          "score-applicant": 1,
+          "slack/send-message": 1,
+        },
         startEvents: ["applicant.created"],
+        requiredReferences: [
+          {
+            node: { kind: "action", actionId: "slack/send-message" },
+            key: "text",
+            path: "email",
+          },
+        ],
       },
+      expectedCompletion: { outcome: "ready" },
       intentCriteria: [
         "Notify recruiting reads the applicant email from an upstream step.",
       ],
@@ -251,10 +527,15 @@ export const focusedScenarios: Array<{
           "score-applicant": 1,
           "slack/send-message": 1,
         },
+        exactActions: {
+          "score-applicant": 1,
+          "slack/send-message": 1,
+        },
         startEvents: ["applicant.created"],
         cancelEvents: ["applicant.withdrawn"],
         preserveNodeIds: ["score", "notify"],
       },
+      expectedCompletion: { outcome: "ready" },
       intentCriteria: [
         "Withdrawal cancels the matching applicant's in-progress run.",
         "The started path keeps its prior behavior.",
@@ -286,6 +567,12 @@ export const complexScenarios: Array<{
           "linear/create-issue": 1,
           "slack/send-message": 1,
         },
+        exactActions: {
+          "score-applicant": 1,
+          [BUILT_IN_ACTION_IDS.condition]: 1,
+          "linear/create-issue": 1,
+          "slack/send-message": 1,
+        },
         startEvents: ["applicant.created"],
         cancelEvents: ["applicant.withdrawn"],
         requiredPaths: [
@@ -306,7 +593,41 @@ export const complexScenarios: Array<{
             sourceHandle: "true",
           },
         ],
+        requiredGates: [
+          {
+            gate: { kind: "action", actionId: BUILT_IN_ACTION_IDS.condition },
+            target: { kind: "action", actionId: "linear/create-issue" },
+            sourceHandle: "true",
+          },
+          {
+            gate: { kind: "action", actionId: BUILT_IN_ACTION_IDS.condition },
+            target: { kind: "action", actionId: "slack/send-message" },
+            sourceHandle: "true",
+          },
+        ],
+        requiredConfigs: [
+          {
+            node: { kind: "action", actionId: "slack/send-message" },
+            values: { channel: "#recruiting" },
+          },
+        ],
+        requiredConditionRules: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.condition },
+            field: "score",
+            operator: "greater_or_equal",
+            value: 80,
+          },
+        ],
+        requiredReferences: [
+          {
+            node: { kind: "action", actionId: "linear/create-issue" },
+            key: "title",
+            path: "email",
+          },
+        ],
       },
+      expectedCompletion: { outcome: "ready" },
       intentCriteria: [
         "Only applicants with scores of at least 80 reach both escalation actions.",
         "The issue title uses the applicant email from an available upstream reference.",
@@ -333,6 +654,12 @@ export const complexScenarios: Array<{
           [BUILT_IN_ACTION_IDS.condition]: 1,
           "slack/send-message": 1,
         },
+        exactActions: {
+          "crm/get-applicant": 1,
+          "score-applicant": 1,
+          [BUILT_IN_ACTION_IDS.condition]: 1,
+          "slack/send-message": 1,
+        },
         startEvents: ["applicant.created"],
         requiredFlows: [
           {
@@ -349,7 +676,47 @@ export const complexScenarios: Array<{
             sourceHandle: "true",
           },
         ],
+        requiredGates: [
+          {
+            gate: { kind: "action", actionId: BUILT_IN_ACTION_IDS.condition },
+            target: { kind: "action", actionId: "slack/send-message" },
+            sourceHandle: "true",
+          },
+        ],
+        requiredParallel: [
+          {
+            first: { kind: "action", actionId: "crm/get-applicant" },
+            second: { kind: "action", actionId: "score-applicant" },
+          },
+        ],
+        requiredConfigs: [
+          {
+            node: { kind: "action", actionId: "slack/send-message" },
+            values: { channel: "#recruiting" },
+          },
+        ],
+        requiredConditionRules: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.condition },
+            field: "score",
+            operator: "greater_than",
+            value: 70,
+          },
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.condition },
+            field: "department",
+            operator: "is_set",
+          },
+        ],
+        requiredConditionLogic: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.condition },
+            groupLogic: "and",
+            ruleLogic: "and",
+          },
+        ],
       },
+      expectedCompletion: { outcome: "ready" },
       intentCriteria: [
         "The CRM lookup and scoring fan out independently from their common predecessor.",
         "The Condition is an AND-join that tests outputs from both lookups.",
@@ -374,6 +741,7 @@ export const complexScenarios: Array<{
           [BUILT_IN_ACTION_IDS.wait]: 1,
           "slack/send-message": 1,
         },
+        exactActions: { [BUILT_IN_ACTION_IDS.wait]: 1 },
         preserveNodeIds: ["entry", "score", "notify"],
         requiredFlows: [
           {
@@ -385,7 +753,21 @@ export const complexScenarios: Array<{
             target: { kind: "action", actionId: "slack/send-message" },
           },
         ],
+        requiredConfigs: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            values: { waitMode: "delay" },
+          },
+        ],
+        requiredDurations: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            key: "waitDuration",
+            duration: "2d",
+          },
+        ],
       },
+      expectedCompletion: { outcome: "ready" },
       intentCriteria: [
         "The existing steps retain their prior configuration.",
         "A two-day delay sits between scoring and notification.",
@@ -399,7 +781,7 @@ export const complexScenarios: Array<{
         {
           role: "user",
           content:
-            "Start when an appointment is booked or rescheduled. Split by which event arrived. Post a different Slack message for each path using the appointment start time and our primary Slack connection.",
+            "Start when an appointment is created or rescheduled. Split by which Event arrived. Post a different Slack message to #appointments for each path using the appointment start time and our primary Slack connection.",
         },
       ],
       document: emptyDocument,
@@ -409,7 +791,11 @@ export const complexScenarios: Array<{
           [BUILT_IN_ACTION_IDS.eventSplit]: 1,
           "slack/send-message": 2,
         },
-        startEvents: ["appointment.booked", "appointment.rescheduled"],
+        exactActions: {
+          [BUILT_IN_ACTION_IDS.eventSplit]: 1,
+          "slack/send-message": 2,
+        },
+        startEvents: ["app/appointment.created", "app/appointment.rescheduled"],
         requiredFlows: [
           {
             source: {
@@ -417,7 +803,7 @@ export const complexScenarios: Array<{
               actionId: BUILT_IN_ACTION_IDS.eventSplit,
             },
             target: { kind: "action", actionId: "slack/send-message" },
-            sourceHandle: "event:appointment.booked",
+            sourceHandle: "event:app/appointment.created",
           },
           {
             source: {
@@ -425,13 +811,103 @@ export const complexScenarios: Array<{
               actionId: BUILT_IN_ACTION_IDS.eventSplit,
             },
             target: { kind: "action", actionId: "slack/send-message" },
-            sourceHandle: "event:appointment.rescheduled",
+            sourceHandle: "event:app/appointment.rescheduled",
+          },
+        ],
+        requiredConfigs: [
+          {
+            node: { kind: "action", actionId: "slack/send-message" },
+            values: { channel: "#appointments" },
+            allMatches: true,
+          },
+        ],
+        requiredReferences: [
+          {
+            node: { kind: "action", actionId: "slack/send-message" },
+            key: "text",
+            path: "appointment.startsAt",
+            allMatches: true,
+          },
+        ],
+        distinctConfigValues: [
+          {
+            nodes: { kind: "action", actionId: "slack/send-message" },
+            key: "text",
+            count: 2,
           },
         ],
       },
+      expectedCompletion: { outcome: "ready" },
       intentCriteria: [
         "Each Start Event reaches only its matching Slack message.",
         "Each message uses a reference valid for its Event-specific branch.",
+      ],
+    }),
+  },
+  {
+    name: "builds an appointment reminder that cancels with the host Event",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            "When an appointment is created, wait one day and post its start time to #appointments in Slack. Cancel the in-progress run if that appointment is canceled. Use our primary Slack connection.",
+        },
+      ],
+      document: emptyDocument,
+      integrations: connectedIntegrations,
+      expected: {
+        requiredActions: {
+          [BUILT_IN_ACTION_IDS.wait]: 1,
+          "slack/send-message": 1,
+        },
+        exactActions: {
+          [BUILT_IN_ACTION_IDS.wait]: 1,
+          "slack/send-message": 1,
+        },
+        startEvents: ["app/appointment.created"],
+        cancelEvents: ["app/appointment.canceled"],
+        requiredFlows: [
+          {
+            source: { kind: "lifecycle" },
+            target: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            sourceHandle: "started",
+          },
+          {
+            source: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            target: { kind: "action", actionId: "slack/send-message" },
+          },
+        ],
+        requiredConfigs: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            values: { waitMode: "delay" },
+          },
+          {
+            node: { kind: "action", actionId: "slack/send-message" },
+            values: { channel: "#appointments" },
+          },
+        ],
+        requiredDurations: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            key: "waitDuration",
+            duration: "1d",
+          },
+        ],
+        requiredReferences: [
+          {
+            node: { kind: "action", actionId: "slack/send-message" },
+            key: "text",
+            path: "appointment.startsAt",
+          },
+        ],
+      },
+      expectedCompletion: { outcome: "ready" },
+      intentCriteria: [
+        "A one-day delay sits before the Slack reminder.",
+        "The reminder uses the appointment start time from the Start Event.",
+        "Cancellation correlates the canceled appointment to its in-progress run.",
       ],
     }),
   },

@@ -9,6 +9,7 @@ const WRITE_TOOLS = new Set([
   "disconnect_nodes",
   "set_lifecycle_rules",
   "set_condition",
+  "set_wait",
 ]);
 
 type EvalToolCall = {

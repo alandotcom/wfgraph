@@ -2,9 +2,9 @@ import { expect } from "vitest";
 import { describeEval } from "vitest-evals";
 import { workflowAgentHarness } from "#src/agent/harness";
 import {
+  CompletionOutcomeJudge,
   ConfusionJudge,
   GroundedGraphJudge,
-  PublishableGraphJudge,
   ScenarioSemanticsJudge,
   ToolProtocolJudge,
 } from "#src/agent/judges/index";
@@ -15,7 +15,7 @@ import {
 import { complexScenarios, focusedScenarios } from "#src/agent/scenarios";
 
 const deterministicJudges = [
-  PublishableGraphJudge,
+  CompletionOutcomeJudge,
   GroundedGraphJudge,
   ScenarioSemanticsJudge,
   ToolProtocolJudge,
@@ -29,7 +29,7 @@ describeEval(
   {
     harness: workflowAgentHarness,
     judges: deterministicJudges,
-    judgeThreshold: null,
+    judgeThreshold: 1,
     skipIf: skipWithoutModelKey,
   },
   (it) => {
@@ -50,7 +50,7 @@ describeEval(
     harness: workflowAgentHarness,
     judges: deterministicJudges,
     judgeHarness: workflowIntentJudgeHarness,
-    judgeThreshold: null,
+    judgeThreshold: 1,
     skipIf: skipWithoutModelKey,
   },
   (it) => {

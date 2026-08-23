@@ -37,6 +37,7 @@ import {
   ListReferences,
   referenceToolHandlers,
 } from "#src/tools/reference-tools";
+import { SetWait, waitToolHandlers } from "#src/tools/wait-tools";
 
 export const agentToolkit = Toolkit.make(
   ListActions,
@@ -52,7 +53,8 @@ export const agentToolkit = Toolkit.make(
   ConnectNodes,
   DisconnectNodes,
   SetLifecycleRules,
-  SetCondition
+  SetCondition,
+  SetWait
 );
 
 /**
@@ -69,12 +71,14 @@ export const agentToolHandlers = Effect.gen(function* () {
   const references = yield* referenceToolHandlers;
   const graphWrite = yield* graphWriteToolHandlers;
   const lifecycle = yield* lifecycleToolHandlers;
+  const wait = yield* waitToolHandlers;
   return {
     ...catalog,
     ...graphRead,
     ...references,
     ...graphWrite,
     ...lifecycle,
+    ...wait,
   };
 });
 
@@ -96,4 +100,5 @@ export const WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
   DisconnectNodes.name,
   SetLifecycleRules.name,
   SetCondition.name,
+  SetWait.name,
 ]);

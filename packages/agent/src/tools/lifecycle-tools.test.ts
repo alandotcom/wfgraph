@@ -121,6 +121,7 @@ describe("set_lifecycle_rules", () => {
           "applicant.withdrawn": "applicantId",
         },
       });
+      expect(result.nodeId).toBe(node?.id);
       expect(result.summary).toContain("Created");
     })
   );
@@ -131,13 +132,14 @@ describe("set_lifecycle_rules", () => {
         nodes: [entry],
         catalog,
       });
-      yield* tools.set_lifecycle_rules({
+      const result = yield* tools.set_lifecycle_rules({
         startEvents: ["applicant.created"],
       });
 
       const document = yield* draft.current;
       expect(document.nodes).toHaveLength(1);
       expect(document.nodes[0]?.id).toBe("entry");
+      expect(result.nodeId).toBe("entry");
       expect(readLifecycleRules(document.nodes[0]?.data.config)).toMatchObject({
         startEvents: ["applicant.created"],
         concurrency: "unlimited",

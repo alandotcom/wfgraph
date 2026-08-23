@@ -49,7 +49,7 @@ describe("the toolkit", () => {
       expect(names, name).toContain(name);
     }
     // The read tools are the rest, and none of them may claim to write.
-    expect(WRITE_TOOL_NAMES.size).toBe(7);
+    expect(WRITE_TOOL_NAMES.size).toBe(8);
   });
 
   it.effect("supplies a handler for every tool it declares, and no other", () =>
@@ -70,6 +70,7 @@ describe("the toolkit layer", () => {
         document: { nodes: [], edges: [] },
         catalog: fixtureCatalog,
         integrations: [],
+        validatePublication: () => ({ publishBlockers: [], warnings: [] }),
       });
 
       const encoded = yield* Effect.gen(function* () {

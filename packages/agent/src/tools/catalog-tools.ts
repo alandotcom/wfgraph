@@ -78,7 +78,7 @@ const BUILT_IN_AUTHORING = new Map<
     {
       description: "Delay execution or wait for an Event.",
       instructions:
-        'For a time delay, set config entries waitMode="delay" and waitDuration="<duration>" with add_node or update_node. Event waits require structured waitFor data, which the current agent tools cannot write.',
+        "Add and connect the node, then call set_wait. Use delay mode for a duration. Use list_events before Event mode; Event waits carry waitFor subscriptions and a timeout.",
     },
   ],
 ]);

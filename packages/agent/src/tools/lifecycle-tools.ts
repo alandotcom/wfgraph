@@ -37,6 +37,10 @@ import { referencesForNode } from "#src/tools/reference-tools";
 
 const failureSchema = Schema.Struct({ reason: Schema.String });
 const writeResultSchema = Schema.Struct({ summary: Schema.String });
+const lifecycleWriteResultSchema = Schema.Struct({
+  nodeId: Schema.String,
+  summary: Schema.String,
+});
 
 const UNPLACED = { x: 0, y: 0 };
 
@@ -81,7 +85,7 @@ export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
         "Where each Event carries the id of the thing a run is about. Concurrency and cancellation both need it.",
     }),
   }),
-  success: writeResultSchema,
+  success: lifecycleWriteResultSchema,
   failure: failureSchema,
   failureMode: "return",
 });
@@ -420,6 +424,7 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
                 ),
           })),
           {
+            nodeId: entry.id,
             summary: `${created ? "Created the Lifecycle Node and set" : "Set"} the rules: starts on ${rules.startEvents.join(", ") || "manual start only"}.`,
           }
         );

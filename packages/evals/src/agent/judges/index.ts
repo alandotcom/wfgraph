@@ -5,12 +5,16 @@ import {
   assessToolBehavior,
 } from "#src/agent/judges/tool-behavior";
 
-export const PublishableGraphJudge = createJudge<
+export const CompletionOutcomeJudge = createJudge<
   AgentEvalInput,
   AgentEvalOutput
->("PublishableGraphJudge", ({ output }) => ({
-  score: output.publishability.score,
-  metadata: { rationale: output.publishability.rationale },
+>("CompletionOutcomeJudge", ({ input, output }) => ({
+  score: output.completion.score,
+  metadata: {
+    expectedOutcome: input.expectedCompletion.outcome,
+    publishability: output.publishability.score,
+    rationale: output.completion.rationale,
+  },
 }));
 
 export const GroundedGraphJudge = createJudge<AgentEvalInput, AgentEvalOutput>(

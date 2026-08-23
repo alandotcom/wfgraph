@@ -11,10 +11,6 @@ import { Effect, Schema } from "effect";
 import { Tool } from "effect/unstable/ai";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
-import {
-  collectWorkflowIssues,
-  hasBlockingWorkflowIssues,
-} from "@wfgraph/shared/graph/workflow-issues";
 import { workflowTopologyRefusalReason } from "@wfgraph/shared/graph/workflow-topology";
 import {
   type JsonObject,
@@ -46,9 +42,8 @@ const graphEdgeSchema = Schema.Struct({
 
 const issueSchema = Schema.Struct({
   kind: Schema.String,
-  severity: Schema.String,
-  nodeId: Schema.String,
-  nodeLabel: Schema.String,
+  nodeId: Schema.optionalKey(Schema.String),
+  nodeLabel: Schema.optionalKey(Schema.String),
   message: Schema.String,
 });
 
@@ -79,14 +74,22 @@ export const ReadWorkflow = Tool.make("read_workflow", {
 
 export const ValidateWorkflow = Tool.make("validate_workflow", {
   description:
-    "Check whether the graph can be saved and whether it has missing required fields, unconnected integrations, or references to deleted nodes. Run this before telling the user the workflow is ready.",
+    "Check draft structure separately from the backend's canonical publication blockers and permitted warnings. Run this after edits and before describing completion.",
   success: Schema.Struct({
-    issues: Schema.Array(issueSchema),
-    topologyError: Schema.optionalKey(Schema.String).annotate({
-      description: "Why the graph structure cannot be saved.",
+    draftValid: Schema.Boolean.annotate({
+      description: "Whether the graph structure is valid enough to save.",
     }),
-    /** True when at least one issue would stop the workflow being published. */
-    hasBlockingIssues: Schema.Boolean,
+    structuralIssues: Schema.Array(Schema.String).annotate({
+      description: "Graph structure problems that keep the draft from saving.",
+    }),
+    publishBlockers: Schema.Array(issueSchema).annotate({
+      description:
+        "Configuration or workflow problems that must be fixed before publication.",
+    }),
+    warnings: Schema.Array(issueSchema).annotate({
+      description:
+        "Problems worth fixing that the canonical publication gate permits.",
+    }),
   }),
 });
 
@@ -125,23 +128,13 @@ export const graphReadToolHandlers = Effect.gen(function* () {
     validate_workflow: () =>
       Effect.map(draft.current, (document) => {
         const topologyError = workflowTopologyRefusalReason(document);
-        const issues = collectWorkflowIssues({
-          nodes: [...document.nodes],
-          catalog: draft.catalog,
-          integrations: draft.integrations,
-        });
+        const validation = draft.validatePublication(document);
 
         return {
-          ...(topologyError === null ? {} : { topologyError }),
-          issues: issues.map((issue) => ({
-            kind: issue.kind,
-            severity: issue.severity,
-            nodeId: issue.nodeId,
-            nodeLabel: issue.nodeLabel,
-            message: issue.message,
-          })),
-          hasBlockingIssues:
-            topologyError !== null || hasBlockingWorkflowIssues(issues),
+          draftValid: topologyError === null,
+          structuralIssues: topologyError === null ? [] : [topologyError],
+          publishBlockers: [...validation.publishBlockers],
+          warnings: [...validation.warnings],
         };
       }),
   };

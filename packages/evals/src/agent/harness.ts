@@ -8,6 +8,7 @@ import {
   assessGraphGrounding,
   assessPublishability,
 } from "#src/agent/judges/graph";
+import { assessExpectedCompletion } from "#src/agent/judges/completion";
 import { assessScenarioSemantics } from "#src/agent/judges/semantics";
 import { assessToolBehavior } from "#src/agent/judges/tool-behavior";
 import { collectAgentEvalResult } from "#src/agent/result";
@@ -79,14 +80,26 @@ export const workflowAgentHarness = createHarness<
       catalog: input.catalog,
       integrations: input.integrations,
     };
+    const publishability = assessPublishability(graphInput);
+    const grounding = assessGraphGrounding(graphInput);
+    const semantics = assessScenarioSemantics(input, result.finalDocument);
     const output: AgentEvalOutput = {
       finalDocumentJson: JSON.stringify(result.finalDocument),
       finalText: result.finalText,
       errors: result.errors,
-      publishability: assessPublishability(graphInput),
-      grounding: assessGraphGrounding(graphInput),
-      semantics: assessScenarioSemantics(input, result.finalDocument),
+      publishability,
+      grounding,
+      semantics,
       toolBehavior: assessToolBehavior(events),
+      completion: assessExpectedCompletion({
+        expected: input.expectedCompletion,
+        document: result.finalDocument,
+        finalText: result.finalText,
+        errors: result.errors,
+        publishability,
+        grounding,
+        semantics,
+      }),
     };
 
     setArtifact(
