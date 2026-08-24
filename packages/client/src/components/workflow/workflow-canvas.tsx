@@ -189,32 +189,26 @@ export function lifecycleAnchorViewport({
   };
 }
 
-export function useSynchronizedLifecycleViewport({
+export function useSynchronizedCanvas({
+  presentation,
+  synchronizePresentation,
   currentWorkflowId,
   lifecycleNode,
   internalNode,
-  fittedWorkflowIdRef,
   fitGenerationRef,
-  readCanvasWidth,
-  getZoom,
-  setViewport,
 }: {
+  presentation: unknown;
+  synchronizePresentation: () => void;
   currentWorkflowId: string | null;
   lifecycleNode: WorkflowNode | null;
   internalNode: InternalLifecycleAnchor | null;
-  fittedWorkflowIdRef: { current: string | null };
   fitGenerationRef: { current: number };
-  readCanvasWidth: () => number | undefined;
-  getZoom: () => number;
-  setViewport: (viewport: {
-    x: number;
-    y: number;
-    zoom: number;
-  }) => Promise<boolean>;
 }): {
   lifecycleAnchor: ReturnType<typeof synchronizedLifecycleAnchor>;
   fitViewKey: string | null;
 } {
+  useBeforePaint(presentation, synchronizePresentation);
+
   const lifecycleAnchor = synchronizedLifecycleAnchor(
     lifecycleNode,
     internalNode
@@ -225,33 +219,10 @@ export function useSynchronizedLifecycleViewport({
   });
 
   // Controlled props reach React Flow's internal store after this component
-  // renders. Wait for its node identity so an incoming viewport is never
-  // applied while the outgoing graph is still on screen.
+  // renders. Wait for its node identity so initial fitting never reads the
+  // outgoing graph. Presentation replacements own their viewport separately.
   useBeforePaint(fitViewKey, () => {
     fitGenerationRef.current += 1;
-    if (
-      fitViewKey === null ||
-      !currentWorkflowId ||
-      fittedWorkflowIdRef.current !== currentWorkflowId ||
-      !lifecycleAnchor
-    ) {
-      return;
-    }
-
-    const canvasWidth = readCanvasWidth();
-    if (!canvasWidth) {
-      return;
-    }
-
-    void setViewport(
-      lifecycleAnchorViewport({
-        canvasWidth,
-        nodePosition: lifecycleAnchor.position,
-        nodeWidth: lifecycleAnchor.width,
-        top: 48,
-        zoom: getZoom(),
-      })
-    );
   });
 
   return { lifecycleAnchor, fitViewKey };
@@ -544,10 +515,6 @@ export function WorkflowCanvas() {
       );
     }
   };
-  // React Flow applies controlled graph props in a passive effect. Install the
-  // same graph during the layout phase so a workspace change cannot paint the
-  // incoming view with the outgoing graph's position.
-  useBeforePaint(canvasPresentation, synchronizeGraph);
   const interaction = canvasInteractionState({
     editingLocked,
     comparisonActive,
@@ -572,7 +539,12 @@ export function WorkflowCanvas() {
   const [contextMenuState, setContextMenuState] =
     useState<ContextMenuState>(null);
   const rightClickSelectionRef = useRef<ReadonlySet<string>>(new Set());
-  const { lifecycleAnchor, fitViewKey } = useSynchronizedLifecycleViewport({
+  const { lifecycleAnchor, fitViewKey } = useSynchronizedCanvas({
+    // React Flow applies controlled graph props in a passive effect. Install
+    // the same graph and viewport during the layout phase so a workspace
+    // change cannot paint the incoming view through the outgoing viewport.
+    presentation: canvasPresentation,
+    synchronizePresentation: synchronizeGraph,
     currentWorkflowId,
     lifecycleNode: lifecycleNode ?? null,
     internalNode: internalLifecycleNode
@@ -582,11 +554,7 @@ export function WorkflowCanvas() {
           width: internalLifecycleNode.measured.width,
         }
       : null,
-    fittedWorkflowIdRef,
     fitGenerationRef,
-    readCanvasWidth: () => canvasContainerRef.current?.clientWidth,
-    getZoom: () => getViewport().zoom,
-    setViewport: (viewport) => setViewport(viewport, { duration: 0 }),
   });
   useDomEvent(
     window,

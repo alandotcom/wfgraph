@@ -9,7 +9,7 @@ import {
   lifecycleAnchorViewport,
   synchronizeCanvasGraph,
   synchronizedLifecycleAnchor,
-  useSynchronizedLifecycleViewport,
+  useSynchronizedCanvas,
 } from "#src/components/workflow/workflow-canvas";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
@@ -80,6 +80,69 @@ describe("synchronizeCanvasGraph", () => {
 
     expect(currentNodes).toBe(incomingNodes);
     expect(currentEdges).toBe(incomingEdges);
+  });
+});
+
+describe("useSynchronizedCanvas", () => {
+  it("does not set the viewport when lifecycle moves within the draft presentation", () => {
+    const draftPresentation = {};
+    const setViewport = vi.fn();
+    const initial = lifecycleNode(100);
+    const internalNode = (userNode: WorkflowNode) => ({
+      userNode,
+      position: userNode.position,
+      width: 192,
+    });
+    const { rerender } = renderHook(
+      ({ lifecycle, presentation }) =>
+        useSynchronizedCanvas({
+          presentation,
+          synchronizePresentation: () => {
+            setViewport({ x: -lifecycle.position.x, y: 0, zoom: 1 });
+          },
+          currentWorkflowId: "workflow_1",
+          lifecycleNode: lifecycle,
+          internalNode: internalNode(lifecycle),
+          fitGenerationRef: { current: 0 },
+        }),
+      {
+        initialProps: { lifecycle: initial, presentation: draftPresentation },
+      }
+    );
+    setViewport.mockClear();
+
+    rerender({
+      lifecycle: lifecycleNode(500),
+      presentation: draftPresentation,
+    });
+
+    expect(setViewport).not.toHaveBeenCalled();
+  });
+
+  it("sets the viewport when the canvas presentation is replaced", () => {
+    const lifecycle = lifecycleNode(100);
+    const setViewport = vi.fn();
+    const { rerender } = renderHook(
+      ({ presentation }) =>
+        useSynchronizedCanvas({
+          presentation,
+          synchronizePresentation: setViewport,
+          currentWorkflowId: "workflow_1",
+          lifecycleNode: lifecycle,
+          internalNode: {
+            userNode: lifecycle,
+            position: lifecycle.position,
+            width: 192,
+          },
+          fitGenerationRef: { current: 0 },
+        }),
+      { initialProps: { presentation: {} } }
+    );
+    setViewport.mockClear();
+
+    rerender({ presentation: {} });
+
+    expect(setViewport).toHaveBeenCalledOnce();
   });
 });
 
@@ -189,29 +252,25 @@ describe("synchronizedLifecycleAnchor", () => {
   });
 });
 
-describe("useSynchronizedLifecycleViewport", () => {
-  it("keeps the viewport on the outgoing graph until React Flow installs the replacement", () => {
+describe("useSynchronizedCanvas lifecycle anchor", () => {
+  it("waits to expose the incoming anchor until React Flow installs the replacement", () => {
     const outgoing = lifecycleNode(100);
     const incoming = lifecycleNode(500);
-    const fittedWorkflowIdRef = { current: "workflow_1" };
     const fitGenerationRef = { current: 0 };
-    const setViewport = vi.fn(async () => true);
     const internalNode = (userNode: WorkflowNode) => ({
       userNode,
       position: userNode.position,
       width: 192,
     });
-    const { rerender } = renderHook(
+    const { result, rerender } = renderHook(
       ({ displayedNode, installedNode }) =>
-        useSynchronizedLifecycleViewport({
+        useSynchronizedCanvas({
+          presentation: {},
+          synchronizePresentation: () => {},
           currentWorkflowId: "workflow_1",
           lifecycleNode: displayedNode,
           internalNode: installedNode,
-          fittedWorkflowIdRef,
           fitGenerationRef,
-          readCanvasWidth: () => 1000,
-          getZoom: () => 0.75,
-          setViewport,
         }),
       {
         initialProps: {
@@ -220,20 +279,22 @@ describe("useSynchronizedLifecycleViewport", () => {
         },
       }
     );
-    setViewport.mockClear();
 
     rerender({
       displayedNode: incoming,
       installedNode: internalNode(outgoing),
     });
-    expect(setViewport).not.toHaveBeenCalled();
+    expect(result.current.lifecycleAnchor).toBeNull();
 
     rerender({
       displayedNode: incoming,
       installedNode: internalNode(incoming),
     });
-    expect(setViewport).toHaveBeenCalledOnce();
-    expect(setViewport).toHaveBeenCalledWith({ x: 53, y: 33, zoom: 0.75 });
+    expect(result.current.lifecycleAnchor).toEqual({
+      id: "lifecycle",
+      position: { x: 500, y: 20 },
+      width: 192,
+    });
   });
 });
 
