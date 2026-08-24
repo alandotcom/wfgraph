@@ -1,5 +1,12 @@
 # @wfgraph/client
 
+## 3.1.1
+
+### Patch Changes
+
+- [#156](https://github.com/alandotcom/wfgraph/pull/156) [`db14e3f`](https://github.com/alandotcom/wfgraph/commit/db14e3ff495daf49d651b8526d92bcb1c8db0e84) Thanks [@alandotcom](https://github.com/alandotcom)! - Keep workflow nodes visible while switching between Draft, Runs, and Changes,
+  and keep the viewport stable while dragging Lifecycle.
+
 ## 3.1.0
 
 ### Minor Changes
