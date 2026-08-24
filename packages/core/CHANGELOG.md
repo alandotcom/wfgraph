@@ -1,5 +1,17 @@
 # @wfgraph/core
 
+## 3.1.0
+
+### Minor Changes
+
+- [#154](https://github.com/alandotcom/wfgraph/pull/154) [`6a0cd6e`](https://github.com/alandotcom/wfgraph/commit/6a0cd6e41b06ed56d8f2d78f36d05efedaedf2dc) Thanks [@alandotcom](https://github.com/alandotcom)! - Add durable workflow version history, semantic publication review, and restore as draft.
+
+### Patch Changes
+
+- [#154](https://github.com/alandotcom/wfgraph/pull/154) [`6a0cd6e`](https://github.com/alandotcom/wfgraph/commit/6a0cd6e41b06ed56d8f2d78f36d05efedaedf2dc) Thanks [@alandotcom](https://github.com/alandotcom)! - Prevent stale workflow viewport fitting from hiding the current canvas and reduce comparison and version lookup work.
+
+- [#147](https://github.com/alandotcom/wfgraph/pull/147) [`a72fa25`](https://github.com/alandotcom/wfgraph/commit/a72fa25d72e6827a632e905342de12b737ae83e4) Thanks [@alandotcom](https://github.com/alandotcom)! - Validate non-Effect step and action outputs through `~standard.validate`, so undeclared keys no longer pass through when the library strips them and a mismatched answer fails the node once.
+
 ## 3.0.0
 
 ### Major Changes
