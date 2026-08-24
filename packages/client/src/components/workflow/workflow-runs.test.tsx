@@ -14,6 +14,8 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
+import { ConfigurationOverlay } from "#src/components/overlays/configuration-overlay";
+import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
 import { WorkflowRuns } from "#src/components/workflow/workflow-runs";
 import {
@@ -179,7 +181,12 @@ function EditorShell({ children }: { children?: ReactNode }) {
   );
 }
 
-function renderRuns(options?: { executionId?: string; panel?: boolean }) {
+function renderRuns(options?: {
+  executionId?: string;
+  listActions?: ReactNode;
+  mobileOverlay?: boolean;
+  panel?: boolean;
+}) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -203,7 +210,15 @@ function renderRuns(options?: { executionId?: string; panel?: boolean }) {
           : undefined,
     }),
     component: () => (
-      <EditorShell>{showPanel ? <WorkflowRuns /> : null}</EditorShell>
+      <EditorShell>
+        {showPanel ? (
+          options?.mobileOverlay ? (
+            <ConfigurationOverlay overlayId="configuration-test" />
+          ) : (
+            <WorkflowRuns listActions={options?.listActions} />
+          )
+        ) : null}
+      </EditorShell>
     ),
   });
   const router = createRouter({
@@ -222,7 +237,9 @@ function renderRuns(options?: { executionId?: string; panel?: boolean }) {
       <QueryClientProvider client={queryClient}>
         <ExtensionCatalogProvider value={emptyExtensionCatalog}>
           <IntegrationUiProvider value={{}}>
-            <RouterProvider router={router} />
+            <OverlayProvider>
+              <RouterProvider router={router} />
+            </OverlayProvider>
           </IntegrationUiProvider>
         </ExtensionCatalogProvider>
       </QueryClientProvider>
@@ -261,6 +278,34 @@ describe("WorkflowRuns", () => {
     await act(async () => {
       releaseHeldExecutions?.();
     });
+  });
+
+  it("shows list actions when the desktop run list is empty", async () => {
+    const { view } = renderRuns({
+      listActions: (
+        <>
+          <button type="button">Refresh</button>
+          <button type="button">Clear All</button>
+        </>
+      ),
+    });
+
+    await view.findByText("No runs yet");
+    expect(view.getByRole("button", { name: "Refresh" })).toBeTruthy();
+    expect(view.getByRole("button", { name: "Clear All" })).toBeTruthy();
+  });
+
+  it("shows each run-list action once in the populated mobile sheet", async () => {
+    served.items = [execution("exec_1", "completed")];
+    const { view } = renderRuns({ mobileOverlay: true });
+
+    fireEvent.click(
+      await view.findByRole("button", { name: "Back to runs list" })
+    );
+
+    await view.findByTestId("workflow-run-summary-row");
+    expect(view.getAllByRole("button", { name: "Refresh" })).toHaveLength(1);
+    expect(view.getAllByRole("button", { name: "Clear All" })).toHaveLength(1);
   });
 
   it("selects the newest run when the initial list resolves", async () => {

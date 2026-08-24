@@ -14,7 +14,6 @@
 
 import { Autocomplete } from "@base-ui/react/autocomplete";
 import type { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import { useReactFlow } from "@xyflow/react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { ChevronLeft, Search } from "lucide-react";
 import {
@@ -36,14 +35,7 @@ import {
 } from "#src/components/ui/dialog";
 import { ActionIcon } from "#src/components/workflow/config/action-grid";
 import { useAddStep } from "#src/components/workflow/use-add-step";
-import { useReflowLayout } from "#src/components/workflow/use-reflow-layout";
-import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
-import type {
-  WorkflowToolbarActions,
-  WorkflowToolbarState,
-} from "#src/components/workflow/workflow-toolbar-handlers";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
-import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import { isTextEntry } from "#src/lib/is-text-entry";
 import {
   currentPalettePage,
@@ -59,28 +51,14 @@ import {
   commandPaletteRefusalAtom,
   openCommandPaletteAtom,
 } from "#src/lib/command-palette-store";
-import {
-  currentPlatform,
-  editorShortcutLabels,
-  isApplePlatform,
-} from "#src/lib/shortcut-label";
 import { stepGroups, stepSearchText } from "#src/lib/step-types";
 import {
   WorkflowCommandIcon,
-  workflowCommands,
+  type WorkflowCommand,
 } from "#src/lib/workflow-commands";
-import { viewportAnimationDuration } from "#src/lib/motion";
-import {
-  canvasEditingLockedAtom,
-  copySelectionAtom,
-  duplicateSelectionAtom,
-  groupSelectionAtom,
-  hasCopiedSelectionAtom,
-  pasteCopiedSelectionAtom,
-} from "#src/lib/workflow-graph-store";
+import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { selectableActions } from "@wfgraph/shared/extensions/catalog";
-import { analyzeGroupableSelection } from "@wfgraph/shared/graph/node-group";
 import { cn } from "@wfgraph/shared/utils";
 
 type PaletteItem = {
@@ -131,8 +109,7 @@ const NO_GROUPS: readonly PaletteGroup[] = [];
 const REFUSAL_TOAST_ID = "command-palette-refused";
 
 type CommandPaletteProps = {
-  state: WorkflowToolbarState;
-  actions: WorkflowToolbarActions;
+  commands: readonly WorkflowCommand[];
 };
 
 /**
@@ -143,7 +120,7 @@ type CommandPaletteProps = {
  * that only works once the thing is open is not a shortcut. Rendered by
  * `ToolbarActions`, which renders nothing at all for a non-owner.
  */
-export function CommandPalette({ state, actions }: CommandPaletteProps) {
+export function CommandPalette({ commands }: CommandPaletteProps) {
   const palette = useAtomValue(commandPaletteAtom);
   const setPalette = useSetAtom(commandPaletteAtom);
   const openPalette = useSetAtom(openCommandPaletteAtom);
@@ -202,39 +179,20 @@ export function CommandPalette({ state, actions }: CommandPaletteProps) {
     return null;
   }
 
-  return (
-    <CommandPaletteDialog actions={actions} palette={palette} state={state} />
-  );
+  return <CommandPaletteDialog commands={commands} palette={palette} />;
 }
 
 function CommandPaletteDialog({
   palette,
-  state,
-  actions,
+  commands,
 }: CommandPaletteProps & { palette: CommandPaletteState }) {
   const setPalette = useSetAtom(commandPaletteAtom);
   const inputRef = useRef<HTMLInputElement>(null);
   const catalog = useExtensionCatalog();
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
-  const hasCopiedSelection = useAtomValue(hasCopiedSelectionAtom);
-  const copySelection = useSetAtom(copySelectionAtom);
-  const pasteSelection = useSetAtom(pasteCopiedSelectionAtom);
-  const duplicateSelection = useSetAtom(duplicateSelectionAtom);
-  const groupSelection = useSetAtom(groupSelectionAtom);
-  const { fitView } = useReactFlow();
-  const { canReflow, reflow } = useReflowLayout();
-  const comparisonActions = useWorkflowComparisonActions();
-  const workspaceNavigation = useWorkflowWorkspaceNavigation(
-    comparisonActions.openComparison
-  );
   const addStep = useAddStep();
   const hintsId = useId();
   const pageId = useId();
-  // The platform is a property of the machine, not of this render.
-  const shortcuts = useMemo(
-    () => editorShortcutLabels(isApplePlatform(currentPlatform())),
-    []
-  );
 
   const page = currentPalettePage(palette);
   const canGoBack = paletteCanGoBack(palette);
@@ -259,20 +217,6 @@ function CommandPaletteDialog({
   // rather than on the state object a keystroke replaces.
   const stepAt: CanvasPosition | undefined =
     page.id === "add-step" ? page.at : undefined;
-  const selectedIds = new Set(
-    state.nodes.filter((node) => node.selected).map((node) => node.id)
-  );
-  const hasCopyableSelection = state.nodes.some(
-    (node) =>
-      node.selected && node.data.type !== "lifecycle" && node.type !== "add"
-  );
-  const grouping = analyzeGroupableSelection(
-    state.nodes,
-    state.edges,
-    selectedIds,
-    catalog
-  );
-
   /**
    * The node types, which is the one page worth memoising: it walks the whole
    * catalog, and every value it closes over holds its identity across a
@@ -305,102 +249,6 @@ function CommandPaletteDialog({
     }));
   }, [onStepPage, stepAt, catalog, editingLocked, addStep, setPalette]);
 
-  const commands = workflowCommands({
-    state: {
-      currentWorkflowId: state.currentWorkflowId,
-      workflowMode: state.workflowMode,
-      isExecuting: state.isExecuting,
-      isGenerating: state.isGenerating,
-      isSaving: state.isSaving,
-      hasNodes: state.nodes.some((node) => node.type !== "add"),
-      canUndo: state.canUndo,
-      canRedo: state.canRedo,
-      canReflow,
-      canSave: Boolean(state.currentWorkflowId) && !state.isGenerating,
-      canViewRuns: Boolean(state.currentWorkflowId) && state.isOwner,
-      canViewChanges:
-        Boolean(state.currentWorkflowId) &&
-        state.isOwner &&
-        Boolean(state.publication?.isPublished),
-      canPublish:
-        !editingLocked &&
-        !state.isSaving &&
-        !actions.isComparing &&
-        !actions.isPublishing &&
-        state.nodes.some((node) => node.type !== "add") &&
-        (!state.publication?.isPublished ||
-          state.publication.hasUnpublishedChanges ||
-          state.hasUnsavedChanges),
-      canCopySelection: hasCopyableSelection && !editingLocked,
-      canPaste: hasCopiedSelection && !editingLocked,
-      canGroupSelection: grouping.ok && !editingLocked,
-      editingLocked,
-    },
-    shortcuts,
-    callbacks: {
-      addStep: () => setPalette(pushPalettePage(palette, { id: "add-step" })),
-      save: () => {
-        close();
-        void actions.handleSave();
-      },
-      run: () => {
-        close();
-        void actions.handleExecute();
-      },
-      switchMode: (mode) => {
-        close();
-        void actions.handleSetWorkflowMode(mode);
-      },
-      showRuns: () => {
-        close();
-        workspaceNavigation.showRuns();
-      },
-      showChanges: () => {
-        close();
-        workspaceNavigation.showChanges();
-      },
-      publish: () => {
-        close();
-        actions.handlePublish();
-      },
-      fitView: () => {
-        close();
-        void fitView({
-          padding: 0.2,
-          duration: viewportAnimationDuration(),
-        });
-      },
-      copySelection: () => {
-        close();
-        void copySelection();
-      },
-      pasteSelection: () => {
-        close();
-        void pasteSelection();
-      },
-      duplicateSelection: () => {
-        close();
-        void duplicateSelection();
-      },
-      groupSelection: () => {
-        close();
-        void groupSelection({ catalog });
-      },
-      undo: () => {
-        close();
-        state.undo();
-      },
-      redo: () => {
-        close();
-        state.redo();
-      },
-      reflow: () => {
-        close();
-        reflow();
-      },
-    },
-  });
-
   const rootPageGroups: readonly PaletteGroup[] = [
     { id: "steps", label: "Steps" },
     { id: "workflow", label: "Workflow" },
@@ -422,7 +270,14 @@ function CommandPaletteDialog({
             id={command.id}
           />
         ),
-        select: command.execute,
+        select: () => {
+          if (command.id === "add-step") {
+            setPalette(pushPalettePage(palette, { id: "add-step" }));
+            return;
+          }
+          close();
+          command.execute();
+        },
       })),
   }));
 

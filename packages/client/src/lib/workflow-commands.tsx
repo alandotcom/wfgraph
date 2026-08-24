@@ -83,6 +83,43 @@ type WorkflowCommandCallbacks = {
   readonly reflow: () => void;
 };
 
+type PublishEligibility = {
+  readonly editingLocked: boolean;
+  readonly isSaving: boolean;
+  readonly isComparing: boolean;
+  readonly isPublishing: boolean;
+  readonly hasNodes: boolean;
+  readonly hasUnsavedChanges: boolean;
+  readonly publication?: {
+    readonly isPublished: boolean;
+    readonly hasUnpublishedChanges: boolean;
+  };
+};
+
+/** The publish gate shared by the command controller and toolbar button. */
+export function isWorkflowPublishDisabled({
+  editingLocked,
+  isSaving,
+  isComparing,
+  isPublishing,
+  hasNodes,
+  hasUnsavedChanges,
+  publication,
+}: PublishEligibility): boolean {
+  return (
+    editingLocked ||
+    isSaving ||
+    isComparing ||
+    isPublishing ||
+    !hasNodes ||
+    Boolean(
+      publication?.isPublished &&
+      !publication.hasUnpublishedChanges &&
+      !hasUnsavedChanges
+    )
+  );
+}
+
 /** The command policy shared by the menu and command palette. */
 export function workflowCommands({
   state,

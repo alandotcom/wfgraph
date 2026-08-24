@@ -28,7 +28,7 @@ export type WorkflowComparisonSession = {
 type ComparisonSessions = Readonly<Record<string, WorkflowComparisonSession>>;
 type ComparisonRequestState = {
   epoch: number;
-  pending: boolean;
+  status: "idle" | "pending" | "error";
 };
 
 const comparisonSessionsStateAtom = atom<ComparisonSessions>({});
@@ -40,7 +40,7 @@ function requestStateFor(
   states: Readonly<Record<string, ComparisonRequestState>>,
   workflowId: string
 ): ComparisonRequestState {
-  return states[workflowId] ?? { epoch: 0, pending: false };
+  return states[workflowId] ?? { epoch: 0, status: "idle" };
 }
 
 /** The comparison session for the workflow open in the editor, if one exists. */
@@ -68,7 +68,17 @@ export const isComparisonActiveAtom = atom(
 export const isComparisonPendingAtom = atom((get) => {
   const workflowId = get(currentWorkflowIdAtom);
   return workflowId
-    ? requestStateFor(get(comparisonRequestStateAtom), workflowId).pending
+    ? requestStateFor(get(comparisonRequestStateAtom), workflowId).status ===
+        "pending"
+    : false;
+});
+
+/** Whether the current workflow's latest comparison request failed. */
+export const isComparisonErrorAtom = atom((get) => {
+  const workflowId = get(currentWorkflowIdAtom);
+  return workflowId
+    ? requestStateFor(get(comparisonRequestStateAtom), workflowId).status ===
+        "error"
     : false;
 });
 
@@ -80,7 +90,7 @@ export const beginWorkflowComparisonRequestAtom = atom(
       requestStateFor(get(comparisonRequestStateAtom), workflowId).epoch + 1;
     set(comparisonRequestStateAtom, (states) => ({
       ...states,
-      [workflowId]: { epoch: next, pending: true },
+      [workflowId]: { epoch: next, status: "pending" },
     }));
     return next;
   }
@@ -89,7 +99,15 @@ export const beginWorkflowComparisonRequestAtom = atom(
 /** A response can unlock only the request that is still current for its workflow. */
 export const settleWorkflowComparisonRequestAtom = atom(
   null,
-  (get, set, input: { workflowId: string; epoch: number }) => {
+  (
+    get,
+    set,
+    input: {
+      workflowId: string;
+      epoch: number;
+      outcome?: "success" | "error";
+    }
+  ) => {
     const state = requestStateFor(
       get(comparisonRequestStateAtom),
       input.workflowId
@@ -99,7 +117,10 @@ export const settleWorkflowComparisonRequestAtom = atom(
     }
     set(comparisonRequestStateAtom, (states) => ({
       ...states,
-      [input.workflowId]: { ...state, pending: false },
+      [input.workflowId]: {
+        ...state,
+        status: input.outcome === "error" ? "error" : "idle",
+      },
     }));
     return true;
   }
@@ -164,7 +185,7 @@ export const clearWorkflowComparisonAtom = atom(
     const state = requestStateFor(get(comparisonRequestStateAtom), workflowId);
     set(comparisonRequestStateAtom, (states) => ({
       ...states,
-      [workflowId]: { epoch: state.epoch + 1, pending: false },
+      [workflowId]: { epoch: state.epoch + 1, status: "idle" },
     }));
   }
 );

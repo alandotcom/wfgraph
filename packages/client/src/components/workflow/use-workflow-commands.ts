@@ -1,0 +1,129 @@
+import { useReactFlow } from "@xyflow/react";
+import { useAtomValue, useSetAtom } from "jotai";
+import { useMemo } from "react";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
+import { useReflowLayout } from "#src/components/workflow/use-reflow-layout";
+import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
+import type {
+  WorkflowToolbarActions,
+  WorkflowToolbarState,
+} from "#src/components/workflow/workflow-toolbar-handlers";
+import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
+import { viewportAnimationDuration } from "#src/lib/motion";
+import {
+  currentPlatform,
+  editorShortcutLabels,
+  isApplePlatform,
+} from "#src/lib/shortcut-label";
+import {
+  canvasEditingLockedAtom,
+  copySelectionAtom,
+  duplicateSelectionAtom,
+  groupSelectionAtom,
+  hasCopiedSelectionAtom,
+  pasteCopiedSelectionAtom,
+} from "#src/lib/workflow-graph-store";
+import {
+  isWorkflowPublishDisabled,
+  workflowCommands,
+} from "#src/lib/workflow-commands";
+import { analyzeGroupableSelection } from "@wfgraph/shared/graph/node-group";
+
+/** Build the command policy and handlers once for every command surface. */
+export function useWorkflowCommands({
+  state,
+  actions,
+  onAddStep,
+}: {
+  state: WorkflowToolbarState;
+  actions: WorkflowToolbarActions;
+  onAddStep: () => void;
+}) {
+  const editingLocked = useAtomValue(canvasEditingLockedAtom);
+  const hasCopiedSelection = useAtomValue(hasCopiedSelectionAtom);
+  const copySelection = useSetAtom(copySelectionAtom);
+  const pasteSelection = useSetAtom(pasteCopiedSelectionAtom);
+  const duplicateSelection = useSetAtom(duplicateSelectionAtom);
+  const groupSelection = useSetAtom(groupSelectionAtom);
+  const catalog = useExtensionCatalog();
+  const { fitView } = useReactFlow();
+  const { canReflow, reflow } = useReflowLayout();
+  const comparisonActions = useWorkflowComparisonActions();
+  const workspaceNavigation = useWorkflowWorkspaceNavigation(
+    comparisonActions.openComparison
+  );
+  const shortcuts = useMemo(
+    () => editorShortcutLabels(isApplePlatform(currentPlatform())),
+    []
+  );
+
+  const selectedIds = new Set(
+    state.nodes.filter((node) => node.selected).map((node) => node.id)
+  );
+  const hasNodes = state.nodes.some((node) => node.type !== "add");
+  const hasCopyableSelection = state.nodes.some(
+    (node) =>
+      node.selected && node.data.type !== "lifecycle" && node.type !== "add"
+  );
+  const grouping = analyzeGroupableSelection(
+    state.nodes,
+    state.edges,
+    selectedIds,
+    catalog
+  );
+
+  return workflowCommands({
+    state: {
+      currentWorkflowId: state.currentWorkflowId,
+      workflowMode: state.workflowMode,
+      isExecuting: state.isExecuting,
+      isGenerating: state.isGenerating,
+      isSaving: state.isSaving,
+      hasNodes,
+      canUndo: state.canUndo,
+      canRedo: state.canRedo,
+      canReflow,
+      canSave: Boolean(state.currentWorkflowId) && !state.isGenerating,
+      canViewRuns: Boolean(state.currentWorkflowId) && state.isOwner,
+      canViewChanges:
+        Boolean(state.currentWorkflowId) &&
+        state.isOwner &&
+        Boolean(state.publication?.isPublished),
+      canPublish: !isWorkflowPublishDisabled({
+        editingLocked,
+        isSaving: state.isSaving,
+        isComparing: actions.isComparing,
+        isPublishing: actions.isPublishing,
+        hasNodes,
+        hasUnsavedChanges: state.hasUnsavedChanges,
+        publication: state.publication,
+      }),
+      canCopySelection: hasCopyableSelection && !editingLocked,
+      canPaste: hasCopiedSelection && !editingLocked,
+      canGroupSelection: grouping.ok && !editingLocked,
+      editingLocked,
+    },
+    shortcuts,
+    callbacks: {
+      addStep: onAddStep,
+      save: () => void actions.handleSave(),
+      run: () => void actions.handleExecute(),
+      switchMode: (mode) => void actions.handleSetWorkflowMode(mode),
+      showRuns: workspaceNavigation.showRuns,
+      showChanges: workspaceNavigation.showChanges,
+      publish: actions.handlePublish,
+      fitView: () =>
+        void fitView({
+          padding: 0.2,
+          duration: viewportAnimationDuration(),
+        }),
+      copySelection: () => void copySelection(),
+      pasteSelection: () => void pasteSelection(),
+      duplicateSelection: () => void duplicateSelection(),
+      groupSelection: () => void groupSelection({ catalog }),
+      undo: state.undo,
+      redo: state.redo,
+      reflow,
+    },
+  });
+}

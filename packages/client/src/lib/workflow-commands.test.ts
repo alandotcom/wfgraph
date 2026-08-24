@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { workflowCommands } from "#src/lib/workflow-commands";
+import {
+  isWorkflowPublishDisabled,
+  workflowCommands,
+} from "#src/lib/workflow-commands";
 
 function commandInput(
   overrides: Partial<Parameters<typeof workflowCommands>[0]["state"]> = {}
@@ -135,5 +138,41 @@ describe("workflowCommands", () => {
     expect(mode?.label).toBe("Switch to Live mode");
     mode?.execute();
     expect(input.callbacks.switchMode).toHaveBeenCalledWith("live");
+  });
+});
+
+describe("isWorkflowPublishDisabled", () => {
+  const publication = {
+    isPublished: true,
+    hasUnpublishedChanges: false,
+    publishedVersionId: "version_1",
+    publishedVersion: 1,
+    publishedAt: "2026-08-23T16:00:00.000Z",
+  };
+
+  it("uses local unsaved changes when the published comparison is otherwise clean", () => {
+    expect(
+      isWorkflowPublishDisabled({
+        editingLocked: false,
+        isSaving: false,
+        isComparing: false,
+        isPublishing: false,
+        hasNodes: true,
+        hasUnsavedChanges: false,
+        publication,
+      })
+    ).toBe(true);
+
+    expect(
+      isWorkflowPublishDisabled({
+        editingLocked: false,
+        isSaving: false,
+        isComparing: false,
+        isPublishing: false,
+        hasNodes: true,
+        hasUnsavedChanges: true,
+        publication,
+      })
+    ).toBe(false);
   });
 });

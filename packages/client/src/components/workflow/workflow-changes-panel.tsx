@@ -71,7 +71,7 @@ export function WorkflowChangesPanel({
         />
         {actions.isPending ? (
           <PanelState label="Comparing current draft with the published version" />
-        ) : actions.compare.isError ? (
+        ) : actions.isError ? (
           <PanelState
             actionLabel="Try again"
             label="Unable to compare changes"
@@ -230,7 +230,7 @@ function ReviewHeader({
       : "Comparing current draft with the published version"
     : payload
       ? `${versionName(payload.baseVersion?.version)} → proposed version ${payload.proposedVersion}`
-      : actions.compare.isError
+      : actions.isError
         ? "Comparison unavailable"
         : "No comparison open";
 

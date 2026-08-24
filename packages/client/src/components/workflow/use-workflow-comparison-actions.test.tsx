@@ -72,6 +72,36 @@ describe("useWorkflowComparisonActions", () => {
     expect(store.get(isComparisonPendingAtom)).toBe(false);
   });
 
+  it("shares a comparison failure with every action hook instance", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.reject(new Error("offline")))
+    );
+    const store = createStore();
+    store.set(currentWorkflowIdAtom, "workflow_1");
+    const queryClient = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    });
+    function Wrapper({ children }: { children: ReactNode }) {
+      return (
+        <QueryClientProvider client={queryClient}>
+          <JotaiProvider store={store}>{children}</JotaiProvider>
+        </QueryClientProvider>
+      );
+    }
+    const owner = renderHook(() => useWorkflowComparisonActions(), {
+      wrapper: Wrapper,
+    });
+    const observer = renderHook(() => useWorkflowComparisonActions(), {
+      wrapper: Wrapper,
+    });
+
+    await act(async () => owner.result.current.openComparison());
+
+    expect(owner.result.current.isError).toBe(true);
+    expect(observer.result.current.isError).toBe(true);
+  });
+
   it("keeps the installed comparison when a refresh fails", async () => {
     vi.stubGlobal(
       "fetch",

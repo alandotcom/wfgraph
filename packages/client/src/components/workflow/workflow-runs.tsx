@@ -327,7 +327,7 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
   if (executions.length === 0) {
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <RunsListHeader />
+        <RunsListHeader actions={listActions} />
         <div className="min-h-0 flex-1 overflow-y-auto p-3 [scrollbar-gutter:stable_both-edges]">
           <div className="space-y-2">
             {supersededToggle}

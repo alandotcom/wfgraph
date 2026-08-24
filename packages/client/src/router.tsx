@@ -30,7 +30,7 @@ import {
   WORKFLOW_LOAD_ERROR_MESSAGE,
   workflowWorkspaceView,
 } from "#src/lib/workflow-route-state";
-import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
+import { enterRunsWorkspaceAtom } from "#src/lib/workflow-workspace-navigation";
 import WorkflowEditorPage from "#src/routes/workflows/[workflowId]/page";
 import WorkflowsPage from "#src/routes/workflows/page";
 
@@ -113,7 +113,7 @@ const workflowRoute = createRoute({
   beforeLoad: ({ search }) => {
     const view = workflowWorkspaceView(search.executionId);
     if (view !== null) {
-      appStore.set(workflowWorkspaceViewAtom, view);
+      appStore.set(enterRunsWorkspaceAtom);
     }
   },
   /**
@@ -177,7 +177,7 @@ const workflowRoute = createRoute({
       ),
     });
     if (executionIdFromWorkflowSearch(location.search)) {
-      appStore.set(workflowWorkspaceViewAtom, "runs");
+      appStore.set(enterRunsWorkspaceAtom);
     }
   },
   errorComponent: WorkflowRouteComponent,

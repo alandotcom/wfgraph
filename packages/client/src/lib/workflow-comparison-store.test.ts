@@ -9,6 +9,7 @@ import {
   beginWorkflowComparisonRequestAtom,
   clearWorkflowComparisonAtom,
   installWorkflowComparisonAtom,
+  isComparisonErrorAtom,
   isComparisonPendingAtom,
   isComparisonActiveAtom,
   moveComparisonNodesAtom,
@@ -314,6 +315,28 @@ describe("comparison session store", () => {
       epoch: secondEpoch,
     });
     expect(store.get(isComparisonPendingAtom)).toBe(false);
+  });
+
+  it("keeps request failures workflow-scoped and clears them on retry", () => {
+    const store = createStore();
+    store.set(currentWorkflowIdAtom, "workflow_1");
+    const failedEpoch = store.set(
+      beginWorkflowComparisonRequestAtom,
+      "workflow_1"
+    );
+
+    store.set(settleWorkflowComparisonRequestAtom, {
+      workflowId: "workflow_1",
+      epoch: failedEpoch,
+      outcome: "error",
+    });
+
+    expect(store.get(isComparisonErrorAtom)).toBe(true);
+    store.set(currentWorkflowIdAtom, "workflow_2");
+    expect(store.get(isComparisonErrorAtom)).toBe(false);
+    store.set(currentWorkflowIdAtom, "workflow_1");
+    store.set(beginWorkflowComparisonRequestAtom, "workflow_1");
+    expect(store.get(isComparisonErrorAtom)).toBe(false);
   });
 
   it("keeps the last display graph while a refresh is pending or a stale response arrives", () => {

@@ -11,6 +11,7 @@ import {
   beginWorkflowComparisonRequestAtom,
   comparisonSessionAtom,
   installWorkflowComparisonAtom,
+  isComparisonErrorAtom,
   isComparisonPendingAtom,
   settleWorkflowComparisonRequestAtom,
 } from "#src/lib/workflow-comparison-store";
@@ -41,6 +42,7 @@ export function useWorkflowComparisonActions() {
   const beginRequest = useSetAtom(beginWorkflowComparisonRequestAtom);
   const settleRequest = useSetAtom(settleWorkflowComparisonRequestAtom);
   const isPending = useAtomValue(isComparisonPendingAtom);
+  const isError = useAtomValue(isComparisonErrorAtom);
 
   const compare = useMutation(
     orpcQuery.workflow.compareVersion.mutationOptions({
@@ -65,6 +67,7 @@ export function useWorkflowComparisonActions() {
         ? session?.payload.baseVersion?.id
         : undefined);
     const epoch = beginRequest(workflowId);
+    let outcome: "success" | "error" = "success";
     try {
       const payload = await compare.mutateAsync({
         workflowId,
@@ -91,10 +94,11 @@ export function useWorkflowComparisonActions() {
         setSelectedNode(null);
       }
     } catch {
+      outcome = "error";
       // Mutation metadata reports this failure. Event handlers may discard
       // this promise because opening a comparison has completed as a UI outcome.
     } finally {
-      settleRequest({ workflowId, epoch });
+      settleRequest({ workflowId, epoch, outcome });
     }
   };
 
@@ -126,5 +130,5 @@ export function useWorkflowComparisonActions() {
     meta: { errorMessage: "Unable to restore this version as a draft" },
   });
 
-  return { compare, isPending, openComparison, restore };
+  return { compare, isError, isPending, openComparison, restore };
 }
