@@ -1,15 +1,17 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
+  canvasNodeWithInitialDimensions,
   canvasFitViewKey,
   canvasInteractionState,
   fitInitialWorkflowViewport,
   keyboardFitViewOptions,
   lifecycleAnchorViewport,
+  synchronizeCanvasGraph,
   synchronizedLifecycleAnchor,
   useSynchronizedLifecycleViewport,
 } from "#src/components/workflow/workflow-canvas";
-import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 function lifecycleNode(x: number): WorkflowNode {
   return {
@@ -19,6 +21,67 @@ function lifecycleNode(x: number): WorkflowNode {
     data: { label: "Lifecycle", type: "lifecycle" },
   };
 }
+
+describe("canvasNodeWithInitialDimensions", () => {
+  it("keeps an unmeasured replacement node visible while React Flow installs it", () => {
+    const node = lifecycleNode(0);
+
+    expect(canvasNodeWithInitialDimensions(node)).toEqual({
+      ...node,
+      initialWidth: 192,
+      initialHeight: 112,
+    });
+  });
+
+  it("preserves a dynamic node's known dimensions", () => {
+    const node = {
+      ...lifecycleNode(0),
+      width: 396,
+      height: 248,
+    };
+
+    expect(canvasNodeWithInitialDimensions(node)).toEqual({
+      ...node,
+      initialWidth: 396,
+      initialHeight: 248,
+    });
+  });
+
+  it("preserves the dimensioned node identity across presentation updates", () => {
+    const node = lifecycleNode(0);
+
+    expect(canvasNodeWithInitialDimensions(node)).toBe(
+      canvasNodeWithInitialDimensions(node)
+    );
+  });
+});
+
+describe("synchronizeCanvasGraph", () => {
+  it("installs a replacement graph before the workspace can paint", () => {
+    const outgoingNodes = [lifecycleNode(500)];
+    const incomingNodes = [lifecycleNode(0)];
+    const outgoingEdges: WorkflowEdge[] = [];
+    const incomingEdges: WorkflowEdge[] = [];
+    let currentNodes = outgoingNodes;
+    let currentEdges = outgoingEdges;
+
+    synchronizeCanvasGraph({
+      nodes: incomingNodes,
+      edges: incomingEdges,
+      currentNodes,
+      currentEdges,
+      setNodes: (nodes) => {
+        currentNodes = nodes;
+      },
+      setEdges: (edges) => {
+        currentEdges = edges;
+      },
+    });
+
+    expect(currentNodes).toBe(incomingNodes);
+    expect(currentEdges).toBe(incomingEdges);
+  });
+});
 
 describe("canvasInteractionState", () => {
   it("keeps comparison nodes selectable and enables only their node-level drag flags", () => {

@@ -8,6 +8,7 @@ import {
   type OnConnectStartParams,
   useInternalNode,
   useReactFlow,
+  useStoreApi,
   type Connection as XYFlowConnection,
   type Edge as XYFlowEdge,
 } from "@xyflow/react";
@@ -39,6 +40,7 @@ import {
   displayNodesAtom,
   edgesAtom,
   canvasEditingLockedAtom,
+  executionOverlayGraphAtom,
   isExecutionOverlayActiveAtom,
   onEdgesChangeAtom,
   onNodesChangeAtom,
@@ -55,7 +57,11 @@ import {
   setComparisonSubviewAtom,
 } from "#src/lib/workflow-comparison-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
-import { isGeneratingAtom, showMinimapAtom } from "#src/lib/workflow-ui-store";
+import {
+  isGeneratingAtom,
+  showMinimapAtom,
+  workflowWorkspaceViewAtom,
+} from "#src/lib/workflow-ui-store";
 import {
   workflowNodeAriaLabel,
   WORKFLOW_EDGE_TYPE,
@@ -75,7 +81,10 @@ import {
   useContextMenuHandlers,
   WorkflowContextMenu,
 } from "./workflow-context-menu";
-import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
+import {
+  WORKFLOW_NODE_HEIGHT,
+  WORKFLOW_NODE_WIDTH,
+} from "#src/lib/workflow-node-dimensions";
 import {
   connectionHandleTypesMatch,
   connectionRefusalReason,
@@ -295,6 +304,7 @@ const accessibleNodeCache = new WeakMap<
   WorkflowNode,
   { label: string; node: WorkflowNode }
 >();
+const dimensionedNodeCache = new WeakMap<WorkflowNode, WorkflowNode>();
 const accessibleEdgeCache = new WeakMap<
   WorkflowEdge,
   { label: string; edge: WorkflowEdge }
@@ -312,18 +322,73 @@ const accessibleEdgeArrayCache = new WeakMap<
   WorkflowEdge[],
   { nodeArray: AccessibleNodeArray; edges: WorkflowEdge[] }
 >();
+const EMPTY_RUN_PRESENTATION = {};
+const EMPTY_CHANGES_PRESENTATION = {};
+const DRAFT_PRESENTATION = {};
+
+export function canvasNodeWithInitialDimensions(
+  node: WorkflowNode
+): WorkflowNode {
+  const initialWidth =
+    node.initialWidth ??
+    node.measured?.width ??
+    node.width ??
+    WORKFLOW_NODE_WIDTH;
+  const initialHeight =
+    node.initialHeight ??
+    node.measured?.height ??
+    node.height ??
+    WORKFLOW_NODE_HEIGHT;
+  if (
+    node.initialWidth === initialWidth &&
+    node.initialHeight === initialHeight
+  ) {
+    return node;
+  }
+  const cached = dimensionedNodeCache.get(node);
+  if (cached) {
+    return cached;
+  }
+  const dimensioned = { ...node, initialWidth, initialHeight };
+  dimensionedNodeCache.set(node, dimensioned);
+  return dimensioned;
+}
 
 function withNodeAriaLabel(node: WorkflowNode, label: string): WorkflowNode {
-  if (node.ariaLabel === label) {
-    return node;
+  const dimensionedNode = canvasNodeWithInitialDimensions(node);
+  if (dimensionedNode.ariaLabel === label) {
+    return dimensionedNode;
   }
   const cached = accessibleNodeCache.get(node);
   if (cached?.label === label) {
     return cached.node;
   }
-  const accessible = { ...node, ariaLabel: label };
+  const accessible = { ...dimensionedNode, ariaLabel: label };
   accessibleNodeCache.set(node, { label, node: accessible });
   return accessible;
+}
+
+export function synchronizeCanvasGraph({
+  nodes,
+  edges,
+  currentNodes,
+  currentEdges,
+  setNodes,
+  setEdges,
+}: {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  currentNodes: WorkflowNode[];
+  currentEdges: WorkflowEdge[];
+  setNodes: (nodes: WorkflowNode[]) => void;
+  setEdges: (edges: WorkflowEdge[]) => void;
+}): void {
+  if (currentNodes !== nodes) {
+    setNodes(nodes);
+  }
+  if (currentEdges !== edges) {
+    setEdges(edges);
+  }
 }
 
 function withEdgeAriaLabel(edge: WorkflowEdge, label: string): WorkflowEdge {
@@ -394,8 +459,10 @@ export function WorkflowCanvas() {
   // it. The toolbar's Publish button reads this same atom.
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
   const overlayActive = useAtomValue(isExecutionOverlayActiveAtom);
+  const executionOverlay = useAtomValue(executionOverlayGraphAtom);
   const comparison = useAtomValue(activeComparisonAtom);
   const comparisonActive = comparison !== null;
+  const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
   const isGenerating = useAtomValue(isGeneratingAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
@@ -417,10 +484,70 @@ export function WorkflowCanvas() {
   const setComparisonSubview = useSetAtom(setComparisonSubviewAtom);
   const { screenToFlowPosition, fitView, getViewport, setViewport } =
     useReactFlow();
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const fittedWorkflowIdRef = useRef<string | null>(null);
+  const fitGenerationRef = useRef(0);
   // React Flow owns the semantic wrappers around custom nodes and edges. Build
   // their names from the same catalog labels the cards render, while preserving
   // element identity until the graph or catalog actually changes.
   const accessibleGraph = accessibleGraphElements(nodes, edges, catalog);
+  const canvasPresentation =
+    workspaceView === "runs"
+      ? (executionOverlay ?? EMPTY_RUN_PRESENTATION)
+      : workspaceView === "changes"
+        ? (comparison ?? EMPTY_CHANGES_PRESENTATION)
+        : DRAFT_PRESENTATION;
+  const reactFlowStore = useStoreApi<WorkflowNode, WorkflowEdge>();
+  const synchronizeGraph = () => {
+    const state = reactFlowStore.getState();
+    const lifecycleNode = accessibleGraph.nodes.find(
+      (node) => node.data.type === "lifecycle"
+    );
+    const installedLifecycle = lifecycleNode
+      ? state.nodeLookup.get(lifecycleNode.id)?.internals.userNode
+      : undefined;
+    const repositionsLifecycle = lifecycleNode
+      ? !installedLifecycle ||
+        installedLifecycle.position.x !== lifecycleNode.position.x ||
+        installedLifecycle.position.y !== lifecycleNode.position.y
+      : false;
+    synchronizeCanvasGraph({
+      nodes: accessibleGraph.nodes,
+      edges: accessibleGraph.edges,
+      currentNodes: state.nodes,
+      currentEdges: state.edges,
+      setNodes: state.setNodes,
+      setEdges: state.setEdges,
+    });
+    const canvasWidth = canvasContainerRef.current?.clientWidth;
+    if (
+      currentWorkflowId &&
+      fittedWorkflowIdRef.current === currentWorkflowId &&
+      repositionsLifecycle &&
+      lifecycleNode &&
+      canvasWidth
+    ) {
+      fitGenerationRef.current += 1;
+      void setViewport(
+        lifecycleAnchorViewport({
+          canvasWidth,
+          nodePosition: lifecycleNode.position,
+          nodeWidth:
+            lifecycleNode.measured?.width ??
+            lifecycleNode.width ??
+            lifecycleNode.initialWidth ??
+            WORKFLOW_NODE_WIDTH,
+          top: 48,
+          zoom: getViewport().zoom,
+        }),
+        { duration: 0 }
+      );
+    }
+  };
+  // React Flow applies controlled graph props in a passive effect. Install the
+  // same graph during the layout phase so a workspace change cannot paint the
+  // incoming view with the outgoing graph's position.
+  useBeforePaint(canvasPresentation, synchronizeGraph);
   const interaction = canvasInteractionState({
     editingLocked,
     comparisonActive,
@@ -445,9 +572,6 @@ export function WorkflowCanvas() {
   const [contextMenuState, setContextMenuState] =
     useState<ContextMenuState>(null);
   const rightClickSelectionRef = useRef<ReadonlySet<string>>(new Set());
-  const canvasContainerRef = useRef<HTMLDivElement>(null);
-  const fittedWorkflowIdRef = useRef<string | null>(null);
-  const fitGenerationRef = useRef(0);
   const { lifecycleAnchor, fitViewKey } = useSynchronizedLifecycleViewport({
     currentWorkflowId,
     lifecycleNode: lifecycleNode ?? null,
