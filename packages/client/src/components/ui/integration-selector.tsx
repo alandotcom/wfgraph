@@ -146,9 +146,9 @@ export function IntegrationSelector({
     return (
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2 rounded-md px-2 py-1.5">
-          <div className="size-4 shrink-0 animate-pulse rounded-full bg-muted" />
-          <div className="h-4 flex-1 animate-pulse rounded bg-muted" />
-          <div className="size-6 shrink-0 animate-pulse rounded bg-muted" />
+          <div className="size-4 shrink-0 animate-pulse rounded-full bg-muted motion-reduce:animate-none" />
+          <div className="h-4 flex-1 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+          <div className="size-6 shrink-0 animate-pulse rounded bg-muted motion-reduce:animate-none" />
         </div>
       </div>
     );

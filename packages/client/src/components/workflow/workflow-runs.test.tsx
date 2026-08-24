@@ -79,6 +79,9 @@ const served: WorkflowRunRpcFixture = {
   waitsByExecutionId: {},
 };
 
+let holdExecutions = false;
+let releaseHeldExecutions: (() => void) | null = null;
+
 /** The mock logs endpoint's version id for one execution: a run pins a version,
  * mocked here as a fixed function of the execution id so a test can address
  * `served.graphs` by it without threading a real version id through. */
@@ -99,6 +102,14 @@ function stubRunQueries(): void {
       const procedurePath = extractRpcProcedurePath(url);
       if (!procedurePath.startsWith("workflow/")) {
         throw new Error(`unexpected fetch in workflow-runs test: ${url}`);
+      }
+
+      if (procedurePath === "workflow/getExecutions" && holdExecutions) {
+        return new Promise<Response>((resolve) => {
+          releaseHeldExecutions = () => {
+            resolve(answerWorkflowRunRpc(served, procedurePath, {}));
+          };
+        });
       }
 
       const requestInput = await parseRpcRequestInput(init);
@@ -228,6 +239,8 @@ function resetServed(): void {
   served.logsSummaryExtras = {};
   served.logsByExecutionId = {};
   served.waitsByExecutionId = {};
+  holdExecutions = false;
+  releaseHeldExecutions = null;
   stubRunQueries();
 }
 
@@ -238,14 +251,43 @@ describe("WorkflowRuns", () => {
     vi.unstubAllGlobals();
   });
 
-  it("opens on the runs list without selecting the newest run", async () => {
+  it("uses static placeholders while the initial run list loads", async () => {
+    holdExecutions = true;
+    const { view } = renderRuns();
+
+    expect(await view.findByLabelText("Loading runs")).toBeTruthy();
+    expect(view.container.innerHTML).not.toContain("animate-pulse");
+
+    await act(async () => {
+      releaseHeldExecutions?.();
+    });
+  });
+
+  it("selects the newest run when the initial list resolves", async () => {
     served.items = [execution("exec_newest", "completed")];
     const { view, router } = renderRuns();
 
-    expect(await view.findByTestId("workflow-run-summary-row")).toBeTruthy();
-    await act(async () => {});
+    expect(
+      await view.findByRole("button", { name: "Back to runs list" })
+    ).toBeTruthy();
+    expect(router.state.location.search).toEqual({
+      executionId: "exec_newest",
+    });
+    expect(view.queryByText("Execution Inspector")).toBeNull();
+  });
 
-    expect(router.state.location.search).toEqual({});
+  it("keeps the list open after leaving the initially selected run", async () => {
+    served.items = [execution("exec_newest", "completed")];
+    const { view, router } = renderRuns();
+
+    fireEvent.click(
+      await view.findByRole("button", { name: "Back to runs list" })
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.search).toEqual({});
+      expect(view.getByText("Execution Inspector")).toBeTruthy();
+    });
     expect(
       view.queryByRole("button", { name: "Back to runs list" })
     ).toBeNull();
@@ -365,9 +407,18 @@ describe("WorkflowRuns", () => {
 
   it("restores focus to the run row after returning from its overview", async () => {
     served.items = [execution("exec_1", "completed")];
-    const { view } = renderRuns();
+    const { view } = renderRuns({ executionId: "exec_1" });
 
-    const row = await view.findByTestId("workflow-run-summary-row");
+    fireEvent.click(
+      await view.findByRole("button", { name: "Back to runs list" })
+    );
+
+    await waitFor(() => {
+      expect(
+        view.queryByRole("button", { name: "Back to runs list" })
+      ).toBeNull();
+    });
+    const row = view.getByTestId("workflow-run-summary-row");
     fireEvent.click(row);
     fireEvent.click(
       await view.findByRole("button", { name: "Back to runs list" })

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Button } from "#src/components/ui/button";
 import { ButtonGroup } from "#src/components/ui/button-group";
+import { viewportAnimationDuration } from "#src/lib/motion";
 import { showMinimapAtom } from "#src/lib/workflow-ui-store";
 
 type ControlsProps = {
@@ -30,7 +31,7 @@ export const Controls = ({ onReflow, canReflow = true }: ControlsProps) => {
   };
 
   const handleFitView = () => {
-    void fitView({ padding: 0.2, duration: 300 });
+    void fitView({ padding: 0.2, duration: viewportAnimationDuration() });
   };
 
   const handleToggleMinimap = () => {

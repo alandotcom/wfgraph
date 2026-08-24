@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canvasFitViewKey,
   canvasInteractionState,
+  keyboardFitViewOptions,
   lifecycleAnchorViewport,
 } from "#src/components/workflow/workflow-canvas";
 
@@ -40,24 +41,21 @@ describe("canvasInteractionState", () => {
 });
 
 describe("canvasFitViewKey", () => {
-  it("changes with the workspace and lifecycle position", () => {
+  it("ignores workspace-only changes but changes with the lifecycle anchor", () => {
     const draft = canvasFitViewKey({
       workflowId: "workflow_1",
-      workspaceView: "draft",
       lifecycleNode: { id: "lifecycle", position: { x: 100, y: 20 } },
     });
     const runs = canvasFitViewKey({
       workflowId: "workflow_1",
-      workspaceView: "runs",
       lifecycleNode: { id: "lifecycle", position: { x: 100, y: 20 } },
     });
     const moved = canvasFitViewKey({
       workflowId: "workflow_1",
-      workspaceView: "runs",
       lifecycleNode: { id: "lifecycle", position: { x: 140, y: 20 } },
     });
 
-    expect(runs).not.toBe(draft);
+    expect(runs).toBe(draft);
     expect(moved).not.toBe(runs);
   });
 
@@ -65,14 +63,12 @@ describe("canvasFitViewKey", () => {
     expect(
       canvasFitViewKey({
         workflowId: null,
-        workspaceView: "draft",
         lifecycleNode: { id: "lifecycle", position: { x: 0, y: 0 } },
       })
     ).toBeNull();
     expect(
       canvasFitViewKey({
         workflowId: "workflow_1",
-        workspaceView: "draft",
         lifecycleNode: null,
       })
     ).toBeNull();
@@ -90,5 +86,11 @@ describe("lifecycleAnchorViewport", () => {
         zoom: 0.75,
       })
     ).toEqual({ x: 278, y: -12, zoom: 0.75 });
+  });
+});
+
+describe("keyboardFitViewOptions", () => {
+  it("fits immediately for the keyboard shortcut", () => {
+    expect(keyboardFitViewOptions).toEqual({ padding: 0.2, duration: 0 });
   });
 });

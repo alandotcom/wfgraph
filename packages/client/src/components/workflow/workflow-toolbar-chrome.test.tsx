@@ -683,6 +683,9 @@ describe("the command palette", () => {
     expect(paletteInput()?.getAttribute("placeholder")).toBe(
       "Search commands, or add a step"
     );
+    const palette = document.querySelector('[data-slot="dialog-content"]');
+    expect(palette?.className).toContain("data-open:animate-in");
+    expect(palette?.className).toContain("motion-reduce:animate-none");
   });
 
   // The same rule Cmd+Enter follows: a chord is not worth a keystroke taken out

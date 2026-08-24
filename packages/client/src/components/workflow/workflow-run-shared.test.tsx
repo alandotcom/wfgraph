@@ -153,4 +153,14 @@ describe("JsonPropertyInspector", () => {
       view.getByRole("button", { name: /Deliveries.*3 items/ })
     ).toBeTruthy();
   });
+
+  it("opens collection content without a restartable entrance animation", () => {
+    const view = render(
+      <JsonPropertyInspector value={{ customer: { id: "cus_1" } }} />
+    );
+
+    fireEvent.click(view.getByRole("button", { name: /Customer.*1 field/ }));
+
+    expect(view.container.innerHTML).not.toContain("run-disclosure");
+  });
 });

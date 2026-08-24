@@ -231,6 +231,72 @@ describe("comparison properties", () => {
 });
 
 describe("WorkflowChangesPanel", () => {
+  it("keeps the review header mounted during the initial comparison request", () => {
+    const store = createStore();
+    store.set(currentWorkflowIdAtom, "workflow_1");
+    store.set(isWorkflowOwnerAtom, true);
+    store.set(workflowWorkspaceViewAtom, "changes");
+    const actions = {
+      isPending: true,
+      compare: { isError: false },
+      openComparison: async () => undefined,
+    } as never;
+    const view = render(
+      <JotaiProvider store={store}>
+        <OverlayProvider>
+          <ExtensionCatalogProvider value={catalog}>
+            <WorkflowChangesPanel actions={actions} />
+          </ExtensionCatalogProvider>
+        </OverlayProvider>
+      </JotaiProvider>
+    );
+
+    expect(view.getByRole("heading", { name: "Review changes" })).toBeTruthy();
+    expect(
+      view
+        .getByRole("button", { name: "Refresh comparison" })
+        .hasAttribute("disabled")
+    ).toBe(true);
+    expect(
+      view
+        .getByRole("button", { name: "Version history" })
+        .hasAttribute("disabled")
+    ).toBe(true);
+    expect(view.getByRole("button", { name: "Exit comparison" })).toBeTruthy();
+  });
+
+  it("announces refresh progress inside the existing header slot", () => {
+    const store = createStore();
+    store.set(currentWorkflowIdAtom, "workflow_1");
+    store.set(isWorkflowOwnerAtom, true);
+    store.set(workflowWorkspaceViewAtom, "changes");
+    const epoch = store.set(beginWorkflowComparisonRequestAtom, "workflow_1");
+    store.set(installWorkflowComparisonAtom, {
+      workflowId: "workflow_1",
+      epoch,
+      payload,
+    });
+    const actions = {
+      isPending: true,
+      compare: { isError: false },
+      openComparison: async () => undefined,
+    } as never;
+    const view = render(
+      <JotaiProvider store={store}>
+        <OverlayProvider>
+          <ExtensionCatalogProvider value={catalog}>
+            <WorkflowChangesPanel actions={actions} />
+          </ExtensionCatalogProvider>
+        </OverlayProvider>
+      </JotaiProvider>
+    );
+
+    const status = view.getByText("Refreshing comparison");
+    expect(status.getAttribute("aria-live")).toBe("polite");
+    expect(status.closest("header")).not.toBeNull();
+    expect(view.getByRole("button", { name: /Current email/ })).toBeTruthy();
+  });
+
   it("uses pressed state for the selected change row", () => {
     const store = createStore();
     store.set(currentWorkflowIdAtom, "workflow_1");

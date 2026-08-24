@@ -3,9 +3,18 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isComparisonPendingAtom } from "#src/lib/workflow-comparison-store";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
+import {
+  beginWorkflowComparisonRequestAtom,
+  comparisonSessionAtom,
+  installWorkflowComparisonAtom,
+  isComparisonPendingAtom,
+  settleWorkflowComparisonRequestAtom,
+} from "#src/lib/workflow-comparison-store";
 import {
   currentWorkflowIdAtom,
+  isWorkflowOwnerAtom,
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
 import {
@@ -21,6 +30,16 @@ import {
 } from "#src/lib/rpc-fetch-test-support";
 import { savedWorkflow } from "#src/lib/workflow-save-test-support";
 import { useWorkflowComparisonActions } from "./use-workflow-comparison-actions";
+
+const comparison: WorkflowComparisonPayload = {
+  baseVersion: null,
+  proposedVersion: 1,
+  baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+  draftGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+  hasChanges: false,
+  nodeChanges: [],
+  edgeChanges: [],
+};
 
 describe("useWorkflowComparisonActions", () => {
   afterEach(() => {
@@ -51,6 +70,48 @@ describe("useWorkflowComparisonActions", () => {
     await expect(result.current.openComparison()).resolves.toBeUndefined();
 
     expect(store.get(isComparisonPendingAtom)).toBe(false);
+  });
+
+  it("keeps the installed comparison when a refresh fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.reject(new Error("offline")))
+    );
+    const store = createStore();
+    store.set(currentWorkflowIdAtom, "workflow_1");
+    store.set(isWorkflowOwnerAtom, true);
+    store.set(workflowWorkspaceViewAtom, "changes");
+    const epoch = store.set(beginWorkflowComparisonRequestAtom, "workflow_1");
+    store.set(installWorkflowComparisonAtom, {
+      workflowId: "workflow_1",
+      epoch,
+      payload: comparison,
+    });
+    store.set(settleWorkflowComparisonRequestAtom, {
+      workflowId: "workflow_1",
+      epoch,
+    });
+    const installed = store.get(comparisonSessionAtom);
+    const queryClient = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    });
+    function Wrapper({ children }: { children: ReactNode }) {
+      return (
+        <QueryClientProvider client={queryClient}>
+          <JotaiProvider store={store}>{children}</JotaiProvider>
+        </QueryClientProvider>
+      );
+    }
+    const { result } = renderHook(() => useWorkflowComparisonActions(), {
+      wrapper: Wrapper,
+    });
+
+    await expect(
+      result.current.openComparison({ force: true })
+    ).resolves.toBeUndefined();
+
+    expect(store.get(isComparisonPendingAtom)).toBe(false);
+    expect(store.get(comparisonSessionAtom)).toBe(installed);
   });
 
   it("waits for the immediate draft save before starting restore", async () => {

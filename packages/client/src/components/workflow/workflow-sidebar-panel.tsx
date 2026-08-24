@@ -191,13 +191,9 @@ export function WorkflowSidebarPanel() {
       )}
 
       {/* The panel column (desktop only). The outer box is the width the canvas
-          column gives up; the inner one is the surface, which slides out on
-          collapse instead of unmounting so the Runs workspace keeps its state.
-
-          Splitting the two is what lets the space go back to the canvas in a
-          single step while the surface animates: React Flow observes the canvas
-          box, and a width transition next to it is what produces ResizeObserver
-          loop warnings. */}
+          column gives up; the inner one stays mounted when collapsed so the
+          Runs workspace keeps its state. Both snap together because keyboard
+          panel commands should update the canvas without trailing motion. */}
       {!isMobile && (
         <div
           className="relative shrink-0"
@@ -205,8 +201,8 @@ export function WorkflowSidebarPanel() {
           style={{ width: panelCollapsed ? 0 : sidebarWidthCss(panelWidth) }}
         >
           <div
-            className="workflow-sidebar-panel absolute inset-y-0 right-0 z-20 border-l bg-sidebar transition-transform duration-200 ease-out"
-            // Collapsing slides the surface past the shell's right edge rather
+            className="workflow-sidebar-panel absolute inset-y-0 right-0 z-20 border-l bg-sidebar"
+            // Collapsing moves the surface past the shell's right edge rather
             // than unmounting it, so the Runs workspace keeps its state. Everything
             // inside stays focusable without this: tabbing to it makes the
             // browser scroll it into view, and since the shell is an

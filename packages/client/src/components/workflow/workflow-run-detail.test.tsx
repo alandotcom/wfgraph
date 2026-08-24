@@ -171,6 +171,35 @@ describe("WorkflowRunDetail", () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  it("snaps technical details open without a height transition", () => {
+    const logs: WorkflowRunDetailLogs = [
+      {
+        id: "log_action",
+        nodeId: "action_1",
+        nodeName: "Create appointment",
+        nodeType: "action",
+        status: "success",
+        startedAt: new Date("2026-02-22T10:00:00Z"),
+        completedAt: new Date("2026-02-22T10:00:01Z"),
+        duration: "1000",
+        input: { customerId: "cus_1" },
+        output: { appointmentId: "appt_1" },
+        error: null,
+      },
+    ];
+    const view = renderDetail(
+      { ...BASE_EXECUTION, status: "completed" },
+      { logs, selectedNodeId: "action_1" }
+    );
+
+    const trigger = view.getByRole("button", { name: "Technical details" });
+    fireEvent.click(trigger);
+
+    expect(trigger.closest("section")?.className).not.toContain(
+      "transition-[height]"
+    );
+  });
+
   it("closes technical details and keeps Escape inside the inspector", () => {
     const logs: WorkflowRunDetailLogs = [
       {

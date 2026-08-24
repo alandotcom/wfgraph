@@ -255,7 +255,7 @@ export function WorkflowContextMenu({
   // that layer's siblings and the properties panel drew over the menu.
   return createPortal(
     <div
-      className="fade-in-0 zoom-in-95 fixed z-50 max-h-[calc(100vh-1rem)] w-fit min-w-[8rem] max-w-72 animate-in overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+      className="fade-in-0 zoom-in-95 fixed z-50 max-h-[calc(100vh-1rem)] w-fit min-w-[8rem] max-w-72 animate-in overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:animate-none"
       ref={menuRef}
       style={{
         // Held inside the right edge against the widest the menu can draw, so
@@ -265,6 +265,7 @@ export function WorkflowContextMenu({
         ...(opensUpward
           ? { bottom: `calc(100vh - ${menuState.position.y}px)` }
           : { top: menuState.position.y }),
+        transformOrigin: opensUpward ? "bottom left" : "top left",
       }}
     >
       {menuState.type === "node" && (

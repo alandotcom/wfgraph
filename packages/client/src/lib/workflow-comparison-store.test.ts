@@ -316,6 +316,40 @@ describe("comparison session store", () => {
     expect(store.get(isComparisonPendingAtom)).toBe(false);
   });
 
+  it("keeps the last display graph while a refresh is pending or a stale response arrives", () => {
+    const store = createStore();
+    store.set(currentWorkflowIdAtom, "workflow_1");
+    installComparison(store, {
+      workflowId: "workflow_1",
+      payload: comparison,
+    });
+    const displayedBeforeRefresh = store.get(comparisonDisplayGraphAtom);
+    const staleEpoch = store.set(
+      beginWorkflowComparisonRequestAtom,
+      "workflow_1"
+    );
+    const currentEpoch = store.set(
+      beginWorkflowComparisonRequestAtom,
+      "workflow_1"
+    );
+
+    expect(store.get(comparisonDisplayGraphAtom)).toBe(displayedBeforeRefresh);
+    expect(
+      store.set(installWorkflowComparisonAtom, {
+        workflowId: "workflow_1",
+        epoch: staleEpoch,
+        payload: { ...comparison, proposedVersion: 99 },
+      })
+    ).toBe(false);
+    expect(store.get(comparisonSessionAtom)?.payload).toBe(comparison);
+
+    store.set(settleWorkflowComparisonRequestAtom, {
+      workflowId: "workflow_1",
+      epoch: currentEpoch,
+    });
+    expect(store.get(comparisonDisplayGraphAtom)).toBe(displayedBeforeRefresh);
+  });
+
   it("retains a selected historical base when its refreshed payload arrives", () => {
     const store = createStore();
     store.set(currentWorkflowIdAtom, "workflow_1");

@@ -39,11 +39,11 @@ const drawerSpring = {
 const containerVariants: Variants = {
   hidden: {
     opacity: 0,
-    scale: 0.95,
+    transform: "translate(-50%, -50%) scale(0.95)",
   },
   visible: {
     opacity: 1,
-    scale: 1,
+    transform: "translate(-50%, -50%) scale(1)",
     transition: {
       type: "spring",
       stiffness: 400,
@@ -52,28 +52,49 @@ const containerVariants: Variants = {
   },
   exit: {
     opacity: 0,
-    scale: 0.95,
+    transform: "translate(-50%, -50%) scale(0.95)",
     transition: {
       duration: 0.15,
-      ease: [0.4, 0, 1, 1],
+      ease: [0.23, 1, 0.32, 1],
     },
+  },
+};
+
+const reducedContainerVariants: Variants = {
+  hidden: {
+    opacity: 0,
+    transform: "translate(-50%, -50%) scale(1)",
+  },
+  visible: {
+    opacity: 1,
+    transform: "translate(-50%, -50%) scale(1)",
+    transition: { duration: 0.1, ease: [0.23, 1, 0.32, 1] },
+  },
+  exit: {
+    opacity: 0,
+    transform: "translate(-50%, -50%) scale(1)",
+    transition: { duration: 0.1, ease: [0.23, 1, 0.32, 1] },
   },
 };
 
 /**
  * Get x position for overlay item based on its position relative to current
  */
-function getOverlayXPosition(
+function getOverlayTransform(
   isCurrent: boolean,
-  isPrevious: boolean
-): "0%" | "-35%" | "100%" {
+  isPrevious: boolean,
+  shouldReduceMotion: boolean
+): string {
+  if (shouldReduceMotion) {
+    return "translateX(0%) scale(1)";
+  }
   if (isCurrent) {
-    return "0%";
+    return "translateX(0%) scale(1)";
   }
   if (isPrevious) {
-    return "-35%";
+    return "translateX(-35%) scale(0.94)";
   }
-  return "100%";
+  return "translateX(100%) scale(1)";
 }
 
 /**
@@ -149,17 +170,21 @@ function DesktopOverlayContainer() {
                 currentItem ? `overlay-title-${currentItem.id}` : undefined
               }
               aria-modal="true"
-              className="fixed top-1/2 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 px-4"
+              className="fixed top-1/2 left-1/2 z-50 w-full max-w-lg px-4"
               exit="exit"
               initial="hidden"
               ref={dialogRef}
               role="dialog"
-              variants={containerVariants}
+              variants={
+                shouldReduceMotion
+                  ? reducedContainerVariants
+                  : containerVariants
+              }
             >
               <LayoutGroup>
                 <motion.div
                   className="relative flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-xl border bg-card shadow-lg ring-1 ring-border"
-                  layout="position"
+                  layout={shouldReduceMotion ? false : "position"}
                   style={{ minHeight: minHeight > 0 ? minHeight : "auto" }}
                   transition={iosSpring}
                 >
@@ -180,14 +205,22 @@ function DesktopOverlayContainer() {
                       // For pop: returning item is already at -35%, animates to 0%
                       const shouldSlideIn = isCurrent && renderStack.length > 1;
                       const initialValue = shouldSlideIn
-                        ? { x: "100%", scale: 1, opacity: 1 }
+                        ? {
+                            transform: shouldReduceMotion
+                              ? "translateX(0%) scale(1)"
+                              : "translateX(100%) scale(1)",
+                            opacity: 1,
+                          }
                         : false;
 
                       return (
                         <motion.div
                           animate={{
-                            x: getOverlayXPosition(isCurrent, isPrevious),
-                            scale: isCurrent ? 1 : 0.94,
+                            transform: getOverlayTransform(
+                              isCurrent,
+                              isPrevious,
+                              shouldReduceMotion ?? false
+                            ),
                             opacity: isCurrent ? 1 : 0,
                           }}
                           aria-hidden={!isCurrent}
@@ -307,7 +340,7 @@ function MobileOverlayContainer() {
             <LayoutGroup>
               <motion.div
                 className="relative flex-1 overflow-hidden"
-                layout="position"
+                layout={shouldReduceMotion ? false : "position"}
                 style={{ minHeight: minHeight > 0 ? minHeight : "auto" }}
                 transition={drawerSpring}
               >
@@ -322,14 +355,22 @@ function MobileOverlayContainer() {
                     // For pop: returning item is already at -35%, animates to 0%
                     const shouldSlideIn = isCurrent && renderStack.length > 1;
                     const initialValue = shouldSlideIn
-                      ? { x: "100%", scale: 1, opacity: 1 }
+                      ? {
+                          transform: shouldReduceMotion
+                            ? "translateX(0%) scale(1)"
+                            : "translateX(100%) scale(1)",
+                          opacity: 1,
+                        }
                       : false;
 
                     return (
                       <motion.div
                         animate={{
-                          x: getOverlayXPosition(isCurrent, isPrevious),
-                          scale: isCurrent ? 1 : 0.94,
+                          transform: getOverlayTransform(
+                            isCurrent,
+                            isPrevious,
+                            shouldReduceMotion ?? false
+                          ),
                           opacity: isCurrent ? 1 : 0,
                         }}
                         aria-hidden={!isCurrent}

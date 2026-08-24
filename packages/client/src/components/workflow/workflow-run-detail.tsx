@@ -1,7 +1,6 @@
 import { useAtomValue } from "jotai";
 import { useState } from "react";
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
-import { cn } from "@wfgraph/shared/utils";
 import { Button } from "#src/components/ui/button";
 import { useAfterCommit } from "#src/hooks/effects";
 import {
@@ -80,7 +79,7 @@ export function WorkflowRunDetail({
 
   if (selectedNodeId) {
     return (
-      <div className="h-full motion-safe:animate-[run-panel-forward_200ms_cubic-bezier(0.16,1,0.3,1)] motion-reduce:animate-[run-panel-fade_100ms_ease-out]">
+      <div className="h-full">
         <WorkflowRunNodeInspector
           key={`${selectedNodeId}:${selectedLogId ?? ""}`}
           logs={sortedLogs}
@@ -110,14 +109,7 @@ export function WorkflowRunDetail({
       : getRunOutcome(execution, sortedLogs);
 
   return (
-    <div
-      className={cn(
-        "flex h-full min-h-0 flex-col motion-reduce:animate-[run-panel-fade_100ms_ease-out]",
-        returnFocusLogId
-          ? "motion-safe:animate-[run-panel-back_160ms_cubic-bezier(0.16,1,0.3,1)]"
-          : "motion-safe:animate-[run-panel-forward_200ms_cubic-bezier(0.16,1,0.3,1)]"
-      )}
-    >
+    <div className="flex h-full min-h-0 flex-col">
       <WorkflowRunSummaryRow
         execution={execution}
         focusOnMount={returnFocusLogId === null}

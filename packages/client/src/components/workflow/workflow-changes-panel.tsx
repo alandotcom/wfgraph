@@ -26,14 +26,21 @@ import {
 } from "#src/lib/workflow-comparison-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { cn } from "@wfgraph/shared/utils";
-import type { WorkflowNodeChange } from "@wfgraph/shared/graph/publication-contracts";
+import type {
+  WorkflowComparisonPayload,
+  WorkflowNodeChange,
+} from "@wfgraph/shared/graph/publication-contracts";
 import { PanelState } from "#src/components/workflow/workflow-changes-panel-state";
 import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
+
+type WorkflowComparisonActions = ReturnType<
+  typeof useWorkflowComparisonActions
+>;
 
 export function WorkflowChangesPanel({
   actions,
 }: {
-  actions: ReturnType<typeof useWorkflowComparisonActions>;
+  actions: WorkflowComparisonActions;
 }) {
   const catalog = useExtensionCatalog();
   const workflowId = useAtomValue(currentWorkflowIdAtom);
@@ -49,26 +56,35 @@ export function WorkflowChangesPanel({
   );
 
   if (!session) {
-    if (actions.isPending) {
-      return (
-        <PanelState label="Comparing current draft with the published version" />
-      );
-    }
-    if (actions.compare.isError) {
-      return (
-        <PanelState
-          actionLabel="Try again"
-          label="Unable to compare changes"
-          onAction={() => void actions.openComparison()}
-        />
-      );
-    }
     return (
-      <PanelState
-        actionLabel="Review changes"
-        label="Open a comparison of this draft and its published version."
-        onAction={() => void actions.openComparison()}
-      />
+      <div
+        className="flex min-h-0 flex-1 flex-col"
+        data-testid="workflow-changes"
+      >
+        <ReviewHeader
+          actions={actions}
+          layoutChanged={false}
+          onExit={workspaceNavigation.showDraft}
+          onHistory={() => undefined}
+          onReset={() => undefined}
+          payload={null}
+        />
+        {actions.isPending ? (
+          <PanelState label="Comparing current draft with the published version" />
+        ) : actions.compare.isError ? (
+          <PanelState
+            actionLabel="Try again"
+            label="Unable to compare changes"
+            onAction={() => void actions.openComparison()}
+          />
+        ) : (
+          <PanelState
+            actionLabel="Review changes"
+            label="Open a comparison of this draft and its published version."
+            onAction={() => void actions.openComparison()}
+          />
+        )}
+      </div>
     );
   }
 
@@ -123,91 +139,16 @@ export function WorkflowChangesPanel({
       className="flex min-h-0 flex-1 flex-col"
       data-testid="workflow-changes"
     >
-      <div className="border-b p-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <GitCompareArrows className="size-4" />
-            <h2 className="font-semibold text-sm">Review changes</h2>
-          </div>
-          <div className="flex items-center">
-            <Button
-              aria-label="Refresh comparison"
-              disabled={actions.isPending}
-              onClick={() => void actions.openComparison({ force: true })}
-              size="icon-sm"
-              title="Refresh comparison"
-              type="button"
-              variant="ghost"
-            >
-              <RefreshCw />
-            </Button>
-            <Button
-              aria-label="Version history"
-              disabled={actions.isPending}
-              onClick={() =>
-                workflowId && setSubview({ workflowId, subview: "history" })
-              }
-              size="icon-sm"
-              title="Version history"
-              type="button"
-              variant="ghost"
-            >
-              <History />
-            </Button>
-            <Button
-              aria-label="Exit comparison"
-              onClick={workspaceNavigation.showDraft}
-              size="icon-sm"
-              title="Exit comparison"
-              type="button"
-              variant="ghost"
-            >
-              <X />
-            </Button>
-          </div>
-        </div>
-        <p className="mt-2 text-muted-foreground text-xs">
-          {versionName(payload.baseVersion?.version)} → proposed version{" "}
-          {payload.proposedVersion}
-        </p>
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <p className="text-muted-foreground text-xs">
-            {payload.nodeChanges.length} node change
-            {payload.nodeChanges.length === 1 ? "" : "s"};{" "}
-            {
-              payload.edgeChanges.filter((change) => change.kind === "added")
-                .length
-            }{" "}
-            connection
-            {payload.edgeChanges.filter((change) => change.kind === "added")
-              .length === 1
-              ? ""
-              : "s"}{" "}
-            added;{" "}
-            {
-              payload.edgeChanges.filter((change) => change.kind === "removed")
-                .length
-            }{" "}
-            removed
-          </p>
-          <Button
-            aria-label="Reset comparison layout"
-            disabled={!layoutChanged}
-            onClick={() => workflowId && resetLayout(workflowId)}
-            size="icon-sm"
-            title="Reset comparison layout"
-            type="button"
-            variant="ghost"
-          >
-            <RotateCcw />
-          </Button>
-        </div>
-      </div>
-      {actions.isPending ? (
-        <p className="border-b px-3 py-2 text-muted-foreground text-xs">
-          Refreshing comparison
-        </p>
-      ) : null}
+      <ReviewHeader
+        actions={actions}
+        layoutChanged={layoutChanged}
+        onExit={workspaceNavigation.showDraft}
+        onHistory={() =>
+          workflowId && setSubview({ workflowId, subview: "history" })
+        }
+        onReset={() => workflowId && resetLayout(workflowId)}
+        payload={payload}
+      />
       {payload.nodeChanges.length === 0 ? (
         <PanelState label="This draft has no node changes." />
       ) : (
@@ -259,6 +200,113 @@ export function WorkflowChangesPanel({
         </Button>
       </div>
     </div>
+  );
+}
+
+function ReviewHeader({
+  actions,
+  layoutChanged,
+  onExit,
+  onHistory,
+  onReset,
+  payload,
+}: {
+  actions: WorkflowComparisonActions;
+  layoutChanged: boolean;
+  onExit: () => void;
+  onHistory: () => void;
+  onReset: () => void;
+  payload: WorkflowComparisonPayload | null;
+}) {
+  const addedConnections =
+    payload?.edgeChanges.filter((change) => change.kind === "added").length ??
+    0;
+  const removedConnections =
+    payload?.edgeChanges.filter((change) => change.kind === "removed").length ??
+    0;
+  const status = actions.isPending
+    ? payload
+      ? "Refreshing comparison"
+      : "Comparing current draft with the published version"
+    : payload
+      ? `${versionName(payload.baseVersion?.version)} → proposed version ${payload.proposedVersion}`
+      : actions.compare.isError
+        ? "Comparison unavailable"
+        : "No comparison open";
+
+  return (
+    <header className="border-b p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <GitCompareArrows className="size-4" />
+          <h2 className="font-semibold text-sm">Review changes</h2>
+        </div>
+        <div className="flex items-center">
+          <Button
+            aria-label="Refresh comparison"
+            disabled={actions.isPending || !payload}
+            onClick={() => void actions.openComparison({ force: true })}
+            size="icon-sm"
+            title="Refresh comparison"
+            type="button"
+            variant="ghost"
+          >
+            <RefreshCw />
+          </Button>
+          <Button
+            aria-label="Version history"
+            disabled={actions.isPending || !payload}
+            onClick={onHistory}
+            size="icon-sm"
+            title="Version history"
+            type="button"
+            variant="ghost"
+          >
+            <History />
+          </Button>
+          <Button
+            aria-label="Exit comparison"
+            onClick={onExit}
+            size="icon-sm"
+            title="Exit comparison"
+            type="button"
+            variant="ghost"
+          >
+            <X />
+          </Button>
+        </div>
+      </div>
+      <p
+        aria-live="polite"
+        className="mt-2 h-4 truncate text-muted-foreground text-xs"
+      >
+        {status}
+      </p>
+      <div className="mt-2 flex min-h-8 items-center justify-between gap-2">
+        <p className="text-muted-foreground text-xs">
+          {payload ? (
+            <>
+              {payload.nodeChanges.length} node change
+              {payload.nodeChanges.length === 1 ? "" : "s"}; {addedConnections}{" "}
+              connection
+              {addedConnections === 1 ? "" : "s"} added; {removedConnections}{" "}
+              removed
+            </>
+          ) : null}
+        </p>
+        <Button
+          aria-label="Reset comparison layout"
+          disabled={!payload || !layoutChanged}
+          onClick={onReset}
+          size="icon-sm"
+          title="Reset comparison layout"
+          type="button"
+          variant="ghost"
+        >
+          <RotateCcw />
+        </Button>
+      </div>
+    </header>
   );
 }
 

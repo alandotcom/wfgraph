@@ -49,7 +49,7 @@ function storeWithComparison() {
 }
 
 describe("workspace transitions", () => {
-  it("enters Draft by clearing run and comparison presentation state", () => {
+  it("enters Draft by clearing the run while retaining the last comparison", () => {
     const store = storeWithComparison();
     store.set(selectedNodeAtom, "historical");
     store.set(selectedExecutionIdAtom, "run_1");
@@ -60,17 +60,17 @@ describe("workspace transitions", () => {
     expect(store.get(workflowWorkspaceViewAtom)).toBe("draft");
     expect(store.get(selectedExecutionIdAtom)).toBeNull();
     expect(store.get(executionOverlayGraphAtom)).toBeNull();
-    expect(store.get(comparisonSessionAtom)).toBeNull();
+    expect(store.get(comparisonSessionAtom)).not.toBeNull();
     expect(store.get(selectedNodeAtom)).toBeNull();
   });
 
-  it("enters Runs by clearing comparison state", () => {
+  it("enters Runs while retaining the last comparison", () => {
     const store = storeWithComparison();
 
     store.set(enterRunsWorkspaceAtom);
 
     expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
-    expect(store.get(comparisonSessionAtom)).toBeNull();
+    expect(store.get(comparisonSessionAtom)).not.toBeNull();
   });
 
   it("enters Changes by clearing the selected run and its graph", () => {
@@ -85,5 +85,15 @@ describe("workspace transitions", () => {
     expect(store.get(workflowWorkspaceViewAtom)).toBe("changes");
     expect(store.get(selectedExecutionIdAtom)).toBeNull();
     expect(store.get(executionOverlayGraphAtom)).toBeNull();
+  });
+
+  it("returns to Changes with the last comparison still installed", () => {
+    const store = storeWithComparison();
+    store.set(enterDraftWorkspaceAtom);
+
+    store.set(enterChangesWorkspaceAtom);
+
+    expect(store.get(workflowWorkspaceViewAtom)).toBe("changes");
+    expect(store.get(comparisonSessionAtom)?.payload).toEqual(comparison);
   });
 });

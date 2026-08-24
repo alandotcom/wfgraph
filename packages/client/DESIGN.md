@@ -248,13 +248,15 @@ that names the active view replaces the control on mobile devices. The control
 remains available when the inspector is collapsed or dismissed. The canvas,
 inspector, editing lock, and status strip always follow the same active view.
 When the view changes, the canvas keeps its zoom and anchors the Lifecycle card
-at the same top-center point.
+at the same top-center point. Loading changes inspector status without fading,
+re-fitting, or replacing the last valid canvas; resolved content replaces it
+only when the next presentation is ready.
 
-**Draft** owns the editable workflow and its properties. **Runs** opens on the
-run list without selecting a run, and owns run details and run-node inspection.
-**Changes** owns publication review, comparison properties, and version
-history. Entering **Runs** or **Changes** opens the inspector. Collapsing or
-dismissing the inspector doesn't change the active view.
+**Draft** owns the editable workflow and its properties. **Runs** resolves its
+initial load directly to the newest run, and owns the run list, run details, and
+run-node inspection. **Changes** owns publication review, comparison properties,
+and version history. Entering **Runs** or **Changes** opens the inspector.
+Collapsing or dismissing the inspector doesn't change the active view.
 
 A Panel-toned status strip closes the canvas column: 32px tall, Caption type, a
 hairline top border, and one line that never wraps. It identifies **Runs** and

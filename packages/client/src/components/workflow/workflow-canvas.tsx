@@ -24,7 +24,12 @@ import { toast } from "sonner";
 import { Edge } from "#src/components/flow-elements/edge";
 import { Panel } from "#src/components/flow-elements/panel";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
-import { useAfterPaint, useDomEvent } from "#src/hooks/effects";
+import {
+  useAfterDelay,
+  useAfterPaint,
+  useBeforePaint,
+  useDomEvent,
+} from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { isTextEntry } from "#src/lib/is-text-entry";
 import {
@@ -50,12 +55,7 @@ import {
   setComparisonSubviewAtom,
 } from "#src/lib/workflow-comparison-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
-import {
-  isGeneratingAtom,
-  showMinimapAtom,
-  type WorkflowWorkspaceView,
-  workflowWorkspaceViewAtom,
-} from "#src/lib/workflow-ui-store";
+import { isGeneratingAtom, showMinimapAtom } from "#src/lib/workflow-ui-store";
 import {
   workflowNodeAriaLabel,
   WORKFLOW_EDGE_TYPE,
@@ -126,18 +126,18 @@ export function canvasInteractionState({
 
 export function canvasFitViewKey({
   workflowId,
-  workspaceView,
   lifecycleNode,
 }: {
   workflowId: string | null;
-  workspaceView: WorkflowWorkspaceView;
   lifecycleNode: Pick<WorkflowNode, "id" | "position"> | null;
 }): string | null {
   if (!workflowId || !lifecycleNode) {
     return null;
   }
-  return `${workflowId}:${workspaceView}:${lifecycleNode.id}:${lifecycleNode.position.x}:${lifecycleNode.position.y}`;
+  return `${workflowId}:${lifecycleNode.id}:${lifecycleNode.position.x}:${lifecycleNode.position.y}`;
 }
+
+export const keyboardFitViewOptions = { padding: 0.2, duration: 0 } as const;
 
 export function lifecycleAnchorViewport({
   canvasWidth,
@@ -262,7 +262,6 @@ export function WorkflowCanvas() {
   const comparisonActive = comparison !== null;
   const isGenerating = useAtomValue(isGeneratingAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
-  const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
   // Below the mobile breakpoint the config rail is gone, so clicking a node has
   // to open the bottom sheet instead.
@@ -297,9 +296,12 @@ export function WorkflowCanvas() {
         position: internalLifecycleNode.internals.positionAbsolute,
       }
     : null;
+  const anchorViewKey = canvasFitViewKey({
+    workflowId: currentWorkflowId,
+    lifecycleNode: lifecycleNode ?? null,
+  });
   const fitViewKey = canvasFitViewKey({
     workflowId: currentWorkflowId,
-    workspaceView,
     lifecycleNode: measuredLifecycleNode,
   });
   // The same pass the Actions menu's "Tidy layout" runs.
@@ -313,7 +315,9 @@ export function WorkflowCanvas() {
   const connectingHandleType = useRef<"source" | "target" | null>(null);
   const connectingHandleId = useRef<string | null>(null);
   const justCreatedNodeFromConnection = useRef(false);
-  const [isCanvasReady, setIsCanvasReady] = useState(false);
+  const [readyWorkflowId, setReadyWorkflowId] = useState<string | null>(null);
+  const isCanvasReady =
+    currentWorkflowId !== null && readyWorkflowId === currentWorkflowId;
   const [contextMenuState, setContextMenuState] =
     useState<ContextMenuState>(null);
   const rightClickSelectionRef = useRef<ReadonlySet<string>>(new Set());
@@ -349,52 +353,93 @@ export function WorkflowCanvas() {
     setContextMenuState(null);
   }, []);
 
-  // Never let a suspended or backgrounded browser keep the canvas hidden while
-  // React Flow delays its measurement pass. The anchor effect below refines
-  // the viewport as soon as those measurements become available.
-  useAfterPaint(currentWorkflowId, () => {
+  // A missing measurement must not strand the canvas invisibly. Normal loads
+  // become ready in the anchor pass below; this guard handles a node that React
+  // Flow could not measure and still lets a later measurement refine the view.
+  useAfterDelay(currentWorkflowId, 250, () => {
     if (currentWorkflowId) {
-      setIsCanvasReady(true);
+      setReadyWorkflowId(currentWorkflowId);
     }
   });
 
+  // A workspace swap replaces the graph before React Flow updates its
+  // internals. Re-anchor from the incoming node coordinates in the same commit
+  // so the browser never paints those coordinates through the old viewport.
+  useBeforePaint(anchorViewKey, () => {
+    if (
+      anchorViewKey === null ||
+      !currentWorkflowId ||
+      fittedWorkflowIdRef.current !== currentWorkflowId ||
+      !lifecycleNode
+    ) {
+      return;
+    }
+
+    const canvasWidth = canvasContainerRef.current?.clientWidth;
+    if (!canvasWidth) {
+      return;
+    }
+
+    void setViewport(
+      lifecycleAnchorViewport({
+        canvasWidth,
+        nodePosition: lifecycleNode.position,
+        nodeWidth:
+          internalLifecycleNode?.measured?.width ??
+          lifecycleNode.width ??
+          WORKFLOW_NODE_WIDTH,
+        top: 48,
+        zoom: getViewport().zoom,
+      }),
+      { duration: 0 }
+    );
+  });
+
   // Choose a useful zoom once when the workflow loads, then preserve it while
-  // anchoring every workspace's Lifecycle card at the same top-centre point.
-  // Whole-graph fitting on each switch made comparison-only nodes pull the
-  // draft sideways. This runs after paint because React Flow measures nodes then.
+  // anchoring its Lifecycle card at the top-centre point. This initial pass
+  // waits for React Flow's measurements; later workspace swaps use the
+  // before-paint correction above.
   useAfterPaint(fitViewKey, () => {
     if (fitViewKey === null || !currentWorkflowId || !internalLifecycleNode) {
       return;
     }
+    if (fittedWorkflowIdRef.current === currentWorkflowId) {
+      return;
+    }
     void (async () => {
-      if (fittedWorkflowIdRef.current !== currentWorkflowId) {
+      try {
         fittedWorkflowIdRef.current = currentWorkflowId;
-        await fitView({ maxZoom: 1, minZoom: 0.5, padding: 0.2, duration: 0 });
-      }
+        await fitView({
+          maxZoom: 1,
+          minZoom: 0.5,
+          padding: 0.2,
+          duration: 0,
+        });
 
-      const canvasWidth = canvasContainerRef.current?.clientWidth;
-      if (!canvasWidth) {
-        setIsCanvasReady(true);
-        return;
-      }
+        const canvasWidth = canvasContainerRef.current?.clientWidth;
+        if (!canvasWidth) {
+          return;
+        }
 
-      const nodeWidth =
-        internalLifecycleNode.measured?.width ??
-        internalLifecycleNode.internals.userNode.width ??
-        WORKFLOW_NODE_WIDTH;
-      await setViewport(
-        lifecycleAnchorViewport({
-          canvasWidth,
-          nodePosition: internalLifecycleNode.internals.positionAbsolute,
-          nodeWidth,
-          top: 48,
-          zoom: getViewport().zoom,
-        }),
-        { duration: 0 }
-      );
-      // The canvas is transparent until this has run, so the one frame of
-      // unanchored graph between mount and the viewport update is never shown.
-      setIsCanvasReady(true);
+        const nodeWidth =
+          internalLifecycleNode.measured?.width ??
+          internalLifecycleNode.internals.userNode.width ??
+          WORKFLOW_NODE_WIDTH;
+        await setViewport(
+          lifecycleAnchorViewport({
+            canvasWidth,
+            nodePosition: internalLifecycleNode.internals.positionAbsolute,
+            nodeWidth,
+            top: 48,
+            zoom: getViewport().zoom,
+          }),
+          { duration: 0 }
+        );
+      } finally {
+        // Reveal immediately after the viewport work. The delayed guard above
+        // is the only other path to readiness.
+        setReadyWorkflowId(currentWorkflowId);
+      }
     })();
   });
 
@@ -440,7 +485,7 @@ export function WorkflowCanvas() {
     (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === "/") {
         event.preventDefault();
-        void fitView({ padding: 0.2, duration: 300 });
+        void fitView(keyboardFitViewOptions);
       }
     },
     [fitView]
@@ -845,7 +890,6 @@ export function WorkflowCanvas() {
       ref={canvasContainerRef}
       style={{
         opacity: isCanvasReady ? 1 : 0,
-        transition: "opacity 300ms",
       }}
     >
       {/* React Flow Canvas */}

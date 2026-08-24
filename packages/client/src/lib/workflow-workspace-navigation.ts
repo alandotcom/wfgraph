@@ -1,24 +1,32 @@
 import { atom } from "jotai";
 import {
   executionOverlayGraphAtom,
-  exitWorkflowComparisonAtom,
+  nodesAtom,
+  selectedEdgeAtom,
+  selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import {
   selectedExecutionIdAtom,
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
 
-/** Enter the editable draft and discard every read-only presentation session. */
-export const enterDraftWorkspaceAtom = atom(null, (_get, set) => {
+/** Enter the editable draft while retaining the last comparison for refresh. */
+export const enterDraftWorkspaceAtom = atom(null, (get, set) => {
   set(selectedExecutionIdAtom, null);
   set(executionOverlayGraphAtom, null);
-  set(exitWorkflowComparisonAtom);
+  const selectedNodeId = get(selectedNodeAtom);
+  if (
+    selectedNodeId &&
+    !get(nodesAtom).some((node) => node.id === selectedNodeId)
+  ) {
+    set(selectedNodeAtom, null);
+  }
+  set(selectedEdgeAtom, null);
   set(workflowWorkspaceViewAtom, "draft");
 });
 
-/** Enter run inspection after removing any stale comparison session. */
+/** Enter run inspection while retaining the last comparison for refresh. */
 export const enterRunsWorkspaceAtom = atom(null, (_get, set) => {
-  set(exitWorkflowComparisonAtom);
   set(workflowWorkspaceViewAtom, "runs");
 });
 
@@ -26,6 +34,5 @@ export const enterRunsWorkspaceAtom = atom(null, (_get, set) => {
 export const enterChangesWorkspaceAtom = atom(null, (_get, set) => {
   set(selectedExecutionIdAtom, null);
   set(executionOverlayGraphAtom, null);
-  set(exitWorkflowComparisonAtom);
   set(workflowWorkspaceViewAtom, "changes");
 });

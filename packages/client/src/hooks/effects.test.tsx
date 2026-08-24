@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { act, cleanup, render } from "@testing-library/react";
 import { memo } from "react";
-import { useAfterPaint } from "./effects";
+import { useAfterDelay, useAfterPaint, useBeforePaint } from "./effects";
 
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
 });
 
@@ -53,5 +54,47 @@ describe("useAfterPaint", () => {
     await flushAfterPaint();
 
     expect(seen).toEqual(["first", "second"]);
+  });
+});
+
+describe("useBeforePaint", () => {
+  test("runs synchronously after the keyed commit", () => {
+    const seen: string[] = [];
+
+    function BeforePaint({ label }: { label: string }) {
+      useBeforePaint(label, () => {
+        seen.push(label);
+      });
+      return null;
+    }
+
+    const { rerender } = render(<BeforePaint label="draft" />);
+    expect(seen).toEqual(["draft"]);
+
+    rerender(<BeforePaint label="runs" />);
+    expect(seen).toEqual(["draft", "runs"]);
+  });
+});
+
+describe("useAfterDelay", () => {
+  test("runs only after the delay and cancels a superseded key", () => {
+    vi.useFakeTimers();
+    const seen: string[] = [];
+
+    function Delayed({ label }: { label: string }) {
+      useAfterDelay(label, 100, () => {
+        seen.push(label);
+      });
+      return null;
+    }
+
+    const { rerender } = render(<Delayed label="first" />);
+    act(() => vi.advanceTimersByTime(50));
+    rerender(<Delayed label="second" />);
+    act(() => vi.advanceTimersByTime(99));
+    expect(seen).toEqual([]);
+
+    act(() => vi.advanceTimersByTime(1));
+    expect(seen).toEqual(["second"]);
   });
 });

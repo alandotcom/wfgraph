@@ -64,6 +64,7 @@ import {
   editorShortcutLabels,
   isApplePlatform,
 } from "#src/lib/shortcut-label";
+import { viewportAnimationDuration } from "#src/lib/motion";
 import {
   WorkflowCommandIcon,
   workflowCommands,
@@ -156,7 +157,10 @@ function PublishButton({
       variant="default"
     >
       {isPublishing ? (
-        <Loader2 className="size-3.5 animate-spin" data-icon="inline-start" />
+        <Loader2
+          className="size-3.5 animate-spin motion-reduce:animate-none"
+          data-icon="inline-start"
+        />
       ) : (
         <Upload className="size-3.5" data-icon="inline-start" />
       )}
@@ -292,7 +296,10 @@ export function DuplicateButton({
       variant="outline"
     >
       {isDuplicating ? (
-        <Loader2 className="size-3.5 animate-spin" data-icon="inline-start" />
+        <Loader2
+          className="size-3.5 animate-spin motion-reduce:animate-none"
+          data-icon="inline-start"
+        />
       ) : (
         <Copy className="size-3.5" data-icon="inline-start" />
       )}
@@ -402,7 +409,12 @@ function ActionsMenu({
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="w-56">
             <DropdownMenuItem
-              onClick={() => void fitView({ padding: 0.2, duration: 300 })}
+              onClick={() =>
+                void fitView({
+                  padding: 0.2,
+                  duration: viewportAnimationDuration(),
+                })
+              }
             >
               <Maximize2 />
               Fit view
@@ -664,7 +676,7 @@ export function WorkflowMenuComponent({
                 onClick={actions.handleDuplicate}
               >
                 {actions.isDuplicating ? (
-                  <Loader2 className="animate-spin" />
+                  <Loader2 className="animate-spin motion-reduce:animate-none" />
                 ) : (
                   <Copy />
                 )}
