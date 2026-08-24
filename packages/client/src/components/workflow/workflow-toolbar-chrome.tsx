@@ -35,6 +35,7 @@ import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useIsMobile } from "#src/hooks/use-mobile";
+import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import { Button, buttonVariants } from "#src/components/ui/button";
 import { ButtonGroup } from "#src/components/ui/button-group";
 import {
@@ -58,6 +59,7 @@ import { PublishReviewDialog } from "#src/components/workflow/publish-review-dia
 import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-dialog";
 import { RenameWorkflowDialog } from "#src/components/workflow/rename-workflow-dialog";
 import { useReflowLayout } from "#src/components/workflow/use-reflow-layout";
+import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
   currentPlatform,
@@ -173,6 +175,26 @@ function PublishButton({
   );
 }
 
+function isPublishDisabled(
+  state: WorkflowToolbarState,
+  actions: WorkflowToolbarActions,
+  editingLocked: boolean
+) {
+  const publication = state.publication;
+  return (
+    editingLocked ||
+    state.isSaving ||
+    actions.isComparing ||
+    actions.isPublishing ||
+    !state.nodes.some((node) => node.type !== "add") ||
+    Boolean(
+      publication?.isPublished &&
+      !publication.hasUnpublishedChanges &&
+      !state.hasUnsavedChanges
+    )
+  );
+}
+
 /**
  * The palette's trigger: a search box in name and shape, a button in fact.
  *
@@ -205,7 +227,7 @@ export function CommandPaletteTrigger() {
       variant="outline"
     >
       <Search className="size-3.5" data-icon="inline-start" />
-      <span className="truncate">Search or add a step</span>
+      <span className="truncate">Search commands or add a step</span>
       {/* Hidden from the name: `aria-keyshortcuts` above already says this, and
           in the accessible name it read as part of what the button is called. */}
       <kbd
@@ -332,6 +354,10 @@ function ActionsMenu({
   const catalog = useExtensionCatalog();
   const { fitView } = useReactFlow();
   const { canReflow, reflow } = useReflowLayout();
+  const comparisonActions = useWorkflowComparisonActions();
+  const workspaceNavigation = useWorkflowWorkspaceNavigation(
+    comparisonActions.openComparison
+  );
   // Every handler behind these takes either modifier, so the label is the only
   // thing that has to know which key this keyboard has.
   const shortcuts = editorShortcutLabels(isApplePlatform(currentPlatform()));
@@ -360,18 +386,42 @@ function ActionsMenu({
       canUndo: state.canUndo,
       canRedo: state.canRedo,
       canReflow,
+      canSave: Boolean(state.currentWorkflowId) && !state.isGenerating,
+      canViewRuns: Boolean(state.currentWorkflowId) && state.isOwner,
+      canViewChanges:
+        Boolean(state.currentWorkflowId) &&
+        state.isOwner &&
+        Boolean(state.publication?.isPublished),
+      canPublish: !isPublishDisabled(state, actions, editingLocked),
+      canCopySelection: hasCopyableSelection && !editingLocked,
+      canPaste: hasCopiedSelection && !editingLocked,
+      canGroupSelection: grouping.ok && !editingLocked,
       editingLocked,
     },
     shortcuts,
     callbacks: {
       addStep: onAddStep,
+      save: () => void actions.handleSave(),
       run: () => void actions.handleExecute(),
       switchMode: (mode) => void actions.handleSetWorkflowMode(mode),
+      showRuns: workspaceNavigation.showRuns,
+      showChanges: workspaceNavigation.showChanges,
+      publish: actions.handlePublish,
+      fitView: () =>
+        void fitView({
+          padding: 0.2,
+          duration: viewportAnimationDuration(),
+        }),
+      copySelection: () => void copySelection(),
+      pasteSelection: () => void pasteSelection(),
+      duplicateSelection: () => void duplicateSelection(),
+      groupSelection: () => void groupSelection({ catalog }),
       undo: state.undo,
       redo: state.redo,
       reflow,
     },
   });
+  const menuCommands = commands.filter((command) => command.group !== "canvas");
 
   return (
     <DropdownMenu>
@@ -382,10 +432,10 @@ function ActionsMenu({
         <ChevronDown className="size-3 opacity-50" data-icon="inline-end" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-60">
-        {commands.map((command, index) => (
+        {menuCommands.map((command, index) => (
           <Fragment key={command.id}>
             {index > 0 &&
-            (command.group !== commands[index - 1]?.group ||
+            (command.group !== menuCommands[index - 1]?.group ||
               command.id === "undo") ? (
               <DropdownMenuSeparator />
             ) : null}
@@ -512,13 +562,7 @@ export function ToolbarPublishControls({
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
   const hasSelection = selectedNode || selectedEdge;
   const publication = state.publication;
-  const publishDisabled =
-    editingLocked ||
-    state.isSaving ||
-    !state.nodes.some((node) => node.type !== "add") ||
-    (publication?.isPublished &&
-      !publication.hasUnpublishedChanges &&
-      !state.hasUnsavedChanges);
+  const publishDisabled = isPublishDisabled(state, actions, editingLocked);
   const proposedVersion = publication?.publishedVersion
     ? publication.publishedVersion + 1
     : undefined;
@@ -548,7 +592,7 @@ export function ToolbarPublishControls({
       {state.isOwner ? (
         <>
           <PublishButton
-            disabled={publishDisabled || actions.isComparing}
+            disabled={publishDisabled}
             handlePublish={actions.handlePublish}
             isPublishing={actions.isPublishing}
             proposedVersion={proposedVersion}

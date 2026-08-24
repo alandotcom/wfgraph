@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import { act, fireEvent, render } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -128,6 +128,7 @@ function baseState(): WorkflowToolbarState {
 
 function baseActions(): WorkflowToolbarActions {
   return {
+    handleSave: vi.fn(async () => {}),
     handleExecute: vi.fn(async () => {}),
     handleClearWorkflow: vi.fn(),
     handleDeleteWorkflow: vi.fn(),
@@ -378,6 +379,38 @@ describe("ToolbarActions ownership", () => {
 });
 
 describe("WorkflowToolbarChrome", () => {
+  it("coordinates the top-level workflow menus as a menubar", async () => {
+    const { findByRole } = renderChrome(WorkflowToolbarChrome);
+
+    const menubar = await findByRole("menubar");
+    expect(
+      menubar.contains(await findByRole("menuitem", { name: "Workflow" }))
+    ).toBe(true);
+    expect(
+      menubar.contains(await findByRole("menuitem", { name: "Actions" }))
+    ).toBe(true);
+    expect(
+      menubar.contains(await findByRole("menuitem", { name: "Settings" }))
+    ).toBe(true);
+  });
+
+  it("opens the menu whose trigger is hovered while another menu is open", async () => {
+    const { findByRole } = renderChrome(WorkflowToolbarChrome);
+    const workflow = await findByRole("menuitem", { name: "Workflow" });
+    const actions = await findByRole("menuitem", { name: "Actions" });
+
+    fireEvent.keyDown(workflow, { key: "ArrowDown" });
+    fireEvent.keyUp(workflow, { key: "ArrowDown" });
+    expect(workflow.getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.mouseEnter(actions);
+
+    await waitFor(() => {
+      expect(actions.getAttribute("aria-expanded")).toBe("true");
+      expect(workflow.getAttribute("aria-expanded")).toBe("false");
+    });
+  });
+
   it("shows available workspace views and moves the editor to Runs", async () => {
     const { findAllByRole, findByRole, store } = renderChrome(
       WorkflowToolbarChrome,
@@ -415,9 +448,9 @@ describe("WorkflowToolbarChrome", () => {
     const { findByRole } = renderChrome(WorkflowToolbarChrome);
 
     const dashboard = await findByRole("link", { name: "Dashboard" });
-    const workflow = await findByRole("button", { name: "Workflow" });
-    const actions = await findByRole("button", { name: "Actions" });
-    const settings = await findByRole("button", { name: "Settings" });
+    const workflow = await findByRole("menuitem", { name: "Workflow" });
+    const actions = await findByRole("menuitem", { name: "Actions" });
+    const settings = await findByRole("menuitem", { name: "Settings" });
     const workspaceSwitcher = await findByRole("group", {
       name: "Workspace view",
     });
@@ -435,7 +468,8 @@ describe("WorkflowToolbarChrome", () => {
       )
     ).not.toContain(null);
     expect(
-      (await findByRole("button", { name: "Search or add a step" })).className
+      (await findByRole("button", { name: "Search commands or add a step" }))
+        .className
     ).toContain("w-80");
   });
 
@@ -444,7 +478,7 @@ describe("WorkflowToolbarChrome", () => {
       state: { isOwner: false },
     });
 
-    expect(await findByRole("button", { name: "Settings" })).toBeTruthy();
+    expect(await findByRole("menuitem", { name: "Settings" })).toBeTruthy();
     expect(queryByRole("button", { name: "Publish" })).toBeNull();
     expect(queryByRole("button", { name: "Runs" })).toBeNull();
     expect(queryByRole("button", { name: "Changes" })).toBeNull();
@@ -460,7 +494,7 @@ describe("WorkflowToolbarChrome", () => {
   it("constrains each desktop side around the viewport-centred palette", async () => {
     const { findByRole } = renderChrome(WorkflowToolbarChrome);
     const palette = await findByRole("button", {
-      name: "Search or add a step",
+      name: "Search commands or add a step",
     });
     const left = palette
       .closest(".relative")
@@ -688,6 +722,56 @@ describe("the command palette", () => {
     expect(palette?.className).toContain("motion-reduce:animate-none");
   });
 
+  it("offers workflow and canvas actions", async () => {
+    const rendered = renderChrome(ToolbarActions, {
+      state: {
+        publication: {
+          isPublished: true,
+          hasUnpublishedChanges: true,
+          publishedVersionId: "version_1",
+          publishedVersion: 1,
+          publishedAt: "2026-08-23T15:00:00.000Z",
+        },
+      },
+    });
+    await openedPalette(rendered);
+
+    expect(
+      rendered.getByRole("option", { name: /^Save workflow/ })
+    ).toBeTruthy();
+    expect(
+      rendered.getByRole("option", { name: "Go to run history" })
+    ).toBeTruthy();
+    expect(
+      rendered.getByRole("option", { name: "Go to version history" })
+    ).toBeTruthy();
+    expect(
+      rendered.getByRole("option", { name: "Publish workflow" })
+    ).toBeTruthy();
+    for (const label of [
+      /^Fit view/,
+      /^Copy selection/,
+      /^Paste/,
+      /^Duplicate selection/,
+      /^Group selection/,
+    ]) {
+      expect(rendered.getByRole("option", { name: label })).toBeTruthy();
+    }
+
+    fireEvent.click(rendered.getByRole("option", { name: /^Save workflow/ }));
+    expect(rendered.actions.handleSave).toHaveBeenCalledOnce();
+
+    pressCommandK();
+    fireEvent.click(rendered.getByRole("option", { name: "Publish workflow" }));
+    expect(rendered.actions.handlePublish).toHaveBeenCalledOnce();
+
+    pressCommandK();
+    fireEvent.click(
+      rendered.getByRole("option", { name: "Go to run history" })
+    );
+    expect(rendered.store.get(workflowWorkspaceViewAtom)).toBe("runs");
+  });
+
   // The same rule Cmd+Enter follows: a chord is not worth a keystroke taken out
   // of a field somebody is typing in.
   it("leaves Cmd+K alone while a text field has focus", async () => {
@@ -741,7 +825,7 @@ describe("the command palette", () => {
     const { findByRole } = renderChrome(ToolbarActions);
 
     const trigger = await findByRole("button", {
-      name: "Search or add a step",
+      name: "Search commands or add a step",
     });
 
     expect(trigger.getAttribute("aria-keyshortcuts")).toMatch(
@@ -753,7 +837,7 @@ describe("the command palette", () => {
     const { findByRole } = renderChrome(ToolbarActions);
 
     fireEvent.click(
-      await findByRole("button", { name: /Search or add a step/ })
+      await findByRole("button", { name: /Search commands or add a step/ })
     );
 
     expect(paletteInput()).not.toBeNull();
@@ -767,7 +851,7 @@ describe("the command palette", () => {
     });
 
     const trigger = await findByRole("button", {
-      name: /Search or add a step/,
+      name: /Search commands or add a step/,
     });
     expect(trigger.hasAttribute("disabled")).toBe(true);
 
@@ -783,7 +867,7 @@ describe("the command palette", () => {
     const { findByRole } = renderChrome(ToolbarActions, { generating: true });
 
     const trigger = await findByRole("button", {
-      name: /Search or add a step/,
+      name: /Search commands or add a step/,
     });
     expect(trigger.hasAttribute("disabled")).toBe(true);
 
@@ -848,7 +932,7 @@ describe("the command palette", () => {
   async function openedPalette(
     rendered: Awaited<ReturnType<typeof renderChrome>>
   ) {
-    await rendered.findByRole("button", { name: "Publish" });
+    await rendered.findByRole("button", { name: /^Publish/ });
     pressCommandK();
     const input = paletteInput();
     if (!input) {

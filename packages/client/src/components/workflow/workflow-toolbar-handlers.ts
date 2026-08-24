@@ -58,6 +58,7 @@ import {
   hasUnsavedChangesAtom,
   isSavingAtom,
   isWorkflowOwnerAtom,
+  saveWorkflowAtom,
   setWorkflowModeAtom,
 } from "#src/lib/workflow-save-store";
 import { toSerializedGraph } from "#src/lib/rpc-client";
@@ -286,6 +287,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
   const queryClient = useQueryClient();
   const deleteWorkflow = useDeleteWorkflow();
   const setWorkflowMode = useSetAtom(setWorkflowModeAtom);
+  const saveWorkflow = useSetAtom(saveWorkflowAtom);
   const publishReview = useAtomValue(publicationReviewAtom);
   const publicationReviewActive = useAtomValue(isPublicationReviewActiveAtom);
   const publicationReviewPending = useAtomValue(isPublicationReviewPendingAtom);
@@ -303,6 +305,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     edges,
     updateNodeData,
     isExecuting,
+    isGenerating,
     setIsExecuting,
     clearWorkflow,
     setSelectedNodeId,
@@ -318,6 +321,31 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     setSelectedNodeId,
     userIntegrations,
   });
+
+  const handleSave = useCallback(async () => {
+    if (!currentWorkflowId || isGenerating) {
+      return;
+    }
+    const outcome = await saveWorkflow({ nodes, edges }, { immediate: true });
+    if (outcome && !outcome.ok) {
+      toast.error(outcome.error.message || "Failed to save workflow");
+    }
+  }, [currentWorkflowId, edges, isGenerating, nodes, saveWorkflow]);
+
+  // Cmd+S shares the command palette's save path, so an explicit save and the
+  // shortcut cannot race the autosave queue differently.
+  const handleSaveShortcut = useCallback(
+    (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "s") {
+        event.preventDefault();
+        event.stopPropagation();
+        void handleSave();
+      }
+    },
+    [handleSave]
+  );
+
+  useDomEvent(document, "keydown", handleSaveShortcut, { capture: true });
 
   // Cmd+Enter runs the workflow. The listener lives here, beside handleExecute,
   // so the shortcut and the Run button are the same call rather than a store
@@ -558,6 +586,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
   };
 
   return {
+    handleSave,
     handleExecute,
     handleClearWorkflow,
     handleDeleteWorkflow,

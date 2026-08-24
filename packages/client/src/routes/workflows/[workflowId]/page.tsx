@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { useCallback } from "react";
 import { toast } from "sonner";
 import { AgentPanel } from "#src/components/agent/agent-panel";
 import { Button } from "#src/components/ui/button";
@@ -10,12 +9,11 @@ import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
 import { WorkflowSidebarPanel } from "#src/components/workflow/workflow-sidebar-panel";
 import { WorkflowStatusStrip } from "#src/components/workflow/workflow-status-strip";
 import { WorkflowToolbar } from "#src/components/workflow/workflow-toolbar";
-import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
+import { useAfterCommit } from "#src/hooks/effects";
 import { isAgentEnabled } from "#src/lib/extensions";
 import { isRunInProgress } from "#src/lib/execution-logs";
 import { orpcQuery } from "#src/lib/rpc-query";
 import {
-  edgesAtom,
   isExecutionOverlayActiveAtom,
   nodesAtom,
   setNodeStatusesAtom,
@@ -23,13 +21,11 @@ import {
 import {
   currentWorkflowIdAtom,
   lastSaveErrorAtom,
-  saveWorkflowAtom,
   workflowNotFoundAtom,
   workflowLoadErrorAtom,
 } from "#src/lib/workflow-save-store";
 import {
   isExecutingAtom,
-  isGeneratingAtom,
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
 
@@ -37,15 +33,12 @@ import {
 const RUN_STATUS_POLL_MS = 500;
 
 const WorkflowEditor = () => {
-  const isGenerating = useAtomValue(isGeneratingAtom);
   const lastSaveError = useAtomValue(lastSaveErrorAtom);
   const nodes = useAtomValue(nodesAtom);
-  const edges = useAtomValue(edgesAtom);
   const [currentWorkflowId] = useAtom(currentWorkflowIdAtom);
   const [selectedExecutionId] = useAtom(selectedExecutionIdAtom);
   const isExecutionOverlayActive = useAtomValue(isExecutionOverlayActiveAtom);
   const setIsExecuting = useSetAtom(isExecutingAtom);
-  const saveWorkflow = useSetAtom(saveWorkflowAtom);
   const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
   const workflowNotFound = useAtomValue(workflowNotFoundAtom);
   const workflowLoadError = useAtomValue(workflowLoadErrorAtom);
@@ -62,36 +55,6 @@ const WorkflowEditor = () => {
       toast.error(lastSaveError.message || "Failed to save workflow");
     }
   });
-
-  // Keyboard shortcuts
-  const handleSave = useCallback(async () => {
-    if (!currentWorkflowId || isGenerating) {
-      return;
-    }
-    // Goes through the same queue as autosave, so an in-flight debounced save
-    // cannot land afterwards and overwrite what this one just wrote. The queue
-    // drives the saving indicator, so there is nothing to bracket here.
-    const outcome = await saveWorkflow({ nodes, edges }, { immediate: true });
-
-    if (outcome && !outcome.ok) {
-      toast.error(outcome.error.message || "Failed to save workflow");
-    }
-  }, [currentWorkflowId, nodes, edges, isGenerating, saveWorkflow]);
-
-  // Cmd+S saves. Capture phase, so a focused field in the canvas does not eat
-  // it first. Cmd+Enter belongs to the toolbar, which owns the run itself.
-  const handleSaveShortcut = useCallback(
-    (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === "s") {
-        event.preventDefault();
-        event.stopPropagation();
-        void handleSave();
-      }
-    },
-    [handleSave]
-  );
-
-  useDomEvent(document, "keydown", handleSaveShortcut, { capture: true });
 
   // While a run is on screen its progress is read back every half second. The
   // predicate is what stops it: once the run reaches a terminal status there is

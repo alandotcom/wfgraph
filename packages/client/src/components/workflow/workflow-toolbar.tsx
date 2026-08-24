@@ -10,6 +10,7 @@ import {
 } from "#src/components/ui/dropdown-menu";
 import { ChevronDown } from "lucide-react";
 import { useAtomValue } from "jotai";
+import { Menubar } from "@base-ui/react/menubar";
 import { UserMenu } from "#src/components/workflows/user-menu";
 import {
   DashboardLink,
@@ -132,7 +133,7 @@ export function WorkflowToolbarChrome({
           every control while the palette trigger remains centred in this toolbar
           container at desktop widths. */}
       <div className="flex h-11 items-center gap-2 overflow-x-auto px-2.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div
+        <Menubar
           className="flex min-w-max items-center gap-2 min-[70rem]:min-w-0 min-[70rem]:max-w-[calc(50%-10rem)] min-[70rem]:flex-1 min-[70rem]:overflow-x-auto min-[70rem]:overscroll-contain"
           data-slot="workflow-toolbar-left"
         >
@@ -163,7 +164,7 @@ export function WorkflowToolbarChrome({
               />
             </>
           )}
-        </div>
+        </Menubar>
         <div
           className="ml-auto flex min-w-max items-center gap-2 min-[70rem]:min-w-0 min-[70rem]:max-w-[calc(50%-10rem)] min-[70rem]:flex-1 min-[70rem]:justify-end min-[70rem]:overflow-x-auto min-[70rem]:overscroll-contain"
           data-slot="workflow-toolbar-right"
