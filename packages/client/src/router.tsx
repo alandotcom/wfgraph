@@ -26,10 +26,11 @@ import {
 } from "#src/lib/workflow-save-store";
 import {
   classifyWorkflowLoadFailure,
+  executionIdFromWorkflowSearch,
   WORKFLOW_LOAD_ERROR_MESSAGE,
-  workflowPanelTab,
+  workflowWorkspaceView,
 } from "#src/lib/workflow-route-state";
-import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
+import { enterRunsWorkspaceAtom } from "#src/lib/workflow-workspace-navigation";
 import WorkflowEditorPage from "#src/routes/workflows/[workflowId]/page";
 import WorkflowsPage from "#src/routes/workflows/page";
 
@@ -41,12 +42,7 @@ export type WorkflowRouteSearch = {
 function validateWorkflowSearch(
   search: WorkflowRouteSearch & SearchSchemaInput
 ): WorkflowRouteSearch {
-  return {
-    executionId:
-      typeof search.executionId === "string" && search.executionId.length > 0
-        ? search.executionId
-        : undefined,
-  };
+  return { executionId: executionIdFromWorkflowSearch(search) };
 }
 
 /**
@@ -108,16 +104,16 @@ const workflowRoute = createRoute({
   path: "/workflows/$workflowId",
   validateSearch: validateWorkflowSearch,
   /**
-   * Open the Runs tab on a deep-linked run so the panel is what the builder
+   * Open the Runs workspace on a deep-linked run so the panel is what the builder
    * sees. Selection and overlay are the editor shell's
    * `ExecutionOverlaySync`, not this panel — hydrate clears those, and the
    * shell rewrites them after mount. Safe on every search change: selecting a
    * run must not re-hydrate.
    */
   beforeLoad: ({ search }) => {
-    const tab = workflowPanelTab(search.executionId);
-    if (tab !== null) {
-      appStore.set(propertiesPanelActiveTabAtom, tab);
+    const view = workflowWorkspaceView(search.executionId);
+    if (view !== null) {
+      appStore.set(enterRunsWorkspaceAtom);
     }
   },
   /**
@@ -145,7 +141,7 @@ const workflowRoute = createRoute({
    * Run selection is not a loader concern: hydrating on `executionId` cleared
    * the pinned-graph overlay and left the canvas on the live draft.
    */
-  loader: async ({ params }) => {
+  loader: async ({ params, location }) => {
     appStore.set(workflowNotFoundAtom, false);
     appStore.set(workflowLoadErrorAtom, null);
 
@@ -180,6 +176,9 @@ const workflowRoute = createRoute({
         integrationsResult.value
       ),
     });
+    if (executionIdFromWorkflowSearch(location.search)) {
+      appStore.set(enterRunsWorkspaceAtom);
+    }
   },
   errorComponent: WorkflowRouteComponent,
   component: WorkflowRouteComponent,

@@ -12,6 +12,7 @@ import { createStore, Provider as JotaiProvider } from "jotai";
 import { useMemo, useState } from "react";
 import { describe, expect, it } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
+import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import {
   type ConfirmRequest,
   type NodeConfigFrame,
@@ -26,6 +27,8 @@ import {
   currentWorkflowNameAtom,
   isWorkflowOwnerAtom,
 } from "#src/lib/workflow-save-store";
+import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
+import { orpcQuery } from "#src/lib/rpc-query";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
@@ -82,10 +85,12 @@ function renderPanel({
 
   selected = null,
   isOwner = true,
+  hasPublishedVersion = false,
 }: {
   nodes?: WorkflowNode[];
   selected?: string | null;
   isOwner?: boolean;
+  hasPublishedVersion?: boolean;
 } = {}) {
   const store = createStore();
   store.set(loadWorkflowGraphAtom, { nodes, edges: [] });
@@ -93,6 +98,18 @@ function renderPanel({
   store.set(currentWorkflowIdAtom, "wf_1");
   store.set(currentWorkflowNameAtom, "Appointment reminders");
   store.set(isWorkflowOwnerAtom, isOwner);
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  queryClient.setQueryData(
+    orpcQuery.workflow.getById.queryKey({ input: { workflowId: "wf_1" } }),
+    {
+      id: "wf_1",
+      publishedVersionId: hasPublishedVersion ? "version_1" : undefined,
+      publishedVersion: hasPublishedVersion ? 1 : undefined,
+      hasUnpublishedChanges: false,
+    } as never
+  );
 
   const confirmed: ConfirmRequest[] = [];
 
@@ -104,7 +121,6 @@ function renderPanel({
           confirmed.push(request);
           setRequest(request);
         },
-        tabs: "top",
       }),
       []
     );
@@ -129,13 +145,11 @@ function renderPanel({
 
   const view = render(
     <ExtensionCatalogProvider value={catalog}>
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
+      <QueryClientProvider client={queryClient}>
         <JotaiProvider store={store}>
-          <RouterProvider router={router} />
+          <OverlayProvider>
+            <RouterProvider router={router} />
+          </OverlayProvider>
         </JotaiProvider>
       </QueryClientProvider>
     </ExtensionCatalogProvider>
@@ -173,17 +187,6 @@ describe("NodeConfigPanel with nothing selected", () => {
     expect(view.queryByRole("button", { name: /Clear/ })).toBeNull();
     expect(view.queryByRole("button", { name: /Delete/ })).toBeNull();
     expect(confirmed).toEqual([]);
-  });
-
-  // The tab named the fields it used to hold. It holds an empty state now, and
-  // the tab is the same Properties tab a selection opens.
-  it("names its tab Properties", async () => {
-    const { view } = renderPanel();
-
-    await waitFor(() => {
-      expect(view.getByRole("button", { name: "Properties" })).toBeTruthy();
-    });
-    expect(view.queryByRole("button", { name: "Workflow" })).toBeNull();
   });
 
   // A non-owner reached this branch for the read-only notice, and the branch it
@@ -228,6 +231,29 @@ describe("NodeConfigPanel config scoping", () => {
     expect(view.queryByLabelText("Start Events")).toBeNull();
     expect(
       view.getByRole("button", { name: "Edit Lifecycle Rules" })
+    ).toBeTruthy();
+  });
+});
+
+describe("NodeConfigPanel workspace inspector", () => {
+  it("contains no workspace mode tabs", async () => {
+    const { view } = renderPanel({ hasPublishedVersion: true });
+
+    await view.findByText("Select a step on the canvas to configure it.");
+    expect(view.queryByRole("tablist")).toBeNull();
+    expect(view.queryByRole("tab", { name: "Runs" })).toBeNull();
+    expect(view.queryByRole("tab", { name: "Changes" })).toBeNull();
+  });
+
+  it("follows the active workspace view", async () => {
+    const { view, store } = renderPanel({ hasPublishedVersion: true });
+
+    act(() => store.set(workflowWorkspaceViewAtom, "changes"));
+
+    expect(
+      await view.findByText(
+        "Open a comparison of this draft and its published version."
+      )
     ).toBeTruthy();
   });
 });

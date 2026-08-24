@@ -17,6 +17,7 @@ import {
   edgesAtom,
   nodesAtom,
 } from "#src/lib/workflow-graph-store";
+import { viewportAnimationDuration } from "#src/lib/motion";
 
 /**
  * The width the layout spaces nodes inside: the graph's own box rather than the
@@ -76,7 +77,12 @@ export function useReflowLayout(): {
     // one schedules and `fitView` is fitting around those measurements.
     window.requestAnimationFrame(() => {
       Promise.resolve(
-        fitView({ maxZoom: 1, minZoom: 0.5, padding: 0.2, duration: 300 })
+        fitView({
+          maxZoom: 1,
+          minZoom: 0.5,
+          padding: 0.2,
+          duration: viewportAnimationDuration(),
+        })
       ).catch(() => undefined);
     });
   }, [applyNodeLayout, canReflow, catalog, edges, fitView, nodes]);

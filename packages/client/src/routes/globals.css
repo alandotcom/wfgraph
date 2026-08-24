@@ -13,33 +13,6 @@
 
 @custom-variant dark (&:is(.dark *));
 
-@keyframes run-panel-forward {
-  from {
-    opacity: 0;
-    transform: translateX(1rem);
-  }
-}
-
-@keyframes run-panel-back {
-  from {
-    opacity: 0;
-    transform: translateX(-1rem);
-  }
-}
-
-@keyframes run-panel-fade {
-  from {
-    opacity: 0;
-  }
-}
-
-@keyframes run-disclosure {
-  from {
-    opacity: 0;
-    transform: translateY(-0.375rem);
-  }
-}
-
 /* The one width the editor changes shape at, declared rather than inherited so
    it is a variable at runtime too. Tailwind's `md:` variant reads it, the media
    queries below ask for it by name through `theme()`, and `hooks/use-mobile.ts`

@@ -236,7 +236,11 @@ function HeaderSummary({
             type="button"
             variant="ghost"
           >
-            {isCanceling ? <Loader2 className="animate-spin" /> : <Ban />}
+            {isCanceling ? (
+              <Loader2 className="animate-spin motion-reduce:animate-none" />
+            ) : (
+              <Ban />
+            )}
             Cancel
           </Button>
         ) : null}

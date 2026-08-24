@@ -1,19 +1,7 @@
-import {
-  and,
-  arrayContains,
-  desc,
-  eq,
-  inArray,
-  isNull,
-  lte,
-  ne,
-  notExists,
-  sql,
-} from "drizzle-orm";
+import { and, arrayContains, desc, eq, isNull, lt, ne, sql } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
 import {
   type Workflow,
-  workflowExecutions,
   type WorkflowVersion,
   workflowEventSubscriptions,
   type WorkflowMode,
@@ -54,6 +42,15 @@ export type WorkflowRunRow = Pick<
   Workflow,
   "id" | "name" | "mode" | "isPaused"
 >;
+
+/** The fields a version-history page needs, ordered by descending version. */
+export type WorkflowVersionHistoryRow = Pick<
+  WorkflowVersion,
+  "id" | "version" | "publishedAt"
+> & {
+  /** Whether this row is the version the workflow currently publishes. */
+  isCurrent: boolean;
+};
 
 /**
  * A workflow one delivered Event concerns, and what it holds that Event for.
@@ -206,20 +203,23 @@ export class WorkflowRepo extends Context.Service<
     /** The newest published version for this workflow, or null when none exist. */
     readonly findLatestVersion: (
       workflowId: string
-    ) => Effect.Effect<WorkflowVersion | null, DatabaseError>;
+    ) => Effect.Effect<Pick<WorkflowVersion, "version"> | null, DatabaseError>;
+    /**
+     * A version-history page for one workflow, newest version first.
+     *
+     * `cursor.version` is exclusive, so it returns versions strictly older than
+     * that one. The result holds up to `limit + 1` rows; callers keep `limit`
+     * rows and use the extra row to determine whether a next cursor exists.
+     */
+    readonly listVersionHistoryPage: (input: {
+      workflowId: string;
+      limit: number;
+      cursor?: { version: number };
+    }) => Effect.Effect<WorkflowVersionHistoryRow[], DatabaseError>;
     /** One version by id, or null when it is gone. */
     readonly findVersionById: (
       versionId: string
     ) => Effect.Effect<WorkflowVersion | null, DatabaseError>;
-    /**
-     * A prior version whose content hash and catalog fingerprint match, newest
-     * first. Used by publish to reuse rather than mint a duplicate row.
-     */
-    readonly findVersionByContent: (input: {
-      workflowId: string;
-      graphDigest: string;
-      catalogFingerprint: string;
-    }) => Effect.Effect<WorkflowVersion | null, DatabaseError>;
     /**
      * The version `published_version_id` names, or null when the workflow is
      * gone or has never been published.
@@ -258,55 +258,22 @@ export class WorkflowRepo extends Context.Service<
       DatabaseError
     >;
     /**
-     * Point the workflow at an existing version, align the draft graph, and
-     * rewrite subscriptions, in one transaction.
-     */
-    readonly setPublishedVersion: (input: {
-      workflowId: string;
-      versionId: string;
-      expectedPublishedVersionId: string | null;
-      draftGraph: SerializedWorkflowGraph;
-      eventSubscriptions: WorkflowEventSubscriptionRow[];
-    }) => Effect.Effect<
-      { workflow: Workflow; version: WorkflowVersion } | { stale: true } | null,
-      DatabaseError
-    >;
-    /**
      * Claim a new version number (optimistic: insert only if still free), then
-     * point the workflow at it, align the draft, and rewrite subscriptions.
-     * `{ stale: true }` means another publish already took that number.
+     * point the workflow at it only when the reviewed publication pointer still
+     * matches, align the draft, and rewrite subscriptions.
      */
     readonly insertPublishedVersion: (input: {
       workflowId: string;
       versionId: string;
       version: number;
+      /** The publication pointer carried by the confirmed review. */
+      expectedPublishedVersionId: string | null;
       graph: SerializedWorkflowGraph;
       catalogFingerprint: string;
       graphDigest: string;
       draftGraph: SerializedWorkflowGraph;
       eventSubscriptions: WorkflowEventSubscriptionRow[];
     }) => Effect.Effect<InsertPublishedVersionResult, DatabaseError>;
-    /**
-     * Delete this workflow's versions that nothing points at, keeping the
-     * newest `keepNewest` whatever their state, and answer the ids that went.
-     *
-     * A version goes only when no execution pins it and no workflow names it as
-     * published, because both foreign keys act destructively: the executions one
-     * cascades and would take a run's whole history, `published_version_id` sets
-     * null and would silently unpublish. Candidates are claimed with `for update
-     * skip locked` — the one lock strength that conflicts with the `for key
-     * share` an FK insert takes — and the predicate is then re-checked in the
-     * delete, which is a second statement and so a second snapshot under READ
-     * COMMITTED. That pair is what makes the answer final: a row another
-     * transaction is part way through pinning is skipped, and a row pinned since
-     * the claim fails the re-check. `limit` bounds one sweep, so a long backlog
-     * drains over several rather than in one.
-     */
-    readonly pruneUnreferencedVersions: (input: {
-      workflowId: string;
-      keepNewest: number;
-      limit: number;
-    }) => Effect.Effect<string[], DatabaseError>;
   }
 >()("@wfgraph/core/WorkflowRepo") {}
 
@@ -628,7 +595,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
         findLatestVersion: (workflowId) =>
           database.query(async (db) => {
             const [row] = await db
-              .select()
+              .select({ version: workflowVersions.version })
               .from(workflowVersions)
               .where(eq(workflowVersions.workflowId, workflowId))
               .orderBy(desc(workflowVersions.version))
@@ -637,32 +604,40 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
             return row ?? null;
           }),
 
+        listVersionHistoryPage: (input) =>
+          database.query((db) =>
+            db
+              .select({
+                id: workflowVersions.id,
+                version: workflowVersions.version,
+                publishedAt: workflowVersions.publishedAt,
+                isCurrent: sql<boolean>`${workflows.id} is not null`,
+              })
+              .from(workflowVersions)
+              .leftJoin(
+                workflows,
+                and(
+                  eq(workflows.id, input.workflowId),
+                  eq(workflows.publishedVersionId, workflowVersions.id)
+                )
+              )
+              .where(
+                and(
+                  eq(workflowVersions.workflowId, input.workflowId),
+                  input.cursor
+                    ? lt(workflowVersions.version, input.cursor.version)
+                    : undefined
+                )
+              )
+              .orderBy(desc(workflowVersions.version))
+              .limit(input.limit + 1)
+          ),
+
         findVersionById: (versionId) =>
           database.query(async (db) => {
             const row = await db.query.workflowVersions.findFirst({
               where: { id: versionId },
             });
-
-            return row ?? null;
-          }),
-
-        findVersionByContent: (input) =>
-          database.query(async (db) => {
-            const [row] = await db
-              .select()
-              .from(workflowVersions)
-              .where(
-                and(
-                  eq(workflowVersions.workflowId, input.workflowId),
-                  eq(workflowVersions.graphDigest, input.graphDigest),
-                  eq(
-                    workflowVersions.catalogFingerprint,
-                    input.catalogFingerprint
-                  )
-                )
-              )
-              .orderBy(desc(workflowVersions.version))
-              .limit(1);
 
             return row ?? null;
           }),
@@ -691,38 +666,6 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
               mode: true,
               isPaused: true,
             })
-          ),
-
-        setPublishedVersion: (input) =>
-          database.query(
-            async (db) =>
-              await db.transaction(async (tx) => {
-                // `for key share` against the version sweep, which claims a
-                // prunable row `for update`. Publish reaches this path by
-                // content dedupe, which can name a version old enough to be a
-                // sweep candidate; a plain snapshot read would let the sweep
-                // delete it between this read and the update below, and the
-                // update would then fail the foreign key. Whichever lock lands
-                // first now decides: the sweep skips a row held here, and a read
-                // held behind the sweep sees the row gone and answers null.
-                const [version] = await tx
-                  .select()
-                  .from(workflowVersions)
-                  .where(eq(workflowVersions.id, input.versionId))
-                  .limit(1)
-                  .for("key share");
-                if (!version) {
-                  return null;
-                }
-                const activated = await activatePublishedVersion(tx, {
-                  workflowId: input.workflowId,
-                  version,
-                  expectedPublishedVersionId: input.expectedPublishedVersionId,
-                  draftGraph: input.draftGraph,
-                  eventSubscriptions: input.eventSubscriptions,
-                });
-                return activated ?? { stale: true };
-              })
           ),
 
         insertPublishedVersion: (input) =>
@@ -763,91 +706,24 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                   return { stale: true };
                 }
 
-                return activatePublishedVersion(tx, {
+                const activated = await activatePublishedVersion(tx, {
                   workflowId: input.workflowId,
                   version: minted,
+                  expectedPublishedVersionId: input.expectedPublishedVersionId,
                   draftGraph: input.draftGraph,
                   eventSubscriptions: input.eventSubscriptions,
                 });
-              })
-          ),
-
-        pruneUnreferencedVersions: (input) =>
-          database.query(
-            async (db) =>
-              await db.transaction(async (tx) => {
-                // The window read as an offset into the version order: this is
-                // the newest version outside it, so everything at or below is a
-                // candidate. No row means the workflow has nothing to sweep. A
-                // publish racing this can only raise the cutoff, which makes a
-                // stale read here conservative rather than permissive.
-                const [cutoff] = await tx
-                  .select({ version: workflowVersions.version })
-                  .from(workflowVersions)
-                  .where(eq(workflowVersions.workflowId, input.workflowId))
-                  .orderBy(desc(workflowVersions.version))
-                  .limit(1)
-                  .offset(input.keepNewest);
-                if (!cutoff) {
-                  return [];
+                if (activated) {
+                  return activated;
                 }
 
-                // Correlated against the outer `workflow_versions` row, so the
-                // same pair serves the claim and the delete's re-check. Both
-                // statements ask it; that repetition is the design.
-                const unreferenced = and(
-                  notExists(
-                    tx
-                      .select({ pinned: sql`1` })
-                      .from(workflowExecutions)
-                      .where(
-                        eq(
-                          workflowExecutions.workflowVersionId,
-                          workflowVersions.id
-                        )
-                      )
-                  ),
-                  notExists(
-                    tx
-                      .select({ published: sql`1` })
-                      .from(workflows)
-                      .where(
-                        eq(workflows.publishedVersionId, workflowVersions.id)
-                      )
-                  )
-                );
-
-                const claimed = await tx
-                  .select({ id: workflowVersions.id })
-                  .from(workflowVersions)
-                  .where(
-                    and(
-                      eq(workflowVersions.workflowId, input.workflowId),
-                      lte(workflowVersions.version, cutoff.version),
-                      unreferenced
-                    )
-                  )
-                  .orderBy(workflowVersions.version)
-                  .limit(input.limit)
-                  .for("update", { skipLocked: true });
-                if (claimed.length === 0) {
-                  return [];
-                }
-
-                const deleted = await tx
+                // The version number was ours, but another publish moved the
+                // workflow pointer first. Remove this unobserved row before
+                // reporting the optimistic conflict.
+                await tx
                   .delete(workflowVersions)
-                  .where(
-                    and(
-                      inArray(
-                        workflowVersions.id,
-                        claimed.map((row) => row.id)
-                      ),
-                      unreferenced
-                    )
-                  )
-                  .returning({ id: workflowVersions.id });
-
-                return deleted.map((row) => row.id);
+                  .where(eq(workflowVersions.id, minted.id));
+                return { stale: true };
               })
           ),
       };
@@ -859,7 +735,7 @@ async function activatePublishedVersion(
   input: {
     workflowId: string;
     version: WorkflowVersion;
-    expectedPublishedVersionId?: string | null;
+    expectedPublishedVersionId: string | null;
     draftGraph: SerializedWorkflowGraph;
     eventSubscriptions: WorkflowEventSubscriptionRow[];
   }
@@ -876,11 +752,9 @@ async function activatePublishedVersion(
     .where(
       and(
         eq(workflows.id, input.workflowId),
-        input.expectedPublishedVersionId === undefined
-          ? undefined
-          : input.expectedPublishedVersionId === null
-            ? isNull(workflows.publishedVersionId)
-            : eq(workflows.publishedVersionId, input.expectedPublishedVersionId)
+        input.expectedPublishedVersionId === null
+          ? isNull(workflows.publishedVersionId)
+          : eq(workflows.publishedVersionId, input.expectedPublishedVersionId)
       )
     )
     .returning();

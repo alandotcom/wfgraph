@@ -139,7 +139,9 @@ export function WorkflowSaveStatus() {
         TONES[state]
       )}
     >
-      {state === "saving" && <Loader2 className="size-3 animate-spin" />}
+      {state === "saving" && (
+        <Loader2 className="size-3 animate-spin motion-reduce:animate-none" />
+      )}
       {saveStatusLabel(state, lastSavedAt)}
     </span>
   );

@@ -1,11 +1,11 @@
 /**
- * ⌘K: the palette that adds a step and picks its type.
+ * ⌘K: the palette that exposes editor commands and picks a step type.
  *
  * Two stages, held as a page stack in `#src/lib/command-palette`: the root
- * offers "Add step" beside the workflow-level commands the Actions menu already
- * carries, and "Add step" leads to the node types from the extension catalog.
- * The canvas skips the root and opens on the second page, because someone who
- * right-clicked the graph has already said what they want.
+ * offers workflow and canvas commands plus "Add step", which leads to the
+ * node types from the extension catalog. The canvas skips the root and opens
+ * on the second page, because someone who right-clicked the graph has already
+ * said what they want.
  *
  * Built on Base UI's Autocomplete inside a Dialog, which is the shape their own
  * command-palette example takes. cmdk, which shadcn's `command` is built on,
@@ -35,11 +35,6 @@ import {
 } from "#src/components/ui/dialog";
 import { ActionIcon } from "#src/components/workflow/config/action-grid";
 import { useAddStep } from "#src/components/workflow/use-add-step";
-import { useReflowLayout } from "#src/components/workflow/use-reflow-layout";
-import type {
-  WorkflowToolbarActions,
-  WorkflowToolbarState,
-} from "#src/components/workflow/workflow-toolbar-handlers";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
 import { isTextEntry } from "#src/lib/is-text-entry";
 import {
@@ -56,15 +51,10 @@ import {
   commandPaletteRefusalAtom,
   openCommandPaletteAtom,
 } from "#src/lib/command-palette-store";
-import {
-  currentPlatform,
-  editorShortcutLabels,
-  isApplePlatform,
-} from "#src/lib/shortcut-label";
 import { stepGroups, stepSearchText } from "#src/lib/step-types";
 import {
   WorkflowCommandIcon,
-  workflowCommands,
+  type WorkflowCommand,
 } from "#src/lib/workflow-commands";
 import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
@@ -119,8 +109,7 @@ const NO_GROUPS: readonly PaletteGroup[] = [];
 const REFUSAL_TOAST_ID = "command-palette-refused";
 
 type CommandPaletteProps = {
-  state: WorkflowToolbarState;
-  actions: WorkflowToolbarActions;
+  commands: readonly WorkflowCommand[];
 };
 
 /**
@@ -131,7 +120,7 @@ type CommandPaletteProps = {
  * that only works once the thing is open is not a shortcut. Rendered by
  * `ToolbarActions`, which renders nothing at all for a non-owner.
  */
-export function CommandPalette({ state, actions }: CommandPaletteProps) {
+export function CommandPalette({ commands }: CommandPaletteProps) {
   const palette = useAtomValue(commandPaletteAtom);
   const setPalette = useSetAtom(commandPaletteAtom);
   const openPalette = useSetAtom(openCommandPaletteAtom);
@@ -190,29 +179,20 @@ export function CommandPalette({ state, actions }: CommandPaletteProps) {
     return null;
   }
 
-  return (
-    <CommandPaletteDialog actions={actions} palette={palette} state={state} />
-  );
+  return <CommandPaletteDialog commands={commands} palette={palette} />;
 }
 
 function CommandPaletteDialog({
   palette,
-  state,
-  actions,
+  commands,
 }: CommandPaletteProps & { palette: CommandPaletteState }) {
   const setPalette = useSetAtom(commandPaletteAtom);
   const inputRef = useRef<HTMLInputElement>(null);
   const catalog = useExtensionCatalog();
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
-  const { canReflow, reflow } = useReflowLayout();
   const addStep = useAddStep();
   const hintsId = useId();
   const pageId = useId();
-  // The platform is a property of the machine, not of this render.
-  const shortcuts = useMemo(
-    () => editorShortcutLabels(isApplePlatform(currentPlatform())),
-    []
-  );
 
   const page = currentPalettePage(palette);
   const canGoBack = paletteCanGoBack(palette);
@@ -237,7 +217,6 @@ function CommandPaletteDialog({
   // rather than on the state object a keystroke replaces.
   const stepAt: CanvasPosition | undefined =
     page.id === "add-step" ? page.at : undefined;
-
   /**
    * The node types, which is the one page worth memoising: it walks the whole
    * catalog, and every value it closes over holds its identity across a
@@ -270,48 +249,10 @@ function CommandPaletteDialog({
     }));
   }, [onStepPage, stepAt, catalog, editingLocked, addStep, setPalette]);
 
-  const commands = workflowCommands({
-    state: {
-      currentWorkflowId: state.currentWorkflowId,
-      workflowMode: state.workflowMode,
-      isExecuting: state.isExecuting,
-      isGenerating: state.isGenerating,
-      isSaving: state.isSaving,
-      hasNodes: state.nodes.some((node) => node.type !== "add"),
-      canUndo: state.canUndo,
-      canRedo: state.canRedo,
-      canReflow,
-      editingLocked,
-    },
-    shortcuts,
-    callbacks: {
-      addStep: () => setPalette(pushPalettePage(palette, { id: "add-step" })),
-      run: () => {
-        close();
-        void actions.handleExecute();
-      },
-      switchMode: (mode) => {
-        close();
-        void actions.handleSetWorkflowMode(mode);
-      },
-      undo: () => {
-        close();
-        state.undo();
-      },
-      redo: () => {
-        close();
-        state.redo();
-      },
-      reflow: () => {
-        close();
-        reflow();
-      },
-    },
-  });
-
   const rootPageGroups: readonly PaletteGroup[] = [
     { id: "steps", label: "Steps" },
     { id: "workflow", label: "Workflow" },
+    { id: "canvas", label: "Canvas" },
   ].map((group) => ({
     ...group,
     items: commands
@@ -329,7 +270,14 @@ function CommandPaletteDialog({
             id={command.id}
           />
         ),
-        select: command.execute,
+        select: () => {
+          if (command.id === "add-step") {
+            setPalette(pushPalettePage(palette, { id: "add-step" }));
+            return;
+          }
+          close();
+          command.execute();
+        },
       })),
   }));
 

@@ -8,6 +8,7 @@ import {
   NodeTitle,
 } from "#src/components/flow-elements/node";
 import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
+import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
 import {
   NODE_ICON_CLASS,
   workflowNodeSize,
@@ -17,7 +18,10 @@ import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
 } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
-import type { WorkflowNodeData } from "#src/lib/workflow-graph-types";
+import {
+  COMPARISON_NODE_ANNOTATION,
+  type WorkflowNodeData,
+} from "#src/lib/workflow-graph-types";
 import {
   configDeclaresCancelEvent,
   manualStartAllowed,
@@ -98,6 +102,7 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
       status={status}
       style={workflowNodeSize()}
     >
+      <ComparisonMarker comparison={data[COMPARISON_NODE_ANNOTATION]} />
       <div
         className="pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none"
         style={{ left: STARTED_HANDLE_LEFT }}

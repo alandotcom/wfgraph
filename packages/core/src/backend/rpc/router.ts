@@ -33,6 +33,11 @@ import { postWorkflowDuplicate } from "#src/backend/services/workflows/duplicate
 import { publishWorkflow } from "#src/backend/services/workflows/publish";
 import { getVersionGraph } from "#src/backend/services/workflows/version-graph";
 import {
+  compareWorkflowVersion,
+  getWorkflowVersionHistory,
+  restoreWorkflowVersion,
+} from "#src/backend/services/workflows/versions";
+import {
   deleteWorkflowExecutions,
   getWorkflowExecutions,
 } from "#src/backend/services/executions/list";
@@ -324,8 +329,21 @@ export const rpcRouter = rpc.router({
     ),
     publish: rpc.workflow.publish.handler(
       rpcEffectHandler(({ input }) =>
-        publishWorkflow({ workflowId: input.workflowId, graph: input.graph })
+        publishWorkflow({
+          workflowId: input.workflowId,
+          graph: input.graph,
+          expectedPublishedVersionId: input.expectedPublishedVersionId,
+        })
       )
+    ),
+    getVersionHistory: rpc.workflow.getVersionHistory.handler(
+      rpcEffectHandler(({ input }) => getWorkflowVersionHistory(input))
+    ),
+    compareVersion: rpc.workflow.compareVersion.handler(
+      rpcEffectHandler(({ input }) => compareWorkflowVersion(input))
+    ),
+    restoreVersion: rpc.workflow.restoreVersion.handler(
+      rpcEffectHandler(({ input }) => restoreWorkflowVersion(input))
     ),
     getCurrent: rpc.workflow.getCurrent.handler(
       rpcEffectHandler(() => getWorkflowsCurrent())

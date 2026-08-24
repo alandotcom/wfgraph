@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { useCallback } from "react";
 import { toast } from "sonner";
 import { AgentPanel } from "#src/components/agent/agent-panel";
 import { Button } from "#src/components/ui/button";
@@ -10,12 +9,11 @@ import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
 import { WorkflowSidebarPanel } from "#src/components/workflow/workflow-sidebar-panel";
 import { WorkflowStatusStrip } from "#src/components/workflow/workflow-status-strip";
 import { WorkflowToolbar } from "#src/components/workflow/workflow-toolbar";
-import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
+import { useAfterCommit } from "#src/hooks/effects";
 import { isAgentEnabled } from "#src/lib/extensions";
 import { isRunInProgress } from "#src/lib/execution-logs";
 import { orpcQuery } from "#src/lib/rpc-query";
 import {
-  edgesAtom,
   isExecutionOverlayActiveAtom,
   nodesAtom,
   setNodeStatusesAtom,
@@ -23,13 +21,11 @@ import {
 import {
   currentWorkflowIdAtom,
   lastSaveErrorAtom,
-  saveWorkflowAtom,
   workflowNotFoundAtom,
   workflowLoadErrorAtom,
 } from "#src/lib/workflow-save-store";
 import {
   isExecutingAtom,
-  isGeneratingAtom,
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
 
@@ -37,15 +33,12 @@ import {
 const RUN_STATUS_POLL_MS = 500;
 
 const WorkflowEditor = () => {
-  const isGenerating = useAtomValue(isGeneratingAtom);
   const lastSaveError = useAtomValue(lastSaveErrorAtom);
   const nodes = useAtomValue(nodesAtom);
-  const edges = useAtomValue(edgesAtom);
   const [currentWorkflowId] = useAtom(currentWorkflowIdAtom);
   const [selectedExecutionId] = useAtom(selectedExecutionIdAtom);
   const isExecutionOverlayActive = useAtomValue(isExecutionOverlayActiveAtom);
   const setIsExecuting = useSetAtom(isExecutingAtom);
-  const saveWorkflow = useSetAtom(saveWorkflowAtom);
   const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
   const workflowNotFound = useAtomValue(workflowNotFoundAtom);
   const workflowLoadError = useAtomValue(workflowLoadErrorAtom);
@@ -62,36 +55,6 @@ const WorkflowEditor = () => {
       toast.error(lastSaveError.message || "Failed to save workflow");
     }
   });
-
-  // Keyboard shortcuts
-  const handleSave = useCallback(async () => {
-    if (!currentWorkflowId || isGenerating) {
-      return;
-    }
-    // Goes through the same queue as autosave, so an in-flight debounced save
-    // cannot land afterwards and overwrite what this one just wrote. The queue
-    // drives the saving indicator, so there is nothing to bracket here.
-    const outcome = await saveWorkflow({ nodes, edges }, { immediate: true });
-
-    if (outcome && !outcome.ok) {
-      toast.error(outcome.error.message || "Failed to save workflow");
-    }
-  }, [currentWorkflowId, nodes, edges, isGenerating, saveWorkflow]);
-
-  // Cmd+S saves. Capture phase, so a focused field in the canvas does not eat
-  // it first. Cmd+Enter belongs to the toolbar, which owns the run itself.
-  const handleSaveShortcut = useCallback(
-    (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === "s") {
-        event.preventDefault();
-        event.stopPropagation();
-        void handleSave();
-      }
-    },
-    [handleSave]
-  );
-
-  useDomEvent(document, "keydown", handleSaveShortcut, { capture: true });
 
   // While a run is on screen its progress is read back every half second. The
   // predicate is what stops it: once the run reaches a terminal status there is
@@ -186,7 +149,7 @@ const WorkflowEditor = () => {
             and hit region, like everything else in here, so a popup inside the
             editor still has to be portalled out to escape the corner, which is
             what every one of them already does. */}
-        <div className="relative flex size-full overflow-hidden md:rounded-xl md:border md:[clip-path:inset(0_round_var(--editor-shell-radius))]">
+        <div className="relative flex size-full flex-col overflow-hidden md:rounded-xl md:border md:[clip-path:inset(0_round_var(--editor-shell-radius))]">
           {/* URL → selection + pinned-graph overlay. Sibling of the sidebar so it
               outlives the Runs panel; the status projection above reads what it writes. */}
           <ExecutionOverlaySync />
@@ -223,15 +186,16 @@ const WorkflowEditor = () => {
             </div>
           )}
 
-          {/* The canvas column: menu bar above, graph in the middle, status strip
-              below. All three belong to this column rather than to the shell,
-              because the panel beside it runs the full height of the viewport.
+          <WorkflowToolbar workflowId={currentWorkflowId ?? undefined} />
+          {/* The body keeps the graph beside the sidebar. The toolbar is above
+              this row so its centred search control measures the editor shell. */}
+          <div className="flex min-h-0 flex-1">
+            {/* The canvas column: graph in the middle, status strip below.
 
               `min-w-0` stops the graph from widening the column past the space the
               panel leaves it. */}
-          <div className="flex min-w-0 flex-1 flex-col">
-            <WorkflowToolbar workflowId={currentWorkflowId ?? undefined} />
-            {/* This box is bounded by the column rather than by the graph inside
+            <div className="flex min-w-0 flex-1 flex-col">
+              {/* This box is bounded by the column rather than by the graph inside
                 it: React Flow measures whatever height it is given.
 
                 The floor is what stops the two `shrink-0` rows around it from
@@ -248,19 +212,22 @@ const WorkflowEditor = () => {
                 graph at. Whatever is left over the shell clips, which is a far
                 better failure than handing React Flow a parent of zero
                 height. */}
-            <div className="relative min-h-[min(20rem,40dvh)] flex-1">
-              <WorkflowCanvas />
-              {/* The agent belongs to the canvas rather than the editor shell.
+              <div className="relative min-h-[min(20rem,40dvh)] flex-1">
+                <WorkflowCanvas />
+                {/* The agent belongs to the canvas rather than the editor shell.
                   This keeps its card above the status strip and out of the
                   properties rail while the graph remains visible behind it. */}
-              {currentWorkflowId && isAgentEnabled() && (
-                <AgentPanel workflowId={currentWorkflowId} />
-              )}
+                {currentWorkflowId && isAgentEnabled() && (
+                  <AgentPanel workflowId={currentWorkflowId} />
+                )}
+              </div>
+              <WorkflowStatusStrip
+                workflowId={currentWorkflowId ?? undefined}
+              />
             </div>
-            <WorkflowStatusStrip workflowId={currentWorkflowId ?? undefined} />
-          </div>
 
-          <WorkflowSidebarPanel />
+            <WorkflowSidebarPanel />
+          </div>
         </div>
       </div>
     </div>

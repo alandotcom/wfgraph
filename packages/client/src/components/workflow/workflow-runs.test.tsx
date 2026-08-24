@@ -14,6 +14,8 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
+import { ConfigurationOverlay } from "#src/components/overlays/configuration-overlay";
+import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
 import { WorkflowRuns } from "#src/components/workflow/workflow-runs";
 import {
@@ -37,7 +39,7 @@ import {
 } from "#src/lib/workflow-save-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { savedWorkflow } from "#src/lib/workflow-save-test-support";
-import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
+import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
@@ -79,6 +81,9 @@ const served: WorkflowRunRpcFixture = {
   waitsByExecutionId: {},
 };
 
+let holdExecutions = false;
+let releaseHeldExecutions: (() => void) | null = null;
+
 /** The mock logs endpoint's version id for one execution: a run pins a version,
  * mocked here as a fixed function of the execution id so a test can address
  * `served.graphs` by it without threading a real version id through. */
@@ -99,6 +104,14 @@ function stubRunQueries(): void {
       const procedurePath = extractRpcProcedurePath(url);
       if (!procedurePath.startsWith("workflow/")) {
         throw new Error(`unexpected fetch in workflow-runs test: ${url}`);
+      }
+
+      if (procedurePath === "workflow/getExecutions" && holdExecutions) {
+        return new Promise<Response>((resolve) => {
+          releaseHeldExecutions = () => {
+            resolve(answerWorkflowRunRpc(served, procedurePath, {}));
+          };
+        });
       }
 
       const requestInput = await parseRpcRequestInput(init);
@@ -168,14 +181,19 @@ function EditorShell({ children }: { children?: ReactNode }) {
   );
 }
 
-function renderRuns(options?: { executionId?: string; panel?: boolean }) {
+function renderRuns(options?: {
+  executionId?: string;
+  listActions?: ReactNode;
+  mobileOverlay?: boolean;
+  panel?: boolean;
+}) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const store = createStore();
   store.set(currentWorkflowIdAtom, "wf_1");
   store.set(isWorkflowOwnerAtom, true);
-  store.set(propertiesPanelActiveTabAtom, "runs");
+  store.set(workflowWorkspaceViewAtom, "runs");
 
   const showPanel = options?.panel !== false;
 
@@ -192,7 +210,15 @@ function renderRuns(options?: { executionId?: string; panel?: boolean }) {
           : undefined,
     }),
     component: () => (
-      <EditorShell>{showPanel ? <WorkflowRuns /> : null}</EditorShell>
+      <EditorShell>
+        {showPanel ? (
+          options?.mobileOverlay ? (
+            <ConfigurationOverlay overlayId="configuration-test" />
+          ) : (
+            <WorkflowRuns listActions={options?.listActions} />
+          )
+        ) : null}
+      </EditorShell>
     ),
   });
   const router = createRouter({
@@ -211,7 +237,9 @@ function renderRuns(options?: { executionId?: string; panel?: boolean }) {
       <QueryClientProvider client={queryClient}>
         <ExtensionCatalogProvider value={emptyExtensionCatalog}>
           <IntegrationUiProvider value={{}}>
-            <RouterProvider router={router} />
+            <OverlayProvider>
+              <RouterProvider router={router} />
+            </OverlayProvider>
           </IntegrationUiProvider>
         </ExtensionCatalogProvider>
       </QueryClientProvider>
@@ -228,6 +256,8 @@ function resetServed(): void {
   served.logsSummaryExtras = {};
   served.logsByExecutionId = {};
   served.waitsByExecutionId = {};
+  holdExecutions = false;
+  releaseHeldExecutions = null;
   stubRunQueries();
 }
 
@@ -236,6 +266,76 @@ describe("WorkflowRuns", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("uses static placeholders while the initial run list loads", async () => {
+    holdExecutions = true;
+    const { view } = renderRuns();
+
+    expect(await view.findByLabelText("Loading runs")).toBeTruthy();
+    expect(view.container.innerHTML).not.toContain("animate-pulse");
+
+    await act(async () => {
+      releaseHeldExecutions?.();
+    });
+  });
+
+  it("shows list actions when the desktop run list is empty", async () => {
+    const { view } = renderRuns({
+      listActions: (
+        <>
+          <button type="button">Refresh</button>
+          <button type="button">Clear All</button>
+        </>
+      ),
+    });
+
+    await view.findByText("No runs yet");
+    expect(view.getByRole("button", { name: "Refresh" })).toBeTruthy();
+    expect(view.getByRole("button", { name: "Clear All" })).toBeTruthy();
+  });
+
+  it("shows each run-list action once in the populated mobile sheet", async () => {
+    served.items = [execution("exec_1", "completed")];
+    const { view } = renderRuns({ mobileOverlay: true });
+
+    fireEvent.click(
+      await view.findByRole("button", { name: "Back to runs list" })
+    );
+
+    await view.findByTestId("workflow-run-summary-row");
+    expect(view.getAllByRole("button", { name: "Refresh" })).toHaveLength(1);
+    expect(view.getAllByRole("button", { name: "Clear All" })).toHaveLength(1);
+  });
+
+  it("selects the newest run when the initial list resolves", async () => {
+    served.items = [execution("exec_newest", "completed")];
+    const { view, router } = renderRuns();
+
+    expect(
+      await view.findByRole("button", { name: "Back to runs list" })
+    ).toBeTruthy();
+    expect(router.state.location.search).toEqual({
+      executionId: "exec_newest",
+    });
+    expect(view.queryByText("Execution Inspector")).toBeNull();
+  });
+
+  it("keeps the list open after leaving the initially selected run", async () => {
+    served.items = [execution("exec_newest", "completed")];
+    const { view, router } = renderRuns();
+
+    fireEvent.click(
+      await view.findByRole("button", { name: "Back to runs list" })
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.search).toEqual({});
+      expect(view.getByText("Execution Inspector")).toBeTruthy();
+    });
+    expect(
+      view.queryByRole("button", { name: "Back to runs list" })
+    ).toBeNull();
   });
 
   // A newest-wins workflow supersedes the open run out of the polled list, so
@@ -352,9 +452,18 @@ describe("WorkflowRuns", () => {
 
   it("restores focus to the run row after returning from its overview", async () => {
     served.items = [execution("exec_1", "completed")];
-    const { view } = renderRuns();
+    const { view } = renderRuns({ executionId: "exec_1" });
 
-    const row = await view.findByTestId("workflow-run-summary-row");
+    fireEvent.click(
+      await view.findByRole("button", { name: "Back to runs list" })
+    );
+
+    await waitFor(() => {
+      expect(
+        view.queryByRole("button", { name: "Back to runs list" })
+      ).toBeNull();
+    });
+    const row = view.getByTestId("workflow-run-summary-row");
     fireEvent.click(row);
     fireEvent.click(
       await view.findByRole("button", { name: "Back to runs list" })
@@ -400,7 +509,7 @@ describe("WorkflowRuns", () => {
     fireEvent.click(view.getByRole("button", { name: "Technical details" }));
     fireEvent.click(view.getByRole("tab", { name: "Input" }));
     expect(view.getByText(/invoiceId/)).toBeTruthy();
-    expect(store.get(propertiesPanelActiveTabAtom)).toBe("runs");
+    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
 
     fireEvent.click(view.getByRole("button", { name: "Back to run overview" }));
 
@@ -497,11 +606,7 @@ describe("ExecutionOverlaySync", () => {
       [versionIdFor("exec_old")]: pinnedGraph("v1_lifecycle"),
       [versionIdFor("exec_new")]: pinnedGraph("v2_lifecycle"),
     };
-    const { view, store } = renderRuns();
-
-    const rows = await view.findAllByTestId("workflow-run-summary-row");
-    // Newest-first list: exec_new then exec_old.
-    fireEvent.click(rows[1]!);
+    const { view, store } = renderRuns({ executionId: "exec_old" });
 
     await waitFor(() => {
       expect(
@@ -715,12 +820,12 @@ describe("ExecutionOverlaySync", () => {
     ).toBe("idle");
   });
 
-  // Leaving the Runs tab is the other way out of a run, and the only one the
-  // rail's tab bar offers: it writes no URL, so `executionId` stays in the
+  // Leaving Runs is the other way out of a run. Workspace navigation writes no
+  // URL itself, so `executionId` stays in the
   // search. The pinned graph has to step aside anyway, or the canvas keeps
   // painting the run's graph and `canvasEditingLockedAtom` keeps refusing every
   // edit, with nothing on screen to say why.
-  it("hands the canvas back to the draft when the Runs tab is left", async () => {
+  it("hands the canvas back to the draft when Runs is left", async () => {
     served.items = [execution("exec_1", "completed")];
     served.graphs = { [versionIdFor("exec_1")]: pinnedGraph("v1_lifecycle") };
     const { store, router } = renderRuns({
@@ -747,7 +852,7 @@ describe("ExecutionOverlaySync", () => {
     });
 
     await act(() => {
-      store.set(propertiesPanelActiveTabAtom, "properties");
+      store.set(workflowWorkspaceViewAtom, "draft");
     });
 
     expect(store.get(canvasEditingLockedAtom)).toBe(false);
@@ -759,7 +864,7 @@ describe("ExecutionOverlaySync", () => {
     expect(router.state.location.search).toEqual({ executionId: "exec_1" });
 
     await act(() => {
-      store.set(propertiesPanelActiveTabAtom, "runs");
+      store.set(workflowWorkspaceViewAtom, "runs");
     });
 
     expect(store.get(displayNodesAtom).map((node) => node.id)).toEqual([

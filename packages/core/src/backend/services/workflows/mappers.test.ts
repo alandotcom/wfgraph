@@ -38,9 +38,11 @@ describe("workflow mappers", () => {
     expect(payload.isPaused).toBe(false);
     expect(payload.mode).toBe("live");
     expect(payload.hasUnpublishedChanges).toBe(false);
+    expect(payload.publishedVersion).toBeUndefined();
+    expect(payload.publishedAt).toBeUndefined();
   });
 
-  it("flags unpublished changes when the draft differs from published", () => {
+  it("ignores geometry changes when setting unpublished changes", () => {
     const draft = createWorkflow({
       publishedVersionId: "ver_1",
       graph: createSerializedWorkflowGraph({
@@ -75,11 +77,17 @@ describe("workflow mappers", () => {
       edges: [],
     });
     const payload = toWorkflowApiPayload(draft, {
-      graphDigest: graphDigest(published),
+      id: "ver_1",
+      version: 2,
+      publishedAt: new Date("2026-01-03T00:00:00.000Z"),
+      graph: published,
+      graphDigest: "legacy-full-graph-digest",
     });
 
-    expect(payload.hasUnpublishedChanges).toBe(true);
+    expect(payload.hasUnpublishedChanges).toBe(false);
     expect(payload.publishedVersionId).toBe("ver_1");
+    expect(payload.publishedVersion).toBe(2);
+    expect(payload.publishedAt).toBe("2026-01-03T00:00:00.000Z");
   });
 
   it("clears unpublished changes when the draft matches the published graph", () => {
@@ -89,10 +97,60 @@ describe("workflow mappers", () => {
       graph,
     });
     const payload = toWorkflowApiPayload(draft, {
+      id: "ver_1",
+      version: 1,
+      publishedAt: new Date("2026-01-03T00:00:00.000Z"),
+      graph,
       graphDigest: graphDigest(graph),
     });
 
     expect(payload.hasUnpublishedChanges).toBe(false);
+  });
+
+  it("flags a semantic draft change despite a legacy stored digest", () => {
+    const published = createSerializedWorkflowGraph({
+      nodes: [
+        {
+          id: "a",
+          type: "action",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "Before",
+            type: "action",
+            config: { actionId: "custom/send" },
+          },
+        },
+      ],
+      edges: [],
+    });
+    const draft = createWorkflow({
+      publishedVersionId: "ver_1",
+      graph: createSerializedWorkflowGraph({
+        nodes: [
+          {
+            id: "a",
+            type: "action",
+            position: { x: 0, y: 0 },
+            data: {
+              label: "After",
+              type: "action",
+              config: { actionId: "custom/send" },
+            },
+          },
+        ],
+        edges: [],
+      }),
+    });
+
+    const payload = toWorkflowApiPayload(draft, {
+      id: "ver_1",
+      version: 1,
+      publishedAt: new Date("2026-01-03T00:00:00.000Z"),
+      graph: published,
+      graphDigest: "legacy-full-graph-digest",
+    });
+
+    expect(payload.hasUnpublishedChanges).toBe(true);
   });
 
   it("builds patch update payload without forcing visibility", () => {

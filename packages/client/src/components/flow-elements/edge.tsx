@@ -9,7 +9,32 @@ import {
 import { memo } from "react";
 import { resolveEdgeLabel } from "#src/components/flow-elements/edge-label";
 import { getWorkflowEdgePath } from "#src/components/flow-elements/edge-path";
-import type { WorkflowEdge } from "#src/lib/workflow-graph-types";
+import {
+  COMPARISON_EDGE_ANNOTATION,
+  type ComparisonEdgeAnnotation,
+  type WorkflowEdge,
+} from "#src/lib/workflow-graph-types";
+
+export function comparisonEdgeStyle(
+  comparison: ComparisonEdgeAnnotation | undefined
+): { stroke?: string; strokeDasharray?: string; strokeWidth?: number } {
+  switch (comparison?.kind) {
+    case "added":
+      return {
+        stroke: "var(--success)",
+        strokeDasharray: "7, 4",
+        strokeWidth: 2.5,
+      };
+    case "removed":
+      return {
+        stroke: "var(--destructive)",
+        strokeDasharray: "2, 5",
+        strokeWidth: 2.5,
+      };
+    default:
+      return {};
+  }
+}
 
 const getHandleCoordsByPosition = (
   node: InternalNode,
@@ -128,6 +153,8 @@ const Animated = memo(function Animated({
   const edgeLabel = resolveEdgeLabel(sourceHandleId, data);
   // `displayEdgesAtom` sets this on every edge landing where the run cannot go.
   const inactive = data?.inactive === true;
+  const comparison = data?.[COMPARISON_EDGE_ANNOTATION];
+  const comparisonStyle = comparisonEdgeStyle(comparison);
 
   return (
     <>
@@ -140,14 +167,18 @@ const Animated = memo(function Animated({
           // selectable and deletable and has to show what Delete would take.
           // Inactive is then said by the wider gap and the stopped march below,
           // rather than by fading the wire toward the background.
+          ...comparisonStyle,
           stroke: selected
             ? "var(--primary)"
             : inactive
               ? "var(--canvas-line-muted)"
-              : "var(--canvas-line)",
-          strokeWidth: 2,
-          strokeDasharray: inactive ? "4, 8" : "5",
-          ...(inactive ? {} : { animation: "dashdraw 0.5s linear infinite" }),
+              : (comparisonStyle.stroke ?? "var(--canvas-line)"),
+          strokeWidth: comparisonStyle.strokeWidth ?? 2,
+          strokeDasharray:
+            comparisonStyle.strokeDasharray ?? (inactive ? "4, 8" : "5"),
+          ...(inactive || comparison
+            ? {}
+            : { animation: "dashdraw 0.5s linear infinite" }),
         }}
       />
       {edgeLabel && (

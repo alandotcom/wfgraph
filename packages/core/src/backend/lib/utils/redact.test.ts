@@ -73,6 +73,27 @@ describe("redactSensitiveData", () => {
     expect(serialized).not.toContain("deep-secret");
     expect(serialized).toContain("[REDACTED]");
   });
+
+  it("redacts every camel-case sensitive key variant", () => {
+    const redacted = redactSensitiveData({
+      privateKey: "private-value",
+      phoneNumber: "800-555-0100",
+      creditCard: "4111111111111111",
+      socialSecurity: "123-45-6789",
+      fromEmail: "sender@example.com",
+      databaseUrl: "postgres://example",
+      connectionString: "postgres://example",
+      cardNumber: "4111111111111111",
+    });
+    const serialized = JSON.stringify(redacted);
+
+    expect(serialized).not.toContain("private-value");
+    expect(serialized).not.toContain("800-555-0100");
+    expect(serialized).not.toContain("4111111111111111");
+    expect(serialized).not.toContain("123-45-6789");
+    expect(serialized).not.toContain("sender@example.com");
+    expect(serialized).not.toContain("postgres://example");
+  });
 });
 
 describe("redactSensitiveText", () => {
@@ -196,5 +217,125 @@ describe("redactWorkflowGraph", () => {
       source: "node_1",
       target: "node_2",
     });
+  });
+
+  it("redacts every open graph area while preserving structural fields", () => {
+    const graph = createSerializedWorkflowGraph({
+      attributes: { credentials: { token: "graph-secret" } },
+      nodes: [
+        {
+          id: "key",
+          type: "action",
+          position: { x: 10, y: 20 },
+          width: 101,
+          height: 102,
+          measured: { width: 103, height: 104 },
+          parentId: "parent",
+          data: {
+            label: "Act",
+            type: "action",
+            config: { credentials: { password: "node-secret" } },
+          },
+        },
+        {
+          id: "parent",
+          type: "group",
+          position: { x: 0, y: 0 },
+          data: { label: "Group", type: "group" },
+        },
+      ],
+      edges: [
+        {
+          id: "key",
+          source: "parent",
+          target: "key",
+          sourceHandle: "source",
+          targetHandle: "target",
+          data: { label: "continue" },
+        },
+      ],
+    });
+    const graphWithOpenAttributes = {
+      ...graph,
+      attributes: {
+        ...graph.attributes,
+        credentials: { token: "graph-secret" },
+      },
+      nodes: graph.nodes.map((candidate) =>
+        candidate.key === "key"
+          ? {
+              ...candidate,
+              attributes: {
+                ...candidate.attributes,
+                dimensions: {
+                  width: 105,
+                  height: 106,
+                  token: "dimension-secret",
+                },
+                measured: {
+                  width: 103,
+                  height: 104,
+                  token: "measured-secret",
+                },
+                credentials: { password: "node-attribute-secret" },
+              },
+            }
+          : candidate
+      ),
+      edges: graph.edges.map((candidate) =>
+        candidate.key === "key"
+          ? {
+              ...candidate,
+              attributes: {
+                ...candidate.attributes,
+                credentials: { token: "edge-secret" },
+              },
+            }
+          : candidate
+      ),
+    };
+
+    const redacted = redactWorkflowGraph(graphWithOpenAttributes);
+    const redactedNode = redacted.nodes.find(
+      (candidate) => candidate.key === "key"
+    );
+    const redactedEdge = redacted.edges.find(
+      (candidate) => candidate.key === "key"
+    );
+
+    expect(redacted.attributes).toEqual({
+      credentials: "[REDACTED]",
+    });
+    expect(redactedNode?.attributes.credentials).toBe("[REDACTED]");
+    expect(redactedEdge?.attributes.credentials).toBe("[REDACTED]");
+    expect(redactedNode?.attributes.data.config).toEqual({
+      credentials: "[REDACTED]",
+    });
+    expect(redactedNode).toMatchObject({
+      key: "key",
+      attributes: {
+        id: "key",
+        type: "action",
+        position: { x: 10, y: 20 },
+        width: 101,
+        height: 102,
+        measured: { width: 103, height: 104, token: "********cret" },
+        dimensions: { width: 105, height: 106, token: "********cret" },
+        parentId: "parent",
+      },
+    });
+    expect(redactedEdge).toMatchObject({
+      key: "key",
+      source: "parent",
+      target: "key",
+      attributes: {
+        id: "key",
+        source: "parent",
+        target: "key",
+        sourceHandle: "source",
+        targetHandle: "target",
+      },
+    });
+    expect(JSON.stringify(redacted)).not.toContain("secret");
   });
 });

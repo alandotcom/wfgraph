@@ -3,6 +3,7 @@ import {
   resolveEdgeLabel,
   workflowEdgeAriaLabel,
 } from "#src/components/flow-elements/edge-label";
+import { COMPARISON_EDGE_ANNOTATION } from "#src/lib/workflow-graph-types";
 
 describe("resolveEdgeLabel", () => {
   it("reads True/False from a condition branch handle", () => {
@@ -32,5 +33,21 @@ describe("workflowEdgeAriaLabel", () => {
         data: undefined,
       })
     ).toBe("Condition to Send message, False branch");
+  });
+
+  it("adds comparison wording to an edge's accessible name", () => {
+    expect(
+      workflowEdgeAriaLabel({
+        sourceLabel: "Condition",
+        targetLabel: "Archive lead",
+        sourceHandleId: null,
+        data: {
+          [COMPARISON_EDGE_ANNOTATION]: {
+            kind: "removed",
+            sourceId: "edge_1",
+          },
+        },
+      })
+    ).toBe("Condition to Archive lead, Removed in comparison");
   });
 });

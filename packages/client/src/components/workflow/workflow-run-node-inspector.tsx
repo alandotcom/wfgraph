@@ -66,7 +66,7 @@ function TechnicalDetails({ log }: { log: ExecutionLog }) {
   return (
     <section
       className={cn(
-        "shrink-0 border-t bg-background transition-[height] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-opacity motion-reduce:duration-100",
+        "shrink-0 border-t bg-background",
         open ? "h-[min(35vh,18rem)] md:h-[38%]" : "h-11 md:h-9"
       )}
       onKeyDown={(event) => {

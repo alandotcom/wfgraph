@@ -292,11 +292,7 @@ export function CollapsibleSection({
           ) : null}
         </div>
       </div>
-      {isOpen ? (
-        <div className="motion-safe:animate-[run-disclosure_160ms_cubic-bezier(0.16,1,0.3,1)] motion-reduce:animate-[run-panel-fade_100ms_ease-out]">
-          {children}
-        </div>
-      ) : null}
+      {isOpen ? <div>{children}</div> : null}
     </div>
   );
 }
@@ -447,9 +443,7 @@ function CollectionDisclosure({
         </span>
       </button>
       {open ? (
-        <div className="border-t bg-muted/20 py-1 pl-3 motion-safe:animate-[run-disclosure_160ms_cubic-bezier(0.16,1,0.3,1)] motion-reduce:animate-[run-panel-fade_100ms_ease-out]">
-          {children}
-        </div>
+        <div className="border-t bg-muted/20 py-1 pl-3">{children}</div>
       ) : null}
     </div>
   );

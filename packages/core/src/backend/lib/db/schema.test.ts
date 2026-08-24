@@ -57,11 +57,10 @@ describe("workflows indexes", () => {
 });
 
 describe("workflow_versions indexes", () => {
-  // No query in repo.ts orders or filters on published_at: findLatestVersion and
-  // findVersionByContent both order by version, findVersionById and
-  // findPublishedVersion both look up by id. The unique (workflow_id, version)
-  // index already serves every existing version read, so this index pays a
-  // second btree insert on every publish for a column nothing reads.
+  // No query in repo.ts orders or filters on published_at: latest and history
+  // reads order by version, while direct and current reads look up by id. The
+  // unique (workflow_id, version) index serves every ordered version read, so a
+  // published_at index would add a btree insert for a column nothing searches.
   it("carries no index on published_at", () => {
     const names = getTableConfig(schema.workflowVersions).indexes.map(
       (index) => index.config.name

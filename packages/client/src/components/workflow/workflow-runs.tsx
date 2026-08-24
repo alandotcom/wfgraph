@@ -6,9 +6,8 @@ import {
 } from "@tanstack/react-query";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom } from "jotai";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Button } from "#src/components/ui/button";
-import { cn } from "@wfgraph/shared/utils";
 import {
   isRunInProgress,
   toExecutionDetail,
@@ -48,19 +47,17 @@ function RunsSkeleton({ detail = false }: { detail?: boolean }) {
       className="flex h-full min-h-0 flex-col"
     >
       <div className="shrink-0 space-y-2 border-b px-3 py-3">
-        <div className="h-4 w-2/3 animate-pulse rounded-sm bg-muted motion-reduce:animate-none" />
-        <div className="h-3 w-1/2 animate-pulse rounded-sm bg-muted motion-reduce:animate-none" />
-        {detail ? (
-          <div className="mt-3 h-16 animate-pulse rounded-sm bg-muted/70 motion-reduce:animate-none" />
-        ) : null}
+        <div className="h-4 w-2/3 rounded-sm bg-muted" />
+        <div className="h-3 w-1/2 rounded-sm bg-muted" />
+        {detail ? <div className="mt-3 h-16 rounded-sm bg-muted/70" /> : null}
       </div>
       <div className="min-h-0 flex-1 px-3 py-2">
         {Array.from({ length: detail ? 4 : 6 }, (_, index) => (
           <div className="flex h-13 items-center gap-3 border-b" key={index}>
-            <div className="size-2 animate-pulse rounded-full bg-muted motion-reduce:animate-none" />
+            <div className="size-2 rounded-full bg-muted" />
             <div className="flex-1 space-y-2">
-              <div className="h-3 w-2/3 animate-pulse rounded-sm bg-muted motion-reduce:animate-none" />
-              <div className="h-2.5 w-1/2 animate-pulse rounded-sm bg-muted/70 motion-reduce:animate-none" />
+              <div className="h-3 w-2/3 rounded-sm bg-muted" />
+              <div className="h-2.5 w-1/2 rounded-sm bg-muted/70" />
             </div>
           </div>
         ))}
@@ -69,18 +66,21 @@ function RunsSkeleton({ detail = false }: { detail?: boolean }) {
   );
 }
 
-function RunsListHeader() {
+function RunsListHeader({ actions }: { actions?: ReactNode }) {
   return (
-    <header className="shrink-0 border-b bg-background px-3 py-3">
-      <h2 className="font-semibold text-sm">Execution Inspector</h2>
-      <p className="mt-0.5 text-muted-foreground text-xs">
-        Select a run to inspect its journey on the canvas.
-      </p>
+    <header className="flex shrink-0 items-start justify-between gap-2 border-b bg-background px-3 py-3">
+      <div>
+        <h2 className="font-semibold text-sm">Execution Inspector</h2>
+        <p className="mt-0.5 text-muted-foreground text-xs">
+          Select a run to inspect its journey on the canvas.
+        </p>
+      </div>
+      {actions}
     </header>
   );
 }
 
-export function WorkflowRuns() {
+export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
   const setSelectedNode = useSetAtom(selectedNodeAtom);
@@ -90,8 +90,13 @@ export function WorkflowRuns() {
   const { executionId } = workflowRouteApi.useSearch();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const exitRun = useExitRun();
+  const [selectedInitialRunForWorkflowId, setSelectedInitialRunForWorkflowId] =
+    useState<string | null>(null);
   useAfterCommit(executionId, () => {
     setSelectedNode(null);
+    if (executionId !== undefined) {
+      setSelectedInitialRunForWorkflowId(currentWorkflowId);
+    }
   });
 
   // Superseded runs are the ones a newer start displaced. They are hidden by
@@ -122,6 +127,22 @@ export function WorkflowRuns() {
   const executions = executionsQuery.data?.executions ?? [];
   const supersededCount = executionsQuery.data?.supersededCount ?? 0;
   const refusedStarts = executionsQuery.data?.refusedStarts ?? [];
+  const shouldSelectInitialRun =
+    executionId === undefined &&
+    currentWorkflowId !== null &&
+    selectedInitialRunForWorkflowId !== currentWorkflowId &&
+    executionsQuery.isSuccess;
+  const initialRunId = shouldSelectInitialRun ? executions[0]?.id : undefined;
+
+  useAfterCommit(initialRunId, () => {
+    if (!shouldSelectInitialRun) {
+      return;
+    }
+
+    if (initialRunId) {
+      void navigate({ search: { executionId: initialRunId } });
+    }
+  });
 
   const listedIndex =
     executionId === undefined
@@ -186,10 +207,16 @@ export function WorkflowRuns() {
     return <RunsSkeleton />;
   }
 
+  // The initial destination is the newest run. Keep its placeholder in place
+  // until the URL catches up, rather than flashing the list beforehand.
+  if (initialRunId) {
+    return <RunsSkeleton detail />;
+  }
+
   if (executionsQuery.isError && executionId === undefined) {
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <RunsListHeader />
+        <RunsListHeader actions={listActions} />
         <div className="p-3">
           <p className="text-muted-foreground text-sm">
             Runs could not be loaded.
@@ -299,15 +326,8 @@ export function WorkflowRuns() {
 
   if (executions.length === 0) {
     return (
-      <div
-        className={cn(
-          "flex h-full min-h-0 flex-col motion-reduce:animate-[run-panel-fade_100ms_ease-out]",
-          returnFocusRunId
-            ? "motion-safe:animate-[run-panel-back_160ms_cubic-bezier(0.16,1,0.3,1)]"
-            : "motion-safe:animate-[run-panel-forward_200ms_cubic-bezier(0.16,1,0.3,1)]"
-        )}
-      >
-        <RunsListHeader />
+      <div className="flex h-full min-h-0 flex-col">
+        <RunsListHeader actions={listActions} />
         <div className="min-h-0 flex-1 overflow-y-auto p-3 [scrollbar-gutter:stable_both-edges]">
           <div className="space-y-2">
             {supersededToggle}
@@ -326,15 +346,8 @@ export function WorkflowRuns() {
 
   // List view
   return (
-    <div
-      className={cn(
-        "flex h-full min-h-0 flex-col motion-reduce:animate-[run-panel-fade_100ms_ease-out]",
-        returnFocusRunId
-          ? "motion-safe:animate-[run-panel-back_160ms_cubic-bezier(0.16,1,0.3,1)]"
-          : "motion-safe:animate-[run-panel-forward_200ms_cubic-bezier(0.16,1,0.3,1)]"
-      )}
-    >
-      <RunsListHeader />
+    <div className="flex h-full min-h-0 flex-col">
+      <RunsListHeader actions={listActions} />
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 [scrollbar-gutter:stable_both-edges]">
         <div className="space-y-2 py-2">
           {supersededToggle}

@@ -194,7 +194,7 @@ describe("version-digest", () => {
     expect(graphDigest(graph)).toBe(graphDigest(graph));
   });
 
-  it("detects a draft that no longer matches the published graph", () => {
+  it("ignores editor geometry when comparing a draft with its publication", () => {
     const published = createSerializedWorkflowGraph({
       nodes: [lifecycle],
       edges: [],
@@ -204,11 +204,88 @@ describe("version-digest", () => {
       edges: [],
     });
 
-    expect(draftDiffersFromPublished(published, graphDigest(published))).toBe(
-      false
-    );
-    expect(draftDiffersFromPublished(moved, graphDigest(published))).toBe(true);
+    expect(draftDiffersFromPublished(published, published)).toBe(false);
+    expect(draftDiffersFromPublished(moved, published)).toBe(false);
     expect(draftDiffersFromPublished(moved, null)).toBe(false);
+  });
+
+  it("hashes semantic graphs independently of node, edge, and object order", () => {
+    const action = actionNode("action-1", "Send");
+    const first = createSerializedWorkflowGraph({
+      nodes: [
+        lifecycle,
+        {
+          ...action,
+          data: {
+            ...action.data,
+            config: { actionType: "Wait", options: { first: 1, second: 2 } },
+          },
+        },
+      ],
+      edges: [{ id: "edge-1", source: "lifecycle-1", target: "action-1" }],
+    });
+    const reordered = createSerializedWorkflowGraph({
+      nodes: [
+        {
+          ...action,
+          data: {
+            ...action.data,
+            config: { options: { second: 2, first: 1 }, actionType: "Wait" },
+          },
+        },
+        lifecycle,
+      ],
+      edges: [
+        { id: "edge-recreated", source: "lifecycle-1", target: "action-1" },
+      ],
+    });
+
+    expect(graphDigest(first)).toBe(graphDigest(reordered));
+  });
+
+  it("normalizes null edge handles and empty edge data", () => {
+    const nodes = [lifecycle, actionNode("action-1", "Send")];
+    const nullish = createSerializedWorkflowGraph({
+      nodes,
+      edges: [
+        {
+          id: "edge-1",
+          source: "lifecycle-1",
+          target: "action-1",
+          sourceHandle: null,
+          targetHandle: null,
+          data: {},
+        },
+      ],
+    });
+    const omitted = createSerializedWorkflowGraph({
+      nodes,
+      edges: [{ id: "edge-2", source: "lifecycle-1", target: "action-1" }],
+    });
+
+    expect(graphDigest(nullish)).toBe(graphDigest(omitted));
+    expect(draftDiffersFromPublished(omitted, nullish)).toBe(false);
+  });
+
+  it("changes the semantic graph digest when node configuration changes", () => {
+    const before = createSerializedWorkflowGraph({
+      nodes: [actionNode("action-1", "Send")],
+      edges: [],
+    });
+    const after = createSerializedWorkflowGraph({
+      nodes: [
+        {
+          ...actionNode("action-1", "Send"),
+          data: {
+            ...actionNode("action-1", "Send").data,
+            config: { actionType: "Delay" },
+          },
+        },
+      ],
+      edges: [],
+    });
+
+    expect(graphDigest(before)).not.toBe(graphDigest(after));
   });
 
   it("fingerprints an empty catalog stably", () => {
@@ -313,27 +390,5 @@ describe("version-digest", () => {
   // graphDigest rather than with the SHA-1 it started on.
   it("fingerprints with SHA-256", () => {
     expect(catalogFingerprint(emptyExtensionCatalog)).toHaveLength(64);
-  });
-
-  // Postgres jsonb does not keep the key order a value was written with: a
-  // node written as {id, type, position, data} reads back {id, data, type,
-  // position}. draftDiffersFromPublished compares a freshly-read draft
-  // against a digest stored at publish time, so the digest itself must not
-  // care about key order, or every draft looks changed right after publish.
-  it("hashes the same regardless of object key order", () => {
-    const asWritten = {
-      id: "a",
-      type: "action",
-      position: { x: 0, y: 0 },
-      data: { label: "A" },
-    };
-    const asReadBackFromJsonb = {
-      id: "a",
-      data: { label: "A" },
-      type: "action",
-      position: { x: 0, y: 0 },
-    };
-
-    expect(graphDigest(asWritten)).toBe(graphDigest(asReadBackFromJsonb));
   });
 });

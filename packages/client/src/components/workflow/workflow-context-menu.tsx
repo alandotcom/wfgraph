@@ -4,6 +4,8 @@ import {
   ClipboardPaste,
   Copy,
   CopyPlus,
+  Eye,
+  EyeOff,
   Group,
   Link2Off,
   Plus,
@@ -30,14 +32,19 @@ import {
   nodesAtom,
   pasteCopiedSelectionAtom,
   selectedNodeAtom,
+  setGroupEnabledAtom,
   ungroupNodeAtom,
+  updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
 import { openCommandPaletteAtom } from "#src/lib/command-palette-store";
 import { canUngroup, refuseDelete } from "#src/lib/node-group";
-import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
 import { cn } from "@wfgraph/shared/utils";
-import { analyzeGroupableSelection } from "@wfgraph/shared/graph/node-group";
+import {
+  analyzeGroupableSelection,
+  disabledGroupIds,
+  isGroupNode,
+} from "@wfgraph/shared/graph/node-group";
 
 export type ContextMenuType = "node" | "edge" | "pane" | null;
 
@@ -86,12 +93,27 @@ export function WorkflowContextMenu({
   const ungroupSelected = useSetAtom(ungroupNodeAtom);
   const hasCopiedSelection = useAtomValue(hasCopiedSelectionAtom);
   const setSelectedNode = useSetAtom(selectedNodeAtom);
-  const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
+  const setGroupEnabled = useSetAtom(setGroupEnabledAtom);
+  const updateNodeData = useSetAtom(updateNodeDataAtom);
   const catalog = useExtensionCatalog();
   const { open: openOverlay } = useOverlay();
   const { openSheet } = useConfigurationSheet();
   const isMobile = useIsMobile();
   const menuRef = useRef<HTMLDivElement>(null);
+  const clicked = menuState?.nodeId
+    ? nodes.find((node) => node.id === menuState.nodeId)
+    : undefined;
+  const isDisabledGroup = Boolean(
+    clicked && isGroupNode(clicked) && disabledGroupIds(nodes).has(clicked.id)
+  );
+  const isDisabled = isGroupNode(clicked)
+    ? isDisabledGroup
+    : clicked?.data.enabled === false;
+  const canToggleEnabled = Boolean(
+    clicked &&
+    !clicked.parentId &&
+    (clicked.data.type === "action" || isGroupNode(clicked))
+  );
 
   const handleDeleteNode = useCallback(() => {
     if (menuState?.nodeId) {
@@ -115,14 +137,25 @@ export function WorkflowContextMenu({
       const nodeId = menuState.nodeId;
       onClose();
       setSelectedNode(nodeId);
-      setActiveTab("properties");
       // On a narrow canvas no rail is mounted to show the selection, so the
       // sheet is the only surface that can answer this click.
       if (isMobile) {
         openSheet();
       }
     }
-  }, [menuState, onClose, setSelectedNode, setActiveTab, isMobile, openSheet]);
+  }, [menuState, onClose, setSelectedNode, isMobile, openSheet]);
+
+  const handleToggleEnabled = useCallback(() => {
+    if (!clicked) {
+      return;
+    }
+    if (isGroupNode(clicked)) {
+      setGroupEnabled({ groupId: clicked.id, enabled: isDisabled });
+    } else {
+      updateNodeData({ id: clicked.id, data: { enabled: isDisabled } });
+    }
+    onClose();
+  }, [clicked, isDisabled, onClose, setGroupEnabled, updateNodeData]);
 
   const handleDeleteEdge = useCallback(() => {
     if (menuState?.edgeId) {
@@ -232,10 +265,6 @@ export function WorkflowContextMenu({
     return null;
   }
 
-  // One lookup for the clicked step; every question below reads it.
-  const clicked = menuState.nodeId
-    ? nodes.find((n) => n.id === menuState.nodeId)
-    : undefined;
   const isLifecycleNode = clicked?.data.type === "lifecycle";
   const groupingIds = menuState.selectedIds ?? new Set<string>();
   const grouping = analyzeGroupableSelection(
@@ -258,7 +287,7 @@ export function WorkflowContextMenu({
   // that layer's siblings and the properties panel drew over the menu.
   return createPortal(
     <div
-      className="fade-in-0 zoom-in-95 fixed z-50 max-h-[calc(100vh-1rem)] w-fit min-w-[8rem] max-w-72 animate-in overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+      className="fade-in-0 zoom-in-95 fixed z-50 max-h-[calc(100vh-1rem)] w-fit min-w-[8rem] max-w-72 animate-in overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:animate-none"
       ref={menuRef}
       style={{
         // Held inside the right edge against the widest the menu can draw, so
@@ -268,6 +297,7 @@ export function WorkflowContextMenu({
         ...(opensUpward
           ? { bottom: `calc(100vh - ${menuState.position.y}px)` }
           : { top: menuState.position.y }),
+        transformOrigin: opensUpward ? "bottom left" : "top left",
       }}
     >
       {menuState.type === "node" && (
@@ -277,6 +307,19 @@ export function WorkflowContextMenu({
             label={`Edit ${nodeLabel}`}
             onClick={handleEditNode}
           />
+          {canToggleEnabled ? (
+            <MenuItem
+              icon={
+                isDisabled ? (
+                  <Eye className="size-4" />
+                ) : (
+                  <EyeOff className="size-4" />
+                )
+              }
+              label={`${isDisabled ? "Enable" : "Disable"} ${nodeLabel}`}
+              onClick={handleToggleEnabled}
+            />
+          ) : null}
           <MenuItem
             disabled={isLifecycleNode}
             icon={<Copy className="size-4" />}

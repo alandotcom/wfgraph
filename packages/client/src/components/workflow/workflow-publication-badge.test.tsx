@@ -33,6 +33,23 @@ describe("WorkflowPublicationBadge", () => {
     expect(screen.getByText("Published")).toBeTruthy();
   });
 
+  it("includes the current version when it is available", () => {
+    expect(
+      publicationLabel({
+        isPublished: true,
+        hasUnpublishedChanges: true,
+        publishedVersion: 7,
+      })
+    ).toBe("Unpublished changes since version 7");
+    expect(
+      publicationLabel({
+        isPublished: true,
+        hasUnpublishedChanges: false,
+        publishedVersion: 7,
+      })
+    ).toBe("Published version 7");
+  });
+
   it("shows Never published before the first publish", () => {
     render(
       <WorkflowPublicationBadge

@@ -25,6 +25,10 @@ export type WorkflowSummaryPayload = {
 
 export type WorkflowApiPayload = WorkflowSummaryPayload & {
   graph: SerializedWorkflowGraph;
+  /** Numeric form of the current published version. Absent until first publish. */
+  publishedVersion?: number;
+  /** Publication time of the current version. Absent until first publish. */
+  publishedAt?: string;
   /**
    * Whether the draft graph differs from the published version's graph.
    * False when the workflow has never been published.
@@ -36,4 +40,5 @@ export type WorkflowApiPayload = WorkflowSummaryPayload & {
 export type WorkflowPublishPayload = WorkflowApiPayload & {
   publishedVersionId: string;
   publishedVersion: number;
+  publishedAt: string;
 };

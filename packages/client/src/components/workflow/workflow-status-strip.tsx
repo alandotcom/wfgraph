@@ -1,8 +1,8 @@
 /**
  * The one line along the bottom of the canvas saying what the editor is doing.
  *
- * Two states, one height. Editing the draft it reports mode, publication, save
- * and issues; with a run pinned to the canvas it reports the run and offers the
+ * Two states, one height. Editing the draft it reports publication, save, and
+ * issues; with a run pinned to the canvas it reports the run and offers the
  * way back to the draft. Both render inside the same fixed-height row on
  * purpose: the strip is a `shrink-0` sibling of the canvas box, so any change in
  * its height comes straight out of React Flow's, which measures what it is given
@@ -22,25 +22,23 @@ import { useAtomValue } from "jotai";
 import { ArrowLeft, Clock3 } from "lucide-react";
 import { Button } from "#src/components/ui/button";
 import { Separator } from "#src/components/ui/separator";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "#src/components/ui/tooltip";
 import { WorkflowIssuesChip } from "#src/components/workflow/workflow-issues-chip";
 import { WorkflowPublicationBadge } from "#src/components/workflow/workflow-publication-badge";
 import {
   WorkflowSaveStatus,
   WorkflowUnloadGuard,
 } from "#src/components/workflow/workflow-save-status";
-import { useExitRun } from "#src/hooks/use-exit-run";
+import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import { toPinnedRunSummary } from "#src/lib/execution-logs";
 import { orpcQuery, workflowPublicationQueryOptions } from "#src/lib/rpc-query";
-import { isExecutionOverlayActiveAtom } from "#src/lib/workflow-graph-store";
-import { currentWorkflowModeAtom } from "#src/lib/workflow-save-store";
-import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
-import type { WorkflowMode } from "@wfgraph/shared/graph/types";
+import {
+  comparisonSessionAtom,
+  isComparisonPendingAtom,
+} from "#src/lib/workflow-comparison-store";
+import {
+  selectedExecutionIdAtom,
+  workflowWorkspaceViewAtom,
+} from "#src/lib/workflow-ui-store";
 import { cn } from "@wfgraph/shared/utils";
 import { formatDayAndTime } from "@wfgraph/shared/utils/time";
 
@@ -53,18 +51,6 @@ import { formatDayAndTime } from "@wfgraph/shared/utils/time";
  * element's title for anyone who needs to quote it.
  */
 const RUN_ID_PREFIX_LENGTH = 8;
-
-/**
- * What test mode actually changes, which is the one thing about it a person
- * cannot work out from the words "Test mode".
- */
-const TEST_MODE_EXPLANATION =
-  "No real email or SMS is sent unless a node is configured to route to a test recipient.";
-
-/** The mode as the strip states it, extracted so the wording needs no DOM to test. */
-export function workflowModeLabel(mode: WorkflowMode): string {
-  return mode === "test" ? "Test mode" : "Live mode";
-}
 
 /**
  * Which run is on the canvas and when it started, as one string.
@@ -117,48 +103,7 @@ function StatusItems({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ModeLabel({ mode }: { mode: WorkflowMode }) {
-  const isTest = mode === "test";
-
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
-              {/* Warning rather than destructive: test mode destroys nothing,
-                  and spending the failure colour here lit the failure signal
-                  before any run had failed. */}
-              <span
-                aria-hidden
-                className={cn(
-                  "size-1.5 rounded-full",
-                  isTest ? "bg-warning" : "bg-success"
-                )}
-              />
-              <span className={isTest ? "text-warning" : undefined}>
-                {workflowModeLabel(mode)}
-              </span>
-            </span>
-          }
-        />
-        {/* The sentence the bottom-centre banner used to carry. It was the only
-            place in the editor that said what the mode does, and "Test mode" on
-            its own does not say it. */}
-        <TooltipContent>
-          <p>
-            {isTest
-              ? TEST_MODE_EXPLANATION
-              : "Runs send real email and SMS. Switch to Test mode to try the workflow without that."}
-          </p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
 function DraftStatus({ workflowId }: { workflowId?: string }) {
-  const mode = useAtomValue(currentWorkflowModeAtom);
   const { data: publication } = useQuery({
     ...workflowPublicationQueryOptions(workflowId ?? ""),
     enabled: Boolean(workflowId),
@@ -174,11 +119,10 @@ function DraftStatus({ workflowId }: { workflowId?: string }) {
             The payload's arrival is what says a workflow has been loaded. */}
         {publication && (
           <>
-            <ModeLabel mode={mode} />
-            <StripDivider />
             <WorkflowPublicationBadge
               hasUnpublishedChanges={publication.hasUnpublishedChanges}
               isPublished={publication.isPublished}
+              publishedVersion={publication.publishedVersion}
             />
             <StripDivider />
           </>
@@ -194,7 +138,7 @@ function DraftStatus({ workflowId }: { workflowId?: string }) {
 
 function PinnedRunStatus() {
   const executionId = useAtomValue(selectedExecutionIdAtom);
-  const exitRun = useExitRun();
+  const { showDraft } = useWorkflowWorkspaceNavigation();
 
   // Reads the logs entry `ExecutionOverlaySync` fills to pin the graph in the
   // first place, so a run that is on the canvas has already been fetched:
@@ -215,7 +159,7 @@ function PinnedRunStatus() {
       <StatusItems>
         <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap font-medium">
           <Clock3 aria-hidden className="size-3" />
-          Viewing a past run
+          {executionId ? "Viewing a past run" : "Runs"}
         </span>
         {label && (
           <>
@@ -244,7 +188,48 @@ function PinnedRunStatus() {
           refusing every edit. */}
       <Button
         className="h-6 shrink-0 text-info hover:bg-info/10 hover:text-info"
-        onClick={exitRun}
+        onClick={showDraft}
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        <ArrowLeft className="size-3" />
+        Back to draft
+      </Button>
+    </>
+  );
+}
+
+function ChangesStatus() {
+  const session = useAtomValue(comparisonSessionAtom);
+  const pending = useAtomValue(isComparisonPendingAtom);
+  const { showDraft } = useWorkflowWorkspaceNavigation();
+  const baseVersion = session?.payload.baseVersion?.version;
+
+  return (
+    <>
+      <StatusItems>
+        <span className="shrink-0 whitespace-nowrap font-medium">
+          {pending && !session ? "Comparing changes" : "Changes"}
+        </span>
+        {session ? (
+          <>
+            <StripDivider />
+            <span className="shrink-0 whitespace-nowrap">
+              {baseVersion ? `Version ${baseVersion}` : "No published version"}
+              {" → "}
+              proposed version {session.payload.proposedVersion}
+            </span>
+          </>
+        ) : null}
+        <StripDivider />
+        <span className="shrink-0 whitespace-nowrap">Editing is off</span>
+        <StripDivider />
+        <WorkflowSaveStatus />
+      </StatusItems>
+      <Button
+        className="h-6 shrink-0 text-info hover:bg-info/10 hover:text-info"
+        onClick={showDraft}
         size="sm"
         type="button"
         variant="ghost"
@@ -257,7 +242,8 @@ function PinnedRunStatus() {
 }
 
 export function WorkflowStatusStrip({ workflowId }: { workflowId?: string }) {
-  const overlayActive = useAtomValue(isExecutionOverlayActiveAtom);
+  const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
+  const readOnly = workspaceView !== "draft";
 
   return (
     <output
@@ -268,7 +254,7 @@ export function WorkflowStatusStrip({ workflowId }: { workflowId?: string }) {
         // card-toned strip on a background-toned canvas separated by nothing but
         // its border.
         "workflow-status-strip flex h-8 shrink-0 items-center gap-2 border-t px-3 text-xs leading-none",
-        overlayActive
+        readOnly
           ? "border-info/30 bg-info/5 text-info"
           : "bg-sidebar text-muted-foreground"
       )}
@@ -276,8 +262,10 @@ export function WorkflowStatusStrip({ workflowId }: { workflowId?: string }) {
       {/* Outside the branch below, because a reload drops a pending patch
           whether or not the label reporting it is the one on screen. */}
       <WorkflowUnloadGuard />
-      {overlayActive ? (
+      {workspaceView === "runs" ? (
         <PinnedRunStatus />
+      ) : workspaceView === "changes" ? (
+        <ChangesStatus />
       ) : (
         <DraftStatus workflowId={workflowId} />
       )}

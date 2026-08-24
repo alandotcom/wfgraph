@@ -6,7 +6,12 @@
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
 import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
-import { activePropertiesTabAtom } from "#src/lib/workflow-ui-store";
+import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
+import {
+  isComparisonActiveAtom,
+  isComparisonPendingAtom,
+} from "#src/lib/workflow-comparison-store";
+import { isPublicationReviewActiveAtom } from "#src/lib/workflow-publication-review-store";
 import { saveWorkflowAtom } from "#src/lib/workflow-save-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
@@ -24,17 +29,16 @@ const pinnedRunGraphAtom = atom<{
  * when the run is deselected. Never saved: draft atoms stay draft-only so a
  * Cmd+S or toolbar save cannot persist the run graph over the editor's draft.
  *
- * Reads as null while the Runs tab is down, on the same `activePropertiesTabAtom`
+ * Reads as null outside Runs, on the same `workflowWorkspaceViewAtom`
  * gate `selectedExecutionIdAtom` reads through, because the two describe one run
- * and must go off the canvas together. This gate covers the one exit that keeps
- * the run open on purpose: the tab bar's Properties button, which writes the tab
- * and not the URL, so coming back paints the same run again without a refetch.
- * An interaction that hides the whole surface instead clears the search through
- * `useLeaveRunsSurface`, and `ExecutionOverlaySync` nulls the write side.
+ * and must go off the canvas together. Leaving Runs through workspace
+ * navigation clears the presentation without requiring route state to do it.
+ * `ExecutionOverlaySync` clears the write side when run navigation clears the
+ * route selection.
  */
 export const executionOverlayGraphAtom = atom(
   (get) =>
-    get(activePropertiesTabAtom) === "runs" ? get(pinnedRunGraphAtom) : null,
+    get(workflowWorkspaceViewAtom) === "runs" ? get(pinnedRunGraphAtom) : null,
   (
     _get,
     set,
@@ -65,9 +69,14 @@ export const futureAtom = atom<HistoryState[]>([]);
 
 const HISTORY_LIMIT = 50;
 
-/** Refuse draft mutations while a run overlay owns the canvas. */
+/** Refuse draft mutations while a read-only display graph owns the canvas. */
 export function draftEditable(get: Getter): boolean {
-  return get(executionOverlayGraphAtom) === null;
+  return (
+    get(workflowWorkspaceViewAtom) === "draft" &&
+    !get(isComparisonActiveAtom) &&
+    !get(isComparisonPendingAtom) &&
+    !get(isPublicationReviewActiveAtom)
+  );
 }
 
 /** Snapshot the graph so the next change is undoable, and drop any redo branch. */

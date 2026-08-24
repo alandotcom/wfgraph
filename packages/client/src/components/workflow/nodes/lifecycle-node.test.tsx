@@ -9,7 +9,10 @@ import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
 } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
-import type { WorkflowNodeData } from "#src/lib/workflow-graph-types";
+import {
+  COMPARISON_NODE_ANNOTATION,
+  type WorkflowNodeData,
+} from "#src/lib/workflow-graph-types";
 
 describe("getStartSummary", () => {
   // A workflow the panel has never touched is one the Run button starts, so the
@@ -126,6 +129,21 @@ describe("LifecycleNode handles", () => {
     );
 
     expect(view.container.querySelector("[data-selected='true']")).toBeTruthy();
+  });
+
+  it("hides the visual comparison marker from the accessibility tree", () => {
+    const view = renderLifecycleNode({
+      label: "Lifecycle",
+      description: "",
+      type: "lifecycle",
+      config: {},
+      [COMPARISON_NODE_ANNOTATION]: { kind: "modified" },
+    });
+
+    expect(
+      view.getByTitle("Modified in comparison").getAttribute("aria-hidden")
+    ).toBe("true");
+    expect(view.getByText("M")).toBeTruthy();
   });
 
   it("uses the start summary as the subtitle on a compact card", () => {

@@ -28,31 +28,24 @@ import {
   activeAgentTurnIdAtom,
   isGeneratingAtom,
   selectedExecutionIdAtom,
+  workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
+import { clearPublicationReviewAtom } from "#src/lib/workflow-publication-review-store";
 import {
   formatTemplateToken,
   mapTemplateTokens,
 } from "@wfgraph/shared/graph/node-references";
 import { layoutWorkflowNodes } from "#src/components/workflow/workflow-layout";
-import { inactiveBranch } from "#src/lib/inactive-branch";
-import {
-  EMPTY_ISSUES,
-  NO_ISSUES,
-  workflowIssuesAtom,
-  workflowIssuesByNodeIdAtom,
-} from "#src/lib/workflow-issues-store";
+import { NO_ISSUES, workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import {
   dissolveUndersizedGroups,
   dropOrphanedEdges,
   expandEdgeRemovals,
   idsRemovedWith,
-  lockGroupInteriorEdges,
   refuseDeleteWithNotice,
 } from "#src/lib/node-group";
 import {
-  displayEdgesForGroups,
   fanOutStoreEdgeIds,
-  disabledGroupIds,
   orderGroupParentsFirst,
 } from "@wfgraph/shared/graph/node-group";
 import {
@@ -67,13 +60,16 @@ import {
   selectedEdgeAtom,
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-cells";
+import {
+  clearWorkflowComparisonAtom,
+  comparisonSessionAtom,
+} from "#src/lib/workflow-comparison-store";
 import type {
-  NodeIssueSummary,
-  NodeRunStatus,
   WorkflowEdge,
   WorkflowNode,
   WorkflowNodeData,
 } from "#src/lib/workflow-graph-types";
+import { resetNodeStatusesAtom as resetPresentationNodeStatusesAtom } from "#src/lib/workflow-graph-presentation-store";
 
 export {
   executionOverlayGraphAtom,
@@ -87,6 +83,15 @@ export {
   setGroupEnabledAtom,
   ungroupNodeAtom,
 } from "#src/lib/workflow-group-store";
+export {
+  canvasEditingLockedAtom,
+  clearNodeStatusesAtom,
+  displayEdgesAtom,
+  displayNodesAtom,
+  isExecutionOverlayActiveAtom,
+  resetNodeStatusesAtom,
+  setNodeStatusesAtom,
+} from "#src/lib/workflow-graph-presentation-store";
 
 /**
  * The graph the editor is showing, and every operation that may change it.
@@ -102,205 +107,6 @@ export {
 /** Read-only draft. Mutate through the action atoms below so undo always sees it. */
 export const nodesAtom = atom((get) => get(nodesStateAtom));
 export const edgesAtom = atom((get) => get(edgesStateAtom));
-
-/**
- * Run status by node id, independent of which graph is on screen.
- *
- * A status belongs to a run, not to a node, so it is never written into a
- * node's own `data` -- doing that is what used to force `executionOverlayGraphAtom`
- * to carry a full second copy of the graph just to hold a different status per
- * node. `displayNodesAtom` merges this onto the draft or the pinned overlay at
- * display time instead, the same way it already merges `inactiveBranchAtom`.
- */
-const statusByNodeIdAtom = atom<ReadonlyMap<string, NodeRunStatus>>(new Map());
-
-/** Whether the canvas is showing a run's pinned graph instead of the draft. */
-export const isExecutionOverlayActiveAtom = atom(
-  (get) => get(executionOverlayGraphAtom) !== null
-);
-
-/**
- * Whether the canvas is showing something other than an editable draft, so
- * anything that writes the draft has to refuse. Generation is rewriting the
- * graph underneath the user; a run overlay pins the canvas to a past run.
- *
- * Both the canvas (which drops React Flow's drag, connect and select props)
- * and the toolbar (which disables Publish) read this one atom, so the two
- * cannot drift apart: the whole point of #39 was that Publish had missed a
- * condition the canvas already had.
- */
-export const canvasEditingLockedAtom = atom(
-  (get) => get(isGeneratingAtom) || get(isExecutionOverlayActiveAtom)
-);
-
-/**
- * What the canvas paints: the run overlay when a run is open, otherwise the
- * draft. Saves, publish, and config always read `nodesAtom` / `edgesAtom`.
- *
- * A node the run cannot reach is muted here via React Flow presentation props
- * (`style` / `data.displayLabel`) so the draft stays clean.
- */
-const inactiveBranchAtom = atom((get) => {
-  const nodes = get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom);
-  const edges = get(executionOverlayGraphAtom)?.edges ?? get(edgesStateAtom);
-  return inactiveBranch({ nodes, edges });
-});
-
-const INACTIVE_NODE_STYLE = { opacity: 0.5 } as const;
-
-/**
- * The last painted copy of a node, keyed by the node it was painted from.
- *
- * The fast path below covers a canvas with nothing to merge, and a validation
- * badge takes that away as soon as one step is half-built, which is most of a
- * canvas being built. Without this, dragging one node handed every flagged card
- * a fresh `data` object once per frame. The four inputs are stored beside the
- * result, since the same node has to be repainted when any of them changes.
- */
-type PaintedNode = {
-  status: NodeRunStatus | undefined;
-  disabledFrame: boolean;
-  muted: boolean;
-  issues: NodeIssueSummary | undefined;
-  painted: WorkflowNode;
-};
-const paintedNodes = new WeakMap<WorkflowNode, PaintedNode>();
-
-export const displayNodesAtom = atom((get) => {
-  const overlay = get(executionOverlayGraphAtom);
-  const nodes = overlay?.nodes ?? get(nodesStateAtom);
-  const statusByNodeId = get(statusByNodeIdAtom);
-  const { nodeIds } = get(inactiveBranchAtom);
-  const ordered = orderGroupParentsFirst(nodes);
-  // Merged at display time like the run status above it.
-  const disabledFrameIds = disabledGroupIds(nodes);
-  // A past run's graph is not the draft, so validating it would badge nodes
-  // against a canvas the builder cannot edit.
-  const issuesByNodeId = overlay
-    ? EMPTY_ISSUES
-    : get(workflowIssuesByNodeIdAtom);
-
-  // The common case -- no run is being painted and every node is reachable --
-  // has nothing to merge, so the nodes come back exactly as they went in.
-  // React.memo on ActionNode and LifecycleNode does a shallow prop comparison,
-  // and it can only bail out on a node that is `===` what it rendered last
-  // time; a fresh `data` object on every node, every recompute, defeats that on
-  // every drag frame and every keystroke, since this atom is read on every
-  // render of the canvas. A pinned overlay uses the same path when the
-  // inspector has not selected a node, so the overlay array keeps its identity.
-  const overlaySelectedId = overlay ? get(selectedNodeAtom) : null;
-  const selectionAlreadyMatches =
-    !overlay ||
-    ordered.every(
-      (node) => Boolean(node.selected) === (node.id === overlaySelectedId)
-    );
-  if (
-    statusByNodeId.size === 0 &&
-    nodeIds.size === 0 &&
-    disabledFrameIds.size === 0 &&
-    issuesByNodeId.size === 0 &&
-    selectionAlreadyMatches
-  ) {
-    return ordered;
-  }
-
-  // A run is painted onto every node at once, since a node with no reported
-  // status reads as idle. Muting reaches a few nodes, so the rest are handed
-  // back by reference and their cards can bail out of rendering again.
-  const paintingRun = statusByNodeId.size > 0;
-
-  const painted = ordered.map((node) => {
-    const disabledFrame = disabledFrameIds.has(node.id);
-    // A disabled node already wears the disabled face its own card draws.
-    // Dimming it a second time here would take it to a quarter opacity.
-    const muted =
-      nodeIds.has(node.id) && !disabledFrame && node.data.enabled !== false;
-    const issues = issuesByNodeId.get(node.id);
-
-    if (!(paintingRun || disabledFrame || muted || issues)) {
-      return node;
-    }
-
-    const status = paintingRun
-      ? (statusByNodeId.get(node.id) ?? "idle")
-      : undefined;
-
-    const cached = paintedNodes.get(node);
-    if (
-      cached &&
-      cached.status === status &&
-      cached.disabledFrame === disabledFrame &&
-      cached.muted === muted &&
-      cached.issues === issues
-    ) {
-      return cached.painted;
-    }
-
-    const withStatus: WorkflowNode = {
-      ...node,
-      data: {
-        ...node.data,
-        ...(status ? { status } : {}),
-        ...(disabledFrame ? { enabled: false } : {}),
-        ...(issues ? { issues } : {}),
-      },
-    };
-    const paintedNode = muted
-      ? {
-          ...withStatus,
-          style: { ...withStatus.style, ...INACTIVE_NODE_STYLE },
-        }
-      : withStatus;
-
-    paintedNodes.set(node, {
-      status,
-      disabledFrame,
-      muted,
-      issues,
-      painted: paintedNode,
-    });
-    return paintedNode;
-  });
-
-  if (!overlay) {
-    return painted;
-  }
-
-  return painted.map((node) => {
-    const selected = node.id === overlaySelectedId;
-    return Boolean(node.selected) === selected ? node : { ...node, selected };
-  });
-});
-export const displayEdgesAtom = atom((get) => {
-  const nodes = get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom);
-  const edges = get(executionOverlayGraphAtom)?.edges ?? get(edgesStateAtom);
-  const painted = lockGroupInteriorEdges(
-    nodes,
-    displayEdgesForGroups(nodes, edges)
-  );
-  const { nodeIds, outletEdgeIds } = get(inactiveBranchAtom);
-  if (nodeIds.size === 0) {
-    return painted;
-  }
-  // An edge is muted by where it lands. The edge into a disabled step stays
-  // live, because the run does arrive and skip it; every edge past that step
-  // lands on a node the run can never reach.
-  return painted.map((edge) => {
-    if (!nodeIds.has(edge.target)) {
-      return edge;
-    }
-    return {
-      ...edge,
-      data: {
-        ...edge.data,
-        inactive: true,
-        ...(outletEdgeIds.has(edge.id)
-          ? { displayLabel: "No Cancel Event" }
-          : {}),
-      },
-    };
-  });
-});
 
 // Tracks a just-created node so the config panel can focus its search input.
 // Cleared once the node gets an action type or loses selection.
@@ -331,7 +137,11 @@ const isDraggingAtom = atom(false);
  */
 export const loadWorkflowGraphAtom = atom(
   null,
-  (_get, set, graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }) => {
+  (get, set, graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }) => {
+    const workflowId = get(currentWorkflowIdAtom);
+    if (workflowId) {
+      set(clearWorkflowComparisonAtom, workflowId);
+    }
     set(nodesStateAtom, orderGroupParentsFirst(graph.nodes));
     set(edgesStateAtom, graph.edges);
     set(historyAtom, []);
@@ -360,6 +170,11 @@ export const loadWorkflowGraphAtom = atom(
 export const hydrateWorkflowAtom = atom(
   null,
   (get, set, workflow: SavedWorkflow) => {
+    // Hydration starts a new editor lifetime even when the route resolves the
+    // same workflow again. A comparison snapshot belongs to the lifetime that
+    // requested it and must not lock the newly loaded draft.
+    set(clearWorkflowComparisonAtom, workflow.id);
+    set(clearPublicationReviewAtom);
     // Clearing selection stops a node from arriving pre-selected in a
     // workflow the user has just opened.
     const nodes = workflow.nodes.map((node) => ({
@@ -376,9 +191,13 @@ export const hydrateWorkflowAtom = atom(
     // stale-while-revalidate) must not: wiping them is how a waiting canvas
     // lost its animation while the Runs panel still showed the run.
     if (get(currentWorkflowIdAtom) !== workflow.id) {
-      set(statusByNodeIdAtom, new Map());
+      const preserveDeepLinkedRun =
+        get(workflowWorkspaceViewAtom) === "runs" &&
+        get(selectedExecutionIdAtom) !== null;
+      set(resetPresentationNodeStatusesAtom);
       set(executionOverlayGraphAtom, null);
       set(selectedExecutionIdAtom, null);
+      set(workflowWorkspaceViewAtom, preserveDeepLinkedRun ? "runs" : "draft");
     }
     set(activeAgentTurnIdAtom, null);
     set(isGeneratingAtom, false);
@@ -394,6 +213,59 @@ export const hydrateWorkflowAtom = atom(
     set(workflowLoadErrorAtom, null);
   }
 );
+
+/**
+ * Install a restored workflow only while the editor still shows that workflow.
+ * A restore request can finish after navigation, so this guard owns the graph
+ * write and comparison cleanup together rather than leaving each caller to race.
+ */
+export const installRestoredWorkflowAtom = atom(
+  null,
+  (
+    get,
+    set,
+    input: { expectedWorkflowId: string; workflow: SavedWorkflow }
+  ) => {
+    if (
+      get(currentWorkflowIdAtom) !== input.expectedWorkflowId ||
+      input.workflow.id !== input.expectedWorkflowId
+    ) {
+      return false;
+    }
+    set(loadWorkflowGraphAtom, {
+      nodes: input.workflow.nodes,
+      edges: input.workflow.edges,
+    });
+    return true;
+  }
+);
+
+/**
+ * Return from a comparison without making selection a graph edit. A historical
+ * node may not exist in the draft, while a draft node becomes its sole selection.
+ */
+export const exitWorkflowComparisonAtom = atom(null, (get, set) => {
+  const workflowId = get(currentWorkflowIdAtom);
+  if (!workflowId || !get(comparisonSessionAtom)) {
+    return false;
+  }
+  const selectedNodeId = get(selectedNodeAtom);
+  const draftSelection = selectedNodeId
+    ? (get(nodesStateAtom).find((node) => node.id === selectedNodeId)?.id ??
+      null)
+    : null;
+  set(
+    nodesStateAtom,
+    get(nodesStateAtom).map((node) => ({
+      ...node,
+      selected: node.id === draftSelection,
+    }))
+  );
+  set(selectedNodeAtom, draftSelection);
+  set(selectedEdgeAtom, null);
+  set(clearWorkflowComparisonAtom, workflowId);
+  return true;
+});
 
 /**
  * Point every node at a connection that exists, given the list as it stands now.
@@ -1120,55 +992,3 @@ export const redoAtom = atom(null, (get, set) => {
 
 export const canUndoAtom = atom((get) => get(historyAtom).length > 0);
 export const canRedoAtom = atom((get) => get(futureAtom).length > 0);
-
-/** Reset run badges. Execution state, so it neither dirties nor saves. */
-export const clearNodeStatusesAtom = atom(null, (_get, set) => {
-  // Deleting runs (the only caller) must also drop the run overlay so the
-  // canvas returns to the draft rather than painting statuses on a gone run.
-  set(executionOverlayGraphAtom, null);
-  set(statusByNodeIdAtom, new Map());
-});
-
-/**
- * Drop every recorded status without touching the overlay.
- *
- * The server's status list is not exhaustive -- it names only the nodes that
- * have an execution-log row for the run being read -- so switching straight
- * from one open run to another has to clear what the first run left behind
- * before the second run's statuses land. Leaving a stale entry in place would
- * have a node the new run never reached go on reporting what the old run did.
- * `clearNodeStatusesAtom` also drops the overlay, which is wrong here: the
- * overlay for the new run is what workflow-runs.tsx's sync effect sets up
- * next, in the same pass.
- */
-export const resetNodeStatusesAtom = atom(null, (_get, set) => {
-  set(statusByNodeIdAtom, new Map());
-});
-
-/**
- * Record a run's progress. Merged onto whichever graph `displayNodesAtom` is
- * showing -- there is no branch here for the overlay versus the draft,
- * because a status is display-time state, not graph state.
- */
-export const setNodeStatusesAtom = atom(
-  null,
-  (get, set, statuses: Array<{ nodeId: string; status: NodeRunStatus }>) => {
-    if (statuses.length === 0) {
-      return;
-    }
-
-    const current = get(statusByNodeIdAtom);
-    const next = new Map(current);
-    let hasUpdates = false;
-    for (const { nodeId, status } of statuses) {
-      if (current.get(nodeId) !== status) {
-        next.set(nodeId, status);
-        hasUpdates = true;
-      }
-    }
-
-    if (hasUpdates) {
-      set(statusByNodeIdAtom, next);
-    }
-  }
-);

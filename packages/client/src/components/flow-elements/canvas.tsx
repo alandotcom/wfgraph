@@ -39,7 +39,6 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
   return (
     <ReactFlow
       deleteKeyCode={["Backspace", "Delete"]}
-      fitView
       // Group needs a multi-select; xyflow defaults this to Meta/Control only.
       multiSelectionKeyCode={["Meta", "Control", "Shift"]}
       panActivationKeyCode={null}

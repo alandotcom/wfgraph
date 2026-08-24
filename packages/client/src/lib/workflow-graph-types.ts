@@ -36,9 +36,31 @@ export type NodeIssueSummary = {
   messages: string[];
 };
 
+/** Structural change metadata that belongs only to a comparison canvas. */
+export type ComparisonNodeAnnotation = {
+  kind: "added" | "modified" | "removed";
+};
+
+/** Display-only identity keeps two semantic edge revisions distinct in React Flow. */
+export type ComparisonEdgeAnnotation = {
+  kind: "added" | "removed";
+  sourceId: string;
+};
+
+/** Collision-proof keys for metadata that exists only on the comparison canvas. */
+export const COMPARISON_NODE_ANNOTATION: unique symbol = Symbol(
+  "wfgraph.comparison.node"
+);
+export const COMPARISON_EDGE_ANNOTATION: unique symbol = Symbol(
+  "wfgraph.comparison.edge"
+);
+
 export type EditorNodeData = PersistedNodeData & {
+  /** Open persisted node data can legitimately use this string key. */
+  comparison?: unknown;
   status?: NodeRunStatus;
   issues?: NodeIssueSummary;
+  [COMPARISON_NODE_ANNOTATION]?: ComparisonNodeAnnotation;
 };
 
 /** Display-only fields painted onto edges; never part of the draft save path. */
@@ -46,6 +68,7 @@ export type EditorEdgeData = Record<string, unknown> & {
   displayLabel?: string;
   /** Set on an edge landing on a node the run can never reach. */
   inactive?: boolean;
+  [COMPARISON_EDGE_ANNOTATION]?: ComparisonEdgeAnnotation;
 };
 
 export type WorkflowNodeData = EditorNodeData;
@@ -59,32 +82,75 @@ export type WorkflowEdge = Edge<EditorEdgeData>;
  */
 export const WORKFLOW_EDGE_TYPE = "animated";
 
+export function comparisonChangeLabel(
+  kind: ComparisonNodeAnnotation["kind"] | ComparisonEdgeAnnotation["kind"]
+): string {
+  if (kind === "added") {
+    return "Added in comparison";
+  }
+  if (kind === "modified") {
+    return "Modified in comparison";
+  }
+  return "Removed in comparison";
+}
+
+/** A comparison names an unavailable action safely rather than exposing its id. */
+export function comparisonNodeTitle(
+  data: WorkflowNodeData,
+  catalog?: ExtensionCatalog
+): string {
+  const nodeLabel = data.label?.trim();
+  if (nodeLabel) {
+    return nodeLabel;
+  }
+  if (data.type === "lifecycle") {
+    return "Lifecycle";
+  }
+  if (data.type === "group") {
+    return "Group";
+  }
+  const actionType = data.config?.actionType;
+  const actionLabel =
+    typeof actionType === "string" && actionType.trim()
+      ? findAction(
+          catalog ?? { actions: [], events: [], integrations: [] },
+          actionType
+        )?.label.trim()
+      : undefined;
+  if (actionLabel) {
+    return actionLabel;
+  }
+  return typeof actionType === "string" && actionType.trim()
+    ? "Unavailable action"
+    : "Action";
+}
+
 /** The visible workflow name React Flow announces for a node. */
 export function workflowNodeAriaLabel(
   data: WorkflowNodeData,
   catalog?: ExtensionCatalog
 ): string {
-  const label = data.label?.trim();
-  if (label) {
-    return label;
+  const comparison = data[COMPARISON_NODE_ANNOTATION];
+  if (comparison) {
+    return `${comparisonNodeTitle(data, catalog)}, ${comparisonChangeLabel(comparison.kind)}`;
   }
-
-  const actionType = data.config?.actionType;
-  if (typeof actionType === "string" && actionType.trim()) {
-    return (
-      (catalog ? findAction(catalog, actionType)?.label : undefined) ??
-      actionType
-    );
+  let result: string;
+  const nodeLabel = data.label?.trim();
+  if (nodeLabel) {
+    result = nodeLabel;
+  } else {
+    const actionType = data.config?.actionType;
+    result =
+      typeof actionType === "string" && actionType.trim()
+        ? ((catalog ? findAction(catalog, actionType)?.label : undefined) ??
+          actionType)
+        : data.type === "lifecycle"
+          ? "Lifecycle"
+          : data.type === "group"
+            ? "Group"
+            : "Action";
   }
-
-  switch (data.type) {
-    case "lifecycle":
-      return "Lifecycle";
-    case "group":
-      return "Group";
-    default:
-      return "Action";
-  }
+  return result;
 }
 
 /**
@@ -94,7 +160,12 @@ export function workflowNodeAriaLabel(
  * a key it does not name is dropped on the way back in.
  */
 export function toPersistedNode(node: WorkflowNode): PersistedWorkflowNode {
-  const { status: _status, issues: _issues, ...data } = node.data;
+  const {
+    status: _status,
+    issues: _issues,
+    [COMPARISON_NODE_ANNOTATION]: _comparison,
+    ...data
+  } = node.data;
   const persisted: PersistedWorkflowNode = {
     id: node.id,
     position: node.position,
@@ -140,10 +211,11 @@ export function toPersistedEdge(edge: WorkflowEdge): PersistedWorkflowEdge {
   const {
     displayLabel: _displayLabel,
     inactive: _inactive,
+    [COMPARISON_EDGE_ANNOTATION]: comparison,
     ...rest
   } = edge.data ?? {};
   return {
-    id: edge.id,
+    id: comparison?.sourceId ?? edge.id,
     source: edge.source,
     target: edge.target,
     sourceHandle: edge.sourceHandle,

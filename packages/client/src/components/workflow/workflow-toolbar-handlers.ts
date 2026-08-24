@@ -7,7 +7,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import {
@@ -27,7 +27,9 @@ import {
   orpcQuery,
   refreshRunHistory,
   refreshWorkflowList,
+  refreshWorkflowVersionHistory,
   workflowListQueryOptions,
+  workflowPublicationQueryOptions,
 } from "#src/lib/rpc-query";
 import {
   clearGraphSelectionAtom,
@@ -56,14 +58,22 @@ import {
   hasUnsavedChangesAtom,
   isSavingAtom,
   isWorkflowOwnerAtom,
+  saveWorkflowAtom,
   setWorkflowModeAtom,
 } from "#src/lib/workflow-save-store";
 import { toSerializedGraph } from "#src/lib/rpc-client";
+import { publicationReviewFromComparison } from "#src/components/workflow/publish-review-dialog";
 import {
-  isExecutingAtom,
-  isGeneratingAtom,
-  propertiesPanelActiveTabAtom,
-} from "#src/lib/workflow-ui-store";
+  beginPublicationReviewAtom,
+  clearPublicationReviewAtom,
+  installPublicationReviewAtom,
+  isPublicationReviewActiveAtom,
+  isPublicationReviewPendingAtom,
+  publicationReviewAtom,
+  settlePublicationReviewAtom,
+} from "#src/lib/workflow-publication-review-store";
+import { isExecutingAtom, isGeneratingAtom } from "#src/lib/workflow-ui-store";
+import { enterRunsWorkspaceAtom } from "#src/lib/workflow-workspace-navigation";
 import {
   readEntryLifecycleRules,
   readEntryTestPayloads,
@@ -86,7 +96,6 @@ type WorkflowHandlerParams = {
   updateNodeData: UpdateNodeData;
   isExecuting: boolean;
   setIsExecuting: (value: boolean) => void;
-  setActiveTab: (value: string) => void;
   setSelectedNodeId: (id: string | null) => void;
   userIntegrations: Array<{ id: string; type: string }>;
 };
@@ -97,7 +106,6 @@ function useWorkflowHandlers({
   updateNodeData,
   isExecuting,
   setIsExecuting,
-  setActiveTab,
   setSelectedNodeId,
   userIntegrations,
 }: WorkflowHandlerParams) {
@@ -114,6 +122,7 @@ function useWorkflowHandlers({
   const clearGraphSelection = useSetAtom(clearGraphSelectionAtom);
   const setExecutionOverlay = useSetAtom(executionOverlayGraphAtom);
   const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
+  const enterRuns = useSetAtom(enterRunsWorkspaceAtom);
   // No errorMessage: a rejected run carries a server message worth reading, and
   // the mutation cache falls back to it. Every other outcome arrives as a
   // successful response with a status on it, which executeWorkflowRun reads.
@@ -136,8 +145,7 @@ function useWorkflowHandlers({
     // on the request and waits for no save.
     rememberTestPayload({ nodes, updateNodeData, request });
 
-    // Switch to Runs tab when starting a run
-    setActiveTab("runs");
+    enterRuns();
 
     // Drop any run overlay so optimistic status and the new selection paint the
     // draft until the new run's pinned graph arrives.
@@ -235,11 +243,14 @@ export function useWorkflowState() {
   const redo = useSetAtom(redoAtom);
   const [canUndo] = useAtom(canUndoAtom);
   const [canRedo] = useAtom(canRedoAtom);
-  const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
   const setSelectedNodeId = useSetAtom(selectedNodeAtom);
   const { data: userIntegrations = [] } = useQuery(integrationsQueryOptions());
 
   const { data: allWorkflows = [] } = useQuery(workflowListQueryOptions());
+  const { data: publication } = useQuery({
+    ...workflowPublicationQueryOptions(currentWorkflowId ?? ""),
+    enabled: Boolean(currentWorkflowId),
+  });
 
   return {
     nodes,
@@ -261,9 +272,9 @@ export function useWorkflowState() {
     canUndo,
     canRedo,
     allWorkflows,
-    setActiveTab,
     setSelectedNodeId,
     userIntegrations,
+    publication,
   };
 }
 
@@ -276,6 +287,15 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
   const queryClient = useQueryClient();
   const deleteWorkflow = useDeleteWorkflow();
   const setWorkflowMode = useSetAtom(setWorkflowModeAtom);
+  const saveWorkflow = useSetAtom(saveWorkflowAtom);
+  const publishReview = useAtomValue(publicationReviewAtom);
+  const publicationReviewActive = useAtomValue(isPublicationReviewActiveAtom);
+  const publicationReviewPending = useAtomValue(isPublicationReviewPendingAtom);
+  const beginPublicationReview = useSetAtom(beginPublicationReviewAtom);
+  const installPublicationReview = useSetAtom(installPublicationReviewAtom);
+  const clearPublicationReview = useSetAtom(clearPublicationReviewAtom);
+  const settlePublicationReview = useSetAtom(settlePublicationReviewAtom);
+  const publishingReviewRef = useRef<string | null>(null);
   const {
     currentWorkflowId,
     workflowName,
@@ -285,23 +305,47 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     edges,
     updateNodeData,
     isExecuting,
+    isGenerating,
     setIsExecuting,
     clearWorkflow,
-    setActiveTab,
     setSelectedNodeId,
     userIntegrations,
+    publication,
   } = state;
-
   const { handleExecute, handleGoToStep } = useWorkflowHandlers({
     currentWorkflowId,
     nodes,
     updateNodeData,
     isExecuting,
     setIsExecuting,
-    setActiveTab,
     setSelectedNodeId,
     userIntegrations,
   });
+
+  const handleSave = useCallback(async () => {
+    if (!currentWorkflowId || isGenerating) {
+      return;
+    }
+    const outcome = await saveWorkflow({ nodes, edges }, { immediate: true });
+    if (outcome && !outcome.ok) {
+      toast.error(outcome.error.message || "Failed to save workflow");
+    }
+  }, [currentWorkflowId, edges, isGenerating, nodes, saveWorkflow]);
+
+  // Cmd+S shares the command palette's save path, so an explicit save and the
+  // shortcut cannot race the autosave queue differently.
+  const handleSaveShortcut = useCallback(
+    (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "s") {
+        event.preventDefault();
+        event.stopPropagation();
+        void handleSave();
+      }
+    },
+    [handleSave]
+  );
+
+  useDomEvent(document, "keydown", handleSaveShortcut, { capture: true });
 
   // Cmd+Enter runs the workflow. The listener lives here, beside handleExecute,
   // so the shortcut and the Run button are the same call rather than a store
@@ -374,16 +418,13 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     })
   );
 
+  // Per-call callbacks run from the click that began this preflight. The hook
+  // itself therefore remains a plain RPC declaration during render.
   const publishWorkflow = useMutation(
-    orpcQuery.workflow.publish.mutationOptions({
-      onSuccess: (payload) => {
-        toast.success(`Published version ${payload.publishedVersion}`);
-        cacheWorkflowPublication(queryClient, payload);
-        void loadWorkflows();
-      },
-      // Let Conflict ("Refresh and try again") and validation errors surface
-      // their own wording rather than a generic publish failure.
-    })
+    orpcQuery.workflow.publish.mutationOptions()
+  );
+  const compareWorkflowVersion = useMutation(
+    orpcQuery.workflow.compareVersion.mutationOptions()
   );
 
   const handleDuplicate = () => {
@@ -394,7 +435,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
   };
 
   const handlePublish = () => {
-    if (!currentWorkflowId) {
+    if (!currentWorkflowId || publicationReviewActive) {
       return;
     }
 
@@ -418,10 +459,109 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
       return;
     }
 
-    publishWorkflow.mutate({
+    const graph = toSerializedGraph({ nodes, edges });
+    const input = {
       workflowId: currentWorkflowId,
-      graph: toSerializedGraph({ nodes, edges }),
+      ...(publication?.publishedVersionId
+        ? { baseVersionId: publication.publishedVersionId }
+        : {}),
+      draftGraph: graph,
+    };
+    const epoch = beginPublicationReview(currentWorkflowId);
+    if (epoch === null) {
+      return;
+    }
+    compareWorkflowVersion.mutate(input, {
+      onSuccess: (comparison, comparisonInput) => {
+        if (!comparison.hasChanges) {
+          if (
+            !clearPublicationReview({
+              workflowId: comparisonInput.workflowId,
+              epoch,
+            })
+          ) {
+            return;
+          }
+          cacheWorkflowPublication(queryClient, {
+            id: comparisonInput.workflowId,
+            hasUnpublishedChanges: false,
+          });
+          toast.info("No changes to publish");
+          return;
+        }
+
+        installPublicationReview({
+          workflowId: comparisonInput.workflowId,
+          epoch,
+          pending: false,
+          graph: comparisonInput.draftGraph,
+          expectedPublishedVersionId: comparison.baseVersion?.id ?? null,
+          review: publicationReviewFromComparison(comparison),
+        });
+      },
+      onSettled: (comparison, _error, comparisonInput) => {
+        if (!comparison?.hasChanges) {
+          clearPublicationReview({
+            workflowId: comparisonInput.workflowId,
+            epoch,
+          });
+          return;
+        }
+        settlePublicationReview({
+          workflowId: comparisonInput.workflowId,
+          epoch,
+        });
+      },
     });
+  };
+
+  const confirmPublish = () => {
+    if (!publishReview || publicationReviewPending) {
+      return;
+    }
+    if (
+      publishReview.workflowId !== currentWorkflowId ||
+      !publicationReviewActive
+    ) {
+      clearPublicationReview({
+        workflowId: publishReview.workflowId,
+        epoch: publishReview.epoch,
+      });
+      return;
+    }
+    const publishingKey = `${publishReview.workflowId}:${publishReview.epoch}`;
+    if (publishingReviewRef.current === publishingKey) {
+      return;
+    }
+
+    publishingReviewRef.current = publishingKey;
+    publishWorkflow.mutate(
+      {
+        workflowId: publishReview.workflowId,
+        graph: publishReview.graph,
+        expectedPublishedVersionId: publishReview.expectedPublishedVersionId,
+      },
+      {
+        onSuccess: (payload) => {
+          if (
+            clearPublicationReview({
+              workflowId: payload.id,
+              epoch: publishReview.epoch,
+            })
+          ) {
+            toast.success(`Published version ${payload.publishedVersion}`);
+            cacheWorkflowPublication(queryClient, payload);
+            void loadWorkflows();
+            void refreshWorkflowVersionHistory(queryClient);
+          }
+        },
+        onSettled: (_payload, _error, _publishInput) => {
+          if (publishingReviewRef.current === publishingKey) {
+            publishingReviewRef.current = null;
+          }
+        },
+      }
+    );
   };
 
   const handleSetWorkflowMode = async (mode: "live" | "test") => {
@@ -446,6 +586,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
   };
 
   return {
+    handleSave,
     handleExecute,
     handleClearWorkflow,
     handleDeleteWorkflow,
@@ -453,7 +594,24 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     handleDuplicate,
     isDuplicating: duplicateWorkflow.isPending,
     handlePublish,
+    confirmPublish,
     isPublishing: publishWorkflow.isPending,
+    isComparing: compareWorkflowVersion.isPending,
+    publishReview,
+    setPublishReviewOpen: (open: boolean) => {
+      if (!open) {
+        const workflowId =
+          publishReview?.workflowId ?? currentWorkflowId ?? undefined;
+        if (publishReview) {
+          clearPublicationReview({
+            workflowId: publishReview.workflowId,
+            epoch: publishReview.epoch,
+          });
+        } else {
+          clearPublicationReview(workflowId);
+        }
+      }
+    },
     handleSetWorkflowMode,
   };
 }

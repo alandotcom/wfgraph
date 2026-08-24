@@ -6,7 +6,11 @@ import {
   groupOutletHandle,
   isGroupNode,
 } from "@wfgraph/shared/graph/node-group";
-import type { WorkflowNodeData } from "#src/lib/workflow-graph-types";
+import {
+  COMPARISON_NODE_ANNOTATION,
+  type WorkflowNodeData,
+} from "#src/lib/workflow-graph-types";
+import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
 
 type GroupNodeProps = NodeProps & {
   data?: WorkflowNodeData;
@@ -29,13 +33,14 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
         // transparent. Solid `--muted` gives the canvas three tones to order --
         // Paper canvas, recessed frame, Paper member cards -- and it inverts on
         // its own in dark, where Void, 0.15 and 0.205 stack the same way.
-        "flex h-full w-full flex-col rounded-md border-[1.5px] border-canvas-line bg-muted shadow-none",
+        "relative flex h-full w-full flex-col rounded-md border-[1.5px] border-canvas-line bg-muted shadow-none",
         "group-node-container",
         isDisabled && "opacity-50"
       )}
       data-selected={selected}
       data-testid={`group-node-${id}`}
     >
+      <ComparisonMarker comparison={data[COMPARISON_NODE_ANNOTATION]} />
       <Handle
         aria-label="Group input"
         position={Position.Top}

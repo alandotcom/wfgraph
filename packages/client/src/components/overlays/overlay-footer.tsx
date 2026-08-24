@@ -13,7 +13,9 @@ function ActionButton({ action }: { action: OverlayAction }) {
       onClick={action.onClick}
       variant={action.variant ?? "default"}
     >
-      {action.loading && <Loader2 className="mr-2 size-4 animate-spin" />}
+      {action.loading && (
+        <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" />
+      )}
       {action.label}
     </Button>
   );

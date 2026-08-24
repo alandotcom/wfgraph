@@ -122,3 +122,27 @@ The editor carries the other half: validation runs continuously against the
 graph, broken nodes wear a badge, and the toolbar counts them, so "it will not
 publish" is something the author reads while building rather than learns at the
 gate.
+
+## Amendment, 2026-08-23: publication history is durable and chronological
+
+The editor gained version history, structural comparison, and restore as draft.
+Those capabilities require every published revision to remain addressable after
+its runs finish. The retention sweep from the 2026-08-07 amendment is removed,
+and publication no longer reuses a row with matching content.
+
+Each confirmed Publish mints the next monotonic version. Publish refuses the
+current version's semantic graph, where node position and measured geometry do
+not change meaning. Publishing content restored from an older revision still
+mints a new version. Versions removed before this amendment cannot be recovered.
+
+History is paginated newest first. Comparison runs on the server against the
+exact draft graph supplied by the editor, then returns redacted graph snapshots
+and deterministic node, field, and connection changes. Restore copies one
+historical graph into the editable draft. It does not move the published pointer
+or rewrite event subscriptions, so new starts continue to use the current
+published version until the restored draft is published.
+
+Durable history retains historical configuration values for the lifetime of the
+workflow. Responses apply the same graph redaction policy as pinned run graphs.
+This retention and redaction policy supersedes the bounded-storage decision in
+the 2026-08-07 amendment.

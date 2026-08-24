@@ -34,7 +34,7 @@ import {
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import { isWorkflowOwnerAtom } from "#src/lib/workflow-save-store";
-import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
+import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { type ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
@@ -252,7 +252,7 @@ describe("deleteRuns", () => {
       edges: [],
     });
     store.set(isWorkflowOwnerAtom, true);
-    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(workflowWorkspaceViewAtom, "runs");
 
     const queryClient = new QueryClient({
       defaultOptions: {

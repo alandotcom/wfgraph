@@ -128,6 +128,145 @@ describe("native SQLite persistence", () => {
     }
   });
 
+  it("keeps chronological version history per workflow and pages it newest first", async () => {
+    const database = await open(await databasePath());
+    try {
+      const history = await database.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          yield* workflows.insert({
+            id: "wf_1",
+            name: "Appointments",
+            graph: emptyGraph,
+            eventSubscriptions: [],
+          });
+          yield* workflows.insert({
+            id: "wf_2",
+            name: "Billing",
+            graph: emptyGraph,
+            eventSubscriptions: [],
+          });
+          for (const version of [1, 2, 3]) {
+            yield* workflows.insertPublishedVersion({
+              workflowId: "wf_1",
+              versionId: `ver_${version}`,
+              version,
+              expectedPublishedVersionId:
+                version === 1 ? null : `ver_${version - 1}`,
+              graph: emptyGraph,
+              draftGraph: emptyGraph,
+              catalogFingerprint: "catalog",
+              graphDigest: "same-graph",
+              eventSubscriptions: [],
+            });
+          }
+          yield* workflows.insertPublishedVersion({
+            workflowId: "wf_2",
+            versionId: "ver_other",
+            version: 1,
+            expectedPublishedVersionId: null,
+            graph: emptyGraph,
+            draftGraph: emptyGraph,
+            catalogFingerprint: "catalog",
+            graphDigest: "same-graph",
+            eventSubscriptions: [],
+          });
+
+          return {
+            all: yield* workflows.listVersionHistoryPage({
+              workflowId: "wf_1",
+              limit: 3,
+            }),
+            afterThree: yield* workflows.listVersionHistoryPage({
+              workflowId: "wf_1",
+              limit: 1,
+              cursor: { version: 3 },
+            }),
+            other: yield* workflows.listVersionHistoryPage({
+              workflowId: "wf_2",
+              limit: 3,
+            }),
+          };
+        })
+      );
+
+      expect(history.all.map((version) => version.version)).toEqual([3, 2, 1]);
+      expect(history.all.filter((version) => version.isCurrent)).toMatchObject([
+        { id: "ver_3", version: 3 },
+      ]);
+      // The repository returns the one extra row needed to prove a next cursor.
+      expect(history.afterThree.map((version) => version.version)).toEqual([
+        2, 1,
+      ]);
+      expect(history.other).toMatchObject([{ id: "ver_other", version: 1 }]);
+    } finally {
+      await database.close();
+    }
+  });
+
+  it("rolls back a failed version publish with its subscription rewrite", async () => {
+    const database = await open(await databasePath());
+    try {
+      await database.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          return yield* workflows.insert({
+            id: "wf_1",
+            name: "Appointments",
+            graph: emptyGraph,
+            eventSubscriptions: [],
+          });
+        })
+      );
+
+      await expect(
+        database.run(
+          Effect.gen(function* () {
+            const workflows = yield* WorkflowRepo;
+            return yield* workflows.insertPublishedVersion({
+              workflowId: "wf_1",
+              versionId: "ver_failed",
+              version: 1,
+              expectedPublishedVersionId: null,
+              graph: emptyGraph,
+              draftGraph: emptyGraph,
+              catalogFingerprint: "catalog",
+              graphDigest: "graph",
+              eventSubscriptions: [
+                {
+                  workflowId: "wf_1",
+                  eventName: "appointment/created",
+                  role: "start",
+                  correlationPath: null,
+                },
+                {
+                  workflowId: "wf_1",
+                  eventName: "appointment/created",
+                  role: "start",
+                  correlationPath: null,
+                },
+              ],
+            });
+          })
+        )
+      ).rejects.toBeDefined();
+
+      const state = await database.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          return {
+            version: yield* workflows.findVersionById("ver_failed"),
+            workflow: yield* workflows.findById("wf_1"),
+          };
+        })
+      );
+      expect(state.version).toBeNull();
+      expect(state.workflow?.publishedVersionId).toBeNull();
+    } finally {
+      await database.close();
+    }
+  });
+
   it("serializes first-wins starts and makes delivery retries idempotent", async () => {
     const filename = await databasePath();
     const database = await open(filename);
@@ -146,6 +285,7 @@ describe("native SQLite persistence", () => {
             workflowId: "wf_1",
             versionId: "ver_1",
             version: 1,
+            expectedPublishedVersionId: null,
             graph: emptyGraph,
             draftGraph: emptyGraph,
             catalogFingerprint: "catalog",
@@ -221,6 +361,7 @@ describe("native SQLite persistence", () => {
             workflowId: "wf_1",
             versionId: "ver_1",
             version: 1,
+            expectedPublishedVersionId: null,
             graph: emptyGraph,
             draftGraph: emptyGraph,
             catalogFingerprint: "catalog",
@@ -315,6 +456,7 @@ describe("native SQLite persistence", () => {
             workflowId: "wf_1",
             versionId: "ver_1",
             version: 1,
+            expectedPublishedVersionId: null,
             graph: emptyGraph,
             draftGraph: emptyGraph,
             catalogFingerprint: "catalog",
@@ -451,6 +593,7 @@ describe("native SQLite persistence", () => {
             workflowId: "wf_1",
             versionId: "ver_1",
             version: 1,
+            expectedPublishedVersionId: null,
             graph: emptyGraph,
             draftGraph: emptyGraph,
             catalogFingerprint: "catalog",

@@ -1,23 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  pinnedRunLabel,
-  workflowModeLabel,
-} from "#src/components/workflow/workflow-status-strip";
+import { pinnedRunLabel } from "#src/components/workflow/workflow-status-strip";
 import { generateId } from "@wfgraph/shared/utils/id";
-
-describe("workflowModeLabel", () => {
-  it("names test mode, which decides whether real email and SMS go out", () => {
-    expect(workflowModeLabel("test")).toBe("Test mode");
-  });
-
-  it("names live mode too, rather than leaving the strip blank", () => {
-    // The toolbar's old pill appeared only in test mode, so a builder reading
-    // nothing could not tell live mode from a chrome that had not loaded. What
-    // covers the not-loaded case now is the strip declining to render this at
-    // all until the workflow payload has arrived.
-    expect(workflowModeLabel("live")).toBe("Live mode");
-  });
-});
 
 describe("pinnedRunLabel", () => {
   // The ids this takes are what `generateId` produces: 21 characters of

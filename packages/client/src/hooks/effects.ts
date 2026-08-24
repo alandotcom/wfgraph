@@ -142,6 +142,20 @@ export function useAfterCommit(key: unknown, run: () => void): void {
 }
 
 /**
+ * Like `useAfterCommit`, but before the browser paints the committed result.
+ * Use this when an imperative layout correction must be visually atomic with
+ * the React commit, such as keeping a React Flow node pinned while its graph is
+ * replaced.
+ */
+export function useBeforePaint(key: unknown, run: () => void): void {
+  const onKeyChanged = useLatestEvent(() => run());
+
+  useLayoutEffect(() => {
+    onKeyChanged();
+  }, [key, onKeyChanged]);
+}
+
+/**
  * Like `useAfterCommit`, but on the next macrotask rather than during the
  * commit, cancelling a pending run if `key` changes again first.
  *
@@ -157,6 +171,24 @@ export function useAfterPaint(key: unknown, run: () => void): void {
     const timer = setTimeout(() => onKeyChanged(), 0);
     return () => clearTimeout(timer);
   }, [key, onKeyChanged]);
+}
+
+/**
+ * Run `run` after `delayMs`, cancelling the pending run when `key` changes.
+ * This is for a bounded fallback when an external measurement may never arrive,
+ * not for sequencing ordinary UI state.
+ */
+export function useAfterDelay(
+  key: unknown,
+  delayMs: number,
+  run: () => void
+): void {
+  const onDelay = useLatestEvent(() => run());
+
+  useEffect(() => {
+    const timer = setTimeout(() => onDelay(), delayMs);
+    return () => clearTimeout(timer);
+  }, [key, delayMs, onDelay]);
 }
 
 /**

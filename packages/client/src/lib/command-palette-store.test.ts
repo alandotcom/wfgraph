@@ -9,7 +9,7 @@ import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   isGeneratingAtom,
-  propertiesPanelActiveTabAtom,
+  workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
 
 /** A store with a workflow open and nothing holding the canvas. */
@@ -20,11 +20,11 @@ function editorStore(workflowId: string | null = "workflow_1") {
 }
 
 /**
- * The overlay is only on the canvas while the Runs tab is, so both halves of
+ * The overlay is only on the canvas while Runs is active, so both halves of
  * that state go in together.
  */
 function pinRunToCanvas(store: ReturnType<typeof editorStore>) {
-  store.set(propertiesPanelActiveTabAtom, "runs");
+  store.set(workflowWorkspaceViewAtom, "runs");
   store.set(executionOverlayGraphAtom, { nodes: [], edges: [] });
 }
 

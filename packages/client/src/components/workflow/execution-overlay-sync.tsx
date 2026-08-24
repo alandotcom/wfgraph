@@ -127,8 +127,7 @@ function useExecutionOverlaySync(): void {
  * `useExecutionLogsByNode` read the selection atom this writes; the panel
  * only queries what its list and detail views display.
  *
- * Opening the Runs tab for a deep link is the route `beforeLoad`, not this
- * component: the shell is already mounted before that tab paints.
+ * Route integration makes a deep-linked execution open the Runs workspace.
  */
 export function ExecutionOverlaySync() {
   useExecutionOverlaySync();

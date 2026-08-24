@@ -6,6 +6,7 @@ import {
   type OnConnect,
   type OnConnectEnd,
   type OnConnectStartParams,
+  useInternalNode,
   useReactFlow,
   type Connection as XYFlowConnection,
   type Edge as XYFlowEdge,
@@ -23,7 +24,12 @@ import { toast } from "sonner";
 import { Edge } from "#src/components/flow-elements/edge";
 import { Panel } from "#src/components/flow-elements/panel";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
-import { useAfterPaint, useDomEvent } from "#src/hooks/effects";
+import {
+  useAfterDelay,
+  useAfterPaint,
+  useBeforePaint,
+  useDomEvent,
+} from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { isTextEntry } from "#src/lib/is-text-entry";
 import {
@@ -43,12 +49,13 @@ import {
   snapshotHistoryAtom,
   undoAtom,
 } from "#src/lib/workflow-graph-store";
-import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
-  isGeneratingAtom,
-  propertiesPanelActiveTabAtom,
-  showMinimapAtom,
-} from "#src/lib/workflow-ui-store";
+  activeComparisonAtom,
+  moveComparisonNodesAtom,
+  setComparisonSubviewAtom,
+} from "#src/lib/workflow-comparison-store";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import { isGeneratingAtom, showMinimapAtom } from "#src/lib/workflow-ui-store";
 import {
   workflowNodeAriaLabel,
   WORKFLOW_EDGE_TYPE,
@@ -68,7 +75,10 @@ import {
   useContextMenuHandlers,
   WorkflowContextMenu,
 } from "./workflow-context-menu";
-import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
+import {
+  WORKFLOW_NODE_HEIGHT,
+  WORKFLOW_NODE_WIDTH,
+} from "#src/lib/workflow-node-dimensions";
 import {
   connectionHandleTypesMatch,
   connectionRefusalReason,
@@ -95,6 +105,103 @@ const nodeTypes = {
   group: GroupNode,
 };
 
+export function canvasInteractionState({
+  editingLocked,
+  comparisonActive,
+  overlayActive,
+}: {
+  editingLocked: boolean;
+  comparisonActive: boolean;
+  overlayActive: boolean;
+}) {
+  const comparisonVisible = comparisonActive && !overlayActive;
+  return {
+    comparisonVisible,
+    elementsSelectable: !editingLocked || comparisonVisible,
+    nodesDraggable: !editingLocked || comparisonVisible,
+    edgesFocusable: !comparisonVisible,
+    deleteKeyCode: comparisonVisible ? null : ["Backspace", "Delete"],
+  };
+}
+
+export function canvasFitViewKey({
+  workflowId,
+  lifecycleNode,
+}: {
+  workflowId: string | null;
+  lifecycleNode: Pick<WorkflowNode, "id" | "position"> | null;
+}): string | null {
+  if (!workflowId || !lifecycleNode) {
+    return null;
+  }
+  return `${workflowId}:${lifecycleNode.id}:${lifecycleNode.position.x}:${lifecycleNode.position.y}`;
+}
+
+export const keyboardFitViewOptions = { padding: 0.2, duration: 0 } as const;
+
+export function lifecycleAnchorViewport({
+  canvasWidth,
+  nodePosition,
+  nodeWidth,
+  top,
+  zoom,
+}: {
+  canvasWidth: number;
+  nodePosition: { x: number; y: number };
+  nodeWidth: number;
+  top: number;
+  zoom: number;
+}): { x: number; y: number; zoom: number } {
+  return {
+    x: canvasWidth / 2 - (nodePosition.x + nodeWidth / 2) * zoom,
+    y: top - nodePosition.y * zoom,
+    zoom,
+  };
+}
+
+export async function fitInitialWorkflowViewport({
+  fitView,
+  isCurrent,
+  readAnchor,
+  setViewport,
+  reveal,
+}: {
+  fitView: () => Promise<boolean>;
+  isCurrent: () => boolean;
+  readAnchor: () => {
+    canvasWidth: number;
+    nodePosition: { x: number; y: number };
+    nodeWidth: number;
+    zoom: number;
+  } | null;
+  setViewport: (viewport: {
+    x: number;
+    y: number;
+    zoom: number;
+  }) => Promise<boolean>;
+  reveal: () => void;
+}): Promise<void> {
+  try {
+    if (!isCurrent()) {
+      return;
+    }
+    await fitView();
+    if (!isCurrent()) {
+      return;
+    }
+
+    const anchor = readAnchor();
+    if (!anchor) {
+      return;
+    }
+    await setViewport(lifecycleAnchorViewport({ ...anchor, top: 48 }));
+  } finally {
+    if (isCurrent()) {
+      reveal();
+    }
+  }
+}
+
 const accessibleNodeCache = new WeakMap<
   WorkflowNode,
   { label: string; node: WorkflowNode }
@@ -103,13 +210,18 @@ const accessibleEdgeCache = new WeakMap<
   WorkflowEdge,
   { label: string; edge: WorkflowEdge }
 >();
+type AccessibleNodeArray = {
+  catalog: ReturnType<typeof useExtensionCatalog>;
+  labels: ReadonlyMap<string, string>;
+  nodes: WorkflowNode[];
+};
 const accessibleNodeArrayCache = new WeakMap<
   WorkflowNode[],
-  { labelKey: string; nodes: WorkflowNode[] }
+  AccessibleNodeArray
 >();
 const accessibleEdgeArrayCache = new WeakMap<
   WorkflowEdge[],
-  { labelKey: string; edges: WorkflowEdge[] }
+  { nodeArray: AccessibleNodeArray; edges: WorkflowEdge[] }
 >();
 
 function withNodeAriaLabel(node: WorkflowNode, label: string): WorkflowNode {
@@ -143,45 +255,44 @@ function accessibleGraphElements(
   edges: WorkflowEdge[],
   catalog: ReturnType<typeof useExtensionCatalog>
 ): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
-  const labels = nodes.map(
-    (node) => [node.id, workflowNodeAriaLabel(node.data, catalog)] as const
-  );
-  const labelKey = labels
-    .map(([id, label]) => `${id}\u0000${label}`)
-    .join("\u0001");
-  const nodeLabels = new Map(labels);
-
   const cachedNodes = accessibleNodeArrayCache.get(nodes);
-  const accessibleNodes =
-    cachedNodes?.labelKey === labelKey
-      ? cachedNodes.nodes
-      : nodes.map((node) =>
-          withNodeAriaLabel(node, nodeLabels.get(node.id) ?? "Unknown step")
-        );
-  if (cachedNodes?.labelKey !== labelKey) {
-    accessibleNodeArrayCache.set(nodes, { labelKey, nodes: accessibleNodes });
+  let nodeArray = cachedNodes;
+  if (nodeArray?.catalog !== catalog) {
+    const labels = new Map(
+      nodes.map(
+        (node) => [node.id, workflowNodeAriaLabel(node.data, catalog)] as const
+      )
+    );
+    nodeArray = {
+      catalog,
+      labels,
+      nodes: nodes.map((node) =>
+        withNodeAriaLabel(node, labels.get(node.id) ?? "Unknown step")
+      ),
+    };
+    accessibleNodeArrayCache.set(nodes, nodeArray);
   }
 
   const cachedEdges = accessibleEdgeArrayCache.get(edges);
   const accessibleEdges =
-    cachedEdges?.labelKey === labelKey
+    cachedEdges?.nodeArray === nodeArray
       ? cachedEdges.edges
       : edges.map((edge) =>
           withEdgeAriaLabel(
             edge,
             workflowEdgeAriaLabel({
-              sourceLabel: nodeLabels.get(edge.source) ?? "Unknown step",
-              targetLabel: nodeLabels.get(edge.target) ?? "Unknown step",
+              sourceLabel: nodeArray.labels.get(edge.source) ?? "Unknown step",
+              targetLabel: nodeArray.labels.get(edge.target) ?? "Unknown step",
               sourceHandleId: edge.sourceHandle,
               data: edge.data,
             })
           )
         );
-  if (cachedEdges?.labelKey !== labelKey) {
-    accessibleEdgeArrayCache.set(edges, { labelKey, edges: accessibleEdges });
+  if (cachedEdges?.nodeArray !== nodeArray) {
+    accessibleEdgeArrayCache.set(edges, { nodeArray, edges: accessibleEdges });
   }
 
-  return { nodes: accessibleNodes, edges: accessibleEdges };
+  return { nodes: nodeArray.nodes, edges: accessibleEdges };
 }
 
 export function WorkflowCanvas() {
@@ -194,6 +305,8 @@ export function WorkflowCanvas() {
   // it. The toolbar's Publish button reads this same atom.
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
   const overlayActive = useAtomValue(isExecutionOverlayActiveAtom);
+  const comparison = useAtomValue(activeComparisonAtom);
+  const comparisonActive = comparison !== null;
   const isGenerating = useAtomValue(isGeneratingAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
@@ -202,6 +315,7 @@ export function WorkflowCanvas() {
   const isMobile = useIsMobile();
   const { openSheet } = useConfigurationSheet();
   const onNodesChange = useSetAtom(onNodesChangeAtom);
+  const moveComparisonNodes = useSetAtom(moveComparisonNodesAtom);
   const onEdgesChange = useSetAtom(onEdgesChangeAtom);
   const setSelectedNode = useSetAtom(selectedNodeAtom);
   const setSelectedEdge = useSetAtom(selectedEdgeAtom);
@@ -211,8 +325,32 @@ export function WorkflowCanvas() {
   const snapshotHistory = useSetAtom(snapshotHistoryAtom);
   const undo = useSetAtom(undoAtom);
   const redo = useSetAtom(redoAtom);
-  const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
-  const { screenToFlowPosition, fitView } = useReactFlow();
+  const setComparisonSubview = useSetAtom(setComparisonSubviewAtom);
+  const { screenToFlowPosition, fitView, getViewport, setViewport } =
+    useReactFlow();
+  const interaction = canvasInteractionState({
+    editingLocked,
+    comparisonActive,
+    overlayActive,
+  });
+  const lifecycleNode = nodes.find((node) => node.data.type === "lifecycle");
+  const internalLifecycleNode = useInternalNode<WorkflowNode>(
+    lifecycleNode?.id ?? ""
+  );
+  const measuredLifecycleNode = internalLifecycleNode?.measured?.width
+    ? {
+        id: internalLifecycleNode.id,
+        position: internalLifecycleNode.internals.positionAbsolute,
+      }
+    : null;
+  const anchorViewKey = canvasFitViewKey({
+    workflowId: currentWorkflowId,
+    lifecycleNode: lifecycleNode ?? null,
+  });
+  const fitViewKey = canvasFitViewKey({
+    workflowId: currentWorkflowId,
+    lifecycleNode: measuredLifecycleNode,
+  });
   // The same pass the Actions menu's "Tidy layout" runs.
   const { canReflow, reflow } = useReflowLayout();
   // React Flow owns the semantic wrappers around custom nodes and edges. Build
@@ -224,10 +362,15 @@ export function WorkflowCanvas() {
   const connectingHandleType = useRef<"source" | "target" | null>(null);
   const connectingHandleId = useRef<string | null>(null);
   const justCreatedNodeFromConnection = useRef(false);
-  const [isCanvasReady, setIsCanvasReady] = useState(false);
+  const [readyWorkflowId, setReadyWorkflowId] = useState<string | null>(null);
+  const isCanvasReady =
+    currentWorkflowId !== null && readyWorkflowId === currentWorkflowId;
   const [contextMenuState, setContextMenuState] =
     useState<ContextMenuState>(null);
   const rightClickSelectionRef = useRef<ReadonlySet<string>>(new Set());
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const fittedWorkflowIdRef = useRef<string | null>(null);
+  const fitGenerationRef = useRef(0);
   useDomEvent(
     window,
     "pointerdown",
@@ -258,16 +401,95 @@ export function WorkflowCanvas() {
     setContextMenuState(null);
   }, []);
 
-  // Fit the view once per workflow. Keying on the id is the whole rule: a
-  // workflow that has already been fitted does not get fitted again, and
-  // switching to another one does. After paint rather than during the commit,
-  // because React Flow measures node sizes then and fitView would otherwise
-  // frame geometry that is a frame out of date.
-  useAfterPaint(currentWorkflowId, () => {
-    void fitView({ maxZoom: 1, minZoom: 0.5, padding: 0.2, duration: 0 });
-    // The canvas is transparent until this has run, so the one frame of
-    // unframed graph between mount and the fit is never on screen.
-    setIsCanvasReady(true);
+  // A missing measurement must not strand the canvas invisibly. Normal loads
+  // become ready in the anchor pass below; this guard handles a node that React
+  // Flow could not measure and still lets a later measurement refine the view.
+  useAfterDelay(currentWorkflowId, 250, () => {
+    if (currentWorkflowId) {
+      setReadyWorkflowId(currentWorkflowId);
+    }
+  });
+
+  // A workspace swap replaces the graph before React Flow updates its
+  // internals. Re-anchor from the incoming node coordinates in the same commit
+  // so the browser never paints those coordinates through the old viewport.
+  useBeforePaint(fitViewKey, () => {
+    fitGenerationRef.current += 1;
+  });
+  useBeforePaint(anchorViewKey, () => {
+    if (
+      anchorViewKey === null ||
+      !currentWorkflowId ||
+      fittedWorkflowIdRef.current !== currentWorkflowId ||
+      !lifecycleNode
+    ) {
+      return;
+    }
+
+    const canvasWidth = canvasContainerRef.current?.clientWidth;
+    if (!canvasWidth) {
+      return;
+    }
+
+    void setViewport(
+      lifecycleAnchorViewport({
+        canvasWidth,
+        nodePosition: lifecycleNode.position,
+        nodeWidth:
+          internalLifecycleNode?.measured?.width ??
+          lifecycleNode.width ??
+          WORKFLOW_NODE_WIDTH,
+        top: 48,
+        zoom: getViewport().zoom,
+      }),
+      { duration: 0 }
+    );
+  });
+
+  // Choose a useful zoom once when the workflow loads, then preserve it while
+  // anchoring its Lifecycle card at the top-centre point. This initial pass
+  // waits for React Flow's measurements; later workspace swaps use the
+  // before-paint correction above.
+  useAfterPaint(fitViewKey, () => {
+    if (fitViewKey === null || !currentWorkflowId || !internalLifecycleNode) {
+      return;
+    }
+    if (fittedWorkflowIdRef.current === currentWorkflowId) {
+      return;
+    }
+    const fitGeneration = fitGenerationRef.current;
+    fittedWorkflowIdRef.current = currentWorkflowId;
+    void fitInitialWorkflowViewport({
+      fitView: () =>
+        fitView({
+          maxZoom: 1,
+          minZoom: 0.5,
+          padding: 0.2,
+          duration: 0,
+        }),
+      isCurrent: () => fitGenerationRef.current === fitGeneration,
+      readAnchor: () => {
+        const canvasWidth = canvasContainerRef.current?.clientWidth;
+        if (!canvasWidth) {
+          return null;
+        }
+
+        const nodeWidth =
+          internalLifecycleNode.measured?.width ??
+          internalLifecycleNode.internals.userNode.width ??
+          WORKFLOW_NODE_WIDTH;
+        return {
+          canvasWidth,
+          nodePosition: internalLifecycleNode.internals.positionAbsolute,
+          nodeWidth,
+          zoom: getViewport().zoom,
+        };
+      },
+      setViewport: (viewport) => setViewport(viewport, { duration: 0 }),
+      // Reveal immediately after the viewport work. The delayed guard above
+      // is the only other path to readiness.
+      reveal: () => setReadyWorkflowId(currentWorkflowId),
+    });
   });
 
   // Undo/redo (Cmd+Z, Cmd+Shift+Z). Lives beside the graph it acts on rather
@@ -312,7 +534,7 @@ export function WorkflowCanvas() {
     (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === "/") {
         event.preventDefault();
-        void fitView({ padding: 0.2, duration: 300 });
+        void fitView(keyboardFitViewOptions);
       }
     },
     [fitView]
@@ -427,7 +649,12 @@ export function WorkflowCanvas() {
       if (overlayActive) {
         return;
       }
-      setActiveTab("properties");
+      if (comparisonActive && currentWorkflowId) {
+        setComparisonSubview({
+          workflowId: currentWorkflowId,
+          subview: "properties",
+        });
+      }
       // Below the rail's breakpoint there is no panel mounted to receive the
       // selection, so selecting a node used to look like nothing happening: the
       // config lived behind an unlabelled toolbar icon a first-time user has no
@@ -436,7 +663,24 @@ export function WorkflowCanvas() {
         openSheet();
       }
     },
-    [overlayActive, setSelectedNode, setActiveTab, isMobile, openSheet]
+    [
+      comparisonActive,
+      currentWorkflowId,
+      isMobile,
+      openSheet,
+      overlayActive,
+      setComparisonSubview,
+      setSelectedNode,
+    ]
+  );
+
+  const onComparisonNodesChange = useCallback(
+    (changes: Parameters<typeof onNodesChange>[0]) => {
+      if (currentWorkflowId) {
+        moveComparisonNodes({ workflowId: currentWorkflowId, changes });
+      }
+    },
+    [currentWorkflowId, moveComparisonNodes]
   );
 
   const onConnectStart = useCallback(
@@ -542,7 +786,6 @@ export function WorkflowCanvas() {
 
       addNode(newNode);
       setSelectedNode(newNode.id);
-      setActiveTab("properties");
 
       // Deselect all other nodes and select only the new node
       // Need to do this after a delay because panOnDrag will clear selection
@@ -575,7 +818,6 @@ export function WorkflowCanvas() {
       addNode,
       selectOnlyNode,
       setSelectedNode,
-      setActiveTab,
       normalizeSourceHandleForConnection,
       onConnect,
       isValidConnection,
@@ -694,9 +936,9 @@ export function WorkflowCanvas() {
     <div
       className="relative h-full w-full bg-background"
       data-testid="workflow-canvas"
+      ref={canvasContainerRef}
       style={{
         opacity: isCanvasReady ? 1 : 0,
-        transition: "opacity 300ms",
       }}
     >
       {/* React Flow Canvas */}
@@ -705,15 +947,21 @@ export function WorkflowCanvas() {
         connectionLineComponent={Connection}
         connectionMode={ConnectionMode.Strict}
         defaultEdgeOptions={defaultEdgeOptions}
+        deleteKeyCode={interaction.deleteKeyCode}
         edges={accessibleGraph.edges}
+        edgesFocusable={interaction.edgesFocusable}
         edgeTypes={edgeTypes}
-        elementsSelectable={!editingLocked}
+        elementsSelectable={interaction.elementsSelectable}
         isValidConnection={isValidConnection}
         nodes={accessibleGraph.nodes}
-        nodesConnectable={!editingLocked}
-        nodesDraggable={!editingLocked}
+        nodesConnectable={!editingLocked && !interaction.comparisonVisible}
+        nodesDraggable={interaction.nodesDraggable}
         nodeTypes={nodeTypes}
-        onBeforeDelete={onBeforeDelete}
+        onBeforeDelete={
+          interaction.comparisonVisible
+            ? () => Promise.resolve(false)
+            : onBeforeDelete
+        }
         onConnect={editingLocked ? undefined : onConnect}
         onConnectEnd={editingLocked ? undefined : onConnectEnd}
         onConnectStart={editingLocked ? undefined : onConnectStart}
@@ -721,10 +969,18 @@ export function WorkflowCanvas() {
         onEdgesChange={editingLocked ? undefined : onEdgesChange}
         onNodeClick={isGenerating ? undefined : onNodeClick}
         onNodeContextMenu={editingLocked ? undefined : onNodeContextMenu}
-        onNodesChange={editingLocked ? undefined : onNodesChange}
+        onNodesChange={
+          interaction.comparisonVisible
+            ? onComparisonNodesChange
+            : editingLocked
+              ? undefined
+              : onNodesChange
+        }
         onPaneClick={onPaneClick}
         onPaneContextMenu={editingLocked ? undefined : onPaneContextMenu}
-        onSelectionChange={editingLocked ? undefined : onSelectionChange}
+        onSelectionChange={
+          interaction.elementsSelectable ? onSelectionChange : undefined
+        }
       >
         <Panel
           className="border-none bg-transparent p-0"
