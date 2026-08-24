@@ -6,8 +6,8 @@ import { isWorkflowOwnerAtom } from "#src/lib/workflow-save-store";
  *
  * None of this belongs to the graph, so this module does not import
  * `workflow-graph-store`. It does read `isWorkflowOwnerAtom` from
- * `workflow-save-store` so the Runs tab and the canvas overlay agree on
- * whether that owner-only tab is up; that module does not import this one.
+ * `workflow-save-store` so the Runs workspace and the canvas overlay agree on
+ * whether that owner-only view is up; that module does not import this one.
  *
  * Two of these preferences survive a reload, in cookies. Both are read once as
  * the atom's initial value and written from the atom's own setter, so there is
@@ -46,10 +46,22 @@ function readInitialSidebarPercent(): number {
     : DEFAULT_SIDEBAR_PERCENT;
 }
 
-export type PropertiesPanelTab = "properties" | "runs" | "changes";
+export type WorkflowWorkspaceView = "draft" | "runs" | "changes";
 
-export const propertiesPanelActiveTabAtom =
-  atom<PropertiesPanelTab>("properties");
+const workflowWorkspaceViewStateAtom = atom<WorkflowWorkspaceView>("draft");
+
+/**
+ * The editor-wide surface that owns the canvas and inspector. Owner-only views
+ * normalize to Draft as soon as the open workflow is no longer editable.
+ */
+export const workflowWorkspaceViewAtom = atom(
+  (get) =>
+    get(isWorkflowOwnerAtom) ? get(workflowWorkspaceViewStateAtom) : "draft",
+  (_get, set, view: WorkflowWorkspaceView) => {
+    set(workflowWorkspaceViewStateAtom, view);
+  }
+);
+
 export const showMinimapAtom = atom(false);
 
 const sidebarCollapsedStateAtom = atom(
@@ -186,32 +198,18 @@ export const agentPanelSizeAtom = atom(
   }
 );
 
-/**
- * The tab the panel actually shows: the stored one, unless it is the owner-only
- * owner-only tab and the viewer cannot use it. Changes additionally requires
- * publication data, which the panel owns because it is server state.
- */
-export const activePropertiesTabAtom = atom((get) =>
-  get(propertiesPanelActiveTabAtom) === "runs" && get(isWorkflowOwnerAtom)
-    ? "runs"
-    : get(propertiesPanelActiveTabAtom) === "changes" &&
-        get(isWorkflowOwnerAtom)
-      ? "changes"
-      : "properties"
-);
-
 /** The run last opened in the Runs panel, whether or not that panel is up. */
 const watchedExecutionIdAtom = atom<string | null>(null);
 
 /**
- * The run the canvas is painting. It reports a run only while the Runs tab is
- * up, so leaving that tab takes the chips, the borders and the countdown off
+ * The run the canvas is painting. It reports a run only while the Runs workspace
+ * is active, so leaving it takes the chips, borders, and countdown off
  * the graph and stops both polls, without any caller having to remember to
  * clear it.
  */
 export const selectedExecutionIdAtom = atom(
   (get) =>
-    get(activePropertiesTabAtom) === "runs"
+    get(workflowWorkspaceViewAtom) === "runs"
       ? get(watchedExecutionIdAtom)
       : null,
   (_get, set, executionId: string | null) => {

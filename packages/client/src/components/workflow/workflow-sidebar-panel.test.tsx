@@ -21,10 +21,10 @@ import {
   executionOverlayGraphAtom,
 } from "#src/lib/workflow-graph-store";
 import { isWorkflowOwnerAtom } from "#src/lib/workflow-save-store";
-import { workflowPanelTab } from "#src/lib/workflow-route-state";
+import { workflowWorkspaceView } from "#src/lib/workflow-route-state";
 import {
   isSidebarCollapsedAtom,
-  propertiesPanelActiveTabAtom,
+  workflowWorkspaceViewAtom,
   sidebarWidthCss,
   sidebarWidthPercentAtom,
 } from "#src/lib/workflow-ui-store";
@@ -54,7 +54,7 @@ const served: WorkflowRunRpcFixture = {
 };
 
 /**
- * The Runs tab opens on a pinned run, so four oRPC procedures fire on render.
+ * Runs opens on a pinned run, so four oRPC procedures fire on render.
  * Without this the queries reach happy-dom's own origin and Node answers each
  * one with an unattributed ECONNRESET after the test has finished.
  */
@@ -80,7 +80,7 @@ function stubRunQueries(): void {
 function renderPanel() {
   const store = createStore();
   store.set(isWorkflowOwnerAtom, true);
-  store.set(propertiesPanelActiveTabAtom, "runs");
+  store.set(workflowWorkspaceViewAtom, "runs");
   store.set(isSidebarCollapsedAtom, false);
   store.set(executionOverlayGraphAtom, {
     nodes: [
@@ -105,9 +105,9 @@ function renderPanel() {
           : undefined,
     }),
     beforeLoad: ({ search }) => {
-      const tab = workflowPanelTab(search.executionId);
+      const tab = workflowWorkspaceView(search.executionId);
       if (tab !== null) {
-        store.set(propertiesPanelActiveTabAtom, tab);
+        store.set(workflowWorkspaceViewAtom, tab);
       }
     },
     component: () => <WorkflowSidebarPanel />,
@@ -270,10 +270,10 @@ describe("WorkflowSidebarPanel", () => {
   });
 
   // Collapsing slides the rail behind the viewport edge without unmounting it,
-  // so the Runs tab kept its state while its tab bar was out of reach: the run
+  // so Runs kept its state while its controls were out of reach: the run
   // stayed pinned to the canvas and every edit was refused with nothing on
   // screen saying why. Same shape as the mobile sheet in #96.
-  it("closes the open run when the rail is collapsed", async () => {
+  it("preserves the open run when the rail is collapsed", async () => {
     const { view, store, router } = renderPanel();
 
     await waitFor(() => {
@@ -286,14 +286,14 @@ describe("WorkflowSidebarPanel", () => {
     });
 
     expect(store.get(isSidebarCollapsedAtom)).toBe(true);
-    expect(store.get(propertiesPanelActiveTabAtom)).toBe("properties");
-    expect(router.state.location.search).toEqual({});
-    expect(store.get(canvasEditingLockedAtom)).toBe(false);
+    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
+    expect(router.state.location.search).toEqual({ executionId: "exec_1" });
+    expect(store.get(canvasEditingLockedAtom)).toBe(true);
   });
 
   // Cmd+B is the other way to collapse, and a shortcut that skipped the exit
   // would leave the same locked canvas the button no longer can.
-  it("closes the open run when the collapse shortcut is pressed", async () => {
+  it("preserves the open run when the collapse shortcut is pressed", async () => {
     const { view, store, router } = renderPanel();
 
     await waitFor(() => {
@@ -305,8 +305,8 @@ describe("WorkflowSidebarPanel", () => {
     });
 
     expect(store.get(isSidebarCollapsedAtom)).toBe(true);
-    expect(store.get(propertiesPanelActiveTabAtom)).toBe("properties");
-    expect(router.state.location.search).toEqual({});
+    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
+    expect(router.state.location.search).toEqual({ executionId: "exec_1" });
   });
 
   // The percentage the drag stores is a share of the editor shell, which is the
@@ -392,7 +392,7 @@ describe("WorkflowSidebarPanel", () => {
     });
 
     expect(store.get(isSidebarCollapsedAtom)).toBe(false);
-    expect(store.get(propertiesPanelActiveTabAtom)).toBe("runs");
+    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
     expect(router.state.location.search).toEqual({ executionId: "exec_1" });
   });
 });

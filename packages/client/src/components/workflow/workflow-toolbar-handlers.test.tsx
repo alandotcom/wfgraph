@@ -81,7 +81,6 @@ function state(): WorkflowToolbarState {
     canUndo: false,
     canRedo: false,
     allWorkflows: [],
-    setActiveTab: vi.fn(),
     setSelectedNodeId: vi.fn(),
     userIntegrations: [],
     publication: {

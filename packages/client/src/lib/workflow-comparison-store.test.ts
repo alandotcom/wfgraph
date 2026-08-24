@@ -15,7 +15,6 @@ import {
   resetComparisonLayoutAtom,
   selectComparisonHistoryVersionAtom,
   setComparisonSubviewAtom,
-  setWorkflowComparisonVisibleAtom,
   settleWorkflowComparisonRequestAtom,
 } from "#src/lib/workflow-comparison-store";
 import {
@@ -38,7 +37,7 @@ import {
   isWorkflowOwnerAtom,
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
-import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
+import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import { savedWorkflow } from "./workflow-save-test-support";
 
@@ -82,6 +81,8 @@ function installComparison(
     selectedHistoryVersionId?: string | null;
   }
 ) {
+  store.set(isWorkflowOwnerAtom, true);
+  store.set(workflowWorkspaceViewAtom, "changes");
   const epoch = store.set(beginWorkflowComparisonRequestAtom, input.workflowId);
   store.set(installWorkflowComparisonAtom, { ...input, epoch });
   store.set(settleWorkflowComparisonRequestAtom, {
@@ -114,7 +115,7 @@ describe("comparison session store", () => {
     expect(store.get(comparisonSessionAtom)).toBeNull();
   });
 
-  it("keeps a hidden comparison session while returning the canvas to the draft", () => {
+  it("shows a comparison only while Changes owns the canvas", () => {
     const store = createStore();
     store.set(currentWorkflowIdAtom, "workflow_1");
     store.set(loadWorkflowGraphAtom, {
@@ -132,10 +133,7 @@ describe("comparison session store", () => {
       payload: comparison,
     });
 
-    store.set(setWorkflowComparisonVisibleAtom, {
-      workflowId: "workflow_1",
-      visible: false,
-    });
+    store.set(workflowWorkspaceViewAtom, "draft");
 
     expect(store.get(comparisonSessionAtom)).not.toBeNull();
     expect(store.get(isComparisonActiveAtom)).toBe(false);
@@ -143,10 +141,7 @@ describe("comparison session store", () => {
       "draft",
     ]);
 
-    store.set(setWorkflowComparisonVisibleAtom, {
-      workflowId: "workflow_1",
-      visible: true,
-    });
+    store.set(workflowWorkspaceViewAtom, "changes");
     expect(store.get(isComparisonActiveAtom)).toBe(true);
     expect(store.get(displayNodesAtom).map((item) => item.id)).toContain(
       "deleted"
@@ -377,7 +372,7 @@ describe("comparison session store", () => {
     ]);
   });
 
-  it("keeps comparison ahead of the draft, below a visible run, and free of run or validation paint", () => {
+  it("shows only the active workspace graph and keeps comparison free of run or validation paint", () => {
     const store = createStore();
     store.set(currentWorkflowIdAtom, "workflow_1");
     store.set(isWorkflowOwnerAtom, true);
@@ -417,7 +412,7 @@ describe("comparison session store", () => {
     expect(store.get(displayNodesAtom)[0]?.data.status).toBeUndefined();
     expect(store.get(displayNodesAtom)[0]?.data.issues).toBeUndefined();
 
-    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(workflowWorkspaceViewAtom, "runs");
     store.set(executionOverlayGraphAtom, {
       nodes: [
         {
@@ -435,10 +430,9 @@ describe("comparison session store", () => {
     ]);
     expect(store.get(displayNodesAtom)[0]?.data.status).toBe("running");
 
-    store.set(propertiesPanelActiveTabAtom, "properties");
+    store.set(workflowWorkspaceViewAtom, "draft");
     expect(store.get(displayNodesAtom).map((item) => item.id)).toEqual([
-      "shared",
-      "deleted",
+      "draft",
     ]);
   });
 
@@ -488,6 +482,8 @@ describe("comparison session store", () => {
       ],
       edges: [],
     });
+    store.set(isWorkflowOwnerAtom, true);
+    store.set(workflowWorkspaceViewAtom, "changes");
     store.set(beginWorkflowComparisonRequestAtom, "workflow_1");
 
     expect(store.get(isComparisonPendingAtom)).toBe(true);

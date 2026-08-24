@@ -18,8 +18,8 @@ import {
   executionOverlayGraphAtom,
 } from "#src/lib/workflow-graph-store";
 import { isWorkflowOwnerAtom } from "#src/lib/workflow-save-store";
-import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
-import { workflowPanelTab } from "#src/lib/workflow-route-state";
+import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
+import { workflowWorkspaceView } from "#src/lib/workflow-route-state";
 
 /**
  * The sheet's dismissal contract, driven through the real `OverlayProvider`
@@ -93,7 +93,7 @@ function Host() {
 async function renderSheetHost() {
   const store = createStore();
   store.set(isWorkflowOwnerAtom, true);
-  store.set(propertiesPanelActiveTabAtom, "runs");
+  store.set(workflowWorkspaceViewAtom, "runs");
   pinRun(store);
 
   const rootRoute = createRootRoute({ component: () => <Outlet /> });
@@ -109,9 +109,9 @@ async function renderSheetHost() {
     // Mirrors the production route, so a case can tell an exit that clears the
     // run apart from one the router would put straight back.
     beforeLoad: ({ search }) => {
-      const tab = workflowPanelTab(search.executionId);
+      const tab = workflowWorkspaceView(search.executionId);
       if (tab !== null) {
-        store.set(propertiesPanelActiveTabAtom, tab);
+        store.set(workflowWorkspaceViewAtom, tab);
       }
     },
     component: () => <Host />,
@@ -148,10 +148,10 @@ describe("useConfigurationSheet", () => {
     setViewportWidth(1024);
   });
 
-  // The sheet's tab bar is the only way a narrow viewport reaches the open run,
+  // The workspace switcher is how a narrow viewport reaches the open run,
   // so closing it has to take the run off the canvas as well. Left pinned, the
   // canvas refused every edit with no panel on screen to say why (#96).
-  it("closes the open run when the sheet is dismissed", async () => {
+  it("preserves the open run when the sheet is dismissed", async () => {
     setViewportWidth(500);
     const { store, router, click } = await renderSheetHost();
 
@@ -160,37 +160,37 @@ describe("useConfigurationSheet", () => {
 
     await click("close-all");
 
-    expect(store.get(propertiesPanelActiveTabAtom)).toBe("properties");
-    expect(router.state.location.search).toEqual({});
-    expect(store.get(canvasEditingLockedAtom)).toBe(false);
+    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
+    expect(router.state.location.search).toEqual({ executionId: "exec_1" });
+    expect(store.get(canvasEditingLockedAtom)).toBe(true);
   });
 
   // Escape leaves through `pop` rather than `closeAll`; both have to arrive at
   // the same place, or the bug survives on whichever path was missed.
-  it("closes the open run when the sheet is popped", async () => {
+  it("preserves the open run when the sheet is popped", async () => {
     setViewportWidth(500);
     const { store, router, click } = await renderSheetHost();
 
     await click("open-sheet");
     await click("pop");
 
-    expect(store.get(propertiesPanelActiveTabAtom)).toBe("properties");
-    expect(router.state.location.search).toEqual({});
+    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
+    expect(router.state.location.search).toEqual({ executionId: "exec_1" });
   });
 
   // Opening another overlay replaces the stack rather than stacking on it, so
   // the sheet is gone from screen without anything having dismissed it. Tapping
   // Test Run from the sheet is the reachable case.
-  it("closes the open run when another overlay takes the stack", async () => {
+  it("preserves the open run when another overlay takes the stack", async () => {
     setViewportWidth(500);
     const { store, router, click } = await renderSheetHost();
 
     await click("open-sheet");
     await click("open-other");
 
-    expect(store.get(propertiesPanelActiveTabAtom)).toBe("properties");
-    expect(router.state.location.search).toEqual({});
-    expect(store.get(canvasEditingLockedAtom)).toBe(false);
+    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
+    expect(router.state.location.search).toEqual({ executionId: "exec_1" });
+    expect(store.get(canvasEditingLockedAtom)).toBe(true);
   });
 
   // Widening past the rail's breakpoint also closes the sheet, and there the
@@ -205,7 +205,7 @@ describe("useConfigurationSheet", () => {
     setViewportWidth(1200);
     await click("close-all");
 
-    expect(store.get(propertiesPanelActiveTabAtom)).toBe("runs");
+    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
     expect(router.state.location.search).toEqual({ executionId: "exec_1" });
     expect(store.get(canvasEditingLockedAtom)).toBe(true);
   });

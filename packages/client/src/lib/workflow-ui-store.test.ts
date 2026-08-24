@@ -2,38 +2,37 @@ import { describe, expect, it } from "vitest";
 import { createStore } from "jotai";
 import { isWorkflowOwnerAtom } from "#src/lib/workflow-save-store";
 import {
-  activePropertiesTabAtom,
-  propertiesPanelActiveTabAtom,
   selectedExecutionIdAtom,
+  workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
 
 describe("selectedExecutionIdAtom", () => {
-  it("reports a written id while the Runs tab is up and the viewer owns the workflow", () => {
+  it("reports a written id while the Runs workspace is active", () => {
     const store = createStore();
     store.set(isWorkflowOwnerAtom, true);
-    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(workflowWorkspaceViewAtom, "runs");
     store.set(selectedExecutionIdAtom, "exec_1");
 
     expect(store.get(selectedExecutionIdAtom)).toBe("exec_1");
   });
 
-  it("reads null once the tab is Properties, keeping the write for later", () => {
+  it("reads null outside Runs while keeping the run selection for later", () => {
     const store = createStore();
     store.set(isWorkflowOwnerAtom, true);
-    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(workflowWorkspaceViewAtom, "runs");
     store.set(selectedExecutionIdAtom, "exec_1");
 
-    store.set(propertiesPanelActiveTabAtom, "properties");
+    store.set(workflowWorkspaceViewAtom, "draft");
     expect(store.get(selectedExecutionIdAtom)).toBeNull();
 
-    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(workflowWorkspaceViewAtom, "runs");
     expect(store.get(selectedExecutionIdAtom)).toBe("exec_1");
   });
 
   it("reads null for a non-owner whose stored tab is Runs", () => {
     const store = createStore();
     store.set(isWorkflowOwnerAtom, true);
-    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(workflowWorkspaceViewAtom, "runs");
     store.set(selectedExecutionIdAtom, "exec_1");
 
     store.set(isWorkflowOwnerAtom, false);
@@ -41,28 +40,34 @@ describe("selectedExecutionIdAtom", () => {
   });
 });
 
-describe("activePropertiesTabAtom", () => {
-  it("allows Changes for an owner while the panel resolves publication data", () => {
+describe("workflowWorkspaceViewAtom", () => {
+  it("defaults to Draft", () => {
     const store = createStore();
-    store.set(propertiesPanelActiveTabAtom, "changes");
-    store.set(isWorkflowOwnerAtom, true);
 
-    expect(store.get(activePropertiesTabAtom)).toBe("changes");
+    expect(store.get(workflowWorkspaceViewAtom)).toBe("draft");
+  });
+
+  it("allows Changes for an owner while the inspector resolves publication data", () => {
+    const store = createStore();
+    store.set(isWorkflowOwnerAtom, true);
+    store.set(workflowWorkspaceViewAtom, "changes");
+
+    expect(store.get(workflowWorkspaceViewAtom)).toBe("changes");
 
     store.set(isWorkflowOwnerAtom, false);
-    expect(store.get(activePropertiesTabAtom)).toBe("properties");
+    expect(store.get(workflowWorkspaceViewAtom)).toBe("draft");
   });
 
   it("keeps a selected run available after visiting Changes", () => {
     const store = createStore();
     store.set(isWorkflowOwnerAtom, true);
-    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(workflowWorkspaceViewAtom, "runs");
     store.set(selectedExecutionIdAtom, "exec_1");
 
-    store.set(propertiesPanelActiveTabAtom, "changes");
+    store.set(workflowWorkspaceViewAtom, "changes");
     expect(store.get(selectedExecutionIdAtom)).toBeNull();
 
-    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(workflowWorkspaceViewAtom, "runs");
     expect(store.get(selectedExecutionIdAtom)).toBe("exec_1");
   });
 });

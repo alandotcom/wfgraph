@@ -1,19 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   Eraser,
   Eye,
   EyeOff,
-  GitCompareArrows,
   MousePointerClick,
-  Play,
   RefreshCw,
-  Settings2,
   Trash2,
   Ungroup,
 } from "lucide-react";
-import type { KeyboardEvent } from "react";
-import { cn } from "@wfgraph/shared/utils";
 import { Button } from "#src/components/ui/button";
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
@@ -39,20 +33,12 @@ import {
   currentWorkflowIdAtom,
   isWorkflowOwnerAtom,
 } from "#src/lib/workflow-save-store";
-import { workflowPublicationQueryOptions } from "#src/lib/rpc-query";
 import {
-  activePropertiesTabAtom,
   isGeneratingAtom,
-  type PropertiesPanelTab,
-  propertiesPanelActiveTabAtom,
+  workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
 import { WorkflowChangesPanel } from "./workflow-changes-panel";
-import { WorkflowComparisonPropertiesPanel } from "./comparison-properties";
 import { useWorkflowComparisonActions } from "./use-workflow-comparison-actions";
-import {
-  isComparisonActiveAtom,
-  setWorkflowComparisonVisibleAtom,
-} from "#src/lib/workflow-comparison-store";
 import { ActionConfig } from "./config/action-config";
 import { ActionGrid } from "./config/action-grid";
 import { LifecyclePanel } from "./config/lifecycle-panel";
@@ -86,52 +72,21 @@ export type NodeConfigFrame = {
    * that is always on screen, like the rail, leaves this unset.
    */
   dismiss?: () => void;
-  /**
-   * Where the tab switcher sits: above the content in a rail, at the bottom of
-   * a sheet where a thumb reaches it.
-   */
-  tabs: "top" | "bottom";
 };
 
 /**
- * The tab to render, which is the stored one unless it is the owner-only Runs
- * tabs and the viewer cannot use one. The derivation lives on
- * `activePropertiesTabAtom` so the canvas overlay cannot disagree.
- */
-function useValidActiveTab() {
-  const validActiveTab = useAtomValue(activePropertiesTabAtom);
-  const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
-  const workflowId = useAtomValue(currentWorkflowIdAtom);
-  const isOwner = useAtomValue(isWorkflowOwnerAtom);
-  const { data: publication } = useQuery({
-    ...workflowPublicationQueryOptions(workflowId ?? ""),
-    enabled: Boolean(workflowId),
-  });
-  const changesAvailable = isOwner && Boolean(publication?.isPublished);
-  return {
-    validActiveTab:
-      validActiveTab === "changes" && !changesAvailable
-        ? "properties"
-        : validActiveTab,
-    setActiveTab,
-    changesAvailable,
-    workflowId,
-  } as const;
-}
-
-/**
  * What the panel is currently configuring, for a frame that shows a title.
- * Derived here so the header and the tab switcher cannot disagree.
+ * Derived from the workspace so the header and canvas cannot disagree.
  */
 export function useNodeConfigTitle(): string {
-  const { validActiveTab } = useValidActiveTab();
+  const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
   const selectedNodeId = useAtomValue(selectedNodeAtom);
   const selectedEdgeId = useAtomValue(selectedEdgeAtom);
 
-  if (validActiveTab === "runs") {
+  if (workspaceView === "runs") {
     return "Runs";
   }
-  if (validActiveTab === "changes") {
+  if (workspaceView === "changes") {
     return "Changes";
   }
   // An edge on its own is the one selection with a title of its own. Everything
@@ -193,192 +148,15 @@ export function RunsPanelActions({
   );
 }
 
-type TabBarProps = {
-  placement: NodeConfigFrame["tabs"];
-  activeTab: PropertiesPanelTab;
-  onSelect: (tab: PropertiesPanelTab) => void;
-  showChanges: boolean;
-  showRuns: boolean;
-};
-
-const WORKFLOW_PANEL_ID = "workflow-properties-panel";
-
-function tabId(tab: PropertiesPanelTab): string {
-  return `workflow-properties-tab-${tab}`;
-}
-
-function TabBar({
-  placement,
-  activeTab,
-  onSelect,
-  showChanges,
-  showRuns,
-}: TabBarProps) {
-  const tabs = [
-    "properties" as const,
-    ...(showRuns ? (["runs"] as const) : []),
-    ...(showChanges ? (["changes"] as const) : []),
-  ];
-  const selectFromKeyboard = (
-    event: KeyboardEvent<HTMLButtonElement>,
-    tab: PropertiesPanelTab
-  ) => {
-    const currentIndex = tabs.indexOf(tab);
-    const nextIndex =
-      event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? tabs.length - 1
-          : event.key === "ArrowLeft"
-            ? (currentIndex - 1 + tabs.length) % tabs.length
-            : event.key === "ArrowRight"
-              ? (currentIndex + 1) % tabs.length
-              : null;
-    if (nextIndex === null) return;
-    event.preventDefault();
-    const nextTab = tabs[nextIndex];
-    onSelect(nextTab);
-    event.currentTarget.ownerDocument.getElementById(tabId(nextTab))?.focus();
-  };
-  const tabProps = (tab: PropertiesPanelTab) => ({
-    "aria-controls": WORKFLOW_PANEL_ID,
-    "aria-selected": activeTab === tab,
-    id: tabId(tab),
-    onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) =>
-      selectFromKeyboard(event, tab),
-    role: "tab" as const,
-    tabIndex: activeTab === tab ? 0 : -1,
-  });
-  if (placement === "bottom") {
-    return (
-      <div
-        aria-label="Workflow panel"
-        className="flex shrink-0 items-center justify-around border-t bg-background pb-safe"
-        role="tablist"
-      >
-        <button
-          {...tabProps("properties")}
-          className={`flex flex-1 flex-col items-center gap-1 py-3 font-medium text-xs transition-colors ${
-            activeTab === "properties"
-              ? "text-foreground"
-              : "text-muted-foreground"
-          }`}
-          onClick={() => onSelect("properties")}
-          type="button"
-        >
-          <Settings2 className="size-5" />
-          Properties
-        </button>
-        {showRuns ? (
-          <button
-            {...tabProps("runs")}
-            className={`flex flex-1 flex-col items-center gap-1 py-3 font-medium text-xs transition-colors ${
-              activeTab === "runs" ? "text-foreground" : "text-muted-foreground"
-            }`}
-            onClick={() => onSelect("runs")}
-            type="button"
-          >
-            <Play className="size-5" />
-            Runs
-          </button>
-        ) : null}
-        {showChanges ? (
-          <button
-            {...tabProps("changes")}
-            className={`flex flex-1 flex-col items-center gap-1 py-3 font-medium text-xs transition-colors ${
-              activeTab === "changes"
-                ? "text-foreground"
-                : "text-muted-foreground"
-            }`}
-            onClick={() => onSelect("changes")}
-            type="button"
-          >
-            <GitCompareArrows className="size-5" />
-            Changes
-          </button>
-        ) : null}
-      </div>
-    );
-  }
-
-  return (
-    <>
-      {/* mira sizes every control in the editor at 28px; this segmented control
-           predates that adoption and was 36px with 14px labels, which put the
-           panel a density step away from the menu bar directly above it. */}
-      <div
-        aria-label="Workflow panel"
-        className="relative mx-4 my-2 inline-flex h-7 min-w-0 shrink-0 self-stretch items-center justify-center rounded-md bg-muted p-[3px] text-muted-foreground"
-        role="tablist"
-      >
-        <span
-          aria-hidden="true"
-          className={cn(
-            "pointer-events-none absolute inset-y-[3px] left-[3px] rounded-sm bg-background shadow-sm transition-transform duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:duration-100",
-            showChanges
-              ? "w-[calc(33.333%-3px)]"
-              : showRuns
-                ? "w-[calc(50%-3px)]"
-                : "w-[calc(100%-6px)]",
-            activeTab === "runs" && "translate-x-full",
-            activeTab === "changes" && "translate-x-[200%]"
-          )}
-        />
-        <button
-          {...tabProps("properties")}
-          className={`relative z-10 inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 font-medium text-xs transition-colors duration-[180ms] ${
-            activeTab === "properties"
-              ? "text-foreground"
-              : "text-muted-foreground"
-          }`}
-          onClick={() => onSelect("properties")}
-          type="button"
-        >
-          Properties
-        </button>
-        {showRuns ? (
-          <button
-            {...tabProps("runs")}
-            className={`relative z-10 inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 font-medium text-xs transition-colors duration-[180ms] ${
-              activeTab === "runs" ? "text-foreground" : "text-muted-foreground"
-            }`}
-            onClick={() => onSelect("runs")}
-            type="button"
-          >
-            Runs
-          </button>
-        ) : null}
-        {showChanges ? (
-          <button
-            {...tabProps("changes")}
-            className={`relative z-10 inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 font-medium text-xs transition-colors duration-[180ms] ${
-              activeTab === "changes"
-                ? "text-foreground"
-                : "text-muted-foreground"
-            }`}
-            onClick={() => onSelect("changes")}
-            type="button"
-          >
-            Changes
-          </button>
-        ) : null}
-      </div>
-    </>
-  );
-}
-
 export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
   const { updateConfig: handleUpdateConfig } = useNodeConfigWriter();
-  const { validActiveTab, setActiveTab, changesAvailable, workflowId } =
-    useValidActiveTab();
+  const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
   const selectedNodeId = useAtomValue(selectedNodeAtom);
   const selectedEdgeId = useAtomValue(selectedEdgeAtom);
   const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
   const isGenerating = useAtomValue(isGeneratingAtom);
   const isOwner = useAtomValue(isWorkflowOwnerAtom);
-  const comparisonActive = useAtomValue(isComparisonActiveAtom);
-  const setComparisonVisible = useSetAtom(setWorkflowComparisonVisibleAtom);
   const comparisonActions = useWorkflowComparisonActions();
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const deleteNode = useSetAtom(deleteNodeAtom);
@@ -742,27 +520,6 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
     );
   };
 
-  const tabBar = (
-    <TabBar
-      activeTab={validActiveTab}
-      onSelect={(tab) => {
-        setActiveTab(tab);
-        if (workflowId) {
-          setComparisonVisible({
-            workflowId,
-            visible: tab === "changes",
-          });
-        }
-        if (tab === "changes") {
-          void comparisonActions.openComparison();
-        }
-      }}
-      placement={frame.tabs}
-      showChanges={changesAvailable}
-      showRuns={isOwner}
-    />
-  );
-
   return (
     // `flex-1` rather than a full height: both frames are flex columns, and the
     // sheet puts a header above this.
@@ -770,38 +527,21 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
       className="relative flex min-h-0 flex-1 flex-col"
       data-testid="properties-panel"
     >
-      {frame.tabs === "top" ? tabBar : null}
-
-      <div
-        aria-labelledby={tabId(validActiveTab)}
-        className="flex min-h-0 flex-1 flex-col"
-        id={WORKFLOW_PANEL_ID}
-        role="tabpanel"
-      >
-        {validActiveTab === "properties" ? (
+      <div className="flex min-h-0 flex-1 flex-col">
+        {workspaceView === "draft" ? (
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable_both-edges]">
-            {comparisonActive ? (
-              <WorkflowComparisonPropertiesPanel />
-            ) : (
-              renderPropertiesContent()
-            )}
+            {renderPropertiesContent()}
           </div>
-        ) : validActiveTab === "changes" ? (
+        ) : workspaceView === "changes" ? (
           <WorkflowChangesPanel actions={comparisonActions} />
         ) : (
           <div className="min-h-0 flex-1 overflow-hidden">
             <WorkflowRuns
-              listActions={
-                frame.tabs === "top" ? (
-                  <RunsPanelActions confirm={frame.confirm} />
-                ) : undefined
-              }
+              listActions={<RunsPanelActions confirm={frame.confirm} />}
             />
           </div>
         )}
       </div>
-
-      {frame.tabs === "bottom" ? tabBar : null}
     </div>
   );
 }

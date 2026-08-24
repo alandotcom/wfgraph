@@ -28,6 +28,7 @@ import {
   activeAgentTurnIdAtom,
   isGeneratingAtom,
   selectedExecutionIdAtom,
+  workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
 import {
   clearPublicationReviewAtom,
@@ -75,8 +76,6 @@ import {
   clearWorkflowComparisonAtom,
   comparisonDisplayGraphAtom,
   comparisonSessionAtom,
-  isComparisonActiveAtom,
-  isComparisonPendingAtom,
 } from "#src/lib/workflow-comparison-store";
 import type {
   NodeIssueSummary,
@@ -143,9 +142,7 @@ export const isExecutionOverlayActiveAtom = atom(
 export const canvasEditingLockedAtom = atom(
   (get) =>
     get(isGeneratingAtom) ||
-    get(isExecutionOverlayActiveAtom) ||
-    get(isComparisonActiveAtom) ||
-    get(isComparisonPendingAtom) ||
+    get(workflowWorkspaceViewAtom) !== "draft" ||
     get(isPublicationReviewActiveAtom)
 );
 
@@ -157,9 +154,11 @@ export const canvasEditingLockedAtom = atom(
  * (`style` / `data.displayLabel`) so the draft stays clean.
  */
 const inactiveBranchAtom = atom((get) => {
-  const overlay = get(executionOverlayGraphAtom);
-  const comparison = get(comparisonDisplayGraphAtom);
-  if (comparison && !overlay) {
+  const view = get(workflowWorkspaceViewAtom);
+  const overlay = view === "runs" ? get(executionOverlayGraphAtom) : null;
+  const comparison =
+    view === "changes" ? get(comparisonDisplayGraphAtom) : null;
+  if (comparison) {
     return { nodeIds: new Set<string>(), outletEdgeIds: new Set<string>() };
   }
   const nodes = overlay?.nodes ?? get(nodesStateAtom);
@@ -188,9 +187,11 @@ type PaintedNode = {
 const paintedNodes = new WeakMap<WorkflowNode, PaintedNode>();
 
 export const displayNodesAtom = atom((get) => {
-  const overlay = get(executionOverlayGraphAtom);
-  const comparison = get(comparisonDisplayGraphAtom);
-  const displayGraph = overlay ?? comparison;
+  const view = get(workflowWorkspaceViewAtom);
+  const overlay = view === "runs" ? get(executionOverlayGraphAtom) : null;
+  const comparison =
+    view === "changes" ? get(comparisonDisplayGraphAtom) : null;
+  const displayGraph = view === "runs" ? overlay : comparison;
   const nodes = displayGraph?.nodes ?? get(nodesStateAtom);
   const statusByNodeId = get(statusByNodeIdAtom);
   const { nodeIds } = get(inactiveBranchAtom);
@@ -296,9 +297,11 @@ export const displayNodesAtom = atom((get) => {
   });
 });
 export const displayEdgesAtom = atom((get) => {
-  const overlay = get(executionOverlayGraphAtom);
-  const comparison = get(comparisonDisplayGraphAtom);
-  if (comparison && !overlay) {
+  const view = get(workflowWorkspaceViewAtom);
+  const overlay = view === "runs" ? get(executionOverlayGraphAtom) : null;
+  const comparison =
+    view === "changes" ? get(comparisonDisplayGraphAtom) : null;
+  if (comparison) {
     return comparison.edges;
   }
   const nodes = overlay?.nodes ?? get(nodesStateAtom);
@@ -414,9 +417,13 @@ export const hydrateWorkflowAtom = atom(
     // stale-while-revalidate) must not: wiping them is how a waiting canvas
     // lost its animation while the Runs panel still showed the run.
     if (get(currentWorkflowIdAtom) !== workflow.id) {
+      const preserveDeepLinkedRun =
+        get(workflowWorkspaceViewAtom) === "runs" &&
+        get(selectedExecutionIdAtom) !== null;
       set(statusByNodeIdAtom, new Map());
       set(executionOverlayGraphAtom, null);
       set(selectedExecutionIdAtom, null);
+      set(workflowWorkspaceViewAtom, preserveDeepLinkedRun ? "runs" : "draft");
     }
     set(activeAgentTurnIdAtom, null);
     set(isGeneratingAtom, false);

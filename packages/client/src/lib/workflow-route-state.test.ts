@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "#src/lib/rpc-client";
 import {
   classifyWorkflowLoadFailure,
+  executionIdFromWorkflowSearch,
   WORKFLOW_LOAD_ERROR_MESSAGE,
-  workflowPanelTab,
+  workflowWorkspaceView,
 } from "#src/lib/workflow-route-state";
 
 describe("workflow route state", () => {
@@ -23,9 +24,18 @@ describe("workflow route state", () => {
   });
 
   it("opens runs only while a run is named in the URL", () => {
-    expect(workflowPanelTab("exec_1")).toBe("runs");
+    expect(workflowWorkspaceView("exec_1")).toBe("runs");
     // Null rather than "properties": closing a run must leave the panel's own
     // tab alone, so the Back button lands on the runs list it names.
-    expect(workflowPanelTab(undefined)).toBeNull();
+    expect(workflowWorkspaceView(undefined)).toBeNull();
+  });
+
+  it("reads only a non-empty string execution id from search", () => {
+    expect(executionIdFromWorkflowSearch({ executionId: "exec_1" })).toBe(
+      "exec_1"
+    );
+    expect(executionIdFromWorkflowSearch({ executionId: "" })).toBeUndefined();
+    expect(executionIdFromWorkflowSearch({ executionId: 1 })).toBeUndefined();
+    expect(executionIdFromWorkflowSearch(null)).toBeUndefined();
   });
 });

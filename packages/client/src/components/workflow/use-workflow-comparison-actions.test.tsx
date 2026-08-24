@@ -12,7 +12,7 @@ import {
   loadWorkflowGraphAtom,
   nodesAtom,
 } from "#src/lib/workflow-graph-store";
-import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
+import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { orpcQuery } from "#src/lib/rpc-query";
 import {
   extractRpcProcedurePath,
@@ -183,7 +183,7 @@ describe("useWorkflowComparisonActions", () => {
         ],
         edges: [],
       });
-      store.set(propertiesPanelActiveTabAtom, "runs");
+      store.set(workflowWorkspaceViewAtom, "runs");
     });
     await act(async () =>
       resolveRestore(rpcJsonResponse(savedWorkflow("workflow_a")))
@@ -191,7 +191,7 @@ describe("useWorkflowComparisonActions", () => {
 
     await waitFor(() => expect(result.current.restore.isSuccess).toBe(true));
     expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["b"]);
-    expect(store.get(propertiesPanelActiveTabAtom)).toBe("runs");
+    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
     expect(
       queryClient.getQueryData(
         orpcQuery.workflow.getById.queryKey({

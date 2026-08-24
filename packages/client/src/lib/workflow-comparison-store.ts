@@ -14,15 +14,15 @@ import {
   type ComparisonPositionOverrides,
 } from "#src/lib/workflow-comparison";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 
-export type ComparisonSubview = "review" | "history";
+export type ComparisonSubview = "review" | "properties" | "history";
 
 export type WorkflowComparisonSession = {
   payload: WorkflowComparisonPayload;
   selectedHistoryVersionId: string | null;
   subview: ComparisonSubview;
   positionOverrides: ComparisonPositionOverrides;
-  visible: boolean;
 };
 
 type ComparisonSessions = Readonly<Record<string, WorkflowComparisonSession>>;
@@ -55,7 +55,9 @@ export const comparisonSessionAtom = atom<WorkflowComparisonSession | null>(
 
 export const activeComparisonAtom = atom((get) => {
   const session = get(comparisonSessionAtom);
-  return session?.visible ? session.payload : null;
+  return get(workflowWorkspaceViewAtom) === "changes" && session
+    ? session.payload
+    : null;
 });
 
 export const isComparisonActiveAtom = atom(
@@ -107,7 +109,7 @@ export const settleWorkflowComparisonRequestAtom = atom(
 export const comparisonDisplayGraphAtom = atom<ComparisonDisplayGraph | null>(
   (get) => {
     const session = get(comparisonSessionAtom);
-    return session?.visible
+    return get(workflowWorkspaceViewAtom) === "changes" && session
       ? buildComparisonDisplayGraph(session.payload, session.positionOverrides)
       : null;
   }
@@ -145,26 +147,10 @@ export const installWorkflowComparisonAtom = atom(
             (preserve ? existing.selectedHistoryVersionId : null),
           subview: preserve ? existing.subview : "review",
           positionOverrides: preserve ? existing.positionOverrides : {},
-          visible: true,
         },
       };
     });
     return true;
-  }
-);
-
-export const setWorkflowComparisonVisibleAtom = atom(
-  null,
-  (_get, set, input: { workflowId: string; visible: boolean }) => {
-    set(comparisonSessionsStateAtom, (sessions) => {
-      const session = sessions[input.workflowId];
-      return session
-        ? {
-            ...sessions,
-            [input.workflowId]: { ...session, visible: input.visible },
-          }
-        : sessions;
-    });
   }
 );
 

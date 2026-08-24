@@ -48,7 +48,6 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
           onConfirm,
         }),
       dismiss: closeAll,
-      tabs: "bottom",
     }),
     [push, closeAll]
   );

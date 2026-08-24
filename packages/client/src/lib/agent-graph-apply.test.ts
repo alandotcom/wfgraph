@@ -21,7 +21,7 @@ import {
 import {
   activeAgentTurnIdAtom,
   isGeneratingAtom,
-  propertiesPanelActiveTabAtom,
+  workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
 
 const catalog = emptyExtensionCatalog;
@@ -140,10 +140,10 @@ describe("applyAgentGraphAtom", () => {
 
   it("refuses while a past run is pinned to the canvas", () => {
     const store = createGraphStore([actionNode("a")]);
-    // The overlay only owns the canvas while the owner has the Runs tab open,
+    // The overlay only owns the canvas while the owner has Runs open,
     // so both have to be true for the refusal to be the one under test.
     store.set(isWorkflowOwnerAtom, true);
-    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(workflowWorkspaceViewAtom, "runs");
     store.set(executionOverlayGraphAtom, {
       nodes: [actionNode("a")],
       edges: [],

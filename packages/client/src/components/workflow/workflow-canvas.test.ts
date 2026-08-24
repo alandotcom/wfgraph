@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canvasFitViewKey,
   canvasInteractionState,
+  lifecycleAnchorViewport,
 } from "#src/components/workflow/workflow-canvas";
 
 describe("canvasInteractionState", () => {
@@ -39,46 +40,55 @@ describe("canvasInteractionState", () => {
 });
 
 describe("canvasFitViewKey", () => {
-  it("changes when comparison activates or its base revision changes", () => {
+  it("changes with the workspace and lifecycle position", () => {
     const draft = canvasFitViewKey({
       workflowId: "workflow_1",
-      comparisonBaseVersionId: null,
-      comparisonVisible: false,
-      overlayActive: false,
+      workspaceView: "draft",
+      lifecycleNode: { id: "lifecycle", position: { x: 100, y: 20 } },
     });
-    const firstBase = canvasFitViewKey({
+    const runs = canvasFitViewKey({
       workflowId: "workflow_1",
-      comparisonBaseVersionId: "version_1",
-      comparisonVisible: true,
-      overlayActive: false,
+      workspaceView: "runs",
+      lifecycleNode: { id: "lifecycle", position: { x: 100, y: 20 } },
     });
-    const nextBase = canvasFitViewKey({
+    const moved = canvasFitViewKey({
       workflowId: "workflow_1",
-      comparisonBaseVersionId: "version_2",
-      comparisonVisible: true,
-      overlayActive: false,
+      workspaceView: "runs",
+      lifecycleNode: { id: "lifecycle", position: { x: 140, y: 20 } },
     });
 
-    expect(firstBase).not.toBe(draft);
-    expect(nextBase).not.toBe(firstBase);
-    expect(
-      canvasFitViewKey({
-        workflowId: "workflow_1",
-        comparisonBaseVersionId: "version_2",
-        comparisonVisible: true,
-        overlayActive: false,
-      })
-    ).toBe(nextBase);
+    expect(runs).not.toBe(draft);
+    expect(moved).not.toBe(runs);
   });
 
-  it("keeps the workflow key while an execution overlay has precedence", () => {
+  it("waits for both a workflow and lifecycle node", () => {
+    expect(
+      canvasFitViewKey({
+        workflowId: null,
+        workspaceView: "draft",
+        lifecycleNode: { id: "lifecycle", position: { x: 0, y: 0 } },
+      })
+    ).toBeNull();
     expect(
       canvasFitViewKey({
         workflowId: "workflow_1",
-        comparisonBaseVersionId: "version_2",
-        comparisonVisible: false,
-        overlayActive: true,
+        workspaceView: "draft",
+        lifecycleNode: null,
       })
-    ).toBe("workflow_1");
+    ).toBeNull();
+  });
+});
+
+describe("lifecycleAnchorViewport", () => {
+  it("places the lifecycle at the top center without changing zoom", () => {
+    expect(
+      lifecycleAnchorViewport({
+        canvasWidth: 1000,
+        nodePosition: { x: 200, y: 80 },
+        nodeWidth: 192,
+        top: 48,
+        zoom: 0.75,
+      })
+    ).toEqual({ x: 278, y: -12, zoom: 0.75 });
   });
 });

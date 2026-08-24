@@ -5,7 +5,6 @@ import { DeleteConfirmDialog } from "#src/components/delete-confirm-dialog";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
-import { useLeaveRunsSurface } from "#src/hooks/use-exit-run";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import {
@@ -31,10 +30,7 @@ const DRAG_THRESHOLD_PX = 4;
 function NodeConfigRail() {
   const [request, setRequest] = useState<ConfirmRequest | null>(null);
 
-  const frame = useMemo<NodeConfigFrame>(
-    () => ({ confirm: setRequest, tabs: "top" }),
-    []
-  );
+  const frame = useMemo<NodeConfigFrame>(() => ({ confirm: setRequest }), []);
 
   return (
     <aside className="flex size-full flex-col overflow-hidden bg-card">
@@ -66,7 +62,6 @@ export function WorkflowSidebarPanel() {
   const selectedNodeId = useAtomValue(selectedNodeAtom);
   const { hasOverlays } = useOverlay();
   const { openSheet } = useConfigurationSheet();
-  const leaveRunsSurface = useLeaveRunsSurface();
 
   // Narrowing past the breakpoint unmounts this rail. If it was showing a node,
   // that node's config would vanish with it, so the sheet picks it up. The
@@ -80,24 +75,14 @@ export function WorkflowSidebarPanel() {
   });
 
   /**
-   * The single write to the collapsed preference, because collapsing also has to
-   * close any open run. Collapsing slides the rail behind the viewport edge
-   * rather than unmounting it, so the Runs tab keeps its state while its tab bar
-   * is out of reach: the run stayed pinned to the canvas and every edit was
-   * refused with nothing on screen saying why (#96 on the sheet, same shape
-   * here).
-   *
-   * Takes the next value rather than an updater, so the exit is decided here and
-   * not inside a state write that has no business having side effects.
+   * The single write to the collapsed preference. Workspace state is preserved;
+   * the persistent toolbar switcher remains the route back to Draft.
    */
   const setPanelCollapsed = useCallback(
     (collapsed: boolean) => {
-      if (collapsed) {
-        leaveRunsSurface();
-      }
       setPanelCollapsedState(collapsed);
     },
-    [setPanelCollapsedState, leaveRunsSurface]
+    [setPanelCollapsedState]
   );
 
   const [isDraggingResize, setIsDraggingResize] = useState(false);
@@ -207,7 +192,7 @@ export function WorkflowSidebarPanel() {
 
       {/* The panel column (desktop only). The outer box is the width the canvas
           column gives up; the inner one is the surface, which slides out on
-          collapse instead of unmounting so the Runs tab keeps its state.
+          collapse instead of unmounting so the Runs workspace keeps its state.
 
           Splitting the two is what lets the space go back to the canvas in a
           single step while the surface animates: React Flow observes the canvas
@@ -222,7 +207,7 @@ export function WorkflowSidebarPanel() {
           <div
             className="workflow-sidebar-panel absolute inset-y-0 right-0 z-20 border-l bg-sidebar transition-transform duration-200 ease-out"
             // Collapsing slides the surface past the shell's right edge rather
-            // than unmounting it, so the Runs tab keeps its state. Everything
+            // than unmounting it, so the Runs workspace keeps its state. Everything
             // inside stays focusable without this: tabbing to it makes the
             // browser scroll it into view, and since the shell is an
             // `overflow: hidden` scrollport holding the canvas, that carries the

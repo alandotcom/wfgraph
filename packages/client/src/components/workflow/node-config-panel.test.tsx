@@ -12,6 +12,7 @@ import { createStore, Provider as JotaiProvider } from "jotai";
 import { useMemo, useState } from "react";
 import { describe, expect, it } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
+import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import {
   type ConfirmRequest,
   type NodeConfigFrame,
@@ -26,7 +27,7 @@ import {
   currentWorkflowNameAtom,
   isWorkflowOwnerAtom,
 } from "#src/lib/workflow-save-store";
-import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
+import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { orpcQuery } from "#src/lib/rpc-query";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -85,13 +86,11 @@ function renderPanel({
   selected = null,
   isOwner = true,
   hasPublishedVersion = false,
-  tabs = "top",
 }: {
   nodes?: WorkflowNode[];
   selected?: string | null;
   isOwner?: boolean;
   hasPublishedVersion?: boolean;
-  tabs?: NodeConfigFrame["tabs"];
 } = {}) {
   const store = createStore();
   store.set(loadWorkflowGraphAtom, { nodes, edges: [] });
@@ -122,7 +121,6 @@ function renderPanel({
           confirmed.push(request);
           setRequest(request);
         },
-        tabs,
       }),
       []
     );
@@ -149,7 +147,9 @@ function renderPanel({
     <ExtensionCatalogProvider value={catalog}>
       <QueryClientProvider client={queryClient}>
         <JotaiProvider store={store}>
-          <RouterProvider router={router} />
+          <OverlayProvider>
+            <RouterProvider router={router} />
+          </OverlayProvider>
         </JotaiProvider>
       </QueryClientProvider>
     </ExtensionCatalogProvider>
@@ -187,33 +187,6 @@ describe("NodeConfigPanel with nothing selected", () => {
     expect(view.queryByRole("button", { name: /Clear/ })).toBeNull();
     expect(view.queryByRole("button", { name: /Delete/ })).toBeNull();
     expect(confirmed).toEqual([]);
-  });
-
-  // The tab named the fields it used to hold. It holds an empty state now, and
-  // the tab is the same Properties tab a selection opens.
-  it("names its tab Properties", async () => {
-    const { view } = renderPanel();
-
-    await waitFor(() => {
-      expect(view.getByRole("tab", { name: "Properties" })).toBeTruthy();
-    });
-    expect(view.queryByRole("button", { name: "Workflow" })).toBeNull();
-  });
-
-  it("exposes the panel switcher as tabs", async () => {
-    const { view } = renderPanel();
-
-    const tabs = await view.findByRole("tablist", { name: "Workflow panel" });
-    const properties = view.getByRole("tab", { name: "Properties" });
-    expect(tabs).toBeTruthy();
-    expect(properties.getAttribute("aria-selected")).toBe("true");
-    expect(properties.getAttribute("aria-controls")).toBe(
-      "workflow-properties-panel"
-    );
-    expect(properties.id).toBe("workflow-properties-tab-properties");
-    expect(view.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe(
-      properties.id
-    );
   });
 
   // A non-owner reached this branch for the read-only notice, and the branch it
@@ -262,60 +235,25 @@ describe("NodeConfigPanel config scoping", () => {
   });
 });
 
-describe("NodeConfigPanel Changes tab", () => {
-  it("shows the owner-only Changes tab once a workflow has a published version", async () => {
+describe("NodeConfigPanel workspace inspector", () => {
+  it("contains no workspace mode tabs", async () => {
     const { view } = renderPanel({ hasPublishedVersion: true });
 
-    await waitFor(() => {
-      expect(view.getByRole("tab", { name: "Changes" })).toBeTruthy();
-    });
+    await view.findByText("Select a step on the canvas to configure it.");
+    expect(view.queryByRole("tablist")).toBeNull();
+    expect(view.queryByRole("tab", { name: "Runs" })).toBeNull();
+    expect(view.queryByRole("tab", { name: "Changes" })).toBeNull();
   });
 
-  it("keeps Changes out of a public workflow panel", async () => {
-    const { view } = renderPanel({ hasPublishedVersion: true, isOwner: false });
+  it("follows the active workspace view", async () => {
+    const { view, store } = renderPanel({ hasPublishedVersion: true });
 
-    await waitFor(() => {
-      expect(view.getByRole("tab", { name: "Properties" })).toBeTruthy();
-    });
-    expect(view.queryByRole("button", { name: "Changes" })).toBeNull();
-  });
+    act(() => store.set(workflowWorkspaceViewAtom, "changes"));
 
-  it("shows Changes in the mobile tab bar", async () => {
-    const { view } = renderPanel({
-      hasPublishedVersion: true,
-      tabs: "bottom",
-    });
-
-    await waitFor(() => {
-      expect(view.getByRole("tab", { name: "Changes" })).toBeTruthy();
-    });
-  });
-
-  it("moves focus and selection through visible tabs with the standard keys", async () => {
-    const { view, store } = renderPanel();
-    const properties = await view.findByRole("tab", { name: "Properties" });
-    const runs = view.getByRole("tab", { name: "Runs" });
-
-    expect(properties.tabIndex).toBe(0);
-    expect(runs.tabIndex).toBe(-1);
-    fireEvent.keyDown(properties, { key: "ArrowRight" });
-    expect(store.get(propertiesPanelActiveTabAtom)).toBe("runs");
-    expect(document.activeElement).toBe(runs);
-
-    fireEvent.keyDown(runs, { key: "End" });
-    expect(store.get(propertiesPanelActiveTabAtom)).toBe("runs");
-    expect(document.activeElement).toBe(runs);
-
-    fireEvent.keyDown(runs, { key: "Home" });
-    expect(store.get(propertiesPanelActiveTabAtom)).toBe("properties");
-    expect(document.activeElement).toBe(properties);
-  });
-
-  it("keeps the mobile tablist adjacent to its panel after the content", async () => {
-    const { view } = renderPanel({ hasPublishedVersion: true, tabs: "bottom" });
-    const panel = await view.findByRole("tabpanel");
-    const tablist = view.getByRole("tablist", { name: "Workflow panel" });
-
-    expect(panel.nextElementSibling).toBe(tablist);
+    expect(
+      await view.findByText(
+        "Open a comparison of this draft and its published version."
+      )
+    ).toBeTruthy();
   });
 });

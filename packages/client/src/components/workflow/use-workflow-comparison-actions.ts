@@ -24,7 +24,7 @@ import {
   currentWorkflowIdAtom,
   saveWorkflowAtom,
 } from "#src/lib/workflow-save-store";
-import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
+import { enterDraftWorkspaceAtom } from "#src/lib/workflow-workspace-navigation";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 export function useWorkflowComparisonActions() {
   const queryClient = useQueryClient();
@@ -34,7 +34,7 @@ export function useWorkflowComparisonActions() {
   const session = useAtomValue(comparisonSessionAtom);
   const install = useSetAtom(installWorkflowComparisonAtom);
   const installRestoredWorkflow = useSetAtom(installRestoredWorkflowAtom);
-  const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
+  const enterDraft = useSetAtom(enterDraftWorkspaceAtom);
   const saveWorkflow = useSetAtom(saveWorkflowAtom);
   const selectedNodeId = useAtomValue(selectedNodeAtom);
   const setSelectedNode = useSetAtom(selectedNodeAtom);
@@ -51,16 +51,19 @@ export function useWorkflowComparisonActions() {
   const openComparison = async (options?: {
     baseVersionId?: string;
     force?: boolean;
+    fresh?: boolean;
   }) => {
     if (
       !workflowId ||
-      (session && !options?.force && !options?.baseVersionId)
+      (session && !options?.force && !options?.fresh && !options?.baseVersionId)
     ) {
       return;
     }
     const baseVersionId =
       options?.baseVersionId ??
-      (options?.force ? session?.payload.baseVersion?.id : undefined);
+      (options?.force && !options.fresh
+        ? session?.payload.baseVersion?.id
+        : undefined);
     const epoch = beginRequest(workflowId);
     try {
       const payload = await compare.mutateAsync({
@@ -72,7 +75,7 @@ export function useWorkflowComparisonActions() {
         workflowId,
         epoch,
         payload,
-        preserveSession: Boolean(session),
+        preserveSession: options?.fresh ? false : Boolean(session),
         ...(baseVersionId ? { selectedHistoryVersionId: baseVersionId } : {}),
       });
       if (
@@ -116,7 +119,7 @@ export function useWorkflowComparisonActions() {
           workflow,
         })
       ) {
-        setActiveTab("properties");
+        enterDraft();
         toast.success("Version restored as draft");
       }
     },

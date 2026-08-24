@@ -6,6 +6,7 @@ import {
   type OnConnect,
   type OnConnectEnd,
   type OnConnectStartParams,
+  useInternalNode,
   useReactFlow,
   type Connection as XYFlowConnection,
   type Edge as XYFlowEdge,
@@ -46,12 +47,14 @@ import {
 import {
   activeComparisonAtom,
   moveComparisonNodesAtom,
+  setComparisonSubviewAtom,
 } from "#src/lib/workflow-comparison-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   isGeneratingAtom,
-  propertiesPanelActiveTabAtom,
   showMinimapAtom,
+  type WorkflowWorkspaceView,
+  workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
 import {
   workflowNodeAriaLabel,
@@ -72,7 +75,10 @@ import {
   useContextMenuHandlers,
   WorkflowContextMenu,
 } from "./workflow-context-menu";
-import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
+import {
+  WORKFLOW_NODE_HEIGHT,
+  WORKFLOW_NODE_WIDTH,
+} from "#src/lib/workflow-node-dimensions";
 import {
   connectionHandleTypesMatch,
   connectionRefusalReason,
@@ -120,22 +126,37 @@ export function canvasInteractionState({
 
 export function canvasFitViewKey({
   workflowId,
-  comparisonBaseVersionId,
-  comparisonVisible,
-  overlayActive,
+  workspaceView,
+  lifecycleNode,
 }: {
   workflowId: string | null;
-  comparisonBaseVersionId: string | null;
-  comparisonVisible: boolean;
-  overlayActive: boolean;
+  workspaceView: WorkflowWorkspaceView;
+  lifecycleNode: Pick<WorkflowNode, "id" | "position"> | null;
 }): string | null {
-  if (!workflowId) {
+  if (!workflowId || !lifecycleNode) {
     return null;
   }
-  if (overlayActive || !comparisonVisible) {
-    return workflowId;
-  }
-  return `${workflowId}:comparison:${comparisonBaseVersionId ?? "unpublished"}`;
+  return `${workflowId}:${workspaceView}:${lifecycleNode.id}:${lifecycleNode.position.x}:${lifecycleNode.position.y}`;
+}
+
+export function lifecycleAnchorViewport({
+  canvasWidth,
+  nodePosition,
+  nodeWidth,
+  top,
+  zoom,
+}: {
+  canvasWidth: number;
+  nodePosition: { x: number; y: number };
+  nodeWidth: number;
+  top: number;
+  zoom: number;
+}): { x: number; y: number; zoom: number } {
+  return {
+    x: canvasWidth / 2 - (nodePosition.x + nodeWidth / 2) * zoom,
+    y: top - nodePosition.y * zoom,
+    zoom,
+  };
 }
 
 const accessibleNodeCache = new WeakMap<
@@ -241,6 +262,7 @@ export function WorkflowCanvas() {
   const comparisonActive = comparison !== null;
   const isGenerating = useAtomValue(isGeneratingAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
+  const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
   // Below the mobile breakpoint the config rail is gone, so clicking a node has
   // to open the bottom sheet instead.
@@ -257,18 +279,28 @@ export function WorkflowCanvas() {
   const snapshotHistory = useSetAtom(snapshotHistoryAtom);
   const undo = useSetAtom(undoAtom);
   const redo = useSetAtom(redoAtom);
-  const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
-  const { screenToFlowPosition, fitView } = useReactFlow();
+  const setComparisonSubview = useSetAtom(setComparisonSubviewAtom);
+  const { screenToFlowPosition, fitView, getViewport, setViewport } =
+    useReactFlow();
   const interaction = canvasInteractionState({
     editingLocked,
     comparisonActive,
     overlayActive,
   });
+  const lifecycleNode = nodes.find((node) => node.data.type === "lifecycle");
+  const internalLifecycleNode = useInternalNode<WorkflowNode>(
+    lifecycleNode?.id ?? ""
+  );
+  const measuredLifecycleNode = internalLifecycleNode?.measured?.width
+    ? {
+        id: internalLifecycleNode.id,
+        position: internalLifecycleNode.internals.positionAbsolute,
+      }
+    : null;
   const fitViewKey = canvasFitViewKey({
     workflowId: currentWorkflowId,
-    comparisonBaseVersionId: comparison?.baseVersion?.id ?? null,
-    comparisonVisible: interaction.comparisonVisible,
-    overlayActive,
+    workspaceView,
+    lifecycleNode: measuredLifecycleNode,
   });
   // The same pass the Actions menu's "Tidy layout" runs.
   const { canReflow, reflow } = useReflowLayout();
@@ -285,6 +317,8 @@ export function WorkflowCanvas() {
   const [contextMenuState, setContextMenuState] =
     useState<ContextMenuState>(null);
   const rightClickSelectionRef = useRef<ReadonlySet<string>>(new Set());
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const fittedWorkflowIdRef = useRef<string | null>(null);
   useDomEvent(
     window,
     "pointerdown",
@@ -315,18 +349,53 @@ export function WorkflowCanvas() {
     setContextMenuState(null);
   }, []);
 
-  // Fit a newly loaded workflow and each comparison base the first time it is
-  // shown. Deleted-node drags leave this key unchanged. Run overlays keep the
-  // workflow key so a hidden comparison cannot move their viewport. This runs
-  // after paint because React Flow measures node sizes then.
+  // Never let a suspended or backgrounded browser keep the canvas hidden while
+  // React Flow delays its measurement pass. The anchor effect below refines
+  // the viewport as soon as those measurements become available.
+  useAfterPaint(currentWorkflowId, () => {
+    if (currentWorkflowId) {
+      setIsCanvasReady(true);
+    }
+  });
+
+  // Choose a useful zoom once when the workflow loads, then preserve it while
+  // anchoring every workspace's Lifecycle card at the same top-centre point.
+  // Whole-graph fitting on each switch made comparison-only nodes pull the
+  // draft sideways. This runs after paint because React Flow measures nodes then.
   useAfterPaint(fitViewKey, () => {
-    if (fitViewKey === null) {
+    if (fitViewKey === null || !currentWorkflowId || !internalLifecycleNode) {
       return;
     }
-    void fitView({ maxZoom: 1, minZoom: 0.5, padding: 0.2, duration: 0 });
-    // The canvas is transparent until this has run, so the one frame of
-    // unframed graph between mount and the fit is never on screen.
-    setIsCanvasReady(true);
+    void (async () => {
+      if (fittedWorkflowIdRef.current !== currentWorkflowId) {
+        fittedWorkflowIdRef.current = currentWorkflowId;
+        await fitView({ maxZoom: 1, minZoom: 0.5, padding: 0.2, duration: 0 });
+      }
+
+      const canvasWidth = canvasContainerRef.current?.clientWidth;
+      if (!canvasWidth) {
+        setIsCanvasReady(true);
+        return;
+      }
+
+      const nodeWidth =
+        internalLifecycleNode.measured?.width ??
+        internalLifecycleNode.internals.userNode.width ??
+        WORKFLOW_NODE_WIDTH;
+      await setViewport(
+        lifecycleAnchorViewport({
+          canvasWidth,
+          nodePosition: internalLifecycleNode.internals.positionAbsolute,
+          nodeWidth,
+          top: 48,
+          zoom: getViewport().zoom,
+        }),
+        { duration: 0 }
+      );
+      // The canvas is transparent until this has run, so the one frame of
+      // unanchored graph between mount and the viewport update is never shown.
+      setIsCanvasReady(true);
+    })();
   });
 
   // Undo/redo (Cmd+Z, Cmd+Shift+Z). Lives beside the graph it acts on rather
@@ -486,7 +555,12 @@ export function WorkflowCanvas() {
       if (overlayActive) {
         return;
       }
-      setActiveTab("properties");
+      if (comparisonActive && currentWorkflowId) {
+        setComparisonSubview({
+          workflowId: currentWorkflowId,
+          subview: "properties",
+        });
+      }
       // Below the rail's breakpoint there is no panel mounted to receive the
       // selection, so selecting a node used to look like nothing happening: the
       // config lived behind an unlabelled toolbar icon a first-time user has no
@@ -495,7 +569,15 @@ export function WorkflowCanvas() {
         openSheet();
       }
     },
-    [overlayActive, setSelectedNode, setActiveTab, isMobile, openSheet]
+    [
+      comparisonActive,
+      currentWorkflowId,
+      isMobile,
+      openSheet,
+      overlayActive,
+      setComparisonSubview,
+      setSelectedNode,
+    ]
   );
 
   const onComparisonNodesChange = useCallback(
@@ -610,7 +692,6 @@ export function WorkflowCanvas() {
 
       addNode(newNode);
       setSelectedNode(newNode.id);
-      setActiveTab("properties");
 
       // Deselect all other nodes and select only the new node
       // Need to do this after a delay because panOnDrag will clear selection
@@ -643,7 +724,6 @@ export function WorkflowCanvas() {
       addNode,
       selectOnlyNode,
       setSelectedNode,
-      setActiveTab,
       normalizeSourceHandleForConnection,
       onConnect,
       isValidConnection,
@@ -762,6 +842,7 @@ export function WorkflowCanvas() {
     <div
       className="relative h-full w-full bg-background"
       data-testid="workflow-canvas"
+      ref={canvasContainerRef}
       style={{
         opacity: isCanvasReady ? 1 : 0,
         transition: "opacity 300ms",

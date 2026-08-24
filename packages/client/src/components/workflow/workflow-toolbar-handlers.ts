@@ -71,12 +71,8 @@ import {
   publicationReviewAtom,
   settlePublicationReviewAtom,
 } from "#src/lib/workflow-publication-review-store";
-import {
-  isExecutingAtom,
-  isGeneratingAtom,
-  type PropertiesPanelTab,
-  propertiesPanelActiveTabAtom,
-} from "#src/lib/workflow-ui-store";
+import { isExecutingAtom, isGeneratingAtom } from "#src/lib/workflow-ui-store";
+import { enterRunsWorkspaceAtom } from "#src/lib/workflow-workspace-navigation";
 import {
   readEntryLifecycleRules,
   readEntryTestPayloads,
@@ -99,7 +95,6 @@ type WorkflowHandlerParams = {
   updateNodeData: UpdateNodeData;
   isExecuting: boolean;
   setIsExecuting: (value: boolean) => void;
-  setActiveTab: (value: PropertiesPanelTab) => void;
   setSelectedNodeId: (id: string | null) => void;
   userIntegrations: Array<{ id: string; type: string }>;
 };
@@ -110,7 +105,6 @@ function useWorkflowHandlers({
   updateNodeData,
   isExecuting,
   setIsExecuting,
-  setActiveTab,
   setSelectedNodeId,
   userIntegrations,
 }: WorkflowHandlerParams) {
@@ -127,6 +121,7 @@ function useWorkflowHandlers({
   const clearGraphSelection = useSetAtom(clearGraphSelectionAtom);
   const setExecutionOverlay = useSetAtom(executionOverlayGraphAtom);
   const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
+  const enterRuns = useSetAtom(enterRunsWorkspaceAtom);
   // No errorMessage: a rejected run carries a server message worth reading, and
   // the mutation cache falls back to it. Every other outcome arrives as a
   // successful response with a status on it, which executeWorkflowRun reads.
@@ -149,8 +144,7 @@ function useWorkflowHandlers({
     // on the request and waits for no save.
     rememberTestPayload({ nodes, updateNodeData, request });
 
-    // Switch to Runs tab when starting a run
-    setActiveTab("runs");
+    enterRuns();
 
     // Drop any run overlay so optimistic status and the new selection paint the
     // draft until the new run's pinned graph arrives.
@@ -248,7 +242,6 @@ export function useWorkflowState() {
   const redo = useSetAtom(redoAtom);
   const [canUndo] = useAtom(canUndoAtom);
   const [canRedo] = useAtom(canRedoAtom);
-  const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
   const setSelectedNodeId = useSetAtom(selectedNodeAtom);
   const { data: userIntegrations = [] } = useQuery(integrationsQueryOptions());
 
@@ -278,7 +271,6 @@ export function useWorkflowState() {
     canUndo,
     canRedo,
     allWorkflows,
-    setActiveTab,
     setSelectedNodeId,
     userIntegrations,
     publication,
@@ -313,7 +305,6 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     isExecuting,
     setIsExecuting,
     clearWorkflow,
-    setActiveTab,
     setSelectedNodeId,
     userIntegrations,
     publication,
@@ -324,7 +315,6 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     updateNodeData,
     isExecuting,
     setIsExecuting,
-    setActiveTab,
     setSelectedNodeId,
     userIntegrations,
   });

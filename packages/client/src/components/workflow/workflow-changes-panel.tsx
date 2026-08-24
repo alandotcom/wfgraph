@@ -12,22 +12,19 @@ import { useExtensionCatalog } from "#src/components/extension-catalog-provider"
 import { Button } from "#src/components/ui/button";
 import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useIsMobile } from "#src/hooks/use-mobile";
+import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import {
-  ComparisonProperties,
+  WorkflowComparisonPropertiesPanel,
   comparisonNodeTitle,
 } from "#src/components/workflow/comparison-properties";
 import { WorkflowVersionHistory } from "#src/components/workflow/workflow-version-history";
-import {
-  exitWorkflowComparisonAtom,
-  selectedNodeAtom,
-} from "#src/lib/workflow-graph-store";
+import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import {
   comparisonSessionAtom,
   resetComparisonLayoutAtom,
   setComparisonSubviewAtom,
 } from "#src/lib/workflow-comparison-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
-import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 import { cn } from "@wfgraph/shared/utils";
 import type { WorkflowNodeChange } from "@wfgraph/shared/graph/publication-contracts";
 import { PanelState } from "#src/components/workflow/workflow-changes-panel-state";
@@ -41,14 +38,15 @@ export function WorkflowChangesPanel({
   const catalog = useExtensionCatalog();
   const workflowId = useAtomValue(currentWorkflowIdAtom);
   const session = useAtomValue(comparisonSessionAtom);
-  const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
   const setSelectedNode = useSetAtom(selectedNodeAtom);
   const selectedNodeId = useAtomValue(selectedNodeAtom);
-  const exitComparison = useSetAtom(exitWorkflowComparisonAtom);
   const setSubview = useSetAtom(setComparisonSubviewAtom);
   const resetLayout = useSetAtom(resetComparisonLayoutAtom);
   const isMobile = useIsMobile();
   const { openSheet } = useConfigurationSheet();
+  const workspaceNavigation = useWorkflowWorkspaceNavigation(
+    actions.openComparison
+  );
 
   if (!session) {
     if (actions.isPending) {
@@ -78,14 +76,12 @@ export function WorkflowChangesPanel({
   const selectedIndex = payload.nodeChanges.findIndex(
     (change) => change.nodeId === selectedNodeId
   );
-  const selectedChange =
-    selectedIndex >= 0 ? payload.nodeChanges[selectedIndex] : undefined;
   const layoutChanged = Object.keys(session.positionOverrides).length > 0;
 
   const selectNodeChange = (change: WorkflowNodeChange) => {
     if (!workflowId) return;
     setSelectedNode(change.nodeId);
-    setActiveTab("properties");
+    setSubview({ workflowId, subview: "properties" });
     if (isMobile) openSheet();
   };
 
@@ -97,6 +93,29 @@ export function WorkflowChangesPanel({
 
   if (session.subview === "history") {
     return <WorkflowVersionHistory actions={actions} />;
+  }
+
+  if (session.subview === "properties") {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="border-b p-3">
+          <Button
+            onClick={() =>
+              workflowId && setSubview({ workflowId, subview: "review" })
+            }
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <ChevronLeft />
+            Back to changes
+          </Button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <WorkflowComparisonPropertiesPanel />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -137,12 +156,7 @@ export function WorkflowChangesPanel({
             </Button>
             <Button
               aria-label="Exit comparison"
-              onClick={() => {
-                if (workflowId) {
-                  exitComparison();
-                  setActiveTab("properties");
-                }
-              }}
+              onClick={workspaceNavigation.showDraft}
               size="icon-sm"
               title="Exit comparison"
               type="button"
@@ -220,13 +234,6 @@ export function WorkflowChangesPanel({
               </button>
             ))}
           </div>
-          {selectedChange ? (
-            <ComparisonProperties
-              catalog={catalog}
-              change={selectedChange}
-              payload={payload}
-            />
-          ) : null}
         </div>
       )}
       <div className="flex items-center justify-between border-t p-3">
@@ -262,7 +269,7 @@ function ChangeMarker({ kind }: { kind: WorkflowNodeChange["kind"] }) {
   return (
     <span
       aria-label={label}
-      className="grid size-5 shrink-0 place-items-center rounded border font-semibold text-[10px]"
+      className="grid size-5 shrink-0 place-items-center rounded border font-semibold text-xs"
     >
       {letter}
     </span>

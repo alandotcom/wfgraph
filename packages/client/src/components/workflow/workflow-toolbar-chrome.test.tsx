@@ -29,9 +29,12 @@ import {
 } from "#src/lib/workflow-graph-store";
 import {
   isGeneratingAtom,
-  propertiesPanelActiveTabAtom,
+  workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
-import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import {
+  currentWorkflowIdAtom,
+  isWorkflowOwnerAtom,
+} from "#src/lib/workflow-save-store";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { toEditorNode } from "#src/lib/workflow-graph-types";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
@@ -117,7 +120,6 @@ function baseState(): WorkflowToolbarState {
     canUndo: false,
     canRedo: false,
     allWorkflows: [],
-    setActiveTab: vi.fn(),
     setSelectedNodeId: vi.fn(),
     userIntegrations: [],
     publication: undefined,
@@ -175,9 +177,9 @@ function renderChrome(
     store.set(loadWorkflowGraphAtom, { nodes: lock.graph, edges: [] });
   }
   if (lock.overlayActive) {
-    // The overlay is only on the canvas while the Runs tab is, so both halves
+    // The overlay is only on the canvas while the Runs workspace is, so both halves
     // of that state go in together.
-    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(workflowWorkspaceViewAtom, "runs");
     store.set(executionOverlayGraphAtom, { nodes: [], edges: [] });
   }
   if (lock.generating) {
@@ -190,6 +192,7 @@ function renderChrome(
     currentWorkflowIdAtom,
     ("workflowId" in lock ? lock.workflowId : "workflow_1") ?? null
   );
+  store.set(isWorkflowOwnerAtom, lock.state?.isOwner ?? true);
 
   // Built once rather than inside the route component, so a case can assert on
   // the spy the chrome was actually handed: re-created per render, every click
@@ -375,6 +378,39 @@ describe("ToolbarActions ownership", () => {
 });
 
 describe("WorkflowToolbarChrome", () => {
+  it("shows available workspace views and moves the editor to Runs", async () => {
+    const { findAllByRole, findByRole, store } = renderChrome(
+      WorkflowToolbarChrome,
+      {
+        state: {
+          publication: {
+            isPublished: true,
+            hasUnpublishedChanges: false,
+            publishedVersionId: "version_1",
+            publishedVersion: 1,
+            publishedAt: "2026-08-23T15:00:00.000Z",
+          },
+        },
+      }
+    );
+
+    expect(await findAllByRole("button", { name: "Draft" })).toHaveLength(2);
+    expect(await findByRole("button", { name: "Changes" })).toBeTruthy();
+
+    const workspaceSwitcher = await findByRole("group", {
+      name: "Workspace view",
+    });
+    const selectedView = workspaceSwitcher.querySelector(
+      "button[aria-pressed='true']"
+    );
+    expect(selectedView?.textContent).toBe("Draft");
+    expect(selectedView?.className).toContain("bg-primary");
+    expect(selectedView?.className).toContain("text-primary-foreground");
+
+    fireEvent.click(await findByRole("button", { name: "Runs" }));
+    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
+  });
+
   it("keeps navigation, Actions, and Settings on the left with mode and Publish on the right", async () => {
     const { findByRole } = renderChrome(WorkflowToolbarChrome);
 
@@ -382,6 +418,9 @@ describe("WorkflowToolbarChrome", () => {
     const workflow = await findByRole("button", { name: "Workflow" });
     const actions = await findByRole("button", { name: "Actions" });
     const settings = await findByRole("button", { name: "Settings" });
+    const workspaceSwitcher = await findByRole("group", {
+      name: "Workspace view",
+    });
     const mode = await findByRole("button", { name: "Live mode" });
     const publish = await findByRole("button", { name: "Publish" });
 
@@ -391,7 +430,7 @@ describe("WorkflowToolbarChrome", () => {
       )
     ).not.toContain(null);
     expect(
-      [mode, publish].map((element) =>
+      [workspaceSwitcher, mode, publish].map((element) =>
         element.closest("[data-slot='workflow-toolbar-right']")
       )
     ).not.toContain(null);
@@ -407,6 +446,15 @@ describe("WorkflowToolbarChrome", () => {
 
     expect(await findByRole("button", { name: "Settings" })).toBeTruthy();
     expect(queryByRole("button", { name: "Publish" })).toBeNull();
+    expect(queryByRole("button", { name: "Runs" })).toBeNull();
+    expect(queryByRole("button", { name: "Changes" })).toBeNull();
+  });
+
+  it("keeps Changes unavailable before the first publication", async () => {
+    const { findByRole, queryByRole } = renderChrome(WorkflowToolbarChrome);
+
+    expect(await findByRole("button", { name: "Runs" })).toBeTruthy();
+    expect(queryByRole("button", { name: "Changes" })).toBeNull();
   });
 
   it("constrains each desktop side around the viewport-centred palette", async () => {

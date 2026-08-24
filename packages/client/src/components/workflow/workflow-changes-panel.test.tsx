@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
@@ -13,9 +13,14 @@ import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { WorkflowChangesPanel } from "./workflow-changes-panel";
 import {
   beginWorkflowComparisonRequestAtom,
+  comparisonSessionAtom,
   installWorkflowComparisonAtom,
 } from "#src/lib/workflow-comparison-store";
-import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import {
+  currentWorkflowIdAtom,
+  isWorkflowOwnerAtom,
+} from "#src/lib/workflow-save-store";
+import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 
 const catalog: ExtensionCatalog = {
   events: [],
@@ -229,6 +234,8 @@ describe("WorkflowChangesPanel", () => {
   it("uses pressed state for the selected change row", () => {
     const store = createStore();
     store.set(currentWorkflowIdAtom, "workflow_1");
+    store.set(isWorkflowOwnerAtom, true);
+    store.set(workflowWorkspaceViewAtom, "changes");
     const epoch = store.set(beginWorkflowComparisonRequestAtom, "workflow_1");
     store.set(installWorkflowComparisonAtom, {
       workflowId: "workflow_1",
@@ -253,5 +260,11 @@ describe("WorkflowChangesPanel", () => {
     const row = view.getByRole("button", { name: /Current email/ });
     expect(row.getAttribute("aria-pressed")).toBe("false");
     expect(view.queryByTestId("comparison-properties")).toBeNull();
+
+    fireEvent.click(row);
+
+    expect(store.get(workflowWorkspaceViewAtom)).toBe("changes");
+    expect(store.get(comparisonSessionAtom)?.subview).toBe("properties");
+    expect(view.getByRole("button", { name: "Back to changes" })).toBeTruthy();
   });
 });

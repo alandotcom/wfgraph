@@ -34,7 +34,6 @@ import {
 } from "#src/lib/workflow-graph-store";
 import { openCommandPaletteAtom } from "#src/lib/command-palette-store";
 import { canUngroup, refuseDelete } from "#src/lib/node-group";
-import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
 import { cn } from "@wfgraph/shared/utils";
 import { analyzeGroupableSelection } from "@wfgraph/shared/graph/node-group";
@@ -86,7 +85,6 @@ export function WorkflowContextMenu({
   const ungroupSelected = useSetAtom(ungroupNodeAtom);
   const hasCopiedSelection = useAtomValue(hasCopiedSelectionAtom);
   const setSelectedNode = useSetAtom(selectedNodeAtom);
-  const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
   const catalog = useExtensionCatalog();
   const { open: openOverlay } = useOverlay();
   const { openSheet } = useConfigurationSheet();
@@ -115,14 +113,13 @@ export function WorkflowContextMenu({
       const nodeId = menuState.nodeId;
       onClose();
       setSelectedNode(nodeId);
-      setActiveTab("properties");
       // On a narrow canvas no rail is mounted to show the selection, so the
       // sheet is the only surface that can answer this click.
       if (isMobile) {
         openSheet();
       }
     }
-  }, [menuState, onClose, setSelectedNode, setActiveTab, isMobile, openSheet]);
+  }, [menuState, onClose, setSelectedNode, isMobile, openSheet]);
 
   const handleDeleteEdge = useCallback(() => {
     if (menuState?.edgeId) {

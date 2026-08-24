@@ -9,6 +9,7 @@ import {
 import {
   addNodeAtom,
   applyNodeLayoutAtom,
+  canvasEditingLockedAtom,
   canUndoAtom,
   clearNodeStatusesAtom,
   clearWorkflowAtom,
@@ -47,7 +48,7 @@ import {
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
 import {
-  propertiesPanelActiveTabAtom,
+  workflowWorkspaceViewAtom,
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
@@ -499,10 +500,20 @@ describe("clearWorkflowAtom", () => {
 });
 
 describe("hydrateWorkflowAtom", () => {
+  it("returns a different workflow to Draft", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(isWorkflowOwnerAtom, true);
+    store.set(workflowWorkspaceViewAtom, "changes");
+
+    store.set(hydrateWorkflowAtom, savedWorkflow("workflow_2"));
+
+    expect(store.get(workflowWorkspaceViewAtom)).toBe("draft");
+  });
+
   it("clears the watched run so the previous workflow's overlay cannot repaint", () => {
     const store = createStore();
     store.set(isWorkflowOwnerAtom, true);
-    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(workflowWorkspaceViewAtom, "runs");
     store.set(selectedExecutionIdAtom, "exec_previous");
     expect(store.get(selectedExecutionIdAtom)).toBe("exec_previous");
 
@@ -538,7 +549,7 @@ describe("hydrateWorkflowAtom", () => {
   it("keeps the open run when the same workflow is hydrated again", () => {
     const store = createGraphStore(...standardGraph());
     store.set(isWorkflowOwnerAtom, true);
-    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(workflowWorkspaceViewAtom, "runs");
     store.set(selectedExecutionIdAtom, "exec_1");
     store.set(executionOverlayGraphAtom, {
       nodes: [lifecycleNode("v1_lifecycle")],
@@ -664,7 +675,7 @@ describe("displayNodesAtom memoization", () => {
 
   it("orders a pinned Group overlay so display can reuse that array", () => {
     const store = createGraphStore(...standardGraph());
-    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(workflowWorkspaceViewAtom, "runs");
     const rest = lifecycleNode("pinned_t");
     const frame = groupNode("pinned_g", "pinned_a", "pinned_a");
     const child = groupedChild("pinned_a", "pinned_g");
@@ -684,7 +695,7 @@ describe("displayNodesAtom memoization", () => {
 
   it("paints the inspector's selected node onto a pinned overlay", () => {
     const store = createGraphStore(...standardGraph());
-    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(workflowWorkspaceViewAtom, "runs");
     store.set(executionOverlayGraphAtom, {
       nodes: [lifecycleNode("pinned_t"), actionNode("pinned_a")],
       edges: [],
@@ -700,6 +711,46 @@ describe("displayNodesAtom memoization", () => {
       store.get(displayNodesAtom).find((node) => node.id === "pinned_t")
         ?.selected
     ).not.toBe(true);
+  });
+
+  it("lets only the active workspace view choose the displayed graph", () => {
+    const store = createGraphStore([actionNode("draft")]);
+    store.set(isWorkflowOwnerAtom, true);
+    store.set(workflowWorkspaceViewAtom, "changes");
+    openComparison(store);
+    store.set(executionOverlayGraphAtom, {
+      nodes: [actionNode("run")],
+      edges: [],
+    });
+
+    expect(store.get(displayNodesAtom).map((node) => node.id)).toEqual([
+      "draft",
+      "historical",
+    ]);
+
+    store.set(workflowWorkspaceViewAtom, "runs");
+    expect(store.get(displayNodesAtom).map((node) => node.id)).toEqual(["run"]);
+
+    store.set(workflowWorkspaceViewAtom, "draft");
+    expect(store.get(displayNodesAtom).map((node) => node.id)).toEqual([
+      "draft",
+    ]);
+  });
+});
+
+describe("canvasEditingLockedAtom", () => {
+  it("locks Runs and Changes even before their display graph loads", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(isWorkflowOwnerAtom, true);
+
+    store.set(workflowWorkspaceViewAtom, "runs");
+    expect(store.get(canvasEditingLockedAtom)).toBe(true);
+
+    store.set(workflowWorkspaceViewAtom, "changes");
+    expect(store.get(canvasEditingLockedAtom)).toBe(true);
+
+    store.set(workflowWorkspaceViewAtom, "draft");
+    expect(store.get(canvasEditingLockedAtom)).toBe(false);
   });
 });
 
@@ -737,9 +788,9 @@ describe("run status", () => {
 
   it("merges onto a pinned run overlay by the same path as the draft", () => {
     const store = createGraphStore(...standardGraph());
-    // The overlay reaches the canvas only while the Runs tab is up, so a case
+    // The overlay reaches the canvas only while Runs is active, so a case
     // about what the canvas paints has to say the tab is open.
-    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(workflowWorkspaceViewAtom, "runs");
     store.set(executionOverlayGraphAtom, {
       nodes: [lifecycleNode("pinned_t"), actionNode("pinned_a")],
       edges: [],
@@ -763,7 +814,7 @@ describe("run status", () => {
     const store = createGraphStore(...standardGraph());
     // Without the tab open the overlay reads null anyway, and the assertion
     // below would hold whether or not the clear did its job.
-    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(workflowWorkspaceViewAtom, "runs");
     store.set(executionOverlayGraphAtom, {
       nodes: [lifecycleNode("t")],
       edges: [],
@@ -940,7 +991,7 @@ describe("copy and paste", () => {
       []
     );
     store.set(copySelectionAtom);
-    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(workflowWorkspaceViewAtom, "runs");
     store.set(executionOverlayGraphAtom, {
       nodes: [lifecycleNode("pinned")],
       edges: [],
@@ -1362,8 +1413,8 @@ describe("what the canvas paints for a node the validator flagged", () => {
   it("leaves a pinned run's graph unbadged", () => {
     const store = createGraphStore([lifecycleNode("t"), actionNode("a")]);
     store.set(workflowIssuesAtom, [brokenA]);
-    // The overlay reaches the canvas only while the Runs tab is up.
-    store.set(propertiesPanelActiveTabAtom, "runs");
+    // The overlay reaches the canvas only while Runs is active.
+    store.set(workflowWorkspaceViewAtom, "runs");
     store.set(executionOverlayGraphAtom, {
       nodes: [lifecycleNode("t"), actionNode("a")],
       edges: [],

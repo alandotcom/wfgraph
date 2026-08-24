@@ -28,11 +28,17 @@ import {
   WorkflowSaveStatus,
   WorkflowUnloadGuard,
 } from "#src/components/workflow/workflow-save-status";
-import { useExitRun } from "#src/hooks/use-exit-run";
+import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import { toPinnedRunSummary } from "#src/lib/execution-logs";
 import { orpcQuery, workflowPublicationQueryOptions } from "#src/lib/rpc-query";
-import { isExecutionOverlayActiveAtom } from "#src/lib/workflow-graph-store";
-import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
+import {
+  comparisonSessionAtom,
+  isComparisonPendingAtom,
+} from "#src/lib/workflow-comparison-store";
+import {
+  selectedExecutionIdAtom,
+  workflowWorkspaceViewAtom,
+} from "#src/lib/workflow-ui-store";
 import { cn } from "@wfgraph/shared/utils";
 import { formatDayAndTime } from "@wfgraph/shared/utils/time";
 
@@ -132,7 +138,7 @@ function DraftStatus({ workflowId }: { workflowId?: string }) {
 
 function PinnedRunStatus() {
   const executionId = useAtomValue(selectedExecutionIdAtom);
-  const exitRun = useExitRun();
+  const { showDraft } = useWorkflowWorkspaceNavigation();
 
   // Reads the logs entry `ExecutionOverlaySync` fills to pin the graph in the
   // first place, so a run that is on the canvas has already been fetched:
@@ -153,7 +159,7 @@ function PinnedRunStatus() {
       <StatusItems>
         <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap font-medium">
           <Clock3 aria-hidden className="size-3" />
-          Viewing a past run
+          {executionId ? "Viewing a past run" : "Runs"}
         </span>
         {label && (
           <>
@@ -182,7 +188,48 @@ function PinnedRunStatus() {
           refusing every edit. */}
       <Button
         className="h-6 shrink-0 text-info hover:bg-info/10 hover:text-info"
-        onClick={exitRun}
+        onClick={showDraft}
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        <ArrowLeft className="size-3" />
+        Back to draft
+      </Button>
+    </>
+  );
+}
+
+function ChangesStatus() {
+  const session = useAtomValue(comparisonSessionAtom);
+  const pending = useAtomValue(isComparisonPendingAtom);
+  const { showDraft } = useWorkflowWorkspaceNavigation();
+  const baseVersion = session?.payload.baseVersion?.version;
+
+  return (
+    <>
+      <StatusItems>
+        <span className="shrink-0 whitespace-nowrap font-medium">
+          {pending && !session ? "Comparing changes" : "Changes"}
+        </span>
+        {session ? (
+          <>
+            <StripDivider />
+            <span className="shrink-0 whitespace-nowrap">
+              {baseVersion ? `Version ${baseVersion}` : "No published version"}
+              {" → "}
+              proposed version {session.payload.proposedVersion}
+            </span>
+          </>
+        ) : null}
+        <StripDivider />
+        <span className="shrink-0 whitespace-nowrap">Editing is off</span>
+        <StripDivider />
+        <WorkflowSaveStatus />
+      </StatusItems>
+      <Button
+        className="h-6 shrink-0 text-info hover:bg-info/10 hover:text-info"
+        onClick={showDraft}
         size="sm"
         type="button"
         variant="ghost"
@@ -195,7 +242,8 @@ function PinnedRunStatus() {
 }
 
 export function WorkflowStatusStrip({ workflowId }: { workflowId?: string }) {
-  const overlayActive = useAtomValue(isExecutionOverlayActiveAtom);
+  const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
+  const readOnly = workspaceView !== "draft";
 
   return (
     <output
@@ -206,7 +254,7 @@ export function WorkflowStatusStrip({ workflowId }: { workflowId?: string }) {
         // card-toned strip on a background-toned canvas separated by nothing but
         // its border.
         "workflow-status-strip flex h-8 shrink-0 items-center gap-2 border-t px-3 text-xs leading-none",
-        overlayActive
+        readOnly
           ? "border-info/30 bg-info/5 text-info"
           : "bg-sidebar text-muted-foreground"
       )}
@@ -214,8 +262,10 @@ export function WorkflowStatusStrip({ workflowId }: { workflowId?: string }) {
       {/* Outside the branch below, because a reload drops a pending patch
           whether or not the label reporting it is the one on screen. */}
       <WorkflowUnloadGuard />
-      {overlayActive ? (
+      {workspaceView === "runs" ? (
         <PinnedRunStatus />
+      ) : workspaceView === "changes" ? (
+        <ChangesStatus />
       ) : (
         <DraftStatus workflowId={workflowId} />
       )}

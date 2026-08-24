@@ -31,7 +31,7 @@ import {
   sameIssues,
   workflowIssuesAtom,
 } from "#src/lib/workflow-issues-store";
-import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
+import { enterDraftWorkspaceAtom } from "#src/lib/workflow-workspace-navigation";
 import {
   collectWorkflowIssues,
   groupWorkflowIssuesForOverlay,
@@ -83,7 +83,7 @@ export function useCollectWorkflowIssues(): void {
  */
 export function useGoToStep(): (nodeId: string, fieldKey?: string) => void {
   const setSelectedNodeId = useSetAtom(selectedNodeAtom);
-  const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
+  const enterDraft = useSetAtom(enterDraftWorkspaceAtom);
   const [pendingFieldFocus, setPendingFieldFocus] = useState<string | null>(
     null
   );
@@ -104,10 +104,10 @@ export function useGoToStep(): (nodeId: string, fieldKey?: string) => void {
   return useCallback(
     (nodeId: string, fieldKey?: string) => {
       setSelectedNodeId(nodeId);
-      setActiveTab("properties");
+      enterDraft();
       setPendingFieldFocus(fieldKey ?? null);
     },
-    [setSelectedNodeId, setActiveTab]
+    [enterDraft, setSelectedNodeId]
   );
 }
 

@@ -238,36 +238,58 @@ A step the run can never reach is muted: the card drops to 50% opacity, its inco
 
 ### Navigation
 
-A quiet menu bar above the canvas and a Panel-toned sidebar for workflow lists and run history. Selection state uses Graphite Wash fills; the active workflow is marked by tone, never by an accent stripe.
+A quiet menu bar spans the canvas and a Panel-toned inspector shows details for
+the active workspace view. The selected workspace uses a Graphite Ink fill with
+Paper text. Tone, rather than an accent stripe, marks the active workflow.
 
-A Panel-toned status strip closes the canvas column: 32px tall, Caption type, a hairline top border, one line that never wraps. It states what the editor is doing rather than offering anything to press, so the only control on it is the way out of a run. With a past run pinned to the canvas it tints toward `--info` and carries that run's identity; the height is the same in both states, because the strip and the graph share the column's height between them.
+The workflow workspace has three views: **Draft**, **Runs**, and **Changes**. A
+segmented control precedes run mode and **Publish** at desktop widths. A menu
+that names the active view replaces the control on mobile devices. The control
+remains available when the inspector is collapsed or dismissed. The canvas,
+inspector, editing lock, and status strip always follow the same active view.
+When the view changes, the canvas keeps its zoom and anchors the Lifecycle card
+at the same top-center point.
+
+**Draft** owns the editable workflow and its properties. **Runs** opens on the
+run list without selecting a run, and owns run details and run-node inspection.
+**Changes** owns publication review, comparison properties, and version
+history. Entering **Runs** or **Changes** opens the inspector. Collapsing or
+dismissing the inspector doesn't change the active view.
+
+A Panel-toned status strip closes the canvas column: 32px tall, Caption type, a
+hairline top border, and one line that never wraps. It identifies **Runs** and
+**Changes**, explains that editing is off, and provides **Back to draft**. With
+a read-only view on the canvas, the strip tints toward `--info`. Its height
+remains constant because the strip and graph share the column height.
 
 The 44px editor toolbar spans the full editor shell. Workflow navigation,
 **Actions**, and **Settings** form the leading group. The 320px search control
 stays centered in the shell and hides at 70rem or narrower; its keyboard
-shortcut remains available. Run mode and **Publish** form the trailing group.
-Test mode uses Signal Amber because it changes where configured messages go.
-Publication state stays in the status strip, separate from run mode.
+shortcut remains available. The workspace control, run mode, and **Publish**
+form the trailing group. Test mode uses Signal Amber because it changes where
+configured messages go. Publication state stays in the status strip, separate
+from run mode.
 
 ### Publication review
 
-The sidebar has **Properties**, **Runs**, and **Changes** tabs after the first
-publication. **Changes** compares the selected published version with the exact
-draft on the canvas. It lists deterministic node and connection facts and links
-to paginated version history. Restore always says "Restore version N as draft"
-and requires confirmation that the published version remains unchanged.
+The toolbar shows **Changes** after the first publication. **Changes** compares
+the selected published version with the exact draft that was visible when the
+view opened. The inspector lists deterministic node and connection facts and
+links to paginated version history. Restore always says "Restore version N as
+draft" and requires confirmation that the published version remains unchanged.
 
 Comparison marks nodes with `A`, `M`, or `D` in addition to signal color. Added
 nodes use Signal Green, modified nodes use Signal Amber, and deleted nodes use
 Signal Red. Deleted edges use a distinct dotted treatment. Node position,
 dimensions, and measured geometry never create a change marker.
 
-Selecting a changed node opens **Properties**. Modified nodes show published and
-current draft values side by side. Added nodes show current draft values only.
-Deleted nodes show published values only. Field labels come from the extension
-catalog; machine paths do not appear as labels. Deleted nodes remain movable for
-comparison clarity, and **Reset comparison layout** restores historical
-positions. Comparison movement never changes the draft or its save history.
+Selecting a changed node opens comparison properties inside **Changes**.
+Modified nodes show published and draft values side by side. Added nodes show
+draft values only. Deleted nodes show published values only. Field labels come
+from the extension catalog; machine paths don't appear as labels. Deleted nodes
+remain movable for comparison clarity, and **Reset comparison layout** restores
+historical positions. Comparison movement never changes the draft or its save
+history.
 
 ## 6. Do's and Don'ts
 

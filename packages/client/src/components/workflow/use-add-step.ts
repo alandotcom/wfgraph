@@ -32,7 +32,6 @@ import {
   positionClearOfNodes,
   workflowNodeRectangles,
 } from "#src/lib/workflow-node-placement";
-import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 
 export type AddStepRequest = {
   /** The action the step runs. Absent leaves the node asking for one. */
@@ -55,7 +54,6 @@ export function useAddStep(): (request: AddStepRequest) => void {
   const store = useStore();
   const addNode = useSetAtom(addNodeAtom);
   const setSelectedNode = useSetAtom(selectedNodeAtom);
-  const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
   const { getInternalNode, screenToFlowPosition } = useReactFlow();
 
   return useCallback(
@@ -100,7 +98,6 @@ export function useAddStep(): (request: AddStepRequest) => void {
 
       addNode(bound);
       setSelectedNode(bound.id);
-      setActiveTab("properties");
     },
     [
       catalog,
@@ -108,7 +105,6 @@ export function useAddStep(): (request: AddStepRequest) => void {
       store,
       addNode,
       setSelectedNode,
-      setActiveTab,
       getInternalNode,
       screenToFlowPosition,
     ]

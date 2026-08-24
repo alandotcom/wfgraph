@@ -37,7 +37,7 @@ import {
 } from "#src/lib/workflow-save-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { savedWorkflow } from "#src/lib/workflow-save-test-support";
-import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
+import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
@@ -175,7 +175,7 @@ function renderRuns(options?: { executionId?: string; panel?: boolean }) {
   const store = createStore();
   store.set(currentWorkflowIdAtom, "wf_1");
   store.set(isWorkflowOwnerAtom, true);
-  store.set(propertiesPanelActiveTabAtom, "runs");
+  store.set(workflowWorkspaceViewAtom, "runs");
 
   const showPanel = options?.panel !== false;
 
@@ -236,6 +236,19 @@ describe("WorkflowRuns", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("opens on the runs list without selecting the newest run", async () => {
+    served.items = [execution("exec_newest", "completed")];
+    const { view, router } = renderRuns();
+
+    expect(await view.findByTestId("workflow-run-summary-row")).toBeTruthy();
+    await act(async () => {});
+
+    expect(router.state.location.search).toEqual({});
+    expect(
+      view.queryByRole("button", { name: "Back to runs list" })
+    ).toBeNull();
   });
 
   // A newest-wins workflow supersedes the open run out of the polled list, so
@@ -400,7 +413,7 @@ describe("WorkflowRuns", () => {
     fireEvent.click(view.getByRole("button", { name: "Technical details" }));
     fireEvent.click(view.getByRole("tab", { name: "Input" }));
     expect(view.getByText(/invoiceId/)).toBeTruthy();
-    expect(store.get(propertiesPanelActiveTabAtom)).toBe("runs");
+    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
 
     fireEvent.click(view.getByRole("button", { name: "Back to run overview" }));
 
@@ -497,11 +510,7 @@ describe("ExecutionOverlaySync", () => {
       [versionIdFor("exec_old")]: pinnedGraph("v1_lifecycle"),
       [versionIdFor("exec_new")]: pinnedGraph("v2_lifecycle"),
     };
-    const { view, store } = renderRuns();
-
-    const rows = await view.findAllByTestId("workflow-run-summary-row");
-    // Newest-first list: exec_new then exec_old.
-    fireEvent.click(rows[1]!);
+    const { view, store } = renderRuns({ executionId: "exec_old" });
 
     await waitFor(() => {
       expect(
@@ -715,12 +724,12 @@ describe("ExecutionOverlaySync", () => {
     ).toBe("idle");
   });
 
-  // Leaving the Runs tab is the other way out of a run, and the only one the
-  // rail's tab bar offers: it writes no URL, so `executionId` stays in the
+  // Leaving Runs is the other way out of a run. Workspace navigation writes no
+  // URL itself, so `executionId` stays in the
   // search. The pinned graph has to step aside anyway, or the canvas keeps
   // painting the run's graph and `canvasEditingLockedAtom` keeps refusing every
   // edit, with nothing on screen to say why.
-  it("hands the canvas back to the draft when the Runs tab is left", async () => {
+  it("hands the canvas back to the draft when Runs is left", async () => {
     served.items = [execution("exec_1", "completed")];
     served.graphs = { [versionIdFor("exec_1")]: pinnedGraph("v1_lifecycle") };
     const { store, router } = renderRuns({
@@ -747,7 +756,7 @@ describe("ExecutionOverlaySync", () => {
     });
 
     await act(() => {
-      store.set(propertiesPanelActiveTabAtom, "properties");
+      store.set(workflowWorkspaceViewAtom, "draft");
     });
 
     expect(store.get(canvasEditingLockedAtom)).toBe(false);
@@ -759,7 +768,7 @@ describe("ExecutionOverlaySync", () => {
     expect(router.state.location.search).toEqual({ executionId: "exec_1" });
 
     await act(() => {
-      store.set(propertiesPanelActiveTabAtom, "runs");
+      store.set(workflowWorkspaceViewAtom, "runs");
     });
 
     expect(store.get(displayNodesAtom).map((node) => node.id)).toEqual([
