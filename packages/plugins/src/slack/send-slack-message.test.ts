@@ -5,6 +5,8 @@ import { afterEach, beforeEach, vi } from "vitest";
 import * as slackClient from "#src/slack/client";
 import { slack } from "#src/slack/index";
 
+const underTest = slack();
+
 // What this step decides is whether to post at all, so the seam under it is the
 // Slack client. What that client puts on the wire is covered separately in
 // slack/client.test.ts, against a stubbed fetch. Spy rather than `vi.mock` so
@@ -56,7 +58,7 @@ describe("the send-message action", () => {
       const { reads, credentials } = credentialsRead();
 
       const result = actionData(
-        yield* runAction(slack, "send-message", {
+        yield* runAction(underTest, "send-message", {
           input: { slackChannel: "#alerts", slackMessage: "Hello world" },
           credentials,
           runMode: "test",
@@ -80,7 +82,7 @@ describe("the send-message action", () => {
         const { reads, credentials } = credentialsRead();
 
         const result = actionData(
-          yield* runAction(slack, "send-message", {
+          yield* runAction(underTest, "send-message", {
             input: {
               slackChannel: "#alerts",
               slackMessage: "Hello world",
@@ -108,7 +110,7 @@ describe("the send-message action", () => {
       Effect.gen(function* () {
         const { credentials } = credentialsRead();
 
-        yield* runAction(slack, "send-message", {
+        yield* runAction(underTest, "send-message", {
           input: {
             slackChannel: "#alerts",
             slackMessage: "Hello world",
@@ -129,7 +131,7 @@ describe("the send-message action", () => {
       const { credentials } = credentialsRead();
 
       const error = actionError(
-        yield* runAction(slack, "send-message", {
+        yield* runAction(underTest, "send-message", {
           input: { slackChannel: "#nope", slackMessage: "Hello world" },
           credentials,
         })
@@ -146,7 +148,7 @@ describe("the send-message action", () => {
       const { credentials } = credentialsRead({});
 
       const error = actionError(
-        yield* runAction(slack, "send-message", {
+        yield* runAction(underTest, "send-message", {
           input: { slackChannel: "#alerts", slackMessage: "Hello world" },
           credentials,
         })

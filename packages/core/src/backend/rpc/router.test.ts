@@ -17,6 +17,7 @@ import { configureLoggingWithBridge } from "#src/backend/lib/log-config";
 import { createRequestEvent } from "#src/backend/lib/http/request-event";
 import type { WfGraphRuntime } from "#src/backend/runtime";
 import { rpcEffectHandler } from "#src/backend/rpc/router";
+import { makeAppContextLayer } from "#src/backend/lib/effect/app-context";
 
 /**
  * A runtime satisfying every service a procedure may ask for, all of them
@@ -31,6 +32,7 @@ function createStubRuntime(): WfGraphRuntime {
   return ManagedRuntime.make(
     Layer.mergeAll(
       SilentAppLoggerLayer,
+      makeAppContextLayer({ apiBasePath: "/api" }),
       stubExtensions(),
       stubApiKeyRepo(),
       stubIntegrationRepo(),

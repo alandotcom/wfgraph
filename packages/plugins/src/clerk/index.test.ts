@@ -2,10 +2,12 @@ import { requireOutputFieldsFromSchema } from "@wfgraph/core/plugin";
 import { describe, expect, it } from "vitest";
 import { clerk } from "#src/clerk/index";
 
-function outputFieldsOf(slug: keyof typeof clerk.actions) {
+const integration = clerk();
+
+function outputFieldsOf(slug: keyof typeof integration.actions) {
   return requireOutputFieldsFromSchema(
     `Action "clerk/${slug}"`,
-    clerk.actions[slug].output
+    integration.actions[slug].output
   );
 }
 
@@ -50,10 +52,10 @@ const USER_FIELDS = [
 
 describe("the clerk integration", () => {
   it("declares its credentials and its actions as one value", () => {
-    expect(clerk.type).toBe("clerk");
-    expect(clerk.test).toBeDefined();
-    expect(Object.keys(clerk.credentials)).toEqual(["CLERK_SECRET_KEY"]);
-    expect(Object.keys(clerk.actions)).toEqual([
+    expect(integration.type).toBe("clerk");
+    expect(integration.test).toBeDefined();
+    expect(Object.keys(integration.credentials)).toEqual(["CLERK_SECRET_KEY"]);
+    expect(Object.keys(integration.actions)).toEqual([
       "get-user",
       "create-user",
       "update-user",

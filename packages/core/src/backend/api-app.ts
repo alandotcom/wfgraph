@@ -1,6 +1,7 @@
 import { RPCHandler } from "@orpc/server/fetch";
 import { Effect, Result, Schema, type SchemaAST } from "effect";
 import { Hono } from "hono";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { AgentConfig } from "#src/backend/agent/config";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
@@ -22,6 +23,13 @@ import {
 } from "#src/backend/rpc/openapi";
 import { rpcRouter } from "#src/backend/rpc/router";
 import { postWorkflowResume } from "#src/backend/services/workflows/lifecycle/resume";
+import {
+  completeIntegrationOAuth,
+  deleteIntegrationOAuth,
+  getOAuthClientMetadata,
+  oauthBindingCookieName,
+  startIntegrationOAuth,
+} from "#src/backend/services/integrations/oauth";
 import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
 import { formatSchemaFailure } from "@wfgraph/shared/types/schema-message";
 import {
@@ -107,6 +115,8 @@ export type CreateApiAppOptions = {
    * so nothing here has to deduce it from the request.
    */
   basePath: `/${string}`;
+  /** Normalized host origin for OAuth routes. */
+  publicUrl?: string;
   /** Every route answers to this except those in `machineRoutes`. */
   authorize: Authorize;
   /**
@@ -129,6 +139,14 @@ export type CreateApiAppOptions = {
 const WAIT_RESUME_ROUTE = "/workflows/waits/:token/resume";
 
 const INNGEST_SERVE_ROUTE = "/inngest";
+const OAUTH_CLIENT_METADATA_ROUTE =
+  "/integrations/oauth/clients/:integrationType";
+const OAUTH_CALLBACK_ROUTE = "/integrations/oauth/callback";
+const OAUTH_RESPONSE_ROUTES = [
+  "/integrations/:integrationId/oauth",
+  "/integrations/:integrationId/oauth/*",
+  "/integrations/oauth/*",
+] as const;
 
 /**
  * Routes reached by machines, each carrying a credential of its own: Inngest
@@ -155,13 +173,27 @@ export function machineRoutes(options: {
     : [WAIT_RESUME_ROUTE];
 }
 
+/** OAuth client metadata is provider-discovery data, so it reaches no host auth. */
+export function publicRoutes(): readonly string[] {
+  return [OAUTH_CLIENT_METADATA_ROUTE];
+}
+
 type ApiEnv = {
   Variables: {
     wfgraphMachineRoute?: true;
+    wfgraphPublicRoute?: true;
     /** The record this request will write, shared with the oRPC handler. */
     wfgraphRequestEvent: RequestEvent;
   };
 };
+
+const OAUTH_RESPONSE_HEADERS = {
+  "Cache-Control": "no-store",
+  "Referrer-Policy": "no-referrer",
+};
+
+const oauthPage = (message: string) =>
+  `<!doctype html><html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"></head><body><p>${message}</p><script>window.close()</script></body></html>`;
 
 /** How much of a refusal's own wording reaches the log line. */
 const ERROR_MESSAGE_LIMIT = 200;
@@ -263,8 +295,33 @@ export function createApiApp(options: CreateApiAppOptions) {
     });
   }
 
+  // OAuth callback URLs can carry one-time credentials. These response headers
+  // apply before the host gate too, so a refused OAuth request cannot become a
+  // referrer or cache entry.
+  for (const route of OAUTH_RESPONSE_ROUTES) {
+    app.use(route, async (c, next) => {
+      for (const [name, value] of Object.entries(OAUTH_RESPONSE_HEADERS)) {
+        c.header(name, value);
+      }
+      await next();
+    });
+  }
+
+  // A client metadata document is addressed by OAuth providers before a browser
+  // session exists. It is deliberately the only OAuth route outside the host gate.
+  for (const route of publicRoutes()) {
+    app.use(route, async (c, next) => {
+      c.set("wfgraphPublicRoute", true);
+      await next();
+    });
+  }
+
   app.use("*", async (c, next) => {
-    if (c.get("wfgraphMachineRoute") || (await authorize(c.req.raw))) {
+    if (
+      c.get("wfgraphMachineRoute") ||
+      c.get("wfgraphPublicRoute") ||
+      (await authorize(c.req.raw))
+    ) {
       await next();
       return undefined;
     }
@@ -276,7 +333,6 @@ export function createApiApp(options: CreateApiAppOptions) {
     httpLogger.error(`Unhandled API error: ${getErrorMessage(error)}`, {
       method: c.req.method.toUpperCase(),
       path: c.req.path,
-      query: c.req.query(),
       error,
     });
 
@@ -361,6 +417,121 @@ export function createApiApp(options: CreateApiAppOptions) {
         catalog: extensions.catalog,
         agent: { enabled: agent.enabled },
       });
+    })
+    .get("/integrations/:integrationId/oauth/start", async (c) => {
+      const result = await runtime.runPromise(
+        startIntegrationOAuth(c.req.param("integrationId")).pipe(
+          Effect.match({
+            onSuccess: (value) => ({ ok: true as const, value }),
+            onFailure: (failure) => ({ ok: false as const, failure }),
+          })
+        )
+      );
+      if (!result.ok) {
+        const response = responseFromServiceFailure(result.failure);
+        for (const [name, value] of Object.entries(OAUTH_RESPONSE_HEADERS)) {
+          response.headers.set(name, value);
+        }
+        return response;
+      }
+
+      setCookie(c, result.value.cookieName, result.value.browserBinding, {
+        httpOnly: true,
+        sameSite: "Lax",
+        maxAge: result.value.maxAge,
+        path: `${basePath}${OAUTH_CALLBACK_ROUTE}`,
+        secure: options.publicUrl?.startsWith("https://") === true,
+      });
+      for (const [name, value] of Object.entries(OAUTH_RESPONSE_HEADERS)) {
+        c.header(name, value);
+      }
+      return c.redirect(result.value.authorizeUrl, 302);
+    })
+    .get(OAUTH_CALLBACK_ROUTE, async (c) => {
+      // State identifies only which binding-cookie name to read. Its value and
+      // every provider query member stay in the service call and never in a log.
+      const state = c.req.query("state");
+      const cookieName = state
+        ? (oauthBindingCookieName(state) ?? undefined)
+        : undefined;
+      const browserBinding = cookieName ? getCookie(c, cookieName) : undefined;
+      const result = await runtime.runPromise(
+        completeIntegrationOAuth({
+          state,
+          browserBinding,
+          code: c.req.query("code"),
+          providerError: c.req.query("error"),
+        }).pipe(
+          Effect.match({
+            onSuccess: () => ({ ok: true as const }),
+            onFailure: (failure) => ({ ok: false as const, failure }),
+          })
+        )
+      );
+      if (cookieName) {
+        deleteCookie(c, cookieName, {
+          path: `${basePath}${OAUTH_CALLBACK_ROUTE}`,
+          secure: options.publicUrl?.startsWith("https://") === true,
+        });
+      }
+      for (const [name, value] of Object.entries(OAUTH_RESPONSE_HEADERS)) {
+        c.header(name, value);
+      }
+      if (result.ok) {
+        return c.html(oauthPage("OAuth connection complete."));
+      }
+      const response = new Response(
+        oauthPage("OAuth connection could not be completed."),
+        { status: responseFromServiceFailure(result.failure).status }
+      );
+      for (const [name, value] of Object.entries(OAUTH_RESPONSE_HEADERS)) {
+        response.headers.set(name, value);
+      }
+      const cookie = c.res.headers.get("Set-Cookie");
+      if (cookie) response.headers.set("Set-Cookie", cookie);
+      return response;
+    })
+    .get(OAUTH_CLIENT_METADATA_ROUTE, async (c) => {
+      const result = await runtime.runPromise(
+        getOAuthClientMetadata(c.req.param("integrationType")).pipe(
+          Effect.match({
+            onSuccess: (value) => ({ ok: true as const, value }),
+            onFailure: (failure) => ({ ok: false as const, failure }),
+          })
+        )
+      );
+      for (const [name, value] of Object.entries(OAUTH_RESPONSE_HEADERS)) {
+        c.header(name, value);
+      }
+      if (result.ok) {
+        return c.json(result.value);
+      }
+      const response = responseFromServiceFailure(result.failure);
+      for (const [name, value] of Object.entries(OAUTH_RESPONSE_HEADERS)) {
+        response.headers.set(name, value);
+      }
+      return response;
+    })
+    .delete("/integrations/:integrationId/oauth", async (c) => {
+      const result = await runtime.runPromise(
+        deleteIntegrationOAuth(c.req.param("integrationId")).pipe(
+          Effect.match({
+            onSuccess: (value) => ({ ok: true as const, value }),
+            onFailure: (failure) => ({ ok: false as const, failure }),
+          })
+        )
+      );
+      for (const [name, value] of Object.entries(OAUTH_RESPONSE_HEADERS)) {
+        c.header(name, value);
+      }
+      if (result.ok) {
+        return c.json(result.value);
+      }
+      const response = responseFromServiceFailure(result.failure);
+      for (const [name, value] of Object.entries(OAUTH_RESPONSE_HEADERS)) {
+        response.headers.set(name, value);
+      }
+      return response;
     })
     .all("/auth", (c) => c.json({ error: "Not found" }, 404))
     .all("/auth/*", (c) => c.json({ error: "Not found" }, 404))

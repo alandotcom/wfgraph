@@ -6,15 +6,23 @@
  * Resend answered and reads the verdict back.
  */
 
-import { describe, expect, it } from "vitest";
-import { afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { testResend } from "#src/resend/test";
 
 const realFetch = globalThis.fetch;
+let requests: Request[] = [];
 
-function stubFetch(respond: () => Response): void {
-  globalThis.fetch = (() => Promise.resolve(respond())) as typeof fetch;
+function stubFetch(respond: (request: Request) => Response): void {
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const request = new Request(input, init);
+    requests.push(request);
+    return Promise.resolve(respond(request));
+  }) as typeof fetch;
 }
+
+beforeEach(() => {
+  requests = [];
+});
 
 afterEach(() => {
   globalThis.fetch = realFetch;
@@ -28,12 +36,24 @@ describe("testResend", () => {
       throw new Error("no request should be made");
     });
 
-    for (const key of ["", "sk_live_1", "RE_1"]) {
+    for (const key of ["", "sk_live_1", "RE_1", "header.payload"]) {
       expect(await testResend({ RESEND_API_KEY: key })).toEqual({
         success: false,
         error: "Invalid API key format. Resend API keys start with 're_'",
       });
     }
+  });
+
+  it("accepts an OAuth ES256 JWT-shaped access token and validates it normally", async () => {
+    stubFetch(() => Response.json({ data: [] }));
+
+    expect(
+      await testResend({
+        RESEND_API_KEY: "eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiIxIn0.signature",
+      })
+    ).toEqual({ success: true });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe("https://api.resend.com/domains");
   });
 
   it("accepts a key that can list domains", async () => {

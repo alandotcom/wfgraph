@@ -1,6 +1,11 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, lte, ne, sql } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
-import { integrations, type NewIntegration } from "#src/backend/lib/db/schema";
+import {
+  integrations,
+  oauthAuthorizationAttempts,
+  type IntegrationRefreshState,
+  type NewIntegration,
+} from "#src/backend/lib/db/schema";
 import { Database, type DatabaseError } from "#src/backend/lib/effect/database";
 import type {
   EncryptionKeyMismatch,
@@ -14,10 +19,77 @@ export type DecryptedIntegration = {
   name: string;
   type: string;
   config: IntegrationConfig;
+  configRevision: number;
   isManaged: boolean | null;
+  refreshState: IntegrationRefreshState;
+  refreshClaimId: string | null;
+  refreshClaimedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
+
+export type RefreshClaimOutcome =
+  | { status: "acquired" }
+  | { status: "lost" }
+  | { status: "not_found" };
+
+export type IntegrationWriteOutcome =
+  | { status: "updated"; integration: DecryptedIntegration }
+  | { status: "conflict" }
+  | { status: "not_found" };
+
+export type ConsumedOAuthAuthorizationAttempt = {
+  integrationId: string;
+  payload: OAuthAuthorizationAttemptPayload;
+};
+
+export type OAuthAuthorizationAttemptPayload = {
+  redirectUri: string;
+  configRevision: number;
+  codeVerifier?: string;
+};
+
+export function readOAuthAuthorizationAttemptPayload(
+  config: IntegrationConfig
+): OAuthAuthorizationAttemptPayload | null {
+  const redirectUri = config.redirectUri;
+  const configRevision = Number(config.configRevision);
+  if (
+    !redirectUri ||
+    !Number.isSafeInteger(configRevision) ||
+    configRevision < 0
+  ) {
+    return null;
+  }
+
+  return {
+    redirectUri,
+    configRevision,
+    ...(config.codeVerifier ? { codeVerifier: config.codeVerifier } : {}),
+  };
+}
+
+type RefreshClaimInput = {
+  integrationId: string;
+  claimId: string;
+  expectedRevision: number;
+};
+
+const ownedRefreshClaim = (input: RefreshClaimInput) =>
+  and(
+    eq(integrations.id, input.integrationId),
+    eq(integrations.refreshState, "refreshing"),
+    eq(integrations.refreshClaimId, input.claimId),
+    eq(integrations.configRevision, input.expectedRevision)
+  );
+
+type IntegrationUpdate =
+  | { name?: string; config?: never }
+  | {
+      name?: string;
+      config: IntegrationConfig;
+      expectedRevision: number;
+    };
 
 /**
  * What a read that opens a stored config can fail with.
@@ -59,14 +131,38 @@ export class IntegrationRepo extends Context.Service<
       type: string;
       config: IntegrationConfig;
     }) => Effect.Effect<DecryptedIntegration, DatabaseError>;
-    /** Null when the row was gone by the time the update ran. */
+    /** Config writes compare the revision and refuse an active refresh owner. */
     readonly update: (
       integrationId: string,
-      updates: { name?: string; config?: IntegrationConfig }
-    ) => Effect.Effect<DecryptedIntegration | null, ReadFailure>;
+      updates: IntegrationUpdate
+    ) => Effect.Effect<IntegrationWriteOutcome, ReadFailure>;
     /** Whether a row was actually removed. */
     readonly deleteById: (
       integrationId: string
+    ) => Effect.Effect<boolean, DatabaseError>;
+    readonly createOAuthAuthorizationAttempt: (input: {
+      stateHash: string;
+      integrationId: string;
+      expiresAt: Date;
+      browserBindingHash: string;
+      payload: OAuthAuthorizationAttemptPayload;
+    }) => Effect.Effect<void, DatabaseError>;
+    /** Deletes the state before checking its expiry and browser binding. */
+    readonly consumeOAuthAuthorizationAttempt: (
+      stateHash: string,
+      browserBindingHash: string
+    ) => Effect.Effect<ConsumedOAuthAuthorizationAttempt | null, ReadFailure>;
+    readonly claimRefresh: (
+      input: RefreshClaimInput
+    ) => Effect.Effect<RefreshClaimOutcome, DatabaseError>;
+    readonly completeRefresh: (
+      input: RefreshClaimInput & { config: IntegrationConfig }
+    ) => Effect.Effect<boolean, DatabaseError>;
+    readonly releaseRefreshClaim: (
+      input: RefreshClaimInput
+    ) => Effect.Effect<boolean, DatabaseError>;
+    readonly markReauthorizationRequired: (
+      input: RefreshClaimInput
     ) => Effect.Effect<boolean, DatabaseError>;
   }
 >()("@wfgraph/core/IntegrationRepo") {}
@@ -98,6 +194,22 @@ export function makeIntegrationRepoLayer(
         rows: (typeof integrations.$inferSelect)[]
       ): Effect.Effect<DecryptedIntegration | null, EncryptionKeyMismatch> =>
         rows[0] ? decrypted(rows[0]) : Effect.succeed(null);
+
+      type StoredWriteOutcome =
+        | { status: "updated"; row: typeof integrations.$inferSelect }
+        | { status: "conflict" }
+        | { status: "not_found" };
+
+      const decryptedWriteOutcome = (
+        outcome: StoredWriteOutcome
+      ): Effect.Effect<IntegrationWriteOutcome, EncryptionKeyMismatch> => {
+        if (outcome.status !== "updated") {
+          return Effect.succeed(outcome);
+        }
+        return decrypted(outcome.row).pipe(
+          Effect.map((integration) => ({ status: "updated", integration }))
+        );
+      };
 
       return {
         listByType: (type) =>
@@ -155,26 +267,58 @@ export function makeIntegrationRepoLayer(
 
         update: (integrationId, updates) =>
           database
-            .query(async (db) => {
-              const updateData: Partial<NewIntegration> = {
-                updatedAt: new Date(),
-              };
+            .query((db) =>
+              db.transaction(async (tx): Promise<StoredWriteOutcome> => {
+                const updateData: Partial<NewIntegration> = {
+                  updatedAt: new Date(),
+                };
 
-              if (updates.name !== undefined) {
-                updateData.name = updates.name;
-              }
+                if (updates.name !== undefined) {
+                  updateData.name = updates.name;
+                }
 
-              if (updates.config !== undefined) {
-                updateData.config = cipher.seal(updates.config);
-              }
+                const changesConfig = updates.config !== undefined;
+                if (changesConfig) {
+                  updateData.config = cipher.seal(updates.config);
+                }
+                const versionedUpdateData = changesConfig
+                  ? {
+                      ...updateData,
+                      configRevision: sql`${integrations.configRevision} + 1`,
+                    }
+                  : updateData;
 
-              return db
-                .update(integrations)
-                .set(updateData)
-                .where(eq(integrations.id, integrationId))
-                .returning();
-            })
-            .pipe(Effect.flatMap(decryptedOrNull)),
+                const rows = await tx
+                  .update(integrations)
+                  .set(versionedUpdateData)
+                  .where(
+                    changesConfig
+                      ? and(
+                          eq(integrations.id, integrationId),
+                          eq(
+                            integrations.configRevision,
+                            updates.expectedRevision
+                          ),
+                          ne(integrations.refreshState, "refreshing")
+                        )
+                      : eq(integrations.id, integrationId)
+                  )
+                  .returning();
+                if (rows[0]) {
+                  return { status: "updated", row: rows[0] };
+                }
+
+                const existing = await tx
+                  .select({ id: integrations.id })
+                  .from(integrations)
+                  .where(eq(integrations.id, integrationId))
+                  .limit(1);
+                return existing.length > 0
+                  ? { status: "conflict" }
+                  : { status: "not_found" };
+              })
+            )
+            .pipe(Effect.flatMap(decryptedWriteOutcome)),
 
         deleteById: (integrationId) =>
           database.query(async (db) => {
@@ -184,6 +328,147 @@ export function makeIntegrationRepoLayer(
               .returning({ id: integrations.id });
 
             return removed.length > 0;
+          }),
+
+        createOAuthAuthorizationAttempt: (input) =>
+          database.query((db) =>
+            db.transaction(async (tx) => {
+              await tx
+                .delete(oauthAuthorizationAttempts)
+                .where(lte(oauthAuthorizationAttempts.expiresAt, new Date()));
+              await tx.insert(oauthAuthorizationAttempts).values({
+                stateHash: input.stateHash,
+                integrationId: input.integrationId,
+                expiresAt: input.expiresAt,
+                browserBindingHash: input.browserBindingHash,
+                encryptedPayload: cipher.seal({
+                  redirectUri: input.payload.redirectUri,
+                  configRevision: String(input.payload.configRevision),
+                  ...(input.payload.codeVerifier
+                    ? { codeVerifier: input.payload.codeVerifier }
+                    : {}),
+                }),
+              });
+            })
+          ),
+
+        consumeOAuthAuthorizationAttempt: (stateHash, browserBindingHash) =>
+          database
+            .query(async (db) => {
+              const [attempt] = await db
+                .delete(oauthAuthorizationAttempts)
+                .where(eq(oauthAuthorizationAttempts.stateHash, stateHash))
+                .returning();
+
+              if (
+                !attempt ||
+                attempt.browserBindingHash !== browserBindingHash ||
+                attempt.expiresAt.getTime() <= Date.now()
+              ) {
+                return null;
+              }
+
+              return {
+                integrationId: attempt.integrationId,
+                encryptedPayload: attempt.encryptedPayload,
+              };
+            })
+            .pipe(
+              Effect.flatMap((attempt) => {
+                if (!attempt) {
+                  return Effect.succeed(null);
+                }
+
+                return cipher.open(attempt.encryptedPayload).pipe(
+                  Effect.map((config) => {
+                    const payload =
+                      readOAuthAuthorizationAttemptPayload(config);
+                    return payload
+                      ? { integrationId: attempt.integrationId, payload }
+                      : null;
+                  })
+                );
+              })
+            ),
+
+        claimRefresh: (input) =>
+          database.query((db) =>
+            db.transaction(async (tx) => {
+              const claimed = await tx
+                .update(integrations)
+                .set({
+                  refreshState: "refreshing",
+                  refreshClaimId: input.claimId,
+                  refreshClaimedAt: new Date(),
+                })
+                .where(
+                  and(
+                    eq(integrations.id, input.integrationId),
+                    ne(integrations.refreshState, "refreshing"),
+                    eq(integrations.configRevision, input.expectedRevision)
+                  )
+                )
+                .returning({ id: integrations.id });
+
+              if (claimed.length > 0) {
+                return { status: "acquired" as const };
+              }
+
+              const existing = await tx
+                .select({ id: integrations.id })
+                .from(integrations)
+                .where(eq(integrations.id, input.integrationId))
+                .limit(1);
+              return existing.length > 0
+                ? { status: "lost" as const }
+                : { status: "not_found" as const };
+            })
+          ),
+
+        completeRefresh: (input) =>
+          database.query(async (db) => {
+            const completed = await db
+              .update(integrations)
+              .set({
+                config: cipher.seal(input.config),
+                configRevision: sql`${integrations.configRevision} + 1`,
+                refreshState: "idle",
+                refreshClaimId: null,
+                refreshClaimedAt: null,
+                updatedAt: new Date(),
+              })
+              .where(ownedRefreshClaim(input))
+              .returning({ id: integrations.id });
+            return completed.length > 0;
+          }),
+
+        releaseRefreshClaim: (input) =>
+          database.query(async (db) => {
+            const released = await db
+              .update(integrations)
+              .set({
+                refreshState: "idle",
+                refreshClaimId: null,
+                refreshClaimedAt: null,
+              })
+              .where(ownedRefreshClaim(input))
+              .returning({ id: integrations.id });
+            return released.length > 0;
+          }),
+
+        markReauthorizationRequired: (input) =>
+          database.query(async (db) => {
+            const transitioned = await db
+              .update(integrations)
+              .set({
+                refreshState: "reauthorization_required",
+                refreshClaimId: null,
+                refreshClaimedAt: null,
+                updatedAt: new Date(),
+              })
+              .where(ownedRefreshClaim(input))
+              .returning({ id: integrations.id });
+            return transitioned.length > 0;
           }),
       };
     })

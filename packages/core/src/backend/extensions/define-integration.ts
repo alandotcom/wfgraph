@@ -22,6 +22,7 @@ import {
   type StepBag,
 } from "#src/backend/extensions/steps/define-step";
 import type { InputSchema } from "#src/backend/extensions/schema-io";
+import type { IntegrationOAuth } from "#src/backend/extensions/oauth";
 import {
   type CredentialFields,
   formatActionId,
@@ -56,6 +57,8 @@ export type IntegrationDefinition = {
   readonly label: string;
   readonly description: string;
   readonly credentials: CredentialFields;
+  /** Provider behavior retained on the server when this integration supports OAuth. */
+  readonly oauth?: IntegrationOAuth;
   /**
    * What "Test connection" calls, absent when the integration offers none.
    *
@@ -170,6 +173,7 @@ export function defineIntegration<
   readonly label: string;
   readonly description: string;
   readonly credentials: TCredentials;
+  readonly oauth?: IntegrationOAuth;
   readonly test?: IntegrationTestLoader<CredentialsOf<TCredentials>>;
   readonly actions: IntegrationActions<
     CredentialsOf<TCredentials>,
@@ -187,6 +191,7 @@ export function defineIntegration(input: {
   readonly label: string;
   readonly description: string;
   readonly credentials: CredentialFields;
+  readonly oauth?: IntegrationOAuth;
   readonly test?: IntegrationTestLoader;
   readonly actions: Readonly<Record<string, unknown>>;
 }): IntegrationDefinition {
@@ -213,6 +218,7 @@ export function defineIntegration(input: {
     label: input.label,
     description: input.description,
     credentials: input.credentials,
+    ...(input.oauth ? { oauth: input.oauth } : {}),
     test: input.test,
     actions,
   };

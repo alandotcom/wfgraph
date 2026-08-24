@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Pencil, X } from "lucide-react";
+import { Check, Link, Pencil, TriangleAlert, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
@@ -10,6 +10,12 @@ import {
   announceTestResult,
   hasProvidedConfigValues,
 } from "#src/lib/connection-credentials";
+import {
+  beginExistingOAuthConnection,
+  integrationOAuthUrl,
+  pollOAuthConnection,
+  requestApiRoute,
+} from "#src/lib/oauth-connection";
 import type { Integration } from "#src/lib/rpc-client";
 import { orpcQuery, refreshIntegrations } from "#src/lib/rpc-query";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
@@ -26,6 +32,86 @@ const integrationLabel = (
   entry: IntegrationMetadata | undefined,
   type: string
 ): string => entry?.label ?? type;
+
+function OAuthConnectionStatus({
+  oauth,
+  providerLabel,
+  pending,
+  onConnect,
+  onDisconnect,
+}: {
+  oauth: Integration["oauth"];
+  providerLabel: string;
+  pending: boolean;
+  onConnect: () => void;
+  onDisconnect: () => void;
+}) {
+  if (oauth?.status === "connected") {
+    return (
+      <section
+        aria-busy={pending}
+        aria-label={`${providerLabel} OAuth connection`}
+        className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div className="flex items-start gap-2" role="status">
+          <Check aria-hidden="true" className="mt-0.5 size-4 text-success" />
+          <div className="space-y-0.5 text-sm">
+            <p className="font-medium">Connected</p>
+            {oauth.accountLabel && (
+              <p className="text-muted-foreground">
+                Account: {oauth.accountLabel}
+              </p>
+            )}
+            <p className="text-muted-foreground">
+              Connected on {oauth.connectedAt.slice(0, 10)}
+            </p>
+          </div>
+        </div>
+        <Button
+          disabled={pending}
+          onClick={onDisconnect}
+          type="button"
+          variant="outline"
+        >
+          Disconnect
+        </Button>
+      </section>
+    );
+  }
+
+  const needsReauthorization = oauth?.status === "reauthorization_required";
+  return (
+    <section
+      aria-busy={pending}
+      aria-label={`${providerLabel} OAuth connection`}
+      className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="flex items-start gap-2" role="status">
+        {needsReauthorization ? (
+          <TriangleAlert
+            aria-hidden="true"
+            className="mt-0.5 size-4 text-warning"
+          />
+        ) : (
+          <Link aria-hidden="true" className="mt-0.5 size-4" />
+        )}
+        <div className="space-y-0.5 text-sm">
+          <p className="font-medium">
+            {needsReauthorization ? "Reauthorization required" : "Disconnected"}
+          </p>
+          <p className="text-muted-foreground">
+            {needsReauthorization
+              ? `Reconnect ${providerLabel} to continue using this connection.`
+              : `Connect ${providerLabel} to authorize this connection.`}
+          </p>
+        </div>
+      </div>
+      <Button disabled={pending} onClick={onConnect} type="button">
+        {needsReauthorization ? "Reconnect" : "Connect"}
+      </Button>
+    </section>
+  );
+}
 
 type EditConnectionOverlayProps = {
   overlayId: string;
@@ -141,6 +227,8 @@ export function EditConnectionOverlay({
   const queryClient = useQueryClient();
   const [name, setName] = useState(integration.name);
   const [config, setConfig] = useState<Record<string, string>>({});
+  const [oauth, setOauth] = useState(integration.oauth);
+  const [oauthPending, setOauthPending] = useState(false);
 
   const updateConfig = (key: string, value: string) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
@@ -178,6 +266,19 @@ export function EditConnectionOverlay({
     })
   );
 
+  const disconnectOAuth = useMutation({
+    mutationFn: () =>
+      requestApiRoute(integrationOAuthUrl(integration.id), {
+        method: "DELETE",
+      }),
+    onSuccess: async () => {
+      setOauth(undefined);
+      toast.success("OAuth connection disconnected");
+      await refreshIntegrations(queryClient);
+    },
+    meta: { errorMessage: "Failed to disconnect OAuth connection" },
+  });
+
   const catalog = useExtensionCatalog();
   const catalogEntry = findIntegration(catalog, integration.type);
   const formFields = catalogEntry?.credentialFields;
@@ -188,6 +289,8 @@ export function EditConnectionOverlay({
   const saving = update.isPending || testForSave.isPending;
   const testing =
     testNewCredentials.isPending || testStoredCredentials.isPending;
+  const oauthBusy = oauthPending || disconnectOAuth.isPending;
+  const controlsDisabled = saving || testing || oauthBusy;
 
   const saveConnection = () => {
     update.mutate({
@@ -258,6 +361,43 @@ export function EditConnectionOverlay({
     });
   };
 
+  const handleOAuthConnect = async () => {
+    setOauthPending(true);
+    try {
+      const started = beginExistingOAuthConnection(integration.id);
+      if (started.status === "popup_blocked") {
+        toast.error("Allow pop-ups to connect this provider");
+        return;
+      }
+
+      const result = await pollOAuthConnection({
+        baseline: oauth,
+        integrationId: integration.id,
+        popup: started.popup,
+        queryClient,
+      });
+      await refreshIntegrations(queryClient);
+
+      if (result.status === "connected") {
+        setOauth(result.integration.oauth);
+        toast.success("Connection authorized");
+        return;
+      }
+
+      if (result.status === "reauthorization_required") {
+        setOauth(result.integration.oauth);
+        toast.error("Authorization needs to be completed again");
+        return;
+      }
+
+      toast.message("Authorization is still pending");
+    } catch {
+      toast.error("Could not check OAuth authorization");
+    } finally {
+      setOauthPending(false);
+    }
+  };
+
   const renderConfigFields = () => {
     if (!formFields) {
       return null;
@@ -317,7 +457,7 @@ export function EditConnectionOverlay({
           label: "Delete",
           variant: "ghost",
           onClick: handleDelete,
-          disabled: saving || testing,
+          disabled: controlsDisabled,
         },
         ...(hasTest
           ? [
@@ -326,11 +466,16 @@ export function EditConnectionOverlay({
                 variant: "outline" as const,
                 onClick: handleTest,
                 loading: testing,
-                disabled: saving,
+                disabled: saving || oauthBusy,
               },
             ]
           : []),
-        { label: "Update", onClick: handleSave, loading: saving },
+        {
+          label: "Update",
+          onClick: handleSave,
+          loading: saving,
+          disabled: testing || oauthBusy,
+        },
       ]}
       overlayId={overlayId}
       title={`Edit ${integrationLabel(catalogEntry, integration.type)}`}
@@ -340,17 +485,32 @@ export function EditConnectionOverlay({
       </p>
 
       <div className="space-y-4">
-        {renderConfigFields()}
-
-        <div className="space-y-2">
-          <Label htmlFor="name">Label (Optional)</Label>
-          <Input
-            id="name"
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Production, Personal, Work"
-            value={name}
+        {catalogEntry?.oauth && (
+          <OAuthConnectionStatus
+            oauth={oauth}
+            onConnect={handleOAuthConnect}
+            onDisconnect={() => disconnectOAuth.mutate()}
+            pending={oauthBusy}
+            providerLabel={catalogEntry.oauth.label}
           />
-        </div>
+        )}
+        <fieldset
+          aria-busy={oauthBusy}
+          className="m-0 min-w-0 space-y-4 border-0 p-0"
+          disabled={oauthBusy}
+        >
+          {renderConfigFields()}
+
+          <div className="space-y-2">
+            <Label htmlFor="name">Label (Optional)</Label>
+            <Input
+              id="name"
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Production, Personal, Work"
+              value={name}
+            />
+          </div>
+        </fieldset>
       </div>
     </Overlay>
   );

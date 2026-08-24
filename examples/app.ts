@@ -27,9 +27,9 @@ import {
 } from "@wfgraph/core";
 import { configureWfGraphLogging } from "@wfgraph/core/logging";
 import { wfSqlite } from "@wfgraph/core/sqlite";
-// The built-in integrations, as values. Nothing registers on import, so the line
-// that passes them to `createWfGraphApp` below is what turns them on and dropping it
-// is what turns them off.
+// The built-in integrations, created for this app. Nothing registers on import, so
+// the line that passes them to `createWfGraphApp` below is what turns them on and
+// dropping it is what turns them off.
 import { builtInIntegrations } from "@wfgraph/plugins";
 import { z } from "zod";
 
@@ -44,6 +44,11 @@ configureWfGraphLogging();
 const DEFAULT_PORT = 4017;
 
 const isProduction = process.env.NODE_ENV === "production";
+const publicUrl =
+  process.env.WFGRAPH_PUBLIC_URL?.trim() ||
+  (isProduction
+    ? undefined
+    : `http://localhost:${process.env.PORT ?? DEFAULT_PORT}`);
 
 // Workflow Graph reads a schema through Standard Schema and asks nothing else of it. The
 // editor labels a path from its key ("Patient Name" from `patientName`), and
@@ -162,6 +167,9 @@ const cancelAppointmentAction = defineAction({
 });
 
 const wfgraph = await createWfGraphApp({
+  // OAuth providers compare callback URLs exactly. Development uses the local
+  // server origin; deployments set WFGRAPH_PUBLIC_URL to their external origin.
+  ...(publicUrl ? { publicUrl } : {}),
   // Handing the editor over is what turns it on. Development has none to hand
   // over, and Workflow Graph then serves the API alone.
   client: isProduction
@@ -210,7 +218,7 @@ const wfgraph = await createWfGraphApp({
   // The whole extension surface, assembled in one place. The Events are what the
   // editor lists and what the per-Event Inngest listeners are built from.
   extensions: {
-    integrations: builtInIntegrations,
+    integrations: builtInIntegrations(),
     events: [
       appointmentCreated,
       appointmentRescheduled,

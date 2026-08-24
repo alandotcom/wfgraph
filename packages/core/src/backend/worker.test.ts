@@ -6,6 +6,7 @@ import { Effect, Layer } from "effect";
 import { wfSqlite } from "#src/backend/persistence/sqlite";
 import { wfWorker } from "#src/backend/worker";
 import type { WfGraphPersistence } from "#src/backend/persistence/types";
+import { defineIntegration } from "#src/backend/extensions/define-integration";
 import {
   stubApiKeyRepo,
   stubExecutionRepo,
@@ -23,6 +24,68 @@ afterEach(async () => {
 });
 
 describe("wfWorker", () => {
+  it("resolves request-scoped extensions from the Worker environment", async () => {
+    const repositories = Layer.mergeAll(
+      stubApiKeyRepo(),
+      stubExecutionRepo(),
+      stubIntegrationRepo(),
+      stubWorkflowRepo()
+    );
+    const persistence: WfGraphPersistence = {
+      open: async () => ({
+        repositories,
+        description: { backend: "test" },
+        close: () => Promise.resolve(),
+      }),
+    };
+    let resolutions = 0;
+    const worker = wfWorker({
+      extensions: (env: { integrationType: string }) => {
+        resolutions += 1;
+        return {
+          integrations: [
+            defineIntegration({
+              type: env.integrationType,
+              label: env.integrationType,
+              description: "Request-scoped integration",
+              credentials: {},
+              actions: {},
+            }),
+          ],
+        };
+      },
+      request: () => ({
+        auth: "external",
+        persistence,
+        encryption: { key: "d".repeat(64) },
+        inngest: { id: "wfgraph-worker-test", isDev: true },
+      }),
+    });
+
+    const first = await worker.fetch(
+      new Request("https://example.test/api/extensions"),
+      { integrationType: "first" }
+    );
+    const second = await worker.fetch(
+      new Request("https://example.test/api/extensions"),
+      { integrationType: "second" }
+    );
+    const firstBody = (await first.json()) as {
+      catalog: { integrations: Array<{ type: string }> };
+    };
+    const secondBody = (await second.json()) as {
+      catalog: { integrations: Array<{ type: string }> };
+    };
+
+    expect(firstBody.catalog.integrations.map(({ type }) => type)).toEqual([
+      "first",
+    ]);
+    expect(secondBody.catalog.integrations.map(({ type }) => type)).toEqual([
+      "second",
+    ]);
+    expect(resolutions).toBe(2);
+  });
+
   it("opens and closes persistence for each request", async () => {
     directory = await mkdtemp(join(tmpdir(), "wfgraph-worker-"));
     const sqlite = wfSqlite({

@@ -10,7 +10,7 @@ import {
   type JsonValue,
 } from "@wfgraph/shared/types/json";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const MIGRATION_1 = `
   CREATE TABLE workflows (
@@ -148,6 +148,29 @@ const MIGRATION_1 = `
   CREATE INDEX events_workflow_created_idx ON workflow_execution_events(workflow_id, created_at DESC);
 `;
 
+const MIGRATION_2 = `
+  ALTER TABLE integrations
+    ADD COLUMN refresh_state TEXT NOT NULL DEFAULT 'idle'
+    CHECK (refresh_state IN ('idle', 'refreshing', 'reauthorization_required'));
+  ALTER TABLE integrations ADD COLUMN config_revision INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE integrations ADD COLUMN refresh_claim_id TEXT;
+  ALTER TABLE integrations ADD COLUMN refresh_claimed_at INTEGER;
+
+  CREATE TABLE oauth_authorization_attempts (
+    state_hash TEXT PRIMARY KEY,
+    integration_id TEXT NOT NULL REFERENCES integrations(id) ON DELETE CASCADE,
+    expires_at INTEGER NOT NULL,
+    browser_binding_hash TEXT NOT NULL,
+    encrypted_payload TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  ) STRICT;
+
+  CREATE INDEX oauth_attempts_integration_idx
+    ON oauth_authorization_attempts(integration_id);
+  CREATE INDEX oauth_attempts_expires_at_idx
+    ON oauth_authorization_attempts(expires_at);
+`;
+
 export type SqliteDatabase = {
   readonly read: <A>(
     run: (database: DatabaseSync) => A
@@ -191,7 +214,13 @@ function migrate(database: DatabaseSync): void {
   if (version === 0) {
     inImmediateTransaction(database, () => {
       database.exec(MIGRATION_1);
-      database.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+      database.exec("PRAGMA user_version = 1");
+    });
+  }
+  if (version <= 1) {
+    inImmediateTransaction(database, () => {
+      database.exec(MIGRATION_2);
+      database.exec("PRAGMA user_version = 2");
     });
   }
 }

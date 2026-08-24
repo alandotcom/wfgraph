@@ -1,10 +1,11 @@
 // `it` comes from the `layer` callback below, typed with the services that layer
 // provides, so nothing here imports the bare one.
 import { assert, describe, layer } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { DateTime, Effect, Layer } from "effect";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import { makeExtensionsLayer } from "#src/backend/lib/effect/extensions";
 import {
+  Conflict,
   InternalFailure,
   InvalidInput,
 } from "#src/backend/lib/effect/failures";
@@ -21,6 +22,10 @@ import {
   EncryptionKeyMismatch,
 } from "#src/backend/services/integrations/cipher";
 import {
+  OAUTH_GRANT_CONFIG_KEY,
+  serializeStoredOAuthGrant,
+} from "#src/backend/services/integrations/oauth-grant";
+import {
   getIntegration,
   getIntegrations,
   postIntegrations,
@@ -30,6 +35,8 @@ import {
 } from "#src/backend/services/integrations/integrations";
 import type { IntegrationMetadata } from "@wfgraph/shared/extensions/catalog";
 import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
+import { makeAppContextLayer } from "#src/backend/lib/effect/app-context";
+import type { DecryptedIntegration } from "#src/backend/services/integrations/repo";
 
 /**
  * Which config keys count as secrets is read from the assembled catalog, so these
@@ -67,7 +74,11 @@ type StoredIntegration = {
   name: string;
   type: "slack";
   config: IntegrationConfig;
+  configRevision: number;
   isManaged: boolean;
+  refreshState: "idle" | "refreshing" | "reauthorization_required";
+  refreshClaimId: null;
+  refreshClaimedAt: null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -80,7 +91,11 @@ const storedSlackIntegration: StoredIntegration = {
     SLACK_API_KEY: "stored-secret",
     SLACK_TEAM_ID: "team-old",
   },
+  configRevision: 0,
   isManaged: false,
+  refreshState: "idle",
+  refreshClaimId: null,
+  refreshClaimedAt: null,
   createdAt: new Date("2026-01-01T00:00:00.000Z"),
   updatedAt: new Date("2026-01-02T00:00:00.000Z"),
 };
@@ -99,7 +114,11 @@ function makeIntegrationRepo(stored: StoredIntegration) {
   const calls = {
     updates: [] as Array<{
       integrationId: string;
-      updates: { name?: string; config?: IntegrationConfig };
+      updates: {
+        name?: string;
+        config?: IntegrationConfig;
+        expectedRevision?: number;
+      };
     }>,
   };
 
@@ -119,11 +138,18 @@ function makeIntegrationRepo(stored: StoredIntegration) {
       Effect.sync(() => {
         calls.updates.push({ integrationId, updates });
         return {
-          ...stored,
-          id: integrationId,
-          name: updates.name ?? stored.name,
-          config: updates.config ?? stored.config,
-          updatedAt: new Date("2026-01-03T00:00:00.000Z"),
+          status: "updated" as const,
+          integration: {
+            ...stored,
+            id: integrationId,
+            name: updates.name ?? stored.name,
+            config: updates.config ?? stored.config,
+            configRevision:
+              updates.config === undefined
+                ? stored.configRevision
+                : stored.configRevision + 1,
+            updatedAt: new Date("2026-01-03T00:00:00.000Z"),
+          },
         };
       }),
   });
@@ -139,8 +165,13 @@ const assembledSlack = makeExtensionsLayer(
   assembleExtensions({ integrations: [slackDefinition()] })
 );
 
+const integrationServiceTestLayer = Layer.mergeAll(
+  SilentAppLoggerLayer,
+  makeAppContextLayer({ apiBasePath: "/api" })
+);
+
 describe("integration service secret handling", () => {
-  layer(SilentAppLoggerLayer)((it) => {
+  layer(integrationServiceTestLayer)((it) => {
     it.effect("masks secret fields in the integration it returns", () =>
       Effect.gen(function* () {
         const repo = makeIntegrationRepo(storedSlackIntegration);
@@ -151,6 +182,7 @@ describe("integration service secret handling", () => {
 
         assert.strictEqual(integration.config.SLACK_API_KEY, "********");
         assert.strictEqual(integration.config.SLACK_TEAM_ID, "team-old");
+        assert.notProperty(integration, "configRevision");
       })
     );
 
@@ -177,6 +209,7 @@ describe("integration service secret handling", () => {
                   SLACK_API_KEY: "stored-secret",
                   SLACK_TEAM_ID: "team-new",
                 },
+                expectedRevision: 0,
               },
             },
           ]);
@@ -204,10 +237,103 @@ describe("integration service secret handling", () => {
                 SLACK_API_KEY: "new-secret",
                 SLACK_TEAM_ID: "team-old",
               },
+              expectedRevision: 0,
             },
           },
         ]);
       })
+    );
+
+    it.effect(
+      "returns Conflict when an owned refresh wins a manual config race",
+      () =>
+        Effect.gen(function* () {
+          let current: DecryptedIntegration = {
+            ...storedSlackIntegration,
+            config: { SLACK_API_KEY: "old-secret" },
+          };
+          const repo = stubIntegrationRepo({
+            findById: () => Effect.succeed(current),
+            update: (_integrationId, updates) =>
+              Effect.sync(() => {
+                assert.ok("expectedRevision" in updates);
+                assert.strictEqual(updates.expectedRevision, 0);
+                current = {
+                  ...current,
+                  config: { SLACK_API_KEY: "refreshed-secret" },
+                  configRevision: 1,
+                };
+                return { status: "conflict" as const };
+              }),
+          });
+
+          const failure = yield* putIntegration("int_1", {
+            config: { SLACK_API_KEY: "manual-secret" },
+          }).pipe(
+            Effect.provide(Layer.mergeAll(repo, slackCatalog)),
+            Effect.flip
+          );
+
+          assert.instanceOf(failure, Conflict);
+          assert.deepStrictEqual(current.config, {
+            SLACK_API_KEY: "refreshed-secret",
+          });
+          assert.strictEqual(current.configRevision, 1);
+        })
+    );
+  });
+});
+
+describe("integration OAuth grant visibility", () => {
+  layer(integrationServiceTestLayer)((it) => {
+    it.effect(
+      "omits the private grant and returns its sanitized connection status",
+      () =>
+        Effect.gen(function* () {
+          const stored = {
+            ...storedSlackIntegration,
+            config: {
+              ...storedSlackIntegration.config,
+              [OAUTH_GRANT_CONFIG_KEY]: serializeStoredOAuthGrant({
+                credentials: { SLACK_API_KEY: "oauth-secret" },
+                tokens: { accessToken: "oauth-secret" },
+                connectedAt: "2026-08-24T00:00:00.000Z",
+                accountLabel: "Production workspace",
+              }),
+            },
+            refreshState: "reauthorization_required" as const,
+          };
+          const repo = makeIntegrationRepo(stored);
+
+          const response = yield* getIntegration("int_1").pipe(
+            Effect.provide(Layer.mergeAll(repo.layer, slackCatalog))
+          );
+
+          assert.notProperty(response.config, OAUTH_GRANT_CONFIG_KEY);
+          assert.deepStrictEqual(response.oauth, {
+            status: "reauthorization_required",
+            connectedAt: "2026-08-24T00:00:00.000Z",
+            accountLabel: "Production workspace",
+          });
+        })
+    );
+
+    it.effect(
+      "refuses a manual update carrying OAuth's reserved config key",
+      () =>
+        Effect.gen(function* () {
+          const repo = makeIntegrationRepo(storedSlackIntegration);
+
+          const failure = yield* putIntegration("int_1", {
+            config: { [OAUTH_GRANT_CONFIG_KEY]: "forged" },
+          }).pipe(
+            Effect.provide(Layer.mergeAll(repo.layer, slackCatalog)),
+            Effect.flip
+          );
+
+          assert.instanceOf(failure, InvalidInput);
+          assert.strictEqual(repo.calls.updates.length, 0);
+        })
     );
   });
 });
@@ -240,7 +366,7 @@ const keyMismatchRepo = stubIntegrationRepo({
 
 /** Every read path answers the one sentence a person can act on. */
 describe("a rotated encryption key", () => {
-  layer(SilentAppLoggerLayer)((it) => {
+  layer(integrationServiceTestLayer)((it) => {
     // This case spells the words out, where the three below compare against the
     // exported constant. Asserting only the constant would let it agree with
     // itself whatever it said, so one case has to hold the wording.
@@ -309,7 +435,7 @@ describe("a rotated encryption key", () => {
  * and only that message tells them what to change.
  */
 describe("integration connection test failures", () => {
-  layer(SilentAppLoggerLayer)((it) => {
+  layer(integrationServiceTestLayer)((it) => {
     it.effect("answers with what the vendor's test function threw", () =>
       Effect.gen(function* () {
         // A vendor SDK that throws instead of answering, which is the case the
@@ -374,6 +500,112 @@ describe("integration connection test failures", () => {
   });
 });
 
+describe("saved OAuth connection tests", () => {
+  layer(integrationServiceTestLayer)((it) => {
+    it.effect(
+      "tests the replacement credentials after refreshing an expired grant",
+      () =>
+        Effect.gen(function* () {
+          const now = DateTime.toEpochMillis(yield* DateTime.now);
+          let current: DecryptedIntegration = {
+            ...storedSlackIntegration,
+            config: {
+              SLACK_TEAM_ID: "team-old",
+              [OAUTH_GRANT_CONFIG_KEY]: serializeStoredOAuthGrant({
+                credentials: { SLACK_API_KEY: "old-access" },
+                tokens: {
+                  accessToken: "old-access",
+                  refreshToken: "old-refresh",
+                  expiresAt: new Date(now - 1_000).toISOString(),
+                },
+                connectedAt: "2026-08-01T00:00:00.000Z",
+              }),
+            },
+          };
+          let testedCredentials: Record<string, string | undefined> | undefined;
+          const definition = defineIntegration({
+            type: "slack",
+            label: "Slack",
+            description: "test double",
+            credentials: slackLike.credentialFields,
+            test: async () => (credentials) => {
+              testedCredentials = credentials;
+              return Promise.resolve({ success: true as const });
+            },
+            oauth: {
+              label: "Slack OAuth",
+              registerClient: () => ({ clientId: "slack-client" }),
+              authorize: () => new URL("https://provider.example/authorize"),
+              exchange: async () => ({
+                credentials: { SLACK_API_KEY: "exchange-access" },
+                tokens: { accessToken: "exchange-access" },
+              }),
+              refresh: async () => ({
+                credentials: { SLACK_API_KEY: "replacement-access" },
+                tokens: {
+                  accessToken: "replacement-access",
+                  refreshToken: "replacement-refresh",
+                  expiresAt: new Date(now + 3_600_000).toISOString(),
+                },
+              }),
+              revoke: async () => undefined,
+            },
+            actions: {},
+          });
+          const repo = stubIntegrationRepo({
+            findById: () => Effect.succeed(current),
+            claimRefresh: ({ claimId }) =>
+              Effect.sync(() => {
+                current = {
+                  ...current,
+                  refreshState: "refreshing" as const,
+                  refreshClaimId: claimId,
+                  refreshClaimedAt: new Date(),
+                };
+                return { status: "acquired" as const };
+              }),
+            completeRefresh: ({ claimId, config }) =>
+              Effect.sync(() => {
+                if (current.refreshClaimId !== claimId) return false;
+                current = {
+                  ...current,
+                  config,
+                  refreshState: "idle",
+                  refreshClaimId: null,
+                  refreshClaimedAt: null,
+                };
+                return true;
+              }),
+          });
+
+          const result = yield* postIntegrationTest("int_1").pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                repo,
+                makeExtensionsLayer(
+                  assembleExtensions({ integrations: [definition] })
+                ),
+                makeAppContextLayer({
+                  publicUrl: "https://workflows.example.com",
+                  apiBasePath: "/api",
+                })
+              )
+            )
+          );
+
+          assert.deepStrictEqual(result, {
+            status: "success",
+            message: "Connection successful",
+          });
+          assert.deepStrictEqual(testedCredentials, {
+            SLACK_API_KEY: "replacement-access",
+            SLACK_TEAM_ID: "team-old",
+          });
+        })
+    );
+  });
+});
+
 /**
  * What the surface answers for a type it does not hold.
  *
@@ -383,7 +615,7 @@ describe("integration connection test failures", () => {
  * process can neither test nor mask.
  */
 describe("an integration this server does not hold", () => {
-  layer(SilentAppLoggerLayer)((it) => {
+  layer(integrationServiceTestLayer)((it) => {
     it.effect("refuses to test it", () =>
       Effect.gen(function* () {
         const failure = yield* postIntegrationsTest({

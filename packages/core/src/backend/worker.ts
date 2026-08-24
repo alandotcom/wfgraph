@@ -32,6 +32,7 @@ import { createWfGraphRuntime } from "#src/backend/runtime";
 import type { WfGraphPersistence } from "#src/backend/persistence/types";
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 import { runWithClose } from "#src/backend/lib/close-in-order";
+import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
 
 export type WfGraphWorkerRequestConfig = {
   auth: WfGraphAuth;
@@ -47,8 +48,10 @@ export type WfGraphWorkerRequestConfig = {
 
 export type WfGraphWorkerOptions<Env> = {
   basePath?: string;
+  /** Public origin used in provider callback URLs and client metadata. */
+  publicUrl?: string;
   logger?: WfGraphLogger;
-  extensions?: WfGraphExtensions;
+  extensions?: WfGraphExtensions | ((env: Env) => WfGraphExtensions);
   /** Resolve bindings and secrets for this request's Worker environment. */
   request: (env: Env) => WfGraphWorkerRequestConfig;
 };
@@ -71,7 +74,14 @@ export function wfWorker<Env>(
   options: WfGraphWorkerOptions<Env>
 ): WfGraphWorker<Env> {
   const basePath = normalizeBasePath(options.basePath ?? "/");
-  const extensions = assembleExtensions(options.extensions ?? {});
+  const publicUrl = resolvePublicUrl(options.publicUrl);
+  const extensionsOption = options.extensions;
+  const extensionResolver =
+    typeof extensionsOption === "function" ? extensionsOption : undefined;
+  const staticExtensions =
+    typeof extensionsOption === "function"
+      ? undefined
+      : assembleExtensions(extensionsOption ?? {});
 
   if (options.logger) configureLoggingWithBridge(options.logger);
   else warnWhenLoggingUnconfigured();
@@ -87,6 +97,9 @@ export function wfWorker<Env>(
       }
       assertValidEncryptionKey(config.encryption.key);
 
+      const extensions =
+        staticExtensions ?? assembleExtensions(extensionResolver?.(env) ?? {});
+
       const authorize = resolveAuthorize(config.auth);
       const cipher = createIntegrationCipher(config.encryption);
       const persistence = await config.persistence.open(cipher);
@@ -99,6 +112,10 @@ export function wfWorker<Env>(
         runtime = createWfGraphRuntime({
           inngest,
           extensions,
+          appContext: {
+            ...(publicUrl ? { publicUrl } : {}),
+            apiBasePath: `${basePath}/api`,
+          },
           agent: readAgentSettings(config.agent),
           repositories: persistence.repositories,
         });
@@ -108,6 +125,7 @@ export function wfWorker<Env>(
           "/",
           createApiApp({
             basePath: `${basePath}/api`,
+            publicUrl,
             authorize,
             runtime,
             inngestHandler: inngest.serve(functions),

@@ -32,6 +32,7 @@ import {
   type IntegrationDefinition,
 } from "#src/backend/extensions/define-integration";
 import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
+import type { IntegrationOAuth } from "#src/backend/extensions/oauth";
 
 /**
  * An Event as the set holds it, which is what `eventByName` answers with.
@@ -69,6 +70,8 @@ export type ExtensionSet = {
   readonly connectionTestFor: (
     type: string
   ) => IntegrationTestLoader | undefined;
+  /** Provider behavior for OAuth routes; none of this map crosses the catalog. */
+  readonly oauthFor: (type: string) => IntegrationOAuth | undefined;
   readonly eventByName: (name: string) => RegisteredEvent | undefined;
   /** Every Event, which is the Inngest listener set: one function each. */
   readonly events: readonly RegisteredEvent[];
@@ -239,6 +242,7 @@ type Assembly = {
   actions: ActionMetadata[];
   steps: Map<string, StepFactory>;
   tests: Map<string, IntegrationTestLoader>;
+  oauth: Map<string, IntegrationOAuth>;
 };
 
 /**
@@ -271,12 +275,22 @@ function readIntegration(
     into.tests.set(integration.type, integration.test);
   }
 
+  if (integration.oauth) {
+    if (integration.oauth.label.trim().length === 0) {
+      throw new Error(
+        `Integration "${integration.type}" declares OAuth without a label.`
+      );
+    }
+    into.oauth.set(integration.type, integration.oauth);
+  }
+
   return {
     type: integration.type,
     label: integration.label,
     description: integration.description,
     credentialFields: integration.credentials,
     hasTest: integration.test !== undefined,
+    ...(integration.oauth ? { oauth: { label: integration.oauth.label } } : {}),
   };
 }
 
@@ -319,6 +333,7 @@ export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
     actions: [...builtInActions],
     steps: new Map(),
     tests: new Map(),
+    oauth: new Map(),
   };
 
   const integrations = (input.integrations ?? []).map((integration) =>
@@ -343,6 +358,7 @@ export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
     },
     stepFor: (actionId) => into.steps.get(actionId),
     connectionTestFor: (type) => into.tests.get(type),
+    oauthFor: (type) => into.oauth.get(type),
     eventByName: (name) => eventsByName.get(name),
     events,
   };

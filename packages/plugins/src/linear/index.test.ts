@@ -2,10 +2,12 @@ import { requireOutputFieldsFromSchema } from "@wfgraph/core/plugin";
 import { describe, expect, it } from "vitest";
 import { linear } from "#src/linear/index";
 
-function outputFieldsOf(slug: keyof typeof linear.actions) {
+const integration = linear();
+
+function outputFieldsOf(slug: keyof typeof integration.actions) {
   return requireOutputFieldsFromSchema(
     `Action "linear/${slug}"`,
-    linear.actions[slug].output
+    integration.actions[slug].output
   );
 }
 
@@ -19,13 +21,13 @@ function outputFieldsOf(slug: keyof typeof linear.actions) {
  */
 describe("the linear integration", () => {
   it("declares its credentials and its actions as one value", () => {
-    expect(linear.type).toBe("linear");
-    expect(linear.test).toBeDefined();
-    expect(Object.keys(linear.credentials)).toEqual([
+    expect(integration.type).toBe("linear");
+    expect(integration.test).toBeDefined();
+    expect(Object.keys(integration.credentials)).toEqual([
       "LINEAR_API_KEY",
       "LINEAR_TEAM_ID",
     ]);
-    expect(Object.keys(linear.actions)).toEqual([
+    expect(Object.keys(integration.actions)).toEqual([
       "create-ticket",
       "find-issues",
     ]);

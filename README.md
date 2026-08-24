@@ -119,7 +119,7 @@ const wfgraph = await createWfGraphApp({
   extensions: {
     events: [appointmentCreated],
     actions: [cancelAppointment],
-    integrations: builtInIntegrations,
+    integrations: builtInIntegrations(),
   },
 });
 

@@ -8,3 +8,6 @@
  * with six definitions by hand.
  */
 export type IntegrationConfig = Record<string, string | undefined>;
+
+/** Private encrypted-envelope member that only core's OAuth service may write. */
+export const OAUTH_GRANT_CONFIG_KEY = "__wfgraph_oauth_grant_v1";

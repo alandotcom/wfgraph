@@ -42,6 +42,39 @@ describe("the schema declarations", () => {
   });
 });
 
+describe("OAuth persistence", () => {
+  it("stores one-time authorization attempts under their state hash", () => {
+    const config = getTableConfig(schema.oauthAuthorizationAttempts);
+
+    expect(config.columns.map((column) => column.name)).toEqual([
+      "state_hash",
+      "integration_id",
+      "expires_at",
+      "browser_binding_hash",
+      "encrypted_payload",
+      "created_at",
+    ]);
+    expect(config.primaryKeys).toHaveLength(0);
+    expect(schema.oauthAuthorizationAttempts.stateHash.primary).toBe(true);
+    expect(config.foreignKeys).toHaveLength(1);
+    expect(config.indexes.map((index) => index.config.name)).toContain(
+      "oauth_authorization_attempts_integration_id_idx"
+    );
+    expect(config.indexes.map((index) => index.config.name)).toContain(
+      "oauth_authorization_attempts_expires_at_idx"
+    );
+  });
+
+  it("gives every integration an idle refresh state at config revision zero", () => {
+    expect(schema.integrations.configRevision.notNull).toBe(true);
+    expect(schema.integrations.configRevision.default).toBe(0);
+    expect(schema.integrations.refreshState.notNull).toBe(true);
+    expect(schema.integrations.refreshState.default).toBe("idle");
+    expect(schema.integrations.refreshClaimId.notNull).toBe(false);
+    expect(schema.integrations.refreshClaimedAt.notNull).toBe(false);
+  });
+});
+
 describe("workflows indexes", () => {
   // published_version_id is `on delete set null`, and the version sweep at
   // publish is what makes a workflow_versions delete happen at all. Without an

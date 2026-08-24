@@ -142,6 +142,7 @@ const integrationMetadataSchema = Schema.Struct({
   // integration wrote, which is the order the connection dialog asks in.
   credentialFields: Schema.Record(Schema.String, credentialFieldMetadataSchema),
   hasTest: Schema.Boolean,
+  oauth: Schema.optionalKey(Schema.Struct({ label: NonEmptyTrimmedString })),
 });
 
 const extensionCatalogSchema: Schema.Codec<ExtensionCatalog> = Schema.Struct({

@@ -408,6 +408,78 @@ describe("assembleExtensions checks", () => {
  * schemas only a definition carries.
  */
 describe("assembleExtensions and an integration definition", () => {
+  it("keeps an OAuth adapter server-side and carries only its label into the catalog", () => {
+    const oauth = {
+      label: "Connect with Twilio",
+      registerClient: () => ({
+        clientId: "client-id",
+        clientSecret: "client-secret",
+      }),
+      authorize: () => new URL("https://example.com/oauth/authorize"),
+      exchange: () =>
+        Promise.resolve({
+          credentials: { TWILIO_AUTH_TOKEN: "access-token" },
+          tokens: { accessToken: "access-token" },
+        }),
+      refresh: () =>
+        Promise.resolve({
+          credentials: { TWILIO_AUTH_TOKEN: "new-access-token" },
+          tokens: { accessToken: "new-access-token" },
+        }),
+      revoke: () => Promise.resolve(),
+    };
+    const definition = defineIntegration({
+      type: "twilio",
+      label: "Twilio",
+      description: "Sends messages",
+      credentials: {
+        TWILIO_AUTH_TOKEN: { label: "Auth Token", type: "password" },
+      },
+      oauth,
+      actions: {},
+    });
+
+    const set = assembleExtensions({ integrations: [definition] });
+
+    expect(findIntegration(set.catalog, "twilio")?.oauth).toEqual({
+      label: "Connect with Twilio",
+    });
+    expect(set.oauthFor("twilio")).toBe(oauth);
+    expect(JSON.stringify(set.catalog)).not.toContain("client-secret");
+  });
+
+  it("refuses an OAuth capability with a blank label", () => {
+    expect(() =>
+      assembleExtensions({
+        integrations: [
+          defineIntegration({
+            type: "twilio",
+            label: "Twilio",
+            description: "Sends messages",
+            credentials: {},
+            oauth: {
+              label: "  ",
+              registerClient: () => ({ clientId: "client-id" }),
+              authorize: () => new URL("https://example.com/oauth/authorize"),
+              exchange: () =>
+                Promise.resolve({
+                  credentials: {},
+                  tokens: { accessToken: "access-token" },
+                }),
+              refresh: () =>
+                Promise.resolve({
+                  credentials: {},
+                  tokens: { accessToken: "new-access-token" },
+                }),
+              revoke: () => Promise.resolve(),
+            },
+            actions: {},
+          }),
+        ],
+      })
+    ).toThrow('Integration "twilio" declares OAuth without a label');
+  });
+
   it("computes each action id from the type and the record key", () => {
     const { catalog } = assembleExtensions({
       integrations: [aDefinition("twilio")],

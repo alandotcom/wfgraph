@@ -15,7 +15,11 @@ import { Effect, Schema } from "effect";
 import { defineAction, defineEvent } from "#src/index";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { createWfGraphApp, type WfGraphApp } from "#src/app";
-import { createApiApp, machineRoutes } from "#src/backend/api-app";
+import {
+  createApiApp,
+  machineRoutes,
+  publicRoutes,
+} from "#src/backend/api-app";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { connect as connectInngestSdk } from "inngest/connect";
 import { createInngestSurface } from "#src/backend/lib/inngest/client";
@@ -315,6 +319,7 @@ describe("createWfGraphApp with an auth predicate", () => {
     const runtime = createWfGraphRuntime({
       inngest,
       extensions: assembleExtensions({}),
+      appContext: { apiBasePath: "/wfgraph/api" },
       agent: { enabled: false },
       repositories: makePostgresRepositories(
         database,
@@ -335,12 +340,15 @@ describe("createWfGraphApp with an auth predicate", () => {
           (route) => `/wfgraph/api${route}`
         )
       );
+      const publicPaths = new Set(
+        publicRoutes().map((route) => `/wfgraph/api${route}`)
+      );
 
       return [
         ...new Set(
           app.routes
             .map((route) => route.path)
-            .filter((path) => !machinePaths.has(path))
+            .filter((path) => !machinePaths.has(path) && !publicPaths.has(path))
         ),
       ];
     } finally {

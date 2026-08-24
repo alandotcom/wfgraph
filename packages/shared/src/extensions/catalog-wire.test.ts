@@ -86,6 +86,25 @@ describe("readExtensionCatalog", () => {
     expect(readExtensionCatalog(catalog)).toEqual(catalog);
   });
 
+  it("carries sanitized OAuth capability metadata across the wire", () => {
+    const catalog: ExtensionCatalog = {
+      events: [],
+      actions: [],
+      integrations: [
+        {
+          type: "resend",
+          label: "Resend",
+          description: "Sends email",
+          credentialFields: {},
+          hasTest: true,
+          oauth: { label: "Connect with Resend" },
+        },
+      ],
+    };
+
+    expect(readExtensionCatalog(catalog)).toEqual(catalog);
+  });
+
   it("answers nothing for a field type the vocabulary has no word for", () => {
     expect(
       readExtensionCatalog(aCatalog([{ path: "x", type: "money" } as never]))

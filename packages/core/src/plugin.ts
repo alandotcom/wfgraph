@@ -38,6 +38,18 @@ export {
   type IntegrationDefinition,
 } from "#src/backend/extensions/define-integration";
 export type { CredentialFields } from "@wfgraph/shared/extensions/catalog";
+export type {
+  IntegrationOAuth,
+  OAuthAuthorizationInput,
+  OAuthClientRegistration,
+  OAuthExchangeInput,
+  OAuthGrant,
+  OAuthRefreshInput,
+  OAuthRegistrationContext,
+  OAuthRevokeInput,
+  OAuthTokens,
+  OAuthTokenSet,
+} from "#src/backend/extensions/oauth";
 export {
   type StepBag,
   StepFailure,

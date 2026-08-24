@@ -16,6 +16,7 @@ import {
 } from "#src/lifecycle/execution-contracts";
 import { serializedWorkflowGraphSchema } from "#src/graph/schemas";
 import { isoTimestampString } from "#src/types/timestamp";
+import { OAUTH_GRANT_CONFIG_KEY } from "#src/types/integration";
 import {
   agentMessageSchema,
   agentStreamPartSchema,
@@ -105,6 +106,12 @@ const integrationConfigSchema = Schema.Record(
   Schema.UndefinedOr(Schema.String)
 );
 
+const manualIntegrationConfigSchema = integrationConfigSchema.check(
+  Schema.makeFilter((config) => !(OAUTH_GRANT_CONFIG_KEY in config), {
+    expected: "an integration config without the reserved OAuth grant key",
+  })
+);
+
 const apiKeyFields = {
   id: idSchema,
   name: Schema.NullOr(Schema.String),
@@ -120,6 +127,13 @@ const integrationFields = {
   isManaged: Schema.optionalKey(Schema.Boolean),
   createdAt: Schema.String,
   updatedAt: Schema.String,
+  oauth: Schema.optionalKey(
+    Schema.Struct({
+      status: Schema.Literals(["connected", "reauthorization_required"]),
+      connectedAt: isoTimestampString(),
+      accountLabel: Schema.optionalKey(Schema.String),
+    })
+  ),
 };
 
 const integrationSchema = Schema.Struct(integrationFields);
@@ -478,7 +492,7 @@ export const rpcContract = {
           Schema.Struct({
             name: Schema.String,
             type: integrationTypeSchema,
-            config: integrationConfigSchema,
+            config: manualIntegrationConfigSchema,
           })
         )
       )
@@ -489,7 +503,7 @@ export const rpcContract = {
           Schema.Struct({
             integrationId: idSchema,
             name: Schema.optionalKey(Schema.String),
-            config: Schema.optionalKey(integrationConfigSchema),
+            config: Schema.optionalKey(manualIntegrationConfigSchema),
           })
         )
       )

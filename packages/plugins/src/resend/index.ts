@@ -20,6 +20,7 @@ import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
 import { Effect, Result, Schema } from "effect";
 import { describeResendFailure, sendResendEmail } from "#src/resend/client";
+import { resendOAuth } from "#src/resend/oauth";
 
 const resendCredentialFields = {
   RESEND_API_KEY: {
@@ -253,266 +254,268 @@ function buildEmailPayload(
       );
 }
 
-export const resend = defineIntegration({
-  type: "resend",
-  label: "Resend",
-  description: "Send transactional emails",
-  credentials: resendCredentialFields,
+export const resend = () =>
+  defineIntegration({
+    type: "resend",
+    label: "Resend",
+    description: "Send transactional emails",
+    credentials: resendCredentialFields,
+    oauth: resendOAuth,
 
-  test: async () => (await import("#src/resend/test")).testResend,
+    test: async () => (await import("#src/resend/test")).testResend,
 
-  actions: {
-    "send-email": {
-      label: "Send Email",
-      description: "Send an email via Resend",
-      sideEffect: true,
-      input: sendEmailInput,
-      output: sendEmailOutput,
-      configFields: [
-        {
-          key: "emailFrom",
-          label: "From (Sender)",
-          type: "template-input",
-          placeholder: "Your Name <noreply@example.com>",
-          example: "Support <support@example.com>",
-        },
-        {
-          key: "emailTo",
-          label: "To",
-          type: "template-input",
-          placeholder: "recipient@example.com",
-          example: "user@example.com",
-          required: true,
-        },
-        {
-          key: "testBehavior",
-          label: "Test Mode Behavior",
-          type: "select",
-          defaultValue: "log_only",
-          options: [
-            { value: "log_only", label: "Log only (do nothing)" },
-            { value: "send_to_test_email", label: "Send to test email" },
-          ],
-        },
-        {
-          key: "testEmailTo",
-          label: "Test Email Address",
-          type: "text",
-          placeholder: "test@example.com",
-          // Literal: a run's own payload must not steer the test send.
-          literal: true,
-          showWhen: {
-            field: "testBehavior",
-            equals: "send_to_test_email",
+    actions: {
+      "send-email": {
+        label: "Send Email",
+        description: "Send an email via Resend",
+        sideEffect: true,
+        input: sendEmailInput,
+        output: sendEmailOutput,
+        configFields: [
+          {
+            key: "emailFrom",
+            label: "From (Sender)",
+            type: "template-input",
+            placeholder: "Your Name <noreply@example.com>",
+            example: "Support <support@example.com>",
           },
-        },
-        {
-          key: "emailSubject",
-          label: "Subject",
-          type: "template-input",
-          placeholder: "Subject or {{NodeName.title}}",
-          example: "Hello from my workflow",
-          required: true,
-        },
-        {
-          key: "emailContentMode",
-          label: "Content Mode",
-          type: "select",
-          defaultValue: "text",
-          options: [
-            { value: "text", label: "Text" },
-            { value: "html", label: "HTML" },
-            { value: "template", label: "Template" },
-          ],
-        },
-        {
-          key: "emailBody",
-          label: "Text Body",
-          type: "template-textarea",
-          placeholder: "Email content or {{NodeName.description}}",
-          rows: 5,
-          example: "This is the email body content.",
-          required: true,
-          showWhen: {
-            field: "emailContentMode",
-            equals: "text",
+          {
+            key: "emailTo",
+            label: "To",
+            type: "template-input",
+            placeholder: "recipient@example.com",
+            example: "user@example.com",
+            required: true,
           },
-        },
-        {
-          key: "emailHtml",
-          label: "HTML Body",
-          type: "template-textarea",
-          placeholder: "<p>Hello {{NodeName.name}}</p>",
-          rows: 8,
-          showWhen: {
-            field: "emailContentMode",
-            equals: "html",
+          {
+            key: "testBehavior",
+            label: "Test Mode Behavior",
+            type: "select",
+            defaultValue: "log_only",
+            options: [
+              { value: "log_only", label: "Log only (do nothing)" },
+              { value: "send_to_test_email", label: "Send to test email" },
+            ],
           },
-        },
-        {
-          key: "emailTemplateId",
-          label: "Template ID",
-          type: "template-input",
-          placeholder: "tpl_xxxxxxxx",
-          showWhen: {
-            field: "emailContentMode",
-            equals: "template",
+          {
+            key: "testEmailTo",
+            label: "Test Email Address",
+            type: "text",
+            placeholder: "test@example.com",
+            // Literal: a run's own payload must not steer the test send.
+            literal: true,
+            showWhen: {
+              field: "testBehavior",
+              equals: "send_to_test_email",
+            },
           },
-        },
-        {
-          key: "emailTemplateVariables",
-          label: "Template Variables (JSON)",
-          type: "template-textarea",
-          rows: 6,
-          placeholder: '{"FIRST_NAME":"Alice","APPOINTMENT_AT":"2026-03-10"}',
-          showWhen: {
-            field: "emailContentMode",
-            equals: "template",
+          {
+            key: "emailSubject",
+            label: "Subject",
+            type: "template-input",
+            placeholder: "Subject or {{NodeName.title}}",
+            example: "Hello from my workflow",
+            required: true,
           },
-        },
-        {
-          type: "group",
-          label: "Additional Recipients",
-          fields: [
-            {
-              key: "emailCc",
-              label: "CC",
-              type: "template-input",
-              placeholder: "cc@example.com",
-              example: "manager@example.com",
+          {
+            key: "emailContentMode",
+            label: "Content Mode",
+            type: "select",
+            defaultValue: "text",
+            options: [
+              { value: "text", label: "Text" },
+              { value: "html", label: "HTML" },
+              { value: "template", label: "Template" },
+            ],
+          },
+          {
+            key: "emailBody",
+            label: "Text Body",
+            type: "template-textarea",
+            placeholder: "Email content or {{NodeName.description}}",
+            rows: 5,
+            example: "This is the email body content.",
+            required: true,
+            showWhen: {
+              field: "emailContentMode",
+              equals: "text",
             },
-            {
-              key: "emailBcc",
-              label: "BCC",
-              type: "template-input",
-              placeholder: "bcc@example.com",
-              example: "archive@example.com",
+          },
+          {
+            key: "emailHtml",
+            label: "HTML Body",
+            type: "template-textarea",
+            placeholder: "<p>Hello {{NodeName.name}}</p>",
+            rows: 8,
+            showWhen: {
+              field: "emailContentMode",
+              equals: "html",
             },
-            {
-              key: "emailReplyTo",
-              label: "Reply-To",
-              type: "template-input",
-              placeholder: "reply@example.com",
-              example: "support@example.com",
+          },
+          {
+            key: "emailTemplateId",
+            label: "Template ID",
+            type: "template-input",
+            placeholder: "tpl_xxxxxxxx",
+            showWhen: {
+              field: "emailContentMode",
+              equals: "template",
             },
-          ],
-        },
-        {
-          type: "group",
-          label: "Scheduling",
-          fields: [
-            {
-              key: "emailScheduledAt",
-              label: "Schedule At (ISO 8601)",
-              type: "template-input",
-              placeholder: "2024-12-25T09:00:00Z",
-              example: "2024-12-25T09:00:00Z",
+          },
+          {
+            key: "emailTemplateVariables",
+            label: "Template Variables (JSON)",
+            type: "template-textarea",
+            rows: 6,
+            placeholder: '{"FIRST_NAME":"Alice","APPOINTMENT_AT":"2026-03-10"}',
+            showWhen: {
+              field: "emailContentMode",
+              equals: "template",
             },
-            {
-              key: "emailTopicId",
-              label: "Topic ID",
-              type: "template-input",
-              placeholder: "topic_abc123",
-              example: "topic_abc123",
-            },
-          ],
-        },
-        {
-          type: "group",
-          label: "Tags",
-          fields: [
-            {
-              key: "emailTags",
-              label: "",
-              type: "key-value",
-            },
-          ],
-        },
-      ],
-      handler: Effect.fn(function* (bag) {
-        const { input } = bag;
+          },
+          {
+            type: "group",
+            label: "Additional Recipients",
+            fields: [
+              {
+                key: "emailCc",
+                label: "CC",
+                type: "template-input",
+                placeholder: "cc@example.com",
+                example: "manager@example.com",
+              },
+              {
+                key: "emailBcc",
+                label: "BCC",
+                type: "template-input",
+                placeholder: "bcc@example.com",
+                example: "archive@example.com",
+              },
+              {
+                key: "emailReplyTo",
+                label: "Reply-To",
+                type: "template-input",
+                placeholder: "reply@example.com",
+                example: "support@example.com",
+              },
+            ],
+          },
+          {
+            type: "group",
+            label: "Scheduling",
+            fields: [
+              {
+                key: "emailScheduledAt",
+                label: "Schedule At (ISO 8601)",
+                type: "template-input",
+                placeholder: "2024-12-25T09:00:00Z",
+                example: "2024-12-25T09:00:00Z",
+              },
+              {
+                key: "emailTopicId",
+                label: "Topic ID",
+                type: "template-input",
+                placeholder: "topic_abc123",
+                example: "topic_abc123",
+              },
+            ],
+          },
+          {
+            type: "group",
+            label: "Tags",
+            fields: [
+              {
+                key: "emailTags",
+                label: "",
+                type: "key-value",
+              },
+            ],
+          },
+        ],
+        handler: Effect.fn(function* (bag) {
+          const { input } = bag;
 
-        // The run's own id doubles as the idempotency key: a step Inngest
-        // re-runs sends the same key, and Resend replays its first answer
-        // rather than sending a second email.
-        const idempotencyKey = bag.executionId;
-        const syntheticIdSuffix = idempotencyKey ?? "no_execution";
-        const testBehavior = resolveResendTestBehavior(input.testBehavior);
+          // The run's own id doubles as the idempotency key: a step Inngest
+          // re-runs sends the same key, and Resend replays its first answer
+          // rather than sending a second email.
+          const idempotencyKey = bag.executionId;
+          const syntheticIdSuffix = idempotencyKey ?? "no_execution";
+          const testBehavior = resolveResendTestBehavior(input.testBehavior);
 
-        // A test run either sends nothing at all or sends to one address the
-        // user nominated. Both answers are a success carrying the reason, so
-        // the run shows what happened rather than an error the user has to
-        // interpret.
-        if (bag.runMode === "test" && testBehavior === "log_only") {
-          return {
-            id: `resend:test-log-only:${syntheticIdSuffix}`,
-            reasonCode: "test_mode_log_only",
-          };
-        }
+          // A test run either sends nothing at all or sends to one address the
+          // user nominated. Both answers are a success carrying the reason, so
+          // the run shows what happened rather than an error the user has to
+          // interpret.
+          if (bag.runMode === "test" && testBehavior === "log_only") {
+            return {
+              id: `resend:test-log-only:${syntheticIdSuffix}`,
+              reasonCode: "test_mode_log_only",
+            };
+          }
 
-        const testRecipient = input.testEmailTo?.trim() ?? "";
-        const routeToTestRecipient =
-          bag.runMode === "test" && testBehavior === "send_to_test_email";
+          const testRecipient = input.testEmailTo?.trim() ?? "";
+          const routeToTestRecipient =
+            bag.runMode === "test" && testBehavior === "send_to_test_email";
 
-        if (routeToTestRecipient && testRecipient.length === 0) {
-          return {
-            id: `resend:test-log-fallback:${syntheticIdSuffix}`,
-            reasonCode: "test_mode_log_fallback_missing_test_email",
-          };
-        }
+          if (routeToTestRecipient && testRecipient.length === 0) {
+            return {
+              id: `resend:test-log-fallback:${syntheticIdSuffix}`,
+              reasonCode: "test_mode_log_fallback_missing_test_email",
+            };
+          }
 
-        if (routeToTestRecipient && !isValidTestEmailAddress(testRecipient)) {
-          return {
-            id: `resend:test-log-fallback:${syntheticIdSuffix}`,
-            reasonCode: "test_mode_log_fallback_invalid_test_email",
-          };
-        }
+          if (routeToTestRecipient && !isValidTestEmailAddress(testRecipient)) {
+            return {
+              id: `resend:test-log-fallback:${syntheticIdSuffix}`,
+              reasonCode: "test_mode_log_fallback_invalid_test_email",
+            };
+          }
 
-        // Read late, so a test run deciding it has nothing to send never
-        // touches the integration's secrets.
-        const credentials = yield* bag.credentials;
-        const apiKey = credentials.RESEND_API_KEY;
+          // Read late, so a test run deciding it has nothing to send never
+          // touches the integration's secrets.
+          const credentials = yield* bag.credentials;
+          const apiKey = credentials.RESEND_API_KEY;
 
-        if (!apiKey) {
-          return yield* new StepFailure({
-            message:
-              "RESEND_API_KEY is not configured. Please add it in Project Integrations.",
-          });
-        }
+          if (!apiKey) {
+            return yield* new StepFailure({
+              message:
+                "RESEND_API_KEY is not configured. Please add it in Project Integrations.",
+            });
+          }
 
-        const senderEmail = input.emailFrom || credentials.RESEND_FROM_EMAIL;
+          const senderEmail = input.emailFrom || credentials.RESEND_FROM_EMAIL;
 
-        if (!senderEmail) {
-          return yield* new StepFailure({
-            message:
-              "No sender is configured. Please add it in the action or in Project Integrations.",
-          });
-        }
+          if (!senderEmail) {
+            return yield* new StepFailure({
+              message:
+                "No sender is configured. Please add it in the action or in Project Integrations.",
+            });
+          }
 
-        // A test send goes to the nominated address alone: carrying the real cc
-        // and bcc over would mail the people the run was meant to spare.
-        const payload = yield* buildEmailPayload(
-          input,
-          senderEmail,
-          routeToTestRecipient
-            ? { to: testRecipient }
-            : { to: input.emailTo, cc: input.emailCc, bcc: input.emailBcc }
-        );
+          // A test send goes to the nominated address alone: carrying the real cc
+          // and bcc over would mail the people the run was meant to spare.
+          const payload = yield* buildEmailPayload(
+            input,
+            senderEmail,
+            routeToTestRecipient
+              ? { to: testRecipient }
+              : { to: input.emailTo, cc: input.emailCc, bcc: input.emailBcc }
+          );
 
-        const sent = yield* bag.step.run(
-          "send",
-          sendResendEmail(apiKey, payload, idempotencyKey).pipe(
-            Effect.mapError(
-              (error) =>
-                new StepFailure({
-                  message: `Failed to send email: ${describeResendFailure(error)}`,
-                })
+          const sent = yield* bag.step.run(
+            "send",
+            sendResendEmail(apiKey, payload, idempotencyKey).pipe(
+              Effect.mapError(
+                (error) =>
+                  new StepFailure({
+                    message: `Failed to send email: ${describeResendFailure(error)}`,
+                  })
+              )
             )
-          )
-        );
+          );
 
-        return { id: sent.id };
-      }),
+          return { id: sent.id };
+        }),
+      },
     },
-  },
-});
+  });

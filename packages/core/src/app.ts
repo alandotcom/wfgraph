@@ -49,6 +49,7 @@ import type {
 } from "#src/backend/persistence/types";
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 import { closeInOrder, failAfterClose } from "#src/backend/lib/close-in-order";
+import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
 
 export type { EncryptionRuntimeConfig } from "#src/backend/services/integrations/cipher";
 export type { WfGraphInngestConfig } from "#src/backend/lib/inngest/client";
@@ -65,6 +66,8 @@ export type WfGraphAppOptions = {
    * once here instead of Workflow Graph guessing per request.
    */
   basePath?: string;
+  /** Public origin used in provider callback URLs and client metadata. */
+  publicUrl?: string;
   /**
    * Who may reach the editor: a predicate over the request, or "external" when
    * something in front of Workflow Graph already gates it.
@@ -155,6 +158,7 @@ export async function createWfGraphApp(
   options: WfGraphAppOptions
 ): Promise<WfGraphApp> {
   const basePath = normalizeBasePath(options.basePath ?? "/");
+  const publicUrl = resolvePublicUrl(options.publicUrl);
   const authorize = resolveAuthorize(options.auth);
 
   if (!options.inngest.id?.trim()) {
@@ -165,6 +169,7 @@ export async function createWfGraphApp(
 
   return await buildWfGraphApp(options, {
     basePath,
+    publicUrl,
     authorize,
   });
 }
@@ -191,10 +196,11 @@ async function buildWfGraphApp(
   options: WfGraphAppOptions,
   startup: {
     basePath: "" | `/${string}`;
+    publicUrl?: string;
     authorize: Authorize;
   }
 ): Promise<WfGraphApp> {
-  const { basePath, authorize } = startup;
+  const { basePath, publicUrl, authorize } = startup;
 
   if (options.logger) {
     configureLoggingWithBridge(options.logger);
@@ -237,12 +243,17 @@ async function buildWfGraphApp(
     runtime = createWfGraphRuntime({
       inngest,
       extensions,
+      appContext: {
+        ...(publicUrl ? { publicUrl } : {}),
+        apiBasePath: `${basePath}/api`,
+      },
       agent: readAgentSettings(options.agent),
       repositories: persistence.repositories,
     });
 
     return await assembleWfGraphApp(options, {
       basePath,
+      publicUrl,
       authorize,
       runtime,
       inngest,
@@ -261,13 +272,15 @@ async function assembleWfGraphApp(
   options: WfGraphAppOptions,
   startup: {
     basePath: "" | `/${string}`;
+    publicUrl?: string;
     authorize: Authorize;
     runtime: WfGraphRuntime;
     inngest: InngestSurface;
     persistence: WfGraphPersistenceInstance;
   }
 ): Promise<WfGraphApp> {
-  const { basePath, authorize, runtime, inngest, persistence } = startup;
+  const { basePath, publicUrl, authorize, runtime, inngest, persistence } =
+    startup;
 
   // Built once: Connect and HTTP serve are alternatives, and whichever path
   // this app takes registers that same list. A broken extension surface fails
@@ -276,6 +289,7 @@ async function assembleWfGraphApp(
   const useConnect = options.inngest.connect === true;
   const apiApp = createApiApp({
     basePath: `${basePath}/api`,
+    publicUrl,
     authorize,
     runtime,
     // Connect dials out; mounting `/inngest` would advertise a callback Inngest

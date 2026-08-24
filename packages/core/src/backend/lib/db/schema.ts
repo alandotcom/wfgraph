@@ -39,6 +39,10 @@ const utcNow = () => sql`(now() at time zone 'utc')`;
 // Workflow visibility type
 export type WorkflowVisibility = "private" | "public";
 export type WorkflowMode = "live" | "test";
+export type IntegrationRefreshState =
+  | "idle"
+  | "refreshing"
+  | "reauthorization_required";
 
 export const workflows = pgTable(
   "workflows",
@@ -126,10 +130,37 @@ export const integrations = pgTable("integrations", {
   // The AES envelope `integrations/cipher.ts` seals the credentials into, which
   // is one string however many fields the connection form had.
   config: jsonb("config").notNull().$type<string>(),
+  configRevision: integer("config_revision").notNull().default(0),
   isManaged: boolean("is_managed").default(false),
+  refreshState: text("refresh_state")
+    .notNull()
+    .default("idle")
+    .$type<IntegrationRefreshState>(),
+  refreshClaimId: text("refresh_claim_id"),
+  refreshClaimedAt: timestamp("refresh_claimed_at"),
   createdAt: timestamp("created_at").notNull().default(utcNow()),
   updatedAt: timestamp("updated_at").notNull().default(utcNow()),
 });
+
+export const oauthAuthorizationAttempts = pgTable(
+  "oauth_authorization_attempts",
+  {
+    stateHash: text("state_hash").primaryKey(),
+    integrationId: text("integration_id")
+      .notNull()
+      .references(() => integrations.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at").notNull(),
+    browserBindingHash: text("browser_binding_hash").notNull(),
+    encryptedPayload: text("encrypted_payload").notNull(),
+    createdAt: timestamp("created_at").notNull().default(utcNow()),
+  },
+  (table) => [
+    index("oauth_authorization_attempts_integration_id_idx").on(
+      table.integrationId
+    ),
+    index("oauth_authorization_attempts_expires_at_idx").on(table.expiresAt),
+  ]
+);
 
 /**
  * The in-flight statuses as SQL literals, for the partial index below.
@@ -458,6 +489,7 @@ export const tables = {
   workflowEventSubscriptions,
   apiKeys,
   integrations,
+  oauthAuthorizationAttempts,
 };
 
 /**

@@ -7,7 +7,8 @@ For the five built-ins in this repository, also see `packages/plugins/src/AGENTS
 The server half builds against `@wfgraph/core/plugin` alone, so an outside package is written
 the same way. That surface exports `defineIntegration`, `CredentialFields`, `CredentialsOf`,
 `checkIntegration`, `StepFailure`, `StepBag`, `IntegrationTestResult`, `callExternal`,
-`callExternalAsync`, and `ExternalTransport`. `@wfgraph/core/testing` is a second entry, and
+`callExternalAsync`, the OAuth contract types, and `ExternalTransport`.
+`@wfgraph/core/testing` is a second entry, and
 holds `runAction`, `actionData` and `actionError` for the integration's own suite.
 
 The browser half is the one gap. `@wfgraph/plugins/ui` exports the built-in icons and output
@@ -81,6 +82,73 @@ export const myService = defineIntegration({
   },
 });
 ```
+
+## OAuth
+
+Add `oauth` when the External System can issue a grant. The integration owns the
+provider protocol. Core owns callback routing, one-time state, encrypted storage,
+and refresh coordination.
+
+```ts
+export const myService = () =>
+  defineIntegration({
+    type: "my-service",
+    label: "My Service",
+    description: "What this integration does",
+    credentials: myServiceCredentials,
+    oauth: {
+      label: "My Service",
+      pkce: "S256",
+      registerClient(context) {
+        return {
+          clientId: context.metadataDocumentUrl,
+          metadataDocument: {
+            client_id: context.metadataDocumentUrl,
+            client_name: "Workflow Graph",
+            redirect_uris: [context.callbackUrl],
+          },
+        };
+      },
+      authorize({ client, redirectUri, state, codeChallenge }) {
+        const url = new URL("https://auth.example.com/authorize");
+        url.searchParams.set("client_id", client.clientId);
+        url.searchParams.set("redirect_uri", redirectUri);
+        url.searchParams.set("state", state);
+        url.searchParams.set("code_challenge", codeChallenge!);
+        url.searchParams.set("code_challenge_method", "S256");
+        return url;
+      },
+      async exchange(input) {
+        return exchangeAuthorizationCode(input);
+      },
+      async refresh(input) {
+        return refreshAccessToken(input);
+      },
+      async revoke(input) {
+        await revokeGrant(input);
+      },
+    },
+    actions: {
+      // ...
+    },
+  });
+```
+
+`registerClient` supports two client identity models. A registered-client
+integration closes over host-provided credentials and returns them. A client
+metadata integration returns `metadataDocument`; Workflow Graph serves that JSON
+from the public client route. Provider secrets and methods stay on the server.
+The catalog carries only `oauth.label`.
+
+`exchange` returns an `OAuthGrant`. `refresh` returns an `OAuthTokenSet`. Both
+map the provider access token into declared credential keys, so existing action
+handlers read the same credential names in manual and OAuth modes. Core rejects
+a returned key that the integration did not declare.
+
+Token exchange, refresh, and revocation requests are writes. Pass them to
+`callExternalAsync` as POST requests with no idempotency key and do not set
+`safeToRepeat`. Core serializes refreshes for one connection and persists a
+rotated refresh token with its access token and expiry.
 
 **`defineIntegration` owns everything around the handler:** the config decode, the
 credential fetch, the run log rows, and the `StepResult` envelope the engine reads. A

@@ -134,7 +134,7 @@ counts its reads and the client as the stubbed seam.
 ```ts
 const answer = actionData(
   yield *
-    runAction(slack, "send-message", { input, credentials, runMode: "test" })
+    runAction(slack(), "send-message", { input, credentials, runMode: "test" })
 );
 ```
 

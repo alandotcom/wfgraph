@@ -92,6 +92,8 @@ export type IntegrationMetadata = {
   readonly credentialFields: CredentialFields;
   /** Whether "Test connection" has anything to call. */
   readonly hasTest: boolean;
+  /** Sanitized OAuth capability metadata. Provider behavior stays server-side. */
+  readonly oauth?: { readonly label: string };
 };
 
 export type ExtensionCatalog = {

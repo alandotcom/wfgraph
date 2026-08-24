@@ -8,7 +8,12 @@ export async function testResend(
 ): Promise<IntegrationTestResult> {
   const apiKey = credentials.RESEND_API_KEY;
 
-  if (!(apiKey && apiKey.startsWith("re_"))) {
+  const isManualApiKey = apiKey?.startsWith("re_") === true;
+  const isOAuthAccessToken =
+    apiKey !== undefined &&
+    /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(apiKey);
+
+  if (!(isManualApiKey || isOAuthAccessToken)) {
     return {
       success: false,
       error: "Invalid API key format. Resend API keys start with 're_'",

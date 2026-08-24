@@ -38,6 +38,7 @@ function slowStep() {
         ? definition.implement(SLOW_ACTION_ID)
         : undefined,
     connectionTestFor: () => undefined,
+    oauthFor: () => undefined,
     eventByName: () => undefined,
     events: [],
   };

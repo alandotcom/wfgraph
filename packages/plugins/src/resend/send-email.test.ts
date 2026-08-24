@@ -5,6 +5,8 @@ import { afterEach, beforeEach, vi } from "vitest";
 import * as resendClient from "#src/resend/client";
 import { resend } from "#src/resend/index";
 
+const underTest = resend();
+
 // What this step decides is whether and where to send, so the seam under it is
 // the Resend client. What that client puts on the wire is covered separately in
 // resend/client.test.ts, against a stubbed fetch. Spy rather than `vi.mock` so
@@ -66,7 +68,7 @@ describe("the send-email action", () => {
       const { reads, credentials } = credentialsRead();
 
       const result = actionData(
-        yield* runAction(resend, "send-email", {
+        yield* runAction(underTest, "send-email", {
           input: {
             emailTo: "user@example.com",
             emailSubject: "Subject",
@@ -91,7 +93,7 @@ describe("the send-email action", () => {
       const { reads, credentials } = credentialsRead();
 
       const result = actionData(
-        yield* runAction(resend, "send-email", {
+        yield* runAction(underTest, "send-email", {
           input: {
             emailTo: "real-user@example.com",
             emailCc: "cc@example.com",
@@ -124,7 +126,7 @@ describe("the send-email action", () => {
     Effect.gen(function* () {
       const { credentials } = credentialsRead();
 
-      yield* runAction(resend, "send-email", {
+      yield* runAction(underTest, "send-email", {
         input: {
           emailTo: "user@example.com",
           emailSubject: "Subject",
@@ -162,7 +164,7 @@ describe("the send-email action", () => {
     Effect.gen(function* () {
       const { credentials } = credentialsRead();
 
-      yield* runAction(resend, "send-email", {
+      yield* runAction(underTest, "send-email", {
         input: {
           emailTo: "user@example.com",
           emailSubject: "Subject",
@@ -181,7 +183,7 @@ describe("the send-email action", () => {
     Effect.gen(function* () {
       const { credentials } = credentialsRead();
 
-      yield* runAction(resend, "send-email", {
+      yield* runAction(underTest, "send-email", {
         input: {
           emailTo: "user@example.com",
           emailSubject: "Subject",
@@ -209,7 +211,7 @@ describe("the send-email action", () => {
       const { reads, credentials } = credentialsRead();
 
       const result = actionData(
-        yield* runAction(resend, "send-email", {
+        yield* runAction(underTest, "send-email", {
           input: {
             emailTo: "real-user@example.com",
             emailSubject: "Subject",
@@ -236,7 +238,7 @@ describe("the send-email action", () => {
       const { credentials } = credentialsRead();
 
       const error = actionError(
-        yield* runAction(resend, "send-email", {
+        yield* runAction(underTest, "send-email", {
           input: {
             emailTo: "user@example.com",
             emailSubject: "Subject",
@@ -256,7 +258,7 @@ describe("the send-email action", () => {
       const { credentials } = credentialsRead({});
 
       const error = actionError(
-        yield* runAction(resend, "send-email", {
+        yield* runAction(underTest, "send-email", {
           input: {
             emailTo: "user@example.com",
             emailSubject: "Subject",
@@ -281,7 +283,7 @@ describe("the send-email action", () => {
       const { credentials } = credentialsRead();
 
       const error = actionError(
-        yield* runAction(resend, "send-email", {
+        yield* runAction(underTest, "send-email", {
           input: {
             emailTo: "user@example.com",
             emailSubject: "Subject",
