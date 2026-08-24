@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { toast } from "sonner";
 import {
   edgesAtom,
@@ -29,9 +29,8 @@ import { enterDraftWorkspaceAtom } from "#src/lib/workflow-workspace-navigation"
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 export function useWorkflowComparisonActions() {
   const queryClient = useQueryClient();
+  const store = useStore();
   const workflowId = useAtomValue(currentWorkflowIdAtom);
-  const nodes = useAtomValue(nodesAtom);
-  const edges = useAtomValue(edgesAtom);
   const session = useAtomValue(comparisonSessionAtom);
   const install = useSetAtom(installWorkflowComparisonAtom);
   const installRestoredWorkflow = useSetAtom(installRestoredWorkflowAtom);
@@ -69,10 +68,14 @@ export function useWorkflowComparisonActions() {
     const epoch = beginRequest(workflowId);
     let outcome: "success" | "error" = "success";
     try {
+      const graph = {
+        nodes: store.get(nodesAtom),
+        edges: store.get(edgesAtom),
+      };
       const payload = await compare.mutateAsync({
         workflowId,
         ...(baseVersionId ? { baseVersionId } : {}),
-        draftGraph: toSerializedGraph({ nodes, edges }),
+        draftGraph: toSerializedGraph(graph),
       });
       const installed = install({
         workflowId,
@@ -107,7 +110,11 @@ export function useWorkflowComparisonActions() {
   const restore = useMutation({
     ...restoreVersionOptions,
     mutationFn: async (input, context) => {
-      const saved = await saveWorkflow({ nodes, edges }, { immediate: true });
+      const graph = {
+        nodes: store.get(nodesAtom),
+        edges: store.get(edgesAtom),
+      };
+      const saved = await saveWorkflow(graph, { immediate: true });
       if (!saved?.ok) {
         throw saved?.error ?? new Error("Unable to save the current draft");
       }

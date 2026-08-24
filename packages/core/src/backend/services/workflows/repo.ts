@@ -203,7 +203,7 @@ export class WorkflowRepo extends Context.Service<
     /** The newest published version for this workflow, or null when none exist. */
     readonly findLatestVersion: (
       workflowId: string
-    ) => Effect.Effect<WorkflowVersion | null, DatabaseError>;
+    ) => Effect.Effect<Pick<WorkflowVersion, "version"> | null, DatabaseError>;
     /**
      * A version-history page for one workflow, newest version first.
      *
@@ -595,7 +595,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
         findLatestVersion: (workflowId) =>
           database.query(async (db) => {
             const [row] = await db
-              .select()
+              .select({ version: workflowVersions.version })
               .from(workflowVersions)
               .where(eq(workflowVersions.workflowId, workflowId))
               .orderBy(desc(workflowVersions.version))

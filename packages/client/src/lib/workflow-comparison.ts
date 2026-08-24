@@ -65,9 +65,49 @@ const displayGraphCache = new WeakMap<
   WorkflowComparisonPayload,
   {
     positionOverrides: ComparisonPositionOverrides;
+    removedNodeIndexes: ReadonlyMap<
+      string,
+      { index: number; defaultPosition: XYPosition }
+    >;
+    staticGraph: ComparisonDisplayGraph;
     graph: ComparisonDisplayGraph;
   }
 >();
+
+function applyPositionOverrides(
+  cached: NonNullable<ReturnType<typeof displayGraphCache.get>>,
+  positionOverrides: ComparisonPositionOverrides
+): ComparisonDisplayGraph {
+  let nodes = cached.graph.nodes;
+  for (const [
+    nodeId,
+    { index, defaultPosition },
+  ] of cached.removedNodeIndexes) {
+    const position = positionOverrides[nodeId] ?? defaultPosition;
+    const current = cached.graph.nodes[index];
+    if (
+      current &&
+      (current.position.x !== position.x || current.position.y !== position.y)
+    ) {
+      if (nodes === cached.graph.nodes) {
+        nodes = nodes.slice();
+      }
+      const staticNode = cached.staticGraph.nodes[index];
+      if (staticNode) {
+        nodes[index] =
+          position.x === defaultPosition.x && position.y === defaultPosition.y
+            ? staticNode
+            : { ...staticNode, position };
+      }
+    }
+  }
+
+  cached.positionOverrides = positionOverrides;
+  if (nodes !== cached.graph.nodes) {
+    cached.graph = { nodes, edges: cached.staticGraph.edges };
+  }
+  return cached.graph;
+}
 
 /**
  * Produces a canvas graph from the redacted base and draft snapshots.
@@ -82,6 +122,9 @@ export function buildComparisonDisplayGraph(
   const cached = displayGraphCache.get(payload);
   if (cached?.positionOverrides === positionOverrides) {
     return cached.graph;
+  }
+  if (cached) {
+    return applyPositionOverrides(cached, positionOverrides);
   }
 
   const base = toWorkflowGraphData(payload.baseGraph);
@@ -119,11 +162,9 @@ export function buildComparisonDisplayGraph(
           baseNodesById.has(node.parentId) &&
           !draftNodeIds.has(node.parentId)
         );
-        const position =
-          positionOverrides[node.id] ??
-          (historicalParentDeleted
-            ? node.position
-            : absoluteBasePosition(node, baseNodesById));
+        const position = historicalParentDeleted
+          ? node.position
+          : absoluteBasePosition(node, baseNodesById);
         return {
           ...node,
           position,
@@ -203,27 +244,28 @@ export function buildComparisonDisplayGraph(
     });
   }
 
-  let graph: ComparisonDisplayGraph = {
+  const staticGraph: ComparisonDisplayGraph = {
     nodes: comparisonNodes,
     edges: comparisonEdges,
   };
-  if (cached) {
-    const previousNodes = new Map(
-      cached.graph.nodes.map((node) => [node.id, node] as const)
-    );
-    graph = {
-      nodes: comparisonNodes.map((node) => {
-        const previous = previousNodes.get(node.id);
-        return previous &&
-          previous.position.x === node.position.x &&
-          previous.position.y === node.position.y &&
-          previous.parentId === node.parentId
-          ? previous
-          : node;
-      }),
-      edges: cached.graph.edges,
-    };
+  const removedNodeIndexes = new Map<
+    string,
+    { index: number; defaultPosition: XYPosition }
+  >();
+  for (const [index, node] of comparisonNodes.entries()) {
+    if (!draftNodeIds.has(node.id)) {
+      removedNodeIndexes.set(node.id, {
+        index,
+        defaultPosition: node.position,
+      });
+    }
   }
-  displayGraphCache.set(payload, { positionOverrides, graph });
-  return graph;
+  const entry = {
+    positionOverrides: {},
+    removedNodeIndexes,
+    staticGraph,
+    graph: staticGraph,
+  };
+  displayGraphCache.set(payload, entry);
+  return applyPositionOverrides(entry, positionOverrides);
 }

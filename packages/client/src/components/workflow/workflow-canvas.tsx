@@ -159,6 +159,49 @@ export function lifecycleAnchorViewport({
   };
 }
 
+export async function fitInitialWorkflowViewport({
+  fitView,
+  isCurrent,
+  readAnchor,
+  setViewport,
+  reveal,
+}: {
+  fitView: () => Promise<boolean>;
+  isCurrent: () => boolean;
+  readAnchor: () => {
+    canvasWidth: number;
+    nodePosition: { x: number; y: number };
+    nodeWidth: number;
+    zoom: number;
+  } | null;
+  setViewport: (viewport: {
+    x: number;
+    y: number;
+    zoom: number;
+  }) => Promise<boolean>;
+  reveal: () => void;
+}): Promise<void> {
+  try {
+    if (!isCurrent()) {
+      return;
+    }
+    await fitView();
+    if (!isCurrent()) {
+      return;
+    }
+
+    const anchor = readAnchor();
+    if (!anchor) {
+      return;
+    }
+    await setViewport(lifecycleAnchorViewport({ ...anchor, top: 48 }));
+  } finally {
+    if (isCurrent()) {
+      reveal();
+    }
+  }
+}
+
 const accessibleNodeCache = new WeakMap<
   WorkflowNode,
   { label: string; node: WorkflowNode }
@@ -167,13 +210,18 @@ const accessibleEdgeCache = new WeakMap<
   WorkflowEdge,
   { label: string; edge: WorkflowEdge }
 >();
+type AccessibleNodeArray = {
+  catalog: ReturnType<typeof useExtensionCatalog>;
+  labels: ReadonlyMap<string, string>;
+  nodes: WorkflowNode[];
+};
 const accessibleNodeArrayCache = new WeakMap<
   WorkflowNode[],
-  { labelKey: string; nodes: WorkflowNode[] }
+  AccessibleNodeArray
 >();
 const accessibleEdgeArrayCache = new WeakMap<
   WorkflowEdge[],
-  { labelKey: string; edges: WorkflowEdge[] }
+  { nodeArray: AccessibleNodeArray; edges: WorkflowEdge[] }
 >();
 
 function withNodeAriaLabel(node: WorkflowNode, label: string): WorkflowNode {
@@ -207,45 +255,44 @@ function accessibleGraphElements(
   edges: WorkflowEdge[],
   catalog: ReturnType<typeof useExtensionCatalog>
 ): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
-  const labels = nodes.map(
-    (node) => [node.id, workflowNodeAriaLabel(node.data, catalog)] as const
-  );
-  const labelKey = labels
-    .map(([id, label]) => `${id}\u0000${label}`)
-    .join("\u0001");
-  const nodeLabels = new Map(labels);
-
   const cachedNodes = accessibleNodeArrayCache.get(nodes);
-  const accessibleNodes =
-    cachedNodes?.labelKey === labelKey
-      ? cachedNodes.nodes
-      : nodes.map((node) =>
-          withNodeAriaLabel(node, nodeLabels.get(node.id) ?? "Unknown step")
-        );
-  if (cachedNodes?.labelKey !== labelKey) {
-    accessibleNodeArrayCache.set(nodes, { labelKey, nodes: accessibleNodes });
+  let nodeArray = cachedNodes;
+  if (nodeArray?.catalog !== catalog) {
+    const labels = new Map(
+      nodes.map(
+        (node) => [node.id, workflowNodeAriaLabel(node.data, catalog)] as const
+      )
+    );
+    nodeArray = {
+      catalog,
+      labels,
+      nodes: nodes.map((node) =>
+        withNodeAriaLabel(node, labels.get(node.id) ?? "Unknown step")
+      ),
+    };
+    accessibleNodeArrayCache.set(nodes, nodeArray);
   }
 
   const cachedEdges = accessibleEdgeArrayCache.get(edges);
   const accessibleEdges =
-    cachedEdges?.labelKey === labelKey
+    cachedEdges?.nodeArray === nodeArray
       ? cachedEdges.edges
       : edges.map((edge) =>
           withEdgeAriaLabel(
             edge,
             workflowEdgeAriaLabel({
-              sourceLabel: nodeLabels.get(edge.source) ?? "Unknown step",
-              targetLabel: nodeLabels.get(edge.target) ?? "Unknown step",
+              sourceLabel: nodeArray.labels.get(edge.source) ?? "Unknown step",
+              targetLabel: nodeArray.labels.get(edge.target) ?? "Unknown step",
               sourceHandleId: edge.sourceHandle,
               data: edge.data,
             })
           )
         );
-  if (cachedEdges?.labelKey !== labelKey) {
-    accessibleEdgeArrayCache.set(edges, { labelKey, edges: accessibleEdges });
+  if (cachedEdges?.nodeArray !== nodeArray) {
+    accessibleEdgeArrayCache.set(edges, { nodeArray, edges: accessibleEdges });
   }
 
-  return { nodes: accessibleNodes, edges: accessibleEdges };
+  return { nodes: nodeArray.nodes, edges: accessibleEdges };
 }
 
 export function WorkflowCanvas() {
@@ -323,6 +370,7 @@ export function WorkflowCanvas() {
   const rightClickSelectionRef = useRef<ReadonlySet<string>>(new Set());
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const fittedWorkflowIdRef = useRef<string | null>(null);
+  const fitGenerationRef = useRef(0);
   useDomEvent(
     window,
     "pointerdown",
@@ -365,6 +413,9 @@ export function WorkflowCanvas() {
   // A workspace swap replaces the graph before React Flow updates its
   // internals. Re-anchor from the incoming node coordinates in the same commit
   // so the browser never paints those coordinates through the old viewport.
+  useBeforePaint(fitViewKey, () => {
+    fitGenerationRef.current += 1;
+  });
   useBeforePaint(anchorViewKey, () => {
     if (
       anchorViewKey === null ||
@@ -406,41 +457,39 @@ export function WorkflowCanvas() {
     if (fittedWorkflowIdRef.current === currentWorkflowId) {
       return;
     }
-    void (async () => {
-      try {
-        fittedWorkflowIdRef.current = currentWorkflowId;
-        await fitView({
+    const fitGeneration = fitGenerationRef.current;
+    fittedWorkflowIdRef.current = currentWorkflowId;
+    void fitInitialWorkflowViewport({
+      fitView: () =>
+        fitView({
           maxZoom: 1,
           minZoom: 0.5,
           padding: 0.2,
           duration: 0,
-        });
-
+        }),
+      isCurrent: () => fitGenerationRef.current === fitGeneration,
+      readAnchor: () => {
         const canvasWidth = canvasContainerRef.current?.clientWidth;
         if (!canvasWidth) {
-          return;
+          return null;
         }
 
         const nodeWidth =
           internalLifecycleNode.measured?.width ??
           internalLifecycleNode.internals.userNode.width ??
           WORKFLOW_NODE_WIDTH;
-        await setViewport(
-          lifecycleAnchorViewport({
-            canvasWidth,
-            nodePosition: internalLifecycleNode.internals.positionAbsolute,
-            nodeWidth,
-            top: 48,
-            zoom: getViewport().zoom,
-          }),
-          { duration: 0 }
-        );
-      } finally {
-        // Reveal immediately after the viewport work. The delayed guard above
-        // is the only other path to readiness.
-        setReadyWorkflowId(currentWorkflowId);
-      }
-    })();
+        return {
+          canvasWidth,
+          nodePosition: internalLifecycleNode.internals.positionAbsolute,
+          nodeWidth,
+          zoom: getViewport().zoom,
+        };
+      },
+      setViewport: (viewport) => setViewport(viewport, { duration: 0 }),
+      // Reveal immediately after the viewport work. The delayed guard above
+      // is the only other path to readiness.
+      reveal: () => setReadyWorkflowId(currentWorkflowId),
+    });
   });
 
   // Undo/redo (Cmd+Z, Cmd+Shift+Z). Lives beside the graph it acts on rather

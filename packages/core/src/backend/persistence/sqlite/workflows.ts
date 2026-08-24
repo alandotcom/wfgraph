@@ -339,11 +339,11 @@ export function makeSqliteWorkflowRepo(
       store.read((database) => {
         const row = database
           .prepare(
-            `SELECT * FROM workflow_versions
+            `SELECT version FROM workflow_versions
              WHERE workflow_id = ? ORDER BY version DESC LIMIT 1`
           )
           .get(workflowId);
-        return row ? sqliteWorkflowVersion(row) : null;
+        return row ? { version: requiredNumber(row, "version") } : null;
       }),
     listVersionHistoryPage: ({ workflowId, limit, cursor }) =>
       store.read((database) =>

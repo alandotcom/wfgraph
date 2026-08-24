@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canvasFitViewKey,
   canvasInteractionState,
+  fitInitialWorkflowViewport,
   keyboardFitViewOptions,
   lifecycleAnchorViewport,
 } from "#src/components/workflow/workflow-canvas";
@@ -86,6 +87,44 @@ describe("lifecycleAnchorViewport", () => {
         zoom: 0.75,
       })
     ).toEqual({ x: 278, y: -12, zoom: 0.75 });
+  });
+});
+
+describe("fitInitialWorkflowViewport", () => {
+  it("abandons viewport anchoring and readiness when the fit becomes stale", async () => {
+    let resolveFit = () => {};
+    let current = true;
+    const fitView = () =>
+      new Promise<boolean>((resolve) => {
+        resolveFit = () => resolve(true);
+      });
+    let viewportWasSet = false;
+    let canvasWasRevealed = false;
+
+    const fitting = fitInitialWorkflowViewport({
+      fitView,
+      isCurrent: () => current,
+      readAnchor: () => ({
+        canvasWidth: 1000,
+        nodePosition: { x: 200, y: 80 },
+        nodeWidth: 192,
+        zoom: 0.75,
+      }),
+      setViewport: async () => {
+        viewportWasSet = true;
+        return true;
+      },
+      reveal: () => {
+        canvasWasRevealed = true;
+      },
+    });
+
+    current = false;
+    resolveFit();
+    await fitting;
+
+    expect(viewportWasSet).toBe(false);
+    expect(canvasWasRevealed).toBe(false);
   });
 });
 

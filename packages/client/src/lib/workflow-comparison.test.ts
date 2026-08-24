@@ -49,6 +49,19 @@ function payload(input: {
 }
 
 describe("buildComparisonDisplayGraph", () => {
+  it("reuses the built graph for equivalent position overrides", () => {
+    const comparison = payload({
+      baseNodes: [node("shared"), node("removed")],
+      draftNodes: [node("shared")],
+      nodeChanges: [{ nodeId: "removed", kind: "removed", fields: [] }],
+    });
+
+    const first = buildComparisonDisplayGraph(comparison, {});
+    const second = buildComparisonDisplayGraph(comparison, {});
+
+    expect(second).toBe(first);
+  });
+
   it("merges the draft with removed history and marks only server-reported changes", () => {
     const graph = buildComparisonDisplayGraph(
       payload({

@@ -102,6 +102,44 @@ describe("useWorkflowComparisonActions", () => {
     expect(observer.result.current.isError).toBe(true);
   });
 
+  it("does not subscribe action hooks to graph position changes", () => {
+    const store = createStore();
+    store.set(currentWorkflowIdAtom, "workflow_1");
+    const queryClient = new QueryClient();
+    function Wrapper({ children }: { children: ReactNode }) {
+      return (
+        <QueryClientProvider client={queryClient}>
+          <JotaiProvider store={store}>{children}</JotaiProvider>
+        </QueryClientProvider>
+      );
+    }
+    let renders = 0;
+    renderHook(
+      () => {
+        renders += 1;
+        return useWorkflowComparisonActions();
+      },
+      { wrapper: Wrapper }
+    );
+    const rendersBeforeGraphChange = renders;
+
+    act(() => {
+      store.set(loadWorkflowGraphAtom, {
+        nodes: [
+          {
+            id: "moved",
+            type: "action",
+            position: { x: 100, y: 50 },
+            data: { label: "Moved", type: "action" },
+          },
+        ],
+        edges: [],
+      });
+    });
+
+    expect(renders).toBe(rendersBeforeGraphChange);
+  });
+
   it("keeps the installed comparison when a refresh fails", async () => {
     vi.stubGlobal(
       "fetch",

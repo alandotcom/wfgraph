@@ -391,3 +391,23 @@ describe("findByIdWithPublishedVersionForRun", () => {
     expect(found).toBeNull();
   });
 });
+
+describe("findLatestVersion", () => {
+  it("selects only the version number", async () => {
+    const { layer: databaseLayer, statements } = stubDatabase(() => [[4]]);
+
+    const found = await Effect.runPromise(
+      Effect.gen(function* () {
+        const repo = yield* WorkflowRepo;
+        return yield* repo.findLatestVersion("wf_1");
+      }).pipe(
+        Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
+      )
+    );
+
+    const query = statements[0]?.query ?? "";
+    expect(found).toEqual({ version: 4 });
+    expect(query).toContain('select "version" from "workflow_versions"');
+    expect(query).not.toContain("graph");
+  });
+});
