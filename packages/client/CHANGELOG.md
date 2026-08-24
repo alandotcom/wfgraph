@@ -1,5 +1,21 @@
 # @wfgraph/client
 
+## 3.1.0
+
+### Minor Changes
+
+- [#154](https://github.com/alandotcom/wfgraph/pull/154) [`6a0cd6e`](https://github.com/alandotcom/wfgraph/commit/6a0cd6e41b06ed56d8f2d78f36d05efedaedf2dc) Thanks [@alandotcom](https://github.com/alandotcom)! - Move Draft, Runs, and Changes into a persistent workflow workspace switcher, with stable loading transitions and matching canvas, inspector, and status-strip behavior.
+
+- [#154](https://github.com/alandotcom/wfgraph/pull/154) [`6a0cd6e`](https://github.com/alandotcom/wfgraph/commit/6a0cd6e41b06ed56d8f2d78f36d05efedaedf2dc) Thanks [@alandotcom](https://github.com/alandotcom)! - Add durable workflow version history, semantic publication review, and restore as draft.
+
+### Patch Changes
+
+- [#154](https://github.com/alandotcom/wfgraph/pull/154) [`6a0cd6e`](https://github.com/alandotcom/wfgraph/commit/6a0cd6e41b06ed56d8f2d78f36d05efedaedf2dc) Thanks [@alandotcom](https://github.com/alandotcom)! - Make workflow menus hand off on hover, add workflow actions to the command palette, and let node context menus enable or disable eligible steps.
+
+- [#154](https://github.com/alandotcom/wfgraph/pull/154) [`6a0cd6e`](https://github.com/alandotcom/wfgraph/commit/6a0cd6e41b06ed56d8f2d78f36d05efedaedf2dc) Thanks [@alandotcom](https://github.com/alandotcom)! - Prevent stale workflow viewport fitting from hiding the current canvas and reduce comparison and version lookup work.
+
+- [#153](https://github.com/alandotcom/wfgraph/pull/153) [`8c52eeb`](https://github.com/alandotcom/wfgraph/commit/8c52eeba4162b7d3962743950eac4aab4c3eff59) Thanks [@alandotcom](https://github.com/alandotcom)! - Redesign the editor Runs panel as an Execution Inspector with event-led run identities, outcome summaries, a canvas-synchronized node journey, friendly action results, and a docked raw-payload console.
+
 ## 3.0.0
 
 ### Minor Changes
