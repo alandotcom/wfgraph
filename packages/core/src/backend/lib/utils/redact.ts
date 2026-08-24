@@ -26,21 +26,21 @@ const SENSITIVE_KEYS = new Set([
   "pwd",
   "secret",
   "token",
-  "accessToken",
+  "accesstoken",
   "access_token",
-  "refreshToken",
+  "refreshtoken",
   "refresh_token",
-  "privateKey",
+  "privatekey",
   "private_key",
 
   // Database
-  "databaseUrl",
+  "databaseurl",
   "database_url",
-  "connectionString",
+  "connectionstring",
   "connection_string",
 
   // Email
-  "fromEmail",
+  "fromemail",
   "from_email",
 
   // Authentication
@@ -49,17 +49,17 @@ const SENSITIVE_KEYS = new Set([
   "bearer",
 
   // Credit Card/Payment
-  "creditCard",
+  "creditcard",
   "credit_card",
-  "cardNumber",
+  "cardnumber",
   "card_number",
   "cvv",
   "ssn",
 
   // Personal Info
-  "phoneNumber",
+  "phonenumber",
   "phone_number",
-  "socialSecurity",
+  "socialsecurity",
   "social_security",
 ]);
 
@@ -241,6 +241,64 @@ function redactJsonShaped<T>(value: T): T {
   return redactSensitiveData(value) as T;
 }
 
+const NODE_STRUCTURAL_KEYS = new Set([
+  "id",
+  "type",
+  "parentId",
+  "width",
+  "height",
+  "dimensions",
+  "measured",
+  "position",
+]);
+
+const EDGE_STRUCTURAL_KEYS = new Set([
+  "id",
+  "source",
+  "target",
+  "sourceHandle",
+  "targetHandle",
+  "handles",
+  "type",
+  "position",
+  "width",
+  "height",
+  "dimensions",
+  "measured",
+  "parentId",
+]);
+
+/** Redacts open attribute fields while carrying graph structure through verbatim. */
+function redactOpenAttributes<T extends Record<string, unknown>>(
+  attributes: T,
+  structuralKeys: ReadonlySet<string>
+): T {
+  const redacted: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(attributes)) {
+    if (structuralKeys.has(key)) {
+      redacted[key] =
+        typeof value === "object" && value !== null
+          ? (redactSensitiveData(value) ?? null)
+          : value;
+      continue;
+    }
+
+    const walked = redactSensitiveData({ [key]: value });
+    if (
+      typeof walked === "object" &&
+      walked !== null &&
+      !Array.isArray(walked) &&
+      Object.hasOwn(walked, key)
+    ) {
+      redacted[key] = walked[key] ?? null;
+    }
+  }
+
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- redaction retains each preserved attribute and only changes open JSON values.
+  return redacted as T;
+}
+
 /**
  * Redacts a pinned workflow graph before it leaves a service, the same pass
  * `redactSensitiveData` runs on a run's logged input and output. A node's
@@ -252,34 +310,27 @@ function redactJsonShaped<T>(value: T): T {
  * the same way. That value must not survive into a response built from a
  * stored graph.
  *
- * Both walks touch `data` alone rather than the whole serialized node or edge,
- * because the envelope graphology wraps each one in names its own identifier
- * field `key`, which is also the exact spelling `redactSensitiveData` masks as
- * a secret. Walking the envelope would turn every node or edge id into
- * `[REDACTED]` instead of the value an author actually typed. `data` is the
- * one open, JSON-shaped part of a node or edge; `key`, `attributes.id`,
- * `attributes.type`, `attributes.position`, `attributes.source`, and
- * `attributes.target` are graph structure the editor and the engine resolve
- * node and edge ids against, so they pass through untouched.
+ * Open graph attributes and node/edge attribute rest fields are also walked.
+ * The graphology envelope wraps each node and edge in its own identifier field
+ * `key`, which is also the exact spelling `redactSensitiveData` masks as a
+ * secret. Structural fields pass through untouched so the editor and engine
+ * can still resolve node and edge ids, geometry, and endpoints.
  */
 export function redactWorkflowGraph(
   graph: SerializedWorkflowGraph
 ): SerializedWorkflowGraph {
   return {
     ...graph,
+    ...(graph.attributes === undefined
+      ? {}
+      : { attributes: redactJsonShaped(graph.attributes) }),
     nodes: graph.nodes.map((node) => ({
       ...node,
-      attributes: {
-        ...node.attributes,
-        data: redactJsonShaped(node.attributes.data),
-      },
+      attributes: redactOpenAttributes(node.attributes, NODE_STRUCTURAL_KEYS),
     })),
     edges: graph.edges.map((edge) => ({
       ...edge,
-      attributes: {
-        ...edge.attributes,
-        data: redactJsonShaped(edge.attributes.data),
-      },
+      attributes: redactOpenAttributes(edge.attributes, EDGE_STRUCTURAL_KEYS),
     })),
   };
 }

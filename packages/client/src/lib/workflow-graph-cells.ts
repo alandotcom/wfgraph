@@ -7,6 +7,11 @@ import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
 import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
 import { activePropertiesTabAtom } from "#src/lib/workflow-ui-store";
+import {
+  isComparisonActiveAtom,
+  isComparisonPendingAtom,
+} from "#src/lib/workflow-comparison-store";
+import { isPublicationReviewActiveAtom } from "#src/lib/workflow-publication-review-store";
 import { saveWorkflowAtom } from "#src/lib/workflow-save-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
@@ -65,9 +70,14 @@ export const futureAtom = atom<HistoryState[]>([]);
 
 const HISTORY_LIMIT = 50;
 
-/** Refuse draft mutations while a run overlay owns the canvas. */
+/** Refuse draft mutations while a read-only display graph owns the canvas. */
 export function draftEditable(get: Getter): boolean {
-  return get(executionOverlayGraphAtom) === null;
+  return (
+    get(executionOverlayGraphAtom) === null &&
+    !get(isComparisonActiveAtom) &&
+    !get(isComparisonPendingAtom) &&
+    !get(isPublicationReviewActiveAtom)
+  );
 }
 
 /** Snapshot the graph so the next change is undoable, and drop any redo branch. */

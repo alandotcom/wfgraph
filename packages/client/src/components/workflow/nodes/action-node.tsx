@@ -14,10 +14,13 @@ import {
   NodeTitle,
 } from "#src/components/flow-elements/node";
 import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
+import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
 import { Dialog, DialogContent, DialogTitle } from "#src/components/ui/dialog";
 import { readBase64ImageOutput } from "#src/components/workflow/workflow-run-shared";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
 import {
+  COMPARISON_NODE_ANNOTATION,
+  comparisonNodeTitle,
   type ExecutionLogEntry,
   type WorkflowNodeData,
 } from "#src/lib/workflow-graph-types";
@@ -450,6 +453,34 @@ const GROUPED_SOURCE_HANDLES = [
     label: "Output handle",
   },
 ];
+
+export function groupedActionNodeClassName(
+  comparison: WorkflowNodeData[typeof COMPARISON_NODE_ANNOTATION] | undefined,
+  enabled: boolean | undefined
+): string {
+  return cn(
+    comparison?.kind !== "removed" && "nodrag",
+    "flex h-14 w-[188px] flex-row items-center shadow-none",
+    enabled === false && "opacity-50"
+  );
+}
+
+/** Comparison cards share the accessible graph name's safe action fallback. */
+export function actionNodeDisplayTitle(
+  data: WorkflowNodeData,
+  catalog: ExtensionCatalog
+): string {
+  if (data[COMPARISON_NODE_ANNOTATION]) {
+    return comparisonNodeTitle(data, catalog);
+  }
+  const actionType = readConfigString(data.config, "actionType");
+  return (
+    data.label ||
+    (actionType ? findAction(catalog, actionType)?.label : undefined) ||
+    actionType ||
+    "Action"
+  );
+}
 // A Condition reached by the group's own steps still branches on two handles,
 // and an interior edge names the branch it left by. They sit apart on the same
 // offsets a standalone Condition uses, so the two branches paint as two paths
@@ -489,18 +520,12 @@ function GroupedActionNode({ data, selected, id }: ActionNodeProps) {
     return null;
   }
 
-  const displayTitle =
-    data.label ||
-    (actionType ? findAction(catalog, actionType)?.label : undefined) ||
-    actionType ||
-    "Action";
+  const comparison = data[COMPARISON_NODE_ANNOTATION];
+  const displayTitle = actionNodeDisplayTitle(data, catalog);
 
   return (
     <Node
-      className={cn(
-        "nodrag flex h-14 w-[188px] flex-row items-center shadow-none",
-        data.enabled === false && "opacity-50"
-      )}
+      className={cn(groupedActionNodeClassName(comparison, data.enabled))}
       data-testid={`action-node-${id}`}
       handles={{
         target: GROUPED_TARGET_HANDLES,
@@ -511,6 +536,7 @@ function GroupedActionNode({ data, selected, id }: ActionNodeProps) {
       selected={selected}
       status={data.status}
     >
+      <ComparisonMarker comparison={data[COMPARISON_NODE_ANNOTATION]} />
       <div className="flex min-w-0 flex-1 items-center gap-2 px-3">
         {actionType ? (
           <ProviderLogo
@@ -600,6 +626,7 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
         status={status}
         style={workflowNodeSize()}
       >
+        <ComparisonMarker comparison={data[COMPARISON_NODE_ANNOTATION]} />
         {isDisabled && (
           <div className="absolute top-2 left-2 rounded-full bg-muted-foreground/50 p-1">
             <EyeOff className="size-3.5 text-background" />
@@ -611,15 +638,14 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
             className={cn(NODE_ICON_CLASS, "text-muted-foreground")}
             strokeWidth={1.5}
           />
-          <NodeTitle>{data.label || "Action"}</NodeTitle>
+          <NodeTitle>{actionNodeDisplayTitle(data, catalog)}</NodeTitle>
           <NodeDescription>Select an action</NodeDescription>
         </NodeBody>
       </Node>
     );
   }
 
-  const actionInfo = findAction(catalog, actionType);
-  const displayTitle = data.label || actionInfo?.label || actionType;
+  const displayTitle = actionNodeDisplayTitle(data, catalog);
 
   const getAiModel = (): string | null => {
     if (actionType === "Generate Text") {
@@ -694,6 +720,7 @@ const StandaloneActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
           : WORKFLOW_NODE_WIDTH
       )}
     >
+      <ComparisonMarker comparison={data[COMPARISON_NODE_ANNOTATION]} />
       {/* Disabled badge in top left */}
       {isDisabled && (
         <div className="absolute top-2 left-2 rounded-full bg-muted-foreground/50 p-1">

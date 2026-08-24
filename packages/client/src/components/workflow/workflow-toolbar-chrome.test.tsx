@@ -13,8 +13,11 @@ import { ExtensionCatalogProvider } from "#src/components/extension-catalog-prov
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import {
   ToolbarActions,
+  ToolbarPublishControls,
+  CommandPaletteTrigger,
   WorkflowMenuComponent,
 } from "#src/components/workflow/workflow-toolbar-chrome";
+import { WorkflowToolbarChrome } from "#src/components/workflow/workflow-toolbar";
 import type {
   WorkflowToolbarActions,
   WorkflowToolbarState,
@@ -22,6 +25,7 @@ import type {
 import {
   executionOverlayGraphAtom,
   loadWorkflowGraphAtom,
+  selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import {
   isGeneratingAtom,
@@ -116,6 +120,7 @@ function baseState(): WorkflowToolbarState {
     setActiveTab: vi.fn(),
     setSelectedNodeId: vi.fn(),
     userIntegrations: [],
+    publication: undefined,
   };
 }
 
@@ -128,13 +133,23 @@ function baseActions(): WorkflowToolbarActions {
     handleDuplicate: vi.fn(),
     isDuplicating: false,
     handlePublish: vi.fn(),
+    confirmPublish: vi.fn(),
     isPublishing: false,
+    isComparing: false,
+    publishReview: null,
+    setPublishReviewOpen: vi.fn(),
     handleSetWorkflowMode: vi.fn(async () => {}),
   };
 }
 
+type ChromeProps = {
+  actions: WorkflowToolbarActions;
+  state: WorkflowToolbarState;
+  workflowId?: string;
+};
+
 function renderChrome(
-  Chrome: typeof ToolbarActions,
+  Chrome: React.ComponentType<ChromeProps>,
   lock: {
     overlayActive?: boolean;
     generating?: boolean;
@@ -206,6 +221,18 @@ function renderChrome(
                     workflowId={workflowId}
                   />
                 </div>
+                {/* The production toolbar places these in separate left, centre,
+                    and right groups. This harness keeps the existing focused
+                    Actions tests while mounting the controls they coordinate. */}
+                {Chrome === ToolbarActions && (lock.state?.isOwner ?? true) ? (
+                  <>
+                    <CommandPaletteTrigger />
+                    <ToolbarPublishControls
+                      actions={actions}
+                      state={{ ...baseState(), ...lock.state }}
+                    />
+                  </>
+                ) : null}
               </OverlayProvider>
             </ExtensionCatalogProvider>
           </ReactFlowProvider>
@@ -262,6 +289,78 @@ describe("ToolbarActions publish gating", () => {
     const publish = await findByRole("button", { name: "Publish" });
     expect(publish.hasAttribute("disabled")).toBe(true);
   });
+
+  it("disables Publish when the server and local draft both report no unpublished changes", async () => {
+    const { findByRole } = renderChrome(ToolbarActions, {
+      state: {
+        hasUnsavedChanges: false,
+        publication: {
+          isPublished: true,
+          hasUnpublishedChanges: false,
+          publishedVersionId: "version_1",
+          publishedVersion: 1,
+          publishedAt: "2026-08-23T16:00:00.000Z",
+        },
+      },
+    });
+
+    expect(
+      (await findByRole("button", { name: "Publish v2" })).hasAttribute(
+        "disabled"
+      )
+    ).toBe(true);
+  });
+
+  it("keeps a never-published workflow publishable", async () => {
+    const { findByRole } = renderChrome(ToolbarActions, {
+      state: {
+        hasUnsavedChanges: false,
+        publication: { isPublished: false, hasUnpublishedChanges: false },
+      },
+    });
+
+    expect(
+      (await findByRole("button", { name: "Publish" })).hasAttribute("disabled")
+    ).toBe(false);
+  });
+
+  it("keeps Publish enabled for a local edit awaiting autosave", async () => {
+    const { findByRole } = renderChrome(ToolbarActions, {
+      state: {
+        hasUnsavedChanges: true,
+        publication: {
+          isPublished: true,
+          hasUnpublishedChanges: false,
+          publishedVersionId: "version_1",
+          publishedVersion: 1,
+          publishedAt: "2026-08-23T16:00:00.000Z",
+        },
+      },
+    });
+
+    expect(
+      (await findByRole("button", { name: "Publish v2" })).hasAttribute(
+        "disabled"
+      )
+    ).toBe(false);
+  });
+});
+
+describe("mobile editing actions", () => {
+  it("keeps Configuration available and disables Delete while editing is locked", async () => {
+    const selectedNode = { ...REAL_NODES[0], selected: true };
+    const view = renderChrome(ToolbarActions, {
+      generating: true,
+      graph: [selectedNode],
+      state: { nodes: [selectedNode] },
+    });
+    act(() => view.store.set(selectedNodeAtom, selectedNode.id));
+
+    expect(
+      (await view.findByTitle("Configuration")).hasAttribute("disabled")
+    ).toBe(false);
+    expect(view.getByTitle("Delete").hasAttribute("disabled")).toBe(true);
+  });
 });
 
 describe("ToolbarActions ownership", () => {
@@ -272,6 +371,87 @@ describe("ToolbarActions ownership", () => {
 
     const host = await findByTestId("toolbar-actions-host");
     expect(host.innerHTML).toBe("");
+  });
+});
+
+describe("WorkflowToolbarChrome", () => {
+  it("keeps navigation, Actions, and Settings on the left with mode and Publish on the right", async () => {
+    const { findByRole } = renderChrome(WorkflowToolbarChrome);
+
+    const dashboard = await findByRole("link", { name: "Dashboard" });
+    const workflow = await findByRole("button", { name: "Workflow" });
+    const actions = await findByRole("button", { name: "Actions" });
+    const settings = await findByRole("button", { name: "Settings" });
+    const mode = await findByRole("button", { name: "Live mode" });
+    const publish = await findByRole("button", { name: "Publish" });
+
+    expect(
+      [dashboard, workflow, actions, settings].map((element) =>
+        element.closest("[data-slot='workflow-toolbar-left']")
+      )
+    ).not.toContain(null);
+    expect(
+      [mode, publish].map((element) =>
+        element.closest("[data-slot='workflow-toolbar-right']")
+      )
+    ).not.toContain(null);
+    expect(
+      (await findByRole("button", { name: "Search or add a step" })).className
+    ).toContain("w-80");
+  });
+
+  it("keeps Settings available to a non-owner", async () => {
+    const { findByRole, queryByRole } = renderChrome(WorkflowToolbarChrome, {
+      state: { isOwner: false },
+    });
+
+    expect(await findByRole("button", { name: "Settings" })).toBeTruthy();
+    expect(queryByRole("button", { name: "Publish" })).toBeNull();
+  });
+
+  it("constrains each desktop side around the viewport-centred palette", async () => {
+    const { findByRole } = renderChrome(WorkflowToolbarChrome);
+    const palette = await findByRole("button", {
+      name: "Search or add a step",
+    });
+    const left = palette
+      .closest(".relative")
+      ?.querySelector("[data-slot='workflow-toolbar-left']");
+    const right = palette
+      .closest(".relative")
+      ?.querySelector("[data-slot='workflow-toolbar-right']");
+
+    expect(left?.className).toContain("min-[70rem]:max-w-[calc(50%-10rem)]");
+    expect(left?.className).toContain("min-[70rem]:overflow-x-auto");
+    expect(right?.className).toContain("min-[70rem]:max-w-[calc(50%-10rem)]");
+    expect(right?.className).toContain("min-[70rem]:overflow-x-auto");
+    expect(palette.parentElement?.parentElement?.className).toContain(
+      "absolute inset-x-0"
+    );
+  });
+
+  it("uses amber Test mode and sends a mode change through the existing handler", async () => {
+    const { actions, findByRole, getByRole } = renderChrome(
+      WorkflowToolbarChrome,
+      { state: { workflowMode: "test" } }
+    );
+
+    const trigger = await findByRole("button", { name: "Test mode" });
+    expect(trigger.className).toContain("bg-warning/10");
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    fireEvent.keyUp(trigger, { key: "ArrowDown" });
+    expect(
+      getByRole("menuitemradio", {
+        name: /Routes configured messages to test recipients/,
+      })
+    ).toBeTruthy();
+    fireEvent.click(
+      getByRole("menuitemradio", {
+        name: /Sends messages to configured recipients/,
+      })
+    );
+
+    expect(actions.handleSetWorkflowMode).toHaveBeenCalledWith("live");
   });
 });
 

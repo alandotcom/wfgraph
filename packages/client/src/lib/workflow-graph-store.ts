@@ -30,6 +30,10 @@ import {
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
 import {
+  clearPublicationReviewAtom,
+  isPublicationReviewActiveAtom,
+} from "#src/lib/workflow-publication-review-store";
+import {
   formatTemplateToken,
   mapTemplateTokens,
 } from "@wfgraph/shared/graph/node-references";
@@ -67,6 +71,13 @@ import {
   selectedEdgeAtom,
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-cells";
+import {
+  clearWorkflowComparisonAtom,
+  comparisonDisplayGraphAtom,
+  comparisonSessionAtom,
+  isComparisonActiveAtom,
+  isComparisonPendingAtom,
+} from "#src/lib/workflow-comparison-store";
 import type {
   NodeIssueSummary,
   NodeRunStatus,
@@ -130,7 +141,12 @@ export const isExecutionOverlayActiveAtom = atom(
  * condition the canvas already had.
  */
 export const canvasEditingLockedAtom = atom(
-  (get) => get(isGeneratingAtom) || get(isExecutionOverlayActiveAtom)
+  (get) =>
+    get(isGeneratingAtom) ||
+    get(isExecutionOverlayActiveAtom) ||
+    get(isComparisonActiveAtom) ||
+    get(isComparisonPendingAtom) ||
+    get(isPublicationReviewActiveAtom)
 );
 
 /**
@@ -141,8 +157,13 @@ export const canvasEditingLockedAtom = atom(
  * (`style` / `data.displayLabel`) so the draft stays clean.
  */
 const inactiveBranchAtom = atom((get) => {
-  const nodes = get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom);
-  const edges = get(executionOverlayGraphAtom)?.edges ?? get(edgesStateAtom);
+  const overlay = get(executionOverlayGraphAtom);
+  const comparison = get(comparisonDisplayGraphAtom);
+  if (comparison && !overlay) {
+    return { nodeIds: new Set<string>(), outletEdgeIds: new Set<string>() };
+  }
+  const nodes = overlay?.nodes ?? get(nodesStateAtom);
+  const edges = overlay?.edges ?? get(edgesStateAtom);
   return inactiveBranch({ nodes, edges });
 });
 
@@ -168,7 +189,9 @@ const paintedNodes = new WeakMap<WorkflowNode, PaintedNode>();
 
 export const displayNodesAtom = atom((get) => {
   const overlay = get(executionOverlayGraphAtom);
-  const nodes = overlay?.nodes ?? get(nodesStateAtom);
+  const comparison = get(comparisonDisplayGraphAtom);
+  const displayGraph = overlay ?? comparison;
+  const nodes = displayGraph?.nodes ?? get(nodesStateAtom);
   const statusByNodeId = get(statusByNodeIdAtom);
   const { nodeIds } = get(inactiveBranchAtom);
   const ordered = orderGroupParentsFirst(nodes);
@@ -176,7 +199,7 @@ export const displayNodesAtom = atom((get) => {
   const disabledFrameIds = disabledGroupIds(nodes);
   // A past run's graph is not the draft, so validating it would badge nodes
   // against a canvas the builder cannot edit.
-  const issuesByNodeId = overlay
+  const issuesByNodeId = displayGraph
     ? EMPTY_ISSUES
     : get(workflowIssuesByNodeIdAtom);
 
@@ -188,9 +211,9 @@ export const displayNodesAtom = atom((get) => {
   // every drag frame and every keystroke, since this atom is read on every
   // render of the canvas. A pinned overlay uses the same path when the
   // inspector has not selected a node, so the overlay array keeps its identity.
-  const overlaySelectedId = overlay ? get(selectedNodeAtom) : null;
+  const overlaySelectedId = displayGraph ? get(selectedNodeAtom) : null;
   const selectionAlreadyMatches =
-    !overlay ||
+    !displayGraph ||
     ordered.every(
       (node) => Boolean(node.selected) === (node.id === overlaySelectedId)
     );
@@ -207,7 +230,8 @@ export const displayNodesAtom = atom((get) => {
   // A run is painted onto every node at once, since a node with no reported
   // status reads as idle. Muting reaches a few nodes, so the rest are handed
   // back by reference and their cards can bail out of rendering again.
-  const paintingRun = statusByNodeId.size > 0;
+  const paintingRun =
+    (overlay !== null || comparison === null) && statusByNodeId.size > 0;
 
   const painted = ordered.map((node) => {
     const disabledFrame = disabledFrameIds.has(node.id);
@@ -262,7 +286,7 @@ export const displayNodesAtom = atom((get) => {
     return paintedNode;
   });
 
-  if (!overlay) {
+  if (!displayGraph) {
     return painted;
   }
 
@@ -272,8 +296,13 @@ export const displayNodesAtom = atom((get) => {
   });
 });
 export const displayEdgesAtom = atom((get) => {
-  const nodes = get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom);
-  const edges = get(executionOverlayGraphAtom)?.edges ?? get(edgesStateAtom);
+  const overlay = get(executionOverlayGraphAtom);
+  const comparison = get(comparisonDisplayGraphAtom);
+  if (comparison && !overlay) {
+    return comparison.edges;
+  }
+  const nodes = overlay?.nodes ?? get(nodesStateAtom);
+  const edges = overlay?.edges ?? get(edgesStateAtom);
   const painted = lockGroupInteriorEdges(
     nodes,
     displayEdgesForGroups(nodes, edges)
@@ -331,7 +360,11 @@ const isDraggingAtom = atom(false);
  */
 export const loadWorkflowGraphAtom = atom(
   null,
-  (_get, set, graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }) => {
+  (get, set, graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }) => {
+    const workflowId = get(currentWorkflowIdAtom);
+    if (workflowId) {
+      set(clearWorkflowComparisonAtom, workflowId);
+    }
     set(nodesStateAtom, orderGroupParentsFirst(graph.nodes));
     set(edgesStateAtom, graph.edges);
     set(historyAtom, []);
@@ -360,6 +393,11 @@ export const loadWorkflowGraphAtom = atom(
 export const hydrateWorkflowAtom = atom(
   null,
   (get, set, workflow: SavedWorkflow) => {
+    // Hydration starts a new editor lifetime even when the route resolves the
+    // same workflow again. A comparison snapshot belongs to the lifetime that
+    // requested it and must not lock the newly loaded draft.
+    set(clearWorkflowComparisonAtom, workflow.id);
+    set(clearPublicationReviewAtom);
     // Clearing selection stops a node from arriving pre-selected in a
     // workflow the user has just opened.
     const nodes = workflow.nodes.map((node) => ({
@@ -394,6 +432,59 @@ export const hydrateWorkflowAtom = atom(
     set(workflowLoadErrorAtom, null);
   }
 );
+
+/**
+ * Install a restored workflow only while the editor still shows that workflow.
+ * A restore request can finish after navigation, so this guard owns the graph
+ * write and comparison cleanup together rather than leaving each caller to race.
+ */
+export const installRestoredWorkflowAtom = atom(
+  null,
+  (
+    get,
+    set,
+    input: { expectedWorkflowId: string; workflow: SavedWorkflow }
+  ) => {
+    if (
+      get(currentWorkflowIdAtom) !== input.expectedWorkflowId ||
+      input.workflow.id !== input.expectedWorkflowId
+    ) {
+      return false;
+    }
+    set(loadWorkflowGraphAtom, {
+      nodes: input.workflow.nodes,
+      edges: input.workflow.edges,
+    });
+    return true;
+  }
+);
+
+/**
+ * Return from a comparison without making selection a graph edit. A historical
+ * node may not exist in the draft, while a draft node becomes its sole selection.
+ */
+export const exitWorkflowComparisonAtom = atom(null, (get, set) => {
+  const workflowId = get(currentWorkflowIdAtom);
+  if (!workflowId || !get(comparisonSessionAtom)) {
+    return false;
+  }
+  const selectedNodeId = get(selectedNodeAtom);
+  const draftSelection = selectedNodeId
+    ? (get(nodesStateAtom).find((node) => node.id === selectedNodeId)?.id ??
+      null)
+    : null;
+  set(
+    nodesStateAtom,
+    get(nodesStateAtom).map((node) => ({
+      ...node,
+      selected: node.id === draftSelection,
+    }))
+  );
+  set(selectedNodeAtom, draftSelection);
+  set(selectedEdgeAtom, null);
+  set(clearWorkflowComparisonAtom, workflowId);
+  return true;
+});
 
 /**
  * Point every node at a connection that exists, given the list as it stands now.

@@ -1,4 +1,4 @@
-import { Key, Moon, Plug, Sun } from "lucide-react";
+import { ChevronDown, Key, Moon, Plug, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { ApiKeysOverlay } from "#src/components/overlays/api-keys-overlay";
 import { IntegrationsOverlay } from "#src/components/overlays/integrations-overlay";
@@ -23,8 +23,9 @@ export const UserMenu = () => {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="outline" />}>
+      <DropdownMenuTrigger render={<Button variant="ghost" />}>
         Settings
+        <ChevronDown className="size-3 opacity-50" data-icon="inline-end" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuItem onClick={() => openOverlay(IntegrationsOverlay)}>

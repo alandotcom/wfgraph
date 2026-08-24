@@ -5,6 +5,9 @@ import {
 } from "@wfgraph/shared/graph/graph";
 import type { WorkflowNode as PersistedWorkflowNode } from "@wfgraph/shared/graph/types";
 import {
+  COMPARISON_EDGE_ANNOTATION,
+  COMPARISON_NODE_ANNOTATION,
+  comparisonNodeTitle,
   toEditorEdge,
   toEditorNode,
   toPersistedEdge,
@@ -130,5 +133,106 @@ describe("the persist round trip", () => {
 
     expect(nodes.every((item) => item.selected === undefined)).toBe(true);
     expect(edges[0]?.selected).toBeUndefined();
+  });
+
+  it("strips symbol annotations while preserving adopter-owned comparison data", () => {
+    const comparedNode: WorkflowNode = {
+      ...editorNode("a", false),
+      data: {
+        ...editorNode("a", false).data,
+        comparison: { owner: "adopter" },
+        [COMPARISON_NODE_ANNOTATION]: { kind: "removed" },
+      },
+    };
+    const comparedEdge: WorkflowEdge = {
+      id: "comparison:removed:e1",
+      source: "a",
+      target: "b",
+      data: {
+        comparison: { owner: "adopter" },
+        [COMPARISON_EDGE_ANNOTATION]: { kind: "removed", sourceId: "e1" },
+      },
+    };
+
+    const persistedNode = toPersistedNode(comparedNode);
+    const persistedData = persistedNode.data as Record<PropertyKey, unknown>;
+    expect(persistedData.comparison).toEqual({ owner: "adopter" });
+    expect(persistedData[COMPARISON_NODE_ANNOTATION]).toBeUndefined();
+    expect(toPersistedEdge(comparedEdge)).toEqual({
+      id: "e1",
+      source: "a",
+      target: "b",
+      sourceHandle: undefined,
+      targetHandle: undefined,
+      data: { comparison: { owner: "adopter" } },
+    });
+  });
+
+  it("does not treat string-key comparison data as a synthetic edge id", () => {
+    const edge: WorkflowEdge = {
+      id: "comparison:removed:adopter-edge",
+      source: "a",
+      target: "b",
+      data: { comparison: { sourceId: "different-id" } },
+    };
+
+    expect(toPersistedEdge(edge)).toMatchObject({
+      id: "comparison:removed:adopter-edge",
+      data: { comparison: { sourceId: "different-id" } },
+    });
+  });
+
+  it("adds comparison wording to a node's accessible name", () => {
+    expect(
+      workflowNodeAriaLabel({
+        label: "Archive lead",
+        type: "action",
+        [COMPARISON_NODE_ANNOTATION]: { kind: "removed" },
+      })
+    ).toBe("Archive lead, Removed in comparison");
+  });
+
+  it("uses the catalog label or a safe fallback for comparison action names", () => {
+    const data = {
+      label: "   ",
+      type: "action" as const,
+      config: { actionType: "linear/find-issues" },
+      [COMPARISON_NODE_ANNOTATION]: { kind: "added" as const },
+    };
+    const catalog = {
+      events: [],
+      integrations: [],
+      actions: [
+        {
+          id: "linear/find-issues",
+          label: "Find issues",
+          description: "Find matching issues",
+          category: "Linear",
+          configFields: [],
+          outputFields: [],
+        },
+      ],
+    };
+
+    expect(comparisonNodeTitle(data, catalog)).toBe("Find issues");
+    expect(workflowNodeAriaLabel(data, catalog)).toBe(
+      "Find issues, Added in comparison"
+    );
+    expect(comparisonNodeTitle(data)).toBe("Unavailable action");
+    expect(workflowNodeAriaLabel(data)).toBe(
+      "Unavailable action, Added in comparison"
+    );
+  });
+
+  it("uses node-type fallbacks for nodes that are not configured actions", () => {
+    expect(
+      comparisonNodeTitle({ label: "", type: "lifecycle", config: {} })
+    ).toBe("Lifecycle");
+    expect(comparisonNodeTitle({ label: "", type: "group", config: {} })).toBe(
+      "Group"
+    );
+    expect(comparisonNodeTitle({ label: "", type: "action", config: {} })).toBe(
+      "Action"
+    );
   });
 });

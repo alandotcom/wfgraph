@@ -54,6 +54,8 @@ export type SavedWorkflow = WorkflowData & {
   isOwner?: boolean;
   /** Absent until the first publish. */
   publishedVersionId?: string;
+  publishedVersion?: number;
+  publishedAt?: string;
   /** Whether the draft graph differs from the published version. */
   hasUnpublishedChanges: boolean;
 };

@@ -5,12 +5,12 @@ import {
   WorkflowRepo,
   type EventSubscriber,
   type WorkflowEventSubscriptionRow,
+  type WorkflowVersionHistoryRow,
 } from "#src/backend/services/workflows/repo";
 import type { SqliteDatabase } from "#src/backend/persistence/sqlite/database";
 import {
   encodeGraph,
   optionalString,
-  placeholders,
   requiredBoolean,
   requiredDate,
   requiredGraph,
@@ -345,22 +345,37 @@ export function makeSqliteWorkflowRepo(
           .get(workflowId);
         return row ? sqliteWorkflowVersion(row) : null;
       }),
+    listVersionHistoryPage: ({ workflowId, limit, cursor }) =>
+      store.read((database) =>
+        database
+          .prepare(
+            `SELECT v.id, v.version, v.published_at,
+                    v.id = w.published_version_id AS is_current
+             FROM workflow_versions v
+             JOIN workflows w ON w.id = v.workflow_id
+             WHERE v.workflow_id = ?
+               AND (? IS NULL OR v.version < ?)
+             ORDER BY v.version DESC
+             LIMIT ?`
+          )
+          .all(
+            workflowId,
+            cursor?.version ?? null,
+            cursor?.version ?? null,
+            limit + 1
+          )
+          .map((row): WorkflowVersionHistoryRow => ({
+            id: requiredString(row, "id"),
+            version: requiredNumber(row, "version"),
+            publishedAt: requiredDate(row, "published_at"),
+            isCurrent: requiredBoolean(row, "is_current"),
+          }))
+      ),
     findVersionById: (versionId) =>
       store.read((database) => {
         const row = database
           .prepare("SELECT * FROM workflow_versions WHERE id = ?")
           .get(versionId);
-        return row ? sqliteWorkflowVersion(row) : null;
-      }),
-    findVersionByContent: (input) =>
-      store.read((database) => {
-        const row = database
-          .prepare(
-            `SELECT * FROM workflow_versions
-             WHERE workflow_id = ? AND graph_digest = ? AND catalog_fingerprint = ?
-             ORDER BY version DESC LIMIT 1`
-          )
-          .get(input.workflowId, input.graphDigest, input.catalogFingerprint);
         return row ? sqliteWorkflowVersion(row) : null;
       }),
     findPublishedVersion: (workflowId) =>
@@ -379,41 +394,6 @@ export function makeSqliteWorkflowRepo(
           workflow: { id, name, mode, isPaused },
           publishedVersion: pair.publishedVersion,
         };
-      }),
-    setPublishedVersion: (input) =>
-      store.write((database) => {
-        const versionRow = database
-          .prepare("SELECT * FROM workflow_versions WHERE id = ?")
-          .get(input.versionId);
-        if (!versionRow) return null;
-        const changed = database
-          .prepare(
-            `UPDATE workflows
-             SET published_version_id = ?, graph = ?, updated_at = ?
-             WHERE id = ? AND published_version_id IS ? RETURNING id`
-          )
-          .get(
-            input.versionId,
-            encodeGraph(input.draftGraph),
-            Date.now(),
-            input.workflowId,
-            input.expectedPublishedVersionId
-          );
-        if (!changed) {
-          return database
-            .prepare("SELECT 1 AS present FROM workflows WHERE id = ?")
-            .get(input.workflowId)
-            ? stalePublication()
-            : null;
-        }
-        replaceSubscriptions(
-          database,
-          input.workflowId,
-          input.eventSubscriptions
-        );
-        const workflow = findWorkflow(database, input.workflowId);
-        if (!workflow) throw new Error("Published SQLite workflow is missing");
-        return { workflow, version: sqliteWorkflowVersion(versionRow) };
       }),
     insertPublishedVersion: (input) =>
       store.write((database) => {
@@ -440,14 +420,24 @@ export function makeSqliteWorkflowRepo(
         database
           .prepare(
             `UPDATE workflows SET published_version_id = ?, graph = ?, updated_at = ?
-             WHERE id = ?`
+             WHERE id = ? AND published_version_id IS ?`
           )
           .run(
             input.versionId,
             encodeGraph(input.draftGraph),
             Date.now(),
-            input.workflowId
+            input.workflowId,
+            input.expectedPublishedVersionId
           );
+        const changed = database.prepare("SELECT changes() AS changed").get();
+        if (changed === undefined || requiredNumber(changed, "changed") === 0) {
+          database
+            .prepare("DELETE FROM workflow_versions WHERE id = ?")
+            .run(input.versionId);
+          return findWorkflow(database, input.workflowId)
+            ? stalePublication()
+            : null;
+        }
         replaceSubscriptions(
           database,
           input.workflowId,
@@ -461,36 +451,6 @@ export function makeSqliteWorkflowRepo(
           throw new Error("Published SQLite version is missing");
         }
         return { workflow, version: sqliteWorkflowVersion(versionRow) };
-      }),
-    pruneUnreferencedVersions: ({ workflowId, keepNewest, limit }) =>
-      store.write((database) => {
-        const candidates = database
-          .prepare(
-            `SELECT v.id FROM workflow_versions v
-             WHERE v.workflow_id = ?
-               AND v.id NOT IN (
-                 SELECT id FROM workflow_versions
-                 WHERE workflow_id = ? ORDER BY version DESC LIMIT ?
-               )
-               AND NOT EXISTS (
-                 SELECT 1 FROM workflow_executions e
-                 WHERE e.workflow_version_id = v.id
-               )
-               AND NOT EXISTS (
-                 SELECT 1 FROM workflows w WHERE w.published_version_id = v.id
-               )
-             ORDER BY v.version ASC LIMIT ?`
-          )
-          .all(workflowId, workflowId, keepNewest, limit)
-          .map((row) => requiredString(row, "id"));
-        if (candidates.length === 0) return [];
-        return database
-          .prepare(
-            `DELETE FROM workflow_versions
-             WHERE id IN (${placeholders(candidates.length)}) RETURNING id`
-          )
-          .all(...candidates)
-          .map((row) => requiredString(row, "id"));
       }),
   };
 }

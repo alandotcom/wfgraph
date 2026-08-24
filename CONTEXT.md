@@ -160,19 +160,21 @@ Wait, which is how an Event Split after a Wait tells those arrivals apart.
 **Workflow Version**:
 An immutable published copy of a workflow's graph, together with the catalog
 fingerprint it was sound against. Draft saves edit the live graph only;
-Publish mints (or reuses) a version and points the workflow at it. Event and
-manual starts refuse a never-published workflow. A version an Execution pins
-lives as long as that Execution; one that no Execution pins and no workflow
-names is swept once it falls outside the newest ten.
+each Publish mints the next chronological version and points the workflow at
+it. Event and manual starts refuse a never-published workflow. Published
+versions form durable history, and an Execution remains pinned to the version
+it started against.
 
 **Publish**:
 The hard gate that turns a draft into a Workflow Version, and the only place a
 graph is held to whether it can run: required fields, Events, Event Split
 outlets, template references, connections, and unreachable subtrees. A draft
 save asks none of that and stores whatever parses, because a half-built node is
-the ordinary state of an editor session. Content-hash dedupe stops an idle
-editor from accreting identical versions. The event subscription index tracks
-the published graph, so a half-built draft cannot start runs.
+the ordinary state of an editor session. Publish refuses a draft that is
+semantically identical to the current version. A confirmed Publish advances
+the version number even when the draft restores content from an older version.
+The event subscription index tracks the published graph, so a half-built draft
+cannot start runs.
 
 **Execution**:
 One run of one workflow, started by a Start Event, a schedule, or a manual

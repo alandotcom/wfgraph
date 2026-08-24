@@ -26,6 +26,8 @@ import {
   currentWorkflowNameAtom,
   isWorkflowOwnerAtom,
 } from "#src/lib/workflow-save-store";
+import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
+import { orpcQuery } from "#src/lib/rpc-query";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
@@ -82,10 +84,14 @@ function renderPanel({
 
   selected = null,
   isOwner = true,
+  hasPublishedVersion = false,
+  tabs = "top",
 }: {
   nodes?: WorkflowNode[];
   selected?: string | null;
   isOwner?: boolean;
+  hasPublishedVersion?: boolean;
+  tabs?: NodeConfigFrame["tabs"];
 } = {}) {
   const store = createStore();
   store.set(loadWorkflowGraphAtom, { nodes, edges: [] });
@@ -93,6 +99,18 @@ function renderPanel({
   store.set(currentWorkflowIdAtom, "wf_1");
   store.set(currentWorkflowNameAtom, "Appointment reminders");
   store.set(isWorkflowOwnerAtom, isOwner);
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  queryClient.setQueryData(
+    orpcQuery.workflow.getById.queryKey({ input: { workflowId: "wf_1" } }),
+    {
+      id: "wf_1",
+      publishedVersionId: hasPublishedVersion ? "version_1" : undefined,
+      publishedVersion: hasPublishedVersion ? 1 : undefined,
+      hasUnpublishedChanges: false,
+    } as never
+  );
 
   const confirmed: ConfirmRequest[] = [];
 
@@ -104,7 +122,7 @@ function renderPanel({
           confirmed.push(request);
           setRequest(request);
         },
-        tabs: "top",
+        tabs,
       }),
       []
     );
@@ -129,11 +147,7 @@ function renderPanel({
 
   const view = render(
     <ExtensionCatalogProvider value={catalog}>
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
+      <QueryClientProvider client={queryClient}>
         <JotaiProvider store={store}>
           <RouterProvider router={router} />
         </JotaiProvider>
@@ -181,9 +195,25 @@ describe("NodeConfigPanel with nothing selected", () => {
     const { view } = renderPanel();
 
     await waitFor(() => {
-      expect(view.getByRole("button", { name: "Properties" })).toBeTruthy();
+      expect(view.getByRole("tab", { name: "Properties" })).toBeTruthy();
     });
     expect(view.queryByRole("button", { name: "Workflow" })).toBeNull();
+  });
+
+  it("exposes the panel switcher as tabs", async () => {
+    const { view } = renderPanel();
+
+    const tabs = await view.findByRole("tablist", { name: "Workflow panel" });
+    const properties = view.getByRole("tab", { name: "Properties" });
+    expect(tabs).toBeTruthy();
+    expect(properties.getAttribute("aria-selected")).toBe("true");
+    expect(properties.getAttribute("aria-controls")).toBe(
+      "workflow-properties-panel"
+    );
+    expect(properties.id).toBe("workflow-properties-tab-properties");
+    expect(view.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe(
+      properties.id
+    );
   });
 
   // A non-owner reached this branch for the read-only notice, and the branch it
@@ -229,5 +259,63 @@ describe("NodeConfigPanel config scoping", () => {
     expect(
       view.getByRole("button", { name: "Edit Lifecycle Rules" })
     ).toBeTruthy();
+  });
+});
+
+describe("NodeConfigPanel Changes tab", () => {
+  it("shows the owner-only Changes tab once a workflow has a published version", async () => {
+    const { view } = renderPanel({ hasPublishedVersion: true });
+
+    await waitFor(() => {
+      expect(view.getByRole("tab", { name: "Changes" })).toBeTruthy();
+    });
+  });
+
+  it("keeps Changes out of a public workflow panel", async () => {
+    const { view } = renderPanel({ hasPublishedVersion: true, isOwner: false });
+
+    await waitFor(() => {
+      expect(view.getByRole("tab", { name: "Properties" })).toBeTruthy();
+    });
+    expect(view.queryByRole("button", { name: "Changes" })).toBeNull();
+  });
+
+  it("shows Changes in the mobile tab bar", async () => {
+    const { view } = renderPanel({
+      hasPublishedVersion: true,
+      tabs: "bottom",
+    });
+
+    await waitFor(() => {
+      expect(view.getByRole("tab", { name: "Changes" })).toBeTruthy();
+    });
+  });
+
+  it("moves focus and selection through visible tabs with the standard keys", async () => {
+    const { view, store } = renderPanel();
+    const properties = await view.findByRole("tab", { name: "Properties" });
+    const runs = view.getByRole("tab", { name: "Runs" });
+
+    expect(properties.tabIndex).toBe(0);
+    expect(runs.tabIndex).toBe(-1);
+    fireEvent.keyDown(properties, { key: "ArrowRight" });
+    expect(store.get(propertiesPanelActiveTabAtom)).toBe("runs");
+    expect(document.activeElement).toBe(runs);
+
+    fireEvent.keyDown(runs, { key: "End" });
+    expect(store.get(propertiesPanelActiveTabAtom)).toBe("runs");
+    expect(document.activeElement).toBe(runs);
+
+    fireEvent.keyDown(runs, { key: "Home" });
+    expect(store.get(propertiesPanelActiveTabAtom)).toBe("properties");
+    expect(document.activeElement).toBe(properties);
+  });
+
+  it("keeps the mobile tablist adjacent to its panel after the content", async () => {
+    const { view } = renderPanel({ hasPublishedVersion: true, tabs: "bottom" });
+    const panel = await view.findByRole("tabpanel");
+    const tablist = view.getByRole("tablist", { name: "Workflow panel" });
+
+    expect(panel.nextElementSibling).toBe(tablist);
   });
 });

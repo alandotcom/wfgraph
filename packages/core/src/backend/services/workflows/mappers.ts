@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import type { Workflow } from "#src/backend/lib/db/schema";
+import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
 import type {
   WorkflowApiPayload,
   WorkflowSummaryPayload,
@@ -66,14 +66,23 @@ export function toWorkflowSummaryPayload(
  */
 export function toWorkflowApiPayload(
   workflow: WorkflowPayloadSource,
-  published: { graphDigest: string } | null
+  published: Pick<
+    WorkflowVersion,
+    "id" | "version" | "publishedAt" | "graph" | "graphDigest"
+  > | null
 ): WorkflowApiPayload {
   return {
     ...toWorkflowSummaryPayload(workflow),
+    ...(published
+      ? {
+          publishedVersion: published.version,
+          publishedAt: published.publishedAt.toISOString(),
+        }
+      : {}),
     graph: workflow.graph,
     hasUnpublishedChanges: draftDiffersFromPublished(
       workflow.graph,
-      published?.graphDigest ?? null
+      published?.graph ?? null
     ),
   };
 }

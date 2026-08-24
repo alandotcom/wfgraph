@@ -1,74 +1,50 @@
 /**
- * Content hashes for publish-gated versions: the graph digest that stops an idle
- * editor from accreting rows, and the catalog fingerprint a version was sound
- * against.
+ * Content hashes for the semantic graph identity and the extension catalog a
+ * published version was sound against.
  */
 
 import { createHash } from "node:crypto";
 import { sortBy } from "es-toolkit/array";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-/**
- * `JSON.stringify` with every object's keys sorted, recursively. Postgres
- * jsonb does not keep the key order a value was written with (a node written
- * as `{id, type, position, data}` reads back `{id, data, type, position}`),
- * so a digest taken before storage and one taken after must serialize through
- * this rather than through `JSON.stringify` directly, or the two disagree on
- * content that is otherwise identical.
- */
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(canonicalize);
-  }
-  if (isPlainObject(value)) {
-    return Object.fromEntries(
-      Object.keys(value)
-        .toSorted()
-        .map((key) => [key, canonicalize(value[key])])
-    );
-  }
-  return value;
-}
+import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
+import { isSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import {
+  normalizeSemanticValue,
+  projectSemanticWorkflowGraph,
+  semanticValueKey,
+  semanticWorkflowGraphsEqual,
+} from "#src/backend/services/workflows/semantic-graph";
 
 /**
- * Digest of a graph's JSON, used as the publish dedupe key and (still) as the
- * preflight memo key. Order-independent (see `canonicalize`) and SHA-256:
- * SHA-1 is broken for collision resistance and has no place in a new digest.
- * Changing the algorithm does not touch stored rows — an old version's
- * `graphDigest` column keeps its SHA-1 value, which simply stops matching a
- * freshly computed SHA-256 one, so publish mints a new version once instead
- * of reusing it.
+ * Digest of a graph's canonical semantic projection. The projection ignores
+ * editor layout and generated edge ids, while SHA-256 protects the persisted
+ * identity from accidental collisions.
  */
 export function graphDigest(graph: unknown): string {
+  const projected = isSerializedWorkflowGraph(graph)
+    ? projectSemanticWorkflowGraph(graph)
+    : normalizeSemanticValue(graph);
   return createHash("sha256")
-    .update(JSON.stringify(canonicalize(graph)) ?? "")
+    .update(projected === undefined ? "" : semanticValueKey(projected))
     .digest("hex");
 }
 
 /**
  * Whether the editable draft differs from the published version.
  *
- * Compares against the version row's own stored digest rather than re-hashing
- * its graph, so a badge read costs one hash, not two. This is safe only
- * because `graphDigest` is order-independent: the draft side is hashed as
- * loaded from JSONB, whose key order need not match what was hashed at
- * publish time, and the two must still agree when the content does.
- * Never-published workflows answer false: the badge for that case is "Never
- * published", not this flag.
+ * Reads the published graph because existing rows can carry a digest produced
+ * by an older algorithm. Never-published workflows answer false because their
+ * badge has its own state.
  */
 export function draftDiffersFromPublished(
-  draftGraph: unknown,
-  publishedGraphDigest: string | null
+  draftGraph: SerializedWorkflowGraph,
+  publishedGraph: SerializedWorkflowGraph | null
 ): boolean {
-  if (publishedGraphDigest == null) {
+  if (publishedGraph == null) {
     return false;
   }
-  return graphDigest(draftGraph) !== publishedGraphDigest;
+  return !semanticWorkflowGraphsEqual(draftGraph, publishedGraph);
 }
 
 /**

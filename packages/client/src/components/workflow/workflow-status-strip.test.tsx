@@ -217,25 +217,21 @@ afterEach(() => {
 });
 
 describe("WorkflowStatusStrip", () => {
-  it("reports the draft's mode, publication and save state", async () => {
+  it("reports publication and save state in the fixed status row", async () => {
     const { view } = renderStrip({ mode: "test", published: true });
 
     await waitFor(() => {
-      expect(view.getByText("Test mode")).toBeTruthy();
+      expect(view.getByText("Unpublished changes")).toBeTruthy();
     });
     expect(view.getByText("Unpublished changes")).toBeTruthy();
+    expect(view.queryByText("Test mode")).toBeNull();
     expect(view.getByText("Saved")).toBeTruthy();
     expect(view.queryByText("Back to draft")).toBeNull();
   });
 
-  it("says nothing about the mode until the workflow payload has arrived", () => {
-    // `currentWorkflowModeAtom` answers "live" before anything is hydrated into
-    // it, and "Live mode" is an affirmative claim about whether real email and
-    // SMS go out. The first paint is before the query resolves, so this is the
-    // window the strip used to fill with a guess.
+  it("keeps execution mode out of the status row", () => {
     const { view } = renderStrip({ mode: "test" });
 
-    expect(view.queryByText("Live mode")).toBeNull();
     expect(view.queryByText("Test mode")).toBeNull();
   });
 

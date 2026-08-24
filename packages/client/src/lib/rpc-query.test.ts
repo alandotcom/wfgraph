@@ -3,10 +3,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import {
   orpcQuery,
+  cacheWorkflow,
   cacheWorkflowPublication,
   refreshIntegrations,
   refreshRunHistory,
+  refreshWorkflowVersionHistory,
   refreshWorkflowList,
+  selectPublicationState,
 } from "./rpc-query";
 
 // These helpers are the client's only statement of what a write invalidates, so
@@ -48,6 +51,12 @@ const workflowKey = (workflowId: string) =>
 
 const integrationsKey = orpcQuery.integration.getAll.queryKey({ input: {} });
 
+const workflowVersionHistoryKey = (workflowId: string) =>
+  orpcQuery.workflow.getVersionHistory.infiniteKey({
+    input: (cursor: undefined) => ({ workflowId, cursor }),
+    initialPageParam: undefined,
+  });
+
 let queryClient: QueryClient;
 
 beforeEach(() => {
@@ -58,6 +67,10 @@ beforeEach(() => {
     items: [],
     supersededCount: 0,
     refusedStarts: [],
+  });
+  queryClient.setQueryData(workflowVersionHistoryKey("a"), {
+    pages: [{ items: [], nextCursor: null }],
+    pageParams: [undefined],
   });
   queryClient.setQueryData(integrationsKey, []);
   for (const statuses of [undefined, ["failed"] satisfies ["failed"]]) {
@@ -115,6 +128,17 @@ describe("refreshRunHistory", () => {
   });
 });
 
+describe("refreshWorkflowVersionHistory", () => {
+  it("marks version history stale without refreshing workflow or run queries", async () => {
+    await refreshWorkflowVersionHistory(queryClient);
+
+    expect(isInvalidated(workflowVersionHistoryKey("a"))).toBe(true);
+    expect(isInvalidated(workflowKey("a"))).toBe(false);
+    expect(isInvalidated(workflowRunsKey("a"))).toBe(false);
+    expect(isInvalidated(runHistoryKey())).toBe(false);
+  });
+});
+
 describe("refreshIntegrations", () => {
   it("marks the connection list stale and nothing else", async () => {
     await refreshIntegrations(queryClient);
@@ -136,5 +160,57 @@ describe("cacheWorkflowPublication", () => {
       hasUnpublishedChanges: true,
     });
     expect(isInvalidated(workflowKey("a"))).toBe(false);
+  });
+
+  it("writes the published version metadata into the getById entry", () => {
+    cacheWorkflowPublication(queryClient, {
+      id: "a",
+      hasUnpublishedChanges: false,
+      publishedVersionId: "version_2",
+      publishedVersion: 2,
+      publishedAt: "2026-08-23T16:00:00.000Z",
+    });
+
+    expect(queryClient.getQueryData(workflowKey("a"))).toMatchObject({
+      publishedVersionId: "version_2",
+      publishedVersion: 2,
+      publishedAt: "2026-08-23T16:00:00.000Z",
+    });
+  });
+});
+
+describe("cacheWorkflow", () => {
+  it("replaces the complete getById payload without invalidating run queries", () => {
+    const restored = {
+      ...aWorkflow("a"),
+      name: "Restored draft",
+      publishedVersionId: "version_4",
+      publishedVersion: 4,
+      publishedAt: "2026-08-23T16:00:00.000Z",
+    };
+
+    cacheWorkflow(queryClient, restored);
+
+    expect(queryClient.getQueryData(workflowKey("a"))).toEqual(restored);
+    expect(isInvalidated(workflowRunsKey("a"))).toBe(false);
+  });
+});
+
+describe("selectPublicationState", () => {
+  it("keeps the current version metadata from the full workflow payload", () => {
+    expect(
+      selectPublicationState({
+        ...aWorkflow("a"),
+        publishedVersionId: "version_2",
+        publishedVersion: 2,
+        publishedAt: "2026-08-23T16:00:00.000Z",
+      })
+    ).toEqual({
+      isPublished: true,
+      hasUnpublishedChanges: false,
+      publishedVersion: 2,
+      publishedAt: "2026-08-23T16:00:00.000Z",
+      publishedVersionId: "version_2",
+    });
   });
 });

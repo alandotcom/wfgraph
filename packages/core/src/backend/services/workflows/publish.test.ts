@@ -1,24 +1,20 @@
 import { assert, describe, it as standalone, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
-import { DatabaseError } from "#src/backend/lib/effect/database";
 import { Conflict, InvalidInput } from "#src/backend/lib/effect/failures";
 import {
-  makeRecordingLogger,
   SilentAppLoggerLayer,
   stubExtensionCatalog,
   stubIntegrationRepo,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
-import {
-  publishWorkflow,
-  RETAINED_VERSIONS_PER_WORKFLOW,
-} from "#src/backend/services/workflows/publish";
+import { publishWorkflow } from "#src/backend/services/workflows/publish";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import { catalogFingerprint } from "#src/backend/services/workflows/version-digest";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 
-const catalogLayer = stubExtensionCatalog({
+const catalog = {
   events: [
     {
       name: "app/appointment.created",
@@ -27,9 +23,40 @@ const catalogLayer = stubExtensionCatalog({
       payloadFields: [],
     },
   ],
-});
+  actions: [
+    {
+      id: "custom/send",
+      label: "Send",
+      description: "Sends a message",
+      category: "Custom",
+      configFields: [],
+      outputFields: [],
+    },
+  ],
+  integrations: [],
+};
 
-function graphWith(rules: LifecycleRules): Workflow["graph"] {
+const catalogLayer = stubExtensionCatalog(catalog);
+
+function graphWith(rules: LifecycleRules, label = "Start"): Workflow["graph"] {
+  return createSerializedWorkflowGraph({
+    nodes: [
+      {
+        id: "lifecycle-1",
+        type: "lifecycle",
+        position: { x: 0, y: 0 },
+        data: {
+          label,
+          type: "lifecycle",
+          config: { lifecycleRules: rules },
+        },
+      },
+    ],
+    edges: [],
+  });
+}
+
+function graphWithAction(edgeId: string): Workflow["graph"] {
   return createSerializedWorkflowGraph({
     nodes: [
       {
@@ -42,8 +69,25 @@ function graphWith(rules: LifecycleRules): Workflow["graph"] {
           config: { lifecycleRules: rules },
         },
       },
+      {
+        id: "action-1",
+        type: "action",
+        position: { x: 200, y: 0 },
+        data: {
+          label: "Send",
+          type: "action",
+          config: { actionType: "custom/send" },
+        },
+      },
     ],
-    edges: [],
+    edges: [
+      {
+        id: edgeId,
+        source: "lifecycle-1",
+        target: "action-1",
+        sourceHandle: "started",
+      },
+    ],
   });
 }
 
@@ -106,41 +150,26 @@ describe("publishWorkflow", () => {
 
         const repo = stubWorkflowRepo({
           findById: () => Effect.succeed(draft),
-          findVersionByContent: () => Effect.succeed(null),
+          findPublishedVersion: () => Effect.succeed(null),
           findLatestVersion: () => Effect.succeed(null),
-          pruneUnreferencedVersions: () => Effect.succeed([]),
           insertPublishedVersion: (input) =>
             Effect.sync(() => {
               inserted.push(input);
-              const version: WorkflowVersion = {
-                id: input.versionId,
-                workflowId: input.workflowId,
-                version: input.version,
-                graph: input.draftGraph,
-                catalogFingerprint: input.catalogFingerprint,
-                graphDigest: input.graphDigest,
-                publishedAt: new Date("2026-08-03T00:00:00.000Z"),
-              };
-              return {
-                workflow: {
-                  ...draft,
-                  publishedVersionId: version.id,
-                  graph: version.graph,
-                },
-                version,
-              };
+              return mintedFrom(input);
             }),
         });
 
         const result = yield* publishWorkflow({
           workflowId: "wf_1",
           graph: draft.graph,
+          expectedPublishedVersionId: null,
         }).pipe(Effect.provide(repo));
 
         assert.strictEqual(result.publishedVersion, 1);
         assert.strictEqual(result.hasUnpublishedChanges, false);
         assert.strictEqual(inserted.length, 1);
         assert.strictEqual(inserted[0]?.version, 1);
+        assert.strictEqual(inserted[0]?.expectedPublishedVersionId, null);
         assert.ok(inserted[0]?.eventSubscriptions.length === 1);
         assert.strictEqual(
           inserted[0]?.eventSubscriptions[0]?.eventName,
@@ -149,80 +178,224 @@ describe("publishWorkflow", () => {
       })
     );
 
-    it.effect("reuses a version whose digest and fingerprint match", () =>
-      Effect.gen(function* () {
-        const existing: WorkflowVersion = {
-          id: "ver_1",
-          workflowId: "wf_1",
-          version: 3,
-          graph: draft.graph,
-          catalogFingerprint: "",
-          graphDigest: "",
-          publishedAt: new Date("2026-08-01T00:00:00.000Z"),
-        };
+    it.effect(
+      "refuses a graph change when publication moves during preflight",
+      () =>
+        Effect.gen(function* () {
+          const current: WorkflowVersion = {
+            id: "ver_8",
+            workflowId: "wf_1",
+            version: 8,
+            graph: draft.graph,
+            catalogFingerprint: catalogFingerprint(catalog),
+            graphDigest: "current-graph",
+            publishedAt: new Date("2026-08-03T00:00:00.000Z"),
+          };
+          const repo = stubWorkflowRepo({
+            findById: () =>
+              Effect.succeed({ ...draft, publishedVersionId: "ver_7" }),
+            findPublishedVersion: () => Effect.succeed(current),
+            findLatestVersion: () => Effect.succeed(current),
+            insertPublishedVersion: (input) =>
+              Effect.succeed(mintedFrom(input)),
+          });
 
-        let capturedDigest = "";
-        let capturedFingerprint = "";
-        const mint = stubWorkflowRepo({
-          findById: () => Effect.succeed(draft),
-          findVersionByContent: () => Effect.succeed(null),
-          findLatestVersion: () => Effect.succeed(null),
-          pruneUnreferencedVersions: () => Effect.succeed([]),
+          const failure = yield* publishWorkflow({
+            workflowId: "wf_1",
+            graph: graphWith(rules, "Changed after review"),
+            expectedPublishedVersionId: "ver_7",
+          }).pipe(Effect.provide(repo), Effect.flip);
+
+          assert.instanceOf(failure, Conflict);
+          assert.strictEqual(
+            failure.error,
+            "This workflow was published elsewhere. Refresh and try again."
+          );
+        })
+    );
+
+    it.effect("mints a new chronological version when content repeats", () =>
+      Effect.gen(function* () {
+        let workflow = draft;
+        const versions: WorkflowVersion[] = [];
+        const repo = stubWorkflowRepo({
+          findById: () => Effect.succeed(workflow),
+          findPublishedVersion: () =>
+            Effect.succeed(
+              versions.find(
+                (version) => version.id === workflow.publishedVersionId
+              ) ?? null
+            ),
+          findLatestVersion: () => Effect.succeed(versions.at(-1) ?? null),
           insertPublishedVersion: (input) =>
             Effect.sync(() => {
-              capturedDigest = input.graphDigest;
-              capturedFingerprint = input.catalogFingerprint;
-              return {
-                workflow: { ...draft, publishedVersionId: input.versionId },
-                version: {
-                  id: input.versionId,
-                  workflowId: input.workflowId,
-                  version: input.version,
-                  graph: input.draftGraph,
-                  catalogFingerprint: capturedFingerprint,
-                  graphDigest: capturedDigest,
-                  publishedAt: new Date(),
-                },
-              };
+              const minted = mintedFrom(input);
+              versions.push(minted.version);
+              workflow = minted.workflow;
+              return minted;
             }),
         });
+
         yield* publishWorkflow({
           workflowId: "wf_1",
           graph: draft.graph,
-        }).pipe(Effect.provide(mint));
+          expectedPublishedVersionId: null,
+        }).pipe(Effect.provide(repo));
+        yield* publishWorkflow({
+          workflowId: "wf_1",
+          graph: graphWith(rules, "Changed"),
+          expectedPublishedVersionId: workflow.publishedVersionId,
+        }).pipe(Effect.provide(repo));
+        yield* publishWorkflow({
+          workflowId: "wf_1",
+          graph: draft.graph,
+          expectedPublishedVersionId: workflow.publishedVersionId,
+        }).pipe(Effect.provide(repo));
 
-        const reused: string[] = [];
+        assert.deepStrictEqual(
+          versions.map((version) => version.version),
+          [1, 2, 3]
+        );
+        assert.strictEqual(versions[0]?.graphDigest, versions[2]?.graphDigest);
+      })
+    );
+
+    it.effect(
+      "refuses a semantically identical graph with a legacy digest",
+      () =>
+        Effect.gen(function* () {
+          const current: WorkflowVersion = {
+            id: "ver_1",
+            workflowId: "wf_1",
+            version: 1,
+            graph: draft.graph,
+            graphDigest: "legacy-full-graph-digest",
+            catalogFingerprint: "previous-catalog",
+            publishedAt: new Date("2026-08-01T00:00:00.000Z"),
+          };
+          const repo = stubWorkflowRepo({
+            findById: () =>
+              Effect.succeed({ ...draft, publishedVersionId: current.id }),
+            findPublishedVersion: () => Effect.succeed(current),
+          });
+
+          const failure = yield* publishWorkflow({
+            workflowId: "wf_1",
+            graph: draft.graph,
+            expectedPublishedVersionId: current.id,
+          }).pipe(Effect.provide(repo), Effect.flip);
+
+          assert.instanceOf(failure, Conflict);
+          assert.include(failure.error, "already published");
+        })
+    );
+
+    it.effect(
+      "refuses geometry-only edits regardless of catalog fingerprint",
+      () =>
+        Effect.gen(function* () {
+          const current: WorkflowVersion = {
+            id: "ver_1",
+            workflowId: "wf_1",
+            version: 1,
+            graph: draft.graph,
+            graphDigest: "legacy-full-graph-digest",
+            catalogFingerprint: "previous-catalog",
+            publishedAt: new Date("2026-08-01T00:00:00.000Z"),
+          };
+          const repo = stubWorkflowRepo({
+            findById: () =>
+              Effect.succeed({ ...draft, publishedVersionId: current.id }),
+            findPublishedVersion: () => Effect.succeed(current),
+          });
+
+          const moved = {
+            ...draft.graph,
+            nodes: draft.graph.nodes.map((node) => ({
+              ...node,
+              attributes: {
+                ...node.attributes,
+                position: { x: 500, y: 700 },
+                width: 400,
+                height: 240,
+              },
+            })),
+          };
+
+          const failure = yield* publishWorkflow({
+            workflowId: "wf_1",
+            graph: moved,
+            expectedPublishedVersionId: current.id,
+          }).pipe(Effect.provide(repo), Effect.flip);
+
+          assert.instanceOf(failure, Conflict);
+        })
+    );
+
+    it.effect("refuses an edge-id-only edit", () =>
+      Effect.gen(function* () {
+        const publishedGraph = graphWithAction("edge-old");
+        const current: WorkflowVersion = {
+          id: "ver_1",
+          workflowId: "wf_1",
+          version: 1,
+          graph: publishedGraph,
+          graphDigest: "legacy-full-graph-digest",
+          catalogFingerprint: catalogFingerprint(catalog),
+          publishedAt: new Date("2026-08-01T00:00:00.000Z"),
+        };
         const repo = stubWorkflowRepo({
-          findById: () => Effect.succeed(draft),
-          findVersionByContent: () =>
+          findById: () =>
             Effect.succeed({
-              ...existing,
-              graphDigest: capturedDigest,
-              catalogFingerprint: capturedFingerprint,
-              graph: draft.graph,
+              ...draft,
+              graph: publishedGraph,
+              publishedVersionId: current.id,
             }),
-          pruneUnreferencedVersions: () => Effect.succeed([]),
-          setPublishedVersion: (input) =>
+          findPublishedVersion: () => Effect.succeed(current),
+        });
+
+        const failure = yield* publishWorkflow({
+          workflowId: "wf_1",
+          graph: graphWithAction("edge-new"),
+          expectedPublishedVersionId: current.id,
+        }).pipe(Effect.provide(repo), Effect.flip);
+
+        assert.instanceOf(failure, Conflict);
+      })
+    );
+
+    it.effect("mints the next version for a semantic graph change", () =>
+      Effect.gen(function* () {
+        const expectedPointers: Array<string | null> = [];
+        const current: WorkflowVersion = {
+          id: "ver_1",
+          workflowId: "wf_1",
+          version: 1,
+          graph: draft.graph,
+          graphDigest: "legacy-full-graph-digest",
+          catalogFingerprint: catalogFingerprint(catalog),
+          publishedAt: new Date("2026-08-01T00:00:00.000Z"),
+        };
+        const repo = stubWorkflowRepo({
+          findById: () =>
+            Effect.succeed({ ...draft, publishedVersionId: current.id }),
+          findPublishedVersion: () => Effect.succeed(current),
+          findLatestVersion: () => Effect.succeed(current),
+          insertPublishedVersion: (input) =>
             Effect.sync(() => {
-              reused.push(input.versionId);
-              return {
-                workflow: { ...draft, publishedVersionId: input.versionId },
-                version: {
-                  ...existing,
-                  graphDigest: capturedDigest,
-                  catalogFingerprint: capturedFingerprint,
-                },
-              };
+              expectedPointers.push(input.expectedPublishedVersionId);
+              return mintedFrom(input);
             }),
         });
 
         const result = yield* publishWorkflow({
           workflowId: "wf_1",
-          graph: draft.graph,
+          graph: graphWith(rules, "Changed"),
+          expectedPublishedVersionId: current.id,
         }).pipe(Effect.provide(repo));
 
-        assert.strictEqual(result.publishedVersion, 3);
-        assert.deepStrictEqual(reused, ["ver_1"]);
+        assert.strictEqual(result.publishedVersion, 2);
+        assert.strictEqual(expectedPointers[0], current.id);
       })
     );
 
@@ -230,7 +403,7 @@ describe("publishWorkflow", () => {
       Effect.gen(function* () {
         const repo = stubWorkflowRepo({
           findById: () => Effect.succeed(draft),
-          findVersionByContent: () => Effect.succeed(null),
+          findPublishedVersion: () => Effect.succeed(null),
           findLatestVersion: () =>
             Effect.succeed({
               id: "ver_1",
@@ -247,6 +420,7 @@ describe("publishWorkflow", () => {
         const failure = yield* publishWorkflow({
           workflowId: "wf_1",
           graph: draft.graph,
+          expectedPublishedVersionId: null,
         }).pipe(Effect.provide(repo), Effect.flip);
 
         assert.instanceOf(failure, Conflict);
@@ -256,180 +430,14 @@ describe("publishWorkflow", () => {
         );
       })
     );
-
-    it.effect(
-      "refuses to reactivate a matching version after another publish won",
-      () =>
-        Effect.gen(function* () {
-          const existing: WorkflowVersion = {
-            id: "ver_old",
-            workflowId: "wf_1",
-            version: 1,
-            graph: draft.graph,
-            catalogFingerprint: "",
-            graphDigest: "",
-            publishedAt: new Date("2026-08-01T00:00:00.000Z"),
-          };
-          const observed = { ...draft, publishedVersionId: "ver_observed" };
-
-          const repo = stubWorkflowRepo({
-            findById: () => Effect.succeed(observed),
-            findVersionByContent: (input) =>
-              Effect.succeed({
-                ...existing,
-                graphDigest: input.graphDigest,
-                catalogFingerprint: input.catalogFingerprint,
-              }),
-            setPublishedVersion: (input) =>
-              Effect.sync(() => {
-                assert.strictEqual(
-                  input.expectedPublishedVersionId,
-                  "ver_observed"
-                );
-                return { stale: true as const };
-              }),
-          });
-
-          const failure = yield* publishWorkflow({
-            workflowId: "wf_1",
-            graph: draft.graph,
-          }).pipe(Effect.provide(repo), Effect.flip);
-
-          assert.instanceOf(failure, Conflict);
-          assert.include(failure.error, "Refresh");
-        })
-    );
-
-    // Publish is the only event that grows the version table, so the bound
-    // holds continuously by sweeping here rather than on a schedule.
-    it.effect("sweeps the workflow it just published", () =>
-      Effect.gen(function* () {
-        const swept: Array<
-          Parameters<WorkflowRepo["Service"]["pruneUnreferencedVersions"]>[0]
-        > = [];
-
-        const repo = stubWorkflowRepo({
-          findById: () => Effect.succeed(draft),
-          findVersionByContent: () => Effect.succeed(null),
-          findLatestVersion: () => Effect.succeed(null),
-          pruneUnreferencedVersions: (input) =>
-            Effect.sync(() => {
-              swept.push(input);
-              return [];
-            }),
-          insertPublishedVersion: (input) => Effect.succeed(mintedFrom(input)),
-        });
-
-        yield* publishWorkflow({
-          workflowId: "wf_1",
-          graph: draft.graph,
-        }).pipe(Effect.provide(repo));
-
-        assert.strictEqual(swept.length, 1);
-        assert.strictEqual(swept[0]?.workflowId, "wf_1");
-        assert.strictEqual(
-          swept[0]?.keepNewest,
-          RETAINED_VERSIONS_PER_WORKFLOW
-        );
-      })
-    );
-
-    // The reuse path is where a version most often becomes prunable: the one
-    // the workflow pointed at a moment ago is now named by nothing.
-    it.effect("sweeps on the reuse path too", () =>
-      Effect.gen(function* () {
-        const swept: string[] = [];
-        const existing: WorkflowVersion = {
-          id: "ver_1",
-          workflowId: "wf_1",
-          version: 3,
-          graph: draft.graph,
-          catalogFingerprint: "",
-          graphDigest: "",
-          publishedAt: new Date("2026-08-01T00:00:00.000Z"),
-        };
-
-        const repo = stubWorkflowRepo({
-          findById: () => Effect.succeed(draft),
-          findVersionByContent: (input) =>
-            Effect.succeed({
-              ...existing,
-              graphDigest: input.graphDigest,
-              catalogFingerprint: input.catalogFingerprint,
-            }),
-          pruneUnreferencedVersions: (input) =>
-            Effect.sync(() => {
-              swept.push(input.workflowId);
-              return [];
-            }),
-          setPublishedVersion: () =>
-            Effect.succeed({
-              workflow: { ...draft, publishedVersionId: existing.id },
-              version: existing,
-            }),
-        });
-
-        yield* publishWorkflow({
-          workflowId: "wf_1",
-          graph: draft.graph,
-        }).pipe(Effect.provide(repo));
-
-        assert.deepStrictEqual(swept, ["wf_1"]);
-      })
-    );
   });
 
-  // The version write has already committed by the time the sweep runs, so
-  // letting its failure escape would answer a 500 for a publish that happened.
-  // This case reads its own log lines, so it builds a logger rather than
-  // joining the silent one the block above shares.
-  standalone.effect("answers the publish even when the sweep fails", () =>
-    Effect.gen(function* () {
-      const recording = makeRecordingLogger();
-      const repo = stubWorkflowRepo({
-        findById: () => Effect.succeed(draft),
-        findVersionByContent: () => Effect.succeed(null),
-        findLatestVersion: () => Effect.succeed(null),
-        pruneUnreferencedVersions: () =>
-          Effect.fail(new DatabaseError({ cause: new Error("boom") })),
-        insertPublishedVersion: (input) => Effect.succeed(mintedFrom(input)),
-      });
-
-      const result = yield* publishWorkflow({
-        workflowId: "wf_1",
-        graph: draft.graph,
-      }).pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            repo,
-            recording.layer,
-            catalogLayer,
-            stubIntegrationRepo({ typesByIds: () => Effect.succeed({}) })
-          )
-        )
-      );
-
-      assert.strictEqual(result.publishedVersion, 1);
-      assert.strictEqual(recording.warnLines.length, 1);
-      assert.ok(
-        recording.warnLines[0]?.message.includes("prune"),
-        `expected a prune warning, got: ${recording.warnLines[0]?.message}`
-      );
-    })
-  );
-
-  /**
-   * The other half of the draft/publish split. A graph the draft save now stores
-   * without complaint has to stop here instead, and it has to stop before any
-   * version row is minted.
-   */
+  /** A half-built graph stops before any version row is minted. */
   standalone.effect("refuses a half-built graph and mints nothing", () =>
     Effect.gen(function* () {
       let minted = 0;
       const repo = stubWorkflowRepo({
         findById: () => Effect.succeed(draft),
-        findVersionByContent: () => Effect.succeed(null),
-        findLatestVersion: () => Effect.succeed(null),
         insertPublishedVersion: (input) =>
           Effect.sync(() => {
             minted += 1;
@@ -467,6 +475,7 @@ describe("publishWorkflow", () => {
             },
           ],
         }),
+        expectedPublishedVersionId: null,
       }).pipe(
         Effect.provide(
           Layer.mergeAll(

@@ -6,7 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom } from "jotai";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Button } from "#src/components/ui/button";
 import { cn } from "@wfgraph/shared/utils";
 import {
@@ -69,18 +69,21 @@ function RunsSkeleton({ detail = false }: { detail?: boolean }) {
   );
 }
 
-function RunsListHeader() {
+function RunsListHeader({ actions }: { actions?: ReactNode }) {
   return (
-    <header className="shrink-0 border-b bg-background px-3 py-3">
-      <h2 className="font-semibold text-sm">Execution Inspector</h2>
-      <p className="mt-0.5 text-muted-foreground text-xs">
-        Select a run to inspect its journey on the canvas.
-      </p>
+    <header className="flex shrink-0 items-start justify-between gap-2 border-b bg-background px-3 py-3">
+      <div>
+        <h2 className="font-semibold text-sm">Execution Inspector</h2>
+        <p className="mt-0.5 text-muted-foreground text-xs">
+          Select a run to inspect its journey on the canvas.
+        </p>
+      </div>
+      {actions}
     </header>
   );
 }
 
-export function WorkflowRuns() {
+export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
   const setSelectedNode = useSetAtom(selectedNodeAtom);
@@ -189,7 +192,7 @@ export function WorkflowRuns() {
   if (executionsQuery.isError && executionId === undefined) {
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <RunsListHeader />
+        <RunsListHeader actions={listActions} />
         <div className="p-3">
           <p className="text-muted-foreground text-sm">
             Runs could not be loaded.
@@ -334,7 +337,7 @@ export function WorkflowRuns() {
           : "motion-safe:animate-[run-panel-forward_200ms_cubic-bezier(0.16,1,0.3,1)]"
       )}
     >
-      <RunsListHeader />
+      <RunsListHeader actions={listActions} />
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 [scrollbar-gutter:stable_both-edges]">
         <div className="space-y-2 py-2">
           {supersededToggle}

@@ -17,6 +17,7 @@ import {
   ClipboardPaste,
   Copy,
   CopyPlus,
+  CircleDot,
   Eraser,
   Loader2,
   Maximize2,
@@ -42,6 +43,8 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuSub,
@@ -51,6 +54,7 @@ import {
 } from "#src/components/ui/dropdown-menu";
 import { WorkflowIcon } from "#src/components/ui/workflow-icon";
 import { CommandPalette } from "#src/components/workflow/command-palette";
+import { PublishReviewDialog } from "#src/components/workflow/publish-review-dialog";
 import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-dialog";
 import { RenameWorkflowDialog } from "#src/components/workflow/rename-workflow-dialog";
 import { useReflowLayout } from "#src/components/workflow/use-reflow-layout";
@@ -134,10 +138,12 @@ function PublishButton({
   isPublishing,
   disabled,
   handlePublish,
+  proposedVersion,
 }: {
   isPublishing: boolean;
   disabled: boolean;
   handlePublish: () => void;
+  proposedVersion?: number;
 }) {
   return (
     // Publish is the one control here that changes what real customers receive,
@@ -154,7 +160,11 @@ function PublishButton({
       ) : (
         <Upload className="size-3.5" data-icon="inline-start" />
       )}
-      {isPublishing ? "Publishing" : "Publish"}
+      {isPublishing
+        ? "Publishing"
+        : proposedVersion
+          ? `Publish v${proposedVersion}`
+          : "Publish"}
     </Button>
   );
 }
@@ -171,7 +181,7 @@ function PublishButton({
  * the reason on the control: a button that vanishes teaches nothing about why,
  * and this one at least says it under the pointer.
  */
-function CommandPaletteTrigger() {
+export function CommandPaletteTrigger() {
   const openPalette = useSetAtom(openCommandPaletteAtom);
   const refusal = useAtomValue(commandPaletteRefusalAtom);
   const onApple = isApplePlatform(currentPlatform());
@@ -183,7 +193,7 @@ function CommandPaletteTrigger() {
       // platform, and naming both here would have the button announce a key the
       // reader does not have.
       aria-keyshortcuts={onApple ? "Meta+K" : "Control+K"}
-      className="hidden w-64 min-w-0 shrink justify-start font-normal text-muted-foreground @3xl:inline-flex"
+      className="hidden w-80 min-w-80 justify-start font-normal text-muted-foreground min-[70rem]:inline-flex"
       disabled={refusal !== null}
       onClick={() => openPalette({ id: "root" })}
       size={BAR_CONTROL_SIZE}
@@ -201,6 +211,68 @@ function CommandPaletteTrigger() {
         {shortcuts.palette}
       </kbd>
     </Button>
+  );
+}
+
+/** The execution mode stays in the toolbar because it applies before and after publication. */
+export function WorkflowModeMenu({
+  actions,
+  state,
+}: {
+  actions: WorkflowToolbarActions;
+  state: WorkflowToolbarState;
+}) {
+  const isTest = state.workflowMode === "test";
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            className={cn(
+              isTest &&
+                "bg-warning/10 text-warning hover:bg-warning/15 hover:text-warning"
+            )}
+            size={BAR_CONTROL_SIZE}
+            variant="ghost"
+          />
+        }
+      >
+        <CircleDot className="size-3" data-icon="inline-start" />
+        {isTest ? "Test mode" : "Live mode"}
+        <ChevronDown className="size-3 opacity-50" data-icon="inline-end" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Run mode</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            onValueChange={(mode) => {
+              if (mode === "live" || mode === "test") {
+                void actions.handleSetWorkflowMode(mode);
+              }
+            }}
+            value={state.workflowMode}
+          >
+            <DropdownMenuRadioItem disabled={!state.isOwner} value="test">
+              <span>
+                Test mode
+                <span className="block text-muted-foreground text-xs font-normal">
+                  Routes configured messages to test recipients.
+                </span>
+              </span>
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem disabled={!state.isOwner} value="live">
+              <span>
+                Live mode
+                <span className="block text-muted-foreground text-xs font-normal">
+                  Sends messages to configured recipients.
+                </span>
+              </span>
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -384,6 +456,36 @@ export function ToolbarActions({
   state: WorkflowToolbarState;
   actions: WorkflowToolbarActions;
 }) {
+  const openPalette = useSetAtom(openCommandPaletteAtom);
+  // For non-owners viewing public workflows, don't show toolbar actions.
+  if (workflowId && !state.isOwner) {
+    return null;
+  }
+
+  // Adding a step is the palette's own job, so the menu item opens it on the
+  // node-type page rather than dropping a node with no action on it and leaving
+  // the picker to the config panel. Placement is the palette's too: it lands in
+  // the middle of the canvas, moved clear of whatever is already there.
+  const handleAddStep = () => {
+    openPalette({ id: "add-step" });
+  };
+
+  return (
+    <>
+      <ActionsMenu actions={actions} onAddStep={handleAddStep} state={state} />
+      <CommandPalette actions={actions} state={state} />
+    </>
+  );
+}
+
+/** The toolbar's right-hand controls stay together when a narrow bar scrolls. */
+export function ToolbarPublishControls({
+  actions,
+  state,
+}: {
+  actions: WorkflowToolbarActions;
+  state: WorkflowToolbarState;
+}) {
   const { push } = useOverlay();
   const { openSheet } = useConfigurationSheet();
   const [selectedNodeId] = useAtom(selectedNodeAtom);
@@ -392,27 +494,22 @@ export function ToolbarActions({
   const edges = useAtomValue(edgesAtom);
   const deleteNode = useSetAtom(deleteNodeAtom);
   const deleteEdge = useSetAtom(deleteEdgeAtom);
-  const openPalette = useSetAtom(openCommandPaletteAtom);
   const isMobile = useIsMobile();
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
-
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
   const hasSelection = selectedNode || selectedEdge;
-  // A run overlay pins the canvas to a past run's graph; Publish sends the
-  // draft underneath it, which the user cannot see while it's pinned (#39).
-  // Every other graph write already refuses under the same conditions, so
-  // Publish reads the same atom the canvas does rather than restating them.
-  // Saving is Publish's own concern: the canvas stays editable during a save.
+  const publication = state.publication;
   const publishDisabled =
     editingLocked ||
     state.isSaving ||
-    !state.nodes.some((node) => node.type !== "add");
-
-  // For non-owners viewing public workflows, don't show toolbar actions.
-  if (workflowId && !state.isOwner) {
-    return null;
-  }
+    !state.nodes.some((node) => node.type !== "add") ||
+    (publication?.isPublished &&
+      !publication.hasUnpublishedChanges &&
+      !state.hasUnsavedChanges);
+  const proposedVersion = publication?.publishedVersion
+    ? publication.publishedVersion + 1
+    : undefined;
 
   const handleDeleteConfirm = () => {
     const isNode = Boolean(selectedNodeId);
@@ -433,55 +530,61 @@ export function ToolbarActions({
     });
   };
 
-  // Adding a step is the palette's own job, so the menu item opens it on the
-  // node-type page rather than dropping a node with no action on it and leaving
-  // the picker to the config panel. Placement is the palette's too: it lands in
-  // the middle of the canvas, moved clear of whatever is already there.
-  const handleAddStep = () => {
-    openPalette({ id: "add-step" });
-  };
-
   return (
     <>
-      <ActionsMenu actions={actions} onAddStep={handleAddStep} state={state} />
+      <WorkflowModeMenu actions={actions} state={state} />
+      {state.isOwner ? (
+        <>
+          <PublishButton
+            disabled={publishDisabled || actions.isComparing}
+            handlePublish={actions.handlePublish}
+            isPublishing={actions.isPublishing}
+            proposedVersion={proposedVersion}
+          />
 
-      <CommandPaletteTrigger />
-      <CommandPalette actions={actions} state={state} />
-
-      <PublishButton
-        disabled={publishDisabled}
-        handlePublish={actions.handlePublish}
-        isPublishing={actions.isPublishing}
-      />
-
-      {/* Config and Delete, shown only while the properties rail is absent.
+          {/* Config and Delete, shown only while the properties rail is absent.
           Gated on the same test the rail uses, not on the toolbar's container
           width: those two disagreed, so a narrow canvas on a wide window showed
           the sheet button while the rail was still mounted, and both edited the
           same node. */}
-      <ButtonGroup
-        className={cn("flex", isMobile ? "" : "hidden")}
-        orientation="horizontal"
-      >
-        <Button
-          onClick={openSheet}
-          size="icon"
-          title="Configuration"
-          variant="outline"
-        >
-          <Settings2 className="size-4" />
-        </Button>
-        {hasSelection && (
-          <Button
-            onClick={handleDeleteConfirm}
-            size="icon"
-            title="Delete"
-            variant="outline"
+          <ButtonGroup
+            className={cn("flex", isMobile ? "" : "hidden")}
+            orientation="horizontal"
           >
-            <Trash2 className="size-4" />
-          </Button>
-        )}
-      </ButtonGroup>
+            <Button
+              aria-label="Configuration"
+              onClick={openSheet}
+              size="icon"
+              title="Configuration"
+              variant="outline"
+            >
+              <Settings2 className="size-4" />
+            </Button>
+            {hasSelection && (
+              <Button
+                aria-label="Delete selection"
+                disabled={editingLocked}
+                onClick={handleDeleteConfirm}
+                size="icon"
+                title="Delete"
+                variant="outline"
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            )}
+          </ButtonGroup>
+          {actions.publishReview ? (
+            <PublishReviewDialog
+              isPublishing={actions.isPublishing}
+              mode={state.workflowMode}
+              onConfirm={actions.confirmPublish}
+              onOpenChange={actions.setPublishReviewOpen}
+              open
+              review={actions.publishReview.review}
+            />
+          ) : null}
+        </>
+      ) : null}
     </>
   );
 }

@@ -242,6 +242,33 @@ A quiet menu bar above the canvas and a Panel-toned sidebar for workflow lists a
 
 A Panel-toned status strip closes the canvas column: 32px tall, Caption type, a hairline top border, one line that never wraps. It states what the editor is doing rather than offering anything to press, so the only control on it is the way out of a run. With a past run pinned to the canvas it tints toward `--info` and carries that run's identity; the height is the same in both states, because the strip and the graph share the column's height between them.
 
+The 44px editor toolbar spans the full editor shell. Workflow navigation,
+**Actions**, and **Settings** form the leading group. The 320px search control
+stays centered in the shell and hides at 70rem or narrower; its keyboard
+shortcut remains available. Run mode and **Publish** form the trailing group.
+Test mode uses Signal Amber because it changes where configured messages go.
+Publication state stays in the status strip, separate from run mode.
+
+### Publication review
+
+The sidebar has **Properties**, **Runs**, and **Changes** tabs after the first
+publication. **Changes** compares the selected published version with the exact
+draft on the canvas. It lists deterministic node and connection facts and links
+to paginated version history. Restore always says "Restore version N as draft"
+and requires confirmation that the published version remains unchanged.
+
+Comparison marks nodes with `A`, `M`, or `D` in addition to signal color. Added
+nodes use Signal Green, modified nodes use Signal Amber, and deleted nodes use
+Signal Red. Deleted edges use a distinct dotted treatment. Node position,
+dimensions, and measured geometry never create a change marker.
+
+Selecting a changed node opens **Properties**. Modified nodes show published and
+current draft values side by side. Added nodes show current draft values only.
+Deleted nodes show published values only. Field labels come from the extension
+catalog; machine paths do not appear as labels. Deleted nodes remain movable for
+comparison clarity, and **Reset comparison layout** restores historical
+positions. Comparison movement never changes the draft or its save history.
+
 ## 6. Do's and Don'ts
 
 ### Do:

@@ -43,6 +43,10 @@ import {
   snapshotHistoryAtom,
   undoAtom,
 } from "#src/lib/workflow-graph-store";
+import {
+  activeComparisonAtom,
+  moveComparisonNodesAtom,
+} from "#src/lib/workflow-comparison-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   isGeneratingAtom,
@@ -94,6 +98,45 @@ const nodeTypes = {
   add: AddNode,
   group: GroupNode,
 };
+
+export function canvasInteractionState({
+  editingLocked,
+  comparisonActive,
+  overlayActive,
+}: {
+  editingLocked: boolean;
+  comparisonActive: boolean;
+  overlayActive: boolean;
+}) {
+  const comparisonVisible = comparisonActive && !overlayActive;
+  return {
+    comparisonVisible,
+    elementsSelectable: !editingLocked || comparisonVisible,
+    nodesDraggable: !editingLocked || comparisonVisible,
+    edgesFocusable: !comparisonVisible,
+    deleteKeyCode: comparisonVisible ? null : ["Backspace", "Delete"],
+  };
+}
+
+export function canvasFitViewKey({
+  workflowId,
+  comparisonBaseVersionId,
+  comparisonVisible,
+  overlayActive,
+}: {
+  workflowId: string | null;
+  comparisonBaseVersionId: string | null;
+  comparisonVisible: boolean;
+  overlayActive: boolean;
+}): string | null {
+  if (!workflowId) {
+    return null;
+  }
+  if (overlayActive || !comparisonVisible) {
+    return workflowId;
+  }
+  return `${workflowId}:comparison:${comparisonBaseVersionId ?? "unpublished"}`;
+}
 
 const accessibleNodeCache = new WeakMap<
   WorkflowNode,
@@ -194,6 +237,8 @@ export function WorkflowCanvas() {
   // it. The toolbar's Publish button reads this same atom.
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
   const overlayActive = useAtomValue(isExecutionOverlayActiveAtom);
+  const comparison = useAtomValue(activeComparisonAtom);
+  const comparisonActive = comparison !== null;
   const isGenerating = useAtomValue(isGeneratingAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
@@ -202,6 +247,7 @@ export function WorkflowCanvas() {
   const isMobile = useIsMobile();
   const { openSheet } = useConfigurationSheet();
   const onNodesChange = useSetAtom(onNodesChangeAtom);
+  const moveComparisonNodes = useSetAtom(moveComparisonNodesAtom);
   const onEdgesChange = useSetAtom(onEdgesChangeAtom);
   const setSelectedNode = useSetAtom(selectedNodeAtom);
   const setSelectedEdge = useSetAtom(selectedEdgeAtom);
@@ -213,6 +259,17 @@ export function WorkflowCanvas() {
   const redo = useSetAtom(redoAtom);
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
   const { screenToFlowPosition, fitView } = useReactFlow();
+  const interaction = canvasInteractionState({
+    editingLocked,
+    comparisonActive,
+    overlayActive,
+  });
+  const fitViewKey = canvasFitViewKey({
+    workflowId: currentWorkflowId,
+    comparisonBaseVersionId: comparison?.baseVersion?.id ?? null,
+    comparisonVisible: interaction.comparisonVisible,
+    overlayActive,
+  });
   // The same pass the Actions menu's "Tidy layout" runs.
   const { canReflow, reflow } = useReflowLayout();
   // React Flow owns the semantic wrappers around custom nodes and edges. Build
@@ -258,12 +315,14 @@ export function WorkflowCanvas() {
     setContextMenuState(null);
   }, []);
 
-  // Fit the view once per workflow. Keying on the id is the whole rule: a
-  // workflow that has already been fitted does not get fitted again, and
-  // switching to another one does. After paint rather than during the commit,
-  // because React Flow measures node sizes then and fitView would otherwise
-  // frame geometry that is a frame out of date.
-  useAfterPaint(currentWorkflowId, () => {
+  // Fit a newly loaded workflow and each comparison base the first time it is
+  // shown. Deleted-node drags leave this key unchanged. Run overlays keep the
+  // workflow key so a hidden comparison cannot move their viewport. This runs
+  // after paint because React Flow measures node sizes then.
+  useAfterPaint(fitViewKey, () => {
+    if (fitViewKey === null) {
+      return;
+    }
     void fitView({ maxZoom: 1, minZoom: 0.5, padding: 0.2, duration: 0 });
     // The canvas is transparent until this has run, so the one frame of
     // unframed graph between mount and the fit is never on screen.
@@ -437,6 +496,15 @@ export function WorkflowCanvas() {
       }
     },
     [overlayActive, setSelectedNode, setActiveTab, isMobile, openSheet]
+  );
+
+  const onComparisonNodesChange = useCallback(
+    (changes: Parameters<typeof onNodesChange>[0]) => {
+      if (currentWorkflowId) {
+        moveComparisonNodes({ workflowId: currentWorkflowId, changes });
+      }
+    },
+    [currentWorkflowId, moveComparisonNodes]
   );
 
   const onConnectStart = useCallback(
@@ -705,15 +773,21 @@ export function WorkflowCanvas() {
         connectionLineComponent={Connection}
         connectionMode={ConnectionMode.Strict}
         defaultEdgeOptions={defaultEdgeOptions}
+        deleteKeyCode={interaction.deleteKeyCode}
         edges={accessibleGraph.edges}
+        edgesFocusable={interaction.edgesFocusable}
         edgeTypes={edgeTypes}
-        elementsSelectable={!editingLocked}
+        elementsSelectable={interaction.elementsSelectable}
         isValidConnection={isValidConnection}
         nodes={accessibleGraph.nodes}
-        nodesConnectable={!editingLocked}
-        nodesDraggable={!editingLocked}
+        nodesConnectable={!editingLocked && !interaction.comparisonVisible}
+        nodesDraggable={interaction.nodesDraggable}
         nodeTypes={nodeTypes}
-        onBeforeDelete={onBeforeDelete}
+        onBeforeDelete={
+          interaction.comparisonVisible
+            ? () => Promise.resolve(false)
+            : onBeforeDelete
+        }
         onConnect={editingLocked ? undefined : onConnect}
         onConnectEnd={editingLocked ? undefined : onConnectEnd}
         onConnectStart={editingLocked ? undefined : onConnectStart}
@@ -721,10 +795,18 @@ export function WorkflowCanvas() {
         onEdgesChange={editingLocked ? undefined : onEdgesChange}
         onNodeClick={isGenerating ? undefined : onNodeClick}
         onNodeContextMenu={editingLocked ? undefined : onNodeContextMenu}
-        onNodesChange={editingLocked ? undefined : onNodesChange}
+        onNodesChange={
+          interaction.comparisonVisible
+            ? onComparisonNodesChange
+            : editingLocked
+              ? undefined
+              : onNodesChange
+        }
         onPaneClick={onPaneClick}
         onPaneContextMenu={editingLocked ? undefined : onPaneContextMenu}
-        onSelectionChange={editingLocked ? undefined : onSelectionChange}
+        onSelectionChange={
+          interaction.elementsSelectable ? onSelectionChange : undefined
+        }
       >
         <Panel
           className="border-none bg-transparent p-0"

@@ -3,7 +3,9 @@ import { UserMenu } from "#src/components/workflows/user-menu";
 import {
   DashboardLink,
   DuplicateButton,
+  CommandPaletteTrigger,
   ToolbarActions,
+  ToolbarPublishControls,
   WorkflowMenuComponent,
 } from "#src/components/workflow/workflow-toolbar-chrome";
 import {
@@ -15,60 +17,78 @@ type WorkflowToolbarProps = {
   workflowId?: string;
 };
 
+/** Places the editor's navigation, palette, and write controls in one fixed row. */
+export function WorkflowToolbarChrome({
+  actions,
+  state,
+  workflowId,
+}: WorkflowToolbarProps & {
+  actions: ReturnType<typeof useWorkflowActions>;
+  state: ReturnType<typeof useWorkflowState>;
+}) {
+  return (
+    <div className="relative h-11 shrink-0 border-b bg-background">
+      {/* The row remains one fixed height. A narrow editor can scroll through
+          every control while the palette trigger remains centred in this toolbar
+          container at desktop widths. */}
+      <div className="flex h-11 items-center gap-2 overflow-x-auto px-2.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div
+          className="flex min-w-max items-center gap-2 min-[70rem]:min-w-0 min-[70rem]:max-w-[calc(50%-10rem)] min-[70rem]:flex-1 min-[70rem]:overflow-x-auto min-[70rem]:overscroll-contain"
+          data-slot="workflow-toolbar-left"
+        >
+          <DashboardLink />
+          <Separator
+            className="data-vertical:h-4 data-vertical:self-center"
+            orientation="vertical"
+          />
+          <WorkflowMenuComponent
+            actions={actions}
+            state={state}
+            workflowId={workflowId}
+          />
+          <ToolbarActions
+            actions={actions}
+            state={state}
+            workflowId={workflowId}
+          />
+          <UserMenu />
+          {workflowId && !state.isOwner && (
+            <>
+              <span className="shrink-0 whitespace-nowrap text-muted-foreground text-xs">
+                Read-only
+              </span>
+              <DuplicateButton
+                isDuplicating={actions.isDuplicating}
+                onDuplicate={actions.handleDuplicate}
+              />
+            </>
+          )}
+        </div>
+        <div
+          className="ml-auto flex min-w-max items-center gap-2 min-[70rem]:min-w-0 min-[70rem]:max-w-[calc(50%-10rem)] min-[70rem]:flex-1 min-[70rem]:justify-end min-[70rem]:overflow-x-auto min-[70rem]:overscroll-contain"
+          data-slot="workflow-toolbar-right"
+        >
+          <ToolbarPublishControls actions={actions} state={state} />
+        </div>
+      </div>
+      <div className="pointer-events-none absolute inset-x-0 top-2 hidden justify-center min-[70rem]:flex">
+        <div className="pointer-events-auto">
+          <CommandPaletteTrigger />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
   const state = useWorkflowState();
   const actions = useWorkflowActions(state);
 
   return (
-    // The query container is this wrapper rather than the bar itself. An
-    // element is never its own container, so the three `@xl:` classes the old
-    // row carried beside its own `@container` never matched at any width and it
-    // stayed in its stacked two-line form on every screen. Its descendants'
-    // `@xl:` classes did resolve against it, which is why the labels inside
-    // appeared and disappeared as expected; only the row's own did not.
-    <div className="@container shrink-0">
-      {/* One line, one height, at every width. This bar is a `shrink-0`
-          sibling of the canvas box, so every pixel it gains comes out of React
-          Flow's height and React Flow measures the change: nothing in here may
-          wrap or grow. A canvas too narrow to hold the row scrolls it sideways
-          instead, with the scrollbar hidden because a classic one would eat a
-          quarter of the height.
-
-          Packed left, and nothing reports state: mode, publication, save and
-          the issue count all belong to the status strip under the canvas. */}
-      <div className="flex h-11 items-center gap-2 overflow-x-auto border-b bg-background px-2.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <DashboardLink />
-        <Separator
-          className="data-vertical:h-4 data-vertical:self-center"
-          orientation="vertical"
-        />
-        <WorkflowMenuComponent
-          actions={actions}
-          state={state}
-          workflowId={workflowId}
-        />
-        {/* Nothing for a non-owner: they get the duplicate path below instead. */}
-        <ToolbarActions
-          actions={actions}
-          state={state}
-          workflowId={workflowId}
-        />
-        {workflowId && !state.isOwner && (
-          <>
-            <span className="shrink-0 whitespace-nowrap text-muted-foreground text-xs">
-              Read-only
-            </span>
-            <DuplicateButton
-              isDuplicating={actions.isDuplicating}
-              onDuplicate={actions.handleDuplicate}
-            />
-          </>
-        )}
-        {/* Last rather than right-aligned, and kept here because this menu is
-            the only way to reach Connections, API keys and the theme from
-            anywhere in the app. */}
-        <UserMenu />
-      </div>
-    </div>
+    <WorkflowToolbarChrome
+      actions={actions}
+      state={state}
+      workflowId={workflowId}
+    />
   );
 };

@@ -15,10 +15,19 @@ import {
   WORKFLOW_EXECUTION_STATUSES,
 } from "#src/lifecycle/execution-contracts";
 import { serializedWorkflowGraphSchema } from "#src/graph/schemas";
+import { isoTimestampString } from "#src/types/timestamp";
 import {
   agentMessageSchema,
   agentStreamPartSchema,
 } from "#src/rpc/agent-stream";
+import {
+  workflowComparisonInputSchema,
+  workflowComparisonPayloadSchema,
+  workflowPublishInputSchema,
+  workflowRestoreVersionInputSchema,
+  workflowVersionHistoryInputSchema,
+  workflowVersionHistoryPayloadSchema,
+} from "#src/graph/publication-contracts";
 
 /**
  * Declares a procedure's REST shape. Routing metadata moved off the contract
@@ -153,6 +162,12 @@ const workflowSummarySchema = Schema.Struct({
 const workflowApiPayloadSchema = Schema.Struct({
   ...workflowSummarySchema.fields,
   graph: serializedWorkflowGraphSchema,
+  /** Absent until the first publish. */
+  publishedVersion: Schema.optionalKey(
+    Schema.Finite.check(Schema.isInt(), Schema.isGreaterThan(0))
+  ),
+  /** Absent until the first publish. */
+  publishedAt: Schema.optionalKey(isoTimestampString()),
   /**
    * Whether the draft graph differs from the published version's graph.
    * False when the workflow has never been published. Lives on the full
@@ -168,6 +183,7 @@ const workflowPublishPayloadSchema = Schema.Struct({
     Schema.isInt(),
     Schema.isGreaterThan(0)
   ),
+  publishedAt: isoTimestampString(),
 });
 
 /**
@@ -183,6 +199,19 @@ const integrationWithConfig = contractSchema(integrationWithConfigSchema);
 const integrationTestResult = contractSchema(integrationTestResultSchema);
 const workflowApiPayload = contractSchema(workflowApiPayloadSchema);
 const workflowPublishPayload = contractSchema(workflowPublishPayloadSchema);
+const workflowVersionHistoryInput = contractSchema(
+  workflowVersionHistoryInputSchema
+);
+const workflowVersionHistoryPayload = contractSchema(
+  workflowVersionHistoryPayloadSchema
+);
+const workflowComparisonInput = contractSchema(workflowComparisonInputSchema);
+const workflowComparisonPayload = contractSchema(
+  workflowComparisonPayloadSchema
+);
+const workflowRestoreVersionInput = contractSchema(
+  workflowRestoreVersionInputSchema
+);
 
 const workflowRunModeSchema = Schema.Literals(["live", "test"]);
 
@@ -520,20 +549,25 @@ export const rpcContract = {
       .input(contractSchema(Schema.Struct({ workflowId: idSchema })))
       .output(workflowApiPayload),
     /**
-     * Mint (or reuse) an immutable version from the graph the editor is showing
-     * and point starts at it. Draft saves alone never start runs; the client
-     * sends the canvas graph so an unsaved edit is what gets published.
+     * Mint the next immutable version from the graph the editor is showing and
+     * point starts at it. Draft saves alone never start runs; the client sends
+     * the canvas graph so an unsaved edit is what gets published.
      */
     publish: route("POST", "/workflows/{workflowId}/publish")
-      .input(
-        contractSchema(
-          Schema.Struct({
-            workflowId: idSchema,
-            graph: serializedWorkflowGraphSchema,
-          })
-        )
-      )
+      .input(contractSchema(workflowPublishInputSchema))
       .output(workflowPublishPayload),
+    getVersionHistory: route("GET", "/workflows/{workflowId}/versions")
+      .input(workflowVersionHistoryInput)
+      .output(workflowVersionHistoryPayload),
+    compareVersion: route("POST", "/workflows/{workflowId}/versions/compare")
+      .input(workflowComparisonInput)
+      .output(workflowComparisonPayload),
+    restoreVersion: route(
+      "POST",
+      "/workflows/{workflowId}/versions/{versionId}/restore"
+    )
+      .input(workflowRestoreVersionInput)
+      .output(workflowApiPayload),
     getCurrent: route("GET", "/workflows/current")
       .input(noInput)
       .output(workflowApiPayload),

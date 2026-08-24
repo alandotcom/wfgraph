@@ -9,6 +9,7 @@
 type WorkflowPublicationBadgeProps = {
   isPublished: boolean;
   hasUnpublishedChanges: boolean;
+  publishedVersion?: number;
 };
 
 /**
@@ -22,11 +23,17 @@ type WorkflowPublicationBadgeProps = {
 export function publicationLabel({
   isPublished,
   hasUnpublishedChanges,
+  publishedVersion,
 }: WorkflowPublicationBadgeProps): string {
   if (!isPublished) {
     return "Never published";
   }
-  return hasUnpublishedChanges ? "Unpublished changes" : "Published";
+  if (!publishedVersion) {
+    return hasUnpublishedChanges ? "Unpublished changes" : "Published";
+  }
+  return hasUnpublishedChanges
+    ? `Unpublished changes since version ${publishedVersion}`
+    : `Published version ${publishedVersion}`;
 }
 
 export function WorkflowPublicationBadge(props: WorkflowPublicationBadgeProps) {

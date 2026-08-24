@@ -22,9 +22,11 @@ import {
   duplicateSelectionAtom,
   edgesAtom,
   executionOverlayGraphAtom,
+  exitWorkflowComparisonAtom,
   groupSelectionAtom,
   hasCopiedSelectionAtom,
   hydrateWorkflowAtom,
+  installRestoredWorkflowAtom,
   loadWorkflowGraphAtom,
   nodesAtom,
   onEdgesChangeAtom,
@@ -54,6 +56,12 @@ import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { savedWorkflow } from "./workflow-save-test-support";
 import { PASTE_OFFSET } from "#src/lib/copy-selection";
 import { formatTemplateToken } from "@wfgraph/shared/graph/node-references";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
+import {
+  beginWorkflowComparisonRequestAtom,
+  installWorkflowComparisonAtom,
+} from "#src/lib/workflow-comparison-store";
 
 type Store = ReturnType<typeof createJotaiStore>;
 
@@ -129,6 +137,34 @@ function groupedChild(id: string, groupId: string): WorkflowNode {
 
 function edge(id: string, source: string, target: string): WorkflowEdge {
   return { id, source, target };
+}
+
+const comparisonPayload: WorkflowComparisonPayload = {
+  baseVersion: null,
+  proposedVersion: 1,
+  baseGraph: createSerializedWorkflowGraph({
+    nodes: [actionNode("historical")],
+    edges: [],
+  }),
+  draftGraph: createSerializedWorkflowGraph({
+    nodes: [actionNode("draft")],
+    edges: [],
+  }),
+  hasChanges: true,
+  nodeChanges: [{ nodeId: "historical", kind: "removed", fields: [] }],
+  edgeChanges: [],
+};
+
+function openComparison(
+  store: Store,
+  payload: WorkflowComparisonPayload = comparisonPayload
+) {
+  const epoch = store.set(beginWorkflowComparisonRequestAtom, "workflow_1");
+  store.set(installWorkflowComparisonAtom, {
+    workflowId: "workflow_1",
+    epoch,
+    payload,
+  });
 }
 
 /** A lookup step, which is what a Group is allowed to hold. */
@@ -528,6 +564,52 @@ describe("hydrateWorkflowAtom", () => {
       store.get(displayNodesAtom).find((node) => node.id === "v1_lifecycle")
         ?.data.status
     ).toBe("running");
+  });
+});
+
+describe("comparison exit and restore installation", () => {
+  it("restores draft selection only when the comparison selection exists in the draft", () => {
+    const store = createGraphStore([
+      { ...actionNode("draft"), selected: true },
+      { ...actionNode("other"), selected: true },
+    ]);
+    openComparison(store);
+    store.set(selectedNodeAtom, "historical");
+
+    expect(store.set(exitWorkflowComparisonAtom)).toBe(true);
+    expect(store.get(selectedNodeAtom)).toBeNull();
+    expect(store.get(nodesAtom).every((node) => !node.selected)).toBe(true);
+    expect(store.get(canUndoAtom)).toBe(false);
+    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+
+    openComparison(store);
+    store.set(selectedNodeAtom, "draft");
+    store.set(exitWorkflowComparisonAtom);
+
+    expect(store.get(selectedNodeAtom)).toBe("draft");
+    expect(
+      store
+        .get(nodesAtom)
+        .filter((node) => node.selected)
+        .map((node) => node.id)
+    ).toEqual(["draft"]);
+  });
+
+  it("does not install a late restored workflow after the editor navigates", () => {
+    const store = createGraphStore([actionNode("a")]);
+    store.set(currentWorkflowIdAtom, "workflow_b");
+    store.set(loadWorkflowGraphAtom, { nodes: [actionNode("b")], edges: [] });
+
+    expect(
+      store.set(installRestoredWorkflowAtom, {
+        expectedWorkflowId: "workflow_1",
+        workflow: savedWorkflow("workflow_1", {
+          nodes: [actionNode("restored_a")],
+          edges: [],
+        }),
+      })
+    ).toBe(false);
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["b"]);
   });
 });
 

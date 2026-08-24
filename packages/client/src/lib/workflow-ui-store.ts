@@ -46,7 +46,10 @@ function readInitialSidebarPercent(): number {
     : DEFAULT_SIDEBAR_PERCENT;
 }
 
-export const propertiesPanelActiveTabAtom = atom<string>("properties");
+export type PropertiesPanelTab = "properties" | "runs" | "changes";
+
+export const propertiesPanelActiveTabAtom =
+  atom<PropertiesPanelTab>("properties");
 export const showMinimapAtom = atom(false);
 
 const sidebarCollapsedStateAtom = atom(
@@ -185,12 +188,16 @@ export const agentPanelSizeAtom = atom(
 
 /**
  * The tab the panel actually shows: the stored one, unless it is the owner-only
- * Runs tab and the viewer is not the owner.
+ * owner-only tab and the viewer cannot use it. Changes additionally requires
+ * publication data, which the panel owns because it is server state.
  */
 export const activePropertiesTabAtom = atom((get) =>
   get(propertiesPanelActiveTabAtom) === "runs" && get(isWorkflowOwnerAtom)
     ? "runs"
-    : "properties"
+    : get(propertiesPanelActiveTabAtom) === "changes" &&
+        get(isWorkflowOwnerAtom)
+      ? "changes"
+      : "properties"
 );
 
 /** The run last opened in the Runs panel, whether or not that panel is up. */

@@ -7,7 +7,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import {
@@ -27,7 +27,9 @@ import {
   orpcQuery,
   refreshRunHistory,
   refreshWorkflowList,
+  refreshWorkflowVersionHistory,
   workflowListQueryOptions,
+  workflowPublicationQueryOptions,
 } from "#src/lib/rpc-query";
 import {
   clearGraphSelectionAtom,
@@ -59,9 +61,20 @@ import {
   setWorkflowModeAtom,
 } from "#src/lib/workflow-save-store";
 import { toSerializedGraph } from "#src/lib/rpc-client";
+import { publicationReviewFromComparison } from "#src/components/workflow/publish-review-dialog";
+import {
+  beginPublicationReviewAtom,
+  clearPublicationReviewAtom,
+  installPublicationReviewAtom,
+  isPublicationReviewActiveAtom,
+  isPublicationReviewPendingAtom,
+  publicationReviewAtom,
+  settlePublicationReviewAtom,
+} from "#src/lib/workflow-publication-review-store";
 import {
   isExecutingAtom,
   isGeneratingAtom,
+  type PropertiesPanelTab,
   propertiesPanelActiveTabAtom,
 } from "#src/lib/workflow-ui-store";
 import {
@@ -86,7 +99,7 @@ type WorkflowHandlerParams = {
   updateNodeData: UpdateNodeData;
   isExecuting: boolean;
   setIsExecuting: (value: boolean) => void;
-  setActiveTab: (value: string) => void;
+  setActiveTab: (value: PropertiesPanelTab) => void;
   setSelectedNodeId: (id: string | null) => void;
   userIntegrations: Array<{ id: string; type: string }>;
 };
@@ -240,6 +253,10 @@ export function useWorkflowState() {
   const { data: userIntegrations = [] } = useQuery(integrationsQueryOptions());
 
   const { data: allWorkflows = [] } = useQuery(workflowListQueryOptions());
+  const { data: publication } = useQuery({
+    ...workflowPublicationQueryOptions(currentWorkflowId ?? ""),
+    enabled: Boolean(currentWorkflowId),
+  });
 
   return {
     nodes,
@@ -264,6 +281,7 @@ export function useWorkflowState() {
     setActiveTab,
     setSelectedNodeId,
     userIntegrations,
+    publication,
   };
 }
 
@@ -276,6 +294,14 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
   const queryClient = useQueryClient();
   const deleteWorkflow = useDeleteWorkflow();
   const setWorkflowMode = useSetAtom(setWorkflowModeAtom);
+  const publishReview = useAtomValue(publicationReviewAtom);
+  const publicationReviewActive = useAtomValue(isPublicationReviewActiveAtom);
+  const publicationReviewPending = useAtomValue(isPublicationReviewPendingAtom);
+  const beginPublicationReview = useSetAtom(beginPublicationReviewAtom);
+  const installPublicationReview = useSetAtom(installPublicationReviewAtom);
+  const clearPublicationReview = useSetAtom(clearPublicationReviewAtom);
+  const settlePublicationReview = useSetAtom(settlePublicationReviewAtom);
+  const publishingReviewRef = useRef<string | null>(null);
   const {
     currentWorkflowId,
     workflowName,
@@ -290,8 +316,8 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     setActiveTab,
     setSelectedNodeId,
     userIntegrations,
+    publication,
   } = state;
-
   const { handleExecute, handleGoToStep } = useWorkflowHandlers({
     currentWorkflowId,
     nodes,
@@ -374,16 +400,13 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     })
   );
 
+  // Per-call callbacks run from the click that began this preflight. The hook
+  // itself therefore remains a plain RPC declaration during render.
   const publishWorkflow = useMutation(
-    orpcQuery.workflow.publish.mutationOptions({
-      onSuccess: (payload) => {
-        toast.success(`Published version ${payload.publishedVersion}`);
-        cacheWorkflowPublication(queryClient, payload);
-        void loadWorkflows();
-      },
-      // Let Conflict ("Refresh and try again") and validation errors surface
-      // their own wording rather than a generic publish failure.
-    })
+    orpcQuery.workflow.publish.mutationOptions()
+  );
+  const compareWorkflowVersion = useMutation(
+    orpcQuery.workflow.compareVersion.mutationOptions()
   );
 
   const handleDuplicate = () => {
@@ -394,7 +417,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
   };
 
   const handlePublish = () => {
-    if (!currentWorkflowId) {
+    if (!currentWorkflowId || publicationReviewActive) {
       return;
     }
 
@@ -418,10 +441,109 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
       return;
     }
 
-    publishWorkflow.mutate({
+    const graph = toSerializedGraph({ nodes, edges });
+    const input = {
       workflowId: currentWorkflowId,
-      graph: toSerializedGraph({ nodes, edges }),
+      ...(publication?.publishedVersionId
+        ? { baseVersionId: publication.publishedVersionId }
+        : {}),
+      draftGraph: graph,
+    };
+    const epoch = beginPublicationReview(currentWorkflowId);
+    if (epoch === null) {
+      return;
+    }
+    compareWorkflowVersion.mutate(input, {
+      onSuccess: (comparison, comparisonInput) => {
+        if (!comparison.hasChanges) {
+          if (
+            !clearPublicationReview({
+              workflowId: comparisonInput.workflowId,
+              epoch,
+            })
+          ) {
+            return;
+          }
+          cacheWorkflowPublication(queryClient, {
+            id: comparisonInput.workflowId,
+            hasUnpublishedChanges: false,
+          });
+          toast.info("No changes to publish");
+          return;
+        }
+
+        installPublicationReview({
+          workflowId: comparisonInput.workflowId,
+          epoch,
+          pending: false,
+          graph: comparisonInput.draftGraph,
+          expectedPublishedVersionId: comparison.baseVersion?.id ?? null,
+          review: publicationReviewFromComparison(comparison),
+        });
+      },
+      onSettled: (comparison, _error, comparisonInput) => {
+        if (!comparison?.hasChanges) {
+          clearPublicationReview({
+            workflowId: comparisonInput.workflowId,
+            epoch,
+          });
+          return;
+        }
+        settlePublicationReview({
+          workflowId: comparisonInput.workflowId,
+          epoch,
+        });
+      },
     });
+  };
+
+  const confirmPublish = () => {
+    if (!publishReview || publicationReviewPending) {
+      return;
+    }
+    if (
+      publishReview.workflowId !== currentWorkflowId ||
+      !publicationReviewActive
+    ) {
+      clearPublicationReview({
+        workflowId: publishReview.workflowId,
+        epoch: publishReview.epoch,
+      });
+      return;
+    }
+    const publishingKey = `${publishReview.workflowId}:${publishReview.epoch}`;
+    if (publishingReviewRef.current === publishingKey) {
+      return;
+    }
+
+    publishingReviewRef.current = publishingKey;
+    publishWorkflow.mutate(
+      {
+        workflowId: publishReview.workflowId,
+        graph: publishReview.graph,
+        expectedPublishedVersionId: publishReview.expectedPublishedVersionId,
+      },
+      {
+        onSuccess: (payload) => {
+          if (
+            clearPublicationReview({
+              workflowId: payload.id,
+              epoch: publishReview.epoch,
+            })
+          ) {
+            toast.success(`Published version ${payload.publishedVersion}`);
+            cacheWorkflowPublication(queryClient, payload);
+            void loadWorkflows();
+            void refreshWorkflowVersionHistory(queryClient);
+          }
+        },
+        onSettled: (_payload, _error, _publishInput) => {
+          if (publishingReviewRef.current === publishingKey) {
+            publishingReviewRef.current = null;
+          }
+        },
+      }
+    );
   };
 
   const handleSetWorkflowMode = async (mode: "live" | "test") => {
@@ -453,7 +575,24 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     handleDuplicate,
     isDuplicating: duplicateWorkflow.isPending,
     handlePublish,
+    confirmPublish,
     isPublishing: publishWorkflow.isPending,
+    isComparing: compareWorkflowVersion.isPending,
+    publishReview,
+    setPublishReviewOpen: (open: boolean) => {
+      if (!open) {
+        const workflowId =
+          publishReview?.workflowId ?? currentWorkflowId ?? undefined;
+        if (publishReview) {
+          clearPublicationReview({
+            workflowId: publishReview.workflowId,
+            epoch: publishReview.epoch,
+          });
+        } else {
+          clearPublicationReview(workflowId);
+        }
+      }
+    },
     handleSetWorkflowMode,
   };
 }

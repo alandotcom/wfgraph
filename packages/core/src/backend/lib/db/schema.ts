@@ -84,10 +84,8 @@ export const workflows = pgTable(
 /**
  * An immutable published graph, plus the catalog fingerprint it was sound against.
  *
- * Publish mints a row (or reuses one whose graph digest and fingerprint match),
- * and every Execution pins to one. Draft saves never write here. Immutable is
- * not permanent: publish sweeps rows outside the retention window that no
- * Execution pins and no workflow names.
+ * Each Publish mints the next row, and every Execution pins to one. Draft saves
+ * never write here. Published rows form the workflow's durable history.
  */
 export const workflowVersions = pgTable(
   "workflow_versions",
@@ -107,7 +105,7 @@ export const workflowVersions = pgTable(
      * different set of actions; it does not freeze host handler code.
      */
     catalogFingerprint: text("catalog_fingerprint").notNull(),
-    /** Content hash of `graph`, used to dedupe identical publishes. */
+    /** Content hash of the graph's semantic projection. */
     graphDigest: text("graph_digest").notNull(),
     publishedAt: timestamp("published_at").notNull().default(utcNow()),
   },

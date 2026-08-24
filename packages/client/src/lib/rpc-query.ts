@@ -37,10 +37,16 @@ export const workflowListQueryOptions = () =>
 export function selectPublicationState(payload: WorkflowApiPayload): {
   isPublished: boolean;
   hasUnpublishedChanges: boolean;
+  publishedVersionId?: string;
+  publishedVersion?: number;
+  publishedAt?: string;
 } {
   return {
     isPublished: Boolean(payload.publishedVersionId),
     hasUnpublishedChanges: payload.hasUnpublishedChanges,
+    publishedVersionId: payload.publishedVersionId,
+    publishedVersion: payload.publishedVersion,
+    publishedAt: payload.publishedAt,
   };
 }
 
@@ -85,6 +91,13 @@ export function refreshWorkflowList(queryClient: QueryClient) {
   });
 }
 
+/** Version history for every workflow filter, refreshed after a publication. */
+export function refreshWorkflowVersionHistory(queryClient: QueryClient) {
+  return queryClient.invalidateQueries({
+    queryKey: orpcQuery.workflow.getVersionHistory.key(),
+  });
+}
+
 /**
  * Write the publication flag a save or publish just answered with into the
  * open workflow's getById entry. The list procedure does not carry this field
@@ -93,7 +106,12 @@ export function refreshWorkflowList(queryClient: QueryClient) {
 export function cacheWorkflowPublication(
   queryClient: QueryClient,
   workflow: Pick<WorkflowApiPayload, "id" | "hasUnpublishedChanges"> &
-    Partial<Pick<WorkflowApiPayload, "publishedVersionId" | "updatedAt">>
+    Partial<
+      Pick<
+        WorkflowApiPayload,
+        "publishedVersionId" | "publishedVersion" | "publishedAt" | "updatedAt"
+      >
+    >
 ) {
   queryClient.setQueryData(
     orpcQuery.workflow.getById.queryKey({
@@ -110,8 +128,27 @@ export function cacheWorkflowPublication(
         ...(workflow.publishedVersionId !== undefined
           ? { publishedVersionId: workflow.publishedVersionId }
           : {}),
+        ...(workflow.publishedVersion !== undefined
+          ? { publishedVersion: workflow.publishedVersion }
+          : {}),
+        ...(workflow.publishedAt !== undefined
+          ? { publishedAt: workflow.publishedAt }
+          : {}),
       };
     }
+  );
+}
+
+/** Replace the open workflow's exact getById response after a restore. */
+export function cacheWorkflow(
+  queryClient: QueryClient,
+  workflow: WorkflowApiPayload
+) {
+  queryClient.setQueryData(
+    orpcQuery.workflow.getById.queryKey({
+      input: { workflowId: workflow.id },
+    }),
+    workflow
   );
 }
 
