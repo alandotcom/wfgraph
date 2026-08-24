@@ -1,4 +1,8 @@
-import type { JsonObject } from "@wfgraph/shared/types/json";
+import { Schema } from "effect";
+import {
+  NonEmptyTrimmedString,
+  rejectUnknownKeys,
+} from "@wfgraph/shared/types/schema";
 
 /** Stable URLs core derives from the host's public origin for one integration. */
 export type OAuthRegistrationContext = {
@@ -12,21 +16,49 @@ export type OAuthClientRegistration = {
   readonly clientId: string;
   readonly clientSecret?: string;
   /** Present for providers that discover clients through a metadata document. */
-  readonly metadataDocument?: JsonObject;
+  readonly metadataDocument?: PublicOAuthClientMetadata;
 };
+
+/** The deliberately small, public-only client metadata surface core can serve. */
+export const publicOAuthClientMetadataSchema = Schema.Struct({
+  client_id: NonEmptyTrimmedString,
+  client_name: Schema.optionalKey(NonEmptyTrimmedString),
+  client_uri: Schema.optionalKey(NonEmptyTrimmedString),
+  redirect_uris: Schema.optionalKey(Schema.Array(NonEmptyTrimmedString)),
+  grant_types: Schema.optionalKey(
+    Schema.Array(Schema.Literals(["authorization_code", "refresh_token"]))
+  ),
+  response_types: Schema.optionalKey(Schema.Array(Schema.Literal("code"))),
+  token_endpoint_auth_method: Schema.optionalKey(Schema.Literal("none")),
+  scope: Schema.optionalKey(NonEmptyTrimmedString),
+});
+
+export type PublicOAuthClientMetadata =
+  typeof publicOAuthClientMetadataSchema.Type;
+
+export const decodePublicOAuthClientMetadata = Schema.decodeUnknownResult(
+  publicOAuthClientMetadataSchema,
+  rejectUnknownKeys
+);
 
 export type OAuthAuthorizationInput = {
   readonly client: OAuthClientRegistration;
   readonly redirectUri: string;
   readonly state: string;
-  readonly codeChallenge?: string;
 };
 
 export type OAuthExchangeInput = {
   readonly client: OAuthClientRegistration;
   readonly code: string;
   readonly redirectUri: string;
-  readonly codeVerifier?: string;
+};
+
+export type OAuthPkceAuthorizationInput = OAuthAuthorizationInput & {
+  readonly codeChallenge: string;
+};
+
+export type OAuthPkceExchangeInput = OAuthExchangeInput & {
+  readonly codeVerifier: string;
 };
 
 /** Tokens that must be replaced together after an exchange or refresh. */
@@ -66,16 +98,24 @@ export type OAuthRevokeInput = {
  * Provider-owned OAuth behavior. Core supplies routing and transaction context;
  * the integration owns every provider endpoint and wire format.
  */
-export type IntegrationOAuth = {
+type IntegrationOAuthBase = {
   /** Browser copy for the connection action. This is the only catalog field. */
   readonly label: string;
-  /** Requests S256 PKCE generation and verification from core. */
-  readonly pkce?: "S256";
   readonly registerClient: (
     context: OAuthRegistrationContext
   ) => OAuthClientRegistration;
-  readonly authorize: (input: OAuthAuthorizationInput) => URL;
-  readonly exchange: (input: OAuthExchangeInput) => Promise<OAuthGrant>;
   readonly refresh: (input: OAuthRefreshInput) => Promise<OAuthTokenSet>;
   readonly revoke: (input: OAuthRevokeInput) => Promise<void>;
 };
+
+export type IntegrationOAuth =
+  | (IntegrationOAuthBase & {
+      readonly pkce: "S256";
+      readonly authorize: (input: OAuthPkceAuthorizationInput) => URL;
+      readonly exchange: (input: OAuthPkceExchangeInput) => Promise<OAuthGrant>;
+    })
+  | (IntegrationOAuthBase & {
+      readonly pkce?: undefined;
+      readonly authorize: (input: OAuthAuthorizationInput) => URL;
+      readonly exchange: (input: OAuthExchangeInput) => Promise<OAuthGrant>;
+    });

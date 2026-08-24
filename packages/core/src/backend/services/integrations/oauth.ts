@@ -21,12 +21,14 @@ import {
 } from "#src/backend/services/integrations/oauth-grant";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { findIntegration } from "@wfgraph/shared/extensions/catalog";
-import { readJsonObject, type JsonObject } from "@wfgraph/shared/types/json";
 import { WfGraphAppContext } from "#src/backend/lib/effect/app-context";
 import {
   oauthRegistrationContext,
   oauthUrlsFor,
 } from "#src/backend/services/integrations/oauth-registration";
+import { decodePublicOAuthClientMetadata } from "#src/backend/extensions/oauth";
+import { generateId } from "@wfgraph/shared/utils/id";
+import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
 
 const OAUTH_ATTEMPT_LIFETIME_SECONDS = 10 * 60;
 
@@ -156,9 +158,6 @@ export const startIntegrationOAuth = Effect.fn("startIntegrationOAuth")(
     );
     const codeVerifier =
       oauth.pkce === "S256" ? randomOpaqueValue() : undefined;
-    const codeChallenge = codeVerifier
-      ? yield* Effect.promise(() => sha256Base64Url(codeVerifier))
-      : undefined;
 
     yield* repo
       .createOAuthAuthorizationAttempt({
@@ -167,6 +166,7 @@ export const startIntegrationOAuth = Effect.fn("startIntegrationOAuth")(
         expiresAt: new Date(Date.now() + OAUTH_ATTEMPT_LIFETIME_SECONDS * 1000),
         browserBindingHash,
         payload: {
+          kind: "reconnect",
           redirectUri: routeUrls.callbackUrl,
           configRevision: integration.configRevision,
           ...(codeVerifier ? { codeVerifier } : {}),
@@ -184,18 +184,122 @@ export const startIntegrationOAuth = Effect.fn("startIntegrationOAuth")(
       operation: "authorization URL creation",
       integrationId,
       integrationType: integration.type,
-      run: () =>
-        oauth.authorize({
+      run: async () => {
+        const input = {
           client,
           redirectUri: routeUrls.callbackUrl,
           state,
-          ...(codeChallenge ? { codeChallenge } : {}),
-        }),
+        };
+        if (oauth.pkce === "S256") {
+          const codeChallenge = await sha256Base64Url(codeVerifier!);
+          return oauth.authorize({ ...input, codeChallenge });
+        }
+        return oauth.authorize(input);
+      },
     });
 
     return {
       authorizeUrl: authorizeUrl.toString(),
       // `randomOpaqueValue` always produces 43 base64url characters.
+      cookieName: oauthBindingCookieName(state)!,
+      browserBinding,
+      maxAge: OAUTH_ATTEMPT_LIFETIME_SECONDS,
+    };
+  }
+);
+
+/** Begin OAuth for a connection that will not exist until its callback succeeds. */
+export const startNewIntegrationOAuth = Effect.fn("startNewIntegrationOAuth")(
+  function* (input: { name: string; type: string; config: IntegrationConfig }) {
+    const context = yield* WfGraphAppContext;
+    if (!oauthUrlsFor("placeholder", context)) {
+      return yield* missingPublicUrl();
+    }
+    if (OAUTH_GRANT_CONFIG_KEY in input.config) {
+      return yield* new InvalidInput({
+        error: "The OAuth grant config key is reserved.",
+      });
+    }
+
+    const repo = yield* IntegrationRepo;
+    const extensions = yield* Extensions;
+    const integration = findIntegration(extensions.catalog, input.type);
+    if (!integration) {
+      return yield* new InvalidInput({
+        error: `Integration "${input.type}" is unavailable.`,
+      });
+    }
+    const oauth = extensions.oauthFor(input.type);
+    if (!oauth) {
+      return yield* oauthUnavailable(input.type);
+    }
+
+    const integrationId = generateId();
+    const logger = (yield* AppLogger)
+      .get("integrations")
+      .with({ integrationId });
+    const routeUrls = oauthUrlsFor(input.type, context)!;
+    const client = yield* providerStep({
+      logger,
+      operation: "client registration",
+      integrationId,
+      integrationType: input.type,
+      run: () =>
+        oauth.registerClient(oauthRegistrationContext(context, routeUrls)),
+    });
+    const state = randomOpaqueValue();
+    const browserBinding = randomOpaqueValue();
+    const stateHash = yield* Effect.promise(() => sha256Base64Url(state));
+    const browserBindingHash = yield* Effect.promise(() =>
+      sha256Base64Url(browserBinding)
+    );
+    const codeVerifier =
+      oauth.pkce === "S256" ? randomOpaqueValue() : undefined;
+    const authorizeUrl = yield* providerStep({
+      logger,
+      operation: "authorization URL creation",
+      integrationId,
+      integrationType: input.type,
+      run: async () => {
+        const authorizationInput = {
+          client,
+          redirectUri: routeUrls.callbackUrl,
+          state,
+        };
+        if (oauth.pkce === "S256") {
+          const codeChallenge = await sha256Base64Url(codeVerifier!);
+          return oauth.authorize({ ...authorizationInput, codeChallenge });
+        }
+        return oauth.authorize(authorizationInput);
+      },
+    });
+
+    yield* repo
+      .createOAuthAuthorizationAttempt({
+        stateHash,
+        integrationId: null,
+        expiresAt: new Date(Date.now() + OAUTH_ATTEMPT_LIFETIME_SECONDS * 1000),
+        browserBindingHash,
+        payload: {
+          kind: "create",
+          integrationId,
+          name: input.name,
+          type: input.type,
+          config: input.config,
+          redirectUri: routeUrls.callbackUrl,
+          ...(codeVerifier ? { codeVerifier } : {}),
+        },
+      })
+      .pipe(
+        Effect.catchTag(
+          "DatabaseError",
+          () => new InternalFailure({ error: "Failed to start OAuth" })
+        )
+      );
+
+    return {
+      integrationId,
+      authorizeUrl: authorizeUrl.toString(),
       cookieName: oauthBindingCookieName(state)!,
       browserBinding,
       maxAge: OAUTH_ATTEMPT_LIFETIME_SECONDS,
@@ -262,6 +366,133 @@ export const completeIntegrationOAuth = Effect.fn("completeIntegrationOAuth")(
       });
     }
 
+    if (attempt.payload.kind === "create") {
+      const pending = attempt.payload;
+      const oauth = extensions.oauthFor(pending.type);
+      if (!oauth) {
+        return yield* oauthUnavailable(pending.type);
+      }
+      const routeUrls = oauthUrlsFor(pending.type, context)!;
+      const createLogger = logger.with({
+        integrationId: pending.integrationId,
+      });
+      const client = yield* providerStep({
+        logger: createLogger,
+        operation: "client registration",
+        integrationId: pending.integrationId,
+        integrationType: pending.type,
+        run: () =>
+          oauth.registerClient(oauthRegistrationContext(context, routeUrls)),
+      });
+      const exchangeInput = {
+        client,
+        code: input.code,
+        redirectUri: pending.redirectUri,
+      };
+      const issued = yield* providerStep({
+        logger: createLogger,
+        operation: "code exchange",
+        integrationId: pending.integrationId,
+        integrationType: pending.type,
+        run: () => {
+          if (oauth.pkce === "S256") {
+            if (!pending.codeVerifier) {
+              throw new Error("OAuth PKCE verifier is missing");
+            }
+            return oauth.exchange({
+              ...exchangeInput,
+              codeVerifier: pending.codeVerifier,
+            });
+          }
+          return oauth.exchange(exchangeInput);
+        },
+      });
+      const grant = normalizeOAuthGrant(issued, new Date().toISOString());
+      if (!grant) {
+        yield* Effect.result(
+          providerStep({
+            logger: createLogger,
+            operation: "cleanup revocation",
+            integrationId: pending.integrationId,
+            integrationType: pending.type,
+            run: () => oauth.revoke({ client, grant: issued }),
+          })
+        );
+        return yield* new InvalidInput({
+          error: "OAuth provider returned an invalid grant.",
+        });
+      }
+      const revokeIssuedGrant = () =>
+        providerStep({
+          logger: createLogger,
+          operation: "cleanup revocation",
+          integrationId: pending.integrationId,
+          integrationType: pending.type,
+          run: () => oauth.revoke({ client, grant }),
+        });
+      const credentialFailure = validateOAuthCredentials(
+        pending.type,
+        grant.credentials,
+        extensions
+      );
+      if (credentialFailure) {
+        yield* Effect.result(revokeIssuedGrant());
+        return yield* credentialFailure;
+      }
+
+      const insertion = yield* Effect.result(
+        repo.insertWithId({
+          id: pending.integrationId,
+          name: pending.name,
+          type: pending.type,
+          config: {
+            ...pending.config,
+            [OAUTH_GRANT_CONFIG_KEY]: serializeStoredOAuthGrant(grant),
+          },
+        })
+      );
+      if (Result.isFailure(insertion)) {
+        const resolved = yield* Effect.result(
+          repo.findById(pending.integrationId)
+        );
+        if (Result.isSuccess(resolved)) {
+          const resolvedIntegration = resolved.success;
+          if (resolvedIntegration === null) {
+            yield* Effect.result(revokeIssuedGrant());
+          } else {
+            const stored = readStoredOAuthGrant(resolvedIntegration.config);
+            if (stored?.tokens.accessToken === grant.tokens.accessToken) {
+              const claimInput = {
+                integrationId: pending.integrationId,
+                claimId: globalThis.crypto.randomUUID(),
+                expectedRevision: resolvedIntegration.configRevision,
+              };
+              const claim = yield* Effect.result(repo.claimRefresh(claimInput));
+              if (
+                Result.isSuccess(claim) &&
+                claim.success.status === "acquired"
+              ) {
+                yield* Effect.result(
+                  repo.markReauthorizationRequired(claimInput)
+                );
+              }
+            } else {
+              yield* Effect.result(revokeIssuedGrant());
+            }
+          }
+        }
+        return yield* new InternalFailure({
+          error: "Failed to complete OAuth",
+        });
+      }
+      return undefined;
+    }
+    if (attempt.integrationId === null) {
+      return yield* new InvalidInput({
+        error: "OAuth authorization could not be verified.",
+      });
+    }
+
     const integration = yield* repo.findById(attempt.integrationId).pipe(
       Effect.catchTags({
         DatabaseError: () =>
@@ -316,21 +547,29 @@ export const completeIntegrationOAuth = Effect.fn("completeIntegrationOAuth")(
       return yield* registration.failure;
     }
     const client = registration.success;
+    const exchangeInput = {
+      client,
+      code: input.code,
+      redirectUri: attempt.payload.redirectUri,
+    };
     const exchange = yield* Effect.result(
       providerStep({
         logger,
         operation: "code exchange",
         integrationId: integration.id,
         integrationType: integration.type,
-        run: () =>
-          oauth.exchange({
-            client,
-            code: input.code!,
-            redirectUri: attempt.payload.redirectUri,
-            ...(attempt.payload.codeVerifier
-              ? { codeVerifier: attempt.payload.codeVerifier }
-              : {}),
-          }),
+        run: () => {
+          if (oauth.pkce === "S256") {
+            if (!attempt.payload.codeVerifier) {
+              throw new Error("OAuth PKCE verifier is missing");
+            }
+            return oauth.exchange({
+              ...exchangeInput,
+              codeVerifier: attempt.payload.codeVerifier,
+            });
+          }
+          return oauth.exchange(exchangeInput);
+        },
       })
     );
     if (Result.isFailure(exchange)) {
@@ -411,42 +650,21 @@ export const getOAuthClientMetadata = Effect.fn("getOAuthClientMetadata")(
         error: "OAuth client metadata is unavailable.",
       });
     }
+    const metadata = decodePublicOAuthClientMetadata(client.metadataDocument);
     if (
       client.clientId !== routeUrls.metadataDocumentUrl ||
-      hasClientSecret(client.metadataDocument) ||
-      ("client_id" in client.metadataDocument &&
-        client.metadataDocument.client_id !== routeUrls.metadataDocumentUrl)
+      Result.isFailure(metadata) ||
+      metadata.success.client_id !== routeUrls.metadataDocumentUrl ||
+      metadata.success.redirect_uris?.length !== 1 ||
+      metadata.success.redirect_uris[0] !== routeUrls.callbackUrl
     ) {
       return yield* new InternalFailure({
         error: "OAuth client metadata is invalid.",
       });
     }
-    return client.metadataDocument;
+    return metadata.success;
   }
 );
-
-function hasClientSecret(document: JsonObject): boolean {
-  for (const [key, value] of Object.entries(document)) {
-    if (key === "client_secret" || key === "clientSecret") {
-      return true;
-    }
-    if (value && typeof value === "object") {
-      if (Array.isArray(value)) {
-        if (
-          value.some((entry) => {
-            const object = readJsonObject(entry);
-            return object ? hasClientSecret(object) : false;
-          })
-        ) {
-          return true;
-        }
-      } else if (hasClientSecret(value)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
 
 /** Revoke the stored grant before returning control of its credentials to manual config. */
 export const deleteIntegrationOAuth = Effect.fn("deleteIntegrationOAuth")(

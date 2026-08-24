@@ -56,6 +56,7 @@ describe("OAuth persistence", () => {
     ]);
     expect(config.primaryKeys).toHaveLength(0);
     expect(schema.oauthAuthorizationAttempts.stateHash.primary).toBe(true);
+    expect(schema.oauthAuthorizationAttempts.integrationId.notNull).toBe(false);
     expect(config.foreignKeys).toHaveLength(1);
     expect(config.indexes.map((index) => index.config.name)).toContain(
       "oauth_authorization_attempts_integration_id_idx"

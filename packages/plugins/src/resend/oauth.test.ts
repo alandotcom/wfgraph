@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resend } from "#src/resend/index";
 
-const oauth = resend().oauth;
+const oauth = resend.oauth;
 
 if (oauth === undefined) {
   throw new Error("Resend must always offer OAuth");
@@ -77,16 +77,6 @@ describe("Resend OAuth registration", () => {
     expect(url.toString()).toBe(
       "https://api.resend.com/oauth/authorize?client_id=https%3A%2F%2Fworkflow.example.com%2Foauth%2Fresend-client.json&response_type=code&redirect_uri=https%3A%2F%2Fworkflow.example.com%2Fapi%2Foauth%2Fresend%2Fcallback&scope=emails%3Asend&state=state-value&code_challenge=challenge-value&code_challenge_method=S256"
     );
-  });
-
-  it("rejects an authorization request with no code challenge", () => {
-    expect(() =>
-      oauth.authorize({
-        client,
-        redirectUri: clientContext.callbackUrl,
-        state: "state-value",
-      })
-    ).toThrow("Resend OAuth requires an S256 code challenge");
   });
 });
 

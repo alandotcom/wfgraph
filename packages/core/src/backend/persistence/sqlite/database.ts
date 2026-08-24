@@ -10,7 +10,7 @@ import {
   type JsonValue,
 } from "@wfgraph/shared/types/json";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const MIGRATION_1 = `
   CREATE TABLE workflows (
@@ -171,6 +171,32 @@ const MIGRATION_2 = `
     ON oauth_authorization_attempts(expires_at);
 `;
 
+const MIGRATION_3 = `
+  DROP INDEX oauth_attempts_integration_idx;
+  DROP INDEX oauth_attempts_expires_at_idx;
+  ALTER TABLE oauth_authorization_attempts RENAME TO oauth_authorization_attempts_v2;
+
+  CREATE TABLE oauth_authorization_attempts (
+    state_hash TEXT PRIMARY KEY,
+    integration_id TEXT REFERENCES integrations(id) ON DELETE CASCADE,
+    expires_at INTEGER NOT NULL,
+    browser_binding_hash TEXT NOT NULL,
+    encrypted_payload TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  ) STRICT;
+
+  INSERT INTO oauth_authorization_attempts
+    (state_hash, integration_id, expires_at, browser_binding_hash, encrypted_payload, created_at)
+  SELECT state_hash, integration_id, expires_at, browser_binding_hash, encrypted_payload, created_at
+  FROM oauth_authorization_attempts_v2;
+  DROP TABLE oauth_authorization_attempts_v2;
+
+  CREATE INDEX oauth_attempts_integration_idx
+    ON oauth_authorization_attempts(integration_id);
+  CREATE INDEX oauth_attempts_expires_at_idx
+    ON oauth_authorization_attempts(expires_at);
+`;
+
 export type SqliteDatabase = {
   readonly read: <A>(
     run: (database: DatabaseSync) => A
@@ -221,6 +247,12 @@ function migrate(database: DatabaseSync): void {
     inImmediateTransaction(database, () => {
       database.exec(MIGRATION_2);
       database.exec("PRAGMA user_version = 2");
+    });
+  }
+  if (version <= 2) {
+    inImmediateTransaction(database, () => {
+      database.exec(MIGRATION_3);
+      database.exec("PRAGMA user_version = 3");
     });
   }
 }

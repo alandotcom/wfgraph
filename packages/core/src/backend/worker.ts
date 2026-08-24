@@ -125,7 +125,6 @@ export function wfWorker<Env>(
           "/",
           createApiApp({
             basePath: `${basePath}/api`,
-            publicUrl,
             authorize,
             runtime,
             inngestHandler: inngest.serve(functions),

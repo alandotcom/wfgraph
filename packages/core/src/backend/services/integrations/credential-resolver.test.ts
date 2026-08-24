@@ -424,14 +424,16 @@ describe("resolveIntegrationCredentials", () => {
       markReauthorizationRequired: ({ claimId }) =>
         Effect.sync(() => {
           markedClaims.push(claimId);
-          if (current.refreshClaimId !== claimId) return false;
+          if (current.refreshClaimId !== claimId) {
+            return { status: "no_longer_owned" as const };
+          }
           current = {
             ...current,
             refreshState: "reauthorization_required",
             refreshClaimId: null,
             refreshClaimedAt: null,
           };
-          return true;
+          return { status: "transitioned" as const };
         }),
     };
     const resolution = () =>
@@ -494,7 +496,9 @@ describe("resolveIntegrationCredentials", () => {
       markReauthorizationRequired: ({ claimId }) =>
         Effect.sync(() => {
           marked = current.refreshClaimId === claimId;
-          return marked;
+          return marked
+            ? { status: "transitioned" as const }
+            : { status: "no_longer_owned" as const };
         }),
     };
 
@@ -600,14 +604,16 @@ describe("resolveIntegrationCredentials", () => {
       markReauthorizationRequired: ({ claimId }) =>
         Effect.sync(() => {
           markedClaims.push(claimId);
-          if (claimId !== current.refreshClaimId) return false;
+          if (claimId !== current.refreshClaimId) {
+            return { status: "no_longer_owned" as const };
+          }
           current = {
             ...current,
             refreshState: "reauthorization_required",
             refreshClaimId: null,
             refreshClaimedAt: null,
           };
-          return true;
+          return { status: "transitioned" as const };
         }),
     };
 
@@ -620,6 +626,52 @@ describe("resolveIntegrationCredentials", () => {
     expect(claims).toEqual([]);
     expect(markedClaims).toEqual([ownerClaimId]);
     expect(current.refreshState).toBe("reauthorization_required");
+  });
+
+  it("rereads when the stale owner completes before reauthorization is fenced", async () => {
+    const ownerClaimId = "owner-claim";
+    const replacementGrant = storedGrant({
+      accessToken: "replacement-access",
+      refreshToken: "replacement-refresh",
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+    let current: DecryptedIntegration = {
+      ...row({
+        [OAUTH_GRANT_CONFIG_KEY]: storedGrant({
+          refreshToken: "old-refresh",
+          expiresAt: new Date(Date.now() - 1_000).toISOString(),
+        }),
+      }),
+      refreshState: "refreshing",
+      refreshClaimId: ownerClaimId,
+      refreshClaimedAt: new Date(Date.now() - OAUTH_REFRESH_CLAIM_STALE_MS - 1),
+    };
+    const repo: Partial<IntegrationRepo["Service"]> = {
+      findById: () => Effect.succeed(current),
+      markReauthorizationRequired: () =>
+        Effect.sync(() => {
+          current = {
+            ...current,
+            config: {
+              ...current.config,
+              [OAUTH_GRANT_CONFIG_KEY]: replacementGrant,
+            },
+            configRevision: current.configRevision + 1,
+            refreshState: "idle",
+            refreshClaimId: null,
+            refreshClaimedAt: null,
+          };
+          return { status: "no_longer_owned" as const };
+        }),
+    };
+
+    const resolved = await Effect.runPromise(
+      resolveIntegrationCredentials(integrationId).pipe(
+        Effect.provide(layerFor(repo))
+      )
+    );
+
+    expect(resolved.credentials.ACCESS_TOKEN).toBe("replacement-access");
   });
 
   it("bounds how long a race loser polls a fresh refresh owner", async () => {
@@ -692,7 +744,7 @@ describe("resolveIntegrationCredentials", () => {
       markReauthorizationRequired: ({ claimId }) =>
         Effect.sync(() => {
           markedClaims.push(claimId);
-          return false;
+          return { status: "no_longer_owned" as const };
         }),
     };
 

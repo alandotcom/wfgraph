@@ -2,7 +2,7 @@ import { requireOutputFieldsFromSchema } from "@wfgraph/core/plugin";
 import { describe, expect, it } from "vitest";
 import { resend } from "#src/resend/index";
 
-const integration = resend();
+const integration = resend;
 
 /**
  * What a node downstream of a Send Email node can reference.

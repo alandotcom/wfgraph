@@ -9,8 +9,8 @@
 import type {
   IntegrationOAuth,
   JsonValue,
-  OAuthExchangeInput,
   OAuthGrant,
+  OAuthPkceExchangeInput,
   OAuthRefreshInput,
   OAuthRevokeInput,
   OAuthTokenSet,
@@ -142,14 +142,6 @@ function tokenSet(response: ResendOAuthTokenResponse): OAuthTokenSet {
   };
 }
 
-function requireCodeVerifier(codeVerifier: string | undefined): string {
-  if (!codeVerifier) {
-    throw new Error("Resend OAuth requires a code verifier for token exchange");
-  }
-
-  return codeVerifier;
-}
-
 function currentRefreshToken(grant: OAuthGrant): string {
   const refreshToken = grant.tokens.refreshToken;
   if (!refreshToken) {
@@ -178,10 +170,6 @@ export const resendOAuth: IntegrationOAuth = {
   }),
 
   authorize: ({ client, redirectUri, state, codeChallenge }) => {
-    if (!codeChallenge) {
-      throw new Error("Resend OAuth requires an S256 code challenge");
-    }
-
     const url = new URL(RESEND_AUTHORIZE_URL);
     url.searchParams.set("client_id", client.clientId);
     url.searchParams.set("response_type", "code");
@@ -198,8 +186,7 @@ export const resendOAuth: IntegrationOAuth = {
     code,
     redirectUri,
     codeVerifier,
-  }: OAuthExchangeInput): Promise<OAuthGrant> => {
-    const verifier = requireCodeVerifier(codeVerifier);
+  }: OAuthPkceExchangeInput): Promise<OAuthGrant> => {
     const response = await requestOAuth(
       RESEND_TOKEN_URL,
       new URLSearchParams({
@@ -207,10 +194,10 @@ export const resendOAuth: IntegrationOAuth = {
         client_id: client.clientId,
         code,
         redirect_uri: redirectUri,
-        code_verifier: verifier,
+        code_verifier: codeVerifier,
       }),
       resendOAuthTokenResponseSchema,
-      [client.clientId, code, verifier]
+      [client.clientId, code, codeVerifier]
     );
 
     return tokenSet(response);

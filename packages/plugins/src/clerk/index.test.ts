@@ -2,7 +2,7 @@ import { requireOutputFieldsFromSchema } from "@wfgraph/core/plugin";
 import { describe, expect, it } from "vitest";
 import { clerk } from "#src/clerk/index";
 
-const integration = clerk();
+const integration = clerk;
 
 function outputFieldsOf(slug: keyof typeof integration.actions) {
   return requireOutputFieldsFromSchema(

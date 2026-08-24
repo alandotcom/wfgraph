@@ -141,7 +141,9 @@ const markReauthorization = Effect.fn("markOAuthReauthorization")(function* (
       expectedRevision,
     })
   );
-  return Result.isSuccess(outcome) && outcome.success;
+  return Result.isSuccess(outcome)
+    ? outcome.success
+    : { status: "unavailable" as const };
 });
 
 const awaitRefreshOwner = Effect.fn("awaitOAuthRefreshOwner")(function* (
@@ -176,12 +178,18 @@ const awaitRefreshOwner = Effect.fn("awaitOAuthRefreshOwner")(function* (
       now - integration.refreshClaimedAt.getTime() >=
         OAUTH_REFRESH_CLAIM_STALE_MS;
     if (claimIsStale && integration.refreshClaimId) {
-      yield* markReauthorization(
+      const transition = yield* markReauthorization(
         integrationId,
         integration.refreshClaimId,
         integration.configRevision
       );
-      return yield* internal(REAUTHORIZE_MESSAGE);
+      if (transition.status === "transitioned") {
+        return yield* internal(REAUTHORIZE_MESSAGE);
+      }
+      if (transition.status === "unavailable") {
+        return yield* internal(TEMPORARILY_UNAVAILABLE_MESSAGE);
+      }
+      continue;
     }
 
     yield* Effect.sleep(OAUTH_REFRESH_POLL_MS);

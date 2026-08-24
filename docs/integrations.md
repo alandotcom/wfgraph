@@ -85,68 +85,163 @@ export const myService = defineIntegration({
 
 ## OAuth
 
-Add `oauth` when the External System can issue a grant. The integration owns the
-provider protocol. Core owns callback routing, one-time state, encrypted storage,
-and refresh coordination.
+Add `oauth` when the external system can issue a grant. The integration owns the
+provider protocol. Core owns the browser flow, encrypted grant storage, and refresh
+coordination. Configure `publicUrl` on `createWfGraphApp`; Core derives stable callback
+and client metadata URLs from that origin.
 
 ```ts
-export const myService = () =>
-  defineIntegration({
-    type: "my-service",
+export const myService = defineIntegration({
+  type: "my-service",
+  label: "My Service",
+  description: "What this integration does",
+  credentials: myServiceCredentials,
+  oauth: {
     label: "My Service",
-    description: "What this integration does",
-    credentials: myServiceCredentials,
-    oauth: {
-      label: "My Service",
-      pkce: "S256",
-      registerClient(context) {
-        return {
-          clientId: context.metadataDocumentUrl,
-          metadataDocument: {
-            client_id: context.metadataDocumentUrl,
-            client_name: "Workflow Graph",
-            redirect_uris: [context.callbackUrl],
-          },
-        };
-      },
-      authorize({ client, redirectUri, state, codeChallenge }) {
-        const url = new URL("https://auth.example.com/authorize");
-        url.searchParams.set("client_id", client.clientId);
-        url.searchParams.set("redirect_uri", redirectUri);
-        url.searchParams.set("state", state);
-        url.searchParams.set("code_challenge", codeChallenge!);
-        url.searchParams.set("code_challenge_method", "S256");
-        return url;
-      },
-      async exchange(input) {
-        return exchangeAuthorizationCode(input);
-      },
-      async refresh(input) {
-        return refreshAccessToken(input);
-      },
-      async revoke(input) {
-        await revokeGrant(input);
-      },
+    pkce: "S256",
+    registerClient(context) {
+      return {
+        clientId: context.metadataDocumentUrl,
+        metadataDocument: {
+          client_id: context.metadataDocumentUrl,
+          client_name: "Workflow Graph",
+          redirect_uris: [context.callbackUrl],
+        },
+      };
     },
-    actions: {
-      // ...
+    authorize({ client, redirectUri, state, codeChallenge }) {
+      const url = new URL("https://auth.example.com/authorize");
+      url.searchParams.set("client_id", client.clientId);
+      url.searchParams.set("redirect_uri", redirectUri);
+      url.searchParams.set("state", state);
+      url.searchParams.set("code_challenge", codeChallenge);
+      url.searchParams.set("code_challenge_method", "S256");
+      return url;
     },
-  });
+    async exchange(input) {
+      return exchangeAuthorizationCode(input);
+    },
+    async refresh(input) {
+      return refreshAccessToken(input);
+    },
+    async revoke(input) {
+      await revokeGrant(input);
+    },
+  },
+  actions: {
+    // ...
+  },
+});
 ```
 
-`registerClient` supports two client identity models. A registered-client
-integration closes over host-provided credentials and returns them. A client
-metadata integration returns `metadataDocument`; Workflow Graph serves that JSON
-from the public client route. Provider secrets and methods stay on the server.
-The catalog carries only `oauth.label`.
+### Client registration and public metadata
 
-`exchange` returns an `OAuthGrant`. `refresh` returns an `OAuthTokenSet`. Both
-map the provider access token into declared credential keys, so existing action
-handlers read the same credential names in manual and OAuth modes. Core rejects
-a returned key that the integration did not declare.
+`registerClient` supports two client identity models:
+
+- A registered-client integration returns a provider-issued client ID and optional
+  client secret. The integration can close over host configuration to supply them.
+- A client metadata integration uses `context.metadataDocumentUrl` as its client ID
+  and returns a `metadataDocument`. Workflow Graph serves that document from a public
+  route because the provider, not an operator's browser session, reads it.
+
+Public client metadata has a strict allowlist of fields: client identity and name,
+client URI, redirect URIs, grant and response types, token endpoint authentication
+method, and scope. Unknown fields fail validation. Provider secrets, token values,
+and executable provider behavior cannot enter this document. The extension catalog
+carries only `oauth.label`; it doesn't expose registration details.
+The document's `redirect_uris` value must contain only `context.callbackUrl`.
+
+### Authorization lifecycle
+
+For a new connection, the editor starts authorization before it saves a connection
+row. Core keeps the reserved ID, name, type, and configuration in a short-lived,
+encrypted, one-use attempt. Core inserts the connection only after the callback
+returns a valid grant. A canceled, declined, expired, or interrupted attempt leaves
+no connection row to clean up.
+
+For an existing connection, Core associates the attempt with the stored row and its
+configuration revision. Core generates opaque state and binds both attempt types to
+the browser with an `HttpOnly`, `SameSite=Lax` cookie. The stored attempt contains
+hashes instead of the state and cookie values. It also contains an encrypted redirect
+URI and, when required, an encrypted PKCE verifier.
+
+The host authorization predicate protects the start and callback routes. The client
+metadata route is the only public OAuth route because the provider must read it directly.
+
+For an integration with `pkce: "S256"`, Core generates the verifier and passes its
+SHA-256 challenge to `authorize`. The type of `authorize` requires `codeChallenge`,
+and the type of `exchange` requires `codeVerifier`. An integration without `pkce`
+receives neither value.
+
+The provider returns to Core's callback route with the authorization code and state.
+Core consumes the attempt before it checks the expiry and browser binding. A copied,
+expired, rejected, or replayed callback therefore cannot reuse the attempt. Core uses
+the exact redirect URI from the attempt when it exchanges the code.
+
+After exchange, return an `OAuthGrant`. Core validates that `credentials` contains
+only keys declared by the integration, and then stores the normalized grant in the
+connection's encrypted configuration. Browser responses omit the stored grant. OAuth
+credential values override matching manual values, so an existing action handler reads
+the same credential name in either connection mode.
+
+If the operator closes or declines the provider page for a new connection, Core
+stores no connection. For an existing connection, Core preserves the preceding
+configuration so the operator can retry or enter manual credentials.
+
+### Refresh and disconnect
+
+`exchange` returns an `OAuthGrant`. `refresh` returns an `OAuthTokenSet`. Include an
+ISO 8601 `expiresAt` value when the provider gives an access-token lifetime. Core starts
+a refresh before expiry and persists the access token, refresh token, expiry, and
+credential mapping as one replacement.
+
+Core gives one caller a refresh claim for a connection. The claim includes the
+configuration revision, so a stale caller cannot overwrite a reconnect, edit, or newer
+refresh. Other callers wait for the stored replacement instead of sending the refresh
+token again. Core marks the connection as requiring reauthorization when a stale claim
+or an uncertain provider result makes token reuse unsafe.
+
+Disconnect calls `revoke` before it removes the stored grant. If revocation fails, Core
+preserves the grant so the operator can retry. If revocation succeeds but Core cannot
+confirm the storage update, Core prevents further credential use and requires a
+reconnect. A successful disconnect restores manual credentials as the active values.
+Deleting an OAuth-backed connection also revokes its grant before Core removes the row.
+
+### Failure behavior
+
+Provider errors become connection failures without exposing authorization codes,
+client secrets, access tokens, or refresh tokens. OAuth routes disable caching and
+referrer forwarding, and request logs omit callback query values. The callback page
+reports only whether the connection completed. Core returns a generic provider failure
+and writes a payload-free server log record.
+
+An action that reaches a connection marked `reauthorization_required` fails with an
+instruction to reconnect. A competing refresh that doesn't finish within the wait
+period fails as temporarily unavailable, which lets the workflow's outer retry try
+again without sending the same refresh token concurrently.
+
+### Test OAuth behavior
+
+Test the provider adapter separately from Core's generic OAuth lifecycle. Pin the
+following provider behavior in `[name]/oauth.test.ts`:
+
+- The client registration result and, for a metadata client, the complete public
+  metadata document.
+- The complete authorization URL, including state, redirect URI, scopes, and PKCE
+  parameters.
+- The exact exchange, refresh, and revocation requests, including form fields and
+  authentication headers.
+- Successful token normalization, rotating refresh-token replacement, rejected and
+  unreadable responses, and missing required token fields.
+- Error messages that don't contain any submitted client secret, authorization code,
+  access token, refresh token, or encoded equivalent.
+
+Use recorded provider responses as decoding fixtures. Core's service and persistence
+tests cover one-use attempts, browser binding, encrypted payloads, credential-key
+validation, refresh fencing, callback conflicts, and disconnect ordering.
 
 Token exchange, refresh, and revocation requests are writes. Pass them to
-`callExternalAsync` as POST requests with no idempotency key and do not set
+`callExternalAsync` as `POST` requests with no idempotency key and do not set
 `safeToRepeat`. Core serializes refreshes for one connection and persists a
 rotated refresh token with its access token and expiry.
 

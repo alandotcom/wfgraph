@@ -12,6 +12,7 @@ import type {
   IntegrationCipher,
 } from "#src/backend/services/integrations/cipher";
 import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
+import { readJsonObject } from "@wfgraph/shared/types/json";
 
 /** One `integrations` row, with its config opened out of the AES envelope. */
 export type DecryptedIntegration = {
@@ -33,39 +34,135 @@ export type RefreshClaimOutcome =
   | { status: "lost" }
   | { status: "not_found" };
 
+export type RefreshClaimTransitionOutcome =
+  | { status: "transitioned" }
+  | { status: "no_longer_owned" };
+
+export type IntegrationDeleteOutcome =
+  | { status: "deleted" }
+  | { status: "no_longer_owned" }
+  | { status: "not_found" };
+
 export type IntegrationWriteOutcome =
   | { status: "updated"; integration: DecryptedIntegration }
   | { status: "conflict" }
   | { status: "not_found" };
 
-export type ConsumedOAuthAuthorizationAttempt = {
-  integrationId: string;
-  payload: OAuthAuthorizationAttemptPayload;
-};
-
-export type OAuthAuthorizationAttemptPayload = {
+type OAuthAuthorizationAttemptBase = {
   redirectUri: string;
-  configRevision: number;
   codeVerifier?: string;
 };
 
+export type OAuthReconnectAuthorizationAttemptPayload =
+  OAuthAuthorizationAttemptBase & {
+    kind: "reconnect";
+    configRevision: number;
+  };
+
+export type OAuthCreateAuthorizationAttemptPayload =
+  OAuthAuthorizationAttemptBase & {
+    kind: "create";
+    integrationId: string;
+    name: string;
+    type: string;
+    config: IntegrationConfig;
+  };
+
+export type OAuthAuthorizationAttemptPayload =
+  | OAuthReconnectAuthorizationAttemptPayload
+  | OAuthCreateAuthorizationAttemptPayload;
+
+export type ConsumedOAuthAuthorizationAttempt =
+  | {
+      integrationId: string;
+      payload: OAuthReconnectAuthorizationAttemptPayload;
+    }
+  | {
+      integrationId: null;
+      payload: OAuthCreateAuthorizationAttemptPayload;
+    };
+
+export type OAuthAuthorizationAttemptInput =
+  | {
+      stateHash: string;
+      integrationId: string;
+      expiresAt: Date;
+      browserBindingHash: string;
+      payload: OAuthReconnectAuthorizationAttemptPayload;
+    }
+  | {
+      stateHash: string;
+      integrationId: null;
+      expiresAt: Date;
+      browserBindingHash: string;
+      payload: OAuthCreateAuthorizationAttemptPayload;
+    };
+
 export function readOAuthAuthorizationAttemptPayload(
-  config: IntegrationConfig
+  encryptedConfig: IntegrationConfig
 ): OAuthAuthorizationAttemptPayload | null {
-  const redirectUri = config.redirectUri;
-  const configRevision = Number(config.configRevision);
-  if (
-    !redirectUri ||
-    !Number.isSafeInteger(configRevision) ||
-    configRevision < 0
-  ) {
+  const serialized = encryptedConfig.payload;
+  if (!serialized) {
     return null;
   }
 
+  let value: unknown;
+  try {
+    value = JSON.parse(serialized);
+  } catch {
+    return null;
+  }
+  const payload = readJsonObject(value);
+  if (!payload) return null;
+  const redirectUri = payload.redirectUri;
+  const codeVerifier = payload.codeVerifier;
+  if (
+    typeof redirectUri !== "string" ||
+    (codeVerifier !== undefined && typeof codeVerifier !== "string")
+  ) {
+    return null;
+  }
+  if (payload.kind === "reconnect") {
+    const configRevision = payload.configRevision;
+    if (
+      typeof configRevision !== "number" ||
+      !Number.isSafeInteger(configRevision) ||
+      configRevision < 0
+    )
+      return null;
+    return {
+      kind: "reconnect",
+      redirectUri,
+      configRevision,
+      ...(codeVerifier ? { codeVerifier } : {}),
+    };
+  }
+  if (payload.kind !== "create") return null;
+  const integrationId = payload.integrationId;
+  const name = payload.name;
+  const type = payload.type;
+  const rawConfig = readJsonObject(payload.config);
+  if (
+    typeof integrationId !== "string" ||
+    typeof name !== "string" ||
+    typeof type !== "string" ||
+    !rawConfig
+  ) {
+    return null;
+  }
+  const config: IntegrationConfig = {};
+  for (const [key, entry] of Object.entries(rawConfig)) {
+    if (typeof entry !== "string") return null;
+    config[key] = entry;
+  }
   return {
+    kind: "create",
+    integrationId,
+    name,
+    type,
+    config,
     redirectUri,
-    configRevision,
-    ...(config.codeVerifier ? { codeVerifier: config.codeVerifier } : {}),
+    ...(codeVerifier ? { codeVerifier } : {}),
   };
 }
 
@@ -131,22 +228,24 @@ export class IntegrationRepo extends Context.Service<
       type: string;
       config: IntegrationConfig;
     }) => Effect.Effect<DecryptedIntegration, DatabaseError>;
+    readonly insertWithId: (input: {
+      id: string;
+      name: string;
+      type: string;
+      config: IntegrationConfig;
+    }) => Effect.Effect<DecryptedIntegration, DatabaseError>;
     /** Config writes compare the revision and refuse an active refresh owner. */
     readonly update: (
       integrationId: string,
       updates: IntegrationUpdate
     ) => Effect.Effect<IntegrationWriteOutcome, ReadFailure>;
-    /** Whether a row was actually removed. */
-    readonly deleteById: (
-      integrationId: string
-    ) => Effect.Effect<boolean, DatabaseError>;
-    readonly createOAuthAuthorizationAttempt: (input: {
-      stateHash: string;
-      integrationId: string;
-      expiresAt: Date;
-      browserBindingHash: string;
-      payload: OAuthAuthorizationAttemptPayload;
-    }) => Effect.Effect<void, DatabaseError>;
+    /** Deletes only the row that still carries this caller's refresh claim. */
+    readonly deleteOwnedRefreshClaim: (
+      input: RefreshClaimInput
+    ) => Effect.Effect<IntegrationDeleteOutcome, DatabaseError>;
+    readonly createOAuthAuthorizationAttempt: (
+      input: OAuthAuthorizationAttemptInput
+    ) => Effect.Effect<void, DatabaseError>;
     /** Deletes the state before checking its expiry and browser binding. */
     readonly consumeOAuthAuthorizationAttempt: (
       stateHash: string,
@@ -163,7 +262,7 @@ export class IntegrationRepo extends Context.Service<
     ) => Effect.Effect<boolean, DatabaseError>;
     readonly markReauthorizationRequired: (
       input: RefreshClaimInput
-    ) => Effect.Effect<boolean, DatabaseError>;
+    ) => Effect.Effect<RefreshClaimTransitionOutcome, DatabaseError>;
   }
 >()("@wfgraph/core/IntegrationRepo") {}
 
@@ -265,6 +364,20 @@ export function makeIntegrationRepoLayer(
             return { ...row, config: input.config };
           }),
 
+        insertWithId: (input) =>
+          database.query(async (db) => {
+            const [row] = await db
+              .insert(integrations)
+              .values({
+                id: input.id,
+                name: input.name,
+                type: input.type,
+                config: cipher.seal(input.config),
+              })
+              .returning();
+            return { ...row, config: input.config };
+          }),
+
         update: (integrationId, updates) =>
           database
             .query((db) =>
@@ -320,14 +433,23 @@ export function makeIntegrationRepoLayer(
             )
             .pipe(Effect.flatMap(decryptedWriteOutcome)),
 
-        deleteById: (integrationId) =>
+        deleteOwnedRefreshClaim: (input) =>
           database.query(async (db) => {
             const removed = await db
               .delete(integrations)
-              .where(eq(integrations.id, integrationId))
+              .where(ownedRefreshClaim(input))
               .returning({ id: integrations.id });
 
-            return removed.length > 0;
+            if (removed.length > 0) return { status: "deleted" as const };
+
+            const existing = await db
+              .select({ id: integrations.id })
+              .from(integrations)
+              .where(eq(integrations.id, input.integrationId))
+              .limit(1);
+            return existing.length > 0
+              ? { status: "no_longer_owned" as const }
+              : { status: "not_found" as const };
           }),
 
         createOAuthAuthorizationAttempt: (input) =>
@@ -342,11 +464,7 @@ export function makeIntegrationRepoLayer(
                 expiresAt: input.expiresAt,
                 browserBindingHash: input.browserBindingHash,
                 encryptedPayload: cipher.seal({
-                  redirectUri: input.payload.redirectUri,
-                  configRevision: String(input.payload.configRevision),
-                  ...(input.payload.codeVerifier
-                    ? { codeVerifier: input.payload.codeVerifier }
-                    : {}),
+                  payload: JSON.stringify(input.payload),
                 }),
               });
             })
@@ -383,9 +501,15 @@ export function makeIntegrationRepoLayer(
                   Effect.map((config) => {
                     const payload =
                       readOAuthAuthorizationAttemptPayload(config);
-                    return payload
-                      ? { integrationId: attempt.integrationId, payload }
-                      : null;
+                    if (!payload) return null;
+                    if (payload.kind === "create") {
+                      return attempt.integrationId === null
+                        ? { integrationId: null, payload }
+                        : null;
+                    }
+                    return attempt.integrationId === null
+                      ? null
+                      : { integrationId: attempt.integrationId, payload };
                   })
                 );
               })
@@ -457,7 +581,7 @@ export function makeIntegrationRepoLayer(
           }),
 
         markReauthorizationRequired: (input) =>
-          database.query(async (db) => {
+          database.query(async (db): Promise<RefreshClaimTransitionOutcome> => {
             const transitioned = await db
               .update(integrations)
               .set({
@@ -468,7 +592,9 @@ export function makeIntegrationRepoLayer(
               })
               .where(ownedRefreshClaim(input))
               .returning({ id: integrations.id });
-            return transitioned.length > 0;
+            return transitioned.length > 0
+              ? { status: "transitioned" }
+              : { status: "no_longer_owned" };
           }),
       };
     })

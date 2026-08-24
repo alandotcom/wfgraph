@@ -1,6 +1,7 @@
 import { getBasePath } from "#src/lib/base-path";
-import { ApiError } from "#src/lib/rpc-client";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
+import { ApiError } from "#src/lib/rpc-client";
+import { readJsonObject } from "@wfgraph/shared/types/json";
 
 const OAUTH_POLL_INTERVAL_MS = 1_000;
 const OAUTH_POLL_TIMEOUT_MS = 10 * 60_000;
@@ -8,7 +9,7 @@ const CLOSED_POPUP_FINAL_POLLS = 3;
 
 type OAuthStatus = "connected" | "reauthorization_required";
 
-type OAuthSummary = {
+export type OAuthSummary = {
   id: string;
   oauth?: {
     status: OAuthStatus;
@@ -17,16 +18,16 @@ type OAuthSummary = {
   };
 };
 
-type OAuthPopup = Pick<Window, "closed" | "close"> & {
+export type OAuthPopup = Pick<Window, "closed" | "close"> & {
   location: Pick<Location, "assign">;
   opener: Window | null;
 };
 
-type OAuthPollingResult =
+export type OAuthPollingResult =
   | { status: OAuthStatus; integration: OAuthSummary }
   | { status: "pending" };
 
-type Sleep = (milliseconds: number) => Promise<void>;
+type Sleep = (milliseconds: number, signal?: AbortSignal) => Promise<void>;
 
 type OAuthPollingQueryClient = {
   fetchQuery: (
@@ -34,17 +35,105 @@ type OAuthPollingQueryClient = {
   ) => Promise<readonly OAuthSummary[]>;
 };
 
-function sleep(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
+function abortError(): DOMException {
+  return new DOMException("The OAuth authorization was canceled", "AbortError");
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw abortError();
+  }
+}
+
+function sleep(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    throwIfAborted(signal);
+    const timer = globalThis.setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    const onAbort = () => {
+      globalThis.clearTimeout(timer);
+      reject(abortError());
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function waitUnlessAborted(
+  pending: Promise<void>,
+  signal: AbortSignal | undefined
+): Promise<void> {
+  if (!signal) {
+    return pending;
+  }
+  throwIfAborted(signal);
+
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(abortError());
+    signal.addEventListener("abort", onAbort, { once: true });
+    pending.then(
+      () => {
+        signal.removeEventListener("abort", onAbort);
+        resolve();
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      }
+    );
+  });
 }
 
 function integrationOAuthPath(integrationId: string): string {
   return `${getBasePath()}/api/integrations/${encodeURIComponent(integrationId)}/oauth`;
 }
 
-/** Builds the authenticated direct route used to revoke one OAuth grant. */
-export function integrationOAuthUrl(integrationId: string): string {
-  return integrationOAuthPath(integrationId);
+export type NewOAuthConnectionInput = {
+  name: string;
+  type: string;
+  config: Record<string, string>;
+};
+
+type NewOAuthAuthorization = {
+  integrationId: string;
+  authorizeUrl: string;
+};
+
+/** Starts a create-mode attempt without creating an integration row. */
+export async function startNewOAuthConnection(
+  input: NewOAuthConnectionInput,
+  signal?: AbortSignal
+): Promise<NewOAuthAuthorization> {
+  const response = await fetch(
+    `${getBasePath()}/api/integrations/oauth/start`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      signal,
+    }
+  );
+  const body = readJsonObject(await response.json().catch(() => null));
+  if (!response.ok) {
+    throw new ApiError(
+      response.status,
+      typeof body?.error === "string"
+        ? body.error
+        : "Failed to start OAuth authorization"
+    );
+  }
+  if (
+    typeof body?.integrationId !== "string" ||
+    typeof body.authorizeUrl !== "string"
+  ) {
+    throw new ApiError(500, "OAuth start returned an invalid response");
+  }
+  return {
+    integrationId: body.integrationId,
+    authorizeUrl: body.authorizeUrl,
+  };
 }
 
 /** Builds the provider redirect route for an OAuth connection. */
@@ -62,18 +151,16 @@ function reserveOAuthPopup(): OAuthPopup | null {
   return popup;
 }
 
-function navigateOAuthPopup(popup: OAuthPopup, integrationId: string): void {
-  popup.location.assign(integrationOAuthStartUrl(integrationId));
-}
-
 /**
  * Reserves a popup while the browser still treats the click as a user gesture,
- * then creates the row before the popup is sent to the provider.
+ * then creates the server-owned attempt before navigating to the provider.
  */
 export async function beginCreatedOAuthConnection({
-  create,
+  start,
+  signal,
 }: {
-  create: () => Promise<{ id: string }>;
+  start: () => Promise<NewOAuthAuthorization>;
+  signal?: AbortSignal;
 }): Promise<
   | { status: "popup_blocked" }
   | { status: "started"; integrationId: string; popup: OAuthPopup }
@@ -83,13 +170,23 @@ export async function beginCreatedOAuthConnection({
     return { status: "popup_blocked" };
   }
 
+  const closeOnAbort = () => popup.close();
+  signal?.addEventListener("abort", closeOnAbort, { once: true });
   try {
-    const integration = await create();
-    navigateOAuthPopup(popup, integration.id);
-    return { status: "started", integrationId: integration.id, popup };
+    throwIfAborted(signal);
+    const authorization = await start();
+    throwIfAborted(signal);
+    popup.location.assign(authorization.authorizeUrl);
+    return {
+      status: "started",
+      integrationId: authorization.integrationId,
+      popup,
+    };
   } catch (error) {
     popup.close();
     throw error;
+  } finally {
+    signal?.removeEventListener("abort", closeOnAbort);
   }
 }
 
@@ -102,7 +199,7 @@ export function beginExistingOAuthConnection(
     return { status: "popup_blocked" };
   }
 
-  navigateOAuthPopup(popup, integrationId);
+  popup.location.assign(integrationOAuthStartUrl(integrationId));
   return { status: "started", popup };
 }
 
@@ -123,6 +220,7 @@ export async function pollOAuthConnection({
   timeoutMs = OAUTH_POLL_TIMEOUT_MS,
   sleep: wait = sleep,
   now = Date.now,
+  signal,
 }: {
   baseline?: OAuthSummary["oauth"];
   integrationId: string;
@@ -132,23 +230,31 @@ export async function pollOAuthConnection({
   timeoutMs?: number;
   sleep?: Sleep;
   now?: () => number;
+  signal?: AbortSignal;
 }): Promise<OAuthPollingResult> {
   const startedAt = now();
-  const poll = async (
-    closedPopupPolls: number
-  ): Promise<OAuthPollingResult> => {
+  let closedPopupPolls = 0;
+  let lastReauthorization: OAuthSummary | undefined;
+
+  while (true) {
+    throwIfAborted(signal);
     if (now() - startedAt >= timeoutMs) {
       return { status: "pending" };
     }
 
+    // eslint-disable-next-line no-await-in-loop -- each poll must observe the response before scheduling the next one.
     const integrations = await queryClient.fetchQuery({
       ...integrationsQueryOptions(),
       staleTime: 0,
     });
+    throwIfAborted(signal);
     const integration = integrations.find(({ id }) => id === integrationId);
 
     const oauth = integration?.oauth;
     if (oauth) {
+      if (oauth.status === "reauthorization_required") {
+        lastReauthorization = integration;
+      }
       const isNewConnectedGrant =
         oauth.status === "connected" &&
         (!baseline || oauth.connectedAt !== baseline.connectedAt);
@@ -162,49 +268,22 @@ export async function pollOAuthConnection({
     }
 
     if (popup.closed) {
-      const finalPolls = closedPopupPolls + 1;
-      if (finalPolls >= CLOSED_POPUP_FINAL_POLLS) {
+      closedPopupPolls += 1;
+      if (closedPopupPolls >= CLOSED_POPUP_FINAL_POLLS) {
+        if (lastReauthorization?.oauth?.status === "reauthorization_required") {
+          return {
+            status: "reauthorization_required",
+            integration: lastReauthorization,
+          };
+        }
         return { status: "pending" };
       }
-      await wait(intervalMs);
-      return poll(finalPolls);
+    } else {
+      closedPopupPolls = 0;
     }
 
-    await wait(intervalMs);
-    return poll(0);
-  };
-
-  return poll(0);
-}
-
-/**
- * Calls a direct authenticated API route and turns every non-success response
- * into the same `ApiError` shape mutations already surface through toasts.
- */
-export async function requestApiRoute(
-  path: string,
-  init?: RequestInit
-): Promise<Response> {
-  const response = await globalThis.fetch(path, init);
-  if (response.ok) {
-    return response;
+    // eslint-disable-next-line no-await-in-loop -- OAuth polls are intentionally sequential and separated by this delay.
+    await waitUnlessAborted(wait(intervalMs, signal), signal);
+    throwIfAborted(signal);
   }
-
-  const body = await response.text();
-  let message = body;
-  try {
-    const parsed: unknown = JSON.parse(body);
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      "error" in parsed &&
-      typeof parsed.error === "string"
-    ) {
-      message = parsed.error;
-    }
-  } catch {
-    // Plain-text proxies still give the operator a useful server response.
-  }
-
-  throw new ApiError(response.status, message || "OAuth request failed");
 }

@@ -2,7 +2,7 @@ import { requireOutputFieldsFromSchema } from "@wfgraph/core/plugin";
 import { describe, expect, it } from "vitest";
 import { linear } from "#src/linear/index";
 
-const integration = linear();
+const integration = linear;
 
 function outputFieldsOf(slug: keyof typeof integration.actions) {
   return requireOutputFieldsFromSchema(

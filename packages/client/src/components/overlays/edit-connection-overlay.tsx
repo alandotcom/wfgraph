@@ -6,16 +6,11 @@ import { Button } from "#src/components/ui/button";
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
 import { useIsMobile } from "#src/hooks/use-mobile";
+import { useOAuthConnection } from "#src/hooks/use-oauth-connection";
 import {
   announceTestResult,
   hasProvidedConfigValues,
 } from "#src/lib/connection-credentials";
-import {
-  beginExistingOAuthConnection,
-  integrationOAuthUrl,
-  pollOAuthConnection,
-  requestApiRoute,
-} from "#src/lib/oauth-connection";
 import type { Integration } from "#src/lib/rpc-client";
 import { orpcQuery, refreshIntegrations } from "#src/lib/rpc-query";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
@@ -228,7 +223,12 @@ export function EditConnectionOverlay({
   const [name, setName] = useState(integration.name);
   const [config, setConfig] = useState<Record<string, string>>({});
   const [oauth, setOauth] = useState(integration.oauth);
-  const [oauthPending, setOauthPending] = useState(false);
+  const oauthConnection = useOAuthConnection({
+    baseline: oauth,
+    onConnected: (updated) => setOauth(updated.oauth),
+    onReauthorizationRequired: (updated) => setOauth(updated.oauth),
+  });
+  const oauthPending = oauthConnection.pending;
 
   const updateConfig = (key: string, value: string) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
@@ -266,18 +266,16 @@ export function EditConnectionOverlay({
     })
   );
 
-  const disconnectOAuth = useMutation({
-    mutationFn: () =>
-      requestApiRoute(integrationOAuthUrl(integration.id), {
-        method: "DELETE",
-      }),
-    onSuccess: async () => {
-      setOauth(undefined);
-      toast.success("OAuth connection disconnected");
-      await refreshIntegrations(queryClient);
-    },
-    meta: { errorMessage: "Failed to disconnect OAuth connection" },
-  });
+  const disconnectOAuth = useMutation(
+    orpcQuery.integration.disconnectOAuth.mutationOptions({
+      onSuccess: async () => {
+        setOauth(undefined);
+        toast.success("OAuth connection disconnected");
+        await refreshIntegrations(queryClient);
+      },
+      meta: { errorMessage: "Failed to disconnect OAuth connection" },
+    })
+  );
 
   const catalog = useExtensionCatalog();
   const catalogEntry = findIntegration(catalog, integration.type);
@@ -362,40 +360,7 @@ export function EditConnectionOverlay({
   };
 
   const handleOAuthConnect = async () => {
-    setOauthPending(true);
-    try {
-      const started = beginExistingOAuthConnection(integration.id);
-      if (started.status === "popup_blocked") {
-        toast.error("Allow pop-ups to connect this provider");
-        return;
-      }
-
-      const result = await pollOAuthConnection({
-        baseline: oauth,
-        integrationId: integration.id,
-        popup: started.popup,
-        queryClient,
-      });
-      await refreshIntegrations(queryClient);
-
-      if (result.status === "connected") {
-        setOauth(result.integration.oauth);
-        toast.success("Connection authorized");
-        return;
-      }
-
-      if (result.status === "reauthorization_required") {
-        setOauth(result.integration.oauth);
-        toast.error("Authorization needs to be completed again");
-        return;
-      }
-
-      toast.message("Authorization is still pending");
-    } catch {
-      toast.error("Could not check OAuth authorization");
-    } finally {
-      setOauthPending(false);
-    }
+    await oauthConnection.startExisting(integration.id);
   };
 
   const renderConfigFields = () => {
@@ -489,7 +454,9 @@ export function EditConnectionOverlay({
           <OAuthConnectionStatus
             oauth={oauth}
             onConnect={handleOAuthConnect}
-            onDisconnect={() => disconnectOAuth.mutate()}
+            onDisconnect={() =>
+              disconnectOAuth.mutate({ integrationId: integration.id })
+            }
             pending={oauthBusy}
             providerLabel={catalogEntry.oauth.label}
           />

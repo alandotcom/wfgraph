@@ -18,6 +18,7 @@ import { createRequestEvent } from "#src/backend/lib/http/request-event";
 import type { WfGraphRuntime } from "#src/backend/runtime";
 import { rpcEffectHandler } from "#src/backend/rpc/router";
 import { makeAppContextLayer } from "#src/backend/lib/effect/app-context";
+import { createApiApp } from "#src/backend/api-app";
 
 /**
  * A runtime satisfying every service a procedure may ask for, all of them
@@ -28,14 +29,20 @@ import { makeAppContextLayer } from "#src/backend/lib/effect/app-context";
  * `WfGraphRuntime` is what a procedure's context carries, and a runtime built over
  * fewer services cannot stand in for one.
  */
-function createStubRuntime(): WfGraphRuntime {
+function createStubRuntime({
+  appContext = { apiBasePath: "/api" },
+  integrationRepo,
+}: {
+  appContext?: Parameters<typeof makeAppContextLayer>[0];
+  integrationRepo?: Parameters<typeof stubIntegrationRepo>[0];
+} = {}): WfGraphRuntime {
   return ManagedRuntime.make(
     Layer.mergeAll(
       SilentAppLoggerLayer,
-      makeAppContextLayer({ apiBasePath: "/api" }),
+      makeAppContextLayer(appContext),
       stubExtensions(),
       stubApiKeyRepo(),
-      stubIntegrationRepo(),
+      stubIntegrationRepo(integrationRepo),
       stubWorkflowRepo(),
       stubExecutionRepo(),
       makeAgentConfigLayer({ enabled: false }),
@@ -162,6 +169,37 @@ describe("rpcEffectHandler", () => {
         },
       });
       assert.deepStrictEqual(logLines, []);
+    } finally {
+      await runtime.dispose();
+    }
+  });
+});
+
+describe("integration OAuth RPC", () => {
+  it("routes disconnectOAuth through the integration service", async () => {
+    const runtime = createStubRuntime({
+      appContext: {
+        apiBasePath: "/api",
+        publicUrl: "https://workflows.example.com",
+      },
+      integrationRepo: { findById: () => Effect.succeed(null) },
+    });
+    const app = createApiApp({
+      basePath: "/api",
+      authorize: () => Promise.resolve(true),
+      runtime,
+    });
+
+    try {
+      const response = await app.fetch(
+        new Request("http://localhost/api/rpc/integration/disconnectOAuth", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ json: { integrationId: "int_1" } }),
+        })
+      );
+
+      assert.strictEqual(response.status, 404);
     } finally {
       await runtime.dispose();
     }

@@ -2,7 +2,7 @@ import { requireOutputFieldsFromSchema } from "@wfgraph/core/plugin";
 import { describe, expect, it } from "vitest";
 import { twilio } from "#src/twilio/index";
 
-const integration = twilio();
+const integration = twilio;
 
 const sendSms = integration.actions["send-sms"];
 

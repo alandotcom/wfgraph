@@ -6,14 +6,11 @@ import { Input } from "#src/components/ui/input";
 import { IntegrationIcon } from "#src/components/ui/integration-icon";
 import { Label } from "#src/components/ui/label";
 import { useIsMobile } from "#src/hooks/use-mobile";
+import { useOAuthConnection } from "#src/hooks/use-oauth-connection";
 import {
   announceTestResult,
   hasProvidedConfigValues,
 } from "#src/lib/connection-credentials";
-import {
-  beginCreatedOAuthConnection,
-  pollOAuthConnection,
-} from "#src/lib/oauth-connection";
 import { orpcQuery, refreshIntegrations } from "#src/lib/rpc-query";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
@@ -218,7 +215,13 @@ export function ConfigureConnectionOverlay({
 
   const catalogEntry = findIntegration(catalog, type);
   const formFields = catalogEntry?.credentialFields;
-  const [oauthPending, setOauthPending] = useState(false);
+  const oauthConnection = useOAuthConnection({
+    onConnected: (integration) => {
+      onSuccess?.(integration.id);
+      closeAll();
+    },
+  });
+  const oauthPending = oauthConnection.pending;
   // Whether this integration has a connection test at all. An integration that
   // declares none has nothing to press and nothing to run before a save.
   const hasTest = catalogEntry?.hasTest === true;
@@ -244,54 +247,13 @@ export function ConfigureConnectionOverlay({
   };
 
   const handleOAuthCreate = async () => {
-    setOauthPending(true);
-    try {
-      let started: Awaited<ReturnType<typeof beginCreatedOAuthConnection>>;
-      try {
-        started = await beginCreatedOAuthConnection({
-          create: () =>
-            create.mutateAsync({
-              name: name.trim(),
-              type,
-              // OAuth replaces only the credential keys it receives from the
-              // provider. Keep every setting entered here for the encrypted row.
-              config,
-            }),
-        });
-      } catch {
-        // The create mutation's shared error handling already announces failures.
-        return;
-      }
-      if (started.status === "popup_blocked") {
-        toast.error("Allow pop-ups to connect this provider");
-        return;
-      }
-
-      const result = await pollOAuthConnection({
-        integrationId: started.integrationId,
-        popup: started.popup,
-        queryClient,
-      });
-      await refreshIntegrations(queryClient);
-
-      if (result.status === "connected") {
-        toast.success("Connection authorized");
-        onSuccess?.(started.integrationId);
-        closeAll();
-        return;
-      }
-
-      if (result.status === "reauthorization_required") {
-        toast.error("Authorization needs to be completed again");
-        return;
-      }
-
-      toast.message("Authorization is still pending");
-    } catch {
-      toast.error("Could not check OAuth authorization");
-    } finally {
-      setOauthPending(false);
-    }
+    await oauthConnection.startCreated({
+      name: name.trim(),
+      type,
+      // OAuth replaces only the credential keys it receives from the
+      // provider. Keep every setting entered here for the encrypted row.
+      config,
+    });
   };
 
   const offerToSaveAnyway = (reason: string) => {

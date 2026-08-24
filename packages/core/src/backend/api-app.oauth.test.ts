@@ -4,10 +4,13 @@ import { createApiApp } from "#src/backend/api-app";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import type { IntegrationOAuth } from "#src/backend/extensions/oauth";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
-import type { DecryptedIntegration } from "#src/backend/services/integrations/repo";
-import type { OAuthAuthorizationAttemptPayload } from "#src/backend/services/integrations/repo";
+import type {
+  DecryptedIntegration,
+  IntegrationRepo,
+  OAuthAuthorizationAttemptInput,
+  OAuthReconnectAuthorizationAttemptPayload,
+} from "#src/backend/services/integrations/repo";
 import { OAUTH_GRANT_CONFIG_KEY } from "#src/backend/services/integrations/oauth-grant";
-import { serializeStoredOAuthGrant } from "#src/backend/services/integrations/oauth-grant";
 import {
   emptyExtensionCatalog,
   type IntegrationMetadata,
@@ -39,6 +42,7 @@ function provider(overrides: Partial<IntegrationOAuth> = {}): IntegrationOAuth {
       clientId: `${publicUrl}${basePath}/integrations/oauth/clients/example`,
       metadataDocument: {
         client_id: `${publicUrl}${basePath}/integrations/oauth/clients/example`,
+        redirect_uris: [`${publicUrl}${basePath}/integrations/oauth/callback`],
       },
     }),
     authorize: ({ state, codeChallenge }) =>
@@ -80,6 +84,152 @@ function extensions(oauth: IntegrationOAuth): Partial<ExtensionSet> {
 }
 
 describe("OAuth API routes", () => {
+  it("starts a new OAuth connection without creating an integration row", async () => {
+    let attempt: OAuthAuthorizationAttemptInput | undefined;
+    let insertedIntegration = false;
+    const runtime = stubWfGraphRuntime({
+      appContext: oauthAppContext,
+      extensions: extensions(provider()),
+      integrationRepo: {
+        insert: () =>
+          Effect.sync(() => {
+            insertedIntegration = true;
+            return integration;
+          }),
+        insertWithId: () =>
+          Effect.sync(() => {
+            insertedIntegration = true;
+            return integration;
+          }),
+        createOAuthAuthorizationAttempt: (input) =>
+          Effect.sync(() => {
+            attempt = input;
+          }),
+      },
+    });
+    const app = createApiApp({
+      basePath,
+      authorize: () => Promise.resolve(true),
+      runtime,
+    });
+
+    try {
+      const response = await app.fetch(
+        new Request(`http://localhost${basePath}/integrations/oauth/start`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            name: "Example connection",
+            type: "example",
+            config: { MANUAL_TOKEN: "manual" },
+          }),
+        })
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("set-cookie")).toContain("HttpOnly");
+      const body = await response.json();
+      expect(body).toEqual({
+        integrationId: expect.any(String),
+        authorizeUrl: expect.stringMatching(
+          /^https:\/\/provider\.example\/authorize\?/
+        ),
+      });
+      expect(attempt?.integrationId).toBeNull();
+      expect(attempt?.payload).toMatchObject({
+        kind: "create",
+        integrationId: body.integrationId,
+        name: "Example connection",
+        type: "example",
+        config: { MANUAL_TOKEN: "manual" },
+      });
+      expect(insertedIntegration).toBe(false);
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
+  it("inserts the reserved integration id only after a successful create callback", async () => {
+    let attempt: OAuthAuthorizationAttemptInput | undefined;
+    let inserted:
+      | Parameters<IntegrationRepo["Service"]["insertWithId"]>[0]
+      | undefined;
+    const runtime = stubWfGraphRuntime({
+      appContext: oauthAppContext,
+      extensions: extensions(provider()),
+      integrationRepo: {
+        createOAuthAuthorizationAttempt: (input) =>
+          Effect.sync(() => {
+            attempt = input;
+          }),
+        consumeOAuthAuthorizationAttempt: () =>
+          Effect.sync(() => {
+            if (!attempt || attempt.payload.kind !== "create") return null;
+            const consumed = {
+              integrationId: null,
+              payload: attempt.payload,
+            } as const;
+            attempt = undefined;
+            return consumed;
+          }),
+        insertWithId: (input) =>
+          Effect.sync(() => {
+            inserted = input;
+            return {
+              ...integration,
+              id: input.id,
+              name: input.name,
+              type: input.type,
+              config: input.config,
+            };
+          }),
+      },
+    });
+    const app = createApiApp({
+      basePath,
+      authorize: () => Promise.resolve(true),
+      runtime,
+    });
+
+    try {
+      const start = await app.fetch(
+        new Request(`http://localhost${basePath}/integrations/oauth/start`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            name: "Example connection",
+            type: "example",
+            config: { MANUAL_TOKEN: "manual" },
+          }),
+        })
+      );
+      const started = await start.json();
+      expect(inserted).toBeUndefined();
+
+      const state = new URL(started.authorizeUrl).searchParams.get("state")!;
+      const cookie = start.headers.get("set-cookie")!.split(";")[0]!;
+      const callback = await app.fetch(
+        new Request(
+          `http://localhost${basePath}/integrations/oauth/callback?state=${state}&code=provider-code`,
+          { headers: { cookie } }
+        )
+      );
+
+      expect(callback.status).toBe(200);
+      expect(inserted).toMatchObject({
+        id: started.integrationId,
+        name: "Example connection",
+        type: "example",
+        config: { MANUAL_TOKEN: "manual" },
+      });
+      expect(inserted?.config[OAUTH_GRANT_CONFIG_KEY]).toContain(
+        "provider-token"
+      );
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
   it("refuses OAuth routes when the host has not configured a public URL", async () => {
     const runtime = stubWfGraphRuntime({
       appContext: { apiBasePath: basePath },
@@ -111,7 +261,6 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      publicUrl,
       authorize: () => Promise.resolve(false),
       runtime,
     });
@@ -126,6 +275,7 @@ describe("OAuth API routes", () => {
       expect(metadata.headers.get("cache-control")).toBe("no-store");
       expect(await metadata.json()).toEqual({
         client_id: `${publicUrl}${basePath}/integrations/oauth/clients/example`,
+        redirect_uris: [`${publicUrl}${basePath}/integrations/oauth/callback`],
       });
       const start = await app.fetch(
         new Request(
@@ -134,6 +284,19 @@ describe("OAuth API routes", () => {
       );
       expect(start.status).toBe(401);
       expect(start.headers.get("cache-control")).toBe("no-store");
+      const createStart = await app.fetch(
+        new Request(`http://localhost${basePath}/integrations/oauth/start`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            name: "Example",
+            type: "example",
+            config: { ACCESS_TOKEN: "must-not-be-read" },
+          }),
+        })
+      );
+      expect(createStart.status).toBe(401);
+      expect(createStart.headers.get("cache-control")).toBe("no-store");
       const callback = await app.fetch(
         new Request(
           `http://localhost${basePath}/integrations/oauth/callback?state=opaque`
@@ -146,12 +309,63 @@ describe("OAuth API routes", () => {
     }
   });
 
+  it.each([
+    {
+      name: "unknown fields",
+      body: { name: "Example", type: "example", config: {}, extra: true },
+    },
+    {
+      name: "the reserved grant key",
+      body: {
+        name: "Example",
+        type: "example",
+        config: { [OAUTH_GRANT_CONFIG_KEY]: "forged" },
+      },
+    },
+    {
+      name: "non-string config values",
+      body: { name: "Example", type: "example", config: { TOKEN: 42 } },
+    },
+  ])("rejects $name in a create OAuth request", async ({ body }) => {
+    let attempted = false;
+    const runtime = stubWfGraphRuntime({
+      appContext: oauthAppContext,
+      extensions: extensions(provider()),
+      integrationRepo: {
+        createOAuthAuthorizationAttempt: () =>
+          Effect.sync(() => {
+            attempted = true;
+          }),
+      },
+    });
+    const app = createApiApp({
+      basePath,
+      authorize: () => Promise.resolve(true),
+      runtime,
+    });
+
+    try {
+      const response = await app.fetch(
+        new Request(`http://localhost${basePath}/integrations/oauth/start`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        })
+      );
+
+      expect(response.status).toBe(400);
+      expect(attempted).toBe(false);
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
   it("keeps the PKCE verifier in the attempt and uses its challenge in the redirect", async () => {
     let attempt:
       | {
           stateHash: string;
           browserBindingHash: string;
-          payload: OAuthAuthorizationAttemptPayload;
+          payload: OAuthReconnectAuthorizationAttemptPayload;
         }
       | undefined;
     const runtime = stubWfGraphRuntime({
@@ -161,13 +375,18 @@ describe("OAuth API routes", () => {
         findById: () => Effect.succeed(integration),
         createOAuthAuthorizationAttempt: (input) =>
           Effect.sync(() => {
-            attempt = input;
+            if (input.payload.kind === "reconnect") {
+              attempt = {
+                stateHash: input.stateHash,
+                browserBindingHash: input.browserBindingHash,
+                payload: input.payload,
+              };
+            }
           }),
       },
     });
     const app = createApiApp({
       basePath,
-      publicUrl,
       authorize: () => Promise.resolve(true),
       runtime,
     });
@@ -181,6 +400,7 @@ describe("OAuth API routes", () => {
       expect(response.status).toBe(302);
       expect(response.headers.get("set-cookie")).toContain("HttpOnly");
       expect(response.headers.get("set-cookie")).toContain("SameSite=Lax");
+      expect(response.headers.get("set-cookie")).toContain("Secure");
       expect(attempt?.payload.codeVerifier).toBeDefined();
       const digest = await globalThis.crypto.subtle.digest(
         "SHA-256",
@@ -216,6 +436,7 @@ describe("OAuth API routes", () => {
               ? {
                   integrationId: integration.id,
                   payload: {
+                    kind: "reconnect",
                     redirectUri: "https://invalid.example/callback",
                     configRevision: 0,
                   },
@@ -226,7 +447,6 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      publicUrl,
       authorize: () => Promise.resolve(true),
       runtime,
     });
@@ -261,7 +481,7 @@ describe("OAuth API routes", () => {
       | {
           stateHash: string;
           browserBindingHash: string;
-          payload: OAuthAuthorizationAttemptPayload;
+          payload: OAuthReconnectAuthorizationAttemptPayload;
         }
       | undefined;
     const runtime = stubWfGraphRuntime({
@@ -281,7 +501,13 @@ describe("OAuth API routes", () => {
         findById: () => Effect.succeed(integration),
         createOAuthAuthorizationAttempt: (input) =>
           Effect.sync(() => {
-            attempt = input;
+            if (input.payload.kind === "reconnect") {
+              attempt = {
+                stateHash: input.stateHash,
+                browserBindingHash: input.browserBindingHash,
+                payload: input.payload,
+              };
+            }
           }),
         consumeOAuthAuthorizationAttempt: (stateHash, browserBindingHash) =>
           Effect.sync(() => {
@@ -299,7 +525,6 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      publicUrl,
       authorize: () => Promise.resolve(true),
       runtime,
     });
@@ -333,7 +558,7 @@ describe("OAuth API routes", () => {
       | {
           stateHash: string;
           browserBindingHash: string;
-          payload: OAuthAuthorizationAttemptPayload;
+          payload: OAuthReconnectAuthorizationAttemptPayload;
         }
       | undefined;
     let written: Record<string, string | undefined> | undefined;
@@ -344,7 +569,13 @@ describe("OAuth API routes", () => {
         findById: () => Effect.succeed(integration),
         createOAuthAuthorizationAttempt: (input) =>
           Effect.sync(() => {
-            attempt = input;
+            if (input.payload.kind === "reconnect") {
+              attempt = {
+                stateHash: input.stateHash,
+                browserBindingHash: input.browserBindingHash,
+                payload: input.payload,
+              };
+            }
           }),
         consumeOAuthAuthorizationAttempt: (stateHash, browserBindingHash) =>
           Effect.sync(() => {
@@ -366,7 +597,6 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      publicUrl,
       authorize: () => Promise.resolve(true),
       runtime,
     });
@@ -398,77 +628,13 @@ describe("OAuth API routes", () => {
     }
   });
 
-  it("retains the grant when provider revocation fails", async () => {
-    const oauthConfig = {
-      ...integration.config,
-      [OAUTH_GRANT_CONFIG_KEY]: serializeStoredOAuthGrant({
-        credentials: { ACCESS_TOKEN: "provider-token" },
-        tokens: { accessToken: "provider-token" },
-        connectedAt: "2026-08-24T00:00:00.000Z",
-      }),
-    };
-    const runtime = stubWfGraphRuntime({
-      appContext: oauthAppContext,
-      extensions: extensions(
-        provider({
-          revoke: async () => {
-            throw new Error("provider failure");
-          },
-        })
-      ),
-      integrationRepo: {
-        findById: () => Effect.succeed({ ...integration, config: oauthConfig }),
-        claimRefresh: () => Effect.succeed({ status: "acquired" }),
-        releaseRefreshClaim: () => Effect.succeed(true),
-        completeRefresh: () =>
-          Effect.die("grant must remain stored after revoke failure"),
-      },
-    });
-    const app = createApiApp({
-      basePath,
-      publicUrl,
-      authorize: () => Promise.resolve(true),
-      runtime,
-    });
-
-    try {
-      const response = await app.fetch(
-        new Request(`http://localhost${basePath}/integrations/int_1/oauth`, {
-          method: "DELETE",
-        })
-      );
-      expect(response.status).toBe(500);
-    } finally {
-      await runtime.dispose();
-    }
-  });
-
-  it("disconnects through the config replacement that resets refresh state", async () => {
-    const oauthConfig = {
-      ...integration.config,
-      [OAUTH_GRANT_CONFIG_KEY]: serializeStoredOAuthGrant({
-        credentials: { ACCESS_TOKEN: "provider-token" },
-        tokens: { accessToken: "provider-token" },
-        connectedAt: "2026-08-24T00:00:00.000Z",
-      }),
-    };
-    let replacement: Record<string, string | undefined> | undefined;
+  it("does not expose OAuth disconnect as a direct API route", async () => {
     const runtime = stubWfGraphRuntime({
       appContext: oauthAppContext,
       extensions: extensions(provider()),
-      integrationRepo: {
-        findById: () => Effect.succeed({ ...integration, config: oauthConfig }),
-        claimRefresh: () => Effect.succeed({ status: "acquired" }),
-        completeRefresh: ({ config }) =>
-          Effect.sync(() => {
-            replacement = config;
-            return true;
-          }),
-      },
     });
     const app = createApiApp({
       basePath,
-      publicUrl,
       authorize: () => Promise.resolve(true),
       runtime,
     });
@@ -479,9 +645,7 @@ describe("OAuth API routes", () => {
           method: "DELETE",
         })
       );
-
-      expect(response.status).toBe(200);
-      expect(replacement).toEqual({ MANUAL_TOKEN: "manual" });
+      expect(response.status).toBe(404);
     } finally {
       await runtime.dispose();
     }

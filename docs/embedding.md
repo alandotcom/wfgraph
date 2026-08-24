@@ -187,21 +187,25 @@ Expose these routes at the resulting API path:
 
 | Route                                                  | Caller and authorization                                                       |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| `POST /api/integrations/oauth/start`                   | The operator's browser when creating a connection. Uses the host `auth` check  |
 | `GET /api/integrations/:integrationId/oauth/start`     | The operator's browser. Uses the host `auth` check                             |
 | `GET /api/integrations/oauth/callback`                 | The operator's browser after the provider redirect. Uses the host `auth` check |
-| `DELETE /api/integrations/:integrationId/oauth`        | The operator's browser. Uses the host `auth` check                             |
 | `GET /api/integrations/oauth/clients/:integrationType` | The OAuth provider. Public, read-only client metadata                          |
 
-The start route stores a short-lived browser-bound attempt before redirecting.
-The callback consumes that attempt once. OAuth tokens stay in the encrypted
-connection configuration and do not enter the extension catalog or RPC responses.
+The create start route stores a short-lived browser-bound attempt without creating a
+connection row. The callback consumes that attempt once and inserts the connection
+after a successful exchange. The existing-connection route starts a fenced reconnect.
+The typed `integration.disconnectOAuth` RPC procedure handles disconnects. OAuth tokens
+stay in the encrypted connection configuration and don't enter the extension catalog
+or RPC responses.
 
-- Each integration is exported as a factory by name too, for a host that lists some of the five.
+- Clerk, Linear, Resend, and Twilio are exported as values. Slack is a factory because
+  it accepts host-provided OAuth client credentials.
 - The editor shows what the server assembled. The action selector lists exactly the
   integrations you passed, and a connection can be stored for those alone.
 - That list controls what reaches `createWfGraphApp`. The process still loads every SDK the
   package imports: two of the five carry one, and `@wfgraph/plugins` imports all five
-  factories. The static import buys the timing of a failure. A missing SDK stops the
+  integrations. The static import buys the timing of a failure. A missing SDK stops the
   application at start-up, where a lazy import would let a single run fail much later.
 - `@wfgraph/plugins` peer-depends on `@wfgraph/core`. Keep one core copy so the
   plugin definitions and the app share one runtime contract.
@@ -373,7 +377,7 @@ different migration tool puts the tables in `public`. This repository's
 | `@wfgraph/core/migrate`  | `migrateWfGraphDatabase`, for migrations without an application                                                                                                                                                                                                  |
 | `@wfgraph/core/logging`  | `configureWfGraphLogging`, the console setup a host installs                                                                                                                                                                                                     |
 | `@wfgraph/client`        | `clientBundle`, the built editor, passed to `createWfGraphApp` as `client`                                                                                                                                                                                       |
-| `@wfgraph/plugins`       | The built-in integration factories by name and `builtInIntegrations(options?)`, which returns fresh values                                                                                                                                                       |
+| `@wfgraph/plugins`       | Four built-in integration values, the configurable `slack(options?)` factory, and `builtInIntegrations(options?)`                                                                                                                                                |
 | `@wfgraph/plugins/ui`    | Their icons and output renderers as one record, imported by the browser alone                                                                                                                                                                                    |
 
 Workflow Graph cannot serialize a React component, so that last record is the one part of the catalog

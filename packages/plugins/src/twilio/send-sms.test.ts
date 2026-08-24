@@ -5,7 +5,7 @@ import { afterEach, beforeEach, vi } from "vitest";
 import * as twilioClient from "#src/twilio/client";
 import { twilio } from "#src/twilio/index";
 
-const underTest = twilio();
+const underTest = twilio;
 
 // What this step decides is whether and what to send, so the seam under it is
 // the Twilio client. What that client puts on the wire is covered separately in

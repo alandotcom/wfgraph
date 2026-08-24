@@ -63,6 +63,54 @@ An SDK earns its place only where it carries protocol logic worth borrowing, whi
 `twilio`, `resend` and `@slack/web-api` did not. Those three keep their own transport and
 error handling and do not go through `callExternal`.
 
+## OAuth adapters
+
+`docs/integrations.md` owns the public OAuth contract and lifecycle. The following rules
+are specific to maintaining the built-in adapters in this package.
+
+Put a provider's OAuth protocol in `[name]/oauth.ts` when it is more than a few lines.
+Export one `IntegrationOAuth` value and attach it to the integration in `index.ts`. Keep
+an integration as a static value unless host-provided client credentials require a
+factory. Slack is the example of that exception; Resend is the metadata-client pattern.
+
+Keep provider behavior out of core. The adapter owns client registration, authorization
+parameters, token and error response schemas, exchange, refresh, revocation, and the
+mapping from an access token to declared credential keys.
+
+Follow these rules for client registration:
+
+- For a registered client, close over host-provided credentials. Do not add the client
+  secret to the integration catalog or public metadata.
+- For a metadata client, use `context.metadataDocumentUrl` as both `clientId` and the
+  document's `client_id`. Set `redirect_uris` to `[context.callbackUrl]`, and return
+  only fields accepted by `PublicOAuthClientMetadata`.
+- For a provider that requires PKCE, set `pkce: "S256"`. Use the required
+  `codeChallenge` and `codeVerifier` parameters directly; don't cast or assert that they
+  exist.
+
+Exchange, refresh, and revocation consume authorization material and can rotate or
+invalidate it. Send these provider writes through `callExternalAsync(callExternal(...))`
+as `POST` requests. Do not add an idempotency key or set `safeToRepeat`. Core owns the
+single-writer refresh claim; an adapter must not retry a token write independently.
+
+Decode every success and error response with Effect Schema. Reject incomplete rotation
+responses before returning: when a provider rotates refresh tokens, return the new access
+token, refresh token, expiry, and credential mapping together. Map credentials only to
+keys in the integration's `credentials` record.
+
+Treat every client credential, authorization code, access token, refresh token, request
+body value, and encoded form as sensitive. Before an adapter includes provider wording in
+an error, remove the submitted sensitive values and their URL-encoded forms. Prefer a
+bounded provider error code over an arbitrary description. Never log a token request or
+response body.
+
+Each OAuth adapter has an `oauth.test.ts`. Assert the complete authorization URL and exact
+request method, URL, headers, and form body for exchange, refresh, and revocation. Cover
+valid recorded responses, provider rejections, unreadable responses, missing required
+fields, token rotation, and secret redaction. A metadata-client test also asserts the full
+registration document. These tests own provider wire behavior; core tests own attempts,
+browser binding, encrypted storage, refresh claims, and callback races.
+
 ## test.ts
 
 The connection test the credentials UI runs, a Promise all the way out because that is how

@@ -185,10 +185,7 @@ function tokenSet(
   };
 }
 
-function createSlackOAuth(
-  clientId: string,
-  clientSecret: string
-): IntegrationOAuth {
+function createSlackOAuth(clientId: string, clientSecret: string) {
   const client: OAuthClientRegistration = { clientId, clientSecret };
 
   return {
@@ -252,7 +249,7 @@ function createSlackOAuth(
         { basicAuth: false }
       );
     },
-  };
+  } satisfies IntegrationOAuth;
 }
 
 export { createSlackOAuth };

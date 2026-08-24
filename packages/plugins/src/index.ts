@@ -1,13 +1,14 @@
 /**
- * The built-in integrations, as factories.
+ * The built-in integrations.
  *
  * Nothing registers on import: a host calls `builtInIntegrations()` and hands the
  * returned values to `createWfGraphApp` under `extensions.integrations`. Each entry
  * is server-only -- a client, a connection test, a step handler -- and the editor
  * learns about all of it as JSON over `/api/extensions` instead.
  *
- * Each factory is also exported by name, for a host that lists some of the five
- * rather than all of them. Calling a factory creates a fresh integration value.
+ * Each integration is also exported by name, for a host that lists some of the
+ * five rather than all of them. Slack remains a factory because it alone accepts
+ * host configuration.
  */
 
 export { clerk } from "#src/clerk/index";
@@ -27,9 +28,9 @@ export type BuiltInIntegrationsOptions = {
 };
 
 export const builtInIntegrations = (options?: BuiltInIntegrationsOptions) => [
-  clerk(),
-  linear(),
-  resend(),
+  clerk,
+  linear,
+  resend,
   slack(options?.slack),
-  twilio(),
+  twilio,
 ];

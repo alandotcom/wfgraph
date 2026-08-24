@@ -5,7 +5,7 @@ import { afterEach, beforeEach, vi } from "vitest";
 import * as resendClient from "#src/resend/client";
 import { resend } from "#src/resend/index";
 
-const underTest = resend();
+const underTest = resend;
 
 // What this step decides is whether and where to send, so the seam under it is
 // the Resend client. What that client puts on the wire is covered separately in

@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 import { mapValues, omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
 import {
@@ -32,6 +32,7 @@ import {
   readStoredOAuthGrant,
 } from "#src/backend/services/integrations/oauth-grant";
 import { resolveIntegrationCredentials } from "#src/backend/services/integrations/credential-resolver";
+import { deleteIntegrationOAuth } from "#src/backend/services/integrations/oauth";
 
 type IntegrationSummary = {
   id: string;
@@ -405,8 +406,44 @@ export const deleteIntegration = Effect.fn("deleteIntegration")(function* (
   const repo = yield* IntegrationRepo;
   const logger = (yield* AppLogger).get("integrations").with({ integrationId });
 
-  const deleted = yield* repo
-    .deleteById(integrationId)
+  let integration = yield* repo
+    .findById(integrationId)
+    .pipe(
+      Effect.catchTags(onReadFailure(logger, "Failed to delete integration"))
+    );
+
+  if (!integration) {
+    yield* logger.warn("Integration not found for delete");
+    return yield* new NotFound({ error: "Integration not found" });
+  }
+
+  const storedGrant = readStoredOAuthGrant(integration.config);
+  if (hasReservedOAuthGrant(integration.config) && !storedGrant) {
+    return yield* new InternalFailure({
+      error:
+        "The stored OAuth grant is invalid. Reconnect the integration before deleting it.",
+    });
+  }
+
+  if (storedGrant) {
+    yield* deleteIntegrationOAuth(integrationId);
+    integration = yield* repo
+      .findById(integrationId)
+      .pipe(
+        Effect.catchTags(onReadFailure(logger, "Failed to delete integration"))
+      );
+    if (!integration) {
+      return yield* new NotFound({ error: "Integration not found" });
+    }
+  }
+
+  const claimInput = {
+    integrationId,
+    claimId: globalThis.crypto.randomUUID(),
+    expectedRevision: integration.configRevision,
+  };
+  const claim = yield* repo
+    .claimRefresh(claimInput)
     .pipe(
       Effect.catchTag(
         "DatabaseError",
@@ -414,9 +451,33 @@ export const deleteIntegration = Effect.fn("deleteIntegration")(function* (
       )
     );
 
-  if (!deleted) {
-    yield* logger.warn("Integration not found for delete");
+  if (claim.status === "not_found") {
     return yield* new NotFound({ error: "Integration not found" });
+  }
+  if (claim.status === "lost") {
+    return yield* new Conflict({
+      error: "Integration configuration changed during delete.",
+    });
+  }
+
+  const deletion = yield* Effect.result(
+    repo.deleteOwnedRefreshClaim(claimInput)
+  );
+  if (Result.isFailure(deletion)) {
+    yield* Effect.result(repo.releaseRefreshClaim(claimInput));
+    return yield* internalFailure(
+      logger,
+      "Failed to delete integration"
+    )(deletion.failure);
+  }
+
+  if (deletion.success.status === "not_found") {
+    return yield* new NotFound({ error: "Integration not found" });
+  }
+  if (deletion.success.status === "no_longer_owned") {
+    return yield* new Conflict({
+      error: "Integration configuration changed during delete.",
+    });
   }
 
   const result: IntegrationDeleted = { success: true };

@@ -18,6 +18,7 @@ import {
   postIntegrationTest,
   putIntegration,
 } from "#src/backend/services/integrations/integrations";
+import { deleteIntegrationOAuth } from "#src/backend/services/integrations/oauth";
 import { postWorkflowExecute } from "#src/backend/services/workflows/lifecycle/manual-start";
 import { resumeWaitByToken } from "#src/backend/services/workflows/lifecycle/resume";
 import { postExecutionCancel } from "#src/backend/services/executions/cancel";
@@ -284,6 +285,11 @@ export const rpcRouter = rpc.router({
     ),
     delete: rpc.integration.delete.handler(
       rpcEffectHandler(({ input }) => deleteIntegration(input.integrationId))
+    ),
+    disconnectOAuth: rpc.integration.disconnectOAuth.handler(
+      rpcEffectHandler(({ input }) =>
+        deleteIntegrationOAuth(input.integrationId)
+      )
     ),
     testConnection: rpc.integration.testConnection.handler(
       rpcEffectHandler(({ input }) => postIntegrationTest(input.integrationId))

@@ -253,7 +253,6 @@ async function buildWfGraphApp(
 
     return await assembleWfGraphApp(options, {
       basePath,
-      publicUrl,
       authorize,
       runtime,
       inngest,
@@ -272,15 +271,13 @@ async function assembleWfGraphApp(
   options: WfGraphAppOptions,
   startup: {
     basePath: "" | `/${string}`;
-    publicUrl?: string;
     authorize: Authorize;
     runtime: WfGraphRuntime;
     inngest: InngestSurface;
     persistence: WfGraphPersistenceInstance;
   }
 ): Promise<WfGraphApp> {
-  const { basePath, publicUrl, authorize, runtime, inngest, persistence } =
-    startup;
+  const { basePath, authorize, runtime, inngest, persistence } = startup;
 
   // Built once: Connect and HTTP serve are alternatives, and whichever path
   // this app takes registers that same list. A broken extension surface fails
@@ -289,7 +286,6 @@ async function assembleWfGraphApp(
   const useConnect = options.inngest.connect === true;
   const apiApp = createApiApp({
     basePath: `${basePath}/api`,
-    publicUrl,
     authorize,
     runtime,
     // Connect dials out; mounting `/inngest` would advertise a callback Inngest

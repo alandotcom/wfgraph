@@ -375,4 +375,4 @@ export function createLinear(createClient: CreateLinearClient) {
   });
 }
 
-export const linear = () => createLinear(createLinearClient);
+export const linear = createLinear(createLinearClient);

@@ -67,19 +67,17 @@ describe("OAuth connection overlays", () => {
     vi.spyOn(window, "open").mockReturnValue(
       reservedPopup as unknown as Window
     );
+    reservedPopup.location.assign.mockImplementation(() => {
+      reservedPopup.closed = true;
+    });
     const fetch = vi
       .spyOn(globalThis, "fetch")
-      .mockImplementation(async (_input, init) => {
-        if (init?.method === "POST") {
+      .mockImplementation(async (_input) => {
+        if (String(_input).endsWith("/api/integrations/oauth/start")) {
           return new Response(
             JSON.stringify({
-              json: {
-                id: "connection_1",
-                name: "",
-                type: "resend",
-                createdAt: "2026-08-24T10:00:00.000Z",
-                updatedAt: "2026-08-24T10:00:00.000Z",
-              },
+              integrationId: "connection_1",
+              authorizeUrl: "https://provider.example/authorize",
             }),
             { headers: { "content-type": "application/json" } }
           );
@@ -119,18 +117,80 @@ describe("OAuth connection overlays", () => {
     );
 
     await waitFor(() => expect(fetch).toHaveBeenCalled());
-    const createRequest = fetch.mock.calls.find(
-      ([, init]) => init?.method === "POST"
+    const startRequest = fetch.mock.calls.find(([input]) =>
+      String(input).endsWith("/api/integrations/oauth/start")
     );
-    expect(createRequest).toBeDefined();
-    expect(JSON.parse(String(createRequest?.[1]?.body))).toMatchObject({
-      json: {
-        config: {
-          RESEND_ACCOUNT_SECRET: "account-secret",
-          RESEND_API_KEY: "api-key",
-        },
+    expect(startRequest).toBeDefined();
+    expect(JSON.parse(String(startRequest?.[1]?.body))).toMatchObject({
+      config: {
+        RESEND_ACCOUNT_SECRET: "account-secret",
+        RESEND_API_KEY: "api-key",
       },
     });
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Connect with Resend",
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(false)
+    );
+    expect(
+      fetch.mock.calls.some(
+        ([input]) =>
+          String(input).endsWith("/api/rpc/integration/create") ||
+          String(input).endsWith("/api/rpc/integration/delete")
+      )
+    ).toBe(false);
+  });
+
+  it("cancels OAuth and closes its popup when the dialog closes", async () => {
+    const reservedPopup = {
+      closed: false,
+      opener: null,
+      close: vi.fn(),
+      location: { assign: vi.fn() },
+    };
+    vi.spyOn(window, "open").mockReturnValue(
+      reservedPopup as unknown as Window
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input) => {
+      if (String(_input).endsWith("/api/integrations/oauth/start")) {
+        return new Response(
+          JSON.stringify({
+            integrationId: "connection_1",
+            authorizeUrl: "https://provider.example/authorize",
+          }),
+          { headers: { "content-type": "application/json" } }
+        );
+      }
+
+      return new Response(JSON.stringify({ json: [] }), {
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    const rendered = renderOverlay(
+      <ConfigureConnectionOverlay overlayId="add_resend" type="resend" />
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Connect with Resend" })
+    );
+    await waitFor(() =>
+      expect(reservedPopup.location.assign).toHaveBeenCalledOnce()
+    );
+
+    rendered.unmount();
+
+    expect(reservedPopup.close).toHaveBeenCalledOnce();
+    expect(
+      vi
+        .mocked(globalThis.fetch)
+        .mock.calls.some(([input]) =>
+          String(input).endsWith("/api/rpc/integration/delete")
+        )
+    ).toBe(false);
   });
 
   it("keeps the manual path and its fields alongside the OAuth path", () => {
@@ -165,6 +225,36 @@ describe("OAuth connection overlays", () => {
     expect(screen.getByText("Account: alerts@example.com")).toBeTruthy();
     expect(screen.getByText("Connected on 2026-08-24")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy();
+  });
+
+  it("disconnects OAuth through the typed integration mutation", async () => {
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ json: { success: true } }), {
+        headers: { "content-type": "application/json" },
+      })
+    );
+
+    renderOverlay(
+      <EditConnectionOverlay
+        integration={connection({
+          status: "connected",
+          connectedAt: "2026-08-24T10:00:00.000Z",
+        })}
+        overlayId="edit_resend"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/api\/rpc\/integration\/disconnectOAuth$/),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      json: { integrationId: "connection_1" },
+    });
   });
 
   it("renders reauthorization as a textual state with reconnect control", () => {

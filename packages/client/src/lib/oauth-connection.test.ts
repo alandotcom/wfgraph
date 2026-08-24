@@ -3,9 +3,7 @@ import {
   beginCreatedOAuthConnection,
   beginExistingOAuthConnection,
   integrationOAuthStartUrl,
-  integrationOAuthUrl,
   pollOAuthConnection,
-  requestApiRoute,
 } from "./oauth-connection";
 
 function setBaseHref(href: string | null): void {
@@ -30,36 +28,39 @@ afterEach(() => {
 });
 
 describe("OAuth connection helpers", () => {
-  it("does not create a row when the browser blocks the creation popup", async () => {
+  it("does not start authorization when the browser blocks the creation popup", async () => {
     vi.spyOn(window, "open").mockReturnValue(null);
-    const create = vi.fn();
+    const start = vi.fn();
 
-    const result = await beginCreatedOAuthConnection({ create });
+    const result = await beginCreatedOAuthConnection({ start });
 
     expect(result).toEqual({ status: "popup_blocked" });
-    expect(create).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
   });
 
-  it("creates the row before navigating its reserved popup", async () => {
+  it("starts a deferred connection before navigating its reserved popup", async () => {
     const reservedPopup = popup();
     const order: string[] = [];
     vi.spyOn(window, "open").mockImplementation(() => {
       order.push("open");
       return reservedPopup as unknown as Window;
     });
-    const create = vi.fn(async () => {
-      order.push("create");
-      return { id: "connection_1" };
+    const start = vi.fn(async () => {
+      order.push("start");
+      return {
+        integrationId: "connection_1",
+        authorizeUrl: "https://provider.example/authorize",
+      };
     });
     reservedPopup.location.assign.mockImplementation(() =>
       order.push("navigate")
     );
 
-    await beginCreatedOAuthConnection({ create });
+    await beginCreatedOAuthConnection({ start });
 
-    expect(order).toEqual(["open", "create", "navigate"]);
+    expect(order).toEqual(["open", "start", "navigate"]);
     expect(reservedPopup.location.assign).toHaveBeenCalledWith(
-      "/api/integrations/connection_1/oauth/start"
+      "https://provider.example/authorize"
     );
   });
 
@@ -191,6 +192,54 @@ describe("OAuth connection helpers", () => {
     expect(sleep).toHaveBeenCalledTimes(2);
   });
 
+  it("returns an unchanged reauthorization result after the popup closes", async () => {
+    const unchanged = {
+      id: "connection_1",
+      oauth: {
+        status: "reauthorization_required" as const,
+        connectedAt: "2026-08-24T10:00:00.000Z",
+      },
+    };
+    const fetchQuery = vi.fn().mockResolvedValue([unchanged]);
+    const sleep = vi.fn(async () => undefined);
+    const closedPopup = popup();
+    closedPopup.closed = true;
+
+    const result = await pollOAuthConnection({
+      baseline: unchanged.oauth,
+      integrationId: unchanged.id,
+      popup: closedPopup,
+      queryClient: { fetchQuery },
+      sleep,
+    });
+
+    expect(result).toEqual({
+      status: "reauthorization_required",
+      integration: unchanged,
+    });
+    expect(fetchQuery).toHaveBeenCalledTimes(3);
+  });
+
+  it("stops polling immediately when its owner cancels the authorization", async () => {
+    const controller = new AbortController();
+    const fetchQuery = vi.fn().mockResolvedValue([]);
+    const sleep = vi.fn(() => new Promise<void>(() => undefined));
+
+    const polling = pollOAuthConnection({
+      integrationId: "connection_1",
+      popup: popup(),
+      queryClient: { fetchQuery },
+      signal: controller.signal,
+      sleep,
+    });
+    await vi.waitFor(() => expect(sleep).toHaveBeenCalledOnce());
+
+    controller.abort();
+
+    await expect(polling).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchQuery).toHaveBeenCalledOnce();
+  });
+
   it("opens an existing connection's authorization route for reconnecting", () => {
     const reservedPopup = popup();
     vi.spyOn(window, "open").mockReturnValue(
@@ -205,26 +254,9 @@ describe("OAuth connection helpers", () => {
     );
   });
 
-  it("uses the direct disconnect route and its DELETE method", async () => {
-    const fetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(new Response(null, { status: 204 }));
-
-    await requestApiRoute(integrationOAuthUrl("connection_1"), {
-      method: "DELETE",
-    });
-
-    expect(fetch).toHaveBeenCalledWith("/api/integrations/connection_1/oauth", {
-      method: "DELETE",
-    });
-  });
-
   it("adds the application's base path to OAuth routes", () => {
     setBaseHref("/wfgraph/");
 
-    expect(integrationOAuthUrl("connection_1")).toBe(
-      "/wfgraph/api/integrations/connection_1/oauth"
-    );
     expect(integrationOAuthStartUrl("connection_1")).toBe(
       "/wfgraph/api/integrations/connection_1/oauth/start"
     );

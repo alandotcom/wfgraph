@@ -206,8 +206,8 @@ export function callExternal<T>(
  *
  * An integration handler yields `callExternal` inside `defineStep`, which is
  * already given the transport. This serves the Promise seams that are not that:
- * a connection test answering the credentials UI, and a host `defineAction`
- * written as a plain async function. An integration does not call this.
+ * a connection test answering the credentials UI, an OAuth provider adapter,
+ * and a host `defineAction` written as a plain async function.
  *
  * Only an `ExternalError` becomes a result object. A defect, a `refusedInBody`
  * that throws among them, rejects the returned Promise.

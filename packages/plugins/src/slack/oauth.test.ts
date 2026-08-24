@@ -13,6 +13,9 @@ function configuredOAuth() {
   if (!oauth) {
     throw new Error("Slack OAuth was not configured");
   }
+  if (oauth.pkce !== undefined) {
+    throw new Error("Slack OAuth must not request PKCE");
+  }
   return oauth;
 }
 

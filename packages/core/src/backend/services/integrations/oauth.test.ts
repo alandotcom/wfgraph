@@ -10,9 +10,11 @@ import {
 import {
   completeIntegrationOAuth,
   deleteIntegrationOAuth,
+  getOAuthClientMetadata,
   oauthBindingCookieName,
   startIntegrationOAuth,
 } from "#src/backend/services/integrations/oauth";
+import { deleteIntegration } from "#src/backend/services/integrations/integrations";
 import { makeAppContextLayer } from "#src/backend/lib/effect/app-context";
 import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { Conflict, InternalFailure } from "#src/backend/lib/effect/failures";
@@ -36,6 +38,127 @@ describe("OAuth browser binding cookie names", () => {
       oauthBindingCookieName("state\r\nSet-Cookie: injected=1")
     ).toBeNull();
     expect(oauthBindingCookieName("short")).toBeNull();
+  });
+});
+
+describe("OAuth client metadata", () => {
+  it("rejects fields outside the public metadata allowlist", async () => {
+    const result = await Effect.runPromise(
+      Effect.result(getOAuthClientMetadata("example")).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            SilentAppLoggerLayer,
+            makeAppContextLayer({
+              publicUrl: "https://workflows.example.com",
+              apiBasePath: "/api",
+            }),
+            stubExtensions({
+              catalog: {
+                ...emptyExtensionCatalog,
+                integrations: [
+                  {
+                    type: "example",
+                    label: "Example",
+                    description: "Test integration",
+                    hasTest: false,
+                    credentialFields: {},
+                  },
+                ],
+              },
+              oauthFor: () => ({
+                label: "Example OAuth",
+                registerClient: (context) => ({
+                  clientId: context.metadataDocumentUrl,
+                  metadataDocument: {
+                    client_id: context.metadataDocumentUrl,
+                    client_name: "Workflow Graph",
+                    client_uri: context.publicUrl,
+                    redirect_uris: [context.callbackUrl],
+                    grant_types: ["authorization_code"],
+                    response_types: ["code"],
+                    token_endpoint_auth_method: "none",
+                    scope: "messages:write",
+                    private_key: "must-never-be-published",
+                  } as never,
+                }),
+                authorize: () => new URL("https://provider.example/authorize"),
+                exchange: async () => ({
+                  credentials: {},
+                  tokens: { accessToken: "access" },
+                }),
+                refresh: async () => ({
+                  credentials: {},
+                  tokens: { accessToken: "access" },
+                }),
+                revoke: async () => undefined,
+              }),
+            })
+          )
+        )
+      )
+    );
+
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(InternalFailure);
+    }
+  });
+
+  it("rejects metadata that advertises a different callback", async () => {
+    const metadataUrl =
+      "https://workflows.example.com/api/integrations/oauth/clients/example";
+    const result = await Effect.runPromise(
+      Effect.result(getOAuthClientMetadata("example")).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            SilentAppLoggerLayer,
+            makeAppContextLayer({
+              publicUrl: "https://workflows.example.com",
+              apiBasePath: "/api",
+            }),
+            stubExtensions({
+              catalog: {
+                ...emptyExtensionCatalog,
+                integrations: [
+                  {
+                    type: "example",
+                    label: "Example",
+                    description: "Test integration",
+                    hasTest: false,
+                    credentialFields: {},
+                  },
+                ],
+              },
+              oauthFor: () => ({
+                label: "Example OAuth",
+                registerClient: () => ({
+                  clientId: metadataUrl,
+                  metadataDocument: {
+                    client_id: metadataUrl,
+                    redirect_uris: ["https://attacker.example/callback"],
+                  },
+                }),
+                authorize: () => new URL("https://provider.example/authorize"),
+                exchange: async () => ({
+                  credentials: {},
+                  tokens: { accessToken: "access" },
+                }),
+                refresh: async () => ({
+                  credentials: {},
+                  tokens: { accessToken: "access" },
+                }),
+                revoke: async () => undefined,
+              }),
+            })
+          )
+        )
+      )
+    );
+
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(InternalFailure);
+    }
   });
 });
 
@@ -130,7 +253,12 @@ function oauthExtensions(overrides: {
   registerClient?: () => { clientId: string };
   exchange?: () => Promise<{
     credentials: Record<string, string>;
-    tokens: { accessToken: string };
+    tokens: {
+      accessToken: string;
+      refreshToken?: string;
+      expiresAt?: string;
+    };
+    accountLabel?: string;
   }>;
   revoke: (accessToken: string) => Promise<void>;
 }): Partial<ExtensionSet> {
@@ -195,6 +323,109 @@ function integrationWithGrant(
 }
 
 describe("OAuth config races", () => {
+  it("revokes an OAuth grant before deleting its integration row", async () => {
+    let current: DecryptedIntegration | null = integrationWithGrant(
+      "old-access",
+      0
+    );
+    const operations: string[] = [];
+    const repository: Partial<IntegrationRepo["Service"]> = {
+      findById: () => Effect.succeed(current),
+      claimRefresh: ({ claimId, expectedRevision }) =>
+        Effect.sync(() => {
+          if (
+            !current ||
+            current.configRevision !== expectedRevision ||
+            current.refreshState === "refreshing"
+          ) {
+            return { status: "lost" as const };
+          }
+          current = {
+            ...current,
+            refreshState: "refreshing",
+            refreshClaimId: claimId,
+            refreshClaimedAt: new Date(),
+          };
+          return { status: "acquired" as const };
+        }),
+      completeRefresh: ({ claimId, config }) =>
+        Effect.sync(() => {
+          if (!current || current.refreshClaimId !== claimId) return false;
+          current = {
+            ...current,
+            config,
+            configRevision: current.configRevision + 1,
+            refreshState: "idle",
+            refreshClaimId: null,
+            refreshClaimedAt: null,
+          };
+          return true;
+        }),
+      deleteOwnedRefreshClaim: ({ claimId }) =>
+        Effect.sync(() => {
+          expect(readStoredOAuthGrant(current?.config ?? {})).toBeNull();
+          expect(current?.refreshClaimId).toBe(claimId);
+          operations.push("delete");
+          current = null;
+          return { status: "deleted" as const };
+        }),
+    };
+
+    const result = await Effect.runPromise(
+      deleteIntegration("int_1").pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            SilentAppLoggerLayer,
+            appContext,
+            stubExtensions(
+              oauthExtensions({
+                revoke: async () => {
+                  operations.push("revoke");
+                },
+              })
+            ),
+            stubIntegrationRepo(repository)
+          )
+        )
+      )
+    );
+
+    expect(result).toEqual({ success: true });
+    expect(operations).toEqual(["revoke", "delete"]);
+    expect(current).toBeNull();
+  });
+
+  it("refuses to delete a row whose reserved OAuth grant is malformed", async () => {
+    const integration = integrationWithGrant("old-access", 0);
+    integration.config[OAUTH_GRANT_CONFIG_KEY] = "not-a-grant";
+    let deleteCalls = 0;
+    const repository = stubIntegrationRepo({
+      findById: () => Effect.succeed(integration),
+      deleteOwnedRefreshClaim: () =>
+        Effect.sync(() => {
+          deleteCalls += 1;
+          return { status: "deleted" as const };
+        }),
+    });
+
+    const failure = await Effect.runPromise(
+      deleteIntegration("int_1").pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            SilentAppLoggerLayer,
+            appContext,
+            stubExtensions(oauthExtensions({ revoke: async () => undefined })),
+            repository
+          )
+        ),
+        Effect.flip
+      )
+    );
+
+    expect(failure).toBeInstanceOf(InternalFailure);
+    expect(deleteCalls).toBe(0);
+  });
+
   it("lets one concurrent callback exchange and never revokes installation-wide cleanup", async () => {
     let current = integrationWithGrant("old-access", 0);
     let exchangeCalls = 0;
@@ -204,6 +435,7 @@ describe("OAuth config races", () => {
         Effect.succeed({
           integrationId: current.id,
           payload: {
+            kind: "reconnect",
             redirectUri:
               "https://workflows.example.com/api/integrations/oauth/callback",
             configRevision: 0,
@@ -319,6 +551,200 @@ describe("OAuth config races", () => {
   });
 });
 
+describe("deferred OAuth creation", () => {
+  const callbackInput = {
+    state: "state",
+    browserBinding: "binding",
+    code: "code",
+    providerError: undefined,
+  };
+  const createAttempt = {
+    integrationId: null,
+    payload: {
+      kind: "create" as const,
+      integrationId: "int_reserved",
+      name: "Example",
+      type: "example",
+      config: { MANUAL_TOKEN: "manual" },
+      redirectUri:
+        "https://workflows.example.com/api/integrations/oauth/callback",
+    },
+  };
+
+  it("leaves no integration row when the provider declines authorization", async () => {
+    let inserted = false;
+    const result = await Effect.runPromise(
+      Effect.result(
+        completeIntegrationOAuth({
+          ...callbackInput,
+          code: undefined,
+          providerError: "access_denied",
+        })
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            SilentAppLoggerLayer,
+            appContext,
+            stubExtensions(oauthExtensions({ revoke: async () => undefined })),
+            stubIntegrationRepo({
+              consumeOAuthAuthorizationAttempt: () =>
+                Effect.succeed(createAttempt),
+              insertWithId: () =>
+                Effect.sync(() => {
+                  inserted = true;
+                  return integrationWithGrant("unexpected", 0);
+                }),
+            })
+          )
+        )
+      )
+    );
+
+    expect(Result.isFailure(result)).toBe(true);
+    expect(inserted).toBe(false);
+  });
+
+  it("revokes an issued grant when its credentials do not match the integration", async () => {
+    const revoked: string[] = [];
+    const result = await Effect.runPromise(
+      Effect.result(completeIntegrationOAuth(callbackInput)).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            SilentAppLoggerLayer,
+            appContext,
+            stubExtensions(
+              oauthExtensions({
+                exchange: async () => ({
+                  credentials: { UNDECLARED_TOKEN: "issued-access" },
+                  tokens: { accessToken: "issued-access" },
+                }),
+                revoke: async (accessToken) => {
+                  revoked.push(accessToken);
+                },
+              })
+            ),
+            stubIntegrationRepo({
+              consumeOAuthAuthorizationAttempt: () =>
+                Effect.succeed(createAttempt),
+            })
+          )
+        )
+      )
+    );
+
+    expect(Result.isFailure(result)).toBe(true);
+    expect(revoked).toEqual(["issued-access"]);
+  });
+
+  it("revokes an issued grant when its normalized fields are invalid", async () => {
+    const revoked: string[] = [];
+    const result = await Effect.runPromise(
+      Effect.result(completeIntegrationOAuth(callbackInput)).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            SilentAppLoggerLayer,
+            appContext,
+            stubExtensions(
+              oauthExtensions({
+                exchange: async () => ({
+                  credentials: { ACCESS_TOKEN: "issued-access" },
+                  tokens: {
+                    accessToken: "issued-access",
+                    expiresAt: "not-a-timestamp",
+                  },
+                }),
+                revoke: async (accessToken) => {
+                  revoked.push(accessToken);
+                },
+              })
+            ),
+            stubIntegrationRepo({
+              consumeOAuthAuthorizationAttempt: () =>
+                Effect.succeed(createAttempt),
+            })
+          )
+        )
+      )
+    );
+
+    expect(Result.isFailure(result)).toBe(true);
+    expect(revoked).toEqual(["issued-access"]);
+  });
+
+  it("revokes an issued grant when inserting the new connection fails", async () => {
+    const revoked: string[] = [];
+    const failure = await Effect.runPromise(
+      completeIntegrationOAuth(callbackInput).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            SilentAppLoggerLayer,
+            appContext,
+            stubExtensions(
+              oauthExtensions({
+                revoke: async (accessToken) => {
+                  revoked.push(accessToken);
+                },
+              })
+            ),
+            stubIntegrationRepo({
+              consumeOAuthAuthorizationAttempt: () =>
+                Effect.succeed(createAttempt),
+              insertWithId: () =>
+                Effect.fail(new DatabaseError({ cause: "insert failed" })),
+              findById: () => Effect.succeed(null),
+            })
+          )
+        ),
+        Effect.flip
+      )
+    );
+
+    expect(failure).toBeInstanceOf(InternalFailure);
+    expect(revoked).toEqual(["new-access"]);
+  });
+
+  it("fences a committed row when the insert result is uncertain", async () => {
+    const revoked: string[] = [];
+    let marked = 0;
+    const failure = await Effect.runPromise(
+      completeIntegrationOAuth(callbackInput).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            SilentAppLoggerLayer,
+            appContext,
+            stubExtensions(
+              oauthExtensions({
+                revoke: async (accessToken) => {
+                  revoked.push(accessToken);
+                },
+              })
+            ),
+            stubIntegrationRepo({
+              consumeOAuthAuthorizationAttempt: () =>
+                Effect.succeed(createAttempt),
+              insertWithId: () =>
+                Effect.fail(new DatabaseError({ cause: "result lost" })),
+              findById: () =>
+                Effect.succeed(integrationWithGrant("new-access", 0)),
+              claimRefresh: () => Effect.succeed({ status: "acquired" }),
+              markReauthorizationRequired: () =>
+                Effect.sync(() => {
+                  marked += 1;
+                  return { status: "transitioned" as const };
+                }),
+            })
+          )
+        ),
+        Effect.flip
+      )
+    );
+
+    expect(failure).toBeInstanceOf(InternalFailure);
+    expect(revoked).toEqual([]);
+    expect(marked).toBe(1);
+  });
+});
+
 describe("OAuth claim failure boundaries", () => {
   const callbackInput = {
     state: "state",
@@ -336,6 +762,7 @@ describe("OAuth claim failure boundaries", () => {
         Effect.succeed({
           integrationId: integration.id,
           payload: {
+            kind: "reconnect",
             redirectUri:
               "https://workflows.example.com/api/integrations/oauth/callback",
             configRevision: integration.configRevision,
@@ -403,7 +830,7 @@ describe("OAuth claim failure boundaries", () => {
       markReauthorizationRequired: () =>
         Effect.sync(() => {
           marked += 1;
-          return true;
+          return { status: "transitioned" as const };
         }),
     });
 
@@ -441,7 +868,7 @@ describe("OAuth claim failure boundaries", () => {
       markReauthorizationRequired: () =>
         Effect.sync(() => {
           marked += 1;
-          return true;
+          return { status: "transitioned" as const };
         }),
     });
 
@@ -527,7 +954,7 @@ describe("OAuth claim failure boundaries", () => {
             refreshClaimId: null,
             refreshClaimedAt: null,
           };
-          return true;
+          return { status: "transitioned" as const };
         }),
     });
 

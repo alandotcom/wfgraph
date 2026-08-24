@@ -511,6 +511,9 @@ export const rpcContract = {
     delete: route("DELETE", "/integrations/{integrationId}")
       .input(contractSchema(Schema.Struct({ integrationId: idSchema })))
       .output(deleted),
+    disconnectOAuth: route("DELETE", "/integrations/{integrationId}/oauth")
+      .input(contractSchema(Schema.Struct({ integrationId: idSchema })))
+      .output(deleted),
     testConnection: route("POST", "/integrations/{integrationId}/test")
       .input(contractSchema(Schema.Struct({ integrationId: idSchema })))
       .output(integrationTestResult),

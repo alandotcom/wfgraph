@@ -150,8 +150,31 @@ function repositoryHarness(
   };
 }
 
+describe("integration insertion", () => {
+  it("inserts under an explicitly reserved id", async () => {
+    const config = { ACCESS_TOKEN: "secret" };
+    const repoHarness = repositoryHarness((statement) =>
+      statement.query.startsWith("insert") ? [row(cipher.seal(config))] : []
+    );
+
+    const inserted = await repoHarness.run((repo) =>
+      repo.insertWithId({
+        id: "int_1",
+        name: "Slack Prod",
+        type: "slack",
+        config,
+      })
+    );
+
+    expect(inserted.id).toBe("int_1");
+    expect(inserted.config).toEqual(config);
+    expect(repoHarness.statements[0]?.params).toContain("int_1");
+  });
+});
+
 describe("OAuth authorization attempts", () => {
   const attemptPayload = {
+    kind: "reconnect" as const,
     redirectUri:
       "https://workflows.example.com/api/integrations/oauth/callback",
     configRevision: 0,
@@ -162,10 +185,7 @@ describe("OAuth authorization attempts", () => {
     "int_1",
     new Date("2099-01-01T00:00:00Z"),
     "browser_hash",
-    cipher.seal({
-      ...attemptPayload,
-      configRevision: String(attemptPayload.configRevision),
-    }),
+    cipher.seal({ payload: JSON.stringify(attemptPayload) }),
     new Date("2026-01-01T00:00:00Z"),
   ];
 
@@ -235,6 +255,54 @@ describe("OAuth authorization attempts", () => {
     );
 
     expect(consumed).toBeNull();
+  });
+
+  it("stores create data only in the encrypted payload under a nullable integration id", async () => {
+    const payload = {
+      kind: "create" as const,
+      integrationId: "int_reserved",
+      name: "New connection",
+      type: "slack",
+      config: { TEAM: "secret-team" },
+      redirectUri:
+        "https://workflows.example.com/api/integrations/oauth/callback",
+      codeVerifier: "pkce-verifier",
+    };
+    const attemptRow = [
+      "state_hash",
+      null,
+      new Date("2099-01-01T00:00:00Z"),
+      "browser_hash",
+      cipher.seal({ payload: JSON.stringify(payload) }),
+      new Date("2026-01-01T00:00:00Z"),
+    ];
+    const repoHarness = repositoryHarness((statement) =>
+      statement.query.startsWith("delete") &&
+      !statement.query.includes('"expires_at" <=')
+        ? [attemptRow]
+        : []
+    );
+
+    await repoHarness.run((repo) =>
+      repo.createOAuthAuthorizationAttempt({
+        stateHash: "state_hash",
+        integrationId: null,
+        expiresAt: new Date("2099-01-01T00:00:00Z"),
+        browserBindingHash: "browser_hash",
+        payload,
+      })
+    );
+    const consumed = await repoHarness.run((repo) =>
+      repo.consumeOAuthAuthorizationAttempt("state_hash", "browser_hash")
+    );
+
+    expect(consumed).toEqual({ integrationId: null, payload });
+    const insert = repoHarness.statements.find((statement) =>
+      statement.query.startsWith("insert")
+    );
+    expect(insert?.params).toContain(null);
+    expect(insert?.params).not.toContain("int_reserved");
+    expect(insert?.params).not.toContain("secret-team");
   });
 });
 
@@ -306,16 +374,13 @@ describe("integration refresh claims", () => {
     expect(repoHarness.statements[0]?.params).toContain(2);
   });
 
-  it.each([
-    ["releaseRefreshClaim", "idle"],
-    ["markReauthorizationRequired", "reauthorization_required"],
-  ] as const)("fences %s by the owning claim", async (method, nextState) => {
+  it("fences releaseRefreshClaim by the owning claim", async () => {
     const repoHarness = repositoryHarness((statement) =>
       statement.query.startsWith("update") ? [] : []
     );
 
     const changed = await repoHarness.run((repo) =>
-      repo[method]({
+      repo.releaseRefreshClaim({
         integrationId: "int_1",
         claimId: "stale_claim",
         expectedRevision: 0,
@@ -325,6 +390,56 @@ describe("integration refresh claims", () => {
     expect(changed).toBe(false);
     const statement = repoHarness.statements.at(-1);
     expect(statement?.query).toContain("refresh_claim_id");
-    expect(statement?.params).toContain(nextState);
+    expect(statement?.params).toContain("idle");
+  });
+
+  it("fences markReauthorizationRequired by the owning claim", async () => {
+    const repoHarness = repositoryHarness((statement) =>
+      statement.query.startsWith("update") ? [] : []
+    );
+
+    const changed = await repoHarness.run((repo) =>
+      repo.markReauthorizationRequired({
+        integrationId: "int_1",
+        claimId: "stale_claim",
+        expectedRevision: 0,
+      })
+    );
+
+    expect(changed).toEqual({ status: "no_longer_owned" });
+    const statement = repoHarness.statements.at(-1);
+    expect(statement?.query).toContain("refresh_claim_id");
+    expect(statement?.params).toContain("reauthorization_required");
+  });
+
+  it.each([
+    { deleteRows: [["int_1"]], lookupRows: [], expected: "deleted" },
+    {
+      deleteRows: [],
+      lookupRows: [["int_1"]],
+      expected: "no_longer_owned",
+    },
+    { deleteRows: [], lookupRows: [], expected: "not_found" },
+  ])("reports $expected when deleting an owned claim", async (scenario) => {
+    const repoHarness = repositoryHarness((statement) => {
+      if (statement.query.startsWith("delete")) return scenario.deleteRows;
+      if (statement.query.startsWith("select")) return scenario.lookupRows;
+      return [];
+    });
+
+    const outcome = await repoHarness.run((repo) =>
+      repo.deleteOwnedRefreshClaim({
+        integrationId: "int_1",
+        claimId: "claim_1",
+        expectedRevision: 4,
+      })
+    );
+
+    expect(outcome).toEqual({ status: scenario.expected });
+    const statement = repoHarness.statements[0];
+    expect(statement?.query).toContain("refresh_claim_id");
+    expect(statement?.query).toContain("config_revision");
+    expect(statement?.params).toContain("claim_1");
+    expect(statement?.params).toContain(4);
   });
 });

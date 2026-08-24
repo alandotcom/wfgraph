@@ -79,3 +79,22 @@ request environment, so provider secrets remain request-scoped.
 The connection row carries refresh coordination columns. PostgreSQL and
 Hyperdrive share conditional updates, and SQLite performs the same decisions in
 `BEGIN IMMEDIATE` transactions.
+
+## Amendment: New connections were deferred until callback completion
+
+Date: 2026-08-24
+
+The original design created a connection row before opening the provider page.
+A browser or process that ended before callback completion could leave a row
+without a grant, because client cleanup could not run after that browser ended.
+
+Create-mode attempts instead stored the reserved connection ID, name, type, and
+manual configuration inside the encrypted attempt payload. Their nullable
+`integration_id` held no foreign key target. The callback inserted the reserved
+ID only after exchange and credential validation succeeded. Existing-connection
+attempts continued to reference and fence their stored row.
+
+This change made cancellation, provider decline, expiry, and browser loss leave
+no provisional connection row. If the provider issued a valid grant but storage
+or credential validation failed, Core attempted revocation before returning the
+failure.

@@ -146,9 +146,9 @@ export const oauthAuthorizationAttempts = pgTable(
   "oauth_authorization_attempts",
   {
     stateHash: text("state_hash").primaryKey(),
-    integrationId: text("integration_id")
-      .notNull()
-      .references(() => integrations.id, { onDelete: "cascade" }),
+    integrationId: text("integration_id").references(() => integrations.id, {
+      onDelete: "cascade",
+    }),
     expiresAt: timestamp("expires_at").notNull(),
     browserBindingHash: text("browser_binding_hash").notNull(),
     encryptedPayload: text("encrypted_payload").notNull(),

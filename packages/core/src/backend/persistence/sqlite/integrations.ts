@@ -162,6 +162,37 @@ export function makeSqliteIntegrationRepo(
           updatedAt: now,
         };
       }),
+    insertWithId: (input) =>
+      store.write((database) => {
+        const now = new Date();
+        database
+          .prepare(
+            `INSERT INTO integrations
+             (id, name, type, config, is_managed, created_at, updated_at)
+             VALUES (?, ?, ?, ?, 0, ?, ?)`
+          )
+          .run(
+            input.id,
+            input.name,
+            input.type,
+            cipher.seal(input.config),
+            now.getTime(),
+            now.getTime()
+          );
+        return {
+          id: input.id,
+          name: input.name,
+          type: input.type,
+          config: input.config,
+          configRevision: 0,
+          isManaged: false,
+          refreshState: "idle",
+          refreshClaimId: null,
+          refreshClaimedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        };
+      }),
     update: (integrationId, updates) =>
       store
         .write((database) => {
@@ -205,13 +236,25 @@ export function makeSqliteIntegrationRepo(
             : { status: "conflict" as const };
         })
         .pipe(Effect.flatMap(decryptWriteOutcome)),
-    deleteById: (integrationId) =>
-      store.write(
-        (database) =>
-          database
-            .prepare("DELETE FROM integrations WHERE id = ? RETURNING id")
-            .get(integrationId) !== undefined
-      ),
+    deleteOwnedRefreshClaim: (input) =>
+      store.write((database) => {
+        const removed = database
+          .prepare(
+            `DELETE FROM integrations
+             WHERE id = ? AND refresh_state = 'refreshing'
+               AND refresh_claim_id = ? AND config_revision = ?
+             RETURNING id`
+          )
+          .get(input.integrationId, input.claimId, input.expectedRevision);
+        if (removed !== undefined) return { status: "deleted" as const };
+
+        const existing = database
+          .prepare("SELECT id FROM integrations WHERE id = ?")
+          .get(input.integrationId);
+        return existing === undefined
+          ? { status: "not_found" as const }
+          : { status: "no_longer_owned" as const };
+      }),
     createOAuthAuthorizationAttempt: (input) =>
       store.write((database) => {
         database
@@ -230,13 +273,7 @@ export function makeSqliteIntegrationRepo(
             input.integrationId,
             input.expiresAt.getTime(),
             input.browserBindingHash,
-            cipher.seal({
-              redirectUri: input.payload.redirectUri,
-              configRevision: String(input.payload.configRevision),
-              ...(input.payload.codeVerifier
-                ? { codeVerifier: input.payload.codeVerifier }
-                : {}),
-            }),
+            cipher.seal({ payload: JSON.stringify(input.payload) }),
             Date.now()
           );
       }),
@@ -258,7 +295,7 @@ export function makeSqliteIntegrationRepo(
             return null;
           }
           return {
-            integrationId: requiredString(row, "integration_id"),
+            integrationId: optionalString(row, "integration_id"),
             encryptedPayload: requiredString(row, "encrypted_payload"),
           };
         })
@@ -271,9 +308,15 @@ export function makeSqliteIntegrationRepo(
             return cipher.open(attempt.encryptedPayload).pipe(
               Effect.map((config) => {
                 const payload = readOAuthAuthorizationAttemptPayload(config);
-                return payload
-                  ? { integrationId: attempt.integrationId, payload }
-                  : null;
+                if (!payload) return null;
+                if (payload.kind === "create") {
+                  return attempt.integrationId === null
+                    ? { integrationId: null, payload }
+                    : null;
+                }
+                return attempt.integrationId === null
+                  ? null
+                  : { integrationId: attempt.integrationId, payload };
               })
             );
           })
@@ -335,8 +378,8 @@ export function makeSqliteIntegrationRepo(
           undefined
       ),
     markReauthorizationRequired: (input) =>
-      store.write(
-        (database) =>
+      store.write((database) => {
+        const transitioned =
           database
             .prepare(
               `UPDATE integrations
@@ -351,7 +394,10 @@ export function makeSqliteIntegrationRepo(
               input.integrationId,
               input.claimId,
               input.expectedRevision
-            ) !== undefined
-      ),
+            ) !== undefined;
+        return transitioned
+          ? { status: "transitioned" as const }
+          : { status: "no_longer_owned" as const };
+      }),
   };
 }

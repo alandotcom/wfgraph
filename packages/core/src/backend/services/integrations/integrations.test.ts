@@ -26,6 +26,7 @@ import {
   serializeStoredOAuthGrant,
 } from "#src/backend/services/integrations/oauth-grant";
 import {
+  deleteIntegration,
   getIntegration,
   getIntegrations,
   postIntegrations,
@@ -370,7 +371,7 @@ describe("a rotated encryption key", () => {
     // This case spells the words out, where the three below compare against the
     // exported constant. Asserting only the constant would let it agree with
     // itself whatever it said, so one case has to hold the wording.
-    it.effect("names the key and both ways out of it, when listing", () =>
+    it.effect("requires the matching key before managing connections", () =>
       Effect.gen(function* () {
         const failure = yield* getIntegrations().pipe(
           Effect.provide(keyMismatchRepo),
@@ -380,7 +381,7 @@ describe("a rotated encryption key", () => {
         assert.instanceOf(failure, InternalFailure);
         assert.include(failure.error, "encryption.key");
         assert.include(failure.error, "start the app with that key");
-        assert.include(failure.error, "delete the connections");
+        assert.include(failure.error, "before you manage or delete");
       })
     );
 
@@ -394,6 +395,31 @@ describe("a rotated encryption key", () => {
         assert.instanceOf(failure, InternalFailure);
         assert.strictEqual(failure.error, ENCRYPTION_KEY_MISMATCH_MESSAGE);
       })
+    );
+
+    it.effect(
+      "refuses a blind delete when the stored grant cannot be read",
+      () =>
+        Effect.gen(function* () {
+          let deleteCalls = 0;
+          const repo = stubIntegrationRepo({
+            findById: () => keyMismatch,
+            deleteOwnedRefreshClaim: () =>
+              Effect.sync(() => {
+                deleteCalls += 1;
+                return { status: "deleted" as const };
+              }),
+          });
+
+          const failure = yield* deleteIntegration("int_1").pipe(
+            Effect.provide(Layer.mergeAll(repo, assembledSlack)),
+            Effect.flip
+          );
+
+          assert.instanceOf(failure, InternalFailure);
+          assert.strictEqual(failure.error, ENCRYPTION_KEY_MISMATCH_MESSAGE);
+          assert.strictEqual(deleteCalls, 0);
+        })
     );
 
     // An update reads the stored row first, to merge the masked secrets back in,

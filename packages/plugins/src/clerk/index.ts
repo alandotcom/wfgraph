@@ -113,325 +113,324 @@ const deleteUserOutput = Schema.Struct({
   deleted: Schema.Boolean.annotate({ description: "Deletion success" }),
 });
 
-export const clerk = () =>
-  defineIntegration({
-    type: "clerk",
-    label: "Clerk",
-    description: "User authentication and management",
-    credentials: clerkCredentialFields,
+export const clerk = defineIntegration({
+  type: "clerk",
+  label: "Clerk",
+  description: "User authentication and management",
+  credentials: clerkCredentialFields,
 
-    test: async () => (await import("#src/clerk/test")).testClerk,
+  test: async () => (await import("#src/clerk/test")).testClerk,
 
-    actions: {
-      "get-user": {
-        label: "Get User",
-        description: "Fetch a user by ID from Clerk",
-        input: getUserInput,
-        output: getUserOutput,
-        configFields: [
-          {
-            key: "userId",
-            label: "User ID",
-            type: "template-input",
-            placeholder: "user_... or {{NodeName.userId}}",
-            example: "user_2abc123",
-            required: true,
-          },
-        ],
-        handler: Effect.fn(function* (bag) {
-          const { input } = bag;
-          const credentials = yield* bag.credentials;
-          const secretKey = credentials.CLERK_SECRET_KEY;
+  actions: {
+    "get-user": {
+      label: "Get User",
+      description: "Fetch a user by ID from Clerk",
+      input: getUserInput,
+      output: getUserOutput,
+      configFields: [
+        {
+          key: "userId",
+          label: "User ID",
+          type: "template-input",
+          placeholder: "user_... or {{NodeName.userId}}",
+          example: "user_2abc123",
+          required: true,
+        },
+      ],
+      handler: Effect.fn(function* (bag) {
+        const { input } = bag;
+        const credentials = yield* bag.credentials;
+        const secretKey = credentials.CLERK_SECRET_KEY;
 
-          if (!secretKey) {
-            return yield* new StepFailure({
-              message:
-                "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
-            });
-          }
+        if (!secretKey) {
+          return yield* new StepFailure({
+            message:
+              "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
+          });
+        }
 
-          if (!input.userId) {
-            return yield* new StepFailure({ message: "User ID is required." });
-          }
+        if (!input.userId) {
+          return yield* new StepFailure({ message: "User ID is required." });
+        }
 
-          const client = createClerkBackendClient(secretKey);
-          // The flattening runs inside the step because what a step remembers
-          // round-trips through JSON, and Clerk's SDK answers a class instance.
-          return yield* bag.step.run(
-            "get-user",
-            Effect.tryPromise({
-              try: () => client.users.getUser(input.userId),
-              catch: (error) =>
-                new StepFailure({
-                  message: `Failed to get user: ${getClerkApiErrorMessage(error)}`,
-                }),
-            }).pipe(Effect.map((user) => toClerkUserData(toClerkApiUser(user))))
-          );
-        }),
-      },
-
-      "create-user": {
-        label: "Create User",
-        description: "Create a new user in Clerk",
-        sideEffect: true,
-        input: createUserInput,
-        output: createUserOutput,
-        configFields: [
-          {
-            key: "emailAddress",
-            label: "Email Address",
-            type: "template-input",
-            placeholder: "user@example.com or {{NodeName.email}}",
-            example: "user@example.com",
-            required: true,
-          },
-          {
-            key: "firstName",
-            label: "First Name",
-            type: "template-input",
-            placeholder: "John or {{NodeName.firstName}}",
-            example: "John",
-          },
-          {
-            key: "lastName",
-            label: "Last Name",
-            type: "template-input",
-            placeholder: "Doe or {{NodeName.lastName}}",
-            example: "Doe",
-          },
-          {
-            key: "password",
-            label: "Password",
-            type: "template-input",
-            placeholder: "Password (min 8 chars) or leave empty",
-            example: "securepassword123",
-          },
-          {
-            label: "Metadata",
-            type: "group",
-            defaultExpanded: false,
-            fields: [
-              {
-                key: "publicMetadata",
-                label: "Public Metadata (JSON)",
-                type: "template-textarea",
-                placeholder: '{"role": "admin"} or {{NodeName.metadata}}',
-                rows: 3,
-              },
-              {
-                key: "privateMetadata",
-                label: "Private Metadata (JSON)",
-                type: "template-textarea",
-                placeholder: '{"internal_id": "123"}',
-                rows: 3,
-              },
-            ],
-          },
-        ],
-        handler: Effect.fn(function* (bag) {
-          const { input } = bag;
-          const credentials = yield* bag.credentials;
-          const secretKey = credentials.CLERK_SECRET_KEY;
-
-          if (!secretKey) {
-            return yield* new StepFailure({
-              message:
-                "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
-            });
-          }
-
-          if (!input.emailAddress) {
-            return yield* new StepFailure({
-              message: "Email address is required.",
-            });
-          }
-
-          const publicMetadata = yield* parseClerkMetadata(
-            input.publicMetadata,
-            "publicMetadata"
-          );
-          const privateMetadata = yield* parseClerkMetadata(
-            input.privateMetadata,
-            "privateMetadata"
-          );
-
-          const client = createClerkBackendClient(secretKey);
-          // Clerk reads an absent field and a null one differently, so the fields
-          // the user left blank are dropped rather than sent empty.
-          const createPayload = omitBy(
-            {
-              emailAddress: [input.emailAddress],
-              firstName: input.firstName,
-              lastName: input.lastName,
-              password: input.password,
-              publicMetadata,
-              privateMetadata,
-            },
-            isNil
-          );
-
-          return yield* bag.step.run(
-            "create-user",
-            Effect.tryPromise({
-              try: () => client.users.createUser(createPayload),
-              catch: (error) =>
-                new StepFailure({
-                  message: `Failed to create user: ${getClerkApiErrorMessage(error)}`,
-                }),
-            }).pipe(Effect.map((user) => toClerkUserData(toClerkApiUser(user))))
-          );
-        }),
-      },
-
-      "update-user": {
-        label: "Update User",
-        description: "Update an existing user in Clerk",
-        sideEffect: true,
-        input: updateUserInput,
-        output: updateUserOutput,
-        configFields: [
-          {
-            key: "userId",
-            label: "User ID",
-            type: "template-input",
-            placeholder: "user_... or {{NodeName.user.id}}",
-            example: "user_2abc123",
-            required: true,
-          },
-          {
-            key: "firstName",
-            label: "First Name",
-            type: "template-input",
-            placeholder: "Jane or {{NodeName.firstName}}",
-          },
-          {
-            key: "lastName",
-            label: "Last Name",
-            type: "template-input",
-            placeholder: "Doe or {{NodeName.lastName}}",
-          },
-          {
-            label: "Metadata",
-            type: "group",
-            defaultExpanded: false,
-            fields: [
-              {
-                key: "publicMetadata",
-                label: "Public Metadata (JSON)",
-                type: "template-textarea",
-                placeholder: '{"role": "admin"} or {{NodeName.metadata}}',
-                rows: 3,
-              },
-              {
-                key: "privateMetadata",
-                label: "Private Metadata (JSON)",
-                type: "template-textarea",
-                placeholder: '{"internal_id": "123"}',
-                rows: 3,
-              },
-            ],
-          },
-        ],
-        handler: Effect.fn(function* (bag) {
-          const { input } = bag;
-          const credentials = yield* bag.credentials;
-          const secretKey = credentials.CLERK_SECRET_KEY;
-
-          if (!secretKey) {
-            return yield* new StepFailure({
-              message:
-                "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
-            });
-          }
-
-          if (!input.userId) {
-            return yield* new StepFailure({ message: "User ID is required." });
-          }
-
-          const publicMetadata = yield* parseClerkMetadata(
-            input.publicMetadata,
-            "publicMetadata"
-          );
-          const privateMetadata = yield* parseClerkMetadata(
-            input.privateMetadata,
-            "privateMetadata"
-          );
-
-          const client = createClerkBackendClient(secretKey);
-          // An update sends only the fields the user filled in, so a blank box
-          // leaves what Clerk already holds alone rather than clearing it.
-          const updatePayload = omitBy(
-            {
-              firstName: input.firstName,
-              lastName: input.lastName,
-              publicMetadata,
-              privateMetadata,
-            },
-            isNil
-          );
-
-          return yield* bag.step.run(
-            "update-user",
-            Effect.tryPromise({
-              try: () => client.users.updateUser(input.userId, updatePayload),
-              catch: (error) =>
-                new StepFailure({
-                  message: `Failed to update user: ${getClerkApiErrorMessage(error)}`,
-                }),
-            }).pipe(Effect.map((user) => toClerkUserData(toClerkApiUser(user))))
-          );
-        }),
-      },
-
-      "delete-user": {
-        label: "Delete User",
-        description: "Delete a user from Clerk",
-        sideEffect: true,
-        input: deleteUserInput,
-        output: deleteUserOutput,
-        configFields: [
-          {
-            key: "userId",
-            label: "User ID",
-            type: "template-input",
-            placeholder: "user_... or {{NodeName.user.id}}",
-            example: "user_2abc123",
-            required: true,
-          },
-        ],
-        handler: Effect.fn(function* (bag) {
-          const { input } = bag;
-          const credentials = yield* bag.credentials;
-          const secretKey = credentials.CLERK_SECRET_KEY;
-
-          if (!secretKey) {
-            return yield* new StepFailure({
-              message:
-                "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
-            });
-          }
-
-          if (!input.userId) {
-            return yield* new StepFailure({ message: "User ID is required." });
-          }
-
-          const client = createClerkBackendClient(secretKey);
-
-          // Clerk's deleted-object answer is a class instance and this step
-          // reports on none of it, so nothing of it is remembered.
-          yield* bag.step.run(
-            "delete-user",
-            Effect.tryPromise({
-              try: () => client.users.deleteUser(input.userId),
-              catch: (error) =>
-                new StepFailure({
-                  message: `Failed to delete user: ${getClerkApiErrorMessage(error)}`,
-                }),
-            }).pipe(Effect.asVoid)
-          );
-
-          return { deleted: true };
-        }),
-      },
+        const client = createClerkBackendClient(secretKey);
+        // The flattening runs inside the step because what a step remembers
+        // round-trips through JSON, and Clerk's SDK answers a class instance.
+        return yield* bag.step.run(
+          "get-user",
+          Effect.tryPromise({
+            try: () => client.users.getUser(input.userId),
+            catch: (error) =>
+              new StepFailure({
+                message: `Failed to get user: ${getClerkApiErrorMessage(error)}`,
+              }),
+          }).pipe(Effect.map((user) => toClerkUserData(toClerkApiUser(user))))
+        );
+      }),
     },
-  });
+
+    "create-user": {
+      label: "Create User",
+      description: "Create a new user in Clerk",
+      sideEffect: true,
+      input: createUserInput,
+      output: createUserOutput,
+      configFields: [
+        {
+          key: "emailAddress",
+          label: "Email Address",
+          type: "template-input",
+          placeholder: "user@example.com or {{NodeName.email}}",
+          example: "user@example.com",
+          required: true,
+        },
+        {
+          key: "firstName",
+          label: "First Name",
+          type: "template-input",
+          placeholder: "John or {{NodeName.firstName}}",
+          example: "John",
+        },
+        {
+          key: "lastName",
+          label: "Last Name",
+          type: "template-input",
+          placeholder: "Doe or {{NodeName.lastName}}",
+          example: "Doe",
+        },
+        {
+          key: "password",
+          label: "Password",
+          type: "template-input",
+          placeholder: "Password (min 8 chars) or leave empty",
+          example: "securepassword123",
+        },
+        {
+          label: "Metadata",
+          type: "group",
+          defaultExpanded: false,
+          fields: [
+            {
+              key: "publicMetadata",
+              label: "Public Metadata (JSON)",
+              type: "template-textarea",
+              placeholder: '{"role": "admin"} or {{NodeName.metadata}}',
+              rows: 3,
+            },
+            {
+              key: "privateMetadata",
+              label: "Private Metadata (JSON)",
+              type: "template-textarea",
+              placeholder: '{"internal_id": "123"}',
+              rows: 3,
+            },
+          ],
+        },
+      ],
+      handler: Effect.fn(function* (bag) {
+        const { input } = bag;
+        const credentials = yield* bag.credentials;
+        const secretKey = credentials.CLERK_SECRET_KEY;
+
+        if (!secretKey) {
+          return yield* new StepFailure({
+            message:
+              "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
+          });
+        }
+
+        if (!input.emailAddress) {
+          return yield* new StepFailure({
+            message: "Email address is required.",
+          });
+        }
+
+        const publicMetadata = yield* parseClerkMetadata(
+          input.publicMetadata,
+          "publicMetadata"
+        );
+        const privateMetadata = yield* parseClerkMetadata(
+          input.privateMetadata,
+          "privateMetadata"
+        );
+
+        const client = createClerkBackendClient(secretKey);
+        // Clerk reads an absent field and a null one differently, so the fields
+        // the user left blank are dropped rather than sent empty.
+        const createPayload = omitBy(
+          {
+            emailAddress: [input.emailAddress],
+            firstName: input.firstName,
+            lastName: input.lastName,
+            password: input.password,
+            publicMetadata,
+            privateMetadata,
+          },
+          isNil
+        );
+
+        return yield* bag.step.run(
+          "create-user",
+          Effect.tryPromise({
+            try: () => client.users.createUser(createPayload),
+            catch: (error) =>
+              new StepFailure({
+                message: `Failed to create user: ${getClerkApiErrorMessage(error)}`,
+              }),
+          }).pipe(Effect.map((user) => toClerkUserData(toClerkApiUser(user))))
+        );
+      }),
+    },
+
+    "update-user": {
+      label: "Update User",
+      description: "Update an existing user in Clerk",
+      sideEffect: true,
+      input: updateUserInput,
+      output: updateUserOutput,
+      configFields: [
+        {
+          key: "userId",
+          label: "User ID",
+          type: "template-input",
+          placeholder: "user_... or {{NodeName.user.id}}",
+          example: "user_2abc123",
+          required: true,
+        },
+        {
+          key: "firstName",
+          label: "First Name",
+          type: "template-input",
+          placeholder: "Jane or {{NodeName.firstName}}",
+        },
+        {
+          key: "lastName",
+          label: "Last Name",
+          type: "template-input",
+          placeholder: "Doe or {{NodeName.lastName}}",
+        },
+        {
+          label: "Metadata",
+          type: "group",
+          defaultExpanded: false,
+          fields: [
+            {
+              key: "publicMetadata",
+              label: "Public Metadata (JSON)",
+              type: "template-textarea",
+              placeholder: '{"role": "admin"} or {{NodeName.metadata}}',
+              rows: 3,
+            },
+            {
+              key: "privateMetadata",
+              label: "Private Metadata (JSON)",
+              type: "template-textarea",
+              placeholder: '{"internal_id": "123"}',
+              rows: 3,
+            },
+          ],
+        },
+      ],
+      handler: Effect.fn(function* (bag) {
+        const { input } = bag;
+        const credentials = yield* bag.credentials;
+        const secretKey = credentials.CLERK_SECRET_KEY;
+
+        if (!secretKey) {
+          return yield* new StepFailure({
+            message:
+              "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
+          });
+        }
+
+        if (!input.userId) {
+          return yield* new StepFailure({ message: "User ID is required." });
+        }
+
+        const publicMetadata = yield* parseClerkMetadata(
+          input.publicMetadata,
+          "publicMetadata"
+        );
+        const privateMetadata = yield* parseClerkMetadata(
+          input.privateMetadata,
+          "privateMetadata"
+        );
+
+        const client = createClerkBackendClient(secretKey);
+        // An update sends only the fields the user filled in, so a blank box
+        // leaves what Clerk already holds alone rather than clearing it.
+        const updatePayload = omitBy(
+          {
+            firstName: input.firstName,
+            lastName: input.lastName,
+            publicMetadata,
+            privateMetadata,
+          },
+          isNil
+        );
+
+        return yield* bag.step.run(
+          "update-user",
+          Effect.tryPromise({
+            try: () => client.users.updateUser(input.userId, updatePayload),
+            catch: (error) =>
+              new StepFailure({
+                message: `Failed to update user: ${getClerkApiErrorMessage(error)}`,
+              }),
+          }).pipe(Effect.map((user) => toClerkUserData(toClerkApiUser(user))))
+        );
+      }),
+    },
+
+    "delete-user": {
+      label: "Delete User",
+      description: "Delete a user from Clerk",
+      sideEffect: true,
+      input: deleteUserInput,
+      output: deleteUserOutput,
+      configFields: [
+        {
+          key: "userId",
+          label: "User ID",
+          type: "template-input",
+          placeholder: "user_... or {{NodeName.user.id}}",
+          example: "user_2abc123",
+          required: true,
+        },
+      ],
+      handler: Effect.fn(function* (bag) {
+        const { input } = bag;
+        const credentials = yield* bag.credentials;
+        const secretKey = credentials.CLERK_SECRET_KEY;
+
+        if (!secretKey) {
+          return yield* new StepFailure({
+            message:
+              "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
+          });
+        }
+
+        if (!input.userId) {
+          return yield* new StepFailure({ message: "User ID is required." });
+        }
+
+        const client = createClerkBackendClient(secretKey);
+
+        // Clerk's deleted-object answer is a class instance and this step
+        // reports on none of it, so nothing of it is remembered.
+        yield* bag.step.run(
+          "delete-user",
+          Effect.tryPromise({
+            try: () => client.users.deleteUser(input.userId),
+            catch: (error) =>
+              new StepFailure({
+                message: `Failed to delete user: ${getClerkApiErrorMessage(error)}`,
+              }),
+          }).pipe(Effect.asVoid)
+        );
+
+        return { deleted: true };
+      }),
+    },
+  },
+});
