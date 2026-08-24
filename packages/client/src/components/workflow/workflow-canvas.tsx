@@ -75,10 +75,7 @@ import {
   useContextMenuHandlers,
   WorkflowContextMenu,
 } from "./workflow-context-menu";
-import {
-  WORKFLOW_NODE_HEIGHT,
-  WORKFLOW_NODE_WIDTH,
-} from "#src/lib/workflow-node-dimensions";
+import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
 import {
   connectionHandleTypesMatch,
   connectionRefusalReason,
@@ -139,6 +136,30 @@ export function canvasFitViewKey({
 
 export const keyboardFitViewOptions = { padding: 0.2, duration: 0 } as const;
 
+type InternalLifecycleAnchor = {
+  userNode: WorkflowNode;
+  position: { x: number; y: number };
+  width: number | undefined;
+};
+
+export function synchronizedLifecycleAnchor(
+  lifecycleNode: WorkflowNode | null,
+  internalNode: InternalLifecycleAnchor | null
+): { id: string; position: { x: number; y: number }; width: number } | null {
+  if (
+    !lifecycleNode ||
+    !internalNode?.width ||
+    internalNode.userNode !== lifecycleNode
+  ) {
+    return null;
+  }
+  return {
+    id: lifecycleNode.id,
+    position: internalNode.position,
+    width: internalNode.width,
+  };
+}
+
 export function lifecycleAnchorViewport({
   canvasWidth,
   nodePosition,
@@ -157,6 +178,74 @@ export function lifecycleAnchorViewport({
     y: top - nodePosition.y * zoom,
     zoom,
   };
+}
+
+export function useSynchronizedLifecycleViewport({
+  currentWorkflowId,
+  lifecycleNode,
+  internalNode,
+  fittedWorkflowIdRef,
+  fitGenerationRef,
+  readCanvasWidth,
+  getZoom,
+  setViewport,
+}: {
+  currentWorkflowId: string | null;
+  lifecycleNode: WorkflowNode | null;
+  internalNode: InternalLifecycleAnchor | null;
+  fittedWorkflowIdRef: { current: string | null };
+  fitGenerationRef: { current: number };
+  readCanvasWidth: () => number | undefined;
+  getZoom: () => number;
+  setViewport: (viewport: {
+    x: number;
+    y: number;
+    zoom: number;
+  }) => Promise<boolean>;
+}): {
+  lifecycleAnchor: ReturnType<typeof synchronizedLifecycleAnchor>;
+  fitViewKey: string | null;
+} {
+  const lifecycleAnchor = synchronizedLifecycleAnchor(
+    lifecycleNode,
+    internalNode
+  );
+  const fitViewKey = canvasFitViewKey({
+    workflowId: currentWorkflowId,
+    lifecycleNode: lifecycleAnchor,
+  });
+
+  // Controlled props reach React Flow's internal store after this component
+  // renders. Wait for its node identity so an incoming viewport is never
+  // applied while the outgoing graph is still on screen.
+  useBeforePaint(fitViewKey, () => {
+    fitGenerationRef.current += 1;
+    if (
+      fitViewKey === null ||
+      !currentWorkflowId ||
+      fittedWorkflowIdRef.current !== currentWorkflowId ||
+      !lifecycleAnchor
+    ) {
+      return;
+    }
+
+    const canvasWidth = readCanvasWidth();
+    if (!canvasWidth) {
+      return;
+    }
+
+    void setViewport(
+      lifecycleAnchorViewport({
+        canvasWidth,
+        nodePosition: lifecycleAnchor.position,
+        nodeWidth: lifecycleAnchor.width,
+        top: 48,
+        zoom: getZoom(),
+      })
+    );
+  });
+
+  return { lifecycleAnchor, fitViewKey };
 }
 
 export async function fitInitialWorkflowViewport({
@@ -328,35 +417,23 @@ export function WorkflowCanvas() {
   const setComparisonSubview = useSetAtom(setComparisonSubviewAtom);
   const { screenToFlowPosition, fitView, getViewport, setViewport } =
     useReactFlow();
+  // React Flow owns the semantic wrappers around custom nodes and edges. Build
+  // their names from the same catalog labels the cards render, while preserving
+  // element identity until the graph or catalog actually changes.
+  const accessibleGraph = accessibleGraphElements(nodes, edges, catalog);
   const interaction = canvasInteractionState({
     editingLocked,
     comparisonActive,
     overlayActive,
   });
-  const lifecycleNode = nodes.find((node) => node.data.type === "lifecycle");
+  const lifecycleNode = accessibleGraph.nodes.find(
+    (node) => node.data.type === "lifecycle"
+  );
   const internalLifecycleNode = useInternalNode<WorkflowNode>(
     lifecycleNode?.id ?? ""
   );
-  const measuredLifecycleNode = internalLifecycleNode?.measured?.width
-    ? {
-        id: internalLifecycleNode.id,
-        position: internalLifecycleNode.internals.positionAbsolute,
-      }
-    : null;
-  const anchorViewKey = canvasFitViewKey({
-    workflowId: currentWorkflowId,
-    lifecycleNode: lifecycleNode ?? null,
-  });
-  const fitViewKey = canvasFitViewKey({
-    workflowId: currentWorkflowId,
-    lifecycleNode: measuredLifecycleNode,
-  });
   // The same pass the Actions menu's "Tidy layout" runs.
   const { canReflow, reflow } = useReflowLayout();
-  // React Flow owns the semantic wrappers around custom nodes and edges. Build
-  // their names from the same catalog labels the cards render, while preserving
-  // element identity until the graph or catalog actually changes.
-  const accessibleGraph = accessibleGraphElements(nodes, edges, catalog);
 
   const connectingNodeId = useRef<string | null>(null);
   const connectingHandleType = useRef<"source" | "target" | null>(null);
@@ -371,6 +448,22 @@ export function WorkflowCanvas() {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const fittedWorkflowIdRef = useRef<string | null>(null);
   const fitGenerationRef = useRef(0);
+  const { lifecycleAnchor, fitViewKey } = useSynchronizedLifecycleViewport({
+    currentWorkflowId,
+    lifecycleNode: lifecycleNode ?? null,
+    internalNode: internalLifecycleNode
+      ? {
+          userNode: internalLifecycleNode.internals.userNode,
+          position: internalLifecycleNode.internals.positionAbsolute,
+          width: internalLifecycleNode.measured.width,
+        }
+      : null,
+    fittedWorkflowIdRef,
+    fitGenerationRef,
+    readCanvasWidth: () => canvasContainerRef.current?.clientWidth,
+    getZoom: () => getViewport().zoom,
+    setViewport: (viewport) => setViewport(viewport, { duration: 0 }),
+  });
   useDomEvent(
     window,
     "pointerdown",
@@ -410,48 +503,12 @@ export function WorkflowCanvas() {
     }
   });
 
-  // A workspace swap replaces the graph before React Flow updates its
-  // internals. Re-anchor from the incoming node coordinates in the same commit
-  // so the browser never paints those coordinates through the old viewport.
-  useBeforePaint(fitViewKey, () => {
-    fitGenerationRef.current += 1;
-  });
-  useBeforePaint(anchorViewKey, () => {
-    if (
-      anchorViewKey === null ||
-      !currentWorkflowId ||
-      fittedWorkflowIdRef.current !== currentWorkflowId ||
-      !lifecycleNode
-    ) {
-      return;
-    }
-
-    const canvasWidth = canvasContainerRef.current?.clientWidth;
-    if (!canvasWidth) {
-      return;
-    }
-
-    void setViewport(
-      lifecycleAnchorViewport({
-        canvasWidth,
-        nodePosition: lifecycleNode.position,
-        nodeWidth:
-          internalLifecycleNode?.measured?.width ??
-          lifecycleNode.width ??
-          WORKFLOW_NODE_WIDTH,
-        top: 48,
-        zoom: getViewport().zoom,
-      }),
-      { duration: 0 }
-    );
-  });
-
   // Choose a useful zoom once when the workflow loads, then preserve it while
   // anchoring its Lifecycle card at the top-centre point. This initial pass
   // waits for React Flow's measurements; later workspace swaps use the
   // before-paint correction above.
   useAfterPaint(fitViewKey, () => {
-    if (fitViewKey === null || !currentWorkflowId || !internalLifecycleNode) {
+    if (fitViewKey === null || !currentWorkflowId || !lifecycleAnchor) {
       return;
     }
     if (fittedWorkflowIdRef.current === currentWorkflowId) {
@@ -474,14 +531,10 @@ export function WorkflowCanvas() {
           return null;
         }
 
-        const nodeWidth =
-          internalLifecycleNode.measured?.width ??
-          internalLifecycleNode.internals.userNode.width ??
-          WORKFLOW_NODE_WIDTH;
         return {
           canvasWidth,
-          nodePosition: internalLifecycleNode.internals.positionAbsolute,
-          nodeWidth,
+          nodePosition: lifecycleAnchor.position,
+          nodeWidth: lifecycleAnchor.width,
           zoom: getViewport().zoom,
         };
       },

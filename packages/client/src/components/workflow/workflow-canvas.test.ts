@@ -1,11 +1,24 @@
-import { describe, expect, it } from "vitest";
+import { renderHook } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import {
   canvasFitViewKey,
   canvasInteractionState,
   fitInitialWorkflowViewport,
   keyboardFitViewOptions,
   lifecycleAnchorViewport,
+  synchronizedLifecycleAnchor,
+  useSynchronizedLifecycleViewport,
 } from "#src/components/workflow/workflow-canvas";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+
+function lifecycleNode(x: number): WorkflowNode {
+  return {
+    id: "lifecycle",
+    type: "lifecycle",
+    position: { x, y: 20 },
+    data: { label: "Lifecycle", type: "lifecycle" },
+  };
+}
 
 describe("canvasInteractionState", () => {
   it("keeps comparison nodes selectable and enables only their node-level drag flags", () => {
@@ -87,6 +100,77 @@ describe("lifecycleAnchorViewport", () => {
         zoom: 0.75,
       })
     ).toEqual({ x: 278, y: -12, zoom: 0.75 });
+  });
+});
+
+describe("synchronizedLifecycleAnchor", () => {
+  it("waits for React Flow's internal node before anchoring a replacement graph", () => {
+    const outgoing = lifecycleNode(100);
+    const incoming = lifecycleNode(500);
+
+    expect(
+      synchronizedLifecycleAnchor(incoming, {
+        userNode: outgoing,
+        position: outgoing.position,
+        width: 192,
+      })
+    ).toBeNull();
+
+    expect(
+      synchronizedLifecycleAnchor(incoming, {
+        userNode: incoming,
+        position: incoming.position,
+        width: 192,
+      })
+    ).toEqual({ id: "lifecycle", position: { x: 500, y: 20 }, width: 192 });
+  });
+});
+
+describe("useSynchronizedLifecycleViewport", () => {
+  it("keeps the viewport on the outgoing graph until React Flow installs the replacement", () => {
+    const outgoing = lifecycleNode(100);
+    const incoming = lifecycleNode(500);
+    const fittedWorkflowIdRef = { current: "workflow_1" };
+    const fitGenerationRef = { current: 0 };
+    const setViewport = vi.fn(async () => true);
+    const internalNode = (userNode: WorkflowNode) => ({
+      userNode,
+      position: userNode.position,
+      width: 192,
+    });
+    const { rerender } = renderHook(
+      ({ displayedNode, installedNode }) =>
+        useSynchronizedLifecycleViewport({
+          currentWorkflowId: "workflow_1",
+          lifecycleNode: displayedNode,
+          internalNode: installedNode,
+          fittedWorkflowIdRef,
+          fitGenerationRef,
+          readCanvasWidth: () => 1000,
+          getZoom: () => 0.75,
+          setViewport,
+        }),
+      {
+        initialProps: {
+          displayedNode: outgoing,
+          installedNode: internalNode(outgoing),
+        },
+      }
+    );
+    setViewport.mockClear();
+
+    rerender({
+      displayedNode: incoming,
+      installedNode: internalNode(outgoing),
+    });
+    expect(setViewport).not.toHaveBeenCalled();
+
+    rerender({
+      displayedNode: incoming,
+      installedNode: internalNode(incoming),
+    });
+    expect(setViewport).toHaveBeenCalledOnce();
+    expect(setViewport).toHaveBeenCalledWith({ x: 53, y: 33, zoom: 0.75 });
   });
 });
 
