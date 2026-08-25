@@ -257,16 +257,29 @@ export function makeSqliteIntegrationRepo(
       }),
     createOAuthAuthorizationAttempt: (input) =>
       store.write((database) => {
+        const now = Date.now();
+        database
+          .prepare(
+            `UPDATE integrations
+             SET refresh_state = 'reauthorization_required', refresh_claim_id = NULL,
+                 refresh_claimed_at = NULL, updated_at = ?
+             WHERE refresh_state = 'refreshing' AND refresh_claim_id IN (
+               SELECT state_hash FROM oauth_authorization_attempts
+               WHERE mode = 'reconnect' AND status = 'processing' AND expires_at <= ?
+             )`
+          )
+          .run(now, now);
         database
           .prepare(
             "DELETE FROM oauth_authorization_attempts WHERE expires_at <= ?"
           )
-          .run(Date.now());
+          .run(now);
         database
           .prepare(
             `INSERT INTO oauth_authorization_attempts
-             (state_hash, integration_id, expires_at, browser_binding_hash, encrypted_payload, created_at)
-             VALUES (?, ?, ?, ?, ?, ?)`
+             (state_hash, integration_id, expires_at, browser_binding_hash, encrypted_payload,
+              mode, status, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
           )
           .run(
             input.stateHash,
@@ -274,23 +287,35 @@ export function makeSqliteIntegrationRepo(
             input.expiresAt.getTime(),
             input.browserBindingHash,
             cipher.seal({ payload: JSON.stringify(input.payload) }),
-            Date.now()
+            input.payload.kind,
+            now,
+            now
           );
       }),
-    consumeOAuthAuthorizationAttempt: (stateHash, browserBindingHash) =>
+    claimOAuthAuthorizationAttempt: (input) =>
       store
         .write((database) => {
+          const now = Date.now();
           const row = database
             .prepare(
-              `DELETE FROM oauth_authorization_attempts WHERE state_hash = ?
-             RETURNING integration_id, expires_at, browser_binding_hash, encrypted_payload`
+              `UPDATE oauth_authorization_attempts
+               SET status = CASE WHEN browser_binding_hash = ? THEN 'processing' ELSE 'failed' END,
+                   expires_at = ?,
+                   updated_at = ?
+               WHERE state_hash = ? AND status = 'pending' AND expires_at > ?
+               RETURNING integration_id, browser_binding_hash, encrypted_payload`
             )
-            .get(stateHash);
+            .get(
+              input.browserBindingHash,
+              input.expiresAt.getTime(),
+              now,
+              input.stateHash,
+              now
+            );
           if (
             !row ||
             requiredString(row, "browser_binding_hash") !==
-              browserBindingHash ||
-            requiredDate(row, "expires_at").getTime() <= Date.now()
+              input.browserBindingHash
           ) {
             return null;
           }
@@ -321,6 +346,127 @@ export function makeSqliteIntegrationRepo(
             );
           })
         ),
+    readOAuthAuthorizationAttemptStatus: (input) =>
+      store.read((database) => {
+        const row = database
+          .prepare(
+            `SELECT status, result_integration_id
+             FROM oauth_authorization_attempts
+             WHERE state_hash = ? AND browser_binding_hash = ? AND expires_at > ?`
+          )
+          .get(input.stateHash, input.browserBindingHash, Date.now());
+        if (!row) return null;
+        const status = requiredString(row, "status");
+        if (status === "pending" || status === "processing") {
+          return { status } as const;
+        }
+        if (status === "failed") return { status } as const;
+        if (status === "succeeded") {
+          return {
+            status,
+            integrationId: requiredString(row, "result_integration_id"),
+          } as const;
+        }
+        throw new Error("Invalid SQLite OAuth authorization attempt status");
+      }),
+    failOAuthAuthorizationAttempt: (input) =>
+      store.write(
+        (database) =>
+          database
+            .prepare(
+              `UPDATE oauth_authorization_attempts
+               SET status = 'failed', expires_at = ?, updated_at = ?
+               WHERE state_hash = ? AND status = 'processing'
+               RETURNING state_hash`
+            )
+            .get(input.expiresAt.getTime(), Date.now(), input.stateHash) !==
+          undefined
+      ),
+    completeOAuthCreateAttempt: (input) =>
+      store.write((database) => {
+        const claim = database
+          .prepare(
+            `SELECT state_hash FROM oauth_authorization_attempts
+             WHERE state_hash = ? AND mode = 'create' AND status = 'processing'`
+          )
+          .get(input.stateHash);
+        if (!claim) return false;
+
+        const now = Date.now();
+        database
+          .prepare(
+            `INSERT INTO integrations
+             (id, name, type, config, is_managed, created_at, updated_at)
+             VALUES (?, ?, ?, ?, 0, ?, ?)`
+          )
+          .run(
+            input.integrationId,
+            input.name,
+            input.type,
+            cipher.seal(input.config),
+            now,
+            now
+          );
+        database
+          .prepare(
+            `UPDATE oauth_authorization_attempts
+             SET status = 'succeeded', result_integration_id = ?, expires_at = ?, updated_at = ?
+             WHERE state_hash = ? AND mode = 'create' AND status = 'processing'`
+          )
+          .run(
+            input.integrationId,
+            input.expiresAt.getTime(),
+            now,
+            input.stateHash
+          );
+        return true;
+      }),
+    completeOAuthReconnectAttempt: (input) =>
+      store.write((database) => {
+        const attempt = database
+          .prepare(
+            `SELECT state_hash FROM oauth_authorization_attempts
+             WHERE state_hash = ? AND integration_id = ?
+               AND mode = 'reconnect' AND status = 'processing'`
+          )
+          .get(input.stateHash, input.integrationId);
+        if (!attempt) return false;
+
+        const now = Date.now();
+        const integration = database
+          .prepare(
+            `UPDATE integrations
+             SET config = ?, refresh_state = 'idle', refresh_claim_id = NULL,
+                 refresh_claimed_at = NULL, config_revision = config_revision + 1,
+                 updated_at = ?
+             WHERE id = ? AND refresh_state = 'refreshing' AND refresh_claim_id = ?
+               AND config_revision = ?
+             RETURNING id`
+          )
+          .get(
+            cipher.seal(input.config),
+            now,
+            input.integrationId,
+            input.stateHash,
+            input.expectedRevision
+          );
+        if (!integration) return false;
+        database
+          .prepare(
+            `UPDATE oauth_authorization_attempts
+             SET status = 'succeeded', result_integration_id = ?, expires_at = ?, updated_at = ?
+             WHERE state_hash = ? AND integration_id = ?
+               AND mode = 'reconnect' AND status = 'processing'`
+          )
+          .run(
+            input.integrationId,
+            input.expiresAt.getTime(),
+            now,
+            input.stateHash,
+            input.integrationId
+          );
+        return true;
+      }),
     claimRefresh: (input) =>
       store.write((database) => {
         const claimed = database

@@ -38,7 +38,7 @@ async function open(filename: string) {
 }
 
 describe("native SQLite integration persistence", () => {
-  it("upgrades version 2 OAuth attempts to a nullable integration id", async () => {
+  it("upgrades version 2 OAuth attempts to durable attempt states", async () => {
     const filename = await databasePath();
     const versionTwo = new DatabaseSync(filename);
     versionTwo.exec(`
@@ -69,18 +69,42 @@ describe("native SQLite integration persistence", () => {
 
     const inspection = new DatabaseSync(filename);
     try {
-      const integrationIdColumn = inspection
+      const columns = inspection
         .prepare("PRAGMA table_info(oauth_authorization_attempts)")
-        .all()
-        .find((column) => column.name === "integration_id");
-      expect(integrationIdColumn?.notnull).toBe(0);
+        .all();
+      expect(
+        columns.find((column) => column.name === "integration_id")?.notnull
+      ).toBe(0);
+      expect(columns).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: "mode", notnull: 1 }),
+          expect.objectContaining({ name: "status", notnull: 1 }),
+          expect.objectContaining({
+            name: "result_integration_id",
+            notnull: 0,
+          }),
+          expect.objectContaining({ name: "updated_at", notnull: 1 }),
+        ])
+      );
       expect(
         inspection
           .prepare(
-            "SELECT state_hash, integration_id FROM oauth_authorization_attempts"
+            `SELECT state_hash, integration_id, mode, status, result_integration_id,
+                    updated_at
+             FROM oauth_authorization_attempts`
           )
           .get()
-      ).toEqual({ state_hash: "state", integration_id: "int_existing" });
+      ).toEqual({
+        state_hash: "state",
+        integration_id: "int_existing",
+        mode: "reconnect",
+        status: "pending",
+        result_integration_id: null,
+        updated_at: 0,
+      });
+      expect(inspection.prepare("PRAGMA user_version").get()).toEqual({
+        user_version: 4,
+      });
     } finally {
       inspection.close();
     }
@@ -169,7 +193,63 @@ describe("native SQLite integration persistence", () => {
     }
   });
 
-  it("consumes OAuth attempts once and enforces expiry and browser binding", async () => {
+  it("does not delete a newer refresh owner when a stale claim is cleaned up", async () => {
+    const database = await open(await databasePath());
+    try {
+      const result = await database.run(
+        Effect.gen(function* () {
+          const integrations = yield* IntegrationRepo;
+          const integration = yield* integrations.insert({
+            name: "Refreshable",
+            type: "linear",
+            config: { accessToken: "original" },
+          });
+          const firstClaim = yield* integrations.claimRefresh({
+            integrationId: integration.id,
+            claimId: "old_claim",
+            expectedRevision: 0,
+          });
+          const firstCompletion = yield* integrations.completeRefresh({
+            integrationId: integration.id,
+            claimId: "old_claim",
+            expectedRevision: 0,
+            config: { accessToken: "first" },
+          });
+          const secondClaim = yield* integrations.claimRefresh({
+            integrationId: integration.id,
+            claimId: "new_claim",
+            expectedRevision: 1,
+          });
+          const staleDelete = yield* integrations.deleteOwnedRefreshClaim({
+            integrationId: integration.id,
+            claimId: "old_claim",
+            expectedRevision: 0,
+          });
+          return {
+            firstClaim,
+            firstCompletion,
+            secondClaim,
+            staleDelete,
+            integration: yield* integrations.findById(integration.id),
+          };
+        })
+      );
+
+      expect(result.firstClaim).toEqual({ status: "acquired" });
+      expect(result.firstCompletion).toBe(true);
+      expect(result.secondClaim).toEqual({ status: "acquired" });
+      expect(result.staleDelete).toEqual({ status: "no_longer_owned" });
+      expect(result.integration).toMatchObject({
+        refreshState: "refreshing",
+        refreshClaimId: "new_claim",
+        configRevision: 1,
+      });
+    } finally {
+      await database.close();
+    }
+  });
+
+  it("claims OAuth attempts once, records durable outcomes, and enforces browser binding", async () => {
     const database = await open(await databasePath());
     try {
       const result = await database.run(
@@ -180,8 +260,13 @@ describe("native SQLite integration persistence", () => {
             type: "linear",
             config: {},
           });
+          const refreshClaim = yield* integrations.claimRefresh({
+            integrationId: integration.id,
+            claimId: "reconnect_state",
+            expectedRevision: integration.configRevision,
+          });
           yield* integrations.createOAuthAuthorizationAttempt({
-            stateHash: "valid_state",
+            stateHash: "reconnect_state",
             integrationId: integration.id,
             expiresAt: new Date("2099-01-01T00:00:00Z"),
             browserBindingHash: "browser_hash",
@@ -204,17 +289,6 @@ describe("native SQLite integration persistence", () => {
             },
           });
           yield* integrations.createOAuthAuthorizationAttempt({
-            stateHash: "expired_state",
-            integrationId: integration.id,
-            expiresAt: new Date("2000-01-01T00:00:00Z"),
-            browserBindingHash: "browser_hash",
-            payload: {
-              kind: "reconnect",
-              redirectUri: "https://example.test/oauth/callback",
-              configRevision: 0,
-            },
-          });
-          yield* integrations.createOAuthAuthorizationAttempt({
             stateHash: "create_state",
             integrationId: null,
             expiresAt: new Date("2099-01-01T00:00:00Z"),
@@ -225,77 +299,199 @@ describe("native SQLite integration persistence", () => {
               name: "New OAuth connection",
               type: "linear",
               config: { MANUAL_TOKEN: "manual" },
+              configRevision: 0,
               redirectUri: "https://example.test/oauth/callback",
               codeVerifier: "create_verifier",
             },
           });
 
           return {
-            valid: yield* integrations.consumeOAuthAuthorizationAttempt(
-              "valid_state",
-              "browser_hash"
+            integrationId: integration.id,
+            refreshClaim,
+            reconnect: yield* integrations.claimOAuthAuthorizationAttempt({
+              stateHash: "reconnect_state",
+              browserBindingHash: "browser_hash",
+              expiresAt: new Date("2099-01-01T00:10:00Z"),
+            }),
+            reconnectReplay: yield* integrations.claimOAuthAuthorizationAttempt(
+              {
+                stateHash: "reconnect_state",
+                browserBindingHash: "browser_hash",
+                expiresAt: new Date("2099-01-01T00:10:00Z"),
+              }
             ),
-            replay: yield* integrations.consumeOAuthAuthorizationAttempt(
-              "valid_state",
-              "browser_hash"
-            ),
-            wrongBrowser: yield* integrations.consumeOAuthAuthorizationAttempt(
-              "wrong_browser_state",
-              "other_browser"
-            ),
-            wrongBrowserReplay:
-              yield* integrations.consumeOAuthAuthorizationAttempt(
-                "wrong_browser_state",
-                "browser_hash"
-              ),
-            expired: yield* integrations.consumeOAuthAuthorizationAttempt(
-              "expired_state",
-              "browser_hash"
-            ),
-            create: yield* integrations.consumeOAuthAuthorizationAttempt(
-              "create_state",
-              "browser_hash"
-            ),
+            wrongBrowser: yield* integrations.claimOAuthAuthorizationAttempt({
+              stateHash: "wrong_browser_state",
+              browserBindingHash: "other_browser",
+              expiresAt: new Date("2099-01-01T00:10:00Z"),
+            }),
+            wrongBrowserStatus:
+              yield* integrations.readOAuthAuthorizationAttemptStatus({
+                stateHash: "wrong_browser_state",
+                browserBindingHash: "browser_hash",
+              }),
+            wrongBrowserBinding:
+              yield* integrations.readOAuthAuthorizationAttemptStatus({
+                stateHash: "wrong_browser_state",
+                browserBindingHash: "other_browser",
+              }),
+            create: yield* integrations.claimOAuthAuthorizationAttempt({
+              stateHash: "create_state",
+              browserBindingHash: "browser_hash",
+              expiresAt: new Date("2099-01-01T00:10:00Z"),
+            }),
           };
         })
       );
 
-      expect(result).toEqual({
-        valid: {
-          integrationId: expect.any(String),
-          payload: {
-            kind: "reconnect",
-            redirectUri: "https://example.test/oauth/callback",
-            configRevision: 0,
-            codeVerifier: "valid_verifier",
-          },
+      expect(result.refreshClaim).toEqual({ status: "acquired" });
+      expect(result.reconnect).toEqual({
+        integrationId: expect.any(String),
+        payload: {
+          kind: "reconnect",
+          redirectUri: "https://example.test/oauth/callback",
+          configRevision: 0,
+          codeVerifier: "valid_verifier",
         },
-        replay: null,
-        wrongBrowser: null,
-        wrongBrowserReplay: null,
-        expired: null,
-        create: {
-          integrationId: null,
-          payload: {
-            kind: "create",
-            integrationId: "int_reserved",
-            name: "New OAuth connection",
-            type: "linear",
-            config: { MANUAL_TOKEN: "manual" },
-            redirectUri: "https://example.test/oauth/callback",
-            codeVerifier: "create_verifier",
-          },
+      });
+      expect(result.reconnectReplay).toBeNull();
+      expect(result.wrongBrowser).toBeNull();
+      expect(result.wrongBrowserStatus).toEqual({ status: "failed" });
+      expect(result.wrongBrowserBinding).toBeNull();
+      expect(result.create).toEqual({
+        integrationId: null,
+        payload: {
+          kind: "create",
+          integrationId: "int_reserved",
+          name: "New OAuth connection",
+          type: "linear",
+          config: { MANUAL_TOKEN: "manual" },
+          configRevision: 0,
+          redirectUri: "https://example.test/oauth/callback",
+          codeVerifier: "create_verifier",
         },
+      });
+
+      const completed = await database.run(
+        Effect.gen(function* () {
+          const integrations = yield* IntegrationRepo;
+          return {
+            staleReconnect: yield* integrations.completeOAuthReconnectAttempt({
+              stateHash: "reconnect_state",
+              integrationId: result.reconnect?.integrationId ?? "missing",
+              expectedRevision: 1,
+              config: { accessToken: "stale" },
+              expiresAt: new Date("2099-01-01T00:20:00Z"),
+            }),
+            reconnect: yield* integrations.completeOAuthReconnectAttempt({
+              stateHash: "reconnect_state",
+              integrationId: result.reconnect?.integrationId ?? "missing",
+              expectedRevision: 0,
+              config: { accessToken: "reconnected" },
+              expiresAt: new Date("2099-01-01T00:20:00Z"),
+            }),
+            create: yield* integrations.completeOAuthCreateAttempt({
+              stateHash: "create_state",
+              integrationId: "int_reserved",
+              name: "New OAuth connection",
+              type: "linear",
+              config: { accessToken: "created" },
+              expiresAt: new Date("2099-01-01T00:20:00Z"),
+            }),
+            reconnectStatus:
+              yield* integrations.readOAuthAuthorizationAttemptStatus({
+                stateHash: "reconnect_state",
+                browserBindingHash: "browser_hash",
+              }),
+            createStatus:
+              yield* integrations.readOAuthAuthorizationAttemptStatus({
+                stateHash: "create_state",
+                browserBindingHash: "browser_hash",
+              }),
+            reconnectIntegration: yield* integrations.findById(
+              result.integrationId
+            ),
+            createIntegration: yield* integrations.findById("int_reserved"),
+          };
+        })
+      );
+
+      expect(completed).toMatchObject({
+        staleReconnect: false,
+        reconnect: true,
+        create: true,
+        reconnectStatus: {
+          status: "succeeded",
+          integrationId: result.integrationId,
+        },
+        createStatus: { status: "succeeded", integrationId: "int_reserved" },
+        reconnectIntegration: { config: { accessToken: "reconnected" } },
+        createIntegration: { config: { accessToken: "created" } },
       });
     } finally {
       await database.close();
     }
   });
 
-  it("removes abandoned expired OAuth attempts while preserving active attempts", async () => {
+  it("fails processing attempts and retains terminal status until expiry", async () => {
+    const database = await open(await databasePath());
+    try {
+      const result = await database.run(
+        Effect.gen(function* () {
+          const integrations = yield* IntegrationRepo;
+          yield* integrations.createOAuthAuthorizationAttempt({
+            stateHash: "failed_state",
+            integrationId: null,
+            expiresAt: new Date("2099-01-01T00:00:00Z"),
+            browserBindingHash: "browser_hash",
+            payload: {
+              kind: "create",
+              integrationId: "int_failed",
+              name: "Failed OAuth connection",
+              type: "linear",
+              config: {},
+              configRevision: 0,
+              redirectUri: "https://example.test/oauth/callback",
+            },
+          });
+          const claimed = yield* integrations.claimOAuthAuthorizationAttempt({
+            stateHash: "failed_state",
+            browserBindingHash: "browser_hash",
+            expiresAt: new Date("2099-01-01T00:10:00Z"),
+          });
+          const failed = yield* integrations.failOAuthAuthorizationAttempt({
+            stateHash: "failed_state",
+            expiresAt: new Date("2099-01-01T00:20:00Z"),
+          });
+          return {
+            claimed,
+            failed,
+            status: yield* integrations.readOAuthAuthorizationAttemptStatus({
+              stateHash: "failed_state",
+              browserBindingHash: "browser_hash",
+            }),
+            replay: yield* integrations.claimOAuthAuthorizationAttempt({
+              stateHash: "failed_state",
+              browserBindingHash: "browser_hash",
+              expiresAt: new Date("2099-01-01T00:30:00Z"),
+            }),
+          };
+        })
+      );
+
+      expect(result.claimed).toMatchObject({ integrationId: null });
+      expect(result.failed).toBe(true);
+      expect(result.status).toEqual({ status: "failed" });
+      expect(result.replay).toBeNull();
+    } finally {
+      await database.close();
+    }
+  });
+
+  it("cleans expired attempts and fences their processing reconnect refresh claims", async () => {
     const filename = await databasePath();
     const database = await open(filename);
-    await database.run(
+    const integrationId = await database.run(
       Effect.gen(function* () {
         const integrations = yield* IntegrationRepo;
         const integration = yield* integrations.insert({
@@ -303,19 +499,13 @@ describe("native SQLite integration persistence", () => {
           type: "linear",
           config: {},
         });
-        yield* integrations.createOAuthAuthorizationAttempt({
-          stateHash: "expired_state",
+        yield* integrations.claimRefresh({
           integrationId: integration.id,
-          expiresAt: new Date("2000-01-01T00:00:00Z"),
-          browserBindingHash: "browser_hash",
-          payload: {
-            kind: "reconnect",
-            redirectUri: "https://example.test/oauth/callback",
-            configRevision: 0,
-          },
+          claimId: "expired_state",
+          expectedRevision: integration.configRevision,
         });
         yield* integrations.createOAuthAuthorizationAttempt({
-          stateHash: "active_state",
+          stateHash: "expired_state",
           integrationId: integration.id,
           expiresAt: new Date("2099-01-01T00:00:00Z"),
           browserBindingHash: "browser_hash",
@@ -325,20 +515,62 @@ describe("native SQLite integration persistence", () => {
             configRevision: 0,
           },
         });
+        yield* integrations.claimOAuthAuthorizationAttempt({
+          stateHash: "expired_state",
+          browserBindingHash: "browser_hash",
+          expiresAt: new Date("2099-01-01T00:01:00Z"),
+        });
+        return integration.id;
       })
     );
     await database.close();
 
-    const inspection = new DatabaseSync(filename);
+    const expiration = new DatabaseSync(filename);
     try {
-      const attempts = inspection
+      expiration
         .prepare(
-          "SELECT state_hash FROM oauth_authorization_attempts ORDER BY state_hash"
+          "UPDATE oauth_authorization_attempts SET expires_at = ? WHERE state_hash = ?"
         )
-        .all();
-      expect(attempts).toEqual([{ state_hash: "active_state" }]);
+        .run(new Date("2000-01-01T00:00:00Z").getTime(), "expired_state");
     } finally {
-      inspection.close();
+      expiration.close();
+    }
+
+    const reopened = await open(filename);
+    try {
+      await reopened.run(
+        Effect.gen(function* () {
+          const integrations = yield* IntegrationRepo;
+          yield* integrations.createOAuthAuthorizationAttempt({
+            stateHash: "active_state",
+            integrationId: null,
+            expiresAt: new Date("2099-01-01T00:00:00Z"),
+            browserBindingHash: "browser_hash",
+            payload: {
+              kind: "create",
+              integrationId: "int_active",
+              name: "Active OAuth connection",
+              type: "linear",
+              config: {},
+              configRevision: 0,
+              redirectUri: "https://example.test/oauth/callback",
+            },
+          });
+        })
+      );
+
+      const afterCleanup = await reopened.run(
+        Effect.gen(function* () {
+          const integrations = yield* IntegrationRepo;
+          return yield* integrations.findById(integrationId);
+        })
+      );
+      expect(afterCleanup).toMatchObject({
+        refreshState: "reauthorization_required",
+        refreshClaimId: null,
+      });
+    } finally {
+      await reopened.close();
     }
   });
 

@@ -187,17 +187,19 @@ Expose these routes at the resulting API path:
 
 | Route                                                  | Caller and authorization                                                       |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------ |
-| `POST /api/integrations/oauth/start`                   | The operator's browser when creating a connection. Uses the host `auth` check  |
-| `GET /api/integrations/:integrationId/oauth/start`     | The operator's browser. Uses the host `auth` check                             |
+| `POST /api/integrations/oauth/start`                   | The operator's browser for create and reconnect. Uses the host `auth` check    |
+| `GET /api/integrations/oauth/attempts/:attemptId`      | The originating operator browser. Uses the host `auth` and binding cookie      |
 | `GET /api/integrations/oauth/callback`                 | The operator's browser after the provider redirect. Uses the host `auth` check |
 | `GET /api/integrations/oauth/clients/:integrationType` | The OAuth provider. Public, read-only client metadata                          |
 
-The create start route stores a short-lived browser-bound attempt without creating a
-connection row. The callback consumes that attempt once and inserts the connection
-after a successful exchange. The existing-connection route starts a fenced reconnect.
-The typed `integration.disconnectOAuth` RPC procedure handles disconnects. OAuth tokens
-stay in the encrypted connection configuration and don't enter the extension catalog
-or RPC responses.
+The start route stores a short-lived browser-bound attempt without creating a new
+connection row. The callback claims it once and records a durable terminal result; the
+status route lets the originating browser observe that result. A successful create
+inserts the connection in the same transaction that records success, while a reconnect
+updates the existing row through its revision fence. The typed
+`integration.disconnectOAuth` RPC procedure handles disconnects. OAuth tokens stay in
+the encrypted connection configuration and don't enter the extension catalog or RPC
+responses.
 
 - Clerk, Linear, Resend, and Twilio are exported as values. Slack is a factory because
   it accepts host-provided OAuth client credentials.

@@ -43,16 +43,20 @@ describe("the schema declarations", () => {
 });
 
 describe("OAuth persistence", () => {
-  it("stores one-time authorization attempts under their state hash", () => {
+  it("stores durable authorization attempts under their state hash", () => {
     const config = getTableConfig(schema.oauthAuthorizationAttempts);
 
     expect(config.columns.map((column) => column.name)).toEqual([
       "state_hash",
       "integration_id",
+      "mode",
+      "status",
       "expires_at",
       "browser_binding_hash",
       "encrypted_payload",
+      "result_integration_id",
       "created_at",
+      "updated_at",
     ]);
     expect(config.primaryKeys).toHaveLength(0);
     expect(schema.oauthAuthorizationAttempts.stateHash.primary).toBe(true);
@@ -63,6 +67,19 @@ describe("OAuth persistence", () => {
     );
     expect(config.indexes.map((index) => index.config.name)).toContain(
       "oauth_authorization_attempts_expires_at_idx"
+    );
+    expect(schema.oauthAuthorizationAttempts.mode.notNull).toBe(true);
+    expect(schema.oauthAuthorizationAttempts.status.notNull).toBe(true);
+    expect(schema.oauthAuthorizationAttempts.status.default).toBe("pending");
+    expect(schema.oauthAuthorizationAttempts.resultIntegrationId.notNull).toBe(
+      false
+    );
+    expect(schema.oauthAuthorizationAttempts.updatedAt.notNull).toBe(true);
+    expect(config.checks.map((constraint) => constraint.name)).toEqual(
+      expect.arrayContaining([
+        "oauth_authorization_attempts_mode_check",
+        "oauth_authorization_attempts_status_check",
+      ])
     );
   });
 

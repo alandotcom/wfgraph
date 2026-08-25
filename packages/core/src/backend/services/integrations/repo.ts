@@ -1,4 +1,4 @@
-import { and, eq, inArray, lte, ne, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, lte, ne, sql } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
 import {
   integrations,
@@ -63,6 +63,7 @@ export type OAuthCreateAuthorizationAttemptPayload =
   OAuthAuthorizationAttemptBase & {
     kind: "create";
     integrationId: string;
+    configRevision: 0;
     name: string;
     type: string;
     config: IntegrationConfig;
@@ -72,7 +73,7 @@ export type OAuthAuthorizationAttemptPayload =
   | OAuthReconnectAuthorizationAttemptPayload
   | OAuthCreateAuthorizationAttemptPayload;
 
-export type ConsumedOAuthAuthorizationAttempt =
+export type ClaimedOAuthAuthorizationAttempt =
   | {
       integrationId: string;
       payload: OAuthReconnectAuthorizationAttemptPayload;
@@ -97,6 +98,21 @@ export type OAuthAuthorizationAttemptInput =
       browserBindingHash: string;
       payload: OAuthCreateAuthorizationAttemptPayload;
     };
+
+export type OAuthAuthorizationAttemptStatus =
+  | { status: "pending" | "processing" }
+  | { status: "succeeded"; integrationId: string }
+  | { status: "failed" };
+
+type OAuthAttemptIdentity = {
+  stateHash: string;
+  browserBindingHash: string;
+};
+
+type OAuthAttemptTransition = {
+  stateHash: string;
+  expiresAt: Date;
+};
 
 export function readOAuthAuthorizationAttemptPayload(
   encryptedConfig: IntegrationConfig
@@ -139,11 +155,13 @@ export function readOAuthAuthorizationAttemptPayload(
   }
   if (payload.kind !== "create") return null;
   const integrationId = payload.integrationId;
+  const configRevision = payload.configRevision;
   const name = payload.name;
   const type = payload.type;
   const rawConfig = readJsonObject(payload.config);
   if (
     typeof integrationId !== "string" ||
+    configRevision !== 0 ||
     typeof name !== "string" ||
     typeof type !== "string" ||
     !rawConfig
@@ -158,6 +176,7 @@ export function readOAuthAuthorizationAttemptPayload(
   return {
     kind: "create",
     integrationId,
+    configRevision,
     name,
     type,
     config,
@@ -246,11 +265,31 @@ export class IntegrationRepo extends Context.Service<
     readonly createOAuthAuthorizationAttempt: (
       input: OAuthAuthorizationAttemptInput
     ) => Effect.Effect<void, DatabaseError>;
-    /** Deletes the state before checking its expiry and browser binding. */
-    readonly consumeOAuthAuthorizationAttempt: (
-      stateHash: string,
-      browserBindingHash: string
-    ) => Effect.Effect<ConsumedOAuthAuthorizationAttempt | null, ReadFailure>;
+    /** Claims a pending state once; a wrong browser binding burns that state. */
+    readonly claimOAuthAuthorizationAttempt: (
+      input: OAuthAttemptIdentity & { expiresAt: Date }
+    ) => Effect.Effect<ClaimedOAuthAuthorizationAttempt | null, ReadFailure>;
+    readonly readOAuthAuthorizationAttemptStatus: (
+      input: OAuthAttemptIdentity
+    ) => Effect.Effect<OAuthAuthorizationAttemptStatus | null, DatabaseError>;
+    readonly failOAuthAuthorizationAttempt: (
+      input: OAuthAttemptTransition
+    ) => Effect.Effect<boolean, DatabaseError>;
+    readonly completeOAuthCreateAttempt: (
+      input: OAuthAttemptTransition & {
+        integrationId: string;
+        name: string;
+        type: string;
+        config: IntegrationConfig;
+      }
+    ) => Effect.Effect<boolean, DatabaseError>;
+    readonly completeOAuthReconnectAttempt: (
+      input: OAuthAttemptTransition & {
+        integrationId: string;
+        expectedRevision: number;
+        config: IntegrationConfig;
+      }
+    ) => Effect.Effect<boolean, DatabaseError>;
     readonly claimRefresh: (
       input: RefreshClaimInput
     ) => Effect.Effect<RefreshClaimOutcome, DatabaseError>;
@@ -307,6 +346,32 @@ export function makeIntegrationRepoLayer(
         }
         return decrypted(outcome.row).pipe(
           Effect.map((integration) => ({ status: "updated", integration }))
+        );
+      };
+
+      const claimedAttempt = (
+        attempt: {
+          integrationId: string | null;
+          encryptedPayload: string;
+        } | null
+      ): Effect.Effect<
+        ClaimedOAuthAuthorizationAttempt | null,
+        EncryptionKeyMismatch
+      > => {
+        if (!attempt) return Effect.succeed(null);
+        return cipher.open(attempt.encryptedPayload).pipe(
+          Effect.map((config) => {
+            const payload = readOAuthAuthorizationAttemptPayload(config);
+            if (!payload) return null;
+            if (payload.kind === "create") {
+              return attempt.integrationId === null
+                ? { integrationId: null, payload }
+                : null;
+            }
+            return attempt.integrationId === null
+              ? null
+              : { integrationId: attempt.integrationId, payload };
+          })
         );
       };
 
@@ -455,65 +520,286 @@ export function makeIntegrationRepoLayer(
         createOAuthAuthorizationAttempt: (input) =>
           database.query((db) =>
             db.transaction(async (tx) => {
-              await tx
-                .delete(oauthAuthorizationAttempts)
-                .where(lte(oauthAuthorizationAttempts.expiresAt, new Date()));
+              const now = new Date();
+              const expired = await tx
+                .select({
+                  stateHash: oauthAuthorizationAttempts.stateHash,
+                  mode: oauthAuthorizationAttempts.mode,
+                  status: oauthAuthorizationAttempts.status,
+                })
+                .from(oauthAuthorizationAttempts)
+                .where(lte(oauthAuthorizationAttempts.expiresAt, now))
+                .for("update");
+              const expiredStateHashes = expired.map(
+                (attempt) => attempt.stateHash
+              );
+              const expiredProcessingReconnectStateHashes = expired
+                .filter(
+                  (attempt) =>
+                    attempt.mode === "reconnect" &&
+                    attempt.status === "processing"
+                )
+                .map((attempt) => attempt.stateHash);
+
+              if (expiredProcessingReconnectStateHashes.length > 0) {
+                await tx
+                  .update(integrations)
+                  .set({
+                    refreshState: "reauthorization_required",
+                    refreshClaimId: null,
+                    refreshClaimedAt: null,
+                    updatedAt: now,
+                  })
+                  .where(
+                    and(
+                      eq(integrations.refreshState, "refreshing"),
+                      inArray(
+                        integrations.refreshClaimId,
+                        expiredProcessingReconnectStateHashes
+                      )
+                    )
+                  );
+              }
+              if (expiredStateHashes.length > 0) {
+                await tx
+                  .delete(oauthAuthorizationAttempts)
+                  .where(
+                    inArray(
+                      oauthAuthorizationAttempts.stateHash,
+                      expiredStateHashes
+                    )
+                  );
+              }
               await tx.insert(oauthAuthorizationAttempts).values({
                 stateHash: input.stateHash,
                 integrationId: input.integrationId,
+                mode: input.payload.kind,
+                status: "pending",
                 expiresAt: input.expiresAt,
                 browserBindingHash: input.browserBindingHash,
                 encryptedPayload: cipher.seal({
                   payload: JSON.stringify(input.payload),
                 }),
+                updatedAt: now,
               });
             })
           ),
 
-        consumeOAuthAuthorizationAttempt: (stateHash, browserBindingHash) =>
+        claimOAuthAuthorizationAttempt: (input) =>
           database
-            .query(async (db) => {
-              const [attempt] = await db
-                .delete(oauthAuthorizationAttempts)
-                .where(eq(oauthAuthorizationAttempts.stateHash, stateHash))
-                .returning();
-
-              if (
-                !attempt ||
-                attempt.browserBindingHash !== browserBindingHash ||
-                attempt.expiresAt.getTime() <= Date.now()
-              ) {
-                return null;
-              }
-
-              return {
-                integrationId: attempt.integrationId,
-                encryptedPayload: attempt.encryptedPayload,
-              };
-            })
-            .pipe(
-              Effect.flatMap((attempt) => {
-                if (!attempt) {
-                  return Effect.succeed(null);
-                }
-
-                return cipher.open(attempt.encryptedPayload).pipe(
-                  Effect.map((config) => {
-                    const payload =
-                      readOAuthAuthorizationAttemptPayload(config);
-                    if (!payload) return null;
-                    if (payload.kind === "create") {
-                      return attempt.integrationId === null
-                        ? { integrationId: null, payload }
-                        : null;
-                    }
-                    return attempt.integrationId === null
-                      ? null
-                      : { integrationId: attempt.integrationId, payload };
+            .query((db) =>
+              db.transaction(async (tx) => {
+                const now = new Date();
+                const burned = await tx
+                  .update(oauthAuthorizationAttempts)
+                  .set({
+                    status: "failed",
+                    expiresAt: input.expiresAt,
+                    updatedAt: now,
                   })
-                );
+                  .where(
+                    and(
+                      eq(oauthAuthorizationAttempts.stateHash, input.stateHash),
+                      eq(oauthAuthorizationAttempts.status, "pending"),
+                      gt(oauthAuthorizationAttempts.expiresAt, now),
+                      ne(
+                        oauthAuthorizationAttempts.browserBindingHash,
+                        input.browserBindingHash
+                      )
+                    )
+                  )
+                  .returning({
+                    stateHash: oauthAuthorizationAttempts.stateHash,
+                  });
+                if (burned.length > 0) return null;
+
+                const [attempt] = await tx
+                  .update(oauthAuthorizationAttempts)
+                  .set({
+                    status: "processing",
+                    expiresAt: input.expiresAt,
+                    updatedAt: now,
+                  })
+                  .where(
+                    and(
+                      eq(oauthAuthorizationAttempts.stateHash, input.stateHash),
+                      eq(oauthAuthorizationAttempts.status, "pending"),
+                      gt(oauthAuthorizationAttempts.expiresAt, now),
+                      eq(
+                        oauthAuthorizationAttempts.browserBindingHash,
+                        input.browserBindingHash
+                      )
+                    )
+                  )
+                  .returning({
+                    integrationId: oauthAuthorizationAttempts.integrationId,
+                    encryptedPayload:
+                      oauthAuthorizationAttempts.encryptedPayload,
+                  });
+                return attempt ?? null;
               })
-            ),
+            )
+            .pipe(Effect.flatMap(claimedAttempt)),
+
+        readOAuthAuthorizationAttemptStatus: (input) =>
+          database.query(async (db) => {
+            const [attempt] = await db
+              .select({
+                status: oauthAuthorizationAttempts.status,
+                resultIntegrationId:
+                  oauthAuthorizationAttempts.resultIntegrationId,
+              })
+              .from(oauthAuthorizationAttempts)
+              .where(
+                and(
+                  eq(oauthAuthorizationAttempts.stateHash, input.stateHash),
+                  eq(
+                    oauthAuthorizationAttempts.browserBindingHash,
+                    input.browserBindingHash
+                  ),
+                  gt(oauthAuthorizationAttempts.expiresAt, new Date())
+                )
+              )
+              .limit(1);
+            if (!attempt) return null;
+            if (attempt.status === "succeeded") {
+              return attempt.resultIntegrationId
+                ? {
+                    status: "succeeded" as const,
+                    integrationId: attempt.resultIntegrationId,
+                  }
+                : null;
+            }
+            return attempt.status === "failed"
+              ? { status: "failed" as const }
+              : { status: attempt.status };
+          }),
+
+        failOAuthAuthorizationAttempt: (input) =>
+          database.query(async (db) => {
+            const failed = await db
+              .update(oauthAuthorizationAttempts)
+              .set({
+                status: "failed",
+                expiresAt: input.expiresAt,
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(oauthAuthorizationAttempts.stateHash, input.stateHash),
+                  eq(oauthAuthorizationAttempts.status, "processing")
+                )
+              )
+              .returning({ stateHash: oauthAuthorizationAttempts.stateHash });
+            return failed.length > 0;
+          }),
+
+        completeOAuthCreateAttempt: (input) =>
+          database.query((db) =>
+            db.transaction(async (tx) => {
+              const eligible = await tx
+                .select({ stateHash: oauthAuthorizationAttempts.stateHash })
+                .from(oauthAuthorizationAttempts)
+                .where(
+                  and(
+                    eq(oauthAuthorizationAttempts.stateHash, input.stateHash),
+                    eq(oauthAuthorizationAttempts.mode, "create"),
+                    eq(oauthAuthorizationAttempts.status, "processing")
+                  )
+                )
+                .for("update");
+              if (eligible.length === 0) return false;
+
+              await tx.insert(integrations).values({
+                id: input.integrationId,
+                name: input.name,
+                type: input.type,
+                config: cipher.seal(input.config),
+              });
+              const completed = await tx
+                .update(oauthAuthorizationAttempts)
+                .set({
+                  status: "succeeded",
+                  resultIntegrationId: input.integrationId,
+                  expiresAt: input.expiresAt,
+                  updatedAt: new Date(),
+                })
+                .where(
+                  and(
+                    eq(oauthAuthorizationAttempts.stateHash, input.stateHash),
+                    eq(oauthAuthorizationAttempts.status, "processing")
+                  )
+                )
+                .returning({ stateHash: oauthAuthorizationAttempts.stateHash });
+              if (completed.length === 0) {
+                throw new Error("OAuth attempt ownership was lost");
+              }
+              return true;
+            })
+          ),
+
+        completeOAuthReconnectAttempt: (input) =>
+          database.query((db) =>
+            db.transaction(async (tx) => {
+              const eligible = await tx
+                .select({ stateHash: oauthAuthorizationAttempts.stateHash })
+                .from(oauthAuthorizationAttempts)
+                .where(
+                  and(
+                    eq(oauthAuthorizationAttempts.stateHash, input.stateHash),
+                    eq(
+                      oauthAuthorizationAttempts.integrationId,
+                      input.integrationId
+                    ),
+                    eq(oauthAuthorizationAttempts.mode, "reconnect"),
+                    eq(oauthAuthorizationAttempts.status, "processing")
+                  )
+                )
+                .for("update");
+              if (eligible.length === 0) return false;
+
+              const updated = await tx
+                .update(integrations)
+                .set({
+                  config: cipher.seal(input.config),
+                  configRevision: sql`${integrations.configRevision} + 1`,
+                  refreshState: "idle",
+                  refreshClaimId: null,
+                  refreshClaimedAt: null,
+                  updatedAt: new Date(),
+                })
+                .where(
+                  and(
+                    eq(integrations.id, input.integrationId),
+                    eq(integrations.refreshState, "refreshing"),
+                    eq(integrations.refreshClaimId, input.stateHash),
+                    eq(integrations.configRevision, input.expectedRevision)
+                  )
+                )
+                .returning({ id: integrations.id });
+              if (updated.length === 0) return false;
+
+              const completed = await tx
+                .update(oauthAuthorizationAttempts)
+                .set({
+                  status: "succeeded",
+                  resultIntegrationId: input.integrationId,
+                  expiresAt: input.expiresAt,
+                  updatedAt: new Date(),
+                })
+                .where(
+                  and(
+                    eq(oauthAuthorizationAttempts.stateHash, input.stateHash),
+                    eq(oauthAuthorizationAttempts.status, "processing")
+                  )
+                )
+                .returning({ stateHash: oauthAuthorizationAttempts.stateHash });
+              if (completed.length === 0) {
+                throw new Error("OAuth attempt ownership was lost");
+              }
+              return true;
+            })
+          ),
 
         claimRefresh: (input) =>
           database.query((db) =>

@@ -224,9 +224,10 @@ export function EditConnectionOverlay({
   const [config, setConfig] = useState<Record<string, string>>({});
   const [oauth, setOauth] = useState(integration.oauth);
   const oauthConnection = useOAuthConnection({
-    baseline: oauth,
-    onConnected: (updated) => setOauth(updated.oauth),
-    onReauthorizationRequired: (updated) => setOauth(updated.oauth),
+    onConnected: () => {
+      onSuccess?.();
+      closeAll();
+    },
   });
   const oauthPending = oauthConnection.pending;
 

@@ -374,7 +374,13 @@ const integrationRepoStubs: IntegrationRepo["Service"] = {
   update: refuse("update"),
   deleteOwnedRefreshClaim: refuse("deleteOwnedRefreshClaim"),
   createOAuthAuthorizationAttempt: refuse("createOAuthAuthorizationAttempt"),
-  consumeOAuthAuthorizationAttempt: refuse("consumeOAuthAuthorizationAttempt"),
+  claimOAuthAuthorizationAttempt: refuse("claimOAuthAuthorizationAttempt"),
+  readOAuthAuthorizationAttemptStatus: refuse(
+    "readOAuthAuthorizationAttemptStatus"
+  ),
+  failOAuthAuthorizationAttempt: refuse("failOAuthAuthorizationAttempt"),
+  completeOAuthCreateAttempt: refuse("completeOAuthCreateAttempt"),
+  completeOAuthReconnectAttempt: refuse("completeOAuthReconnectAttempt"),
   claimRefresh: refuse("claimRefresh"),
   completeRefresh: refuse("completeRefresh"),
   releaseRefreshClaim: refuse("releaseRefreshClaim"),

@@ -98,3 +98,24 @@ This change made cancellation, provider decline, expiry, and browser loss leave
 no provisional connection row. If the provider issued a valid grant but storage
 or credential validation failed, Core attempted revocation before returning the
 failure.
+
+## Amendment: Authorization outcomes became durable
+
+Date: 2026-08-24
+
+Deleting an attempt at callback entry left the editor unable to distinguish a
+completed failure from an abandoned provider window. It also made connection
+creation and the browser-visible outcome separate database decisions.
+
+Attempts therefore moved through `pending`, `processing`, and a terminal
+`succeeded` or `failed` state. The opaque provider state also identified the
+attempt to the editor, while only its hash was stored. A browser-bound status
+route exposed pending, success with the connection ID, or a generic failure; it
+never exposed provider values or internal errors. Terminal attempts remained for
+ten minutes so the originating browser could observe the result.
+
+Claiming an attempt replaced deletion as the one-time callback boundary. Create
+completion inserted the reserved connection and recorded success in one
+transaction. Reconnect completion fenced the configuration revision and recorded
+success in the same transaction. Expired processing reconnects required
+reauthorization before cleanup because their provider outcome was unknown.

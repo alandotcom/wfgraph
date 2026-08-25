@@ -3,36 +3,31 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useUnmountCleanup } from "#src/hooks/effects";
 import {
-  beginCreatedOAuthConnection,
-  beginExistingOAuthConnection,
   type NewOAuthConnectionInput,
   type OAuthPopup,
-  type OAuthSummary,
-  pollOAuthConnection,
-  startNewOAuthConnection,
+  type OAuthStartInput,
+  pollOAuthAttempt,
+  reserveOAuthPopup,
+  startOAuthConnection,
 } from "#src/lib/oauth-connection";
 import { refreshIntegrations } from "#src/lib/rpc-query";
 
 type ActiveAttempt = {
   controller: AbortController;
-  popup?: OAuthPopup;
+  popup: OAuthPopup;
 };
 
 type OAuthConnectionControllerOptions = {
-  baseline?: OAuthSummary["oauth"];
-  onConnected: (integration: OAuthSummary) => void;
-  onReauthorizationRequired?: (integration: OAuthSummary) => void;
+  onConnected: (integrationId: string) => void;
 };
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
-/** Owns one popup, poll, cache refresh, and cancellation lifecycle. */
+/** Owns one popup, status poll, cache refresh, and cancellation lifecycle. */
 export function useOAuthConnection({
-  baseline,
   onConnected,
-  onReauthorizationRequired,
 }: OAuthConnectionControllerOptions): {
   pending: boolean;
   startCreated: (input: NewOAuthConnectionInput) => Promise<void>;
@@ -56,62 +51,65 @@ export function useOAuthConnection({
 
   useUnmountCleanup(() => cancel(false));
 
-  const run = async (
-    begin: (
-      attempt: ActiveAttempt
-    ) =>
-      | ReturnType<typeof beginExistingOAuthConnection>
-      | Promise<Awaited<ReturnType<typeof beginCreatedOAuthConnection>>>
-  ) => {
+  const run = async (input: OAuthStartInput) => {
     cancel(false);
+    const popup = reserveOAuthPopup();
+    if (!popup) {
+      setPending(false);
+      toast.error("Allow pop-ups to connect this provider");
+      return;
+    }
+
+    // The hook owns the popup before the first await. Cancellation can now
+    // always close it, including while the start request is in flight.
     const attempt: ActiveAttempt = {
       controller: new AbortController(),
+      popup,
     };
     activeAttempt.current = attempt;
     setPending(true);
     let authorizationStarted = false;
 
     try {
-      const started = await begin(attempt);
+      const authorization = await startOAuthConnection(
+        input,
+        attempt.controller.signal
+      );
       if (activeAttempt.current !== attempt) {
-        return;
-      }
-      if (started.status === "popup_blocked") {
-        toast.error("Allow pop-ups to connect this provider");
         return;
       }
 
       authorizationStarted = true;
-      attempt.popup = started.popup;
-      const integrationId =
-        "integrationId" in started ? started.integrationId : undefined;
-      if (!integrationId) {
-        throw new Error("OAuth connection id was not provided");
-      }
-
-      const result = await pollOAuthConnection({
-        baseline,
-        integrationId,
-        popup: started.popup,
-        queryClient,
+      popup.location.assign(authorization.authorizeUrl);
+      const result = await pollOAuthAttempt({
+        attemptId: authorization.attemptId,
+        popup,
         signal: attempt.controller.signal,
       });
+      if (activeAttempt.current !== attempt) {
+        return;
+      }
+
+      if (result.status === "pending") {
+        toast.message("Authorization is still pending");
+        return;
+      }
+
+      // A terminal status may have changed the integration even on failure, so
+      // refresh once before announcing or closing any surface that reads it.
       await refreshIntegrations(queryClient);
       if (activeAttempt.current !== attempt) {
         return;
       }
 
-      if (result.status === "connected") {
-        onConnected(result.integration);
+      if (result.status === "succeeded") {
         toast.success("Connection authorized");
-      } else if (result.status === "reauthorization_required") {
-        onReauthorizationRequired?.(result.integration);
-        toast.error("Authorization needs to be completed again");
+        onConnected(result.integrationId);
       } else {
-        toast.message("Authorization is still pending");
+        toast.error("Could not complete OAuth authorization");
       }
     } catch (error) {
-      if (!isAbortError(error)) {
+      if (activeAttempt.current === attempt && !isAbortError(error)) {
         toast.error(
           authorizationStarted
             ? "Could not check OAuth authorization"
@@ -127,20 +125,7 @@ export function useOAuthConnection({
 
   return {
     pending,
-    startCreated: (input) =>
-      run((attempt) =>
-        beginCreatedOAuthConnection({
-          start: () =>
-            startNewOAuthConnection(input, attempt.controller.signal),
-          signal: attempt.controller.signal,
-        })
-      ),
-    startExisting: (integrationId) =>
-      run(() => {
-        const started = beginExistingOAuthConnection(integrationId);
-        return started.status === "started"
-          ? { ...started, integrationId }
-          : started;
-      }),
+    startCreated: (input) => run({ mode: "create", ...input }),
+    startExisting: (integrationId) => run({ mode: "reconnect", integrationId }),
   };
 }

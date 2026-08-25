@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
-import { createApiApp } from "#src/backend/api-app";
+import { createApiApp, requestLogPath } from "#src/backend/api-app";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import type { IntegrationOAuth } from "#src/backend/extensions/oauth";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
@@ -8,7 +8,7 @@ import type {
   DecryptedIntegration,
   IntegrationRepo,
   OAuthAuthorizationAttemptInput,
-  OAuthReconnectAuthorizationAttemptPayload,
+  OAuthAuthorizationAttemptStatus,
 } from "#src/backend/services/integrations/repo";
 import { OAUTH_GRANT_CONFIG_KEY } from "#src/backend/services/integrations/oauth-grant";
 import {
@@ -84,6 +84,14 @@ function extensions(oauth: IntegrationOAuth): Partial<ExtensionSet> {
 }
 
 describe("OAuth API routes", () => {
+  it("redacts the OAuth attempt state from request log paths", () => {
+    expect(
+      requestLogPath(
+        "/wfgraph/api/integrations/oauth/attempts/opaque-provider-state"
+      )
+    ).toBe("/wfgraph/api/integrations/oauth/attempts/:attemptId");
+  });
+
   it("starts a new OAuth connection without creating an integration row", async () => {
     let attempt: OAuthAuthorizationAttemptInput | undefined;
     let insertedIntegration = false;
@@ -119,6 +127,7 @@ describe("OAuth API routes", () => {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
+            mode: "create",
             name: "Example connection",
             type: "example",
             config: { MANUAL_TOKEN: "manual" },
@@ -130,7 +139,7 @@ describe("OAuth API routes", () => {
       expect(response.headers.get("set-cookie")).toContain("HttpOnly");
       const body = await response.json();
       expect(body).toEqual({
-        integrationId: expect.any(String),
+        attemptId: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
         authorizeUrl: expect.stringMatching(
           /^https:\/\/provider\.example\/authorize\?/
         ),
@@ -138,7 +147,8 @@ describe("OAuth API routes", () => {
       expect(attempt?.integrationId).toBeNull();
       expect(attempt?.payload).toMatchObject({
         kind: "create",
-        integrationId: body.integrationId,
+        integrationId: expect.any(String),
+        configRevision: 0,
         name: "Example connection",
         type: "example",
         config: { MANUAL_TOKEN: "manual" },
@@ -149,7 +159,57 @@ describe("OAuth API routes", () => {
     }
   });
 
-  it("inserts the reserved integration id only after a successful create callback", async () => {
+  it("starts reconnect through the same POST route", async () => {
+    let attempt: OAuthAuthorizationAttemptInput | undefined;
+    const runtime = stubWfGraphRuntime({
+      appContext: oauthAppContext,
+      extensions: extensions(provider()),
+      integrationRepo: {
+        findById: () => Effect.succeed(integration),
+        createOAuthAuthorizationAttempt: (input) =>
+          Effect.sync(() => {
+            attempt = input;
+          }),
+      },
+    });
+    const app = createApiApp({
+      basePath,
+      authorize: () => Promise.resolve(true),
+      runtime,
+    });
+
+    try {
+      const response = await app.fetch(
+        new Request(`http://localhost${basePath}/integrations/oauth/start`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mode: "reconnect",
+            integrationId: integration.id,
+          }),
+        })
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        attemptId: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+        authorizeUrl: expect.stringMatching(
+          /^https:\/\/provider\.example\/authorize\?/
+        ),
+      });
+      expect(attempt).toMatchObject({
+        integrationId: integration.id,
+        payload: {
+          kind: "reconnect",
+          configRevision: integration.configRevision,
+        },
+      });
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
+  it("persists a reserved integration id only after a successful create callback", async () => {
     let attempt: OAuthAuthorizationAttemptInput | undefined;
     let inserted:
       | Parameters<IntegrationRepo["Service"]["insertWithId"]>[0]
@@ -162,26 +222,29 @@ describe("OAuth API routes", () => {
           Effect.sync(() => {
             attempt = input;
           }),
-        consumeOAuthAuthorizationAttempt: () =>
+        claimOAuthAuthorizationAttempt: (input) =>
           Effect.sync(() => {
-            if (!attempt || attempt.payload.kind !== "create") return null;
-            const consumed = {
+            if (
+              !attempt ||
+              attempt.payload.kind !== "create" ||
+              input.stateHash !== attempt.stateHash ||
+              input.browserBindingHash !== attempt.browserBindingHash
+            )
+              return null;
+            return {
               integrationId: null,
               payload: attempt.payload,
             } as const;
-            attempt = undefined;
-            return consumed;
           }),
-        insertWithId: (input) =>
+        completeOAuthCreateAttempt: (input) =>
           Effect.sync(() => {
-            inserted = input;
-            return {
-              ...integration,
-              id: input.id,
+            inserted = {
+              id: input.integrationId,
               name: input.name,
               type: input.type,
               config: input.config,
             };
+            return true;
           }),
       },
     });
@@ -197,6 +260,7 @@ describe("OAuth API routes", () => {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
+            mode: "create",
             name: "Example connection",
             type: "example",
             config: { MANUAL_TOKEN: "manual" },
@@ -206,7 +270,7 @@ describe("OAuth API routes", () => {
       const started = await start.json();
       expect(inserted).toBeUndefined();
 
-      const state = new URL(started.authorizeUrl).searchParams.get("state")!;
+      const state = started.attemptId;
       const cookie = start.headers.get("set-cookie")!.split(";")[0]!;
       const callback = await app.fetch(
         new Request(
@@ -217,7 +281,10 @@ describe("OAuth API routes", () => {
 
       expect(callback.status).toBe(200);
       expect(inserted).toMatchObject({
-        id: started.integrationId,
+        id:
+          attempt?.payload.kind === "create"
+            ? attempt.payload.integrationId
+            : undefined,
         name: "Example connection",
         type: "example",
         config: { MANUAL_TOKEN: "manual" },
@@ -243,9 +310,11 @@ describe("OAuth API routes", () => {
 
     try {
       const response = await app.fetch(
-        new Request(
-          `http://localhost${basePath}/integrations/int_1/oauth/start`
-        )
+        new Request(`http://localhost${basePath}/integrations/oauth/start`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ mode: "reconnect", integrationId: "int_1" }),
+        })
       );
       expect(response.status).toBe(400);
       expect(response.headers.get("cache-control")).toBe("no-store");
@@ -278,9 +347,11 @@ describe("OAuth API routes", () => {
         redirect_uris: [`${publicUrl}${basePath}/integrations/oauth/callback`],
       });
       const start = await app.fetch(
-        new Request(
-          `http://localhost${basePath}/integrations/int_1/oauth/start`
-        )
+        new Request(`http://localhost${basePath}/integrations/oauth/start`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ mode: "reconnect", integrationId: "int_1" }),
+        })
       );
       expect(start.status).toBe(401);
       expect(start.headers.get("cache-control")).toBe("no-store");
@@ -289,6 +360,7 @@ describe("OAuth API routes", () => {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
+            mode: "create",
             name: "Example",
             type: "example",
             config: { ACCESS_TOKEN: "must-not-be-read" },
@@ -297,6 +369,12 @@ describe("OAuth API routes", () => {
       );
       expect(createStart.status).toBe(401);
       expect(createStart.headers.get("cache-control")).toBe("no-store");
+      const status = await app.fetch(
+        new Request(
+          `http://localhost${basePath}/integrations/oauth/attempts/opaque`
+        )
+      );
+      expect(status.status).toBe(401);
       const callback = await app.fetch(
         new Request(
           `http://localhost${basePath}/integrations/oauth/callback?state=opaque`
@@ -312,11 +390,18 @@ describe("OAuth API routes", () => {
   it.each([
     {
       name: "unknown fields",
-      body: { name: "Example", type: "example", config: {}, extra: true },
+      body: {
+        mode: "create",
+        name: "Example",
+        type: "example",
+        config: {},
+        extra: true,
+      },
     },
     {
       name: "the reserved grant key",
       body: {
+        mode: "create",
         name: "Example",
         type: "example",
         config: { [OAUTH_GRANT_CONFIG_KEY]: "forged" },
@@ -324,9 +409,26 @@ describe("OAuth API routes", () => {
     },
     {
       name: "non-string config values",
-      body: { name: "Example", type: "example", config: { TOKEN: 42 } },
+      body: {
+        mode: "create",
+        name: "Example",
+        type: "example",
+        config: { TOKEN: 42 },
+      },
     },
-  ])("rejects $name in a create OAuth request", async ({ body }) => {
+    {
+      name: "a combined create and reconnect shape",
+      body: {
+        mode: "reconnect",
+        integrationId: "int_1",
+        name: "Example",
+      },
+    },
+    {
+      name: "a missing mode",
+      body: { name: "Example", type: "example", config: {} },
+    },
+  ])("rejects $name in a unified OAuth start request", async ({ body }) => {
     let attempted = false;
     const runtime = stubWfGraphRuntime({
       appContext: oauthAppContext,
@@ -361,27 +463,14 @@ describe("OAuth API routes", () => {
   });
 
   it("keeps the PKCE verifier in the attempt and uses its challenge in the redirect", async () => {
-    let attempt:
-      | {
-          stateHash: string;
-          browserBindingHash: string;
-          payload: OAuthReconnectAuthorizationAttemptPayload;
-        }
-      | undefined;
+    let attempt: OAuthAuthorizationAttemptInput | undefined;
     const runtime = stubWfGraphRuntime({
       appContext: oauthAppContext,
       extensions: extensions(provider()),
       integrationRepo: {
-        findById: () => Effect.succeed(integration),
         createOAuthAuthorizationAttempt: (input) =>
           Effect.sync(() => {
-            if (input.payload.kind === "reconnect") {
-              attempt = {
-                stateHash: input.stateHash,
-                browserBindingHash: input.browserBindingHash,
-                payload: input.payload,
-              };
-            }
+            attempt = input;
           }),
       },
     });
@@ -393,11 +482,19 @@ describe("OAuth API routes", () => {
 
     try {
       const response = await app.fetch(
-        new Request(
-          `http://localhost${basePath}/integrations/int_1/oauth/start`
-        )
+        new Request(`http://localhost${basePath}/integrations/oauth/start`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mode: "create",
+            name: "Example",
+            type: "example",
+            config: {},
+          }),
+        })
       );
-      expect(response.status).toBe(302);
+      const { authorizeUrl } = await response.json();
+      expect(response.status).toBe(200);
       expect(response.headers.get("set-cookie")).toContain("HttpOnly");
       expect(response.headers.get("set-cookie")).toContain("SameSite=Lax");
       expect(response.headers.get("set-cookie")).toContain("Secure");
@@ -407,42 +504,32 @@ describe("OAuth API routes", () => {
         new TextEncoder().encode(attempt?.payload.codeVerifier ?? "")
       );
       const challenge = Buffer.from(digest).toString("base64url");
-      expect(
-        new URL(response.headers.get("location")!).searchParams.get("challenge")
-      ).toBe(challenge);
+      expect(new URL(authorizeUrl).searchParams.get("challenge")).toBe(
+        challenge
+      );
     } finally {
       await runtime.dispose();
     }
   });
 
-  it("burns an authorization state when its cookie binding differs", async () => {
-    const attempts = new Map<string, { browserBindingHash: string }>();
-    let consumed = 0;
+  it("returns browser-bound durable attempt statuses and clears the cookie only once terminal", async () => {
+    let attempt: OAuthAuthorizationAttemptInput | undefined;
+    let status: OAuthAuthorizationAttemptStatus = { status: "pending" };
     const runtime = stubWfGraphRuntime({
       appContext: oauthAppContext,
       extensions: extensions(provider()),
       integrationRepo: {
-        findById: () => Effect.succeed(integration),
         createOAuthAuthorizationAttempt: (input) =>
           Effect.sync(() => {
-            attempts.set(input.stateHash, input);
+            attempt = input;
           }),
-        consumeOAuthAuthorizationAttempt: (stateHash, browserBindingHash) =>
-          Effect.sync(() => {
-            consumed += 1;
-            const attempt = attempts.get(stateHash);
-            attempts.delete(stateHash);
-            return attempt?.browserBindingHash === browserBindingHash
-              ? {
-                  integrationId: integration.id,
-                  payload: {
-                    kind: "reconnect",
-                    redirectUri: "https://invalid.example/callback",
-                    configRevision: 0,
-                  },
-                }
-              : null;
-          }),
+        readOAuthAuthorizationAttemptStatus: (input) =>
+          Effect.succeed(
+            input.stateHash === attempt?.stateHash &&
+              input.browserBindingHash === attempt?.browserBindingHash
+              ? status
+              : null
+          ),
       },
     });
     const app = createApiApp({
@@ -453,23 +540,59 @@ describe("OAuth API routes", () => {
 
     try {
       const start = await app.fetch(
-        new Request(
-          `http://localhost${basePath}/integrations/int_1/oauth/start`
-        )
+        new Request(`http://localhost${basePath}/integrations/oauth/start`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mode: "create",
+            name: "Example",
+            type: "example",
+            config: {},
+          }),
+        })
       );
-      const state = new URL(start.headers.get("location")!).searchParams.get(
-        "state"
+      const { attemptId } = await start.json();
+      const cookie = start.headers.get("set-cookie")!.split(";")[0]!;
+      const url = `http://localhost${basePath}/integrations/oauth/attempts/${attemptId}`;
+
+      const pending = await app.fetch(
+        new Request(url, { headers: { cookie } })
       );
-      const callback = await app.fetch(
-        new Request(
-          `http://localhost${basePath}/integrations/oauth/callback?state=${state}&code=code`,
-          { headers: { cookie: `wfgraph_oauth_${state}=wrong-binding` } }
-        )
+      expect(await pending.json()).toEqual({ status: "pending" });
+      expect(pending.headers.get("set-cookie")).toBeNull();
+
+      status = { status: "processing" };
+      const processing = await app.fetch(
+        new Request(url, { headers: { cookie } })
       );
-      expect(callback.status).toBe(400);
-      expect(consumed).toBe(1);
-      expect(attempts.size).toBe(0);
-      expect(await callback.text()).not.toContain("code");
+      expect(await processing.json()).toEqual({ status: "pending" });
+      expect(processing.headers.get("set-cookie")).toBeNull();
+
+      status = { status: "succeeded", integrationId: integration.id };
+      const succeeded = await app.fetch(
+        new Request(url, { headers: { cookie } })
+      );
+      expect(await succeeded.json()).toEqual({
+        status: "succeeded",
+        integrationId: integration.id,
+      });
+      expect(succeeded.headers.get("set-cookie")).toContain("Max-Age=0");
+      expect(succeeded.headers.get("set-cookie")).toContain(
+        `Path=${basePath}/integrations/oauth`
+      );
+
+      status = { status: "failed" };
+      const failed = await app.fetch(new Request(url, { headers: { cookie } }));
+      expect(await failed.json()).toEqual({ status: "failed" });
+      expect(failed.headers.get("set-cookie")).toContain("Max-Age=0");
+
+      const unbound = await app.fetch(
+        new Request(url, {
+          headers: { cookie: `wfgraph_oauth_${attemptId}=wrong-binding` },
+        })
+      );
+      expect(unbound.status).toBe(404);
+      expect(await unbound.text()).not.toContain("wrong-binding");
     } finally {
       await runtime.dispose();
     }
@@ -477,13 +600,8 @@ describe("OAuth API routes", () => {
 
   it("consumes a provider error callback without exchanging a code", async () => {
     let exchangeCalls = 0;
-    let attempt:
-      | {
-          stateHash: string;
-          browserBindingHash: string;
-          payload: OAuthReconnectAuthorizationAttemptPayload;
-        }
-      | undefined;
+    let attempt: OAuthAuthorizationAttemptInput | undefined;
+    let failed = false;
     const runtime = stubWfGraphRuntime({
       appContext: oauthAppContext,
       extensions: extensions(
@@ -498,28 +616,25 @@ describe("OAuth API routes", () => {
         })
       ),
       integrationRepo: {
-        findById: () => Effect.succeed(integration),
         createOAuthAuthorizationAttempt: (input) =>
           Effect.sync(() => {
-            if (input.payload.kind === "reconnect") {
-              attempt = {
-                stateHash: input.stateHash,
-                browserBindingHash: input.browserBindingHash,
-                payload: input.payload,
-              };
-            }
+            attempt = input;
           }),
-        consumeOAuthAuthorizationAttempt: (stateHash, browserBindingHash) =>
+        claimOAuthAuthorizationAttempt: (input) =>
           Effect.sync(() => {
             if (
-              stateHash !== attempt?.stateHash ||
-              browserBindingHash !== attempt.browserBindingHash
+              input.stateHash !== attempt?.stateHash ||
+              input.browserBindingHash !== attempt.browserBindingHash ||
+              attempt?.payload.kind !== "create"
             ) {
               return null;
             }
-            const consumed = attempt;
-            attempt = undefined;
-            return { integrationId: integration.id, payload: consumed.payload };
+            return { integrationId: null, payload: attempt.payload };
+          }),
+        failOAuthAuthorizationAttempt: () =>
+          Effect.sync(() => {
+            failed = true;
+            return true;
           }),
       },
     });
@@ -531,22 +646,29 @@ describe("OAuth API routes", () => {
 
     try {
       const start = await app.fetch(
-        new Request(
-          `http://localhost${basePath}/integrations/int_1/oauth/start`
-        )
+        new Request(`http://localhost${basePath}/integrations/oauth/start`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mode: "create",
+            name: "Example",
+            type: "example",
+            config: {},
+          }),
+        })
       );
-      const state = new URL(start.headers.get("location")!).searchParams.get(
-        "state"
-      )!;
+      const { attemptId } = await start.json();
       const cookie = start.headers.get("set-cookie")!.split(";")[0]!;
       const callback = await app.fetch(
         new Request(
-          `http://localhost${basePath}/integrations/oauth/callback?state=${state}&error=access_denied`,
+          `http://localhost${basePath}/integrations/oauth/callback?state=${attemptId}&error=access_denied`,
           { headers: { cookie } }
         )
       );
       expect(callback.status).toBe(400);
+      expect(callback.headers.get("set-cookie")).toBeNull();
       expect(exchangeCalls).toBe(0);
+      expect(failed).toBe(true);
       expect(await callback.text()).not.toContain("access_denied");
     } finally {
       await runtime.dispose();
@@ -554,41 +676,28 @@ describe("OAuth API routes", () => {
   });
 
   it("persists a private grant while the callback page omits provider values", async () => {
-    let attempt:
-      | {
-          stateHash: string;
-          browserBindingHash: string;
-          payload: OAuthReconnectAuthorizationAttemptPayload;
-        }
-      | undefined;
+    let attempt: OAuthAuthorizationAttemptInput | undefined;
     let written: Record<string, string | undefined> | undefined;
     const runtime = stubWfGraphRuntime({
       appContext: oauthAppContext,
       extensions: extensions(provider()),
       integrationRepo: {
-        findById: () => Effect.succeed(integration),
         createOAuthAuthorizationAttempt: (input) =>
           Effect.sync(() => {
-            if (input.payload.kind === "reconnect") {
-              attempt = {
-                stateHash: input.stateHash,
-                browserBindingHash: input.browserBindingHash,
-                payload: input.payload,
-              };
-            }
+            attempt = input;
           }),
-        consumeOAuthAuthorizationAttempt: (stateHash, browserBindingHash) =>
+        claimOAuthAuthorizationAttempt: (input) =>
           Effect.sync(() => {
             if (
-              stateHash !== attempt?.stateHash ||
-              browserBindingHash !== attempt.browserBindingHash
+              input.stateHash !== attempt?.stateHash ||
+              input.browserBindingHash !== attempt.browserBindingHash ||
+              attempt?.payload.kind !== "create"
             ) {
               return null;
             }
-            return { integrationId: integration.id, payload: attempt.payload };
+            return { integrationId: null, payload: attempt.payload };
           }),
-        claimRefresh: () => Effect.succeed({ status: "acquired" }),
-        completeRefresh: ({ config }) =>
+        completeOAuthCreateAttempt: ({ config }) =>
           Effect.sync(() => {
             written = config;
             return true;
@@ -603,22 +712,28 @@ describe("OAuth API routes", () => {
 
     try {
       const start = await app.fetch(
-        new Request(
-          `http://localhost${basePath}/integrations/int_1/oauth/start`
-        )
+        new Request(`http://localhost${basePath}/integrations/oauth/start`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mode: "create",
+            name: "Example",
+            type: "example",
+            config: { MANUAL_TOKEN: "manual" },
+          }),
+        })
       );
-      const state = new URL(start.headers.get("location")!).searchParams.get(
-        "state"
-      )!;
+      const { attemptId } = await start.json();
       const cookie = start.headers.get("set-cookie")!.split(";")[0]!;
       const callback = await app.fetch(
         new Request(
-          `http://localhost${basePath}/integrations/oauth/callback?state=${state}&code=provider-code`,
+          `http://localhost${basePath}/integrations/oauth/callback?state=${attemptId}&code=provider-code`,
           { headers: { cookie } }
         )
       );
       const page = await callback.text();
       expect(callback.status).toBe(200);
+      expect(callback.headers.get("set-cookie")).toBeNull();
       expect(callback.headers.get("cache-control")).toBe("no-store");
       expect(page).not.toContain("provider-token");
       expect(written?.MANUAL_TOKEN).toBe("manual");

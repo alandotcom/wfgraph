@@ -216,8 +216,8 @@ export function ConfigureConnectionOverlay({
   const catalogEntry = findIntegration(catalog, type);
   const formFields = catalogEntry?.credentialFields;
   const oauthConnection = useOAuthConnection({
-    onConnected: (integration) => {
-      onSuccess?.(integration.id);
+    onConnected: (integrationId) => {
+      onSuccess?.(integrationId);
       closeAll();
     },
   });

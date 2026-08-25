@@ -76,7 +76,7 @@ describe("OAuth connection overlays", () => {
         if (String(_input).endsWith("/api/integrations/oauth/start")) {
           return new Response(
             JSON.stringify({
-              integrationId: "connection_1",
+              attemptId: "attempt_1",
               authorizeUrl: "https://provider.example/authorize",
             }),
             { headers: { "content-type": "application/json" } }
@@ -85,19 +85,8 @@ describe("OAuth connection overlays", () => {
 
         return new Response(
           JSON.stringify({
-            json: [
-              {
-                id: "connection_1",
-                name: "",
-                type: "resend",
-                createdAt: "2026-08-24T10:00:00.000Z",
-                updatedAt: "2026-08-24T10:00:00.000Z",
-                oauth: {
-                  status: "connected",
-                  connectedAt: "2026-08-24T11:00:00.000Z",
-                },
-              },
-            ],
+            status: "succeeded",
+            integrationId: "connection_1",
           }),
           { headers: { "content-type": "application/json" } }
         );
@@ -122,6 +111,7 @@ describe("OAuth connection overlays", () => {
     );
     expect(startRequest).toBeDefined();
     expect(JSON.parse(String(startRequest?.[1]?.body))).toMatchObject({
+      mode: "create",
       config: {
         RESEND_ACCOUNT_SECRET: "account-secret",
         RESEND_API_KEY: "api-key",
@@ -159,14 +149,14 @@ describe("OAuth connection overlays", () => {
       if (String(_input).endsWith("/api/integrations/oauth/start")) {
         return new Response(
           JSON.stringify({
-            integrationId: "connection_1",
+            attemptId: "attempt_1",
             authorizeUrl: "https://provider.example/authorize",
           }),
           { headers: { "content-type": "application/json" } }
         );
       }
 
-      return new Response(JSON.stringify({ json: [] }), {
+      return new Response(JSON.stringify({ status: "pending" }), {
         headers: { "content-type": "application/json" },
       });
     });
@@ -270,5 +260,56 @@ describe("OAuth connection overlays", () => {
 
     expect(screen.getByText("Reauthorization required")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Reconnect" })).toBeTruthy();
+  });
+
+  it("starts reconnect through the unified attempt endpoint", async () => {
+    const reservedPopup = {
+      closed: false,
+      opener: null,
+      close: vi.fn(),
+      location: { assign: vi.fn() },
+    };
+    vi.spyOn(window, "open").mockReturnValue(
+      reservedPopup as unknown as Window
+    );
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            attemptId: "attempt_1",
+            authorizeUrl: "https://provider.example/authorize",
+          }),
+          { headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: "failed" }), {
+          headers: { "content-type": "application/json" },
+        })
+      );
+
+    renderOverlay(
+      <EditConnectionOverlay
+        integration={connection({
+          status: "reauthorization_required",
+          connectedAt: "2026-08-24T10:00:00.000Z",
+        })}
+        overlayId="edit_resend"
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      mode: "reconnect",
+      integrationId: "connection_1",
+    });
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Reconnect" }) as HTMLButtonElement)
+          .disabled
+      ).toBe(false)
+    );
   });
 });

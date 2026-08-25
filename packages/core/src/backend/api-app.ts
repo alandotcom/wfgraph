@@ -199,6 +199,16 @@ async function readRefusalMessage(res: Response): Promise<string | undefined> {
   }
 }
 
+const OAUTH_ATTEMPT_LOG_PATH = /\/integrations\/oauth\/attempts\/[^/]+$/;
+
+/** Keep the provider state out of request records while preserving route identity. */
+export function requestLogPath(path: string): string {
+  return path.replace(
+    OAUTH_ATTEMPT_LOG_PATH,
+    "/integrations/oauth/attempts/:attemptId"
+  );
+}
+
 export function createApiApp(options: CreateApiAppOptions) {
   const { basePath, authorize, runtime, inngestHandler } = options;
   const app = new Hono<ApiEnv>().basePath(basePath);
@@ -216,11 +226,12 @@ export function createApiApp(options: CreateApiAppOptions) {
     const startTime = Date.now();
     const method = c.req.method.toUpperCase();
     const path = c.req.path;
+    const logPath = requestLogPath(path);
     const procedure = rpcProcedureOf(path);
     const event = createRequestEvent();
     c.set("wfgraphRequestEvent", event);
     event.set({
-      http: { method, path },
+      http: { method, path: logPath },
       ...(procedure === null ? {} : { rpc: { procedure } }),
     });
 
@@ -229,11 +240,11 @@ export function createApiApp(options: CreateApiAppOptions) {
     } catch (error) {
       const elapsedMs = Date.now() - startTime;
       event.set({
-        http: { method, path, ms: elapsedMs },
+        http: { method, path: logPath, ms: elapsedMs },
         error: { message: getErrorMessage(error) },
       });
       httpLogger.error(
-        `${method} ${path} threw after ${elapsedMs}ms`,
+        `${method} ${logPath} threw after ${elapsedMs}ms`,
         event.fields()
       );
       throw error;
@@ -241,7 +252,7 @@ export function createApiApp(options: CreateApiAppOptions) {
 
     const status = c.res.status;
     const elapsedMs = Date.now() - startTime;
-    event.set({ http: { method, path, status, ms: elapsedMs } });
+    event.set({ http: { method, path: logPath, status, ms: elapsedMs } });
 
     // A procedure records its own refusal, which names the failure kind and the
     // input. Every other route answers with a body, and its wording is the only
@@ -253,14 +264,17 @@ export function createApiApp(options: CreateApiAppOptions) {
       }
     }
 
-    const summary = `${method} ${path} ${status} ${elapsedMs}ms`;
+    const summary = `${method} ${logPath} ${status} ${elapsedMs}ms`;
     const fields = event.fields();
 
     if (status >= 500) {
       httpLogger.error(summary, fields);
     } else if (status >= 400) {
       httpLogger.warn(summary, fields);
-    } else if (procedure !== null && POLLED_RPC_PROCEDURES.has(procedure)) {
+    } else if (
+      (procedure !== null && POLLED_RPC_PROCEDURES.has(procedure)) ||
+      OAUTH_ATTEMPT_LOG_PATH.test(path)
+    ) {
       httpLogger.trace(summary, fields);
     } else {
       httpLogger.info(summary, fields);

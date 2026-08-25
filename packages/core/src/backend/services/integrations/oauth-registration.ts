@@ -11,14 +11,13 @@ export function oauthUrlsFor(
   integrationType: string,
   context: WfGraphAppContextValue
 ): OAuthUrls | null {
-  if (!context.publicUrl) {
+  if (!context.oauth) {
     return null;
   }
 
-  const apiUrl = `${context.publicUrl}${context.apiBasePath}`;
   return {
-    callbackUrl: `${apiUrl}/integrations/oauth/callback`,
-    metadataDocumentUrl: `${apiUrl}/integrations/oauth/clients/${encodeURIComponent(integrationType)}`,
+    callbackUrl: context.oauth.callbackUrl,
+    metadataDocumentUrl: context.oauth.metadataDocumentUrl(integrationType),
   };
 }
 
@@ -26,11 +25,11 @@ export function oauthRegistrationContext(
   context: WfGraphAppContextValue,
   urls: OAuthUrls
 ): OAuthRegistrationContext {
-  if (!context.publicUrl) {
+  if (!context.oauth) {
     throw new Error("OAuth client registration requires a public URL");
   }
   return {
-    publicUrl: context.publicUrl,
+    publicUrl: context.oauth.publicUrl,
     callbackUrl: urls.callbackUrl,
     metadataDocumentUrl: urls.metadataDocumentUrl,
   };

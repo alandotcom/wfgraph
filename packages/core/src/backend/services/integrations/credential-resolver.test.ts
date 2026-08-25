@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import type { IntegrationOAuth } from "#src/backend/extensions/oauth";
 import { makeAppContextLayer } from "#src/backend/lib/effect/app-context";
+import { DatabaseError } from "#src/backend/lib/effect/database";
 import {
   makeRecordingLogger,
   SilentAppLoggerLayer,
@@ -617,7 +618,7 @@ describe("resolveIntegrationCredentials", () => {
         }),
     };
 
-    await Effect.runPromise(
+    const outcome = await Effect.runPromise(
       Effect.result(resolveIntegrationCredentials(integrationId)).pipe(
         Effect.provide(layerFor(repo))
       )
@@ -626,6 +627,54 @@ describe("resolveIntegrationCredentials", () => {
     expect(claims).toEqual([]);
     expect(markedClaims).toEqual([ownerClaimId]);
     expect(current.refreshState).toBe("reauthorization_required");
+    expect(outcome).toMatchObject({
+      failure: {
+        _tag: "InternalFailure",
+        error: "OAuth credentials are unavailable. Reconnect the integration.",
+      },
+    });
+  });
+
+  it("returns temporary unavailability when fencing a stale refresh owner fails", async () => {
+    const current: DecryptedIntegration = {
+      ...row({
+        [OAUTH_GRANT_CONFIG_KEY]: storedGrant({
+          refreshToken: "old-refresh",
+          expiresAt: new Date(Date.now() - 1_000).toISOString(),
+        }),
+      }),
+      refreshState: "refreshing",
+      refreshClaimId: "stale-owner",
+      refreshClaimedAt: new Date(Date.now() - OAUTH_REFRESH_CLAIM_STALE_MS - 1),
+    };
+    let markCalls = 0;
+    const repo: Partial<IntegrationRepo["Service"]> = {
+      findById: () => Effect.succeed(current),
+      markReauthorizationRequired: () =>
+        Effect.fail(
+          new DatabaseError({ cause: new Error("database unavailable") })
+        ).pipe(
+          Effect.tapError(() =>
+            Effect.sync(() => {
+              markCalls += 1;
+            })
+          )
+        ),
+    };
+
+    const outcome = await Effect.runPromise(
+      Effect.result(resolveIntegrationCredentials(integrationId)).pipe(
+        Effect.provide(layerFor(repo))
+      )
+    );
+
+    expect(markCalls).toBe(1);
+    expect(outcome).toMatchObject({
+      failure: {
+        _tag: "InternalFailure",
+        error: "OAuth credentials are temporarily unavailable.",
+      },
+    });
   });
 
   it("rereads when the stale owner completes before reauthorization is fenced", async () => {

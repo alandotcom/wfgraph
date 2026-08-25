@@ -2,6 +2,7 @@ import { defineRelations, sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -43,6 +44,12 @@ export type IntegrationRefreshState =
   | "idle"
   | "refreshing"
   | "reauthorization_required";
+export type OAuthAuthorizationAttemptMode = "create" | "reconnect";
+export type OAuthAuthorizationAttemptStatus =
+  | "pending"
+  | "processing"
+  | "succeeded"
+  | "failed";
 
 export const workflows = pgTable(
   "workflows",
@@ -149,12 +156,30 @@ export const oauthAuthorizationAttempts = pgTable(
     integrationId: text("integration_id").references(() => integrations.id, {
       onDelete: "cascade",
     }),
+    mode: text("mode")
+      .notNull()
+      .default("reconnect")
+      .$type<OAuthAuthorizationAttemptMode>(),
+    status: text("status")
+      .notNull()
+      .default("pending")
+      .$type<OAuthAuthorizationAttemptStatus>(),
     expiresAt: timestamp("expires_at").notNull(),
     browserBindingHash: text("browser_binding_hash").notNull(),
     encryptedPayload: text("encrypted_payload").notNull(),
+    resultIntegrationId: text("result_integration_id"),
     createdAt: timestamp("created_at").notNull().default(utcNow()),
+    updatedAt: timestamp("updated_at").notNull().default(utcNow()),
   },
   (table) => [
+    check(
+      "oauth_authorization_attempts_mode_check",
+      sql`${table.mode} in ('create', 'reconnect')`
+    ),
+    check(
+      "oauth_authorization_attempts_status_check",
+      sql`${table.status} in ('pending', 'processing', 'succeeded', 'failed')`
+    ),
     index("oauth_authorization_attempts_integration_id_idx").on(
       table.integrationId
     ),

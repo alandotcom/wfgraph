@@ -37,7 +37,10 @@ import {
 import type { IntegrationMetadata } from "@wfgraph/shared/extensions/catalog";
 import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
 import { makeAppContextLayer } from "#src/backend/lib/effect/app-context";
-import type { DecryptedIntegration } from "#src/backend/services/integrations/repo";
+import type {
+  DecryptedIntegration,
+  IntegrationRepo,
+} from "#src/backend/services/integrations/repo";
 
 /**
  * Which config keys count as secrets is read from the assembled catalog, so these
@@ -280,6 +283,51 @@ describe("integration service secret handling", () => {
             SLACK_API_KEY: "refreshed-secret",
           });
           assert.strictEqual(current.configRevision, 1);
+        })
+    );
+  });
+});
+
+describe("integration deletion", () => {
+  layer(integrationServiceTestLayer)((it) => {
+    it.effect(
+      "deletes a manual connection through its claimed fenced delete",
+      () =>
+        Effect.gen(function* () {
+          let claimed:
+            | Parameters<IntegrationRepo["Service"]["claimRefresh"]>[0]
+            | undefined;
+          let deleted:
+            | Parameters<
+                IntegrationRepo["Service"]["deleteOwnedRefreshClaim"]
+              >[0]
+            | undefined;
+          const repo = stubIntegrationRepo({
+            findById: () => Effect.succeed(storedSlackIntegration),
+            claimRefresh: (input) =>
+              Effect.sync(() => {
+                claimed = input;
+                return { status: "acquired" as const };
+              }),
+            deleteOwnedRefreshClaim: (input) =>
+              Effect.sync(() => {
+                deleted = input;
+                return { status: "deleted" as const };
+              }),
+          });
+
+          const result = yield* deleteIntegration("int_1").pipe(
+            Effect.provide(Layer.mergeAll(repo, assembledSlack))
+          );
+
+          assert.deepStrictEqual(result, { success: true });
+          assert.ok(claimed);
+          assert.deepStrictEqual(claimed, {
+            integrationId: "int_1",
+            claimId: claimed.claimId,
+            expectedRevision: 0,
+          });
+          assert.deepStrictEqual(deleted, claimed);
         })
     );
   });

@@ -10,7 +10,7 @@ import {
   type JsonValue,
 } from "@wfgraph/shared/types/json";
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const MIGRATION_1 = `
   CREATE TABLE workflows (
@@ -197,6 +197,39 @@ const MIGRATION_3 = `
     ON oauth_authorization_attempts(expires_at);
 `;
 
+const MIGRATION_4 = `
+  DROP INDEX oauth_attempts_integration_idx;
+  DROP INDEX oauth_attempts_expires_at_idx;
+  ALTER TABLE oauth_authorization_attempts RENAME TO oauth_authorization_attempts_v3;
+
+  CREATE TABLE oauth_authorization_attempts (
+    state_hash TEXT PRIMARY KEY,
+    integration_id TEXT REFERENCES integrations(id) ON DELETE CASCADE,
+    expires_at INTEGER NOT NULL,
+    browser_binding_hash TEXT NOT NULL,
+    encrypted_payload TEXT NOT NULL,
+    mode TEXT NOT NULL CHECK (mode IN ('create', 'reconnect')),
+    status TEXT NOT NULL CHECK (status IN ('pending', 'processing', 'succeeded', 'failed')),
+    result_integration_id TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  ) STRICT;
+
+  INSERT INTO oauth_authorization_attempts
+    (state_hash, integration_id, expires_at, browser_binding_hash, encrypted_payload,
+     mode, status, result_integration_id, created_at, updated_at)
+  SELECT state_hash, integration_id, expires_at, browser_binding_hash, encrypted_payload,
+         CASE WHEN integration_id IS NULL THEN 'create' ELSE 'reconnect' END,
+         'pending', NULL, created_at, created_at
+  FROM oauth_authorization_attempts_v3;
+  DROP TABLE oauth_authorization_attempts_v3;
+
+  CREATE INDEX oauth_attempts_integration_idx
+    ON oauth_authorization_attempts(integration_id);
+  CREATE INDEX oauth_attempts_expires_at_idx
+    ON oauth_authorization_attempts(expires_at);
+`;
+
 export type SqliteDatabase = {
   readonly read: <A>(
     run: (database: DatabaseSync) => A
@@ -253,6 +286,12 @@ function migrate(database: DatabaseSync): void {
     inImmediateTransaction(database, () => {
       database.exec(MIGRATION_3);
       database.exec("PRAGMA user_version = 3");
+    });
+  }
+  if (version <= 3) {
+    inImmediateTransaction(database, () => {
+      database.exec(MIGRATION_4);
+      database.exec("PRAGMA user_version = 4");
     });
   }
 }

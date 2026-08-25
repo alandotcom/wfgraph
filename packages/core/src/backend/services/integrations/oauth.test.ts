@@ -12,6 +12,7 @@ import {
   deleteIntegrationOAuth,
   getOAuthClientMetadata,
   oauthBindingCookieName,
+  readIntegrationOAuthAttemptStatus,
   startIntegrationOAuth,
 } from "#src/backend/services/integrations/oauth";
 import { deleteIntegration } from "#src/backend/services/integrations/integrations";
@@ -160,6 +161,60 @@ describe("OAuth client metadata", () => {
       expect(result.failure).toBeInstanceOf(InternalFailure);
     }
   });
+
+  it.each([
+    {
+      name: "a nested client name",
+      metadata: { client_name: { value: "Workflow Graph" } },
+    },
+    {
+      name: "a scalar redirect URI list",
+      metadata: { redirect_uris: "https://workflows.example.com/callback" },
+    },
+  ])("rejects $name in public metadata", async ({ metadata }) => {
+    const metadataUrl =
+      "https://workflows.example.com/api/integrations/oauth/clients/example";
+    const result = await Effect.runPromise(
+      Effect.result(getOAuthClientMetadata("example")).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            SilentAppLoggerLayer,
+            appContext,
+            stubExtensions({
+              oauthFor: () => ({
+                label: "Example OAuth",
+                registerClient: () => ({
+                  clientId: metadataUrl,
+                  metadataDocument: {
+                    client_id: metadataUrl,
+                    redirect_uris: [
+                      "https://workflows.example.com/api/integrations/oauth/callback",
+                    ],
+                    ...metadata,
+                  } as never,
+                }),
+                authorize: () => new URL("https://provider.example/authorize"),
+                exchange: async () => ({
+                  credentials: {},
+                  tokens: { accessToken: "access" },
+                }),
+                refresh: async () => ({
+                  credentials: {},
+                  tokens: { accessToken: "access" },
+                }),
+                revoke: async () => undefined,
+              }),
+            })
+          )
+        )
+      )
+    );
+
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(InternalFailure);
+    }
+  });
 });
 
 describe("OAuth provider failure logging", () => {
@@ -213,7 +268,9 @@ describe("OAuth provider failure logging", () => {
     });
 
     await Effect.runPromise(
-      Effect.result(startIntegrationOAuth("int_1")).pipe(
+      Effect.result(
+        startIntegrationOAuth({ mode: "reconnect", integrationId: "int_1" })
+      ).pipe(
         Effect.provide(
           Layer.mergeAll(
             recording.layer,
@@ -244,10 +301,31 @@ describe("OAuth provider failure logging", () => {
   });
 });
 
+describe("OAuth attempt status", () => {
+  it("keeps internal processing status pending to the browser", async () => {
+    const status = await Effect.runPromise(
+      readIntegrationOAuthAttemptStatus({
+        attemptId: "a".repeat(43),
+        browserBinding: "binding",
+      }).pipe(
+        Effect.provide(
+          stubIntegrationRepo({
+            readOAuthAuthorizationAttemptStatus: () =>
+              Effect.succeed({ status: "processing" }),
+          })
+        )
+      )
+    );
+
+    expect(status).toEqual({ status: "pending" });
+  });
+});
+
 const appContext = makeAppContextLayer({
   publicUrl: "https://workflows.example.com",
   apiBasePath: "/api",
 });
+const failAttempt = () => Effect.succeed(true);
 
 function oauthExtensions(overrides: {
   registerClient?: () => { clientId: string };
@@ -431,7 +509,7 @@ describe("OAuth config races", () => {
     let exchangeCalls = 0;
     const revoked: string[] = [];
     const repo: Partial<IntegrationRepo["Service"]> = {
-      consumeOAuthAuthorizationAttempt: () =>
+      claimOAuthAuthorizationAttempt: () =>
         Effect.succeed({
           integrationId: current.id,
           payload: {
@@ -441,6 +519,7 @@ describe("OAuth config races", () => {
             configRevision: 0,
           },
         }),
+      failOAuthAuthorizationAttempt: failAttempt,
       findById: () => Effect.sync(() => current),
       claimRefresh: ({ claimId, expectedRevision }) =>
         Effect.sync(() => {
@@ -456,9 +535,9 @@ describe("OAuth config races", () => {
           };
           return { status: "acquired" as const };
         }),
-      completeRefresh: ({ claimId, config }) =>
+      completeOAuthReconnectAttempt: ({ stateHash, config }) =>
         Effect.sync(() => {
-          if (current.refreshClaimId !== claimId) return false;
+          if (current.refreshClaimId !== stateHash) return false;
           current = {
             ...current,
             config,
@@ -563,6 +642,7 @@ describe("deferred OAuth creation", () => {
     payload: {
       kind: "create" as const,
       integrationId: "int_reserved",
+      configRevision: 0 as const,
       name: "Example",
       type: "example",
       config: { MANUAL_TOKEN: "manual" },
@@ -587,12 +667,13 @@ describe("deferred OAuth creation", () => {
             appContext,
             stubExtensions(oauthExtensions({ revoke: async () => undefined })),
             stubIntegrationRepo({
-              consumeOAuthAuthorizationAttempt: () =>
+              claimOAuthAuthorizationAttempt: () =>
                 Effect.succeed(createAttempt),
-              insertWithId: () =>
+              failOAuthAuthorizationAttempt: failAttempt,
+              completeOAuthCreateAttempt: () =>
                 Effect.sync(() => {
                   inserted = true;
-                  return integrationWithGrant("unexpected", 0);
+                  return true;
                 }),
             })
           )
@@ -624,8 +705,9 @@ describe("deferred OAuth creation", () => {
               })
             ),
             stubIntegrationRepo({
-              consumeOAuthAuthorizationAttempt: () =>
+              claimOAuthAuthorizationAttempt: () =>
                 Effect.succeed(createAttempt),
+              failOAuthAuthorizationAttempt: failAttempt,
             })
           )
         )
@@ -659,8 +741,9 @@ describe("deferred OAuth creation", () => {
               })
             ),
             stubIntegrationRepo({
-              consumeOAuthAuthorizationAttempt: () =>
+              claimOAuthAuthorizationAttempt: () =>
                 Effect.succeed(createAttempt),
+              failOAuthAuthorizationAttempt: failAttempt,
             })
           )
         )
@@ -687,10 +770,12 @@ describe("deferred OAuth creation", () => {
               })
             ),
             stubIntegrationRepo({
-              consumeOAuthAuthorizationAttempt: () =>
+              claimOAuthAuthorizationAttempt: () =>
                 Effect.succeed(createAttempt),
-              insertWithId: () =>
+              failOAuthAuthorizationAttempt: failAttempt,
+              completeOAuthCreateAttempt: () =>
                 Effect.fail(new DatabaseError({ cause: "insert failed" })),
+              readOAuthAuthorizationAttemptStatus: () => Effect.succeed(null),
               findById: () => Effect.succeed(null),
             })
           )
@@ -703,9 +788,8 @@ describe("deferred OAuth creation", () => {
     expect(revoked).toEqual(["new-access"]);
   });
 
-  it("fences a committed row when the insert result is uncertain", async () => {
+  it("does not revoke or fence when the create commit result is uncertain", async () => {
     const revoked: string[] = [];
-    let marked = 0;
     const failure = await Effect.runPromise(
       completeIntegrationOAuth(callbackInput).pipe(
         Effect.provide(
@@ -720,18 +804,13 @@ describe("deferred OAuth creation", () => {
               })
             ),
             stubIntegrationRepo({
-              consumeOAuthAuthorizationAttempt: () =>
+              claimOAuthAuthorizationAttempt: () =>
                 Effect.succeed(createAttempt),
-              insertWithId: () =>
+              failOAuthAuthorizationAttempt: failAttempt,
+              completeOAuthCreateAttempt: () =>
                 Effect.fail(new DatabaseError({ cause: "result lost" })),
-              findById: () =>
-                Effect.succeed(integrationWithGrant("new-access", 0)),
-              claimRefresh: () => Effect.succeed({ status: "acquired" }),
-              markReauthorizationRequired: () =>
-                Effect.sync(() => {
-                  marked += 1;
-                  return { status: "transitioned" as const };
-                }),
+              readOAuthAuthorizationAttemptStatus: () =>
+                Effect.fail(new DatabaseError({ cause: "status unavailable" })),
             })
           )
         ),
@@ -741,7 +820,42 @@ describe("deferred OAuth creation", () => {
 
     expect(failure).toBeInstanceOf(InternalFailure);
     expect(revoked).toEqual([]);
-    expect(marked).toBe(1);
+  });
+
+  it("accepts a create completion whose committed success is read back", async () => {
+    const revoked: string[] = [];
+    const result = await Effect.runPromise(
+      Effect.result(completeIntegrationOAuth(callbackInput)).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            SilentAppLoggerLayer,
+            appContext,
+            stubExtensions(
+              oauthExtensions({
+                revoke: async (accessToken) => {
+                  revoked.push(accessToken);
+                },
+              })
+            ),
+            stubIntegrationRepo({
+              claimOAuthAuthorizationAttempt: () =>
+                Effect.succeed(createAttempt),
+              failOAuthAuthorizationAttempt: failAttempt,
+              completeOAuthCreateAttempt: () =>
+                Effect.fail(new DatabaseError({ cause: "result lost" })),
+              readOAuthAuthorizationAttemptStatus: () =>
+                Effect.succeed({
+                  status: "succeeded",
+                  integrationId: "int_reserved",
+                }),
+            })
+          )
+        )
+      )
+    );
+
+    expect(Result.isSuccess(result)).toBe(true);
+    expect(revoked).toEqual([]);
   });
 });
 
@@ -758,7 +872,7 @@ describe("OAuth claim failure boundaries", () => {
     overrides: Partial<IntegrationRepo["Service"]>
   ): Partial<IntegrationRepo["Service"]> {
     return {
-      consumeOAuthAuthorizationAttempt: () =>
+      claimOAuthAuthorizationAttempt: () =>
         Effect.succeed({
           integrationId: integration.id,
           payload: {
@@ -768,6 +882,7 @@ describe("OAuth claim failure boundaries", () => {
             configRevision: integration.configRevision,
           },
         }),
+      failOAuthAuthorizationAttempt: failAttempt,
       findById: () => Effect.succeed(integration),
       claimRefresh: () => Effect.succeed({ status: "acquired" }),
       ...overrides,
@@ -857,13 +972,71 @@ describe("OAuth claim failure boundaries", () => {
     expect(marked).toBe(1);
   });
 
+  it("rejects a damaged S256 attempt before invoking the adapter", async () => {
+    const integration = integrationWithGrant("old-access", 0);
+    let exchangeCalls = 0;
+    let claimCalls = 0;
+    const repo = callbackRepo(integration, {
+      claimRefresh: () =>
+        Effect.sync(() => {
+          claimCalls += 1;
+          return { status: "acquired" as const };
+        }),
+    });
+    const extensions: Partial<ExtensionSet> = {
+      catalog: {
+        ...emptyExtensionCatalog,
+        integrations: [
+          {
+            type: "example",
+            label: "Example",
+            description: "Test integration",
+            hasTest: false,
+            credentialFields: {
+              ACCESS_TOKEN: { label: "Access token", type: "password" },
+            },
+          },
+        ],
+      },
+      oauthFor: () => ({
+        label: "Example OAuth",
+        pkce: "S256",
+        registerClient: () => ({ clientId: "example-client" }),
+        authorize: () => new URL("https://provider.example/authorize"),
+        exchange: async () => {
+          exchangeCalls += 1;
+          return {
+            credentials: { ACCESS_TOKEN: "new-access" },
+            tokens: { accessToken: "new-access" },
+          };
+        },
+        refresh: async () => ({
+          credentials: { ACCESS_TOKEN: "refreshed-access" },
+          tokens: { accessToken: "refreshed-access" },
+        }),
+        revoke: async () => undefined,
+      }),
+    };
+
+    const failure = await Effect.runPromise(
+      completeIntegrationOAuth(callbackInput).pipe(
+        Effect.provide(oauthLayer(repo, extensions)),
+        Effect.flip
+      )
+    );
+
+    expect(failure).toBeInstanceOf(InternalFailure);
+    expect(exchangeCalls).toBe(0);
+    expect(claimCalls).toBe(0);
+  });
+
   it("marks reauthorization when callback completion has an unknown database outcome", async () => {
     const integration = integrationWithGrant("old-access", 0);
     let exchangeCalls = 0;
     let revokeCalls = 0;
     let marked = 0;
     const repo = callbackRepo(integration, {
-      completeRefresh: () =>
+      completeOAuthReconnectAttempt: () =>
         Effect.fail(new DatabaseError({ cause: new Error("connection lost") })),
       markReauthorizationRequired: () =>
         Effect.sync(() => {

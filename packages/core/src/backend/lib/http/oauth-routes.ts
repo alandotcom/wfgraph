@@ -8,8 +8,8 @@ import {
   completeIntegrationOAuth,
   getOAuthClientMetadata,
   oauthBindingCookieName,
+  readIntegrationOAuthAttemptStatus,
   startIntegrationOAuth,
-  startNewIntegrationOAuth,
 } from "#src/backend/services/integrations/oauth";
 import {
   NonEmptyTrimmedString,
@@ -21,28 +21,31 @@ import { OAUTH_GRANT_CONFIG_KEY } from "#src/backend/services/integrations/oauth
 export const OAUTH_CLIENT_METADATA_ROUTE =
   "/integrations/oauth/clients/:integrationType";
 export const OAUTH_CALLBACK_ROUTE = "/integrations/oauth/callback";
-export const OAUTH_RESPONSE_ROUTES = [
-  "/integrations/:integrationId/oauth",
-  "/integrations/:integrationId/oauth/*",
-  "/integrations/oauth/*",
-] as const;
+export const OAUTH_RESPONSE_ROUTES = ["/integrations/oauth/*"] as const;
 
 export const OAUTH_RESPONSE_HEADERS = {
   "Cache-Control": "no-store",
   "Referrer-Policy": "no-referrer",
 };
 
-const createOAuthInputSchema = Schema.Struct({
-  name: Schema.String,
-  type: NonEmptyTrimmedString,
-  config: Schema.Record(Schema.String, Schema.String).check(
-    Schema.makeFilter((config) => !(OAUTH_GRANT_CONFIG_KEY in config), {
-      expected: "an integration config without the reserved OAuth grant key",
-    })
-  ),
-});
-const decodeCreateOAuthInput = Schema.decodeUnknownResult(
-  createOAuthInputSchema,
+const startOAuthInputSchema = Schema.Union([
+  Schema.Struct({
+    mode: Schema.Literal("create"),
+    name: Schema.String,
+    type: NonEmptyTrimmedString,
+    config: Schema.Record(Schema.String, Schema.String).check(
+      Schema.makeFilter((config) => !(OAUTH_GRANT_CONFIG_KEY in config), {
+        expected: "an integration config without the reserved OAuth grant key",
+      })
+    ),
+  }),
+  Schema.Struct({
+    mode: Schema.Literal("reconnect"),
+    integrationId: NonEmptyTrimmedString,
+  }),
+]);
+const decodeStartOAuthInput = Schema.decodeUnknownResult(
+  startOAuthInputSchema,
   { ...rejectUnknownKeys, errors: "all" }
 );
 
@@ -70,13 +73,13 @@ export function createOAuthRoutes(options: {
       } catch {
         return c.json({ error: "Request body must be valid JSON" }, 400);
       }
-      const body = decodeCreateOAuthInput(raw);
+      const body = decodeStartOAuthInput(raw);
       if (Result.isFailure(body)) {
         return c.json({ error: formatSchemaFailure(body.failure.issue) }, 400);
       }
 
       const result = await runtime.runPromise(
-        startNewIntegrationOAuth(body.success).pipe(
+        startIntegrationOAuth(body.success).pipe(
           Effect.match({
             onSuccess: (value) => ({ ok: true as const, value }),
             onFailure: (failure) => ({ ok: false as const, failure }),
@@ -90,22 +93,32 @@ export function createOAuthRoutes(options: {
       }
 
       const context = await runtime.runPromise(WfGraphAppContext);
+      if (!context.oauth) {
+        return c.json({ error: "OAuth requires a public URL" }, 400);
+      }
       setCookie(c, result.value.cookieName, result.value.browserBinding, {
         httpOnly: true,
         sameSite: "Lax",
         maxAge: result.value.maxAge,
-        path: `${basePath}${OAUTH_CALLBACK_ROUTE}`,
-        secure: context.publicUrl?.startsWith("https://") === true,
+        path: context.oauth.cookiePath,
+        secure: context.oauth.secureCookies,
       });
       applyOAuthHeaders(c.res.headers);
       return c.json({
-        integrationId: result.value.integrationId,
+        attemptId: result.value.attemptId,
         authorizeUrl: result.value.authorizeUrl,
       });
     })
-    .get("/integrations/:integrationId/oauth/start", async (c) => {
+    .get("/integrations/oauth/attempts/:attemptId", async (c) => {
+      const attemptId = c.req.param("attemptId");
+      const cookieName = oauthBindingCookieName(attemptId);
+      const browserBinding = cookieName ? getCookie(c, cookieName) : undefined;
+      if (!cookieName || !browserBinding) {
+        applyOAuthHeaders(c.res.headers);
+        return c.json({ error: "OAuth attempt not found" }, 404);
+      }
       const result = await runtime.runPromise(
-        startIntegrationOAuth(c.req.param("integrationId")).pipe(
+        readIntegrationOAuthAttemptStatus({ attemptId, browserBinding }).pipe(
           Effect.match({
             onSuccess: (value) => ({ ok: true as const, value }),
             onFailure: (failure) => ({ ok: false as const, failure }),
@@ -118,16 +131,15 @@ export function createOAuthRoutes(options: {
         return response;
       }
 
-      const context = await runtime.runPromise(WfGraphAppContext);
-      setCookie(c, result.value.cookieName, result.value.browserBinding, {
-        httpOnly: true,
-        sameSite: "Lax",
-        maxAge: result.value.maxAge,
-        path: `${basePath}${OAUTH_CALLBACK_ROUTE}`,
-        secure: context.publicUrl?.startsWith("https://") === true,
-      });
+      if (result.value.status !== "pending") {
+        const context = await runtime.runPromise(WfGraphAppContext);
+        deleteCookie(c, cookieName, {
+          path: context.oauth?.cookiePath ?? `${basePath}/integrations/oauth`,
+          secure: context.oauth?.secureCookies ?? false,
+        });
+      }
       applyOAuthHeaders(c.res.headers);
-      return c.redirect(result.value.authorizeUrl, 302);
+      return c.json(result.value);
     })
     .get(OAUTH_CALLBACK_ROUTE, async (c) => {
       // State identifies only which binding-cookie name to read. Its value and
@@ -150,13 +162,6 @@ export function createOAuthRoutes(options: {
           })
         )
       );
-      if (cookieName) {
-        const context = await runtime.runPromise(WfGraphAppContext);
-        deleteCookie(c, cookieName, {
-          path: `${basePath}${OAUTH_CALLBACK_ROUTE}`,
-          secure: context.publicUrl?.startsWith("https://") === true,
-        });
-      }
       applyOAuthHeaders(c.res.headers);
       if (result.ok) {
         return c.html(oauthPage("OAuth connection complete."));
@@ -166,8 +171,6 @@ export function createOAuthRoutes(options: {
         { status: responseFromServiceFailure(result.failure).status }
       );
       applyOAuthHeaders(response.headers);
-      const cookie = c.res.headers.get("Set-Cookie");
-      if (cookie) response.headers.set("Set-Cookie", cookie);
       return response;
     })
     .get(OAUTH_CLIENT_METADATA_ROUTE, async (c) => {

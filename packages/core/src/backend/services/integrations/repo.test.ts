@@ -183,19 +183,54 @@ describe("OAuth authorization attempts", () => {
   const validAttemptRow = [
     "state_hash",
     "int_1",
+    "reconnect",
+    "processing",
     new Date("2099-01-01T00:00:00Z"),
     "browser_hash",
     cipher.seal({ payload: JSON.stringify(attemptPayload) }),
+    null,
+    new Date("2026-01-01T00:00:00Z"),
     new Date("2026-01-01T00:00:00Z"),
   ];
 
-  it("creates an attempt and atomically returns it once", async () => {
-    let deleteCount = 0;
+  it("locks expired attempts before fencing their integration claims", async () => {
+    const repoHarness = repositoryHarness((statement) =>
+      statement.query.startsWith("select")
+        ? [["expired_state", "reconnect", "processing"]]
+        : []
+    );
+
+    await repoHarness.run((repo) =>
+      repo.createOAuthAuthorizationAttempt({
+        stateHash: "new_state",
+        integrationId: "int_1",
+        expiresAt: new Date("2099-01-01T00:00:00Z"),
+        browserBindingHash: "browser_hash",
+        payload: attemptPayload,
+      })
+    );
+
+    expect(repoHarness.statements.map((statement) => statement.query)).toEqual([
+      expect.stringContaining("for update"),
+      expect.stringContaining('update "integrations"'),
+      expect.stringContaining('delete from "oauth_authorization_attempts"'),
+      expect.stringContaining('insert into "oauth_authorization_attempts"'),
+    ]);
+    expect(repoHarness.statements[1]?.params).toContain("expired_state");
+    expect(repoHarness.statements[2]?.params).toContain("expired_state");
+  });
+
+  it("creates an attempt and atomically claims it once", async () => {
+    let claimCount = 0;
     const repoHarness = repositoryHarness((statement) => {
-      if (statement.query.startsWith("delete")) {
-        if (statement.query.includes('"expires_at" <=')) return [];
-        deleteCount += 1;
-        return deleteCount === 1 ? [validAttemptRow] : [];
+      if (
+        statement.query.startsWith("update") &&
+        statement.params.includes("processing")
+      ) {
+        claimCount += 1;
+        return claimCount === 1
+          ? [[validAttemptRow[1], validAttemptRow[6]]]
+          : [];
       }
       return [];
     });
@@ -210,57 +245,56 @@ describe("OAuth authorization attempts", () => {
       })
     );
     const first = await repoHarness.run((repo) =>
-      repo.consumeOAuthAuthorizationAttempt("state_hash", "browser_hash")
+      repo.claimOAuthAuthorizationAttempt({
+        stateHash: "state_hash",
+        browserBindingHash: "browser_hash",
+        expiresAt: new Date("2099-01-01T00:10:00Z"),
+      })
     );
     const second = await repoHarness.run((repo) =>
-      repo.consumeOAuthAuthorizationAttempt("state_hash", "browser_hash")
+      repo.claimOAuthAuthorizationAttempt({
+        stateHash: "state_hash",
+        browserBindingHash: "browser_hash",
+        expiresAt: new Date("2099-01-01T00:10:00Z"),
+      })
     );
 
-    expect(first).toEqual({
-      integrationId: "int_1",
-      payload: attemptPayload,
-    });
+    expect(first).toEqual({ integrationId: "int_1", payload: attemptPayload });
     expect(second).toBeNull();
-    expect(
-      repoHarness.statements.filter((statement) =>
-        statement.query.startsWith("delete")
-      )
-    ).toHaveLength(3);
     expect(repoHarness.statements[0]?.query).toContain("expires_at");
-    expect(repoHarness.statements[1]?.query).toContain("insert");
+    expect(repoHarness.statements[0]?.query).toContain("for update");
+    expect(repoHarness.statements[1]?.query).toContain("insert into");
     expect(repoHarness.statements[0]?.params).not.toContain("pkce-verifier");
   });
 
-  it.each([
-    {
-      name: "the browser binding differs",
-      row: validAttemptRow,
-      browserBindingHash: "other_browser",
-    },
-    {
-      name: "the attempt has expired",
-      row: validAttemptRow.with(2, new Date("2000-01-01T00:00:00Z")),
-      browserBindingHash: "browser_hash",
-    },
-  ])("consumes and rejects an attempt when $name", async (scenario) => {
+  it("burns a pending attempt when the browser binding differs", async () => {
     const repoHarness = repositoryHarness((statement) =>
-      statement.query.startsWith("delete") ? [scenario.row] : []
+      statement.query.startsWith("update") &&
+      statement.params.includes("failed")
+        ? [["state_hash"]]
+        : []
     );
 
-    const consumed = await repoHarness.run((repo) =>
-      repo.consumeOAuthAuthorizationAttempt(
-        "state_hash",
-        scenario.browserBindingHash
-      )
+    const claimed = await repoHarness.run((repo) =>
+      repo.claimOAuthAuthorizationAttempt({
+        stateHash: "state_hash",
+        browserBindingHash: "other_browser",
+        expiresAt: new Date("2099-01-01T00:10:00Z"),
+      })
     );
 
-    expect(consumed).toBeNull();
+    expect(claimed).toBeNull();
+    const burn = repoHarness.statements.find((statement) =>
+      statement.params.includes("failed")
+    );
+    expect(burn?.query).toContain("browser_binding_hash");
   });
 
-  it("stores create data only in the encrypted payload under a nullable integration id", async () => {
+  it("stores create data only in the encrypted payload", async () => {
     const payload = {
       kind: "create" as const,
       integrationId: "int_reserved",
+      configRevision: 0 as const,
       name: "New connection",
       type: "slack",
       config: { TEAM: "secret-team" },
@@ -268,18 +302,14 @@ describe("OAuth authorization attempts", () => {
         "https://workflows.example.com/api/integrations/oauth/callback",
       codeVerifier: "pkce-verifier",
     };
-    const attemptRow = [
-      "state_hash",
-      null,
-      new Date("2099-01-01T00:00:00Z"),
-      "browser_hash",
-      cipher.seal({ payload: JSON.stringify(payload) }),
-      new Date("2026-01-01T00:00:00Z"),
-    ];
+    const attemptRow = validAttemptRow
+      .with(1, null)
+      .with(2, "create")
+      .with(6, cipher.seal({ payload: JSON.stringify(payload) }));
     const repoHarness = repositoryHarness((statement) =>
-      statement.query.startsWith("delete") &&
-      !statement.query.includes('"expires_at" <=')
-        ? [attemptRow]
+      statement.query.startsWith("update") &&
+      statement.params.includes("processing")
+        ? [[attemptRow[1], attemptRow[6]]]
         : []
     );
 
@@ -292,17 +322,113 @@ describe("OAuth authorization attempts", () => {
         payload,
       })
     );
-    const consumed = await repoHarness.run((repo) =>
-      repo.consumeOAuthAuthorizationAttempt("state_hash", "browser_hash")
+    const claimed = await repoHarness.run((repo) =>
+      repo.claimOAuthAuthorizationAttempt({
+        stateHash: "state_hash",
+        browserBindingHash: "browser_hash",
+        expiresAt: new Date("2099-01-01T00:10:00Z"),
+      })
     );
 
-    expect(consumed).toEqual({ integrationId: null, payload });
+    expect(claimed).toEqual({ integrationId: null, payload });
     const insert = repoHarness.statements.find((statement) =>
       statement.query.startsWith("insert")
     );
-    expect(insert?.params).toContain(null);
     expect(insert?.params).not.toContain("int_reserved");
     expect(insert?.params).not.toContain("secret-team");
+  });
+
+  it("reads only browser-bound attempt status", async () => {
+    const repoHarness = repositoryHarness((statement) =>
+      statement.query.startsWith("select")
+        ? [["succeeded", "int_reserved"]]
+        : []
+    );
+
+    const status = await repoHarness.run((repo) =>
+      repo.readOAuthAuthorizationAttemptStatus({
+        stateHash: "state_hash",
+        browserBindingHash: "browser_hash",
+      })
+    );
+
+    expect(status).toEqual({
+      status: "succeeded",
+      integrationId: "int_reserved",
+    });
+    expect(repoHarness.statements[0]?.query).toContain("expires_at");
+  });
+
+  it("retains a failed terminal status until its renewed expiry", async () => {
+    const repoHarness = repositoryHarness((statement) =>
+      statement.query.startsWith("update") ? [["state_hash"]] : []
+    );
+
+    const failed = await repoHarness.run((repo) =>
+      repo.failOAuthAuthorizationAttempt({
+        stateHash: "state_hash",
+        expiresAt: new Date("2099-01-01T00:10:00Z"),
+      })
+    );
+
+    expect(failed).toBe(true);
+    expect(repoHarness.statements[0]?.params).toContain("failed");
+    expect(repoHarness.statements[0]?.params).toContain("processing");
+    expect(repoHarness.statements[0]?.query).toContain("expires_at");
+  });
+
+  it("atomically inserts a created integration and records success", async () => {
+    const repoHarness = repositoryHarness((statement) => {
+      if (statement.query.startsWith("select")) return [["state_hash"]];
+      if (statement.query.startsWith("update")) return [["state_hash"]];
+      return [];
+    });
+
+    const completed = await repoHarness.run((repo) =>
+      repo.completeOAuthCreateAttempt({
+        stateHash: "state_hash",
+        integrationId: "int_reserved",
+        name: "New connection",
+        type: "slack",
+        config: { ACCESS_TOKEN: "secret" },
+        expiresAt: new Date("2099-01-01T00:10:00Z"),
+      })
+    );
+
+    expect(completed).toBe(true);
+    expect(
+      repoHarness.statements.some((statement) =>
+        statement.query.startsWith("insert")
+      )
+    ).toBe(true);
+    expect(JSON.stringify(repoHarness.statements)).not.toContain("secret");
+  });
+
+  it("atomically completes a revision-fenced reconnect", async () => {
+    const repoHarness = repositoryHarness((statement) => {
+      if (statement.query.startsWith("select")) return [["state_hash"]];
+      if (statement.query.startsWith("update")) return [["int_1"]];
+      return [];
+    });
+
+    const completed = await repoHarness.run((repo) =>
+      repo.completeOAuthReconnectAttempt({
+        stateHash: "state_hash",
+        integrationId: "int_1",
+        expectedRevision: 4,
+        config: { ACCESS_TOKEN: "secret" },
+        expiresAt: new Date("2099-01-01T00:10:00Z"),
+      })
+    );
+
+    expect(completed).toBe(true);
+    const integrationUpdate = repoHarness.statements.find(
+      (statement) =>
+        statement.query.startsWith("update") &&
+        statement.query.includes('"config_revision"')
+    );
+    expect(integrationUpdate?.params).toContain("state_hash");
+    expect(integrationUpdate?.params).toContain(4);
   });
 });
 
