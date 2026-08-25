@@ -87,7 +87,7 @@ describe("OAuth connection helpers", () => {
       integrationId: "connection_1",
     });
 
-    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+    expect(JSON.parse(String(fetch.mock.lastCall?.[1]?.body))).toEqual({
       mode: "reconnect",
       integrationId: "connection_1",
     });
