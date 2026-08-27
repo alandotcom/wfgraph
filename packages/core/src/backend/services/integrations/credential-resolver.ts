@@ -55,6 +55,7 @@ const TEMPORARILY_UNAVAILABLE_MESSAGE =
 export type ResolvedIntegrationCredentials = {
   readonly integrationType: string;
   readonly credentials: Record<string, string | undefined>;
+  readonly oauthCredentialKeys: readonly string[];
 };
 
 function internal(error: string): InternalFailure {
@@ -101,6 +102,7 @@ function mapCredentials(
         ? { ...integration.config, ...grant.credentials }
         : integration.config
     ),
+    oauthCredentialKeys: grant ? Object.keys(grant.credentials).toSorted() : [],
   };
 }
 

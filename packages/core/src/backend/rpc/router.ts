@@ -292,7 +292,9 @@ export const rpcRouter = rpc.router({
       )
     ),
     testConnection: rpc.integration.testConnection.handler(
-      rpcEffectHandler(({ input }) => postIntegrationTest(input.integrationId))
+      rpcEffectHandler(({ input }) =>
+        postIntegrationTest(input.integrationId, input.config)
+      )
     ),
     testCredentials: rpc.integration.testCredentials.handler(
       rpcEffectHandler(({ input }) =>

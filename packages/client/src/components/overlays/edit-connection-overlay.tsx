@@ -209,6 +209,26 @@ function SecretField({
   );
 }
 
+function OAuthManagedCredentialField({
+  label,
+  providerLabel,
+}: {
+  label: string;
+  providerLabel: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/30 px-3">
+        <Check aria-hidden="true" className="size-4 text-success" />
+        <span className="text-muted-foreground text-sm">
+          Managed by {providerLabel} OAuth
+        </span>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Overlay for editing an existing connection
  */
@@ -250,14 +270,8 @@ export function EditConnectionOverlay({
   // A test run as part of saving, whose failure is an offer to save anyway
   // rather than something to toast.
   const testForSave = useMutation(
-    orpcQuery.integration.testCredentials.mutationOptions({
+    orpcQuery.integration.testConnection.mutationOptions({
       meta: { errorShownByCaller: true },
-    })
-  );
-
-  const testNewCredentials = useMutation(
-    orpcQuery.integration.testCredentials.mutationOptions({
-      onSuccess: announceTestResult,
     })
   );
 
@@ -286,8 +300,7 @@ export function EditConnectionOverlay({
   const hasTest = catalogEntry?.hasTest === true;
 
   const saving = update.isPending || testForSave.isPending;
-  const testing =
-    testNewCredentials.isPending || testStoredCredentials.isPending;
+  const testing = testStoredCredentials.isPending;
   const oauthBusy = oauthPending || disconnectOAuth.isPending;
   const controlsDisabled = saving || testing || oauthBusy;
 
@@ -323,8 +336,8 @@ export function EditConnectionOverlay({
     // Test before saving
     try {
       const result = await testForSave.mutateAsync({
-        type: integration.type,
-        config,
+        integrationId: integration.id,
+        config: hasNewConfig ? config : undefined,
       });
 
       if (result.status === "error") {
@@ -342,12 +355,10 @@ export function EditConnectionOverlay({
   };
 
   const handleTest = () => {
-    if (hasProvidedConfigValues(config)) {
-      testNewCredentials.mutate({ type: integration.type, config });
-      return;
-    }
-
-    testStoredCredentials.mutate({ integrationId: integration.id });
+    testStoredCredentials.mutate({
+      integrationId: integration.id,
+      config: hasProvidedConfigValues(config) ? config : undefined,
+    });
   };
 
   const handleDelete = () => {
@@ -370,6 +381,21 @@ export function EditConnectionOverlay({
     }
 
     return Object.entries(formFields).map(([configKey, field]) => {
+      const isOAuthManaged =
+        (oauth?.status === "connected" ||
+          oauth?.status === "reauthorization_required") &&
+        oauth.credentialKeys.includes(configKey);
+
+      if (isOAuthManaged) {
+        return (
+          <OAuthManagedCredentialField
+            key={configKey}
+            label={field.label}
+            providerLabel={catalogEntry?.oauth?.label ?? integration.type}
+          />
+        );
+      }
+
       if (field.type === "password") {
         return (
           <SecretField

@@ -359,12 +359,70 @@ describe("integration OAuth grant visibility", () => {
           );
 
           assert.notProperty(response.config, OAUTH_GRANT_CONFIG_KEY);
+          assert.notProperty(response.config, "SLACK_API_KEY");
           assert.deepStrictEqual(response.oauth, {
             status: "reauthorization_required",
             connectedAt: "2026-08-24T00:00:00.000Z",
             accountLabel: "Production workspace",
+            credentialKeys: ["SLACK_API_KEY"],
           });
         })
+    );
+
+    it.effect(
+      "refuses updates to a credential owned by the active OAuth grant",
+      () =>
+        Effect.gen(function* () {
+          const stored = {
+            ...storedSlackIntegration,
+            config: {
+              ...storedSlackIntegration.config,
+              [OAUTH_GRANT_CONFIG_KEY]: serializeStoredOAuthGrant({
+                credentials: { SLACK_API_KEY: "oauth-secret" },
+                tokens: { accessToken: "oauth-secret" },
+                connectedAt: "2026-08-24T00:00:00.000Z",
+              }),
+            },
+          };
+          const repo = makeIntegrationRepo(stored);
+
+          const failure = yield* putIntegration("int_1", {
+            config: { SLACK_API_KEY: "manual-replacement" },
+          }).pipe(
+            Effect.provide(Layer.mergeAll(repo.layer, slackCatalog)),
+            Effect.flip
+          );
+
+          assert.instanceOf(failure, InvalidInput);
+          assert.include(failure.error, "OAuth-managed credentials");
+          assert.strictEqual(repo.calls.updates.length, 0);
+        })
+    );
+
+    it.effect("updates non-OAuth connection settings", () =>
+      Effect.gen(function* () {
+        const stored = {
+          ...storedSlackIntegration,
+          config: {
+            ...storedSlackIntegration.config,
+            [OAUTH_GRANT_CONFIG_KEY]: serializeStoredOAuthGrant({
+              credentials: { SLACK_API_KEY: "oauth-secret" },
+              tokens: { accessToken: "oauth-secret" },
+              connectedAt: "2026-08-24T00:00:00.000Z",
+            }),
+          },
+        };
+        const repo = makeIntegrationRepo(stored);
+
+        yield* putIntegration("int_1", {
+          config: { SLACK_TEAM_ID: "team-new" },
+        }).pipe(Effect.provide(Layer.mergeAll(repo.layer, slackCatalog)));
+
+        assert.strictEqual(
+          repo.calls.updates[0]?.updates.config?.SLACK_TEAM_ID,
+          "team-new"
+        );
+      })
     );
 
     it.effect(
@@ -652,7 +710,9 @@ describe("saved OAuth connection tests", () => {
               }),
           });
 
-          const result = yield* postIntegrationTest("int_1").pipe(
+          const result = yield* postIntegrationTest("int_1", {
+            SLACK_TEAM_ID: "team-new",
+          }).pipe(
             Effect.provide(
               Layer.mergeAll(
                 repo,
@@ -673,9 +733,38 @@ describe("saved OAuth connection tests", () => {
           });
           assert.deepStrictEqual(testedCredentials, {
             SLACK_API_KEY: "replacement-access",
-            SLACK_TEAM_ID: "team-old",
+            SLACK_TEAM_ID: "team-new",
           });
         })
+    );
+
+    it.effect("refuses test overrides for OAuth-owned credentials", () =>
+      Effect.gen(function* () {
+        const current: DecryptedIntegration = {
+          ...storedSlackIntegration,
+          config: {
+            SLACK_TEAM_ID: "team-old",
+            [OAUTH_GRANT_CONFIG_KEY]: serializeStoredOAuthGrant({
+              credentials: { SLACK_API_KEY: "oauth-access" },
+              tokens: { accessToken: "oauth-access" },
+              connectedAt: "2026-08-01T00:00:00.000Z",
+            }),
+          },
+        };
+        const repo = stubIntegrationRepo({
+          findById: () => Effect.succeed(current),
+        });
+
+        const failure = yield* postIntegrationTest("int_1", {
+          SLACK_API_KEY: "manual-replacement",
+        }).pipe(
+          Effect.provide(Layer.mergeAll(repo, assembledSlack)),
+          Effect.flip
+        );
+
+        assert.instanceOf(failure, InvalidInput);
+        assert.include(failure.error, "OAuth-managed credentials");
+      })
     );
   });
 });

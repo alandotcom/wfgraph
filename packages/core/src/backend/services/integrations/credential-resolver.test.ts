@@ -138,6 +138,7 @@ describe("resolveIntegrationCredentials", () => {
 
     expect(resolved).toEqual({
       integrationType,
+      oauthCredentialKeys: [],
       credentials: {
         ACCESS_TOKEN: "manual-access",
         MANUAL_TOKEN: "manual-only",

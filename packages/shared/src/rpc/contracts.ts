@@ -132,6 +132,7 @@ const integrationFields = {
       status: Schema.Literals(["connected", "reauthorization_required"]),
       connectedAt: isoTimestampString(),
       accountLabel: Schema.optionalKey(Schema.String),
+      credentialKeys: Schema.Array(NonEmptyTrimmedString),
     })
   ),
 };
@@ -515,7 +516,14 @@ export const rpcContract = {
       .input(contractSchema(Schema.Struct({ integrationId: idSchema })))
       .output(deleted),
     testConnection: route("POST", "/integrations/{integrationId}/test")
-      .input(contractSchema(Schema.Struct({ integrationId: idSchema })))
+      .input(
+        contractSchema(
+          Schema.Struct({
+            integrationId: idSchema,
+            config: Schema.optionalKey(manualIntegrationConfigSchema),
+          })
+        )
+      )
       .output(integrationTestResult),
     testCredentials: route("POST", "/integrations/test")
       .input(

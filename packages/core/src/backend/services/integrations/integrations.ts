@@ -45,6 +45,7 @@ type IntegrationSummary = {
     status: "connected" | "reauthorization_required";
     connectedAt: string;
     accountLabel?: string;
+    credentialKeys: readonly string[];
   };
 };
 
@@ -122,6 +123,30 @@ function mergeIntegrationConfig(
   };
 }
 
+function oauthCredentialKeys(config: IntegrationConfig): readonly string[] {
+  const grant = readStoredOAuthGrant(config);
+  return grant ? Object.keys(grant.credentials).toSorted() : [];
+}
+
+function rejectsOAuthCredentialOverride(
+  config: IntegrationConfig | undefined,
+  credentialKeys: readonly string[]
+): boolean {
+  if (!config || credentialKeys.length === 0) {
+    return false;
+  }
+
+  const oauthKeys = new Set(credentialKeys);
+  return Object.keys(config).some((key) => oauthKeys.has(key));
+}
+
+function oauthCredentialOverrideFailure(): InvalidInput {
+  return new InvalidInput({
+    error:
+      "OAuth-managed credentials cannot be changed while OAuth is connected. Disconnect OAuth first.",
+  });
+}
+
 function toIntegrationSummary(input: {
   id: string;
   name: string;
@@ -149,6 +174,7 @@ function toIntegrationSummary(input: {
                 : ("connected" as const),
             connectedAt: grant.connectedAt,
             ...(grant.accountLabel ? { accountLabel: grant.accountLabel } : {}),
+            credentialKeys: Object.keys(grant.credentials).toSorted(),
           },
         }
       : {}),
@@ -168,6 +194,7 @@ function toIntegrationWithConfig(
     updatedAt: Date;
   }
 ): IntegrationWithConfig {
+  const managedKeys = new Set(oauthCredentialKeys(input.config));
   return {
     ...toIntegrationSummary(input),
     config: maskIntegrationConfig(
@@ -175,7 +202,7 @@ function toIntegrationWithConfig(
       input.type,
       Object.fromEntries(
         Object.entries(input.config).filter(
-          ([key]) => key !== OAUTH_GRANT_CONFIG_KEY
+          ([key]) => key !== OAUTH_GRANT_CONFIG_KEY && !managedKeys.has(key)
         )
       )
     ),
@@ -362,6 +389,11 @@ export const putIntegration = Effect.fn("putIntegration")(function* (
     return yield* new NotFound({ error: "Integration not found" });
   }
 
+  const managedCredentialKeys = oauthCredentialKeys(existingIntegration.config);
+  if (rejectsOAuthCredentialOverride(body.config, managedCredentialKeys)) {
+    return yield* oauthCredentialOverrideFailure();
+  }
+
   // A config the browser sent back still carries the mask over each secret, so
   // the stored value has to be merged back in before anything is written.
   const mergedConfig = body.config
@@ -503,16 +535,37 @@ export const postIntegrationsTest = Effect.fn("postIntegrationsTest")(
 );
 
 export const postIntegrationTest = Effect.fn("postIntegrationTest")(function* (
-  integrationId: string
+  integrationId: string,
+  config?: IntegrationConfig
 ) {
   const logger = (yield* AppLogger).get("integrations").with({ integrationId });
   const resolved = yield* resolveIntegrationCredentials(integrationId);
+  const extensions = yield* Extensions;
+  const integration = findIntegration(
+    extensions.catalog,
+    resolved.integrationType
+  );
+  const managedCredentialKeys = resolved.oauthCredentialKeys;
+  if (rejectsOAuthCredentialOverride(config, managedCredentialKeys)) {
+    return yield* oauthCredentialOverrideFailure();
+  }
+  const credentials = config
+    ? credentialsFromConfig(
+        integration,
+        mergeIntegrationConfig(
+          extensions.catalog,
+          resolved.integrationType,
+          resolved.credentials,
+          config
+        )
+      )
+    : resolved.credentials;
 
   return yield* runConnectionTest(
     logger,
     describeSavedTestFailure,
     resolved.integrationType,
-    resolved.credentials
+    credentials
   );
 });
 

@@ -27,14 +27,20 @@ const catalog: ExtensionCatalog = {
   ],
 };
 
-function connection(oauth?: Integration["oauth"]): Integration {
+type OAuthConnection = NonNullable<Integration["oauth"]>;
+
+function connection(
+  oauth?: Omit<OAuthConnection, "credentialKeys"> & {
+    credentialKeys?: readonly string[];
+  }
+): Integration {
   return {
     id: "connection_1",
     name: "Production",
     type: "resend",
     createdAt: "2026-08-24T10:00:00.000Z",
     updatedAt: "2026-08-24T10:00:00.000Z",
-    oauth,
+    oauth: oauth && { credentialKeys: [], ...oauth },
   };
 }
 
@@ -217,6 +223,99 @@ describe("OAuth connection overlays", () => {
     expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy();
   });
 
+  it("keeps OAuth-managed credentials read-only while leaving other settings editable", () => {
+    renderOverlay(
+      <EditConnectionOverlay
+        integration={connection({
+          status: "connected",
+          connectedAt: "2026-08-24T10:00:00.000Z",
+          credentialKeys: ["RESEND_API_KEY", "RESEND_ACCOUNT_SECRET"],
+        })}
+        overlayId="edit_resend"
+      />
+    );
+
+    expect(screen.getAllByText("Managed by Resend OAuth")).toHaveLength(2);
+    expect(screen.queryByLabelText("API key")).toBeNull();
+    expect(screen.queryByLabelText("Account secret")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Change" })).toBeNull();
+    expect(screen.getByLabelText("From email")).toBeTruthy();
+  });
+
+  it("tests edited settings through the saved connection with proposed config", async () => {
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ status: "success", message: "Connected" }),
+          { headers: { "content-type": "application/json" } }
+        )
+      );
+
+    renderOverlay(
+      <EditConnectionOverlay
+        integration={connection({
+          status: "connected",
+          connectedAt: "2026-08-24T10:00:00.000Z",
+          credentialKeys: ["RESEND_API_KEY"],
+        })}
+        overlayId="edit_resend"
+      />
+    );
+    fireEvent.change(screen.getByLabelText("From email"), {
+      target: { value: "alerts@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Test" }));
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    expect(fetch.mock.calls[0]?.[0]).toEqual(
+      expect.stringMatching(/\/api\/rpc\/integration\/testConnection$/)
+    );
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      json: {
+        integrationId: "connection_1",
+        config: { RESEND_FROM_EMAIL: "alerts@example.com" },
+      },
+    });
+  });
+
+  it("runs the pre-save test through the saved connection with proposed config", async () => {
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({ status: "error", message: "Unavailable" }),
+        {
+          headers: { "content-type": "application/json" },
+        }
+      )
+    );
+
+    renderOverlay(
+      <EditConnectionOverlay
+        integration={connection({
+          status: "connected",
+          connectedAt: "2026-08-24T10:00:00.000Z",
+          credentialKeys: ["RESEND_API_KEY"],
+        })}
+        overlayId="edit_resend"
+      />
+    );
+    fireEvent.change(screen.getByLabelText("From email"), {
+      target: { value: "alerts@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    expect(fetch.mock.calls[0]?.[0]).toEqual(
+      expect.stringMatching(/\/api\/rpc\/integration\/testConnection$/)
+    );
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      json: {
+        integrationId: "connection_1",
+        config: { RESEND_FROM_EMAIL: "alerts@example.com" },
+      },
+    });
+  });
+
   it("disconnects OAuth through the typed integration mutation", async () => {
     const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ json: { success: true } }), {
@@ -229,11 +328,13 @@ describe("OAuth connection overlays", () => {
         integration={connection({
           status: "connected",
           connectedAt: "2026-08-24T10:00:00.000Z",
+          credentialKeys: ["RESEND_API_KEY"],
         })}
         overlayId="edit_resend"
       />
     );
 
+    expect(screen.getAllByRole("button", { name: "Change" })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
 
     await waitFor(() =>
@@ -245,6 +346,10 @@ describe("OAuth connection overlays", () => {
     expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
       json: { integrationId: "connection_1" },
     });
+    await waitFor(() =>
+      expect(screen.queryByText("Managed by Resend OAuth")).toBeNull()
+    );
+    expect(screen.getAllByRole("button", { name: "Change" })).toHaveLength(2);
   });
 
   it("renders reauthorization as a textual state with reconnect control", () => {
@@ -253,6 +358,7 @@ describe("OAuth connection overlays", () => {
         integration={connection({
           status: "reauthorization_required",
           connectedAt: "2026-08-24T10:00:00.000Z",
+          credentialKeys: ["RESEND_API_KEY"],
         })}
         overlayId="edit_resend"
       />
@@ -260,6 +366,8 @@ describe("OAuth connection overlays", () => {
 
     expect(screen.getByText("Reauthorization required")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Reconnect" })).toBeTruthy();
+    expect(screen.getByText("Managed by Resend OAuth")).toBeTruthy();
+    expect(screen.queryByLabelText("API key")).toBeNull();
   });
 
   it("starts reconnect through the unified attempt endpoint", async () => {
