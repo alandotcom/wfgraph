@@ -15,6 +15,7 @@ export function canonicalizeNodeEnabled<T extends { enabled?: boolean }>(
   if (data.enabled !== true) {
     return data;
   }
-  const { enabled: _enabled, ...rest } = data;
-  return rest as T;
+  const copy = { ...data };
+  delete copy.enabled;
+  return copy;
 }

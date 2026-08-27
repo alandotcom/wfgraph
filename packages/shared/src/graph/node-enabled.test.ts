@@ -14,15 +14,10 @@ describe("persistedNodeEnabled", () => {
 
 describe("canonicalizeNodeEnabled", () => {
   it("drops enabled: true and leaves every other value alone", () => {
-    expect(canonicalizeNodeEnabled({ label: "Send", enabled: true })).toEqual({
-      label: "Send",
-    });
-    expect(canonicalizeNodeEnabled({ label: "Send", enabled: false })).toEqual({
-      label: "Send",
+    expect(canonicalizeNodeEnabled({ enabled: true })).toEqual({});
+    expect(canonicalizeNodeEnabled({ enabled: false })).toEqual({
       enabled: false,
     });
-    expect(canonicalizeNodeEnabled({ label: "Send" })).toEqual({
-      label: "Send",
-    });
+    expect(canonicalizeNodeEnabled({})).toEqual({});
   });
 });

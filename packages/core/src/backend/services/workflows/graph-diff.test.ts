@@ -35,14 +35,14 @@ function withStoredEnabled(
 ): SerializedWorkflowGraph {
   return {
     ...source,
-    nodes: source.nodes.map((node) =>
-      node.key !== nodeId
-        ? node
+    nodes: source.nodes.map((serialized) =>
+      serialized.key !== nodeId
+        ? serialized
         : {
-            ...node,
+            ...serialized,
             attributes: {
-              ...node.attributes,
-              data: { ...node.attributes.data, enabled },
+              ...serialized.attributes,
+              data: { ...serialized.attributes.data, enabled },
             },
           }
     ),
