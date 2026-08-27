@@ -7,6 +7,7 @@ import {
   workflowEdgeAttributesSchema,
   workflowNodeAttributesSchema,
 } from "#src/graph/schemas";
+import { persistedNodeEnabled } from "#src/graph/node-enabled";
 import type {
   PersistedNodeData,
   SerializedWorkflowEdge,
@@ -75,8 +76,9 @@ function toPersistedNodeData(data: {
   ) {
     persisted.config = { ...data.config };
   }
-  if (data.enabled !== undefined) {
-    persisted.enabled = data.enabled;
+  const enabled = persistedNodeEnabled(data.enabled);
+  if (enabled !== undefined) {
+    persisted.enabled = enabled;
   }
   return persisted;
 }

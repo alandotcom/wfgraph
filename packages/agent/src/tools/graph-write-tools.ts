@@ -18,6 +18,7 @@ import { findAction } from "@wfgraph/shared/extensions/catalog";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
+import { canonicalizeNodeEnabled } from "@wfgraph/shared/graph/node-enabled";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
 import {
@@ -365,7 +366,7 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
 
         const updated: WorkflowNode = {
           ...node,
-          data: {
+          data: canonicalizeNodeEnabled({
             ...node.data,
             ...(input.label === undefined ? {} : { label: input.label }),
             ...(input.description === undefined
@@ -377,7 +378,7 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
               patch: input.config,
               clear: input.clearConfigKeys,
             }),
-          },
+          }),
         };
 
         return Effect.as(

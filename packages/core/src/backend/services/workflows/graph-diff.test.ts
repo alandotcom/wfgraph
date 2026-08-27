@@ -28,6 +28,27 @@ function graph(
   return createSerializedWorkflowGraph({ nodes, edges });
 }
 
+function withStoredEnabled(
+  source: SerializedWorkflowGraph,
+  nodeId: string,
+  enabled: boolean
+): SerializedWorkflowGraph {
+  return {
+    ...source,
+    nodes: source.nodes.map((node) =>
+      node.key !== nodeId
+        ? node
+        : {
+            ...node,
+            attributes: {
+              ...node.attributes,
+              data: { ...node.attributes.data, enabled },
+            },
+          }
+    ),
+  };
+}
+
 describe("diffWorkflowGraphs", () => {
   it("ignores graph and editor geometry changes", () => {
     const base = graph([node("action")]);
@@ -77,7 +98,6 @@ describe("diffWorkflowGraphs", () => {
         data: {
           label: "Before",
           type: "action",
-          enabled: true,
           config: {
             actionType: "example/send",
             nested: { value: "before", retries: 1 },
@@ -136,8 +156,7 @@ describe("diffWorkflowGraphs", () => {
       },
       {
         path: ["data", "enabled"],
-        kind: "modified",
-        before: true,
+        kind: "added",
         after: false,
       },
       {
@@ -347,6 +366,29 @@ describe("diffWorkflowGraphs", () => {
     ]);
 
     expect(diffWorkflowGraphs(base, draft).hasChanges).toBe(false);
+  });
+
+  it("treats a stored enabled: true as the default on state", () => {
+    const omitted = graph([node("action")]);
+    const storedOn = withStoredEnabled(omitted, "action", true);
+    const storedOff = withStoredEnabled(omitted, "action", false);
+
+    expect(diffWorkflowGraphs(omitted, storedOn)).toEqual({
+      hasChanges: false,
+      nodeChanges: [],
+      edgeChanges: [],
+    });
+    expect(diffWorkflowGraphs(storedOn, omitted)).toEqual({
+      hasChanges: false,
+      nodeChanges: [],
+      edgeChanges: [],
+    });
+    expect(
+      diffWorkflowGraphs(omitted, storedOff).nodeChanges[0]?.fields
+    ).toEqual([{ path: ["data", "enabled"], kind: "added", after: false }]);
+    expect(
+      diffWorkflowGraphs(storedOn, storedOff).nodeChanges[0]?.fields
+    ).toEqual([{ path: ["data", "enabled"], kind: "added", after: false }]);
   });
 
   it("returns JSON-safe values for non-JSON in-process config values", () => {

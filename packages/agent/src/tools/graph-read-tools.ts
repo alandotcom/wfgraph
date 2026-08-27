@@ -109,9 +109,7 @@ export const graphReadToolHandlers = Effect.gen(function* () {
             ...(node.data.description === undefined
               ? {}
               : { description: node.data.description }),
-            ...(node.data.enabled === undefined
-              ? {}
-              : { enabled: node.data.enabled }),
+            ...(node.data.enabled === false ? { enabled: false } : {}),
             config: readableConfig(node),
           };
         }),
