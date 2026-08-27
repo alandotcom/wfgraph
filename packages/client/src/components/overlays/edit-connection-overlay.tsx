@@ -336,10 +336,18 @@ export function EditConnectionOverlay({
 
   const disconnectOAuth = useMutation(
     orpcQuery.integration.disconnectOAuth.mutationOptions({
-      onSuccess: async () => {
+      onSuccess: async (result) => {
         setOauth(undefined);
-        toast.success("OAuth connection disconnected");
         await refreshIntegrations(queryClient);
+        if (result.removed) {
+          // The grant was the whole connection, so there is no longer one to
+          // edit. Take the delete path: it repairs the nodes that named it.
+          toast.success("Connection removed");
+          onDelete?.();
+          closeAll();
+          return;
+        }
+        toast.success("OAuth connection disconnected");
       },
       meta: { errorMessage: "Failed to disconnect OAuth connection" },
     })

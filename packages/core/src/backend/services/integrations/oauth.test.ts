@@ -441,7 +441,6 @@ describe("OAuth config races", () => {
         }),
       deleteOwnedRefreshClaim: ({ claimId }) =>
         Effect.sync(() => {
-          expect(readStoredOAuthGrant(current?.config ?? {})).toBeNull();
           expect(current?.refreshClaimId).toBe(claimId);
           operations.push("delete");
           current = null;
@@ -1101,11 +1100,80 @@ describe("OAuth claim failure boundaries", () => {
       )
     );
 
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ success: true, removed: false });
     expect(completedConfig).toEqual({
       ACCESS_TOKEN: "manual-token",
       DEFAULT_SENDER: "alerts@example.com",
     });
+  });
+
+  it("removes a connection the grant supplied on its own", async () => {
+    const integration = integrationWithGrant("old-access", 0);
+    let deleted = 0;
+    let completionCalls = 0;
+    const repository: Partial<IntegrationRepo["Service"]> = {
+      findById: () => Effect.succeed(integration),
+      claimRefresh: () => Effect.succeed({ status: "acquired" }),
+      completeRefresh: () =>
+        Effect.sync(() => {
+          completionCalls += 1;
+          return true;
+        }),
+      deleteOwnedRefreshClaim: () =>
+        Effect.sync(() => {
+          deleted += 1;
+          return { status: "deleted" as const };
+        }),
+    };
+
+    const result = await Effect.runPromise(
+      deleteIntegrationOAuth("int_1").pipe(
+        Effect.provide(
+          oauthLayer(
+            repository,
+            oauthExtensions({ revoke: async () => undefined })
+          )
+        )
+      )
+    );
+
+    // Nothing is written back: a connection holding no credential of its own is
+    // not a connection, so the row goes rather than being emptied.
+    expect(result).toEqual({ success: true, removed: true });
+    expect(deleted).toBe(1);
+    expect(completionCalls).toBe(0);
+  });
+
+  it("fences the row when removing it loses the database", async () => {
+    const integration = integrationWithGrant("old-access", 0);
+    let marked = 0;
+    const repository: Partial<IntegrationRepo["Service"]> = {
+      findById: () => Effect.succeed(integration),
+      claimRefresh: () => Effect.succeed({ status: "acquired" }),
+      deleteOwnedRefreshClaim: () =>
+        Effect.fail(new DatabaseError({ cause: new Error("connection lost") })),
+      markReauthorizationRequired: () =>
+        Effect.sync(() => {
+          marked += 1;
+          return { status: "transitioned" as const };
+        }),
+    };
+
+    const result = await Effect.runPromise(
+      Effect.result(deleteIntegrationOAuth("int_1")).pipe(
+        Effect.provide(
+          oauthLayer(
+            repository,
+            oauthExtensions({ revoke: async () => undefined })
+          )
+        )
+      )
+    );
+
+    // Revocation already happened and the row's fate is unknown, so it is
+    // fenced rather than revoked again against what could be a newer grant.
+    expect(marked).toBe(1);
+    expect(Result.isFailure(result)).toBe(true);
   });
 
   it("releases a disconnect claim when provider revocation fails", async () => {
@@ -1148,6 +1216,9 @@ describe("OAuth claim failure boundaries", () => {
 
   it("keeps config and marks reauthorization after revoke completion loses the database", async () => {
     let current = integrationWithGrant("old-access", 0);
+    // A manual credential is what makes this the retained-config path: with
+    // none, disconnecting removes the row instead of writing one back.
+    current.config = { ...current.config, ACCESS_TOKEN: "manual-token" };
     let revokeCalls = 0;
     let marked = 0;
     const repository = callbackRepo(current, {

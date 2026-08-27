@@ -521,7 +521,19 @@ export const rpcContract = {
       .output(deleted),
     disconnectOAuth: route("DELETE", "/integrations/{integrationId}/oauth")
       .input(contractSchema(Schema.Struct({ integrationId: idSchema })))
-      .output(deleted),
+      .output(
+        contractSchema(
+          Schema.Struct({
+            success: Schema.Literal(true),
+            /**
+             * Whether the connection itself is gone. A grant that supplied the
+             * whole connection leaves nothing behind, so disconnecting removes
+             * the row rather than offering a connection holding no credential.
+             */
+            removed: Schema.Boolean,
+          })
+        )
+      ),
     testConnection: route("POST", "/integrations/{integrationId}/test")
       .input(
         contractSchema(

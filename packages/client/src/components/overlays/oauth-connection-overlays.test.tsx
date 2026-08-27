@@ -414,9 +414,12 @@ describe("OAuth connection overlays", () => {
 
   it("disconnects OAuth through the typed integration mutation", async () => {
     const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ json: { success: true } }), {
-        headers: { "content-type": "application/json" },
-      })
+      new Response(
+        JSON.stringify({ json: { success: true, removed: false } }),
+        {
+          headers: { "content-type": "application/json" },
+        }
+      )
     );
 
     renderOverlay(
@@ -458,9 +461,12 @@ describe("OAuth connection overlays", () => {
   // belongs to reports itself configured once OAuth is gone.
   it("keeps a manual secret configured after a disconnect", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ json: { success: true } }), {
-        headers: { "content-type": "application/json" },
-      })
+      new Response(
+        JSON.stringify({ json: { success: true, removed: false } }),
+        {
+          headers: { "content-type": "application/json" },
+        }
+      )
     );
 
     renderOverlay(
@@ -483,6 +489,40 @@ describe("OAuth connection overlays", () => {
       expect(screen.getAllByRole("button", { name: "Change" })).toHaveLength(2)
     );
     expect(screen.queryByLabelText("API key")).toBeNull();
+  });
+
+  // A grant that supplied the whole connection leaves nothing behind, so the
+  // server removes the row and the editor has no connection left to edit.
+  it("closes and repairs when disconnecting removed the connection", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ json: { success: true, removed: true } }), {
+        headers: { "content-type": "application/json" },
+      })
+    );
+    const onDelete = vi.fn();
+
+    renderOverlay(
+      <EditConnectionOverlay
+        integration={connection(
+          {
+            status: "connected",
+            connectedAt: "2026-08-24T10:00:00.000Z",
+            credentialKeys: ["RESEND_API_KEY"],
+          },
+          []
+        )}
+        onDelete={onDelete}
+        overlayId="edit_resend"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    // The nodes that named this connection are repaired through the same path a
+    // delete takes. The dialog also closes, which this harness cannot see:
+    // `closeAll` empties the overlay stack, and these cases render the overlay
+    // directly rather than pushing it.
+    await waitFor(() => expect(onDelete).toHaveBeenCalledOnce());
   });
 
   it("offers the OAuth flow on a connection that has never used it", () => {

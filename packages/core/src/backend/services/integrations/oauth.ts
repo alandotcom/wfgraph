@@ -12,6 +12,7 @@ import {
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import {
+  manuallyConfiguredKeys,
   normalizeOAuthGrant,
   oauthCredentialsAreDeclared,
   OAUTH_GRANT_CONFIG_KEY,
@@ -804,11 +805,39 @@ export const deleteIntegrationOAuth = Effect.fn("deleteIntegrationOAuth")(
       return yield* revocation.failure;
     }
 
+    // What the operator typed themselves is what a disconnect is for keeping.
+    // When there is none, the grant was the whole connection, and leaving the
+    // row behind would offer a connection that holds no credential at all.
+    const remaining = removeStoredOAuthGrant(integration.config);
+    const keepsManualCredentials =
+      manuallyConfiguredKeys(
+        findIntegration(extensions.catalog, integration.type),
+        remaining
+      ).length > 0;
+
+    if (!keepsManualCredentials) {
+      const removal = yield* Effect.result(
+        repo.deleteOwnedRefreshClaim(claimInput)
+      );
+      if (Result.isFailure(removal)) {
+        // Revocation succeeded and the database outcome is unknown. Fence the
+        // row rather than repeating a revocation that could target a newer
+        // grant, exactly as the retained-config branch below does.
+        yield* Effect.result(repo.markReauthorizationRequired(claimInput));
+        return yield* new InternalFailure({ error: "Failed to revoke OAuth" });
+      }
+      if (removal.success.status === "no_longer_owned") {
+        yield* Effect.result(repo.markReauthorizationRequired(claimInput));
+        return yield* new Conflict({
+          error: "Integration configuration changed during OAuth disconnect.",
+        });
+      }
+      // A row already gone is the outcome this asked for.
+      return { success: true as const, removed: true as const };
+    }
+
     const completion = yield* Effect.result(
-      repo.completeRefresh({
-        ...claimInput,
-        config: removeStoredOAuthGrant(integration.config),
-      })
+      repo.completeRefresh({ ...claimInput, config: remaining })
     );
     if (Result.isFailure(completion)) {
       // Revocation succeeded, while the database outcome is unknown. Retain
@@ -823,6 +852,6 @@ export const deleteIntegrationOAuth = Effect.fn("deleteIntegrationOAuth")(
         error: "Integration configuration changed during OAuth disconnect.",
       });
     }
-    return { success: true as const };
+    return { success: true as const, removed: false as const };
   }
 );

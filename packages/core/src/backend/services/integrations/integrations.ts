@@ -17,7 +17,6 @@ import {
   credentialsFromConfig,
   type ExtensionCatalog,
   findIntegration,
-  type IntegrationMetadata,
 } from "@wfgraph/shared/extensions/catalog";
 import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
 import { getErrorMessage } from "@wfgraph/shared/utils";
@@ -29,6 +28,7 @@ import {
 } from "#src/backend/services/integrations/integration-config-masking";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import {
+  manuallyConfiguredKeys,
   OAUTH_GRANT_CONFIG_KEY,
   readStoredOAuthGrant,
 } from "#src/backend/services/integrations/oauth-grant";
@@ -147,31 +147,6 @@ function oauthCredentialOverrideFailure(): InvalidInput {
     error:
       "OAuth-managed credentials cannot be changed while OAuth is connected. Disconnect OAuth first.",
   });
-}
-
-/**
- * Which declared credential fields hold a value the operator entered themselves.
- *
- * OAuth's own credentials are deliberately absent: they are reported separately
- * under `oauth.credentialKeys`, and keeping the two sets apart is what lets the
- * editor draw an accurate field the moment a grant is disconnected. Restricting
- * this to what the catalog declares keeps a row left behind by a renamed field
- * from reaching the browser as a setting nothing can edit.
- */
-function manuallyConfiguredKeys(
-  metadata: IntegrationMetadata | undefined,
-  config: IntegrationConfig
-): readonly string[] {
-  if (!metadata) {
-    return [];
-  }
-
-  return Object.keys(metadata.credentialFields)
-    .filter((key) => {
-      const value = config[key];
-      return typeof value === "string" && value.length > 0;
-    })
-    .toSorted();
 }
 
 function toIntegrationSummary(
@@ -503,7 +478,13 @@ export const deleteIntegration = Effect.fn("deleteIntegration")(function* (
   }
 
   if (storedGrant) {
-    yield* deleteIntegrationOAuth(integrationId);
+    const disconnect = yield* deleteIntegrationOAuth(integrationId);
+    // Disconnecting a connection the grant wholly supplied removes the row, so
+    // there is nothing left to delete and this call is already done.
+    if (disconnect.removed) {
+      const removed: IntegrationDeleted = { success: true };
+      return removed;
+    }
     integration = yield* repo
       .findById(integrationId)
       .pipe(

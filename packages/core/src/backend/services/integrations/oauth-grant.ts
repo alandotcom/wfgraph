@@ -104,6 +104,34 @@ export function oauthCredentialsAreDeclared(
 }
 
 /**
+ * Which declared credential fields hold a value the operator entered themselves.
+ *
+ * OAuth's own credentials are deliberately absent: they are reported separately
+ * under `oauth.credentialKeys`, and keeping the two sets apart is what lets the
+ * editor draw an accurate field the moment a grant is disconnected. Restricting
+ * this to what the catalog declares keeps a row left behind by a renamed field
+ * from reaching the browser as a setting nothing can edit.
+ *
+ * It is also what disconnecting asks: an empty answer means the grant was the
+ * whole connection, so removing the grant leaves nothing to keep.
+ */
+export function manuallyConfiguredKeys(
+  metadata: IntegrationMetadata | undefined,
+  config: IntegrationConfig
+): readonly string[] {
+  if (!metadata) {
+    return [];
+  }
+
+  return Object.keys(metadata.credentialFields)
+    .filter((key) => {
+      const value = config[key];
+      return typeof value === "string" && value.length > 0;
+    })
+    .toSorted();
+}
+
+/**
  * Remove OAuth's private entry while retaining every operator-entered setting.
  *
  * A manual credential stored under a key the grant also filled is kept on
