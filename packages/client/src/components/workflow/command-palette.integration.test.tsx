@@ -1,5 +1,5 @@
 import { act, fireEvent } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ToolbarActions } from "#src/components/workflow/workflow-toolbar-chrome";
 import { renderChrome } from "#src/components/workflow/workflow-toolbar-chrome.test-support";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
@@ -353,6 +353,46 @@ describe("the command palette", () => {
     expect(paletteInput()?.getAttribute("placeholder")).toBe(
       "Search commands, or add a step"
     );
+  });
+
+  /**
+   * Disabled rows used to set pointer-events: none. Hover then missed the row
+   * and looked like leaving the list, so autoHighlight="always" painted the
+   * first item. happy-dom does not deliver the pointer path Base UI's list
+   * navigation listens for, so the class is what this locks.
+   */
+  it("lets a disabled row receive the pointer instead of jumping the highlight to the first row", async () => {
+    const rendered = renderChrome(ToolbarActions);
+    await openedPalette(rendered);
+
+    const undo = rendered.getByRole("option", { name: /^Undo/ });
+    expect(undo.getAttribute("data-disabled")).not.toBeNull();
+    expect(undo.className).not.toContain("pointer-events-none");
+    expect(undo.className).toContain("not-data-disabled");
+  });
+
+  it("does not run a disabled command that is clicked", async () => {
+    const undo = vi.fn();
+    const rendered = renderChrome(ToolbarActions, { state: { undo } });
+    await openedPalette(rendered);
+
+    fireEvent.click(rendered.getByRole("option", { name: /^Undo/ }));
+
+    expect(undo).not.toHaveBeenCalled();
+    expect(paletteInput()).not.toBeNull();
+  });
+
+  it("still highlights an enabled row from the keyboard", async () => {
+    const rendered = renderChrome(ToolbarActions);
+    const input = await openedPalette(rendered);
+
+    const addStep = rendered.getByRole("option", { name: /^Add step/ });
+    const save = rendered.getByRole("option", { name: /^Save workflow/ });
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+
+    expect(save.hasAttribute("data-highlighted")).toBe(true);
+    expect(addStep.hasAttribute("data-highlighted")).toBe(false);
   });
 
   // The page stack clears the query, and this is that reaching the box the

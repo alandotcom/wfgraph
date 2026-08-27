@@ -446,12 +446,17 @@ function CommandPaletteDialog({
                     <Autocomplete.Item
                       className={cn(
                         "flex min-h-7 cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-xs/relaxed outline-none select-none",
-                        "data-highlighted:bg-muted data-highlighted:text-foreground",
-                        "data-disabled:pointer-events-none data-disabled:opacity-50"
+                        // Disabled rows keep pointer events so hover does not
+                        // fall through to the list. autoHighlight="always"
+                        // would otherwise treat that as leaving and paint the
+                        // first row. Highlight styles skip data-disabled, so
+                        // the row stays visually inert.
+                        "data-highlighted:not-data-disabled:bg-muted data-highlighted:not-data-disabled:text-foreground",
+                        "data-disabled:opacity-50"
                       )}
                       disabled={item.disabled}
                       key={item.id}
-                      onClick={item.select}
+                      onClick={item.disabled ? undefined : item.select}
                       value={item}
                     >
                       {item.icon}
