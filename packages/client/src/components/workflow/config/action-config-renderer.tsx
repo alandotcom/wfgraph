@@ -19,10 +19,19 @@ import {
 } from "@wfgraph/shared/plugins/action-fields";
 import { matchesShowWhen } from "@wfgraph/shared/types/show-when";
 import type { UpdateNodeConfig } from "./node-config-patch";
+import { ProviderFieldsField } from "./provider-fields-field";
+import { ProviderSelectField } from "./provider-select-field";
 
 type FieldProps = {
   field: ActionConfigFieldBase;
   value: unknown;
+  /**
+   * The node's whole config bag. A provider-backed field's question is
+   * parameterised by its siblings and by the connection the node names, and both
+   * live here: `action-config.tsx` writes `integrationId` beside the action's
+   * own keys.
+   */
+  config: Record<string, unknown>;
   onChange: (value: unknown) => void;
   disabled?: boolean;
 };
@@ -246,6 +255,8 @@ const FIELD_RENDERERS: Record<
   number: NumberInputField,
   select: SelectField,
   "key-value": KeyValueField,
+  "provider-select": ProviderSelectField,
+  "provider-fields": ProviderFieldsField,
 };
 
 /**
@@ -282,6 +293,7 @@ function renderField(
         </Label>
       )}
       <FieldRenderer
+        config={config}
         disabled={disabled}
         field={field}
         onChange={(val) => onUpdateConfig({ [field.key]: val })}

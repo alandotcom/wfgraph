@@ -70,11 +70,17 @@ function resolveTemplateToken(
  *
  * `literalKeys` are the keys the action declared `literal`, whose values pass
  * through as they were authored.
+ *
+ * `templateObjectKeys` are the keys holding a JSON object of authored values.
+ * Those resolve one value at a time, because substituting into the whole string
+ * lets a resolved `"` or newline break the JSON and cost the step every value in
+ * it rather than one.
  */
 export function processTemplates(
   config: Record<string, unknown>,
   outputs: NodeOutputs,
-  literalKeys: ReadonlySet<string>
+  literalKeys: ReadonlySet<string>,
+  templateObjectKeys: ReadonlySet<string> = new Set()
 ): Record<string, unknown> {
   const processed: Record<string, unknown> = {};
 
@@ -83,13 +89,83 @@ export function processTemplates(
       continue;
     }
 
-    processed[key] =
-      typeof value === "string" && !literalKeys.has(key)
-        ? resolveTemplateString(value, outputs)
-        : value;
+    processed[key] = resolveConfigValue({
+      value,
+      outputs,
+      literal: literalKeys.has(key),
+      asTemplateObject: templateObjectKeys.has(key),
+    });
   }
 
   return processed;
+}
+
+function resolveConfigValue(input: {
+  value: unknown;
+  outputs: NodeOutputs;
+  literal: boolean;
+  asTemplateObject: boolean;
+}): unknown {
+  const { value, outputs, literal, asTemplateObject } = input;
+  if (typeof value !== "string" || literal) {
+    return value;
+  }
+
+  return asTemplateObject
+    ? resolveTemplateObjectString(value, outputs)
+    : resolveTemplateString(value, outputs);
+}
+
+/**
+ * Resolve each value of a JSON object of authored templates, and re-serialise.
+ *
+ * Text that is not such an object falls back to resolving the whole string.
+ * That is the escape hatch a builder gets when the provider-backed form cannot
+ * draw, so the value they typed by hand keeps behaving as it always did.
+ */
+function resolveTemplateObjectString(
+  value: string,
+  outputs: NodeOutputs
+): string {
+  const entries = readTemplateObject(value);
+  if (!entries) {
+    return resolveTemplateString(value, outputs);
+  }
+
+  const resolved: Record<string, string | number> = {};
+  for (const [key, entry] of Object.entries(entries)) {
+    resolved[key] =
+      typeof entry === "string" ? resolveTemplateString(entry, outputs) : entry;
+  }
+
+  // `JSON.stringify` is what escapes a resolved quotation mark or newline, and
+  // doing it here rather than in the step is what keeps the boundary a string.
+  return JSON.stringify(resolved);
+}
+
+/** The object of scalars this text holds, or nothing when it holds something else. */
+function readTemplateObject(
+  value: string
+): Record<string, string | number> | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return null;
+  }
+
+  const entries: Record<string, string | number> = {};
+  for (const [key, entry] of Object.entries(parsed)) {
+    if (typeof entry !== "string" && typeof entry !== "number") {
+      return null;
+    }
+    entries[key] = entry;
+  }
+  return entries;
 }
 
 /** One authored string with its references replaced. */

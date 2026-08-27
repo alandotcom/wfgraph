@@ -32,6 +32,12 @@ export type ActionRunMetadata = {
    * as the builder typed them rather than through template resolution.
    */
   literalConfigKeys: readonly string[];
+  /**
+   * The config keys whose value is a JSON object of authored templates, which
+   * the engine resolves value by value so an authored `"` or newline cannot
+   * break the JSON around it.
+   */
+  templateObjectConfigKeys: readonly string[];
 };
 
 /** An assembled action in the Effect-native shape the engine dispatches. */

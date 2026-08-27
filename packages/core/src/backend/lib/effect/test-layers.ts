@@ -153,6 +153,7 @@ export function stubExtensions(
     catalog: emptyExtensionCatalog,
     stepFor: () => undefined,
     connectionTestFor: () => undefined,
+    configOptionsFor: () => undefined,
     oauthFor: () => undefined,
     eventByName: () => undefined,
     events: [],

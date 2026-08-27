@@ -25,6 +25,23 @@ export const integrationsQueryOptions = () =>
   orpcQuery.integration.getAll.queryOptions({ input: {} });
 
 /**
+ * What a provider-backed config field can be filled with, asked of one
+ * connection.
+ *
+ * The key derives from the contract path plus this input, so the connection and
+ * the parameter values are already in it: picking a different template is a
+ * different entry rather than a refetch of this one. Nothing invalidates it,
+ * because this feature has no write; a manual refresh is `refetch()` on the one
+ * entry. Never reach for `orpcQuery.integration.key()` here -- that area covers
+ * `getAll`, which every connection picker on the canvas reads.
+ */
+export const configOptionsQueryOptions = (input: {
+  integrationId: string;
+  provider: string;
+  parameters?: Record<string, string>;
+}) => orpcQuery.integration.configOptions.queryOptions({ input });
+
+/**
  * The workflow list, for the dashboard and the toolbar's switcher.
  *
  * The procedure answers summaries, so there is no graph to deserialise and no

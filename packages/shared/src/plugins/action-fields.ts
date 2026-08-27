@@ -24,6 +24,31 @@ export type SelectOption = {
 };
 
 /**
+ * The field types whose shape the node's connection answers.
+ *
+ * A closed union is matched against this rather than by name prefix, so adding a
+ * type is one edit and a rename cannot quietly stop matching.
+ */
+export const PROVIDER_FIELD_TYPES = new Set<ActionConfigFieldBase["type"]>([
+  "provider-select",
+  "provider-fields",
+]);
+
+/**
+ * Where a field's options or sub-fields come from, when the answer depends on
+ * the connection the node names rather than on anything the catalog knows.
+ *
+ * `provider` names one entry of the integration's `configOptions` record.
+ * `parameters` names sibling config keys whose values the question needs; a
+ * named key holding nothing, or holding a `{{...}}` reference, means the field
+ * cannot be asked yet and the renderer draws the plain control instead.
+ */
+export type FieldOptionsSource = {
+  provider: string;
+  parameters?: string[];
+};
+
+/**
  * Base Action Config Field
  * Declarative definition of a config field for an action
  */
@@ -41,7 +66,9 @@ export type ActionConfigFieldBase = {
     | "text" // Regular text input
     | "number" // Number input
     | "select" // Dropdown select
-    | "key-value"; // Dynamic key-value pair list
+    | "key-value" // Dynamic key-value pair list
+    | "provider-select" // Dropdown whose options the connection answers
+    | "provider-fields"; // One input per field the connection answers with
 
   // Placeholder text
   placeholder?: string;
@@ -54,6 +81,9 @@ export type ActionConfigFieldBase = {
 
   // For select fields: list of options
   options?: SelectOption[];
+
+  // For provider-select and provider-fields: which connection question to ask
+  optionsSource?: FieldOptionsSource;
 
   // Number of rows (for textarea)
   rows?: number;
@@ -125,6 +155,25 @@ export function flattenConfigFields(
   }
 
   return result;
+}
+
+/**
+ * The config keys holding a JSON object whose values are authored templates.
+ *
+ * The engine resolves those values one at a time rather than substituting into
+ * the whole string. Substituting into the string is how a resolved value
+ * carrying a quotation mark or a newline leaves the JSON unparseable, and the
+ * step then reads no values at all rather than one wrong one.
+ *
+ * A group is a rendering decision, so a field inside one counts the same as one
+ * beside it.
+ */
+export function templateObjectFieldKeys(
+  fields: readonly ActionConfigField[]
+): string[] {
+  return flattenConfigFields(fields)
+    .filter((field) => field.type === "provider-fields")
+    .map((field) => field.key);
 }
 
 /**

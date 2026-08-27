@@ -18,6 +18,7 @@ import {
   postIntegrationTest,
   putIntegration,
 } from "#src/backend/services/integrations/integrations";
+import { postIntegrationConfigOptions } from "#src/backend/services/integrations/config-options";
 import { deleteIntegrationOAuth } from "#src/backend/services/integrations/oauth";
 import { postWorkflowExecute } from "#src/backend/services/workflows/lifecycle/manual-start";
 import { resumeWaitByToken } from "#src/backend/services/workflows/lifecycle/resume";
@@ -294,6 +295,15 @@ export const rpcRouter = rpc.router({
     testConnection: rpc.integration.testConnection.handler(
       rpcEffectHandler(({ input }) =>
         postIntegrationTest(input.integrationId, input.config)
+      )
+    ),
+    configOptions: rpc.integration.configOptions.handler(
+      rpcEffectHandler(({ input }) =>
+        postIntegrationConfigOptions(
+          input.integrationId,
+          input.provider,
+          input.parameters ?? {}
+        )
       )
     ),
     testCredentials: rpc.integration.testCredentials.handler(

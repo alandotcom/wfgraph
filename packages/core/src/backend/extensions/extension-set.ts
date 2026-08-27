@@ -21,6 +21,7 @@ import type {
 import {
   type ActionConfigFieldBase,
   flattenConfigFields,
+  PROVIDER_FIELD_TYPES,
 } from "@wfgraph/shared/plugins/action-fields";
 import type { StepFactory } from "#src/backend/extensions/steps/step-runner";
 import { builtInActions } from "#src/backend/extensions/built-ins";
@@ -33,6 +34,7 @@ import {
 } from "#src/backend/extensions/define-integration";
 import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
 import type { IntegrationOAuth } from "#src/backend/extensions/oauth";
+import type { ConfigOptionsProvider } from "#src/backend/extensions/config-options";
 
 /**
  * An Event as the set holds it, which is what `eventByName` answers with.
@@ -70,6 +72,15 @@ export type ExtensionSet = {
   readonly connectionTestFor: (
     type: string
   ) => IntegrationTestLoader | undefined;
+  /**
+   * What a provider-backed config field asks, keyed by integration type and the
+   * name its `optionsSource` used. Server-only, like `connectionTestFor`: the
+   * catalog carries the field's `optionsSource` and nothing behind it.
+   */
+  readonly configOptionsFor: (
+    type: string,
+    provider: string
+  ) => ConfigOptionsProvider | undefined;
   /** Provider behavior for OAuth routes; none of this map crosses the catalog. */
   readonly oauthFor: (type: string) => IntegrationOAuth | undefined;
   readonly eventByName: (name: string) => RegisteredEvent | undefined;
@@ -173,10 +184,17 @@ function assertDistinctActionIds(actions: readonly ActionMetadata[]): void {
   }
 }
 
-/** The field types the editor draws with a template picker. */
+/**
+ * The field types the editor draws with a template picker.
+ *
+ * The two provider-backed types are here because each falls back to a template
+ * control -- when no connection is chosen, when the provider refuses, or when
+ * the value is already a `{{...}}` reference -- so each can offer the picker.
+ */
 const TEMPLATE_FIELD_TYPES = new Set<ActionConfigFieldBase["type"]>([
   "template-input",
   "template-textarea",
+  ...PROVIDER_FIELD_TYPES,
 ]);
 
 /**
@@ -242,6 +260,8 @@ type Assembly = {
   actions: ActionMetadata[];
   steps: Map<string, StepFactory>;
   tests: Map<string, IntegrationTestLoader>;
+  /** Keyed `${integrationType}::${provider}`, the pair that names one question. */
+  configOptions: Map<string, ConfigOptionsProvider>;
   oauth: Map<string, IntegrationOAuth>;
 };
 
@@ -275,6 +295,12 @@ function readIntegration(
     into.tests.set(integration.type, integration.test);
   }
 
+  for (const [provider, entry] of Object.entries(
+    integration.configOptions ?? {}
+  )) {
+    into.configOptions.set(configOptionsKey(integration.type, provider), entry);
+  }
+
   if (integration.oauth) {
     if (integration.oauth.label.trim().length === 0) {
       throw new Error(
@@ -292,6 +318,32 @@ function readIntegration(
     hasTest: integration.test !== undefined,
     ...(integration.oauth ? { oauth: { label: integration.oauth.label } } : {}),
   };
+}
+
+const configOptionsKey = (type: string, provider: string): string =>
+  `${type}::${provider}`;
+
+/**
+ * A provider-backed field needs an integration behind it.
+ *
+ * `checkIntegration` holds an integration's own fields to a declared provider,
+ * but a host's `defineAction` has no integration and no connection, so a field
+ * asking one there would draw a control nothing can ever answer.
+ */
+function assertProviderFieldsBelongToAnIntegration(
+  action: ActionMetadata
+): void {
+  if (action.integration) {
+    return;
+  }
+
+  for (const field of flattenConfigFields(action.configFields)) {
+    if (field.optionsSource || PROVIDER_FIELD_TYPES.has(field.type)) {
+      throw new Error(
+        `Action "${action.id}" is a host action, so its "${field.key}" field has no connection to ask. Provider-backed fields belong to an integration.`
+      );
+    }
+  }
 }
 
 /**
@@ -333,6 +385,7 @@ export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
     actions: [...builtInActions],
     steps: new Map(),
     tests: new Map(),
+    configOptions: new Map(),
     oauth: new Map(),
   };
 
@@ -348,6 +401,7 @@ export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
   assertDistinctIntegrationTypes(integrations);
   for (const action of into.actions) {
     assertLiteralFieldsRenderNoTemplatePicker(action);
+    assertProviderFieldsBelongToAnIntegration(action);
   }
 
   return {
@@ -358,6 +412,8 @@ export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
     },
     stepFor: (actionId) => into.steps.get(actionId),
     connectionTestFor: (type) => into.tests.get(type),
+    configOptionsFor: (type, provider) =>
+      into.configOptions.get(configOptionsKey(type, provider)),
     oauthFor: (type) => into.oauth.get(type),
     eventByName: (name) => eventsByName.get(name),
     events,

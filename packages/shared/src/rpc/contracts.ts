@@ -151,6 +151,63 @@ const integrationWithConfigSchema = Schema.Struct({
   config: integrationConfigSchema,
 });
 
+/**
+ * What a provider-backed config field is filled with.
+ *
+ * Three arms, because a provider refusing is an answer rather than a failure:
+ * the sentence it wrote is what a builder acts on, and an error response would
+ * lose it. `not_permitted` is the one arm reconnecting can fix.
+ */
+const configOptionsAnswerSchema = Schema.Union([
+  Schema.Struct({
+    status: Schema.Literal("options"),
+    options: Schema.Array(
+      Schema.Struct({
+        value: NonEmptyTrimmedString,
+        label: Schema.String,
+      })
+    ),
+  }),
+  Schema.Struct({
+    status: Schema.Literal("fields"),
+    fields: Schema.Array(
+      Schema.Struct({
+        key: NonEmptyTrimmedString,
+        label: Schema.String,
+        defaultValue: Schema.optionalKey(Schema.String),
+        description: Schema.optionalKey(Schema.String),
+        type: Schema.optionalKey(Schema.Literals(["string", "number"])),
+      })
+    ),
+  }),
+  Schema.Struct({
+    status: Schema.Literal("unavailable"),
+    reason: Schema.Literals(["not_permitted", "unreachable", "refused"]),
+    message: Schema.String,
+  }),
+]);
+
+/**
+ * The sibling config values the field's `optionsSource` named. Bounded because
+ * each one lands in a request the connection's own credentials pay for.
+ */
+/**
+ * The sibling config values the field's `optionsSource` named.
+ *
+ * The real allowlist is server-side: the service intersects this against what a
+ * field actually declared for the provider being asked, so an undeclared key
+ * never reaches the integration. This bound is only what keeps an oversized body
+ * from being decoded at all.
+ */
+const configOptionsParametersSchema = Schema.Record(
+  Schema.String,
+  Schema.String.check(Schema.isMaxLength(2048))
+).check(
+  Schema.makeFilter((values) => Object.keys(values).length <= 8, {
+    expected: "at most eight provider parameters",
+  })
+);
+
 const integrationTestResultSchema = Schema.Struct({
   status: Schema.Literals(["success", "error"]),
   message: Schema.String,
@@ -544,6 +601,17 @@ export const rpcContract = {
         )
       )
       .output(integrationTestResult),
+    configOptions: route("POST", "/integrations/{integrationId}/config-options")
+      .input(
+        contractSchema(
+          Schema.Struct({
+            integrationId: idSchema,
+            provider: NonEmptyTrimmedString,
+            parameters: Schema.optionalKey(configOptionsParametersSchema),
+          })
+        )
+      )
+      .output(contractSchema(configOptionsAnswerSchema)),
     testCredentials: route("POST", "/integrations/test")
       .input(
         contractSchema(

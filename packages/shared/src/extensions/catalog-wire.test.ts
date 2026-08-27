@@ -105,6 +105,43 @@ describe("readExtensionCatalog", () => {
     expect(readExtensionCatalog(catalog)).toEqual(catalog);
   });
 
+  it("carries a provider-backed field's optionsSource across the wire", () => {
+    const catalog: ExtensionCatalog = {
+      events: [],
+      actions: [
+        {
+          id: "resend/send-email",
+          label: "Send Email",
+          description: "Sends an email",
+          category: "Resend",
+          integration: "resend",
+          sideEffect: true,
+          configFields: [
+            {
+              key: "emailTemplateId",
+              label: "Template",
+              type: "provider-select",
+              optionsSource: { provider: "templates" },
+            },
+            {
+              key: "emailTemplateVariables",
+              label: "Template Variables",
+              type: "provider-fields",
+              optionsSource: {
+                provider: "template-variables",
+                parameters: ["emailTemplateId"],
+              },
+            },
+          ],
+          outputFields: [],
+        },
+      ],
+      integrations: [],
+    };
+
+    expect(readExtensionCatalog(catalog)).toEqual(catalog);
+  });
+
   it("answers nothing for a field type the vocabulary has no word for", () => {
     expect(
       readExtensionCatalog(aCatalog([{ path: "x", type: "money" } as never]))

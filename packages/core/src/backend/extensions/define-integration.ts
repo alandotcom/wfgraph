@@ -13,6 +13,7 @@
  */
 
 import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
+import type { ConfigOptionsProvider } from "#src/backend/extensions/config-options";
 import {
   type ActionConfigFieldFor,
   type ActionStep,
@@ -22,6 +23,10 @@ import {
   type StepBag,
 } from "#src/backend/extensions/steps/define-step";
 import type { InputSchema } from "#src/backend/extensions/schema-io";
+import {
+  flattenConfigFields,
+  PROVIDER_FIELD_TYPES,
+} from "@wfgraph/shared/plugins/action-fields";
 import type { IntegrationOAuth } from "#src/backend/extensions/oauth";
 import {
   type CredentialFields,
@@ -67,6 +72,11 @@ export type IntegrationDefinition = {
    * button.
    */
   readonly test?: IntegrationTestLoader;
+  /**
+   * What a `provider-select` or `provider-fields` field asks, keyed by the name
+   * its `optionsSource.provider` uses. Deferred for the reason `test` is.
+   */
+  readonly configOptions?: Readonly<Record<string, ConfigOptionsProvider>>;
   /** Keyed by action slug. */
   readonly actions: Readonly<Record<string, ActionStep>>;
 };
@@ -175,6 +185,9 @@ export function defineIntegration<
   readonly credentials: TCredentials;
   readonly oauth?: IntegrationOAuth;
   readonly test?: IntegrationTestLoader<CredentialsOf<TCredentials>>;
+  readonly configOptions?: Readonly<
+    Record<string, ConfigOptionsProvider<CredentialsOf<TCredentials>>>
+  >;
   readonly actions: IntegrationActions<
     CredentialsOf<TCredentials>,
     TInputs,
@@ -193,6 +206,7 @@ export function defineIntegration(input: {
   readonly credentials: CredentialFields;
   readonly oauth?: IntegrationOAuth;
   readonly test?: IntegrationTestLoader;
+  readonly configOptions?: Readonly<Record<string, ConfigOptionsProvider>>;
   readonly actions: Readonly<Record<string, unknown>>;
 }): IntegrationDefinition {
   const actions: Record<string, ActionStep> = {};
@@ -220,6 +234,7 @@ export function defineIntegration(input: {
     credentials: input.credentials,
     ...(input.oauth ? { oauth: input.oauth } : {}),
     test: input.test,
+    ...(input.configOptions ? { configOptions: input.configOptions } : {}),
     actions,
   };
 }
@@ -277,6 +292,68 @@ export function checkIntegration(
       step.output
     );
 
+    checkProviderBackedFields(id, integration, step);
+
     return { id, step, outputFields };
   });
+}
+
+/**
+ * Hold a provider-backed field to a provider that can answer it.
+ *
+ * Every one of these is a wiring mistake nothing else would catch until a
+ * builder opened the panel and met a control with no data behind it, so they are
+ * checked where the definition is written rather than where it is drawn.
+ */
+function checkProviderBackedFields(
+  actionId: string,
+  integration: IntegrationDefinition,
+  step: ActionStep
+): void {
+  const fields = flattenConfigFields(step.configFields ?? []);
+  const declaredKeys = new Set(fields.map((field) => field.key));
+
+  for (const field of fields) {
+    const where = `Action "${actionId}" field "${field.key}"`;
+    const source = field.optionsSource;
+
+    if (!source) {
+      if (field.type === "provider-fields") {
+        throw new Error(
+          `${where} is a provider-fields field with no optionsSource, so nothing says which inputs to draw.`
+        );
+      }
+      continue;
+    }
+
+    // The field type is checked before the provider, so a field that draws no
+    // provider data is told that rather than being told its provider is
+    // undeclared, which would send the author looking in the wrong place.
+    if (!PROVIDER_FIELD_TYPES.has(field.type)) {
+      throw new Error(
+        `${where} declares an optionsSource on a "${field.type}" field, which draws no provider data.`
+      );
+    }
+
+    const wants = field.type === "provider-select" ? "options" : "fields";
+    const provider = integration.configOptions?.[source.provider];
+    if (!provider) {
+      throw new Error(
+        `${where} names the config options provider "${source.provider}", which integration "${integration.type}" does not declare.`
+      );
+    }
+    if (provider.answers !== wants) {
+      throw new Error(
+        `${where} needs a provider answering "${wants}", but "${source.provider}" answers "${provider.answers}".`
+      );
+    }
+
+    for (const parameter of source.parameters ?? []) {
+      if (!declaredKeys.has(parameter)) {
+        throw new Error(
+          `${where} names the parameter "${parameter}", which is not a config field of this action.`
+        );
+      }
+    }
+  }
 }

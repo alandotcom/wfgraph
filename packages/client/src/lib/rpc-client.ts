@@ -251,6 +251,17 @@ function toGraphPayload(input: {
 
 export type Integration = RpcOutput<typeof rpc.integration.create>;
 
+/** What a provider-backed config field is filled with, as the contract sends it. */
+export type ConfigOptionsAnswer = RpcOutput<
+  typeof rpc.integration.configOptions
+>;
+
+/** One input a `provider-fields` field draws, from that answer's `fields` arm. */
+export type ConfigOptionField = Extract<
+  ConfigOptionsAnswer,
+  { status: "fields" }
+>["fields"][number];
+
 /**
  * Saving a workflow, for the save store.
  *

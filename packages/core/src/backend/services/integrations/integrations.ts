@@ -28,6 +28,11 @@ import {
 } from "#src/backend/services/integrations/integration-config-masking";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import {
+  attemptVendorStep,
+  describeUnavailableIntegration,
+  type DescribeVendorFailure,
+} from "#src/backend/services/integrations/vendor-call";
+import {
   manuallyConfiguredKeys,
   OAUTH_GRANT_CONFIG_KEY,
   readStoredOAuthGrant,
@@ -70,29 +75,6 @@ type IntegrationDeleted = { success: true };
 // the request that arrives anyway.
 const MISSING_TEST_MESSAGE =
   "Connection testing is unavailable for this integration, because it declares no test.";
-
-/**
- * What an editor served by a different build than this process runs into: it lists
- * an integration this server does not hold, and a request naming one arrives with
- * credentials attached. Both refusals below say what is available rather than only
- * that the request was wrong, because the two builds disagreeing is the cause and
- * the list is what shows it.
- */
-function describeUnavailableIntegration(
-  catalog: ExtensionCatalog,
-  type: string
-): string {
-  const available = catalog.integrations
-    .map((integration) => integration.type)
-    .toSorted();
-
-  const holds =
-    available.length > 0
-      ? `This server holds: ${available.join(", ")}.`
-      : "This server holds no integration at all.";
-
-  return `Integration "${type}" is not available on this server. Pass it to createWfGraphApp under extensions.integrations, or pass builtInIntegrations() from "@wfgraph/plugins" for the built-in ones. ${holds}`;
-}
 
 function hasReservedOAuthGrant(config: IntegrationConfig | undefined): boolean {
   return config !== undefined && OAUTH_GRANT_CONFIG_KEY in config;
@@ -238,46 +220,14 @@ const onReadFailure = (logger: EffectLogger, databaseMessage: string) => ({
 });
 
 /**
- * How a connection test words the log line for something that threw.
- *
- * The two endpoints word theirs differently, and both wordings predate the
- * migration, so the wording is passed in rather than fixed.
+ * The two endpoints word their log line differently, and both wordings predate
+ * the migration, so `attemptVendorStep` takes the wording rather than fixing it.
  */
-type DescribeTestFailure = (cause: unknown) => string;
-
-const describeTestFailure: DescribeTestFailure = (cause) =>
+const describeTestFailure: DescribeVendorFailure = (cause) =>
   `Failed to test integration connection: ${getErrorMessage(cause)}`;
 
-const describeSavedTestFailure: DescribeTestFailure = () =>
+const describeSavedTestFailure: DescribeVendorFailure = () =>
   "Failed to test saved integration connection";
-
-const toTestFailure = (cause: unknown): InternalFailure =>
-  new InternalFailure({
-    error: cause instanceof Error ? cause.message : "Failed to test connection",
-    cause,
-  });
-
-/**
- * Run one step of a connection test and keep its failure in the Effect channel.
- *
- * The catalog lookup, the test loader's dynamic import, and the vendor call
- * itself all sit outside the database, and the pre-Effect code caught them in
- * the same `try` as the query. This is that `try`, one step at a time.
- */
-const attemptTestStep =
-  (logger: EffectLogger, describe: DescribeTestFailure) =>
-  <A>(run: () => Promise<A> | A): Effect.Effect<A, InternalFailure> =>
-    Effect.tryPromise({
-      // The async wrapper is what makes a synchronous throw catchable: without
-      // it `run()` throws before a promise exists and the throw escapes past
-      // `catch` as a defect.
-      try: async () => await run(),
-      catch: toTestFailure,
-    }).pipe(
-      Effect.tapError((failure) =>
-        logger.error(describe(failure.cause), { error: failure.cause })
-      )
-    );
 
 /**
  * Does this integration type connect with these declared credentials?
@@ -288,13 +238,13 @@ const attemptTestStep =
  */
 const runConnectionTest = Effect.fn("runConnectionTest")(function* (
   callerLogger: EffectLogger,
-  describe: DescribeTestFailure,
+  describe: DescribeVendorFailure,
   type: string,
   credentials: Record<string, string | undefined>,
   grantedCredentialKeys: readonly string[]
 ) {
   const logger = callerLogger.with({ type });
-  const attempt = attemptTestStep(logger, describe);
+  const attempt = attemptVendorStep(logger, describe);
 
   const extensions = yield* Extensions;
   const integration = findIntegration(extensions.catalog, type);

@@ -16,7 +16,10 @@ import type {
   CredentialFieldMetadata,
   ExtensionCatalog,
 } from "#src/extensions/catalog";
-import type { ActionConfigField } from "#src/plugins/action-fields";
+import type {
+  ActionConfigField,
+  FieldOptionsSource,
+} from "#src/plugins/action-fields";
 import type { ShowWhen } from "#src/types/show-when";
 import { NonEmptyTrimmedString, readAs } from "#src/types/schema";
 import type { ReferenceField } from "#src/graph/node-references";
@@ -40,6 +43,12 @@ const showWhenWireSchema: Schema.Codec<ShowWhen> = Schema.Struct({
  * The list fields are wrapped in `Schema.mutable` because that module spells them
  * as mutable arrays, and a decoded `readonly` array would not satisfy them.
  */
+const fieldOptionsSourceSchema: Schema.Codec<FieldOptionsSource> =
+  Schema.Struct({
+    provider: NonEmptyTrimmedString,
+    parameters: Schema.optionalKey(Schema.mutable(Schema.Array(Schema.String))),
+  });
+
 const actionConfigFieldBaseSchema = Schema.Struct({
   key: Schema.String,
   label: Schema.String,
@@ -50,11 +59,14 @@ const actionConfigFieldBaseSchema = Schema.Struct({
     "number",
     "select",
     "key-value",
+    "provider-select",
+    "provider-fields",
   ]),
   placeholder: Schema.optionalKey(Schema.String),
   defaultValue: Schema.optionalKey(Schema.String),
   example: Schema.optionalKey(Schema.String),
   options: Schema.optionalKey(Schema.mutable(Schema.Array(selectOptionSchema))),
+  optionsSource: Schema.optionalKey(fieldOptionsSourceSchema),
   rows: Schema.optionalKey(Schema.Finite),
   min: Schema.optionalKey(Schema.Finite),
   required: Schema.optionalKey(Schema.Boolean),
