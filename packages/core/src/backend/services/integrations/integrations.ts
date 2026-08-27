@@ -210,6 +210,9 @@ function toIntegrationSummary(
             connectedAt: grant.connectedAt,
             ...(grant.accountLabel ? { accountLabel: grant.accountLabel } : {}),
             credentialKeys: Object.keys(grant.credentials).toSorted(),
+            ...(grant.grantedAccessLabel
+              ? { grantedAccessLabel: grant.grantedAccessLabel }
+              : {}),
           },
         }
       : {}),

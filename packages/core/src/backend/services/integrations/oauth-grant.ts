@@ -26,6 +26,13 @@ const storedOAuthGrantSchema = Schema.Struct({
   tokens: oauthTokensSchema,
   connectedAt: isoTimestampString(),
   accountLabel: Schema.optionalKey(NonEmptyTrimmedString),
+  /**
+   * How much access the provider granted, in its own words. It must be named
+   * here because `decodeGrant` rejects unknown keys, so an adapter reporting one
+   * against a schema that has never heard of it would answer as a damaged grant
+   * and refuse the whole callback.
+   */
+  grantedAccessLabel: Schema.optionalKey(NonEmptyTrimmedString),
 });
 
 const decodeGrant = Schema.decodeUnknownResult(

@@ -64,6 +64,100 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** A popup that reports itself closed as soon as the flow navigates it. */
+function stubOAuthPopup() {
+  const popup = {
+    closed: false,
+    opener: null,
+    close: vi.fn(),
+    location: { assign: vi.fn() },
+  };
+  vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window);
+  popup.location.assign.mockImplementation(() => {
+    popup.closed = true;
+  });
+  return popup;
+}
+
+function stubOAuthStart() {
+  return vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+    String(input).endsWith("/api/integrations/oauth/start")
+      ? new Response(
+          JSON.stringify({
+            attemptId: "attempt_1",
+            authorizeUrl: "https://provider.example/authorize",
+          }),
+          { headers: { "content-type": "application/json" } }
+        )
+      : new Response(JSON.stringify({ status: "pending" }), {
+          headers: { "content-type": "application/json" },
+        })
+  );
+}
+
+function startRequestBody(
+  fetch: ReturnType<typeof stubOAuthStart>
+): Record<string, unknown> {
+  const call = fetch.mock.calls.find(([input]) =>
+    String(input).endsWith("/api/integrations/oauth/start")
+  );
+  return JSON.parse(String(call?.[1]?.body)) as Record<string, unknown>;
+}
+
+describe("OAuth granted access", () => {
+  it("names what the provider granted on a connected connection", () => {
+    renderOverlay(
+      <EditConnectionOverlay
+        integration={connection({
+          status: "connected",
+          connectedAt: "2026-08-24T10:00:00.000Z",
+          grantedAccessLabel: "Full access",
+        })}
+        overlayId="edit_resend"
+      />
+    );
+
+    expect(screen.getByText("Access: Full access")).toBeTruthy();
+  });
+
+  it("says nothing about access for a grant that never reported it", () => {
+    renderOverlay(
+      <EditConnectionOverlay
+        integration={connection({
+          status: "connected",
+          connectedAt: "2026-08-24T10:00:00.000Z",
+        })}
+        overlayId="edit_resend"
+      />
+    );
+
+    expect(screen.queryByText(/^Access:/u)).toBeNull();
+  });
+
+  it("offers Reconnect on a working connection, which is the only way to change access", async () => {
+    stubOAuthPopup();
+    const fetch = stubOAuthStart();
+
+    renderOverlay(
+      <EditConnectionOverlay
+        integration={connection({
+          status: "connected",
+          connectedAt: "2026-08-24T10:00:00.000Z",
+          grantedAccessLabel: "Sending access",
+        })}
+        overlayId="edit_resend"
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    expect(startRequestBody(fetch)).toEqual({
+      mode: "reconnect",
+      integrationId: "connection_1",
+    });
+  });
+});
+
 describe("OAuth connection overlays", () => {
   it("sends every entered password setting when creating an OAuth connection", async () => {
     const reservedPopup = {

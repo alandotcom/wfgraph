@@ -53,10 +53,11 @@ export async function testResend(
       ? readResendError(failure.payload)
       : undefined;
 
-  // Send-only credentials cannot list domains, and the refusal proves they are
-  // valid. A manual key answers "restricted_api_key"; an OAuth token answers
-  // "invalid_permission", because the grant asks for `emails:send` rather than
-  // `full_access`.
+  // A send-only credential proves itself by the refusal rather than the listing,
+  // because it cannot list domains at all. A manual key answers
+  // "restricted_api_key"; an OAuth token granted `emails:send` answers
+  // "invalid_permission". A grant carrying `full_access` lists the domains and
+  // never reaches here.
   if (
     body?.name === "restricted_api_key" ||
     (isOAuthAccessToken && body?.name === "invalid_permission")

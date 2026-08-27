@@ -34,6 +34,7 @@ function storedGrant(
     refreshToken?: string;
     expiresAt?: string;
     accountLabel?: string;
+    grantedAccessLabel?: string;
   } = {}
 ): string {
   const accessToken = input.accessToken ?? "old-access";
@@ -46,6 +47,9 @@ function storedGrant(
     },
     connectedAt,
     ...(input.accountLabel ? { accountLabel: input.accountLabel } : {}),
+    ...(input.grantedAccessLabel
+      ? { grantedAccessLabel: input.grantedAccessLabel }
+      : {}),
   });
 }
 
@@ -299,6 +303,59 @@ describe("resolveIntegrationCredentials", () => {
         refreshToken: "new-refresh",
       },
       connectedAt,
+      accountLabel: "Workspace",
+    });
+  });
+
+  it("stores the narrower access when a refresh reduces the grant", async () => {
+    let current: DecryptedIntegration = row({
+      [OAUTH_GRANT_CONFIG_KEY]: storedGrant({
+        refreshToken: "old-refresh",
+        expiresAt: new Date(Date.now() + 10_000).toISOString(),
+        accountLabel: "Workspace",
+        grantedAccessLabel: "Full access",
+      }),
+    });
+    const oauth = provider(async () => ({
+      credentials: { ACCESS_TOKEN: "new-access" },
+      // The provider narrowed the grant. `accountLabel` is carried forward from
+      // the old grant; this must not be, or the connection would keep claiming
+      // access it no longer has.
+      grantedAccessLabel: "Sending access",
+      tokens: {
+        accessToken: "new-access",
+        refreshToken: "new-refresh",
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      },
+    }));
+    const repo: Partial<IntegrationRepo["Service"]> = {
+      findById: () => Effect.succeed(current),
+      claimRefresh: ({ claimId }) =>
+        Effect.sync(() => {
+          current = {
+            ...current,
+            refreshState: "refreshing",
+            refreshClaimId: claimId,
+            refreshClaimedAt: new Date(),
+          };
+          return { status: "acquired" as const };
+        }),
+      completeRefresh: ({ claimId, config }) =>
+        Effect.sync(() => {
+          if (current.refreshClaimId !== claimId) return false;
+          current = { ...current, config, refreshState: "idle" };
+          return true;
+        }),
+    };
+
+    await Effect.runPromise(
+      resolveIntegrationCredentials(integrationId).pipe(
+        Effect.provide(layerFor(repo, oauth))
+      )
+    );
+
+    expect(JSON.parse(current.config[OAUTH_GRANT_CONFIG_KEY]!)).toMatchObject({
+      grantedAccessLabel: "Sending access",
       accountLabel: "Workspace",
     });
   });

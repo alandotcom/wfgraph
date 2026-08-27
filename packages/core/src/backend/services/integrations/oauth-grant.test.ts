@@ -23,6 +23,34 @@ describe("stored OAuth grants", () => {
     });
   });
 
+  it("round-trips the access the provider granted", () => {
+    const grant = serializeStoredOAuthGrant({
+      credentials: { RESEND_API_KEY: "access-token" },
+      tokens: { accessToken: "access-token" },
+      connectedAt: "2026-08-24T12:00:00.000Z",
+      grantedAccessLabel: "Full access",
+    });
+
+    expect(
+      readStoredOAuthGrant({ [OAUTH_GRANT_CONFIG_KEY]: grant })
+    ).toMatchObject({ grantedAccessLabel: "Full access" });
+  });
+
+  it("still reads a grant stored before access labels existed", () => {
+    const stored = JSON.stringify({
+      version: 1,
+      credentials: { RESEND_API_KEY: "access-token" },
+      tokens: { accessToken: "access-token" },
+      connectedAt: "2026-08-24T12:00:00.000Z",
+    });
+
+    expect(readStoredOAuthGrant({ [OAUTH_GRANT_CONFIG_KEY]: stored })).toEqual({
+      credentials: { RESEND_API_KEY: "access-token" },
+      tokens: { accessToken: "access-token" },
+      connectedAt: "2026-08-24T12:00:00.000Z",
+    });
+  });
+
   it("treats malformed encrypted-envelope content as absent", () => {
     expect(
       readStoredOAuthGrant({ [OAUTH_GRANT_CONFIG_KEY]: "{not JSON" })

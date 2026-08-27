@@ -275,6 +275,26 @@ and executable provider behavior cannot enter this document. The extension catal
 carries only `oauth.label`; it doesn't expose registration details.
 The document's `redirect_uris` value must contain only `context.callbackUrl`.
 
+Register every scope the integration could ever need, because the registered set is
+the ceiling on what an operator is allowed to grant. A provider whose consent page
+offers its own permission chooser grays out anything outside that set, so a document
+naming one scope makes the wider one ungrantable however the authorization is built.
+
+### What the provider granted
+
+Where the provider owns the permission decision, leave it there: its consent page is
+the one place an operator picks, and an authorization that names no scope asks for the
+client's whole registered set. Do not add a control to the connection dialog that
+appears to change access. Access changes only by authorizing again.
+
+Report what came back instead. An adapter returns `grantedAccessLabel` on its token
+set, worded as the provider words it, read off the token response rather than assumed
+from the request. Both `exchange` and `refresh` return it, so a provider that narrows a
+grant is recorded rather than left claiming the old access, and the connection dialog
+shows it read-only beside the account. The dialog's Reconnect runs a fresh
+authorization, which is the only thing that can change a grant wherever a refresh
+cannot widen one.
+
 ### Authorization lifecycle
 
 For a new connection, the editor starts authorization before it saves a connection

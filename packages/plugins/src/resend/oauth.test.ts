@@ -61,7 +61,9 @@ describe("Resend OAuth registration", () => {
         grant_types: ["authorization_code", "refresh_token"],
         response_types: ["code"],
         token_endpoint_auth_method: "none",
-        scope: "emails:send",
+        // Both scopes registered, so Resend's consent page offers both and
+        // grays out neither.
+        scope: "emails:send full_access",
       },
     });
   });
@@ -75,8 +77,21 @@ describe("Resend OAuth registration", () => {
     });
 
     expect(url.toString()).toBe(
-      "https://api.resend.com/oauth/authorize?client_id=https%3A%2F%2Fworkflow.example.com%2Foauth%2Fresend-client.json&response_type=code&redirect_uri=https%3A%2F%2Fworkflow.example.com%2Fapi%2Foauth%2Fresend%2Fcallback&scope=emails%3Asend&state=state-value&code_challenge=challenge-value&code_challenge_method=S256"
+      "https://api.resend.com/oauth/authorize?client_id=https%3A%2F%2Fworkflow.example.com%2Foauth%2Fresend-client.json&response_type=code&redirect_uri=https%3A%2F%2Fworkflow.example.com%2Fapi%2Foauth%2Fresend%2Fcallback&state=state-value&code_challenge=challenge-value&code_challenge_method=S256"
     );
+  });
+
+  it("names no scope, leaving the permission to Resend's own consent page", () => {
+    const url = oauth.authorize({
+      client,
+      redirectUri: clientContext.callbackUrl,
+      state: "state-value",
+      codeChallenge: "challenge-value",
+    });
+
+    // An omitted `scope` asks for the client's whole registered set, which is
+    // what makes Resend render its Permission chooser with both options live.
+    expect(url.searchParams.has("scope")).toBe(false);
   });
 });
 
@@ -94,6 +109,7 @@ describe("Resend OAuth token exchange", () => {
       })
     ).resolves.toEqual({
       credentials: { RESEND_API_KEY: tokenResponse.access_token },
+      grantedAccessLabel: "Sending access",
       tokens: {
         accessToken: tokenResponse.access_token,
         expiresAt: "2023-11-14T22:28:20.000Z",
@@ -181,6 +197,63 @@ describe("Resend OAuth token exchange", () => {
   });
 });
 
+describe("Resend OAuth granted access", () => {
+  const grantedFor = async (scope: string) => {
+    stubFetch(() => Response.json({ ...tokenResponse, scope }));
+    const grant = await oauth.exchange({
+      client,
+      code: "authorization-code",
+      redirectUri: clientContext.callbackUrl,
+      codeVerifier: "code-verifier",
+    });
+    return grant.grantedAccessLabel;
+  };
+
+  it("reads full access off the response", async () => {
+    await expect(grantedFor("full_access")).resolves.toBe("Full access");
+  });
+
+  it("takes the wider scope when the response names both", async () => {
+    await expect(grantedFor("emails:send full_access")).resolves.toBe(
+      "Full access"
+    );
+  });
+
+  it("records a refresh that narrowed the grant", async () => {
+    stubFetch(() => Response.json({ ...tokenResponse, scope: "emails:send" }));
+
+    await expect(
+      oauth.refresh({
+        client,
+        grant: {
+          credentials: { RESEND_API_KEY: "old-access" },
+          grantedAccessLabel: "Full access",
+          tokens: { accessToken: "old-access", refreshToken: "refresh-old" },
+        },
+      })
+    ).resolves.toMatchObject({ grantedAccessLabel: "Sending access" });
+  });
+
+  it("rejects a scope it cannot name, without quoting the response", async () => {
+    stubFetch(() =>
+      Response.json({ ...tokenResponse, scope: "contacts:read" })
+    );
+
+    const result = await oauth
+      .exchange({
+        client,
+        code: "authorization-code",
+        redirectUri: clientContext.callbackUrl,
+        codeVerifier: "code-verifier",
+      })
+      .catch((error: unknown) => String(error));
+
+    expect(result).toContain("unrecognized scope");
+    expect(result).not.toContain("contacts:read");
+    expect(result).not.toContain(tokenResponse.access_token);
+  });
+});
+
 describe("Resend OAuth refresh and revoke", () => {
   it("rotates the refresh token in one normalized result", async () => {
     stubFetch(() => Response.json(tokenResponse));
@@ -198,6 +271,7 @@ describe("Resend OAuth refresh and revoke", () => {
       })
     ).resolves.toEqual({
       credentials: { RESEND_API_KEY: tokenResponse.access_token },
+      grantedAccessLabel: "Sending access",
       tokens: {
         accessToken: tokenResponse.access_token,
         expiresAt: expect.any(String),

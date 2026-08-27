@@ -239,6 +239,9 @@ const resolveClaimedRefresh = Effect.fn("resolveClaimedOAuthRefresh")(
       },
       grant.connectedAt
     );
+    // `providerResult.success` is spread whole above, so a refresh that narrows
+    // the grant replaces the stored access label rather than keeping the old
+    // one. `accountLabel` is carried forward on purpose; this must not be.
     if (
       !replacement ||
       !oauthCredentialsAreDeclared(metadata, replacement.credentials)

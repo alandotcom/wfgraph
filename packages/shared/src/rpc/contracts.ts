@@ -134,6 +134,12 @@ const integrationFields = {
       connectedAt: isoTimestampString(),
       accountLabel: Schema.optionalKey(Schema.String),
       credentialKeys: Schema.Array(NonEmptyTrimmedString),
+      /**
+       * How much access the provider granted, in its own words, for the
+       * connection dialog to show. Absent for a provider that never says, and
+       * for a grant issued before this connection last authorized.
+       */
+      grantedAccessLabel: Schema.optionalKey(NonEmptyTrimmedString),
     })
   ),
 };

@@ -93,19 +93,40 @@ function OAuthConnectionStatus({
                 Account: {oauth.accountLabel}
               </p>
             )}
+            {/*
+              What the provider granted, in its own words. Read-only, because
+              access is changed at the provider's consent page and nowhere else:
+              Reconnect is the control, and this line is the current state.
+            */}
+            {oauth.grantedAccessLabel && (
+              <p className="text-muted-foreground">
+                Access: {oauth.grantedAccessLabel}
+              </p>
+            )}
             <p className="text-muted-foreground">
               Connected on {oauth.connectedAt.slice(0, 10)}
             </p>
           </div>
         </div>
-        <Button
-          disabled={pending}
-          onClick={onDisconnect}
-          type="button"
-          variant="outline"
-        >
-          Disconnect
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            disabled={pending}
+            onClick={onConnect}
+            title={`Reconnect to change what ${providerLabel} allows`}
+            type="button"
+            variant="outline"
+          >
+            Reconnect
+          </Button>
+          <Button
+            disabled={pending}
+            onClick={onDisconnect}
+            type="button"
+            variant="outline"
+          >
+            Disconnect
+          </Button>
+        </div>
       </section>
     );
   }

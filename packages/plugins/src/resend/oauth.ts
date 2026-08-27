@@ -26,7 +26,36 @@ import { Schema, SchemaTransformation } from "effect";
 const RESEND_AUTHORIZE_URL = "https://api.resend.com/oauth/authorize";
 const RESEND_TOKEN_URL = "https://api.resend.com/oauth/token";
 const RESEND_REVOKE_URL = "https://api.resend.com/oauth/revoke";
-const RESEND_SCOPE = "emails:send";
+
+/**
+ * Resend's whole scope vocabulary. There are two and nothing between them:
+ * `emails:send` covers the send routes, `full_access` covers every other route,
+ * which is why reading a template means asking for the account.
+ *
+ * The client registers both. The authorization then asks for neither by name,
+ * because Resend's own consent page carries the Permission chooser and an
+ * omitted `scope` requests the client's whole registered set. Naming one here
+ * would only preselect it, and this app has no business deciding for an
+ * operator looking at the page.
+ */
+const RESEND_SEND_SCOPE = "emails:send";
+const RESEND_FULL_SCOPE = "full_access";
+
+/**
+ * What Resend granted, worded as its consent page words it, so an operator
+ * recognizes the connection's access as the thing they just approved.
+ */
+function accessLabelFromScope(scope: string): string {
+  const granted = new Set(scope.split(/\s+/u).filter(Boolean));
+  if (granted.has(RESEND_FULL_SCOPE)) {
+    return "Full access";
+  }
+  if (granted.has(RESEND_SEND_SCOPE)) {
+    return "Sending access";
+  }
+  // The rejected value is not quoted: this string is persisted as a run error.
+  throw new Error("Resend OAuth returned an unrecognized scope");
+}
 
 const resendOAuthTokenResponseSchema = Schema.Struct({
   access_token: Schema.String,
@@ -132,6 +161,9 @@ async function requestOAuth<T extends Schema.ConstraintDecoder<unknown>>(
 function tokenSet(response: ResendOAuthTokenResponse): OAuthTokenSet {
   return {
     credentials: { RESEND_API_KEY: response.access_token },
+    // Both `exchange` and `refresh` build their answer here, so a refresh that
+    // narrows the grant updates the stored access label with no further work.
+    grantedAccessLabel: accessLabelFromScope(response.scope),
     tokens: {
       accessToken: response.access_token,
       refreshToken: response.refresh_token,
@@ -165,7 +197,7 @@ export const resendOAuth: IntegrationOAuth = {
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       token_endpoint_auth_method: "none",
-      scope: RESEND_SCOPE,
+      scope: `${RESEND_SEND_SCOPE} ${RESEND_FULL_SCOPE}`,
     },
   }),
 
@@ -174,7 +206,6 @@ export const resendOAuth: IntegrationOAuth = {
     url.searchParams.set("client_id", client.clientId);
     url.searchParams.set("response_type", "code");
     url.searchParams.set("redirect_uri", redirectUri);
-    url.searchParams.set("scope", RESEND_SCOPE);
     url.searchParams.set("state", state);
     url.searchParams.set("code_challenge", codeChallenge);
     url.searchParams.set("code_challenge_method", "S256");

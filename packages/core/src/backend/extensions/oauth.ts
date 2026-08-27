@@ -78,6 +78,14 @@ export type OAuthTokens = {
 export type OAuthTokenSet = {
   readonly credentials: Readonly<Record<string, string>>;
   readonly tokens: OAuthTokens;
+  /**
+   * How much access the provider granted, in the provider's own words, for a
+   * connection dialog to show. Read off the provider's response rather than
+   * assumed from the request, and carried here rather than on `OAuthGrant`
+   * because `refresh` answers a token set: a provider that narrows a grant on
+   * refresh is then recorded rather than left claiming the old access.
+   */
+  readonly grantedAccessLabel?: string;
 };
 
 export type OAuthGrant = OAuthTokenSet & {

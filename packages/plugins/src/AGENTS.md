@@ -77,6 +77,14 @@ Keep provider behavior out of core. The adapter owns client registration, author
 parameters, token and error response schemas, exchange, refresh, revocation, and the
 mapping from an access token to declared credential keys.
 
+Register every scope the integration could ever need. The registered set is the ceiling
+on what an operator may grant, so a document naming one scope makes the wider one
+ungrantable no matter what the authorization asks for. Where the provider's consent page
+picks the permission, ask for no scope and let it: Resend is that case, and its page
+carries a Permission chooser. Report the result as `grantedAccessLabel` in the provider's
+own wording, read off the token response rather than assumed from the request, and
+return it from both `exchange` and `refresh` so a narrowed grant is recorded.
+
 Follow these rules for client registration:
 
 - For a registered client, close over host-provided credentials. Do not add the client
