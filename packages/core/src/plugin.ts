@@ -28,6 +28,7 @@
  */
 
 export type {
+  IntegrationTestContext,
   IntegrationTestFunction,
   IntegrationTestResult,
 } from "#src/backend/extensions/integration-test";

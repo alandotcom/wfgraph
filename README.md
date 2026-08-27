@@ -27,6 +27,10 @@ cat > .env.local <<EOF
 INTEGRATION_ENCRYPTION_KEY=$(openssl rand -hex 32)
 # Optional: enables the build agent in the editor.
 OPENAI_API_KEY=your-openai-api-key
+# Optional: enables Slack OAuth. See .env.example for the redirect URL to
+# register on the Slack app.
+SLACK_CLIENT_ID=your-slack-client-id
+SLACK_CLIENT_SECRET=your-slack-client-secret
 EOF
 
 # App :4017, editor :5173. The Inngest CLI takes free ports and prints its own.

@@ -9,6 +9,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { testResend } from "#src/resend/test";
 
+/** A key the operator typed into the form themselves. */
+const manual = { oauthCredentialKeys: [] };
+/** A key the stored Resend OAuth grant issued. */
+const granted = { oauthCredentialKeys: ["RESEND_API_KEY"] };
+
 const realFetch = globalThis.fetch;
 let requests: Request[] = [];
 
@@ -37,29 +42,70 @@ describe("testResend", () => {
     });
 
     for (const key of ["", "sk_live_1", "RE_1", "header.payload"]) {
-      expect(await testResend({ RESEND_API_KEY: key })).toEqual({
+      expect(await testResend({ RESEND_API_KEY: key }, manual)).toEqual({
         success: false,
         error: "Invalid API key format. Resend API keys start with 're_'",
       });
     }
   });
 
-  it("accepts an OAuth ES256 JWT-shaped access token and validates it normally", async () => {
+  // A grant issues an opaque token that has no "re_" to check, so the prefix
+  // rule is asked of a manual key alone and the request goes out as normal.
+  it("skips the prefix rule for a granted token and validates it normally", async () => {
     stubFetch(() => Response.json({ data: [] }));
 
     expect(
-      await testResend({
-        RESEND_API_KEY: "eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiIxIn0.signature",
-      })
+      await testResend({ RESEND_API_KEY: "granted-token" }, granted)
     ).toEqual({ success: true });
     expect(requests).toHaveLength(1);
     expect(requests[0]?.url).toBe("https://api.resend.com/domains");
   });
 
+  // Resend's grant asks for `emails:send` rather than `full_access`, so the
+  // domains route refuses a working token by name.
+  it("accepts a granted token the domains route refuses for its scopes", async () => {
+    stubFetch(() =>
+      Response.json(
+        {
+          statusCode: 403,
+          name: "invalid_permission",
+          message: "Access token is missing required scopes: full_access",
+        },
+        { status: 403 }
+      )
+    );
+
+    expect(
+      await testResend({ RESEND_API_KEY: "granted-token" }, granted)
+    ).toEqual({ success: true });
+  });
+
+  // The same slug over a manual key means the key really is refused: no grant
+  // asked for narrower scopes on its behalf.
+  it("does not accept invalid_permission for a manual API key", async () => {
+    stubFetch(() =>
+      Response.json(
+        {
+          statusCode: 403,
+          name: "invalid_permission",
+          message: "Permission denied",
+        },
+        { status: 403 }
+      )
+    );
+
+    expect(
+      await testResend({ RESEND_API_KEY: "re_manual" }, manual)
+    ).toMatchObject({
+      success: false,
+      details: { errorName: "invalid_permission" },
+    });
+  });
+
   it("accepts a key that can list domains", async () => {
     stubFetch(() => Response.json({ data: [] }));
 
-    expect(await testResend({ RESEND_API_KEY: "re_good" })).toEqual({
+    expect(await testResend({ RESEND_API_KEY: "re_good" }, manual)).toEqual({
       success: true,
     });
   });
@@ -75,7 +121,9 @@ describe("testResend", () => {
       )
     );
 
-    expect(await testResend({ RESEND_API_KEY: "re_restricted" })).toEqual({
+    expect(
+      await testResend({ RESEND_API_KEY: "re_restricted" }, manual)
+    ).toEqual({
       success: true,
     });
   });
@@ -88,7 +136,7 @@ describe("testResend", () => {
       )
     );
 
-    expect(await testResend({ RESEND_API_KEY: "re_bad" })).toEqual({
+    expect(await testResend({ RESEND_API_KEY: "re_bad" }, manual)).toEqual({
       success: false,
       error: "Invalid API key. Please check your Resend API key.",
       details: {
@@ -109,7 +157,7 @@ describe("testResend", () => {
       )
     );
 
-    expect(await testResend({ RESEND_API_KEY: "re_x" })).toMatchObject({
+    expect(await testResend({ RESEND_API_KEY: "re_x" }, manual)).toMatchObject({
       success: false,
       error: "Invalid API key. Please check your Resend API key.",
       details: { statusCode: 403 },
@@ -119,7 +167,7 @@ describe("testResend", () => {
   it("reports any other refusal by its status", async () => {
     stubFetch(() => new Response("<html>gateway</html>", { status: 502 }));
 
-    expect(await testResend({ RESEND_API_KEY: "re_x" })).toEqual({
+    expect(await testResend({ RESEND_API_KEY: "re_x" }, manual)).toEqual({
       success: false,
       error: "API validation failed: HTTP 502",
       details: {
@@ -137,7 +185,7 @@ describe("testResend", () => {
       throw new Error("ECONNREFUSED");
     });
 
-    expect(await testResend({ RESEND_API_KEY: "re_x" })).toEqual({
+    expect(await testResend({ RESEND_API_KEY: "re_x" }, manual)).toEqual({
       success: false,
       error: "ECONNREFUSED",
       details: { message: "ECONNREFUSED" },

@@ -65,6 +65,15 @@ describe("Slack OAuth definition", () => {
     }
   );
 
+  // A host passes its environment straight through, so both blank means the
+  // variables are unset and Slack is manual-only.
+  it.each([
+    { clientId: undefined, clientSecret: undefined },
+    { clientId: "", clientSecret: " " },
+  ])("stays manual-only for a blank OAuth client", (client) => {
+    expect(slack({ oauthClient: client })).not.toHaveProperty("oauth");
+  });
+
   it("registers a confidential client without putting secrets in the definition", () => {
     const oauth = configuredOAuth();
     const registration = oauth.registerClient({

@@ -1072,6 +1072,42 @@ describe("OAuth claim failure boundaries", () => {
     expect(marked).toBe(1);
   });
 
+  it("disconnect restores the manual credentials the grant was shadowing", async () => {
+    const integration = integrationWithGrant("old-access", 0);
+    integration.config = {
+      ...integration.config,
+      ACCESS_TOKEN: "manual-token",
+      DEFAULT_SENDER: "alerts@example.com",
+    };
+    let completedConfig: DecryptedIntegration["config"] | undefined;
+    const repository: Partial<IntegrationRepo["Service"]> = {
+      findById: () => Effect.succeed(integration),
+      claimRefresh: () => Effect.succeed({ status: "acquired" }),
+      completeRefresh: ({ config }) =>
+        Effect.sync(() => {
+          completedConfig = config;
+          return true;
+        }),
+    };
+
+    const result = await Effect.runPromise(
+      deleteIntegrationOAuth("int_1").pipe(
+        Effect.provide(
+          oauthLayer(
+            repository,
+            oauthExtensions({ revoke: async () => undefined })
+          )
+        )
+      )
+    );
+
+    expect(result).toEqual({ success: true });
+    expect(completedConfig).toEqual({
+      ACCESS_TOKEN: "manual-token",
+      DEFAULT_SENDER: "alerts@example.com",
+    });
+  });
+
   it("releases a disconnect claim when provider revocation fails", async () => {
     const integration = integrationWithGrant("old-access", 0);
     let releaseCalls = 0;

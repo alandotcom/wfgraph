@@ -96,7 +96,13 @@ export function oauthCredentialsAreDeclared(
   );
 }
 
-/** Remove OAuth's private entry while retaining every operator-entered setting. */
+/**
+ * Remove OAuth's private entry while retaining every operator-entered setting.
+ *
+ * A manual credential stored under a key the grant also filled is kept on
+ * purpose: disconnecting is what an operator reaches for when OAuth has failed
+ * them, and it is the one path back to the key they typed in themselves.
+ */
 export function removeStoredOAuthGrant(
   config: IntegrationConfig
 ): IntegrationConfig {

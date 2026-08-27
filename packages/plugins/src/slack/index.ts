@@ -86,11 +86,15 @@ function resolveSlackTestBehavior(
 }
 
 export const slack = (options?: SlackOptions) => {
-  const configuredClient = options?.oauthClient;
-  const clientId = configuredClient?.clientId?.trim();
-  const clientSecret = configuredClient?.clientSecret?.trim();
+  const clientId = options?.oauthClient?.clientId?.trim();
+  const clientSecret = options?.oauthClient?.clientSecret?.trim();
 
-  if (configuredClient && (!clientId || !clientSecret)) {
+  // A host reads both out of its environment and passes them straight through,
+  // so a pair that is blank on both sides is an unset environment rather than a
+  // mistake, and Slack stays manual-only. One of the two blank is the mistake:
+  // it is a typo in a variable name, and silently dropping OAuth there leaves
+  // the operator debugging a Slack app that was never asked for.
+  if (Boolean(clientId) !== Boolean(clientSecret)) {
     throw new Error(
       "Slack OAuth requires non-empty oauthClient.clientId and oauthClient.clientSecret."
     );

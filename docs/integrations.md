@@ -6,7 +6,8 @@ For the five built-ins in this repository, also see `packages/plugins/src/AGENTS
 
 The server half builds against `@wfgraph/core/plugin` alone, so an outside package is written
 the same way. That surface exports `defineIntegration`, `CredentialFields`, `CredentialsOf`,
-`checkIntegration`, `StepFailure`, `StepBag`, `IntegrationTestResult`, `callExternal`,
+`checkIntegration`, `StepFailure`, `StepBag`, `IntegrationTestResult`,
+`IntegrationTestContext`, `callExternal`,
 `callExternalAsync`, the OAuth contract types, and `ExternalTransport`.
 `@wfgraph/core/testing` is a second entry, and
 holds `runAction`, `actionData` and `actionError` for the integration's own suite.
@@ -443,6 +444,12 @@ yields it directly. Fail with a `StepFailure`. Durable work is
 `yield* bag.step.run(id, effect)`. Credentials are `yield* bag.credentials`. Do not reach for
 `readCredentials`, `callExternalAsync`, or a Promise factory for `step.run` in an integration
 handler — those are the host bridge.
+
+**A connection test is told where each credential came from.** Its second argument is an
+`IntegrationTestContext`, whose `oauthCredentialKeys` names the credentials a stored OAuth
+grant issued; it is empty for the form an operator is still filling in. A grant asks for the
+narrow scopes its actions need, so a provider's permission refusal on a wider read can be
+what proves the credential valid. `packages/plugins/src/resend/test.ts` is the worked case.
 
 **Host `defineAction` stays Promise-first.** An adopter needs no Effect. An `async` handler
 fails by a throw, and the message becomes the sentence in the run log. Durable work is

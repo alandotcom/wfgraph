@@ -480,7 +480,7 @@ describe("a rotated encryption key", () => {
     it.effect("requires the matching key before managing connections", () =>
       Effect.gen(function* () {
         const failure = yield* getIntegrations().pipe(
-          Effect.provide(keyMismatchRepo),
+          Effect.provide(Layer.mergeAll(keyMismatchRepo, slackCatalog)),
           Effect.flip
         );
 

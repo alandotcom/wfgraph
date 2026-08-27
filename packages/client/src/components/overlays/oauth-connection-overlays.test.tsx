@@ -32,7 +32,8 @@ type OAuthConnection = NonNullable<Integration["oauth"]>;
 function connection(
   oauth?: Omit<OAuthConnection, "credentialKeys"> & {
     credentialKeys?: readonly string[];
-  }
+  },
+  configuredKeys: readonly string[] = ["RESEND_ACCOUNT_SECRET"]
 ): Integration {
   return {
     id: "connection_1",
@@ -40,6 +41,7 @@ function connection(
     type: "resend",
     createdAt: "2026-08-24T10:00:00.000Z",
     updatedAt: "2026-08-24T10:00:00.000Z",
+    configuredKeys,
     oauth: oauth && { credentialKeys: [], ...oauth },
   };
 }
@@ -334,7 +336,6 @@ describe("OAuth connection overlays", () => {
       />
     );
 
-    expect(screen.getAllByRole("button", { name: "Change" })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
 
     await waitFor(() =>
@@ -349,7 +350,60 @@ describe("OAuth connection overlays", () => {
     await waitFor(() =>
       expect(screen.queryByText("Managed by Resend OAuth")).toBeNull()
     );
-    expect(screen.getAllByRole("button", { name: "Change" })).toHaveLength(2);
+    // The grant held the only API key, so the field is an empty input rather
+    // than the "Configured" state a stored value earns.
+    expect((screen.getByLabelText("API key") as HTMLInputElement).value).toBe(
+      ""
+    );
+    // Disconnecting is reversible: this is the only offer of the OAuth flow a
+    // saved connection has, so losing it would strand the connection.
+    expect(screen.getByRole("button", { name: "Connect" })).toBeTruthy();
+  });
+
+  // The server keeps a manual value the grant was shadowing, so the field it
+  // belongs to reports itself configured once OAuth is gone.
+  it("keeps a manual secret configured after a disconnect", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ json: { success: true } }), {
+        headers: { "content-type": "application/json" },
+      })
+    );
+
+    renderOverlay(
+      <EditConnectionOverlay
+        integration={connection(
+          {
+            status: "connected",
+            connectedAt: "2026-08-24T10:00:00.000Z",
+            credentialKeys: ["RESEND_API_KEY"],
+          },
+          ["RESEND_API_KEY", "RESEND_ACCOUNT_SECRET"]
+        )}
+        overlayId="edit_resend"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    await waitFor(() =>
+      expect(screen.getAllByRole("button", { name: "Change" })).toHaveLength(2)
+    );
+    expect(screen.queryByLabelText("API key")).toBeNull();
+  });
+
+  it("offers the OAuth flow on a connection that has never used it", () => {
+    renderOverlay(
+      <EditConnectionOverlay
+        integration={connection(undefined, [])}
+        overlayId="edit_resend"
+      />
+    );
+
+    expect((screen.getByLabelText("API key") as HTMLInputElement).value).toBe(
+      ""
+    );
+    expect(screen.getByText("Disconnected")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Connect" })).toBeTruthy();
   });
 
   it("renders reauthorization as a textual state with reconnect control", () => {

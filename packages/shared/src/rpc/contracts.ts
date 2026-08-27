@@ -127,6 +127,7 @@ const integrationFields = {
   isManaged: Schema.optionalKey(Schema.Boolean),
   createdAt: Schema.String,
   updatedAt: Schema.String,
+  configuredKeys: Schema.Array(Schema.String),
   oauth: Schema.optionalKey(
     Schema.Struct({
       status: Schema.Literals(["connected", "reauthorization_required"]),

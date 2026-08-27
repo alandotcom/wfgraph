@@ -28,6 +28,42 @@ const integrationLabel = (
   type: string
 ): string => entry?.label ?? type;
 
+/**
+ * The state a connection is in before OAuth has ever run, and the one it returns
+ * to after a disconnect. This is the only offer of the OAuth flow for a saved
+ * connection, so it stays reachable whenever the catalog declares a provider.
+ */
+function OAuthConnectPrompt({
+  providerLabel,
+  pending,
+  onConnect,
+}: {
+  providerLabel: string;
+  pending: boolean;
+  onConnect: () => void;
+}) {
+  return (
+    <section
+      aria-busy={pending}
+      aria-label={`${providerLabel} OAuth connection`}
+      className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="flex items-start gap-2" role="status">
+        <Link aria-hidden="true" className="mt-0.5 size-4" />
+        <div className="space-y-0.5 text-sm">
+          <p className="font-medium">Disconnected</p>
+          <p className="text-muted-foreground">
+            Connect {providerLabel} to authorize this connection.
+          </p>
+        </div>
+      </div>
+      <Button disabled={pending} onClick={onConnect} type="button">
+        Connect
+      </Button>
+    </section>
+  );
+}
+
 function OAuthConnectionStatus({
   oauth,
   providerLabel,
@@ -35,13 +71,13 @@ function OAuthConnectionStatus({
   onConnect,
   onDisconnect,
 }: {
-  oauth: Integration["oauth"];
+  oauth: NonNullable<Integration["oauth"]>;
   providerLabel: string;
   pending: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
 }) {
-  if (oauth?.status === "connected") {
+  if (oauth.status === "connected") {
     return (
       <section
         aria-busy={pending}
@@ -74,7 +110,6 @@ function OAuthConnectionStatus({
     );
   }
 
-  const needsReauthorization = oauth?.status === "reauthorization_required";
   return (
     <section
       aria-busy={pending}
@@ -82,27 +117,19 @@ function OAuthConnectionStatus({
       className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="flex items-start gap-2" role="status">
-        {needsReauthorization ? (
-          <TriangleAlert
-            aria-hidden="true"
-            className="mt-0.5 size-4 text-warning"
-          />
-        ) : (
-          <Link aria-hidden="true" className="mt-0.5 size-4" />
-        )}
+        <TriangleAlert
+          aria-hidden="true"
+          className="mt-0.5 size-4 text-warning"
+        />
         <div className="space-y-0.5 text-sm">
-          <p className="font-medium">
-            {needsReauthorization ? "Reauthorization required" : "Disconnected"}
-          </p>
+          <p className="font-medium">Reauthorization required</p>
           <p className="text-muted-foreground">
-            {needsReauthorization
-              ? `Reconnect ${providerLabel} to continue using this connection.`
-              : `Connect ${providerLabel} to authorize this connection.`}
+            Reconnect {providerLabel} to continue using this connection.
           </p>
         </div>
       </div>
       <Button disabled={pending} onClick={onConnect} type="button">
-        {needsReauthorization ? "Reconnect" : "Connect"}
+        Reconnect
       </Button>
     </section>
   );
@@ -125,6 +152,7 @@ function SecretField({
   placeholder,
   helpText,
   helpLink,
+  configured,
   value,
   onChange,
 }: {
@@ -134,6 +162,7 @@ function SecretField({
   placeholder?: string;
   helpText?: string;
   helpLink?: { url: string; text: string };
+  configured: boolean;
   value: string;
   onChange: (key: string, value: string) => void;
 }) {
@@ -141,7 +170,7 @@ function SecretField({
   const isMobile = useIsMobile();
   const hasNewValue = value.length > 0;
 
-  if (!(isEditing || hasNewValue)) {
+  if (configured && !(isEditing || hasNewValue)) {
     return (
       <div className="space-y-2">
         <Label htmlFor={fieldId}>{label}</Label>
@@ -243,6 +272,9 @@ export function EditConnectionOverlay({
   const [name, setName] = useState(integration.name);
   const [config, setConfig] = useState<Record<string, string>>({});
   const [oauth, setOauth] = useState(integration.oauth);
+  // The keys the operator entered themselves. Disconnecting OAuth leaves them
+  // alone, so this stays true for the life of the overlay.
+  const configuredKeys = new Set(integration.configuredKeys);
   const oauthConnection = useOAuthConnection({
     onConnected: () => {
       onSuccess?.();
@@ -399,6 +431,7 @@ export function EditConnectionOverlay({
       if (field.type === "password") {
         return (
           <SecretField
+            configured={configuredKeys.has(configKey)}
             configKey={configKey}
             fieldId={configKey}
             helpLink={field.helpLink}
@@ -477,17 +510,24 @@ export function EditConnectionOverlay({
       </p>
 
       <div className="space-y-4">
-        {catalogEntry?.oauth && (
-          <OAuthConnectionStatus
-            oauth={oauth}
-            onConnect={handleOAuthConnect}
-            onDisconnect={() =>
-              disconnectOAuth.mutate({ integrationId: integration.id })
-            }
-            pending={oauthBusy}
-            providerLabel={catalogEntry.oauth.label}
-          />
-        )}
+        {catalogEntry?.oauth &&
+          (oauth ? (
+            <OAuthConnectionStatus
+              oauth={oauth}
+              onConnect={handleOAuthConnect}
+              onDisconnect={() =>
+                disconnectOAuth.mutate({ integrationId: integration.id })
+              }
+              pending={oauthBusy}
+              providerLabel={catalogEntry.oauth.label}
+            />
+          ) : (
+            <OAuthConnectPrompt
+              onConnect={handleOAuthConnect}
+              pending={oauthBusy}
+              providerLabel={catalogEntry.oauth.label}
+            />
+          ))}
         <fieldset
           aria-busy={oauthBusy}
           className="m-0 min-w-0 space-y-4 border-0 p-0"

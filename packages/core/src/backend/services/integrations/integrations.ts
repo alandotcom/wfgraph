@@ -17,6 +17,7 @@ import {
   credentialsFromConfig,
   type ExtensionCatalog,
   findIntegration,
+  type IntegrationMetadata,
 } from "@wfgraph/shared/extensions/catalog";
 import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
 import { getErrorMessage } from "@wfgraph/shared/utils";
@@ -41,6 +42,7 @@ type IntegrationSummary = {
   isManaged?: boolean;
   createdAt: string;
   updatedAt: string;
+  configuredKeys: readonly string[];
   oauth?: {
     status: "connected" | "reauthorization_required";
     connectedAt: string;
@@ -147,17 +149,49 @@ function oauthCredentialOverrideFailure(): InvalidInput {
   });
 }
 
-function toIntegrationSummary(input: {
-  id: string;
-  name: string;
-  type: string;
-  isManaged?: boolean | null;
-  config: IntegrationConfig;
-  refreshState: "idle" | "refreshing" | "reauthorization_required";
-  createdAt: Date;
-  updatedAt: Date;
-}): IntegrationSummary {
+/**
+ * Which declared credential fields hold a value the operator entered themselves.
+ *
+ * OAuth's own credentials are deliberately absent: they are reported separately
+ * under `oauth.credentialKeys`, and keeping the two sets apart is what lets the
+ * editor draw an accurate field the moment a grant is disconnected. Restricting
+ * this to what the catalog declares keeps a row left behind by a renamed field
+ * from reaching the browser as a setting nothing can edit.
+ */
+function manuallyConfiguredKeys(
+  metadata: IntegrationMetadata | undefined,
+  config: IntegrationConfig
+): readonly string[] {
+  if (!metadata) {
+    return [];
+  }
+
+  return Object.keys(metadata.credentialFields)
+    .filter((key) => {
+      const value = config[key];
+      return typeof value === "string" && value.length > 0;
+    })
+    .toSorted();
+}
+
+function toIntegrationSummary(
+  catalog: ExtensionCatalog,
+  input: {
+    id: string;
+    name: string;
+    type: string;
+    isManaged?: boolean | null;
+    config: IntegrationConfig;
+    refreshState: "idle" | "refreshing" | "reauthorization_required";
+    createdAt: Date;
+    updatedAt: Date;
+  }
+): IntegrationSummary {
   const grant = readStoredOAuthGrant(input.config);
+  const configuredKeys = manuallyConfiguredKeys(
+    findIntegration(catalog, input.type),
+    input.config
+  );
   return {
     id: input.id,
     name: input.name,
@@ -165,6 +199,7 @@ function toIntegrationSummary(input: {
     isManaged: input.isManaged ?? false,
     createdAt: input.createdAt.toISOString(),
     updatedAt: input.updatedAt.toISOString(),
+    configuredKeys,
     ...(grant
       ? {
           oauth: {
@@ -196,7 +231,7 @@ function toIntegrationWithConfig(
 ): IntegrationWithConfig {
   const managedKeys = new Set(oauthCredentialKeys(input.config));
   return {
-    ...toIntegrationSummary(input),
+    ...toIntegrationSummary(catalog, input),
     config: maskIntegrationConfig(
       catalog,
       input.type,
@@ -270,13 +305,15 @@ const attemptTestStep =
  * Does this integration type connect with these declared credentials?
  *
  * The saved endpoint resolves and refreshes its credential map first. The
- * unsaved endpoint maps the config that the caller supplied directly.
+ * unsaved endpoint maps the config that the caller supplied directly, so it
+ * names no OAuth keys: nothing has been granted while the form is still open.
  */
 const runConnectionTest = Effect.fn("runConnectionTest")(function* (
   callerLogger: EffectLogger,
   describe: DescribeTestFailure,
   type: string,
-  credentials: Record<string, string | undefined>
+  credentials: Record<string, string | undefined>,
+  grantedCredentialKeys: readonly string[]
 ) {
   const logger = callerLogger.with({ type });
   const attempt = attemptTestStep(logger, describe);
@@ -309,7 +346,9 @@ const runConnectionTest = Effect.fn("runConnectionTest")(function* (
     ),
   });
 
-  const testResult = yield* attempt(() => testFn(credentials));
+  const testResult = yield* attempt(() =>
+    testFn(credentials, { oauthCredentialKeys: grantedCredentialKeys })
+  );
 
   if (!testResult.success) {
     yield* logger.warn(
@@ -334,6 +373,7 @@ export const getIntegrations = Effect.fn("getIntegrations")(function* (
   const logger = (yield* AppLogger)
     .get("integrations")
     .with({ type: type ?? null });
+  const { catalog } = yield* Extensions;
 
   const integrations = yield* repo
     .listByType(type)
@@ -341,7 +381,9 @@ export const getIntegrations = Effect.fn("getIntegrations")(function* (
       Effect.catchTags(onReadFailure(logger, "Failed to get integrations"))
     );
 
-  return integrations.map(toIntegrationSummary);
+  return integrations.map((integration) =>
+    toIntegrationSummary(catalog, integration)
+  );
 });
 
 export const getIntegration = Effect.fn("getIntegration")(function* (
@@ -529,7 +571,8 @@ export const postIntegrationsTest = Effect.fn("postIntegrationsTest")(
       credentialsFromConfig(
         findIntegration((yield* Extensions).catalog, body.type),
         body.config
-      )
+      ),
+      []
     );
   }
 );
@@ -565,7 +608,10 @@ export const postIntegrationTest = Effect.fn("postIntegrationTest")(function* (
     logger,
     describeSavedTestFailure,
     resolved.integrationType,
-    credentials
+    credentials,
+    // An override naming one of these was already refused above, so every key
+    // here still carries the value the grant issued.
+    managedCredentialKeys
   );
 });
 
@@ -607,5 +653,5 @@ export const postIntegrations = Effect.fn("postIntegrations")(function* (body: {
       )
     );
 
-  return toIntegrationSummary(integration);
+  return toIntegrationSummary(catalog, integration);
 });

@@ -218,7 +218,17 @@ const wfgraph = await createWfGraphApp({
   // The whole extension surface, assembled in one place. The Events are what the
   // editor lists and what the per-Event Inngest listeners are built from.
   extensions: {
-    integrations: builtInIntegrations(),
+    // Slack's OAuth flow turns on when the host hands over a Slack app's client
+    // credentials; with neither variable set, the editor offers the bot-token
+    // form alone.
+    integrations: builtInIntegrations({
+      slack: {
+        oauthClient: {
+          clientId: process.env.SLACK_CLIENT_ID,
+          clientSecret: process.env.SLACK_CLIENT_SECRET,
+        },
+      },
+    }),
     events: [
       appointmentCreated,
       appointmentRescheduled,

@@ -1,19 +1,24 @@
 import { listResendDomains, readResendError } from "#src/resend/client";
 import type { ResendCredentials } from "#src/resend/index";
 import { callExternalAsync } from "@wfgraph/core/plugin";
-import type { IntegrationTestResult } from "@wfgraph/core/plugin";
+import type {
+  IntegrationTestContext,
+  IntegrationTestResult,
+} from "@wfgraph/core/plugin";
 
 export async function testResend(
-  credentials: ResendCredentials
+  credentials: ResendCredentials,
+  context: IntegrationTestContext
 ): Promise<IntegrationTestResult> {
   const apiKey = credentials.RESEND_API_KEY;
 
-  const isManualApiKey = apiKey?.startsWith("re_") === true;
+  // An OAuth grant issues its own opaque token, so the "re_" shape is asked of a
+  // key the operator typed alone. Which one this is comes from the caller rather
+  // than from the token's own text.
   const isOAuthAccessToken =
-    apiKey !== undefined &&
-    /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(apiKey);
+    context.oauthCredentialKeys.includes("RESEND_API_KEY");
 
-  if (!(isManualApiKey || isOAuthAccessToken)) {
+  if (!(apiKey && (isOAuthAccessToken || apiKey.startsWith("re_")))) {
     return {
       success: false,
       error: "Invalid API key format. Resend API keys start with 're_'",
@@ -48,9 +53,14 @@ export async function testResend(
       ? readResendError(failure.payload)
       : undefined;
 
-  // A send-only key answers "restricted_api_key" on non-send endpoints. That
-  // confirms the key is valid; it just cannot list domains, which is fine.
-  if (body?.name === "restricted_api_key") {
+  // Send-only credentials cannot list domains, and the refusal proves they are
+  // valid. A manual key answers "restricted_api_key"; an OAuth token answers
+  // "invalid_permission", because the grant asks for `emails:send` rather than
+  // `full_access`.
+  if (
+    body?.name === "restricted_api_key" ||
+    (isOAuthAccessToken && body?.name === "invalid_permission")
+  ) {
     return { success: true };
   }
 
