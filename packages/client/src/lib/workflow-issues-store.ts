@@ -12,10 +12,13 @@
 
 import { groupBy } from "es-toolkit";
 import { atom } from "jotai";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import {
+  collectWorkflowIssues,
   hasBlockingWorkflowIssues,
   type WorkflowIssue,
 } from "@wfgraph/shared/graph/workflow-issues";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import type { NodeIssueSummary } from "#src/lib/workflow-graph-types";
 
 /**
@@ -40,6 +43,39 @@ export const workflowIssuesAtom = atom<WorkflowIssue[]>(NO_ISSUES);
  * above, and both are empty until the answers that justify them arrive.
  */
 export const providerFieldIssuesAtom = atom<WorkflowIssue[]>(NO_ISSUES);
+
+/**
+ * Everything wrong with a graph: what the shared collector can see on its own,
+ * followed by what only the operator's connections can answer.
+ *
+ * The two halves are assembled here rather than at each place that needs them.
+ * The badge on a node, the count in the status strip, the run gate and the
+ * publish gate each read this list, and they were each appending the provider
+ * half themselves, so "the gate and the canvas cannot disagree" was a sentence
+ * repeated in three comments rather than a fact about the code. It is one call
+ * now, and disagreeing would take an edit here.
+ *
+ * `providerIssues` is passed rather than read off the atom, because the pass
+ * that writes that atom is also a caller and must use the answers it just
+ * received rather than the ones it is about to store. `nodes` arrives already
+ * through `toPersistedNodes`, which is the same shape the provider half is asked
+ * about, so both halves judge one graph.
+ */
+export function collectAllWorkflowIssues(input: {
+  nodes: WorkflowNode[];
+  catalog: ExtensionCatalog;
+  integrations: ReadonlyArray<{ id: string; type: string }>;
+  providerIssues: readonly WorkflowIssue[];
+}): WorkflowIssue[] {
+  return [
+    ...collectWorkflowIssues({
+      nodes: input.nodes,
+      catalog: input.catalog,
+      integrations: input.integrations,
+    }),
+    ...input.providerIssues,
+  ];
+}
 
 /**
  * The badge each flagged node draws, built once per collection pass.

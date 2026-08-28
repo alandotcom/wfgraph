@@ -124,14 +124,6 @@ export function workflowNodeLabel(input: {
   actionLabel?: string;
   actionType?: string;
 }): string {
-  return nodeLabelOf(input);
-}
-
-function nodeLabelOf(input: {
-  node: WorkflowNode;
-  actionLabel?: string;
-  actionType?: string;
-}): string {
   const explicit = asNonEmptyString(input.node.data.label);
   if (explicit) {
     return explicit;
@@ -191,7 +183,7 @@ export function findUnconfiguredIntegrationNodes(input: {
 
     const integrationLabel =
       findIntegration(catalog, integrationType)?.label ?? integrationType;
-    const nodeLabel = nodeLabelOf({
+    const nodeLabel = workflowNodeLabel({
       node,
       actionLabel: action?.label,
       actionType,
@@ -262,7 +254,7 @@ function collectMissingIntegrationIssues(input: {
 
     const integrationLabel =
       findIntegration(input.catalog, integrationType)?.label ?? integrationType;
-    const nodeLabel = nodeLabelOf({
+    const nodeLabel = workflowNodeLabel({
       node,
       actionLabel: action?.label,
       actionType,
@@ -352,7 +344,7 @@ function collectBrokenReferenceIssues(input: {
       ? findAction(input.catalog, actionType)
       : undefined;
     const flatFields = action ? flattenConfigFields(action.configFields) : [];
-    const nodeLabel = nodeLabelOf({
+    const nodeLabel = workflowNodeLabel({
       node,
       actionLabel: action?.label,
       actionType,

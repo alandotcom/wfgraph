@@ -27,6 +27,7 @@ import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { nodesAtom, selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import { toPersistedNodes } from "#src/lib/workflow-graph-types";
 import {
+  collectAllWorkflowIssues,
   NO_ISSUES,
   providerFieldIssuesAtom,
   sameIssues,
@@ -34,10 +35,7 @@ import {
 } from "#src/lib/workflow-issues-store";
 import { useProviderFieldIssues } from "#src/hooks/use-provider-field-issues";
 import { enterDraftWorkspaceAtom } from "#src/lib/workflow-workspace-navigation";
-import {
-  collectWorkflowIssues,
-  groupWorkflowIssuesForOverlay,
-} from "@wfgraph/shared/graph/workflow-issues";
+import { groupWorkflowIssuesForOverlay } from "@wfgraph/shared/graph/workflow-issues";
 
 /** How long the canvas must sit still before it is validated again. */
 const SETTLE_MS = 300;
@@ -69,10 +67,12 @@ export function useCollectWorkflowIssues(): void {
       return NO_ISSUES;
     }
 
-    return [
-      ...collectWorkflowIssues({ nodes: persisted, catalog, integrations }),
-      ...providerIssues,
-    ];
+    return collectAllWorkflowIssues({
+      nodes: persisted,
+      catalog,
+      integrations,
+      providerIssues,
+    });
   }, [persisted, catalog, integrations, providerIssues]);
 
   // Held for `useShowWorkflowIssues`, which recollects on the click rather than
@@ -152,14 +152,12 @@ export function useShowWorkflowIssues(): () => void {
   const providerIssues = useAtomValue(providerFieldIssuesAtom);
 
   return useCallback(() => {
-    const issues = [
-      ...collectWorkflowIssues({
-        nodes: toPersistedNodes(readNodes()),
-        catalog,
-        integrations,
-      }),
-      ...providerIssues,
-    ];
+    const issues = collectAllWorkflowIssues({
+      nodes: toPersistedNodes(readNodes()),
+      catalog,
+      integrations,
+      providerIssues,
+    });
 
     openOverlay(WorkflowIssuesOverlay, {
       issues: groupWorkflowIssuesForOverlay(issues),

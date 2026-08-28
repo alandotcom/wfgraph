@@ -10,7 +10,10 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ConfigOptionsAnswer } from "#src/lib/rpc-client";
 import { configOptionsQueryOptions } from "#src/lib/rpc-query";
-import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
+import {
+  readProviderParameters,
+  settledProviderParameter,
+} from "#src/lib/provider-parameters";
 import type { FieldOptionsSource } from "@wfgraph/shared/plugins/action-fields";
 
 export type ConfigOptionsState =
@@ -34,36 +37,13 @@ export type ConfigOptionsState =
    */
   | { state: "failed"; retry: () => void };
 
-/** A value usable as a provider parameter: present, and not a node reference. */
-function settledParameter(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  if (trimmed.length === 0 || findTemplateTokens(trimmed).length > 0) {
-    return undefined;
-  }
-  return trimmed;
-}
-
 export function useConfigOptions(input: {
   source: FieldOptionsSource | undefined;
   config: Record<string, unknown>;
 }): ConfigOptionsState {
   const { source, config } = input;
-  const integrationId = settledParameter(config.integrationId);
-
-  const named = source?.parameters ?? [];
-  const parameters: Record<string, string> = {};
-  const missing: string[] = [];
-  for (const key of named) {
-    const value = settledParameter(config[key]);
-    if (value === undefined) {
-      missing.push(key);
-    } else {
-      parameters[key] = value;
-    }
-  }
+  const integrationId = settledProviderParameter(config.integrationId);
+  const { parameters, missing } = readProviderParameters(source, config);
 
   const enabled =
     source !== undefined && integrationId !== undefined && missing.length === 0;

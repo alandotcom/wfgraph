@@ -45,7 +45,10 @@ import {
   redoAtom,
   undoAtom,
 } from "#src/lib/workflow-graph-store";
-import { providerFieldIssuesAtom } from "#src/lib/workflow-issues-store";
+import {
+  collectAllWorkflowIssues,
+  providerFieldIssuesAtom,
+} from "#src/lib/workflow-issues-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   executeWorkflowRun,
@@ -85,7 +88,6 @@ import {
   manualStartAllowed,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
-  collectWorkflowIssues,
   groupWorkflowIssuesForOverlay,
   hasBlockingWorkflowIssues,
 } from "@wfgraph/shared/graph/workflow-issues";
@@ -117,14 +119,13 @@ function useWorkflowHandlers({
   // on the node was drawn from.
   const providerIssues = useAtomValue(providerFieldIssuesAtom);
   const collectIssues = useCallback(
-    () => [
-      ...collectWorkflowIssues({
+    () =>
+      collectAllWorkflowIssues({
         nodes: toPersistedNodes(nodes),
         catalog,
         integrations: userIntegrations,
+        providerIssues,
       }),
-      ...providerIssues,
-    ],
     [nodes, catalog, userIntegrations, providerIssues]
   );
   // The same implementation the status strip's issue count reaches for, so
@@ -461,14 +462,12 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     // unreachable subtrees -- so a graph can still be refused after passing
     // here. A draft saves in any state; this gate does not move, so there is no
     // Publish Anyway.
-    const issues = [
-      ...collectWorkflowIssues({
-        nodes: toPersistedNodes(nodes),
-        catalog,
-        integrations: userIntegrations,
-      }),
-      ...providerIssues,
-    ];
+    const issues = collectAllWorkflowIssues({
+      nodes: toPersistedNodes(nodes),
+      catalog,
+      integrations: userIntegrations,
+      providerIssues,
+    });
     if (hasBlockingWorkflowIssues(issues)) {
       openOverlay(WorkflowIssuesOverlay, {
         issues: groupWorkflowIssuesForOverlay(issues),
