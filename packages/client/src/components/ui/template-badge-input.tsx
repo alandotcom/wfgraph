@@ -46,8 +46,9 @@ export function TemplateBadgeInput({
 }: TemplateBadgeInputProps) {
   const {
     attachEditor,
+    autocompleteAnchor,
     autocompleteFilter,
-    autocompletePosition,
+    chromeRef,
     closeAutocomplete,
     handleAutocompleteSelect,
     handleBlur,
@@ -75,6 +76,7 @@ export function TemplateBadgeInput({
           className
         )}
         data-invalid={invalid || undefined}
+        ref={chromeRef}
       >
         <div
           aria-invalid={invalid || undefined}
@@ -102,7 +104,7 @@ export function TemplateBadgeInput({
         isOpen={showAutocomplete}
         onClose={closeAutocomplete}
         onSelect={handleAutocompleteSelect}
-        position={autocompletePosition}
+        anchor={autocompleteAnchor}
       />
     </>
   );

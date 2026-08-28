@@ -42,8 +42,9 @@ export function TemplateBadgeTextarea({
 }: TemplateBadgeTextareaProps) {
   const {
     attachEditor,
+    autocompleteAnchor,
     autocompleteFilter,
-    autocompletePosition,
+    chromeRef,
     closeAutocomplete,
     handleAutocompleteSelect,
     handleBlur,
@@ -74,6 +75,7 @@ export function TemplateBadgeTextarea({
           className
         )}
         data-invalid={invalid || undefined}
+        ref={chromeRef}
         style={{ minHeight: `${rows * 1.5}rem` }}
       >
         <div
@@ -101,7 +103,7 @@ export function TemplateBadgeTextarea({
         isOpen={showAutocomplete}
         onClose={closeAutocomplete}
         onSelect={handleAutocompleteSelect}
-        position={autocompletePosition}
+        anchor={autocompleteAnchor}
       />
     </>
   );

@@ -20,10 +20,14 @@ import {
   targetAccepts,
   type ValueTargetType,
 } from "@wfgraph/shared/graph/value-targets";
+import {
+  placeTemplateAutocomplete,
+  type TemplateAutocompleteAnchor,
+} from "./place-template-autocomplete";
 
 type TemplateAutocompleteProps = {
   isOpen: boolean;
-  position: { top: number; left: number };
+  anchor: TemplateAutocompleteAnchor;
   onSelect: (template: string) => void;
   onClose: () => void;
   currentNodeId?: string;
@@ -92,7 +96,7 @@ type TemplateOption = {
 
 export function TemplateAutocomplete({
   isOpen,
-  position,
+  anchor,
   onSelect,
   onClose,
   currentNodeId,
@@ -260,21 +264,28 @@ export function TemplateAutocomplete({
     return null;
   }
 
-  // Menu is w-80 (320px); leave ~300px above the bottom edge.
-  const adjustedPosition = {
-    top: Math.min(position.top, window.innerHeight - 300),
-    left: Math.min(position.left, window.innerWidth - 320),
-  };
+  const placement = placeTemplateAutocomplete(anchor, {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
 
   const menuContent = (
     <div
       className="fixed z-50 w-80 rounded-lg border bg-popover p-1 text-popover-foreground shadow-md"
+      data-side={placement.side}
+      data-slot="template-autocomplete"
       style={{
-        top: `${adjustedPosition.top}px`,
-        left: `${adjustedPosition.left}px`,
+        left: placement.left,
+        ...(placement.side === "bottom"
+          ? { top: placement.top }
+          : { bottom: placement.bottom }),
       }}
     >
-      <div className="max-h-60 overflow-y-auto" ref={optionListRef}>
+      <div
+        className="overflow-y-auto"
+        ref={optionListRef}
+        style={{ maxHeight: placement.maxHeight }}
+      >
         {emptyMessage && (
           <div className="px-2 py-1.5 text-muted-foreground text-sm">
             {emptyMessage}

@@ -4,6 +4,7 @@ import { useExtensionCatalog } from "#src/components/extension-catalog-provider"
 import { useAfterCommit } from "#src/hooks/effects";
 import { nodesAtom } from "#src/lib/workflow-graph-store";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
+import type { TemplateAutocompleteAnchor } from "./place-template-autocomplete";
 import {
   type BadgeEditor,
   type BadgeRange,
@@ -37,6 +38,7 @@ export function useTemplateBadgeField(input: {
   const nodes = useAtomValue(nodesAtom);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const chromeRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<BadgeEditor | null>(null);
   // The text the field is known to hold. Compared against what the DOM reads
   // back, to tell a real edit from an input event that changed nothing, and to
@@ -45,10 +47,12 @@ export function useTemplateBadgeField(input: {
 
   const [isFocused, setIsFocused] = useState(false);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
-  const [autocompletePosition, setAutocompletePosition] = useState({
-    top: 0,
-    left: 0,
-  });
+  const [autocompleteAnchor, setAutocompleteAnchor] =
+    useState<TemplateAutocompleteAnchor>({
+      top: 0,
+      bottom: 0,
+      left: 0,
+    });
   const [autocompleteFilter, setAutocompleteFilter] = useState("");
   const [atSignPosition, setAtSignPosition] = useState<number | null>(null);
 
@@ -114,11 +118,14 @@ export function useTemplateBadgeField(input: {
     setAutocompleteFilter(filter);
     setAtSignPosition(lastAtSign);
 
-    const rect = containerRef.current?.getBoundingClientRect();
+    // The bordered wrapper is the visual field. Measuring the inner
+    // contenteditable puts the menu inside the padding, on top of the caret.
+    const rect = chromeRef.current?.getBoundingClientRect();
     if (rect) {
-      setAutocompletePosition({
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX,
+      setAutocompleteAnchor({
+        top: rect.top,
+        bottom: rect.bottom,
+        left: rect.left,
       });
     }
     setShowAutocomplete(true);
@@ -312,8 +319,9 @@ export function useTemplateBadgeField(input: {
 
   return {
     attachEditor,
+    autocompleteAnchor,
     autocompleteFilter,
-    autocompletePosition,
+    chromeRef,
     handleBlur,
     handleFocus,
     handleInput,
