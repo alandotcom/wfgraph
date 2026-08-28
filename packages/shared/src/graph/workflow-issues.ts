@@ -112,6 +112,21 @@ function resolveActionFromCatalog(
   return (actionType) => findAction(catalog, actionType);
 }
 
+/**
+ * What a node is called in an issue, which is what the badge and the list read.
+ *
+ * Exported because the client raises issues the shared collector cannot: a
+ * provider-backed field's requirements are answered by the operator's own
+ * connection, and naming those nodes the same way is what keeps one list.
+ */
+export function workflowNodeLabel(input: {
+  node: WorkflowNode;
+  actionLabel?: string;
+  actionType?: string;
+}): string {
+  return nodeLabelOf(input);
+}
+
 function nodeLabelOf(input: {
   node: WorkflowNode;
   actionLabel?: string;

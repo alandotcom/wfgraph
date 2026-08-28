@@ -45,6 +45,7 @@ import {
   redoAtom,
   undoAtom,
 } from "#src/lib/workflow-graph-store";
+import { providerFieldIssuesAtom } from "#src/lib/workflow-issues-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   executeWorkflowRun,
@@ -110,6 +111,22 @@ function useWorkflowHandlers({
   userIntegrations,
 }: WorkflowHandlerParams) {
   const catalog = useExtensionCatalog();
+  // Raised by the collector rather than here: what a provider-backed field still
+  // needs is the operator's connection to answer, and asking again on the click
+  // would let a run start ahead of the reply. This is the same list the badge
+  // on the node was drawn from.
+  const providerIssues = useAtomValue(providerFieldIssuesAtom);
+  const collectIssues = useCallback(
+    () => [
+      ...collectWorkflowIssues({
+        nodes: toPersistedNodes(nodes),
+        catalog,
+        integrations: userIntegrations,
+      }),
+      ...providerIssues,
+    ],
+    [nodes, catalog, userIntegrations, providerIssues]
+  );
   // The same implementation the status strip's issue count reaches for, so
   // "Fix" means one thing wherever the list was opened from. The hook is
   // instantiated per caller and each instance owns its own pending-focus state;
@@ -198,11 +215,7 @@ function useWorkflowHandlers({
       return;
     }
 
-    const issues = collectWorkflowIssues({
-      nodes: toPersistedNodes(nodes),
-      catalog,
-      integrations: userIntegrations,
-    });
+    const issues = collectIssues();
 
     if (issues.length > 0) {
       const hasBlocking = hasBlockingWorkflowIssues(issues);
@@ -282,6 +295,9 @@ export type WorkflowToolbarState = ReturnType<typeof useWorkflowState>;
 
 export function useWorkflowActions(state: WorkflowToolbarState) {
   const catalog = useExtensionCatalog();
+  // The same list the node badges were drawn from, so the gate and the canvas
+  // cannot disagree about whether a graph is publishable.
+  const providerIssues = useAtomValue(providerFieldIssuesAtom);
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -445,11 +461,14 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     // unreachable subtrees -- so a graph can still be refused after passing
     // here. A draft saves in any state; this gate does not move, so there is no
     // Publish Anyway.
-    const issues = collectWorkflowIssues({
-      nodes: toPersistedNodes(nodes),
-      catalog,
-      integrations: userIntegrations,
-    });
+    const issues = [
+      ...collectWorkflowIssues({
+        nodes: toPersistedNodes(nodes),
+        catalog,
+        integrations: userIntegrations,
+      }),
+      ...providerIssues,
+    ];
     if (hasBlockingWorkflowIssues(issues)) {
       openOverlay(WorkflowIssuesOverlay, {
         issues: groupWorkflowIssuesForOverlay(issues),

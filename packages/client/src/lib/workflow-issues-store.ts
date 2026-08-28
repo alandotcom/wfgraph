@@ -33,6 +33,15 @@ export const NO_ISSUES: WorkflowIssue[] = [];
 export const workflowIssuesAtom = atom<WorkflowIssue[]>(NO_ISSUES);
 
 /**
+ * The half of the list the shared collector cannot produce, kept so the issues
+ * dialog can recollect without asking every connection again.
+ *
+ * `useCollectWorkflowIssues` owns the write, the same way it owns the list
+ * above, and both are empty until the answers that justify them arrive.
+ */
+export const providerFieldIssuesAtom = atom<WorkflowIssue[]>(NO_ISSUES);
+
+/**
  * The badge each flagged node draws, built once per collection pass.
  *
  * Summarised here rather than where the node is painted, because a summary

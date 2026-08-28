@@ -28,9 +28,11 @@ import { nodesAtom, selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import { toPersistedNodes } from "#src/lib/workflow-graph-types";
 import {
   NO_ISSUES,
+  providerFieldIssuesAtom,
   sameIssues,
   workflowIssuesAtom,
 } from "#src/lib/workflow-issues-store";
+import { useProviderFieldIssues } from "#src/hooks/use-provider-field-issues";
 import { enterDraftWorkspaceAtom } from "#src/lib/workflow-workspace-navigation";
 import {
   collectWorkflowIssues,
@@ -47,6 +49,15 @@ export function useCollectWorkflowIssues(): void {
   const setIssues = useSetAtom(workflowIssuesAtom);
 
   const settledNodes = useDebouncedValue(nodes, SETTLE_MS);
+  const persisted = useMemo(
+    () => toPersistedNodes(settledNodes),
+    [settledNodes]
+  );
+  // What the operator's own connections say a provider-backed field still needs.
+  // The shared collector cannot ask, so these are raised here and merged into
+  // the one list the badge, the count and the publish gate all read.
+  const providerIssues = useProviderFieldIssues(persisted, catalog);
+  const setProviderIssues = useSetAtom(providerFieldIssuesAtom);
 
   const issues = useMemo(() => {
     // `undefined` is "the connection list has not arrived", which is a
@@ -58,12 +69,20 @@ export function useCollectWorkflowIssues(): void {
       return NO_ISSUES;
     }
 
-    return collectWorkflowIssues({
-      nodes: toPersistedNodes(settledNodes),
-      catalog,
-      integrations,
-    });
-  }, [settledNodes, catalog, integrations]);
+    return [
+      ...collectWorkflowIssues({ nodes: persisted, catalog, integrations }),
+      ...providerIssues,
+    ];
+  }, [persisted, catalog, integrations, providerIssues]);
+
+  // Held for `useShowWorkflowIssues`, which recollects on the click rather than
+  // reading the settled list, and would otherwise show fewer issues than the
+  // badge it was opened from.
+  useAfterCommit(providerIssues, () => {
+    setProviderIssues((previous) =>
+      sameIssues(previous, providerIssues) ? previous : providerIssues
+    );
+  });
 
   // Keeping the previous list when the verdict has not changed is what stops
   // this from undoing #116: every settle recollects, and a content-identical
@@ -130,18 +149,22 @@ export function useShowWorkflowIssues(): () => void {
   const { open: openOverlay } = useOverlay();
   const goToStep = useGoToStep();
   const readNodes = useAtomCallback(useCallback((get) => get(nodesAtom), []));
+  const providerIssues = useAtomValue(providerFieldIssuesAtom);
 
   return useCallback(() => {
-    const issues = collectWorkflowIssues({
-      nodes: toPersistedNodes(readNodes()),
-      catalog,
-      integrations,
-    });
+    const issues = [
+      ...collectWorkflowIssues({
+        nodes: toPersistedNodes(readNodes()),
+        catalog,
+        integrations,
+      }),
+      ...providerIssues,
+    ];
 
     openOverlay(WorkflowIssuesOverlay, {
       issues: groupWorkflowIssuesForOverlay(issues),
       onGoToStep: goToStep,
       allowRunAnyway: false,
     });
-  }, [readNodes, catalog, integrations, openOverlay, goToStep]);
+  }, [readNodes, catalog, integrations, providerIssues, openOverlay, goToStep]);
 }
