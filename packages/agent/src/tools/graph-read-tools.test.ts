@@ -76,7 +76,6 @@ describe("read_workflow", () => {
           type: "action",
           actionType: "slack/send-message",
           description: "Tell #hiring about the applicant.",
-          enabled: true,
           config: {
             actionType: "slack/send-message",
             integrationId: "conn-1",

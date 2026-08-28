@@ -267,6 +267,41 @@ describe("version-digest", () => {
     expect(draftDiffersFromPublished(omitted, nullish)).toBe(false);
   });
 
+  it("treats a stored enabled: true as the default on state", () => {
+    const omitted = createSerializedWorkflowGraph({
+      nodes: [actionNode("action-1", "Send")],
+      edges: [],
+    });
+    const storedOn = {
+      ...omitted,
+      nodes: omitted.nodes.map((node) =>
+        node.key !== "action-1"
+          ? node
+          : {
+              ...node,
+              attributes: {
+                ...node.attributes,
+                data: { ...node.attributes.data, enabled: true },
+              },
+            }
+      ),
+    };
+    const storedOff = createSerializedWorkflowGraph({
+      nodes: [
+        {
+          ...actionNode("action-1", "Send"),
+          data: { ...actionNode("action-1", "Send").data, enabled: false },
+        },
+      ],
+      edges: [],
+    });
+
+    expect(graphDigest(omitted)).toBe(graphDigest(storedOn));
+    expect(draftDiffersFromPublished(omitted, storedOn)).toBe(false);
+    expect(draftDiffersFromPublished(storedOn, omitted)).toBe(false);
+    expect(draftDiffersFromPublished(omitted, storedOff)).toBe(true);
+  });
+
   it("changes the semantic graph digest when node configuration changes", () => {
     const before = createSerializedWorkflowGraph({
       nodes: [actionNode("action-1", "Send")],

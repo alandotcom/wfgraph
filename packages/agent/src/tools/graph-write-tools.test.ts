@@ -230,6 +230,24 @@ describe("update_node", () => {
       expect((yield* draft.current).nodes).toEqual([entry]);
     })
   );
+
+  it.effect(
+    "drops enabled: true so a re-enabled step matches the default",
+    () =>
+      Effect.gen(function* () {
+        const disabled: WorkflowNode = {
+          ...second,
+          data: { ...second.data, enabled: false },
+        };
+        const { tools, draft } = yield* agentToolsFor({
+          nodes: [entry, disabled],
+          catalog,
+        });
+        yield* tools.update_node({ nodeId: "second", enabled: true });
+
+        expect((yield* draft.current).nodes[1]?.data.enabled).toBeUndefined();
+      })
+  );
 });
 
 describe("delete_node", () => {
