@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { ConfigureConnectionOverlay } from "#src/components/overlays/add-connection-overlay";
 import { EditConnectionOverlay } from "#src/components/overlays/edit-connection-overlay";
+import { OverlayContainer } from "#src/components/overlays/overlay-container";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import type { Integration } from "#src/lib/rpc-client";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
@@ -46,6 +47,18 @@ function connection(
   };
 }
 
+/**
+ * Disconnect asks before it acts, so both clicks are the interaction.
+ *
+ * It revokes the grant at the provider, which the app cannot undo, and when the
+ * grant was the only credential it removes the connection with it. The confirm
+ * button is named for which of those is about to happen.
+ */
+async function confirmDisconnect(confirmLabel: string): Promise<void> {
+  fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+  fireEvent.click(await screen.findByRole("button", { name: confirmLabel }));
+}
+
 function renderOverlay(children: React.ReactNode) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -54,7 +67,16 @@ function renderOverlay(children: React.ReactNode) {
   return render(
     <ExtensionCatalogProvider value={catalog}>
       <QueryClientProvider client={queryClient}>
-        <OverlayProvider>{children}</OverlayProvider>
+        <OverlayProvider>
+          {children}
+          {/*
+            These cases render the overlay under test directly rather than
+            pushing it, but it pushes overlays of its own -- the disconnect
+            confirmation, the delete confirmation -- and only the container
+            renders a pushed stack. Without it those steps are invisible here.
+          */}
+          <OverlayContainer />
+        </OverlayProvider>
       </QueryClientProvider>
     </ExtensionCatalogProvider>
   );
@@ -433,7 +455,7 @@ describe("OAuth connection overlays", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    await confirmDisconnect("Disconnect Resend");
 
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
@@ -483,12 +505,70 @@ describe("OAuth connection overlays", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    await confirmDisconnect("Disconnect Resend");
 
     await waitFor(() =>
       expect(screen.getAllByRole("button", { name: "Change" })).toHaveLength(2)
     );
     expect(screen.queryByLabelText("API key")).toBeNull();
+  });
+
+  // Disconnect revokes at the provider, which nothing here can undo, so the
+  // click alone must not reach the server.
+  it("asks before disconnecting, and sends nothing until it is confirmed", async () => {
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ json: { success: true, removed: false } }),
+          { headers: { "content-type": "application/json" } }
+        )
+      );
+
+    renderOverlay(
+      <EditConnectionOverlay
+        integration={connection({
+          status: "connected",
+          connectedAt: "2026-08-24T10:00:00.000Z",
+          credentialKeys: ["RESEND_API_KEY"],
+        })}
+        overlayId="edit_resend"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Disconnect Resend" })
+    ).toBeTruthy();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  // The two outcomes differ, and which one is about to happen is the server's
+  // answer in `configuredKeys` rather than anything this dialog guesses.
+  it("names removal when the grant is the connection's only credential", async () => {
+    renderOverlay(
+      <EditConnectionOverlay
+        integration={connection(
+          {
+            status: "connected",
+            connectedAt: "2026-08-24T10:00:00.000Z",
+            credentialKeys: ["RESEND_API_KEY"],
+          },
+          []
+        )}
+        overlayId="edit_resend"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Remove connection" })
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Disconnect Resend" })
+    ).toBeNull();
   });
 
   // A grant that supplied the whole connection leaves nothing behind, so the
@@ -516,7 +596,7 @@ describe("OAuth connection overlays", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    await confirmDisconnect("Remove connection");
 
     // The nodes that named this connection are repaired through the same path a
     // delete takes. The dialog also closes, which this harness cannot see:

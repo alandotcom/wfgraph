@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Link, Pencil, TriangleAlert, X } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
 import { Input } from "#src/components/ui/input";
@@ -29,6 +29,48 @@ const integrationLabel = (
 ): string => entry?.label ?? type;
 
 /**
+ * One panel for every state an OAuth connection can be in.
+ *
+ * The three states differ in their icon, their heading, what they say underneath
+ * and which buttons they offer, and in nothing else. They were three copies of
+ * the same section, which is three places to keep an `aria-busy`, a label and a
+ * layout in step, so the shell lives here once and each state supplies only its
+ * own parts.
+ */
+function OAuthStatusPanel({
+  providerLabel,
+  pending,
+  icon,
+  title,
+  actions,
+  children,
+}: {
+  providerLabel: string;
+  pending: boolean;
+  icon: ReactNode;
+  title: string;
+  actions: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <section
+      aria-busy={pending}
+      aria-label={`${providerLabel} OAuth connection`}
+      className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="flex items-start gap-2" role="status">
+        {icon}
+        <div className="space-y-0.5 text-sm">
+          <p className="font-medium">{title}</p>
+          {children}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">{actions}</div>
+    </section>
+  );
+}
+
+/**
  * The state a connection is in before OAuth has ever run, and the one it returns
  * to after a disconnect. This is the only offer of the OAuth flow for a saved
  * connection, so it stays reachable whenever the catalog declares a provider.
@@ -43,24 +85,21 @@ function OAuthConnectPrompt({
   onConnect: () => void;
 }) {
   return (
-    <section
-      aria-busy={pending}
-      aria-label={`${providerLabel} OAuth connection`}
-      className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between"
+    <OAuthStatusPanel
+      actions={
+        <Button disabled={pending} onClick={onConnect} type="button">
+          Connect
+        </Button>
+      }
+      icon={<Link aria-hidden="true" className="mt-0.5 size-4" />}
+      pending={pending}
+      providerLabel={providerLabel}
+      title="Disconnected"
     >
-      <div className="flex items-start gap-2" role="status">
-        <Link aria-hidden="true" className="mt-0.5 size-4" />
-        <div className="space-y-0.5 text-sm">
-          <p className="font-medium">Disconnected</p>
-          <p className="text-muted-foreground">
-            Connect {providerLabel} to authorize this connection.
-          </p>
-        </div>
-      </div>
-      <Button disabled={pending} onClick={onConnect} type="button">
-        Connect
-      </Button>
-    </section>
+      <p className="text-muted-foreground">
+        Connect {providerLabel} to authorize this connection.
+      </p>
+    </OAuthStatusPanel>
   );
 }
 
@@ -79,80 +118,76 @@ function OAuthConnectionStatus({
 }) {
   if (oauth.status === "connected") {
     return (
-      <section
-        aria-busy={pending}
-        aria-label={`${providerLabel} OAuth connection`}
-        className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between"
-      >
-        <div className="flex items-start gap-2" role="status">
+      <OAuthStatusPanel
+        actions={
+          <>
+            <Button
+              disabled={pending}
+              onClick={onConnect}
+              title={`Reconnect to change what ${providerLabel} allows`}
+              type="button"
+              variant="outline"
+            >
+              Reconnect
+            </Button>
+            <Button
+              disabled={pending}
+              onClick={onDisconnect}
+              type="button"
+              variant="outline"
+            >
+              Disconnect
+            </Button>
+          </>
+        }
+        icon={
           <Check aria-hidden="true" className="mt-0.5 size-4 text-success" />
-          <div className="space-y-0.5 text-sm">
-            <p className="font-medium">Connected</p>
-            {oauth.accountLabel && (
-              <p className="text-muted-foreground">
-                Account: {oauth.accountLabel}
-              </p>
-            )}
-            {/*
-              What the provider granted, in its own words. Read-only, because
-              access is changed at the provider's consent page and nowhere else:
-              Reconnect is the control, and this line is the current state.
-            */}
-            {oauth.grantedAccessLabel && (
-              <p className="text-muted-foreground">
-                Access: {oauth.grantedAccessLabel}
-              </p>
-            )}
-            <p className="text-muted-foreground">
-              Connected on {oauth.connectedAt.slice(0, 10)}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            disabled={pending}
-            onClick={onConnect}
-            title={`Reconnect to change what ${providerLabel} allows`}
-            type="button"
-            variant="outline"
-          >
-            Reconnect
-          </Button>
-          <Button
-            disabled={pending}
-            onClick={onDisconnect}
-            type="button"
-            variant="outline"
-          >
-            Disconnect
-          </Button>
-        </div>
-      </section>
+        }
+        pending={pending}
+        providerLabel={providerLabel}
+        title="Connected"
+      >
+        {oauth.accountLabel && (
+          <p className="text-muted-foreground">Account: {oauth.accountLabel}</p>
+        )}
+        {/*
+          What the provider granted, in its own words. Read-only, because
+          access is changed at the provider's consent page and nowhere else:
+          Reconnect is the control, and this line is the current state.
+        */}
+        {oauth.grantedAccessLabel && (
+          <p className="text-muted-foreground">
+            Access: {oauth.grantedAccessLabel}
+          </p>
+        )}
+        <p className="text-muted-foreground">
+          Connected on {oauth.connectedAt.slice(0, 10)}
+        </p>
+      </OAuthStatusPanel>
     );
   }
 
   return (
-    <section
-      aria-busy={pending}
-      aria-label={`${providerLabel} OAuth connection`}
-      className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between"
-    >
-      <div className="flex items-start gap-2" role="status">
+    <OAuthStatusPanel
+      actions={
+        <Button disabled={pending} onClick={onConnect} type="button">
+          Reconnect
+        </Button>
+      }
+      icon={
         <TriangleAlert
           aria-hidden="true"
           className="mt-0.5 size-4 text-warning"
         />
-        <div className="space-y-0.5 text-sm">
-          <p className="font-medium">Reauthorization required</p>
-          <p className="text-muted-foreground">
-            Reconnect {providerLabel} to continue using this connection.
-          </p>
-        </div>
-      </div>
-      <Button disabled={pending} onClick={onConnect} type="button">
-        Reconnect
-      </Button>
-    </section>
+      }
+      pending={pending}
+      providerLabel={providerLabel}
+      title="Reauthorization required"
+    >
+      <p className="text-muted-foreground">
+        Reconnect {providerLabel} to continue using this connection.
+      </p>
+    </OAuthStatusPanel>
   );
 }
 
@@ -436,6 +471,37 @@ export function EditConnectionOverlay({
     await oauthConnection.startExisting(integration.id);
   };
 
+  /**
+   * Disconnecting revokes the grant at the provider, which this app cannot undo,
+   * and when the grant was the only credential it takes the connection with it.
+   * So it asks first, and it says which of the two is about to happen: the
+   * server already told us, in `configuredKeys`, whether anything the operator
+   * typed themselves would survive.
+   */
+  const handleOAuthDisconnect = () => {
+    const grantIsWholeConnection = configuredKeys.size === 0;
+    const providerLabel = catalogEntry?.oauth?.label ?? integration.type;
+
+    push(ConfirmOverlay, {
+      title: grantIsWholeConnection
+        ? "Remove this connection"
+        : `Disconnect ${providerLabel}`,
+      message: grantIsWholeConnection
+        ? `${providerLabel} access is the only credential "${integration.name}" holds, so disconnecting removes the connection itself. Workflows using it will fail until a new one is configured.\n\nThis also revokes the authorization at ${providerLabel}, which cannot be undone from here.`
+        : `This revokes the authorization at ${providerLabel}, which cannot be undone from here. The credentials you entered yourself are kept, so "${integration.name}" stays available.`,
+      // Named rather than a bare "Disconnect", which is what the button behind
+      // this dialog already says: the confirming click should read differently
+      // from the one that opened it.
+      confirmLabel: grantIsWholeConnection
+        ? "Remove connection"
+        : `Disconnect ${providerLabel}`,
+      confirmVariant: "destructive" as const,
+      destructive: true,
+      onConfirm: () =>
+        disconnectOAuth.mutate({ integrationId: integration.id }),
+    });
+  };
+
   const renderConfigFields = () => {
     if (!formFields) {
       return null;
@@ -544,9 +610,7 @@ export function EditConnectionOverlay({
             <OAuthConnectionStatus
               oauth={oauth}
               onConnect={handleOAuthConnect}
-              onDisconnect={() =>
-                disconnectOAuth.mutate({ integrationId: integration.id })
-              }
+              onDisconnect={handleOAuthDisconnect}
               pending={oauthBusy}
               providerLabel={catalogEntry.oauth.label}
             />

@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { WfGraphAppContext } from "#src/backend/lib/effect/app-context";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
-import type { WfGraphRuntime } from "#src/backend/runtime";
+import type { WfGraphRuntime, WfGraphServices } from "#src/backend/runtime";
 import {
   completeIntegrationOAuth,
   getOAuthClientMetadata,
@@ -49,13 +49,57 @@ const decodeStartOAuthInput = Schema.decodeUnknownResult(
   { ...rejectUnknownKeys, errors: "all" }
 );
 
-const oauthPage = (message: string) =>
-  `<!doctype html><html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"></head><body><p>${message}</p><script>window.close()</script></body></html>`;
+/**
+ * The page the provider's popup lands on.
+ *
+ * Both are constants rather than one function over a message: this is the only
+ * HTML core writes, it is served on the route a provider redirects to, and a
+ * hole in it is the kind of thing a later edit fills from a query parameter.
+ * There is nothing here a caller needs to vary.
+ */
+const oauthPage = (body: string) =>
+  `<!doctype html><html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"></head><body>${body}</body></html>`;
+
+/** Success closes itself. The editor already knows, and says so in its own tab. */
+const OAUTH_COMPLETE_PAGE = oauthPage(
+  "<p>OAuth connection complete.</p><script>window.close()</script>"
+);
+
+/**
+ * Failure stays open, because this sentence is the only account of it a person
+ * gets. The window is script-opened, so closing it is theirs to press; a page
+ * that closed on load displayed its own explanation for about zero frames.
+ */
+const OAUTH_FAILED_PAGE = oauthPage(
+  '<p>OAuth connection could not be completed. Close this window and try connecting again.</p><button id="close" type="button">Close</button><script>document.getElementById("close").addEventListener("click",function(){window.close()})</script>'
+);
 
 function applyOAuthHeaders(headers: Headers): void {
   for (const [name, value] of Object.entries(OAUTH_RESPONSE_HEADERS)) {
     headers.set(name, value);
   }
+}
+
+/**
+ * Run one service call and hand back its outcome as a value.
+ *
+ * Every handler below needs both arms: a service failure becomes a response
+ * through `responseFromServiceFailure`, and a success is shaped per route. The
+ * `Effect.match` that flattens the two was written out at each of them, which is
+ * four chances to answer the wrong arm.
+ */
+async function runService<A, E>(
+  runtime: WfGraphRuntime,
+  effect: Effect.Effect<A, E, WfGraphServices>
+): Promise<{ ok: true; value: A } | { ok: false; failure: E }> {
+  return await runtime.runPromise(
+    effect.pipe(
+      Effect.match({
+        onSuccess: (value) => ({ ok: true as const, value }),
+        onFailure: (failure) => ({ ok: false as const, failure }),
+      })
+    )
+  );
 }
 
 /** Browser-facing OAuth adapters. The parent API app owns auth and logging. */
@@ -78,13 +122,9 @@ export function createOAuthRoutes(options: {
         return c.json({ error: formatSchemaFailure(body.failure.issue) }, 400);
       }
 
-      const result = await runtime.runPromise(
-        startIntegrationOAuth(body.success).pipe(
-          Effect.match({
-            onSuccess: (value) => ({ ok: true as const, value }),
-            onFailure: (failure) => ({ ok: false as const, failure }),
-          })
-        )
+      const result = await runService(
+        runtime,
+        startIntegrationOAuth(body.success)
       );
       if (!result.ok) {
         const response = responseFromServiceFailure(result.failure);
@@ -117,13 +157,9 @@ export function createOAuthRoutes(options: {
         applyOAuthHeaders(c.res.headers);
         return c.json({ error: "OAuth attempt not found" }, 404);
       }
-      const result = await runtime.runPromise(
-        readIntegrationOAuthAttemptStatus({ attemptId, browserBinding }).pipe(
-          Effect.match({
-            onSuccess: (value) => ({ ok: true as const, value }),
-            onFailure: (failure) => ({ ok: false as const, failure }),
-          })
-        )
+      const result = await runService(
+        runtime,
+        readIntegrationOAuthAttemptStatus({ attemptId, browserBinding })
       );
       if (!result.ok) {
         const response = responseFromServiceFailure(result.failure);
@@ -149,38 +185,29 @@ export function createOAuthRoutes(options: {
         ? (oauthBindingCookieName(state) ?? undefined)
         : undefined;
       const browserBinding = cookieName ? getCookie(c, cookieName) : undefined;
-      const result = await runtime.runPromise(
+      const result = await runService(
+        runtime,
         completeIntegrationOAuth({
           state,
           browserBinding,
           code: c.req.query("code"),
           providerError: c.req.query("error"),
-        }).pipe(
-          Effect.match({
-            onSuccess: () => ({ ok: true as const }),
-            onFailure: (failure) => ({ ok: false as const, failure }),
-          })
-        )
+        })
       );
       applyOAuthHeaders(c.res.headers);
       if (result.ok) {
-        return c.html(oauthPage("OAuth connection complete."));
+        return c.html(OAUTH_COMPLETE_PAGE);
       }
-      const response = new Response(
-        oauthPage("OAuth connection could not be completed."),
-        { status: responseFromServiceFailure(result.failure).status }
-      );
+      const response = new Response(OAUTH_FAILED_PAGE, {
+        status: responseFromServiceFailure(result.failure).status,
+      });
       applyOAuthHeaders(response.headers);
       return response;
     })
     .get(OAUTH_CLIENT_METADATA_ROUTE, async (c) => {
-      const result = await runtime.runPromise(
-        getOAuthClientMetadata(c.req.param("integrationType")).pipe(
-          Effect.match({
-            onSuccess: (value) => ({ ok: true as const, value }),
-            onFailure: (failure) => ({ ok: false as const, failure }),
-          })
-        )
+      const result = await runService(
+        runtime,
+        getOAuthClientMetadata(c.req.param("integrationType"))
       );
       applyOAuthHeaders(c.res.headers);
       if (result.ok) {
