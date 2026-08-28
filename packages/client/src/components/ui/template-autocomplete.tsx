@@ -275,9 +275,10 @@ export function TemplateAutocomplete({
       data-side={placement.side}
       data-slot="template-autocomplete"
       style={{
-        top: placement.side === "bottom" ? placement.top : "auto",
-        bottom: placement.side === "top" ? placement.bottom : "auto",
         left: placement.left,
+        ...(placement.side === "bottom"
+          ? { top: placement.top }
+          : { bottom: placement.bottom }),
       }}
     >
       <div

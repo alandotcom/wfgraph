@@ -5,6 +5,8 @@
  * below the field, or above when that would overflow, and never overlaps it.
  */
 
+import { clamp } from "es-toolkit";
+
 /** Matches the menu's `w-80`. */
 export const TEMPLATE_AUTOCOMPLETE_WIDTH = 320;
 
@@ -68,7 +70,7 @@ export function placeTemplateAutocomplete(
       side: "bottom",
       top: anchor.bottom + TEMPLATE_AUTOCOMPLETE_GAP,
       left,
-      maxHeight: fittedHeight(spaceBelow),
+      maxHeight: clamp(spaceBelow, 0, TEMPLATE_AUTOCOMPLETE_MAX_HEIGHT),
     };
   }
 
@@ -76,14 +78,6 @@ export function placeTemplateAutocomplete(
     side: "top",
     bottom: viewport.height - anchor.top + TEMPLATE_AUTOCOMPLETE_GAP,
     left,
-    maxHeight: fittedHeight(spaceAbove),
+    maxHeight: clamp(spaceAbove, 0, TEMPLATE_AUTOCOMPLETE_MAX_HEIGHT),
   };
-}
-
-function fittedHeight(available: number): number {
-  return Math.max(0, Math.min(TEMPLATE_AUTOCOMPLETE_MAX_HEIGHT, available));
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
 }

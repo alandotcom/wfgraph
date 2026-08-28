@@ -157,6 +157,50 @@ function typeAtSymbol(textbox: HTMLElement) {
   fireEvent.input(textbox);
 }
 
+function mockFieldChromeRect(
+  textbox: HTMLElement,
+  rect: { top: number; bottom: number; left: number }
+) {
+  const fieldChrome = textbox.parentElement;
+  if (!(fieldChrome instanceof HTMLElement)) {
+    throw new Error("Expected the editor to sit inside a field wrapper");
+  }
+  vi.spyOn(fieldChrome, "getBoundingClientRect").mockReturnValue({
+    x: rect.left,
+    y: rect.top,
+    width: 260,
+    height: rect.bottom - rect.top,
+    top: rect.top,
+    right: rect.left + 260,
+    bottom: rect.bottom,
+    left: rect.left,
+    toJSON: () => ({}),
+  });
+}
+
+async function openMenuAt(rect: {
+  top: number;
+  bottom: number;
+  left: number;
+}): Promise<HTMLElement> {
+  const view = renderWithCatalog(
+    <ControlledTemplateBadgeInput onValueChange={() => {}} />
+  );
+  const textbox = view.getByRole("textbox");
+  mockFieldChromeRect(textbox, rect);
+  typeAtSymbol(textbox);
+
+  return waitFor(() => {
+    const element = document.querySelector(
+      "[data-slot='template-autocomplete']"
+    );
+    if (!(element instanceof HTMLElement)) {
+      throw new Error("Failed to find autocomplete menu");
+    }
+    return element;
+  });
+}
+
 function ControlledTemplateBadgeInput({
   onValueChange,
 }: {
@@ -541,80 +585,20 @@ describe("Template autocomplete placement", () => {
   });
 
   it("opens above a field that sits near the bottom of the viewport", async () => {
-    const view = renderWithCatalog(
-      <ControlledTemplateBadgeInput onValueChange={() => {}} />
-    );
-    const textbox = view.getByRole("textbox");
-    const fieldChrome = textbox.parentElement;
-    if (!(fieldChrome instanceof HTMLElement)) {
-      throw new Error("Expected the editor to sit inside a field wrapper");
-    }
-    vi.spyOn(fieldChrome, "getBoundingClientRect").mockReturnValue({
-      x: 40,
-      y: 720,
-      width: 260,
-      height: 36,
-      top: 720,
-      right: 300,
-      bottom: 756,
-      left: 40,
-      toJSON: () => ({}),
-    });
-
-    typeAtSymbol(textbox);
-
-    const menu = await waitFor(() => {
-      const element = document.querySelector(
-        "[data-slot='template-autocomplete']"
-      );
-      if (!(element instanceof HTMLElement)) {
-        throw new Error("Failed to find autocomplete menu");
-      }
-      return element;
-    });
+    const menu = await openMenuAt({ top: 720, bottom: 756, left: 40 });
 
     expect(menu.dataset.side).toBe("top");
-    expect(menu.style.top).toBe("auto");
     // CSS `bottom` keeps the menu growing up, so it cannot cover the caret.
     expect(menu.style.bottom).toBe("84px");
+    expect(menu.style.top).toBe("");
   });
 
   it("opens below a field that has room under it", async () => {
-    const view = renderWithCatalog(
-      <ControlledTemplateBadgeInput onValueChange={() => {}} />
-    );
-    const textbox = view.getByRole("textbox");
-    const fieldChrome = textbox.parentElement;
-    if (!(fieldChrome instanceof HTMLElement)) {
-      throw new Error("Expected the editor to sit inside a field wrapper");
-    }
-    vi.spyOn(fieldChrome, "getBoundingClientRect").mockReturnValue({
-      x: 40,
-      y: 120,
-      width: 260,
-      height: 36,
-      top: 120,
-      right: 300,
-      bottom: 156,
-      left: 40,
-      toJSON: () => ({}),
-    });
-
-    typeAtSymbol(textbox);
-
-    const menu = await waitFor(() => {
-      const element = document.querySelector(
-        "[data-slot='template-autocomplete']"
-      );
-      if (!(element instanceof HTMLElement)) {
-        throw new Error("Failed to find autocomplete menu");
-      }
-      return element;
-    });
+    const menu = await openMenuAt({ top: 120, bottom: 156, left: 40 });
 
     expect(menu.dataset.side).toBe("bottom");
     expect(menu.style.top).toBe("160px");
-    expect(menu.style.bottom).toBe("auto");
+    expect(menu.style.bottom).toBe("");
   });
 });
 

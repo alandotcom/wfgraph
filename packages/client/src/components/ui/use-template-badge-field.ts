@@ -38,6 +38,7 @@ export function useTemplateBadgeField(input: {
   const nodes = useAtomValue(nodesAtom);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const chromeRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<BadgeEditor | null>(null);
   // The text the field is known to hold. Compared against what the DOM reads
   // back, to tell a real edit from an input event that changed nothing, and to
@@ -117,15 +118,10 @@ export function useTemplateBadgeField(input: {
     setAutocompleteFilter(filter);
     setAtSignPosition(lastAtSign);
 
-    const field = containerRef.current;
-    // The bordered wrapper is the visual field. The editor is the inner
-    // contenteditable, whose box sits inside the padding and can be shorter
-    // than the line of text, so placing against it covers the caret.
-    const rect = (field?.parentElement ?? field)?.getBoundingClientRect();
+    // The bordered wrapper is the visual field. Measuring the inner
+    // contenteditable puts the menu inside the padding, on top of the caret.
+    const rect = chromeRef.current?.getBoundingClientRect();
     if (rect) {
-      // Viewport coordinates: the menu is `position: fixed`. Adding scroll
-      // here used to shove it down the page, and the old clamp then pulled it
-      // back over the caret.
       setAutocompleteAnchor({
         top: rect.top,
         bottom: rect.bottom,
@@ -325,6 +321,7 @@ export function useTemplateBadgeField(input: {
     attachEditor,
     autocompleteAnchor,
     autocompleteFilter,
+    chromeRef,
     handleBlur,
     handleFocus,
     handleInput,
