@@ -5,6 +5,7 @@
  */
 
 import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
+import { persistedNodeEnabled } from "@wfgraph/shared/graph/node-enabled";
 import type {
   SerializedWorkflowEdge,
   SerializedWorkflowGraph,
@@ -95,7 +96,7 @@ export function projectSemanticWorkflowNodeFields(
       type: data.type,
       label: data.label,
       description: data.description,
-      enabled: data.enabled,
+      enabled: persistedNodeEnabled(data.enabled),
       config: data.config,
     },
   });

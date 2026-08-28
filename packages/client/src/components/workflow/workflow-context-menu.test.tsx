@@ -59,4 +59,12 @@ describe("WorkflowContextMenu", () => {
 
     expect(store.get(nodesAtom)[0]?.data.enabled).toBe(false);
   });
+
+  it("restores the default on state instead of writing enabled: true", () => {
+    const { getByRole, store } = renderNodeMenu(actionNode(false));
+
+    fireEvent.click(getByRole("button", { name: "Enable Send email" }));
+
+    expect(store.get(nodesAtom)[0]?.data.enabled).toBeUndefined();
+  });
 });

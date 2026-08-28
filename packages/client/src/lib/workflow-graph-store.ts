@@ -45,6 +45,10 @@ import {
   refuseDeleteWithNotice,
 } from "#src/lib/node-group";
 import {
+  canonicalizeNodeEnabled,
+  persistedNodeEnabled,
+} from "@wfgraph/shared/graph/node-enabled";
+import {
   fanOutStoreEdgeIds,
   orderGroupParentsFirst,
 } from "@wfgraph/shared/graph/node-group";
@@ -708,7 +712,8 @@ function isSameNode(existing: WorkflowNode, incoming: WorkflowNode): boolean {
     existing.position.y === incoming.position.y &&
     existing.data.label === incoming.data.label &&
     existing.data.description === incoming.data.description &&
-    existing.data.enabled === incoming.data.enabled &&
+    persistedNodeEnabled(existing.data.enabled) ===
+      persistedNodeEnabled(incoming.data.enabled) &&
     JSON.stringify(existing.data.config ?? {}) ===
       JSON.stringify(incoming.data.config ?? {})
   );
@@ -761,7 +766,10 @@ export const updateNodeDataAtom = atom(
 
     const newNodes = currentNodes.map((node) => {
       if (node.id === id) {
-        return { ...node, data: { ...node.data, ...data } };
+        return {
+          ...node,
+          data: canonicalizeNodeEnabled({ ...node.data, ...data }),
+        };
       }
 
       // A rename has to sweep every other node's config, because tokens carry

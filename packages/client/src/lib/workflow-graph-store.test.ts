@@ -856,6 +856,22 @@ describe("updateNodeDataAtom refuses a status write", () => {
   });
 });
 
+describe("updateNodeDataAtom enabled flag", () => {
+  it("drops enabled: true so a re-enabled step matches the default", () => {
+    const store = createGraphStore(...standardGraph());
+
+    store.set(updateNodeDataAtom, { id: "a", data: { enabled: false } });
+    expect(
+      store.get(nodesAtom).find((node) => node.id === "a")?.data.enabled
+    ).toBe(false);
+
+    store.set(updateNodeDataAtom, { id: "a", data: { enabled: true } });
+    expect(
+      store.get(nodesAtom).find((node) => node.id === "a")?.data.enabled
+    ).toBeUndefined();
+  });
+});
+
 describe("copy and paste", () => {
   it("pastes a clone beside the original and selects it", () => {
     const store = createGraphStore(
@@ -1482,6 +1498,21 @@ describe("setGroupEnabledAtom", () => {
     expect(members.every((node) => node.data.enabled === false)).toBe(true);
 
     store.set(undoAtom);
+    expect(
+      store
+        .get(nodesAtom)
+        .filter((node) => node.parentId === frameId)
+        .every((node) => node.data.enabled === undefined)
+    ).toBe(true);
+  });
+
+  it("clears the flag when the frame is switched back on", () => {
+    const store = groupedGraph();
+    const frameId = store.get(nodesAtom).find((node) => isGroupNode(node))?.id;
+
+    store.set(setGroupEnabledAtom, { groupId: frameId ?? "", enabled: false });
+    store.set(setGroupEnabledAtom, { groupId: frameId ?? "", enabled: true });
+
     expect(
       store
         .get(nodesAtom)

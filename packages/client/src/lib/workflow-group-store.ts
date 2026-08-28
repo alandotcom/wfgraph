@@ -8,6 +8,7 @@
 import { atom } from "jotai";
 import { nanoid } from "nanoid";
 import { groupSelection, ungroupNode } from "#src/lib/node-group";
+import { canonicalizeNodeEnabled } from "@wfgraph/shared/graph/node-enabled";
 import {
   childIdsOfGroup,
   fanOutStoreEdges,
@@ -118,7 +119,13 @@ export const setGroupEnabledAtom = atom(
       nodesStateAtom,
       nodes.map((node) =>
         memberIds.has(node.id)
-          ? { ...node, data: { ...node.data, enabled: input.enabled } }
+          ? {
+              ...node,
+              data: canonicalizeNodeEnabled({
+                ...node.data,
+                enabled: input.enabled,
+              }),
+            }
           : node
       )
     );

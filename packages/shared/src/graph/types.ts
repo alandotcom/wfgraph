@@ -22,6 +22,10 @@ export type PersistedNodeData = {
   description?: string;
   type: WorkflowNodeType;
   config?: Record<string, unknown>;
+  /**
+   * Absent means on. Only `false` is stored; `true` is the same as omitting
+   * the key, so persist and the publication diff drop it.
+   */
   enabled?: boolean;
 };
 

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createSerializedWorkflowGraph } from "#src/graph/graph";
+import {
+  createSerializedWorkflowGraph,
+  toWorkflowGraphData,
+} from "#src/graph/graph";
 import type { WorkflowGraphNodeInput } from "#src/graph/graph";
 
 function step(id: string): WorkflowGraphNodeInput {
@@ -29,5 +32,45 @@ describe("createSerializedWorkflowGraph", () => {
 
     expect(graph.nodes.map((node) => node.key)).toEqual(["a", "b"]);
     expect(graph.edges.map((edge) => edge.key)).toEqual(["e1"]);
+  });
+
+  it("omits enabled: true because a missing key is already on", () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        {
+          ...step("on"),
+          data: { ...step("on").data, enabled: true },
+        },
+        {
+          ...step("off"),
+          data: { ...step("off").data, enabled: false },
+        },
+      ],
+      edges: [],
+    });
+
+    expect(graph.nodes[0]?.attributes.data.enabled).toBeUndefined();
+    expect(graph.nodes[1]?.attributes.data.enabled).toBe(false);
+  });
+
+  it("drops a stored enabled: true when reading a graph", () => {
+    const omitted = createSerializedWorkflowGraph({
+      nodes: [step("a")],
+      edges: [],
+    });
+    const storedOn = {
+      ...omitted,
+      nodes: omitted.nodes.map((node) => ({
+        ...node,
+        attributes: {
+          ...node.attributes,
+          data: { ...node.attributes.data, enabled: true },
+        },
+      })),
+    };
+
+    expect(
+      toWorkflowGraphData(storedOn).nodes[0]?.data.enabled
+    ).toBeUndefined();
   });
 });
