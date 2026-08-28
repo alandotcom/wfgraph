@@ -4,6 +4,7 @@ import { useExtensionCatalog } from "#src/components/extension-catalog-provider"
 import { useAfterCommit } from "#src/hooks/effects";
 import { nodesAtom } from "#src/lib/workflow-graph-store";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
+import type { TemplateAutocompleteAnchor } from "./place-template-autocomplete";
 import {
   type BadgeEditor,
   type BadgeRange,
@@ -45,10 +46,12 @@ export function useTemplateBadgeField(input: {
 
   const [isFocused, setIsFocused] = useState(false);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
-  const [autocompletePosition, setAutocompletePosition] = useState({
-    top: 0,
-    left: 0,
-  });
+  const [autocompleteAnchor, setAutocompleteAnchor] =
+    useState<TemplateAutocompleteAnchor>({
+      top: 0,
+      bottom: 0,
+      left: 0,
+    });
   const [autocompleteFilter, setAutocompleteFilter] = useState("");
   const [atSignPosition, setAtSignPosition] = useState<number | null>(null);
 
@@ -116,9 +119,13 @@ export function useTemplateBadgeField(input: {
 
     const rect = containerRef.current?.getBoundingClientRect();
     if (rect) {
-      setAutocompletePosition({
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX,
+      // Viewport coordinates: the menu is `position: fixed`. Adding scroll
+      // here used to shove it down the page, and the old clamp then pulled it
+      // back over the caret.
+      setAutocompleteAnchor({
+        top: rect.top,
+        bottom: rect.bottom,
+        left: rect.left,
       });
     }
     setShowAutocomplete(true);
@@ -312,8 +319,8 @@ export function useTemplateBadgeField(input: {
 
   return {
     attachEditor,
+    autocompleteAnchor,
     autocompleteFilter,
-    autocompletePosition,
     handleBlur,
     handleFocus,
     handleInput,

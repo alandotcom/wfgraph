@@ -42,8 +42,8 @@ export function TemplateBadgeTextarea({
 }: TemplateBadgeTextareaProps) {
   const {
     attachEditor,
+    autocompleteAnchor,
     autocompleteFilter,
-    autocompletePosition,
     closeAutocomplete,
     handleAutocompleteSelect,
     handleBlur,
@@ -101,7 +101,7 @@ export function TemplateBadgeTextarea({
         isOpen={showAutocomplete}
         onClose={closeAutocomplete}
         onSelect={handleAutocompleteSelect}
-        position={autocompletePosition}
+        anchor={autocompleteAnchor}
       />
     </>
   );
