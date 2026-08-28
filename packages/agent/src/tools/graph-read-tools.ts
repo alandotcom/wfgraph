@@ -10,6 +10,7 @@
 import { Effect, Schema } from "effect";
 import { Tool } from "effect/unstable/ai";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
+import { persistedNodeEnabled } from "@wfgraph/shared/graph/node-enabled";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { workflowTopologyRefusalReason } from "@wfgraph/shared/graph/workflow-topology";
 import {
@@ -101,6 +102,7 @@ export const graphReadToolHandlers = Effect.gen(function* () {
       Effect.map(draft.current, (document) => ({
         nodes: document.nodes.map((node) => {
           const actionType = actionTypeOf(node);
+          const enabled = persistedNodeEnabled(node.data.enabled);
           return {
             id: node.id,
             label: node.data.label,
@@ -109,7 +111,7 @@ export const graphReadToolHandlers = Effect.gen(function* () {
             ...(node.data.description === undefined
               ? {}
               : { description: node.data.description }),
-            ...(node.data.enabled === false ? { enabled: false } : {}),
+            ...(enabled === undefined ? {} : { enabled }),
             config: readableConfig(node),
           };
         }),

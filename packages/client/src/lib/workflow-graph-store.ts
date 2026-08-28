@@ -44,7 +44,10 @@ import {
   idsRemovedWith,
   refuseDeleteWithNotice,
 } from "#src/lib/node-group";
-import { canonicalizeNodeEnabled } from "@wfgraph/shared/graph/node-enabled";
+import {
+  canonicalizeNodeEnabled,
+  persistedNodeEnabled,
+} from "@wfgraph/shared/graph/node-enabled";
 import {
   fanOutStoreEdgeIds,
   orderGroupParentsFirst,
@@ -709,7 +712,8 @@ function isSameNode(existing: WorkflowNode, incoming: WorkflowNode): boolean {
     existing.position.y === incoming.position.y &&
     existing.data.label === incoming.data.label &&
     existing.data.description === incoming.data.description &&
-    (existing.data.enabled === false) === (incoming.data.enabled === false) &&
+    persistedNodeEnabled(existing.data.enabled) ===
+      persistedNodeEnabled(incoming.data.enabled) &&
     JSON.stringify(existing.data.config ?? {}) ===
       JSON.stringify(incoming.data.config ?? {})
   );
