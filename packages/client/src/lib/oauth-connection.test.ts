@@ -138,7 +138,7 @@ describe("OAuth connection helpers", () => {
     expect(sleep).toHaveBeenCalledOnce();
   });
 
-  it("stops after final status reads when the provider popup is closed", async () => {
+  it("answers abandoned after final status reads when the popup is closed", async () => {
     const popup = { closed: true };
     const getStatus = vi.fn().mockResolvedValue({ status: "pending" });
     const sleep = vi.fn(async () => undefined);
@@ -157,9 +157,33 @@ describe("OAuth connection helpers", () => {
       now: () => (reads >= 4 ? 100 : 0),
     });
 
-    expect(result).toEqual({ status: "pending" });
+    expect(result).toEqual({ status: "abandoned" });
     expect(getStatus).toHaveBeenCalledTimes(3);
     expect(sleep).toHaveBeenCalledTimes(2);
+  });
+
+  // The window is open and the attempt is still pending, which is the case a
+  // closed popup cannot account for. It answers separately so the caller can
+  // offer a retry rather than the sentence a person who walked away should read.
+  it("answers timed out when the poll window closes on an open popup", async () => {
+    const getStatus = vi.fn().mockResolvedValue({ status: "pending" });
+    const sleep = vi.fn(async () => undefined);
+    let elapsed = 0;
+
+    const result = await pollOAuthAttempt({
+      attemptId: "attempt_1",
+      popup: { closed: false },
+      getStatus,
+      sleep,
+      timeoutMs: 100,
+      now: () => {
+        const reading = elapsed;
+        elapsed += 50;
+        return reading;
+      },
+    });
+
+    expect(result).toEqual({ status: "timed_out" });
   });
 
   it("aborts while waiting between status requests", async () => {

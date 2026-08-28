@@ -114,13 +114,67 @@ describe("issues a provider-backed field raises", () => {
       kind: "missing_required_field",
       severity: "blocking",
       nodeId: "n1",
-      // The parent key, so opening the issue puts the cursor on the field that
-      // holds them; the variable's own name is in the label.
-      fieldKey: "emailTemplateVariables",
+      // The sub-input's own id, which is the element `useGoToStep` focuses. The
+      // parent key belongs to the fallback textarea, which is not on screen once
+      // the form has drawn, so naming it would focus nothing.
+      fieldKey: "emailTemplateVariables.DONOR_FIRST_NAME",
       fieldLabel: "Template Variables · DONOR_FIRST_NAME",
     });
     // Blocking is what stops the publish this used to let through.
     expect(hasBlockingWorkflowIssues(issues)).toBe(true);
+  });
+
+  // Two variables under one field used to answer the same `fieldKey`, which the
+  // issues list groups by node and keys its rows on, so one node missing two of
+  // them drew two rows React could not tell apart.
+  it("names each missing variable separately under one field", () => {
+    const issues = collect({
+      nodes: [node({ emailTemplateId: "tpl_1" })],
+      answer: {
+        status: "fields",
+        fields: [
+          {
+            key: "DONOR_FIRST_NAME",
+            label: "DONOR_FIRST_NAME",
+            required: true,
+          },
+          { key: "CITY", label: "CITY", required: true },
+        ],
+      },
+    });
+
+    expect(issues.map((issue) => issue.fieldKey)).toEqual([
+      "emailTemplateVariables.DONOR_FIRST_NAME",
+      "emailTemplateVariables.CITY",
+    ]);
+  });
+
+  // The panel stores a variable the provider declared `number` as a JSON number,
+  // and Resend marks a variable required whenever it has no fallback, so the two
+  // meet. Reading presence as "a non-blank string" reported a filled numeric
+  // variable as missing and blocked the publish with the value on screen.
+  it("counts a stored number as a value for a required numeric variable", () => {
+    const issues = collect({
+      nodes: [
+        node({
+          emailTemplateId: "tpl_1",
+          emailTemplateVariables: JSON.stringify({ DONATION_AMOUNT: 250 }),
+        }),
+      ],
+      answer: {
+        status: "fields",
+        fields: [
+          {
+            key: "DONATION_AMOUNT",
+            label: "DONATION_AMOUNT",
+            type: "number",
+            required: true,
+          },
+        ],
+      },
+    });
+
+    expect(issues).toEqual([]);
   });
 
   it("says nothing once the value is there", () => {

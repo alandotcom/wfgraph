@@ -26,6 +26,22 @@ export type OAuthAttemptStatus =
   | { status: "succeeded"; integrationId: string }
   | { status: "failed" };
 
+/**
+ * How a poll ended, which the server's own `pending` cannot say.
+ *
+ * The two terminal statuses are the server's verdict and travel through
+ * unchanged. The other two are this loop's: the attempt is still open at the
+ * server in both cases, and they are kept apart because the sentence a person
+ * needs is different. `timed_out` means nobody finished the authorization inside
+ * the window; `abandoned` means the popup went away while it was still pending,
+ * which is what closing it looks like from here.
+ */
+export type OAuthPollOutcome =
+  | { status: "succeeded"; integrationId: string }
+  | { status: "failed" }
+  | { status: "timed_out" }
+  | { status: "abandoned" };
+
 export type OAuthPopup = Pick<Window, "closed" | "close"> & {
   location: Pick<Location, "assign">;
   opener: Window | null;
@@ -191,14 +207,14 @@ export async function pollOAuthAttempt({
   sleep?: Sleep;
   now?: () => number;
   signal?: AbortSignal;
-}): Promise<OAuthAttemptStatus> {
+}): Promise<OAuthPollOutcome> {
   const startedAt = now();
   let closedPopupPolls = 0;
 
   while (true) {
     throwIfAborted(signal);
     if (now() - startedAt >= timeoutMs) {
-      return { status: "pending" };
+      return { status: "timed_out" };
     }
 
     // eslint-disable-next-line no-await-in-loop -- each status determines whether another request is needed.
@@ -214,7 +230,7 @@ export async function pollOAuthAttempt({
     if (popup.closed) {
       closedPopupPolls += 1;
       if (closedPopupPolls >= CLOSED_POPUP_FINAL_POLLS) {
-        return { status: "pending" };
+        return { status: "abandoned" };
       }
     } else {
       closedPopupPolls = 0;

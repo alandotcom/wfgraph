@@ -16,13 +16,20 @@
 import { useQueries } from "@tanstack/react-query";
 import { useMemo } from "react";
 import type { ConfigOptionsAnswer } from "#src/lib/rpc-client";
-import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
 import { configOptionsQueryOptions } from "#src/lib/rpc-query";
 import {
   type ExtensionCatalog,
   findAction,
 } from "@wfgraph/shared/extensions/catalog";
-import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
+import {
+  readProviderParameters,
+  settledProviderParameter,
+} from "#src/lib/provider-parameters";
+import {
+  hasProviderFieldValue,
+  type ProviderFieldValues,
+  readProviderFieldValues,
+} from "@wfgraph/shared/plugins/provider-field-values";
 import {
   type MissingRequiredFieldIssue,
   workflowNodeLabel,
@@ -45,18 +52,6 @@ type FieldQuestion = {
   readonly stored: string;
 };
 
-/** A value usable as a provider parameter: present, and not a node reference. */
-function settled(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  if (trimmed.length === 0 || findTemplateTokens(trimmed).length > 0) {
-    return undefined;
-  }
-  return trimmed;
-}
-
 function questionsFor(
   nodes: readonly WorkflowNode[],
   catalog: ExtensionCatalog
@@ -68,12 +63,12 @@ function questionsFor(
       continue;
     }
     const config = node.data.config ?? {};
-    const actionType = settled(config.actionType);
+    const actionType = settledProviderParameter(config.actionType);
     if (!actionType) {
       continue;
     }
     const action = findAction(catalog, actionType);
-    const integrationId = settled(config.integrationId);
+    const integrationId = settledProviderParameter(config.integrationId);
     if (!action || !integrationId) {
       continue;
     }
@@ -84,17 +79,10 @@ function questionsFor(
         continue;
       }
 
-      const parameters: Record<string, string> = {};
-      let askable = true;
-      for (const key of source.parameters ?? []) {
-        const value = settled(config[key]);
-        if (value === undefined) {
-          askable = false;
-          break;
-        }
-        parameters[key] = value;
-      }
-      if (!askable) {
+      // A node whose parameters have not settled is asked nothing, so it is
+      // judged by nothing. That is the same gate the config panel applies.
+      const { parameters, missing } = readProviderParameters(source, config);
+      if (missing.length > 0) {
         continue;
       }
 
@@ -118,15 +106,13 @@ function questionsFor(
 }
 
 /** The values this node already holds for that field, or nothing if unreadable. */
-function storedValues(text: string): JsonObject | null {
+function storedValues(text: string): ProviderFieldValues | null {
+  // Nothing stored is every required variable missing, which is the whole point
+  // of the check. Anything the form itself cannot read is handled below.
   if (text.trim().length === 0) {
     return {};
   }
-  try {
-    return readJsonObject(JSON.parse(text));
-  } catch {
-    return null;
-  }
+  return readProviderFieldValues(text);
 }
 
 function issuesFor(
@@ -145,21 +131,21 @@ function issuesFor(
   }
 
   return answer.fields
-    .filter((entry) => {
-      if (entry.required !== true) {
-        return false;
-      }
-      const value = values[entry.key];
-      return typeof value !== "string" || value.trim().length === 0;
-    })
+    .filter(
+      (entry) =>
+        entry.required === true && !hasProviderFieldValue(values, entry.key)
+    )
     .map((entry) => ({
       kind: "missing_required_field" as const,
       severity: "blocking" as const,
       nodeId: question.nodeId,
       nodeLabel: question.nodeLabel,
-      // The parent key, because that is the field the editor can put a cursor
-      // in; the variable's own name goes in the label a reader sees.
-      fieldKey: question.field.key,
+      // The sub-input's own id, which is what `useGoToStep` puts the cursor in:
+      // the ready form renders one input per variable under this exact key, and
+      // the parent key belongs to the fallback textarea the form replaced. It is
+      // also what keeps two missing variables on one node distinct in the issues
+      // list, which groups by node and keys its rows on this.
+      fieldKey: `${question.field.key}.${entry.key}`,
       fieldLabel: `${question.field.label} · ${entry.label}`,
       message: `Node "${question.nodeLabel}" is missing required field "${question.field.label} · ${entry.label}"`,
     }));

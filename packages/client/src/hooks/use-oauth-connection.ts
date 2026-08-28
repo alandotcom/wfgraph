@@ -90,8 +90,15 @@ export function useOAuthConnection({
         return;
       }
 
-      if (result.status === "pending") {
-        toast.message("Authorization is still pending");
+      // Neither outcome is the server's verdict, so nothing has changed and
+      // there is nothing to refresh. They are worded apart because the next
+      // step differs: a closed window is a decision, a timeout is a retry.
+      if (result.status === "abandoned") {
+        toast.message("Authorization was closed before it finished");
+        return;
+      }
+      if (result.status === "timed_out") {
+        toast.error("Authorization timed out. Try connecting again.");
         return;
       }
 

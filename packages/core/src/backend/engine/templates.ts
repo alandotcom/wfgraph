@@ -8,6 +8,7 @@ import {
   resolveOutputPath,
   type TemplateToken,
 } from "@wfgraph/shared/graph/node-references";
+import { readProviderFieldValues } from "@wfgraph/shared/plugins/provider-field-values";
 import type { NodeOutputs } from "#src/backend/engine/contracts";
 import { outputKey } from "#src/backend/engine/traversal";
 
@@ -127,7 +128,7 @@ function resolveTemplateObjectString(
   value: string,
   outputs: NodeOutputs
 ): string {
-  const entries = readTemplateObject(value);
+  const entries = readProviderFieldValues(value);
   if (!entries) {
     return resolveTemplateString(value, outputs);
   }
@@ -141,31 +142,6 @@ function resolveTemplateObjectString(
   // `JSON.stringify` is what escapes a resolved quotation mark or newline, and
   // doing it here rather than in the step is what keeps the boundary a string.
   return JSON.stringify(resolved);
-}
-
-/** The object of scalars this text holds, or nothing when it holds something else. */
-function readTemplateObject(
-  value: string
-): Record<string, string | number> | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value);
-  } catch {
-    return null;
-  }
-
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    return null;
-  }
-
-  const entries: Record<string, string | number> = {};
-  for (const [key, entry] of Object.entries(parsed)) {
-    if (typeof entry !== "string" && typeof entry !== "number") {
-      return null;
-    }
-    entries[key] = entry;
-  }
-  return entries;
 }
 
 /** One authored string with its references replaced. */

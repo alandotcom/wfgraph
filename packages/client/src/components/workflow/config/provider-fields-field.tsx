@@ -26,34 +26,21 @@ import { Label } from "#src/components/ui/label";
 import { ProviderFieldNotice } from "./provider-fallback";
 import type { ProviderFieldProps } from "./provider-select-field";
 import { useConfigOptions } from "./use-config-options";
+import {
+  type ProviderFieldValues,
+  readProviderFieldValues,
+} from "@wfgraph/shared/plugins/provider-field-values";
 
 /** The stored JSON, or nothing when it holds something this form cannot draw. */
-function readStoredObject(
-  value: unknown
-): Record<string, string | number> | null {
+function readStoredObject(value: unknown): ProviderFieldValues | null {
+  // A field nobody has touched holds no text, and an empty form is what draws
+  // over it. The shared reader answers unreadable there, because at the step
+  // boundary "nothing stored" and "an object with no members" differ.
   if (typeof value !== "string" || value.trim().length === 0) {
     return {};
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value);
-  } catch {
-    return null;
-  }
-
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    return null;
-  }
-
-  const entries: Record<string, string | number> = {};
-  for (const [key, entry] of Object.entries(parsed)) {
-    if (typeof entry !== "string" && typeof entry !== "number") {
-      return null;
-    }
-    entries[key] = entry;
-  }
-  return entries;
+  return readProviderFieldValues(value);
 }
 
 /**
@@ -121,7 +108,7 @@ export function ProviderFieldsField({
   const write = (key: string, next: string) => {
     // Keys the current selection does not declare are kept as they are: the
     // builder wrote them, and switching selections is something they can undo.
-    const entries: Record<string, string | number> = {};
+    const entries: ProviderFieldValues = {};
     for (const droppedKey of dropped) {
       const carried = stored[droppedKey];
       if (carried !== undefined) {
