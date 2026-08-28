@@ -30,7 +30,12 @@ import {
   oauthRegistrationContext,
   oauthUrlsFor,
 } from "#src/backend/services/integrations/oauth-registration";
-import { decodePublicOAuthClientMetadata } from "#src/backend/extensions/oauth";
+import {
+  decodePublicOAuthClientMetadata,
+  type IntegrationOAuth,
+  type OAuthExchangeInput,
+  type OAuthGrant,
+} from "#src/backend/extensions/oauth";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
 
@@ -70,6 +75,20 @@ function missingPublicUrl() {
   });
 }
 
+/**
+ * Run one provider call, naming the step and keeping the throw out of both the
+ * answer and the record.
+ *
+ * This is deliberately not `attemptVendorStep`, and the difference is the whole
+ * point of having two. That one carries the vendor's own exception message into
+ * the failure a caller reads, which is right for a connection test: "password
+ * authentication failed" is the answer the operator needs. Here the thrown value
+ * is an OAuth exception, which can hold a request URL carrying a code or a
+ * token, and a third-party adapter is under no obligation to have redacted it.
+ * So neither the failure nor the log line quotes it, and what identifies the
+ * failure is the operation, the provider and the integration id.
+ * `oauth.test.ts` holds this to an adapter whose message is a credential.
+ */
 const providerStep = <A>(input: {
   logger: EffectLogger;
   operation: string;
@@ -114,6 +133,62 @@ function validateOAuthCredentials(
   }
   return null;
 }
+
+/**
+ * The adapter and URLs a callback needs before it can talk to the provider.
+ *
+ * Both halves of the callback ask for exactly this, and both answer a failed
+ * attempt when it cannot be had, so the check lives once and the caller supplies
+ * the compensation. The PKCE arm is checked here rather than at the exchange
+ * because a verifier missing from a stored attempt says the attempt is damaged,
+ * which is worth knowing before a provider is contacted at all.
+ */
+const oauthCallbackPrelude = Effect.fn("oauthCallbackPrelude")(
+  function* (input: {
+    integrationType: string;
+    codeVerifier: string | undefined;
+    context: WfGraphAppContext["Service"];
+    extensions: ExtensionSet;
+  }) {
+    const oauth = input.extensions.oauthFor(input.integrationType);
+    if (!oauth) {
+      return yield* oauthUnavailable(input.integrationType);
+    }
+    const routeUrls = oauthUrlsFor(input.integrationType, input.context);
+    if (!routeUrls) {
+      return yield* missingPublicUrl();
+    }
+    if (oauth.pkce === "S256" && !input.codeVerifier) {
+      return yield* new InternalFailure({
+        error: "OAuth authorization could not be verified.",
+      });
+    }
+    return { oauth, routeUrls };
+  }
+);
+
+/**
+ * Trade the authorization code for a grant, adding the verifier when the
+ * adapter declared PKCE.
+ *
+ * The throw is unreachable: `oauthCallbackPrelude` refuses an S256 attempt with
+ * no verifier. It stands because the two are separate reads of the same
+ * `string | undefined`, and a throw inside a `providerStep` is a failed callback
+ * rather than a grant issued against no verifier.
+ */
+const exchangeCode = (
+  oauth: IntegrationOAuth,
+  input: OAuthExchangeInput,
+  codeVerifier: string | undefined
+): Promise<OAuthGrant> => {
+  if (oauth.pkce !== "S256") {
+    return oauth.exchange(input);
+  }
+  if (!codeVerifier) {
+    throw new Error("OAuth PKCE verifier is missing");
+  }
+  return oauth.exchange({ ...input, codeVerifier });
+};
 
 export type StartIntegrationOAuthInput =
   | { mode: "reconnect"; integrationId: string }
@@ -230,30 +305,21 @@ export const startIntegrationOAuth = Effect.fn("startIntegrationOAuth")(
     const expiresAt = new Date(
       Date.now() + OAUTH_ATTEMPT_LIFETIME_SECONDS * 1000
     );
-    const authorizationAttempt =
-      payload.kind === "create"
-        ? {
-            stateHash,
-            integrationId: null,
-            expiresAt,
-            browserBindingHash,
-            payload: {
-              ...payload,
-              ...(codeVerifier ? { codeVerifier } : {}),
-            },
-          }
-        : {
-            stateHash,
-            integrationId,
-            expiresAt,
-            browserBindingHash,
-            payload: {
-              ...payload,
-              ...(codeVerifier ? { codeVerifier } : {}),
-            },
-          };
+    const attempt = { stateHash, expiresAt, browserBindingHash };
+    const attemptPayload = {
+      ...payload,
+      ...(codeVerifier ? { codeVerifier } : {}),
+    };
     yield* repo
-      .createOAuthAuthorizationAttempt(authorizationAttempt)
+      .createOAuthAuthorizationAttempt(
+        // The input type pairs the foreign key with the payload kind, so the
+        // branch is what proves the pairing rather than a shape choice. A create
+        // attempt has no row to point at yet: the id it generated is sealed in
+        // the payload and becomes a row only once the callback succeeds.
+        attemptPayload.kind === "create"
+          ? { ...attempt, integrationId: null, payload: attemptPayload }
+          : { ...attempt, integrationId, payload: attemptPayload }
+      )
       .pipe(
         Effect.catchTag(
           "DatabaseError",
@@ -371,23 +437,20 @@ export const completeIntegrationOAuth = Effect.fn("completeIntegrationOAuth")(
 
     if (attempt.payload.kind === "create") {
       const pending = attempt.payload;
-      const oauth = extensions.oauthFor(pending.type);
-      if (!oauth) {
-        yield* failAttempt();
-        return yield* oauthUnavailable(pending.type);
-      }
-      const routeUrls = oauthUrlsFor(pending.type, context);
-      if (!routeUrls) {
-        yield* failAttempt();
-        return yield* missingPublicUrl();
-      }
       const codeVerifier = pending.codeVerifier;
-      if (oauth.pkce === "S256" && !codeVerifier) {
+      const prelude = yield* Effect.result(
+        oauthCallbackPrelude({
+          integrationType: pending.type,
+          codeVerifier,
+          context,
+          extensions,
+        })
+      );
+      if (Result.isFailure(prelude)) {
         yield* failAttempt();
-        return yield* new InternalFailure({
-          error: "OAuth authorization could not be verified.",
-        });
+        return yield* prelude.failure;
       }
+      const { oauth, routeUrls } = prelude.success;
       const createLogger = logger.with({
         integrationId: pending.integrationId,
       });
@@ -417,18 +480,7 @@ export const completeIntegrationOAuth = Effect.fn("completeIntegrationOAuth")(
           operation: "code exchange",
           integrationId: pending.integrationId,
           integrationType: pending.type,
-          run: () => {
-            if (oauth.pkce === "S256") {
-              if (!codeVerifier) {
-                throw new Error("OAuth PKCE verifier is missing");
-              }
-              return oauth.exchange({
-                ...exchangeInput,
-                codeVerifier,
-              });
-            }
-            return oauth.exchange(exchangeInput);
-          },
+          run: () => exchangeCode(oauth, exchangeInput, codeVerifier),
         })
       );
       if (Result.isFailure(exchange)) {
@@ -531,23 +583,20 @@ export const completeIntegrationOAuth = Effect.fn("completeIntegrationOAuth")(
       yield* failAttempt();
       return yield* new NotFound({ error: "Integration not found" });
     }
-    const oauth = extensions.oauthFor(integration.type);
-    if (!oauth) {
-      yield* failAttempt();
-      return yield* oauthUnavailable(integration.type);
-    }
-    const routeUrls = oauthUrlsFor(integration.type, context);
-    if (!routeUrls) {
-      yield* failAttempt();
-      return yield* missingPublicUrl();
-    }
     const codeVerifier = attempt.payload.codeVerifier;
-    if (oauth.pkce === "S256" && !codeVerifier) {
+    const prelude = yield* Effect.result(
+      oauthCallbackPrelude({
+        integrationType: integration.type,
+        codeVerifier,
+        context,
+        extensions,
+      })
+    );
+    if (Result.isFailure(prelude)) {
       yield* failAttempt();
-      return yield* new InternalFailure({
-        error: "OAuth authorization could not be verified.",
-      });
+      return yield* prelude.failure;
     }
+    const { oauth, routeUrls } = prelude.success;
     const claimInput = {
       integrationId: integration.id,
       claimId: stateHash,
@@ -597,18 +646,7 @@ export const completeIntegrationOAuth = Effect.fn("completeIntegrationOAuth")(
         operation: "code exchange",
         integrationId: integration.id,
         integrationType: integration.type,
-        run: () => {
-          if (oauth.pkce === "S256") {
-            if (!codeVerifier) {
-              throw new Error("OAuth PKCE verifier is missing");
-            }
-            return oauth.exchange({
-              ...exchangeInput,
-              codeVerifier,
-            });
-          }
-          return oauth.exchange(exchangeInput);
-        },
+        run: () => exchangeCode(oauth, exchangeInput, codeVerifier),
       })
     );
     if (Result.isFailure(exchange)) {

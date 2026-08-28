@@ -316,7 +316,13 @@ export const resolveIntegrationCredentials = Effect.fn(
 
   const repo = yield* IntegrationRepo;
   const claimId = globalThis.crypto.randomUUID();
-  if (!grant.tokens.refreshToken) {
+
+  // Take ownership of the refresh, answering with what the caller should do
+  // instead when it goes to somebody else. Both paths below claim, and the
+  // claim is deliberately not hoisted above them: the second checks its adapter
+  // first, and claiming before that check would leave the row owned by a
+  // refresh that then could not run.
+  const takeRefreshClaim = Effect.fn("takeOAuthRefreshClaim")(function* () {
     const claim = yield* repo
       .claimRefresh({
         integrationId,
@@ -334,6 +340,16 @@ export const resolveIntegrationCredentials = Effect.fn(
     if (claim.status === "lost") {
       return yield* awaitRefreshOwner(integrationId, metadata);
     }
+    return null;
+  });
+
+  // A grant with nothing to refresh with cannot be renewed, so the claim exists
+  // only to fence the row for the operator to reconnect.
+  if (!grant.tokens.refreshToken) {
+    const lost = yield* takeRefreshClaim();
+    if (lost) {
+      return lost;
+    }
     yield* markReauthorization(
       integrationId,
       claimId,
@@ -348,22 +364,9 @@ export const resolveIntegrationCredentials = Effect.fn(
   if (!urls || !oauth) {
     return yield* internal(REAUTHORIZE_MESSAGE);
   }
-  const claim = yield* repo
-    .claimRefresh({
-      integrationId,
-      claimId,
-      expectedRevision: integration.configRevision,
-    })
-    .pipe(
-      Effect.catchTag("DatabaseError", () =>
-        internal(TEMPORARILY_UNAVAILABLE_MESSAGE)
-      )
-    );
-  if (claim.status === "not_found") {
-    return yield* new NotFound({ error: "Integration not found" });
-  }
-  if (claim.status === "lost") {
-    return yield* awaitRefreshOwner(integrationId, metadata);
+  const lost = yield* takeRefreshClaim();
+  if (lost) {
+    return lost;
   }
 
   const registration = yield* Effect.result(
