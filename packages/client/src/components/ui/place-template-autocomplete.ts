@@ -11,7 +11,7 @@ export const TEMPLATE_AUTOCOMPLETE_WIDTH = 320;
 /** Cap on the scrolling option list. */
 export const TEMPLATE_AUTOCOMPLETE_MAX_HEIGHT = 240;
 
-/** Gap between the field and the menu, matching other popovers' `sideOffset`. */
+/** Gap between the field chrome and the menu. */
 export const TEMPLATE_AUTOCOMPLETE_GAP = 4;
 
 const VIEWPORT_PADDING = 8;

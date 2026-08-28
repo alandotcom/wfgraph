@@ -117,7 +117,11 @@ export function useTemplateBadgeField(input: {
     setAutocompleteFilter(filter);
     setAtSignPosition(lastAtSign);
 
-    const rect = containerRef.current?.getBoundingClientRect();
+    const field = containerRef.current;
+    // The bordered wrapper is the visual field. The editor is the inner
+    // contenteditable, whose box sits inside the padding and can be shorter
+    // than the line of text, so placing against it covers the caret.
+    const rect = (field?.parentElement ?? field)?.getBoundingClientRect();
     if (rect) {
       // Viewport coordinates: the menu is `position: fixed`. Adding scroll
       // here used to shove it down the page, and the old clamp then pulled it

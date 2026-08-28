@@ -545,7 +545,11 @@ describe("Template autocomplete placement", () => {
       <ControlledTemplateBadgeInput onValueChange={() => {}} />
     );
     const textbox = view.getByRole("textbox");
-    vi.spyOn(textbox, "getBoundingClientRect").mockReturnValue({
+    const fieldChrome = textbox.parentElement;
+    if (!(fieldChrome instanceof HTMLElement)) {
+      throw new Error("Expected the editor to sit inside a field wrapper");
+    }
+    vi.spyOn(fieldChrome, "getBoundingClientRect").mockReturnValue({
       x: 40,
       y: 720,
       width: 260,
@@ -580,7 +584,11 @@ describe("Template autocomplete placement", () => {
       <ControlledTemplateBadgeInput onValueChange={() => {}} />
     );
     const textbox = view.getByRole("textbox");
-    vi.spyOn(textbox, "getBoundingClientRect").mockReturnValue({
+    const fieldChrome = textbox.parentElement;
+    if (!(fieldChrome instanceof HTMLElement)) {
+      throw new Error("Expected the editor to sit inside a field wrapper");
+    }
+    vi.spyOn(fieldChrome, "getBoundingClientRect").mockReturnValue({
       x: 40,
       y: 120,
       width: 260,
