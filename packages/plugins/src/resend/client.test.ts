@@ -4,7 +4,9 @@ import { Effect } from "effect";
 import { afterEach, beforeEach } from "vitest";
 import {
   describeResendFailure,
+  getResendTemplate,
   listResendDomains,
+  listResendTemplates,
   readResendError,
   sendResendEmail,
 } from "#src/resend/client";
@@ -157,5 +159,218 @@ describe("listResendDomains", () => {
       expect(request?.method).toBe("GET");
       expect(request?.headers.get("content-type")).toBeNull();
     }).pipe(withTransport)
+  );
+});
+
+/**
+ * The template endpoints, as Resend's reference describes them: the list carries
+ * no variables and the retrieve does, which is why a picker needs both.
+ */
+describe("the Resend template endpoints", () => {
+  it.effect(
+    "asks for a full page and follows the cursor while more remain",
+    () =>
+      Effect.gen(function* () {
+        const pages = [
+          {
+            data: [
+              { id: "tpl_1", name: "Welcome", status: "published" },
+              { id: "tpl_2", name: "Draft one", status: "draft" },
+            ],
+            has_more: true,
+          },
+          {
+            data: [{ id: "tpl_3", name: "Reminder", status: "published" }],
+            has_more: false,
+          },
+        ];
+        let page = 0;
+        stubFetch(() => Response.json(pages[page++]));
+
+        const listing =
+          yield* listResendTemplates("re_key").pipe(withTransport);
+
+        expect(listing.templates.map((template) => template.id)).toEqual([
+          "tpl_1",
+          "tpl_2",
+          "tpl_3",
+        ]);
+        expect(listing.reachedPageLimit).toBe(false);
+        expect(requests[0]?.url).toBe(
+          "https://api.resend.com/templates?limit=100"
+        );
+        // The cursor is the last id of the page just read.
+        expect(requests[1]?.url).toBe(
+          "https://api.resend.com/templates?limit=100&after=tpl_2"
+        );
+        expect(requests[0]?.headers.get("authorization")).toBe("Bearer re_key");
+      })
+  );
+
+  it.effect("stops following once a page says there is no more", () =>
+    Effect.gen(function* () {
+      stubFetch(() =>
+        Response.json({
+          data: [{ id: "tpl_1", name: "Welcome", status: "published" }],
+          has_more: false,
+        })
+      );
+
+      yield* listResendTemplates("re_key").pipe(withTransport);
+
+      expect(requests).toHaveLength(1);
+    })
+  );
+
+  it.effect(
+    "reads one template's variables, encoding its id into the path",
+    () =>
+      Effect.gen(function* () {
+        stubFetch(() =>
+          Response.json({
+            id: "tpl_1",
+            name: "Welcome",
+            status: "published",
+            variables: [
+              { key: "FIRST_NAME", type: "string" },
+              { key: "CITY", type: "string", fallback_value: "Burbank" },
+              { key: "RETRIES", type: "number", fallback_value: null },
+            ],
+          })
+        );
+
+        const template = yield* getResendTemplate("re_key", "a b/c").pipe(
+          withTransport
+        );
+
+        expect(requests[0]?.url).toBe(
+          "https://api.resend.com/templates/a%20b%2Fc"
+        );
+        expect(template.variables?.map((variable) => variable.key)).toEqual([
+          "FIRST_NAME",
+          "CITY",
+          "RETRIES",
+        ]);
+        // A null fallback is a value Resend really sends, and it is not a default.
+        expect(template.variables?.[2]?.fallback_value).toBeNull();
+      })
+  );
+
+  it.effect("stops on a page that claims more while sending none", () =>
+    Effect.gen(function* () {
+      // No cursor to follow, so following it would repeat the same request.
+      stubFetch(() => Response.json({ data: [], has_more: true }));
+
+      const listing = yield* listResendTemplates("re_key").pipe(withTransport);
+
+      expect(listing.templates).toEqual([]);
+      expect(requests).toHaveLength(1);
+    })
+  );
+
+  it.effect("says so rather than truncating when it runs out of pages", () =>
+    Effect.gen(function* () {
+      let page = 0;
+      stubFetch(() =>
+        Response.json({
+          data: [{ id: `tpl_${page++}`, name: "One", status: "published" }],
+          has_more: true,
+        })
+      );
+
+      const listing = yield* listResendTemplates("re_key").pipe(withTransport);
+
+      // The bound is what keeps a config panel from waiting on an unbounded
+      // vendor loop, and the flag is what stops the caller passing a partial
+      // list off as the whole one.
+      expect(requests).toHaveLength(3);
+      expect(listing.reachedPageLimit).toBe(true);
+    })
+  );
+
+  it.effect(
+    "decodes the list response as Resend records it, extra fields and all",
+    () =>
+      Effect.gen(function* () {
+        stubFetch(() =>
+          Response.json({
+            object: "list",
+            data: [
+              {
+                id: "e169aa45-1ecf-4183-9955-b1499d5701d3",
+                object: "template",
+                name: "reset-password",
+                alias: "reset-password",
+                status: "draft",
+                published_at: null,
+                created_at: "2026-10-06 23:47:56.678+00",
+                updated_at: "2026-10-06 23:47:56.678+00",
+              },
+            ],
+            has_more: false,
+          })
+        );
+
+        const listing =
+          yield* listResendTemplates("re_key").pipe(withTransport);
+
+        // The schema is deliberately tolerant of everything this plugin ignores,
+        // and a recorded body is the only thing that proves it.
+        expect(listing.templates[0]?.name).toBe("reset-password");
+      })
+  );
+
+  it.effect("decodes the retrieve response as Resend records it", () =>
+    Effect.gen(function* () {
+      stubFetch(() =>
+        Response.json({
+          object: "template",
+          id: "34a080c9-0e07-4c1e-9b0f-2a2a5ec2c2f7",
+          current_version_id: "b269e8a4-5d1e-4a53-9d0b-6a3b0c1a2d3e",
+          alias: "reset-password",
+          name: "reset-password",
+          status: "published",
+          published_at: "2026-10-06 23:50:00.000+00",
+          created_at: "2026-10-06 23:47:56.678+00",
+          updated_at: "2026-10-06 23:47:56.678+00",
+          from: "Support <support@example.com>",
+          subject: "Reset your password",
+          reply_to: null,
+          html: "<h1>Hi</h1>",
+          text: "Hi",
+          has_unpublished_versions: true,
+          variables: [
+            {
+              id: "e169aa45-1ecf-4183-9955-b1499d5701d3",
+              key: "user_name",
+              type: "string",
+              fallback_value: "John Doe",
+              created_at: "2026-10-06 23:47:56.678+00",
+              updated_at: "2026-10-06 23:47:56.678+00",
+            },
+          ],
+        })
+      );
+
+      const template = yield* getResendTemplate(
+        "re_key",
+        "reset-password"
+      ).pipe(withTransport);
+
+      expect(template.variables?.[0]?.fallback_value).toBe("John Doe");
+    })
+  );
+
+  it.effect("refuses a template list that is not the documented shape", () =>
+    Effect.gen(function* () {
+      stubFetch(() => Response.json({ templates: [] }));
+
+      const error = yield* listResendTemplates("re_key").pipe(
+        withTransport,
+        failure
+      );
+
+      expect(error._tag).toBe("ExternalUnreadable");
+    })
   );
 });

@@ -14,6 +14,7 @@ plugins/[name]/
   index.test.ts      what the definition contributes: slugs, credentials, fields
   [subject].test.ts  the handlers, each run with a context the case supplies
   client.ts          the system's HTTP API, over fetch
+  config-options.ts  what a provider-backed config field asks the connection
   client.test.ts     what the client puts on the wire
   test.ts            the connection test the credentials UI runs
   icon.tsx           the SVG icon component
@@ -154,7 +155,15 @@ owns the rule.
 | `number`            | Numeric input                              | No        |
 | `select`            | Dropdown over `options`                    | No        |
 | `key-value`         | Dynamic key-value list                     | No        |
+| `provider-select`   | Dropdown over what the connection lists    | Yes       |
+| `provider-fields`   | One input per value the selection declares | Yes       |
 | `group`             | Collapsible section holding `fields`       | N/A       |
+
+The two provider-backed types take an `optionsSource` naming one entry of the integration's
+`configOptions`, and `checkIntegration` refuses a field wired to a provider that answers the
+wrong kind. Both fall back to the template control they replace, which is what a builder
+gets when no connection is chosen, when the grant cannot read what the field needs, or when
+the value is already a `{{...}}` reference. `resend/config-options.ts` is the worked example.
 
 `showWhen: { field, equals }` hides a field until another holds a value. `defaultExpanded`
 opens a group. A `select` may carry `defaultValue`. `literal: true` keeps a field out of

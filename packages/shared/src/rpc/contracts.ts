@@ -177,6 +177,7 @@ const configOptionsAnswerSchema = Schema.Union([
         defaultValue: Schema.optionalKey(Schema.String),
         description: Schema.optionalKey(Schema.String),
         type: Schema.optionalKey(Schema.Literals(["string", "number"])),
+        required: Schema.optionalKey(Schema.Boolean),
       })
     ),
   }),

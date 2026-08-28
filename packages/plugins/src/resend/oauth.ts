@@ -44,8 +44,13 @@ const RESEND_FULL_SCOPE = "full_access";
 /**
  * What Resend granted, worded as its consent page words it, so an operator
  * recognizes the connection's access as the thing they just approved.
+ *
+ * A scope this cannot name answers nothing rather than throwing. The label is
+ * what a dialog draws; the tokens beside it are what the connection runs on, and
+ * a refresh that threw here would turn a working grant into one an operator has
+ * to reauthorize over a word.
  */
-function accessLabelFromScope(scope: string): string {
+function accessLabelFromScope(scope: string): string | undefined {
   const granted = new Set(scope.split(/\s+/u).filter(Boolean));
   if (granted.has(RESEND_FULL_SCOPE)) {
     return "Full access";
@@ -53,8 +58,7 @@ function accessLabelFromScope(scope: string): string {
   if (granted.has(RESEND_SEND_SCOPE)) {
     return "Sending access";
   }
-  // The rejected value is not quoted: this string is persisted as a run error.
-  throw new Error("Resend OAuth returned an unrecognized scope");
+  return undefined;
 }
 
 const resendOAuthTokenResponseSchema = Schema.Struct({
@@ -159,11 +163,12 @@ async function requestOAuth<T extends Schema.ConstraintDecoder<unknown>>(
 }
 
 function tokenSet(response: ResendOAuthTokenResponse): OAuthTokenSet {
+  const accessLabel = accessLabelFromScope(response.scope);
   return {
     credentials: { RESEND_API_KEY: response.access_token },
     // Both `exchange` and `refresh` build their answer here, so a refresh that
     // narrows the grant updates the stored access label with no further work.
-    grantedAccessLabel: accessLabelFromScope(response.scope),
+    ...(accessLabel ? { grantedAccessLabel: accessLabel } : {}),
     tokens: {
       accessToken: response.access_token,
       refreshToken: response.refresh_token,

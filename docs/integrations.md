@@ -516,6 +516,44 @@ Order follows your entries, and Workflow Graph draws each key you left out after
 order. A group takes its position from your list, because its placement is a decision you
 make.
 
+### Fields the connection fills in
+
+A field whose choices live in the operator's own account names a provider instead of a
+static `options` list. `provider-select` draws a dropdown over what that provider lists;
+`provider-fields` draws one input per value it declares, stored as one JSON object under the
+one config key, so the handler still reads one string and parses it.
+
+```ts
+configOptions: {
+  templates: {
+    answers: "options",
+    load: async () => (await import("./config-options")).templateOptions,
+  },
+},
+// ...on the action:
+configFields: [
+  {
+    key: "templateId",
+    label: "Template",
+    type: "provider-select",
+    optionsSource: { provider: "templates" },
+  },
+],
+```
+
+A provider is a function of the connection's credentials and the sibling config values its
+`optionsSource.parameters` named. It answers options, fields, or `unavailable` with a
+sentence saying what is wrong, because a provider refusing is something the builder acts on
+rather than a failed request. Return `unavailable` for a refusal and let anything else
+throw: the credentials never leave the server, and neither does the text of an exception,
+which can carry a request URL holding a key.
+
+Every one of these falls back to the template control it replaces. A builder with no
+connection chosen, a grant too narrow to read what the field needs, or a value that is
+already a `{{...}}` reference still types the value themselves. `checkIntegration` refuses a
+field naming a provider that does not exist or answers the wrong kind, so the wiring fails in
+your own suite rather than in someone's panel.
+
 ## Testing an integration
 
 `@wfgraph/core/testing` runs one action the way a workflow runs it, through the config decode,

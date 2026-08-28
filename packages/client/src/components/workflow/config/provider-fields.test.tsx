@@ -61,7 +61,7 @@ function renderFields(options: {
     );
   }
 
-  render(
+  const { unmount } = render(
     <ExtensionCatalogProvider value={emptyExtensionCatalog}>
       <QueryClientProvider client={queryClient}>
         <ActionConfigRenderer
@@ -73,7 +73,7 @@ function renderFields(options: {
     </ExtensionCatalogProvider>
   );
 
-  return { onUpdateConfig };
+  return { onUpdateConfig, unmount };
 }
 
 describe("a provider-backed picker", () => {
@@ -139,6 +139,39 @@ describe("a provider-backed picker", () => {
     });
 
     expect(screen.queryByRole("combobox")).toBeNull();
+  });
+
+  it("keeps one row height across every state it can be in", () => {
+    // The toggle sits beside the control, and the two controls are different
+    // heights, so without a floor on the row the whole panel below jumps each
+    // time it is pressed.
+    const rowClass = (): string | undefined =>
+      screen.getByRole("button", {
+        name: /upstream value|Choose from the connection/u,
+      }).parentElement?.className;
+
+    const { unmount } = renderFields({
+      config: { integrationId: "int_1" },
+      fields: [templateField],
+      seed: [
+        {
+          provider: "templates",
+          answer: {
+            status: "options",
+            options: [{ value: "tpl_1", label: "Welcome" }],
+          },
+        },
+      ],
+    });
+    const picking = rowClass();
+    expect(picking).toContain("min-h-9");
+
+    fireEvent.click(screen.getByRole("button", { name: /upstream value/u }));
+    expect(rowClass()).toBe(picking);
+    unmount();
+
+    renderFields({ config: {}, fields: [templateField] });
+    expect(rowClass()).toBe(picking);
   });
 
   it("switches to the template editor and back again", () => {
@@ -352,6 +385,55 @@ describe("a provider-backed field set", () => {
     expect(JSON.parse(String(written?.emailTemplateVariables))).toEqual({
       RETRIES: 3,
     });
+  });
+
+  it("marks a variable the template has no default for", () => {
+    renderFields({
+      config: withTemplate,
+      fields: [variablesField],
+      seed: [
+        {
+          provider: "template-variables",
+          parameters: { emailTemplateId: "tpl_1" },
+          answer: {
+            status: "fields",
+            fields: [
+              { key: "FIRST_NAME", label: "FIRST_NAME", required: true },
+              { key: "CITY", label: "CITY", defaultValue: "Burbank" },
+            ],
+          },
+        },
+      ],
+    });
+
+    // Resend refuses the send without it, so the empty box says so where the
+    // builder is looking rather than waiting for the run to fail.
+    expect(screen.getByText(/no default for FIRST_NAME/u)).toBeTruthy();
+    expect(screen.queryByText(/no default for CITY/u)).toBeNull();
+  });
+
+  it("stops marking it once a value is there", () => {
+    renderFields({
+      config: {
+        ...withTemplate,
+        emailTemplateVariables: JSON.stringify({ FIRST_NAME: "Ada" }),
+      },
+      fields: [variablesField],
+      seed: [
+        {
+          provider: "template-variables",
+          parameters: { emailTemplateId: "tpl_1" },
+          answer: {
+            status: "fields",
+            fields: [
+              { key: "FIRST_NAME", label: "FIRST_NAME", required: true },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(screen.queryByText(/no default for FIRST_NAME/u)).toBeNull();
   });
 
   it("keeps a hand-written value that is not a JSON object", () => {

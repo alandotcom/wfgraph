@@ -1,4 +1,8 @@
-import { listResendDomains, readResendError } from "#src/resend/client";
+import {
+  classifyResendFailure,
+  listResendDomains,
+  readResendError,
+} from "#src/resend/client";
 import type { ResendCredentials } from "#src/resend/index";
 import { callExternalAsync } from "@wfgraph/core/plugin";
 import type {
@@ -53,14 +57,15 @@ export async function testResend(
       ? readResendError(failure.payload)
       : undefined;
 
-  // A send-only credential proves itself by the refusal rather than the listing,
-  // because it cannot list domains at all. A manual key answers
-  // "restricted_api_key"; an OAuth token granted `emails:send` answers
-  // "invalid_permission". A grant carrying `full_access` lists the domains and
-  // never reaches here.
+  // A send-only credential proves itself by the refusal rather than by the
+  // listing, because it cannot list domains at all. Which refusal proves it
+  // depends on where the credential came from: a manual key is restricted, and
+  // a token is scoped. A grant carrying `full_access` lists the domains and
+  // never reaches here, and a key Resend has turned off refuses differently.
+  const refusal = classifyResendFailure(failure);
   if (
-    body?.name === "restricted_api_key" ||
-    (isOAuthAccessToken && body?.name === "invalid_permission")
+    refusal === "send_only_key" ||
+    (isOAuthAccessToken && refusal === "insufficient_scope")
   ) {
     return { success: true };
   }

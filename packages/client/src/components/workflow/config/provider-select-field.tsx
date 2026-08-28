@@ -61,7 +61,7 @@ export function ProviderSelectField({
 
   const modeToggle = (
     <Button
-      className="h-7 shrink-0 px-2"
+      className="size-7 shrink-0 p-0"
       disabled={disabled}
       onClick={() => {
         // Switching clears the value, because neither control can hold what the
@@ -84,13 +84,18 @@ export function ProviderSelectField({
     </Button>
   );
 
+  const row = (control: React.ReactNode) => (
+    // `min-h-9` is the taller of the two controls, which the template editor
+    // sets. Without it the row is 8px shorter in the picker mode and the whole
+    // panel below jumps every time the toggle is pressed.
+    <div className="flex min-h-9 items-start gap-1">
+      <div className="min-w-0 flex-1">{control}</div>
+      {modeToggle}
+    </div>
+  );
+
   if (asTemplate) {
-    return (
-      <div className="flex items-start gap-1">
-        <div className="min-w-0 flex-1">{templateInput}</div>
-        {modeToggle}
-      </div>
-    );
+    return row(templateInput);
   }
 
   if (state.state === "ready" && state.answer.status === "options") {
@@ -106,32 +111,31 @@ export function ProviderSelectField({
         ? [{ value: stored, label: stored }, ...listed]
         : listed;
 
-    return (
-      <div className="flex items-start gap-1">
-        <Select
-          disabled={disabled}
-          items={items}
-          onValueChange={onChange}
-          value={stored}
-        >
-          <SelectTrigger className="min-w-0 flex-1" id={field.key}>
-            <SelectValue placeholder={field.placeholder ?? "Choose one"} />
-          </SelectTrigger>
-          <SelectContent>
-            {items.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {modeToggle}
-      </div>
+    return row(
+      <Select
+        disabled={disabled}
+        items={items}
+        onValueChange={onChange}
+        value={stored}
+      >
+        <SelectTrigger className="w-full" id={field.key}>
+          <SelectValue placeholder={field.placeholder ?? "Choose one"} />
+        </SelectTrigger>
+        <SelectContent>
+          {items.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     );
   }
 
   if (state.state === "loading") {
-    return (
+    // The same height the answered row settles at, so arriving options do not
+    // move the panel either.
+    return row(
       <div
         aria-busy="true"
         className="h-9 w-full animate-pulse rounded-md bg-muted motion-reduce:animate-none"
@@ -142,10 +146,7 @@ export function ProviderSelectField({
   return (
     <div className="flex flex-col gap-2">
       <ProviderFieldNotice state={state} />
-      <div className="flex items-start gap-1">
-        <div className="min-w-0 flex-1">{templateInput}</div>
-        {modeToggle}
-      </div>
+      {row(templateInput)}
     </div>
   );
 }

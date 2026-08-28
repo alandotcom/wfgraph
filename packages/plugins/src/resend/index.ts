@@ -263,6 +263,22 @@ export const resend = defineIntegration({
 
   test: async () => (await import("#src/resend/test")).testResend,
 
+  // Lazy for the reason `test` is: the template calls stay out of the process
+  // until someone opens the node's config panel and asks.
+  configOptions: {
+    templates: {
+      answers: "options",
+      load: async () =>
+        (await import("#src/resend/config-options")).resendTemplateOptions,
+    },
+    "template-variables": {
+      answers: "fields",
+      load: async () =>
+        (await import("#src/resend/config-options"))
+          .resendTemplateVariableFields,
+    },
+  },
+
   actions: {
     "send-email": {
       label: "Send Email",
@@ -353,9 +369,10 @@ export const resend = defineIntegration({
         },
         {
           key: "emailTemplateId",
-          label: "Template ID",
-          type: "template-input",
-          placeholder: "tpl_xxxxxxxx",
+          label: "Template",
+          type: "provider-select",
+          placeholder: "Choose a template",
+          optionsSource: { provider: "templates" },
           showWhen: {
             field: "emailContentMode",
             equals: "template",
@@ -363,10 +380,14 @@ export const resend = defineIntegration({
         },
         {
           key: "emailTemplateVariables",
-          label: "Template Variables (JSON)",
-          type: "template-textarea",
+          label: "Template Variables",
+          type: "provider-fields",
           rows: 6,
           placeholder: '{"FIRST_NAME":"Alice","APPOINTMENT_AT":"2026-03-10"}',
+          optionsSource: {
+            provider: "template-variables",
+            parameters: ["emailTemplateId"],
+          },
           showWhen: {
             field: "emailContentMode",
             equals: "template",

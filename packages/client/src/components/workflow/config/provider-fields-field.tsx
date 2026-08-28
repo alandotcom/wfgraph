@@ -176,6 +176,14 @@ export function ProviderFieldsField({
   );
 }
 
+/**
+ * One input, and whether the provider will refuse the run without it.
+ *
+ * A value the provider has no default for has to be supplied or the send fails,
+ * so the empty state is drawn as wrong here rather than left to surface as a
+ * failed run. The field marks itself `invalid` for the same reason it marks
+ * itself required: the builder is looking at it now.
+ */
 function ProviderSubField({
   entry,
   parentKey,
@@ -190,19 +198,33 @@ function ProviderSubField({
   disabled?: boolean;
 }) {
   const id = `${parentKey}.${entry.key}`;
+  const missing = entry.required === true && value.trim().length === 0;
 
   return (
     <div className="flex flex-col gap-1">
       <Label className="ml-1 text-xs" htmlFor={id} id={`${id}-label`}>
         {entry.label}
+        {entry.required && (
+          <span aria-hidden="true" className="text-destructive">
+            *
+          </span>
+        )}
       </Label>
       <TemplateBadgeInput
         disabled={disabled}
         id={id}
+        invalid={missing}
         labelledBy={`${id}-label`}
         onChange={(next) => onChange(typeof next === "string" ? next : "")}
+        required={entry.required}
         value={value}
       />
+      {missing && (
+        <p className="ml-1 text-destructive text-xs">
+          This template has no default for {entry.label}, so the send needs a
+          value here.
+        </p>
+      )}
       {entry.description && (
         <p className="ml-1 text-muted-foreground text-xs">
           {entry.description}

@@ -28,6 +28,39 @@ describe("the resend integration", () => {
     expect(integration.oauth?.pkce).toBe("S256");
   });
 
+  it("wires both template fields to a provider that answers their kind", () => {
+    expect(Object.keys(integration.configOptions ?? {})).toEqual([
+      "templates",
+      "template-variables",
+    ]);
+    expect(integration.configOptions?.templates?.answers).toBe("options");
+    expect(integration.configOptions?.["template-variables"]?.answers).toBe(
+      "fields"
+    );
+
+    const fields = integration.actions["send-email"].configFields ?? [];
+    const templateField = fields.find(
+      (field) => "key" in field && field.key === "emailTemplateId"
+    );
+    const variablesField = fields.find(
+      (field) => "key" in field && field.key === "emailTemplateVariables"
+    );
+
+    expect(templateField).toMatchObject({
+      type: "provider-select",
+      optionsSource: { provider: "templates" },
+    });
+    // The variables question is parameterised by the template, so the picker
+    // above has to be answered before this one can be asked.
+    expect(variablesField).toMatchObject({
+      type: "provider-fields",
+      optionsSource: {
+        provider: "template-variables",
+        parameters: ["emailTemplateId"],
+      },
+    });
+  });
+
   it("offers every field the step returns, described by the schema", () => {
     expect(
       requireOutputFieldsFromSchema(

@@ -234,23 +234,27 @@ describe("Resend OAuth granted access", () => {
     ).resolves.toMatchObject({ grantedAccessLabel: "Sending access" });
   });
 
-  it("rejects a scope it cannot name, without quoting the response", async () => {
+  it("names no access rather than failing over a scope it cannot word", async () => {
+    // The label is cosmetic and the tokens beside it are not. Throwing here
+    // would turn a refresh into a connection an operator has to reauthorize.
+    await expect(grantedFor("contacts:read")).resolves.toBeUndefined();
+  });
+
+  it("still issues the tokens when it cannot word the scope", async () => {
     stubFetch(() =>
       Response.json({ ...tokenResponse, scope: "contacts:read" })
     );
 
-    const result = await oauth
-      .exchange({
+    await expect(
+      oauth.exchange({
         client,
         code: "authorization-code",
         redirectUri: clientContext.callbackUrl,
         codeVerifier: "code-verifier",
       })
-      .catch((error: unknown) => String(error));
-
-    expect(result).toContain("unrecognized scope");
-    expect(result).not.toContain("contacts:read");
-    expect(result).not.toContain(tokenResponse.access_token);
+    ).resolves.toMatchObject({
+      credentials: { RESEND_API_KEY: tokenResponse.access_token },
+    });
   });
 });
 
