@@ -10,68 +10,76 @@ import {
 import { makeRecordingLogger } from "#src/backend/lib/effect/test-layers";
 
 describe("internalFailure", () => {
-  it("logs the underlying error and answers with the caller's message", async () => {
-    const recorder = makeRecordingLogger();
-    const cause = new Error("connection refused");
+  it.effect(
+    "logs the underlying error and answers with the caller's message",
+    () =>
+      Effect.gen(function* () {
+        const recorder = makeRecordingLogger();
+        const cause = new Error("connection refused");
 
-    const failure = await Effect.runPromise(
-      Effect.fail(new DatabaseError({ cause })).pipe(
-        Effect.catchTag(
-          "DatabaseError",
-          internalFailure(recorder.logger, "Failed to list API keys")
-        ),
-        Effect.flip
-      )
-    );
+        const failure = yield* Effect.fail(new DatabaseError({ cause })).pipe(
+          Effect.catchTag(
+            "DatabaseError",
+            internalFailure(recorder.logger, "Failed to list API keys")
+          ),
+          Effect.flip
+        );
 
-    assert.instanceOf(failure, InternalFailure);
-    assert.strictEqual(failure.error, "Failed to list API keys");
-    assert.deepStrictEqual(recorder.lines, [
-      {
-        message: "Failed to list API keys: connection refused",
-        properties: { error: cause },
-      },
-    ]);
-  });
+        assert.instanceOf(failure, InternalFailure);
+        assert.strictEqual(failure.error, "Failed to list API keys");
+        assert.deepStrictEqual(recorder.lines, [
+          {
+            message: "Failed to list API keys: connection refused",
+            properties: { error: cause },
+          },
+        ]);
+      })
+  );
 });
 
 describe("internalFailureFromCause", () => {
-  it("keeps the underlying message in the log and out of the caller response", async () => {
-    const recorder = makeRecordingLogger();
-    const cause = new Error("duplicate key value violates unique constraint");
+  it.effect(
+    "keeps the underlying message in the log and out of the caller response",
+    () =>
+      Effect.gen(function* () {
+        const recorder = makeRecordingLogger();
+        const cause = new Error(
+          "duplicate key value violates unique constraint"
+        );
 
-    const failure = await Effect.runPromise(
-      Effect.fail(new DatabaseError({ cause })).pipe(
-        Effect.catchTag(
-          "DatabaseError",
-          internalFailureFromCause(
-            Effect.succeed(recorder.logger),
-            "Failed to save current workflow"
-          )
-        ),
-        Effect.flip,
-        Effect.provide(recorder.layer)
-      )
-    );
+        const failure = yield* Effect.fail(new DatabaseError({ cause })).pipe(
+          Effect.catchTag(
+            "DatabaseError",
+            internalFailureFromCause(
+              Effect.succeed(recorder.logger),
+              "Failed to save current workflow"
+            )
+          ),
+          Effect.flip,
+          Effect.provide(recorder.layer)
+        );
 
-    assert.instanceOf(failure, InternalFailure);
-    assert.strictEqual(failure.error, "Failed to save current workflow");
-    assert.deepStrictEqual(recorder.lines, [
-      {
-        message:
-          "Failed to save current workflow: duplicate key value violates unique constraint",
-        properties: { error: cause },
-      },
-    ]);
-  });
+        assert.instanceOf(failure, InternalFailure);
+        assert.strictEqual(failure.error, "Failed to save current workflow");
+        assert.deepStrictEqual(recorder.lines, [
+          {
+            message:
+              "Failed to save current workflow: duplicate key value violates unique constraint",
+            properties: { error: cause },
+          },
+        ]);
+      })
+  );
 
   // The entrypoints whose two sentences differ: the operator greps for the log
   // line, while the caller is told what they asked for failed.
-  it("uses the caller's own message", async () => {
-    const recorder = makeRecordingLogger();
+  it.effect("uses the caller's own message", () =>
+    Effect.gen(function* () {
+      const recorder = makeRecordingLogger();
 
-    const failure = await Effect.runPromise(
-      Effect.fail(new DatabaseError({ cause: "connection lost" })).pipe(
+      const failure = yield* Effect.fail(
+        new DatabaseError({ cause: "connection lost" })
+      ).pipe(
         Effect.catchTag(
           "DatabaseError",
           internalFailureFromCause(
@@ -82,24 +90,24 @@ describe("internalFailureFromCause", () => {
         ),
         Effect.flip,
         Effect.provide(recorder.layer)
-      )
-    );
+      );
 
-    assert.strictEqual(failure.error, "Failed to execute workflow");
-    assert.strictEqual(
-      recorder.lines[0]?.message,
-      "Failed to start workflow execution: connection lost"
-    );
-  });
+      assert.strictEqual(failure.error, "Failed to execute workflow");
+      assert.strictEqual(
+        recorder.lines[0]?.message,
+        "Failed to start workflow execution: connection lost"
+      );
+    })
+  );
 
   // One policy covers both seams, which is why it reads `cause` rather than
   // naming the class it came from.
-  it("answers a refused Inngest send the same way", async () => {
-    const recorder = makeRecordingLogger();
-    const cause = new Error("inngest dev server unreachable");
+  it.effect("answers a refused Inngest send the same way", () =>
+    Effect.gen(function* () {
+      const recorder = makeRecordingLogger();
+      const cause = new Error("inngest dev server unreachable");
 
-    const failure = await Effect.runPromise(
-      Effect.fail(new InngestError({ cause })).pipe(
+      const failure = yield* Effect.fail(new InngestError({ cause })).pipe(
         Effect.catchTag(
           "InngestError",
           internalFailureFromCause(
@@ -109,13 +117,13 @@ describe("internalFailureFromCause", () => {
         ),
         Effect.flip,
         Effect.provide(recorder.layer)
-      )
-    );
+      );
 
-    assert.strictEqual(failure.error, "Failed to cancel execution");
-    assert.strictEqual(
-      recorder.lines[0]?.message,
-      "Failed to cancel execution: inngest dev server unreachable"
-    );
-  });
+      assert.strictEqual(failure.error, "Failed to cancel execution");
+      assert.strictEqual(
+        recorder.lines[0]?.message,
+        "Failed to cancel execution: inngest dev server unreachable"
+      );
+    })
+  );
 });

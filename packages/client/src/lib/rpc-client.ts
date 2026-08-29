@@ -10,6 +10,8 @@ import { omitBy } from "es-toolkit/object";
 import { getBasePath } from "#src/lib/base-path";
 import type { RpcContract } from "@wfgraph/shared/rpc/contracts";
 import { getRpcErrorMessage } from "@wfgraph/shared/rpc/error-message";
+import { readJsonObject } from "@wfgraph/shared/types/json";
+import { asNonEmptyString } from "@wfgraph/shared/types/string";
 import type { WorkflowApiPayload } from "@wfgraph/shared/graph/api-contracts";
 import {
   createSerializedWorkflowGraph,
@@ -73,11 +75,18 @@ export function toSerializedGraph(input: {
 
 export class ApiError extends Error {
   status: number;
+  /**
+   * The machine-readable code the server put on the failure, when it put one
+   * there. A call site branches on this rather than on the message, which is
+   * written for a person and may be reworded at any time.
+   */
+  code?: string;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.status = status;
     this.name = "ApiError";
+    this.code = code;
   }
 }
 
@@ -195,9 +204,14 @@ const link = new RPCLink({
         }
 
         if (error instanceof ORPCError) {
+          // An oRPC error's data arrives as decoded JSON, so a plain object is
+          // the only shape with a `code` to read. A string body, an array or a
+          // null reads back as null and leaves the code unset.
+          const payload = readJsonObject(error.data);
           throw new ApiError(
             ORPC_CODE_TO_STATUS[error.code] ?? 500,
-            getRpcErrorMessage(error.data ?? error.message)
+            getRpcErrorMessage(error.data ?? error.message),
+            asNonEmptyString(payload?.code)
           );
         }
 

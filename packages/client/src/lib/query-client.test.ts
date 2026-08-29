@@ -44,6 +44,31 @@ describe("mutationErrorToast", () => {
     ).toBeNull();
   });
 
+  // The publish mutation claims the two coded publication conflicts and nothing
+  // else, because its own onError is skipped once the review that started it has
+  // unmounted. Whatever the predicate refuses still has to reach a toast.
+  it("says nothing when the call site's predicate claims the failure", () => {
+    expect(
+      mutationErrorToast(
+        new ApiError(409, "Published elsewhere", "workflow_publish_stale"),
+        {
+          errorShownByCaller: (error) =>
+            error instanceof ApiError &&
+            error.code === "workflow_publish_stale",
+        }
+      )
+    ).toBeNull();
+  });
+
+  it("speaks for a failure the call site's predicate leaves alone", () => {
+    expect(
+      mutationErrorToast(new ApiError(500, "Failed to publish workflow"), {
+        errorShownByCaller: (error) =>
+          error instanceof ApiError && error.code === "workflow_publish_stale",
+      })
+    ).toBe("Failed to publish workflow");
+  });
+
   it("has something to say about a rejection that is not an Error", () => {
     expect(mutationErrorToast("dropped connection", {})).toBe("Request failed");
   });

@@ -6,10 +6,12 @@ import {
   InternalFailure,
   InvalidInput,
   NotFound,
+  PublicationConflict,
   type ServiceFailure,
   Unauthorized,
 } from "#src/backend/lib/effect/failures";
 import { toOrpcError } from "#src/backend/rpc/errors";
+import { PUBLICATION_CONFLICT_CODES } from "@wfgraph/shared/rpc/error-codes";
 
 /**
  * The two edges every service failure leaves through.
@@ -31,6 +33,14 @@ const failures: Array<[ServiceFailure, string, number]> = [
   [new Unauthorized({ error: "Invalid API key" }), "UNAUTHORIZED", 401],
   [new NotFound({ error: "Workflow not found" }), "NOT_FOUND", 404],
   [new Conflict({ error: "Name already taken" }), "CONFLICT", 409],
+  [
+    new PublicationConflict({
+      error: "This workflow was published elsewhere. Refresh and try again.",
+      code: PUBLICATION_CONFLICT_CODES.stale,
+    }),
+    "CONFLICT",
+    409,
+  ],
   [
     new InternalFailure({ error: "Failed to list API keys" }),
     "INTERNAL_SERVER_ERROR",
@@ -60,6 +70,23 @@ describe("toOrpcError", () => {
       error: "Invalid integration references in workflow",
       code: "integration_validation_failed",
       invalidIntegrationIds: ["int_1", "int_2"],
+    });
+  });
+
+  // The editor recovers from these two by their code: it ends the review the
+  // publish was built on, or reports that there was nothing to publish. Reading
+  // the sentence instead would break the moment the wording changed.
+  it("carries the publication conflict code through to the client", () => {
+    const error = toOrpcError(
+      new PublicationConflict({
+        error: "This workflow graph is already published.",
+        code: PUBLICATION_CONFLICT_CODES.alreadyPublished,
+      })
+    );
+
+    assert.deepStrictEqual(error.data, {
+      error: "This workflow graph is already published.",
+      code: "workflow_already_published",
     });
   });
 });

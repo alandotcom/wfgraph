@@ -109,6 +109,23 @@ export function refreshWorkflowList(queryClient: QueryClient) {
   });
 }
 
+/**
+ * The open workflow's own entry, re-read after publication moved elsewhere.
+ *
+ * The editor's draft is safe from this: the canvas graph is hydrated by the route loader and
+ * lives in jotai afterwards, so the only thing reading this entry is the
+ * publication badge's select, and what comes back is the version metadata the
+ * next publish has to be reviewed against.
+ */
+export function refreshWorkflowPublication(
+  queryClient: QueryClient,
+  workflowId: string
+) {
+  return queryClient.invalidateQueries({
+    queryKey: orpcQuery.workflow.getById.queryKey({ input: { workflowId } }),
+  });
+}
+
 /** Version history for every workflow filter, refreshed after a publication. */
 export function refreshWorkflowVersionHistory(queryClient: QueryClient) {
   return queryClient.invalidateQueries({
@@ -117,9 +134,12 @@ export function refreshWorkflowVersionHistory(queryClient: QueryClient) {
 }
 
 /**
- * Write the publication flag a save or publish just answered with into the
- * open workflow's getById entry. The list procedure does not carry this field
- * (no draft graph), so the badge reads getById and nowhere else.
+ * Write the publication flag a write just settled into the open workflow's
+ * getById entry. A save or a publish answers with the version fields beside it;
+ * a publish refused because the draft is already the published graph carries
+ * the flag alone, and that refusal writes it here too. The list procedure does
+ * not carry this field (no draft graph), so the badge reads getById and nowhere
+ * else.
  */
 export function cacheWorkflowPublication(
   queryClient: QueryClient,

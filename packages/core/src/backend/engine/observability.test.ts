@@ -1,16 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { trace } from "@opentelemetry/api";
-import {
-  BasicTracerProvider,
-  InMemorySpanExporter,
-  SimpleSpanProcessor,
-} from "@opentelemetry/sdk-trace-base";
 import { Effect, Layer, Logger, References } from "effect";
 import { noWorkflowActions } from "#src/backend/engine/actions";
 import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
 import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import { executeWaitAction } from "#src/backend/engine/wait";
+import {
+  recordSpans,
+  type SpanRecording,
+} from "#src/backend/lib/effect/span-test-support";
 import { TracerBridgeLayer } from "#src/backend/lib/effect/tracer";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
@@ -56,20 +54,14 @@ function recordingLogger() {
 }
 
 describe("engine Effect spans", () => {
-  let exporter: InMemorySpanExporter;
-  let provider: BasicTracerProvider;
+  let spanRecording: SpanRecording;
 
   beforeEach(() => {
-    exporter = new InMemorySpanExporter();
-    provider = new BasicTracerProvider({
-      spanProcessors: [new SimpleSpanProcessor(exporter)],
-    });
-    trace.setGlobalTracerProvider(provider);
+    spanRecording = recordSpans();
   });
 
   afterEach(async () => {
-    await provider.shutdown();
-    trace.disable();
+    await spanRecording.stop();
   });
 
   test("preserves execution, node, and action span names and attributes", async () => {
@@ -96,9 +88,8 @@ describe("engine Effect spans", () => {
       createRecordingWorkflowStore(),
       noWorkflowActions
     );
-    await provider.forceFlush();
 
-    const spans = exporter.getFinishedSpans();
+    const spans = await spanRecording.finished();
     const execution = spans.find(
       (span) => span.name === "wfgraph.workflow.execution"
     );
@@ -170,12 +161,9 @@ describe("engine Effect spans", () => {
         resolveTemplates: (value) => value,
       }).pipe(Effect.provide(TracerBridgeLayer))
     );
-    await provider.forceFlush();
 
     expect(result.result.success).toBe(false);
-    const wait = exporter
-      .getFinishedSpans()
-      .find((span) => span.name === "wfgraph.workflow.wait");
+    const wait = await spanRecording.named("wfgraph.workflow.wait");
     expect(wait?.attributes).toMatchObject({
       "wfgraph.wait.type": "delay",
       "wfgraph.node.id": "wait_1",
@@ -213,10 +201,9 @@ describe("engine Effect spans", () => {
         Effect.provide(Layer.merge(TracerBridgeLayer, capturedLogger.layer))
       )
     );
-    await provider.forceFlush();
 
     expect(capturedLogger.messages).toContain("Wait durable callback observed");
-    const spans = exporter.getFinishedSpans();
+    const spans = await spanRecording.finished();
     const wait = spans.find(
       (span) =>
         span.name === "wfgraph.workflow.wait" &&

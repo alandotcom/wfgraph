@@ -7,6 +7,7 @@ import {
   NotFound,
 } from "#src/backend/lib/effect/failures";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
+import { annotateServiceSpan } from "#src/backend/lib/telemetry";
 import { cancelInFlightRuns } from "#src/backend/services/executions/end-runs";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 
@@ -22,10 +23,11 @@ const loggerFor = (executionId: string) =>
     appLogger.get("execution-cancel").with({ executionId })
   );
 
-export const postExecutionCancel = Effect.fn("postExecutionCancel")(
+export const postExecutionCancel = Effect.fn("wfgraph.execution.cancel")(
   function* (executionId: string) {
     const repo = yield* ExecutionRepo;
     const logger = yield* loggerFor(executionId);
+    yield* annotateServiceSpan({ executionId });
 
     const workflowId = yield* repo.findWorkflowIdById(executionId);
 
@@ -33,6 +35,8 @@ export const postExecutionCancel = Effect.fn("postExecutionCancel")(
       yield* logger.warn("Execution not found for cancel");
       return yield* new NotFound({ error: "Execution not found" });
     }
+
+    yield* annotateServiceSpan({ workflowId });
 
     // The same read `getExecutionStatus` answers a poll with, checked against
     // the statuses a run can still leave. A Lifecycle Rules Cancel Event reaches
@@ -47,6 +51,7 @@ export const postExecutionCancel = Effect.fn("postExecutionCancel")(
 
     if (!isInFlight) {
       yield* logger.warn("Execution is not in flight and cannot be cancelled");
+      yield* annotateServiceSpan({ outcome: "already_finished" });
       return yield* new Conflict({
         error: "Execution has already finished",
       });
@@ -89,6 +94,8 @@ export const postExecutionCancel = Effect.fn("postExecutionCancel")(
     if (ended.endedExecutionIds.length === 0) {
       yield* logger.info("Execution was already terminal when cancel landed");
     }
+
+    yield* annotateServiceSpan({ outcome: "canceled" });
 
     const cancelled: CancelExecutionSuccess = {
       success: true,

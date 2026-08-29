@@ -12,6 +12,7 @@
 
 import { Effect } from "effect";
 import { Extensions } from "#src/backend/lib/effect/extensions";
+import { annotateServiceSpan } from "#src/backend/lib/telemetry";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import {
   IntegrationValidationFailed,
@@ -139,7 +140,9 @@ export function checkUnreachableSubtrees(input: {
  * a graph naming ids this server cannot use is a different answer from a graph
  * the builder can finish in the editor.
  */
-export const checkPublishReadiness = Effect.fn("checkPublishReadiness")(
+export const checkPublishReadiness = Effect.fn(
+  "wfgraph.workflow.publish_readiness"
+)(
   function* (input: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }) {
     const { nodes, edges } = input;
     const { catalog } = yield* Extensions;
@@ -177,9 +180,9 @@ export const checkPublishReadiness = Effect.fn("checkPublishReadiness")(
       });
     }
 
-    // Not redundant, however much it looks it: every refusal above leaves by a
-    // `return`, and `consistent-return` refuses a function that mixes those
-    // with an implicit one. Falling off the end here is a lint error.
-    return yield* Effect.void;
-  }
+    // The span carries no identifier of its own: it runs inside the publish span,
+    // which names the workflow, and this takes a graph rather than a row.
+    return "ready" as const;
+  },
+  Effect.tap((outcome) => annotateServiceSpan({ outcome }))
 );

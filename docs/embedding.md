@@ -535,7 +535,9 @@ onto whichever provider `@opentelemetry/api` answers with. That provider is reso
 per span, so a host may register before or after `createWfGraphApp`, and a host that
 registers nothing gets no-op spans.
 
-Five names arrive, all under the `wfgraph-workflows` instrumentation scope:
+Every span name below is a stable contract, and all of them arrive under the
+`wfgraph-workflows` instrumentation scope. Five come from the engine, one per unit
+of work inside a run:
 
 | Span                              | Opened for                        | Attributes                                                                                           |
 | --------------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------- |
@@ -544,6 +546,32 @@ Five names arrive, all under the `wfgraph-workflows` instrumentation scope:
 | `wfgraph.workflow.node.execute`   | each node                         | `wfgraph.node.id`, `wfgraph.node.name`, `wfgraph.node.type`, and `wfgraph.action.type` on an action  |
 | `wfgraph.workflow.action.execute` | the action inside a node          | `wfgraph.action.type`, `wfgraph.node.id`, `wfgraph.node.name`                                        |
 | `wfgraph.workflow.wait`           | a Wait node                       | `wfgraph.wait.type` (`delay` or `event`), `wfgraph.node.id`, `wfgraph.node.name`                     |
+
+Nine more come from the services behind the API, one per request the editor or a
+host makes. Each carries the identifiers it is about, and a span nested inside
+another leaves the parent's identifiers to the parent rather than repeating them.
+Where a call has a verdict worth reading, `wfgraph.outcome` names it in one machine
+word:
+
+| Span                                 | Opened for                             | Attributes beyond the identifiers                                                                             |
+| ------------------------------------ | -------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `wfgraph.workflow.publish`           | minting a version from the draft       | `wfgraph.workflow.version.id` and `.number` on success; `wfgraph.outcome` is `published` or the conflict code |
+| `wfgraph.workflow.publish_readiness` | the readiness battery, under a publish | `wfgraph.outcome` is `ready`; a refusal leaves the span with the error recorded                               |
+| `wfgraph.workflow.version.compare`   | a draft diffed against a version       | `wfgraph.workflow.version.base_id`                                                                            |
+| `wfgraph.workflow.version.history`   | a page of the version list             | none                                                                                                          |
+| `wfgraph.workflow.version.restore`   | a version copied back to the draft     | `wfgraph.workflow.version.id`                                                                                 |
+| `wfgraph.execution.start`            | a manual run request                   | `wfgraph.execution.id` once a run opens; `wfgraph.outcome` is `running` or `ignored`                          |
+| `wfgraph.execution.load_workflow`    | the published version a start reads    | `wfgraph.workflow.version.id`                                                                                 |
+| `wfgraph.execution.preflight`        | the checks that version must pass      | `wfgraph.workflow.version.id`                                                                                 |
+| `wfgraph.execution.cancel`           | cancelling a run                       | `wfgraph.outcome` is `canceled` or `already_finished`                                                         |
+
+A service function outside that table opens a span named after the function
+itself. Those names are internal and change with the code.
+
+**An attribute is an identifier.** A workflow id, an execution id, a version id
+and one outcome word are the whole of it. A graph, a request body, an Event
+payload, a step output and a credential are stored where they can be read whole,
+and a trace backend shows an attribute to everyone who can read the trace.
 
 **A Wait ends the trace.** Inngest parks the invocation and wakes a separate one, and
 nothing carries the trace context across that boundary, so each branch run opens a root

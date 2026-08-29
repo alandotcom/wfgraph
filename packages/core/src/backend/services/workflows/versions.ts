@@ -7,6 +7,7 @@ import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
+import { annotateServiceSpan } from "#src/backend/lib/telemetry";
 import {
   redactSensitiveData,
   redactWorkflowGraph,
@@ -113,8 +114,11 @@ function versionNotFound(): NotFound {
 }
 
 /** Returns immutable versions newest first, with a cursor strictly before its version. */
-export const getWorkflowVersionHistory = Effect.fn("getWorkflowVersionHistory")(
+export const getWorkflowVersionHistory = Effect.fn(
+  "wfgraph.workflow.version.history"
+)(
   function* (input: WorkflowVersionHistoryInput) {
+    yield* annotateServiceSpan({ workflowId: input.workflowId });
     const repo = yield* WorkflowRepo;
     const limit = input.limit ?? WORKFLOW_VERSION_HISTORY_DEFAULT_LIMIT;
     const exists = yield* repo.existsById(input.workflowId);
@@ -151,8 +155,11 @@ export const getWorkflowVersionHistory = Effect.fn("getWorkflowVersionHistory")(
 );
 
 /** Compares a historical graph with the exact draft supplied by the editor. */
-export const compareWorkflowVersion = Effect.fn("compareWorkflowVersion")(
+export const compareWorkflowVersion = Effect.fn(
+  "wfgraph.workflow.version.compare"
+)(
   function* (input: WorkflowComparisonInput) {
+    yield* annotateServiceSpan({ workflowId: input.workflowId });
     const repo = yield* WorkflowRepo;
     const logger = yield* loggerFor(input.workflowId);
     const workflow = yield* repo.findById(input.workflowId);
@@ -171,6 +178,10 @@ export const compareWorkflowVersion = Effect.fn("compareWorkflowVersion")(
       yield* logger.warn("Workflow version not found for comparison");
       return yield* versionNotFound();
     }
+
+    // A comparison with no base reads against the empty graph; the helper drops
+    // the key rather than recording an absent version as an empty attribute.
+    yield* annotateServiceSpan({ baseVersionId: baseVersion?.id });
 
     const baseGraph = baseVersion
       ? (yield* prepareGraphSave({ graph: baseVersion.graph })).graph
@@ -207,8 +218,14 @@ export const compareWorkflowVersion = Effect.fn("compareWorkflowVersion")(
 );
 
 /** Copies a version graph to the draft while keeping the published version live. */
-export const restoreWorkflowVersion = Effect.fn("restoreWorkflowVersion")(
+export const restoreWorkflowVersion = Effect.fn(
+  "wfgraph.workflow.version.restore"
+)(
   function* (input: WorkflowRestoreVersionInput) {
+    yield* annotateServiceSpan({
+      workflowId: input.workflowId,
+      versionId: input.versionId,
+    });
     const repo = yield* WorkflowRepo;
     const logger = yield* loggerFor(input.workflowId);
     const workflow = yield* repo.findById(input.workflowId);

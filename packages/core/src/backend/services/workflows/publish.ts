@@ -6,8 +6,12 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
-import { Conflict, NotFound } from "#src/backend/lib/effect/failures";
+import {
+  NotFound,
+  PublicationConflict,
+} from "#src/backend/lib/effect/failures";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
+import { annotateServiceSpan } from "#src/backend/lib/telemetry";
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import { toWorkflowApiPayload } from "#src/backend/services/workflows/mappers";
 import type { WorkflowPublishPayload } from "@wfgraph/shared/graph/api-contracts";
@@ -20,16 +24,20 @@ import {
 } from "#src/backend/services/workflows/version-digest";
 import { semanticWorkflowGraphsEqual } from "#src/backend/services/workflows/semantic-graph";
 import { generateId } from "@wfgraph/shared/utils/id";
+import { PUBLICATION_CONFLICT_CODES } from "@wfgraph/shared/rpc/error-codes";
+
+// Three branches refuse a publish whose expectedPublishedVersionId no longer
+// matches the row; they share one sentence and one code.
+const stalePublish = () =>
+  new PublicationConflict({
+    error: "This workflow was published elsewhere. Refresh and try again.",
+    code: PUBLICATION_CONFLICT_CODES.stale,
+  });
 
 const loggerFor = (workflowId: string) =>
   Effect.map(AppLogger, (appLogger) =>
     appLogger.get("publish").with({ workflowId })
   );
-
-const STALE_PUBLISH_MESSAGE =
-  "This workflow was published elsewhere. Refresh and try again.";
-const CURRENT_GRAPH_PUBLISHED_MESSAGE =
-  "This workflow graph is already published.";
 
 /**
  * Publish the graph the editor sent as an immutable version.
@@ -39,9 +47,10 @@ const CURRENT_GRAPH_PUBLISHED_MESSAGE =
  * inactive. Publishing the graph already current is refused. Every other
  * confirmed publish claims the current maximum version plus one.
  */
-export const publishWorkflow = Effect.fn("publishWorkflow")(
+export const publishWorkflow = Effect.fn("wfgraph.workflow.publish")(
   function* (input: WorkflowPublishInput) {
     const { workflowId, graph, expectedPublishedVersionId } = input;
+    yield* annotateServiceSpan({ workflowId });
     const repo = yield* WorkflowRepo;
     const { catalog } = yield* Extensions;
     const logger = yield* loggerFor(workflowId);
@@ -51,7 +60,7 @@ export const publishWorkflow = Effect.fn("publishWorkflow")(
       return yield* new NotFound({ error: "Workflow not found" });
     }
     if (workflow.publishedVersionId !== expectedPublishedVersionId) {
-      return yield* new Conflict({ error: STALE_PUBLISH_MESSAGE });
+      return yield* stalePublish();
     }
 
     const prepared = yield* prepareGraphSave({ graph }).pipe(
@@ -77,10 +86,13 @@ export const publishWorkflow = Effect.fn("publishWorkflow")(
     const fingerprint = catalogFingerprint(catalog);
     const current = yield* repo.findPublishedVersion(workflowId);
     if ((current?.id ?? null) !== expectedPublishedVersionId) {
-      return yield* new Conflict({ error: STALE_PUBLISH_MESSAGE });
+      return yield* stalePublish();
     }
     if (current && semanticWorkflowGraphsEqual(current.graph, prepared.graph)) {
-      return yield* new Conflict({ error: CURRENT_GRAPH_PUBLISHED_MESSAGE });
+      return yield* new PublicationConflict({
+        error: "This workflow graph is already published.",
+        code: PUBLICATION_CONFLICT_CODES.alreadyPublished,
+      });
     }
 
     const latest = yield* repo.findLatestVersion(workflowId);
@@ -100,7 +112,7 @@ export const publishWorkflow = Effect.fn("publishWorkflow")(
       yield* logger.warn("Rejected workflow publish: version race", {
         expectedVersion,
       });
-      return yield* new Conflict({ error: STALE_PUBLISH_MESSAGE });
+      return yield* stalePublish();
     }
     if (!published) {
       return yield* new NotFound({ error: "Workflow not found" });
@@ -122,6 +134,22 @@ export const publishWorkflow = Effect.fn("publishWorkflow")(
     };
     return payload;
   },
+  // The span's verdict, from the answer rather than from each site that reached
+  // it. A confirmed publish names the version it minted; a refusal the editor
+  // recovers from names the code its recovery is chosen by, so a trace shows
+  // which of the two ended the publish. Every other failure names no outcome.
+  Effect.tap((payload) =>
+    annotateServiceSpan({
+      versionId: payload.publishedVersionId,
+      versionNumber: payload.publishedVersion,
+      outcome: "published",
+    })
+  ),
+  Effect.tapError((failure) =>
+    failure._tag === "PublicationConflict"
+      ? annotateServiceSpan({ outcome: failure.code })
+      : Effect.void
+  ),
   (effect, input) =>
     effect.pipe(
       Effect.catchTag(
