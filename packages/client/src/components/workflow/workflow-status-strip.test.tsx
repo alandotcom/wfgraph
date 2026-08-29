@@ -94,8 +94,13 @@ function workflowPayload(overrides: {
     isOwner: true,
     graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
     hasUnpublishedChanges: overrides.hasUnpublishedChanges,
+    // A published workflow always carries both: the id the version is read by
+    // and the number every surface names it with.
     ...(overrides.publishedVersionId
-      ? { publishedVersionId: overrides.publishedVersionId }
+      ? {
+          publishedVersionId: overrides.publishedVersionId,
+          publishedVersion: 1,
+        }
       : {}),
   };
 }
@@ -125,12 +130,13 @@ function renderStrip(
   options: {
     executionId?: string;
     hasUnsavedChanges?: boolean;
+    isOwner?: boolean;
     mode?: "live" | "test";
     published?: boolean;
   } = {}
 ) {
   const store = createStore();
-  store.set(isWorkflowOwnerAtom, true);
+  store.set(isWorkflowOwnerAtom, options.isOwner ?? true);
   store.set(currentWorkflowIdAtom, WORKFLOW_ID);
   store.set(hasUnsavedChangesAtom, options.hasUnsavedChanges ?? false);
   // The route loader's hydrate writes the id and the mode together, so the
@@ -232,9 +238,10 @@ describe("WorkflowStatusStrip", () => {
     const { view } = renderStrip({ mode: "test", published: true });
 
     await waitFor(() => {
-      expect(view.getByText("Unpublished changes")).toBeTruthy();
+      expect(
+        view.getByText("Unpublished changes since version 1")
+      ).toBeTruthy();
     });
-    expect(view.getByText("Unpublished changes")).toBeTruthy();
     expect(view.queryByText("Test mode")).toBeNull();
     expect(view.getByText("Saved")).toBeTruthy();
     expect(view.queryByText("Back to draft")).toBeNull();
@@ -244,6 +251,66 @@ describe("WorkflowStatusStrip", () => {
     const { view } = renderStrip({ mode: "test" });
 
     expect(view.queryByText("Test mode")).toBeNull();
+  });
+
+  // Published mode left the toolbar for this row, so it now sits one divider
+  // from the badge naming the version it governs.
+  it("carries Published mode beside the publication badge", async () => {
+    const { view } = renderStrip({ mode: "test", published: true });
+
+    const mode = await view.findByRole("button", {
+      name: "Published mode: Test",
+    });
+    expect(mode.textContent).toContain("Test");
+    expect(mode.className).toContain("text-warning");
+
+    const badge = view.getByText("Unpublished changes since version 1");
+    expect(
+      badge.compareDocumentPosition(mode) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  it("offers both modes as one clause each", async () => {
+    const { view } = renderStrip({ published: true });
+
+    const mode = await view.findByRole("button", {
+      name: "Published mode: Live",
+    });
+    fireEvent.keyDown(mode, { key: "ArrowDown" });
+    fireEvent.keyUp(mode, { key: "ArrowDown" });
+
+    const live = view.getByRole("menuitemradio", { name: /Real recipients/ });
+    expect(live.getAttribute("aria-checked")).toBe("true");
+    expect(
+      view.getByRole("menuitemradio", { name: /Test recipients/ })
+    ).toBeTruthy();
+    // Something is published, so the setting is already in force and says
+    // nothing about when it starts to matter.
+    expect(view.queryByText("Takes effect on publish")).toBeNull();
+  });
+
+  // The mode is set before the first publish too, and the menu is where the
+  // reader is told it is waiting for one.
+  it("says when the mode starts to matter before the first publish", async () => {
+    const { view } = renderStrip();
+
+    const mode = await view.findByRole("button", {
+      name: "Published mode: Live",
+    });
+    fireEvent.keyDown(mode, { key: "ArrowDown" });
+    fireEvent.keyUp(mode, { key: "ArrowDown" });
+
+    expect(view.getByText("Takes effect on publish")).toBeTruthy();
+  });
+
+  it("refuses the mode to anyone but the owner, and says why", async () => {
+    const { view } = renderStrip({ isOwner: false, published: true });
+
+    const mode = await view.findByRole("button", {
+      name: "Published mode: Live",
+    });
+    expect(mode.hasAttribute("disabled")).toBe(true);
+    expect(mode.getAttribute("title")).toBe("Owner only");
   });
 
   it("switches to the run state and offers the way back to the draft", async () => {

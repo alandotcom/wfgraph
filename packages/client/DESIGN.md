@@ -137,7 +137,7 @@ An achromatic graphite ramp carries the entire interface; saturated hues exist o
 
 ### Tertiary (signals)
 
-Each signal is one token carrying both the fill and the text form, and each light-mode value is solved so its text form clears 4.5:1 on its own 10% tint, which is the `bg-x/10 text-x` pattern the run panel uses throughout.
+Each signal is one token carrying both the fill and the text form. On Paper every light-mode value clears the 4.5:1 body floor as text: Amber 5.05:1, Green 5.01:1, Red 4.77:1, Blue 6.72:1. Its own 10% tint costs it about six tenths of a point, which leaves Red at 4.01:1, Green at 4.35:1 and Amber at 4.42:1, so the `bg-x/10 text-x` pattern is below the floor for the three of them at Caption and Body sizes; Blue holds at 5.76:1. Where words have to be read at those sizes, drop the fill and let the signal carry a dot, the border, or the word itself on Paper, which is what the dashboard's "Sends to" pill does. Closing that gap for the tint pattern itself takes a second step per signal, a foreground tuned against the tinted ground; until those tokens exist, a tinted band carrying its own signal text is a known shortfall.
 
 - **Signal Red** (oklch(0.577 0.245 27.325)): Destructive actions and failed runs. `--destructive`.
 - **Signal Green** (oklch(0.526 0.148 149.58)): Successful runs. `--success`.
@@ -259,21 +259,30 @@ and version history. Entering **Runs** or **Changes** opens the inspector.
 Collapsing or dismissing the inspector doesn't change the active view.
 
 A Panel-toned status strip closes the canvas column: 32px tall, Caption type, a
-hairline top border, and one line that never wraps. It identifies **Runs** and
-**Changes**, explains that editing is off, and provides **Back to draft**. With
-a read-only view on the canvas, the strip tints toward `--info`. Its height
-remains constant because the strip and graph share the column height.
+hairline top border, and one line that never wraps. Editing the draft it names
+the published version and carries **Published mode** one divider from it, as a
+ghost menu button reading Live or Test behind a dot: outline for Live, filled
+and Signal Amber for Test. The setting sits there because the badge beside it
+names the version the mode governs, and one control naming that version is
+enough. The strip also identifies **Runs** and **Changes**, explains that
+editing is off, and provides **Back to draft**. With a read-only view on the
+canvas, the strip tints toward `--info`. Its height remains constant because the
+strip and graph share the column height.
 
 The 44px editor toolbar spans the full editor shell. Workflow navigation,
 **Actions**, and **Settings** form the leading group. The 320px search control
-stays centered in the shell and hides at 70rem or narrower; its keyboard
-shortcut remains available. The workspace control, **Published mode**, the Run
-split button, and **Publish** form the trailing group. A Test Published mode
-uses Signal Amber because it changes where a published version's messages go.
-The split button's face is **Run draft**, which always sends to test
-recipients; its menu holds the run of the published version, named for that
-version and the mode it honours. Publication state stays in the status strip,
-separate from Published mode.
+stays centered in the shell, hides at 70rem or narrower, and is written between
+the two groups so Tab reaches it where the eye finds it; its keyboard shortcut
+remains available. The workspace control, the Run split button, and **Publish**
+form the trailing group, which is sticky against the shell's right edge so a
+scrolling row never carries a write control out of reach. The split button's
+face is **Run draft**, which always sends to test recipients; its menu holds the
+run of the published version, named for that version and the mode it honours.
+Below `md` the workspace control, both Run verbs and **Publish** collapse into
+one overflow menu, each refused for the reason its desktop control is refused.
+**Configuration** stays beside it as an icon button, joined by **Delete** while
+something is selected, because the properties rail those two belong to is absent
+at that width.
 
 ### Publication review
 

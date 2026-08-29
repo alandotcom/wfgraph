@@ -1,8 +1,9 @@
 /**
  * The one line along the bottom of the canvas saying what the editor is doing.
  *
- * Two states, one height. Editing the draft it reports publication, save, and
- * issues; with a run pinned to the canvas it reports the run and offers the
+ * Two states, one height. Editing the draft it reports publication, carries the
+ * Published mode control beside the version that mode governs, and reports save
+ * and issues; with a run pinned to the canvas it reports the run and offers the
  * way back to the draft. Both render inside the same fixed-height row on
  * purpose: the strip is a `shrink-0` sibling of the canvas box, so any change in
  * its height comes straight out of React Flow's, which measures what it is given
@@ -19,9 +20,25 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
-import { ArrowLeft, Clock3 } from "lucide-react";
+import { ArrowLeft, ChevronDown, Circle, Clock3 } from "lucide-react";
 import { Button } from "#src/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "#src/components/ui/dropdown-menu";
 import { Separator } from "#src/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "#src/components/ui/tooltip";
+import { useSetPublishedMode } from "#src/hooks/use-set-published-mode";
 import { WorkflowIssuesChip } from "#src/components/workflow/workflow-issues-chip";
 import { WorkflowPublicationBadge } from "#src/components/workflow/workflow-publication-badge";
 import {
@@ -32,6 +49,16 @@ import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspac
 import { toPinnedRunSummary } from "#src/lib/execution-logs";
 import { orpcQuery, workflowPublicationQueryOptions } from "#src/lib/rpc-query";
 import {
+  publishedModeChoice,
+  publishedModeWord,
+  runGraphRecipientsLabel,
+  type WorkflowRunGraphIdentity,
+} from "#src/lib/workflow-run-labels";
+import {
+  currentWorkflowModeAtom,
+  isWorkflowOwnerAtom,
+} from "#src/lib/workflow-save-store";
+import {
   comparisonSessionAtom,
   isComparisonPendingAtom,
 } from "#src/lib/workflow-comparison-store";
@@ -41,7 +68,6 @@ import {
 } from "#src/lib/workflow-ui-store";
 import { cn } from "@wfgraph/shared/utils";
 import { formatDayAndTime } from "@wfgraph/shared/utils/time";
-import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 
 /**
  * How many characters of a run's id identify it on screen.
@@ -74,36 +100,26 @@ export function pinnedRunLabel(
 }
 
 /**
- * What the pinned run is, in the strip's own vocabulary: which graph it ran and
- * which recipients it reached, as "Draft · Test run" or "v7 · Live run" /
- * "v7 · Test run".
+ * What the pinned run is, in the vocabulary every run record shares: which
+ * graph it ran and which recipients it reached, as "Draft · Test run" or
+ * "v7 · Live run".
  *
- * Returns empty while the run's payload is still in flight, or if it names a
- * graph kind this build does not recognize, so the strip's "Viewing a past
- * run" placeholder stays in place rather than printing a half-known fact.
+ * The phrase itself comes from `workflow-run-labels`, so the strip, the run
+ * history table and the summary row cannot drift apart. Empty while the run's
+ * payload is still in flight, and empty for a published run carrying no version
+ * number, which the contract refuses: the strip's "Viewing a past run"
+ * placeholder is better than a half-known fact.
  */
 export function pinnedRunModeLabel(
-  run:
-    | {
-        versionKind: WorkflowVersionKind;
-        versionNumber: number | null;
-        runMode: "live" | "test";
-      }
-    | undefined
+  run: WorkflowRunGraphIdentity | undefined
 ): string {
   if (!run) {
     return "";
   }
-  let graph: string;
-  if (run.versionKind === "draft_snapshot") {
-    graph = "Draft";
-  } else if (run.versionKind === "published" && run.versionNumber !== null) {
-    graph = `v${run.versionNumber}`;
-  } else {
+  if (run.versionKind === "published" && run.versionNumber === null) {
     return "";
   }
-  const recipients = run.runMode === "test" ? "Test" : "Live";
-  return `${graph} · ${recipients} run`;
+  return `${runGraphRecipientsLabel(run)} run`;
 }
 
 /**
@@ -137,6 +153,145 @@ function StatusItems({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * The two modes, live first: it is the mode a workflow ends up in, and the one
+ * the menu's first row should offer.
+ */
+const PUBLISHED_MODES = ["live", "test"] as const;
+
+/**
+ * Published mode, sitting where the version it governs is already named.
+ *
+ * It reads "Live" or "Test" alone, because the badge to its left has just said
+ * "Published version 5" and one control naming the version is enough. Test
+ * wears the warning tone and a filled dot; Live is an outline, so the mode is
+ * legible without color alone carrying it.
+ *
+ * The change goes through `useSetPublishedMode`, which is what asks before a
+ * workflow starts sending to real people. A viewer who does not own the
+ * workflow reads the same face with the menu withheld, and the reason sits on a
+ * tooltip, which is the one surface a refused control can still show.
+ */
+function PublishedModeControl({
+  publishedVersion,
+}: {
+  publishedVersion?: number;
+}) {
+  const workflowMode = useAtomValue(currentWorkflowModeAtom);
+  const isOwner = useAtomValue(isWorkflowOwnerAtom);
+  const setPublishedMode = useSetPublishedMode();
+  const isTest = workflowMode === "test";
+  const label = publishedModeWord(workflowMode);
+  const faceClass = cn(
+    "h-6 shrink-0 px-1.5 font-medium",
+    isTest && "text-warning hover:bg-warning/10 hover:text-warning"
+  );
+  // The visible word is the whole label, so the accessible name keeps it and
+  // adds the setting it belongs to (WCAG 2.5.3).
+  const faceName = `Published mode: ${label}`;
+  const dot = (
+    <Circle
+      className={cn("size-2.5", isTest && "fill-current")}
+      data-icon="inline-start"
+    />
+  );
+
+  if (!isOwner) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          {/* A disabled button carries `disabled:pointer-events-none`, so it is
+              never a hover target and never takes focus, and a reason written
+              on it alone reaches nobody. The wrapper receives both, and it is
+              what the tooltip hangs from. */}
+          <TooltipTrigger
+            render={<span className="inline-flex shrink-0" tabIndex={0} />}
+          >
+            <Button
+              aria-label={faceName}
+              className={faceClass}
+              disabled
+              size="sm"
+              title="Owner only"
+              variant="ghost"
+            >
+              {dot}
+              {label}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Only this workflow&apos;s owner can change Published mode
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            aria-label={faceName}
+            className={faceClass}
+            size="sm"
+            variant="ghost"
+          />
+        }
+      >
+        {dot}
+        {label}
+        <ChevronDown className="size-3 opacity-50" data-icon="inline-end" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-56">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>
+            Published mode
+            {/* Before the first publish the setting describes a version nobody
+                can run yet, so the title says when it starts to matter. */}
+            {publishedVersion === undefined ? (
+              <span className="block font-normal text-muted-foreground text-xs">
+                Takes effect on publish
+              </span>
+            ) : null}
+          </DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            onValueChange={(mode) => {
+              if (mode === "live" || mode === "test") {
+                void setPublishedMode(mode);
+              }
+            }}
+            value={workflowMode}
+          >
+            {PUBLISHED_MODES.map((mode) => {
+              const choice = publishedModeChoice(mode);
+              return (
+                <DropdownMenuRadioItem
+                  // The check leads the row rather than trailing it, so the
+                  // current mode is read before the word rather than after the
+                  // eye has already crossed both. The primitive's indicator is
+                  // pinned to the right, and this is the one place that moves
+                  // it.
+                  className="pr-2 pl-8 [&>[data-slot=dropdown-menu-radio-item-indicator]]:right-auto [&>[data-slot=dropdown-menu-radio-item-indicator]]:left-2"
+                  key={mode}
+                  value={mode}
+                >
+                  <span>
+                    {choice.label}
+                    <span className="block font-normal text-muted-foreground text-xs">
+                      {choice.description}
+                    </span>
+                  </span>
+                </DropdownMenuRadioItem>
+              );
+            })}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function DraftStatus({ workflowId }: { workflowId?: string }) {
   const { data: publication } = useQuery({
     ...workflowPublicationQueryOptions(workflowId ?? ""),
@@ -157,6 +312,10 @@ function DraftStatus({ workflowId }: { workflowId?: string }) {
             <WorkflowPublicationBadge
               hasUnpublishedChanges={publication.hasUnpublishedChanges}
               isPublished={publication.isPublished}
+              publishedVersion={publication.publishedVersion}
+            />
+            <StripDivider />
+            <PublishedModeControl
               publishedVersion={publication.publishedVersion}
             />
             <StripDivider />

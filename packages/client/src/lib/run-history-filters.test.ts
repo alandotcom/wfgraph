@@ -204,6 +204,24 @@ describe("filterRuns", () => {
       filterRuns(rows, { query: "user_1", filters: [] }).map((row) => row.id)
     ).toEqual(["exec_1"]);
   });
+
+  it("matches a free-text search for 'draft' against Graph=Draft rows", () => {
+    const withDraft = [
+      ...rows,
+      run({
+        id: "exec_4",
+        workflowId: "wf_1",
+        workflowName: "Onboarding",
+        versionKind: "draft_snapshot",
+      }),
+    ];
+
+    expect(
+      filterRuns(withDraft, { query: "draft", filters: [] }).map(
+        (row) => row.id
+      )
+    ).toEqual(["exec_4"]);
+  });
 });
 
 describe("toExecutionsQueryInput", () => {

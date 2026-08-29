@@ -9,6 +9,11 @@ import {
   type WorkflowExecution,
 } from "#src/lib/execution-logs";
 import {
+  runGraphLabel,
+  runGraphRecipientsLabel,
+  runRecipientsLabel,
+} from "#src/lib/workflow-run-labels";
+import {
   formatDuration,
   getStatusDotClass,
   getStatusLabel,
@@ -58,45 +63,6 @@ export function getRunIdentity(
 
 function relevantLog(logs: ExecutionLog[], status: ExecutionLog["status"]) {
   return logs.findLast((log) => log.status === status);
-}
-
-/**
- * What a run calls the graph it pinned to, in the two lengths this view needs:
- * "Draft" / "v7" beside the recipients, and "Draft" / "Published v7" in the
- * metadata list.
- *
- * A published version always carries a number -- `workflow_versions` constrains
- * `(kind = 'published') = (version is not null)` -- so the numberless arm is
- * the unreachable one and says the least it can.
- */
-function runGraphNames(execution: WorkflowExecution): {
-  short: string;
-  full: string;
-} {
-  if (execution.versionKind === "draft_snapshot") {
-    return { short: "Draft", full: "Draft" };
-  }
-  if (execution.versionNumber === null) {
-    return { short: "Published", full: "Published" };
-  }
-  return {
-    short: `v${execution.versionNumber}`,
-    full: `Published v${execution.versionNumber}`,
-  };
-}
-
-/** Which recipients a run reached: test ones, or the real ones. */
-function runRecipients(execution: WorkflowExecution): string {
-  return execution.runMode === "test" ? "Test" : "Live";
-}
-
-/**
- * Which graph a run pinned to and which recipients it reached, as one phrase:
- * "Draft · Test" for a draft run (always test recipients), or "v7 · Live" /
- * "v7 · Test" for a run of the published graph.
- */
-function runGraphModeLabel(execution: WorkflowExecution): string {
-  return `${runGraphNames(execution).short} · ${runRecipients(execution)}`;
 }
 
 export function getRunOutcome(
@@ -180,7 +146,7 @@ function ListSummary({
             {getStatusLabel(execution.status)}
           </span>
           <span aria-hidden="true">·</span>
-          <span>{runGraphModeLabel(execution)}</span>
+          <span>{runGraphRecipientsLabel(execution)}</span>
           {execution.duration ? (
             <>
               <span aria-hidden="true">·</span>
@@ -292,8 +258,14 @@ function HeaderSummary({
             timeStyle: "short",
           })}
         />
-        <MetadataRow label="Graph" value={runGraphNames(execution).full} />
-        <MetadataRow label="Recipients" value={runRecipients(execution)} />
+        <MetadataRow
+          label="Graph"
+          value={runGraphLabel(execution, "qualified")}
+        />
+        <MetadataRow
+          label="Recipients"
+          value={runRecipientsLabel(execution.runMode)}
+        />
         <MetadataRow
           label="Run"
           value={runNumber > 0 ? `#${runNumber}` : execution.id}

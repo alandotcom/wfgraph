@@ -15,7 +15,6 @@ import {
   ChevronDown,
   CirclePlay,
   Copy,
-  CircleDot,
   Eraser,
   Loader2,
   Pencil,
@@ -25,6 +24,7 @@ import {
   Settings2,
   Trash2,
   Upload,
+  type LucideIcon,
 } from "lucide-react";
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
@@ -43,8 +43,6 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuSub,
@@ -52,6 +50,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "#src/components/ui/dropdown-menu";
+import { Separator } from "#src/components/ui/separator";
 import { WorkflowIcon } from "#src/components/ui/workflow-icon";
 import { CommandPalette } from "#src/components/workflow/command-palette";
 import { PublishReviewDialog } from "#src/components/workflow/publish-review-dialog";
@@ -71,9 +70,9 @@ import {
   type WorkflowCommand,
 } from "#src/lib/workflow-commands";
 import {
-  publishedModeChoice,
-  publishedModeLabel,
   publishedRunLabel,
+  runVerbLabel,
+  type WorkflowRunGraph,
 } from "#src/lib/workflow-run-labels";
 import type {
   WorkflowToolbarActions,
@@ -139,19 +138,19 @@ function PublishButton({
   isPublishing,
   disabled,
   handlePublish,
-  proposedVersion,
+  label,
 }: {
   isPublishing: boolean;
   disabled: boolean;
   handlePublish: () => void;
-  proposedVersion?: number;
+  label: string;
 }) {
   return (
     // Publish is the one control here that changes what real customers receive,
     // and it used to be the fifth identical 36px square in a row of six. It gets
     // the primary fill and a written label at every width.
     <Button
-      disabled={disabled || isPublishing}
+      disabled={disabled}
       onClick={handlePublish}
       size={BAR_CONTROL_SIZE}
       variant="default"
@@ -164,11 +163,7 @@ function PublishButton({
       ) : (
         <Upload className="size-3.5" data-icon="inline-start" />
       )}
-      {isPublishing
-        ? "Publishing"
-        : proposedVersion
-          ? `Publish v${proposedVersion}`
-          : "Publish"}
+      {label}
     </Button>
   );
 }
@@ -219,91 +214,126 @@ export function CommandPaletteTrigger() {
 }
 
 /**
- * Published mode: what Events and manual runs of the published version do with
- * their recipients. It stays in the toolbar because it applies before and after
- * publication, and it never reaches Run draft, which is always a test run.
+ * The two questions both Run verbs are gated on, asked through the same pair of
+ * functions the Actions menu and the command palette use, so a gate added to
+ * either verb reaches every surface that offers it.
  */
-export function WorkflowModeMenu({
-  actions,
-  state,
-}: {
-  actions: WorkflowToolbarActions;
-  state: WorkflowToolbarState;
-}) {
-  const isTest = state.workflowMode === "test";
-  const publishedVersion = state.publication?.publishedVersion;
-  const label = publishedModeLabel({
-    workflowMode: state.workflowMode,
-    publishedVersion,
-  });
-  // Live first, since it is the mode a workflow ends up in.
-  const choices = (["live", "test"] as const).map((mode) => ({
-    mode,
-    ...publishedModeChoice({ workflowMode: mode, publishedVersion }),
-  }));
+function runEligibility(
+  state: WorkflowToolbarState,
+  actions: WorkflowToolbarActions
+) {
+  return {
+    currentWorkflowId: state.currentWorkflowId,
+    isExecuting: state.isExecuting,
+    isPreflighting: actions.isPreflighting,
+    isGenerating: state.isGenerating,
+    hasNodes: state.nodes.some((node) => node.type !== "add"),
+    publishedVersion: state.publication?.publishedVersion,
+  };
+}
 
+/**
+ * One offered run: what it is called, whether it is refused, and what a press
+ * of it starts.
+ */
+type RunVerb = {
+  readonly id: WorkflowRunGraph;
+  readonly label: string;
+  /** The glyph itself, so each surface renders it at its own size. */
+  readonly Icon: LucideIcon;
+  readonly disabled: boolean;
+  readonly run: () => void;
+};
+
+/**
+ * Every run this workflow offers, in the order each surface renders them.
+ *
+ * The draft comes first, and it is the split button's face: it runs the canvas,
+ * and always goes to test recipients whatever Published mode says. The
+ * published version follows, named for its number and the mode it honours, and
+ * it names the reason instead before the first publish. Neither verb infers
+ * anything from unpublished changes: the operator picks the graph by picking
+ * the verb.
+ *
+ * One list, because the split button and the mobile overflow menu are two
+ * renderings of the same offer, and a verb added to one has to reach the other.
+ */
+function runVerbs(
+  state: WorkflowToolbarState,
+  actions: WorkflowToolbarActions
+): readonly [RunVerb, ...RunVerb[]] {
+  const eligibility = runEligibility(state, actions);
+
+  return [
+    {
+      id: "draft",
+      label: runVerbLabel({ graph: "draft" }),
+      Icon: Play,
+      disabled: isDraftRunDisabled(eligibility),
+      run: () => void actions.handleExecute("draft"),
+    },
+    {
+      id: "published",
+      label: publishedRunLabel({
+        workflowMode: state.workflowMode,
+        publishedVersion: eligibility.publishedVersion,
+      }),
+      Icon: CirclePlay,
+      disabled: isPublishedRunDisabled(eligibility),
+      run: () => void actions.handleExecute("published"),
+    },
+  ];
+}
+
+/** One run verb as a menu row, which is how every surface but the face renders one. */
+function RunVerbMenuItem({ verb }: { verb: RunVerb }) {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            // The pill reads "v7 · Live", which names the mode without naming
-            // the setting. The accessible name carries both, and keeps the
-            // visible words inside it (WCAG 2.5.3).
-            aria-label={`Published mode: ${label}`}
-            className={cn(
-              isTest &&
-                "bg-warning/10 text-warning hover:bg-warning/15 hover:text-warning"
-            )}
-            size={BAR_CONTROL_SIZE}
-            variant="ghost"
-          />
-        }
-      >
-        <CircleDot className="size-3" data-icon="inline-start" />
-        {label}
-        <ChevronDown className="size-3 opacity-50" data-icon="inline-end" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-72">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>Published mode</DropdownMenuLabel>
-          <DropdownMenuRadioGroup
-            onValueChange={(mode) => {
-              if (mode === "live" || mode === "test") {
-                void actions.handleSetWorkflowMode(mode);
-              }
-            }}
-            value={state.workflowMode}
-          >
-            {choices.map((choice) => (
-              <DropdownMenuRadioItem
-                disabled={!state.isOwner}
-                key={choice.mode}
-                value={choice.mode}
-              >
-                <span>
-                  {choice.label}
-                  <span className="block text-muted-foreground text-xs font-normal">
-                    {choice.description}
-                  </span>
-                </span>
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <DropdownMenuItem disabled={verb.disabled} onClick={verb.run}>
+      <verb.Icon />
+      {verb.label}
+    </DropdownMenuItem>
   );
 }
 
 /**
- * The two Run verbs, as one split control.
+ * Whether Publish is refused, and the word the control wears, which carries the
+ * number the next version would take.
  *
- * The face runs the draft on the canvas, which is the run a builder presses
- * while building, and it always goes to test recipients whatever Published mode
- * says. The chevron holds the run of the published version, named for its
- * number and the mode it honours. Neither verb infers anything from unpublished
- * changes: the operator picks the graph by picking the verb.
+ * One hook for the desktop button and the mobile menu item, so the two cannot
+ * disagree about when publishing is possible or about what a press is called.
+ */
+function usePublishGate(
+  state: WorkflowToolbarState,
+  actions: WorkflowToolbarActions
+) {
+  const editingLocked = useAtomValue(canvasEditingLockedAtom);
+  const publishedVersion = state.publication?.publishedVersion;
+  const proposedVersion = publishedVersion ? publishedVersion + 1 : undefined;
+
+  return {
+    disabled: isWorkflowPublishDisabled({
+      editingLocked,
+      isSaving: state.isSaving,
+      isComparing: actions.isComparing,
+      isPublishing: actions.isPublishing,
+      isPreflighting: actions.isPreflighting,
+      hasNodes: state.nodes.some((node) => node.type !== "add"),
+      hasUnsavedChanges: state.hasUnsavedChanges,
+      publication: state.publication,
+    }),
+    // The version is part of the verb wherever there is one to name, which is
+    // what makes the button and the menu item the same promise.
+    label: actions.isPublishing
+      ? "Publishing"
+      : proposedVersion
+        ? `Publish v${proposedVersion}`
+        : "Publish",
+  };
+}
+
+/**
+ * The run verbs as one split control: the first on the face, the rest behind
+ * the chevron.
  */
 export function RunSplitButton({
   actions,
@@ -312,59 +342,79 @@ export function RunSplitButton({
   actions: WorkflowToolbarActions;
   state: WorkflowToolbarState;
 }) {
-  const publishedVersion = state.publication?.publishedVersion;
-  // The same two questions the Actions menu and the command palette ask, asked
-  // through the same pair of functions, so a gate added to either verb reaches
-  // every surface that offers it.
-  const eligibility = {
-    currentWorkflowId: state.currentWorkflowId,
-    isExecuting: state.isExecuting,
-    isPreflighting: actions.isPreflighting,
-    isGenerating: state.isGenerating,
-    hasNodes: state.nodes.some((node) => node.type !== "add"),
-    publishedVersion,
-  };
+  const [face, ...behindTheChevron] = runVerbs(state, actions);
 
   return (
-    <ButtonGroup>
+    // Named as a group, because the two halves are one control and a screen
+    // reader meeting the chevron alone would have nothing to place it against.
+    <ButtonGroup aria-label="Run">
       <Button
-        disabled={isDraftRunDisabled(eligibility)}
-        onClick={() => void actions.handleExecute("draft")}
+        // The separator below is the one seam inside this control, so the face
+        // gives up its own right border: two outline halves would draw that
+        // edge at twice the weight of every other hairline in the bar.
+        className="border-r-0"
+        disabled={face.disabled}
+        onClick={face.run}
         size={BAR_CONTROL_SIZE}
-        variant="ghost"
+        variant="outline"
       >
-        <Play className="size-3.5" data-icon="inline-start" />
-        Run draft
+        <face.Icon className="size-3.5" data-icon="inline-start" />
+        {face.label}
       </Button>
-      {/* Both halves are ghost, whose border is transparent, so the group's own
-          rules draw no seam between them and the pair reads as two loose
-          buttons. The separator is what makes one split control of them: press
-          the label to run the draft, the chevron for the other verb. */}
+      {/* The separator is what makes one split control of the pair: press the
+          label to run the draft, the chevron for the other verbs. */}
       <ButtonGroupSeparator />
       {/* Enabled even with nothing published: the item inside is where the
           reason for that is written. */}
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
-            <Button aria-label="Run options" size="icon" variant="ghost" />
+            <Button
+              aria-label="More ways to run"
+              size="icon"
+              variant="outline"
+            />
           }
         >
           <ChevronDown className="size-3 opacity-50" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-64">
-          <DropdownMenuItem
-            disabled={isPublishedRunDisabled(eligibility)}
-            onClick={() => void actions.handleExecute("published")}
-          >
-            <CirclePlay />
-            {publishedRunLabel({
-              workflowMode: state.workflowMode,
-              publishedVersion,
-            })}
-          </DropdownMenuItem>
+          {behindTheChevron.map((verb) => (
+            <RunVerbMenuItem key={verb.id} verb={verb} />
+          ))}
         </DropdownMenuContent>
       </DropdownMenu>
     </ButtonGroup>
+  );
+}
+
+/**
+ * The same verbs plus Publish as menu items, for the one overflow menu the
+ * trailing group collapses into below `md`. Each row carries the disabled
+ * reason its desktop control carries, read from the same list and the same gate.
+ */
+export function RunPublishMenuItems({
+  actions,
+  state,
+}: {
+  actions: WorkflowToolbarActions;
+  state: WorkflowToolbarState;
+}) {
+  const publish = usePublishGate(state, actions);
+
+  return (
+    <>
+      {runVerbs(state, actions).map((verb) => (
+        <RunVerbMenuItem key={verb.id} verb={verb} />
+      ))}
+      <DropdownMenuItem
+        disabled={publish.disabled}
+        onClick={actions.handlePublish}
+      >
+        <Upload />
+        {publish.label}
+      </DropdownMenuItem>
+    </>
   );
 }
 
@@ -542,20 +592,7 @@ export function ToolbarPublishControls({
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
   const hasSelection = selectedNode || selectedEdge;
-  const publication = state.publication;
-  const publishDisabled = isWorkflowPublishDisabled({
-    editingLocked,
-    isSaving: state.isSaving,
-    isComparing: actions.isComparing,
-    isPublishing: actions.isPublishing,
-    isPreflighting: actions.isPreflighting,
-    hasNodes: state.nodes.some((node) => node.type !== "add"),
-    hasUnsavedChanges: state.hasUnsavedChanges,
-    publication: state.publication,
-  });
-  const proposedVersion = publication?.publishedVersion
-    ? publication.publishedVersion + 1
-    : undefined;
+  const publish = usePublishGate(state, actions);
 
   const handleDeleteConfirm = () => {
     const isNode = Boolean(selectedNodeId);
@@ -578,16 +615,26 @@ export function ToolbarPublishControls({
 
   return (
     <>
-      <WorkflowModeMenu actions={actions} state={state} />
       {state.isOwner ? (
         <>
-          <RunSplitButton actions={actions} state={state} />
-          <PublishButton
-            disabled={publishDisabled}
-            handlePublish={actions.handlePublish}
-            isPublishing={actions.isPublishing}
-            proposedVersion={proposedVersion}
-          />
+          {/* Below `md` these two collapse into the overflow menu the toolbar
+              renders beside this group, so the whole trailing group fits a
+              390px screen without anything scrolling out of reach. */}
+          <div className="hidden shrink-0 items-center gap-2 md:flex">
+            {/* The switcher chooses what is on screen; everything past this rule
+                writes. */}
+            <Separator
+              className="data-vertical:h-4 data-vertical:self-center"
+              orientation="vertical"
+            />
+            <RunSplitButton actions={actions} state={state} />
+            <PublishButton
+              disabled={publish.disabled}
+              handlePublish={actions.handlePublish}
+              isPublishing={actions.isPublishing}
+              label={publish.label}
+            />
+          </div>
 
           {/* Config and Delete, shown only while the properties rail is absent.
           Gated on the same test the rail uses, not on the toolbar's container

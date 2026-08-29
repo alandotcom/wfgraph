@@ -6,7 +6,7 @@ import {
   RunOverlay,
   type RunRequest,
 } from "#src/components/overlays/run-overlay";
-import type { WorkflowRunTarget } from "#src/lib/workflow-run-labels";
+import type { RunSends, WorkflowRunTarget } from "#src/lib/workflow-run-labels";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { TestPayloads } from "@wfgraph/shared/lifecycle/test-payloads";
 
@@ -44,6 +44,8 @@ function renderOverlay(
     hasEventSplit?: boolean;
     allowManualStart?: boolean;
     savedPayloads?: TestPayloads;
+    sends?: RunSends;
+    startEvents?: readonly string[];
     target?: WorkflowRunTarget;
   } = {}
 ) {
@@ -58,7 +60,8 @@ function renderOverlay(
           onRun={onRun}
           overlayId="overlay-1"
           savedPayloads={overrides.savedPayloads ?? {}}
-          startEvents={START_EVENTS}
+          sends={overrides.sends ?? { count: 0, integrations: [] }}
+          startEvents={overrides.startEvents ?? START_EVENTS}
           target={overrides.target ?? { graph: "draft" }}
         />
       </OverlayProvider>
@@ -68,49 +71,81 @@ function renderOverlay(
   return { onRun };
 }
 
+/** A published run of v7 in the mode given, which is what the band answers to. */
+function publishedTarget(workflowMode: "live" | "test"): WorkflowRunTarget {
+  return { graph: "published", publishedVersion: 7, workflowMode };
+}
+
 describe("RunOverlay", () => {
   /**
    * One component, three headings. The Event and payload halves are identical
    * for each verb; what changes is the sentence saying which graph runs and who
    * receives what it sends.
    */
-  it("says a draft run goes to test recipients while the published version keeps working", () => {
-    renderOverlay({ target: { graph: "draft", publishedVersion: 7 } });
+  it("says a draft run goes to test recipients, and nothing more", () => {
+    renderOverlay({ target: { graph: "draft" } });
 
     expect(screen.getByRole("heading", { name: "Run draft" })).toBeTruthy();
     expect(
-      screen.getByText(
-        "Runs the draft on this canvas with test recipients. Published v7 keeps handling Events."
-      )
+      screen.getByText("Runs the draft on this canvas with test recipients.")
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Run draft" })).toBeTruthy();
+    expect(screen.queryByText(/sends?:/)).toBeNull();
   });
 
-  it("warns a live published run where it sends", () => {
+  /**
+   * The one run that leaves the building. The band counts the sends off the
+   * published graph, and the button names the consequence rather than the
+   * version, so neither the reading nor the press is about a version number.
+   */
+  it("states the sends a live published run will make", () => {
     renderOverlay({
-      target: { graph: "published", publishedVersion: 7, workflowMode: "live" },
-    });
-
-    expect(screen.getByRole("heading", { name: "Run v7 · Live" })).toBeTruthy();
-    expect(
-      screen.getByText(
-        "Runs Published v7 and sends to real recipients. Draft edits are not included."
-      )
-    ).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Run v7 · Live" })).toBeTruthy();
-  });
-
-  it("names test recipients on a published run in Test Published mode", () => {
-    renderOverlay({
-      target: { graph: "published", publishedVersion: 7, workflowMode: "test" },
+      sends: { count: 3, integrations: ["Slack", "Resend"] },
+      target: publishedTarget("live"),
     });
 
     expect(
-      screen.getByText(
-        "Runs Published v7 with test recipients. Draft edits are not included."
-      )
+      screen.getByRole("heading", { name: "Run Published v7" })
     ).toBeTruthy();
+    expect(screen.getByText("3 sends: Slack, Resend")).toBeTruthy();
+    const confirm = screen.getByRole("button", {
+      name: "Send to real recipients",
+    });
+    expect(confirm.className).toContain("destructive");
+  });
+
+  it("leaves the band off a published run in Test Published mode", () => {
+    renderOverlay({
+      sends: { count: 3, integrations: ["Slack", "Resend"] },
+      target: publishedTarget("test"),
+    });
+
+    expect(
+      screen.getByRole("heading", { name: "Run Published v7" })
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Runs Published v7 with test recipients.")
+    ).toBeTruthy();
+    expect(screen.queryByText("3 sends: Slack, Resend")).toBeNull();
     expect(screen.getByRole("button", { name: "Run v7 · Test" })).toBeTruthy();
+  });
+
+  // A workflow only a person can start has one way to start, so the choice
+  // between that and a Start Event is not a choice.
+  it("hides the Event select for a manual-only workflow", () => {
+    const { onRun } = renderOverlay({
+      allowManualStart: true,
+      startEvents: [],
+    });
+
+    expect(screen.queryByLabelText(/Which Event/)).toBeNull();
+    // With no select above it, the payload note cannot say "this Event".
+    expect(
+      screen.getByText(/stands in for no Event has no declared field/)
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Run draft" }));
+    expect(onRun).toHaveBeenCalledWith({ input: {} });
   });
 
   it("opens on the first Start Event and draws its declared fields", () => {
@@ -155,6 +190,18 @@ describe("RunOverlay", () => {
   // says so where the choice is made rather than after the request.
   it("says why a split graph takes no Event-less run", () => {
     renderOverlay({ hasEventSplit: true });
+
+    expect(screen.getByText(/splits on the Event a run is on/)).toBeTruthy();
+  });
+
+  // A manual-only graph hides the Event block, and a split mid-build (no Start
+  // Events declared yet) would hide the one sentence saying why Run is off.
+  it("keeps the Event block when a split needs it on a manual-only graph", () => {
+    renderOverlay({
+      hasEventSplit: true,
+      allowManualStart: true,
+      startEvents: [],
+    });
 
     expect(screen.getByText(/splits on the Event a run is on/)).toBeTruthy();
   });

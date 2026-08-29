@@ -132,15 +132,57 @@ describe("workflowCommands", () => {
     );
   });
 
-  it("switches to the mode opposite the current one", () => {
+  it("switches to the mode opposite the current one, naming the one it leaves", () => {
     const input = commandInput({ workflowMode: "test" });
     const mode = workflowCommands(input).find(
       (command) => command.id === "mode"
     );
 
     expect(mode?.label).toBe("Set published mode to Live");
+    expect(mode?.detail).toBe("Currently Test, test recipients");
     mode?.execute();
     expect(input.callbacks.switchMode).toHaveBeenCalledWith("live");
+  });
+
+  /**
+   * Consequential marks the two rows that reach real recipients, which is what
+   * a surface offering a highlighted row reads before it seeds one. Both are
+   * live-ward: the mode command going to Live, and the run of a version whose
+   * Published mode already is.
+   */
+  it("marks the two live-ward commands consequential, and nothing else", () => {
+    const live = workflowCommands(commandInput({ workflowMode: "live" }));
+    expect(
+      live.find((command) => command.id === "run-published")?.consequential
+    ).toBe(true);
+    expect(live.find((command) => command.id === "mode")?.consequential).toBe(
+      false
+    );
+    expect(live.find((command) => command.id === "run-published")?.detail).toBe(
+      "Real recipients"
+    );
+
+    const test = workflowCommands(commandInput({ workflowMode: "test" }));
+    expect(
+      test.find((command) => command.id === "run-published")?.consequential
+    ).toBe(false);
+    expect(test.find((command) => command.id === "mode")?.consequential).toBe(
+      true
+    );
+    expect(test.find((command) => command.id === "save")?.consequential).toBe(
+      undefined
+    );
+  });
+
+  // Nothing is published, so the run reaches nobody at all.
+  it("leaves the published run plain before the first publish", () => {
+    const commands = workflowCommands(
+      commandInput({ workflowMode: "live", publishedVersion: undefined })
+    );
+
+    expect(
+      commands.find((command) => command.id === "run-published")?.consequential
+    ).toBe(false);
   });
 
   // Two verbs, and each one starts the graph it names. Nothing here reads the

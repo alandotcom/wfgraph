@@ -73,7 +73,7 @@ export type RunFilterValueOption = {
 export const RUN_FILTER_FIELD_LABELS: Record<RunFilterField, string> = {
   status: "Status",
   workflow: "Workflow",
-  mode: "Mode",
+  mode: "Recipients",
   graph: "Graph",
   source: "Source",
   event: "Event",

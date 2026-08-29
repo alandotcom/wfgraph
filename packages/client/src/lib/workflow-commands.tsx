@@ -19,6 +19,8 @@ import type { EditorShortcutLabels } from "#src/lib/shortcut-label";
 import type { WorkflowMode } from "#src/lib/workflow-graph-types";
 import {
   NOTHING_PUBLISHED_LABEL,
+  publishedModeChoice,
+  publishedModeWord,
   publishedRunLabel,
 } from "#src/lib/workflow-run-labels";
 
@@ -47,6 +49,12 @@ export type WorkflowCommand = {
   readonly detail?: string;
   readonly keywords: string;
   readonly hint?: string;
+  /**
+   * Whether taking this command reaches real recipients. A surface that
+   * highlights a row for the operator must not highlight one of these, since
+   * the highlight plus the Return key is a send nobody asked for.
+   */
+  readonly consequential?: boolean;
   readonly disabled: boolean;
   readonly execute: () => void;
 };
@@ -191,6 +199,7 @@ export function workflowCommands({
 }): readonly WorkflowCommand[] {
   const otherMode: WorkflowMode =
     state.workflowMode === "live" ? "test" : "live";
+  const currentMode = publishedModeChoice(state.workflowMode);
   const hasPublishedVersion = state.publishedVersion !== undefined;
 
   return [
@@ -238,10 +247,13 @@ export function workflowCommands({
           })
         : "Run published version",
       detail: hasPublishedVersion
-        ? "Runs the published version; draft edits are not included"
+        ? currentMode.description
         : NOTHING_PUBLISHED_LABEL,
       keywords: "Run published version live test execute start trigger",
       disabled: isPublishedRunDisabled(state),
+      // Live is the one run that leaves the building, so the palette makes the
+      // operator arrow onto this row before Return will take it.
+      consequential: hasPublishedVersion && state.workflowMode === "live",
       execute: callbacks.runPublished,
     },
     ...(state.currentWorkflowId
@@ -249,9 +261,13 @@ export function workflowCommands({
           {
             id: "mode" as const,
             group: "workflow" as const,
-            label: `Set published mode to ${otherMode === "live" ? "Live" : "Test"}`,
+            label: `Set published mode to ${publishedModeWord(otherMode)}`,
+            // The state the command is leaving, so the row says what it is
+            // about to change rather than only what it will set.
+            detail: `Currently ${currentMode.label}, ${currentMode.description.toLowerCase()}`,
             keywords: `Set published mode live test recipients ${otherMode}`,
             disabled: state.isSaving || state.isGenerating,
+            consequential: otherMode === "live",
             execute: () => callbacks.switchMode(otherMode),
           },
         ]

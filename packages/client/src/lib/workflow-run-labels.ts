@@ -11,10 +11,25 @@
  * A draft run holds no mode: it always goes to test recipients, whatever the
  * workflow's Published mode is, and the target union says so by leaving the
  * field off that arm.
+ *
+ * `runSends` sits here too, because the sends a live run is confirmed against
+ * are a fact of the graph read straight into the sentence stating them.
  */
 
+import {
+  type ExtensionCatalog,
+  findAction,
+  findIntegration,
+} from "@wfgraph/shared/extensions/catalog";
+import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
-import type { WorkflowMode } from "#src/lib/workflow-graph-types";
+import { compact, uniq } from "es-toolkit";
+import { inactiveBranch } from "#src/lib/inactive-branch";
+import type {
+  WorkflowEdge,
+  WorkflowMode,
+  WorkflowNode,
+} from "#src/lib/workflow-graph-types";
 
 /** Which graph a run starts: the canvas's draft, or the published version. */
 export type WorkflowRunGraph = "draft" | "published";
@@ -29,8 +44,6 @@ const SEPARATOR = " · ";
 export type WorkflowRunTarget =
   | {
       readonly graph: "draft";
-      /** The published version still handling Events, when there is one. */
-      readonly publishedVersion?: number;
     }
   | {
       readonly graph: "published";
@@ -41,8 +54,11 @@ export type WorkflowRunTarget =
 /** The disabled item standing where a published run would be before the first publish. */
 export const NOTHING_PUBLISHED_LABEL = "Nothing published yet";
 
-/** The Published mode's own word, which every label suffixes. */
-function modeWord(workflowMode: WorkflowMode): string {
+/**
+ * The Published mode's own word, which every label suffixes and which the
+ * strip's mode control wears on its own.
+ */
+export function publishedModeWord(workflowMode: WorkflowMode): string {
   return workflowMode === "live" ? "Live" : "Test";
 }
 
@@ -56,9 +72,9 @@ export function workflowRunTarget(input: {
   publishedVersion: number | undefined;
 }): WorkflowRunTarget | null {
   if (input.graph === "draft") {
-    return input.publishedVersion === undefined
-      ? { graph: "draft" }
-      : { graph: "draft", publishedVersion: input.publishedVersion };
+    // The draft says nothing about the published version: it runs the canvas,
+    // with test recipients, whether or not anything has ever been published.
+    return { graph: "draft" };
   }
   if (input.publishedVersion === undefined) {
     return null;
@@ -75,7 +91,7 @@ export function runVerbLabel(target: WorkflowRunTarget): string {
   if (target.graph === "draft") {
     return "Run draft";
   }
-  return `Run v${target.publishedVersion}${SEPARATOR}${modeWord(target.workflowMode)}`;
+  return `Run v${target.publishedVersion}${SEPARATOR}${publishedModeWord(target.workflowMode)}`;
 }
 
 /**
@@ -91,74 +107,124 @@ export function publishedRunLabel(input: {
 }
 
 /**
- * The Published mode pill: "v7 · Live" once something is published, and the
- * bare word until then, since there is no version for the mode to describe yet.
+ * One choice in the Published mode menu: the word, and who that mode sends to.
+ *
+ * A clause rather than a sentence, because the control sits beside the
+ * publication badge that already names the version, and the menu's own title
+ * says the setting is about the published version.
  */
-export function publishedModeLabel(input: {
-  workflowMode: WorkflowMode;
-  publishedVersion: number | undefined;
-}): string {
-  const mode = modeWord(input.workflowMode);
-  return input.publishedVersion === undefined
-    ? mode
-    : `v${input.publishedVersion}${SEPARATOR}${mode}`;
-}
-
-/**
- * One choice in the Published mode menu: the word, and the sentence saying what
- * that mode does to Events and to manual runs of the published version.
- */
-export function publishedModeChoice(input: {
-  workflowMode: WorkflowMode;
-  publishedVersion: number | undefined;
-}): { label: string; description: string } {
-  const version =
-    input.publishedVersion === undefined
-      ? "the published version"
-      : `v${input.publishedVersion}`;
-  const recipients =
-    input.workflowMode === "live"
-      ? `Events and manual runs of ${version} send to real recipients.`
-      : `Events and manual runs of ${version} go to test recipients. Running the draft never needs this.`;
-  // Before the first publish the mode describes a version nobody can run yet,
-  // so the sentence says when the setting starts to matter.
-  const timing =
-    input.publishedVersion === undefined ? " Takes effect on publish." : "";
-
+export function publishedModeChoice(workflowMode: WorkflowMode): {
+  label: string;
+  description: string;
+} {
   return {
-    label: modeWord(input.workflowMode),
-    description: `${recipients}${timing}`,
+    label: publishedModeWord(workflowMode),
+    description:
+      workflowMode === "live" ? "Real recipients" : "Test recipients",
   };
 }
 
-/** The run overlay's heading, its opening sentence, and its confirm button. */
+/**
+ * What a run of a given graph can send outward: the steps that change something
+ * outside the workflow through an integration, and which integrations those are.
+ *
+ * Counted off the graph the run will execute, so a published run counts the
+ * published version's nodes rather than whatever the canvas holds now.
+ */
+export type RunSends = {
+  readonly count: number;
+  /** Display names, in the order the graph's nodes first reach each one. */
+  readonly integrations: readonly string[];
+};
+
+/**
+ * The steps of a graph that reach outside it: an action that changes something
+ * outside the workflow, carried by an integration. A lookup is not one of them,
+ * which is what `sideEffect` on the catalog's action answers.
+ *
+ * A step the run will not perform is left out along with everything stranded
+ * behind it, so a graph whose only send hangs off a switched-off step counts
+ * nothing. `inactiveBranch` owns that reachability rule for the canvas already.
+ */
+export function runSends(input: {
+  nodes: readonly WorkflowNode[];
+  edges: readonly WorkflowEdge[];
+  catalog: ExtensionCatalog;
+}): RunSends {
+  const { nodeIds: stranded } = inactiveBranch({
+    nodes: input.nodes,
+    edges: input.edges,
+  });
+
+  const integrationTypes = compact(
+    input.nodes.map((node) => {
+      if (node.data.enabled === false || stranded.has(node.id)) {
+        return undefined;
+      }
+      const actionType = actionTypeOf(node);
+      const action = actionType
+        ? findAction(input.catalog, actionType)
+        : undefined;
+      return action?.sideEffect === true ? action.integration : undefined;
+    })
+  );
+
+  return {
+    count: integrationTypes.length,
+    integrations: uniq(integrationTypes).map(
+      (type) => findIntegration(input.catalog, type)?.label ?? type
+    ),
+  };
+}
+
+/**
+ * The sends stated as a fact: "3 sends: Slack, Resend". This is what a live
+ * published run is confirmed against, so it names no recipient, only how many
+ * outward steps the graph holds and which integrations carry them.
+ */
+export function runSendsLabel(sends: RunSends): string {
+  if (sends.count === 0) {
+    return "No sends";
+  }
+  const counted = sends.count === 1 ? "1 send" : `${sends.count} sends`;
+  return sends.integrations.length === 0
+    ? counted
+    : `${counted}: ${sends.integrations.join(", ")}`;
+}
+
+/**
+ * The run overlay's heading, its opening sentence, and its confirm button.
+ *
+ * The published heading names the version in prose ("Run Published v7") while
+ * its confirm button keeps the verb the operator pressed, except live-ward,
+ * where the button names the consequence instead of the version.
+ */
 export function runOverlayCopy(target: WorkflowRunTarget): {
   title: string;
   description: string;
   confirmLabel: string;
 } {
-  const verb = runVerbLabel(target);
-
   if (target.graph === "draft") {
-    const published =
-      target.publishedVersion === undefined
-        ? ""
-        : ` Published v${target.publishedVersion} keeps handling Events.`;
+    const verb = runVerbLabel(target);
     return {
       title: verb,
-      description: `Runs the draft on this canvas with test recipients.${published}`,
+      description: "Runs the draft on this canvas with test recipients.",
       confirmLabel: verb,
     };
   }
 
-  const recipients =
-    target.workflowMode === "live"
-      ? `Runs Published v${target.publishedVersion} and sends to real recipients.`
-      : `Runs Published v${target.publishedVersion} with test recipients.`;
+  const title = `Run Published v${target.publishedVersion}`;
+  if (target.workflowMode === "live") {
+    return {
+      title,
+      description: `Runs Published v${target.publishedVersion} and sends to real recipients.`,
+      confirmLabel: "Send to real recipients",
+    };
+  }
   return {
-    title: verb,
-    description: `${recipients} Draft edits are not included.`,
-    confirmLabel: verb,
+    title,
+    description: `Runs Published v${target.publishedVersion} with test recipients.`,
+    confirmLabel: runVerbLabel(target),
   };
 }
 

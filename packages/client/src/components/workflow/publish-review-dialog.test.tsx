@@ -61,6 +61,28 @@ describe("PublishReviewDialog", () => {
     ).toBeTruthy();
   });
 
+  // The Test note says the version is held back; the Live note says it is not.
+  // A publish that reaches real recipients is the one worth reading before the
+  // button is pressed, so it gets the destructive tone.
+  it("says a Live publish reaches real recipients at once", () => {
+    const view = render(
+      <PublishReviewDialog
+        review={publicationReviewFromComparison(comparison)}
+        isPublishing={false}
+        mode="live"
+        onConfirm={vi.fn()}
+        onOpenChange={vi.fn()}
+        open
+      />
+    );
+
+    const note = view.getByText(
+      "v8 will reach real recipients as soon as it is published."
+    );
+    expect(note.parentElement?.className).toContain("border-destructive/30");
+    expect(view.queryByText(/Published mode is Test/)).toBeNull();
+  });
+
   it("does not confirm publication when cancelled", () => {
     const onConfirm = vi.fn();
     const onOpenChange = vi.fn();

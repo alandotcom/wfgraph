@@ -1,3 +1,4 @@
+import { Send } from "lucide-react";
 import { useState } from "react";
 import { Button } from "#src/components/ui/button";
 import { Checkbox } from "#src/components/ui/checkbox";
@@ -21,7 +22,9 @@ import {
 } from "#src/lib/test-payload";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
+  type RunSends,
   runOverlayCopy,
+  runSendsLabel,
   type WorkflowRunTarget,
 } from "#src/lib/workflow-run-labels";
 import {
@@ -66,6 +69,11 @@ type RunOverlayProps = OverlayComponentProps<{
   hasEventSplit: boolean;
   /** The samples the workflow kept, one per Event plus the Event-less one. */
   savedPayloads: TestPayloads;
+  /**
+   * What the graph this run executes can send outward. Only a live published
+   * run states it, and it is counted off that version's own nodes.
+   */
+  sends: RunSends;
   onRun: (request: RunRequest) => void;
 }>;
 
@@ -134,16 +142,21 @@ function PayloadForm({
   fields,
   values,
   onChange,
+  hasEvent,
 }: {
   fields: readonly TestPayloadField[];
   values: TestPayloadFormValues;
   onChange: (path: string, next: string) => void;
+  /** Whether the run stands in for an Event, which is what declares the fields. */
+  hasEvent: boolean;
 }) {
   if (fields.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
-        This Event declares no payload field the form can draw. Use the JSON tab
-        to write the payload.
+        {hasEvent
+          ? "This Event declares no payload field the form can draw."
+          : "A run that stands in for no Event has no declared field to draw."}{" "}
+        Use the JSON tab to write the payload.
       </p>
     );
   }
@@ -193,11 +206,20 @@ export function RunOverlay({
   allowManualStart,
   hasEventSplit,
   savedPayloads,
+  sends,
   onRun,
 }: RunOverlayProps) {
   const catalog = useExtensionCatalog();
   const { closeAll } = useOverlay();
   const copy = runOverlayCopy(target);
+  // The one run that leaves the building, which is what the confirm button's
+  // destructive variant acts on.
+  const reachesRealRecipients =
+    target.graph === "published" && target.workflowMode === "live";
+  // The band states the sends the published graph holds. A version built only
+  // from waits, conditions and internal steps makes none, and an alarm over a
+  // sentence saying so spends the signal reserved for real sends.
+  const showSendsBand = reachesRealRecipients && sends.count > 0;
 
   // The first Start Event, since one of them is the ordinary shape. A workflow
   // with none can only be the Event-less manual start.
@@ -284,6 +306,12 @@ export function RunOverlay({
     closeAll();
   };
 
+  // A manual-only workflow has one way to start and no Event to stand in for,
+  // so the select would offer a single choice nobody can change. An Event
+  // Split keeps the block, since its sentence is what says why Run is off.
+  const showEventSelect =
+    startEvents.length > 0 || !allowManualStart || hasEventSplit;
+
   const eventItems = [
     ...startEvents.map((name) => ({
       label: eventLabel(catalog, name),
@@ -298,45 +326,72 @@ export function RunOverlay({
     <Overlay
       actions={[
         { label: "Cancel", variant: "outline", onClick: closeAll },
-        { label: copy.confirmLabel, onClick: handleRun, disabled: !canRun },
+        {
+          label: copy.confirmLabel,
+          onClick: handleRun,
+          disabled: !canRun,
+          ...(reachesRealRecipients ? { variant: "destructive" as const } : {}),
+        },
       ]}
       description={copy.description}
       overlayId={overlayId}
       title={copy.title}
     >
       <div className="space-y-6">
-        <div className="space-y-2">
-          <Label htmlFor="runEvent">
-            Which Event does this run stand in for?
-          </Label>
-          <Select
-            items={eventItems}
-            onValueChange={whenChosen(chooseEvent)}
-            value={selectedEvent}
-          >
-            <SelectTrigger className="w-full" id="runEvent">
-              <SelectValue placeholder="Choose an Event" />
-            </SelectTrigger>
-            <SelectContent>
-              {startEvents.map((name) => (
-                <SelectItem key={name} value={name}>
-                  {eventLabel(catalog, name)}
-                </SelectItem>
-              ))}
-              {allowManualStart && (
-                <SelectItem disabled={hasEventSplit} value={NO_EVENT}>
-                  No Event (manual start)
-                </SelectItem>
-              )}
-            </SelectContent>
-          </Select>
-          {hasEventSplit && (
-            <p className="text-muted-foreground text-xs">
-              This workflow splits on the Event a run is on, so a run has to
-              name one.
+        {/* Bordered rather than filled: the confirm button carries the
+            dialog's one destructive fill, and a band wearing the same fill
+            reads as a second banner beside it. */}
+        {showSendsBand && (
+          <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-foreground text-sm">
+            <Send aria-hidden className="size-3.5 shrink-0 text-destructive" />
+            <p>{runSendsLabel(sends)}</p>
+          </div>
+        )}
+
+        {showEventSelect ? (
+          <div className="space-y-2">
+            <Label htmlFor="runEvent">
+              Which Event does this run stand in for?
+            </Label>
+            <Select
+              items={eventItems}
+              onValueChange={whenChosen(chooseEvent)}
+              value={selectedEvent}
+            >
+              <SelectTrigger className="w-full" id="runEvent">
+                <SelectValue placeholder="Choose an Event" />
+              </SelectTrigger>
+              <SelectContent>
+                {startEvents.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {eventLabel(catalog, name)}
+                  </SelectItem>
+                ))}
+                {allowManualStart && (
+                  <SelectItem disabled={hasEventSplit} value={NO_EVENT}>
+                    No Event (manual start)
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+            {eventIsRequired && (
+              <p className="text-muted-foreground text-xs">
+                This workflow splits on the Event a run is on, so a run has to
+                name one.
+              </p>
+            )}
+          </div>
+        ) : (
+          // With no select to sit under, the same fact is what a disabled
+          // confirm button is waiting for, so it stands on its own rather than
+          // leaving the reader a greyed-out button and no sentence.
+          eventIsRequired && (
+            <p className="text-muted-foreground text-sm">
+              This workflow splits on the Event a run is on, and the Lifecycle
+              node declares no Start Event for a run to name.
             </p>
-          )}
-        </div>
+          )
+        )}
 
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -362,6 +417,7 @@ export function RunOverlay({
           {pane === "form" ? (
             <PayloadForm
               fields={fields}
+              hasEvent={eventName !== undefined}
               onChange={(path, next) =>
                 setValues((current) => ({ ...current, [path]: next }))
               }

@@ -5,9 +5,11 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { MoreHorizontalIcon } from "lucide-react";
+import { Circle, MoreHorizontalIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
+import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { getClientLogger } from "#src/lib/logger";
 import {
   AlertDialog,
@@ -46,6 +48,7 @@ import {
   refreshRunHistory,
   refreshWorkflowList,
 } from "#src/lib/rpc-query";
+import type { WorkflowMode } from "#src/lib/workflow-graph-types";
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
 
 type GlobalExecutionItem = WorkflowExecutionsGlobalResult["items"][number];
@@ -106,6 +109,7 @@ function pluralize(count: number, singular: string, plural: string): string {
 export default function WorkflowsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { push } = useOverlay();
   const [selectedWorkflowIds, setSelectedWorkflowIds] = useState<Set<string>>(
     new Set()
   );
@@ -214,13 +218,18 @@ export default function WorkflowsPage() {
     [queryClient]
   );
 
-  // The same setting the editor's toolbar writes, so it is said in the same
-  // words: Published mode governs Events and manual runs of the published
-  // version, and a Draft run goes to test recipients whatever it holds.
+  // The write is addressed to the row it was chosen on, so nothing here touches
+  // the editor's open-workflow atoms: those name which workflow the canvas is
+  // showing, and `hydrateWorkflowAtom` treats a matching id as a reload of the
+  // same workflow and keeps the pinned run, the comparison session and the
+  // workspace view it would otherwise clear.
   const setPublishedMode = useMutation(
     orpcQuery.workflow.update.mutationOptions({
+      // The "Sends to" cell this table is showing is the answer to the setting
+      // being written, and this table is mounted while the write lands, so the
+      // list is refetched rather than merely marked stale.
       onSuccess: async (_payload, { mode }) => {
-        await refreshWorkflows();
+        await refreshWorkflowList(queryClient);
         toast.success(
           mode === "test"
             ? "Published mode set to Test"
@@ -229,6 +238,37 @@ export default function WorkflowsPage() {
       },
       meta: { errorMessage: "Failed to set Published mode" },
     })
+  );
+
+  const writePublishedMode = setPublishedMode.mutate;
+  // Live-ward asks first, wherever it is offered: it is the moment a workflow
+  // starts sending to real people. Test-ward can only narrow who a run reaches,
+  // so it writes on one press. The dashboard's list payload carries no version
+  // number, so the question names the setting's subject rather than inventing
+  // one.
+  const changePublishedMode = useCallback(
+    (workflow: WorkflowSummaryPayload, mode: WorkflowMode) => {
+      if (workflow.mode === mode) {
+        return;
+      }
+
+      if (mode === "test") {
+        writePublishedMode({ workflowId: workflow.id, mode: "test" });
+        return;
+      }
+
+      push(ConfirmOverlay, {
+        title: `Send real messages from ${workflow.name}?`,
+        message:
+          "Events and manual runs of the published version will reach real recipients.",
+        confirmLabel: "Send real messages",
+        destructive: true,
+        onConfirm: () => {
+          writePublishedMode({ workflowId: workflow.id, mode: "live" });
+        },
+      });
+    },
+    [push, writePublishedMode]
   );
 
   const toggleSelectAll = (checked: boolean) => {
@@ -396,7 +436,7 @@ export default function WorkflowsPage() {
             </th>
             <th className="px-2 py-2">Name</th>
             <th className="px-2 py-2">State</th>
-            <th className="px-2 py-2">Mode</th>
+            <th className="px-2 py-2">Sends to</th>
             <th className="px-2 py-2">Updated</th>
             <th className="w-10" />
           </tr>
@@ -405,17 +445,24 @@ export default function WorkflowsPage() {
           {workflowRows.map((workflow) => {
             const isSelected = selectedWorkflowIds.has(workflow.id);
             const canMutate = workflow.isOwner !== false;
-            const stateClass = workflow.isPaused
-              ? "border-amber-500/30 bg-amber-500/10 text-amber-700"
-              : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700";
+            // Whether the workflow is switched off is a graphite fact with a
+            // green dot for the live case: Signal Amber belongs to Test alone,
+            // and this row is the one screen showing both facts at once, three
+            // columns apart at the same 12px.
+            const stateDotClass = workflow.isPaused
+              ? "text-muted-foreground"
+              : "text-success fill-current";
             const stateLabel = workflow.isPaused ? "Paused" : "Active";
-            // Signal Amber is the one colour Test wears, here and on the
-            // editor's Published mode pill.
-            const modeClass =
-              workflow.mode === "test"
-                ? "border-warning/30 bg-warning/10 text-warning"
-                : "border-border bg-muted text-muted-foreground";
-            const modeLabel = workflow.mode === "test" ? "Test" : "Live";
+            const isTestOnly = workflow.mode === "test";
+            // The dot repeats the status strip's Published mode vocabulary,
+            // filled for Test and outline for Live. The signal carries the
+            // border and the label rather than a fill behind them: each light
+            // token clears 4.5:1 as text on Paper and falls under it on its own
+            // 10% tint, which is under the floor at Caption size.
+            const sendsToClass = isTestOnly
+              ? "border-warning/40 text-warning"
+              : "border-border text-muted-foreground";
+            const sendsToLabel = isTestOnly ? "Test only" : "Real people";
             const toggleAction = workflow.isPaused ? "resume" : "pause";
             const toggleActionLabel = workflow.isPaused ? "Resume" : "Pause";
 
@@ -448,17 +495,26 @@ export default function WorkflowsPage() {
                   </div>
                 </td>
                 <td className="px-2 py-3">
-                  <span
-                    className={`inline-flex rounded border px-2 py-0.5 font-medium text-xs transition-colors duration-200 ${stateClass}`}
-                  >
+                  {/* A dot and a word, with no pill around them: the row's one
+                      bordered chip is "Sends to", which is the cell an operator
+                      is scanning for. */}
+                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-medium text-foreground text-xs">
+                    <Circle
+                      aria-hidden
+                      className={`size-2.5 transition-colors duration-200 ${stateDotClass}`}
+                    />
                     {stateLabel}
                   </span>
                 </td>
                 <td className="px-2 py-3">
                   <span
-                    className={`inline-flex rounded border px-2 py-0.5 font-medium text-xs uppercase transition-colors duration-200 ${modeClass}`}
+                    className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded border px-2 py-0.5 font-medium text-xs transition-colors duration-200 ${sendsToClass}`}
                   >
-                    {modeLabel}
+                    <Circle
+                      aria-hidden
+                      className={`size-2.5 ${isTestOnly ? "fill-current" : ""}`}
+                    />
+                    {sendsToLabel}
                   </span>
                 </td>
                 <td className="px-2 py-3 text-muted-foreground text-xs">
@@ -474,14 +530,15 @@ export default function WorkflowsPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem
+                        disabled={setPublishedMode.isPending}
                         onClick={() => {
-                          setPublishedMode.mutate({
-                            workflowId: workflow.id,
-                            mode: workflow.mode === "test" ? "live" : "test",
-                          });
+                          changePublishedMode(
+                            workflow,
+                            isTestOnly ? "live" : "test"
+                          );
                         }}
                       >
-                        {workflow.mode === "test"
+                        {isTestOnly
                           ? "Set published mode to Live"
                           : "Set published mode to Test"}
                       </DropdownMenuItem>
@@ -534,10 +591,6 @@ export default function WorkflowsPage() {
           </div>
           <p className="text-muted-foreground text-sm">
             Manage workflows in bulk and review runs across every workflow.
-            Paused workflows block new starts. Published mode decides where
-            Events and manual runs of the published version send: real
-            recipients on Live, test recipients on Test. Running a draft always
-            goes to test recipients.
           </p>
         </div>
 

@@ -17,6 +17,7 @@ import {
 import { WorkflowIssuesOverlay } from "#src/components/overlays/workflow-issues-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useDeleteWorkflow } from "#src/hooks/use-delete-workflow";
+import { useSetPublishedMode } from "#src/hooks/use-set-published-mode";
 import { useGoToStep } from "#src/hooks/use-workflow-issues";
 import { useDomEvent } from "#src/hooks/effects";
 import {
@@ -51,6 +52,7 @@ import {
   undoAtom,
 } from "#src/lib/workflow-graph-store";
 import {
+  toEditorEdge,
   toEditorNode,
   type WorkflowEdge,
   type WorkflowMode,
@@ -62,6 +64,8 @@ import {
   type UpdateNodeData,
 } from "#src/lib/workflow-run-actions";
 import {
+  type RunSends,
+  runSends,
   runVerbLabel,
   workflowRunTarget,
   type WorkflowRunGraph,
@@ -75,7 +79,6 @@ import {
   isSavingAtom,
   isWorkflowOwnerAtom,
   saveWorkflowAtom,
-  setWorkflowModeAtom,
   type SaveOutcome,
   type WorkflowPatch,
 } from "#src/lib/workflow-save-store";
@@ -111,6 +114,8 @@ import {
   hasBlockingWorkflowIssues,
 } from "@wfgraph/shared/graph/workflow-issues";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import type { TestPayloads } from "@wfgraph/shared/lifecycle/test-payloads";
 
 /**
@@ -158,8 +163,8 @@ type WorkflowHandlerParams = {
 
 /**
  * What the run overlay asks of the graph a run will execute: which Events start
- * it, whether it takes an Event-less start, whether it splits on the Event, and
- * the samples that graph kept.
+ * it, whether it takes an Event-less start, whether it splits on the Event, the
+ * samples that graph kept, and what it can send outward.
  *
  * The server judges a start against the graph it is about to run, so these come
  * off that same graph. Reading them off the canvas for a published run is how
@@ -170,10 +175,17 @@ type RunOverlayGraphFacts = {
   allowManualStart: boolean;
   hasEventSplit: boolean;
   savedPayloads: TestPayloads;
+  sends: RunSends;
 };
 
+/**
+ * The edges come along for the sends alone: what a run will send depends on
+ * which steps it can reach, and reachability is an answer about edges.
+ */
 function runOverlayGraphFacts(
-  nodes: readonly WorkflowNode[]
+  nodes: readonly WorkflowNode[],
+  edges: readonly WorkflowEdge[],
+  catalog: ExtensionCatalog
 ): RunOverlayGraphFacts {
   const rules = readEntryLifecycleRules(nodes) ?? initialLifecycleRules;
   return {
@@ -181,6 +193,7 @@ function runOverlayGraphFacts(
     allowManualStart: manualStartAllowed(rules),
     hasEventSplit: nodes.some(isEventSplitNode),
     savedPayloads: readEntryTestPayloads(nodes),
+    sends: runSends({ nodes, edges, catalog }),
   };
 }
 
@@ -205,6 +218,9 @@ function useWorkflowHandlers({
   // that state is write-then-consume within a single click, so only the
   // instance whose overlay was clicked ever holds one.
   const handleGoToStep = useGoToStep();
+  // Read for one thing here: naming the integrations a live published run
+  // sends through, which is what the run overlay's band states.
+  const catalog = useExtensionCatalog();
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -328,9 +344,12 @@ function useWorkflowHandlers({
       // The lifecycle facts are the published graph's; the sample payload is
       // the canvas's own. `getVersionGraph` redacts sensitive-looking values,
       // so a sample read off it would send the mask as the run's input.
+      const published = toWorkflowGraphData(payload.graph);
       return {
         ...runOverlayGraphFacts(
-          toWorkflowGraphData(payload.graph).nodes.map(toEditorNode)
+          published.nodes.map(toEditorNode),
+          published.edges.map(toEditorEdge),
+          catalog
         ),
         savedPayloads: readEntryTestPayloads(nodes),
       };
@@ -396,7 +415,7 @@ function useWorkflowHandlers({
       return;
     }
     const { issues } = preflight;
-    const draftFacts = runOverlayGraphFacts(nodes);
+    const draftFacts = runOverlayGraphFacts(nodes, edges, catalog);
 
     if (issues.length > 0) {
       const hasBlocking = hasBlockingWorkflowIssues(issues);
@@ -481,7 +500,6 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const deleteWorkflow = useDeleteWorkflow();
-  const setWorkflowMode = useSetAtom(setWorkflowModeAtom);
   const saveWorkflow = useSetAtom(saveWorkflowAtom);
   const publishReview = useAtomValue(publicationReviewAtom);
   const publicationReviewActive = useAtomValue(isPublicationReviewActiveAtom);
@@ -495,7 +513,6 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     currentWorkflowId,
     workflowName,
     workflowMode,
-    setCurrentWorkflowMode,
     nodes,
     edges,
     updateNodeData,
@@ -844,26 +861,10 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     );
   };
 
-  const handleSetWorkflowMode = async (mode: "live" | "test") => {
-    if (!currentWorkflowId || workflowMode === mode) {
-      return;
-    }
-
-    const outcome = await setWorkflowMode(mode);
-    if (!outcome?.ok) {
-      toast.error("Failed to update workflow mode");
-      return;
-    }
-
-    // No loadWorkflows: this went through the save queue, which marks the list
-    // stale on every write it lands.
-    setCurrentWorkflowMode(outcome.workflow.mode);
-    toast.success(
-      mode === "test"
-        ? "Published mode set to Test"
-        : "Published mode set to Live"
-    );
-  };
+  // The write, the toast and the confirmation live in `useSetPublishedMode`, so
+  // the command palette and the Actions menu get the live-ward confirmation by
+  // calling this rather than by remembering to ask for it.
+  const handleSetWorkflowMode = useSetPublishedMode();
 
   return {
     handleSave,

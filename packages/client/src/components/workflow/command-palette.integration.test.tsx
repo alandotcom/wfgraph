@@ -397,6 +397,110 @@ describe("the command palette", () => {
     expect(addStep.hasAttribute("data-highlighted")).toBe(false);
   });
 
+  /**
+   * A published workflow in Test Published mode, where the one command that
+   * reaches real recipients is the switch to Live.
+   */
+  function publishedInTestMode() {
+    return renderChrome(ToolbarActions, {
+      state: {
+        workflowMode: "test",
+        publication: {
+          isPublished: true,
+          hasUnpublishedChanges: true,
+          publishedVersionId: "version_5",
+          publishedVersion: 5,
+          publishedAt: "2026-08-23T15:00:00.000Z",
+        },
+      },
+    });
+  }
+
+  /**
+   * The highlighted row is the row Return takes, so a row that reaches real
+   * recipients never gets one for free: the plain matches sort ahead of it, and
+   * the seed lands on the first of those.
+   */
+  it("seeds the highlight past a row that sends", async () => {
+    const rendered = publishedInTestMode();
+    const input = await openedPalette(rendered);
+
+    fireEvent.change(input, { target: { value: "live" } });
+
+    const run = rendered.getByRole("option", { name: /^Run v5 · Test/ });
+    const toLive = rendered.getByRole("option", {
+      name: /^Set published mode to Live/,
+    });
+    expect(run.hasAttribute("data-highlighted")).toBe(true);
+    expect(toLive.hasAttribute("data-highlighted")).toBe(false);
+  });
+
+  /**
+   * When nothing plain is left to sort ahead of it, Base UI seeds row zero
+   * anyway and offers no way to move that highlight. So the row is unarmed
+   * instead: it wears none of the highlight styling and Return goes nowhere
+   * until an arrow key claims it.
+   */
+  it("leaves a row that sends unarmed until an arrow key claims it", async () => {
+    const rendered = publishedInTestMode();
+    const input = await openedPalette(rendered);
+
+    fireEvent.change(input, { target: { value: "recipients" } });
+
+    expect(rendered.getAllByRole("option")).toHaveLength(1);
+    const toLive = rendered.getByRole("option", {
+      name: /^Set published mode to Live/,
+    });
+    expect(toLive.className).not.toContain("data-highlighted:");
+
+    // Return before the arrow key is the press this rule exists to refuse.
+    fireEvent.keyDown(paletteInput() ?? input, { key: "Enter" });
+    expect(rendered.actions.handleSetWorkflowMode).not.toHaveBeenCalled();
+
+    // Base UI walks the highlight off the single row and back onto it.
+    fireEvent.keyDown(paletteInput() ?? input, { key: "ArrowDown" });
+    fireEvent.keyDown(paletteInput() ?? input, { key: "ArrowDown" });
+
+    const armed = rendered.getByRole("option", {
+      name: /^Set published mode to Live/,
+    });
+    expect(armed.hasAttribute("data-highlighted")).toBe(true);
+    expect(armed.className).toContain("data-highlighted:");
+
+    fireEvent.click(armed);
+    expect(rendered.actions.handleSetWorkflowMode).toHaveBeenCalledWith("live");
+  });
+
+  /**
+   * The armed row answers the key the palette's own hint promises. The arming
+   * rule refuses Return on a row the keyboard has not claimed, and the row it
+   * has claimed has to be the one exception a press of Return goes through.
+   */
+  it("takes the armed row on Return", async () => {
+    const rendered = publishedInTestMode();
+    const input = await openedPalette(rendered);
+
+    fireEvent.change(input, { target: { value: "recipients" } });
+    fireEvent.keyDown(paletteInput() ?? input, { key: "ArrowDown" });
+    fireEvent.keyDown(paletteInput() ?? input, { key: "Enter" });
+
+    expect(rendered.actions.handleSetWorkflowMode).toHaveBeenCalledWith("live");
+    expect(paletteInput()).toBeNull();
+  });
+
+  // The row still says what the mode is now, which is what the operator is
+  // deciding against.
+  it("names the mode a switch is leaving", async () => {
+    const rendered = publishedInTestMode();
+    await openedPalette(rendered);
+
+    expect(
+      rendered.getByRole("option", {
+        name: "Set published mode to Live — Currently Test, test recipients",
+      })
+    ).toBeTruthy();
+  });
+
   // The page stack clears the query, and this is that reaching the box the
   // reader is looking at. The pointer is the path: choosing an item is also the
   // moment Base UI would offer the item's own text back as the next value.

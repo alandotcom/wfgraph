@@ -2,12 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   NOTHING_PUBLISHED_LABEL,
   publishedModeChoice,
-  publishedModeLabel,
+  publishedModeWord,
   publishedRunLabel,
   runGraphLabel,
   runGraphRecipientsLabel,
   runOverlayCopy,
   runRecipientsLabel,
+  runSendsLabel,
   runVerbLabel,
   workflowRunTarget,
 } from "#src/lib/workflow-run-labels";
@@ -18,26 +19,19 @@ import {
  * or borrows the other verb's mode is the defect these cases exist to catch.
  */
 describe("workflowRunTarget", () => {
-  it("names the draft with the version that keeps handling Events", () => {
-    expect(
-      workflowRunTarget({
-        graph: "draft",
-        workflowMode: "live",
-        publishedVersion: 7,
-      })
-    ).toEqual({ graph: "draft", publishedVersion: 7 });
-  });
-
   // A draft run goes to test recipients whatever the workflow's Published mode
-  // is, so the mode is not on that arm of the target at all.
-  it("leaves Published mode off a draft run", () => {
-    expect(
-      workflowRunTarget({
-        graph: "draft",
-        workflowMode: "live",
-        publishedVersion: undefined,
-      })
-    ).toEqual({ graph: "draft" });
+  // is, and it says nothing about the published version, so neither is on that
+  // arm of the target at all.
+  it("names the draft alone, published version or not", () => {
+    for (const publishedVersion of [7, undefined]) {
+      expect(
+        workflowRunTarget({
+          graph: "draft",
+          workflowMode: "live",
+          publishedVersion,
+        })
+      ).toEqual({ graph: "draft" });
+    }
   });
 
   it("has no published target before the first publish", () => {
@@ -53,9 +47,7 @@ describe("workflowRunTarget", () => {
 
 describe("runVerbLabel", () => {
   it("names the draft without a mode", () => {
-    expect(runVerbLabel({ graph: "draft", publishedVersion: 7 })).toBe(
-      "Run draft"
-    );
+    expect(runVerbLabel({ graph: "draft" })).toBe("Run draft");
   });
 
   it("suffixes the published run with the mode it honours", () => {
@@ -90,64 +82,60 @@ describe("publishedRunLabel", () => {
   });
 });
 
-describe("publishedModeLabel", () => {
-  it("carries the version the mode applies to", () => {
-    expect(
-      publishedModeLabel({ workflowMode: "test", publishedVersion: 7 })
-    ).toBe("v7 · Test");
-  });
-
-  // Nothing is published, so there is no version for the mode to describe yet.
-  it("drops the number until the first publish", () => {
-    expect(
-      publishedModeLabel({ workflowMode: "live", publishedVersion: undefined })
-    ).toBe("Live");
+describe("publishedModeWord", () => {
+  it("names the mode the control wears", () => {
+    expect(publishedModeWord("live")).toBe("Live");
+    expect(publishedModeWord("test")).toBe("Test");
   });
 });
 
 describe("publishedModeChoice", () => {
-  it("says where each mode sends, naming the version", () => {
-    expect(
-      publishedModeChoice({ workflowMode: "live", publishedVersion: 7 })
-    ).toEqual({
+  // One clause each: the badge beside the control already names the version,
+  // and the menu's own title says the setting is about the published version.
+  it("says who each mode reaches, in a clause", () => {
+    expect(publishedModeChoice("live")).toEqual({
       label: "Live",
-      description: "Events and manual runs of v7 send to real recipients.",
+      description: "Real recipients",
     });
-    expect(
-      publishedModeChoice({ workflowMode: "test", publishedVersion: 7 })
-        .description
-    ).toBe(
-      "Events and manual runs of v7 go to test recipients. Running the draft never needs this."
+    expect(publishedModeChoice("test")).toEqual({
+      label: "Test",
+      description: "Test recipients",
+    });
+  });
+});
+
+describe("runSendsLabel", () => {
+  it("counts the sends and names the integrations carrying them", () => {
+    expect(runSendsLabel({ count: 3, integrations: ["Slack", "Resend"] })).toBe(
+      "3 sends: Slack, Resend"
     );
   });
 
-  it("says when the setting starts to matter before the first publish", () => {
-    expect(
-      publishedModeChoice({ workflowMode: "live", publishedVersion: undefined })
-        .description
-    ).toBe(
-      "Events and manual runs of the published version send to real recipients. Takes effect on publish."
+  it("keeps the count singular for one send", () => {
+    expect(runSendsLabel({ count: 1, integrations: ["Slack"] })).toBe(
+      "1 send: Slack"
     );
+  });
+
+  // A published graph whose steps only read: worth saying, since the band is
+  // where the operator looks for what a live run will do.
+  it("says so when the graph sends nothing", () => {
+    expect(runSendsLabel({ count: 0, integrations: [] })).toBe("No sends");
   });
 });
 
 describe("runOverlayCopy", () => {
-  it("tells a draft run what stays live while it runs", () => {
-    expect(runOverlayCopy({ graph: "draft", publishedVersion: 7 })).toEqual({
+  it("says what the draft run does, and stops there", () => {
+    expect(runOverlayCopy({ graph: "draft" })).toEqual({
       title: "Run draft",
-      description:
-        "Runs the draft on this canvas with test recipients. Published v7 keeps handling Events.",
+      description: "Runs the draft on this canvas with test recipients.",
       confirmLabel: "Run draft",
     });
   });
 
-  it("says only what the draft run does when nothing is published", () => {
-    expect(runOverlayCopy({ graph: "draft" }).description).toBe(
-      "Runs the draft on this canvas with test recipients."
-    );
-  });
-
-  it("warns a live published run where it sends", () => {
+  // The heading names the version in prose, and the button names the
+  // consequence rather than repeating the version.
+  it("makes a live published run's button name the consequence", () => {
     expect(
       runOverlayCopy({
         graph: "published",
@@ -155,23 +143,24 @@ describe("runOverlayCopy", () => {
         workflowMode: "live",
       })
     ).toEqual({
-      title: "Run v7 · Live",
-      description:
-        "Runs Published v7 and sends to real recipients. Draft edits are not included.",
-      confirmLabel: "Run v7 · Live",
+      title: "Run Published v7",
+      description: "Runs Published v7 and sends to real recipients.",
+      confirmLabel: "Send to real recipients",
     });
   });
 
-  it("keeps a test published run's recipients in its sentence", () => {
+  it("keeps the verb on a test published run's button", () => {
     expect(
       runOverlayCopy({
         graph: "published",
         publishedVersion: 7,
         workflowMode: "test",
-      }).description
-    ).toBe(
-      "Runs Published v7 with test recipients. Draft edits are not included."
-    );
+      })
+    ).toEqual({
+      title: "Run Published v7",
+      description: "Runs Published v7 with test recipients.",
+      confirmLabel: "Run v7 · Test",
+    });
   });
 });
 

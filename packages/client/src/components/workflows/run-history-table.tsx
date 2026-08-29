@@ -153,7 +153,7 @@ function createRunHistoryColumns(onOpenRun: (run: RunHistoryTableRow) => void) {
       ),
     }),
     columnHelper.accessor("runMode", {
-      header: "Mode",
+      header: "Recipients",
       sortFn: "alphanumeric",
       cell: (info) => (
         <span className="text-muted-foreground text-xs">
