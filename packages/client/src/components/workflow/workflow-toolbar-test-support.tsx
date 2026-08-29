@@ -152,8 +152,8 @@ export function PublishProbe({
       <button onClick={actions.handlePublish} type="button">
         Start publish
       </button>
-      <button onClick={() => void actions.handleExecute()} type="button">
-        Run workflow
+      <button onClick={() => void actions.handleExecute("draft")} type="button">
+        Run draft
       </button>
       <button onClick={actions.confirmPublish} type="button">
         Confirm publish

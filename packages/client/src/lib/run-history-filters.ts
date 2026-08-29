@@ -4,6 +4,10 @@ import {
   type WorkflowExecutionStartSource,
   type WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
+import {
+  WORKFLOW_VERSION_KINDS,
+  type WorkflowVersionKind,
+} from "@wfgraph/shared/graph/version-kinds";
 
 /**
  * The statuses this list asks for when nothing is ticked.
@@ -25,6 +29,7 @@ export const RUN_FILTER_FIELDS = [
   "status",
   "workflow",
   "mode",
+  "graph",
   "source",
   "event",
   "entity",
@@ -52,6 +57,7 @@ export type RunHistorySearchRow = {
   workflowName: string;
   status: WorkflowExecutionStatus;
   runMode: "live" | "test";
+  versionKind: WorkflowVersionKind;
   startSource: WorkflowExecutionStartSource | null;
   startEventName: string | null;
   entityValue: string | null;
@@ -68,6 +74,7 @@ export const RUN_FILTER_FIELD_LABELS: Record<RunFilterField, string> = {
   status: "Status",
   workflow: "Workflow",
   mode: "Mode",
+  graph: "Graph",
   source: "Source",
   event: "Event",
   entity: "Entity",
@@ -84,6 +91,7 @@ const OPERATORS_BY_FIELD: Record<RunFilterField, readonly RunFilterOperator[]> =
     status: ["is", "is_not"],
     workflow: ["is", "is_not"],
     mode: ["is", "is_not"],
+    graph: ["is", "is_not"],
     source: ["is", "is_not"],
     event: ["is", "is_not", "contains"],
     entity: ["is", "is_not", "contains"],
@@ -93,6 +101,18 @@ export const MODE_VALUE_OPTIONS: readonly RunFilterValueOption[] = [
   { value: "live", label: "Live" },
   { value: "test", label: "Test" },
 ];
+
+const GRAPH_LABELS: Record<WorkflowVersionKind, string> = {
+  draft_snapshot: "Draft",
+  published: "Published",
+};
+
+/** "Draft" runs the canvas; "Published" runs a numbered published version. */
+export const GRAPH_VALUE_OPTIONS: readonly RunFilterValueOption[] =
+  WORKFLOW_VERSION_KINDS.map((value) => ({
+    value,
+    label: GRAPH_LABELS[value],
+  }));
 
 const SOURCE_LABELS: Record<WorkflowExecutionStartSource, string> = {
   event: "Event",
@@ -166,6 +186,8 @@ function fieldValue(
       return run.workflowId;
     case "mode":
       return run.runMode;
+    case "graph":
+      return run.versionKind;
     case "source":
       return run.startSource;
     case "event":
@@ -240,6 +262,9 @@ function runSearchText(run: RunHistorySearchRow): string {
     run.id,
     run.status,
     run.runMode,
+    // The stored kind, which both visible words are a prefix of: "draft"
+    // reaches `draft_snapshot` and "published" reaches `published`.
+    run.versionKind,
     run.startSource,
     run.startEventName,
     run.entityValue,

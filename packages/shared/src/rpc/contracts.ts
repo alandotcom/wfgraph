@@ -334,11 +334,20 @@ const workflowExecutionFields = {
   entityValue: Schema.NullOr(Schema.String),
   workflowRunId: Schema.NullOr(Schema.String),
   /**
-   * What sort of version this run pinned. `draft_snapshot` is a test-mode run of
-   * the canvas rather than of the published graph, which is what run history
-   * labels a draft run from.
+   * What sort of version this run pinned. `draft_snapshot` is a run of the
+   * canvas rather than of the published graph, which is what run history labels
+   * a Draft run from.
    */
   versionKind: workflowVersionKindSchema,
+  /**
+   * The pinned version's number, so run history can name it ("v7"). Null on a
+   * draft snapshot, which claims no number. Held to the same shape as
+   * `publishedVersion` above, so a number no version can carry is refused at
+   * the boundary rather than reaching a label as "vNaN".
+   */
+  versionNumber: Schema.NullOr(
+    Schema.Finite.check(Schema.isInt(), Schema.isGreaterThan(0))
+  ),
   error: Schema.NullOr(Schema.String),
   startedAt: Schema.String,
   waitingAt: Schema.NullOr(Schema.String),
@@ -376,6 +385,7 @@ const executionSummarySchema = Schema.Struct({
   /** The version this run pinned; the key `getVersionGraph` reads by. */
   workflowVersionId: idSchema,
   versionKind: workflowVersionKindSchema,
+  versionNumber: workflowExecutionFields.versionNumber,
   status: Schema.String,
   startSource: workflowExecutionFields.startSource,
   runMode: workflowExecutionFields.runMode,
@@ -732,10 +742,11 @@ export const rpcContract = {
             eventName: Schema.optionalKey(NonEmptyTrimmedString),
             /**
              * Which graph to run: the published version, or the draft the canvas
-             * holds. Absent means published, which is what every Event start and
-             * every live workflow gets; `draft` is refused unless the workflow is
-             * in test mode, and freezes the draft into a snapshot version the run
-             * pins to.
+             * holds. Absent means the published version, which is what every
+             * Event start gets, and it runs in the workflow's Published mode.
+             * `draft` runs the canvas graph, freezes it into a snapshot version
+             * the run pins to, and always records `runMode: "test"` whatever the
+             * workflow's Published mode says.
              */
             graph: Schema.optionalKey(Schema.Literals(["published", "draft"])),
           })

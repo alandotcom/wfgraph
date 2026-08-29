@@ -96,6 +96,9 @@ type RawExecution = {
   startEventName: string | null;
   runMode: string;
   startSource: string;
+  /** The graph the run pinned. Absent reads as a published run of v7. */
+  versionKind?: "published" | "draft_snapshot";
+  versionNumber?: number | null;
 };
 
 export type WorkflowRunRpcFixture = {
@@ -147,6 +150,11 @@ export async function answerWorkflowRunRpc(
           status: listed?.status ?? "completed",
           startSource: listed?.startSource ?? "event",
           runMode: listed?.runMode ?? "live",
+          versionKind: listed?.versionKind ?? "published",
+          versionNumber:
+            listed?.versionKind === "draft_snapshot"
+              ? null
+              : (listed?.versionNumber ?? 7),
           startEventName: listed?.startEventName ?? null,
           entityValue: listed?.entityValue ?? null,
           error: null,

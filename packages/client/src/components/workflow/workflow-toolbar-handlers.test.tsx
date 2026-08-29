@@ -12,7 +12,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
-import type { TestRunRequest } from "#src/components/overlays/test-run-overlay";
+import type { RunRequest } from "#src/components/overlays/run-overlay";
 import {
   useWorkflowActions,
   type WorkflowToolbarState,
@@ -189,9 +189,12 @@ afterEach(() => {
 });
 
 /**
- * Confirms the Test Run overlay the way the overlay's own "Run" button would,
+ * Confirms the run overlay the way the overlay's own confirm button would,
  * without rendering the overlay's UI: `openOverlay` already packaged the exact
  * `onRun` callback that button calls, on the stack `useOverlay` exposes.
+ *
+ * Both verbs get a button, because which one was pressed is the whole of the
+ * draft-or-published decision now.
  */
 function RunGraphProbe({
   workflowState,
@@ -201,14 +204,20 @@ function RunGraphProbe({
   const actions = useWorkflowActions(workflowState);
   const { stack } = useOverlay();
   const top = stack.at(-1) as
-    | { props: { onRun?: (request: TestRunRequest) => void } }
+    | { props: { onRun?: (request: RunRequest) => void } }
     | undefined;
   const onRun = top?.props.onRun;
 
   return (
     <>
-      <button onClick={() => void actions.handleExecute()} type="button">
-        Run workflow
+      <button onClick={() => void actions.handleExecute("draft")} type="button">
+        Run draft
+      </button>
+      <button
+        onClick={() => void actions.handleExecute("published")}
+        type="button"
+      >
+        Run published
       </button>
       <button
         disabled={!onRun}
@@ -217,14 +226,15 @@ function RunGraphProbe({
       >
         Confirm test run
       </button>
+      <output aria-label="overlay count">{stack.length}</output>
     </>
   );
 }
 
 /**
- * What a save answers with, which is where a test run now takes its
- * draft-or-published decision from. The two publication fields are the whole
- * point; the rest is the payload shape `toSavedWorkflow` decodes.
+ * What a save answers with. Nothing here decides which graph runs any more; the
+ * flush exists so the server reads the canvas the operator can see, and this is
+ * the payload shape `toSavedWorkflow` decodes.
  */
 function savedWorkflowResponse(publication: {
   hasUnpublishedChanges: boolean;
@@ -273,6 +283,12 @@ function serveRunRequests(options: {
           )
         );
       }
+      // Run v7 reads the published version's own graph before it can offer
+      // that version's Start Events, so the overlay never puts a draft-only
+      // Event in front of a published run.
+      if (path === "workflow/getVersionGraph") {
+        return rpcJsonResponse({ graph: expectedSnapshot });
+      }
       if (path === "workflow/execute") {
         return rpcJsonResponse({
           status: "running",
@@ -286,9 +302,12 @@ function serveRunRequests(options: {
   return requests;
 }
 
-/** Open the Test Run overlay and confirm it, which is one full Run click. */
-async function confirmRun(view: ReturnType<typeof renderProbe>) {
-  fireEvent.click(await view.findByRole("button", { name: "Run workflow" }));
+/** Open the run overlay and confirm it, which is one full press of a verb. */
+async function confirmRun(
+  view: ReturnType<typeof renderProbe>,
+  verb: "Run draft" | "Run published" = "Run draft"
+) {
+  fireEvent.click(await view.findByRole("button", { name: verb }));
   await waitFor(() =>
     expect(
       (
@@ -302,7 +321,7 @@ async function confirmRun(view: ReturnType<typeof renderProbe>) {
 }
 
 describe("useWorkflowActions Run graph selection", () => {
-  it("runs the draft when a test-mode workflow has unpublished changes", async () => {
+  it("sends the canvas before running the draft, then runs the draft", async () => {
     const requests = serveRunRequests({
       saved: { hasUnpublishedChanges: true, publishedVersionId: "version_7" },
     });
@@ -315,14 +334,42 @@ describe("useWorkflowActions Run graph selection", () => {
     await confirmRun(view);
 
     await waitFor(() => expect(requests).toHaveLength(2));
-    expect(requests[0]?.path).toBe("workflow/update");
+    // The flush is what keeps the server reading the graph the operator can
+    // see: autosave is debounced, and the run would otherwise execute the one
+    // before the last edit.
+    expect(requests[0]).toEqual({
+      path: "workflow/update",
+      input: { workflowId, graph: expectedSnapshot },
+    });
     expect(requests[1]).toEqual({
       path: "workflow/execute",
       input: { workflowId, input: {}, graph: "draft" },
     });
   });
 
-  it("runs the draft in test mode when the workflow has never been published", async () => {
+  // The verb decides, so a Live workflow runs its draft on request. The server
+  // records that run against test recipients whatever the mode says.
+  it("runs the draft of a workflow in Live Published mode", async () => {
+    const requests = serveRunRequests({
+      saved: { hasUnpublishedChanges: true, publishedVersionId: "version_7" },
+    });
+
+    const live = { ...state(), workflowMode: "live" as const };
+    const view = renderProbe({ probe: <RunGraphProbe workflowState={live} /> });
+
+    await confirmRun(view);
+
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests[1]?.input).toEqual({
+      workflowId,
+      input: {},
+      graph: "draft",
+    });
+  });
+
+  // Nothing published, and the draft still runs: the canvas is what the verb
+  // names, and there is no fallback to infer.
+  it("runs the draft of a workflow that has never been published", async () => {
     const requests = serveRunRequests({
       saved: { hasUnpublishedChanges: false },
     });
@@ -345,34 +392,36 @@ describe("useWorkflowActions Run graph selection", () => {
     });
   });
 
-  it("sends the canvas before the run, and decides on what that save answered", async () => {
-    // The rendered signal still says the draft is ahead of published; the save
-    // that lands first says it no longer is, and that is the reading the run
-    // takes. Reversed, this is the hazard the flush exists for: a fresh edit
-    // whose save has not landed would otherwise run the published graph.
-    const requests = serveRunRequests({
-      saved: { hasUnpublishedChanges: false, publishedVersionId: "version_7" },
-    });
+  // The draft matches what is published, and Run draft still runs the canvas:
+  // the two graphs being identical is not a reason to run the other one.
+  it("runs the draft with no save when the canvas is already saved", async () => {
+    const requests = serveRunRequests({});
 
+    const saved = {
+      ...state(),
+      hasUnsavedChanges: false,
+      publication: {
+        isPublished: true,
+        hasUnpublishedChanges: false,
+        publishedVersionId: "version_7",
+        publishedVersion: 7,
+        publishedAt: "2026-08-23T15:00:00.000Z",
+      },
+    };
     const view = renderProbe({
-      probe: <RunGraphProbe workflowState={state()} />,
+      probe: <RunGraphProbe workflowState={saved} />,
     });
 
     await confirmRun(view);
 
-    await waitFor(() => expect(requests).toHaveLength(2));
+    await waitFor(() => expect(requests).toHaveLength(1));
     expect(requests[0]).toEqual({
-      path: "workflow/update",
-      input: { workflowId, graph: expectedSnapshot },
-    });
-    // No `graph` key at all: absent means published, on the wire as elsewhere.
-    expect(requests[1]).toEqual({
       path: "workflow/execute",
-      input: { workflowId, input: {} },
+      input: { workflowId, input: {}, graph: "draft" },
     });
   });
 
-  it("refuses to start a run the canvas could not be saved for", async () => {
+  it("refuses to start a draft run the canvas could not be saved for", async () => {
     const errorToast = vi.spyOn(toast, "error");
     const requests = serveRunRequests({ saveFails: true });
 
@@ -390,41 +439,104 @@ describe("useWorkflowActions Run graph selection", () => {
     ]);
   });
 
-  it("starts a clean canvas straight away, with no save of its own", async () => {
-    const requests = serveRunRequests({});
-
-    const saved = {
-      ...state(),
-      hasUnsavedChanges: false,
-      publication: { isPublished: true, hasUnpublishedChanges: false },
-    };
-    const view = renderProbe({
-      probe: <RunGraphProbe workflowState={saved} />,
-    });
-
-    await confirmRun(view);
-
-    await waitFor(() => expect(requests).toHaveLength(1));
-    expect(requests[0]).toEqual({
-      path: "workflow/execute",
-      input: { workflowId, input: {} },
-    });
-  });
-
-  it("runs the published graph for a live workflow even with unpublished changes", async () => {
+  // The published version is a frozen graph, so an unsaved canvas has nothing
+  // to do with it and no flush belongs in front of it.
+  it("runs the published version without flushing the canvas", async () => {
     const requests = serveRunRequests({ runMode: "live" });
 
     const live = { ...state(), workflowMode: "live" as const };
     const view = renderProbe({ probe: <RunGraphProbe workflowState={live} /> });
 
-    await confirmRun(view);
+    await confirmRun(view, "Run published");
 
-    // A live workflow's draft is never what runs, so nothing is flushed either.
-    await waitFor(() => expect(requests).toHaveLength(1));
+    await waitFor(() => expect(requests).toHaveLength(2));
+    // The version's own graph, then the run. No `workflow/update` between them,
+    // which is the flush the draft verb owes and this one does not.
     expect(requests[0]).toEqual({
+      path: "workflow/getVersionGraph",
+      input: { versionId: "version_7" },
+    });
+    // No `graph` key at all: absent means published, on the wire as elsewhere.
+    expect(requests[1]).toEqual({
       path: "workflow/execute",
       input: { workflowId, input: {} },
     });
+  });
+
+  // The draft's issue list gates the draft's run alone. Publish already refused
+  // this graph's blocking issues before it became a version, so what the canvas
+  // has broken since is not in what runs.
+  it("opens a published run without collecting the draft's issues", async () => {
+    const requests = serveRunRequests({ runMode: "test" });
+    const unconnected = { ...providerState(), userIntegrations: [] };
+
+    const view = renderProbe({
+      probe: <RunGraphProbe workflowState={unconnected} />,
+      extensionCatalog: providerCatalog,
+    });
+
+    // The issues overlay carries no `onRun`, so the run overlay opening is what
+    // this button becoming pressable means.
+    await confirmRun(view, "Run published");
+
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests.map((request) => request.path)).toEqual([
+      "workflow/getVersionGraph",
+      "workflow/execute",
+    ]);
+  });
+
+  it("starts nothing when the published version is asked for and none exists", async () => {
+    const requests = serveRunRequests({});
+
+    const neverPublished = {
+      ...state(),
+      publication: { isPublished: false, hasUnpublishedChanges: false },
+    };
+    const view = renderProbe({
+      probe: <RunGraphProbe workflowState={neverPublished} />,
+    });
+
+    fireEvent.click(await view.findByRole("button", { name: "Run published" }));
+    await act(async () => {});
+
+    // No overlay to confirm and no request behind it: every control offering
+    // this run is disabled with the reason written on it.
+    expect(view.getByLabelText("overlay count").textContent).toBe("0");
+    expect(requests).toHaveLength(0);
+  });
+
+  // A viewer gets no run controls at all, and the chord is on the document
+  // rather than on one of them, so the owner test is repeated on the listener.
+  it("ignores Cmd+Enter for a viewer who does not own the workflow", async () => {
+    const requests = serveRunRequests({});
+
+    const viewer = { ...state(), isOwner: false };
+    const view = renderProbe({
+      probe: <RunGraphProbe workflowState={viewer} />,
+    });
+    await view.findByRole("button", { name: "Run draft" });
+
+    fireEvent.keyDown(document, { key: "Enter", metaKey: true });
+    await act(async () => {});
+
+    expect(view.getByLabelText("overlay count").textContent).toBe("0");
+    expect(requests).toHaveLength(0);
+  });
+
+  it("runs the draft on Cmd+Enter for the owner", async () => {
+    serveRunRequests({});
+
+    const view = renderProbe({
+      probe: <RunGraphProbe workflowState={state()} />,
+    });
+    await view.findByRole("button", { name: "Run draft" });
+
+    fireEvent.keyDown(document, { key: "Enter", metaKey: true });
+
+    await waitFor(() =>
+      expect(view.getByLabelText("overlay count").textContent).toBe("1")
+    );
   });
 });
 
@@ -448,7 +560,7 @@ describe("useWorkflowActions publication preflight", () => {
       }),
     });
 
-    fireEvent.click(await view.findByRole("button", { name: "Run workflow" }));
+    fireEvent.click(await view.findByRole("button", { name: "Run draft" }));
     await waitFor(() =>
       expect(
         view.getByRole("status", { name: "provider preflight" }).textContent
@@ -495,7 +607,7 @@ describe("useWorkflowActions publication preflight", () => {
       extensionCatalog: providerCatalog,
     });
 
-    fireEvent.click(await view.findByRole("button", { name: "Run workflow" }));
+    fireEvent.click(await view.findByRole("button", { name: "Run draft" }));
     await waitFor(() =>
       expect(
         view.getByRole("status", { name: "provider preflight" }).textContent
@@ -512,7 +624,7 @@ describe("useWorkflowActions publication preflight", () => {
       view.getByRole("status", { name: "overlay count" }).textContent
     ).toBe("0");
 
-    fireEvent.click(view.getByRole("button", { name: "Run workflow" }));
+    fireEvent.click(view.getByRole("button", { name: "Run draft" }));
     await waitFor(() => expect(requestCount).toBe(2));
     expect(
       view.getByRole("status", { name: "provider preflight" }).textContent
@@ -547,7 +659,7 @@ describe("useWorkflowActions publication preflight", () => {
       store: workflowStore("workflow_2"),
     });
 
-    fireEvent.click(await view.findByRole("button", { name: "Run workflow" }));
+    fireEvent.click(await view.findByRole("button", { name: "Run draft" }));
 
     expect(fetch).not.toHaveBeenCalled();
     expect(
@@ -574,7 +686,7 @@ describe("useWorkflowActions publication preflight", () => {
       extensionCatalog: providerCatalog,
     });
 
-    fireEvent.click(await view.findByRole("button", { name: "Run workflow" }));
+    fireEvent.click(await view.findByRole("button", { name: "Run draft" }));
     await waitFor(() =>
       expect(
         view.getByRole("status", { name: "provider preflight" }).textContent
@@ -720,7 +832,7 @@ describe("useWorkflowActions publication preflight", () => {
       }),
     });
 
-    fireEvent.click(await view.findByRole("button", { name: "Run workflow" }));
+    fireEvent.click(await view.findByRole("button", { name: "Run draft" }));
 
     // The overlay is what the refusal used to replace with a toast. Which rows
     // it draws is `use-provider-field-issues.test.tsx`.

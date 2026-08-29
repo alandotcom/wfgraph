@@ -27,6 +27,7 @@ function commandInput(
       isGenerating: false,
       isSaving: false,
       workflowMode: "live",
+      publishedVersion: 7,
       ...overrides,
     },
     shortcuts: {
@@ -51,7 +52,8 @@ function commandInput(
       publish: vi.fn(),
       redo: vi.fn(),
       reflow: vi.fn(),
-      run: vi.fn(),
+      runDraft: vi.fn(),
+      runPublished: vi.fn(),
       save: vi.fn(),
       showChanges: vi.fn(),
       showRuns: vi.fn(),
@@ -136,17 +138,87 @@ describe("workflowCommands", () => {
       (command) => command.id === "mode"
     );
 
-    expect(mode?.label).toBe("Switch to Live mode");
+    expect(mode?.label).toBe("Set published mode to Live");
     mode?.execute();
     expect(input.callbacks.switchMode).toHaveBeenCalledWith("live");
   });
 
-  it("disables Run while issue preflight is active", () => {
-    const run = workflowCommands(commandInput({ isPreflighting: true })).find(
-      (command) => command.id === "run"
+  // Two verbs, and each one starts the graph it names. Nothing here reads the
+  // publication state to decide which graph a single Run would have meant.
+  it("offers both Run verbs, named for what each one starts", () => {
+    const input = commandInput({ workflowMode: "test", publishedVersion: 7 });
+    const commands = workflowCommands(input);
+    const draft = commands.find((command) => command.id === "run-draft");
+    const published = commands.find(
+      (command) => command.id === "run-published"
     );
 
-    expect(run?.disabled).toBe(true);
+    expect(draft?.label).toBe("Run draft");
+    expect(published?.label).toBe("Run v7 · Test");
+
+    draft?.execute();
+    published?.execute();
+    expect(input.callbacks.runDraft).toHaveBeenCalledOnce();
+    expect(input.callbacks.runPublished).toHaveBeenCalledOnce();
+  });
+
+  // The Actions menu and the palette list the two verbs flat, with no "Run
+  // options" heading to lean on, so the disabled row still has to name an
+  // action. The reason goes underneath it.
+  it("keeps Run draft available before the first publish, and says why the other is not", () => {
+    const commands = workflowCommands(
+      commandInput({ publishedVersion: undefined })
+    );
+
+    expect(
+      commands.find((command) => command.id === "run-draft")?.disabled
+    ).toBe(false);
+    const published = commands.find(
+      (command) => command.id === "run-published"
+    );
+    expect(published?.label).toBe("Run published version");
+    expect(published?.detail).toBe("Nothing published yet");
+    expect(published?.disabled).toBe(true);
+  });
+
+  // The preflight checks the canvas for the run that is about to execute it.
+  // The published version was validated at Publish and is frozen since.
+  it("holds Run draft back for its own issue preflight and leaves Run v7 alone", () => {
+    const commands = workflowCommands(commandInput({ isPreflighting: true }));
+
+    expect(
+      commands.find((command) => command.id === "run-draft")?.disabled
+    ).toBe(true);
+    expect(
+      commands.find((command) => command.id === "run-published")?.disabled
+    ).toBe(false);
+  });
+
+  // v7 is a frozen graph still handling Events. Emptying the canvas to start
+  // over, or handing it to the build agent, says nothing about whether it can
+  // run.
+  it("leaves Run v7 available while the canvas is empty or being generated", () => {
+    for (const canvas of [{ hasNodes: false }, { isGenerating: true }]) {
+      const commands = workflowCommands(commandInput(canvas));
+
+      expect(
+        commands.find((command) => command.id === "run-draft")?.disabled
+      ).toBe(true);
+      expect(
+        commands.find((command) => command.id === "run-published")?.disabled
+      ).toBe(false);
+    }
+  });
+
+  it("holds both verbs back while a run is already in flight", () => {
+    const commands = workflowCommands(commandInput({ isExecuting: true }));
+
+    expect(
+      commands.find((command) => command.id === "run-draft")?.disabled
+    ).toBe(true);
+    expect(
+      commands.find((command) => command.id === "run-published")?.disabled
+    ).toBe(true);
   });
 });
 

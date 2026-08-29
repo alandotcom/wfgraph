@@ -214,17 +214,20 @@ export default function WorkflowsPage() {
     [queryClient]
   );
 
-  const switchMode = useMutation(
+  // The same setting the editor's toolbar writes, so it is said in the same
+  // words: Published mode governs Events and manual runs of the published
+  // version, and a Draft run goes to test recipients whatever it holds.
+  const setPublishedMode = useMutation(
     orpcQuery.workflow.update.mutationOptions({
       onSuccess: async (_payload, { mode }) => {
         await refreshWorkflows();
         toast.success(
           mode === "test"
-            ? "Switched workflow to Test mode"
-            : "Switched workflow to Live mode"
+            ? "Published mode set to Test"
+            : "Published mode set to Live"
         );
       },
-      meta: { errorMessage: "Failed to switch workflow mode" },
+      meta: { errorMessage: "Failed to set Published mode" },
     })
   );
 
@@ -406,9 +409,11 @@ export default function WorkflowsPage() {
               ? "border-amber-500/30 bg-amber-500/10 text-amber-700"
               : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700";
             const stateLabel = workflow.isPaused ? "Paused" : "Active";
+            // Signal Amber is the one colour Test wears, here and on the
+            // editor's Published mode pill.
             const modeClass =
               workflow.mode === "test"
-                ? "border-destructive/30 bg-destructive/10 text-destructive"
+                ? "border-warning/30 bg-warning/10 text-warning"
                 : "border-border bg-muted text-muted-foreground";
             const modeLabel = workflow.mode === "test" ? "Test" : "Live";
             const toggleAction = workflow.isPaused ? "resume" : "pause";
@@ -470,15 +475,15 @@ export default function WorkflowsPage() {
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem
                         onClick={() => {
-                          switchMode.mutate({
+                          setPublishedMode.mutate({
                             workflowId: workflow.id,
                             mode: workflow.mode === "test" ? "live" : "test",
                           });
                         }}
                       >
                         {workflow.mode === "test"
-                          ? "Switch to Live"
-                          : "Switch to Test"}
+                          ? "Set published mode to Live"
+                          : "Set published mode to Test"}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => {
@@ -529,8 +534,10 @@ export default function WorkflowsPage() {
           </div>
           <p className="text-muted-foreground text-sm">
             Manage workflows in bulk and review runs across every workflow.
-            Paused workflows block new starts. Test mode makes runs execute with
-            test-mode action behavior.
+            Paused workflows block new starts. Published mode decides where
+            Events and manual runs of the published version send: real
+            recipients on Live, test recipients on Test. Running a draft always
+            goes to test recipients.
           </p>
         </div>
 

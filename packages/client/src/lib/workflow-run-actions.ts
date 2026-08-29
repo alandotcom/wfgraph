@@ -8,11 +8,10 @@
 
 import { toast } from "sonner";
 import { getClientLogger } from "#src/lib/logger";
-import type { TestRunRequest } from "#src/components/overlays/test-run-overlay";
+import type { RunRequest } from "#src/components/overlays/run-overlay";
 import type { WorkflowExecuteResult } from "#src/lib/rpc-client";
 import type {
   NodeRunStatus,
-  WorkflowMode,
   WorkflowNode,
 } from "#src/lib/workflow-graph-types";
 import type { NodeDataUpdate } from "#src/lib/workflow-graph-store";
@@ -60,14 +59,14 @@ export function updateNodesStatus(
 }
 
 /**
- * Keeps this run's payload on the entry node, so the Test Run overlay opens on
- * it next time. The write goes through the graph store, which is what the
+ * Keeps this run's payload on the entry node, so the run overlay opens on it
+ * next time. The write goes through the graph store, which is what the
  * autosave queue watches.
  */
 export function rememberTestPayload(input: {
   nodes: WorkflowNode[];
   updateNodeData: UpdateNodeData;
-  request: TestRunRequest;
+  request: RunRequest;
 }) {
   const entryNode = findEntryNode(input.nodes);
   if (!entryNode) {
@@ -88,50 +87,18 @@ export function rememberTestPayload(input: {
   });
 }
 
-/**
- * The publication badge's two fields -- the only signal this reads. Reusing it
- * rather than a fresh comparison is what keeps "does the draft differ from
- * published" answered once, by `cacheWorkflowPublication`'s writes.
- */
-export type WorkflowPublicationSignal = {
-  isPublished: boolean;
-  hasUnpublishedChanges: boolean;
-};
-
-/**
- * Whether a Run should start the canvas's draft instead of the published
- * version.
- *
- * A live workflow never runs an unvalidated graph, so this is `false`
- * regardless of the publication signal. In test mode it is `true` whenever
- * there is no published version to fall back to yet, or the draft has moved
- * past it -- the same two facts the publish badge already tracks. A
- * publication signal not yet loaded is treated as "never published": the
- * editor route hydrates this from the same `getById` entry every other piece
- * of toolbar state reads, so an unloaded signal here means there is truly
- * nothing published, not a slow request.
- */
-export function shouldRunDraftGraph(input: {
-  workflowMode: WorkflowMode;
-  publication: WorkflowPublicationSignal | undefined;
-}): boolean {
-  if (input.workflowMode !== "test") {
-    return false;
-  }
-  if (!input.publication) {
-    return true;
-  }
-  return (
-    !input.publication.isPublished || input.publication.hasUnpublishedChanges
-  );
-}
-
 type ExecuteWorkflowRunParams = {
   /** The run mutation, with its variables already bound by the caller. */
   runWorkflow: () => Promise<WorkflowExecuteResult>;
   nodes: WorkflowNode[];
   setNodeStatuses: SetNodeStatuses;
   setIsExecuting: (value: boolean) => void;
+  /**
+   * The verb the operator pressed, from `runVerbLabel`. Both verbs land on the
+   * same run panel, so the start toast is where "Run draft" and "Run v7 · Live"
+   * stay told apart.
+   */
+  runLabel: string;
   /**
    * Opens the new run in the URL, which is what the Runs panel and the
    * canvas overlay both read (#33). Called only once a run has actually
@@ -146,6 +113,7 @@ export async function executeWorkflowRun({
   nodes,
   setNodeStatuses,
   setIsExecuting,
+  runLabel,
   navigateToExecution,
 }: ExecuteWorkflowRunParams) {
   updateNodesStatus(nodes, setNodeStatuses, "idle");
@@ -181,7 +149,7 @@ export async function executeWorkflowRun({
       const failed = Array.isArray(result.failedToSupersede)
         ? result.failedToSupersede.length
         : 0;
-      const superseded = `Superseded ${result.supersededExecutions} run${result.supersededExecutions === 1 ? "" : "s"} for this entity and started a new one.`;
+      const superseded = `${runLabel} superseded ${result.supersededExecutions} run${result.supersededExecutions === 1 ? "" : "s"} for this entity and started a new one.`;
 
       if (failed > 0) {
         // A run the engine could not signal keeps going against the entity the
@@ -193,6 +161,11 @@ export async function executeWorkflowRun({
       } else {
         toast.success(superseded);
       }
+    } else {
+      // One notice per start, and it names the verb: the canvas paints the same
+      // statuses either way, so this sentence is what says which graph is under
+      // them.
+      toast.success(`${runLabel} started`);
     }
 
     // The URL is the one writer of which run is open; the Runs panel and the

@@ -16,6 +16,7 @@ const BASE_EXECUTION: WorkflowExecution = {
   id: "exec_1",
   runMode: "test",
   versionKind: "published",
+  versionNumber: 7,
   startedAt: new Date("2026-02-22T10:00:00Z"),
   status: "completed",
   startEventName: "appointment.updated",
@@ -43,7 +44,7 @@ describe("WorkflowRunSummaryRow", () => {
     expect(view.getByText(/Run #12/)).toBeTruthy();
     expect(row.className).toContain("bg-muted");
     expect(row.getAttribute("aria-current")).toBe("true");
-    expect(view.getByText("Test")).toBeTruthy();
+    expect(view.getByText("v7 · Test")).toBeTruthy();
 
     fireEvent.click(row);
     expect(onClick).toHaveBeenCalledTimes(1);
@@ -54,13 +55,16 @@ describe("WorkflowRunSummaryRow", () => {
   it("labels a draft-snapshot run as Draft in the list", () => {
     const view = render(
       <WorkflowRunSummaryRow
-        execution={{ ...BASE_EXECUTION, versionKind: "draft_snapshot" }}
+        execution={{
+          ...BASE_EXECUTION,
+          versionKind: "draft_snapshot",
+          versionNumber: null,
+        }}
         runNumber={3}
       />
     );
 
-    expect(view.getByText("Test")).toBeTruthy();
-    expect(view.getByText("Draft")).toBeTruthy();
+    expect(view.getByText("Draft · Test")).toBeTruthy();
   });
 
   it("shows no Draft label for a published-graph run", () => {
@@ -69,19 +73,37 @@ describe("WorkflowRunSummaryRow", () => {
     );
 
     expect(view.queryByText("Draft")).toBeNull();
+    expect(view.getByText("v7 · Test")).toBeTruthy();
   });
 
-  it("shows the draft graph in the header's metadata", () => {
-    const view = render(
+  it("shows the run's graph and recipients in the header's metadata", () => {
+    const draftView = render(
       <WorkflowRunSummaryRow
-        execution={{ ...BASE_EXECUTION, versionKind: "draft_snapshot" }}
+        execution={{
+          ...BASE_EXECUTION,
+          versionKind: "draft_snapshot",
+          versionNumber: null,
+        }}
         runNumber={3}
         variant="header"
       />
     );
 
-    expect(view.getByText("Graph")).toBeTruthy();
-    expect(view.getByText("Draft")).toBeTruthy();
+    expect(draftView.getByText("Graph")).toBeTruthy();
+    expect(draftView.getByText("Draft")).toBeTruthy();
+    expect(draftView.getByText("Recipients")).toBeTruthy();
+    expect(draftView.getByText("Test")).toBeTruthy();
+
+    const publishedView = render(
+      <WorkflowRunSummaryRow
+        execution={{ ...BASE_EXECUTION, runMode: "live" }}
+        runNumber={3}
+        variant="header"
+      />
+    );
+
+    expect(publishedView.getByText("Published v7")).toBeTruthy();
+    expect(publishedView.getByText("Live")).toBeTruthy();
   });
 
   it("uses meaningful fallbacks for starts that have no event", () => {

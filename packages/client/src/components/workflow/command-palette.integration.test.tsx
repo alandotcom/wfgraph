@@ -261,7 +261,9 @@ describe("the command palette", () => {
   async function openedPalette(
     rendered: Awaited<ReturnType<typeof renderChrome>>
   ) {
-    await rendered.findByRole("button", { name: /^Publish/ });
+    // Anchored at both ends: the Published mode pill's name also starts with
+    // "Publish", and this is waiting for the write button beside it.
+    await rendered.findByRole("button", { name: /^Publish( v\d+)?$/ });
     pressCommandK();
     const input = paletteInput();
     if (!input) {

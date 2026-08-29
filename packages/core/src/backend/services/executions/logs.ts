@@ -39,6 +39,7 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
         workflowId: execution.workflowId,
         workflowVersionId: execution.workflowVersionId,
         versionKind: execution.versionKind,
+        versionNumber: execution.versionNumber,
         status: execution.status,
         startSource: execution.startSource,
         runMode: execution.runMode,

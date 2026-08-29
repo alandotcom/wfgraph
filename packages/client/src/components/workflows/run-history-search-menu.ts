@@ -1,6 +1,7 @@
 import { getStatusLabel } from "#src/components/workflow/workflow-run-shared";
 import {
   autofillRemainder,
+  GRAPH_VALUE_OPTIONS,
   isLabelPrefix,
   MODE_VALUE_OPTIONS,
   operatorsForField,
@@ -59,6 +60,7 @@ function fieldIcon(field: RunFilterField): "search" | "list" {
     case "status":
     case "workflow":
     case "mode":
+    case "graph":
     case "source":
       return "list";
     default: {
@@ -82,6 +84,8 @@ function filterValueOptions(input: {
       }));
     case "mode":
       return MODE_VALUE_OPTIONS;
+    case "graph":
+      return GRAPH_VALUE_OPTIONS;
     case "source":
       return SOURCE_VALUE_OPTIONS;
     case "workflow":

@@ -1,5 +1,6 @@
 import {
   ArrowLeftRight,
+  CirclePlay,
   ClipboardPaste,
   Copy,
   CopyPlus,
@@ -16,11 +17,16 @@ import {
 } from "lucide-react";
 import type { EditorShortcutLabels } from "#src/lib/shortcut-label";
 import type { WorkflowMode } from "#src/lib/workflow-graph-types";
+import {
+  NOTHING_PUBLISHED_LABEL,
+  publishedRunLabel,
+} from "#src/lib/workflow-run-labels";
 
 export type WorkflowCommandId =
   | "add-step"
   | "save"
-  | "run"
+  | "run-draft"
+  | "run-published"
   | "mode"
   | "show-runs"
   | "show-changes"
@@ -48,6 +54,8 @@ export type WorkflowCommand = {
 type WorkflowCommandState = {
   readonly currentWorkflowId: string | null;
   readonly workflowMode: WorkflowMode;
+  /** The published version's number, absent until the first publish. */
+  readonly publishedVersion?: number;
   readonly isExecuting: boolean;
   readonly isPreflighting: boolean;
   readonly isGenerating: boolean;
@@ -69,7 +77,8 @@ type WorkflowCommandState = {
 type WorkflowCommandCallbacks = {
   readonly addStep: () => void;
   readonly save: () => void;
-  readonly run: () => void;
+  readonly runDraft: () => void;
+  readonly runPublished: () => void;
   readonly switchMode: (mode: WorkflowMode) => void;
   readonly showRuns: () => void;
   readonly showChanges: () => void;
@@ -124,6 +133,52 @@ export function isWorkflowPublishDisabled({
   );
 }
 
+/**
+ * Everything either Run verb is judged on. One shape, so a surface offering
+ * both asks the two questions of the same facts.
+ */
+export type WorkflowRunEligibility = {
+  readonly currentWorkflowId: string | null;
+  readonly isExecuting: boolean;
+  readonly isPreflighting: boolean;
+  readonly isGenerating: boolean;
+  readonly hasNodes: boolean;
+  /** The published version's number, absent until the first publish. */
+  readonly publishedVersion?: number;
+};
+
+/**
+ * What both verbs need: a saved workflow, and no run of this editor's already
+ * in flight. Nothing about the canvas belongs here, because the published
+ * version is a frozen graph the canvas cannot reach.
+ */
+function isRunUnavailable(state: WorkflowRunEligibility): boolean {
+  return state.isExecuting || !state.currentWorkflowId;
+}
+
+/**
+ * Run draft's gate, which is where every canvas fact lives: an empty canvas has
+ * no draft to run, a generating one is being rewritten under the press, and the
+ * issue preflight is this verb's own check.
+ */
+export function isDraftRunDisabled(state: WorkflowRunEligibility): boolean {
+  return (
+    isRunUnavailable(state) ||
+    !state.hasNodes ||
+    state.isGenerating ||
+    state.isPreflighting
+  );
+}
+
+/**
+ * Run v7's gate. Its one condition of its own is that something is published:
+ * a published version is immutable, so nothing the builder does to the canvas
+ * can hold it back.
+ */
+export function isPublishedRunDisabled(state: WorkflowRunEligibility): boolean {
+  return isRunUnavailable(state) || state.publishedVersion === undefined;
+}
+
 /** The command policy shared by the menu and command palette. */
 export function workflowCommands({
   state,
@@ -134,14 +189,9 @@ export function workflowCommands({
   shortcuts: EditorShortcutLabels;
   callbacks: WorkflowCommandCallbacks;
 }): readonly WorkflowCommand[] {
-  const runDisabled =
-    state.isExecuting ||
-    state.isPreflighting ||
-    !state.hasNodes ||
-    state.isGenerating ||
-    !state.currentWorkflowId;
   const otherMode: WorkflowMode =
     state.workflowMode === "live" ? "test" : "live";
+  const hasPublishedVersion = state.publishedVersion !== undefined;
 
   return [
     {
@@ -163,21 +213,44 @@ export function workflowCommands({
       execute: callbacks.save,
     },
     {
-      id: "run",
+      id: "run-draft",
       group: "workflow",
-      label: "Run workflow",
-      keywords: "Run workflow execute test start trigger",
+      label: "Run draft",
+      detail: "Runs the canvas with test recipients",
+      keywords: "Run draft canvas execute test start trigger",
       hint: shortcuts.run,
-      disabled: runDisabled,
-      execute: callbacks.run,
+      disabled: isDraftRunDisabled(state),
+      execute: callbacks.runDraft,
+    },
+    {
+      id: "run-published",
+      group: "workflow",
+      // Named for the version and the Published mode it honours, which is what
+      // separates it from the verb above. The label stays a verb before the
+      // first publish: this row is listed flat beside "Run draft" in the
+      // Actions menu and the palette, where a bare "Nothing published yet"
+      // would name no action at all. The reason goes in the detail those two
+      // surfaces print underneath.
+      label: hasPublishedVersion
+        ? publishedRunLabel({
+            workflowMode: state.workflowMode,
+            publishedVersion: state.publishedVersion,
+          })
+        : "Run published version",
+      detail: hasPublishedVersion
+        ? "Runs the published version; draft edits are not included"
+        : NOTHING_PUBLISHED_LABEL,
+      keywords: "Run published version live test execute start trigger",
+      disabled: isPublishedRunDisabled(state),
+      execute: callbacks.runPublished,
     },
     ...(state.currentWorkflowId
       ? [
           {
             id: "mode" as const,
             group: "workflow" as const,
-            label: `Switch to ${otherMode === "live" ? "Live" : "Test"} mode`,
-            keywords: `Switch mode live test ${otherMode}`,
+            label: `Set published mode to ${otherMode === "live" ? "Live" : "Test"}`,
+            keywords: `Set published mode live test recipients ${otherMode}`,
             disabled: state.isSaving || state.isGenerating,
             execute: () => callbacks.switchMode(otherMode),
           },
@@ -294,8 +367,10 @@ export function WorkflowCommandIcon({
       return <Plus className={className} />;
     case "save":
       return <Save className={className} />;
-    case "run":
+    case "run-draft":
       return <Play className={className} />;
+    case "run-published":
+      return <CirclePlay className={className} />;
     case "mode":
       return <ArrowLeftRight className={className} />;
     case "show-runs":

@@ -60,6 +60,7 @@ const testExecution: ExecutionSummary = {
   workflowId: testWorkflow.id,
   workflowVersionId: testVersion.id,
   versionKind: "published",
+  versionNumber: 1,
   status: "running",
   startSource: "event",
   runMode: "live",

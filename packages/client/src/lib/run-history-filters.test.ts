@@ -24,6 +24,7 @@ function run(
     workflowName: "Onboarding",
     status: "completed",
     runMode: "live",
+    versionKind: "published",
     startSource: "manual",
     startEventName: null,
     entityValue: null,
@@ -169,6 +170,27 @@ describe("filterRuns", () => {
     });
 
     expect(filtered.map((row) => row.id)).toEqual(["exec_2"]);
+  });
+
+  it("filters by graph kind", () => {
+    const withDraft = [
+      ...rows,
+      run({
+        id: "exec_4",
+        workflowId: "wf_1",
+        workflowName: "Onboarding",
+        versionKind: "draft_snapshot",
+      }),
+    ];
+
+    expect(
+      filterRuns(withDraft, {
+        query: "",
+        filters: [
+          filter({ field: "graph", operator: "is", value: "draft_snapshot" }),
+        ],
+      }).map((row) => row.id)
+    ).toEqual(["exec_4"]);
   });
 
   it("searches name, id, event, entity, and error", () => {

@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import {
   executeWorkflowRun,
-  shouldRunDraftGraph,
   updateNodesStatus,
 } from "#src/lib/workflow-run-actions";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -58,57 +57,6 @@ describe("updateNodesStatus", () => {
 });
 
 /**
- * The Run button's draft-vs-published decision: test mode and a signal saying
- * the draft is ahead of (or entirely without) a published version.
- */
-describe("shouldRunDraftGraph", () => {
-  it("never runs the draft for a live workflow, however stale published is", () => {
-    expect(
-      shouldRunDraftGraph({
-        workflowMode: "live",
-        publication: { isPublished: false, hasUnpublishedChanges: true },
-      })
-    ).toBe(false);
-  });
-
-  it("runs the draft in test mode when the workflow has never been published", () => {
-    expect(
-      shouldRunDraftGraph({
-        workflowMode: "test",
-        publication: { isPublished: false, hasUnpublishedChanges: false },
-      })
-    ).toBe(true);
-  });
-
-  it("runs the draft in test mode when the canvas has moved past published", () => {
-    expect(
-      shouldRunDraftGraph({
-        workflowMode: "test",
-        publication: { isPublished: true, hasUnpublishedChanges: true },
-      })
-    ).toBe(true);
-  });
-
-  it("runs published in test mode once the draft matches it", () => {
-    expect(
-      shouldRunDraftGraph({
-        workflowMode: "test",
-        publication: { isPublished: true, hasUnpublishedChanges: false },
-      })
-    ).toBe(false);
-  });
-
-  // The publication signal rides the same `getById` entry every other piece of
-  // toolbar state reads, so an unloaded one reads as "nothing published yet"
-  // rather than as a reason to guess published.
-  it("treats an unloaded publication signal as never published", () => {
-    expect(
-      shouldRunDraftGraph({ workflowMode: "test", publication: undefined })
-    ).toBe(true);
-  });
-});
-
-/**
  * `executeWorkflowRun` used to write the new run's id straight into the
  * selection atom. The Runs panel reads only the `executionId` search param, so
  * that write was invisible to it (#33). The URL is now the one writer: a
@@ -132,6 +80,7 @@ describe("executeWorkflowRun", () => {
       nodes: [] as WorkflowNode[],
       setNodeStatuses: vi.fn(),
       setIsExecuting: vi.fn(),
+      runLabel: "Run draft",
       navigateToExecution: vi.fn(async () => {}),
       ...overrides,
     };
@@ -152,6 +101,37 @@ describe("executeWorkflowRun", () => {
     expect(setNodeStatuses).toHaveBeenNthCalledWith(2, [
       { nodeId: "t", status: "running" },
     ]);
+  });
+
+  // Both verbs paint the same statuses on the same canvas and land on the same
+  // run panel, so the toast is the only place the graph that started is named.
+  it("names the verb that started the run", async () => {
+    const success = vi.spyOn(toast, "success");
+
+    await executeWorkflowRun(
+      baseParams({ nodes: [lifecycleNode("t")], runLabel: "Run v7 · Live" })
+    );
+
+    expect(success).toHaveBeenCalledExactlyOnceWith("Run v7 · Live started");
+  });
+
+  it("leaves the superseding notice to say a run started, and names the verb on it", async () => {
+    const success = vi.spyOn(toast, "success");
+
+    await executeWorkflowRun(
+      baseParams({
+        nodes: [lifecycleNode("t")],
+        runLabel: "Run draft",
+        runWorkflow: vi.fn(async (): Promise<WorkflowExecuteResult> => ({
+          ...runningResult,
+          supersededExecutions: 2,
+        })),
+      })
+    );
+
+    expect(success).toHaveBeenCalledExactlyOnceWith(
+      "Run draft superseded 2 runs for this entity and started a new one."
+    );
   });
 
   it("navigates to the new run once the engine confirms it started", async () => {

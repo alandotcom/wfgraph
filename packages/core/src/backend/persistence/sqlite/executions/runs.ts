@@ -13,6 +13,7 @@ import {
   encodeJson,
   optionalDate,
   optionalJsonObject,
+  optionalNumber,
   optionalString,
   placeholders,
   requiredBoolean,
@@ -31,13 +32,14 @@ const WORKFLOW_EXECUTIONS_LIMIT = 50;
 /**
  * The columns both run-list queries select, and the one they join for. JSONB
  * payloads and the routing columns the lists never paint stay off it, so a poll
- * does not pull blobs the panel would discard; `version_kind` comes from the
- * version the run pinned, which is what labels a draft run.
+ * does not pull blobs the panel would discard; `version_kind` and
+ * `version_number` come from the version the run pinned, which is what labels a
+ * run's graph.
  */
 const EXECUTION_LIST_SELECT = `e.id, e.workflow_id, e.status, e.start_source,
          e.run_mode, e.start_event_name, e.entity_value, e.workflow_run_id,
          e.error, e.started_at, e.waiting_at, e.cancelled_at, e.completed_at,
-         e.duration, v.kind AS version_kind`;
+         e.duration, v.kind AS version_kind, v.version AS version_number`;
 
 /** Every run pins exactly one version, so both list reads join it. */
 const PINNED_VERSION_JOIN = `JOIN workflow_versions v ON v.id = e.workflow_version_id`;
@@ -91,6 +93,7 @@ function executionSummary(row: Record<string, unknown>): ExecutionSummary {
     workflowId: execution.workflowId,
     workflowVersionId: execution.workflowVersionId,
     versionKind: requiredVersionKind(row, "version_kind"),
+    versionNumber: optionalNumber(row, "version_number"),
     status: execution.status,
     startSource: execution.startSource,
     runMode: execution.runMode,
@@ -175,7 +178,7 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
       store.read((database) => {
         const row = database
           .prepare(
-            `SELECT e.*, v.kind AS version_kind
+            `SELECT e.*, v.kind AS version_kind, v.version AS version_number
              FROM workflow_executions e ${PINNED_VERSION_JOIN}
              WHERE e.id = ?`
           )

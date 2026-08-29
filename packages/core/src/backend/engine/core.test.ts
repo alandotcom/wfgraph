@@ -510,7 +510,7 @@ describe("run persistence through the store port", () => {
     });
   });
 
-  it("labels a test-mode run in its timeline message", async () => {
+  it("names the recipients of a test run in its timeline message", async () => {
     await executeWorkflow(
       {
         graph: createLifecycleToActionGraph(),
@@ -524,7 +524,7 @@ describe("run persistence through the store port", () => {
     );
 
     expect(store.callsOf("recordAuditEvent")[0]?.message).toBe(
-      "Test mode completed successfully"
+      "Run completed successfully (test recipients)"
     );
   });
 

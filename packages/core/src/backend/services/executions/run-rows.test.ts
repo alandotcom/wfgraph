@@ -61,19 +61,42 @@ describe("buildRunStartedAuditMessage", () => {
   it("names the start source that opened the run", () => {
     expect(
       buildRunStartedAuditMessage({ startSource: "manual", runMode: "live" })
-    ).toBe("Manual run started");
+    ).toBe("Manual run started, to real recipients");
     expect(
       buildRunStartedAuditMessage({ startSource: "schedule", runMode: "live" })
-    ).toBe("Scheduled run started");
+    ).toBe("Scheduled run started, to real recipients");
     expect(
       buildRunStartedAuditMessage({ startSource: "event", runMode: "live" })
-    ).toBe("Event-triggered run started");
+    ).toBe("Event-triggered run started, to real recipients");
   });
 
-  it("marks test mode runs", () => {
+  it("names who the run reached rather than a mode the workflow is in", () => {
     expect(
       buildRunStartedAuditMessage({ startSource: "event", runMode: "test" })
-    ).toBe("Event-triggered test mode run started");
+    ).toBe("Event-triggered run started, to test recipients");
+  });
+
+  // The row's whole job is answering which graph ran, and a Draft run of a Live
+  // workflow reaches test recipients like a Test run of the published version
+  // does. Without the version the two rows would be the same sentence.
+  it("names the Draft a snapshot run pinned", () => {
+    expect(
+      buildRunStartedAuditMessage({
+        startSource: "manual",
+        runMode: "test",
+        version: { kind: "draft_snapshot", number: null },
+      })
+    ).toBe("Manual Draft run started, to test recipients");
+  });
+
+  it("names the published version by its number", () => {
+    expect(
+      buildRunStartedAuditMessage({
+        startSource: "manual",
+        runMode: "test",
+        version: { kind: "published", number: 7 },
+      })
+    ).toBe("Manual run of v7 started, to test recipients");
   });
 
   it("appends the Event that started the run", () => {
@@ -82,8 +105,11 @@ describe("buildRunStartedAuditMessage", () => {
         startSource: "event",
         runMode: "test",
         eventName: "app/appointment.created",
+        version: { kind: "published", number: 7 },
       })
-    ).toBe("Event-triggered test mode run started for app/appointment.created");
+    ).toBe(
+      "Event-triggered run of v7 started for app/appointment.created, to test recipients"
+    );
   });
 });
 

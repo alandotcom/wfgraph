@@ -562,7 +562,7 @@ word:
 | `wfgraph.workflow.version.restore`   | a version copied back to the draft     | `wfgraph.workflow.version.id`                                                                                 |
 | `wfgraph.execution.start`            | a manual run request                   | `wfgraph.execution.id` once a run opens; `wfgraph.outcome` is `running` or `ignored`                          |
 | `wfgraph.execution.load_workflow`    | the published version a start reads    | `wfgraph.workflow.version.id`                                                                                 |
-| `wfgraph.execution.load_draft`       | the draft snapshot a test run mints    | `wfgraph.workflow.version.id`                                                                                 |
+| `wfgraph.execution.load_draft`       | the draft snapshot a Draft run mints   | `wfgraph.workflow.version.id`                                                                                 |
 | `wfgraph.execution.preflight`        | the checks that version must pass      | `wfgraph.workflow.version.id`                                                                                 |
 | `wfgraph.execution.cancel`           | cancelling a run                       | `wfgraph.outcome` is `canceled` or `already_finished`                                                         |
 

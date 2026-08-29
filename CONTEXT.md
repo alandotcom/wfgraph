@@ -162,11 +162,10 @@ An immutable copy of a workflow's graph, together with the catalog fingerprint
 it was sound against, of one of two kinds. A published version is what each
 Publish mints, numbered in sequence, and the workflow points at the newest one;
 Event starts run that graph and refuse a never-published workflow. A draft
-snapshot is what a manual draft run of a test-mode workflow freezes for itself:
-it claims no number, stays out of the version history, and nothing ever
-publishes it. Draft saves edit the live graph and mint nothing. Published
-versions form durable history, and an Execution remains pinned to the version
-it started against.
+snapshot is what a Draft run freezes for itself: it claims no number, stays out
+of the version history, and nothing ever publishes it. Draft saves edit the
+workflow's own graph and mint nothing. Published versions form durable history,
+and an Execution remains pinned to the version it started against.
 
 **Publish**:
 The hard gate that turns a draft into a Workflow Version, and the only place a
@@ -185,6 +184,27 @@ One run of one workflow, started by a Start Event, a schedule, or a manual
 test. Pins the Workflow Version it started against. Ends with exactly one
 status: completed, canceled, superseded, or failed.
 _Avoid_: workflow (a workflow is the definition; an Execution is one run of it)
+
+**Draft run**:
+One run of the graph on the canvas, started by the Run draft button. It freezes
+that graph as a draft snapshot and pins itself to it, so a workflow nobody has
+published is runnable. It always goes to test recipients, whatever the Published
+mode says, because the graph it travels is one nobody reviewed.
+_Avoid_: current graph, working copy, unsaved changes (the canvas graph is the
+Draft)
+
+**Published run**:
+One manual run of the published version, named by its number ("Run v7"). It
+reaches the recipients the Published mode names, which is what an Event start
+reaches too.
+_Avoid_: run workflow (which of the two graphs runs is the whole question)
+
+**Published mode**:
+Per workflow, live or test: which recipients Events and Published runs reach.
+Live sends to real recipients; test sends to the test recipients each
+integration defines. It says nothing about a Draft run, which is always a test
+run, and the editor prints it beside the version it governs ("v7 · Live").
+_Avoid_: run mode, workflow mode, production, sandbox
 
 ### Extensions
 

@@ -627,24 +627,39 @@ describe("postWorkflowExecute", () => {
       })
     );
 
-    // A live workflow's runs are of what was reviewed, so an unvalidated graph
-    // is refused before anything is minted.
-    it.effect("refuses a draft run of a live workflow", () =>
+    // The recipients a Draft run reaches follow from the verb, not from the
+    // workflow's Published mode: a graph nobody reviewed goes to test recipients
+    // even while the published version is serving Events live.
+    it.effect("runs a live workflow's draft against test recipients", () =>
       Effect.gen(function* () {
         const repo = makeRepo();
         const workflows = makeDraftRepo(workflowRow({ mode: "live" }));
 
-        const failure = yield* postWorkflowExecute("wf_1", {
+        const response = yield* postWorkflowExecute("wf_1", {
           graph: "draft",
-        }).pipe(
-          Effect.provide(Layer.mergeAll(repo.layer, workflows.layer)),
-          Effect.flip
+        }).pipe(Effect.provide(Layer.mergeAll(repo.layer, workflows.layer)));
+
+        assert.strictEqual(response.status, "running");
+        assert.strictEqual(response.runMode, "test");
+        // The row and the Inngest event carry the same verdict the response does.
+        assert.strictEqual(repo.starts[0]?.execution.runMode, "test");
+        assert.strictEqual(workflows.snapshots.length, 1);
+      })
+    );
+
+    // The other arm of the same rule: a run of the published version reads the
+    // workflow's Published mode, which is what Events read too.
+    it.effect("runs the published version in the workflow's mode", () =>
+      Effect.gen(function* () {
+        const repo = makeRepo();
+        const row = workflowRow({ mode: "live" });
+
+        const response = yield* postWorkflowExecute("wf_1", {}).pipe(
+          Effect.provide(Layer.mergeAll(repo.layer, workflowLayer(row)))
         );
 
-        assert.strictEqual(failure.kind, "invalid");
-        assert.include(failure.payload.error, "test mode");
-        assert.deepStrictEqual(workflows.snapshots, []);
-        assert.deepStrictEqual(repo.starts, []);
+        assert.strictEqual(response.status, "running");
+        assert.strictEqual(response.runMode, "live");
       })
     );
 
@@ -701,7 +716,7 @@ describe("postWorkflowExecute", () => {
       Effect.gen(function* () {
         const repo = makeRepo();
         const workflows = makeDraftRepo(
-          workflowRow({ mode: "test", isPaused: true })
+          workflowRow({ mode: "live", isPaused: true })
         );
 
         const response = yield* postWorkflowExecute("wf_1", {

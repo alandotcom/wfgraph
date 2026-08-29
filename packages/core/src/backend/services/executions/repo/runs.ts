@@ -36,9 +36,9 @@ import type {
  * The columns both run-list queries select, and the one they join for.
  *
  * JSONB payloads and the routing columns the lists never paint stay off it, so a
- * poll does not pull TOAST the panel would discard. `versionKind` comes from the
- * version the run pinned, by primary key, which is what lets the panel label a
- * draft run without reading its graph.
+ * poll does not pull TOAST the panel would discard. `versionKind` and
+ * `versionNumber` come from the version the run pinned, by primary key, which is
+ * what lets the panel label a run's graph without reading it.
  */
 const EXECUTION_LIST_COLUMNS = {
   id: workflowExecutions.id,
@@ -50,6 +50,7 @@ const EXECUTION_LIST_COLUMNS = {
   entityValue: workflowExecutions.entityValue,
   workflowRunId: workflowExecutions.workflowRunId,
   versionKind: workflowVersions.kind,
+  versionNumber: workflowVersions.version,
   error: workflowExecutions.error,
   startedAt: workflowExecutions.startedAt,
   waitingAt: workflowExecutions.waitingAt,
@@ -310,6 +311,7 @@ export function makeRunsMethods(
             workflowId: workflowExecutions.workflowId,
             workflowVersionId: workflowExecutions.workflowVersionId,
             versionKind: workflowVersions.kind,
+            versionNumber: workflowVersions.version,
             status: workflowExecutions.status,
             startSource: workflowExecutions.startSource,
             runMode: workflowExecutions.runMode,

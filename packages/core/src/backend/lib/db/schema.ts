@@ -75,10 +75,10 @@ export const workflows = pgTable(
     name: text("name").notNull(),
     description: text("description"),
     /**
-     * The editable draft. An Event start never reads this, and neither does an
-     * ordinary manual start: both load the published version. The one reader is
-     * a manual draft run of a test-mode workflow, which freezes this graph into
-     * a `draft_snapshot` version and pins itself to that.
+     * The editable draft. An Event start never reads this, and neither does a
+     * manual run of the published version: both load the published version. The
+     * one reader is a Draft run, which freezes this graph into a
+     * `draft_snapshot` version and pins itself to that.
      */
     graph: jsonb("graph").notNull().$type<SerializedWorkflowGraph>(),
     isPaused: boolean("is_paused").notNull().default(false),
@@ -114,10 +114,10 @@ export const workflows = pgTable(
  * against.
  *
  * Each Publish mints the next `published` row, and every Execution pins to one.
- * A test-mode draft run mints a `draft_snapshot` instead, which is the same
- * frozen graph with no version number: the history, the latest-version read and
- * the Event subscription index all pass it by, so only a manual start ever runs
- * one. Draft saves themselves never write here.
+ * A Draft run mints a `draft_snapshot` instead, which is the same frozen graph
+ * with no version number: the history, the latest-version read and the Event
+ * subscription index all pass it by, so only a manual start ever runs one.
+ * Draft saves themselves never write here.
  */
 export const workflowVersions = pgTable(
   "workflow_versions",

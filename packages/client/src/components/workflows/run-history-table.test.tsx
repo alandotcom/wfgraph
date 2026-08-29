@@ -17,6 +17,7 @@ function run(
     entityValue: null,
     workflowRunId: null,
     versionKind: "published",
+    versionNumber: 4,
     error: null,
     startedAt: "2026-08-22T10:00:00.000Z",
     waitingAt: null,
@@ -50,6 +51,7 @@ const ROWS: RunHistoryTableRow[] = [
     status: "completed",
     runMode: "test",
     versionKind: "draft_snapshot",
+    versionNumber: null,
     startedAt: "2026-08-22T08:00:00.000Z",
     duration: "700",
   }),
@@ -102,14 +104,17 @@ describe("RunHistoryTable", () => {
 
     expect(view.getByRole("button", { name: "Workflow" })).toBeTruthy();
     expect(view.getByRole("button", { name: "Status" })).toBeTruthy();
+    expect(view.getByRole("button", { name: "Graph" })).toBeTruthy();
     expect(view.getByText("Onboarding")).toBeTruthy();
     expect(view.getByText("Billing")).toBeTruthy();
     expect(view.getByText("Failed")).toBeTruthy();
     // Billing and the draft-snapshot row are both test-mode runs.
     expect(view.getAllByText("Test")).toHaveLength(2);
+    // Onboarding and Billing both pin to published version 4.
+    expect(view.getAllByText("v4")).toHaveLength(2);
   });
 
-  it("labels a draft-snapshot run's row as Draft", () => {
+  it("labels a draft-snapshot run's row as Draft in the Graph column", () => {
     const view = render(
       <RunHistoryTable
         hasNextPage={false}
@@ -121,10 +126,47 @@ describe("RunHistoryTable", () => {
       />
     );
 
-    // Only the draft-snapshot run (exec_3, "Reminder") gets the badge; the
-    // published-graph test run (exec_2, "Billing") stays unlabelled.
+    // Only the draft-snapshot run (exec_3, "Reminder") gets the label; the
+    // published-graph test run (exec_2, "Billing") names its version instead.
     expect(view.getByText("Draft")).toBeTruthy();
     expect(view.getAllByText("Draft")).toHaveLength(1);
+  });
+
+  it("orders the Graph column by the version number it prints", () => {
+    // v11 sorts above v4 by number and below it by string, and the draft
+    // snapshot carries no number at all, so the three settle the question of
+    // what the header sorts on.
+    const rows = [
+      run({ id: "exec_a", workflowName: "Eleven", versionNumber: 11 }),
+      run({
+        id: "exec_b",
+        workflowName: "Canvas",
+        versionKind: "draft_snapshot",
+        versionNumber: null,
+      }),
+      run({ id: "exec_c", workflowName: "Four", versionNumber: 4 }),
+    ];
+    const view = render(
+      <RunHistoryTable
+        hasNextPage={false}
+        isLoading={false}
+        isLoadingMore={false}
+        onLoadMore={() => undefined}
+        onOpenRun={() => undefined}
+        runs={rows}
+      />
+    );
+
+    const graphCells = () =>
+      [...view.container.querySelectorAll("span")]
+        .map((cell) => cell.textContent ?? "")
+        .filter((label) => label === "Draft" || label.startsWith("v"));
+
+    // A numbered column opens on its highest value, as Duration does.
+    fireEvent.click(view.getByRole("button", { name: "Graph" }));
+    expect(graphCells()).toEqual(["v11", "v4", "Draft"]);
+    fireEvent.click(view.getByRole("button", { name: "Graph" }));
+    expect(graphCells()).toEqual(["Draft", "v4", "v11"]);
   });
 
   it("opens a run from the workflow name", () => {

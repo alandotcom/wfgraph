@@ -41,6 +41,7 @@ import {
 } from "#src/lib/workflow-ui-store";
 import { cn } from "@wfgraph/shared/utils";
 import { formatDayAndTime } from "@wfgraph/shared/utils/time";
+import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 
 /**
  * How many characters of a run's id identify it on screen.
@@ -70,6 +71,39 @@ export function pinnedRunLabel(
     return run.id.slice(0, RUN_ID_PREFIX_LENGTH);
   }
   return `${run.id.slice(0, RUN_ID_PREFIX_LENGTH)} · ${formatDayAndTime(run.startedAt)}`;
+}
+
+/**
+ * What the pinned run is, in the strip's own vocabulary: which graph it ran and
+ * which recipients it reached, as "Draft · Test run" or "v7 · Live run" /
+ * "v7 · Test run".
+ *
+ * Returns empty while the run's payload is still in flight, or if it names a
+ * graph kind this build does not recognize, so the strip's "Viewing a past
+ * run" placeholder stays in place rather than printing a half-known fact.
+ */
+export function pinnedRunModeLabel(
+  run:
+    | {
+        versionKind: WorkflowVersionKind;
+        versionNumber: number | null;
+        runMode: "live" | "test";
+      }
+    | undefined
+): string {
+  if (!run) {
+    return "";
+  }
+  let graph: string;
+  if (run.versionKind === "draft_snapshot") {
+    graph = "Draft";
+  } else if (run.versionKind === "published" && run.versionNumber !== null) {
+    graph = `v${run.versionNumber}`;
+  } else {
+    return "";
+  }
+  const recipients = run.runMode === "test" ? "Test" : "Live";
+  return `${graph} · ${recipients} run`;
 }
 
 /**
@@ -114,9 +148,10 @@ function DraftStatus({ workflowId }: { workflowId?: string }) {
       <StatusItems>
         {/* Both of these wait on the payload rather than on `workflowId`. The
             mode atom answers "live" until a workflow is hydrated into it, and
-            "Live mode" is an affirmative claim about whether real email and SMS
-            go out; a blank is the only honest thing to say before it is known.
-            The payload's arrival is what says a workflow has been loaded. */}
+            a Published mode of Live is an affirmative claim about whether real
+            email and SMS go out; a blank is the only honest thing to say before
+            it is known. The payload's arrival is what says a workflow has been
+            loaded. */}
         {publication && (
           <>
             <WorkflowPublicationBadge
@@ -153,13 +188,14 @@ function PinnedRunStatus() {
   });
 
   const label = pinnedRunLabel(run);
+  const modeLabel = pinnedRunModeLabel(run);
 
   return (
     <>
       <StatusItems>
         <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap font-medium">
           <Clock3 aria-hidden className="size-3" />
-          {executionId ? "Viewing a past run" : "Runs"}
+          {executionId ? modeLabel || "Viewing a past run" : "Runs"}
         </span>
         {label && (
           <>

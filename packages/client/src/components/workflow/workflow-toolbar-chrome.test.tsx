@@ -212,7 +212,7 @@ describe("WorkflowToolbarChrome", () => {
     const workspaceSwitcher = await findByRole("group", {
       name: "Workspace view",
     });
-    const mode = await findByRole("button", { name: "Live mode" });
+    const mode = await findByRole("button", { name: "Published mode: Live" });
     const publish = await findByRole("button", { name: "Publish" });
 
     expect(
@@ -270,28 +270,179 @@ describe("WorkflowToolbarChrome", () => {
     );
   });
 
-  it("uses amber Test mode and sends a mode change through the existing handler", async () => {
+  it("uses amber for a Test Published mode and sends the change through the existing handler", async () => {
     const { actions, findByRole, getByRole } = renderChrome(
       WorkflowToolbarChrome,
-      { state: { workflowMode: "test" } }
+      {
+        state: {
+          workflowMode: "test",
+          publication: {
+            isPublished: true,
+            hasUnpublishedChanges: false,
+            publishedVersionId: "version_7",
+            publishedVersion: 7,
+            publishedAt: "2026-08-23T15:00:00.000Z",
+          },
+        },
+      }
     );
 
-    const trigger = await findByRole("button", { name: "Test mode" });
+    // The pill carries the version the mode applies to, so nobody reads it as
+    // something the draft's own run obeys.
+    const trigger = await findByRole("button", {
+      name: "Published mode: v7 · Test",
+    });
+    expect(trigger.textContent).toContain("v7 · Test");
     expect(trigger.className).toContain("bg-warning/10");
     fireEvent.keyDown(trigger, { key: "ArrowDown" });
     fireEvent.keyUp(trigger, { key: "ArrowDown" });
     expect(
       getByRole("menuitemradio", {
-        name: /Routes configured messages to test recipients/,
+        name: /Events and manual runs of v7 go to test recipients\. Running the draft never needs this\./,
       })
     ).toBeTruthy();
     fireEvent.click(
       getByRole("menuitemradio", {
-        name: /Sends messages to configured recipients/,
+        name: /Events and manual runs of v7 send to real recipients\./,
       })
     );
 
     expect(actions.handleSetWorkflowMode).toHaveBeenCalledWith("live");
+  });
+
+  // Nothing published yet, so the mode names no version and says when it will
+  // start to matter.
+  it("names no version in Published mode before the first publish", async () => {
+    const { findByRole, getByRole } = renderChrome(WorkflowToolbarChrome);
+
+    const trigger = await findByRole("button", {
+      name: "Published mode: Live",
+    });
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    fireEvent.keyUp(trigger, { key: "ArrowDown" });
+
+    expect(
+      getByRole("menuitemradio", {
+        name: /Events and manual runs of the published version send to real recipients\. Takes effect on publish\./,
+      })
+    ).toBeTruthy();
+  });
+
+  describe("the Run split button", () => {
+    it("runs the draft from its face, whatever Published mode says", async () => {
+      const { actions, findByRole } = renderChrome(WorkflowToolbarChrome, {
+        state: { workflowMode: "live" },
+      });
+
+      fireEvent.click(await findByRole("button", { name: "Run draft" }));
+
+      expect(actions.handleExecute).toHaveBeenCalledExactlyOnceWith("draft");
+    });
+
+    it("names the published run for its version and its mode", async () => {
+      const { actions, findByRole, getByRole } = renderChrome(
+        WorkflowToolbarChrome,
+        {
+          state: {
+            workflowMode: "test",
+            publication: {
+              isPublished: true,
+              hasUnpublishedChanges: false,
+              publishedVersionId: "version_7",
+              publishedVersion: 7,
+              publishedAt: "2026-08-23T15:00:00.000Z",
+            },
+          },
+        }
+      );
+
+      const trigger = await findByRole("button", { name: "Run options" });
+      fireEvent.keyDown(trigger, { key: "ArrowDown" });
+      fireEvent.keyUp(trigger, { key: "ArrowDown" });
+
+      fireEvent.click(getByRole("menuitem", { name: "Run v7 · Test" }));
+      expect(actions.handleExecute).toHaveBeenCalledExactlyOnceWith(
+        "published"
+      );
+    });
+
+    // The draft is runnable from the first node onward; the published version
+    // exists only after a publish, and the item says so rather than vanishing.
+    it("offers the reason instead of a published run before the first publish", async () => {
+      const { findByRole, getByRole } = renderChrome(WorkflowToolbarChrome);
+
+      expect(
+        (await findByRole("button", { name: "Run draft" })).hasAttribute(
+          "disabled"
+        )
+      ).toBe(false);
+
+      const trigger = getByRole("button", { name: "Run options" });
+      fireEvent.keyDown(trigger, { key: "ArrowDown" });
+      fireEvent.keyUp(trigger, { key: "ArrowDown" });
+
+      const item = getByRole("menuitem", { name: "Nothing published yet" });
+      expect(item.getAttribute("data-disabled")).not.toBeNull();
+    });
+
+    // v7 is frozen and still handling Events. Emptying the canvas to start
+    // over says nothing about whether it can run, and the builder would have no
+    // way back to it from the editor if it did.
+    it("leaves the published run available while the canvas is empty", async () => {
+      const { findByRole, getByRole } = renderChrome(WorkflowToolbarChrome, {
+        graph: [],
+        state: {
+          nodes: [],
+          publication: {
+            isPublished: true,
+            hasUnpublishedChanges: true,
+            publishedVersionId: "version_7",
+            publishedVersion: 7,
+            publishedAt: "2026-08-23T15:00:00.000Z",
+          },
+        },
+      });
+
+      expect(
+        (await findByRole("button", { name: "Run draft" })).hasAttribute(
+          "disabled"
+        )
+      ).toBe(true);
+
+      const trigger = getByRole("button", { name: "Run options" });
+      fireEvent.keyDown(trigger, { key: "ArrowDown" });
+      fireEvent.keyUp(trigger, { key: "ArrowDown" });
+
+      expect(
+        getByRole("menuitem", {
+          name: "Run v7 · Live",
+        }).getAttribute("data-disabled")
+      ).toBeNull();
+    });
+
+    // Two ghost buttons carry a transparent border, so the group's own rules
+    // draw nothing between them and the pair reads as two loose controls.
+    it("draws a seam between the verb and the chevron", async () => {
+      const { findByRole } = renderChrome(WorkflowToolbarChrome);
+
+      const group = (await findByRole("button", { name: "Run draft" })).closest(
+        "[data-slot='button-group']"
+      );
+
+      expect(
+        group?.querySelector("[data-slot='button-group-separator']")
+      ).toBeTruthy();
+    });
+
+    it("offers a non-owner no run controls at all", async () => {
+      const { findByRole, queryByRole } = renderChrome(WorkflowToolbarChrome, {
+        state: { isOwner: false },
+      });
+
+      await findByRole("button", { name: "Published mode: Live" });
+      expect(queryByRole("button", { name: "Run draft" })).toBeNull();
+      expect(queryByRole("button", { name: "Run options" })).toBeNull();
+    });
   });
 });
 
@@ -310,7 +461,10 @@ describe("ToolbarActions menu", () => {
     // exists: the shortcuts are the item's promise, not decoration.
     for (const label of [
       /^Add step/,
-      /^Run workflow/,
+      /^Run draft/,
+      // Flat beside "Run draft" with no "Run options" heading over it, so the
+      // row names its own action and prints the reason it is disabled under it.
+      /^Run published version.*Nothing published yet/,
       /^Undo/,
       /^Redo/,
       /^Tidy layout/,
@@ -319,7 +473,9 @@ describe("ToolbarActions menu", () => {
       expect(getByRole("menuitem", { name: label })).toBeTruthy();
     }
     // Live is the mode `baseState` is in, so the offer is the other one.
-    expect(getByRole("menuitem", { name: "Switch to Test mode" })).toBeTruthy();
+    expect(
+      getByRole("menuitem", { name: "Set published mode to Test" })
+    ).toBeTruthy();
   });
 
   it("renders every canvas command through the keyboard submenu", async () => {

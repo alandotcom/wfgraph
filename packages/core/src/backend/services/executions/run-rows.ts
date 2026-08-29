@@ -20,14 +20,29 @@ import type {
   SerializedWorkflowGraph,
   WorkflowMode,
 } from "@wfgraph/shared/graph/types";
+import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 
-/** Identity of the workflow plus the published version the run will execute. */
+/**
+ * Which graph a run pinned, in the words the timeline says it in: the Draft the
+ * canvas held, or the published version by its number.
+ *
+ * A start path that has not yet been taught to say leaves this off, and the
+ * timeline falls back to naming neither.
+ */
+export type PinnedRunVersion = {
+  kind: WorkflowVersionKind;
+  /** The published version's number. Null on a draft snapshot, which has none. */
+  number: number | null;
+};
+
+/** Identity of the workflow plus the version the run will execute. */
 export type WorkflowRunTarget = {
   id: string;
   name: string;
   graph: SerializedWorkflowGraph;
   versionId: string;
   catalogFingerprint: string;
+  version?: PinnedRunVersion;
 };
 
 /** Build the run target every start path hands to concurrency / enqueue. */
@@ -36,6 +51,7 @@ export function toWorkflowRunTarget(input: {
   versionId: string;
   catalogFingerprint: string;
   graph: SerializedWorkflowGraph;
+  version?: PinnedRunVersion;
 }): WorkflowRunTarget {
   return {
     id: input.workflow.id,
@@ -43,6 +59,7 @@ export function toWorkflowRunTarget(input: {
     graph: input.graph,
     versionId: input.versionId,
     catalogFingerprint: input.catalogFingerprint,
+    ...(input.version ? { version: input.version } : {}),
   };
 }
 
@@ -130,15 +147,49 @@ const IGNORED_SUBJECTS: Record<WorkflowExecutionStartSource, string> = {
   event: "event",
 };
 
+/**
+ * The opening words of a "run started" row: who started it, and which graph ran.
+ *
+ * The graph is what a reader of the timeline is actually asking, and it is the
+ * one fact `runMode` cannot supply: a Draft run always reaches test recipients
+ * whatever Published mode the workflow is in, so a row wording itself off the
+ * mode alone would read the same for a Draft run and for a test run of the
+ * published version.
+ */
+function runStartedSubject(
+  startSource: WorkflowExecutionStartSource,
+  version: PinnedRunVersion | undefined
+): string {
+  const label = RUN_STARTED_LABELS[startSource];
+
+  if (version?.kind === "draft_snapshot") {
+    return `${label} Draft run started`;
+  }
+  if (version?.number != null) {
+    return `${label} run of v${version.number} started`;
+  }
+  return `${label} run started`;
+}
+
+/**
+ * Who a run reached, which is the whole of what `runMode` decides. The phrase
+ * "test mode" is deliberately absent: Published mode is a setting on the
+ * workflow, and a row records what one run did.
+ */
+function runRecipientsPhrase(runMode: WorkflowMode): string {
+  return runMode === "test" ? "test recipients" : "real recipients";
+}
+
 export function buildRunStartedAuditMessage(input: {
   startSource: WorkflowExecutionStartSource;
   runMode: WorkflowMode;
   eventName?: string;
+  /** The version this run pinned, which names the graph that ran. */
+  version?: PinnedRunVersion;
 }): string {
-  const label = RUN_STARTED_LABELS[input.startSource];
-  const mode = input.runMode === "test" ? " test mode" : "";
+  const subject = runStartedSubject(input.startSource, input.version);
   const event = input.eventName ? ` for ${input.eventName}` : "";
-  return `${label}${mode} run started${event}`;
+  return `${subject}${event}, to ${runRecipientsPhrase(input.runMode)}`;
 }
 
 /**
@@ -232,10 +283,13 @@ export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
         startSource: start.source,
         runMode,
         eventName: start.eventName,
+        version: workflow.version,
       }),
       metadata: {
         startSource: start.source,
         runMode,
+        versionKind: workflow.version?.kind,
+        versionNumber: workflow.version?.number ?? undefined,
         eventName: start.eventName,
         entityValue: start.entityValue,
         deliveryId: start.deliveryId,

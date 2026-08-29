@@ -10,6 +10,7 @@ import {
   optionalDate,
   optionalJsonObject,
   optionalJsonValue,
+  optionalNumber,
   optionalString,
   requiredDate,
   requiredString,
@@ -53,13 +54,14 @@ function runMode(value: string): WorkflowExecution["runMode"] {
 }
 
 /**
- * The execution's own columns the run lists read. The version kind rides beside
- * them from a join, so it is added by the readers that ask for it rather than
- * here, where the whole-row reader would have nothing to put in it.
+ * The execution's own columns the run lists read. The version kind and number
+ * ride beside them from a join, so they are added by the readers that ask for
+ * them rather than here, where the whole-row reader would have nothing to put in
+ * them.
  */
 function executionListColumns(
   row: Record<string, unknown>
-): Omit<WorkflowExecutionListRow, "versionKind"> {
+): Omit<WorkflowExecutionListRow, "versionKind" | "versionNumber"> {
   return {
     id: requiredString(row, "id"),
     workflowId: requiredString(row, "workflow_id"),
@@ -85,6 +87,7 @@ export function sqliteExecutionListRow(
   return {
     ...executionListColumns(row),
     versionKind: requiredVersionKind(row, "version_kind"),
+    versionNumber: optionalNumber(row, "version_number"),
   };
 }
 

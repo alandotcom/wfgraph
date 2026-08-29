@@ -13,8 +13,14 @@ import type { WorkflowIssuesOverlayModel } from "@wfgraph/shared/graph/workflow-
 type WorkflowIssuesOverlayProps = OverlayComponentProps<{
   issues: WorkflowIssuesOverlayModel;
   onGoToStep: (nodeId: string, fieldKey?: string) => void;
-  onRunAnyway?: () => void;
-  allowRunAnyway?: boolean;
+  /**
+   * Starts the draft run these issues were collected for. Absent whenever a
+   * blocking issue stands, and absent for every reader who opened the list on
+   * their own. A run of the published version never arrives here: publish
+   * refused that graph's blocking issues before it became a version.
+   */
+  onRunDraftAnyway?: () => void;
+  allowRunDraftAnyway?: boolean;
 }>;
 
 /** Count the individual repairs represented by the overlay's grouped rows. */
@@ -26,8 +32,8 @@ export function WorkflowIssuesOverlay({
   overlayId,
   issues,
   onGoToStep,
-  onRunAnyway,
-  allowRunAnyway = false,
+  onRunDraftAnyway,
+  allowRunDraftAnyway = false,
 }: WorkflowIssuesOverlayProps) {
   const { push, closeAll } = useOverlay();
   const { pushSheet } = useConfigurationSheet();
@@ -67,12 +73,12 @@ export function WorkflowIssuesOverlay({
     });
   };
 
-  const handleRunAnyway = () => {
-    if (!onRunAnyway) {
+  const handleRunDraftAnyway = () => {
+    if (!onRunDraftAnyway) {
       return;
     }
     closeAll();
-    onRunAnyway();
+    onRunDraftAnyway();
   };
 
   const blockingIssueCount =
@@ -81,12 +87,12 @@ export function WorkflowIssuesOverlay({
   return (
     <Overlay
       actions={
-        allowRunAnyway && onRunAnyway
+        allowRunDraftAnyway && onRunDraftAnyway
           ? [
               {
-                label: "Run Anyway",
+                label: "Run draft anyway",
                 variant: "outline",
-                onClick: handleRunAnyway,
+                onClick: handleRunDraftAnyway,
               },
               { label: "Cancel", onClick: closeAll },
             ]
@@ -98,12 +104,13 @@ export function WorkflowIssuesOverlay({
       <div className="flex items-center gap-2 text-warning">
         <AlertTriangle className="size-5" />
         <p className="text-muted-foreground text-sm">
-          This workflow has issues that may cause it to fail.
+          The draft has issues that may cause it to fail.
         </p>
       </div>
       {blockingIssueCount > 0 && (
         <p className="mt-2 text-destructive text-sm">
-          Resolve blocking issues before running this workflow.
+          Resolve blocking issues before running the draft. Runs of the
+          published version are unaffected.
         </p>
       )}
 

@@ -21,6 +21,10 @@ import {
 } from "#src/lib/test-payload";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
+  runOverlayCopy,
+  type WorkflowRunTarget,
+} from "#src/lib/workflow-run-labels";
+import {
   findEvent,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
@@ -39,12 +43,18 @@ import type { OverlayComponentProps } from "./types";
  */
 const NO_EVENT = "";
 
-export type TestRunRequest = {
+export type RunRequest = {
   eventName?: string;
   input: JsonObject;
 };
 
-type TestRunOverlayProps = OverlayComponentProps<{
+type RunOverlayProps = OverlayComponentProps<{
+  /**
+   * Which graph this run starts, and what it is called. The overlay's heading,
+   * its opening sentence and its confirm button are all read off this one
+   * value, so the verb the operator pressed is the verb they confirm.
+   */
+  target: WorkflowRunTarget;
   /** The workflow's Start Events, in the order the Lifecycle panel lists them. */
   startEvents: readonly string[];
   /** Whether a run naming no Event is one this workflow takes at all. */
@@ -56,7 +66,7 @@ type TestRunOverlayProps = OverlayComponentProps<{
   hasEventSplit: boolean;
   /** The samples the workflow kept, one per Event plus the Event-less one. */
   savedPayloads: TestPayloads;
-  onRun: (request: TestRunRequest) => void;
+  onRun: (request: RunRequest) => void;
 }>;
 
 /** What the Event select shows for one Start Event: its label, then its name. */
@@ -165,24 +175,29 @@ function PayloadForm({
 }
 
 /**
- * The data a test run carries, gathered before the run starts.
+ * The data a run carries, gathered before it starts.
  *
  * Two things leave here: the payload, which every template downstream addresses,
  * and the Event the run stands in for, which is what an Event Split routes on. A
  * run given neither reaches the first node that needs one and stops there, so
- * this is the screen that keeps a test run from being a different thing than the
- * run it is testing.
+ * this is the screen that keeps a run from being a different thing than the run
+ * it is standing in for.
+ *
+ * One component serves both verbs. The Event and payload halves are identical
+ * for each; `target` is what changes the words around them.
  */
-export function TestRunOverlay({
+export function RunOverlay({
   overlayId,
+  target,
   startEvents,
   allowManualStart,
   hasEventSplit,
   savedPayloads,
   onRun,
-}: TestRunOverlayProps) {
+}: RunOverlayProps) {
   const catalog = useExtensionCatalog();
   const { closeAll } = useOverlay();
+  const copy = runOverlayCopy(target);
 
   // The first Start Event, since one of them is the ordinary shape. A workflow
   // with none can only be the Event-less manual start.
@@ -283,15 +298,15 @@ export function TestRunOverlay({
     <Overlay
       actions={[
         { label: "Cancel", variant: "outline", onClick: closeAll },
-        { label: "Run", onClick: handleRun, disabled: !canRun },
+        { label: copy.confirmLabel, onClick: handleRun, disabled: !canRun },
       ]}
-      description="A test run carries the payload an Event would have sent, so every template downstream resolves the way it will in production."
+      description={copy.description}
       overlayId={overlayId}
-      title="Test run"
+      title={copy.title}
     >
       <div className="space-y-6">
         <div className="space-y-2">
-          <Label htmlFor="testRunEvent">
+          <Label htmlFor="runEvent">
             Which Event does this run stand in for?
           </Label>
           <Select
@@ -299,7 +314,7 @@ export function TestRunOverlay({
             onValueChange={whenChosen(chooseEvent)}
             value={selectedEvent}
           >
-            <SelectTrigger className="w-full" id="testRunEvent">
+            <SelectTrigger className="w-full" id="runEvent">
               <SelectValue placeholder="Choose an Event" />
             </SelectTrigger>
             <SelectContent>

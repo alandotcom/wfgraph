@@ -76,6 +76,7 @@ export function useWorkflowCommands({
     state: {
       currentWorkflowId: state.currentWorkflowId,
       workflowMode: state.workflowMode,
+      publishedVersion: state.publication?.publishedVersion,
       isExecuting: state.isExecuting,
       isPreflighting: actions.isPreflighting,
       isGenerating: state.isGenerating,
@@ -109,7 +110,8 @@ export function useWorkflowCommands({
     callbacks: {
       addStep: onAddStep,
       save: () => void actions.handleSave(),
-      run: () => void actions.handleExecute(),
+      runDraft: () => void actions.handleExecute("draft"),
+      runPublished: () => void actions.handleExecute("published"),
       switchMode: (mode) => void actions.handleSetWorkflowMode(mode),
       showRuns: workspaceNavigation.showRuns,
       showChanges: workspaceNavigation.showChanges,

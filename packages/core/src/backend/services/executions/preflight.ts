@@ -308,11 +308,12 @@ export const loadWorkflowForRun = Effect.fn("wfgraph.execution.load_workflow")(
  *
  * Publish's readiness battery -- templates, Event Split outlets, outlet
  * reachability -- is deliberately not asked here, so a half-built graph fails at
- * the node rather than at the request. That is what test mode is for.
+ * the node rather than at the request. A Draft run is what the builder reaches
+ * for while the graph is still half-built.
  *
- * The mode gate lives here because it is about the graph being loaded rather
- * than about the request: a live workflow runs what was reviewed, so its draft
- * is refused before any row is minted.
+ * The workflow's Published mode is not read here. It governs Events and runs of
+ * the published version; a Draft run always goes to test recipients, which
+ * `postWorkflowExecute` decides on the request rather than on the graph.
  *
  * The snapshot row is not written here. `pinVersion` writes it, and the caller
  * runs that right before the one step that stores the version id on an
@@ -331,13 +332,6 @@ export const loadDraftForRun = Effect.fn("wfgraph.execution.load_draft")(
     }
 
     const { workflow, draftGraph } = loaded;
-    if (workflow.mode !== "test") {
-      return yield* new InvalidInput({
-        error:
-          "Only a workflow in test mode can run its draft. Switch this workflow to test mode, or publish the draft and run the published version.",
-      });
-    }
-
     const { catalog } = yield* Extensions;
     const fingerprint = catalogFingerprint(catalog);
     const versionId = generateId();

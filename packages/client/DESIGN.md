@@ -267,10 +267,13 @@ remains constant because the strip and graph share the column height.
 The 44px editor toolbar spans the full editor shell. Workflow navigation,
 **Actions**, and **Settings** form the leading group. The 320px search control
 stays centered in the shell and hides at 70rem or narrower; its keyboard
-shortcut remains available. The workspace control, run mode, and **Publish**
-form the trailing group. Test mode uses Signal Amber because it changes where
-configured messages go. Publication state stays in the status strip, separate
-from run mode.
+shortcut remains available. The workspace control, **Published mode**, the Run
+split button, and **Publish** form the trailing group. A Test Published mode
+uses Signal Amber because it changes where a published version's messages go.
+The split button's face is **Run draft**, which always sends to test
+recipients; its menu holds the run of the published version, named for that
+version and the mode it honours. Publication state stays in the status strip,
+separate from Published mode.
 
 ### Publication review
 

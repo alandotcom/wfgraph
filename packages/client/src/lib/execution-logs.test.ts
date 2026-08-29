@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isRunInProgress,
+  toPinnedRunSummary,
   toWorkflowExecutionFromSummary,
   toWorkflowExecutions,
 } from "#src/lib/execution-logs";
@@ -13,6 +14,7 @@ const rawExecution = {
   startSource: "event" as const,
   runMode: "live" as const,
   versionKind: "published" as const,
+  versionNumber: 3,
   startEventName: "app/appointment.created",
   entityValue: "appt_1",
   workflowRunId: null,
@@ -86,6 +88,7 @@ describe("toWorkflowExecutionFromSummary", () => {
       workflowId: "wf_1",
       workflowVersionId: "ver_1",
       versionKind: "published",
+      versionNumber: 9,
       status: "completed",
       input: {},
       output: {},
@@ -103,6 +106,7 @@ describe("toWorkflowExecutionFromSummary", () => {
 
     expect(mapped.runMode).toBe("test");
     expect(mapped.versionKind).toBe("published");
+    expect(mapped.versionNumber).toBe(9);
     expect(mapped.startSource).toBe("event");
     expect(mapped.startEventName).toBe("app/appointment.created");
     expect(mapped.entityValue).toBe("appt_99");
@@ -117,6 +121,7 @@ describe("toWorkflowExecutionFromSummary", () => {
       workflowId: "wf_1",
       workflowVersionId: "ver_draft_1",
       versionKind: "draft_snapshot",
+      versionNumber: null,
       status: "completed",
       input: {},
       output: {},
@@ -130,8 +135,58 @@ describe("toWorkflowExecutionFromSummary", () => {
       entityValue: null,
     };
 
-    expect(toWorkflowExecutionFromSummary(summary).versionKind).toBe(
-      "draft_snapshot"
-    );
+    const mapped = toWorkflowExecutionFromSummary(summary);
+    expect(mapped.versionKind).toBe("draft_snapshot");
+    expect(mapped.versionNumber).toBeNull();
+  });
+});
+
+describe("toPinnedRunSummary", () => {
+  const basePayload: ExecutionLogsResult = {
+    execution: {
+      id: "exec_1",
+      workflowId: "wf_1",
+      workflowVersionId: "ver_1",
+      versionKind: "published",
+      versionNumber: 7,
+      status: "completed",
+      input: {},
+      output: {},
+      error: null,
+      startedAt: "2026-03-01T10:00:00.000Z",
+      completedAt: "2026-03-01T10:00:30.000Z",
+      duration: "30s",
+      runMode: "live",
+      startSource: "event",
+      startEventName: "app/appointment.created",
+      entityValue: null,
+    },
+    logs: [],
+    waits: [],
+  };
+
+  it("carries the pinned run's graph, version, and recipients", () => {
+    const summary = toPinnedRunSummary(basePayload);
+
+    expect(summary.id).toBe("exec_1");
+    expect(summary.versionKind).toBe("published");
+    expect(summary.versionNumber).toBe(7);
+    expect(summary.runMode).toBe("live");
+  });
+
+  it("carries a null version number for a draft snapshot", () => {
+    const summary = toPinnedRunSummary({
+      ...basePayload,
+      execution: {
+        ...basePayload.execution,
+        versionKind: "draft_snapshot",
+        versionNumber: null,
+        runMode: "test",
+      },
+    });
+
+    expect(summary.versionKind).toBe("draft_snapshot");
+    expect(summary.versionNumber).toBeNull();
+    expect(summary.runMode).toBe("test");
   });
 });

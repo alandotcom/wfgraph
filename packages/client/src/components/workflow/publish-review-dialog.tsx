@@ -86,10 +86,10 @@ export function PublishReviewDialog({
     >
       <DialogContent className="sm:max-w-lg" showCloseButton={!isPublishing}>
         <DialogHeader>
-          <DialogTitle>Publish version {proposedVersion}?</DialogTitle>
+          <DialogTitle>Publish v{proposedVersion}?</DialogTitle>
           <DialogDescription>
-            New starts will use version {proposedVersion}. Existing runs remain
-            pinned to the version they started with.
+            New starts will use v{proposedVersion}. Existing runs remain pinned
+            to the version they started with.
           </DialogDescription>
         </DialogHeader>
 
@@ -97,11 +97,11 @@ export function PublishReviewDialog({
           <div className="flex items-center justify-between border-b bg-muted/30 px-3 py-2 text-xs">
             <span>
               {review.baseVersion
-                ? `Based on version ${review.baseVersion}`
+                ? `Based on v${review.baseVersion}`
                 : "No published version"}
             </span>
             <span className="text-muted-foreground">
-              Proposed version {proposedVersion}
+              Proposed v{proposedVersion}
             </span>
           </div>
           <dl className="grid grid-cols-2 gap-px bg-border">
@@ -120,7 +120,7 @@ export function PublishReviewDialog({
         {mode === "test" ? (
           <div className="flex items-start gap-2 rounded-lg bg-warning/10 px-3 py-2 text-warning">
             <CircleDot aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-            <p>Publishing does not change recipient routing.</p>
+            <p>{`Published mode is Test, so v${proposedVersion}'s Events and manual runs go to test recipients until you set it to Live.`}</p>
           </div>
         ) : null}
 
@@ -141,7 +141,7 @@ export function PublishReviewDialog({
             ) : (
               <Upload data-icon="inline-start" />
             )}
-            {isPublishing ? "Publishing" : `Publish version ${proposedVersion}`}
+            {isPublishing ? "Publishing" : `Publish v${proposedVersion}`}
           </Button>
         </DialogFooter>
       </DialogContent>

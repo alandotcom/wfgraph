@@ -3,9 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import {
-  TestRunOverlay,
-  type TestRunRequest,
-} from "#src/components/overlays/test-run-overlay";
+  RunOverlay,
+  type RunRequest,
+} from "#src/components/overlays/run-overlay";
+import type { WorkflowRunTarget } from "#src/lib/workflow-run-labels";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { TestPayloads } from "@wfgraph/shared/lifecycle/test-payloads";
 
@@ -43,20 +44,22 @@ function renderOverlay(
     hasEventSplit?: boolean;
     allowManualStart?: boolean;
     savedPayloads?: TestPayloads;
+    target?: WorkflowRunTarget;
   } = {}
 ) {
-  const onRun = vi.fn<(request: TestRunRequest) => void>();
+  const onRun = vi.fn<(request: RunRequest) => void>();
 
   render(
     <ExtensionCatalogProvider value={testCatalog}>
       <OverlayProvider>
-        <TestRunOverlay
+        <RunOverlay
           allowManualStart={overrides.allowManualStart ?? true}
           hasEventSplit={overrides.hasEventSplit ?? false}
           onRun={onRun}
           overlayId="overlay-1"
           savedPayloads={overrides.savedPayloads ?? {}}
           startEvents={START_EVENTS}
+          target={overrides.target ?? { graph: "draft" }}
         />
       </OverlayProvider>
     </ExtensionCatalogProvider>
@@ -65,7 +68,51 @@ function renderOverlay(
   return { onRun };
 }
 
-describe("TestRunOverlay", () => {
+describe("RunOverlay", () => {
+  /**
+   * One component, three headings. The Event and payload halves are identical
+   * for each verb; what changes is the sentence saying which graph runs and who
+   * receives what it sends.
+   */
+  it("says a draft run goes to test recipients while the published version keeps working", () => {
+    renderOverlay({ target: { graph: "draft", publishedVersion: 7 } });
+
+    expect(screen.getByRole("heading", { name: "Run draft" })).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Runs the draft on this canvas with test recipients. Published v7 keeps handling Events."
+      )
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Run draft" })).toBeTruthy();
+  });
+
+  it("warns a live published run where it sends", () => {
+    renderOverlay({
+      target: { graph: "published", publishedVersion: 7, workflowMode: "live" },
+    });
+
+    expect(screen.getByRole("heading", { name: "Run v7 · Live" })).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Runs Published v7 and sends to real recipients. Draft edits are not included."
+      )
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Run v7 · Live" })).toBeTruthy();
+  });
+
+  it("names test recipients on a published run in Test Published mode", () => {
+    renderOverlay({
+      target: { graph: "published", publishedVersion: 7, workflowMode: "test" },
+    });
+
+    expect(
+      screen.getByText(
+        "Runs Published v7 with test recipients. Draft edits are not included."
+      )
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Run v7 · Test" })).toBeTruthy();
+  });
+
   it("opens on the first Start Event and draws its declared fields", () => {
     renderOverlay();
 
@@ -82,7 +129,7 @@ describe("TestRunOverlay", () => {
     fireEvent.change(screen.getByLabelText(/appointment\.id/), {
       target: { value: "appt_1" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run draft" }));
 
     expect(onRun).toHaveBeenCalledWith({
       eventName: "app/appointment.created",
@@ -119,7 +166,7 @@ describe("TestRunOverlay", () => {
     fireEvent.change(screen.getByLabelText("Payload JSON"), {
       target: { value: "{oops" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run draft" }));
 
     expect(screen.getByText("This is not valid JSON.")).toBeTruthy();
     expect(onRun).not.toHaveBeenCalled();

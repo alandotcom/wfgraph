@@ -252,7 +252,7 @@ describe("WorkflowStatusStrip", () => {
     });
 
     await waitFor(() => {
-      expect(view.getByText("Viewing a past run")).toBeTruthy();
+      expect(view.getByText("v7 · Live run")).toBeTruthy();
     });
     expect(view.getByText("Editing is off")).toBeTruthy();
     expect(store.get(canvasEditingLockedAtom)).toBe(true);
@@ -267,7 +267,7 @@ describe("WorkflowStatusStrip", () => {
       expect(store.get(canvasEditingLockedAtom)).toBe(false);
     });
     expect(router.state.location.search).toEqual({});
-    expect(view.queryByText("Viewing a past run")).toBeNull();
+    expect(view.queryByText("v7 · Live run")).toBeNull();
   });
 
   it("arms the reload guard while a run is pinned over an unsaved draft", async () => {
@@ -280,7 +280,7 @@ describe("WorkflowStatusStrip", () => {
     });
 
     await waitFor(() => {
-      expect(view.getByText("Viewing a past run")).toBeTruthy();
+      expect(view.getByText("v7 · Live run")).toBeTruthy();
     });
 
     expect(armedUnloadGuard()).toBe(true);

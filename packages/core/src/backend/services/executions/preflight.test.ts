@@ -1,8 +1,9 @@
 /**
- * What a draft run freezes into the version it pins to.
+ * What a Draft run freezes into the version it pins to, and what it does not ask
+ * about the workflow.
  *
  * The graph checks above this are memoized on the semantic digest, which is
- * blind to node positions, so the one thing worth asserting here is that the
+ * blind to node positions, so the thing worth asserting here is that the
  * snapshot carries the workflow's own draft rather than whatever graph first
  * taught the memo those semantics.
  */
@@ -23,10 +24,15 @@ type SnapshotInput = Parameters<
   WorkflowRepo["Service"]["freezeDraftSnapshot"]
 >[0];
 
+/**
+ * The workflow is in Live Published mode, which this loader never reads: that
+ * mode governs Events and runs of the published version, and a Draft run's
+ * recipients are decided by the request in `postWorkflowExecute`.
+ */
 const workflow = {
   id: "wf_1",
   name: "Appointment Reminders",
-  mode: "test" as const,
+  mode: "live" as const,
   isPaused: false,
 };
 
@@ -108,5 +114,26 @@ describe("loadDraftForRun", () => {
         // The digest describes the meaning, which neither drag moved.
         expect(snapshots[1]?.graphDigest).toBe(snapshots[0]?.graphDigest);
       })
+  );
+
+  it.effect("loads the draft of a workflow in Live Published mode", () =>
+    Effect.gen(function* () {
+      const snapshots: SnapshotInput[] = [];
+      const loaded = yield* loadDraftForRun(workflow.id).pipe(
+        Effect.tap((result) => result.pinVersion),
+        Effect.provide(
+          Layer.mergeAll(
+            SilentAppLoggerLayer,
+            stubExtensionCatalog(),
+            stubIntegrationRepo(),
+            draftRepoLayer(draftGraphAt(80), snapshots)
+          )
+        )
+      );
+
+      expect(loaded.workflow.mode).toBe("live");
+      expect(snapshots).toHaveLength(1);
+      expect(loaded.preflight.workflowVersionId).toBe(snapshots[0]?.versionId);
+    })
   );
 });

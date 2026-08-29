@@ -27,6 +27,7 @@ function createRow(
     entityValue: null,
     workflowRunId: null,
     versionKind: "published",
+    versionNumber: 1,
     error: null,
     waitingAt: null,
     cancelledAt: null,

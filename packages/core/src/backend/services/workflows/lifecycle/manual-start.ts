@@ -154,9 +154,9 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
       eventName?: string;
       /**
        * Which graph this run travels. Absent is the published version, which is
-       * what an Event start and a live workflow always get. `"draft"` runs what
-       * the canvas holds, frozen into a snapshot version the run pins to, and is
-       * refused unless the workflow is in test mode.
+       * what an Event start always gets and which runs in the workflow's
+       * Published mode. `"draft"` runs what the canvas holds, frozen into a
+       * snapshot version the run pins to, and always goes to test recipients.
        */
       graph?: "published" | "draft";
     }
@@ -180,7 +180,10 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
     );
 
     const payload = body.input ?? {};
-    const runMode = workflow.mode;
+    // A Draft run is a run of a graph nobody reviewed, so it goes to test
+    // recipients whatever the workflow's Published mode says. That mode governs
+    // Events and runs of the published version, which is what the other arm gets.
+    const runMode: WorkflowMode = source === "draft" ? "test" : workflow.mode;
     const rules = preflight.lifecycleRules ?? emptyLifecycleRules;
     const extensions = yield* Extensions;
     const eventName = body.eventName;

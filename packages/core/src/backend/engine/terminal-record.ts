@@ -19,38 +19,40 @@ import { type EngineFailure } from "#src/backend/engine/engine-failure";
  */
 export type TraversalTerminalStatus = "completed" | "failed" | "canceled";
 
+/**
+ * Names the recipients a test run sent to. A run mode is a fact about
+ * recipients, and a Draft run always carries `test` whatever the workflow's
+ * Published mode is, so the line says what it can vouch for and leaves the
+ * graph that ran to the run row beside it.
+ */
+function withRecipients(message: string, runMode: "live" | "test"): string {
+  return runMode === "test" ? `${message} (test recipients)` : message;
+}
+
 /** How a run that reached the end of its graph is worded on the timeline. */
 function buildRunCompletedMessage(
   runMode: "live" | "test",
   status: TraversalTerminalStatus
 ): string {
   if (status === "canceled") {
-    return runMode === "test"
-      ? "Test mode canceled at the Canceled outlet"
-      : "Run canceled at the Canceled outlet";
+    return withRecipients("Run canceled at the Canceled outlet", runMode);
   }
-  if (runMode === "test") {
-    return status === "completed"
-      ? "Test mode completed successfully"
-      : "Test mode completed with errors";
-  }
-  return status === "completed"
-    ? "Run completed successfully"
-    : "Run completed with errors";
+  return withRecipients(
+    status === "completed"
+      ? "Run completed successfully"
+      : "Run completed with errors",
+    runMode
+  );
 }
 
 function buildRunFailedMessage(
   runMode: "live" | "test",
   cancelled: boolean
 ): string {
-  if (runMode === "test") {
-    return cancelled
-      ? "Test mode cancelled"
-      : "Test mode failed with fatal error";
-  }
-  return cancelled
-    ? "Run cancelled while waiting"
-    : "Run failed with fatal error";
+  return withRecipients(
+    cancelled ? "Run cancelled while waiting" : "Run failed with fatal error",
+    runMode
+  );
 }
 
 const TERMINAL_AUDIT_EVENT = {

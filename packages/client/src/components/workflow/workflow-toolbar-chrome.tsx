@@ -13,11 +13,13 @@ import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   Check,
   ChevronDown,
+  CirclePlay,
   Copy,
   CircleDot,
   Eraser,
   Loader2,
   Pencil,
+  Play,
   Plus,
   Search,
   Settings2,
@@ -31,7 +33,10 @@ import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { Button, buttonVariants } from "#src/components/ui/button";
-import { ButtonGroup } from "#src/components/ui/button-group";
+import {
+  ButtonGroup,
+  ButtonGroupSeparator,
+} from "#src/components/ui/button-group";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,9 +65,16 @@ import {
 } from "#src/lib/shortcut-label";
 import {
   WorkflowCommandIcon,
+  isDraftRunDisabled,
+  isPublishedRunDisabled,
   isWorkflowPublishDisabled,
   type WorkflowCommand,
 } from "#src/lib/workflow-commands";
+import {
+  publishedModeChoice,
+  publishedModeLabel,
+  publishedRunLabel,
+} from "#src/lib/workflow-run-labels";
 import type {
   WorkflowToolbarActions,
   WorkflowToolbarState,
@@ -206,7 +218,11 @@ export function CommandPaletteTrigger() {
   );
 }
 
-/** The execution mode stays in the toolbar because it applies before and after publication. */
+/**
+ * Published mode: what Events and manual runs of the published version do with
+ * their recipients. It stays in the toolbar because it applies before and after
+ * publication, and it never reaches Run draft, which is always a test run.
+ */
 export function WorkflowModeMenu({
   actions,
   state,
@@ -215,12 +231,26 @@ export function WorkflowModeMenu({
   state: WorkflowToolbarState;
 }) {
   const isTest = state.workflowMode === "test";
+  const publishedVersion = state.publication?.publishedVersion;
+  const label = publishedModeLabel({
+    workflowMode: state.workflowMode,
+    publishedVersion,
+  });
+  // Live first, since it is the mode a workflow ends up in.
+  const choices = (["live", "test"] as const).map((mode) => ({
+    mode,
+    ...publishedModeChoice({ workflowMode: mode, publishedVersion }),
+  }));
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
           <Button
+            // The pill reads "v7 · Live", which names the mode without naming
+            // the setting. The accessible name carries both, and keeps the
+            // visible words inside it (WCAG 2.5.3).
+            aria-label={`Published mode: ${label}`}
             className={cn(
               isTest &&
                 "bg-warning/10 text-warning hover:bg-warning/15 hover:text-warning"
@@ -231,12 +261,12 @@ export function WorkflowModeMenu({
         }
       >
         <CircleDot className="size-3" data-icon="inline-start" />
-        {isTest ? "Test mode" : "Live mode"}
+        {label}
         <ChevronDown className="size-3 opacity-50" data-icon="inline-end" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
+      <DropdownMenuContent align="end" className="w-72">
         <DropdownMenuGroup>
-          <DropdownMenuLabel>Run mode</DropdownMenuLabel>
+          <DropdownMenuLabel>Published mode</DropdownMenuLabel>
           <DropdownMenuRadioGroup
             onValueChange={(mode) => {
               if (mode === "live" || mode === "test") {
@@ -245,26 +275,96 @@ export function WorkflowModeMenu({
             }}
             value={state.workflowMode}
           >
-            <DropdownMenuRadioItem disabled={!state.isOwner} value="test">
-              <span>
-                Test mode
-                <span className="block text-muted-foreground text-xs font-normal">
-                  Routes configured messages to test recipients.
+            {choices.map((choice) => (
+              <DropdownMenuRadioItem
+                disabled={!state.isOwner}
+                key={choice.mode}
+                value={choice.mode}
+              >
+                <span>
+                  {choice.label}
+                  <span className="block text-muted-foreground text-xs font-normal">
+                    {choice.description}
+                  </span>
                 </span>
-              </span>
-            </DropdownMenuRadioItem>
-            <DropdownMenuRadioItem disabled={!state.isOwner} value="live">
-              <span>
-                Live mode
-                <span className="block text-muted-foreground text-xs font-normal">
-                  Sends messages to configured recipients.
-                </span>
-              </span>
-            </DropdownMenuRadioItem>
+              </DropdownMenuRadioItem>
+            ))}
           </DropdownMenuRadioGroup>
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/**
+ * The two Run verbs, as one split control.
+ *
+ * The face runs the draft on the canvas, which is the run a builder presses
+ * while building, and it always goes to test recipients whatever Published mode
+ * says. The chevron holds the run of the published version, named for its
+ * number and the mode it honours. Neither verb infers anything from unpublished
+ * changes: the operator picks the graph by picking the verb.
+ */
+export function RunSplitButton({
+  actions,
+  state,
+}: {
+  actions: WorkflowToolbarActions;
+  state: WorkflowToolbarState;
+}) {
+  const publishedVersion = state.publication?.publishedVersion;
+  // The same two questions the Actions menu and the command palette ask, asked
+  // through the same pair of functions, so a gate added to either verb reaches
+  // every surface that offers it.
+  const eligibility = {
+    currentWorkflowId: state.currentWorkflowId,
+    isExecuting: state.isExecuting,
+    isPreflighting: actions.isPreflighting,
+    isGenerating: state.isGenerating,
+    hasNodes: state.nodes.some((node) => node.type !== "add"),
+    publishedVersion,
+  };
+
+  return (
+    <ButtonGroup>
+      <Button
+        disabled={isDraftRunDisabled(eligibility)}
+        onClick={() => void actions.handleExecute("draft")}
+        size={BAR_CONTROL_SIZE}
+        variant="ghost"
+      >
+        <Play className="size-3.5" data-icon="inline-start" />
+        Run draft
+      </Button>
+      {/* Both halves are ghost, whose border is transparent, so the group's own
+          rules draw no seam between them and the pair reads as two loose
+          buttons. The separator is what makes one split control of them: press
+          the label to run the draft, the chevron for the other verb. */}
+      <ButtonGroupSeparator />
+      {/* Enabled even with nothing published: the item inside is where the
+          reason for that is written. */}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button aria-label="Run options" size="icon" variant="ghost" />
+          }
+        >
+          <ChevronDown className="size-3 opacity-50" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuItem
+            disabled={isPublishedRunDisabled(eligibility)}
+            onClick={() => void actions.handleExecute("published")}
+          >
+            <CirclePlay />
+            {publishedRunLabel({
+              workflowMode: state.workflowMode,
+              publishedVersion,
+            })}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </ButtonGroup>
   );
 }
 
@@ -329,7 +429,18 @@ function ActionsMenu({ commands }: { commands: readonly WorkflowCommand[] }) {
               onClick={command.execute}
             >
               <WorkflowCommandIcon id={command.id} />
-              {command.label}
+              {/* The detail carries what the label cannot, and for a disabled
+                  row it is the reason: "Run published version" would otherwise
+                  sit here greyed out with nothing saying why. Printed the way
+                  the Published mode menu prints its own sentences. */}
+              <span>
+                {command.label}
+                {command.detail ? (
+                  <span className="block font-normal text-muted-foreground text-xs">
+                    {command.detail}
+                  </span>
+                ) : null}
+              </span>
               {command.hint ? (
                 <DropdownMenuShortcut>{command.hint}</DropdownMenuShortcut>
               ) : null}
@@ -470,6 +581,7 @@ export function ToolbarPublishControls({
       <WorkflowModeMenu actions={actions} state={state} />
       {state.isOwner ? (
         <>
+          <RunSplitButton actions={actions} state={state} />
           <PublishButton
             disabled={publishDisabled}
             handlePublish={actions.handlePublish}

@@ -30,7 +30,7 @@ const comparison: WorkflowComparisonPayload = {
 };
 
 describe("PublishReviewDialog", () => {
-  it("presents deterministic structural facts and the Test mode consequence", () => {
+  it("presents deterministic structural facts and the Published mode consequence", () => {
     const view = render(
       <PublishReviewDialog
         review={publicationReviewFromComparison(comparison)}
@@ -42,11 +42,9 @@ describe("PublishReviewDialog", () => {
       />
     );
 
-    expect(
-      view.getByRole("dialog", { name: "Publish version 8?" })
-    ).toBeTruthy();
-    expect(view.getByText("Based on version 7")).toBeTruthy();
-    expect(view.getByText("Proposed version 8")).toBeTruthy();
+    expect(view.getByRole("dialog", { name: "Publish v8?" })).toBeTruthy();
+    expect(view.getByText("Based on v7")).toBeTruthy();
+    expect(view.getByText("Proposed v8")).toBeTruthy();
     expect(view.getByText("Added nodes").nextSibling?.textContent).toBe("1");
     expect(view.getByText("Modified nodes").nextSibling?.textContent).toBe("1");
     expect(view.getByText("Removed nodes").nextSibling?.textContent).toBe("1");
@@ -57,7 +55,9 @@ describe("PublishReviewDialog", () => {
       "1"
     );
     expect(
-      view.getByText("Publishing does not change recipient routing.")
+      view.getByText(
+        "Published mode is Test, so v8's Events and manual runs go to test recipients until you set it to Live."
+      )
     ).toBeTruthy();
   });
 

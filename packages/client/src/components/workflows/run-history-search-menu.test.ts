@@ -71,6 +71,18 @@ describe("buildRunHistoryMenuItems", () => {
   });
 });
 
+describe("buildRunHistoryMenuItems for the Graph field", () => {
+  it("offers Draft and Published on the value step", () => {
+    const items = buildRunHistoryMenuItems({
+      draft: { step: "value", field: "graph", operator: "is" },
+      query: "",
+      ...catalog,
+    });
+
+    expect(items.map((item) => item.label)).toEqual(["Draft", "Published"]);
+  });
+});
+
 describe("runHistorySearchPlaceholder", () => {
   it("names the step the input is on", () => {
     expect(runHistorySearchPlaceholder({ step: "field" }, 0)).toBe(

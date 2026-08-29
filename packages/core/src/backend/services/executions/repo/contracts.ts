@@ -93,10 +93,15 @@ export type ExecutionSummary = Pick<
 > & {
   /**
    * What sort of version the run pinned, joined from `workflow_versions`. It is
-   * how the panel tells a run of the published graph from a test-mode run of the
-   * canvas, which pins a snapshot of its own.
+   * how the panel tells a run of the published graph from a run of the canvas,
+   * which pins a snapshot of its own.
    */
   versionKind: WorkflowVersionKind;
+  /**
+   * That version's number, joined beside the kind, which is what lets the panel
+   * name the published graph a run travelled ("v7"). Null on a draft snapshot.
+   */
+  versionNumber: number | null;
 };
 
 /** A run reduced to where it got to. */
@@ -127,6 +132,8 @@ export type WorkflowExecutionListRow = Pick<
 > & {
   /** As on `ExecutionSummary`: which sort of version this run pinned. */
   versionKind: WorkflowVersionKind;
+  /** As on `ExecutionSummary`: that version's number, null on a snapshot. */
+  versionNumber: number | null;
 };
 
 /**
