@@ -60,10 +60,19 @@ jobs:
       #   @wfgraph/core as a peer at `*`, and a bare range refuses a
       #   prerelease, so an install would report the peer unmet.
       #
+      # Every publish registers three refs for the same tarball: the commit
+      # sha, the pull request number, and the branch name. The comment prints
+      # the pull request one, which is stable text that resolves to whatever
+      # was published most recently, so a reader copies the install line once.
+      # `--commentWithSha` would print the sha form instead, immutable and
+      # different on every push. Either way the ref is pinned by an integrity
+      # hash once it reaches a lockfile, so moving to a newer build is
+      # `pnpm update @wfgraph/core` rather than a plain install.
+      #
       # Run from the lockfile with `pnpm exec`. pkg.pr.new asks CI to avoid
       # `pnpm dlx` here.
       - name: Publish preview packages
         run: >
           pnpm exec pkg-pr-new publish --pnpm --previewVersion --peerDeps
-          --packageManager=pnpm --commentWithSha
+          --packageManager=pnpm
           ./packages/core ./packages/client ./packages/plugins
