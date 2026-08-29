@@ -110,6 +110,15 @@ goes out by hand with `npm login` and `pnpm run release:publish`, and its truste
 is added afterwards. That script is the local path only: CI never calls it, because the
 `pack` and `publish` jobs split the build from the upload that script runs together.
 
+**Work in progress ships through pkg.pr.new, never through npm.** `.github/workflows/preview.yml`
+publishes the three published packages on every push to an open pull request, and the
+pkg-pr-new GitHub App comments the install URLs. Those tarballs live on pkg.pr.new's own
+infrastructure, so that file holds no credential and npm's one-trusted-publisher-per-package
+rule leaves it alone. Reaching a real dist-tag instead would mean changesets pre mode, since
+`changeset publish --from-pack-dir` refuses a `--tag` and takes the dist-tag from the publish
+plan, which only `pre.json` fills in. Three of the flags in that step are load-bearing and are
+commented where they are written.
+
 ## Conventions that differ from the defaults
 
 **No backwards compatibility.** There is no stored data and no external consumer. Make the

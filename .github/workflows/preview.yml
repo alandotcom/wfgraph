@@ -1,0 +1,69 @@
+name: Preview
+
+# Continuous releases for work in progress. Every push to an open pull request
+# publishes the three published packages to pkg.pr.new, which hosts
+# npm-compatible tarballs on its own infrastructure and comments the install
+# URLs on the PR. Nothing here reaches npmjs.com, so this file holds no
+# credential and is unrelated to release.yml's trusted publisher.
+#
+# workflow_dispatch covers a branch with no pull request yet: the packages are
+# still published and the URLs are printed in the job log.
+on:
+  pull_request:
+  workflow_dispatch:
+
+# The pkg-pr-new GitHub App posts the comment and the check run, so the
+# workflow token needs nothing.
+permissions: {}
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          cache: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The published entries point at dist, so the tarballs are empty without
+      # this.
+      - name: Build
+        run: pnpm run build
+
+      # One invocation for all three packages: pkg.pr.new's anti-spam rule is
+      # that the command runs once per workflow. @wfgraph/agent and
+      # @wfgraph/shared are absent because they are private and tsdown inlines
+      # them into the three that ship.
+      #
+      # Three flags carry the weight:
+      #
+      # --pnpm packs with `pnpm pack`. Required, because this workspace writes
+      #   `catalog:` ranges that `npm pack` cannot resolve.
+      # --previewVersion rewrites each version to 0.0.0-preview-<sha> before
+      #   packing, which keeps a preview off the real semver line. Without it a
+      #   preview tarball packs as 3.1.1 and a lockfile can go on resolving the
+      #   published 3.1.1 to it.
+      # --peerDeps carries that preview version into cross-package
+      #   peerDependencies, which @wfgraph/plugins needs: it names
+      #   @wfgraph/core as a peer at `*`, and a bare range refuses a
+      #   prerelease, so an install would report the peer unmet.
+      #
+      # Run from the lockfile with `pnpm exec`. pkg.pr.new asks CI to avoid
+      # `pnpm dlx` here.
+      - name: Publish preview packages
+        run: >
+          pnpm exec pkg-pr-new publish --pnpm --previewVersion --peerDeps
+          --packageManager=pnpm --commentWithSha
+          ./packages/core ./packages/client ./packages/plugins
