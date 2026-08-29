@@ -16,6 +16,7 @@ const BASE_EXECUTION: WorkflowExecution = {
   error: null,
   id: "exec_1",
   runMode: "test",
+  versionKind: "published",
   startedAt: new Date("2026-02-22T10:00:00Z"),
   status: "running",
   startEventName: "appointment.updated",

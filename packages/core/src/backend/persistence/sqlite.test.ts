@@ -70,6 +70,171 @@ describe("native SQLite persistence", () => {
     }
   });
 
+  it("keeps a draft snapshot out of the published history", async () => {
+    const database = await open(await databasePath());
+    try {
+      const result = await database.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          yield* workflows.insert({
+            id: "wf_1",
+            name: "Appointments",
+            graph: emptyGraph,
+            eventSubscriptions: [],
+          });
+          yield* workflows.insertPublishedVersion({
+            workflowId: "wf_1",
+            versionId: "ver_1",
+            version: 1,
+            expectedPublishedVersionId: null,
+            graph: emptyGraph,
+            draftGraph: emptyGraph,
+            catalogFingerprint: "catalog",
+            graphDigest: "digest",
+            eventSubscriptions: [],
+          });
+          const snapshot = yield* workflows.freezeDraftSnapshot({
+            workflowId: "wf_1",
+            versionId: "ver_snapshot",
+            graph: emptyGraph,
+            catalogFingerprint: "catalog",
+            graphDigest: "draft-digest",
+          });
+
+          // The same graph under the same catalog is one row however many
+          // runs ask for it; the proposed id is dropped in favour of the hit.
+          const again = yield* workflows.freezeDraftSnapshot({
+            workflowId: "wf_1",
+            versionId: "ver_snapshot_2",
+            graph: emptyGraph,
+            catalogFingerprint: "catalog",
+            graphDigest: "draft-digest",
+          });
+
+          return {
+            snapshot,
+            again,
+            history: yield* workflows.listVersionHistoryPage({
+              workflowId: "wf_1",
+              limit: 10,
+            }),
+            latest: yield* workflows.findLatestVersion("wf_1"),
+            found: yield* workflows.findVersionById("ver_snapshot"),
+            published: yield* workflows.findPublishedVersion("wf_1"),
+            forRun: yield* workflows.findByIdWithDraftGraphForRun("wf_1"),
+          };
+        })
+      );
+
+      expect(result.snapshot).toMatchObject({
+        id: "ver_snapshot",
+        version: null,
+        kind: "draft_snapshot",
+      });
+      // The history and the next version number are the publication's, so a
+      // snapshot appears in neither; the engine still reads it by id.
+      expect(result.history).toMatchObject([{ id: "ver_1", version: 1 }]);
+      expect(result.latest).toEqual({ version: 1 });
+      expect(result.again.id).toBe("ver_snapshot");
+      expect(result.found?.kind).toBe("draft_snapshot");
+      expect(result.published?.id).toBe("ver_1");
+      expect(result.forRun).toMatchObject({
+        workflow: { id: "wf_1", mode: "live", isPaused: false },
+        draftGraph: emptyGraph,
+      });
+    } finally {
+      await database.close();
+    }
+  });
+
+  // SQLite cannot drop a NOT NULL, so step 5 rebuilds workflow_versions. Two
+  // tables carry a foreign key into it: an execution row a rebuild with foreign
+  // keys on would cascade away, and a workflow's published_version_id the same
+  // rebuild would silently SET NULL, unpublishing every workflow in the file.
+  it("rebuilds workflow_versions without dropping what points at it", async () => {
+    const filename = await databasePath();
+    const versionFour = new DatabaseSync(filename);
+    versionFour.exec(`
+      PRAGMA foreign_keys = ON;
+      CREATE TABLE workflows (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+        description TEXT,
+        graph TEXT NOT NULL,
+        is_paused INTEGER NOT NULL DEFAULT 0 CHECK (is_paused IN (0, 1)),
+        mode TEXT NOT NULL DEFAULT 'live' CHECK (mode IN ('live', 'test')),
+        visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'public')),
+        published_version_id TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (published_version_id) REFERENCES workflow_versions(id) ON DELETE SET NULL
+      ) STRICT;
+      CREATE TABLE workflow_versions (
+        id TEXT PRIMARY KEY,
+        workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+        version INTEGER NOT NULL,
+        graph TEXT NOT NULL,
+        catalog_fingerprint TEXT NOT NULL,
+        graph_digest TEXT NOT NULL,
+        published_at INTEGER NOT NULL,
+        UNIQUE (workflow_id, version)
+      ) STRICT;
+      CREATE TABLE workflow_executions (
+        id TEXT PRIMARY KEY,
+        workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+        workflow_version_id TEXT NOT NULL REFERENCES workflow_versions(id) ON DELETE CASCADE
+      ) STRICT;
+      INSERT INTO workflows (id, name, graph, created_at, updated_at)
+      VALUES ('wf_1', 'Appointments', '{}', 0, 0);
+      INSERT INTO workflow_versions
+        (id, workflow_id, version, graph, catalog_fingerprint, graph_digest, published_at)
+      VALUES ('ver_1', 'wf_1', 1, '{}', 'catalog', 'digest', 0);
+      INSERT INTO workflow_executions (id, workflow_id, workflow_version_id)
+      VALUES ('exec_1', 'wf_1', 'ver_1');
+      UPDATE workflows SET published_version_id = 'ver_1' WHERE id = 'wf_1';
+      PRAGMA user_version = 4;
+    `);
+    versionFour.close();
+
+    const database = await open(filename);
+    await database.close();
+
+    const inspection = new DatabaseSync(filename);
+    try {
+      const columns = inspection
+        .prepare("PRAGMA table_info(workflow_versions)")
+        .all();
+      expect(columns.find((column) => column.name === "version")?.notnull).toBe(
+        0
+      );
+      expect(columns).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: "kind", notnull: 1 }),
+        ])
+      );
+      expect(
+        inspection
+          .prepare("SELECT id, version, kind FROM workflow_versions")
+          .all()
+      ).toEqual([{ id: "ver_1", version: 1, kind: "published" }]);
+      expect(
+        inspection.prepare("SELECT id FROM workflow_executions").all()
+      ).toEqual([{ id: "exec_1" }]);
+      // The published pointer survives the DROP TABLE, which with foreign keys
+      // on would have SET NULL it and left the workflow unpublished.
+      expect(
+        inspection
+          .prepare("SELECT id, published_version_id FROM workflows")
+          .all()
+      ).toEqual([{ id: "wf_1", published_version_id: "ver_1" }]);
+      expect(inspection.prepare("PRAGMA user_version").get()).toEqual({
+        user_version: 5,
+      });
+    } finally {
+      inspection.close();
+    }
+  });
+
   it("persists repository state across app lifetimes", async () => {
     const filename = await databasePath();
     const first = await open(filename);

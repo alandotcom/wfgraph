@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import {
   executeWorkflowRun,
+  shouldRunDraftGraph,
   updateNodesStatus,
 } from "#src/lib/workflow-run-actions";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -53,6 +54,57 @@ describe("updateNodesStatus", () => {
       { nodeId: "t", status: "idle" },
       { nodeId: "a", status: "idle" },
     ]);
+  });
+});
+
+/**
+ * The Run button's draft-vs-published decision: test mode and a signal saying
+ * the draft is ahead of (or entirely without) a published version.
+ */
+describe("shouldRunDraftGraph", () => {
+  it("never runs the draft for a live workflow, however stale published is", () => {
+    expect(
+      shouldRunDraftGraph({
+        workflowMode: "live",
+        publication: { isPublished: false, hasUnpublishedChanges: true },
+      })
+    ).toBe(false);
+  });
+
+  it("runs the draft in test mode when the workflow has never been published", () => {
+    expect(
+      shouldRunDraftGraph({
+        workflowMode: "test",
+        publication: { isPublished: false, hasUnpublishedChanges: false },
+      })
+    ).toBe(true);
+  });
+
+  it("runs the draft in test mode when the canvas has moved past published", () => {
+    expect(
+      shouldRunDraftGraph({
+        workflowMode: "test",
+        publication: { isPublished: true, hasUnpublishedChanges: true },
+      })
+    ).toBe(true);
+  });
+
+  it("runs published in test mode once the draft matches it", () => {
+    expect(
+      shouldRunDraftGraph({
+        workflowMode: "test",
+        publication: { isPublished: true, hasUnpublishedChanges: false },
+      })
+    ).toBe(false);
+  });
+
+  // The publication signal rides the same `getById` entry every other piece of
+  // toolbar state reads, so an unloaded one reads as "nothing published yet"
+  // rather than as a reason to guess published.
+  it("treats an unloaded publication signal as never published", () => {
+    expect(
+      shouldRunDraftGraph({ workflowMode: "test", publication: undefined })
+    ).toBe(true);
   });
 });
 

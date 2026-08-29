@@ -14,9 +14,11 @@ import {
 } from "@tanstack/react-query";
 import {
   createMemoryHistory,
+  createRoute,
   createRootRoute,
   createRouter,
   RouterProvider,
+  type SearchSchemaInput,
 } from "@tanstack/react-router";
 import { render } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
@@ -181,6 +183,21 @@ export function renderProbe({
   queryClient?: QueryClient;
 } = {}) {
   const rootRoute = createRootRoute({ component: () => probe });
+  // A started run navigates here (workflow-run-actions.ts's
+  // `navigateToExecution`), so the route has to exist for that call to resolve
+  // rather than throw on an unmatched path. The route's own component is never
+  // reached: the root's stays the whole tree, with no `<Outlet />` to reveal it.
+  const workflowRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/workflows/$workflowId",
+    validateSearch: (search: { executionId?: string } & SearchSchemaInput) => ({
+      executionId:
+        typeof search.executionId === "string" && search.executionId.length > 0
+          ? search.executionId
+          : undefined,
+    }),
+    component: () => null,
+  });
 
   return render(
     <JotaiProvider store={store}>
@@ -190,7 +207,7 @@ export function renderProbe({
             <OverlayProvider>
               <RouterProvider
                 router={createRouter({
-                  routeTree: rootRoute,
+                  routeTree: rootRoute.addChildren([workflowRoute]),
                   history: createMemoryHistory({ initialEntries: ["/"] }),
                 })}
               />

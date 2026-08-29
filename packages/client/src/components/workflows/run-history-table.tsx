@@ -113,15 +113,22 @@ function createRunHistoryColumns(onOpenRun: (run: RunHistoryTableRow) => void) {
         const run = info.row.original;
         return (
           <div className="min-w-0">
-            <button
-              className="max-w-full truncate text-left font-medium text-foreground text-sm hover:underline"
-              onClick={() => {
-                onOpenRun(run);
-              }}
-              type="button"
-            >
-              {run.workflowName}
-            </button>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <button
+                className="max-w-full truncate text-left font-medium text-foreground text-sm hover:underline"
+                onClick={() => {
+                  onOpenRun(run);
+                }}
+                type="button"
+              >
+                {run.workflowName}
+              </button>
+              {run.versionKind === "draft_snapshot" ? (
+                <span className="shrink-0 rounded border px-1 py-px font-medium text-[10px] text-muted-foreground uppercase tracking-wide">
+                  Draft
+                </span>
+              ) : null}
+            </div>
             <div className="truncate font-mono text-muted-foreground text-xs">
               {run.startEventName ?? run.entityValue ?? run.workflowId}
             </div>

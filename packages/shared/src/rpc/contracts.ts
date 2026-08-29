@@ -15,6 +15,7 @@ import {
   WORKFLOW_EXECUTION_STATUSES,
 } from "#src/lifecycle/execution-contracts";
 import { serializedWorkflowGraphSchema } from "#src/graph/schemas";
+import { WORKFLOW_VERSION_KINDS } from "#src/graph/version-kinds";
 import { isoTimestampString } from "#src/types/timestamp";
 import { OAUTH_GRANT_CONFIG_KEY } from "#src/types/integration";
 import { hasOnlySafeRecordKeys, isSafeRecordKey } from "#src/types/record-key";
@@ -310,6 +311,8 @@ const workflowRestoreVersionInput = contractSchema(
 
 const workflowRunModeSchema = Schema.Literals(["live", "test"]);
 
+const workflowVersionKindSchema = Schema.Literals(WORKFLOW_VERSION_KINDS);
+
 const workflowExecutionStatusSchema = Schema.Literals(
   WORKFLOW_EXECUTION_STATUSES
 );
@@ -330,6 +333,12 @@ const workflowExecutionFields = {
   startEventName: Schema.NullOr(Schema.String),
   entityValue: Schema.NullOr(Schema.String),
   workflowRunId: Schema.NullOr(Schema.String),
+  /**
+   * What sort of version this run pinned. `draft_snapshot` is a test-mode run of
+   * the canvas rather than of the published graph, which is what run history
+   * labels a draft run from.
+   */
+  versionKind: workflowVersionKindSchema,
   error: Schema.NullOr(Schema.String),
   startedAt: Schema.String,
   waitingAt: Schema.NullOr(Schema.String),
@@ -364,8 +373,9 @@ const executionLogSchema = Schema.Struct({
 const executionSummarySchema = Schema.Struct({
   id: idSchema,
   workflowId: idSchema,
-  /** The published version this run pinned; the key `getVersionGraph` reads by. */
+  /** The version this run pinned; the key `getVersionGraph` reads by. */
   workflowVersionId: idSchema,
+  versionKind: workflowVersionKindSchema,
   status: Schema.String,
   startSource: workflowExecutionFields.startSource,
   runMode: workflowExecutionFields.runMode,
@@ -720,6 +730,14 @@ export const rpcContract = {
              * one. Absent is the plain manual start.
              */
             eventName: Schema.optionalKey(NonEmptyTrimmedString),
+            /**
+             * Which graph to run: the published version, or the draft the canvas
+             * holds. Absent means published, which is what every Event start and
+             * every live workflow gets; `draft` is refused unless the workflow is
+             * in test mode, and freezes the draft into a snapshot version the run
+             * pins to.
+             */
+            graph: Schema.optionalKey(Schema.Literals(["published", "draft"])),
           })
         )
       )

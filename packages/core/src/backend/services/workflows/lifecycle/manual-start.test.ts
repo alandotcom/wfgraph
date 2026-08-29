@@ -13,6 +13,7 @@ import {
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import type { ExecutionRepo } from "#src/backend/services/executions/repo";
+import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type { WorkflowExecution } from "#src/backend/services/executions/repo/contracts";
 import { postWorkflowExecute } from "#src/backend/services/workflows/lifecycle/manual-start";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
@@ -224,6 +225,75 @@ function graphWithEventSplit() {
   });
 }
 
+type SnapshotInput = Parameters<
+  WorkflowRepo["Service"]["freezeDraftSnapshot"]
+>[0];
+
+/**
+ * The repository a draft run reads: the workflow paired with the graph the
+ * canvas holds, and the snapshot row the run is then pinned to.
+ *
+ * Neither published read is filled in, so a draft start that reached one would
+ * die on the stub rather than quietly run the reviewed graph.
+ */
+function makeDraftRepo(workflow: Workflow) {
+  const snapshots: SnapshotInput[] = [];
+
+  return {
+    snapshots,
+    layer: stubWorkflowRepo({
+      findByIdWithDraftGraphForRun: () =>
+        Effect.succeed({ workflow, draftGraph: workflow.graph }),
+      freezeDraftSnapshot: (input) =>
+        Effect.sync(() => {
+          snapshots.push(input);
+          return {
+            id: input.versionId,
+            workflowId: input.workflowId,
+            version: null,
+            kind: "draft_snapshot" as const,
+            graph: input.graph,
+            catalogFingerprint: input.catalogFingerprint,
+            graphDigest: input.graphDigest,
+            publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+          };
+        }),
+    }),
+  };
+}
+
+/** A graph one node short of runnable: the action node names no action. */
+function graphWithUnconfiguredAction() {
+  return createSerializedWorkflowGraph({
+    nodes: [
+      {
+        id: "lifecycle-1",
+        type: "lifecycle",
+        position: { x: 0, y: 0 },
+        data: {
+          label: "Appointment",
+          type: "lifecycle",
+          config: { lifecycleRules: startRules },
+        },
+      },
+      {
+        id: "action-1",
+        type: "action",
+        position: { x: 0, y: 200 },
+        data: { label: "Send reminder", type: "action", config: {} },
+      },
+    ],
+    edges: [
+      {
+        id: "edge-1",
+        source: "lifecycle-1",
+        target: "action-1",
+        sourceHandle: LIFECYCLE_STARTED_HANDLE,
+      },
+    ],
+  });
+}
+
 function workflowLayer(workflow: Workflow) {
   return stubWorkflowRepo({
     findById: () => Effect.succeed(workflow),
@@ -234,6 +304,7 @@ function workflowLayer(workflow: Workflow) {
           id: "ver_1",
           workflowId: workflow.id,
           version: 1,
+          kind: "published",
           graph: workflow.graph,
           catalogFingerprint: "fp",
           graphDigest: "digest",
@@ -245,6 +316,7 @@ function workflowLayer(workflow: Workflow) {
         id: "ver_1",
         workflowId: workflow.id,
         version: 1,
+        kind: "published",
         graph: workflow.graph,
         catalogFingerprint: "fp",
         graphDigest: "digest",
@@ -523,6 +595,129 @@ describe("postWorkflowExecute", () => {
         );
 
         assert.strictEqual(response.status, "running");
+      })
+    );
+
+    // The point of the whole draft path: a test-mode run travels the graph on
+    // the canvas, pinned to a snapshot of it, so a workflow nobody has published
+    // is runnable and a published one keeps serving its Events unchanged.
+    it.effect("runs the draft graph, pinned to a snapshot of it", () =>
+      Effect.gen(function* () {
+        const repo = makeRepo();
+        const row = workflowRow({ mode: "test", publishedVersionId: null });
+        const workflows = makeDraftRepo(row);
+
+        const response = yield* postWorkflowExecute("wf_1", {
+          input: { appointment: { id: "appt_1" } },
+          graph: "draft",
+        }).pipe(Effect.provide(Layer.mergeAll(repo.layer, workflows.layer)));
+
+        assert.strictEqual(response.status, "running");
+        assert.strictEqual(response.runMode, "test");
+
+        const snapshot = workflows.snapshots[0];
+        assert.deepStrictEqual(snapshot?.graph, row.graph);
+        assert.strictEqual(snapshot?.workflowId, "wf_1");
+        // The run names the row that was just minted, so the engine replays the
+        // graph the builder was looking at rather than the published one.
+        assert.strictEqual(
+          repo.starts[0]?.execution.workflowVersionId,
+          snapshot?.versionId
+        );
+      })
+    );
+
+    // A live workflow's runs are of what was reviewed, so an unvalidated graph
+    // is refused before anything is minted.
+    it.effect("refuses a draft run of a live workflow", () =>
+      Effect.gen(function* () {
+        const repo = makeRepo();
+        const workflows = makeDraftRepo(workflowRow({ mode: "live" }));
+
+        const failure = yield* postWorkflowExecute("wf_1", {
+          graph: "draft",
+        }).pipe(
+          Effect.provide(Layer.mergeAll(repo.layer, workflows.layer)),
+          Effect.flip
+        );
+
+        assert.strictEqual(failure.kind, "invalid");
+        assert.include(failure.payload.error, "test mode");
+        assert.deepStrictEqual(workflows.snapshots, []);
+        assert.deepStrictEqual(repo.starts, []);
+      })
+    );
+
+    // The draft goes through the checks Publish runs, and it fails them the same
+    // way: the sentence names the node, and no snapshot is left behind.
+    it.effect("refuses a broken draft without minting a snapshot", () =>
+      Effect.gen(function* () {
+        const repo = makeRepo();
+        const workflows = makeDraftRepo(
+          workflowRow({ mode: "test", graph: graphWithUnconfiguredAction() })
+        );
+
+        const failure = yield* postWorkflowExecute("wf_1", {
+          graph: "draft",
+        }).pipe(
+          Effect.provide(Layer.mergeAll(repo.layer, workflows.layer)),
+          Effect.flip
+        );
+
+        assert.strictEqual(failure.kind, "invalid");
+        assert.include(failure.payload.error, "has no action selected");
+        assert.deepStrictEqual(workflows.snapshots, []);
+        assert.deepStrictEqual(repo.starts, []);
+      })
+    );
+
+    // The snapshot is written only once a row is about to name it. A start the
+    // lifecycle gates turn away after preflight, here a payload the Start Event
+    // refuses, is the Test Run overlay's retry loop, and each attempt leaving a
+    // full copy of the graph behind is what this holds off.
+    it.effect("leaves no snapshot behind a start refused after preflight", () =>
+      Effect.gen(function* () {
+        const repo = makeRepo();
+        const workflows = makeDraftRepo(workflowRow({ mode: "test" }));
+
+        const failure = yield* postWorkflowExecute("wf_1", {
+          graph: "draft",
+          eventName: "app/appointment.created",
+          input: { appointment: { id: 42 } },
+        }).pipe(
+          Effect.provide(Layer.mergeAll(repo.layer, workflows.layer)),
+          Effect.flip
+        );
+
+        assert.strictEqual(failure.kind, "invalid");
+        assert.deepStrictEqual(workflows.snapshots, []);
+        assert.deepStrictEqual(repo.starts, []);
+      })
+    );
+
+    // Every gate a published run answers still answers here, and the ignored run
+    // it writes pins to the snapshot like a started one would.
+    it.effect("holds a paused workflow's draft run to the same gate", () =>
+      Effect.gen(function* () {
+        const repo = makeRepo();
+        const workflows = makeDraftRepo(
+          workflowRow({ mode: "test", isPaused: true })
+        );
+
+        const response = yield* postWorkflowExecute("wf_1", {
+          graph: "draft",
+        }).pipe(Effect.provide(Layer.mergeAll(repo.layer, workflows.layer)));
+
+        assert.deepStrictEqual(response, {
+          status: "ignored",
+          executionId: "exec_ignored",
+          runMode: "test",
+          reason: "workflow_paused",
+        });
+        assert.strictEqual(
+          repo.terminals[0]?.workflowVersionId,
+          workflows.snapshots[0]?.versionId
+        );
       })
     );
   });

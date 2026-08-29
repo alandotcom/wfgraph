@@ -12,6 +12,7 @@ const rawExecution = {
   status: "completed" as const,
   startSource: "event" as const,
   runMode: "live" as const,
+  versionKind: "published" as const,
   startEventName: "app/appointment.created",
   entityValue: "appt_1",
   workflowRunId: null,
@@ -84,6 +85,7 @@ describe("toWorkflowExecutionFromSummary", () => {
       id: "exec_past_cap",
       workflowId: "wf_1",
       workflowVersionId: "ver_1",
+      versionKind: "published",
       status: "completed",
       input: {},
       output: {},
@@ -100,8 +102,36 @@ describe("toWorkflowExecutionFromSummary", () => {
     const mapped = toWorkflowExecutionFromSummary(summary);
 
     expect(mapped.runMode).toBe("test");
+    expect(mapped.versionKind).toBe("published");
     expect(mapped.startSource).toBe("event");
     expect(mapped.startEventName).toBe("app/appointment.created");
     expect(mapped.entityValue).toBe("appt_99");
+  });
+
+  // A draft-snapshot run pins to a version with no number, and the panel needs
+  // this on the deep-link path too so a run reopened past the newest-50 list
+  // still reads "Draft" rather than falling back to "Test" alone.
+  it("keeps a draft snapshot's kind from the summary", () => {
+    const summary: ExecutionLogsResult["execution"] = {
+      id: "exec_draft",
+      workflowId: "wf_1",
+      workflowVersionId: "ver_draft_1",
+      versionKind: "draft_snapshot",
+      status: "completed",
+      input: {},
+      output: {},
+      error: null,
+      startedAt: "2026-03-01T10:00:00.000Z",
+      completedAt: "2026-03-01T10:00:30.000Z",
+      duration: "30s",
+      runMode: "test",
+      startSource: "manual",
+      startEventName: null,
+      entityValue: null,
+    };
+
+    expect(toWorkflowExecutionFromSummary(summary).versionKind).toBe(
+      "draft_snapshot"
+    );
   });
 });

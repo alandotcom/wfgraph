@@ -15,6 +15,7 @@ const BASE_EXECUTION: WorkflowExecution = {
   error: null,
   id: "exec_1",
   runMode: "test",
+  versionKind: "published",
   startedAt: new Date("2026-02-22T10:00:00Z"),
   status: "completed",
   startEventName: "appointment.updated",
@@ -46,6 +47,41 @@ describe("WorkflowRunSummaryRow", () => {
 
     fireEvent.click(row);
     expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  // A draft-snapshot run pinned to a graph that was never published, so it
+  // needs to read as something other than an ordinary test run.
+  it("labels a draft-snapshot run as Draft in the list", () => {
+    const view = render(
+      <WorkflowRunSummaryRow
+        execution={{ ...BASE_EXECUTION, versionKind: "draft_snapshot" }}
+        runNumber={3}
+      />
+    );
+
+    expect(view.getByText("Test")).toBeTruthy();
+    expect(view.getByText("Draft")).toBeTruthy();
+  });
+
+  it("shows no Draft label for a published-graph run", () => {
+    const view = render(
+      <WorkflowRunSummaryRow execution={BASE_EXECUTION} runNumber={3} />
+    );
+
+    expect(view.queryByText("Draft")).toBeNull();
+  });
+
+  it("shows the draft graph in the header's metadata", () => {
+    const view = render(
+      <WorkflowRunSummaryRow
+        execution={{ ...BASE_EXECUTION, versionKind: "draft_snapshot" }}
+        runNumber={3}
+        variant="header"
+      />
+    );
+
+    expect(view.getByText("Graph")).toBeTruthy();
+    expect(view.getByText("Draft")).toBeTruthy();
   });
 
   it("uses meaningful fallbacks for starts that have no event", () => {

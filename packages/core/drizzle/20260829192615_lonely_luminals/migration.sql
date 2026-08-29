@@ -1,0 +1,1 @@
+ALTER TABLE "workflow_versions" ADD CONSTRAINT "workflow_versions_version_kind_check" CHECK (("kind" = 'published') = ("version" is not null));

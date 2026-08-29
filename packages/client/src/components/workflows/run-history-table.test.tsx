@@ -16,6 +16,7 @@ function run(
     startEventName: null,
     entityValue: null,
     workflowRunId: null,
+    versionKind: "published",
     error: null,
     startedAt: "2026-08-22T10:00:00.000Z",
     waitingAt: null,
@@ -41,6 +42,16 @@ const ROWS: RunHistoryTableRow[] = [
     runMode: "test",
     startedAt: "2026-08-22T09:00:00.000Z",
     duration: "500",
+  }),
+  run({
+    id: "exec_3",
+    workflowId: "wf_3",
+    workflowName: "Reminder",
+    status: "completed",
+    runMode: "test",
+    versionKind: "draft_snapshot",
+    startedAt: "2026-08-22T08:00:00.000Z",
+    duration: "700",
   }),
 ];
 
@@ -94,7 +105,26 @@ describe("RunHistoryTable", () => {
     expect(view.getByText("Onboarding")).toBeTruthy();
     expect(view.getByText("Billing")).toBeTruthy();
     expect(view.getByText("Failed")).toBeTruthy();
-    expect(view.getByText("Test")).toBeTruthy();
+    // Billing and the draft-snapshot row are both test-mode runs.
+    expect(view.getAllByText("Test")).toHaveLength(2);
+  });
+
+  it("labels a draft-snapshot run's row as Draft", () => {
+    const view = render(
+      <RunHistoryTable
+        hasNextPage={false}
+        isLoading={false}
+        isLoadingMore={false}
+        onLoadMore={() => undefined}
+        onOpenRun={() => undefined}
+        runs={ROWS}
+      />
+    );
+
+    // Only the draft-snapshot run (exec_3, "Reminder") gets the badge; the
+    // published-graph test run (exec_2, "Billing") stays unlabelled.
+    expect(view.getByText("Draft")).toBeTruthy();
+    expect(view.getAllByText("Draft")).toHaveLength(1);
   });
 
   it("opens a run from the workflow name", () => {

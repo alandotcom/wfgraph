@@ -5,6 +5,7 @@ import {
   type WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { ExecutionLogEntry } from "@wfgraph/shared/graph/types";
+import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 import type { ExecutionLogsResult } from "#src/lib/rpc-client";
 
 /**
@@ -36,6 +37,12 @@ export type WorkflowExecution = {
   status: WorkflowExecutionStatus;
   startSource: WorkflowExecutionStartSource | null;
   runMode: "live" | "test";
+  /**
+   * Which kind of graph this run pinned to: `published`, or the `draft_snapshot`
+   * a test-mode draft run froze for itself. Only a `draft_snapshot` run is ever
+   * labelled "Draft" -- a published-graph test run stays "Test" alone.
+   */
+  versionKind: WorkflowVersionKind;
   startEventName: string | null;
   entityValue: string | null;
   workflowRunId: string | null;
@@ -171,6 +178,7 @@ export function toWorkflowExecutionFromSummary(
     status: toExecutionStatus(summary.status),
     startSource: summary.startSource,
     runMode: summary.runMode,
+    versionKind: summary.versionKind,
     startEventName: summary.startEventName,
     entityValue: summary.entityValue,
     workflowRunId: null,

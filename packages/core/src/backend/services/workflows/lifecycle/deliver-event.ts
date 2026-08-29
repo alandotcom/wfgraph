@@ -173,6 +173,11 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
 
     const { workflow, publishedVersion: version } = loaded;
     if (!version) {
+      // A workflow that has never been published has no graph this half can
+      // read, including for a run of a draft snapshot it may have going
+      // (ADR-0012, 2026-08-29): such a run is cancelled from the Runs panel.
+      // Its parked waits are still owed this Event, and `deliverToWaits`
+      // reaches them from the wait rows rather than from a version.
       return skipped(input.subscriber.id, "not_published");
     }
 
@@ -207,6 +212,10 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
 
     // A graph carrying no rules starts on nothing, which is not the same as a
     // graph that cannot run: its parked runs still have Events owed to them.
+    //
+    // These are the published version's rules, and the cancel role below reads
+    // them too. A Cancel Event a builder has added to the draft alone therefore
+    // reaches no run of that draft, published or not (ADR-0012, 2026-08-29).
     const rules = preflight.lifecycleRules ?? emptyLifecycleRules;
 
     const entityValue = readEntityValue({

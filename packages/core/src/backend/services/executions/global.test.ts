@@ -26,6 +26,7 @@ function createRow(
     startEventName: null,
     entityValue: null,
     workflowRunId: null,
+    versionKind: "published",
     error: null,
     waitingAt: null,
     cancelledAt: null,

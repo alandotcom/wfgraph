@@ -378,6 +378,7 @@ export const rpcRouter = rpc.router({
         postWorkflowExecute(input.workflowId, {
           input: input.input,
           eventName: input.eventName,
+          graph: input.graph,
         })
       )
     ),

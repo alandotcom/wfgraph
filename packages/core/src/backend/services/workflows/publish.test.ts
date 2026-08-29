@@ -1,6 +1,9 @@
 import { assert, describe, it as standalone, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
-import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
+import type {
+  PublishedWorkflowVersion,
+  Workflow,
+} from "#src/backend/lib/db/schema";
 import {
   InvalidInput,
   PublicationConflict,
@@ -117,11 +120,12 @@ const draft: Workflow = {
 /** What `insertPublishedVersion` answers for the input it was handed. */
 function mintedFrom(
   input: Parameters<WorkflowRepo["Service"]["insertPublishedVersion"]>[0]
-): { workflow: Workflow; version: WorkflowVersion } {
-  const version: WorkflowVersion = {
+): { workflow: Workflow; version: PublishedWorkflowVersion } {
+  const version: PublishedWorkflowVersion = {
     id: input.versionId,
     workflowId: input.workflowId,
     version: input.version,
+    kind: "published",
     graph: input.draftGraph,
     catalogFingerprint: input.catalogFingerprint,
     graphDigest: input.graphDigest,
@@ -186,10 +190,11 @@ describe("publishWorkflow", () => {
       "refuses a graph change when publication moves during preflight",
       () =>
         Effect.gen(function* () {
-          const current: WorkflowVersion = {
+          const current: PublishedWorkflowVersion = {
             id: "ver_8",
             workflowId: "wf_1",
             version: 8,
+            kind: "published",
             graph: draft.graph,
             catalogFingerprint: catalogFingerprint(catalog),
             graphDigest: "current-graph",
@@ -222,7 +227,7 @@ describe("publishWorkflow", () => {
     it.effect("mints a new chronological version when content repeats", () =>
       Effect.gen(function* () {
         let workflow = draft;
-        const versions: WorkflowVersion[] = [];
+        const versions: PublishedWorkflowVersion[] = [];
         const repo = stubWorkflowRepo({
           findById: () => Effect.succeed(workflow),
           findPublishedVersion: () =>
@@ -269,10 +274,11 @@ describe("publishWorkflow", () => {
       "refuses a semantically identical graph with a legacy digest",
       () =>
         Effect.gen(function* () {
-          const current: WorkflowVersion = {
+          const current: PublishedWorkflowVersion = {
             id: "ver_1",
             workflowId: "wf_1",
             version: 1,
+            kind: "published",
             graph: draft.graph,
             graphDigest: "legacy-full-graph-digest",
             catalogFingerprint: "previous-catalog",
@@ -302,10 +308,11 @@ describe("publishWorkflow", () => {
       "refuses geometry-only edits regardless of catalog fingerprint",
       () =>
         Effect.gen(function* () {
-          const current: WorkflowVersion = {
+          const current: PublishedWorkflowVersion = {
             id: "ver_1",
             workflowId: "wf_1",
             version: 1,
+            kind: "published",
             graph: draft.graph,
             graphDigest: "legacy-full-graph-digest",
             catalogFingerprint: "previous-catalog",
@@ -347,10 +354,11 @@ describe("publishWorkflow", () => {
     it.effect("refuses an edge-id-only edit", () =>
       Effect.gen(function* () {
         const publishedGraph = graphWithAction("edge-old");
-        const current: WorkflowVersion = {
+        const current: PublishedWorkflowVersion = {
           id: "ver_1",
           workflowId: "wf_1",
           version: 1,
+          kind: "published",
           graph: publishedGraph,
           graphDigest: "legacy-full-graph-digest",
           catalogFingerprint: catalogFingerprint(catalog),
@@ -383,10 +391,11 @@ describe("publishWorkflow", () => {
     it.effect("mints the next version for a semantic graph change", () =>
       Effect.gen(function* () {
         const expectedPointers: Array<string | null> = [];
-        const current: WorkflowVersion = {
+        const current: PublishedWorkflowVersion = {
           id: "ver_1",
           workflowId: "wf_1",
           version: 1,
+          kind: "published",
           graph: draft.graph,
           graphDigest: "legacy-full-graph-digest",
           catalogFingerprint: catalogFingerprint(catalog),
@@ -425,6 +434,7 @@ describe("publishWorkflow", () => {
               id: "ver_1",
               workflowId: "wf_1",
               version: 2,
+              kind: "published",
               graph: draft.graph,
               catalogFingerprint: "",
               graphDigest: "",

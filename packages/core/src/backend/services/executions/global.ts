@@ -12,6 +12,7 @@ import type {
   WorkflowExecutionStartSource,
   WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
+import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
@@ -41,6 +42,7 @@ type GlobalExecutionItem = {
   startEventName: string | null;
   entityValue: string | null;
   workflowRunId: string | null;
+  versionKind: WorkflowVersionKind;
   error: string | null;
   startedAt: string;
   waitingAt: string | null;
@@ -82,6 +84,7 @@ function toGlobalExecutionItem(row: GlobalExecutionRow): GlobalExecutionItem {
     startEventName: row.startEventName,
     entityValue: row.entityValue,
     workflowRunId: row.workflowRunId,
+    versionKind: row.versionKind,
     error: redactSensitiveText(row.error),
     startedAt: row.startedAt.toISOString(),
     waitingAt: toIso(row.waitingAt),

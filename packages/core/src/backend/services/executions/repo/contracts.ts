@@ -9,6 +9,7 @@ import type {
   WorkflowScopedAuditEventType,
 } from "@wfgraph/shared/lifecycle/audit-event-types";
 import type { JsonObject, JsonObjectDraft } from "@wfgraph/shared/types/json";
+import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 
 /** One row of `workflow_executions`, as the run panel and the engine see it. */
 export type WorkflowExecution = typeof workflowExecutions.$inferSelect;
@@ -33,8 +34,9 @@ export type WorkflowWaitState = typeof workflowWaitStates.$inferSelect;
 export type NewExecution = {
   workflowId: string;
   /**
-   * The published version this run pins. Required even when the row is terminal
-   * and never executes: the runs panel still resolves node ids against it.
+   * The version this run pins, published or a draft snapshot. Required even when
+   * the row is terminal and never executes: the runs panel still resolves node
+   * ids against it.
    */
   workflowVersionId: string;
   startSource: NonNullable<WorkflowExecution["startSource"]>;
@@ -88,7 +90,14 @@ export type ExecutionSummary = Pick<
   | "startedAt"
   | "completedAt"
   | "duration"
->;
+> & {
+  /**
+   * What sort of version the run pinned, joined from `workflow_versions`. It is
+   * how the panel tells a run of the published graph from a test-mode run of the
+   * canvas, which pins a snapshot of its own.
+   */
+  versionKind: WorkflowVersionKind;
+};
 
 /** A run reduced to where it got to. */
 export type ExecutionStatusRow = Pick<WorkflowExecution, "id" | "status">;
@@ -115,7 +124,10 @@ export type WorkflowExecutionListRow = Pick<
   | "cancelledAt"
   | "completedAt"
   | "duration"
->;
+> & {
+  /** As on `ExecutionSummary`: which sort of version this run pinned. */
+  versionKind: WorkflowVersionKind;
+};
 
 /**
  * An execution carrying the two columns of its workflow the cross-workflow runs

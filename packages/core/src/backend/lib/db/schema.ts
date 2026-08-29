@@ -25,6 +25,10 @@ import {
   type WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
+import {
+  WORKFLOW_VERSION_KINDS,
+  type WorkflowVersionKind,
+} from "@wfgraph/shared/graph/version-kinds";
 
 // Every table here is unqualified, and the Postgres schema holding them is the
 // host's `database.schema` option: the connection's search_path names it, on the
@@ -57,6 +61,11 @@ const integrationRefreshStateLiterals = INTEGRATION_REFRESH_STATES.map(
   (state) => `'${state}'`
 ).join(", ");
 
+/** The version kinds as SQL literals, quoted by hand for the same reason. */
+const workflowVersionKindLiterals = WORKFLOW_VERSION_KINDS.map(
+  (kind) => `'${kind}'`
+).join(", ");
+
 export const workflows = pgTable(
   "workflows",
   {
@@ -66,8 +75,10 @@ export const workflows = pgTable(
     name: text("name").notNull(),
     description: text("description"),
     /**
-     * The editable draft. A start never reads this: event and manual starts load
-     * the published version, and half-built canvas edits stay here until publish.
+     * The editable draft. An Event start never reads this, and neither does an
+     * ordinary manual start: both load the published version. The one reader is
+     * a manual draft run of a test-mode workflow, which freezes this graph into
+     * a `draft_snapshot` version and pins itself to that.
      */
     graph: jsonb("graph").notNull().$type<SerializedWorkflowGraph>(),
     isPaused: boolean("is_paused").notNull().default(false),
@@ -99,10 +110,14 @@ export const workflows = pgTable(
 );
 
 /**
- * An immutable published graph, plus the catalog fingerprint it was sound against.
+ * An immutable graph a run can pin to, plus the catalog fingerprint it was sound
+ * against.
  *
- * Each Publish mints the next row, and every Execution pins to one. Draft saves
- * never write here. Published rows form the workflow's durable history.
+ * Each Publish mints the next `published` row, and every Execution pins to one.
+ * A test-mode draft run mints a `draft_snapshot` instead, which is the same
+ * frozen graph with no version number: the history, the latest-version read and
+ * the Event subscription index all pass it by, so only a manual start ever runs
+ * one. Draft saves themselves never write here.
  */
 export const workflowVersions = pgTable(
   "workflow_versions",
@@ -113,8 +128,17 @@ export const workflowVersions = pgTable(
     workflowId: text("workflow_id")
       .notNull()
       .references(() => workflows.id, { onDelete: "cascade" }),
-    /** Monotonic per workflow, starting at 1. */
-    version: integer("version").notNull(),
+    /**
+     * Monotonic per workflow, starting at 1, on a published row. Null on a draft
+     * snapshot, which claims no number: nulls are distinct under the unique index
+     * below, so any number of them sit beside the numbered history.
+     */
+    version: integer("version"),
+    /** Which of the two this row is; see `WORKFLOW_VERSION_KINDS`. */
+    kind: text("kind")
+      .notNull()
+      .default("published")
+      .$type<WorkflowVersionKind>(),
     graph: jsonb("graph").notNull().$type<SerializedWorkflowGraph>(),
     /**
      * Hash of the assembled extension catalog at publish. A deploy that changes
@@ -124,12 +148,25 @@ export const workflowVersions = pgTable(
     catalogFingerprint: text("catalog_fingerprint").notNull(),
     /** Content hash of the graph's semantic projection. */
     graphDigest: text("graph_digest").notNull(),
+    /** When the row was minted, by a Publish or by a draft run. */
     publishedAt: timestamp("published_at").notNull().default(utcNow()),
   },
   (table) => [
     uniqueIndex("workflow_versions_workflow_id_version_uidx").on(
       table.workflowId,
       table.version
+    ),
+    check(
+      "workflow_versions_kind_check",
+      sql`${table.kind} in (${sql.raw(workflowVersionKindLiterals)})`
+    ),
+    // The two columns are one fact told twice, and every read leans on the
+    // pairing: `asPublishedVersion` treats a numbered row as published history,
+    // and `PublishedWorkflowVersion` types the number as present. Hold it here
+    // so a published row cannot arrive without a number, nor a snapshot with one.
+    check(
+      "workflow_versions_version_kind_check",
+      sql`(${table.kind} = 'published') = (${table.version} is not null)`
     ),
   ]
 );
@@ -229,9 +266,10 @@ export const workflowExecutions = pgTable(
       .notNull()
       .references(() => workflows.id, { onDelete: "cascade" }),
     /**
-     * The published version this run walks. Every Execution pins one, including
-     * a terminal row that never ran the graph: readers (run panel, logs)
-     * resolve node ids against this graph, never the draft. Cascade with the
+     * The version this run walks: a published one, or the snapshot a draft run
+     * minted for itself. Every Execution pins one, including a terminal row that
+     * never ran the graph: readers (run panel, logs) resolve node ids against
+     * this graph, never the live draft column. Cascade with the
      * version so a workflow delete cannot race sibling cascades against a
      * required pin.
      */
@@ -564,4 +602,11 @@ export const relations = defineRelations(tables, (r) => ({
 
 export type Workflow = typeof workflows.$inferSelect;
 export type WorkflowVersion = typeof workflowVersions.$inferSelect;
+/**
+ * A version a Publish minted, which is the only kind that carries a number.
+ * `workflows.published_version_id` names one of these and never a snapshot, so
+ * the reads following that pointer answer with this and their callers can show
+ * the version number without asking whether there is one.
+ */
+export type PublishedWorkflowVersion = WorkflowVersion & { version: number };
 export type NewIntegration = typeof integrations.$inferInsert;

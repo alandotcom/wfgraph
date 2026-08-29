@@ -9,7 +9,10 @@ import { seamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
 import { annotateServiceSpan } from "#src/backend/lib/telemetry";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
-import { loadWorkflowForRun } from "#src/backend/services/executions/preflight";
+import {
+  loadDraftForRun,
+  loadWorkflowForRun,
+} from "#src/backend/services/executions/preflight";
 import {
   buildIgnoredRunAuditMessage,
   recordPausedRunIgnored,
@@ -149,12 +152,26 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
        * are the ones holding no such node.
        */
       eventName?: string;
+      /**
+       * Which graph this run travels. Absent is the published version, which is
+       * what an Event start and a live workflow always get. `"draft"` runs what
+       * the canvas holds, frozen into a snapshot version the run pins to, and is
+       * refused unless the workflow is in test mode.
+       */
+      graph?: "published" | "draft";
     }
   ) {
     const logger = yield* loggerFor(workflowId);
     yield* annotateServiceSpan({ workflowId });
 
-    const { workflow, preflight } = yield* loadWorkflowForRun(workflowId).pipe(
+    // The two loads answer the same pair, so every gate below reads the same
+    // way whichever graph the run is of.
+    const source = body.graph ?? "published";
+    const { workflow, preflight, pinVersion } = yield* (
+      source === "draft"
+        ? loadDraftForRun(workflowId)
+        : loadWorkflowForRun(workflowId)
+    ).pipe(
       Effect.tapError((failure) =>
         "error" in failure
           ? logger.error("Refused a manual run", { error: failure.error })
@@ -207,6 +224,7 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
     }
 
     if (workflow.isPaused) {
+      yield* pinVersion;
       const ignoredExecution = yield* recordPausedRunIgnored({
         workflowId,
         workflowVersionId: preflight.workflowVersionId,
@@ -249,11 +267,16 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
       request: {
         workflowName: workflow.name,
         runMode,
+        graph: source,
         eventName,
         payloadKeys: Object.keys(payload),
       },
     });
 
+    // The two writes of `preflight.workflowVersionId` onto an Execution sit
+    // here and in the paused branch, and the pin runs just ahead of each so a
+    // start refused above left no version row behind.
+    yield* pinVersion;
     const started = yield* startWithConcurrency({
       workflow: toWorkflowRunTarget({
         workflow: { id: workflowId, name: workflow.name },

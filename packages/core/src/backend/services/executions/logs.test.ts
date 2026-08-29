@@ -17,6 +17,7 @@ function summary(overrides: Partial<ExecutionSummary> = {}): ExecutionSummary {
     id: "exec_1",
     workflowId: "wf_1",
     workflowVersionId: "ver_1",
+    versionKind: "published",
     status: "completed",
     startSource: "event",
     runMode: "live",

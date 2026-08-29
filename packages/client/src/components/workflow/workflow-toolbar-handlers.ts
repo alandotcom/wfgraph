@@ -50,11 +50,17 @@ import {
   redoAtom,
   undoAtom,
 } from "#src/lib/workflow-graph-store";
-import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import type {
+  WorkflowEdge,
+  WorkflowMode,
+  WorkflowNode,
+} from "#src/lib/workflow-graph-types";
 import {
   executeWorkflowRun,
   rememberTestPayload,
+  shouldRunDraftGraph,
   type UpdateNodeData,
+  type WorkflowPublicationSignal,
 } from "#src/lib/workflow-run-actions";
 import {
   currentWorkflowIdAtom,
@@ -65,8 +71,14 @@ import {
   isWorkflowOwnerAtom,
   saveWorkflowAtom,
   setWorkflowModeAtom,
+  type SaveOutcome,
+  type WorkflowPatch,
 } from "#src/lib/workflow-save-store";
-import { ApiError, toSerializedGraph } from "#src/lib/rpc-client";
+import {
+  ApiError,
+  type SavedWorkflow,
+  toSerializedGraph,
+} from "#src/lib/rpc-client";
 import {
   isPublicationConflictCode,
   PUBLICATION_CONFLICT_CODES,
@@ -114,9 +126,33 @@ function publicationConflictCode(
 /** One toast id, so a held Cmd+Enter replaces the notice instead of stacking. */
 const PREFLIGHT_TOAST_ID = "workflow-preflight-busy";
 
+/** `saveWorkflowAtom`'s setter, as the handlers below are handed it. */
+type SaveWorkflow = (
+  patch: WorkflowPatch,
+  options?: { immediate?: boolean }
+) => Promise<SaveOutcome | null>;
+
+/**
+ * The publication signal a completed save answers with.
+ *
+ * This is the fresher of the two readings: the cached badge only moves once
+ * `cacheWorkflowPublication` has patched the `getById` entry from a response,
+ * so during a queued or in-flight save the rendered value still describes the
+ * graph before the edit.
+ */
+function publicationFromSave(
+  workflow: Pick<SavedWorkflow, "publishedVersionId" | "hasUnpublishedChanges">
+): WorkflowPublicationSignal {
+  return {
+    isPublished: Boolean(workflow.publishedVersionId),
+    hasUnpublishedChanges: workflow.hasUnpublishedChanges,
+  };
+}
+
 type WorkflowHandlerParams = {
   currentWorkflowId: string | null;
   nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
   updateNodeData: UpdateNodeData;
   isExecuting: boolean;
   setIsExecuting: (value: boolean) => void;
@@ -125,16 +161,25 @@ type WorkflowHandlerParams = {
     workflowId: string;
     nodes: WorkflowNode[];
   }) => Promise<WorkflowIssuePreflightResult>;
+  workflowMode: WorkflowMode;
+  publication: WorkflowPublicationSignal | undefined;
+  hasUnsavedChanges: boolean;
+  saveWorkflow: SaveWorkflow;
 };
 
 function useWorkflowHandlers({
   currentWorkflowId,
   nodes,
+  edges,
   updateNodeData,
   isExecuting,
   setIsExecuting,
   setSelectedNodeId,
   checkWorkflowIssues,
+  workflowMode,
+  publication,
+  hasUnsavedChanges,
+  saveWorkflow,
 }: WorkflowHandlerParams) {
   // The same implementation the status strip's issue count reaches for, so
   // "Fix" means one thing wherever the list was opened from. The hook is
@@ -166,9 +211,30 @@ function useWorkflowHandlers({
       return;
     }
 
+    // A test run executes the canvas's own draft, and the server reads that
+    // draft out of the workflow row, so a queued edit has to land before the
+    // run starts. Autosave is debounced, and a run started inside that window
+    // would execute the previous graph while the canvas paints statuses on the
+    // one in front of the builder. The same flush settles the choice below,
+    // since the publication flag moves only when a save response patches it.
+    let runPublication = publication;
+    if (workflowMode === "test" && hasUnsavedChanges) {
+      const saved = await saveWorkflow({ nodes, edges }, { immediate: true });
+      if (saved && !saved.ok) {
+        toast.error(saved.error.message || "Failed to save workflow");
+        return;
+      }
+      runPublication = saved
+        ? publicationFromSave(saved.workflow)
+        : // No workflow was open for the queue to write to, so nothing landed.
+          // An unsaved canvas is ahead of anything published by definition.
+          { isPublished: false, hasUnpublishedChanges: true };
+    }
+
     // The sample is kept on the entry node, so the next run of this workflow
-    // opens on what this one sent. Autosave carries it; the run itself travels
-    // on the request and waits for no save.
+    // opens on what this one sent. It is written after the flush above, so it
+    // rides the next autosave rather than replacing the graph that flush just
+    // sent; the run carries its own copy on the request.
     rememberTestPayload({ nodes, updateNodeData, request });
 
     enterRuns();
@@ -182,12 +248,20 @@ function useWorkflowHandlers({
     setSelectedNodeId(null);
 
     setIsExecuting(true);
+    // Test mode runs the canvas's own draft whenever it has nothing published
+    // to fall back to, or has moved past what is published; a live workflow
+    // always runs the published graph, since it never runs an unvalidated one.
+    const runDraft = shouldRunDraftGraph({
+      workflowMode,
+      publication: runPublication,
+    });
     await executeWorkflowRun({
       runWorkflow: () =>
         runWorkflow.mutateAsync({
           workflowId: currentWorkflowId,
           input: request.input,
           ...(request.eventName ? { eventName: request.eventName } : {}),
+          ...(runDraft ? { graph: "draft" as const } : {}),
         }),
       nodes,
       setNodeStatuses,
@@ -350,17 +424,23 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     setSelectedNodeId,
     userIntegrations,
     publication,
+    hasUnsavedChanges,
   } = state;
   const { checkWorkflowIssues, isPreflighting } =
     useWorkflowIssuePreflight(userIntegrations);
   const { handleExecute, handleGoToStep } = useWorkflowHandlers({
     currentWorkflowId,
     nodes,
+    edges,
     updateNodeData,
     isExecuting,
     setIsExecuting,
     setSelectedNodeId,
     checkWorkflowIssues,
+    workflowMode,
+    publication,
+    hasUnsavedChanges,
+    saveWorkflow,
   });
 
   const handleSave = useCallback(async () => {

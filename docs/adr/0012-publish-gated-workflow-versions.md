@@ -146,3 +146,50 @@ Durable history retains historical configuration values for the lifetime of the
 workflow. Responses apply the same graph redaction policy as pinned run graphs.
 This retention and redaction policy supersedes the bounded-storage decision in
 the 2026-08-07 amendment.
+
+## Amendment, 2026-08-29: a test-mode manual start may run the draft, pinned to a snapshot version
+
+`workflow_versions` now holds two kinds of row. A `published` row is what
+Publish mints and what `workflows.published_version_id` points at. A
+`draft_snapshot` row carries `version: null` and is minted by a manual start
+that asked for `graph: "draft"`: it freezes the canvas graph so that run pins to
+an immutable copy the way a published run does. Every reader is unchanged, since
+both kinds answer `findVersionById`.
+
+The Decision above says starts load the published version and a never-published
+workflow is refused. One start no longer does. A manual start on a workflow in
+test mode loads `workflows.graph`, puts it through the checks Publish runs
+(`runWorkflowExecutionPreflight`), and pins the run to the snapshot it mints. A
+live workflow's draft is still refused before any row is written, so the only
+graph that runs unreviewed belongs to a workflow whose mode says it is being
+built.
+
+An Event start still requires a publication. Publish is the sole writer of the
+event subscription index (2026-08-17 amendment), so the index describes the
+published graph alone, and an Event arriving for a workflow with no publication
+finds nothing to start. Deriving the index from the draft instead would let an
+autosave change what a live Event does, which is the property the publish gate
+exists for.
+
+That asymmetry reaches cancellation, which is worth stating because it surprises.
+`applyLifecycleRules` reads the published version's Lifecycle Rules, so a Cancel
+Event declared only in the draft cancels nothing, and a draft run of a
+never-published workflow is beyond Event cancellation entirely. Wait resumption
+is unaffected: it derives its candidates from the parked `workflow_wait_states`
+rows rather than from a version. A draft run is cancelled from the Runs panel
+until the graph is published.
+
+What bounds the snapshot rows is, as of this amendment, only the workflow's own
+lifetime. `loadDraftForRun` mints before `postWorkflowExecute` applies the
+lifecycle gates, so a Run click that is then refused still leaves a row:
+`workflow_paused` pins its ignored Execution to that row, while
+`manual_start_not_allowed`, `start_event_required`, an unknown or refused Event,
+and a concurrency `not_started` leave it referenced by nothing. Two identical
+clicks on an unchanged draft mint two full copies of a graph that runs to
+megabytes, since the snapshot path has no content dedupe. The retention sweep
+this ADR once had was removed in the 2026-08-23 amendment and would not have
+covered these rows anyway. A prune has to be selective rather than a plain
+DELETE, because `workflow_executions.workflow_version_id` cascades and deleting a
+snapshot would take the run history that pinned it. The two moves that bound the
+table are minting after the gates that write no row, and sweeping
+`draft_snapshot` rows no Execution references; neither has been made yet.

@@ -12,6 +12,7 @@ import type { TestRunRequest } from "#src/components/overlays/test-run-overlay";
 import type { WorkflowExecuteResult } from "#src/lib/rpc-client";
 import type {
   NodeRunStatus,
+  WorkflowMode,
   WorkflowNode,
 } from "#src/lib/workflow-graph-types";
 import type { NodeDataUpdate } from "#src/lib/workflow-graph-store";
@@ -85,6 +86,44 @@ export function rememberTestPayload(input: {
       },
     },
   });
+}
+
+/**
+ * The publication badge's two fields -- the only signal this reads. Reusing it
+ * rather than a fresh comparison is what keeps "does the draft differ from
+ * published" answered once, by `cacheWorkflowPublication`'s writes.
+ */
+export type WorkflowPublicationSignal = {
+  isPublished: boolean;
+  hasUnpublishedChanges: boolean;
+};
+
+/**
+ * Whether a Run should start the canvas's draft instead of the published
+ * version.
+ *
+ * A live workflow never runs an unvalidated graph, so this is `false`
+ * regardless of the publication signal. In test mode it is `true` whenever
+ * there is no published version to fall back to yet, or the draft has moved
+ * past it -- the same two facts the publish badge already tracks. A
+ * publication signal not yet loaded is treated as "never published": the
+ * editor route hydrates this from the same `getById` entry every other piece
+ * of toolbar state reads, so an unloaded signal here means there is truly
+ * nothing published, not a slow request.
+ */
+export function shouldRunDraftGraph(input: {
+  workflowMode: WorkflowMode;
+  publication: WorkflowPublicationSignal | undefined;
+}): boolean {
+  if (input.workflowMode !== "test") {
+    return false;
+  }
+  if (!input.publication) {
+    return true;
+  }
+  return (
+    !input.publication.isPublished || input.publication.hasUnpublishedChanges
+  );
 }
 
 type ExecuteWorkflowRunParams = {

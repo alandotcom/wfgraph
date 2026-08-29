@@ -13,6 +13,7 @@ import {
   optionalString,
   requiredDate,
   requiredString,
+  requiredVersionKind,
 } from "#src/backend/persistence/sqlite/database";
 
 export function sqliteExecutionStatus(
@@ -51,9 +52,14 @@ function runMode(value: string): WorkflowExecution["runMode"] {
   return value;
 }
 
-export function sqliteExecutionListRow(
+/**
+ * The execution's own columns the run lists read. The version kind rides beside
+ * them from a join, so it is added by the readers that ask for it rather than
+ * here, where the whole-row reader would have nothing to put in it.
+ */
+function executionListColumns(
   row: Record<string, unknown>
-): WorkflowExecutionListRow {
+): Omit<WorkflowExecutionListRow, "versionKind"> {
   return {
     id: requiredString(row, "id"),
     workflowId: requiredString(row, "workflow_id"),
@@ -72,11 +78,21 @@ export function sqliteExecutionListRow(
   };
 }
 
+/** One run-list row, from a query that joined the version it pinned. */
+export function sqliteExecutionListRow(
+  row: Record<string, unknown>
+): WorkflowExecutionListRow {
+  return {
+    ...executionListColumns(row),
+    versionKind: requiredVersionKind(row, "version_kind"),
+  };
+}
+
 export function sqliteExecution(
   row: Record<string, unknown>
 ): WorkflowExecution {
   return {
-    ...sqliteExecutionListRow(row),
+    ...executionListColumns(row),
     workflowVersionId: requiredString(row, "workflow_version_id"),
     deliveryId: optionalString(row, "delivery_id"),
     enqueuedAt: optionalDate(row, "enqueued_at"),

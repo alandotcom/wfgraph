@@ -10,6 +10,7 @@ import {
 import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import {
+  asPublishedVersion,
   type WorkflowEventSubscriptionRow,
   WorkflowRepo,
 } from "#src/backend/services/workflows/repo";
@@ -33,7 +34,7 @@ export const resolvePublishedVersion = (
   publishedVersionId: string | null
 ) =>
   publishedVersionId
-    ? repo.findVersionById(publishedVersionId)
+    ? Effect.map(repo.findVersionById(publishedVersionId), asPublishedVersion)
     : Effect.succeed(null);
 
 /**

@@ -146,6 +146,12 @@ function ListSummary({
               <span>Test</span>
             </>
           ) : null}
+          {execution.versionKind === "draft_snapshot" ? (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>Draft</span>
+            </>
+          ) : null}
           {execution.duration ? (
             <>
               <span aria-hidden="true">·</span>
@@ -261,6 +267,9 @@ function HeaderSummary({
           label="Mode"
           value={execution.runMode === "test" ? "Test" : "Live"}
         />
+        {execution.versionKind === "draft_snapshot" ? (
+          <MetadataRow label="Graph" value="Draft" />
+        ) : null}
         <MetadataRow
           label="Run"
           value={runNumber > 0 ? `#${runNumber}` : execution.id}

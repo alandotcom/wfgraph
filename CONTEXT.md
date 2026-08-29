@@ -158,10 +158,13 @@ Wait, which is how an Event Split after a Wait tells those arrivals apart.
 ### Runs
 
 **Workflow Version**:
-An immutable published copy of a workflow's graph, together with the catalog
-fingerprint it was sound against. Draft saves edit the live graph only;
-each Publish mints the next chronological version and points the workflow at
-it. Event and manual starts refuse a never-published workflow. Published
+An immutable copy of a workflow's graph, together with the catalog fingerprint
+it was sound against, of one of two kinds. A published version is what each
+Publish mints, numbered in sequence, and the workflow points at the newest one;
+Event starts run that graph and refuse a never-published workflow. A draft
+snapshot is what a manual draft run of a test-mode workflow freezes for itself:
+it claims no number, stays out of the version history, and nothing ever
+publishes it. Draft saves edit the live graph and mint nothing. Published
 versions form durable history, and an Execution remains pinned to the version
 it started against.
 
@@ -172,9 +175,10 @@ outlets, template references, connections, and unreachable subtrees. A draft
 save asks none of that and stores whatever parses, because a half-built node is
 the ordinary state of an editor session. Publish refuses a draft that is
 semantically identical to the current version. A confirmed Publish advances
-the version number even when the draft restores content from an older version.
-The event subscription index tracks the published graph, so a half-built draft
-cannot start runs.
+the version number even when the draft restores content from an older version;
+a draft snapshot claims none and never moves the pointer. The event
+subscription index tracks the published graph, so a half-built draft cannot
+start runs on an Event.
 
 **Execution**:
 One run of one workflow, started by a Start Event, a schedule, or a manual

@@ -4,13 +4,17 @@ import { DatabaseError } from "#src/backend/lib/effect/database";
 import { isSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 import {
+  WORKFLOW_VERSION_KINDS,
+  type WorkflowVersionKind,
+} from "@wfgraph/shared/graph/version-kinds";
+import {
   readJsonObject,
   readJsonValue,
   type JsonObject,
   type JsonValue,
 } from "@wfgraph/shared/types/json";
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 const MIGRATION_1 = `
   CREATE TABLE workflows (
@@ -30,7 +34,8 @@ const MIGRATION_1 = `
   CREATE TABLE workflow_versions (
     id TEXT PRIMARY KEY,
     workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
-    version INTEGER NOT NULL,
+    version INTEGER,
+    kind TEXT NOT NULL DEFAULT 'published' CHECK (kind IN ('published', 'draft_snapshot')),
     graph TEXT NOT NULL,
     catalog_fingerprint TEXT NOT NULL,
     graph_digest TEXT NOT NULL,
@@ -239,6 +244,39 @@ const MIGRATION_4 = `
     ON oauth_authorization_attempts(expires_at);
 `;
 
+/**
+ * Draft snapshots: `version` becomes nullable and `kind` says which sort of row
+ * this is. SQLite cannot drop a NOT NULL, so the table is rebuilt.
+ *
+ * Two tables carry a foreign key into this one, which is why the rebuild creates
+ * the replacement under a temporary name and renames it into place last, and why
+ * `migrate` runs this step with foreign keys off. Dropping the old table with
+ * them on would cascade every execution row away, and renaming the old table out
+ * of the way first would rewrite those foreign keys to follow it.
+ */
+const MIGRATION_5 = `
+  CREATE TABLE workflow_versions_v2 (
+    id TEXT PRIMARY KEY,
+    workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+    version INTEGER,
+    kind TEXT NOT NULL DEFAULT 'published' CHECK (kind IN ('published', 'draft_snapshot')),
+    graph TEXT NOT NULL,
+    catalog_fingerprint TEXT NOT NULL,
+    graph_digest TEXT NOT NULL,
+    published_at INTEGER NOT NULL,
+    UNIQUE (workflow_id, version)
+  ) STRICT;
+
+  INSERT INTO workflow_versions_v2
+    (id, workflow_id, version, kind, graph, catalog_fingerprint, graph_digest, published_at)
+  SELECT id, workflow_id, version, 'published', graph, catalog_fingerprint,
+         graph_digest, published_at
+  FROM workflow_versions;
+
+  DROP TABLE workflow_versions;
+  ALTER TABLE workflow_versions_v2 RENAME TO workflow_versions;
+`;
+
 export type SqliteDatabase = {
   readonly read: <A>(
     run: (database: DatabaseSync) => A
@@ -302,6 +340,35 @@ function migrate(database: DatabaseSync): void {
       database.exec(MIGRATION_4);
       database.exec("PRAGMA user_version = 4");
     });
+  }
+  if (version <= 4) {
+    rebuildTable(database, () => {
+      database.exec(MIGRATION_5);
+      database.exec("PRAGMA user_version = 5");
+    });
+  }
+}
+
+/**
+ * Runs a table rebuild the way SQLite's own procedure describes it: foreign keys
+ * off around the transaction, since the pragma is a no-op inside one, and a
+ * `foreign_key_check` before the commit so a rebuild that stranded a child row
+ * rolls back instead of being enforced later.
+ */
+function rebuildTable(database: DatabaseSync, run: () => void): void {
+  database.exec("PRAGMA foreign_keys = OFF");
+  try {
+    inImmediateTransaction(database, () => {
+      run();
+      const violations = database.prepare("PRAGMA foreign_key_check").all();
+      if (violations.length > 0) {
+        throw new Error(
+          `SQLite migration left ${violations.length} row(s) without their parent`
+        );
+      }
+    });
+  } finally {
+    database.exec("PRAGMA foreign_keys = ON");
   }
 }
 
@@ -419,6 +486,19 @@ export function requiredGraph(
     throw new Error(`Invalid SQLite ${key}`);
   }
   return value;
+}
+
+/** Reads a `workflow_versions.kind`, wherever a query carries one. */
+export function requiredVersionKind(
+  row: Record<string, unknown>,
+  key = "kind"
+): WorkflowVersionKind {
+  const value = requiredString(row, key);
+  const kind = WORKFLOW_VERSION_KINDS.find((candidate) => candidate === value);
+  if (kind === undefined) {
+    throw new Error(`Invalid SQLite ${key}`);
+  }
+  return kind;
 }
 
 export function optionalJsonValue(

@@ -3,7 +3,10 @@ import { assert, describe, layer } from "@effect/vitest";
 // `@effect/vitest` re-export leaves it unable to find the module registry.
 import { beforeEach, vi } from "vitest";
 import { Effect, Layer } from "effect";
-import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
+import type {
+  PublishedWorkflowVersion,
+  Workflow,
+} from "#src/backend/lib/db/schema";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import type { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import {
@@ -184,11 +187,12 @@ function createWorkflow(input: {
   };
 }
 
-function publishedVersion(workflow: Workflow): WorkflowVersion {
+function publishedVersion(workflow: Workflow): PublishedWorkflowVersion {
   return {
     id: "ver_1",
     workflowId: workflow.id,
     version: 1,
+    kind: "published",
     graph: workflow.graph,
     catalogFingerprint: "fp",
     graphDigest: "digest",
