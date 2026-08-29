@@ -293,6 +293,7 @@ const workflowRepoStubs: WorkflowRepo["Service"] = {
   findByIdWithDraftGraphForRun: refuse("findByIdWithDraftGraphForRun"),
   insertPublishedVersion: refuse("insertPublishedVersion"),
   freezeDraftSnapshot: refuse("freezeDraftSnapshot"),
+  deleteUnreferencedDraftSnapshot: refuse("deleteUnreferencedDraftSnapshot"),
 };
 
 /**

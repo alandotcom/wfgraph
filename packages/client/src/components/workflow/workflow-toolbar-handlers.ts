@@ -325,9 +325,15 @@ function useWorkflowHandlers({
         }),
         staleTime: Number.POSITIVE_INFINITY,
       });
-      return runOverlayGraphFacts(
-        toWorkflowGraphData(payload.graph).nodes.map(toEditorNode)
-      );
+      // The lifecycle facts are the published graph's; the sample payload is
+      // the canvas's own. `getVersionGraph` redacts sensitive-looking values,
+      // so a sample read off it would send the mask as the run's input.
+      return {
+        ...runOverlayGraphFacts(
+          toWorkflowGraphData(payload.graph).nodes.map(toEditorNode)
+        ),
+        savedPayloads: readEntryTestPayloads(nodes),
+      };
     } catch {
       return null;
     }

@@ -111,9 +111,40 @@ describe("native SQLite persistence", () => {
             graphDigest: "draft-digest",
           });
 
+          // A run pins the reused row, so the release must keep it; a row
+          // nothing names goes.
+          const executions = yield* ExecutionRepo;
+          yield* executions.insertTerminal({
+            workflowId: "wf_1",
+            workflowVersionId: "ver_snapshot",
+            startSource: "manual",
+            runMode: "test",
+            input: {},
+            status: "completed",
+          });
+          const keptPinned =
+            yield* workflows.deleteUnreferencedDraftSnapshot("ver_snapshot");
+          const loose = yield* workflows.freezeDraftSnapshot({
+            workflowId: "wf_1",
+            versionId: "ver_loose",
+            graph: createSerializedWorkflowGraph({
+              nodes: [],
+              edges: [],
+              attributes: { note: "a different graph" },
+            }),
+            catalogFingerprint: "catalog",
+            graphDigest: "draft-digest",
+          });
+          const droppedLoose = yield* workflows.deleteUnreferencedDraftSnapshot(
+            loose.id
+          );
+
           return {
             snapshot,
             again,
+            keptPinned,
+            droppedLoose,
+            looseAfter: yield* workflows.findVersionById(loose.id),
             history: yield* workflows.listVersionHistoryPage({
               workflowId: "wf_1",
               limit: 10,
@@ -136,6 +167,9 @@ describe("native SQLite persistence", () => {
       expect(result.history).toMatchObject([{ id: "ver_1", version: 1 }]);
       expect(result.latest).toEqual({ version: 1 });
       expect(result.again.id).toBe("ver_snapshot");
+      expect(result.keptPinned).toBe(false);
+      expect(result.droppedLoose).toBe(true);
+      expect(result.looseAfter).toBeNull();
       expect(result.found?.kind).toBe("draft_snapshot");
       expect(result.published?.id).toBe("ver_1");
       expect(result.forRun).toMatchObject({

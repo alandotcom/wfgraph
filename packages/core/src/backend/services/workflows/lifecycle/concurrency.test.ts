@@ -36,6 +36,7 @@ const workflow = {
   graph: { nodes: [], edges: [] },
   versionId: "ver_1",
   catalogFingerprint: "fp",
+  version: { kind: "published" as const, number: 3 },
 };
 
 const eventStart = {

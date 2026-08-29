@@ -516,5 +516,20 @@ export function makeSqliteWorkflowRepo(
         if (!row) throw new Error("The draft snapshot was not written");
         return sqliteWorkflowVersion(row);
       }),
+
+    deleteUnreferencedDraftSnapshot: (versionId) =>
+      store.write((database) => {
+        const result = database
+          .prepare(
+            `DELETE FROM workflow_versions
+             WHERE id = ? AND kind = 'draft_snapshot'
+               AND NOT EXISTS (
+                 SELECT 1 FROM workflow_executions
+                 WHERE workflow_version_id = workflow_versions.id
+               )`
+          )
+          .run(versionId);
+        return result.changes > 0;
+      }),
   };
 }

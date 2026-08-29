@@ -17,6 +17,7 @@ import {
   type WorkflowRunRow,
 } from "#src/backend/services/workflows/repo";
 import type { DatabaseError } from "#src/backend/lib/effect/database";
+import type { PinnedRunVersion } from "#src/backend/services/executions/run-rows";
 import {
   catalogFingerprint,
   graphDigest,
@@ -63,11 +64,17 @@ export type WorkflowExecutionPreflight = {
  * to run before `preflight.workflowVersionId` is stored on an Execution: a
  * published start's is `Effect.void`, and a draft start's writes the snapshot
  * row (and may swap the id for an existing identical snapshot's).
+ * `releaseVersion` is its undo for a start refused after the pin, and it never
+ * fails: a snapshot left behind is a cost, and a refused start is the answer
+ * the caller already has.
  */
 export type LoadedForRun = {
   workflow: WorkflowRunRow;
   preflight: WorkflowExecutionPreflight;
+  /** Which graph the run pins, in the words the timeline says it in. */
+  version: PinnedRunVersion;
   pinVersion: Effect.Effect<void, DatabaseError>;
+  releaseVersion: Effect.Effect<void>;
 };
 
 /**
@@ -294,7 +301,9 @@ export const loadWorkflowForRun = Effect.fn("wfgraph.execution.load_workflow")(
     const result: LoadedForRun = {
       workflow,
       preflight,
+      version: { kind: "published", number: version.version },
       pinVersion: Effect.void,
+      releaseVersion: Effect.void,
     };
     return result;
   }
@@ -367,7 +376,20 @@ export const loadDraftForRun = Effect.fn("wfgraph.execution.load_draft")(
       }
     );
 
-    const result: LoadedForRun = { workflow, preflight, pinVersion };
+    const releaseVersion = repo
+      .deleteUnreferencedDraftSnapshot(preflight.workflowVersionId)
+      .pipe(
+        Effect.asVoid,
+        Effect.catchTag("DatabaseError", () => Effect.void)
+      );
+
+    const result: LoadedForRun = {
+      workflow,
+      preflight,
+      version: { kind: "draft_snapshot", number: null },
+      pinVersion,
+      releaseVersion,
+    };
     return result;
   }
 );

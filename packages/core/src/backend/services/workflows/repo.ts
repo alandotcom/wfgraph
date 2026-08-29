@@ -10,6 +10,7 @@ import {
   workflows,
   workflowVersions,
   workflowWaitStates,
+  workflowExecutions,
 } from "#src/backend/lib/db/schema";
 import type {
   WfGraphDatabase,
@@ -353,6 +354,15 @@ export class WorkflowRepo extends Context.Service<
       catalogFingerprint: string;
       graphDigest: string;
     }) => Effect.Effect<WorkflowVersion, DatabaseError>;
+    /**
+     * Drop a draft snapshot no Execution names, and leave one that any names.
+     * A start refused after the freeze (Concurrency's first-wins, for one)
+     * calls this so the refusal leaves no row; a concurrent start that pinned
+     * the same snapshot in the meantime keeps it. Answers whether a row went.
+     */
+    readonly deleteUnreferencedDraftSnapshot: (
+      versionId: string
+    ) => Effect.Effect<boolean, DatabaseError>;
   }
 >()("@wfgraph/core/WorkflowRepo") {}
 
@@ -883,6 +893,24 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
             }
 
             return snapshot;
+          }),
+
+        deleteUnreferencedDraftSnapshot: (versionId) =>
+          database.query(async (db) => {
+            // The NOT EXISTS is the guard; a concurrent insert referencing the
+            // row holds a share lock on it, so this delete waits for that
+            // transaction and then finds the reference.
+            const deleted = await db
+              .delete(workflowVersions)
+              .where(
+                and(
+                  eq(workflowVersions.id, versionId),
+                  eq(workflowVersions.kind, "draft_snapshot"),
+                  sql`not exists (select 1 from ${workflowExecutions} where ${workflowExecutions.workflowVersionId} = ${workflowVersions.id})`
+                )
+              )
+              .returning({ id: workflowVersions.id });
+            return deleted.length > 0;
           }),
       };
     })

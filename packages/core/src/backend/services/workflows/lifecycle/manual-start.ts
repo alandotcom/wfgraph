@@ -167,17 +167,18 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
     // The two loads answer the same pair, so every gate below reads the same
     // way whichever graph the run is of.
     const source = body.graph ?? "published";
-    const { workflow, preflight, pinVersion } = yield* (
-      source === "draft"
-        ? loadDraftForRun(workflowId)
-        : loadWorkflowForRun(workflowId)
-    ).pipe(
-      Effect.tapError((failure) =>
-        "error" in failure
-          ? logger.error("Refused a manual run", { error: failure.error })
-          : Effect.void
-      )
-    );
+    const { workflow, preflight, version, pinVersion, releaseVersion } =
+      yield* (
+        source === "draft"
+          ? loadDraftForRun(workflowId)
+          : loadWorkflowForRun(workflowId)
+      ).pipe(
+        Effect.tapError((failure) =>
+          "error" in failure
+            ? logger.error("Refused a manual run", { error: failure.error })
+            : Effect.void
+        )
+      );
 
     const payload = body.input ?? {};
     // A Draft run is a run of a graph nobody reviewed, so it goes to test
@@ -286,6 +287,7 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
         versionId: preflight.workflowVersionId,
         catalogFingerprint: preflight.catalogFingerprint,
         graph: preflight.workflowGraph,
+        version,
       }),
       concurrency: rules.concurrency,
       start: {
@@ -306,7 +308,9 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
 
     if (started.status === "not_started") {
       // No execution id: the refusal wrote no run, and the run it deferred to
-      // belongs to whoever started it. The timeline carries the refusal.
+      // belongs to whoever started it. The timeline carries the refusal, and
+      // the snapshot pinned above it goes unless another run took it.
+      yield* releaseVersion;
       const response: WorkflowExecuteResponse = {
         status: "ignored",
         runMode,

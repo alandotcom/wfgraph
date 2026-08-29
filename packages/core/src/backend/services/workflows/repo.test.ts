@@ -514,6 +514,19 @@ describe("draft snapshot exclusions", () => {
     ).then(() => statements[0]);
   }
 
+  // The guard is in the statement itself, so a snapshot another start pinned in
+  // the meantime survives without a read-then-delete window.
+  it("deletes a draft snapshot only when no execution names it", async () => {
+    const statement = await statementFor((repo) =>
+      repo.deleteUnreferencedDraftSnapshot("ver_snapshot")
+    );
+
+    expect(statement?.query).toContain('delete from "workflow_versions"');
+    expect(statement?.query).toContain("not exists");
+    expect(statement?.query).toContain('"workflow_executions"');
+    expect(statement?.params).toContain("draft_snapshot");
+  });
+
   it("asks findLatestVersion for published rows alone", async () => {
     const statement = await statementFor((repo) =>
       repo.findLatestVersion("wf_1")

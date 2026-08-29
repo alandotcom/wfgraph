@@ -25,9 +25,6 @@ import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 /**
  * Which graph a run pinned, in the words the timeline says it in: the Draft the
  * canvas held, or the published version by its number.
- *
- * A start path that has not yet been taught to say leaves this off, and the
- * timeline falls back to naming neither.
  */
 export type PinnedRunVersion = {
   kind: WorkflowVersionKind;
@@ -42,7 +39,7 @@ export type WorkflowRunTarget = {
   graph: SerializedWorkflowGraph;
   versionId: string;
   catalogFingerprint: string;
-  version?: PinnedRunVersion;
+  version: PinnedRunVersion;
 };
 
 /** Build the run target every start path hands to concurrency / enqueue. */
@@ -51,7 +48,7 @@ export function toWorkflowRunTarget(input: {
   versionId: string;
   catalogFingerprint: string;
   graph: SerializedWorkflowGraph;
-  version?: PinnedRunVersion;
+  version: PinnedRunVersion;
 }): WorkflowRunTarget {
   return {
     id: input.workflow.id,
@@ -59,7 +56,7 @@ export function toWorkflowRunTarget(input: {
     graph: input.graph,
     versionId: input.versionId,
     catalogFingerprint: input.catalogFingerprint,
-    ...(input.version ? { version: input.version } : {}),
+    version: input.version,
   };
 }
 
@@ -288,8 +285,8 @@ export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
       metadata: {
         startSource: start.source,
         runMode,
-        versionKind: workflow.version?.kind,
-        versionNumber: workflow.version?.number ?? undefined,
+        versionKind: workflow.version.kind,
+        versionNumber: workflow.version.number ?? undefined,
         eventName: start.eventName,
         entityValue: start.entityValue,
         deliveryId: start.deliveryId,

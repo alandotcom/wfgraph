@@ -111,7 +111,7 @@ type TerminalInput = Parameters<ExecutionRepo["Service"]["insertTerminal"]>[0];
  * `startForEntity` is where the entity decision becomes visible, and the audit
  * rows are where a refusal does. Built per test, so no case reads another's.
  */
-function makeRepo() {
+function makeRepo(overrides: Partial<ExecutionRepo["Service"]> = {}) {
   const starts: StartInput[] = [];
   const audits: AuditInput[] = [];
   const terminals: TerminalInput[] = [];
@@ -142,6 +142,7 @@ function makeRepo() {
           Effect.sync(() => {
             audits.push(input);
           }),
+        ...overrides,
       }),
       stubInngestClient({
         sendRunRequested: () => Effect.succeed({ eventId: "evt_1" }),
@@ -238,12 +239,19 @@ type SnapshotInput = Parameters<
  */
 function makeDraftRepo(workflow: Workflow) {
   const snapshots: SnapshotInput[] = [];
+  const released: string[] = [];
 
   return {
     snapshots,
+    released,
     layer: stubWorkflowRepo({
       findByIdWithDraftGraphForRun: () =>
         Effect.succeed({ workflow, draftGraph: workflow.graph }),
+      deleteUnreferencedDraftSnapshot: (versionId) =>
+        Effect.sync(() => {
+          released.push(versionId);
+          return true;
+        }),
       freezeDraftSnapshot: (input) =>
         Effect.sync(() => {
           snapshots.push(input);
@@ -707,6 +715,31 @@ describe("postWorkflowExecute", () => {
         assert.strictEqual(failure.kind, "invalid");
         assert.deepStrictEqual(workflows.snapshots, []);
         assert.deepStrictEqual(repo.starts, []);
+      })
+    );
+
+    // Concurrency decides after the pin, because the Execution it opens names
+    // the version. A first-wins refusal therefore has a snapshot to give back,
+    // and gives it back rather than leaving a graph copy per attempt.
+    it.effect("releases the snapshot when Concurrency refuses the start", () =>
+      Effect.gen(function* () {
+        const repo = makeRepo({
+          startForEntity: () =>
+            Effect.succeed({
+              status: "refused" as const,
+              inFlightExecutionIds: ["exec_running"],
+            }),
+        });
+        const workflows = makeDraftRepo(workflowRow({ mode: "test" }));
+
+        const response = yield* postWorkflowExecute("wf_1", {
+          graph: "draft",
+        }).pipe(Effect.provide(Layer.mergeAll(repo.layer, workflows.layer)));
+
+        assert.strictEqual(response.status, "ignored");
+        assert.deepStrictEqual(workflows.released, [
+          workflows.snapshots[0]?.versionId,
+        ]);
       })
     );
 

@@ -55,6 +55,7 @@ const runTarget = {
   graph: { nodes: [], edges: [] },
   versionId: "ver_1",
   catalogFingerprint: "fp",
+  version: { kind: "published" as const, number: 3 },
 };
 
 describe("buildRunStartedAuditMessage", () => {

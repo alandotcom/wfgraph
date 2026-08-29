@@ -284,6 +284,7 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
         versionId: version.id,
         catalogFingerprint: version.catalogFingerprint,
         graph: preflight.workflowGraph,
+        version: { kind: "published", number: version.version },
       }),
       concurrency: rules.concurrency,
       start: {
