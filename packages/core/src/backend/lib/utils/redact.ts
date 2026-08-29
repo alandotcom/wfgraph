@@ -5,7 +5,7 @@
 
 import { getAppLogger } from "#src/backend/lib/logger";
 import { getErrorMessage } from "@wfgraph/shared/utils";
-import { type JsonObject, type JsonValue } from "@wfgraph/shared/types/json";
+import { type JsonValue } from "@wfgraph/shared/types/json";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 
 const redactLogger = getAppLogger("utils", "redact");
@@ -172,7 +172,12 @@ function redactObject(obj: unknown, depth = 0): JsonValue | undefined {
   }
 
   if (typeof obj === "object") {
-    const redacted: JsonObject = {};
+    // Collected as entries and built at the end rather than assigned key by
+    // key. What arrives here is a payload off a wire, so it can carry an own
+    // `__proto__` key: assigning that reaches Object.prototype's setter, which
+    // drops the key and swaps the new object's prototype. `Object.fromEntries`
+    // defines an own property instead.
+    const entries: Array<[string, JsonValue]> = [];
 
     for (const [key, value] of Object.entries(obj)) {
       if (isSensitiveKey(key)) {
@@ -183,22 +188,24 @@ function redactObject(obj: unknown, depth = 0): JsonValue | undefined {
           continue;
         }
         if (value === null) {
-          redacted[key] = null;
+          entries.push([key, null]);
           continue;
         }
-        redacted[key] =
-          typeof value === "string" ? maskValue(value) : "[REDACTED]";
+        entries.push([
+          key,
+          typeof value === "string" ? maskValue(value) : "[REDACTED]",
+        ]);
         continue;
       }
 
       // Recursively process nested objects
       const walked = redactObject(value, depth + 1);
       if (walked !== undefined) {
-        redacted[key] = walked;
+        entries.push([key, walked]);
       }
     }
 
-    return redacted;
+    return Object.fromEntries(entries);
   }
 
   return undefined;
@@ -273,14 +280,18 @@ function redactOpenAttributes<T extends Record<string, unknown>>(
   attributes: T,
   structuralKeys: ReadonlySet<string>
 ): T {
-  const redacted: Record<string, unknown> = {};
+  // Entries rather than key-by-key assignment, for the reason `redactObject`
+  // states: an attribute bag is open JSON and may carry an own `__proto__` key.
+  const entries: Array<[string, unknown]> = [];
 
   for (const [key, value] of Object.entries(attributes)) {
     if (structuralKeys.has(key)) {
-      redacted[key] =
+      entries.push([
+        key,
         typeof value === "object" && value !== null
           ? (redactSensitiveData(value) ?? null)
-          : value;
+          : value,
+      ]);
       continue;
     }
 
@@ -291,12 +302,12 @@ function redactOpenAttributes<T extends Record<string, unknown>>(
       !Array.isArray(walked) &&
       Object.hasOwn(walked, key)
     ) {
-      redacted[key] = walked[key] ?? null;
+      entries.push([key, walked[key] ?? null]);
     }
   }
 
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- redaction retains each preserved attribute and only changes open JSON values.
-  return redacted as T;
+  return Object.fromEntries(entries) as T;
 }
 
 /**

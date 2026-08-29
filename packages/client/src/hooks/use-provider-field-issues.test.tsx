@@ -14,7 +14,10 @@ import {
   providerFieldQuestions,
 } from "#src/lib/provider-field-issues";
 import type { ConfigOptionsAnswer } from "#src/lib/rpc-client";
-import { rpcJsonResponse } from "#src/lib/rpc-fetch-test-support";
+import {
+  parseRpcRequestInput,
+  rpcJsonResponse,
+} from "#src/lib/rpc-fetch-test-support";
 import { configOptionsQueryOptions } from "#src/lib/rpc-query";
 import {
   emptyExtensionCatalog,
@@ -144,6 +147,57 @@ describe("issues a provider-backed field raises", () => {
       },
     ]);
     expect(fetchSpy).toHaveBeenCalledOnce();
+  });
+
+  // One connection whose grant expired refuses every question asked of it. As a
+  // rejection it took the whole preflight with it, and Run and Publish then
+  // ended at a toast that no retry could clear.
+  it("answers for every other question when one connection refuses", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (_url: RequestInfo | URL, init?: RequestInit) => {
+        const input = (await parseRpcRequestInput(init)) as {
+          parameters?: { emailTemplateId?: string };
+        };
+        if (input.parameters?.emailTemplateId === "tpl_expired") {
+          throw new Error("connection refused");
+        }
+        return rpcJsonResponse(variablesAnswer);
+      }
+    );
+    const answering = node({ emailTemplateId: "tpl_1" });
+    const refusing = {
+      ...node({ emailTemplateId: "tpl_expired" }),
+      id: "n2",
+    } as WorkflowNode;
+
+    const issues = await fetchProviderFieldIssues(
+      queryClient,
+      [answering, refusing],
+      catalog
+    );
+
+    expect(issues).toMatchObject([
+      {
+        kind: "missing_required_field",
+        nodeId: "n1",
+        fieldKey: "emailTemplateVariables.DONOR_FIRST_NAME",
+      },
+      {
+        kind: "unverified_provider_field",
+        severity: "warning",
+        nodeId: "n2",
+        fieldKey: "emailTemplateVariables",
+        fieldLabel: "Template Variables",
+      },
+    ]);
+    // A field that went unchecked is not a field known to be wrong, so Run
+    // Anyway stays on the table and Publish is not stopped by it.
+    expect(
+      hasBlockingWorkflowIssues(issues.filter((issue) => issue.nodeId === "n2"))
+    ).toBe(false);
   });
 
   it("treats an explicit provider refusal as settled manual fallback", () => {

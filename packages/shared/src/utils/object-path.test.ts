@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { JsonObject } from "#src/types/json";
 import { getValueByPath, setValueByPath } from "#src/utils/object-path";
 
 describe("getValueByPath", () => {
@@ -18,10 +19,19 @@ describe("setValueByPath", () => {
   it("refuses prototype path segments without mutating Object.prototype", () => {
     const target = {};
 
-    expect(setValueByPath(target, "__proto__.polluted", true)).toBe(target);
+    expect(setValueByPath(target, "__proto__.polluted", true)).toBe(false);
     expect(
       (Object.prototype as Record<string, unknown>).polluted
     ).toBeUndefined();
     expect(target).toEqual({});
+  });
+
+  it("reports a stored write, so a caller can tell one from a refusal", () => {
+    const target: JsonObject = {};
+
+    expect(setValueByPath(target, "order.customer.email", "a@b.test")).toBe(
+      true
+    );
+    expect(target).toEqual({ order: { customer: { email: "a@b.test" } } });
   });
 });

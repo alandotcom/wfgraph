@@ -3,7 +3,6 @@ import { Effect } from "effect";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import { isSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
-import { INTEGRATION_REFRESH_STATES } from "@wfgraph/shared/types/integration";
 import {
   readJsonObject,
   readJsonValue,
@@ -12,10 +11,6 @@ import {
 } from "@wfgraph/shared/types/json";
 
 const SCHEMA_VERSION = 4;
-
-const integrationRefreshStateLiterals = INTEGRATION_REFRESH_STATES.map(
-  (state) => `'${state}'`
-).join(", ");
 
 const MIGRATION_1 = `
   CREATE TABLE workflows (
@@ -153,10 +148,19 @@ const MIGRATION_1 = `
   CREATE INDEX events_workflow_created_idx ON workflow_execution_events(workflow_id, created_at DESC);
 `;
 
+/**
+ * Every migration below is frozen text: it names its own values rather than
+ * reading a constant. A database already past this version never runs it again,
+ * so interpolating `INTEGRATION_REFRESH_STATES` would let a fourth state reach
+ * a fresh database's CHECK and no existing one's -- the two would then disagree
+ * about what `refresh_state` may hold, with nothing failing at build time.
+ * Widening this column takes a new migration.
+ * `sqlite.integrations.test.ts` is what holds the pair together.
+ */
 const MIGRATION_2 = `
   ALTER TABLE integrations
-    ADD COLUMN refresh_state TEXT NOT NULL DEFAULT '${INTEGRATION_REFRESH_STATES[0]}'
-    CHECK (refresh_state IN (${integrationRefreshStateLiterals}));
+    ADD COLUMN refresh_state TEXT NOT NULL DEFAULT 'idle'
+    CHECK (refresh_state IN ('idle', 'refreshing', 'reauthorization_required'));
   ALTER TABLE integrations ADD COLUMN config_revision INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE integrations ADD COLUMN refresh_claim_id TEXT;
   ALTER TABLE integrations ADD COLUMN refresh_claimed_at INTEGER;

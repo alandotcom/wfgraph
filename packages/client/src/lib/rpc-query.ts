@@ -187,23 +187,30 @@ export function refreshRunHistory(queryClient: QueryClient) {
   ]);
 }
 
-/** The connection list and, when known, one connection's provider options. */
+/**
+ * The connection list and, when known, one connection's provider options.
+ *
+ * Only the list is awaited. `invalidateQueries` settles when every active
+ * matching query has refetched, and a `configOptions` refetch is a round trip
+ * through the third party: with a node config panel open behind the dialog,
+ * awaiting it would hold the overlay's close and its success toast open for as
+ * long as the provider takes. The panel repaints when its own refetch lands.
+ */
 export function refreshIntegrations(
   queryClient: QueryClient,
   integrationId?: string
 ) {
-  return Promise.all([
-    queryClient.invalidateQueries({
-      queryKey: orpcQuery.integration.getAll.key(),
-    }),
-    ...(integrationId
-      ? [
-          queryClient.invalidateQueries({
-            queryKey: orpcQuery.integration.configOptions.key({
-              input: { integrationId },
-            }),
-          }),
-        ]
-      : []),
-  ]);
+  const list = queryClient.invalidateQueries({
+    queryKey: orpcQuery.integration.getAll.key(),
+  });
+
+  if (integrationId) {
+    void queryClient.invalidateQueries({
+      queryKey: orpcQuery.integration.configOptions.key({
+        input: { integrationId },
+      }),
+    });
+  }
+
+  return list;
 }

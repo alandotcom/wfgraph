@@ -13,6 +13,7 @@ import { readConfigTrimmedString } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import {
   type MissingRequiredFieldIssue,
+  type UnverifiedProviderFieldIssue,
   workflowNodeLabel,
 } from "@wfgraph/shared/graph/workflow-issues";
 import {
@@ -124,14 +125,39 @@ export function providerFieldIssuesFor(
     }));
 }
 
-/** Fetch and judge every provider-backed field from one exact graph snapshot. */
+/** The one field this question asked about, named as the reader sees it. */
+function unverifiedIssue(
+  question: ProviderFieldQuestion
+): UnverifiedProviderFieldIssue {
+  return {
+    kind: "unverified_provider_field",
+    severity: "warning",
+    nodeId: question.nodeId,
+    nodeLabel: question.nodeLabel,
+    fieldKey: question.field.key,
+    fieldLabel: question.field.label,
+    message: `Node "${question.nodeLabel}" could not check "${question.field.label}" against its connection`,
+  };
+}
+
+/**
+ * Fetch and judge every provider-backed field from one exact graph snapshot.
+ *
+ * Settled rather than raced, because one refused answer is one unchecked field
+ * and not a verdict on the graph. `Promise.all` here rejected the whole
+ * preflight on the first refusal, which put Run and Publish behind a connection
+ * whose grant had expired: the click ended in a toast, and the missing-
+ * connection issues naming the node it was about were never even collected.
+ * Each refusal now travels back as its own warning, so the rest of the list
+ * still reaches the reader.
+ */
 export async function fetchProviderFieldIssues(
   queryClient: QueryClient,
   nodes: readonly WorkflowNode[],
   catalog: ExtensionCatalog
-): Promise<MissingRequiredFieldIssue[]> {
+): Promise<Array<MissingRequiredFieldIssue | UnverifiedProviderFieldIssue>> {
   const questions = providerFieldQuestions(nodes, catalog);
-  const answers = await Promise.all(
+  const answers = await Promise.allSettled(
     questions.map((question) =>
       queryClient.fetchQuery({
         ...configOptionsQueryOptions({
@@ -144,7 +170,12 @@ export async function fetchProviderFieldIssues(
     )
   );
 
-  return questions.flatMap((question, index) =>
-    providerFieldIssuesFor(question, answers[index])
-  );
+  return questions.flatMap<
+    MissingRequiredFieldIssue | UnverifiedProviderFieldIssue
+  >((question, index) => {
+    const answer = answers[index];
+    return answer.status === "fulfilled"
+      ? providerFieldIssuesFor(question, answer.value)
+      : [unverifiedIssue(question)];
+  });
 }

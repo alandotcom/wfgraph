@@ -94,6 +94,26 @@ describe("redactSensitiveData", () => {
     expect(serialized).not.toContain("sender@example.com");
     expect(serialized).not.toContain("postgres://example");
   });
+
+  it("carries an own __proto__ key through as data", () => {
+    // A webhook body is parsed JSON, which is where an own `__proto__` key
+    // comes from. Assigning it would reach Object.prototype's setter: the key
+    // would vanish from the answer and the answer's own prototype would become
+    // whatever the payload nested under it.
+    const payload = JSON.parse('{"__proto__": {"polluted": true}, "id": "a"}');
+
+    const redacted = redactSensitiveData(payload);
+
+    expect(Object.getPrototypeOf(redacted)).toBe(Object.prototype);
+    expect(
+      (Object.prototype as Record<string, unknown>).polluted
+    ).toBeUndefined();
+    // Read back through JSON, because an object literal spelling `__proto__`
+    // in the expectation would set a prototype rather than an own key.
+    expect(JSON.parse(JSON.stringify(redacted))).toEqual(
+      JSON.parse('{"__proto__": {"polluted": true}, "id": "a"}')
+    );
+  });
 });
 
 describe("redactSensitiveText", () => {

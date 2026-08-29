@@ -7,6 +7,7 @@ import { Effect, ManagedRuntime } from "effect";
 import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { wfSqlite } from "#src/backend/persistence/sqlite";
+import { INTEGRATION_REFRESH_STATES } from "@wfgraph/shared/types/integration";
 
 const cipher = createIntegrationCipher({ key: "c".repeat(64) });
 const directories: string[] = [];
@@ -961,6 +962,44 @@ describe("native SQLite integration persistence", () => {
       });
     } finally {
       await corrupted.close();
+    }
+  });
+
+  // The migration that added this column spells its three values out, because a
+  // database already past that version will never run it again. This is what
+  // says so: adding a fourth state to the shared list without a migration that
+  // widens the CHECK fails here rather than at a customer's write.
+  it("accepts every refresh state the shared lifecycle declares", async () => {
+    const filename = await databasePath();
+    const database = await open(filename);
+    let integrationId = "";
+    try {
+      integrationId = await database.run(
+        Effect.gen(function* () {
+          const integrations = yield* IntegrationRepo;
+          const integration = yield* integrations.insert({
+            name: "Every state",
+            type: "linear",
+            config: { apiKey: "secret" },
+          });
+          return integration.id;
+        })
+      );
+    } finally {
+      await database.close();
+    }
+
+    const inspection = new DatabaseSync(filename);
+    try {
+      for (const state of INTEGRATION_REFRESH_STATES) {
+        expect(() =>
+          inspection
+            .prepare("UPDATE integrations SET refresh_state = ? WHERE id = ?")
+            .run(state, integrationId)
+        ).not.toThrow();
+      }
+    } finally {
+      inspection.close();
     }
   });
 });

@@ -1,4 +1,4 @@
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import {
@@ -164,6 +164,31 @@ describe("refreshIntegrations", () => {
     expect(isInvalidated(configOptionsKey("integration_a"))).toBe(true);
     expect(isInvalidated(configOptionsKey("integration_b"))).toBe(false);
     expect(isInvalidated(workflowListKey)).toBe(false);
+  });
+
+  // Every connection overlay awaits this before it closes and reports success.
+  // `invalidateQueries` settles on the refetch of each *active* match, and a
+  // provider options refetch is a round trip through the third party, so an
+  // open config panel behind the dialog would otherwise hold the dialog there.
+  it("settles without waiting for the provider options refetch", async () => {
+    const observer = new QueryObserver(queryClient, {
+      queryKey: configOptionsKey("integration_a"),
+      queryFn: () => new Promise<never>(() => undefined),
+      retry: false,
+    });
+    const unsubscribe = observer.subscribe(() => undefined);
+
+    try {
+      await refreshIntegrations(queryClient, "integration_a");
+
+      expect(isInvalidated(configOptionsKey("integration_a"))).toBe(true);
+      expect(
+        queryClient.getQueryState(configOptionsKey("integration_a"))
+          ?.fetchStatus
+      ).toBe("fetching");
+    } finally {
+      unsubscribe();
+    }
   });
 });
 

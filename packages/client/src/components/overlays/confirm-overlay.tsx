@@ -87,8 +87,16 @@ export function ConfirmOverlay({
             <AlertTriangleIcon className="size-5 text-destructive" />
           </div>
         )}
+        {/*
+          `pre-line` so a message that separates two warnings with a blank line
+          keeps them apart. Default `normal` collapsed both newlines into a
+          space and ran the two sentences together.
+        */}
         <p
-          className={cn("text-muted-foreground text-sm", destructive && "pt-2")}
+          className={cn(
+            "whitespace-pre-line text-muted-foreground text-sm",
+            destructive && "pt-2"
+          )}
         >
           {message}
         </p>

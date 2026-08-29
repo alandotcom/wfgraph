@@ -27,6 +27,7 @@ import {
   type JsonValue,
   readJsonObject,
 } from "@wfgraph/shared/types/json";
+import { isSafeRecordPath } from "@wfgraph/shared/types/record-key";
 import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
 import {
   getValueByPath,
@@ -59,9 +60,13 @@ export type TestPayloadFormValues = Record<string, string>;
  * A path into an array carries a `[0]` suffix, and a container's own path names
  * an object or an array rather than a value to type. Both go to the JSON pane,
  * which is why the overlay offers one at all.
+ *
+ * A path naming a reserved record key goes the same way: `setValueByPath` will
+ * not write one, so drawing an input for it would take a value the run never
+ * carries.
  */
 function isFormAddressable(field: ReferenceField): boolean {
-  if (field.path.includes("[")) {
+  if (field.path.includes("[") || !isSafeRecordPath(field.path)) {
     return false;
   }
 

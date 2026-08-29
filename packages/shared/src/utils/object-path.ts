@@ -67,20 +67,26 @@ export function getValueByPath(
  * than an array index. Whatever sat at a segment that is not an object is
  * replaced, because a path the caller asked for wins over a value that cannot
  * hold it.
+ *
+ * A path naming a reserved key writes nothing and answers `false`, so a caller
+ * assembling several fields can tell a refused write from a stored one. The form
+ * that calls this already drops such a path in `isFormAddressable`, which is
+ * where the operator sees the field is unavailable; this is the backstop under
+ * it.
  */
 export function setValueByPath(
   target: JsonObject,
   path: string,
   value: JsonValue
-): JsonObject {
+): boolean {
   if (!isSafeRecordPath(path)) {
-    return target;
+    return false;
   }
 
   const segments = compact(path.trim().split("."));
   const leaf = segments.pop();
   if (!leaf) {
-    return target;
+    return false;
   }
 
   let current = target;
@@ -93,11 +99,11 @@ export function setValueByPath(
       typeof existing === "object" &&
       !Array.isArray(existing)
         ? existing
-        : Object.fromEntries([]);
+        : {};
     current[segment] = next;
     current = next;
   }
 
   current[leaf] = value;
-  return target;
+  return true;
 }

@@ -110,6 +110,13 @@ describe("workflowIssueCount", () => {
             ],
           },
         ],
+        unverifiedProviderFields: [
+          {
+            nodeId: "create",
+            nodeLabel: "Create issue",
+            fields: [{ fieldKey: "fields", fieldLabel: "Fields" }],
+          },
+        ],
       })
     ).toBe(6);
   });

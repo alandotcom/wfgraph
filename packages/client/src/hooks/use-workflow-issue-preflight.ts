@@ -19,6 +19,9 @@ export type WorkflowIssuePreflightResult =
   | { readonly status: "workflow_changed" }
   | { readonly status: "unavailable" };
 
+/** What a caller says when a second click lands on a check already running. */
+export const PREFLIGHT_BUSY_MESSAGE = "Still checking this workflow";
+
 type ActivePreflight = {
   readonly generation: number;
   readonly workflowId: string;
@@ -83,6 +86,9 @@ export function useWorkflowIssuePreflight(
       });
 
       try {
+        // Each provider question answers for itself: a connection that refuses
+        // comes back as a warning naming its node rather than as a rejection,
+        // so the graph half of the list is collected either way.
         const providerIssues = await fetchProviderFieldIssues(
           queryClient,
           nodeSnapshot,
@@ -105,11 +111,15 @@ export function useWorkflowIssuePreflight(
           }),
         };
       } catch {
+        // The fetch above settles every question it asks, so nothing routine
+        // lands here. This is the backstop for a snapshot the walk itself
+        // cannot read, which the operator can do nothing about but should not
+        // meet as a silent click.
         if (
           active.current?.generation === check.generation &&
           store.get(currentWorkflowIdAtom) === workflowId
         ) {
-          toast.error("Could not verify provider-backed fields. Try again.");
+          toast.error("Could not check this workflow. Try again.");
           return { status: "unavailable" };
         }
         return { status: "workflow_changed" };

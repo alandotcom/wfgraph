@@ -10,7 +10,10 @@
  * An unanswered question raises nothing. Absence of an answer is not evidence a
  * value is missing, and accusing a node while its query is in flight would flag
  * the whole canvas on every load. That is the same rule the collector already
- * applies to the connection list.
+ * applies to the connection list. A refused answer is left silent here for the
+ * same reason: a provider that blinks would badge the canvas. The click-time
+ * recheck behind Run and Publish is where a refusal is worth saying out loud,
+ * and `fetchProviderFieldIssues` raises it there.
  */
 
 import { useQueries } from "@tanstack/react-query";

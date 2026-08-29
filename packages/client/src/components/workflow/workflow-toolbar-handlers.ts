@@ -20,6 +20,7 @@ import { useDeleteWorkflow } from "#src/hooks/use-delete-workflow";
 import { useGoToStep } from "#src/hooks/use-workflow-issues";
 import { useDomEvent } from "#src/hooks/effects";
 import {
+  PREFLIGHT_BUSY_MESSAGE,
   type WorkflowIssuePreflightResult,
   useWorkflowIssuePreflight,
 } from "#src/hooks/use-workflow-issue-preflight";
@@ -90,6 +91,9 @@ import {
   groupWorkflowIssuesForOverlay,
   hasBlockingWorkflowIssues,
 } from "@wfgraph/shared/graph/workflow-issues";
+
+/** One toast id, so a held Cmd+Enter replaces the notice instead of stacking. */
+const PREFLIGHT_TOAST_ID = "workflow-preflight-busy";
 
 type WorkflowHandlerParams = {
   currentWorkflowId: string | null;
@@ -210,6 +214,13 @@ function useWorkflowHandlers({
       nodes,
     });
     if (preflight.status !== "ready") {
+      // Cmd+Enter reaches this without passing the command palette's disabled
+      // state, so a second press during a slow check would otherwise land on
+      // nothing at all. `workflow_changed` needs no notice: the operator has
+      // already left the workflow the answer was about.
+      if (preflight.status === "busy") {
+        toast.info(PREFLIGHT_BUSY_MESSAGE, { id: PREFLIGHT_TOAST_ID });
+      }
       return;
     }
     const { issues } = preflight;
@@ -461,6 +472,9 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
       nodes,
     });
     if (preflight.status !== "ready") {
+      if (preflight.status === "busy") {
+        toast.info(PREFLIGHT_BUSY_MESSAGE, { id: PREFLIGHT_TOAST_ID });
+      }
       return;
     }
     const { issues } = preflight;

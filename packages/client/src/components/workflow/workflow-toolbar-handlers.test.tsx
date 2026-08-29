@@ -31,6 +31,7 @@ import {
   rpcJsonResponse,
   rpcUrl,
 } from "#src/lib/rpc-fetch-test-support";
+import { PREFLIGHT_BUSY_MESSAGE } from "#src/hooks/use-workflow-issue-preflight";
 import { orpcQuery } from "#src/lib/rpc-query";
 import { toSerializedGraph } from "#src/lib/rpc-client";
 import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
@@ -496,6 +497,7 @@ describe("useWorkflowActions publication preflight", () => {
       }),
     });
 
+    const infoToast = vi.spyOn(toast, "info").mockImplementation(() => "");
     const publish = await view.findByRole("button", { name: "Start publish" });
     fireEvent.click(publish);
     fireEvent.click(publish);
@@ -503,6 +505,13 @@ describe("useWorkflowActions publication preflight", () => {
       expect(requests).toEqual(["integration/configOptions"])
     );
     expect(view.getByText("idle")).toBeTruthy();
+    // The second click is dropped, and says so. Cmd+Enter reaches this without
+    // passing the command palette's disabled state, so a swallowed press would
+    // otherwise look like a dead keyboard.
+    expect(infoToast).toHaveBeenCalledWith(
+      PREFLIGHT_BUSY_MESSAGE,
+      expect.objectContaining({ id: expect.any(String) })
+    );
 
     await act(async () => {
       answer.resolve(
@@ -528,13 +537,32 @@ describe("useWorkflowActions publication preflight", () => {
     expect(requests).toEqual(["integration/configOptions"]);
   });
 
-  it("blocks publication with a generic error when provider validation fails", async () => {
+  // A connection whose grant has expired refuses every provider question asked
+  // of it. That used to reject the whole preflight, which put Publish behind a
+  // toast nothing the operator did could clear.
+  it("publishes past a provider-backed field it could not check", async () => {
     const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "");
     const requests: string[] = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(
       async (url: RequestInfo | URL) => {
         const path = extractRpcProcedurePath(rpcUrl(url));
         requests.push(path);
+        if (path === "workflow/compareVersion") {
+          return rpcJsonResponse({
+            baseVersion: {
+              id: "version_7",
+              version: 7,
+              publishedAt: "2026-08-23T15:00:00.000Z",
+              isCurrent: true,
+            },
+            proposedVersion: 8,
+            baseGraph: providerGraph,
+            draftGraph: providerGraph,
+            hasChanges: true,
+            nodeChanges: [],
+            edgeChanges: [],
+          });
+        }
         throw new Error("provider response contained credentials");
       }
     );
@@ -548,13 +576,45 @@ describe("useWorkflowActions publication preflight", () => {
 
     fireEvent.click(await view.findByRole("button", { name: "Start publish" }));
 
+    await waitFor(() => expect(view.getByText("ready")).toBeTruthy());
+    expect(requests).toEqual([
+      "integration/configOptions",
+      "workflow/compareVersion",
+    ]);
+    expect(errorToast).not.toHaveBeenCalled();
+    errorToast.mockRestore();
+  });
+
+  // The half of the list the graph can answer on its own is the half that names
+  // the node to open, so a refused provider answer must not take it down too.
+  it("still lists the graph's own issues when the provider refuses", async () => {
+    const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "");
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      throw new Error("provider response contained credentials");
+    });
+    const unconnected = providerState();
+    const view = renderProbe({
+      probe: (
+        <PublishProbe
+          workflowState={{ ...unconnected, userIntegrations: [] }}
+        />
+      ),
+      extensionCatalog: providerCatalog,
+      queryClient: new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+    });
+
+    fireEvent.click(await view.findByRole("button", { name: "Run workflow" }));
+
+    // The overlay is what the refusal used to replace with a toast. Which rows
+    // it draws is `use-provider-field-issues.test.tsx`.
     await waitFor(() =>
-      expect(errorToast).toHaveBeenCalledWith(
-        "Could not verify provider-backed fields. Try again."
-      )
+      expect(
+        view.getByRole("status", { name: "overlay count" }).textContent
+      ).toBe("1")
     );
-    expect(requests).toEqual(["integration/configOptions"]);
-    expect(view.getByText("idle")).toBeTruthy();
+    expect(errorToast).not.toHaveBeenCalled();
     errorToast.mockRestore();
   });
 
