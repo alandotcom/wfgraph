@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { orpcQuery } from "#src/lib/rpc-query";
 import { useOAuthConnection } from "./use-oauth-connection";
 
 function deferred<T>() {
@@ -107,14 +108,19 @@ describe("useOAuthConnection", () => {
     act(() => {
       attempt = owner.result.current.startExisting("connection_1");
     });
-    await waitFor(() => expect(invalidateQueries).toHaveBeenCalledOnce());
+    await waitFor(() => expect(invalidateQueries).toHaveBeenCalledTimes(2));
 
     owner.unmount();
     refresh.resolve();
     await attempt;
 
     expect(onConnected).not.toHaveBeenCalled();
-    expect(invalidateQueries).toHaveBeenCalledOnce();
+    expect(invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(invalidateQueries).toHaveBeenNthCalledWith(2, {
+      queryKey: orpcQuery.integration.configOptions.key({
+        input: { integrationId: "connection_1" },
+      }),
+    });
   });
 
   it("releases the controller for retry after the provider popup closes", async () => {
@@ -206,6 +212,46 @@ describe("useOAuthConnection", () => {
     expect(firstPopup.location.assign).not.toHaveBeenCalled();
     expect(onConnected).toHaveBeenCalledOnce();
     expect(onConnected).toHaveBeenCalledWith("connection_2");
-    expect(invalidateQueries).toHaveBeenCalledOnce();
+    expect(invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(invalidateQueries).toHaveBeenNthCalledWith(2, {
+      queryKey: orpcQuery.integration.configOptions.key({
+        input: { integrationId: "connection_2" },
+      }),
+    });
+  });
+
+  it("refreshes a failed reconnect's provider options for that connection", async () => {
+    const reservedPopup = popup();
+    vi.spyOn(window, "open").mockReturnValue(
+      reservedPopup as unknown as Window
+    );
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse({
+          attemptId: "attempt_1",
+          authorizeUrl: "https://provider.example/authorize",
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ status: "failed" }));
+    const queryClient = new QueryClient();
+    const invalidateQueries = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => useOAuthConnection({ onConnected: vi.fn() }),
+      { wrapper }
+    );
+
+    await act(() => result.current.startExisting("connection_1"));
+
+    expect(invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(invalidateQueries).toHaveBeenNthCalledWith(2, {
+      queryKey: orpcQuery.integration.configOptions.key({
+        input: { integrationId: "connection_1" },
+      }),
+    });
   });
 });

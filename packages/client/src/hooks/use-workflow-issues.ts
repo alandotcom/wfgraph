@@ -1,6 +1,6 @@
 /**
- * What is wrong with the graph: the pass that keeps `workflowIssuesAtom` in step
- * with the canvas, and the two hooks that open the list of what it found.
+ * What is wrong with the graph: the passive pass that keeps badges and the
+ * toolbar count in step with the canvas, and the hooks that open that list.
  *
  * The collector is mounted once, by the canvas. It needs three things the store
  * cannot reach on its own -- the graph, the extension catalog (React context)
@@ -13,7 +13,6 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue, useSetAtom } from "jotai";
-import { useAtomCallback } from "jotai/utils";
 import { useCallback, useMemo, useState } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
@@ -29,7 +28,6 @@ import { toPersistedNodes } from "#src/lib/workflow-graph-types";
 import {
   collectAllWorkflowIssues,
   NO_ISSUES,
-  providerFieldIssuesAtom,
   sameIssues,
   workflowIssuesAtom,
 } from "#src/lib/workflow-issues-store";
@@ -53,9 +51,8 @@ export function useCollectWorkflowIssues(): void {
   );
   // What the operator's own connections say a provider-backed field still needs.
   // The shared collector cannot ask, so these are raised here and merged into
-  // the one list the badge, the count and the publish gate all read.
+  // the settled list the badge, count, and manually opened issue overlay read.
   const providerIssues = useProviderFieldIssues(persisted, catalog);
-  const setProviderIssues = useSetAtom(providerFieldIssuesAtom);
 
   const issues = useMemo(() => {
     // `undefined` is "the connection list has not arrived", which is a
@@ -74,15 +71,6 @@ export function useCollectWorkflowIssues(): void {
       providerIssues,
     });
   }, [persisted, catalog, integrations, providerIssues]);
-
-  // Held for `useShowWorkflowIssues`, which recollects on the click rather than
-  // reading the settled list, and would otherwise show fewer issues than the
-  // badge it was opened from.
-  useAfterCommit(providerIssues, () => {
-    setProviderIssues((previous) =>
-      sameIssues(previous, providerIssues) ? previous : providerIssues
-    );
-  });
 
   // Keeping the previous list when the verdict has not changed is what stops
   // this from undoing #116: every settle recollects, and a content-identical
@@ -134,35 +122,21 @@ export function useGoToStep(): (nodeId: string, fieldKey?: string) => void {
  * Open the issues list on its own, for a reader who asked rather than for a run
  * that was refused. It offers no "Run anyway" for that reason.
  *
- * The graph is re-collected on the click rather than read off
- * `workflowIssuesAtom`, because that atom trails the canvas by the collector's
- * settle window and this list is what a builder then works down.
- *
- * It reads the graph through `useAtomCallback` rather than subscribing to
- * `nodesAtom`, which is what the caller needs it to do: `onNodesChange` rewrites
- * that array on every frame of a drag, and the status strip's issue count would
- * otherwise re-render at 60fps to display a number that had not moved.
+ * It opens the complete settled list that produced the visible badges and count.
+ * Reading one atom keeps the graph and provider halves on the same snapshot;
+ * recollecting only the graph half here could pair current nodes with provider
+ * answers from the previous graph or workflow.
  */
 export function useShowWorkflowIssues(): () => void {
-  const catalog = useExtensionCatalog();
-  const { data: integrations = [] } = useQuery(integrationsQueryOptions());
   const { open: openOverlay } = useOverlay();
   const goToStep = useGoToStep();
-  const readNodes = useAtomCallback(useCallback((get) => get(nodesAtom), []));
-  const providerIssues = useAtomValue(providerFieldIssuesAtom);
+  const issues = useAtomValue(workflowIssuesAtom);
 
   return useCallback(() => {
-    const issues = collectAllWorkflowIssues({
-      nodes: toPersistedNodes(readNodes()),
-      catalog,
-      integrations,
-      providerIssues,
-    });
-
     openOverlay(WorkflowIssuesOverlay, {
       issues: groupWorkflowIssuesForOverlay(issues),
       onGoToStep: goToStep,
       allowRunAnyway: false,
     });
-  }, [readNodes, catalog, integrations, providerIssues, openOverlay, goToStep]);
+  }, [issues, openOverlay, goToStep]);
 }

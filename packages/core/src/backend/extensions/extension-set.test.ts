@@ -8,6 +8,7 @@ import {
   type IntegrationDefinition,
 } from "#src/backend/extensions/define-integration";
 import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
+import type { ConfigOptionsProvider } from "#src/backend/extensions/config-options";
 import { stubStepEnvironment } from "#src/backend/lib/effect/test-layers";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 
@@ -84,6 +85,45 @@ function aDefinition(
 }
 
 describe("assembleExtensions", () => {
+  it.each(["__proto__", "prototype", "constructor"])(
+    "refuses the reserved integration action slug %s",
+    (slug) => {
+      const action = {
+        label: "Unsafe",
+        description: "Uses a reserved slug",
+        input: Schema.Struct({ value: Schema.String }),
+        output: Schema.Struct({ value: Schema.String }),
+        handler: () => ({ value: "ok" }),
+      };
+
+      expect(() =>
+        defineIntegration({
+          type: "unsafe",
+          label: "Unsafe",
+          description: "Unsafe",
+          credentials: {},
+          actions: Object.fromEntries([[slug, action]]) as never,
+        })
+      ).toThrow(/action slug reserved by JavaScript objects/u);
+    }
+  );
+
+  it("refuses a host action whose schema derives a reserved config key", () => {
+    const action = defineAction({
+      id: "appointments/unsafe",
+      label: "Unsafe",
+      description: "Uses a reserved key",
+      input: Schema.Struct({
+        constructor: Schema.String.annotate({ description: "Unsafe" }),
+      }),
+      handler: () => undefined,
+    });
+
+    expect(() => assembleExtensions({ actions: [action] })).toThrow(
+      /config field with a key reserved by JavaScript objects/u
+    );
+  });
+
   it("assembles an empty surface when the host passes nothing", () => {
     const { catalog, events } = assembleExtensions({});
 
@@ -684,5 +724,25 @@ describe("assembleExtensions and an integration definition", () => {
         ],
       })
     ).not.toThrow();
+  });
+
+  it("keeps providers separate when type and provider names contain the former delimiter", () => {
+    const firstProvider: ConfigOptionsProvider = {
+      answers: "options",
+      load: async () => async () => ({ status: "options", options: [] }),
+    };
+    const secondProvider: ConfigOptionsProvider = {
+      answers: "fields",
+      load: async () => async () => ({ status: "fields", fields: [] }),
+    };
+    const set = assembleExtensions({
+      integrations: [
+        { ...aDefinition("a"), configOptions: { "b::c": firstProvider } },
+        { ...aDefinition("a::b"), configOptions: { c: secondProvider } },
+      ],
+    });
+
+    expect(set.configOptionsFor("a", "b::c")).toBe(firstProvider);
+    expect(set.configOptionsFor("a::b", "c")).toBe(secondProvider);
   });
 });

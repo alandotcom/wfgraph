@@ -19,6 +19,8 @@
  * boundary, so the caller that wants the first says so itself.
  */
 
+import { isSafeRecordKey } from "#src/types/record-key";
+
 /** One provider-backed field's values, keyed by the variable each fills. */
 export type ProviderFieldValues = Record<string, string | number>;
 
@@ -37,14 +39,17 @@ export function readProviderFieldValues(
     return null;
   }
 
-  const values: ProviderFieldValues = {};
+  const entries: Array<[string, string | number]> = [];
   for (const [key, value] of Object.entries(parsed)) {
-    if (typeof value !== "string" && typeof value !== "number") {
+    if (
+      !isSafeRecordKey(key) ||
+      (typeof value !== "string" && typeof value !== "number")
+    ) {
       return null;
     }
-    values[key] = value;
+    entries.push([key, value]);
   }
-  return values;
+  return Object.fromEntries(entries);
 }
 
 /**

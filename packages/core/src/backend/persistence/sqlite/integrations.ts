@@ -11,6 +11,7 @@ import {
   readOAuthAuthorizationAttemptPayload,
 } from "#src/backend/services/integrations/repo";
 import type { SqliteDatabase } from "#src/backend/persistence/sqlite/database";
+import { isIntegrationRefreshState } from "@wfgraph/shared/types/integration";
 import {
   optionalBoolean,
   optionalDate,
@@ -32,11 +33,7 @@ function refreshState(
   row: Record<string, unknown>
 ): StoredIntegration["refreshState"] {
   const value = requiredString(row, "refresh_state");
-  if (
-    value !== "idle" &&
-    value !== "refreshing" &&
-    value !== "reauthorization_required"
-  ) {
+  if (!isIntegrationRefreshState(value)) {
     throw new Error("Invalid SQLite refresh_state");
   }
   return value;

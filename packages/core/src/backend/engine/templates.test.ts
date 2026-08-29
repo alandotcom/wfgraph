@@ -102,6 +102,20 @@ describe("processTemplates over a JSON object of authored values", () => {
     });
   });
 
+  it("constructs a top-level __proto__ key as data without changing the prototype", () => {
+    const outputs = outputsWith({ name: "Ada" });
+
+    const processed = processTemplates(
+      Object.fromEntries([["__proto__", "{{@n1:Lead.name}}"]]),
+      outputs,
+      new Set()
+    );
+
+    expect(Object.hasOwn(processed, "__proto__")).toBe(true);
+    expect(processed.__proto__).toBe("Ada");
+    expect(Object.getPrototypeOf(processed)).toBe(Object.prototype);
+  });
+
   it("falls back to whole-string resolution for text that is not such an object", () => {
     const outputs = outputsWith({ name: "Ada" });
 

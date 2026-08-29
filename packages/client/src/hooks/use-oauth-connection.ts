@@ -104,7 +104,14 @@ export function useOAuthConnection({
 
       // A terminal status may have changed the integration even on failure, so
       // refresh once before announcing or closing any surface that reads it.
-      await refreshIntegrations(queryClient);
+      await refreshIntegrations(
+        queryClient,
+        result.status === "succeeded"
+          ? result.integrationId
+          : input.mode === "reconnect"
+            ? input.integrationId
+            : undefined
+      );
       if (activeAttempt.current !== attempt) {
         return;
       }

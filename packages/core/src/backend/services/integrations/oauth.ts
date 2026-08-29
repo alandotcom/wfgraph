@@ -38,6 +38,7 @@ import {
 } from "#src/backend/extensions/oauth";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
+import { isSafeRecordKey } from "@wfgraph/shared/types/record-key";
 
 const OAUTH_ATTEMPT_LIFETIME_SECONDS = 10 * 60;
 
@@ -233,6 +234,11 @@ export const startIntegrationOAuth = Effect.fn("startIntegrationOAuth")(
         configRevision: integration.configRevision,
       };
     } else {
+      if (Object.keys(input.config).some((key) => !isSafeRecordKey(key))) {
+        return yield* new InvalidInput({
+          error: "Integration config contains a reserved key.",
+        });
+      }
       if (OAUTH_GRANT_CONFIG_KEY in input.config) {
         return yield* new InvalidInput({
           error: "The OAuth grant config key is reserved.",

@@ -407,6 +407,15 @@ describe("OAuth API routes", () => {
         config: { [OAUTH_GRANT_CONFIG_KEY]: "forged" },
       },
     },
+    ...(["__proto__", "prototype", "constructor"] as const).map((key) => ({
+      name: `the reserved config key ${key}`,
+      body: {
+        mode: "create",
+        name: "Example",
+        type: "example",
+        config: Object.fromEntries([[key, "forged"]]),
+      },
+    })),
     {
       name: "non-string config values",
       body: {

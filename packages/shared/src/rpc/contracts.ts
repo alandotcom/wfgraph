@@ -17,6 +17,7 @@ import {
 import { serializedWorkflowGraphSchema } from "#src/graph/schemas";
 import { isoTimestampString } from "#src/types/timestamp";
 import { OAUTH_GRANT_CONFIG_KEY } from "#src/types/integration";
+import { hasOnlySafeRecordKeys, isSafeRecordKey } from "#src/types/record-key";
 import {
   agentMessageSchema,
   agentStreamPartSchema,
@@ -101,9 +102,20 @@ const idSchema = NonEmptyTrimmedString;
  */
 const integrationTypeSchema = NonEmptyTrimmedString;
 
+const safeNonEmptyRecordKeySchema = NonEmptyTrimmedString.check(
+  Schema.makeFilter(isSafeRecordKey, {
+    expected:
+      "a non-empty record key that is not reserved by JavaScript objects",
+  })
+);
+
 const integrationConfigSchema = Schema.Record(
   Schema.String,
   Schema.UndefinedOr(Schema.String)
+).check(
+  Schema.makeFilter(hasOnlySafeRecordKeys, {
+    expected: "integration config keys not reserved by JavaScript objects",
+  })
 );
 
 const manualIntegrationConfigSchema = integrationConfigSchema.check(
@@ -172,7 +184,7 @@ const configOptionsAnswerSchema = Schema.Union([
     status: Schema.Literal("fields"),
     fields: Schema.Array(
       Schema.Struct({
-        key: NonEmptyTrimmedString,
+        key: safeNonEmptyRecordKeySchema,
         label: Schema.String,
         defaultValue: Schema.optionalKey(Schema.String),
         description: Schema.optionalKey(Schema.String),
@@ -204,6 +216,9 @@ const configOptionsParametersSchema = Schema.Record(
   Schema.String,
   Schema.String.check(Schema.isMaxLength(2048))
 ).check(
+  Schema.makeFilter(hasOnlySafeRecordKeys, {
+    expected: "provider parameter keys not reserved by JavaScript objects",
+  }),
   Schema.makeFilter((values) => Object.keys(values).length <= 8, {
     expected: "at most eight provider parameters",
   })
@@ -607,7 +622,7 @@ export const rpcContract = {
         contractSchema(
           Schema.Struct({
             integrationId: idSchema,
-            provider: NonEmptyTrimmedString,
+            provider: safeNonEmptyRecordKeySchema,
             parameters: Schema.optionalKey(configOptionsParametersSchema),
           })
         )

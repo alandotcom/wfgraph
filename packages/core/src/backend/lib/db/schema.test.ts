@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { is } from "drizzle-orm";
 import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 import * as schema from "#src/backend/lib/db/schema";
+import { INTEGRATION_REFRESH_STATES } from "@wfgraph/shared/types/integration";
 
 // Read off the module rather than listed by hand, so a table added tomorrow is
 // held to the rule below without anyone remembering to add it here.
@@ -84,12 +85,19 @@ describe("OAuth persistence", () => {
   });
 
   it("gives every integration an idle refresh state at config revision zero", () => {
+    const config = getTableConfig(schema.integrations);
+
     expect(schema.integrations.configRevision.notNull).toBe(true);
     expect(schema.integrations.configRevision.default).toBe(0);
     expect(schema.integrations.refreshState.notNull).toBe(true);
-    expect(schema.integrations.refreshState.default).toBe("idle");
+    expect(schema.integrations.refreshState.default).toBe(
+      INTEGRATION_REFRESH_STATES[0]
+    );
     expect(schema.integrations.refreshClaimId.notNull).toBe(false);
     expect(schema.integrations.refreshClaimedAt.notNull).toBe(false);
+    expect(config.checks.map((constraint) => constraint.name)).toContain(
+      "integrations_refresh_state_check"
+    );
   });
 });
 

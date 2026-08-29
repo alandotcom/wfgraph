@@ -1,13 +1,13 @@
 /**
  * What is wrong with the graph on screen, kept current as it is edited.
  *
- * One pass over the whole graph feeds both surfaces that report it: the badge on
- * each broken node and the count in the toolbar. Validating per node render
+ * One settled pass over the whole graph feeds the badge on each broken node and
+ * the count in the toolbar. Validating per node render
  * instead would run the same walk once per card and give the two surfaces no way
  * to agree.
  *
- * The collector itself is `@wfgraph/shared/graph/workflow-issues`, shared with
- * the pre-run check and the server's own vocabulary for the same failures.
+ * Run and Publish call the same pure merger below with forced-fresh provider
+ * answers from their exact click-time graph snapshot.
  */
 
 import { groupBy } from "es-toolkit";
@@ -36,24 +36,13 @@ export const NO_ISSUES: WorkflowIssue[] = [];
 export const workflowIssuesAtom = atom<WorkflowIssue[]>(NO_ISSUES);
 
 /**
- * The half of the list the shared collector cannot produce, kept so the issues
- * dialog can recollect without asking every connection again.
- *
- * `useCollectWorkflowIssues` owns the write, the same way it owns the list
- * above, and both are empty until the answers that justify them arrive.
- */
-export const providerFieldIssuesAtom = atom<WorkflowIssue[]>(NO_ISSUES);
-
-/**
  * Everything wrong with a graph: what the shared collector can see on its own,
  * followed by what only the operator's connections can answer.
  *
- * The two halves are assembled here rather than at each place that needs them.
- * The badge on a node, the count in the status strip, the run gate and the
- * publish gate each read this list, and they were each appending the provider
- * half themselves, so "the gate and the canvas cannot disagree" was a sentence
- * repeated in three comments rather than a fact about the code. It is one call
- * now, and disagreeing would take an edit here.
+ * The two halves are assembled here rather than restated at each consumer. The
+ * passive canvas pass supplies debounced provider answers; Run and Publish
+ * supply forced-fresh answers. All three therefore share one issue vocabulary
+ * without pretending they share one freshness policy.
  *
  * `providerIssues` is passed rather than read off the atom, because the pass
  * that writes that atom is also a caller and must use the answers it just

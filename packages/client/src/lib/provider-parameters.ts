@@ -39,7 +39,7 @@ export function readProviderParameters(
   source: FieldOptionsSource | undefined,
   config: Record<string, unknown>
 ): { parameters: Record<string, string>; missing: string[] } {
-  const parameters: Record<string, string> = {};
+  const parameterEntries: Array<[string, string]> = [];
   const missing: string[] = [];
 
   for (const key of source?.parameters ?? []) {
@@ -47,9 +47,9 @@ export function readProviderParameters(
     if (value === undefined) {
       missing.push(key);
     } else {
-      parameters[key] = value;
+      parameterEntries.push([key, value]);
     }
   }
 
-  return { parameters, missing };
+  return { parameters: Object.fromEntries(parameterEntries), missing };
 }

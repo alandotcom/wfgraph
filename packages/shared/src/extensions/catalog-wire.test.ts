@@ -142,6 +142,56 @@ describe("readExtensionCatalog", () => {
     expect(readExtensionCatalog(catalog)).toEqual(catalog);
   });
 
+  it("refuses a reserved config field key on the wire", () => {
+    const catalog: ExtensionCatalog = {
+      events: [],
+      actions: [
+        {
+          id: "resend/send-email",
+          label: "Send Email",
+          description: "Sends an email",
+          category: "Resend",
+          configFields: [{ key: "constructor", label: "Unsafe", type: "text" }],
+          outputFields: [],
+        },
+      ],
+      integrations: [],
+    };
+
+    expect(readExtensionCatalog(catalog)).toBeUndefined();
+  });
+
+  it.each(["__proto__", "prototype", "constructor"])(
+    "refuses the reserved credential name %s on the wire",
+    (key) => {
+      const catalog: ExtensionCatalog = {
+        events: [],
+        actions: [],
+        integrations: [
+          {
+            type: "example",
+            label: "Example",
+            description: "Unsafe credential",
+            credentialFields: Object.fromEntries([
+              [key, { label: "Unsafe", type: "text" }],
+            ]),
+            hasTest: false,
+          },
+        ],
+      };
+
+      expect(readExtensionCatalog(catalog)).toBeUndefined();
+    }
+  );
+
+  it("refuses a reserved object-path segment on the wire", () => {
+    expect(
+      readExtensionCatalog(
+        aCatalog([{ path: "event.__proto__.polluted", type: "string" }])
+      )
+    ).toBeUndefined();
+  });
+
   it("answers nothing for a field type the vocabulary has no word for", () => {
     expect(
       readExtensionCatalog(aCatalog([{ path: "x", type: "money" } as never]))

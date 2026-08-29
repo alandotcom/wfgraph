@@ -238,7 +238,7 @@ export function ConfigureConnectionOverlay({
       toast.success("Connection created");
       // Before the caller hears about it: every consumer of the new id reads the
       // connection list to resolve it.
-      await refreshIntegrations(queryClient);
+      await refreshIntegrations(queryClient, newIntegration.id);
       onSuccess?.(newIntegration.id);
       closeAll();
     } catch {

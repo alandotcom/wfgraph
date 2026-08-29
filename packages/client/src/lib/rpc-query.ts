@@ -30,10 +30,11 @@ export const integrationsQueryOptions = () =>
  *
  * The key derives from the contract path plus this input, so the connection and
  * the parameter values are already in it: picking a different template is a
- * different entry rather than a refetch of this one. Nothing invalidates it,
- * because this feature has no write; a manual refresh is `refetch()` on the one
- * entry. Never reach for `orpcQuery.integration.key()` here -- that area covers
- * `getAll`, which every connection picker on the canvas reads.
+ * different entry rather than a refetch of this one. Connection writes refresh
+ * the affected integration's entries through `refreshIntegrations`; a manual
+ * refresh is `refetch()` on the one entry. Never reach for
+ * `orpcQuery.integration.key()` here -- that area covers `getAll`, which every
+ * connection picker on the canvas reads.
  */
 export const configOptionsQueryOptions = (input: {
   integrationId: string;
@@ -186,9 +187,23 @@ export function refreshRunHistory(queryClient: QueryClient) {
   ]);
 }
 
-/** The connection list, which every selector and every node reads. */
-export function refreshIntegrations(queryClient: QueryClient) {
-  return queryClient.invalidateQueries({
-    queryKey: orpcQuery.integration.getAll.key(),
-  });
+/** The connection list and, when known, one connection's provider options. */
+export function refreshIntegrations(
+  queryClient: QueryClient,
+  integrationId?: string
+) {
+  return Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: orpcQuery.integration.getAll.key(),
+    }),
+    ...(integrationId
+      ? [
+          queryClient.invalidateQueries({
+            queryKey: orpcQuery.integration.configOptions.key({
+              input: { integrationId },
+            }),
+          }),
+        ]
+      : []),
+  ]);
 }

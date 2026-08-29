@@ -1,17 +1,16 @@
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
-import {
-  integrations,
-  type IntegrationRefreshState,
-  type NewIntegration,
-} from "#src/backend/lib/db/schema";
+import { integrations, type NewIntegration } from "#src/backend/lib/db/schema";
 import { Database, type DatabaseError } from "#src/backend/lib/effect/database";
 import type {
   EncryptionKeyMismatch,
   IntegrationCipher,
 } from "#src/backend/services/integrations/cipher";
 import { makeOAuthAttemptQueries } from "#src/backend/services/integrations/oauth-attempt-queries";
-import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
+import type {
+  IntegrationConfig,
+  IntegrationRefreshState,
+} from "@wfgraph/shared/types/integration";
 import { readJsonObject } from "@wfgraph/shared/types/json";
 
 /** One `integrations` row, with its config opened out of the AES envelope. */

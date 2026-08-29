@@ -7,6 +7,7 @@ import { EditConnectionOverlay } from "#src/components/overlays/edit-connection-
 import { OverlayContainer } from "#src/components/overlays/overlay-container";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import type { Integration } from "#src/lib/rpc-client";
+import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
 const catalog: ExtensionCatalog = {
@@ -47,6 +48,14 @@ function connection(
   };
 }
 
+function integrationListResponse(
+  integrations: readonly Integration[]
+): Response {
+  return new Response(JSON.stringify({ json: integrations }), {
+    headers: { "content-type": "application/json" },
+  });
+}
+
 /**
  * Disconnect asks before it acts, so both clicks are the interaction.
  *
@@ -59,10 +68,28 @@ async function confirmDisconnect(confirmLabel: string): Promise<void> {
   fireEvent.click(await screen.findByRole("button", { name: confirmLabel }));
 }
 
-function renderOverlay(children: React.ReactNode) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
+type RenderOverlayOptions = {
+  integration?: Integration;
+  queryClient?: QueryClient;
+};
+
+function renderOverlay(
+  children: React.ReactNode,
+  options: RenderOverlayOptions = {}
+) {
+  const queryClient =
+    options.queryClient ??
+    new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+      },
+    });
+
+  if (options.integration) {
+    queryClient.setQueryData(integrationsQueryOptions().queryKey, [
+      options.integration,
+    ]);
+  }
 
   return render(
     <ExtensionCatalogProvider value={catalog}>
@@ -79,6 +106,25 @@ function renderOverlay(children: React.ReactNode) {
         </OverlayProvider>
       </QueryClientProvider>
     </ExtensionCatalogProvider>
+  );
+}
+
+function renderEditOverlay(
+  integration: Integration,
+  options: {
+    onDelete?: () => void;
+    onSuccess?: () => void;
+    queryClient?: QueryClient;
+  } = {}
+) {
+  const { queryClient, ...overlayProps } = options;
+  return renderOverlay(
+    <EditConnectionOverlay
+      integration={integration}
+      overlayId="edit_resend"
+      {...overlayProps}
+    />,
+    { integration, queryClient }
   );
 }
 
@@ -128,30 +174,22 @@ function startRequestBody(
 
 describe("OAuth granted access", () => {
   it("names what the provider granted on a connected connection", () => {
-    renderOverlay(
-      <EditConnectionOverlay
-        integration={connection({
-          status: "connected",
-          connectedAt: "2026-08-24T10:00:00.000Z",
-          grantedAccessLabel: "Full access",
-        })}
-        overlayId="edit_resend"
-      />
-    );
+    const integration = connection({
+      status: "connected",
+      connectedAt: "2026-08-24T10:00:00.000Z",
+      grantedAccessLabel: "Full access",
+    });
+    renderEditOverlay(integration);
 
     expect(screen.getByText("Access: Full access")).toBeTruthy();
   });
 
   it("says nothing about access for a grant that never reported it", () => {
-    renderOverlay(
-      <EditConnectionOverlay
-        integration={connection({
-          status: "connected",
-          connectedAt: "2026-08-24T10:00:00.000Z",
-        })}
-        overlayId="edit_resend"
-      />
-    );
+    const integration = connection({
+      status: "connected",
+      connectedAt: "2026-08-24T10:00:00.000Z",
+    });
+    renderEditOverlay(integration);
 
     expect(screen.queryByText(/^Access:/u)).toBeNull();
   });
@@ -160,16 +198,12 @@ describe("OAuth granted access", () => {
     stubOAuthPopup();
     const fetch = stubOAuthStart();
 
-    renderOverlay(
-      <EditConnectionOverlay
-        integration={connection({
-          status: "connected",
-          connectedAt: "2026-08-24T10:00:00.000Z",
-          grantedAccessLabel: "Sending access",
-        })}
-        overlayId="edit_resend"
-      />
-    );
+    const integration = connection({
+      status: "connected",
+      connectedAt: "2026-08-24T10:00:00.000Z",
+      grantedAccessLabel: "Sending access",
+    });
+    renderEditOverlay(integration);
     fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
 
     await waitFor(() => expect(fetch).toHaveBeenCalled());
@@ -324,16 +358,12 @@ describe("OAuth connection overlays", () => {
   });
 
   it("renders connected OAuth state with text, account, date, and disconnect control", () => {
-    renderOverlay(
-      <EditConnectionOverlay
-        integration={connection({
-          status: "connected",
-          connectedAt: "2026-08-24T10:00:00.000Z",
-          accountLabel: "alerts@example.com",
-        })}
-        overlayId="edit_resend"
-      />
-    );
+    const integration = connection({
+      status: "connected",
+      connectedAt: "2026-08-24T10:00:00.000Z",
+      accountLabel: "alerts@example.com",
+    });
+    renderEditOverlay(integration);
 
     expect(screen.getByText("Connected")).toBeTruthy();
     expect(screen.getByText("Account: alerts@example.com")).toBeTruthy();
@@ -342,16 +372,12 @@ describe("OAuth connection overlays", () => {
   });
 
   it("keeps OAuth-managed credentials read-only while leaving other settings editable", () => {
-    renderOverlay(
-      <EditConnectionOverlay
-        integration={connection({
-          status: "connected",
-          connectedAt: "2026-08-24T10:00:00.000Z",
-          credentialKeys: ["RESEND_API_KEY", "RESEND_ACCOUNT_SECRET"],
-        })}
-        overlayId="edit_resend"
-      />
-    );
+    const integration = connection({
+      status: "connected",
+      connectedAt: "2026-08-24T10:00:00.000Z",
+      credentialKeys: ["RESEND_API_KEY", "RESEND_ACCOUNT_SECRET"],
+    });
+    renderEditOverlay(integration);
 
     expect(screen.getAllByText("Managed by Resend OAuth")).toHaveLength(2);
     expect(screen.queryByLabelText("API key")).toBeNull();
@@ -370,16 +396,12 @@ describe("OAuth connection overlays", () => {
         )
       );
 
-    renderOverlay(
-      <EditConnectionOverlay
-        integration={connection({
-          status: "connected",
-          connectedAt: "2026-08-24T10:00:00.000Z",
-          credentialKeys: ["RESEND_API_KEY"],
-        })}
-        overlayId="edit_resend"
-      />
-    );
+    const integration = connection({
+      status: "connected",
+      connectedAt: "2026-08-24T10:00:00.000Z",
+      credentialKeys: ["RESEND_API_KEY"],
+    });
+    renderEditOverlay(integration);
     fireEvent.change(screen.getByLabelText("From email"), {
       target: { value: "alerts@example.com" },
     });
@@ -407,16 +429,12 @@ describe("OAuth connection overlays", () => {
       )
     );
 
-    renderOverlay(
-      <EditConnectionOverlay
-        integration={connection({
-          status: "connected",
-          connectedAt: "2026-08-24T10:00:00.000Z",
-          credentialKeys: ["RESEND_API_KEY"],
-        })}
-        overlayId="edit_resend"
-      />
-    );
+    const integration = connection({
+      status: "connected",
+      connectedAt: "2026-08-24T10:00:00.000Z",
+      credentialKeys: ["RESEND_API_KEY"],
+    });
+    renderEditOverlay(integration);
     fireEvent.change(screen.getByLabelText("From email"), {
       target: { value: "alerts@example.com" },
     });
@@ -435,25 +453,24 @@ describe("OAuth connection overlays", () => {
   });
 
   it("disconnects OAuth through the typed integration mutation", async () => {
-    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({ json: { success: true, removed: false } }),
-        {
-          headers: { "content-type": "application/json" },
-        }
-      )
-    );
+    const disconnected = connection();
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input) =>
+        String(input).includes("/api/rpc/integration/getAll")
+          ? integrationListResponse([disconnected])
+          : new Response(
+              JSON.stringify({ json: { success: true, removed: false } }),
+              { headers: { "content-type": "application/json" } }
+            )
+      );
 
-    renderOverlay(
-      <EditConnectionOverlay
-        integration={connection({
-          status: "connected",
-          connectedAt: "2026-08-24T10:00:00.000Z",
-          credentialKeys: ["RESEND_API_KEY"],
-        })}
-        overlayId="edit_resend"
-      />
-    );
+    const integration = connection({
+      status: "connected",
+      connectedAt: "2026-08-24T10:00:00.000Z",
+      credentialKeys: ["RESEND_API_KEY"],
+    });
+    renderEditOverlay(integration);
 
     await confirmDisconnect("Disconnect Resend");
 
@@ -463,7 +480,10 @@ describe("OAuth connection overlays", () => {
         expect.objectContaining({ method: "POST" })
       )
     );
-    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+    const disconnectRequest = fetch.mock.calls.find(([input]) =>
+      String(input).includes("/api/rpc/integration/disconnectOAuth")
+    );
+    expect(JSON.parse(String(disconnectRequest?.[1]?.body))).toEqual({
       json: { integrationId: "connection_1" },
     });
     await waitFor(() =>
@@ -482,28 +502,28 @@ describe("OAuth connection overlays", () => {
   // The server keeps a manual value the grant was shadowing, so the field it
   // belongs to reports itself configured once OAuth is gone.
   it("keeps a manual secret configured after a disconnect", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({ json: { success: true, removed: false } }),
-        {
-          headers: { "content-type": "application/json" },
-        }
-      )
+    const disconnected = connection(undefined, [
+      "RESEND_API_KEY",
+      "RESEND_ACCOUNT_SECRET",
+    ]);
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+      String(input).includes("/api/rpc/integration/getAll")
+        ? integrationListResponse([disconnected])
+        : new Response(
+            JSON.stringify({ json: { success: true, removed: false } }),
+            { headers: { "content-type": "application/json" } }
+          )
     );
 
-    renderOverlay(
-      <EditConnectionOverlay
-        integration={connection(
-          {
-            status: "connected",
-            connectedAt: "2026-08-24T10:00:00.000Z",
-            credentialKeys: ["RESEND_API_KEY"],
-          },
-          ["RESEND_API_KEY", "RESEND_ACCOUNT_SECRET"]
-        )}
-        overlayId="edit_resend"
-      />
+    const integration = connection(
+      {
+        status: "connected",
+        connectedAt: "2026-08-24T10:00:00.000Z",
+        credentialKeys: ["RESEND_API_KEY"],
+      },
+      ["RESEND_API_KEY", "RESEND_ACCOUNT_SECRET"]
     );
+    renderEditOverlay(integration);
 
     await confirmDisconnect("Disconnect Resend");
 
@@ -525,16 +545,12 @@ describe("OAuth connection overlays", () => {
         )
       );
 
-    renderOverlay(
-      <EditConnectionOverlay
-        integration={connection({
-          status: "connected",
-          connectedAt: "2026-08-24T10:00:00.000Z",
-          credentialKeys: ["RESEND_API_KEY"],
-        })}
-        overlayId="edit_resend"
-      />
-    );
+    const integration = connection({
+      status: "connected",
+      connectedAt: "2026-08-24T10:00:00.000Z",
+      credentialKeys: ["RESEND_API_KEY"],
+    });
+    renderEditOverlay(integration);
 
     fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
 
@@ -547,19 +563,15 @@ describe("OAuth connection overlays", () => {
   // The two outcomes differ, and which one is about to happen is the server's
   // answer in `configuredKeys` rather than anything this dialog guesses.
   it("names removal when the grant is the connection's only credential", async () => {
-    renderOverlay(
-      <EditConnectionOverlay
-        integration={connection(
-          {
-            status: "connected",
-            connectedAt: "2026-08-24T10:00:00.000Z",
-            credentialKeys: ["RESEND_API_KEY"],
-          },
-          []
-        )}
-        overlayId="edit_resend"
-      />
+    const integration = connection(
+      {
+        status: "connected",
+        connectedAt: "2026-08-24T10:00:00.000Z",
+        credentialKeys: ["RESEND_API_KEY"],
+      },
+      []
     );
+    renderEditOverlay(integration);
 
     fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
 
@@ -581,20 +593,15 @@ describe("OAuth connection overlays", () => {
     );
     const onDelete = vi.fn();
 
-    renderOverlay(
-      <EditConnectionOverlay
-        integration={connection(
-          {
-            status: "connected",
-            connectedAt: "2026-08-24T10:00:00.000Z",
-            credentialKeys: ["RESEND_API_KEY"],
-          },
-          []
-        )}
-        onDelete={onDelete}
-        overlayId="edit_resend"
-      />
+    const integration = connection(
+      {
+        status: "connected",
+        connectedAt: "2026-08-24T10:00:00.000Z",
+        credentialKeys: ["RESEND_API_KEY"],
+      },
+      []
     );
+    renderEditOverlay(integration, { onDelete });
 
     await confirmDisconnect("Remove connection");
 
@@ -606,12 +613,7 @@ describe("OAuth connection overlays", () => {
   });
 
   it("offers the OAuth flow on a connection that has never used it", () => {
-    renderOverlay(
-      <EditConnectionOverlay
-        integration={connection(undefined, [])}
-        overlayId="edit_resend"
-      />
-    );
+    renderEditOverlay(connection(undefined, []));
 
     expect((screen.getByLabelText("API key") as HTMLInputElement).value).toBe(
       ""
@@ -621,15 +623,12 @@ describe("OAuth connection overlays", () => {
   });
 
   it("renders reauthorization as a textual state with reconnect control", () => {
-    renderOverlay(
-      <EditConnectionOverlay
-        integration={connection({
-          status: "reauthorization_required",
-          connectedAt: "2026-08-24T10:00:00.000Z",
-          credentialKeys: ["RESEND_API_KEY"],
-        })}
-        overlayId="edit_resend"
-      />
+    renderEditOverlay(
+      connection({
+        status: "reauthorization_required",
+        connectedAt: "2026-08-24T10:00:00.000Z",
+        credentialKeys: ["RESEND_API_KEY"],
+      })
     );
 
     expect(screen.getByText("Reauthorization required")).toBeTruthy();
@@ -650,34 +649,49 @@ describe("OAuth connection overlays", () => {
     );
     const fetch = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            attemptId: "attempt_1",
-            authorizeUrl: "https://provider.example/authorize",
-          }),
-          { headers: { "content-type": "application/json" } }
-        )
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ status: "failed" }), {
-          headers: { "content-type": "application/json" },
-        })
-      );
+      .mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.endsWith("/api/integrations/oauth/start")) {
+          return new Response(
+            JSON.stringify({
+              attemptId: "attempt_1",
+              authorizeUrl: "https://provider.example/authorize",
+            }),
+            { headers: { "content-type": "application/json" } }
+          );
+        }
+        if (url.includes("/api/integrations/oauth/attempts/attempt_1")) {
+          return new Response(JSON.stringify({ status: "failed" }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (url.includes("/api/rpc/integration/getAll")) {
+          return integrationListResponse([
+            connection({
+              status: "reauthorization_required",
+              connectedAt: "2026-08-24T10:00:00.000Z",
+            }),
+          ]);
+        }
+        throw new Error(`unexpected request: ${url}`);
+      });
 
-    renderOverlay(
-      <EditConnectionOverlay
-        integration={connection({
-          status: "reauthorization_required",
-          connectedAt: "2026-08-24T10:00:00.000Z",
-        })}
-        overlayId="edit_resend"
-      />
+    renderEditOverlay(
+      connection({
+        status: "reauthorization_required",
+        connectedAt: "2026-08-24T10:00:00.000Z",
+      })
     );
     fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
 
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
-    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+    const startRequest = await waitFor(() => {
+      const request = fetch.mock.calls.find(([input]) =>
+        String(input).endsWith("/api/integrations/oauth/start")
+      );
+      expect(request).toBeDefined();
+      return request;
+    });
+    expect(JSON.parse(String(startRequest?.[1]?.body))).toEqual({
       mode: "reconnect",
       integrationId: "connection_1",
     });
@@ -687,5 +701,74 @@ describe("OAuth connection overlays", () => {
           .disabled
       ).toBe(false)
     );
+  });
+
+  it("shows a failed reconnect's live reauthorization state", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+      },
+    });
+    queryClient.setQueryData(integrationsQueryOptions().queryKey, [
+      connection({
+        status: "connected",
+        connectedAt: "2026-08-24T10:00:00.000Z",
+      }),
+    ]);
+    vi.spyOn(window, "open").mockReturnValue({
+      closed: false,
+      opener: null,
+      close: vi.fn(),
+      location: { assign: vi.fn() },
+    } as unknown as Window);
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.endsWith("/api/integrations/oauth/start")) {
+          return new Response(
+            JSON.stringify({
+              attemptId: "attempt_1",
+              authorizeUrl: "https://provider.example/authorize",
+            }),
+            { headers: { "content-type": "application/json" } }
+          );
+        }
+        if (url.includes("/api/integrations/oauth/attempts/attempt_1")) {
+          return new Response(JSON.stringify({ status: "failed" }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (url.includes("/api/rpc/integration/getAll")) {
+          return new Response(
+            JSON.stringify({
+              json: [
+                connection({
+                  status: "reauthorization_required",
+                  connectedAt: "2026-08-24T10:00:00.000Z",
+                }),
+              ],
+            }),
+            { headers: { "content-type": "application/json" } }
+          );
+        }
+        throw new Error(`unexpected request: ${url}`);
+      });
+
+    const integration = connection({
+      status: "connected",
+      connectedAt: "2026-08-24T10:00:00.000Z",
+    });
+    renderEditOverlay(integration, { queryClient });
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("Reauthorization required")).toBeTruthy()
+    );
+    expect(
+      fetch.mock.calls.some(([input]) =>
+        String(input).includes("/api/rpc/integration/getAll")
+      )
+    ).toBe(true);
   });
 });

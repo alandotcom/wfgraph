@@ -35,6 +35,11 @@ import {
 import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
 import type { IntegrationOAuth } from "#src/backend/extensions/oauth";
 import type { ConfigOptionsProvider } from "#src/backend/extensions/config-options";
+import {
+  isSafeRecordKey,
+  isSafeRecordPath,
+} from "@wfgraph/shared/types/record-key";
+import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
 
 /**
  * An Event as the set holds it, which is what `eventByName` answers with.
@@ -218,6 +223,32 @@ function assertLiteralFieldsRenderNoTemplatePicker(
   }
 }
 
+function assertSafeConfigFieldKeys(action: ActionMetadata): void {
+  for (const field of flattenConfigFields(action.configFields)) {
+    if (!isSafeRecordKey(field.key)) {
+      throw new Error(
+        `Action "${action.id}" declares a config field with a key reserved by JavaScript objects.`
+      );
+    }
+    if (field.showWhen && !isSafeRecordKey(field.showWhen.field)) {
+      throw new Error(
+        `Action "${action.id}" declares a conditional field reference with a key reserved by JavaScript objects.`
+      );
+    }
+  }
+}
+
+function assertSafeReferencePaths(
+  subject: string,
+  fields: readonly ReferenceField[]
+): void {
+  if (fields.some((field) => !isSafeRecordPath(field.path))) {
+    throw new Error(
+      `${subject} declares a field path containing a key reserved by JavaScript objects.`
+    );
+  }
+}
+
 function assertDistinctIntegrationTypes(
   integrations: readonly IntegrationMetadata[]
 ): void {
@@ -260,8 +291,8 @@ type Assembly = {
   actions: ActionMetadata[];
   steps: Map<string, StepFactory>;
   tests: Map<string, IntegrationTestLoader>;
-  /** Keyed `${integrationType}::${provider}`, the pair that names one question. */
-  configOptions: Map<string, ConfigOptionsProvider>;
+  /** Keyed first by integration type, then by the provider it declares. */
+  configOptions: Map<string, Map<string, ConfigOptionsProvider>>;
   oauth: Map<string, IntegrationOAuth>;
 };
 
@@ -298,7 +329,12 @@ function readIntegration(
   for (const [provider, entry] of Object.entries(
     integration.configOptions ?? {}
   )) {
-    into.configOptions.set(configOptionsKey(integration.type, provider), entry);
+    let providers = into.configOptions.get(integration.type);
+    if (!providers) {
+      providers = new Map();
+      into.configOptions.set(integration.type, providers);
+    }
+    providers.set(provider, entry);
   }
 
   if (integration.oauth) {
@@ -319,9 +355,6 @@ function readIntegration(
     ...(integration.oauth ? { oauth: { label: integration.oauth.label } } : {}),
   };
 }
-
-const configOptionsKey = (type: string, provider: string): string =>
-  `${type}::${provider}`;
 
 /**
  * A provider-backed field needs an integration behind it.
@@ -373,6 +406,9 @@ function readHostAction(action: ActionDefinition, into: Assembly): void {
 export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
   const eventsByName = indexEvents(input.events ?? []);
   const events = Array.from(eventsByName.values());
+  for (const event of events) {
+    assertSafeReferencePaths(`Event "${event.name}"`, event.payloadFields);
+  }
   assertSourcesAreDistinguishable(events);
   assertDistinctListenerIds(events);
 
@@ -400,6 +436,8 @@ export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
   assertDistinctActionIds(into.actions);
   assertDistinctIntegrationTypes(integrations);
   for (const action of into.actions) {
+    assertSafeConfigFieldKeys(action);
+    assertSafeReferencePaths(`Action "${action.id}"`, action.outputFields);
     assertLiteralFieldsRenderNoTemplatePicker(action);
     assertProviderFieldsBelongToAnIntegration(action);
   }
@@ -413,7 +451,7 @@ export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
     stepFor: (actionId) => into.steps.get(actionId),
     connectionTestFor: (type) => into.tests.get(type),
     configOptionsFor: (type, provider) =>
-      into.configOptions.get(configOptionsKey(type, provider)),
+      into.configOptions.get(type)?.get(provider),
     oauthFor: (type) => into.oauth.get(type),
     eventByName: (name) => eventsByName.get(name),
     events,

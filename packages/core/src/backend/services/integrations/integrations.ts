@@ -18,7 +18,10 @@ import {
   type ExtensionCatalog,
   findIntegration,
 } from "@wfgraph/shared/extensions/catalog";
-import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
+import type {
+  IntegrationConfig,
+  IntegrationRefreshState,
+} from "@wfgraph/shared/types/integration";
 import { getErrorMessage } from "@wfgraph/shared/utils";
 import { ENCRYPTION_KEY_MISMATCH_MESSAGE } from "#src/backend/services/integrations/cipher";
 import {
@@ -139,7 +142,7 @@ function toIntegrationSummary(
     type: string;
     isManaged?: boolean | null;
     config: IntegrationConfig;
-    refreshState: "idle" | "refreshing" | "reauthorization_required";
+    refreshState: IntegrationRefreshState;
     createdAt: Date;
     updatedAt: Date;
   }
@@ -184,7 +187,7 @@ function toIntegrationWithConfig(
     type: string;
     config: IntegrationConfig;
     isManaged?: boolean | null;
-    refreshState: "idle" | "refreshing" | "reauthorization_required";
+    refreshState: IntegrationRefreshState;
     createdAt: Date;
     updatedAt: Date;
   }

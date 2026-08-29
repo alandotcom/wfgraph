@@ -49,6 +49,7 @@ type WorkflowCommandState = {
   readonly currentWorkflowId: string | null;
   readonly workflowMode: WorkflowMode;
   readonly isExecuting: boolean;
+  readonly isPreflighting: boolean;
   readonly isGenerating: boolean;
   readonly isSaving: boolean;
   readonly hasNodes: boolean;
@@ -88,6 +89,7 @@ type PublishEligibility = {
   readonly isSaving: boolean;
   readonly isComparing: boolean;
   readonly isPublishing: boolean;
+  readonly isPreflighting: boolean;
   readonly hasNodes: boolean;
   readonly hasUnsavedChanges: boolean;
   readonly publication?: {
@@ -102,6 +104,7 @@ export function isWorkflowPublishDisabled({
   isSaving,
   isComparing,
   isPublishing,
+  isPreflighting,
   hasNodes,
   hasUnsavedChanges,
   publication,
@@ -111,6 +114,7 @@ export function isWorkflowPublishDisabled({
     isSaving ||
     isComparing ||
     isPublishing ||
+    isPreflighting ||
     !hasNodes ||
     Boolean(
       publication?.isPublished &&
@@ -132,6 +136,7 @@ export function workflowCommands({
 }): readonly WorkflowCommand[] {
   const runDisabled =
     state.isExecuting ||
+    state.isPreflighting ||
     !state.hasNodes ||
     state.isGenerating ||
     !state.currentWorkflowId;

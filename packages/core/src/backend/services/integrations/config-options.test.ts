@@ -62,7 +62,10 @@ function integrationWith(configOptions: Record<string, ConfigOptionsProvider>) {
       send: {
         label: "Send",
         description: "Sends",
-        input: Schema.Struct({ templateId: Schema.optionalKey(Schema.String) }),
+        input: Schema.Struct({
+          templateId: Schema.optionalKey(Schema.String),
+          variables: Schema.optionalKey(Schema.String),
+        }),
         output: Schema.Struct({
           id: Schema.String.annotate({ description: "Id" }),
         }),
@@ -76,6 +79,16 @@ function integrationWith(configOptions: Record<string, ConfigOptionsProvider>) {
               parameters: ["templateId"],
             },
           },
+          ...(Object.hasOwn(configOptions, "variables")
+            ? [
+                {
+                  key: "variables" as const,
+                  label: "Variables",
+                  type: "provider-fields" as const,
+                  optionsSource: { provider: "variables" },
+                },
+              ]
+            : []),
         ],
         handler: () => ({ id: "1" }),
       },
@@ -305,6 +318,33 @@ describe("integration config options", () => {
         })
     );
 
+    it.effect("refuses a provider field with a reserved record key", () =>
+      Effect.gen(function* () {
+        const extensions = extensionsWith({
+          templates: optionsProvider({ status: "options", options: [] }),
+          variables: {
+            answers: "fields",
+            load: async () => async () => ({
+              status: "fields",
+              fields: [{ key: "constructor", label: "Unsafe" }],
+            }),
+          },
+        });
+
+        const failure = yield* postIntegrationConfigOptions(
+          "int_1",
+          "variables",
+          {}
+        ).pipe(Effect.provide(Layer.mergeAll(repo, extensions)), Effect.flip);
+
+        assert.instanceOf(failure, InternalFailure);
+        assert.include(
+          failure.error,
+          "field key reserved by JavaScript objects"
+        );
+      })
+    );
+
     it.effect("refuses a connection this server does not hold", () =>
       Effect.gen(function* () {
         const extensions = extensionsWith({
@@ -384,6 +424,15 @@ describe("the answer an integration may return", () => {
     const result = decode({
       status: "options",
       options: [{ value: "tpl_1", label: "Welcome", icon: "envelope" }],
+    });
+
+    expect("issues" in result ? result.issues : undefined).toBeDefined();
+  });
+
+  vitestIt("refuses a provider field with a reserved record key", () => {
+    const result = decode({
+      status: "fields",
+      fields: [{ key: "__proto__", label: "Unsafe" }],
     });
 
     expect("issues" in result ? result.issues : undefined).toBeDefined();

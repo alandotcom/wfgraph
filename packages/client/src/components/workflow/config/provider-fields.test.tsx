@@ -8,13 +8,17 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ActionConfigRenderer } from "#src/components/workflow/config/action-config-renderer";
 import type { ConfigOptionsAnswer } from "#src/lib/rpc-client";
 import { configOptionsQueryOptions } from "#src/lib/rpc-query";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { ActionConfigField } from "@wfgraph/shared/plugins/action-fields";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const templateField: ActionConfigField = {
   key: "emailTemplateId",
@@ -336,6 +340,22 @@ describe("a provider-backed field set", () => {
       OLD_KEY: "kept",
       FIRST_NAME: "Ada",
     });
+  });
+
+  it("treats stored reserved keys as raw data that must be repaired", () => {
+    renderFields({
+      config: {
+        ...withTemplate,
+        emailTemplateVariables: '{"__proto__":"kept"}',
+      },
+      fields: [variablesField],
+      seed: seedVariables,
+    });
+
+    expect(screen.queryByLabelText("FIRST_NAME")).toBeNull();
+    expect(screen.getByLabelText("Template Variables").textContent).toBe(
+      '{"__proto__":"kept"}'
+    );
   });
 
   it("stores an input cleared away from its default", () => {

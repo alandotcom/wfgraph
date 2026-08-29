@@ -104,27 +104,33 @@ export function ProviderFieldsField({
   const declared = state.answer.fields;
   const declaredKeys = new Set(declared.map((entry) => entry.key));
   const dropped = Object.keys(stored).filter((key) => !declaredKeys.has(key));
+  const storedValue = (key: string) =>
+    Object.hasOwn(stored, key) ? stored[key] : undefined;
 
   const write = (key: string, next: string) => {
     // Keys the current selection does not declare are kept as they are: the
     // builder wrote them, and switching selections is something they can undo.
-    const entries: ProviderFieldValues = {};
+    const entries: Array<[string, string | number]> = [];
     for (const droppedKey of dropped) {
-      const carried = stored[droppedKey];
+      const carried = storedValue(droppedKey);
       if (carried !== undefined) {
-        entries[droppedKey] = carried;
+        entries.push([droppedKey, carried]);
       }
     }
 
     for (const entry of declared) {
       const current =
-        entry.key === key ? storedValueFor(entry, next) : stored[entry.key];
+        entry.key === key
+          ? storedValueFor(entry, next)
+          : storedValue(entry.key);
       if (current !== undefined) {
-        entries[entry.key] = current;
+        entries.push([entry.key, current]);
       }
     }
 
-    onChange(Object.keys(entries).length > 0 ? JSON.stringify(entries) : "");
+    onChange(
+      entries.length > 0 ? JSON.stringify(Object.fromEntries(entries)) : ""
+    );
   };
 
   if (declared.length === 0) {
@@ -144,11 +150,7 @@ export function ProviderFieldsField({
           key={entry.key}
           onChange={(next) => write(entry.key, next)}
           parentKey={field.key}
-          value={
-            stored[entry.key] === undefined
-              ? (entry.defaultValue ?? "")
-              : String(stored[entry.key])
-          }
+          value={String(storedValue(entry.key) ?? entry.defaultValue ?? "")}
         />
       ))}
       {dropped.length > 0 && (

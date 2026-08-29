@@ -6,9 +6,15 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useProviderFieldIssues } from "#src/hooks/use-provider-field-issues";
+import {
+  fetchProviderFieldIssues,
+  providerFieldIssuesFor,
+  providerFieldQuestions,
+} from "#src/lib/provider-field-issues";
 import type { ConfigOptionsAnswer } from "#src/lib/rpc-client";
+import { rpcJsonResponse } from "#src/lib/rpc-fetch-test-support";
 import { configOptionsQueryOptions } from "#src/lib/rpc-query";
 import {
   emptyExtensionCatalog,
@@ -85,7 +91,7 @@ function collect(options: {
     },
   });
   if (options.answer) {
-    queryClient.setQueryData(
+    queryClient.setQueryData<ConfigOptionsAnswer>(
       configOptionsQueryOptions({
         integrationId: "int_1",
         provider: "template-variables",
@@ -103,6 +109,57 @@ function collect(options: {
 }
 
 describe("issues a provider-backed field raises", () => {
+  it("refetches a fresh cached answer before returning blocking issues", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+      },
+    });
+    const fieldsKey: readonly unknown[] = configOptionsQueryOptions({
+      integrationId: "int_1",
+      provider: "template-variables",
+      parameters: { emailTemplateId: "tpl_1" },
+    }).queryKey;
+    queryClient.getQueryCache().build(queryClient, {
+      queryKey: fieldsKey,
+      initialData: {
+        status: "fields" as const,
+        fields: [],
+      },
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => rpcJsonResponse(variablesAnswer));
+
+    await expect(
+      fetchProviderFieldIssues(
+        queryClient,
+        [node({ emailTemplateId: "tpl_1" })],
+        catalog
+      )
+    ).resolves.toMatchObject([
+      {
+        fieldKey: "emailTemplateVariables.DONOR_FIRST_NAME",
+        severity: "blocking",
+      },
+    ]);
+    expect(fetchSpy).toHaveBeenCalledOnce();
+  });
+
+  it("treats an explicit provider refusal as settled manual fallback", () => {
+    const [question] = providerFieldQuestions(
+      [node({ emailTemplateId: "tpl_1" })],
+      catalog
+    );
+    const answer: ConfigOptionsAnswer = {
+      status: "unavailable",
+      reason: "not_permitted",
+      message: "Enter the values manually.",
+    };
+
+    expect(providerFieldIssuesFor(question!, answer)).toEqual([]);
+  });
+
   it("flags a required variable the node has no value for", () => {
     const issues = collect({
       nodes: [node({ emailTemplateId: "tpl_1" })],
@@ -210,7 +267,11 @@ describe("issues a provider-backed field raises", () => {
   it("accuses nothing while the connection has not answered", () => {
     // Absence of an answer is not evidence a value is missing, and flagging the
     // canvas on every load would be worse than flagging it late.
-    const issues = collect({ nodes: [node({ emailTemplateId: "tpl_1" })] });
+    const [question] = providerFieldQuestions(
+      [node({ emailTemplateId: "tpl_1" })],
+      catalog
+    );
+    const issues = providerFieldIssuesFor(question!, undefined);
 
     expect(issues).toEqual([]);
   });
@@ -252,4 +313,8 @@ describe("issues a provider-backed field raises", () => {
 
     expect(issues).toEqual([]);
   });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });

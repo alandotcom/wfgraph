@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import { isSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
+import { INTEGRATION_REFRESH_STATES } from "@wfgraph/shared/types/integration";
 import {
   readJsonObject,
   readJsonValue,
@@ -11,6 +12,10 @@ import {
 } from "@wfgraph/shared/types/json";
 
 const SCHEMA_VERSION = 4;
+
+const integrationRefreshStateLiterals = INTEGRATION_REFRESH_STATES.map(
+  (state) => `'${state}'`
+).join(", ");
 
 const MIGRATION_1 = `
   CREATE TABLE workflows (
@@ -150,8 +155,8 @@ const MIGRATION_1 = `
 
 const MIGRATION_2 = `
   ALTER TABLE integrations
-    ADD COLUMN refresh_state TEXT NOT NULL DEFAULT 'idle'
-    CHECK (refresh_state IN ('idle', 'refreshing', 'reauthorization_required'));
+    ADD COLUMN refresh_state TEXT NOT NULL DEFAULT '${INTEGRATION_REFRESH_STATES[0]}'
+    CHECK (refresh_state IN (${integrationRefreshStateLiterals}));
   ALTER TABLE integrations ADD COLUMN config_revision INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE integrations ADD COLUMN refresh_claim_id TEXT;
   ALTER TABLE integrations ADD COLUMN refresh_claimed_at INTEGER;

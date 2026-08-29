@@ -16,6 +16,7 @@ import {
   rejectUnknownKeys,
 } from "@wfgraph/shared/types/schema";
 import { formatSchemaFailure } from "@wfgraph/shared/types/schema-message";
+import { hasOnlySafeRecordKeys } from "@wfgraph/shared/types/record-key";
 import { OAUTH_GRANT_CONFIG_KEY } from "#src/backend/services/integrations/oauth-grant";
 
 export const OAUTH_CLIENT_METADATA_ROUTE =
@@ -34,6 +35,9 @@ const startOAuthInputSchema = Schema.Union([
     name: Schema.String,
     type: NonEmptyTrimmedString,
     config: Schema.Record(Schema.String, Schema.String).check(
+      Schema.makeFilter(hasOnlySafeRecordKeys, {
+        expected: "config keys that are not reserved by JavaScript objects",
+      }),
       Schema.makeFilter((config) => !(OAUTH_GRANT_CONFIG_KEY in config), {
         expected: "an integration config without the reserved OAuth grant key",
       })

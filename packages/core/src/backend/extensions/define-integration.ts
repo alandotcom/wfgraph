@@ -37,6 +37,7 @@ import {
   type OutputSchema,
   requireOutputFieldsFromSchema,
 } from "@wfgraph/shared/graph/output-fields";
+import { isSafeRecordKey } from "@wfgraph/shared/types/record-key";
 
 /**
  * The credential keys a handler of this integration may read.
@@ -209,21 +210,39 @@ export function defineIntegration(input: {
   readonly configOptions?: Readonly<Record<string, ConfigOptionsProvider>>;
   readonly actions: Readonly<Record<string, unknown>>;
 }): IntegrationDefinition {
-  const actions: Record<string, ActionStep> = {};
+  assertOrdinaryDeclarationRecord(input.type, "credentials", input.credentials);
+  if (input.configOptions) {
+    assertOrdinaryDeclarationRecord(
+      input.type,
+      "config options providers",
+      input.configOptions
+    );
+  }
+  assertOrdinaryDeclarationRecord(input.type, "actions", input.actions);
+
+  const actions: Array<[string, ActionStep]> = [];
 
   for (const [slug, action] of Object.entries(input.actions)) {
+    if (!isSafeRecordKey(slug)) {
+      throw new Error(
+        `Integration "${input.type}" declares an action slug reserved by JavaScript objects.`
+      );
+    }
     if (!isDeclaredAction(action)) {
       throw new Error(
         `Integration "${input.type}" declares the action "${slug}" without an input schema, an output schema, or a handler. All three are what an action is.`
       );
     }
 
-    actions[slug] = defineStep({
-      ...action,
-      // An action's heading is its integration's label unless it says otherwise,
-      // which is what every built-in wanted and none of them had to write.
-      category: action.category ?? input.label,
-    });
+    actions.push([
+      slug,
+      defineStep({
+        ...action,
+        // An action's heading is its integration's label unless it says otherwise,
+        // which is what every built-in wanted and none of them had to write.
+        category: action.category ?? input.label,
+      }),
+    ]);
   }
 
   return {
@@ -235,7 +254,7 @@ export function defineIntegration(input: {
     ...(input.oauth ? { oauth: input.oauth } : {}),
     test: input.test,
     ...(input.configOptions ? { configOptions: input.configOptions } : {}),
-    actions,
+    actions: Object.fromEntries(actions),
   };
 }
 
@@ -284,7 +303,41 @@ export type CheckedAction = {
 export function checkIntegration(
   integration: IntegrationDefinition
 ): readonly CheckedAction[] {
+  assertOrdinaryDeclarationRecord(
+    integration.type,
+    "credentials",
+    integration.credentials
+  );
+  if (integration.configOptions) {
+    assertOrdinaryDeclarationRecord(
+      integration.type,
+      "config options providers",
+      integration.configOptions
+    );
+  }
+  assertOrdinaryDeclarationRecord(
+    integration.type,
+    "actions",
+    integration.actions
+  );
+
+  for (const credential of Object.keys(integration.credentials)) {
+    assertSafeIntegrationKey(integration.type, "credential", credential);
+  }
+  for (const provider of Object.keys(integration.configOptions ?? {})) {
+    assertSafeIntegrationKey(
+      integration.type,
+      "config options provider",
+      provider
+    );
+  }
+
   return Object.entries(integration.actions).map(([slug, step]) => {
+    if (!isSafeRecordKey(slug)) {
+      throw new Error(
+        `Integration "${integration.type}" declares an action slug reserved by JavaScript objects.`
+      );
+    }
     const id = formatActionId(integration.type, slug);
 
     const outputFields = requireOutputFieldsFromSchema(
@@ -296,6 +349,30 @@ export function checkIntegration(
 
     return { id, step, outputFields };
   });
+}
+
+function assertOrdinaryDeclarationRecord(
+  integrationType: string,
+  role: string,
+  record: object
+): void {
+  if (Object.getPrototypeOf(record) !== Object.prototype) {
+    throw new Error(
+      `Integration "${integrationType}" must declare ${role} in an ordinary object record; a reserved __proto__ literal changes the record prototype instead of declaring a key.`
+    );
+  }
+}
+
+function assertSafeIntegrationKey(
+  integrationType: string,
+  role: string,
+  key: string
+): void {
+  if (!isSafeRecordKey(key)) {
+    throw new Error(
+      `Integration "${integrationType}" declares a ${role} with a key reserved by JavaScript objects.`
+    );
+  }
 }
 
 /**
@@ -317,13 +394,30 @@ function checkProviderBackedFields(
     const where = `Action "${actionId}" field "${field.key}"`;
     const source = field.optionsSource;
 
+    if (!isSafeRecordKey(field.key)) {
+      throw new Error(
+        `Action "${actionId}" declares a config field with a key reserved by JavaScript objects.`
+      );
+    }
+    if (field.showWhen && !isSafeRecordKey(field.showWhen.field)) {
+      throw new Error(
+        `Action "${actionId}" declares a conditional field reference with a key reserved by JavaScript objects.`
+      );
+    }
+
     if (!source) {
-      if (field.type === "provider-fields") {
+      if (PROVIDER_FIELD_TYPES.has(field.type)) {
         throw new Error(
-          `${where} is a provider-fields field with no optionsSource, so nothing says which inputs to draw.`
+          `${where} is a ${field.type} field with no optionsSource, so nothing says which provider data to draw.`
         );
       }
       continue;
+    }
+
+    if (!isSafeRecordKey(source.provider)) {
+      throw new Error(
+        `Action "${actionId}" declares a config options provider with a key reserved by JavaScript objects.`
+      );
     }
 
     // The field type is checked before the provider, so a field that draws no
@@ -336,7 +430,11 @@ function checkProviderBackedFields(
     }
 
     const wants = field.type === "provider-select" ? "options" : "fields";
-    const provider = integration.configOptions?.[source.provider];
+    const providers = integration.configOptions;
+    const provider =
+      providers && Object.hasOwn(providers, source.provider)
+        ? providers[source.provider]
+        : undefined;
     if (!provider) {
       throw new Error(
         `${where} names the config options provider "${source.provider}", which integration "${integration.type}" does not declare.`
@@ -349,6 +447,11 @@ function checkProviderBackedFields(
     }
 
     for (const parameter of source.parameters ?? []) {
+      if (!isSafeRecordKey(parameter)) {
+        throw new Error(
+          `Action "${actionId}" declares a provider parameter with a key reserved by JavaScript objects.`
+        );
+      }
       if (!declaredKeys.has(parameter)) {
         throw new Error(
           `${where} names the parameter "${parameter}", which is not a config field of this action.`

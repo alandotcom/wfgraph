@@ -16,6 +16,7 @@ import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { defineAction } from "#src/backend/extensions/define-action";
 import type { ActionConfigFieldFor } from "#src/backend/extensions/steps/define-step";
 import type { ConfigOptionsProvider } from "#src/backend/extensions/config-options";
+import { RESERVED_RECORD_KEYS } from "@wfgraph/shared/types/record-key";
 
 const templates: ConfigOptionsProvider = {
   answers: "options",
@@ -59,6 +60,18 @@ function integrationWith(input: {
       },
     },
   });
+}
+
+function unsafeFieldKey(key: string): ActionConfigFieldFor<ExampleInput> {
+  return {
+    key,
+    label: "Unsafe",
+    type: "text",
+  } as unknown as ActionConfigFieldFor<ExampleInput>;
+}
+
+function unsafeParameterKey(key: string): (keyof ExampleInput)[] {
+  return [key] as (keyof ExampleInput)[];
 }
 
 describe("provider-backed config fields", () => {
@@ -106,6 +119,64 @@ describe("provider-backed config fields", () => {
     ).toThrow(/does not declare/u);
   });
 
+  it.each(RESERVED_RECORD_KEYS)(
+    "refuses the reserved provider key %s",
+    (key) => {
+      expect(() =>
+        checkIntegration(
+          integrationWith({
+            configOptions: Object.fromEntries([[key, templates]]),
+            configFields: [
+              {
+                key: "templateId",
+                label: "Template",
+                type: "provider-select",
+                optionsSource: { provider: key },
+              },
+            ],
+          })
+        )
+      ).toThrow(/key reserved by JavaScript objects/u);
+    }
+  );
+
+  it.each(RESERVED_RECORD_KEYS)(
+    "refuses the reserved config field key %s",
+    (key) => {
+      expect(() =>
+        checkIntegration(
+          integrationWith({
+            configFields: [unsafeFieldKey(key)],
+          })
+        )
+      ).toThrow(/config field with a key reserved/u);
+    }
+  );
+
+  it.each(RESERVED_RECORD_KEYS)(
+    "refuses the reserved provider parameter %s",
+    (key) => {
+      expect(() =>
+        checkIntegration(
+          integrationWith({
+            configOptions: { templates },
+            configFields: [
+              {
+                key: "templateId",
+                label: "Template",
+                type: "provider-select",
+                optionsSource: {
+                  provider: "templates",
+                  parameters: unsafeParameterKey(key),
+                },
+              },
+            ],
+          })
+        )
+      ).toThrow(/key reserved by JavaScript objects/u);
+    }
+  );
+
   it("refuses a picker wired to a provider that answers fields", () => {
     expect(() =>
       checkIntegration(
@@ -148,6 +219,18 @@ describe("provider-backed config fields", () => {
         integrationWith({
           configFields: [
             { key: "variables", label: "Variables", type: "provider-fields" },
+          ],
+        })
+      )
+    ).toThrow(/no optionsSource/u);
+  });
+
+  it("refuses provider-select with nothing saying what to draw", () => {
+    expect(() =>
+      checkIntegration(
+        integrationWith({
+          configFields: [
+            { key: "templateId", label: "Template", type: "provider-select" },
           ],
         })
       )

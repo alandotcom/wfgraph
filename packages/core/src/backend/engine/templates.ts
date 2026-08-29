@@ -83,22 +83,25 @@ export function processTemplates(
   literalKeys: ReadonlySet<string>,
   templateObjectKeys: ReadonlySet<string> = new Set()
 ): Record<string, unknown> {
-  const processed: Record<string, unknown> = {};
+  const processed: Array<[string, unknown]> = [];
 
   for (const [key, value] of Object.entries(config)) {
     if (value === undefined) {
       continue;
     }
 
-    processed[key] = resolveConfigValue({
-      value,
-      outputs,
-      literal: literalKeys.has(key),
-      asTemplateObject: templateObjectKeys.has(key),
-    });
+    processed.push([
+      key,
+      resolveConfigValue({
+        value,
+        outputs,
+        literal: literalKeys.has(key),
+        asTemplateObject: templateObjectKeys.has(key),
+      }),
+    ]);
   }
 
-  return processed;
+  return Object.fromEntries(processed);
 }
 
 function resolveConfigValue(input: {
@@ -133,15 +136,17 @@ function resolveTemplateObjectString(
     return resolveTemplateString(value, outputs);
   }
 
-  const resolved: Record<string, string | number> = {};
+  const resolved: Array<[string, string | number]> = [];
   for (const [key, entry] of Object.entries(entries)) {
-    resolved[key] =
-      typeof entry === "string" ? resolveTemplateString(entry, outputs) : entry;
+    resolved.push([
+      key,
+      typeof entry === "string" ? resolveTemplateString(entry, outputs) : entry,
+    ]);
   }
 
   // `JSON.stringify` is what escapes a resolved quotation mark or newline, and
   // doing it here rather than in the step is what keeps the boundary a string.
-  return JSON.stringify(resolved);
+  return JSON.stringify(Object.fromEntries(resolved));
 }
 
 /** One authored string with its references replaced. */

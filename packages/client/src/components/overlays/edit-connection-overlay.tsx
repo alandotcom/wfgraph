@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Link, Pencil, TriangleAlert, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
@@ -12,7 +12,11 @@ import {
   hasProvidedConfigValues,
 } from "#src/lib/connection-credentials";
 import type { Integration } from "#src/lib/rpc-client";
-import { orpcQuery, refreshIntegrations } from "#src/lib/rpc-query";
+import {
+  integrationsQueryOptions,
+  orpcQuery,
+  refreshIntegrations,
+} from "#src/lib/rpc-query";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
   findIntegration,
@@ -327,7 +331,11 @@ export function EditConnectionOverlay({
   const queryClient = useQueryClient();
   const [name, setName] = useState(integration.name);
   const [config, setConfig] = useState<Record<string, string>>({});
-  const [oauth, setOauth] = useState(integration.oauth);
+  const { data: integrations } = useQuery(integrationsQueryOptions());
+  const oauth =
+    integrations === undefined
+      ? integration.oauth
+      : integrations.find(({ id }) => id === integration.id)?.oauth;
   // The keys the operator entered themselves. Disconnecting OAuth leaves them
   // alone, so this stays true for the life of the overlay.
   const configuredKeys = new Set(integration.configuredKeys);
@@ -347,7 +355,7 @@ export function EditConnectionOverlay({
     orpcQuery.integration.update.mutationOptions({
       onSuccess: async () => {
         toast.success("Connection updated");
-        await refreshIntegrations(queryClient);
+        await refreshIntegrations(queryClient, integration.id);
         onSuccess?.();
         closeAll();
       },
@@ -372,8 +380,7 @@ export function EditConnectionOverlay({
   const disconnectOAuth = useMutation(
     orpcQuery.integration.disconnectOAuth.mutationOptions({
       onSuccess: async (result) => {
-        setOauth(undefined);
-        await refreshIntegrations(queryClient);
+        await refreshIntegrations(queryClient, integration.id);
         if (result.removed) {
           // The grant was the whole connection, so there is no longer one to
           // edit. Take the delete path: it repairs the nodes that named it.
@@ -680,7 +687,7 @@ export function DeleteConnectionOverlay({
         // passes one that only invalidates, kept the confirmation on screen
         // stuck in its loading state.
         dismiss();
-        await refreshIntegrations(queryClient);
+        await refreshIntegrations(queryClient, integration.id);
         onSuccess?.();
       },
       meta: { errorMessage: "Failed to delete connection" },

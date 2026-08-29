@@ -911,4 +911,56 @@ describe("native SQLite integration persistence", () => {
       await database.close();
     }
   });
+
+  it("rejects a stored refresh state outside the shared lifecycle", async () => {
+    const filename = await databasePath();
+    const database = await open(filename);
+    let integrationId: string;
+    try {
+      integrationId = await database.run(
+        Effect.gen(function* () {
+          const integrations = yield* IntegrationRepo;
+          const integration = yield* integrations.insert({
+            name: "Corrupt state",
+            type: "linear",
+            config: { apiKey: "secret" },
+          });
+          return integration.id;
+        })
+      );
+    } finally {
+      await database.close();
+    }
+
+    const inspection = new DatabaseSync(filename);
+    try {
+      inspection.exec("PRAGMA ignore_check_constraints = ON");
+      inspection
+        .prepare("UPDATE integrations SET refresh_state = ? WHERE id = ?")
+        .run("not_a_refresh_state", integrationId!);
+    } finally {
+      inspection.close();
+    }
+
+    const corrupted = await open(filename);
+    try {
+      const error = await corrupted.run(
+        Effect.flip(
+          Effect.gen(function* () {
+            const integrations = yield* IntegrationRepo;
+            return yield* integrations.findById(integrationId!);
+          })
+        )
+      );
+
+      expect(error).toMatchObject({
+        _tag: "DatabaseError",
+        cause: expect.objectContaining({
+          message: "Invalid SQLite refresh_state",
+        }),
+      });
+    } finally {
+      await corrupted.close();
+    }
+  });
 });

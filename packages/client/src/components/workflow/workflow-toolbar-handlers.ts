@@ -19,8 +19,11 @@ import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useDeleteWorkflow } from "#src/hooks/use-delete-workflow";
 import { useGoToStep } from "#src/hooks/use-workflow-issues";
 import { useDomEvent } from "#src/hooks/effects";
+import {
+  type WorkflowIssuePreflightResult,
+  useWorkflowIssuePreflight,
+} from "#src/hooks/use-workflow-issue-preflight";
 import { isTextEntry } from "#src/lib/is-text-entry";
-import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
   cacheWorkflowPublication,
   integrationsQueryOptions,
@@ -45,10 +48,6 @@ import {
   redoAtom,
   undoAtom,
 } from "#src/lib/workflow-graph-store";
-import {
-  collectAllWorkflowIssues,
-  providerFieldIssuesAtom,
-} from "#src/lib/workflow-issues-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   executeWorkflowRun,
@@ -91,7 +90,6 @@ import {
   groupWorkflowIssuesForOverlay,
   hasBlockingWorkflowIssues,
 } from "@wfgraph/shared/graph/workflow-issues";
-import { toPersistedNodes } from "#src/lib/workflow-graph-types";
 
 type WorkflowHandlerParams = {
   currentWorkflowId: string | null;
@@ -100,7 +98,10 @@ type WorkflowHandlerParams = {
   isExecuting: boolean;
   setIsExecuting: (value: boolean) => void;
   setSelectedNodeId: (id: string | null) => void;
-  userIntegrations: Array<{ id: string; type: string }>;
+  checkWorkflowIssues: (input: {
+    workflowId: string;
+    nodes: WorkflowNode[];
+  }) => Promise<WorkflowIssuePreflightResult>;
 };
 
 function useWorkflowHandlers({
@@ -110,24 +111,8 @@ function useWorkflowHandlers({
   isExecuting,
   setIsExecuting,
   setSelectedNodeId,
-  userIntegrations,
+  checkWorkflowIssues,
 }: WorkflowHandlerParams) {
-  const catalog = useExtensionCatalog();
-  // Raised by the collector rather than here: what a provider-backed field still
-  // needs is the operator's connection to answer, and asking again on the click
-  // would let a run start ahead of the reply. This is the same list the badge
-  // on the node was drawn from.
-  const providerIssues = useAtomValue(providerFieldIssuesAtom);
-  const collectIssues = useCallback(
-    () =>
-      collectAllWorkflowIssues({
-        nodes: toPersistedNodes(nodes),
-        catalog,
-        integrations: userIntegrations,
-        providerIssues,
-      }),
-    [nodes, catalog, userIntegrations, providerIssues]
-  );
   // The same implementation the status strip's issue count reaches for, so
   // "Fix" means one thing wherever the list was opened from. The hook is
   // instantiated per caller and each instance owns its own pending-focus state;
@@ -215,8 +200,19 @@ function useWorkflowHandlers({
     if (isExecuting) {
       return;
     }
+    if (!currentWorkflowId) {
+      toast.error("Please save the workflow before executing");
+      return;
+    }
 
-    const issues = collectIssues();
+    const preflight = await checkWorkflowIssues({
+      workflowId: currentWorkflowId,
+      nodes,
+    });
+    if (preflight.status !== "ready") {
+      return;
+    }
+    const { issues } = preflight;
 
     if (issues.length > 0) {
       const hasBlocking = hasBlockingWorkflowIssues(issues);
@@ -295,10 +291,6 @@ export function useWorkflowState() {
 export type WorkflowToolbarState = ReturnType<typeof useWorkflowState>;
 
 export function useWorkflowActions(state: WorkflowToolbarState) {
-  const catalog = useExtensionCatalog();
-  // The same list the node badges were drawn from, so the gate and the canvas
-  // cannot disagree about whether a graph is publishable.
-  const providerIssues = useAtomValue(providerFieldIssuesAtom);
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -329,6 +321,8 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     userIntegrations,
     publication,
   } = state;
+  const { checkWorkflowIssues, isPreflighting } =
+    useWorkflowIssuePreflight(userIntegrations);
   const { handleExecute, handleGoToStep } = useWorkflowHandlers({
     currentWorkflowId,
     nodes,
@@ -336,7 +330,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     isExecuting,
     setIsExecuting,
     setSelectedNodeId,
-    userIntegrations,
+    checkWorkflowIssues,
   });
 
   const handleSave = useCallback(async () => {
@@ -451,7 +445,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     duplicateWorkflow.mutate({ workflowId: currentWorkflowId });
   };
 
-  const handlePublish = () => {
+  const handlePublish = async () => {
     if (!currentWorkflowId || publicationReviewActive) {
       return;
     }
@@ -462,12 +456,14 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     // unreachable subtrees -- so a graph can still be refused after passing
     // here. A draft saves in any state; this gate does not move, so there is no
     // Publish Anyway.
-    const issues = collectAllWorkflowIssues({
-      nodes: toPersistedNodes(nodes),
-      catalog,
-      integrations: userIntegrations,
-      providerIssues,
+    const preflight = await checkWorkflowIssues({
+      workflowId: currentWorkflowId,
+      nodes,
     });
+    if (preflight.status !== "ready") {
+      return;
+    }
+    const { issues } = preflight;
     if (hasBlockingWorkflowIssues(issues)) {
       openOverlay(WorkflowIssuesOverlay, {
         issues: groupWorkflowIssuesForOverlay(issues),
@@ -615,6 +611,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     confirmPublish,
     isPublishing: publishWorkflow.isPending,
     isComparing: compareWorkflowVersion.isPending,
+    isPreflighting,
     publishReview,
     setPublishReviewOpen: (open: boolean) => {
       if (!open) {

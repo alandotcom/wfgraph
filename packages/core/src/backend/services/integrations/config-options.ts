@@ -29,6 +29,7 @@ import type { ConfigOptionsAnswer } from "#src/backend/extensions/config-options
 import { findIntegration } from "@wfgraph/shared/extensions/catalog";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
+import { isSafeRecordKey } from "@wfgraph/shared/types/record-key";
 
 const describeConfigOptionsFailure = () =>
   "Failed to read integration config options";
@@ -102,6 +103,15 @@ export const postIntegrationConfigOptions = Effect.fn(
     });
   }
 
+  if (
+    answer.status === "fields" &&
+    answer.fields.some((field) => !isSafeRecordKey(field.key))
+  ) {
+    return yield* new InternalFailure({
+      error: `Config options provider "${provider}" answered with a field key reserved by JavaScript objects.`,
+    });
+  }
+
   // One record for the request. Names and labels are the account's own data, so
   // the answer's size is here and its contents are not.
   yield* logger.info("Read integration config options", {
@@ -149,14 +159,14 @@ function acceptedParameters(
     }
   }
 
-  const accepted: Record<string, string> = {};
+  const accepted: Array<[string, string]> = [];
   for (const key of declared) {
-    const value = parameters[key];
+    const value = Object.hasOwn(parameters, key) ? parameters[key] : undefined;
     if (value !== undefined) {
-      accepted[key] = value;
+      accepted.push([key, value]);
     }
   }
-  return accepted;
+  return Object.fromEntries(accepted);
 }
 
 /** An `unavailable` answer is valid whatever the provider declared it answers. */
