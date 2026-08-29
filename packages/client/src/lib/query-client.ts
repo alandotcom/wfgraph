@@ -8,18 +8,29 @@ import { getClientLogger } from "#src/lib/logger";
  * cannot import the entry point.
  */
 
+/**
+ * What a mutation says about its own failures.
+ *
+ * `errorShownByCaller` takes a predicate when only some failures are answered
+ * at the call site. The cache still covers the rest, which matters because a
+ * per-mutate `onError` is skipped once the component that called `mutate` has
+ * unmounted, while this cache handler runs whatever is on screen.
+ */
+export type MutationErrorMeta = {
+  /** Toast this instead of whatever the server said. */
+  errorMessage?: string;
+  /**
+   * Set when the call site shows the failure itself, inline or in a dialog. A
+   * toast on top would say it twice. `true` claims every failure; a predicate
+   * claims the ones it answers true for and leaves the rest to the cache.
+   */
+  errorShownByCaller?: true | ((error: unknown) => boolean);
+};
+
 declare module "@tanstack/react-query" {
   interface Register {
     queryMeta: { errorMessage?: string };
-    mutationMeta: {
-      /** Toast this instead of whatever the server said. */
-      errorMessage?: string;
-      /**
-       * Set when the call site shows the failure itself, inline or in a dialog.
-       * A toast on top would say it twice.
-       */
-      errorShownByCaller?: true;
-    };
+    mutationMeta: MutationErrorMeta;
   }
 }
 
@@ -32,9 +43,12 @@ declare module "@tanstack/react-query" {
  */
 export function mutationErrorToast(
   error: unknown,
-  meta: { errorMessage?: string; errorShownByCaller?: true } | undefined
+  meta: MutationErrorMeta | undefined
 ): string | null {
-  if (meta?.errorShownByCaller) {
+  const shownByCaller = meta?.errorShownByCaller;
+  if (
+    typeof shownByCaller === "function" ? shownByCaller(error) : shownByCaller
+  ) {
     return null;
   }
 

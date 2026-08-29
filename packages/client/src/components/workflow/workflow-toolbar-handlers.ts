@@ -31,6 +31,7 @@ import {
   orpcQuery,
   refreshRunHistory,
   refreshWorkflowList,
+  refreshWorkflowPublication,
   refreshWorkflowVersionHistory,
   workflowListQueryOptions,
   workflowPublicationQueryOptions,
@@ -65,7 +66,12 @@ import {
   saveWorkflowAtom,
   setWorkflowModeAtom,
 } from "#src/lib/workflow-save-store";
-import { toSerializedGraph } from "#src/lib/rpc-client";
+import { ApiError, toSerializedGraph } from "#src/lib/rpc-client";
+import {
+  isPublicationConflictCode,
+  PUBLICATION_CONFLICT_CODES,
+  type PublicationConflictCode,
+} from "@wfgraph/shared/rpc/error-codes";
 import { publicationReviewFromComparison } from "#src/components/workflow/publish-review-dialog";
 import {
   beginPublicationReviewAtom,
@@ -91,6 +97,19 @@ import {
   groupWorkflowIssuesForOverlay,
   hasBlockingWorkflowIssues,
 } from "@wfgraph/shared/graph/workflow-issues";
+
+/**
+ * Which publication conflict a refused publish is, read off the failure's code.
+ *
+ * The message beside the code is written for a person and may be reworded, so
+ * nothing here looks at it.
+ */
+function publicationConflictCode(
+  error: unknown
+): PublicationConflictCode | undefined {
+  const code = error instanceof ApiError ? error.code : undefined;
+  return isPublicationConflictCode(code) ? code : undefined;
+}
 
 /** One toast id, so a held Cmd+Enter replaces the notice instead of stacking. */
 const PREFLIGHT_TOAST_ID = "workflow-preflight-busy";
@@ -443,11 +462,36 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
   // Per-call callbacks run from the click that began this preflight. The hook
   // itself therefore remains a plain RPC declaration during render.
   const publishWorkflow = useMutation(
-    orpcQuery.workflow.publish.mutationOptions()
+    orpcQuery.workflow.publish.mutationOptions({
+      // The two coded publication conflicts are answered below in the
+      // operator's terms, so the cache's own toast would say it a second time.
+      // Only those two are claimed: a per-mutate onError is skipped once the
+      // component that called mutate has unmounted, and a generic failure the
+      // operator has navigated away from must still reach a toast.
+      meta: {
+        errorShownByCaller: (error) =>
+          publicationConflictCode(error) !== undefined,
+      },
+    })
   );
   const compareWorkflowVersion = useMutation(
     orpcQuery.workflow.compareVersion.mutationOptions()
   );
+
+  /**
+   * Close the publication badge and say the draft is already published.
+   *
+   * Both the comparison finding no changes and the server refusing the publish
+   * for the same reason land here, so the operator reads one sentence either
+   * way and the badge stops claiming unpublished changes.
+   */
+  const reportNothingToPublish = (workflowId: string) => {
+    cacheWorkflowPublication(queryClient, {
+      id: workflowId,
+      hasUnpublishedChanges: false,
+    });
+    toast.info("No changes to publish");
+  };
 
   const handleDuplicate = () => {
     if (!currentWorkflowId) {
@@ -510,11 +554,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
           ) {
             return;
           }
-          cacheWorkflowPublication(queryClient, {
-            id: comparisonInput.workflowId,
-            hasUnpublishedChanges: false,
-          });
-          toast.info("No changes to publish");
+          reportNothingToPublish(comparisonInput.workflowId);
           return;
         }
 
@@ -582,6 +622,46 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
             void loadWorkflows();
             void refreshWorkflowVersionHistory(queryClient);
           }
+        },
+        onError: (error) => {
+          const conflict = publicationConflictCode(error);
+          if (!conflict) {
+            // Anything else keeps what a failed write has always done: the
+            // mutation cache says what the server said, and the review stays
+            // open to try again.
+            return;
+          }
+
+          // Both coded conflicts end the review this attempt was built on. The
+          // epoch is what stops a late answer from closing a review the
+          // operator has opened since, exactly as the success path is held.
+          if (
+            !clearPublicationReview({
+              workflowId: publishReview.workflowId,
+              epoch: publishReview.epoch,
+            })
+          ) {
+            return;
+          }
+
+          if (conflict === PUBLICATION_CONFLICT_CODES.stale) {
+            // The version this draft was compared against is no longer the
+            // current one, so the changes the operator approved no longer
+            // describe what publishing would do. Read the publication state
+            // back and leave them to review again; the canvas keeps the draft
+            // it has.
+            void refreshWorkflowPublication(
+              queryClient,
+              publishReview.workflowId
+            );
+            void refreshWorkflowVersionHistory(queryClient);
+            toast.error(
+              "Someone published a newer version while you were reviewing. Publish again to compare against it."
+            );
+            return;
+          }
+
+          reportNothingToPublish(publishReview.workflowId);
         },
         onSettled: (_payload, _error, _publishInput) => {
           if (publishingReviewRef.current === publishingKey) {

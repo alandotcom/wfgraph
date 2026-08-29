@@ -1,3 +1,4 @@
+import { INTEGRATION_VALIDATION_FAILED_CODE } from "#src/rpc/error-codes";
 import { asNonEmptyString } from "#src/types/string";
 
 function readInvalidIntegrationIds(value: unknown): string[] {
@@ -40,7 +41,7 @@ export function getRpcErrorMessage(
     asNonEmptyString(value.details) ??
     fallback;
 
-  if (value.code === "integration_validation_failed") {
+  if (value.code === INTEGRATION_VALIDATION_FAILED_CODE) {
     const invalidIntegrationIds = readInvalidIntegrationIds(
       value.invalidIntegrationIds
     );

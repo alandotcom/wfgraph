@@ -1,5 +1,9 @@
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
-import type { JsonObject } from "@wfgraph/shared/types/json";
+import {
+  type JsonObject,
+  type JsonValue,
+  readJsonObject,
+} from "@wfgraph/shared/types/json";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 
 export function rpcUrl(input: RequestInfo | URL): string {
@@ -8,10 +12,6 @@ export function rpcUrl(input: RequestInfo | URL): string {
     : input instanceof URL
       ? input.href
       : input.url;
-}
-
-function isJsonObject(value: unknown): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export async function parseRpcRequestInput(
@@ -30,13 +30,10 @@ export async function parseRpcRequestInput(
     return {};
   }
 
-  const parsed: unknown = JSON.parse(text);
-  if (!isJsonObject(parsed)) {
-    return {};
-  }
+  const parsed = readJsonObject(JSON.parse(text));
 
-  const payload = parsed.json;
-  return isJsonObject(payload) ? payload : {};
+  // The RPC wire envelope wraps the procedure's input under `json`.
+  return (parsed && readJsonObject(parsed.json)) ?? {};
 }
 
 export function rpcJsonResponse(output: unknown, status = 200): Response {
@@ -44,6 +41,34 @@ export function rpcJsonResponse(output: unknown, status = 200): Response {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+/**
+ * A refused RPC call, in the envelope the link decodes back into an
+ * `ORPCError`. `data` is the failure payload the server's adapter put there,
+ * which is where a machine-readable `code` travels.
+ */
+export function rpcErrorResponse(failure: {
+  code: string;
+  status: number;
+  message: string;
+  data?: JsonValue;
+}): Response {
+  return new Response(
+    JSON.stringify({
+      json: {
+        defined: false,
+        inferable: false,
+        code: failure.code,
+        message: failure.message,
+        ...(failure.data === undefined ? {} : { data: failure.data }),
+      },
+    }),
+    {
+      status: failure.status,
+      headers: { "content-type": "application/json" },
+    }
+  );
 }
 
 export function extractRpcProcedurePath(url: string): string {

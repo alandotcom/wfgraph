@@ -187,10 +187,14 @@ value carrying a newline gets past a test and fails at Inngest, where the failur
 that never triggers.
 
 **A service returns an Effect whose error channel names a domain failure, never an HTTP
-status.** `backend/lib/effect/failures.ts` holds one tagged class per kind
-(`invalid | unauthorized | not_found | conflict | internal`), and two adapters translate a
-kind: `backend/rpc/errors.ts` into an oRPC code, `backend/lib/http/failure-response.ts` into
-an HTTP status.
+status.** `backend/lib/effect/failures.ts` holds a tagged class per kind
+(`invalid | unauthorized | not_found | conflict | internal`), beside a class for each
+failure whose payload says more than the sentence: `IntegrationValidationFailed` carries
+the ids it refused, and `PublicationConflict` carries one of two codes, which is how the
+editor chooses its recovery from a refused publish. `@wfgraph/shared/rpc/error-codes` is
+the one home of those wire codes, and both ends read them from there. Two adapters translate a kind: `backend/rpc/errors.ts` into an oRPC code,
+`backend/lib/http/failure-response.ts` into an HTTP status. A code reaches the client on
+`ApiError`; nothing there matches against message text.
 
 **A service takes its database questions from its aggregate's repository**, never from
 `Database` directly, and the type system holds it to that: `WfGraphServices` in
@@ -328,8 +332,9 @@ the built bundle handed to `createWfGraphApp`.
 
 **The published package is not the dev tree.** `packages/core` publishes `dist` and
 `drizzle`, with `@wfgraph/shared` inlined into the build so it never appears as a dependency,
-and `backend/lib/effect/test-layers.ts` reachable from no entry. Verify a packaging change
-with `pnpm pack` and read the extracted manifest. `docs/embedding.md` ("Package exports")
+and `backend/lib/effect/test-layers.ts` and `backend/lib/effect/span-test-support.ts`
+reachable from no entry. Verify a packaging change with `pnpm pack` and read the extracted
+manifest. `docs/embedding.md` ("Package exports")
 is the one home of the seven core entry points.
 
 ## Code cleanliness
@@ -409,10 +414,10 @@ peer ranges, so a mismatched pair installs fine and each brings its own nested c
 failure is silent and lands at runtime, because two copies mean two `ORPCError` constructors
 and the client's `instanceof` check quietly stops matching.
 
-**A write says what it invalidates; the call site does not.** `refreshWorkflowList`,
-`refreshRunHistory` and `refreshIntegrations` in `packages/client/src/lib/rpc-query.ts` are
-the only place a cache key is named for invalidation, and a mutation calls one from its
-`onSuccess`. **Never invalidate an area key** like `orpcQuery.workflow.key()`: the area
+**A write says what it invalidates; the call site does not.** The `refresh*` helpers in
+`packages/client/src/lib/rpc-query.ts` are the only place a cache key is named for
+invalidation, and a mutation calls one from its `onSuccess`. **Never invalidate an area
+key** like `orpcQuery.workflow.key()`: the area
 covers the run panel's three procedures, which poll every two seconds, so one write becomes
 a burst of refetches.
 
@@ -423,8 +428,12 @@ mutation whose own response already carries the fresher value: invalidating woul
 refetch what the mutation just returned. This is the one place that patches a cache entry
 directly; every other write invalidates through the helpers above.
 
-**A mutation that shows its own failure says so.** `mutationMeta.errorShownByCaller: true`
-suppresses the `MutationCache` toast for a call site rendering the error itself;
+**A mutation that shows its own failure says so.** `mutationMeta.errorShownByCaller`
+suppresses the `MutationCache` toast for a call site rendering the error itself: `true`
+suppresses every failure, and a predicate `(error) => boolean` suppresses the ones it
+claims, which is what the publish mutation uses to answer its two coded conflicts and leave
+the rest to the cache. Claim only what the call site really answers, because a per-mutate
+`onError` is skipped once its component has unmounted while the cache handler still runs.
 `errorMessage` replaces the server's wording; neither falls back to `error.message`.
 `mutationErrorToast` in `query-client.ts` is that decision as a pure function.
 

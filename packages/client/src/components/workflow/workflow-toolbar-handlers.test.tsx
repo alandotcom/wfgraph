@@ -1,30 +1,28 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  createMemoryHistory,
-  createRootRoute,
-  createRouter,
-  RouterProvider,
-} from "@tanstack/react-router";
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
-import { ReactFlowProvider } from "@xyflow/react";
-import {
-  createStore,
-  Provider as JotaiProvider,
-  useAtomValue,
-  useSetAtom,
-} from "jotai";
-import { type ReactNode, useState } from "react";
+/**
+ * What Publish and Run do before they reach the server.
+ *
+ * The provider preflight is asynchronous and the operator can navigate away
+ * while it runs, so most of what is checked here is which answers still count.
+ * A publish the server refuses is `workflow-toolbar-publish-conflicts.test.tsx`.
+ */
+
+import { act, fireEvent, waitFor } from "@testing-library/react";
+import { useSetAtom } from "jotai";
+import { useState } from "react";
 import { toast } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
+import { useOverlay } from "#src/components/overlays/overlay-provider";
+import type { WorkflowToolbarState } from "#src/components/workflow/workflow-toolbar-handlers";
 import {
-  OverlayProvider,
-  useOverlay,
-} from "#src/components/overlays/overlay-provider";
-import {
-  useWorkflowActions,
-  type WorkflowToolbarState,
-} from "#src/components/workflow/workflow-toolbar-handlers";
+  deferred,
+  expectedSnapshot,
+  PublishProbe,
+  renderProbe,
+  state,
+  testQueryClient,
+  workflowId,
+  workflowStore,
+} from "#src/components/workflow/workflow-toolbar-test-support";
 import {
   extractRpcProcedurePath,
   parseRpcRequestInput,
@@ -33,7 +31,6 @@ import {
 } from "#src/lib/rpc-fetch-test-support";
 import { PREFLIGHT_BUSY_MESSAGE } from "#src/hooks/use-workflow-issue-preflight";
 import { orpcQuery } from "#src/lib/rpc-query";
-import { toSerializedGraph } from "#src/lib/rpc-client";
 import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { toEditorNode } from "#src/lib/workflow-graph-types";
@@ -43,21 +40,6 @@ import {
 } from "@wfgraph/shared/graph/graph";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
-const workflowId = "workflow_1";
-const graph = createSerializedWorkflowGraph({
-  nodes: [
-    {
-      id: "lifecycle_1",
-      type: "lifecycle",
-      position: { x: 0, y: 0 },
-      data: { label: "Lifecycle", type: "lifecycle" },
-    },
-  ],
-  edges: [],
-});
-const nodes = toWorkflowGraphData(graph).nodes.map(toEditorNode);
-const expectedSnapshot = toSerializedGraph({ nodes, edges: [] });
-const catalog: ExtensionCatalog = { actions: [], events: [], integrations: [] };
 const providerCatalog: ExtensionCatalog = {
   actions: [
     {
@@ -118,45 +100,6 @@ const providerGraph = createSerializedWorkflowGraph({
 const providerNodes =
   toWorkflowGraphData(providerGraph).nodes.map(toEditorNode);
 
-function workflowStore(id = workflowId) {
-  const store = createStore();
-  store.set(currentWorkflowIdAtom, id);
-  return store;
-}
-
-function state(): WorkflowToolbarState {
-  return {
-    nodes,
-    edges: [],
-    isExecuting: false,
-    setIsExecuting: vi.fn(),
-    isGenerating: false,
-    clearWorkflow: vi.fn(),
-    updateNodeData: vi.fn(),
-    currentWorkflowId: workflowId,
-    workflowName: "Workflow",
-    workflowMode: "test",
-    setCurrentWorkflowMode: vi.fn(),
-    isOwner: true,
-    isSaving: false,
-    hasUnsavedChanges: true,
-    undo: vi.fn(),
-    redo: vi.fn(),
-    canUndo: false,
-    canRedo: false,
-    allWorkflows: [],
-    setSelectedNodeId: vi.fn(),
-    userIntegrations: [],
-    publication: {
-      isPublished: true,
-      hasUnpublishedChanges: true,
-      publishedVersionId: "version_7",
-      publishedVersion: 7,
-      publishedAt: "2026-08-23T15:00:00.000Z",
-    },
-  };
-}
-
 function providerState(
   currentWorkflowId = workflowId,
   templateId = "tpl_1"
@@ -189,38 +132,6 @@ function providerState(
       },
     ],
   };
-}
-
-function PublishProbe({
-  workflowState = state(),
-}: {
-  workflowState?: WorkflowToolbarState;
-}) {
-  const actions = useWorkflowActions(workflowState);
-  const editingLocked = useAtomValue(canvasEditingLockedAtom);
-  const { stack } = useOverlay();
-  return (
-    <>
-      <button onClick={actions.handlePublish} type="button">
-        Start publish
-      </button>
-      <button onClick={() => void actions.handleExecute()} type="button">
-        Run workflow
-      </button>
-      <button onClick={actions.confirmPublish} type="button">
-        Confirm publish
-      </button>
-      <button onClick={() => actions.setPublishReviewOpen(false)} type="button">
-        Cancel review
-      </button>
-      <output>{actions.publishReview ? "ready" : "idle"}</output>
-      <output aria-label="editing lock">{String(editingLocked)}</output>
-      <output aria-label="provider preflight">
-        {String(actions.isPreflighting)}
-      </output>
-      <output aria-label="overlay count">{stack.length}</output>
-    </>
-  );
 }
 
 function NavigationPublishProbe({
@@ -268,47 +179,6 @@ function UnmountPublishProbe() {
   );
 }
 
-function deferred<T>() {
-  let resolveDeferred!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
-    resolveDeferred = resolvePromise;
-  });
-  return { promise, resolve: (value: T) => resolveDeferred(value) };
-}
-
-function renderProbe({
-  probe = <PublishProbe />,
-  extensionCatalog = catalog,
-  store = workflowStore(),
-  queryClient = new QueryClient(),
-}: {
-  probe?: ReactNode;
-  extensionCatalog?: ExtensionCatalog;
-  store?: ReturnType<typeof workflowStore>;
-  queryClient?: QueryClient;
-} = {}) {
-  const rootRoute = createRootRoute({ component: () => probe });
-
-  return render(
-    <JotaiProvider store={store}>
-      <QueryClientProvider client={queryClient}>
-        <ReactFlowProvider>
-          <ExtensionCatalogProvider value={extensionCatalog}>
-            <OverlayProvider>
-              <RouterProvider
-                router={createRouter({
-                  routeTree: rootRoute,
-                  history: createMemoryHistory({ initialEntries: ["/"] }),
-                })}
-              />
-            </OverlayProvider>
-          </ExtensionCatalogProvider>
-        </ReactFlowProvider>
-      </QueryClientProvider>
-    </JotaiProvider>
-  );
-}
-
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -328,7 +198,7 @@ describe("useWorkflowActions publication preflight", () => {
     const view = renderProbe({
       probe: <PublishProbe workflowState={providerState()} />,
       extensionCatalog: providerCatalog,
-      queryClient: new QueryClient({
+      queryClient: testQueryClient({
         defaultOptions: { queries: { retry: false } },
       }),
     });
@@ -492,7 +362,7 @@ describe("useWorkflowActions publication preflight", () => {
     const view = renderProbe({
       probe: <PublishProbe workflowState={providerState()} />,
       extensionCatalog: providerCatalog,
-      queryClient: new QueryClient({
+      queryClient: testQueryClient({
         defaultOptions: { queries: { retry: false } },
       }),
     });
@@ -569,7 +439,7 @@ describe("useWorkflowActions publication preflight", () => {
     const view = renderProbe({
       probe: <PublishProbe workflowState={providerState()} />,
       extensionCatalog: providerCatalog,
-      queryClient: new QueryClient({
+      queryClient: testQueryClient({
         defaultOptions: { queries: { retry: false } },
       }),
     });
@@ -600,7 +470,7 @@ describe("useWorkflowActions publication preflight", () => {
         />
       ),
       extensionCatalog: providerCatalog,
-      queryClient: new QueryClient({
+      queryClient: testQueryClient({
         defaultOptions: { queries: { retry: false } },
       }),
     });
@@ -620,7 +490,7 @@ describe("useWorkflowActions publication preflight", () => {
 
   it("compares the exact editor snapshot before confirmation publishes that snapshot", async () => {
     const requests: Array<{ path: string; input: unknown }> = [];
-    const queryClient = new QueryClient();
+    const queryClient = testQueryClient();
     const versionHistoryKey = orpcQuery.workflow.getVersionHistory.infiniteKey({
       input: (cursor: undefined) => ({ workflowId, cursor }),
       initialPageParam: undefined,

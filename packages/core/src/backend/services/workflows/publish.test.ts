@@ -1,7 +1,10 @@
 import { assert, describe, it as standalone, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
-import { Conflict, InvalidInput } from "#src/backend/lib/effect/failures";
+import {
+  InvalidInput,
+  PublicationConflict,
+} from "#src/backend/lib/effect/failures";
 import {
   SilentAppLoggerLayer,
   stubExtensionCatalog,
@@ -13,6 +16,7 @@ import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { catalogFingerprint } from "#src/backend/services/workflows/version-digest";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import { PUBLICATION_CONFLICT_CODES } from "@wfgraph/shared/rpc/error-codes";
 
 const catalog = {
   events: [
@@ -206,11 +210,12 @@ describe("publishWorkflow", () => {
             expectedPublishedVersionId: "ver_7",
           }).pipe(Effect.provide(repo), Effect.flip);
 
-          assert.instanceOf(failure, Conflict);
-          assert.strictEqual(
-            failure.error,
-            "This workflow was published elsewhere. Refresh and try again."
-          );
+          assert.instanceOf(failure, PublicationConflict);
+          assert.deepStrictEqual(failure.payload, {
+            error:
+              "This workflow was published elsewhere. Refresh and try again.",
+            code: PUBLICATION_CONFLICT_CODES.stale,
+          });
         })
     );
 
@@ -285,8 +290,11 @@ describe("publishWorkflow", () => {
             expectedPublishedVersionId: current.id,
           }).pipe(Effect.provide(repo), Effect.flip);
 
-          assert.instanceOf(failure, Conflict);
-          assert.include(failure.error, "already published");
+          assert.instanceOf(failure, PublicationConflict);
+          assert.deepStrictEqual(failure.payload, {
+            error: "This workflow graph is already published.",
+            code: PUBLICATION_CONFLICT_CODES.alreadyPublished,
+          });
         })
     );
 
@@ -328,7 +336,11 @@ describe("publishWorkflow", () => {
             expectedPublishedVersionId: current.id,
           }).pipe(Effect.provide(repo), Effect.flip);
 
-          assert.instanceOf(failure, Conflict);
+          assert.instanceOf(failure, PublicationConflict);
+          assert.strictEqual(
+            failure.payload.code,
+            PUBLICATION_CONFLICT_CODES.alreadyPublished
+          );
         })
     );
 
@@ -360,7 +372,11 @@ describe("publishWorkflow", () => {
           expectedPublishedVersionId: current.id,
         }).pipe(Effect.provide(repo), Effect.flip);
 
-        assert.instanceOf(failure, Conflict);
+        assert.instanceOf(failure, PublicationConflict);
+        assert.strictEqual(
+          failure.payload.code,
+          PUBLICATION_CONFLICT_CODES.alreadyPublished
+        );
       })
     );
 
@@ -423,7 +439,11 @@ describe("publishWorkflow", () => {
           expectedPublishedVersionId: null,
         }).pipe(Effect.provide(repo), Effect.flip);
 
-        assert.instanceOf(failure, Conflict);
+        assert.instanceOf(failure, PublicationConflict);
+        assert.strictEqual(
+          failure.payload.code,
+          PUBLICATION_CONFLICT_CODES.stale
+        );
         assert.ok(
           failure.error.includes("Refresh"),
           `expected refresh guidance, got: ${failure.error}`

@@ -1,4 +1,8 @@
 import { Schema } from "effect";
+import {
+  INTEGRATION_VALIDATION_FAILED_CODE,
+  PUBLICATION_CONFLICT_CODE_VALUES,
+} from "@wfgraph/shared/rpc/error-codes";
 
 /**
  * Why a service call failed, stated in the domain's own terms.
@@ -112,7 +116,7 @@ export class IntegrationValidationFailed extends Schema.TaggedError<IntegrationV
   get payload(): ServiceFailurePayload {
     return {
       error: this.error,
-      code: "integration_validation_failed",
+      code: INTEGRATION_VALIDATION_FAILED_CODE,
       invalidIntegrationIds: this.invalidIntegrationIds,
     };
   }
@@ -155,6 +159,33 @@ export class Conflict extends Schema.TaggedError<Conflict>()("Conflict", {
 }
 
 /**
+ * A publish collided with the publication state it was reviewed against.
+ *
+ * Its kind is `conflict` like any other collision, and the reason it is a class
+ * of its own is the code: the editor has a different recovery for each of the
+ * two cases. A stale claim ends the review the user approved and reloads the
+ * publication state; a graph that is already published closes the review and
+ * says there was nothing to send. Both recoveries read `code` off the payload,
+ * because the sentence beside it is written for a person and may be reworded.
+ *
+ * The two codes are the whole set. Any other collision stays a plain
+ * `Conflict`.
+ */
+export class PublicationConflict extends Schema.TaggedError<PublicationConflict>()(
+  "PublicationConflict",
+  {
+    error: Schema.String,
+    code: Schema.Literals(PUBLICATION_CONFLICT_CODE_VALUES),
+  }
+) {
+  readonly kind: Kind<"conflict"> = "conflict";
+
+  get payload(): ServiceFailurePayload {
+    return { error: this.error, code: this.code };
+  }
+}
+
+/**
  * Something failed on our side and the caller cannot fix it.
  *
  * `cause` holds whatever was thrown underneath, so the operator-facing log keeps
@@ -182,4 +213,5 @@ export type ServiceFailure =
   | Unauthorized
   | NotFound
   | Conflict
+  | PublicationConflict
   | InternalFailure;

@@ -11,6 +11,7 @@ import { validateWorkflowConditionConfigs } from "#src/backend/services/workflow
 import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
 import { validateWorkflowIntegrations } from "#src/backend/services/workflows/validation/workflow-integration-validation";
 import { validateWorkflowEvents } from "#src/backend/services/workflows/validation/workflow-lifecycle-validation";
+import { annotateServiceSpan } from "#src/backend/lib/telemetry";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { graphDigest } from "#src/backend/services/workflows/version-digest";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
@@ -181,12 +182,15 @@ function checkGraphAndCatalog(input: {
  * builder already knows. Each logs it its own way.
  */
 export const runWorkflowExecutionPreflight = Effect.fn(
-  "runWorkflowExecutionPreflight"
+  "wfgraph.execution.preflight"
 )(function* (input: {
   workflow: WorkflowForPreflight;
   workflowVersionId: string;
   catalogFingerprint: string;
 }) {
+  // The version id is the only identifier here: the caller holds the workflow id
+  // and this takes a graph rather than a row.
+  yield* annotateServiceSpan({ versionId: input.workflowVersionId });
   const { workflow } = input;
   const { catalog } = yield* Extensions;
 
@@ -238,28 +242,31 @@ export const runWorkflowExecutionPreflight = Effect.fn(
  * The Event fan-out uses the same published-version load; a missing publish is a
  * skipped workflow rather than a failure a caller reads.
  */
-export const loadWorkflowForRun = Effect.fn("loadWorkflowForRun")(function* (
-  workflowId: string
-) {
-  const repo = yield* WorkflowRepo;
-  const loaded = yield* repo.findByIdWithPublishedVersionForRun(workflowId);
+export const loadWorkflowForRun = Effect.fn("wfgraph.execution.load_workflow")(
+  function* (workflowId: string) {
+    yield* annotateServiceSpan({ workflowId });
+    const repo = yield* WorkflowRepo;
+    const loaded = yield* repo.findByIdWithPublishedVersionForRun(workflowId);
 
-  if (!loaded) {
-    return yield* new NotFound({ error: "Workflow not found" });
-  }
+    if (!loaded) {
+      return yield* new NotFound({ error: "Workflow not found" });
+    }
 
-  const { workflow, publishedVersion: version } = loaded;
-  if (!version) {
-    return yield* new InvalidInput({
-      error: "Workflow has not been published",
+    const { workflow, publishedVersion: version } = loaded;
+    if (!version) {
+      return yield* new InvalidInput({
+        error: "Workflow has not been published",
+      });
+    }
+
+    yield* annotateServiceSpan({ versionId: version.id });
+
+    const preflight = yield* runWorkflowExecutionPreflight({
+      workflow: { graph: version.graph },
+      workflowVersionId: version.id,
+      catalogFingerprint: version.catalogFingerprint,
     });
+
+    return { workflow, preflight };
   }
-
-  const preflight = yield* runWorkflowExecutionPreflight({
-    workflow: { graph: version.graph },
-    workflowVersionId: version.id,
-    catalogFingerprint: version.catalogFingerprint,
-  });
-
-  return { workflow, preflight };
-});
+);

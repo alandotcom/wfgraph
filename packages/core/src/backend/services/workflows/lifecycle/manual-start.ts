@@ -6,6 +6,7 @@ import {
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { InvalidInput } from "#src/backend/lib/effect/failures";
 import { seamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
+import { annotateServiceSpan } from "#src/backend/lib/telemetry";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
 import { loadWorkflowForRun } from "#src/backend/services/executions/preflight";
@@ -131,7 +132,7 @@ const refuseManualStart = Effect.fn("refuseManualStart")(function* (input: {
  * A manual run: the Run button, and the one entrypoint that names a workflow
  * rather than an Event.
  */
-export const postWorkflowExecute = Effect.fn("postWorkflowExecute")(
+export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
   function* (
     workflowId: string,
     body: {
@@ -151,6 +152,7 @@ export const postWorkflowExecute = Effect.fn("postWorkflowExecute")(
     }
   ) {
     const logger = yield* loggerFor(workflowId);
+    yield* annotateServiceSpan({ workflowId });
 
     const { workflow, preflight } = yield* loadWorkflowForRun(workflowId).pipe(
       Effect.tapError((failure) =>
@@ -301,6 +303,15 @@ export const postWorkflowExecute = Effect.fn("postWorkflowExecute")(
     };
     return response;
   },
+  // The start span's own verdict: how the request ended, and the run it opened
+  // if it opened one. Read off the answer, so a span that ends without a failure
+  // always names an outcome whichever of the five returns reached it.
+  Effect.tap((response) =>
+    annotateServiceSpan({
+      executionId: response.executionId,
+      outcome: response.status,
+    })
+  ),
   // A rejected query and a refused Inngest send both leave the caller with the
   // same nothing, and the operator with the same line to grep for.
   (effect, workflowId) =>
