@@ -41,9 +41,9 @@ type WorkflowForPreflight = {
 export type WorkflowExecutionPreflight = {
   workflowGraph: SerializedWorkflowGraph;
   /**
-   * The version the run pins to: the published version this preflight loaded,
-   * or the draft snapshot the caller is about to mint, whose row does not exist
-   * yet when this preflight receives the id.
+   * The version the run pins to. For a published start, the version this
+   * preflight loaded. For a draft start, the snapshot the caller is about to
+   * mint; that row does not exist yet when this preflight receives the id.
    */
   workflowVersionId: string;
   /** Catalog fingerprint stored on that version. */
@@ -60,18 +60,18 @@ export type WorkflowExecutionPreflight = {
 };
 
 /**
- * What a start reads off either loader. `pinVersion` is the one step that has
- * to run before `preflight.workflowVersionId` is stored on an Execution: a
- * published start's is `Effect.void`, and a draft start's writes the snapshot
- * row (and may swap the id for an existing identical snapshot's).
- * `releaseVersion` is its undo for a start refused after the pin, and it never
- * fails: a snapshot left behind is a cost, and a refused start is the answer
- * the caller already has.
+ * What a start reads off either loader.
+ *
+ * Run `pinVersion` before storing `preflight.workflowVersionId` on an Execution.
+ * A published start's `pinVersion` is `Effect.void`. A draft start's writes the
+ * snapshot row, and can replace the id with that of an existing identical
+ * snapshot. `releaseVersion` undoes the pin when a later gate refuses the start.
+ * It never fails, because a leftover snapshot row costs only storage.
  */
 export type LoadedForRun = {
   workflow: WorkflowRunRow;
   preflight: WorkflowExecutionPreflight;
-  /** Which graph the run pins, in the words the timeline says it in. */
+  /** Which graph the run pins, in the wording the timeline uses. */
   version: PinnedRunVersion;
   pinVersion: Effect.Effect<void, DatabaseError>;
   releaseVersion: Effect.Effect<void>;
@@ -310,25 +310,25 @@ export const loadWorkflowForRun = Effect.fn("wfgraph.execution.load_workflow")(
 );
 
 /**
- * The same prelude for the graph the canvas holds: read the workflow with its
- * draft graph, put that graph through the same preflight a published start runs
- * (parse, action configs, conditions, Events, integrations), and hand back the
- * version id the run will pin to. A never-published workflow is runnable this way.
+ * Prepares a run of the draft graph the canvas holds. Reads the workflow with
+ * its draft graph, puts that graph through the same preflight a published start
+ * runs (parse, action configs, conditions, Events, integrations), and returns
+ * the version id the run pins to. A workflow that was never published can run
+ * this way.
  *
- * Publish's readiness battery -- templates, Event Split outlets, outlet
- * reachability -- is deliberately not asked here, so a half-built graph fails at
- * the node rather than at the request. A Draft run is what the builder reaches
- * for while the graph is still half-built.
+ * This skips the readiness checks Publish adds: templates, Event Split outlets,
+ * and outlet reachability. A half-built graph therefore fails at the node it
+ * reaches instead of at the request, which is what a builder wants while the
+ * graph is still half-built.
  *
- * The workflow's Published mode is not read here. It governs Events and runs of
- * the published version; a Draft run always goes to test recipients, which
- * `postWorkflowExecute` decides on the request rather than on the graph.
+ * This also ignores the workflow's Published mode, which governs Events and runs
+ * of the published version. A Draft run always goes to test recipients, chosen
+ * by `postWorkflowExecute` from the request.
  *
- * The snapshot row is not written here. `pinVersion` writes it, and the caller
- * runs that right before the one step that stores the version id on an
- * Execution, so a start turned away by a later gate (the Start Event name, the
- * Event payload, the manual-start rule, the Event Split rule, Concurrency)
- * leaves no row behind.
+ * `pinVersion` writes the snapshot row. The caller runs it right before the step
+ * that stores the version id on an Execution, so a start refused by a later gate
+ * (the Start Event name, the Event payload, the manual-start rule, the Event
+ * Split rule, Concurrency) leaves no row behind.
  */
 export const loadDraftForRun = Effect.fn("wfgraph.execution.load_draft")(
   function* (workflowId: string) {
@@ -352,17 +352,18 @@ export const loadDraftForRun = Effect.fn("wfgraph.execution.load_draft")(
       catalogFingerprint: fingerprint,
     });
 
-    // The row stores the workflow's own draft column, never the graph the
-    // preflight handed back. That one comes from a memo keyed on the semantic
-    // digest, which drops node positions and generated edge ids, so a memo hit
-    // answers with the first graph ever validated for those semantics -- an
-    // older layout of this workflow, or another workflow's. The run panel paints
-    // this row, so a hit would show the builder positions they have since moved.
-    // The digest is unaffected either way, being the memo key itself.
+    // The row stores the workflow's own draft column rather than the graph the
+    // preflight returned. The preflight graph comes from a memo keyed on the
+    // semantic digest, which drops node positions and generated edge ids. A memo
+    // hit therefore answers with the first graph validated for those semantics,
+    // which can be an older layout of this workflow or another workflow's graph.
+    // The run panel paints this row, so a hit would show positions the builder
+    // has already moved. The digest is the memo key, so it is the same either
+    // way.
     //
-    // The repository may answer with an earlier snapshot holding this exact
-    // graph, so the id the run pins to is the one the row carries, which is why
-    // `preflight.workflowVersionId` is rewritten here rather than trusted.
+    // The repository can answer with an earlier snapshot holding this exact
+    // graph. The run pins the id that row carries, so
+    // `preflight.workflowVersionId` is rewritten here.
     const pinVersion = Effect.map(
       repo.freezeDraftSnapshot({
         workflowId,

@@ -117,11 +117,11 @@ export function PublishReviewDialog({
           </dl>
         </div>
 
-        {/* Where v{n} sends the moment it is published, said in the tone of
-            that answer: the two modes are equally worth stating, and Live is
-            the one nobody should learn about from a delivered message. */}
-        {/* The signal rides the border and the icon; the words stay in
-            foreground ink, since signal text on its own tint is under the
+        {/* Says where v{n} sends as soon as it is published. Both modes are
+            worth stating, and the Live case must be read before the press
+            rather than discovered from a delivered message. */}
+        {/* The border and the icon carry the signal colour. The words stay in
+            foreground ink, because signal text on its own tint falls under the
             contrast floor at this size (DESIGN.md, Tertiary). */}
         {mode === "test" ? (
           <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-foreground">

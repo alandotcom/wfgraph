@@ -3,10 +3,10 @@
  *
  * The client pre-run checks (required fields, missing connections, orphan
  * template refs, and provider-backed fields that went unchecked) land here as a
- * flat discriminated list. Overlay grouping and
- * "Run draft anyway" are derived from that list so the toolbar is chrome, not a second
- * validator. Server save/preflight reuse the same required-field and missing-
- * connection pieces; wrapping every server refusal into this model is deferred.
+ * flat discriminated list. Overlay grouping and "Run draft anyway" are derived
+ * from that list so the toolbar is chrome, not a second validator. Server
+ * save/preflight reuse the same required-field and missing-connection pieces;
+ * wrapping every server refusal into this model is deferred.
  */
 
 import {

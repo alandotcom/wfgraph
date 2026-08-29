@@ -71,16 +71,16 @@ describe("buildRunStartedAuditMessage", () => {
     ).toBe("Event-triggered run started, to real recipients");
   });
 
-  it("names who the run reached rather than a mode the workflow is in", () => {
+  it("names the recipients a test run reached", () => {
     expect(
       buildRunStartedAuditMessage({ startSource: "event", runMode: "test" })
     ).toBe("Event-triggered run started, to test recipients");
   });
 
-  // The row's whole job is answering which graph ran, and a Draft run of a Live
-  // workflow reaches test recipients like a Test run of the published version
-  // does. Without the version the two rows would be the same sentence.
-  it("names the Draft a snapshot run pinned", () => {
+  // A Draft run of a Live workflow reaches test recipients, and so does a test
+  // run of the published version. The pinned version is what tells the two rows
+  // apart.
+  it("names the Draft graph a snapshot run pinned", () => {
     expect(
       buildRunStartedAuditMessage({
         startSource: "manual",

@@ -183,10 +183,10 @@ export function renderProbe({
   queryClient?: QueryClient;
 } = {}) {
   const rootRoute = createRootRoute({ component: () => probe });
-  // A started run navigates here (workflow-run-actions.ts's
-  // `navigateToExecution`), so the route has to exist for that call to resolve
-  // rather than throw on an unmatched path. The route's own component is never
-  // reached: the root's stays the whole tree, with no `<Outlet />` to reveal it.
+  // A started run navigates here through `navigateToExecution` in
+  // workflow-run-actions.ts, so the route must exist or that call throws on an
+  // unmatched path. The route's component never renders, because the root
+  // component has no `<Outlet />`.
   const workflowRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/workflows/$workflowId",

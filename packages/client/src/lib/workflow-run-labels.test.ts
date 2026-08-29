@@ -9,20 +9,19 @@ import {
   runOverlayCopy,
   runRecipientsLabel,
   runSendsLabel,
-  runVerbLabel,
+  runCommandLabel,
   workflowRunTarget,
 } from "#src/lib/workflow-run-labels";
 
 /**
- * The vocabulary is the feature here: two verbs the operator picks between, one
- * of which always means test recipients. A label that drops the version number
- * or borrows the other verb's mode is the defect these cases exist to catch.
+ * These cases cover the wording of the two run commands. The draft command
+ * always means test recipients. They catch a label that drops the version
+ * number or takes the other command's mode.
  */
 describe("workflowRunTarget", () => {
-  // A draft run goes to test recipients whatever the workflow's Published mode
-  // is, and it says nothing about the published version, so neither is on that
-  // arm of the target at all.
-  it("names the draft alone, published version or not", () => {
+  // A draft run reaches test recipients whatever the Published mode is, and it
+  // ignores the published version, so the draft arm carries neither field.
+  it("returns the draft target whether or not a version is published", () => {
     for (const publishedVersion of [7, undefined]) {
       expect(
         workflowRunTarget({
@@ -34,7 +33,7 @@ describe("workflowRunTarget", () => {
     }
   });
 
-  it("has no published target before the first publish", () => {
+  it("returns null for a published target before the first publish", () => {
     expect(
       workflowRunTarget({
         graph: "published",
@@ -45,21 +44,21 @@ describe("workflowRunTarget", () => {
   });
 });
 
-describe("runVerbLabel", () => {
-  it("names the draft without a mode", () => {
-    expect(runVerbLabel({ graph: "draft" })).toBe("Run draft");
+describe("runCommandLabel", () => {
+  it("labels the draft run without a mode", () => {
+    expect(runCommandLabel({ graph: "draft" })).toBe("Run draft");
   });
 
-  it("suffixes the published run with the mode it honours", () => {
+  it("labels the published run with its version and mode", () => {
     expect(
-      runVerbLabel({
+      runCommandLabel({
         graph: "published",
         publishedVersion: 7,
         workflowMode: "live",
       })
     ).toBe("Run v7 · Live");
     expect(
-      runVerbLabel({
+      runCommandLabel({
         graph: "published",
         publishedVersion: 7,
         workflowMode: "test",
@@ -69,13 +68,13 @@ describe("runVerbLabel", () => {
 });
 
 describe("publishedRunLabel", () => {
-  it("says why it is unavailable before the first publish", () => {
+  it("gives the reason it is unavailable before the first publish", () => {
     expect(
       publishedRunLabel({ workflowMode: "live", publishedVersion: undefined })
     ).toBe(NOTHING_PUBLISHED_LABEL);
   });
 
-  it("names the version and the mode once there is one", () => {
+  it("names the version and the mode once a version exists", () => {
     expect(
       publishedRunLabel({ workflowMode: "test", publishedVersion: 12 })
     ).toBe("Run v12 · Test");
@@ -83,16 +82,16 @@ describe("publishedRunLabel", () => {
 });
 
 describe("publishedModeWord", () => {
-  it("names the mode the control wears", () => {
+  it("returns the word for each mode", () => {
     expect(publishedModeWord("live")).toBe("Live");
     expect(publishedModeWord("test")).toBe("Test");
   });
 });
 
 describe("publishedModeChoice", () => {
-  // One clause each: the badge beside the control already names the version,
-  // and the menu's own title says the setting is about the published version.
-  it("says who each mode reaches, in a clause", () => {
+  // Each description is a clause, because the badge beside the control names
+  // the version and the menu title names the setting.
+  it("describes who each mode reaches", () => {
     expect(publishedModeChoice("live")).toEqual({
       label: "Live",
       description: "Real recipients",
@@ -105,27 +104,27 @@ describe("publishedModeChoice", () => {
 });
 
 describe("runSendsLabel", () => {
-  it("counts the sends and names the integrations carrying them", () => {
+  it("counts the sends and names the integrations that carry them", () => {
     expect(runSendsLabel({ count: 3, integrations: ["Slack", "Resend"] })).toBe(
       "3 sends: Slack, Resend"
     );
   });
 
-  it("keeps the count singular for one send", () => {
+  it("uses the singular for one send", () => {
     expect(runSendsLabel({ count: 1, integrations: ["Slack"] })).toBe(
       "1 send: Slack"
     );
   });
 
-  // A published graph whose steps only read: worth saying, since the band is
-  // where the operator looks for what a live run will do.
-  it("says so when the graph sends nothing", () => {
+  // A published graph whose steps only read data still needs a label, because
+  // the band is where a reader looks for what a live run does.
+  it("reports no sends when the graph sends nothing", () => {
     expect(runSendsLabel({ count: 0, integrations: [] })).toBe("No sends");
   });
 });
 
 describe("runOverlayCopy", () => {
-  it("says what the draft run does, and stops there", () => {
+  it("describes the draft run and names no version", () => {
     expect(runOverlayCopy({ graph: "draft" })).toEqual({
       title: "Run draft",
       description: "Runs the draft on this canvas with test recipients.",
@@ -133,9 +132,9 @@ describe("runOverlayCopy", () => {
     });
   });
 
-  // The heading names the version in prose, and the button names the
-  // consequence rather than repeating the version.
-  it("makes a live published run's button name the consequence", () => {
+  // The heading names the version in prose. The button names the consequence
+  // instead of repeating the version.
+  it("names the consequence on a live published run's button", () => {
     expect(
       runOverlayCopy({
         graph: "published",
@@ -149,7 +148,7 @@ describe("runOverlayCopy", () => {
     });
   });
 
-  it("keeps the verb on a test published run's button", () => {
+  it("keeps the command label on a test published run's button", () => {
     expect(
       runOverlayCopy({
         graph: "published",
@@ -165,21 +164,21 @@ describe("runOverlayCopy", () => {
 });
 
 describe("runGraphLabel", () => {
-  it("names a snapshot run after the canvas it froze", () => {
+  it("labels a draft snapshot run as Draft", () => {
     expect(
       runGraphLabel({ versionKind: "draft_snapshot", versionNumber: null })
     ).toBe("Draft");
   });
 
-  it("names a published run by its number, tersely or in prose", () => {
+  it("labels a published run by its version number, short or qualified", () => {
     const run = { versionKind: "published", versionNumber: 7 } as const;
     expect(runGraphLabel(run)).toBe("v7");
     expect(runGraphLabel(run, "qualified")).toBe("Published v7");
   });
 
-  // The contract refuses a published version without a number, so this is the
-  // one reading every surface gives the case none of them can produce.
-  it("falls back to the bare word when a published run carries no number", () => {
+  // The contract rejects a published version without a number, so this covers
+  // a row that should never exist.
+  it("falls back to Published when a published run carries no number", () => {
     expect(
       runGraphLabel({ versionKind: "published", versionNumber: null })
     ).toBe("Published");
@@ -193,14 +192,14 @@ describe("runGraphLabel", () => {
 });
 
 describe("runRecipientsLabel", () => {
-  it("says who the run reached", () => {
+  it("labels the recipients the run reached", () => {
     expect(runRecipientsLabel("test")).toBe("Test");
     expect(runRecipientsLabel("live")).toBe("Live");
   });
 });
 
 describe("runGraphRecipientsLabel", () => {
-  it("puts a draft run's graph and recipients in one phrase", () => {
+  it("joins a draft run's graph and recipients into one phrase", () => {
     expect(
       runGraphRecipientsLabel({
         versionKind: "draft_snapshot",
@@ -210,7 +209,7 @@ describe("runGraphRecipientsLabel", () => {
     ).toBe("Draft · Test");
   });
 
-  it("names the published version a run pinned beside its recipients", () => {
+  it("joins the pinned version and the recipients into one phrase", () => {
     expect(
       runGraphRecipientsLabel({
         versionKind: "published",

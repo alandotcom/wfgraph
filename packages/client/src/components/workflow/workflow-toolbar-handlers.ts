@@ -66,7 +66,7 @@ import {
 import {
   type RunSends,
   runSends,
-  runVerbLabel,
+  runCommandLabel,
   workflowRunTarget,
   type WorkflowRunGraph,
   type WorkflowRunTarget,
@@ -162,13 +162,13 @@ type WorkflowHandlerParams = {
 };
 
 /**
- * What the run overlay asks of the graph a run will execute: which Events start
- * it, whether it takes an Event-less start, whether it splits on the Event, the
- * samples that graph kept, and what it can send outward.
+ * The facts the run overlay needs about the graph a run executes: which Events
+ * start it, whether it accepts an Event-less start, whether it splits on the
+ * Event, the samples it kept, and what it can send outward.
  *
- * The server judges a start against the graph it is about to run, so these come
- * off that same graph. Reading them off the canvas for a published run is how
- * the overlay would offer a Start Event v7 does not accept.
+ * The server validates a start against the graph it is about to run, so read
+ * these from that same graph. Reading them from the canvas for a published run
+ * would offer a Start Event that the published version rejects.
  */
 type RunOverlayGraphFacts = {
   startEvents: readonly string[];
@@ -179,8 +179,8 @@ type RunOverlayGraphFacts = {
 };
 
 /**
- * The edges come along for the sends alone: what a run will send depends on
- * which steps it can reach, and reachability is an answer about edges.
+ * The edges are needed only to count the sends. A step sends outward only when
+ * the run can reach it, and reachability is computed from the edges.
  */
 function runOverlayGraphFacts(
   nodes: readonly WorkflowNode[],
@@ -218,8 +218,8 @@ function useWorkflowHandlers({
   // that state is write-then-consume within a single click, so only the
   // instance whose overlay was clicked ever holds one.
   const handleGoToStep = useGoToStep();
-  // Read for one thing here: naming the integrations a live published run
-  // sends through, which is what the run overlay's band states.
+  // Used only to name the integrations a live published run sends through,
+  // which the run overlay states before it confirms.
   const catalog = useExtensionCatalog();
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
@@ -248,11 +248,11 @@ function useWorkflowHandlers({
       return;
     }
 
-    // Run draft executes the canvas, and the server reads that canvas out of the
-    // workflow row, so a queued edit has to land before the run starts.
-    // Autosave is debounced, and a run started inside that window would execute
-    // the previous graph while the canvas paints statuses on the one in front of
-    // the builder. Run v7 needs none of this: it runs what was published.
+    // Run draft executes the canvas, and the server reads that canvas from the
+    // workflow row, so a queued edit must land before the run starts. Autosave
+    // is debounced, so a run started inside that window would execute the
+    // previous graph while the canvas paints statuses on the current one. A
+    // published run skips this, because it runs the published version.
     if (target.graph === "draft" && hasUnsavedChanges) {
       const saved = await saveWorkflow({ nodes, edges }, { immediate: true });
       if (saved && !saved.ok) {
@@ -261,12 +261,11 @@ function useWorkflowHandlers({
       }
     }
 
-    // The sample is kept on the entry node, so the next Run draft opens on what
-    // this one sent. It is written after the flush above, so it rides the next
-    // autosave rather than replacing the graph that flush just sent; the run
-    // carries its own copy on the request. Only a draft run writes it: the
-    // canvas is the graph that press was about, and editing it for a run of a
-    // frozen version would dirty a draft the operator never touched.
+    // Store the sample on the entry node so the next Run draft opens on what
+    // this run sent. The write happens after the flush above, so it rides the
+    // next autosave instead of replacing the graph the flush just sent. The run
+    // request carries its own copy of the sample. Only a draft run writes it,
+    // because writing it for a published run would dirty an untouched draft.
     if (target.graph === "draft") {
       rememberTestPayload({ nodes, updateNodeData, request });
     }
@@ -288,13 +287,13 @@ function useWorkflowHandlers({
           workflowId: currentWorkflowId,
           input: request.input,
           ...(request.eventName ? { eventName: request.eventName } : {}),
-          // Absent means published, on the wire as everywhere else.
+          // An absent field means the published graph, on the wire and in the UI.
           ...(target.graph === "draft" ? { graph: "draft" as const } : {}),
         }),
       nodes,
       setNodeStatuses,
       setIsExecuting,
-      runLabel: runVerbLabel(target),
+      runLabel: runCommandLabel(target),
       // The URL is the one writer of which run is open; workflow-runs.tsx
       // derives the selection atom and the pinned-graph overlay from it.
       navigateToExecution: (executionId) =>
@@ -308,8 +307,8 @@ function useWorkflowHandlers({
   };
 
   /**
-   * The overlay, over the facts of the graph the verb names. The facts arrive
-   * as an argument so the two verbs cannot share one source again.
+   * Opens the overlay over the facts of the graph the command names. The facts
+   * are passed in, so the two run commands cannot read the same graph twice.
    */
   const openRunOverlay = (
     target: WorkflowRunTarget,
@@ -341,9 +340,9 @@ function useWorkflowHandlers({
         }),
         staleTime: Number.POSITIVE_INFINITY,
       });
-      // The lifecycle facts are the published graph's; the sample payload is
-      // the canvas's own. `getVersionGraph` redacts sensitive-looking values,
-      // so a sample read off it would send the mask as the run's input.
+      // Take the lifecycle facts from the published graph and the sample
+      // payload from the canvas. `getVersionGraph` redacts sensitive-looking
+      // values, so a sample read from it would send the mask as the run input.
       const published = toWorkflowGraphData(payload.graph);
       return {
         ...runOverlayGraphFacts(
@@ -375,18 +374,17 @@ function useWorkflowHandlers({
     });
     if (!target) {
       // A published run of a workflow with nothing published. Every control
-      // offering it is disabled with that reason on it, so there is nothing
-      // left to say here.
+      // that offers it is already disabled with that reason, so do nothing.
       return;
     }
 
-    // The draft's issues gate the draft's run alone. Publish already refused
-    // this graph's blocking issues before it became a version, so a run of the
-    // published version is never held back by what the canvas has since broken.
+    // The draft's issues gate the draft run only. Publish rejects blocking
+    // issues before a graph becomes a version, so a published run is not held
+    // back by problems introduced on the canvas since.
     if (target.graph === "published") {
       if (!publishedVersionId) {
-        // A number with no id behind it: there is no graph to read the run's
-        // Events off, so there is nothing to open.
+        // A version number with no id. There is no graph to read the run's
+        // Events from, so there is nothing to open.
         return;
       }
       const facts = await readPublishedGraphFacts(publishedVersionId);
@@ -569,20 +567,17 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
 
   useDomEvent(document, "keydown", handleSaveShortcut, { capture: true });
 
-  // Cmd+Enter is Run draft. The listener lives here, beside handleExecute, so
-  // the shortcut and the split button's face are the same call rather than a
-  // store round trip for something one function call away. The published
-  // version has no chord: it is the deliberate one, and it is reached by
-  // naming it.
+  // Cmd+Enter runs the draft. The listener sits beside handleExecute so the
+  // shortcut and the split button's face make the same call. A published run
+  // has no shortcut, because it must be chosen by name.
   //
-  // Capture phase, because a focused node in the canvas would otherwise get the
-  // keystroke first.
+  // The listener runs in the capture phase, because a focused canvas node would
+  // otherwise receive the keystroke first.
   //
-  // A viewer who does not own the workflow gets no run controls at all, and
-  // this listener is on the document rather than on one of them, so the owner
-  // test that gates the split button is repeated here. Without it the chord
-  // would run a graph the viewer cannot edit, and flush the autosave queue on
-  // the way.
+  // A viewer who does not own the workflow sees no run controls, but this
+  // listener is on the document rather than on a control, so it repeats the
+  // owner check. Without it the shortcut would run a graph the viewer cannot
+  // edit and flush the autosave queue on the way.
   const handleRunShortcut = useCallback(
     (event: KeyboardEvent) => {
       if (!((event.metaKey || event.ctrlKey) && event.key === "Enter")) {
@@ -861,9 +856,9 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     );
   };
 
-  // The write, the toast and the confirmation live in `useSetPublishedMode`, so
-  // the command palette and the Actions menu get the live-ward confirmation by
-  // calling this rather than by remembering to ask for it.
+  // `useSetPublishedMode` owns the write, the toast and the confirmation, so
+  // the command palette and the Actions menu get the switch-to-live
+  // confirmation by calling this hook.
   const handleSetWorkflowMode = useSetPublishedMode();
 
   return {

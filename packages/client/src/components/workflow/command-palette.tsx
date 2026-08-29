@@ -74,7 +74,7 @@ type PaletteItem = {
   /** Everything the item can be found by, which is what the filter matches. */
   readonly keywords: string;
   readonly disabled: boolean;
-  /** A row that reaches real recipients, which the highlight rules below avoid. */
+  /** Whether the row reaches real recipients. The highlight rules below skip these. */
   readonly consequential: boolean;
   readonly icon: ReactNode;
   readonly select: () => void;
@@ -95,13 +95,12 @@ function itemKeywords(item: PaletteItem): string {
 }
 
 /**
- * The group with its consequential rows moved to the end.
+ * Returns the group with its sending rows moved to the end.
  *
- * Base UI seeds its highlight on the first row a query leaves standing, and a
- * highlighted row is the row Return takes, so the plain matches go ahead of the
- * ones that send. It is applied only while a query is narrowing the list: at
- * rest the palette keeps the order its commands were authored in, where the
- * two Run verbs sit together and the first row is "Add step".
+ * Base UI highlights the first row a query leaves standing, and Return takes
+ * the highlighted row, so plain matches go ahead of rows that send. This
+ * applies only while a query narrows the list. At rest the palette keeps its
+ * authored order, where the run commands sit together after "Add step".
  */
 function plainRowsFirst(group: PaletteGroup): PaletteGroup {
   const [plain, consequential] = partition(
@@ -114,11 +113,11 @@ function plainRowsFirst(group: PaletteGroup): PaletteGroup {
 }
 
 /**
- * The highlight styles, which a row wears only while Return would take it.
+ * The highlight styles, applied only while Return would take the row.
  *
- * Disabled rows keep pointer events so hover does not fall through to the
- * list. autoHighlight="always" would otherwise treat that as leaving and paint
- * the first row; skipping data-disabled leaves the row visually inert.
+ * Disabled rows keep pointer events so the pointer does not fall through to the
+ * list, which `autoHighlight="always"` would read as leaving and then highlight
+ * the first row. Skipping `data-disabled` keeps a disabled row visually inert.
  */
 const HIGHLIGHTED_ROW =
   "data-highlighted:not-data-disabled:bg-muted data-highlighted:not-data-disabled:text-foreground";
@@ -128,13 +127,12 @@ function countItems(groups: readonly PaletteGroup[]): number {
 }
 
 /**
- * The highlighted row, and whether an arrow key is what put the highlight
- * there.
+ * The highlighted row, and whether an arrow key put the highlight there.
  *
- * A row that sends is armed by an arrow key and by nothing else: Base UI seeds
- * the highlight on the first row and moves it under the pointer, and it keeps
- * that seed where it is when a query narrows the list to rows that all send.
- * Only an armed row wears the highlight and answers to Return.
+ * Only an arrow key arms a row that sends. Base UI highlights the first row on
+ * its own and follows the pointer, and it keeps that highlight when a query
+ * narrows the list to rows that all send. An armed row is the only one that
+ * shows the highlight and responds to Return.
  *
  * The row is held by id rather than by object, because the pages below are
  * rebuilt on every render and Base UI re-announces the highlight whenever the
@@ -159,16 +157,15 @@ function sameHighlight(a: PaletteHighlight, b: PaletteHighlight): boolean {
 }
 
 /**
- * The highlight after one of Base UI's highlight events.
+ * Computes the highlight state after one of Base UI's highlight events.
  *
- * An arrow key arms the row it lands on, and the pointer arms nothing. "none"
- * is Base UI announcing a highlight it placed itself: the seed a narrowed list
- * gets, and the re-announcement that follows an arrow key on the row it just
- * moved to. So that reason holds the arming the row already had, and grants
- * none to a row that had none.
+ * An arrow key arms the row it lands on. The pointer arms nothing. A reason of
+ * "none" means Base UI placed the highlight itself, either on a narrowed list
+ * or as a re-announcement after an arrow key, so it keeps whatever arming the
+ * row already had and grants none to a row that had none.
  *
- * An unchanged highlight comes back as the state that went in, which is what
- * keeps those re-announcements from being a render each.
+ * An unchanged highlight returns the same state object, so a re-announcement
+ * does not cause a render.
  */
 function nextHighlight(
   current: PaletteHighlight,
@@ -344,7 +341,7 @@ function CommandPaletteDialog({
         // context menu opens this page directly, which is the one way in that
         // does not pass that item.
         disabled: editingLocked,
-        // Adding a step edits the canvas and sends nothing.
+        // Adding a step edits the canvas and sends nothing outward.
         consequential: false,
         icon: <ActionIcon action={action} className="size-3.5" />,
         select: () => {
@@ -433,8 +430,8 @@ function CommandPaletteDialog({
   };
 
   const handleInputKeyDown = (
-    // Base UI hands a merged handler the event with its own opt-out on it,
-    // which is how Return is taken away from Base UI's list navigation below.
+    // Base UI passes a merged handler the event with its own opt-out, which is
+    // how the Return handler below takes the key from Base UI's list navigation.
     event: BaseUIEvent<ReactKeyboardEvent<HTMLInputElement>>
   ) => {
     // Backspace on an empty box is the other way back, and it must not also
@@ -445,16 +442,15 @@ function CommandPaletteDialog({
       return;
     }
 
-    // Return takes the armed row and no other. Base UI seeds the highlight on
-    // row zero and moves it under the pointer, so without this a query that
-    // narrowed to "Run v5 · Live", or a mouse resting over it, would send it
-    // on a keystroke aimed at the search box.
+    // Return takes the armed row only. Base UI highlights row zero and follows
+    // the pointer, so without this check a query narrowed to "Run v5 · Live",
+    // or a pointer resting on it, would start that run on a keystroke aimed at
+    // the search box.
     if (event.key === "Enter" && highlight.consequential && !highlight.armed) {
       event.preventDefault();
       event.preventBaseUIHandler();
-      // The refusal is said out loud, for the same reason the closed palette
-      // says why it would not open: a key that does nothing teaches nothing,
-      // and the unpainted row is a signal a screen reader never receives.
+      // Announce the refusal. A keystroke that does nothing explains nothing,
+      // and a screen reader never receives the missing highlight.
       toast.info(
         "Use the arrow keys to choose a command that reaches real recipients.",
         { id: UNARMED_TOAST_ID }
@@ -493,8 +489,8 @@ function CommandPaletteDialog({
           itemToStringValue={itemKeywords}
           onItemHighlighted={(item, details) => {
             // One rule for every event, so a pointer highlight disarms what an
-            // arrow key armed rather than leaving the paint and Return holding
-            // two different answers.
+            // arrow key armed. Otherwise the painted row and the row Return
+            // takes could differ.
             setHighlight((current) =>
               nextHighlight(current, item, details.reason)
             );
@@ -513,9 +509,9 @@ function CommandPaletteDialog({
             if (details.reason === "item-press") {
               return;
             }
-            // The list under the caret has changed, so whatever the arrow keys
-            // had armed is no longer what the highlight is sitting on. Base UI
-            // seeds the narrowed list a moment later, and a seed arms nothing.
+            // The list has changed, so the row the arrow keys armed no longer
+            // holds the highlight. Base UI highlights the narrowed list a
+            // moment later, and that highlight arms nothing.
             setHighlight(NO_HIGHLIGHT);
             setPalette(setPaletteQuery(palette, next));
           }}
@@ -589,9 +585,9 @@ function CommandPaletteDialog({
                     <Autocomplete.Item
                       className={cn(
                         "flex min-h-7 cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-xs/relaxed outline-none select-none",
-                        // A row that sends wears the highlight only once an
-                        // arrow key has armed it, so a seeded or hovered one
-                        // never reads as the row Return is about to take.
+                        // A row that sends shows the highlight only after an
+                        // arrow key arms it, so an automatically highlighted or
+                        // hovered row never looks like the row Return takes.
                         (!item.consequential ||
                           (highlight.armed && highlight.id === item.id)) &&
                           HIGHLIGHTED_ROW,

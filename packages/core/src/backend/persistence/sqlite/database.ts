@@ -245,14 +245,14 @@ const MIGRATION_4 = `
 `;
 
 /**
- * Draft snapshots: `version` becomes nullable and `kind` says which sort of row
- * this is. SQLite cannot drop a NOT NULL, so the table is rebuilt.
+ * Adds draft snapshots: `version` becomes nullable and `kind` names the sort of
+ * row. SQLite cannot drop a NOT NULL constraint, so this rebuilds the table.
  *
- * Two tables carry a foreign key into this one, which is why the rebuild creates
- * the replacement under a temporary name and renames it into place last, and why
+ * Two tables carry a foreign key into this one. The rebuild therefore creates
+ * the replacement under a temporary name and renames it into place last, and
  * `migrate` runs this step with foreign keys off. Dropping the old table with
- * them on would cascade every execution row away, and renaming the old table out
- * of the way first would rewrite those foreign keys to follow it.
+ * foreign keys on would cascade every execution row away, and renaming the old
+ * table out of the way first would rewrite those foreign keys to follow it.
  */
 const MIGRATION_5 = `
   CREATE TABLE workflow_versions_v2 (
@@ -350,10 +350,10 @@ function migrate(database: DatabaseSync): void {
 }
 
 /**
- * Runs a table rebuild the way SQLite's own procedure describes it: foreign keys
- * off around the transaction, since the pragma is a no-op inside one, and a
- * `foreign_key_check` before the commit so a rebuild that stranded a child row
- * rolls back instead of being enforced later.
+ * Runs a table rebuild the way SQLite's documented procedure describes it.
+ * Foreign keys go off around the transaction, because the pragma is a no-op
+ * inside one. A `foreign_key_check` runs before the commit, so a rebuild that
+ * stranded a child row rolls back here rather than failing later.
  */
 function rebuildTable(database: DatabaseSync, run: () => void): void {
   database.exec("PRAGMA foreign_keys = OFF");
@@ -488,7 +488,7 @@ export function requiredGraph(
   return value;
 }
 
-/** Reads a `workflow_versions.kind`, wherever a query carries one. */
+/** Reads a `workflow_versions.kind` from any query row that carries one. */
 export function requiredVersionKind(
   row: Record<string, unknown>,
   key = "kind"

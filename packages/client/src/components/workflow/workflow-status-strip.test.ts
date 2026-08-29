@@ -46,7 +46,7 @@ describe("pinnedRunLabel", () => {
 });
 
 describe("pinnedRunModeLabel", () => {
-  it("names a draft run as always going to test recipients", () => {
+  it("labels a draft run as reaching test recipients", () => {
     expect(
       pinnedRunModeLabel({
         versionKind: "draft_snapshot",
@@ -56,7 +56,7 @@ describe("pinnedRunModeLabel", () => {
     ).toBe("Draft · Test run");
   });
 
-  it("names a published run by its version and recipients", () => {
+  it("labels a published run with its version and recipients", () => {
     expect(
       pinnedRunModeLabel({
         versionKind: "published",
@@ -73,13 +73,13 @@ describe("pinnedRunModeLabel", () => {
     ).toBe("v7 · Test run");
   });
 
-  it("says nothing while the run's payload is in flight", () => {
+  it("returns an empty label while the run's payload is loading", () => {
     expect(pinnedRunModeLabel(undefined)).toBe("");
   });
 
-  it("says nothing for a published run with no known version number", () => {
-    // Defensive only: a published run always pins to a numbered version, but a
-    // stub or half-loaded payload should never print "vnull".
+  it("returns an empty label for a published run with no version number", () => {
+    // A published run always pins to a numbered version. This guards against a
+    // stub or partly loaded payload printing "vnull".
     expect(
       pinnedRunModeLabel({
         versionKind: "published",

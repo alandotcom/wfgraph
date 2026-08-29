@@ -133,9 +133,9 @@ describe("RunHistoryTable", () => {
   });
 
   it("orders the Graph column by the version number it prints", () => {
-    // v11 sorts above v4 by number and below it by string, and the draft
-    // snapshot carries no number at all, so the three settle the question of
-    // what the header sorts on.
+    // v11 sorts above v4 as a number and below it as a string, and the draft
+    // snapshot carries no number. These rows show whether the header sorts on
+    // the number or on the printed label.
     const rows = [
       run({ id: "exec_a", workflowName: "Eleven", versionNumber: 11 }),
       run({

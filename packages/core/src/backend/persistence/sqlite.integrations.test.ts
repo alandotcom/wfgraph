@@ -45,8 +45,8 @@ describe("native SQLite integration persistence", () => {
     versionTwo.exec(`
       PRAGMA foreign_keys = ON;
       CREATE TABLE integrations (id TEXT PRIMARY KEY) STRICT;
-      -- Step 5 of the ladder rebuilds workflow_versions, so this fixture carries
-      -- the workflow tables a database of that version really had.
+      -- Migration step 5 rebuilds workflow_versions, so this fixture includes
+      -- the workflow tables a database at that version actually had.
       CREATE TABLE workflows (id TEXT PRIMARY KEY) STRICT;
       CREATE TABLE workflow_versions (
         id TEXT PRIMARY KEY,
@@ -886,8 +886,8 @@ describe("native SQLite integration persistence", () => {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     ) STRICT;
-    -- Step 5 of the ladder rebuilds workflow_versions, so this fixture carries
-    -- the workflow tables a database of that version really had.
+    -- Migration step 5 rebuilds workflow_versions, so this fixture includes
+    -- the workflow tables a database at that version actually had.
     CREATE TABLE workflows (id TEXT PRIMARY KEY) STRICT;
     CREATE TABLE workflow_versions (
       id TEXT PRIMARY KEY,

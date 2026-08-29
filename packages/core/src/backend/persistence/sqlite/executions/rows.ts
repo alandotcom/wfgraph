@@ -54,10 +54,9 @@ function runMode(value: string): WorkflowExecution["runMode"] {
 }
 
 /**
- * The execution's own columns the run lists read. The version kind and number
- * ride beside them from a join, so they are added by the readers that ask for
- * them rather than here, where the whole-row reader would have nothing to put in
- * them.
+ * The execution's own columns that the run lists read. The version kind and
+ * number come from a join, so the readers that ask for them add those two. The
+ * whole-row reader has no join and so has no values for them.
  */
 function executionListColumns(
   row: Record<string, unknown>

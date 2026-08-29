@@ -231,11 +231,11 @@ type SnapshotInput = Parameters<
 >[0];
 
 /**
- * The repository a draft run reads: the workflow paired with the graph the
- * canvas holds, and the snapshot row the run is then pinned to.
+ * The repository a draft run reads. It returns the workflow paired with the
+ * graph the canvas holds, plus the snapshot row the run then pins to.
  *
- * Neither published read is filled in, so a draft start that reached one would
- * die on the stub rather than quietly run the reviewed graph.
+ * The published reads are left unstubbed, so a draft start that reached one
+ * dies on the stub instead of running the reviewed graph.
  */
 function makeDraftRepo(workflow: Workflow) {
   const snapshots: SnapshotInput[] = [];
@@ -270,7 +270,7 @@ function makeDraftRepo(workflow: Workflow) {
   };
 }
 
-/** A graph one node short of runnable: the action node names no action. */
+/** A graph that fails validation because its action node names no action. */
 function graphWithUnconfiguredAction() {
   return createSerializedWorkflowGraph({
     nodes: [
@@ -606,9 +606,9 @@ describe("postWorkflowExecute", () => {
       })
     );
 
-    // The point of the whole draft path: a test-mode run travels the graph on
-    // the canvas, pinned to a snapshot of it, so a workflow nobody has published
-    // is runnable and a published one keeps serving its Events unchanged.
+    // A test-mode run travels the graph on the canvas, pinned to a snapshot of
+    // it. An unpublished workflow is runnable that way, and a published one
+    // keeps serving its Events unchanged.
     it.effect("runs the draft graph, pinned to a snapshot of it", () =>
       Effect.gen(function* () {
         const repo = makeRepo();
@@ -626,8 +626,8 @@ describe("postWorkflowExecute", () => {
         const snapshot = workflows.snapshots[0];
         assert.deepStrictEqual(snapshot?.graph, row.graph);
         assert.strictEqual(snapshot?.workflowId, "wf_1");
-        // The run names the row that was just minted, so the engine replays the
-        // graph the builder was looking at rather than the published one.
+        // The run references the row minted above, so the engine replays the
+        // graph the builder was looking at instead of the published graph.
         assert.strictEqual(
           repo.starts[0]?.execution.workflowVersionId,
           snapshot?.versionId
@@ -635,9 +635,9 @@ describe("postWorkflowExecute", () => {
       })
     );
 
-    // The recipients a Draft run reaches follow from the verb, not from the
-    // workflow's Published mode: a graph nobody reviewed goes to test recipients
-    // even while the published version is serving Events live.
+    // The run command decides which recipients a draft run reaches, and the
+    // workflow's Published mode does not. An unreviewed graph uses test
+    // recipients even while the published version serves Events live.
     it.effect("runs a live workflow's draft against test recipients", () =>
       Effect.gen(function* () {
         const repo = makeRepo();
@@ -649,14 +649,14 @@ describe("postWorkflowExecute", () => {
 
         assert.strictEqual(response.status, "running");
         assert.strictEqual(response.runMode, "test");
-        // The row and the Inngest event carry the same verdict the response does.
+        // The row and the Inngest event carry the same run mode as the response.
         assert.strictEqual(repo.starts[0]?.execution.runMode, "test");
         assert.strictEqual(workflows.snapshots.length, 1);
       })
     );
 
-    // The other arm of the same rule: a run of the published version reads the
-    // workflow's Published mode, which is what Events read too.
+    // A run of the published version reads the workflow's Published mode, the
+    // same mode Events read.
     it.effect("runs the published version in the workflow's mode", () =>
       Effect.gen(function* () {
         const repo = makeRepo();
@@ -671,8 +671,8 @@ describe("postWorkflowExecute", () => {
       })
     );
 
-    // The draft goes through the checks Publish runs, and it fails them the same
-    // way: the sentence names the node, and no snapshot is left behind.
+    // The draft goes through the checks Publish runs and fails them the same
+    // way. The message names the node, and no snapshot is written.
     it.effect("refuses a broken draft without minting a snapshot", () =>
       Effect.gen(function* () {
         const repo = makeRepo();
@@ -694,10 +694,11 @@ describe("postWorkflowExecute", () => {
       })
     );
 
-    // The snapshot is written only once a row is about to name it. A start the
-    // lifecycle gates turn away after preflight, here a payload the Start Event
-    // refuses, is the Test Run overlay's retry loop, and each attempt leaving a
-    // full copy of the graph behind is what this holds off.
+    // The snapshot is written only once a row is about to reference it. The
+    // lifecycle gates can turn a start away after preflight, as they do here for
+    // a payload the Start Event refuses. The Test Run overlay retries such a
+    // start, so an earlier write would leave a full copy of the graph behind on
+    // every attempt.
     it.effect("leaves no snapshot behind a start refused after preflight", () =>
       Effect.gen(function* () {
         const repo = makeRepo();
@@ -718,9 +719,9 @@ describe("postWorkflowExecute", () => {
       })
     );
 
-    // Concurrency decides after the pin, because the Execution it opens names
-    // the version. A first-wins refusal therefore has a snapshot to give back,
-    // and gives it back rather than leaving a graph copy per attempt.
+    // Concurrency decides after the pin, because the Execution it opens
+    // references the version. A first-wins refusal therefore has a snapshot to
+    // release, and releasing it avoids one graph copy per refused attempt.
     it.effect("releases the snapshot when Concurrency refuses the start", () =>
       Effect.gen(function* () {
         const repo = makeRepo({
@@ -743,8 +744,8 @@ describe("postWorkflowExecute", () => {
       })
     );
 
-    // Every gate a published run answers still answers here, and the ignored run
-    // it writes pins to the snapshot like a started one would.
+    // A draft run passes through every gate a published run passes through. The
+    // ignored run it writes pins to the snapshot, the same as a started run.
     it.effect("holds a paused workflow's draft run to the same gate", () =>
       Effect.gen(function* () {
         const repo = makeRepo();

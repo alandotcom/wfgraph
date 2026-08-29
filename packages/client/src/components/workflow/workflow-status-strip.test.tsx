@@ -94,8 +94,8 @@ function workflowPayload(overrides: {
     isOwner: true,
     graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
     hasUnpublishedChanges: overrides.hasUnpublishedChanges,
-    // A published workflow always carries both: the id the version is read by
-    // and the number every surface names it with.
+    // A published workflow carries both the id the version is read by and the
+    // number every surface displays.
     ...(overrides.publishedVersionId
       ? {
           publishedVersionId: overrides.publishedVersionId,
@@ -253,8 +253,8 @@ describe("WorkflowStatusStrip", () => {
     expect(view.queryByText("Test mode")).toBeNull();
   });
 
-  // Published mode left the toolbar for this row, so it now sits one divider
-  // from the badge naming the version it governs.
+  // Published mode lives in this row, one divider from the badge that names
+  // the version it governs.
   it("carries Published mode beside the publication badge", async () => {
     const { view } = renderStrip({ mode: "test", published: true });
 
@@ -270,7 +270,7 @@ describe("WorkflowStatusStrip", () => {
     ).toBeTruthy();
   });
 
-  it("offers both modes as one clause each", async () => {
+  it("describes each mode in one clause", async () => {
     const { view } = renderStrip({ published: true });
 
     const mode = await view.findByRole("button", {
@@ -284,14 +284,14 @@ describe("WorkflowStatusStrip", () => {
     expect(
       view.getByRole("menuitemradio", { name: /Test recipients/ })
     ).toBeTruthy();
-    // Something is published, so the setting is already in force and says
-    // nothing about when it starts to matter.
+    // A version is published, so the setting is already in force and the menu
+    // adds no note about when it takes effect.
     expect(view.queryByText("Takes effect on publish")).toBeNull();
   });
 
-  // The mode is set before the first publish too, and the menu is where the
-  // reader is told it is waiting for one.
-  it("says when the mode starts to matter before the first publish", async () => {
+  // The mode can be set before the first publish, and the menu is where the
+  // reader learns it takes effect at that publish.
+  it("says when the mode takes effect before the first publish", async () => {
     const { view } = renderStrip();
 
     const mode = await view.findByRole("button", {
@@ -303,7 +303,7 @@ describe("WorkflowStatusStrip", () => {
     expect(view.getByText("Takes effect on publish")).toBeTruthy();
   });
 
-  it("refuses the mode to anyone but the owner, and says why", async () => {
+  it("disables the mode for a viewer and gives the reason", async () => {
     const { view } = renderStrip({ isOwner: false, published: true });
 
     const mode = await view.findByRole("button", {

@@ -185,8 +185,8 @@ describe("WorkflowToolbarChrome", () => {
       }
     );
 
-    // One rendering of each view: below `md` the whole trailing group is the
-    // overflow menu, so nothing names a view twice.
+    // Each view is rendered once. Below `md` the trailing group becomes the
+    // overflow menu, so no view is named twice.
     expect(await findAllByRole("button", { name: "Draft" })).toHaveLength(1);
     expect(await findByRole("button", { name: "Changes" })).toBeTruthy();
 
@@ -204,7 +204,7 @@ describe("WorkflowToolbarChrome", () => {
     expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
   });
 
-  it("keeps navigation, Actions, and Settings on the left with the views and Publish on the right", async () => {
+  it("puts navigation, Actions and Settings on the left and the views and Publish on the right", async () => {
     const { findByRole } = renderChrome(WorkflowToolbarChrome);
 
     const dashboard = await findByRole("link", { name: "Dashboard" });
@@ -233,8 +233,8 @@ describe("WorkflowToolbarChrome", () => {
     ).toContain("w-80");
   });
 
-  // Published mode moved to the status strip, beside the version it governs.
-  // Nothing in the toolbar renders the setting or the version any more.
+  // Published mode lives in the status strip, beside the version it governs.
+  // The toolbar renders neither the setting nor the version.
   it("leaves Published mode out of the toolbar", async () => {
     const { findByRole, queryByRole } = renderChrome(WorkflowToolbarChrome, {
       state: {
@@ -253,8 +253,8 @@ describe("WorkflowToolbarChrome", () => {
     expect(queryByRole("button", { name: /^Published mode/ })).toBeNull();
   });
 
-  // Below `md` the trailing group is one button, so everything the desktop
-  // group holds has to be inside it, refused for the same reasons.
+  // Below `md` the trailing group is one button, so it must hold every desktop
+  // control and disable each one for the same reason.
   it("collapses the trailing group into one overflow menu", async () => {
     const { findByRole, getByRole } = renderChrome(WorkflowToolbarChrome, {
       graph: [],
@@ -272,8 +272,8 @@ describe("WorkflowToolbarChrome", () => {
 
     const trigger = await findByRole("button", { name: "Workflow actions" });
     expect(trigger.className).toContain("md:hidden");
-    // Its desktop counterparts are the ones that go, rather than this one
-    // being an extra control at every width.
+    // The desktop controls are hidden at this width, so the overflow menu
+    // replaces them instead of adding a control.
     expect(
       getByRole("group", { name: "Run" }).parentElement?.className
     ).toContain("md:flex");
@@ -286,15 +286,15 @@ describe("WorkflowToolbarChrome", () => {
     }
     expect(getByRole("menuitem", { name: "Run v7 · Live" })).toBeTruthy();
     expect(getByRole("menuitem", { name: "Publish v8" })).toBeTruthy();
-    // The empty canvas refuses the draft run here exactly as it refuses the
-    // desktop button.
+    // An empty canvas disables the draft run here as it does on the desktop
+    // button.
     expect(
       getByRole("menuitem", { name: "Run draft" }).getAttribute("data-disabled")
     ).not.toBeNull();
   });
 
-  // The palette sits centred between the two groups, so Tab has to reach it
-  // there: it used to be written last and focused after Publish.
+  // The palette sits between the two groups, so Tab must reach it there. It
+  // was previously written last and received focus after Publish.
   it("puts the palette trigger between the two groups in DOM order", async () => {
     const { findByRole } = renderChrome(WorkflowToolbarChrome);
     const palette = await findByRole("button", {
@@ -357,7 +357,7 @@ describe("WorkflowToolbarChrome", () => {
   });
 
   describe("the Run split button", () => {
-    it("runs the draft from its face, whatever Published mode says", async () => {
+    it("runs the draft from its face in any Published mode", async () => {
       const { actions, findByRole } = renderChrome(WorkflowToolbarChrome, {
         state: { workflowMode: "live" },
       });
@@ -367,7 +367,7 @@ describe("WorkflowToolbarChrome", () => {
       expect(actions.handleExecute).toHaveBeenCalledExactlyOnceWith("draft");
     });
 
-    it("names the published run for its version and its mode", async () => {
+    it("labels the published run with its version and mode", async () => {
       const { actions, findByRole, getByRole } = renderChrome(
         WorkflowToolbarChrome,
         {
@@ -394,9 +394,10 @@ describe("WorkflowToolbarChrome", () => {
       );
     });
 
-    // The draft is runnable from the first node onward; the published version
-    // exists only after a publish, and the item says so rather than vanishing.
-    it("offers the reason instead of a published run before the first publish", async () => {
+    // The draft runs as soon as the canvas has a node. A published version
+    // exists only after a publish, and the menu item states that instead of
+    // disappearing.
+    it("gives the reason instead of a published run before the first publish", async () => {
       const { findByRole, getByRole } = renderChrome(WorkflowToolbarChrome);
 
       expect(
@@ -413,9 +414,9 @@ describe("WorkflowToolbarChrome", () => {
       expect(item.getAttribute("data-disabled")).not.toBeNull();
     });
 
-    // v7 is frozen and still handling Events. Emptying the canvas to start
-    // over says nothing about whether it can run, and the builder would have no
-    // way back to it from the editor if it did.
+    // A published version is frozen and still handles Events. Clearing the
+    // canvas does not affect whether it can run, and disabling it would leave
+    // no way to reach it from the editor.
     it("leaves the published run available while the canvas is empty", async () => {
       const { findByRole, getByRole } = renderChrome(WorkflowToolbarChrome, {
         graph: [],
@@ -448,9 +449,9 @@ describe("WorkflowToolbarChrome", () => {
       ).toBeNull();
     });
 
-    // Two ghost buttons carry a transparent border, so the group's own rules
-    // draw nothing between them and the pair reads as two loose controls.
-    it("draws a seam between the verb and the chevron", async () => {
+    // Two ghost buttons carry a transparent border, so the group draws nothing
+    // between them and the pair reads as two separate controls.
+    it("draws a divider between the run button and the chevron", async () => {
       const { findByRole } = renderChrome(WorkflowToolbarChrome);
 
       const group = (await findByRole("button", { name: "Run draft" })).closest(
@@ -462,7 +463,7 @@ describe("WorkflowToolbarChrome", () => {
       ).toBeTruthy();
     });
 
-    it("offers a non-owner no run controls at all", async () => {
+    it("renders no run controls for a viewer who does not own the workflow", async () => {
       const { findByTestId, queryByRole } = renderChrome(
         WorkflowToolbarChrome,
         {
@@ -473,7 +474,7 @@ describe("WorkflowToolbarChrome", () => {
       await findByTestId("toolbar-actions-host");
       expect(queryByRole("button", { name: "Run draft" })).toBeNull();
       expect(queryByRole("button", { name: "More ways to run" })).toBeNull();
-      // The overflow menu goes with them rather than opening onto a radio
+      // The overflow menu is hidden too, because it would open onto a radio
       // group holding the one view already on screen.
       expect(queryByRole("button", { name: "Workflow actions" })).toBeNull();
     });
@@ -496,8 +497,8 @@ describe("ToolbarActions menu", () => {
     for (const label of [
       /^Add step/,
       /^Run draft/,
-      // Flat beside "Run draft" with no heading over the pair, so the
-      // row names its own action and prints the reason it is disabled under it.
+      // The row sits flat beside "Run draft" with no heading over the pair, so
+      // it names its own action and prints the disabled reason underneath.
       /^Run published version.*Nothing published yet/,
       /^Undo/,
       /^Redo/,

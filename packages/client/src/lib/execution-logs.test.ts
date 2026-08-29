@@ -112,9 +112,9 @@ describe("toWorkflowExecutionFromSummary", () => {
     expect(mapped.entityValue).toBe("appt_99");
   });
 
-  // A draft-snapshot run pins to a version with no number, and the panel needs
-  // this on the deep-link path too so a run reopened past the newest-50 list
-  // still reads "Draft" rather than falling back to "Test" alone.
+  // A draft-snapshot run pins to a version with no number. The deep-link path
+  // needs the kind as well, so a run reopened past the newest-50 list still
+  // reads "Draft" instead of only "Test".
   it("keeps a draft snapshot's kind from the summary", () => {
     const summary: ExecutionLogsResult["execution"] = {
       id: "exec_draft",
@@ -165,7 +165,7 @@ describe("toPinnedRunSummary", () => {
     waits: [],
   };
 
-  it("carries the pinned run's graph, version, and recipients", () => {
+  it("carries the pinned run's version and run mode", () => {
     const summary = toPinnedRunSummary(basePayload);
 
     expect(summary.id).toBe("exec_1");

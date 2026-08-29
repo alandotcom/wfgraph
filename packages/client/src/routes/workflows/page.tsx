@@ -218,16 +218,16 @@ export default function WorkflowsPage() {
     [queryClient]
   );
 
-  // The write is addressed to the row it was chosen on, so nothing here touches
-  // the editor's open-workflow atoms: those name which workflow the canvas is
-  // showing, and `hydrateWorkflowAtom` treats a matching id as a reload of the
-  // same workflow and keeps the pinned run, the comparison session and the
-  // workspace view it would otherwise clear.
+  // The write targets the row it was chosen on, so nothing here touches the
+  // editor's open-workflow atoms. Those atoms name the workflow the canvas is
+  // showing. `hydrateWorkflowAtom` reads a matching id as a reload of the same
+  // workflow and keeps the pinned run, the comparison session and the workspace
+  // view that a different id would clear.
   const setPublishedMode = useMutation(
     orpcQuery.workflow.update.mutationOptions({
-      // The "Sends to" cell this table is showing is the answer to the setting
-      // being written, and this table is mounted while the write lands, so the
-      // list is refetched rather than merely marked stale.
+      // The "Sends to" cell in this table shows the setting being written, and
+      // the table is mounted while the write lands. Refetch the list rather
+      // than only marking it stale.
       onSuccess: async (_payload, { mode }) => {
         await refreshWorkflowList(queryClient);
         toast.success(
@@ -241,11 +241,10 @@ export default function WorkflowsPage() {
   );
 
   const writePublishedMode = setPublishedMode.mutate;
-  // Live-ward asks first, wherever it is offered: it is the moment a workflow
-  // starts sending to real people. Test-ward can only narrow who a run reaches,
-  // so it writes on one press. The dashboard's list payload carries no version
-  // number, so the question names the setting's subject rather than inventing
-  // one.
+  // Switching to Live confirms first, because it is the moment a workflow
+  // starts sending to real people. Switching to Test writes on one press: it
+  // can only narrow who a run reaches. The dashboard's list payload carries no
+  // version number, so the question names the published version in general.
   const changePublishedMode = useCallback(
     (workflow: WorkflowSummaryPayload, mode: WorkflowMode) => {
       if (workflow.mode === mode) {
@@ -445,20 +444,21 @@ export default function WorkflowsPage() {
           {workflowRows.map((workflow) => {
             const isSelected = selectedWorkflowIds.has(workflow.id);
             const canMutate = workflow.isOwner !== false;
-            // Whether the workflow is switched off is a graphite fact with a
-            // green dot for the live case: Signal Amber belongs to Test alone,
-            // and this row is the one screen showing both facts at once, three
-            // columns apart at the same 12px.
+            // Paused or Active is a neutral fact, marked by a green dot when
+            // the workflow is active. Signal Amber is reserved for Test,
+            // because this row shows both facts at once, three columns apart at
+            // the same 12px.
             const stateDotClass = workflow.isPaused
               ? "text-muted-foreground"
               : "text-success fill-current";
             const stateLabel = workflow.isPaused ? "Paused" : "Active";
             const isTestOnly = workflow.mode === "test";
-            // The dot repeats the status strip's Published mode vocabulary,
-            // filled for Test and outline for Live. The signal carries the
-            // border and the label rather than a fill behind them: each light
-            // token clears 4.5:1 as text on Paper and falls under it on its own
-            // 10% tint, which is under the floor at Caption size.
+            // The dot reuses the status strip's Published mode vocabulary,
+            // filled when Published mode is Test and outlined when it is Live.
+            // The signal colour sits on the border and the label instead of a
+            // fill behind them. Each light token clears 4.5:1 as text on Paper
+            // and falls below it on its own 10% tint, which is under the floor
+            // at Caption size.
             const sendsToClass = isTestOnly
               ? "border-warning/40 text-warning"
               : "border-border text-muted-foreground";
@@ -495,9 +495,8 @@ export default function WorkflowsPage() {
                   </div>
                 </td>
                 <td className="px-2 py-3">
-                  {/* A dot and a word, with no pill around them: the row's one
-                      bordered chip is "Sends to", which is the cell an operator
-                      is scanning for. */}
+                  {/* A dot and a word, with no pill. The row's one bordered
+                      chip is "Sends to", the cell an operator scans for. */}
                   <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-medium text-foreground text-xs">
                     <Circle
                       aria-hidden

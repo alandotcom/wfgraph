@@ -33,12 +33,12 @@ import type {
 } from "#src/backend/services/executions/repo/contracts";
 
 /**
- * The columns both run-list queries select, and the one they join for.
+ * The columns both run-list queries select, plus the two they join for.
  *
- * JSONB payloads and the routing columns the lists never paint stay off it, so a
- * poll does not pull TOAST the panel would discard. `versionKind` and
- * `versionNumber` come from the version the run pinned, by primary key, which is
- * what lets the panel label a run's graph without reading it.
+ * JSONB payloads and the routing columns the lists never paint stay off this
+ * list, so a poll does not pull TOAST the panel would discard. `versionKind` and
+ * `versionNumber` come from the version the run pinned, looked up by primary
+ * key, so the panel can label a run's graph without reading the graph.
  */
 const EXECUTION_LIST_COLUMNS = {
   id: workflowExecutions.id,
@@ -59,7 +59,7 @@ const EXECUTION_LIST_COLUMNS = {
   duration: workflowExecutions.duration,
 } as const satisfies Record<keyof WorkflowExecutionListRow, PgColumn>;
 
-/** The run's pinned version, which every execution has exactly one of. */
+/** Join condition for the pinned version. Every execution pins exactly one. */
 const pinnedVersion = eq(
   workflowExecutions.workflowVersionId,
   workflowVersions.id

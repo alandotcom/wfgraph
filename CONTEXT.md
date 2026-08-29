@@ -158,14 +158,15 @@ Wait, which is how an Event Split after a Wait tells those arrivals apart.
 ### Runs
 
 **Workflow Version**:
-An immutable copy of a workflow's graph, together with the catalog fingerprint
-it was sound against, of one of two kinds. A published version is what each
-Publish mints, numbered in sequence, and the workflow points at the newest one;
-Event starts run that graph and refuse a never-published workflow. A draft
-snapshot is what a Draft run freezes for itself: it claims no number, stays out
-of the version history, and nothing ever publishes it. Draft saves edit the
-workflow's own graph and mint nothing. Published versions form durable history,
-and an Execution remains pinned to the version it started against.
+An immutable copy of a workflow's graph, stored with the catalog fingerprint it
+was sound against. A version is one of two kinds. A published version is what
+each Publish creates; it takes the next number in sequence, and the workflow
+points at the newest one. Event starts run the published graph and refuse a
+workflow that has never been published. A draft snapshot is the graph a Draft
+run freezes for itself. It has no number, stays out of the version history, and
+is never published. A draft save edits the workflow's own graph and creates no
+version. Published versions form durable history, and an Execution remains
+pinned to the version it started against.
 
 **Publish**:
 The hard gate that turns a draft into a Workflow Version, and the only place a
@@ -174,8 +175,8 @@ outlets, template references, connections, and unreachable subtrees. A draft
 save asks none of that and stores whatever parses, because a half-built node is
 the ordinary state of an editor session. Publish refuses a draft that is
 semantically identical to the current version. A confirmed Publish advances
-the version number even when the draft restores content from an older version;
-a draft snapshot claims none and never moves the pointer. The event
+the version number even when the draft restores content from an older version.
+A draft snapshot takes no number and never moves the pointer. The event
 subscription index tracks the published graph, so a half-built draft cannot
 start runs on an Event.
 
@@ -186,24 +187,26 @@ status: completed, canceled, superseded, or failed.
 _Avoid_: workflow (a workflow is the definition; an Execution is one run of it)
 
 **Draft run**:
-One run of the graph on the canvas, started by the Run draft button. It freezes
-that graph as a draft snapshot and pins itself to it, so a workflow nobody has
-published is runnable. It always goes to test recipients, whatever the Published
-mode says, because the graph it travels is one nobody reviewed.
+One run of the graph on the canvas, started by the Run draft command. It freezes
+that graph as a draft snapshot and pins itself to the snapshot, so a workflow
+that has never been published can still run. A Draft run always reaches test
+recipients, whatever the Published mode is, because nobody has reviewed the
+graph it executes.
 _Avoid_: current graph, working copy, unsaved changes (the canvas graph is the
 Draft)
 
 **Published run**:
 One manual run of the published version, named by its number ("Run v7"). It
-reaches the recipients the Published mode names, which is what an Event start
-reaches too.
-_Avoid_: run workflow (which of the two graphs runs is the whole question)
+reaches the recipients the Published mode names, the same recipients an Event
+start reaches.
+_Avoid_: run workflow (the name must say which of the two graphs runs)
 
 **Published mode**:
-Per workflow, live or test: which recipients Events and Published runs reach.
-Live sends to real recipients; test sends to the test recipients each
-integration defines. It says nothing about a Draft run, which is always a test
-run, and the editor prints it beside the version it governs ("v7 · Live").
+A per-workflow setting, live or test, deciding which recipients Events and
+Published runs reach. Live means real recipients, and test means the test
+recipients each integration defines. The setting does not affect a Draft run,
+which is always a test run. The editor shows it beside the version it governs
+("v7 · Live").
 _Avoid_: run mode, workflow mode, production, sandbox
 
 ### Extensions

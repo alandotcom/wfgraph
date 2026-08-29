@@ -30,11 +30,11 @@ const IN_FLIGHT = "'pending', 'running', 'waiting'";
 const WORKFLOW_EXECUTIONS_LIMIT = 50;
 
 /**
- * The columns both run-list queries select, and the one they join for. JSONB
- * payloads and the routing columns the lists never paint stay off it, so a poll
- * does not pull blobs the panel would discard; `version_kind` and
- * `version_number` come from the version the run pinned, which is what labels a
- * run's graph.
+ * The columns both run-list queries select, plus the two they join for. JSONB
+ * payloads and the routing columns the lists never paint stay off this list, so
+ * a poll does not pull blobs the panel would discard. `version_kind` and
+ * `version_number` come from the version the run pinned, and they label a run's
+ * graph.
  */
 const EXECUTION_LIST_SELECT = `e.id, e.workflow_id, e.status, e.start_source,
          e.run_mode, e.start_event_name, e.entity_value, e.workflow_run_id,

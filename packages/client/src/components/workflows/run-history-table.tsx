@@ -97,9 +97,9 @@ function formatRunDuration(duration: string | null): string {
 }
 
 /**
- * What the Graph column sorts on, which has to order the numbers the column
- * shows. A draft run ranks below v1 so the snapshots group at one end rather
- * than tying with every published run.
+ * The value the Graph column sorts on. It orders the version numbers the column
+ * shows, and ranks a draft run below v1 so snapshots group at one end instead of
+ * tying with every published run.
  */
 function graphRank(row: RunHistoryTableRow): number {
   return row.versionKind === "draft_snapshot" ? -1 : (row.versionNumber ?? 0);

@@ -50,8 +50,8 @@ describe("WorkflowRunSummaryRow", () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
-  // A draft-snapshot run pinned to a graph that was never published, so it
-  // needs to read as something other than an ordinary test run.
+  // A draft-snapshot run pinned a graph that was never published, so its label
+  // must read differently from an ordinary test run.
   it("labels a draft-snapshot run as Draft in the list", () => {
     const view = render(
       <WorkflowRunSummaryRow

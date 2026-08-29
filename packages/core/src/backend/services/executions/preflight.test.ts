@@ -1,11 +1,10 @@
 /**
- * What a Draft run freezes into the version it pins to, and what it does not ask
- * about the workflow.
+ * Tests what a Draft run freezes into the version it pins to.
  *
- * The graph checks above this are memoized on the semantic digest, which is
- * blind to node positions, so the thing worth asserting here is that the
- * snapshot carries the workflow's own draft rather than whatever graph first
- * taught the memo those semantics.
+ * The graph checks above this loader are memoized on the semantic digest, which
+ * ignores node positions. These tests assert that the snapshot stores the
+ * workflow's own draft graph, even when the memo returns an earlier graph with
+ * the same semantics.
  */
 
 import { describe, expect, it } from "@effect/vitest";
@@ -25,9 +24,9 @@ type SnapshotInput = Parameters<
 >[0];
 
 /**
- * The workflow is in Live Published mode, which this loader never reads: that
- * mode governs Events and runs of the published version, and a Draft run's
- * recipients are decided by the request in `postWorkflowExecute`.
+ * The workflow is in Live Published mode, which this loader never reads. That
+ * mode governs Events and runs of the published version. A Draft run's
+ * recipients come from the request in `postWorkflowExecute`.
  */
 const workflow = {
   id: "wf_1",
@@ -37,8 +36,8 @@ const workflow = {
 };
 
 /**
- * The same one-node graph at two heights. Layout is outside the semantic
- * projection, so both graphs share a digest and the second call is a memo hit.
+ * The same one-node graph at two heights. Layout sits outside the semantic
+ * projection, so both graphs share a digest and the second call hits the memo.
  */
 function draftGraphAt(y: number) {
   return createSerializedWorkflowGraph({
@@ -54,7 +53,7 @@ function draftGraphAt(y: number) {
   });
 }
 
-/** The surface both calls share, so the second one reads the first's verdict. */
+/** The catalog both calls share, so the second call reads the memoized result. */
 const catalogLayer = stubExtensionCatalog();
 
 function draftRepoLayer(
@@ -87,7 +86,7 @@ function snapshotNodeY(snapshot: SnapshotInput | undefined): unknown {
 
 describe("loadDraftForRun", () => {
   it.effect(
-    "freezes the workflow's own draft rather than the graph the memo answered with",
+    "freezes the workflow's own draft graph even when the memo hits",
     () =>
       Effect.gen(function* () {
         const snapshots: SnapshotInput[] = [];
@@ -105,13 +104,13 @@ describe("loadDraftForRun", () => {
           );
 
         yield* run(0);
-        // The builder drags the node: same meaning, new layout, memo hit.
+        // Moving the node changes the layout only, so this call hits the memo.
         yield* run(400);
 
         expect(snapshots).toHaveLength(2);
         expect(snapshotNodeY(snapshots[0])).toBe(0);
         expect(snapshotNodeY(snapshots[1])).toBe(400);
-        // The digest describes the meaning, which neither drag moved.
+        // The digest covers semantics only, so the move leaves it unchanged.
         expect(snapshots[1]?.graphDigest).toBe(snapshots[0]?.graphDigest);
       })
   );

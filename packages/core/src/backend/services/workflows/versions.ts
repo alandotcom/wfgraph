@@ -171,9 +171,8 @@ export const compareWorkflowVersion = Effect.fn(
     }
 
     const baseVersionId = input.baseVersionId ?? workflow.publishedVersionId;
-    // A draft snapshot is not part of the history a comparison reads from, so it
-    // answers the way a version from another workflow does: there is no such
-    // version to compare against.
+    // A draft snapshot sits outside the published history, so a comparison
+    // against one fails the same way a version from another workflow does.
     const baseVersion = baseVersionId
       ? asPublishedVersion(yield* repo.findVersionById(baseVersionId))
       : null;
@@ -239,9 +238,9 @@ export const restoreWorkflowVersion = Effect.fn(
       return yield* new NotFound({ error: "Workflow not found" });
     }
 
-    // A draft snapshot is reachable by id (it is the execution summary's
-    // `workflowVersionId`), but it is not a point in the published history, so a
-    // restore refuses it the way the comparison above does.
+    // A draft snapshot is reachable by id, because it is the execution
+    // summary's `workflowVersionId`. It sits outside the published history, so
+    // a restore refuses it the way the comparison above does.
     const version = asPublishedVersion(
       yield* repo.findVersionById(input.versionId)
     );

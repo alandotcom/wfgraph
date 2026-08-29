@@ -20,10 +20,10 @@ import { type EngineFailure } from "#src/backend/engine/engine-failure";
 export type TraversalTerminalStatus = "completed" | "failed" | "canceled";
 
 /**
- * Names the recipients a test run sent to. A run mode is a fact about
- * recipients, and a Draft run always carries `test` whatever the workflow's
- * Published mode is, so the line says what it can vouch for and leaves the
- * graph that ran to the run row beside it.
+ * Appends the recipients a test run sent to. Run mode records recipients only. A
+ * Draft run always carries `test` whatever the workflow's Published mode is, so
+ * this line names the recipients and leaves the graph that ran to the run row
+ * beside it.
  */
 function withRecipients(message: string, runMode: "live" | "test"): string {
   return runMode === "test" ? `${message} (test recipients)` : message;

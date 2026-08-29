@@ -38,13 +38,13 @@ export type WorkflowExecution = {
   startSource: WorkflowExecutionStartSource | null;
   runMode: "live" | "test";
   /**
-   * Which graph this run pinned to: `published`, or the `draft_snapshot` a Draft
-   * run froze for itself. Every run names its graph, a snapshot as "Draft" and a
-   * published version by the number in `versionNumber` beside it, so a run reads
-   * as "<graph> · <recipients>": "Draft · Test", "v7 · Live", "v7 · Test".
+   * The graph this run pinned to. A `draft_snapshot` is the canvas graph a draft
+   * run froze for itself. The UI labels a snapshot "Draft" and a published
+   * version by the number in `versionNumber`, then renders the run as
+   * "<graph> · <recipients>", for example "Draft · Test" or "v7 · Live".
    */
   versionKind: WorkflowVersionKind;
-  /** The pinned version's number, which names a published run "v7". Null on a draft snapshot. */
+  /** The pinned version's number, rendered as "v7". Null for a draft snapshot. */
   versionNumber: number | null;
   startEventName: string | null;
   entityValue: string | null;

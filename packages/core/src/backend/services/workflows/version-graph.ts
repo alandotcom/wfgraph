@@ -12,11 +12,11 @@ const loggerFor = (versionId: string) =>
   );
 
 /**
- * The pinned graph of one version a run froze, published or draft snapshot, on
- * its own procedure: the graph is immutable once minted (ADR-0012), so a client
- * fetches this once per version id and caches the answer forever, unlike
- * `getExecutionLogs`, which polls a run's status and would otherwise retransmit
- * the same graph on every tick.
+ * The pinned graph of one version a run froze, either a published version or a
+ * draft snapshot. It has its own procedure because the graph is immutable once
+ * minted (ADR-0012), so a client fetches it once per version id and caches the
+ * answer forever. `getExecutionLogs` instead polls a run's status, and folding
+ * the graph into that response would retransmit it on every tick.
  *
  * Redacted the same way a run's logged input and output are: a value an
  * author pasted into a node config must not leave the service verbatim.

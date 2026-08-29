@@ -1,10 +1,10 @@
 /**
  * The one line along the bottom of the canvas saying what the editor is doing.
  *
- * Two states, one height. Editing the draft it reports publication, carries the
- * Published mode control beside the version that mode governs, and reports save
- * and issues; with a run pinned to the canvas it reports the run and offers the
- * way back to the draft. Both render inside the same fixed-height row on
+ * Two states share one height. While the draft is on screen, the strip shows
+ * the publication badge, the Published mode control beside the version that
+ * mode governs, the save state and the issue count. With a run pinned to the
+ * canvas it shows the run and a way back to the draft. Both render inside the same fixed-height row on
  * purpose: the strip is a `shrink-0` sibling of the canvas box, so any change in
  * its height comes straight out of React Flow's, which measures what it is given
  * and reacts to every pixel of it. Nothing in here may wrap, and nothing may
@@ -100,15 +100,13 @@ export function pinnedRunLabel(
 }
 
 /**
- * What the pinned run is, in the vocabulary every run record shares: which
- * graph it ran and which recipients it reached, as "Draft · Test run" or
- * "v7 · Live run".
+ * Names the pinned run by the graph it ran and the recipients it reached, as
+ * "Draft · Test run" or "v7 · Live run".
  *
- * The phrase itself comes from `workflow-run-labels`, so the strip, the run
- * history table and the summary row cannot drift apart. Empty while the run's
- * payload is still in flight, and empty for a published run carrying no version
- * number, which the contract refuses: the strip's "Viewing a past run"
- * placeholder is better than a half-known fact.
+ * The phrase comes from `workflow-run-labels`, so the strip, the run history
+ * table and the summary row stay in step. Returns empty while the run's payload
+ * is loading, and empty for a published run with no version number, which the
+ * contract rejects. The strip then falls back to "Viewing a past run".
  */
 export function pinnedRunModeLabel(
   run: WorkflowRunGraphIdentity | undefined
@@ -153,24 +151,19 @@ function StatusItems({ children }: { children: React.ReactNode }) {
   );
 }
 
-/**
- * The two modes, live first: it is the mode a workflow ends up in, and the one
- * the menu's first row should offer.
- */
+/** The two modes, live first, because that is the mode a workflow ends up in. */
 const PUBLISHED_MODES = ["live", "test"] as const;
 
 /**
- * Published mode, sitting where the version it governs is already named.
+ * The Published mode control, placed next to the badge that names the version.
  *
- * It reads "Live" or "Test" alone, because the badge to its left has just said
- * "Published version 5" and one control naming the version is enough. Test
- * wears the warning tone and a filled dot; Live is an outline, so the mode is
- * legible without color alone carrying it.
+ * The label is "Live" or "Test" alone, because the badge beside it already
+ * reads "Published version 5". Test uses the warning tone and a filled dot;
+ * Live uses an outline, so the mode does not rely on color alone.
  *
- * The change goes through `useSetPublishedMode`, which is what asks before a
- * workflow starts sending to real people. A viewer who does not own the
- * workflow reads the same face with the menu withheld, and the reason sits on a
- * tooltip, which is the one surface a refused control can still show.
+ * `useSetPublishedMode` performs the change, and it confirms before a workflow
+ * starts sending to real people. A viewer who does not own the workflow sees
+ * the same control with no menu, and a tooltip gives the reason.
  */
 function PublishedModeControl({
   publishedVersion,
@@ -186,8 +179,8 @@ function PublishedModeControl({
     "h-6 shrink-0 px-1.5 font-medium",
     isTest && "text-warning hover:bg-warning/10 hover:text-warning"
   );
-  // The visible word is the whole label, so the accessible name keeps it and
-  // adds the setting it belongs to (WCAG 2.5.3).
+  // The accessible name starts with the visible word and adds the setting it
+  // belongs to, as WCAG 2.5.3 requires.
   const faceName = `Published mode: ${label}`;
   const dot = (
     <Circle
@@ -267,11 +260,9 @@ function PublishedModeControl({
               const choice = publishedModeChoice(mode);
               return (
                 <DropdownMenuRadioItem
-                  // The check leads the row rather than trailing it, so the
-                  // current mode is read before the word rather than after the
-                  // eye has already crossed both. The primitive's indicator is
-                  // pinned to the right, and this is the one place that moves
-                  // it.
+                  // Put the check at the start of the row so the current mode
+                  // is read before the word. The primitive pins its indicator
+                  // to the right, and this is the only place that moves it.
                   className="pr-2 pl-8 [&>[data-slot=dropdown-menu-radio-item-indicator]]:right-auto [&>[data-slot=dropdown-menu-radio-item-indicator]]:left-2"
                   key={mode}
                   value={mode}

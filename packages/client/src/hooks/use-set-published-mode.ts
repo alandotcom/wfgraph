@@ -1,16 +1,9 @@
 /**
- * Published mode, changed from one place.
- *
- * The change has two shapes. Test-ward is a single click, since it can only
- * narrow who a run reaches. Live-ward asks first, because it is the moment a
- * workflow starts sending to real people, and it must ask wherever it is
- * offered: the status strip's control, the Actions menu and the command
- * palette all reach the setting through this hook, so none of them can be the
- * surface that changes it silently.
- *
- * The write goes through the editor's save queue, on the workflow the save
- * store's atoms name. A success refreshes the workflow list, because the
- * dashboard offers this setting while showing what it answers.
+ * The one place that changes a workflow's Published mode. Switching to Test
+ * writes on a single press, because it can only narrow who a run reaches.
+ * Switching to Live confirms first: the status strip, the Actions menu and the
+ * command palette all call this hook, so no surface turns on real sending
+ * silently. The write uses the save queue, then refreshes the workflow list.
  */
 
 import { useQueryClient } from "@tanstack/react-query";
@@ -33,8 +26,8 @@ import {
 } from "#src/lib/workflow-save-store";
 
 /**
- * The version the mode governs, as the confirmation names it. Before the first
- * publish there is no number to give, and the setting is waiting for one.
+ * Names the version the mode governs, for the confirmation message. Before the
+ * first publish there is no number, so the phrase stays generic.
  */
 function publishedVersionPhrase(publishedVersion: number | undefined): string {
   return publishedVersion === undefined
@@ -61,11 +54,10 @@ export function useSetPublishedMode(): (mode: WorkflowMode) => Promise<void> {
       }
 
       setCurrentWorkflowMode(outcome.workflow.mode);
-      // The dashboard offers this setting on a row whose "Sends to" cell is the
-      // one place saying whether real people get messaged, and that table is
-      // mounted while the write lands. The save queue only marks the list
-      // stale, which refetches nothing under an active observer, so the
-      // deliberate change refetches the list itself.
+      // The dashboard's "Sends to" cell is the one place that says whether real
+      // people get messaged, and that table can be mounted while this write
+      // lands. The save queue only marks the list stale, which refetches
+      // nothing under an active observer, so refetch the list here.
       await refreshWorkflowList(queryClient);
       toast.success(
         mode === "test"
@@ -87,9 +79,9 @@ export function useSetPublishedMode(): (mode: WorkflowMode) => Promise<void> {
         return;
       }
 
-      // Read rather than observed: the version is wanted once, at the press,
-      // and this entry is the one the status strip is already watching, seeded
-      // by the route loader and patched by every publish.
+      // A one-off read, because the version is needed only at the press. This
+      // cache entry is the one the status strip already observes: the route
+      // loader seeds it and every publish patches it.
       const cached = queryClient.getQueryData(
         orpcQuery.workflow.getById.queryKey({ input: { workflowId } })
       );

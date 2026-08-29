@@ -153,10 +153,11 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
        */
       eventName?: string;
       /**
-       * Which graph this run travels. Absent is the published version, which is
-       * what an Event start always gets and which runs in the workflow's
-       * Published mode. `"draft"` runs what the canvas holds, frozen into a
-       * snapshot version the run pins to, and always goes to test recipients.
+       * Which graph this run travels. When omitted, the run uses the published
+       * version, which is what an Event start always gets and what runs in the
+       * workflow's Published mode. `"draft"` runs the graph the canvas holds,
+       * frozen into a snapshot version the run pins to, and always uses test
+       * recipients.
        */
       graph?: "published" | "draft";
     }
@@ -164,8 +165,8 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
     const logger = yield* loggerFor(workflowId);
     yield* annotateServiceSpan({ workflowId });
 
-    // The two loads answer the same pair, so every gate below reads the same
-    // way whichever graph the run is of.
+    // Both loads return the same fields, so every gate below reads the same
+    // way whichever graph the run uses.
     const source = body.graph ?? "published";
     const { workflow, preflight, version, pinVersion, releaseVersion } =
       yield* (
@@ -181,9 +182,9 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
       );
 
     const payload = body.input ?? {};
-    // A Draft run is a run of a graph nobody reviewed, so it goes to test
+    // A draft run travels a graph nobody has reviewed, so it uses test
     // recipients whatever the workflow's Published mode says. That mode governs
-    // Events and runs of the published version, which is what the other arm gets.
+    // Events and runs of the published version, which the other branch loads.
     const runMode: WorkflowMode = source === "draft" ? "test" : workflow.mode;
     const rules = preflight.lifecycleRules ?? emptyLifecycleRules;
     const extensions = yield* Extensions;
@@ -277,9 +278,9 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
       },
     });
 
-    // The two writes of `preflight.workflowVersionId` onto an Execution sit
-    // here and in the paused branch, and the pin runs just ahead of each so a
-    // start refused above left no version row behind.
+    // An Execution records `preflight.workflowVersionId` here and in the paused
+    // branch above. The pin runs immediately ahead of each write, so a start
+    // refused earlier leaves no version row behind.
     yield* pinVersion;
     const started = yield* startWithConcurrency({
       workflow: toWorkflowRunTarget({
@@ -308,8 +309,8 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
 
     if (started.status === "not_started") {
       // No execution id: the refusal wrote no run, and the run it deferred to
-      // belongs to whoever started it. The timeline carries the refusal, and
-      // the snapshot pinned above it goes unless another run took it.
+      // belongs to whoever started it. The timeline carries the refusal. The
+      // snapshot pinned above is deleted unless another run pinned it too.
       yield* releaseVersion;
       const response: WorkflowExecuteResponse = {
         status: "ignored",

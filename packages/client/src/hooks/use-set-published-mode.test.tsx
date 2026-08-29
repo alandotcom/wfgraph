@@ -1,7 +1,7 @@
 /**
- * What this hook adds to the write it wraps: live-ward asks first, and asks in
- * the words of the version the mode governs. Test-ward stays one press, because
- * it can only narrow who a run reaches.
+ * Covers what the hook adds to the write it wraps. Switching to Live confirms
+ * first and names the version the mode governs. Switching to Test writes on one
+ * press, because it can only narrow who a run reaches.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -23,7 +23,7 @@ import {
 
 const WORKFLOW_ID = "workflow_1";
 
-/** The one control under test: a press that asks for a mode. */
+/** A button that asks the hook for one mode. */
 function ModeProbe({ mode }: { mode: WorkflowMode }) {
   const setPublishedMode = useSetPublishedMode();
 
@@ -53,8 +53,8 @@ function renderProbe(options: {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  // The confirmation names the published version, which the hook reads off the
-  // same cache entry the status strip's badge does.
+  // The confirmation names the published version. The hook reads it from the
+  // same cache entry the status strip's badge uses.
   queryClient.setQueryData(
     orpcQuery.workflow.getById.queryKey({ input: { workflowId: WORKFLOW_ID } }),
     {
@@ -118,7 +118,7 @@ describe("useSetPublishedMode", () => {
         "Events and manual runs of Published v5 will reach real recipients."
       )
     ).toBeTruthy();
-    // Nothing is written by the asking itself.
+    // Showing the confirmation writes nothing on its own.
     expect(update).not.toHaveBeenCalled();
 
     fireEvent.click(getByRole("button", { name: "Send real messages" }));
@@ -128,8 +128,8 @@ describe("useSetPublishedMode", () => {
     });
   });
 
-  // Nothing is published yet, so the confirmation names the setting's subject
-  // rather than a version number nobody could run.
+  // Nothing is published yet, so the confirmation names the published version
+  // in general instead of a number.
   it("names no version before the first publish", async () => {
     const { findByText, getByRole } = renderProbe({ ask: "live" });
 

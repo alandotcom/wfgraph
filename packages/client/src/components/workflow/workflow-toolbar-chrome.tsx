@@ -71,7 +71,7 @@ import {
 } from "#src/lib/workflow-commands";
 import {
   publishedRunLabel,
-  runVerbLabel,
+  runCommandLabel,
   type WorkflowRunGraph,
 } from "#src/lib/workflow-run-labels";
 import type {
@@ -214,9 +214,9 @@ export function CommandPaletteTrigger() {
 }
 
 /**
- * The two questions both Run verbs are gated on, asked through the same pair of
- * functions the Actions menu and the command palette use, so a gate added to
- * either verb reaches every surface that offers it.
+ * The state both run commands are gated on. The Actions menu and the command
+ * palette read the same gate functions, so a new condition reaches every
+ * surface that offers a run.
  */
 function runEligibility(
   state: WorkflowToolbarState,
@@ -232,11 +232,8 @@ function runEligibility(
   };
 }
 
-/**
- * One offered run: what it is called, whether it is refused, and what a press
- * of it starts.
- */
-type RunVerb = {
+/** One offered run command: its label, whether it is disabled, and what it starts. */
+type RunCommand = {
   readonly id: WorkflowRunGraph;
   readonly label: string;
   /** The glyph itself, so each surface renders it at its own size. */
@@ -246,28 +243,27 @@ type RunVerb = {
 };
 
 /**
- * Every run this workflow offers, in the order each surface renders them.
+ * Every run command this workflow offers, in render order.
  *
- * The draft comes first, and it is the split button's face: it runs the canvas,
- * and always goes to test recipients whatever Published mode says. The
- * published version follows, named for its number and the mode it honours, and
- * it names the reason instead before the first publish. Neither verb infers
- * anything from unpublished changes: the operator picks the graph by picking
- * the verb.
+ * The draft command comes first and sits on the split button's face. It runs
+ * the canvas with test recipients, whatever the Published mode is. The published
+ * command follows, labelled with its version number and mode, or with the reason
+ * it is disabled before the first publish. Neither command reads unsaved
+ * changes to pick a graph; the choice of command picks the graph.
  *
- * One list, because the split button and the mobile overflow menu are two
- * renderings of the same offer, and a verb added to one has to reach the other.
+ * The split button and the mobile overflow menu both render this list, so a new
+ * command reaches both.
  */
-function runVerbs(
+function runCommands(
   state: WorkflowToolbarState,
   actions: WorkflowToolbarActions
-): readonly [RunVerb, ...RunVerb[]] {
+): readonly [RunCommand, ...RunCommand[]] {
   const eligibility = runEligibility(state, actions);
 
   return [
     {
       id: "draft",
-      label: runVerbLabel({ graph: "draft" }),
+      label: runCommandLabel({ graph: "draft" }),
       Icon: Play,
       disabled: isDraftRunDisabled(eligibility),
       run: () => void actions.handleExecute("draft"),
@@ -285,22 +281,20 @@ function runVerbs(
   ];
 }
 
-/** One run verb as a menu row, which is how every surface but the face renders one. */
-function RunVerbMenuItem({ verb }: { verb: RunVerb }) {
+/** One run command as a menu row. Every surface except the split button face uses this. */
+function RunCommandMenuItem({ command }: { command: RunCommand }) {
   return (
-    <DropdownMenuItem disabled={verb.disabled} onClick={verb.run}>
-      <verb.Icon />
-      {verb.label}
+    <DropdownMenuItem disabled={command.disabled} onClick={command.run}>
+      <command.Icon />
+      {command.label}
     </DropdownMenuItem>
   );
 }
 
 /**
- * Whether Publish is refused, and the word the control wears, which carries the
- * number the next version would take.
- *
- * One hook for the desktop button and the mobile menu item, so the two cannot
- * disagree about when publishing is possible or about what a press is called.
+ * Whether Publish is disabled, and the label for the control, which names the
+ * version number the next publish takes. The desktop button and the mobile menu
+ * item share this hook so they cannot disagree.
  */
 function usePublishGate(
   state: WorkflowToolbarState,
@@ -321,8 +315,8 @@ function usePublishGate(
       hasUnsavedChanges: state.hasUnsavedChanges,
       publication: state.publication,
     }),
-    // The version is part of the verb wherever there is one to name, which is
-    // what makes the button and the menu item the same promise.
+    // Include the version number whenever there is one, so the control states
+    // exactly which version a press creates.
     label: actions.isPublishing
       ? "Publishing"
       : proposedVersion
@@ -332,8 +326,8 @@ function usePublishGate(
 }
 
 /**
- * The run verbs as one split control: the first on the face, the rest behind
- * the chevron.
+ * The run commands as one split control. The first command sits on the face and
+ * the rest sit behind the chevron.
  */
 export function RunSplitButton({
   actions,
@@ -342,16 +336,16 @@ export function RunSplitButton({
   actions: WorkflowToolbarActions;
   state: WorkflowToolbarState;
 }) {
-  const [face, ...behindTheChevron] = runVerbs(state, actions);
+  const [face, ...behindTheChevron] = runCommands(state, actions);
 
   return (
-    // Named as a group, because the two halves are one control and a screen
-    // reader meeting the chevron alone would have nothing to place it against.
+    // The two halves are one control, so the group carries the name. Without
+    // it a screen reader announces the chevron with no context.
     <ButtonGroup aria-label="Run">
       <Button
-        // The separator below is the one seam inside this control, so the face
-        // gives up its own right border: two outline halves would draw that
-        // edge at twice the weight of every other hairline in the bar.
+        // The separator supplies the divider inside this control, so the face
+        // drops its right border. Two outline halves would draw that edge at
+        // twice the weight of the other hairlines in the bar.
         className="border-r-0"
         disabled={face.disabled}
         onClick={face.run}
@@ -361,11 +355,11 @@ export function RunSplitButton({
         <face.Icon className="size-3.5" data-icon="inline-start" />
         {face.label}
       </Button>
-      {/* The separator is what makes one split control of the pair: press the
-          label to run the draft, the chevron for the other verbs. */}
+      {/* The separator joins the two halves into one split control. The label
+          runs the draft; the chevron opens the other run commands. */}
       <ButtonGroupSeparator />
-      {/* Enabled even with nothing published: the item inside is where the
-          reason for that is written. */}
+      {/* Stays enabled with nothing published, because the menu item inside
+          names that reason. */}
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
@@ -379,8 +373,8 @@ export function RunSplitButton({
           <ChevronDown className="size-3 opacity-50" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-64">
-          {behindTheChevron.map((verb) => (
-            <RunVerbMenuItem key={verb.id} verb={verb} />
+          {behindTheChevron.map((command) => (
+            <RunCommandMenuItem command={command} key={command.id} />
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
@@ -389,9 +383,9 @@ export function RunSplitButton({
 }
 
 /**
- * The same verbs plus Publish as menu items, for the one overflow menu the
- * trailing group collapses into below `md`. Each row carries the disabled
- * reason its desktop control carries, read from the same list and the same gate.
+ * The same run commands plus Publish as menu items, for the overflow menu the
+ * trailing group collapses into below `md`. Each row reads the same list and
+ * the same gate as its desktop control, so the disabled states match.
  */
 export function RunPublishMenuItems({
   actions,
@@ -404,8 +398,8 @@ export function RunPublishMenuItems({
 
   return (
     <>
-      {runVerbs(state, actions).map((verb) => (
-        <RunVerbMenuItem key={verb.id} verb={verb} />
+      {runCommands(state, actions).map((command) => (
+        <RunCommandMenuItem command={command} key={command.id} />
       ))}
       <DropdownMenuItem
         disabled={publish.disabled}
@@ -479,10 +473,10 @@ function ActionsMenu({ commands }: { commands: readonly WorkflowCommand[] }) {
               onClick={command.execute}
             >
               <WorkflowCommandIcon id={command.id} />
-              {/* The detail carries what the label cannot, and for a disabled
-                  row it is the reason: "Run published version" would otherwise
-                  sit here greyed out with nothing saying why. Printed the way
-                  the Published mode menu prints its own sentences. */}
+              {/* The detail line says what the label has no room for. On a
+                  disabled row it gives the reason, so "Run published version"
+                  is never greyed out without an explanation. It is styled the
+                  same way as the Published mode menu's descriptions. */}
               <span>
                 {command.label}
                 {command.detail ? (
@@ -617,12 +611,12 @@ export function ToolbarPublishControls({
     <>
       {state.isOwner ? (
         <>
-          {/* Below `md` these two collapse into the overflow menu the toolbar
-              renders beside this group, so the whole trailing group fits a
-              390px screen without anything scrolling out of reach. */}
+          {/* Below `md` these two move into the overflow menu the toolbar
+              renders beside this group, so the trailing group fits a 390px
+              screen without scrolling. */}
           <div className="hidden shrink-0 items-center gap-2 md:flex">
-            {/* The switcher chooses what is on screen; everything past this rule
-                writes. */}
+            {/* The switcher only changes the view. Every control after this
+                separator writes. */}
             <Separator
               className="data-vertical:h-4 data-vertical:self-center"
               orientation="vertical"

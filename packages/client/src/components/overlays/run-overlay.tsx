@@ -41,8 +41,8 @@ import { useOverlay } from "./overlay-provider";
 import type { OverlayComponentProps } from "./types";
 
 /**
- * The value the Event select carries for a run that stands in for no Event. An
- * Event name is never empty, so no real choice collides with it.
+ * The Event select's value for a run that stands in for no Event. An Event name
+ * is never empty, so this value collides with no real choice.
  */
 const NO_EVENT = "";
 
@@ -53,9 +53,9 @@ export type RunRequest = {
 
 type RunOverlayProps = OverlayComponentProps<{
   /**
-   * Which graph this run starts, and what it is called. The overlay's heading,
-   * its opening sentence and its confirm button are all read off this one
-   * value, so the verb the operator pressed is the verb they confirm.
+   * Which graph this run starts, and its label. The heading, the opening
+   * sentence and the confirm button all read this one value, so the overlay
+   * confirms the command that opened it.
    */
   target: WorkflowRunTarget;
   /** The workflow's Start Events, in the order the Lifecycle panel lists them. */
@@ -63,15 +63,16 @@ type RunOverlayProps = OverlayComponentProps<{
   /** Whether a run naming no Event is one this workflow takes at all. */
   allowManualStart: boolean;
   /**
-   * Whether the graph splits on the Event a run is on. Such a graph refuses an
-   * Event-less run, so the overlay says so before the request rather than after.
+   * Whether the graph splits on the Event a run stands in for. A graph that
+   * splits rejects an Event-less run, so the overlay reports that before the
+   * request is sent.
    */
   hasEventSplit: boolean;
   /** The samples the workflow kept, one per Event plus the Event-less one. */
   savedPayloads: TestPayloads;
   /**
    * What the graph this run executes can send outward. Only a live published
-   * run states it, and it is counted off that version's own nodes.
+   * run displays it, counted from that version's own nodes.
    */
   sends: RunSends;
   onRun: (request: RunRequest) => void;
@@ -147,7 +148,7 @@ function PayloadForm({
   fields: readonly TestPayloadField[];
   values: TestPayloadFormValues;
   onChange: (path: string, next: string) => void;
-  /** Whether the run stands in for an Event, which is what declares the fields. */
+  /** Whether the run stands in for an Event. The Event declares the fields. */
   hasEvent: boolean;
 }) {
   if (fields.length === 0) {
@@ -188,16 +189,12 @@ function PayloadForm({
 }
 
 /**
- * The data a run carries, gathered before it starts.
+ * Collects the data a run carries before it starts: the payload that downstream
+ * templates address, and the Event the run stands in for, which an Event Split
+ * routes on. A run missing either one stops at the first node that needs it.
  *
- * Two things leave here: the payload, which every template downstream addresses,
- * and the Event the run stands in for, which is what an Event Split routes on. A
- * run given neither reaches the first node that needs one and stops there, so
- * this is the screen that keeps a run from being a different thing than the run
- * it is standing in for.
- *
- * One component serves both verbs. The Event and payload halves are identical
- * for each; `target` is what changes the words around them.
+ * Both run commands use this component. `target` decides the wording around the
+ * Event and payload fields, which are the same either way.
  */
 export function RunOverlay({
   overlayId,
@@ -212,17 +209,17 @@ export function RunOverlay({
   const catalog = useExtensionCatalog();
   const { closeAll } = useOverlay();
   const copy = runOverlayCopy(target);
-  // The one run that leaves the building, which is what the confirm button's
-  // destructive variant acts on.
+  // A live published run is the only run that reaches real recipients, so the
+  // confirm button takes the destructive variant for it.
   const reachesRealRecipients =
     target.graph === "published" && target.workflowMode === "live";
   // The band states the sends the published graph holds. A version built only
-  // from waits, conditions and internal steps makes none, and an alarm over a
-  // sentence saying so spends the signal reserved for real sends.
+  // from waits, conditions and internal steps has none, so the alarm styling is
+  // reserved for versions that actually send.
   const showSendsBand = reachesRealRecipients && sends.count > 0;
 
-  // The first Start Event, since one of them is the ordinary shape. A workflow
-  // with none can only be the Event-less manual start.
+  // Default to the first Start Event. A workflow with no Start Event can only
+  // take the Event-less manual start.
   const [selectedEvent, setSelectedEvent] = useState<string>(
     startEvents[0] ?? NO_EVENT
   );
@@ -243,8 +240,8 @@ export function RunOverlay({
   );
   const [jsonError, setJsonError] = useState<string | null>(null);
 
-  // The payload the JSON pane holds, which is also what the form writes into: a
-  // path the form has no field for survives the round trip that way.
+  // The form writes into the same payload the JSON pane holds, so a path with
+  // no matching form field survives the round trip.
   const [basePayload, setBasePayload] = useState<JsonObject>(
     () => savedPayload ?? {}
   );
@@ -263,7 +260,7 @@ export function RunOverlay({
     setJsonError(null);
   };
 
-  /** The form's values as a payload, on top of whatever the JSON pane holds. */
+  /** The form's values as a payload, merged over whatever the JSON pane holds. */
   const currentPayload = () =>
     payloadFromFormValues(fields, values, basePayload);
 
@@ -307,8 +304,8 @@ export function RunOverlay({
   };
 
   // A manual-only workflow has one way to start and no Event to stand in for,
-  // so the select would offer a single choice nobody can change. An Event
-  // Split keeps the block, since its sentence is what says why Run is off.
+  // so the select would offer a single unchangeable choice. A graph with an
+  // Event Split keeps the block, because its sentence explains why Run is off.
   const showEventSelect =
     startEvents.length > 0 || !allowManualStart || hasEventSplit;
 
@@ -382,9 +379,8 @@ export function RunOverlay({
             )}
           </div>
         ) : (
-          // With no select to sit under, the same fact is what a disabled
-          // confirm button is waiting for, so it stands on its own rather than
-          // leaving the reader a greyed-out button and no sentence.
+          // With no select above it, this sentence is the only explanation
+          // for the disabled confirm button, so it is rendered on its own.
           eventIsRequired && (
             <p className="text-muted-foreground text-sm">
               This workflow splits on the Event a run is on, and the Lifecycle

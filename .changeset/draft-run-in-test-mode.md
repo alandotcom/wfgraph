@@ -2,23 +2,23 @@
 "@wfgraph/core": minor
 ---
 
-A workflow can run the graph on its canvas. `workflow.execute` with
-`graph: "draft"` reads the draft, puts it through the same checks a published
-start runs, freezes it as a draft snapshot version, and pins the run to that
-row, so a workflow nobody has published is runnable and an edit can be tried
-without publishing it.
+`workflow.execute` accepts `graph: "draft"`, which runs the graph on the
+workflow's canvas. The draft passes the same checks a published start runs, is
+frozen as a draft snapshot version, and the run is pinned to that row. A
+workflow that has never been published can therefore run, and an edit can be
+tried without publishing it.
 
-Such a run always goes to test recipients. Its response, its Execution row, its
-Inngest event and its audit rows all record `runMode: "test"` whatever the
-workflow's mode says, because the graph it travels is one nobody reviewed. The
-workflow's own mode is now the Published mode alone: it decides what Events and
-manual runs of the published version send to, and a run of the canvas never
-reads it. Concurrency keys its in-flight set on the mode, so a run of the draft
-sits beside the live run of the same entity rather than superseding it.
+A draft run always reaches test recipients. Its response, its Execution row, its
+Inngest event and its audit rows record `runMode: "test"` whatever the
+workflow's mode is, because nobody has reviewed the graph it executes. The
+workflow's own mode is the Published mode alone. It decides who Events and
+manual runs of the published version reach, and a draft run ignores it.
+Concurrency keys its in-flight set on the mode, so a draft run sits beside a live
+run of the same entity instead of superseding it.
 
-Every other rule a manual start answers to holds unchanged, including the pause
-gate, the manual-start rule, and the Start Event a run stands in for.
+Every other rule a manual start follows is unchanged, including the pause gate,
+the manual-start rule, and the Start Event a run stands in for.
 
-The editor sends the canvas before it starts such a run: Run draft flushes the
-autosave queue, so an edit made a moment before the click is in the run rather
-than a debounce window behind it. A refused save stops the run and says so.
+The editor sends the canvas before it starts a draft run. Run draft flushes the
+autosave queue, so an edit made shortly before the click is part of the run. A
+refused save stops the run and reports the reason.

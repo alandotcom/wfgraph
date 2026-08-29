@@ -23,12 +23,12 @@ import type {
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 
 /**
- * Which graph a run pinned, in the words the timeline says it in: the Draft the
- * canvas held, or the published version by its number.
+ * Which graph a run pinned: the Draft the canvas held, or a published version
+ * identified by its number.
  */
 export type PinnedRunVersion = {
   kind: WorkflowVersionKind;
-  /** The published version's number. Null on a draft snapshot, which has none. */
+  /** The published version's number. Null on a draft snapshot. */
   number: number | null;
 };
 
@@ -145,13 +145,13 @@ const IGNORED_SUBJECTS: Record<WorkflowExecutionStartSource, string> = {
 };
 
 /**
- * The opening words of a "run started" row: who started it, and which graph ran.
+ * The opening words of a "run started" row: who started the run, and which graph
+ * it ran.
  *
- * The graph is what a reader of the timeline is actually asking, and it is the
- * one fact `runMode` cannot supply: a Draft run always reaches test recipients
- * whatever Published mode the workflow is in, so a row wording itself off the
- * mode alone would read the same for a Draft run and for a test run of the
- * published version.
+ * `runMode` cannot supply the graph. A Draft run always reaches test recipients
+ * whatever Published mode the workflow is in, so a row worded from the mode
+ * alone would read the same for a Draft run and for a test run of the published
+ * version.
  */
 function runStartedSubject(
   startSource: WorkflowExecutionStartSource,
@@ -169,9 +169,9 @@ function runStartedSubject(
 }
 
 /**
- * Who a run reached, which is the whole of what `runMode` decides. The phrase
- * "test mode" is deliberately absent: Published mode is a setting on the
- * workflow, and a row records what one run did.
+ * Who a run reached, which is all `runMode` decides. The wording names
+ * recipients instead of "test mode", because Published mode is a setting on the
+ * workflow while this row records what one run did.
  */
 function runRecipientsPhrase(runMode: WorkflowMode): string {
   return runMode === "test" ? "test recipients" : "real recipients";

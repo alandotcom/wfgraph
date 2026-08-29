@@ -71,18 +71,18 @@ function renderOverlay(
   return { onRun };
 }
 
-/** A published run of v7 in the mode given, which is what the band answers to. */
+/** A published run of v7 in the given Published mode, which the sends band reads. */
 function publishedTarget(workflowMode: "live" | "test"): WorkflowRunTarget {
   return { graph: "published", publishedVersion: 7, workflowMode };
 }
 
 describe("RunOverlay", () => {
   /**
-   * One component, three headings. The Event and payload halves are identical
-   * for each verb; what changes is the sentence saying which graph runs and who
-   * receives what it sends.
+   * One component with three headings. The Event and payload halves are the
+   * same for every run command. What changes is the sentence naming which graph
+   * runs and who receives what it sends.
    */
-  it("says a draft run goes to test recipients, and nothing more", () => {
+  it("states that a draft run reaches test recipients", () => {
     renderOverlay({ target: { graph: "draft" } });
 
     expect(screen.getByRole("heading", { name: "Run draft" })).toBeTruthy();
@@ -94,11 +94,11 @@ describe("RunOverlay", () => {
   });
 
   /**
-   * The one run that leaves the building. The band counts the sends off the
-   * published graph, and the button names the consequence rather than the
-   * version, so neither the reading nor the press is about a version number.
+   * A live published run is the only run that reaches real recipients. The band
+   * counts the sends in the published graph, and the button names the
+   * consequence instead of the version number.
    */
-  it("states the sends a live published run will make", () => {
+  it("states the sends a live published run makes", () => {
     renderOverlay({
       sends: { count: 3, integrations: ["Slack", "Resend"] },
       target: publishedTarget("live"),
@@ -114,7 +114,7 @@ describe("RunOverlay", () => {
     expect(confirm.className).toContain("destructive");
   });
 
-  it("leaves the band off a published run in Test Published mode", () => {
+  it("hides the sends band for a published run in Test Published mode", () => {
     renderOverlay({
       sends: { count: 3, integrations: ["Slack", "Resend"] },
       target: publishedTarget("test"),
@@ -130,8 +130,8 @@ describe("RunOverlay", () => {
     expect(screen.getByRole("button", { name: "Run v7 · Test" })).toBeTruthy();
   });
 
-  // A workflow only a person can start has one way to start, so the choice
-  // between that and a Start Event is not a choice.
+  // A manual-only workflow has one way to start, so there is no choice to
+  // offer between a manual start and a Start Event.
   it("hides the Event select for a manual-only workflow", () => {
     const { onRun } = renderOverlay({
       allowManualStart: true,
@@ -156,8 +156,8 @@ describe("RunOverlay", () => {
     expect(screen.getByLabelText(/appointment\.startsAt/)).toBeTruthy();
   });
 
-  // The payload is the whole point: a run sent without one resolves every
-  // downstream template to empty text.
+  // A run sent without a payload resolves every downstream template to empty
+  // text.
   it("sends the Event and the payload the form holds", () => {
     const { onRun } = renderOverlay();
 
@@ -186,17 +186,18 @@ describe("RunOverlay", () => {
     ).toBe("appt_saved");
   });
 
-  // A graph that splits on the Event refuses an Event-less run, so the overlay
-  // says so where the choice is made rather than after the request.
-  it("says why a split graph takes no Event-less run", () => {
+  // A graph that splits on the Event rejects an Event-less run, so the overlay
+  // reports that where the choice is made rather than after the request.
+  it("explains why a split graph accepts no Event-less run", () => {
     renderOverlay({ hasEventSplit: true });
 
     expect(screen.getByText(/splits on the Event a run is on/)).toBeTruthy();
   });
 
-  // A manual-only graph hides the Event block, and a split mid-build (no Start
-  // Events declared yet) would hide the one sentence saying why Run is off.
-  it("keeps the Event block when a split needs it on a manual-only graph", () => {
+  // A manual-only graph hides the Event block. Mid-build, with a split and no
+  // Start Events declared yet, that would also hide the one sentence saying why
+  // Run is disabled.
+  it("keeps the Event block on a manual-only graph that has a split", () => {
     renderOverlay({
       hasEventSplit: true,
       allowManualStart: true,
@@ -206,7 +207,7 @@ describe("RunOverlay", () => {
     expect(screen.getByText(/splits on the Event a run is on/)).toBeTruthy();
   });
 
-  it("reports JSON it cannot read instead of sending it", () => {
+  it("reports invalid JSON instead of sending it", () => {
     const { onRun } = renderOverlay();
 
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));

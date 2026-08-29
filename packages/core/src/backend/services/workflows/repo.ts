@@ -55,7 +55,7 @@ export type WorkflowVersionHistoryRow = Pick<
   isCurrent: boolean;
 };
 
-/** Whether this row is a Publish's own version rather than a draft snapshot. */
+/** Reports whether a version row is a published version or a draft snapshot. */
 function isPublishedVersion(
   version: WorkflowVersion
 ): version is PublishedWorkflowVersion {
@@ -63,8 +63,9 @@ function isPublishedVersion(
 }
 
 /**
- * The same question asked of a row that may be absent, which is the form every
- * read of the publication pointer answers in.
+ * The same check for a row that may be absent. Every read of the publication
+ * pointer returns a version row, null, or undefined, so they all pass through
+ * here.
  */
 export function asPublishedVersion(
   version: WorkflowVersion | null | undefined
@@ -73,10 +74,12 @@ export function asPublishedVersion(
 }
 
 /**
- * A published row's number, for a read that already excluded the snapshots.
+ * The version number of a row that a query already restricted to published
+ * versions.
  *
- * The column is nullable only for those, so a null here is a row this build did
- * not mint, and the query that returned it is wrong rather than the data.
+ * Only a draft snapshot leaves the column null, so a null here means the query
+ * failed to exclude the snapshots. The throw reports that bug instead of
+ * passing a bad number on.
  */
 function publishedVersionNumber(value: number | null): number {
   if (value === null) {
@@ -235,8 +238,8 @@ export class WorkflowRepo extends Context.Service<
     }) => Effect.Effect<Workflow | null, DatabaseError>;
     /**
      * The newest published version for this workflow, or null when none exist.
-     * Draft snapshots are passed by: they claim no number, so they can neither
-     * be the latest one nor decide the next.
+     * Draft snapshots are skipped because they carry no version number, so they
+     * cannot be the latest version or decide the next one.
      */
     readonly findLatestVersion: (
       workflowId: string
@@ -247,7 +250,8 @@ export class WorkflowRepo extends Context.Service<
      * `cursor.version` is exclusive, so it returns versions strictly older than
      * that one. The result holds up to `limit + 1` rows; callers keep `limit`
      * rows and use the extra row to determine whether a next cursor exists.
-     * Draft snapshots are left out: the history is what was published.
+     * Draft snapshots are left out because the history covers published
+     * versions only.
      */
     readonly listVersionHistoryPage: (input: {
       workflowId: string;
@@ -256,8 +260,8 @@ export class WorkflowRepo extends Context.Service<
     }) => Effect.Effect<WorkflowVersionHistoryRow[], DatabaseError>;
     /**
      * One version by id, of either kind, or null when it is gone. The engine and
-     * the run panel both read a run's pinned version through this, so it has to
-     * find the draft snapshots the other version reads exclude.
+     * the run panel read a run's pinned version through this, so it must also
+     * return the draft snapshots that the other version reads exclude.
      */
     readonly findVersionById: (
       versionId: string
@@ -303,12 +307,12 @@ export class WorkflowRepo extends Context.Service<
       DatabaseError
     >;
     /**
-     * The same four workflow columns paired with the draft graph instead, for a
-     * test-mode run of what the canvas holds.
+     * The same four workflow columns as the read above, paired with the draft
+     * graph, for a test-mode run of the graph the canvas holds.
      *
-     * A separate read rather than a wider one: the published path deliberately
-     * leaves the draft column unread, and that graph runs to megabytes on the
-     * workflows every Event start goes through.
+     * This is a separate read because the published path leaves the draft
+     * column unread on purpose. That graph reaches megabytes on the workflows
+     * every Event start goes through.
      */
     readonly findByIdWithDraftGraphForRun: (
       workflowId: string
@@ -337,15 +341,15 @@ export class WorkflowRepo extends Context.Service<
       eventSubscriptions: WorkflowEventSubscriptionRow[];
     }) => Effect.Effect<InsertPublishedVersionResult, DatabaseError>;
     /**
-     * Freeze the draft graph as a version a run can pin to, and hand back the
-     * row. An existing snapshot of this workflow holding this exact graph under
-     * this catalog is answered instead of a new row, so `versionId` is a
-     * proposal and the returned `id` is the one to pin: ten runs of an
+     * Freezes the draft graph as a version a run can pin to, and returns the
+     * row. When this workflow already has a snapshot of this exact graph under
+     * this catalog, that row comes back instead of a new one. So `versionId` is
+     * a proposal, and the caller pins the returned `id`. Repeated runs of an
      * unchanged canvas share one row.
      *
-     * Nothing else moves: no version number is claimed, the publication pointer
-     * stays where it is, and the Event subscription index keeps describing the
-     * published graph, which is what holds a draft run to a manual start.
+     * The call writes nothing else. It claims no version number and the
+     * publication pointer does not move. The Event subscription index keeps
+     * describing the published graph, so only a manual start runs a draft.
      */
     readonly freezeDraftSnapshot: (input: {
       workflowId: string;
@@ -355,10 +359,11 @@ export class WorkflowRepo extends Context.Service<
       graphDigest: string;
     }) => Effect.Effect<WorkflowVersion, DatabaseError>;
     /**
-     * Drop a draft snapshot no Execution names, and leave one that any names.
-     * A start refused after the freeze (Concurrency's first-wins, for one)
-     * calls this so the refusal leaves no row; a concurrent start that pinned
-     * the same snapshot in the meantime keeps it. Answers whether a row went.
+     * Deletes a draft snapshot that no Execution references, and keeps one that
+     * an Execution does reference. A start refused after the freeze, such as a
+     * first-wins concurrency refusal, calls this so the refusal leaves no row
+     * behind. A concurrent start that pinned the same snapshot keeps it.
+     * Returns whether a row was deleted.
      */
     readonly deleteUnreferencedDraftSnapshot: (
       versionId: string
@@ -372,7 +377,7 @@ export type InsertPublishedVersionResult =
   | { stale: true }
   | null;
 
-/** The four workflow columns a run gates and routes on. */
+/** The four workflow columns a run reads before it starts. */
 const RUN_WORKFLOW_COLUMNS = {
   id: true,
   name: true,
@@ -854,7 +859,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
         freezeDraftSnapshot: (input) =>
           database.query(async (db) => {
             // jsonb equality is structural, so key order and whitespace in the
-            // stored column do not defeat the match.
+            // stored column do not affect the match.
             const [existing] = await db
               .select()
               .from(workflowVersions)
@@ -897,9 +902,9 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
 
         deleteUnreferencedDraftSnapshot: (versionId) =>
           database.query(async (db) => {
-            // The NOT EXISTS is the guard; a concurrent insert referencing the
-            // row holds a share lock on it, so this delete waits for that
-            // transaction and then finds the reference.
+            // The NOT EXISTS clause keeps this delete from racing a concurrent
+            // pin. That insert holds a share lock on the row, so the delete
+            // waits for its transaction and then sees the reference.
             const deleted = await db
               .delete(workflowVersions)
               .where(

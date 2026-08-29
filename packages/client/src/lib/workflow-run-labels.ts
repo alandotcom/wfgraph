@@ -1,19 +1,9 @@
 /**
- * The words a run is said in, both before it starts and after.
+ * Every label a run is named by, before it starts and after it finishes.
  *
- * Every surface offering a run reads its verb from here -- the toolbar's split
- * button, the Actions menu, the command palette, the run overlay and the start
- * toast -- and every surface naming a run that already happened reads its
- * phrase from here too: run history, the run summary row and its metadata, and
- * the status strip. "Run draft", "Run v7 · Live" and "Draft · Test" are each
- * written once, so renaming a graph or changing the separator is one edit.
- *
- * A draft run holds no mode: it always goes to test recipients, whatever the
- * workflow's Published mode is, and the target union says so by leaving the
- * field off that arm.
- *
- * `runSends` sits here too, because the sends a live run is confirmed against
- * are a fact of the graph read straight into the sentence stating them.
+ * A draft run has no mode: it always reaches test recipients, so the draft arm
+ * of `WorkflowRunTarget` carries no mode field. `runSends` lives here because
+ * the run overlay states the sends in the same sentence it confirms.
  */
 
 import {
@@ -40,7 +30,7 @@ export type WorkflowRunGraph = "draft" | "published";
  */
 const SEPARATOR = " · ";
 
-/** What one press of a Run verb starts, named the way the operator reads it. */
+/** What one run command starts. */
 export type WorkflowRunTarget =
   | {
       readonly graph: "draft";
@@ -54,17 +44,14 @@ export type WorkflowRunTarget =
 /** The disabled item standing where a published run would be before the first publish. */
 export const NOTHING_PUBLISHED_LABEL = "Nothing published yet";
 
-/**
- * The Published mode's own word, which every label suffixes and which the
- * strip's mode control wears on its own.
- */
+/** The word for a Published mode, used as a label suffix and on its own. */
 export function publishedModeWord(workflowMode: WorkflowMode): string {
   return workflowMode === "live" ? "Live" : "Test";
 }
 
 /**
- * The target a Run verb starts, or `null` when the operator asked for the
- * published version of a workflow that has none.
+ * The target a run command starts. Returns `null` when the command asks for the
+ * published version of a workflow that has never been published.
  */
 export function workflowRunTarget(input: {
   graph: WorkflowRunGraph;
@@ -86,8 +73,8 @@ export function workflowRunTarget(input: {
   };
 }
 
-/** The verb itself: "Run draft", or "Run v7 · Live". */
-export function runVerbLabel(target: WorkflowRunTarget): string {
+/** The command label: "Run draft", or "Run v7 · Live". */
+export function runCommandLabel(target: WorkflowRunTarget): string {
   if (target.graph === "draft") {
     return "Run draft";
   }
@@ -95,23 +82,21 @@ export function runVerbLabel(target: WorkflowRunTarget): string {
 }
 
 /**
- * The published run's label wherever it is offered beside "Run draft". Before
- * the first publish it names the reason it is disabled.
+ * The label for the published run command, which is offered beside "Run draft".
+ * Before the first publish it names why the command is disabled.
  */
 export function publishedRunLabel(input: {
   workflowMode: WorkflowMode;
   publishedVersion: number | undefined;
 }): string {
   const target = workflowRunTarget({ graph: "published", ...input });
-  return target ? runVerbLabel(target) : NOTHING_PUBLISHED_LABEL;
+  return target ? runCommandLabel(target) : NOTHING_PUBLISHED_LABEL;
 }
 
 /**
- * One choice in the Published mode menu: the word, and who that mode sends to.
- *
- * A clause rather than a sentence, because the control sits beside the
- * publication badge that already names the version, and the menu's own title
- * says the setting is about the published version.
+ * One choice in the Published mode menu: the mode's word, and who that mode
+ * sends to. The description is a clause, because the menu title and the
+ * publication badge beside it already supply the rest.
  */
 export function publishedModeChoice(workflowMode: WorkflowMode): {
   label: string;
@@ -125,11 +110,10 @@ export function publishedModeChoice(workflowMode: WorkflowMode): {
 }
 
 /**
- * What a run of a given graph can send outward: the steps that change something
- * outside the workflow through an integration, and which integrations those are.
- *
- * Counted off the graph the run will execute, so a published run counts the
- * published version's nodes rather than whatever the canvas holds now.
+ * The steps of a graph that change something outside the workflow through an
+ * integration, and which integrations carry them. Counted from the graph the
+ * run executes, so a published run counts the published version's nodes rather
+ * than the current canvas.
  */
 export type RunSends = {
   readonly count: number;
@@ -138,13 +122,11 @@ export type RunSends = {
 };
 
 /**
- * The steps of a graph that reach outside it: an action that changes something
- * outside the workflow, carried by an integration. A lookup is not one of them,
- * which is what `sideEffect` on the catalog's action answers.
+ * Counts the steps of a graph that send outward. A step counts when its catalog
+ * action sets `sideEffect`, so a lookup is skipped.
  *
- * A step the run will not perform is left out along with everything stranded
- * behind it, so a graph whose only send hangs off a switched-off step counts
- * nothing. `inactiveBranch` owns that reachability rule for the canvas already.
+ * Disabled steps and everything stranded behind them are skipped as well, using
+ * the same reachability rule the canvas draws with (`inactiveBranch`).
  */
 export function runSends(input: {
   nodes: readonly WorkflowNode[];
@@ -178,9 +160,9 @@ export function runSends(input: {
 }
 
 /**
- * The sends stated as a fact: "3 sends: Slack, Resend". This is what a live
- * published run is confirmed against, so it names no recipient, only how many
- * outward steps the graph holds and which integrations carry them.
+ * Renders the sends as a phrase: "3 sends: Slack, Resend". The confirmation for
+ * a live published run shows this, so it names the count and the integrations
+ * and never a recipient.
  */
 export function runSendsLabel(sends: RunSends): string {
   if (sends.count === 0) {
@@ -193,11 +175,11 @@ export function runSendsLabel(sends: RunSends): string {
 }
 
 /**
- * The run overlay's heading, its opening sentence, and its confirm button.
+ * The run overlay's heading, opening sentence, and confirm button.
  *
- * The published heading names the version in prose ("Run Published v7") while
- * its confirm button keeps the verb the operator pressed, except live-ward,
- * where the button names the consequence instead of the version.
+ * A published heading names the version in prose ("Run Published v7"). Its
+ * confirm button repeats the command label, except in live mode, where the
+ * button names the consequence instead.
  */
 export function runOverlayCopy(target: WorkflowRunTarget): {
   title: string;
@@ -205,11 +187,11 @@ export function runOverlayCopy(target: WorkflowRunTarget): {
   confirmLabel: string;
 } {
   if (target.graph === "draft") {
-    const verb = runVerbLabel(target);
+    const command = runCommandLabel(target);
     return {
-      title: verb,
+      title: command,
       description: "Runs the draft on this canvas with test recipients.",
-      confirmLabel: verb,
+      confirmLabel: command,
     };
   }
 
@@ -224,13 +206,13 @@ export function runOverlayCopy(target: WorkflowRunTarget): {
   return {
     title,
     description: `Runs Published v${target.publishedVersion} with test recipients.`,
-    confirmLabel: runVerbLabel(target),
+    confirmLabel: runCommandLabel(target),
   };
 }
 
 /**
- * The facts a run that already started is named by: the graph it pinned, and
- * the recipients it reached. Every read surface passes the run itself.
+ * The fields a started run is named by: the graph it pinned and the recipients
+ * it reached. Read surfaces pass the run record itself.
  */
 export type WorkflowRunGraphIdentity = {
   readonly versionKind: WorkflowVersionKind;
@@ -239,12 +221,11 @@ export type WorkflowRunGraphIdentity = {
 };
 
 /**
- * Which graph a run pinned. "Draft" for a snapshot of the canvas, and the
- * published version by its number: "v7" in a table column, "Published v7" in
- * prose that has room for the word.
+ * Names the graph a run pinned. A canvas snapshot reads "Draft"; a published
+ * version reads "v7" in a table column and "Published v7" in prose.
  *
- * A published run with no number cannot happen -- the contract refuses one --
- * so the bare word is what the impossible case reads as, on every surface.
+ * The contract rejects a published run without a version number, so the bare
+ * "Published" is only a fallback for a row that should not exist.
  */
 export function runGraphLabel(
   run: Pick<WorkflowRunGraphIdentity, "versionKind" | "versionNumber">,
@@ -267,9 +248,8 @@ export function runRecipientsLabel(runMode: "live" | "test"): string {
 }
 
 /**
- * A run in one phrase: "Draft · Test" for a draft run, which always reaches
- * test recipients, or "v7 · Live" / "v7 · Test" for a run of the published
- * graph.
+ * Names a run in one phrase. A draft run reads "Draft · Test", because it always
+ * reaches test recipients. A published run reads "v7 · Live" or "v7 · Test".
  */
 export function runGraphRecipientsLabel(run: WorkflowRunGraphIdentity): string {
   return `${runGraphLabel(run)}${SEPARATOR}${runRecipientsLabel(run.runMode)}`;

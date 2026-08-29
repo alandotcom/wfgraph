@@ -261,8 +261,8 @@ describe("the command palette", () => {
   async function openedPalette(
     rendered: Awaited<ReturnType<typeof renderChrome>>
   ) {
-    // Anchored at both ends: the Published mode pill's name also starts with
-    // "Publish", and this is waiting for the write button beside it.
+    // The name is anchored at both ends, because the Published mode pill also
+    // starts with "Publish" and this waits for the write button beside it.
     await rendered.findByRole("button", { name: /^Publish( v\d+)?$/ });
     pressCommandK();
     const input = paletteInput();
@@ -398,8 +398,8 @@ describe("the command palette", () => {
   });
 
   /**
-   * A published workflow in Test Published mode, where the one command that
-   * reaches real recipients is the switch to Live.
+   * A published workflow in Test Published mode, where the switch to Live is
+   * the only command that reaches real recipients.
    */
   function publishedInTestMode() {
     return renderChrome(ToolbarActions, {
@@ -417,11 +417,11 @@ describe("the command palette", () => {
   }
 
   /**
-   * The highlighted row is the row Return takes, so a row that reaches real
-   * recipients never gets one for free: the plain matches sort ahead of it, and
-   * the seed lands on the first of those.
+   * Return takes the highlighted row, so a row that reaches real recipients is
+   * never highlighted automatically. Plain matches sort ahead of it, and the
+   * automatic highlight lands on the first of those.
    */
-  it("seeds the highlight past a row that sends", async () => {
+  it("places the automatic highlight past a row that sends", async () => {
     const rendered = publishedInTestMode();
     const input = await openedPalette(rendered);
 
@@ -436,12 +436,12 @@ describe("the command palette", () => {
   });
 
   /**
-   * When nothing plain is left to sort ahead of it, Base UI seeds row zero
-   * anyway and offers no way to move that highlight. So the row is unarmed
-   * instead: it wears none of the highlight styling and Return goes nowhere
-   * until an arrow key claims it.
+   * With no plain match left to sort ahead of it, Base UI highlights row zero
+   * anyway and offers no way to move that highlight. The row stays unarmed
+   * instead: it shows no highlight styling, and Return does nothing until an
+   * arrow key arms it.
    */
-  it("leaves a row that sends unarmed until an arrow key claims it", async () => {
+  it("leaves a row that sends unarmed until an arrow key arms it", async () => {
     const rendered = publishedInTestMode();
     const input = await openedPalette(rendered);
 
@@ -453,11 +453,11 @@ describe("the command palette", () => {
     });
     expect(toLive.className).not.toContain("data-highlighted:");
 
-    // Return before the arrow key is the press this rule exists to refuse.
+    // Return before the arrow key is the press this rule rejects.
     fireEvent.keyDown(paletteInput() ?? input, { key: "Enter" });
     expect(rendered.actions.handleSetWorkflowMode).not.toHaveBeenCalled();
 
-    // Base UI walks the highlight off the single row and back onto it.
+    // Base UI moves the highlight off the single row and back onto it.
     fireEvent.keyDown(paletteInput() ?? input, { key: "ArrowDown" });
     fireEvent.keyDown(paletteInput() ?? input, { key: "ArrowDown" });
 
@@ -472,9 +472,9 @@ describe("the command palette", () => {
   });
 
   /**
-   * The armed row answers the key the palette's own hint promises. The arming
-   * rule refuses Return on a row the keyboard has not claimed, and the row it
-   * has claimed has to be the one exception a press of Return goes through.
+   * The arming rule rejects Return on a row the keyboard has not armed. An
+   * armed row must still respond to Return, which is what the palette's hint
+   * tells the reader.
    */
   it("takes the armed row on Return", async () => {
     const rendered = publishedInTestMode();
@@ -488,9 +488,9 @@ describe("the command palette", () => {
     expect(paletteInput()).toBeNull();
   });
 
-  // The row still says what the mode is now, which is what the operator is
-  // deciding against.
-  it("names the mode a switch is leaving", async () => {
+  // The row names the mode currently in force, which is what the switch is
+  // measured against.
+  it("names the mode the switch leaves", async () => {
     const rendered = publishedInTestMode();
     await openedPalette(rendered);
 

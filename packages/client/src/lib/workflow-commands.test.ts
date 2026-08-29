@@ -132,7 +132,7 @@ describe("workflowCommands", () => {
     );
   });
 
-  it("switches to the mode opposite the current one, naming the one it leaves", () => {
+  it("switches to the opposite mode and names the mode it leaves", () => {
     const input = commandInput({ workflowMode: "test" });
     const mode = workflowCommands(input).find(
       (command) => command.id === "mode"
@@ -145,12 +145,11 @@ describe("workflowCommands", () => {
   });
 
   /**
-   * Consequential marks the two rows that reach real recipients, which is what
-   * a surface offering a highlighted row reads before it seeds one. Both are
-   * live-ward: the mode command going to Live, and the run of a version whose
-   * Published mode already is.
+   * `consequential` marks the rows that reach real recipients. A surface that
+   * highlights a row on its own reads this flag first. Two rows carry it: the
+   * command that switches to Live, and the run of a version already in Live.
    */
-  it("marks the two live-ward commands consequential, and nothing else", () => {
+  it("marks only the two commands that reach real recipients", () => {
     const live = workflowCommands(commandInput({ workflowMode: "live" }));
     expect(
       live.find((command) => command.id === "run-published")?.consequential
@@ -174,8 +173,8 @@ describe("workflowCommands", () => {
     );
   });
 
-  // Nothing is published, so the run reaches nobody at all.
-  it("leaves the published run plain before the first publish", () => {
+  // Nothing is published, so the published run reaches nobody.
+  it("does not mark the published run before the first publish", () => {
     const commands = workflowCommands(
       commandInput({ workflowMode: "live", publishedVersion: undefined })
     );
@@ -185,9 +184,9 @@ describe("workflowCommands", () => {
     ).toBe(false);
   });
 
-  // Two verbs, and each one starts the graph it names. Nothing here reads the
-  // publication state to decide which graph a single Run would have meant.
-  it("offers both Run verbs, named for what each one starts", () => {
+  // Each run command starts the graph its label names. Nothing here reads the
+  // publication state to pick a graph.
+  it("offers both run commands, each labelled with the graph it starts", () => {
     const input = commandInput({ workflowMode: "test", publishedVersion: 7 });
     const commands = workflowCommands(input);
     const draft = commands.find((command) => command.id === "run-draft");
@@ -204,10 +203,10 @@ describe("workflowCommands", () => {
     expect(input.callbacks.runPublished).toHaveBeenCalledOnce();
   });
 
-  // The Actions menu and the palette list the two verbs flat, with no "Run
-  // options" heading to lean on, so the disabled row still has to name an
-  // action. The reason goes underneath it.
-  it("keeps Run draft available before the first publish, and says why the other is not", () => {
+  // The Actions menu and the palette list both commands flat, with no "Run
+  // options" heading, so a disabled row must still name an action. The reason
+  // goes in the detail line underneath.
+  it("keeps Run draft available before the first publish and explains why the other is not", () => {
     const commands = workflowCommands(
       commandInput({ publishedVersion: undefined })
     );
@@ -223,9 +222,9 @@ describe("workflowCommands", () => {
     expect(published?.disabled).toBe(true);
   });
 
-  // The preflight checks the canvas for the run that is about to execute it.
-  // The published version was validated at Publish and is frozen since.
-  it("holds Run draft back for its own issue preflight and leaves Run v7 alone", () => {
+  // The preflight checks the canvas for the run about to execute it. Publish
+  // already validated the published version, and a version is frozen.
+  it("disables Run draft during its issue preflight and leaves the published run enabled", () => {
     const commands = workflowCommands(commandInput({ isPreflighting: true }));
 
     expect(
@@ -236,10 +235,9 @@ describe("workflowCommands", () => {
     ).toBe(false);
   });
 
-  // v7 is a frozen graph still handling Events. Emptying the canvas to start
-  // over, or handing it to the build agent, says nothing about whether it can
-  // run.
-  it("leaves Run v7 available while the canvas is empty or being generated", () => {
+  // A published version is a frozen graph that still handles Events. Clearing
+  // the canvas or handing it to the build agent does not affect it.
+  it("keeps the published run enabled while the canvas is empty or generating", () => {
     for (const canvas of [{ hasNodes: false }, { isGenerating: true }]) {
       const commands = workflowCommands(commandInput(canvas));
 
@@ -252,7 +250,7 @@ describe("workflowCommands", () => {
     }
   });
 
-  it("holds both verbs back while a run is already in flight", () => {
+  it("disables both run commands while a run is already in flight", () => {
     const commands = workflowCommands(commandInput({ isExecuting: true }));
 
     expect(

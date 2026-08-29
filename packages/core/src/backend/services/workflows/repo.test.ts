@@ -155,7 +155,8 @@ describe("insertPublishedVersion", () => {
     new Date(),
     new Date(),
   ];
-  // Column order is the table's: a stubbed driver answers with positional rows.
+  // The order matches the table's columns, because the stubbed driver returns
+  // positional rows.
   const versionRow = (id: string, version: number) => [
     id,
     "wf_1",
@@ -441,8 +442,8 @@ describe("freezeDraftSnapshot", () => {
     new Date(),
   ];
 
-  // The lookup for an identical snapshot answers nothing, so the write goes
-  // ahead and returns the minted row.
+  // With no existing snapshot, the lookup returns nothing, so the insert runs
+  // and returns the minted row.
   function run(existing: string | null = null) {
     const { layer: databaseLayer, statements } = stubDatabase((statement) =>
       statement.query.startsWith("select")
@@ -475,10 +476,10 @@ describe("freezeDraftSnapshot", () => {
     expect(statements[1]?.params).toContain("draft_snapshot");
   });
 
-  // Ten runs of an unchanged canvas share one row: the lookup is keyed on the
-  // workflow, the kind, the catalog and the graph itself, and a hit skips the
-  // insert and hands back the existing id for the run to pin.
-  it("answers an existing identical snapshot in place of a new row", async () => {
+  // Repeated runs of an unchanged canvas share one row. The lookup is keyed on
+  // the workflow, the kind, the catalog, and the graph, and a hit skips the
+  // insert and returns the existing id for the run to pin.
+  it("returns an existing identical snapshot in place of a new row", async () => {
     const { statements, snapshot } = run("ver_earlier");
 
     expect((await snapshot).id).toBe("ver_earlier");
@@ -488,9 +489,9 @@ describe("freezeDraftSnapshot", () => {
   });
 
   // The publication pointer and the Event subscription index both describe the
-  // published graph, so a snapshot that moved either would make an unpublished
-  // graph the one Events start.
-  it("touches nothing but the versions table", async () => {
+  // published graph. A snapshot that changed either one would let Events start
+  // an unpublished graph.
+  it("writes to the versions table only", async () => {
     const { statements, snapshot } = run();
     await snapshot;
 
@@ -514,8 +515,9 @@ describe("draft snapshot exclusions", () => {
     ).then(() => statements[0]);
   }
 
-  // The guard is in the statement itself, so a snapshot another start pinned in
-  // the meantime survives without a read-then-delete window.
+  // The guard lives in the statement itself, so a snapshot another start pinned
+  // in the meantime survives. A separate read and delete would leave a window
+  // between them.
   it("deletes a draft snapshot only when no execution names it", async () => {
     const statement = await statementFor((repo) =>
       repo.deleteUnreferencedDraftSnapshot("ver_snapshot")
@@ -527,7 +529,7 @@ describe("draft snapshot exclusions", () => {
     expect(statement?.params).toContain("draft_snapshot");
   });
 
-  it("asks findLatestVersion for published rows alone", async () => {
+  it("restricts findLatestVersion to published rows", async () => {
     const statement = await statementFor((repo) =>
       repo.findLatestVersion("wf_1")
     );
@@ -536,7 +538,7 @@ describe("draft snapshot exclusions", () => {
     expect(statement?.params).toContain("published");
   });
 
-  it("asks listVersionHistoryPage for published rows alone", async () => {
+  it("restricts listVersionHistoryPage to published rows", async () => {
     const statement = await statementFor((repo) =>
       repo.listVersionHistoryPage({ workflowId: "wf_1", limit: 25 })
     );
@@ -547,7 +549,7 @@ describe("draft snapshot exclusions", () => {
 });
 
 describe("findByIdWithDraftGraphForRun", () => {
-  it("reads the draft graph beside the columns a run gates on", async () => {
+  it("reads the draft graph alongside the columns a run needs", async () => {
     const { layer: databaseLayer, statements } = stubDatabase(() => []);
 
     await Effect.runPromise(
@@ -563,8 +565,8 @@ describe("findByIdWithDraftGraphForRun", () => {
     expect(query).toContain('as "graph"');
     expect(query).toContain('as "isPaused"');
     expect(query).toContain('as "mode"');
-    // Nothing joins the published version: a draft run pins a snapshot of the
-    // graph this read returns instead.
+    // The query joins no published version. A draft run pins a snapshot of the
+    // graph this read returns.
     expect(query).not.toContain("workflow_versions");
   });
 });

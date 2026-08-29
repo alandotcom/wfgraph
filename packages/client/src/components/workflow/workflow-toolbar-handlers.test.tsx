@@ -189,12 +189,12 @@ afterEach(() => {
 });
 
 /**
- * Confirms the run overlay the way the overlay's own confirm button would,
- * without rendering the overlay's UI: `openOverlay` already packaged the exact
- * `onRun` callback that button calls, on the stack `useOverlay` exposes.
+ * Confirms the run overlay the way its confirm button would, without rendering
+ * the overlay UI. `openOverlay` already put the exact `onRun` callback that
+ * button calls on the stack `useOverlay` exposes.
  *
- * Both verbs get a button, because which one was pressed is the whole of the
- * draft-or-published decision now.
+ * Each run command gets its own button, because the command that was pressed
+ * decides whether the draft or the published version runs.
  */
 function RunGraphProbe({
   workflowState,
@@ -232,9 +232,9 @@ function RunGraphProbe({
 }
 
 /**
- * What a save answers with. Nothing here decides which graph runs any more; the
- * flush exists so the server reads the canvas the operator can see, and this is
- * the payload shape `toSavedWorkflow` decodes.
+ * The response shape a save returns, which `toSavedWorkflow` decodes. It no
+ * longer decides which graph runs. The flush exists so the server reads the
+ * canvas that is on screen.
  */
 function savedWorkflowResponse(publication: {
   hasUnpublishedChanges: boolean;
@@ -254,9 +254,9 @@ function savedWorkflowResponse(publication: {
 }
 
 /**
- * Answers the two calls a test run makes, in order: the flush of the canvas,
- * then the run itself. Returns the recorded requests, so a case can say both
- * that the canvas was sent and what the run asked for.
+ * Answers the two calls a test run makes, in order: the canvas flush, then the
+ * run. Returns the recorded requests, so a case can assert both that the canvas
+ * was sent and what the run asked for.
  */
 function serveRunRequests(options: {
   saved?: Parameters<typeof savedWorkflowResponse>[0];
@@ -283,9 +283,9 @@ function serveRunRequests(options: {
           )
         );
       }
-      // Run v7 reads the published version's own graph before it can offer
-      // that version's Start Events, so the overlay never puts a draft-only
-      // Event in front of a published run.
+      // A published run reads that version's own graph before it can offer its
+      // Start Events, so the overlay never shows a draft-only Event for a
+      // published run.
       if (path === "workflow/getVersionGraph") {
         return rpcJsonResponse({ graph: expectedSnapshot });
       }
@@ -302,12 +302,12 @@ function serveRunRequests(options: {
   return requests;
 }
 
-/** Open the run overlay and confirm it, which is one full press of a verb. */
+/** Opens the run overlay and confirms it, which is one full run command. */
 async function confirmRun(
   view: ReturnType<typeof renderProbe>,
-  verb: "Run draft" | "Run published" = "Run draft"
+  command: "Run draft" | "Run published" = "Run draft"
 ) {
-  fireEvent.click(await view.findByRole("button", { name: verb }));
+  fireEvent.click(await view.findByRole("button", { name: command }));
   await waitFor(() =>
     expect(
       (
@@ -321,7 +321,7 @@ async function confirmRun(
 }
 
 describe("useWorkflowActions Run graph selection", () => {
-  it("sends the canvas before running the draft, then runs the draft", async () => {
+  it("sends the canvas before it runs the draft", async () => {
     const requests = serveRunRequests({
       saved: { hasUnpublishedChanges: true, publishedVersionId: "version_7" },
     });
@@ -334,9 +334,8 @@ describe("useWorkflowActions Run graph selection", () => {
     await confirmRun(view);
 
     await waitFor(() => expect(requests).toHaveLength(2));
-    // The flush is what keeps the server reading the graph the operator can
-    // see: autosave is debounced, and the run would otherwise execute the one
-    // before the last edit.
+    // The flush makes the server read the graph that is on screen. Autosave is
+    // debounced, so without it the run would execute the previous graph.
     expect(requests[0]).toEqual({
       path: "workflow/update",
       input: { workflowId, graph: expectedSnapshot },
@@ -347,8 +346,8 @@ describe("useWorkflowActions Run graph selection", () => {
     });
   });
 
-  // The verb decides, so a Live workflow runs its draft on request. The server
-  // records that run against test recipients whatever the mode says.
+  // The command decides which graph runs, so a Live workflow still runs its
+  // draft on request. The server records that run against test recipients.
   it("runs the draft of a workflow in Live Published mode", async () => {
     const requests = serveRunRequests({
       saved: { hasUnpublishedChanges: true, publishedVersionId: "version_7" },
@@ -367,8 +366,8 @@ describe("useWorkflowActions Run graph selection", () => {
     });
   });
 
-  // Nothing published, and the draft still runs: the canvas is what the verb
-  // names, and there is no fallback to infer.
+  // The draft command names the canvas, so it runs with nothing published and
+  // falls back to no other graph.
   it("runs the draft of a workflow that has never been published", async () => {
     const requests = serveRunRequests({
       saved: { hasUnpublishedChanges: false },
@@ -392,8 +391,8 @@ describe("useWorkflowActions Run graph selection", () => {
     });
   });
 
-  // The draft matches what is published, and Run draft still runs the canvas:
-  // the two graphs being identical is not a reason to run the other one.
+  // Run draft runs the canvas even when the canvas matches the published
+  // version. Identical graphs are not a reason to run the other one.
   it("runs the draft with no save when the canvas is already saved", async () => {
     const requests = serveRunRequests({});
 
@@ -432,15 +431,15 @@ describe("useWorkflowActions Run graph selection", () => {
     await confirmRun(view);
 
     await waitFor(() => expect(errorToast).toHaveBeenCalled());
-    // Only the refused save: running here would execute the graph the server
+    // Only the refused save happens. Running would execute the graph the server
     // last accepted while the canvas paints statuses on the newer one.
     expect(requests.map((request) => request.path)).toEqual([
       "workflow/update",
     ]);
   });
 
-  // The published version is a frozen graph, so an unsaved canvas has nothing
-  // to do with it and no flush belongs in front of it.
+  // A published version is a frozen graph, so an unsaved canvas cannot affect
+  // it and no flush is needed.
   it("runs the published version without flushing the canvas", async () => {
     const requests = serveRunRequests({ runMode: "live" });
 
@@ -451,21 +450,21 @@ describe("useWorkflowActions Run graph selection", () => {
 
     await waitFor(() => expect(requests).toHaveLength(2));
     // The version's own graph, then the run. No `workflow/update` between them,
-    // which is the flush the draft verb owes and this one does not.
+    // because only the draft command flushes the canvas.
     expect(requests[0]).toEqual({
       path: "workflow/getVersionGraph",
       input: { versionId: "version_7" },
     });
-    // No `graph` key at all: absent means published, on the wire as elsewhere.
+    // No `graph` key at all. An absent field means the published graph.
     expect(requests[1]).toEqual({
       path: "workflow/execute",
       input: { workflowId, input: {} },
     });
   });
 
-  // The draft's issue list gates the draft's run alone. Publish already refused
-  // this graph's blocking issues before it became a version, so what the canvas
-  // has broken since is not in what runs.
+  // The draft's issue list gates the draft run only. Publish rejects blocking
+  // issues before a graph becomes a version, so canvas problems introduced
+  // since do not reach the published run.
   it("opens a published run without collecting the draft's issues", async () => {
     const requests = serveRunRequests({ runMode: "test" });
     const unconnected = { ...providerState(), userIntegrations: [] };
@@ -475,8 +474,8 @@ describe("useWorkflowActions Run graph selection", () => {
       extensionCatalog: providerCatalog,
     });
 
-    // The issues overlay carries no `onRun`, so the run overlay opening is what
-    // this button becoming pressable means.
+    // The issues overlay carries no `onRun`, so this button becomes pressable
+    // only once the run overlay opens.
     await confirmRun(view, "Run published");
 
     await waitFor(() => expect(requests).toHaveLength(2));
@@ -500,14 +499,14 @@ describe("useWorkflowActions Run graph selection", () => {
     fireEvent.click(await view.findByRole("button", { name: "Run published" }));
     await act(async () => {});
 
-    // No overlay to confirm and no request behind it: every control offering
-    // this run is disabled with the reason written on it.
+    // No overlay opens and no request is sent. Every control that offers this
+    // run is disabled and states the reason.
     expect(view.getByLabelText("overlay count").textContent).toBe("0");
     expect(requests).toHaveLength(0);
   });
 
-  // A viewer gets no run controls at all, and the chord is on the document
-  // rather than on one of them, so the owner test is repeated on the listener.
+  // A viewer sees no run controls, but the shortcut listener is on the document
+  // rather than on a control, so it repeats the owner check.
   it("ignores Cmd+Enter for a viewer who does not own the workflow", async () => {
     const requests = serveRunRequests({});
 

@@ -59,9 +59,9 @@ export function updateNodesStatus(
 }
 
 /**
- * Keeps this run's payload on the entry node, so the run overlay opens on it
- * next time. The write goes through the graph store, which is what the
- * autosave queue watches.
+ * Stores this run's payload on the entry node, so the run overlay opens on it
+ * next time. The write goes through the graph store, which the autosave queue
+ * watches.
  */
 export function rememberTestPayload(input: {
   nodes: WorkflowNode[];
@@ -94,9 +94,9 @@ type ExecuteWorkflowRunParams = {
   setNodeStatuses: SetNodeStatuses;
   setIsExecuting: (value: boolean) => void;
   /**
-   * The verb the operator pressed, from `runVerbLabel`. Both verbs land on the
-   * same run panel, so the start toast is where "Run draft" and "Run v7 · Live"
-   * stay told apart.
+   * The command label, from `runCommandLabel`. Both run commands open the same
+   * run panel, so the start toast is what tells "Run draft" and "Run v7 · Live"
+   * apart.
    */
   runLabel: string;
   /**
@@ -162,9 +162,8 @@ export async function executeWorkflowRun({
         toast.success(superseded);
       }
     } else {
-      // One notice per start, and it names the verb: the canvas paints the same
-      // statuses either way, so this sentence is what says which graph is under
-      // them.
+      // One toast per start, naming the command. The canvas paints the same
+      // statuses for either run, so this toast says which graph is running.
       toast.success(`${runLabel} started`);
     }
 

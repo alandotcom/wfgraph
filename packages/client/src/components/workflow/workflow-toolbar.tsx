@@ -48,12 +48,12 @@ function isWorkspaceView(value: unknown): value is WorkflowWorkspaceView {
 }
 
 /**
- * Which views this workflow offers, which one is on screen, and how to move
- * between them. Read once for the trailing group, because the desktop switcher
- * and the mobile overflow menu are two renderings of the same choice.
+ * Which views this workflow offers, which one is on screen, and how to switch.
+ * The desktop switcher and the mobile overflow menu render the same choice, so
+ * the trailing group reads this once.
  *
- * A canvas nobody has saved yet offers none of them: Runs and Changes are read
- * off a workflow that exists, and there is no second view to switch to.
+ * An unsaved canvas offers no views, because Runs and Changes both need a saved
+ * workflow and there is no second view to switch to.
  */
 function useWorkspaceViews({
   hasWorkflow,
@@ -114,12 +114,12 @@ function WorkspaceViewSwitcher({
 }
 
 /**
- * The whole trailing group, as one button, below `md`.
+ * The whole trailing group as one button, below `md`.
  *
- * A phone has room for a switcher or a Run verb, never both, and a row that
- * scrolls hides whichever it cannot fit. So the four controls become four rows
- * behind one trigger: which view is on screen, then the two Run verbs and
- * Publish, each refused for the same reason it is refused on the desktop.
+ * A phone fits either the view switcher or a run command, and a scrolling row
+ * hides whichever does not fit. The four controls become four menu rows: the
+ * current view, the two run commands, and Publish. Each row is disabled for the
+ * same reason its desktop control is.
  */
 function WorkflowActionsMenu({
   actions,
@@ -176,11 +176,11 @@ function WorkflowActionsMenu({
 }
 
 /**
- * The trailing group: which view is on screen, then what a press writes.
+ * The trailing group: the view switcher, then the controls that write.
  *
- * The views come from the workflow, so an unsaved canvas has none and the
- * switcher goes with them. Run and Publish stay, because a canvas nobody has
- * saved yet still runs and still publishes.
+ * The views come from the saved workflow, so an unsaved canvas drops the
+ * switcher. Run and Publish stay, because an unsaved canvas can still run and
+ * still publish.
  */
 function WorkflowTrailingControls({
   actions,
@@ -195,9 +195,9 @@ function WorkflowTrailingControls({
     isOwner: state.isOwner,
     isPublished: Boolean(state.publication?.isPublished),
   });
-  // Below `md` the whole group is one button, and a button that opens onto
-  // nothing is worse than no button: a non-owner can neither run nor publish,
-  // and the single view they have is the one already on screen.
+  // Below `md` the whole group is one button. A viewer who does not own the
+  // workflow can neither run nor publish, and their only view is already on
+  // screen, so the button would open an empty menu. Hide it instead.
   const hasOverflowRows = state.isOwner || workspace.views.length > 1;
 
   return (

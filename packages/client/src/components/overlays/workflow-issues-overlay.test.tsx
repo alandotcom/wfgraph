@@ -129,7 +129,7 @@ describe("workflowIssueCount", () => {
   });
 });
 
-/** The list as the overlay is handed it, with only the rows a case needs. */
+/** Builds the model the overlay takes, filling only the rows a case needs. */
 function issuesModel(
   overrides: Partial<WorkflowIssuesOverlayModel>
 ): WorkflowIssuesOverlayModel {
@@ -169,9 +169,9 @@ function renderIssues(issues: WorkflowIssuesOverlayModel) {
 }
 
 describe("WorkflowIssuesOverlay", () => {
-  // The strip's chip says "2 issues" and this list opens from it, so the two
-  // read the same. It used to head itself "Workflow Issues (2)".
-  it("heads itself with the count the chip carries", () => {
+  // The strip's chip says "2 issues" and this list opens from it, so both use
+  // the same wording. The heading used to read "Workflow Issues (2)".
+  it("heads the list with the count the chip shows", () => {
     const { getAllByRole, getByText } = renderIssues(
       issuesModel({
         totalIssues: 2,
@@ -199,8 +199,8 @@ describe("WorkflowIssuesOverlay", () => {
     );
 
     expect(getByText("2 issues")).toBeTruthy();
-    // Nothing blocking, so the softer sentence is the only one, and Close
-    // leaves the filled button to the repairs in the list.
+    // No blocking issue, so only the warning sentence appears. Close stays an
+    // outline button and leaves the filled style to the repairs in the list.
     expect(
       getByText("The draft has issues that may cause it to fail.")
     ).toBeTruthy();
@@ -211,9 +211,9 @@ describe("WorkflowIssuesOverlay", () => {
     expect(close?.className).toContain("border-border");
   });
 
-  // One line, not two: a reader with a blocking issue needs the harder fact,
-  // and the pair of them put the softer one first.
-  it("says only the blocker while one stands", () => {
+  // A blocking issue shows one sentence on its own. Showing both would put the
+  // warning sentence ahead of the fact the reader needs.
+  it("shows only the blocking sentence while a blocker stands", () => {
     const { getByRole, getByText, queryByText } = renderIssues(
       issuesModel({
         totalIssues: 1,

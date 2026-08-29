@@ -73,9 +73,9 @@ describe("listByWorkflow", () => {
   );
 });
 
-describe("the version kind every run read carries", () => {
-  // The panel labels a draft run off the version it pinned, and reading the
-  // graph to find out would defeat the point of the thin list row.
+describe("pinned version joins", () => {
+  // The panel labels a draft run from the version it pinned. Reading the graph
+  // to find that out would defeat the point of the thin list row.
   it.effect("joins the pinned version on all three run reads", () =>
     Effect.gen(function* () {
       const { service: database, statements } = stubDatabase();

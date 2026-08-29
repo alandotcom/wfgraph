@@ -61,9 +61,9 @@ describe("PublishReviewDialog", () => {
     ).toBeTruthy();
   });
 
-  // The Test note says the version is held back; the Live note says it is not.
-  // A publish that reaches real recipients is the one worth reading before the
-  // button is pressed, so it gets the destructive tone.
+  // The Test note says the version is held back from real recipients. The Live
+  // note says it reaches them at once, so that note carries the destructive
+  // tone.
   it("says a Live publish reaches real recipients at once", () => {
     const view = render(
       <PublishReviewDialog

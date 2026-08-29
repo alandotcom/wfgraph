@@ -101,8 +101,8 @@ describe("native SQLite persistence", () => {
             graphDigest: "draft-digest",
           });
 
-          // The same graph under the same catalog is one row however many
-          // runs ask for it; the proposed id is dropped in favour of the hit.
+          // The same graph under the same catalog is one row however many runs
+          // ask for it. The proposed id gives way to the existing row's id.
           const again = yield* workflows.freezeDraftSnapshot({
             workflowId: "wf_1",
             versionId: "ver_snapshot_2",
@@ -111,8 +111,8 @@ describe("native SQLite persistence", () => {
             graphDigest: "draft-digest",
           });
 
-          // A run pins the reused row, so the release must keep it; a row
-          // nothing names goes.
+          // A run pins the reused row, so the release must keep it. A row no
+          // run references is deleted.
           const executions = yield* ExecutionRepo;
           yield* executions.insertTerminal({
             workflowId: "wf_1",
@@ -162,8 +162,8 @@ describe("native SQLite persistence", () => {
         version: null,
         kind: "draft_snapshot",
       });
-      // The history and the next version number are the publication's, so a
-      // snapshot appears in neither; the engine still reads it by id.
+      // The history and the next version number cover published rows only, so
+      // a snapshot appears in neither. The engine still reads it by id.
       expect(result.history).toMatchObject([{ id: "ver_1", version: 1 }]);
       expect(result.latest).toEqual({ version: 1 });
       expect(result.again.id).toBe("ver_snapshot");
@@ -181,10 +181,11 @@ describe("native SQLite persistence", () => {
     }
   });
 
-  // SQLite cannot drop a NOT NULL, so step 5 rebuilds workflow_versions. Two
-  // tables carry a foreign key into it: an execution row a rebuild with foreign
-  // keys on would cascade away, and a workflow's published_version_id the same
-  // rebuild would silently SET NULL, unpublishing every workflow in the file.
+  // SQLite cannot drop a NOT NULL constraint, so step 5 rebuilds
+  // workflow_versions. Two tables carry a foreign key into it. With foreign keys
+  // on, the rebuild would cascade every execution row away and set every
+  // workflow's published_version_id to NULL, unpublishing every workflow in the
+  // file.
   it("rebuilds workflow_versions without dropping what points at it", async () => {
     const filename = await databasePath();
     const versionFour = new DatabaseSync(filename);
@@ -254,8 +255,8 @@ describe("native SQLite persistence", () => {
       expect(
         inspection.prepare("SELECT id FROM workflow_executions").all()
       ).toEqual([{ id: "exec_1" }]);
-      // The published pointer survives the DROP TABLE, which with foreign keys
-      // on would have SET NULL it and left the workflow unpublished.
+      // The published pointer survives the DROP TABLE. With foreign keys on,
+      // the drop would have set it to NULL and left the workflow unpublished.
       expect(
         inspection
           .prepare("SELECT id, published_version_id FROM workflows")

@@ -262,8 +262,9 @@ function runSearchText(run: RunHistorySearchRow): string {
     run.id,
     run.status,
     run.runMode,
-    // The stored kind, which both visible words are a prefix of: "draft"
-    // reaches `draft_snapshot` and "published" reaches `published`.
+    // The stored kind. Both visible labels are prefixes of it, so a search for
+    // "draft" matches `draft_snapshot` and one for "published" matches
+    // `published`.
     run.versionKind,
     run.startSource,
     run.startEventName,

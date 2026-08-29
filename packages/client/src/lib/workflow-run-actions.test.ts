@@ -103,9 +103,9 @@ describe("executeWorkflowRun", () => {
     ]);
   });
 
-  // Both verbs paint the same statuses on the same canvas and land on the same
-  // run panel, so the toast is the only place the graph that started is named.
-  it("names the verb that started the run", async () => {
+  // Both run commands paint the same statuses on the same canvas and open the
+  // same run panel, so the toast is the only place that names the graph.
+  it("names the run command that started the run", async () => {
     const success = vi.spyOn(toast, "success");
 
     await executeWorkflowRun(
@@ -115,7 +115,7 @@ describe("executeWorkflowRun", () => {
     expect(success).toHaveBeenCalledExactlyOnceWith("Run v7 · Live started");
   });
 
-  it("leaves the superseding notice to say a run started, and names the verb on it", async () => {
+  it("names the run command on the superseding notice", async () => {
     const success = vi.spyOn(toast, "success");
 
     await executeWorkflowRun(

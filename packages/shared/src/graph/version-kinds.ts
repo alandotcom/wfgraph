@@ -1,14 +1,9 @@
 /**
- * What a `workflow_versions` row is.
- *
- * `published` is the immutable graph a Publish minted, numbered and pointed at
- * by `workflows.published_version_id`. `draft_snapshot` is the graph a test-mode
- * draft run pinned itself to: it carries no version number, stays out of the
- * version history, and nothing ever publishes it.
- *
- * It lives in shared, and imports nothing, so the Drizzle schema can name the
- * literals in a check constraint without importing through `#src/` (drizzle-kit's
- * schema loader cannot resolve that subpath).
+ * The two kinds of row in `workflow_versions`. A `published` row is the numbered,
+ * immutable graph a publish created, pointed at by `workflows.published_version_id`.
+ * A `draft_snapshot` row is the graph a test-mode draft run pinned; it has no
+ * number and never enters the version history. This file imports nothing, so the
+ * Drizzle schema can name the literals in a check constraint without `#src/`.
  */
 export const WORKFLOW_VERSION_KINDS = ["published", "draft_snapshot"] as const;
 

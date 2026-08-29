@@ -357,8 +357,8 @@ describe("workflow versions", () => {
       })
     );
 
-    // A snapshot is minted by a test-mode draft run, never by a Publish, so it
-    // is not one of the versions the history offers to compare against.
+    // A test-mode draft run mints a snapshot and a Publish does not, so the
+    // history never offers a snapshot to compare against.
     it.effect("conceals a draft snapshot", () =>
       Effect.gen(function* () {
         const snapshot = {

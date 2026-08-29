@@ -50,9 +50,9 @@ export type WorkflowCommand = {
   readonly keywords: string;
   readonly hint?: string;
   /**
-   * Whether taking this command reaches real recipients. A surface that
-   * highlights a row for the operator must not highlight one of these, since
-   * the highlight plus the Return key is a send nobody asked for.
+   * Whether running this command reaches real recipients. A surface that
+   * highlights rows on its own must skip these, because a highlighted row plus
+   * the Return key would send without anyone choosing to.
    */
   readonly consequential?: boolean;
   readonly disabled: boolean;
@@ -142,8 +142,8 @@ export function isWorkflowPublishDisabled({
 }
 
 /**
- * Everything either Run verb is judged on. One shape, so a surface offering
- * both asks the two questions of the same facts.
+ * The state both run commands are gated on. One shape, so a surface offering
+ * both commands checks them against the same facts.
  */
 export type WorkflowRunEligibility = {
   readonly currentWorkflowId: string | null;
@@ -156,18 +156,18 @@ export type WorkflowRunEligibility = {
 };
 
 /**
- * What both verbs need: a saved workflow, and no run of this editor's already
- * in flight. Nothing about the canvas belongs here, because the published
- * version is a frozen graph the canvas cannot reach.
+ * The conditions both run commands need: a saved workflow, and no run already
+ * in flight from this editor. Canvas state is checked elsewhere, because a
+ * published version is frozen and the canvas cannot affect it.
  */
 function isRunUnavailable(state: WorkflowRunEligibility): boolean {
   return state.isExecuting || !state.currentWorkflowId;
 }
 
 /**
- * Run draft's gate, which is where every canvas fact lives: an empty canvas has
- * no draft to run, a generating one is being rewritten under the press, and the
- * issue preflight is this verb's own check.
+ * The gate for Run draft, which is where the canvas conditions live. An empty
+ * canvas has no draft to run, a generating canvas is being rewritten, and the
+ * issue preflight applies to this command alone.
  */
 export function isDraftRunDisabled(state: WorkflowRunEligibility): boolean {
   return (
@@ -179,9 +179,8 @@ export function isDraftRunDisabled(state: WorkflowRunEligibility): boolean {
 }
 
 /**
- * Run v7's gate. Its one condition of its own is that something is published:
- * a published version is immutable, so nothing the builder does to the canvas
- * can hold it back.
+ * The gate for the published run. Its only extra condition is that a version
+ * exists. A published version is immutable, so canvas edits cannot disable it.
  */
 export function isPublishedRunDisabled(state: WorkflowRunEligibility): boolean {
   return isRunUnavailable(state) || state.publishedVersion === undefined;
@@ -234,12 +233,11 @@ export function workflowCommands({
     {
       id: "run-published",
       group: "workflow",
-      // Named for the version and the Published mode it honours, which is what
-      // separates it from the verb above. The label stays a verb before the
-      // first publish: this row is listed flat beside "Run draft" in the
-      // Actions menu and the palette, where a bare "Nothing published yet"
-      // would name no action at all. The reason goes in the detail those two
-      // surfaces print underneath.
+      // The label names the version and the Published mode, which is what
+      // distinguishes it from Run draft. Before the first publish the label
+      // still names an action, because the Actions menu and the palette list
+      // this row flat beside "Run draft" and a bare "Nothing published yet"
+      // would name none. The reason goes in the detail line underneath.
       label: hasPublishedVersion
         ? publishedRunLabel({
             workflowMode: state.workflowMode,
@@ -251,8 +249,8 @@ export function workflowCommands({
         : NOTHING_PUBLISHED_LABEL,
       keywords: "Run published version live test execute start trigger",
       disabled: isPublishedRunDisabled(state),
-      // Live is the one run that leaves the building, so the palette makes the
-      // operator arrow onto this row before Return will take it.
+      // A live run is the only one that reaches real recipients, so the palette
+      // requires an arrow key on this row before Return takes it.
       consequential: hasPublishedVersion && state.workflowMode === "live",
       execute: callbacks.runPublished,
     },
@@ -262,8 +260,8 @@ export function workflowCommands({
             id: "mode" as const,
             group: "workflow" as const,
             label: `Set published mode to ${publishedModeWord(otherMode)}`,
-            // The state the command is leaving, so the row says what it is
-            // about to change rather than only what it will set.
+            // Name the mode the command is leaving, so the row states what it
+            // changes rather than only what it sets.
             detail: `Currently ${currentMode.label}, ${currentMode.description.toLowerCase()}`,
             keywords: `Set published mode live test recipients ${otherMode}`,
             disabled: state.isSaving || state.isGenerating,
