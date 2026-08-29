@@ -21,6 +21,11 @@ import { ApiKeyRepo } from "#src/backend/services/api-keys/repo";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import {
+  makeAppContextLayer,
+  WfGraphAppContext,
+  type WfGraphAppContextValue,
+} from "#src/backend/lib/effect/app-context";
 
 /**
  * Everything a service may ask for.
@@ -37,6 +42,7 @@ export type WfGraphServices =
   | AppLogger
   | AgentCapacity
   | AgentConfig
+  | WfGraphAppContext
   | Extensions
   | ApiKeyRepo
   | IntegrationRepo
@@ -55,6 +61,8 @@ export type WfGraphRepositories =
 export type WfGraphRuntimeParts = {
   inngest: InngestSurface;
   extensions: ExtensionSet;
+  /** Stable host URLs used by request handlers and background credential refreshes. */
+  appContext: WfGraphAppContextValue;
   /**
    * The build agent's model settings, or the off state. It carries a credential
    * and no per-request state, so it belongs on the runtime the way the Inngest
@@ -75,6 +83,7 @@ function buildWfGraphLayer(
     AppLoggerLayer,
     // Provides no service: it replaces the Tracer every Effect span is opened on.
     TracerBridgeLayer,
+    makeAppContextLayer(parts.appContext),
     makeExtensionsLayer(parts.extensions),
     makeAgentConfigLayer(parts.agent),
     parts.repositories,

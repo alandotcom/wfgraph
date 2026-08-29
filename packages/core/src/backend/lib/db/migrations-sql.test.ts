@@ -8,6 +8,7 @@ import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 import * as schema from "#src/backend/lib/db/schema";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { WORKFLOW_SCOPED_AUDIT_EVENT_TYPES } from "@wfgraph/shared/lifecycle/audit-event-types";
+import { INTEGRATION_REFRESH_STATES } from "@wfgraph/shared/types/integration";
 
 /**
  * The committed SQL, held to naming no schema.
@@ -112,6 +113,19 @@ describe("the generated migrations", () => {
       .join("\n");
 
     expect(sql).toContain(`CREATE INDEX "workflows_published_version_id_idx"`);
+  });
+
+  it("constrain integration refresh states to the lifecycle vocabulary", async () => {
+    const sql = (await readMigrations())
+      .map((migration) => migration.sql)
+      .join("\n");
+    const predicate = INTEGRATION_REFRESH_STATES.map(
+      (status) => `'${status}'`
+    ).join(", ");
+
+    expect(sql).toContain(
+      `ADD CONSTRAINT "integrations_refresh_state_check" CHECK ("refresh_state" in (${predicate}))`
+    );
   });
 
   // Drizzle matches applied migrations by folder name after the v1 journal

@@ -14,6 +14,7 @@
  */
 
 import type { JsonObject, JsonValue } from "#src/types/json";
+import { isSafeRecordKey } from "#src/types/record-key";
 import { matchesShowWhen, type ShowWhen } from "#src/types/show-when";
 import type {
   WorkflowSchemaField,
@@ -318,15 +319,15 @@ export function mapTemplateTokens(
 
   if (typeof value === "object" && value !== null) {
     let changed = false;
-    const remapped: Record<string, unknown> = {};
+    const remapped: Array<[string, unknown]> = [];
     for (const [key, nested] of Object.entries(value)) {
       const mapped = mapTemplateTokens(nested, rewrite);
       if (mapped !== nested) {
         changed = true;
       }
-      remapped[key] = mapped;
+      remapped.push([key, mapped]);
     }
-    return changed ? remapped : value;
+    return changed ? Object.fromEntries(remapped) : value;
   }
 
   return value;
@@ -377,8 +378,9 @@ function isStepWrapper(
     typeof value === "object" &&
     value !== null &&
     !Array.isArray(value) &&
+    Object.hasOwn(value, "success") &&
     typeof value.success === "boolean" &&
-    "data" in value
+    Object.hasOwn(value, "data")
   );
 }
 
@@ -408,7 +410,7 @@ export function parseOutputPath(path: string): OutputPathStep[] | null {
     }
 
     const key = parsed[1];
-    if (key.includes("]")) {
+    if (key.includes("]") || (key && !isSafeRecordKey(key))) {
       return null;
     }
     if (key) {
@@ -437,7 +439,9 @@ function readKey(
   key: string
 ): JsonValue | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? value[key]
+    ? Object.hasOwn(value, key)
+      ? value[key]
+      : undefined
     : undefined;
 }
 

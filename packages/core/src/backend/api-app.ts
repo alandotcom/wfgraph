@@ -22,6 +22,12 @@ import {
 } from "#src/backend/rpc/openapi";
 import { rpcRouter } from "#src/backend/rpc/router";
 import { postWorkflowResume } from "#src/backend/services/workflows/lifecycle/resume";
+import {
+  createOAuthRoutes,
+  OAUTH_CLIENT_METADATA_ROUTE,
+  OAUTH_RESPONSE_HEADERS,
+  OAUTH_RESPONSE_ROUTES,
+} from "#src/backend/lib/http/oauth-routes";
 import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
 import { formatSchemaFailure } from "@wfgraph/shared/types/schema-message";
 import {
@@ -155,9 +161,15 @@ export function machineRoutes(options: {
     : [WAIT_RESUME_ROUTE];
 }
 
+/** OAuth client metadata is provider-discovery data, so it reaches no host auth. */
+export function publicRoutes(): readonly string[] {
+  return [OAUTH_CLIENT_METADATA_ROUTE];
+}
+
 type ApiEnv = {
   Variables: {
     wfgraphMachineRoute?: true;
+    wfgraphPublicRoute?: true;
     /** The record this request will write, shared with the oRPC handler. */
     wfgraphRequestEvent: RequestEvent;
   };
@@ -187,6 +199,16 @@ async function readRefusalMessage(res: Response): Promise<string | undefined> {
   }
 }
 
+const OAUTH_ATTEMPT_LOG_PATH = /\/integrations\/oauth\/attempts\/[^/]+$/;
+
+/** Keep the provider state out of request records while preserving route identity. */
+export function requestLogPath(path: string): string {
+  return path.replace(
+    OAUTH_ATTEMPT_LOG_PATH,
+    "/integrations/oauth/attempts/:attemptId"
+  );
+}
+
 export function createApiApp(options: CreateApiAppOptions) {
   const { basePath, authorize, runtime, inngestHandler } = options;
   const app = new Hono<ApiEnv>().basePath(basePath);
@@ -204,11 +226,12 @@ export function createApiApp(options: CreateApiAppOptions) {
     const startTime = Date.now();
     const method = c.req.method.toUpperCase();
     const path = c.req.path;
+    const logPath = requestLogPath(path);
     const procedure = rpcProcedureOf(path);
     const event = createRequestEvent();
     c.set("wfgraphRequestEvent", event);
     event.set({
-      http: { method, path },
+      http: { method, path: logPath },
       ...(procedure === null ? {} : { rpc: { procedure } }),
     });
 
@@ -217,11 +240,11 @@ export function createApiApp(options: CreateApiAppOptions) {
     } catch (error) {
       const elapsedMs = Date.now() - startTime;
       event.set({
-        http: { method, path, ms: elapsedMs },
+        http: { method, path: logPath, ms: elapsedMs },
         error: { message: getErrorMessage(error) },
       });
       httpLogger.error(
-        `${method} ${path} threw after ${elapsedMs}ms`,
+        `${method} ${logPath} threw after ${elapsedMs}ms`,
         event.fields()
       );
       throw error;
@@ -229,7 +252,7 @@ export function createApiApp(options: CreateApiAppOptions) {
 
     const status = c.res.status;
     const elapsedMs = Date.now() - startTime;
-    event.set({ http: { method, path, status, ms: elapsedMs } });
+    event.set({ http: { method, path: logPath, status, ms: elapsedMs } });
 
     // A procedure records its own refusal, which names the failure kind and the
     // input. Every other route answers with a body, and its wording is the only
@@ -241,14 +264,17 @@ export function createApiApp(options: CreateApiAppOptions) {
       }
     }
 
-    const summary = `${method} ${path} ${status} ${elapsedMs}ms`;
+    const summary = `${method} ${logPath} ${status} ${elapsedMs}ms`;
     const fields = event.fields();
 
     if (status >= 500) {
       httpLogger.error(summary, fields);
     } else if (status >= 400) {
       httpLogger.warn(summary, fields);
-    } else if (procedure !== null && POLLED_RPC_PROCEDURES.has(procedure)) {
+    } else if (
+      (procedure !== null && POLLED_RPC_PROCEDURES.has(procedure)) ||
+      OAUTH_ATTEMPT_LOG_PATH.test(path)
+    ) {
       httpLogger.trace(summary, fields);
     } else {
       httpLogger.info(summary, fields);
@@ -263,8 +289,33 @@ export function createApiApp(options: CreateApiAppOptions) {
     });
   }
 
+  // OAuth callback URLs can carry one-time credentials. These response headers
+  // apply before the host gate too, so a refused OAuth request cannot become a
+  // referrer or cache entry.
+  for (const route of OAUTH_RESPONSE_ROUTES) {
+    app.use(route, async (c, next) => {
+      for (const [name, value] of Object.entries(OAUTH_RESPONSE_HEADERS)) {
+        c.header(name, value);
+      }
+      await next();
+    });
+  }
+
+  // A client metadata document is addressed by OAuth providers before a browser
+  // session exists. It is deliberately the only OAuth route outside the host gate.
+  for (const route of publicRoutes()) {
+    app.use(route, async (c, next) => {
+      c.set("wfgraphPublicRoute", true);
+      await next();
+    });
+  }
+
   app.use("*", async (c, next) => {
-    if (c.get("wfgraphMachineRoute") || (await authorize(c.req.raw))) {
+    if (
+      c.get("wfgraphMachineRoute") ||
+      c.get("wfgraphPublicRoute") ||
+      (await authorize(c.req.raw))
+    ) {
       await next();
       return undefined;
     }
@@ -276,7 +327,6 @@ export function createApiApp(options: CreateApiAppOptions) {
     httpLogger.error(`Unhandled API error: ${getErrorMessage(error)}`, {
       method: c.req.method.toUpperCase(),
       path: c.req.path,
-      query: c.req.query(),
       error,
     });
 
@@ -362,6 +412,7 @@ export function createApiApp(options: CreateApiAppOptions) {
         agent: { enabled: agent.enabled },
       });
     })
+    .route("/", createOAuthRoutes({ basePath, runtime }))
     .all("/auth", (c) => c.json({ error: "Not found" }, 404))
     .all("/auth/*", (c) => c.json({ error: "Not found" }, 404))
     .all("/og", (c) => c.json({ error: "Not found" }, 404))

@@ -2,14 +2,15 @@ import { requireOutputFieldsFromSchema } from "@wfgraph/core/plugin";
 import { describe, expect, it } from "vitest";
 import { slack } from "#src/slack/index";
 
-const sendMessage = slack.actions["send-message"];
+const integration = slack();
+const sendMessage = integration.actions["send-message"];
 
 describe("the slack integration", () => {
   it("declares its credentials and its actions as one value", () => {
-    expect(slack.type).toBe("slack");
-    expect(slack.test).toBeDefined();
-    expect(Object.keys(slack.credentials)).toEqual(["SLACK_API_KEY"]);
-    expect(Object.keys(slack.actions)).toEqual(["send-message"]);
+    expect(integration.type).toBe("slack");
+    expect(integration.test).toBeDefined();
+    expect(Object.keys(integration.credentials)).toEqual(["SLACK_API_KEY"]);
+    expect(Object.keys(integration.actions)).toEqual(["send-message"]);
   });
 
   /**

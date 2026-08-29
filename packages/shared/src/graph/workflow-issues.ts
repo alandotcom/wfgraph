@@ -1,8 +1,9 @@
 /**
  * One issue model for the editor overlay and the collector that feeds it.
  *
- * The three client pre-run checks (required fields, missing connections, orphan
- * template refs) land here as a flat discriminated list. Overlay grouping and
+ * The client pre-run checks (required fields, missing connections, orphan
+ * template refs, and provider-backed fields that went unchecked) land here as a
+ * flat discriminated list. Overlay grouping and
  * Run Anyway are derived from that list so the toolbar is chrome, not a second
  * validator. Server save/preflight reuse the same required-field and missing-
  * connection pieces; wrapping every server refusal into this model is deferred.
@@ -43,6 +44,26 @@ export type MissingIntegrationIssue = {
   message: string;
 };
 
+/**
+ * A provider-backed field whose requirements could not be read at all.
+ *
+ * Only the operator's own connection can say what such a field still needs, so
+ * a refused answer -- an expired grant, a connection deleted since the node was
+ * wired, a provider that is down -- leaves that one field unjudged. It is a
+ * warning rather than a blocker because nothing here says the field is wrong,
+ * only that it went unchecked; the reader gets the node's name and a way into
+ * it, and Run Anyway stays available.
+ */
+export type UnverifiedProviderFieldIssue = {
+  kind: "unverified_provider_field";
+  severity: "warning";
+  nodeId: string;
+  nodeLabel: string;
+  fieldKey: string;
+  fieldLabel: string;
+  message: string;
+};
+
 export type BrokenReferenceIssue = {
   kind: "broken_reference";
   severity: "warning";
@@ -58,6 +79,7 @@ export type BrokenReferenceIssue = {
 export type WorkflowIssue =
   | MissingRequiredFieldIssue
   | MissingIntegrationIssue
+  | UnverifiedProviderFieldIssue
   | BrokenReferenceIssue;
 
 export type CollectWorkflowIssuesInput = {
@@ -97,11 +119,21 @@ export type MissingIntegrationGroup = {
   nodeNames: string[];
 };
 
+export type UnverifiedProviderFieldGroup = {
+  nodeId: string;
+  nodeLabel: string;
+  fields: Array<{
+    fieldKey: string;
+    fieldLabel: string;
+  }>;
+};
+
 export type WorkflowIssuesOverlayModel = {
   totalIssues: number;
   brokenReferences: BrokenReferenceGroup[];
   missingRequiredFields: MissingRequiredFieldGroup[];
   missingIntegrations: MissingIntegrationGroup[];
+  unverifiedProviderFields: UnverifiedProviderFieldGroup[];
 };
 
 type IntegrationLike = { id: string; type: string };
@@ -112,7 +144,14 @@ function resolveActionFromCatalog(
   return (actionType) => findAction(catalog, actionType);
 }
 
-function nodeLabelOf(input: {
+/**
+ * What a node is called in an issue, which is what the badge and the list read.
+ *
+ * Exported because the client raises issues the shared collector cannot: a
+ * provider-backed field's requirements are answered by the operator's own
+ * connection, and naming those nodes the same way is what keeps one list.
+ */
+export function workflowNodeLabel(input: {
   node: WorkflowNode;
   actionLabel?: string;
   actionType?: string;
@@ -176,7 +215,7 @@ export function findUnconfiguredIntegrationNodes(input: {
 
     const integrationLabel =
       findIntegration(catalog, integrationType)?.label ?? integrationType;
-    const nodeLabel = nodeLabelOf({
+    const nodeLabel = workflowNodeLabel({
       node,
       actionLabel: action?.label,
       actionType,
@@ -247,7 +286,7 @@ function collectMissingIntegrationIssues(input: {
 
     const integrationLabel =
       findIntegration(input.catalog, integrationType)?.label ?? integrationType;
-    const nodeLabel = nodeLabelOf({
+    const nodeLabel = workflowNodeLabel({
       node,
       actionLabel: action?.label,
       actionType,
@@ -337,7 +376,7 @@ function collectBrokenReferenceIssues(input: {
       ? findAction(input.catalog, actionType)
       : undefined;
     const flatFields = action ? flattenConfigFields(action.configFields) : [];
-    const nodeLabel = nodeLabelOf({
+    const nodeLabel = workflowNodeLabel({
       node,
       actionLabel: action?.label,
       actionType,
@@ -385,6 +424,7 @@ export function groupWorkflowIssuesForOverlay(
   const missingRequiredByNode = new Map<string, MissingRequiredFieldGroup>();
   const brokenByNode = new Map<string, BrokenReferenceGroup>();
   const missingByType = new Map<string, MissingIntegrationGroup>();
+  const unverifiedByNode = new Map<string, UnverifiedProviderFieldGroup>();
 
   for (const issue of issues) {
     switch (issue.kind) {
@@ -446,6 +486,22 @@ export function groupWorkflowIssuesForOverlay(
         });
         break;
       }
+      case "unverified_provider_field": {
+        const existing = unverifiedByNode.get(issue.nodeId);
+        if (existing) {
+          existing.fields.push({
+            fieldKey: issue.fieldKey,
+            fieldLabel: issue.fieldLabel,
+          });
+          break;
+        }
+        unverifiedByNode.set(issue.nodeId, {
+          nodeId: issue.nodeId,
+          nodeLabel: issue.nodeLabel,
+          fields: [{ fieldKey: issue.fieldKey, fieldLabel: issue.fieldLabel }],
+        });
+        break;
+      }
       default: {
         issue satisfies never;
         throw new Error("Unhandled workflow issue");
@@ -458,5 +514,6 @@ export function groupWorkflowIssuesForOverlay(
     missingRequiredFields: Array.from(missingRequiredByNode.values()),
     missingIntegrations: Array.from(missingByType.values()),
     brokenReferences: Array.from(brokenByNode.values()),
+    unverifiedProviderFields: Array.from(unverifiedByNode.values()),
   };
 }

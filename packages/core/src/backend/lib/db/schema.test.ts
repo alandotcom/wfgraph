@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { is } from "drizzle-orm";
 import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 import * as schema from "#src/backend/lib/db/schema";
+import { INTEGRATION_REFRESH_STATES } from "@wfgraph/shared/types/integration";
 
 // Read off the module rather than listed by hand, so a table added tomorrow is
 // held to the rule below without anyone remembering to add it here.
@@ -39,6 +40,64 @@ describe("the schema declarations", () => {
 
     expect([...declaredNames]).toEqual([...relationNames]);
     expect(declaredNames.size).toBe(declaredTables.length);
+  });
+});
+
+describe("OAuth persistence", () => {
+  it("stores durable authorization attempts under their state hash", () => {
+    const config = getTableConfig(schema.oauthAuthorizationAttempts);
+
+    expect(config.columns.map((column) => column.name)).toEqual([
+      "state_hash",
+      "integration_id",
+      "mode",
+      "status",
+      "expires_at",
+      "browser_binding_hash",
+      "encrypted_payload",
+      "result_integration_id",
+      "created_at",
+      "updated_at",
+    ]);
+    expect(config.primaryKeys).toHaveLength(0);
+    expect(schema.oauthAuthorizationAttempts.stateHash.primary).toBe(true);
+    expect(schema.oauthAuthorizationAttempts.integrationId.notNull).toBe(false);
+    expect(config.foreignKeys).toHaveLength(1);
+    expect(config.indexes.map((index) => index.config.name)).toContain(
+      "oauth_authorization_attempts_integration_id_idx"
+    );
+    expect(config.indexes.map((index) => index.config.name)).toContain(
+      "oauth_authorization_attempts_expires_at_idx"
+    );
+    expect(schema.oauthAuthorizationAttempts.mode.notNull).toBe(true);
+    expect(schema.oauthAuthorizationAttempts.status.notNull).toBe(true);
+    expect(schema.oauthAuthorizationAttempts.status.default).toBe("pending");
+    expect(schema.oauthAuthorizationAttempts.resultIntegrationId.notNull).toBe(
+      false
+    );
+    expect(schema.oauthAuthorizationAttempts.updatedAt.notNull).toBe(true);
+    expect(config.checks.map((constraint) => constraint.name)).toEqual(
+      expect.arrayContaining([
+        "oauth_authorization_attempts_mode_check",
+        "oauth_authorization_attempts_status_check",
+      ])
+    );
+  });
+
+  it("gives every integration an idle refresh state at config revision zero", () => {
+    const config = getTableConfig(schema.integrations);
+
+    expect(schema.integrations.configRevision.notNull).toBe(true);
+    expect(schema.integrations.configRevision.default).toBe(0);
+    expect(schema.integrations.refreshState.notNull).toBe(true);
+    expect(schema.integrations.refreshState.default).toBe(
+      INTEGRATION_REFRESH_STATES[0]
+    );
+    expect(schema.integrations.refreshClaimId.notNull).toBe(false);
+    expect(schema.integrations.refreshClaimedAt.notNull).toBe(false);
+    expect(config.checks.map((constraint) => constraint.name)).toContain(
+      "integrations_refresh_state_check"
+    );
   });
 });
 

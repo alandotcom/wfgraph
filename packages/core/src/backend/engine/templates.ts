@@ -8,6 +8,7 @@ import {
   resolveOutputPath,
   type TemplateToken,
 } from "@wfgraph/shared/graph/node-references";
+import { readProviderFieldValues } from "@wfgraph/shared/plugins/provider-field-values";
 import type { NodeOutputs } from "#src/backend/engine/contracts";
 import { outputKey } from "#src/backend/engine/traversal";
 
@@ -70,26 +71,82 @@ function resolveTemplateToken(
  *
  * `literalKeys` are the keys the action declared `literal`, whose values pass
  * through as they were authored.
+ *
+ * `templateObjectKeys` are the keys holding a JSON object of authored values.
+ * Those resolve one value at a time, because substituting into the whole string
+ * lets a resolved `"` or newline break the JSON and cost the step every value in
+ * it rather than one.
  */
 export function processTemplates(
   config: Record<string, unknown>,
   outputs: NodeOutputs,
-  literalKeys: ReadonlySet<string>
+  literalKeys: ReadonlySet<string>,
+  templateObjectKeys: ReadonlySet<string> = new Set()
 ): Record<string, unknown> {
-  const processed: Record<string, unknown> = {};
+  const processed: Array<[string, unknown]> = [];
 
   for (const [key, value] of Object.entries(config)) {
     if (value === undefined) {
       continue;
     }
 
-    processed[key] =
-      typeof value === "string" && !literalKeys.has(key)
-        ? resolveTemplateString(value, outputs)
-        : value;
+    processed.push([
+      key,
+      resolveConfigValue({
+        value,
+        outputs,
+        literal: literalKeys.has(key),
+        asTemplateObject: templateObjectKeys.has(key),
+      }),
+    ]);
   }
 
-  return processed;
+  return Object.fromEntries(processed);
+}
+
+function resolveConfigValue(input: {
+  value: unknown;
+  outputs: NodeOutputs;
+  literal: boolean;
+  asTemplateObject: boolean;
+}): unknown {
+  const { value, outputs, literal, asTemplateObject } = input;
+  if (typeof value !== "string" || literal) {
+    return value;
+  }
+
+  return asTemplateObject
+    ? resolveTemplateObjectString(value, outputs)
+    : resolveTemplateString(value, outputs);
+}
+
+/**
+ * Resolve each value of a JSON object of authored templates, and re-serialise.
+ *
+ * Text that is not such an object falls back to resolving the whole string.
+ * That is the escape hatch a builder gets when the provider-backed form cannot
+ * draw, so the value they typed by hand keeps behaving as it always did.
+ */
+function resolveTemplateObjectString(
+  value: string,
+  outputs: NodeOutputs
+): string {
+  const entries = readProviderFieldValues(value);
+  if (!entries) {
+    return resolveTemplateString(value, outputs);
+  }
+
+  const resolved: Array<[string, string | number]> = [];
+  for (const [key, entry] of Object.entries(entries)) {
+    resolved.push([
+      key,
+      typeof entry === "string" ? resolveTemplateString(entry, outputs) : entry,
+    ]);
+  }
+
+  // `JSON.stringify` is what escapes a resolved quotation mark or newline, and
+  // doing it here rather than in the step is what keeps the boundary a string.
+  return JSON.stringify(Object.fromEntries(resolved));
 }
 
 /** One authored string with its references replaced. */

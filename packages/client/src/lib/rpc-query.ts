@@ -25,6 +25,24 @@ export const integrationsQueryOptions = () =>
   orpcQuery.integration.getAll.queryOptions({ input: {} });
 
 /**
+ * What a provider-backed config field can be filled with, asked of one
+ * connection.
+ *
+ * The key derives from the contract path plus this input, so the connection and
+ * the parameter values are already in it: picking a different template is a
+ * different entry rather than a refetch of this one. Connection writes refresh
+ * the affected integration's entries through `refreshIntegrations`; a manual
+ * refresh is `refetch()` on the one entry. Never reach for
+ * `orpcQuery.integration.key()` here -- that area covers `getAll`, which every
+ * connection picker on the canvas reads.
+ */
+export const configOptionsQueryOptions = (input: {
+  integrationId: string;
+  provider: string;
+  parameters?: Record<string, string>;
+}) => orpcQuery.integration.configOptions.queryOptions({ input });
+
+/**
  * The workflow list, for the dashboard and the toolbar's switcher.
  *
  * The procedure answers summaries, so there is no graph to deserialise and no
@@ -169,9 +187,30 @@ export function refreshRunHistory(queryClient: QueryClient) {
   ]);
 }
 
-/** The connection list, which every selector and every node reads. */
-export function refreshIntegrations(queryClient: QueryClient) {
-  return queryClient.invalidateQueries({
+/**
+ * The connection list and, when known, one connection's provider options.
+ *
+ * Only the list is awaited. `invalidateQueries` settles when every active
+ * matching query has refetched, and a `configOptions` refetch is a round trip
+ * through the third party: with a node config panel open behind the dialog,
+ * awaiting it would hold the overlay's close and its success toast open for as
+ * long as the provider takes. The panel repaints when its own refetch lands.
+ */
+export function refreshIntegrations(
+  queryClient: QueryClient,
+  integrationId?: string
+) {
+  const list = queryClient.invalidateQueries({
     queryKey: orpcQuery.integration.getAll.key(),
   });
+
+  if (integrationId) {
+    void queryClient.invalidateQueries({
+      queryKey: orpcQuery.integration.configOptions.key({
+        input: { integrationId },
+      }),
+    });
+  }
+
+  return list;
 }

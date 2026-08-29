@@ -1,7 +1,10 @@
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import type { NodeSteps } from "@wfgraph/shared/actions/step-result";
-import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import {
+  emptyExtensionCatalog,
+  type ExtensionCatalog,
+} from "@wfgraph/shared/extensions/catalog";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import { defineStep } from "#src/backend/extensions/steps/define-step";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
@@ -38,6 +41,8 @@ function slowStep() {
         ? definition.implement(SLOW_ACTION_ID)
         : undefined,
     connectionTestFor: () => undefined,
+    configOptionsFor: () => undefined,
+    oauthFor: () => undefined,
     eventByName: () => undefined,
     events: [],
   };
@@ -109,5 +114,54 @@ describe("the step the app runs", () => {
 
     await expect(runtime.runPromise(step({}))).rejects.toThrow(/disposed/);
     expect(calls.started).toBe(0);
+  });
+});
+
+/**
+ * What the engine reads off an action to decide how to resolve its config.
+ *
+ * Both sets are derived from the same field list, and nothing else says which
+ * keys they hold, so a derivation that quietly answered empty would leave the
+ * engine resolving every key the plain way and say nothing about it.
+ */
+describe("the resolution rules an action contributes", () => {
+  it("names the literal keys and the JSON-object keys from the field list", () => {
+    const catalog: ExtensionCatalog = {
+      ...emptyExtensionCatalog,
+      actions: [
+        {
+          id: "example/send",
+          label: "Send",
+          description: "Sends",
+          category: "Example",
+          integration: "example",
+          sideEffect: true,
+          configFields: [
+            { key: "subject", label: "Subject", type: "template-input" },
+            {
+              key: "testTo",
+              label: "Test address",
+              type: "text",
+              literal: true,
+            },
+            {
+              key: "variables",
+              label: "Variables",
+              type: "provider-fields",
+              optionsSource: { provider: "template-variables" },
+            },
+          ],
+          outputFields: [],
+        },
+      ],
+    };
+    const { extensions } = slowStep();
+    const actions = createWorkflowActions(
+      { ...extensions, catalog },
+      stubWfGraphRuntime()
+    ).metadataFor("example/send");
+
+    expect(actions?.literalConfigKeys).toEqual(["testTo"]);
+    expect(actions?.templateObjectConfigKeys).toEqual(["variables"]);
   });
 });

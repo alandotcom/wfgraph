@@ -83,7 +83,7 @@ export class EncryptionKeyMismatch extends Schema.TaggedError<EncryptionKeyMisma
  * handler that translates this failure words it from here.
  */
 export const ENCRYPTION_KEY_MISMATCH_MESSAGE =
-  "Stored integration credentials do not decrypt under this process's encryption.key. They were sealed under a different key; start the app with that key, or delete the connections and enter their credentials again.";
+  "Stored integration credentials do not decrypt under this process's encryption.key. They were sealed under a different key; start the app with that key before you manage or delete the connections.";
 
 /** Turns a config into the one column it is stored in, and back. */
 export type IntegrationCipher = {

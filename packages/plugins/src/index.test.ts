@@ -1,6 +1,8 @@
 import { checkIntegration } from "@wfgraph/core/plugin";
 import { describe, expect, it } from "vitest";
-import { builtInIntegrations } from "#src/index";
+import { builtInIntegrations, clerk, linear, resend, twilio } from "#src/index";
+
+const integrations = builtInIntegrations();
 
 /**
  * Every check `assembleExtensions` runs over an integration, run here over the real
@@ -14,13 +16,13 @@ import { builtInIntegrations } from "#src/index";
  * below is a check as much as the cases are, and a bad definition fails this file's
  * collection.
  */
-const actions = builtInIntegrations.flatMap((integration) =>
+const actions = integrations.flatMap((integration) =>
   checkIntegration(integration)
 );
 
 describe("every built-in integration", () => {
   it("covers all five", () => {
-    expect(builtInIntegrations.map((integration) => integration.type)).toEqual([
+    expect(integrations.map((integration) => integration.type)).toEqual([
       "clerk",
       "linear",
       "resend",
@@ -28,6 +30,28 @@ describe("every built-in integration", () => {
       "twilio",
     ]);
     expect(actions).not.toHaveLength(0);
+  });
+
+  it("reuses immutable built-ins and keeps Slack options server-only", () => {
+    const configured = builtInIntegrations({
+      slack: {
+        oauthClient: {
+          clientId: "client-id",
+          clientSecret: "client-secret",
+        },
+      },
+    });
+
+    expect(configured).not.toBe(integrations);
+    expect(configured.map((integration) => integration.type)).toEqual(
+      integrations.map((integration) => integration.type)
+    );
+    expect(configured[0]).toBe(clerk);
+    expect(configured[1]).toBe(linear);
+    expect(configured[2]).toBe(resend);
+    expect(configured[4]).toBe(twilio);
+    expect(configured[3]).not.toHaveProperty("oauthClient");
+    expect(JSON.stringify(configured)).not.toContain("client-secret");
   });
 
   // The field list is what the editor offers downstream nodes. Assembly counts it at

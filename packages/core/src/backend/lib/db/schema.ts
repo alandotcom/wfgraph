@@ -2,6 +2,7 @@ import { defineRelations, sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -12,6 +13,10 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
+import {
+  INTEGRATION_REFRESH_STATES,
+  type IntegrationRefreshState,
+} from "@wfgraph/shared/types/integration";
 import { generateId } from "@wfgraph/shared/utils/id";
 import { WORKFLOW_SCOPED_AUDIT_EVENT_TYPES } from "@wfgraph/shared/lifecycle/audit-event-types";
 import {
@@ -39,6 +44,18 @@ const utcNow = () => sql`(now() at time zone 'utc')`;
 // Workflow visibility type
 export type WorkflowVisibility = "private" | "public";
 export type WorkflowMode = "live" | "test";
+export type OAuthAuthorizationAttemptMode = "create" | "reconnect";
+export type OAuthAuthorizationAttemptStatus =
+  | "pending"
+  | "processing"
+  | "succeeded"
+  | "failed";
+
+// This is safe to interpolate with `sql.raw`: it comes from the closed
+// lower-case union in shared, so a value cannot introduce SQL syntax.
+const integrationRefreshStateLiterals = INTEGRATION_REFRESH_STATES.map(
+  (state) => `'${state}'`
+).join(", ");
 
 export const workflows = pgTable(
   "workflows",
@@ -117,19 +134,73 @@ export const workflowVersions = pgTable(
   ]
 );
 
-export const integrations = pgTable("integrations", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  name: text("name").notNull(),
-  type: text("type").notNull(),
-  // The AES envelope `integrations/cipher.ts` seals the credentials into, which
-  // is one string however many fields the connection form had.
-  config: jsonb("config").notNull().$type<string>(),
-  isManaged: boolean("is_managed").default(false),
-  createdAt: timestamp("created_at").notNull().default(utcNow()),
-  updatedAt: timestamp("updated_at").notNull().default(utcNow()),
-});
+export const integrations = pgTable(
+  "integrations",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    name: text("name").notNull(),
+    type: text("type").notNull(),
+    // The AES envelope `integrations/cipher.ts` seals the credentials into, which
+    // is one string however many fields the connection form had.
+    config: jsonb("config").notNull().$type<string>(),
+    configRevision: integer("config_revision").notNull().default(0),
+    isManaged: boolean("is_managed").default(false),
+    refreshState: text("refresh_state")
+      .notNull()
+      .default(INTEGRATION_REFRESH_STATES[0])
+      .$type<IntegrationRefreshState>(),
+    refreshClaimId: text("refresh_claim_id"),
+    refreshClaimedAt: timestamp("refresh_claimed_at"),
+    createdAt: timestamp("created_at").notNull().default(utcNow()),
+    updatedAt: timestamp("updated_at").notNull().default(utcNow()),
+  },
+  (table) => [
+    check(
+      "integrations_refresh_state_check",
+      sql`${table.refreshState} in (${sql.raw(integrationRefreshStateLiterals)})`
+    ),
+  ]
+);
+
+export const oauthAuthorizationAttempts = pgTable(
+  "oauth_authorization_attempts",
+  {
+    stateHash: text("state_hash").primaryKey(),
+    integrationId: text("integration_id").references(() => integrations.id, {
+      onDelete: "cascade",
+    }),
+    mode: text("mode")
+      .notNull()
+      .default("reconnect")
+      .$type<OAuthAuthorizationAttemptMode>(),
+    status: text("status")
+      .notNull()
+      .default("pending")
+      .$type<OAuthAuthorizationAttemptStatus>(),
+    expiresAt: timestamp("expires_at").notNull(),
+    browserBindingHash: text("browser_binding_hash").notNull(),
+    encryptedPayload: text("encrypted_payload").notNull(),
+    resultIntegrationId: text("result_integration_id"),
+    createdAt: timestamp("created_at").notNull().default(utcNow()),
+    updatedAt: timestamp("updated_at").notNull().default(utcNow()),
+  },
+  (table) => [
+    check(
+      "oauth_authorization_attempts_mode_check",
+      sql`${table.mode} in ('create', 'reconnect')`
+    ),
+    check(
+      "oauth_authorization_attempts_status_check",
+      sql`${table.status} in ('pending', 'processing', 'succeeded', 'failed')`
+    ),
+    index("oauth_authorization_attempts_integration_id_idx").on(
+      table.integrationId
+    ),
+    index("oauth_authorization_attempts_expires_at_idx").on(table.expiresAt),
+  ]
+);
 
 /**
  * The in-flight statuses as SQL literals, for the partial index below.
@@ -458,6 +529,7 @@ export const tables = {
   workflowEventSubscriptions,
   apiKeys,
   integrations,
+  oauthAuthorizationAttempts,
 };
 
 /**

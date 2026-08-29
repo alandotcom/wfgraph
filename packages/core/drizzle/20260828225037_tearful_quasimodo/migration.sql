@@ -1,0 +1,1 @@
+ALTER TABLE "integrations" ADD CONSTRAINT "integrations_refresh_state_check" CHECK ("refresh_state" in ('idle', 'refreshing', 'reauthorization_required'));

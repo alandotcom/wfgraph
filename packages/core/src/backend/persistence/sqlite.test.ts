@@ -7,7 +7,6 @@ import { Effect, ManagedRuntime } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
 import { ApiKeyRepo } from "#src/backend/services/api-keys/repo";
-import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { wfSqlite } from "#src/backend/persistence/sqlite";
@@ -529,48 +528,6 @@ describe("native SQLite persistence", () => {
           })
         )
       ).rejects.toBeDefined();
-    } finally {
-      await database.close();
-    }
-  });
-
-  it("implements the integration repository contract", async () => {
-    const database = await open(await databasePath());
-    try {
-      const result = await database.run(
-        Effect.gen(function* () {
-          const integrations = yield* IntegrationRepo;
-          const inserted = yield* integrations.insert({
-            name: "Primary",
-            type: "linear",
-            config: { apiKey: "secret" },
-          });
-          const updated = yield* integrations.update(inserted.id, {
-            name: "Updated",
-            config: { apiKey: "new-secret" },
-          });
-          return {
-            inserted,
-            updated,
-            found: yield* integrations.findById(inserted.id),
-            types: yield* integrations.typesByIds([inserted.id, "missing"]),
-            listed: yield* integrations.listByType("linear"),
-            deleted: yield* integrations.deleteById(inserted.id),
-            afterDelete: yield* integrations.findById(inserted.id),
-          };
-        })
-      );
-
-      expect(result.inserted.config).toEqual({ apiKey: "secret" });
-      expect(result.updated).toMatchObject({
-        name: "Updated",
-        config: { apiKey: "new-secret" },
-      });
-      expect(result.found?.config).toEqual({ apiKey: "new-secret" });
-      expect(result.types).toEqual({ [result.inserted.id]: "linear" });
-      expect(result.listed).toHaveLength(1);
-      expect(result.deleted).toBe(true);
-      expect(result.afterDelete).toBeNull();
     } finally {
       await database.close();
     }

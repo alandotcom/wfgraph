@@ -6,6 +6,7 @@ import {
   formatTemplateToken,
   mapTemplateTokens,
   matchTemplateToken,
+  parseOutputPath,
   parseTemplate,
   resolveOutputPath,
 } from "./node-references";
@@ -421,6 +422,24 @@ describe("mapTemplateTokens", () => {
       )
     ).toStrictEqual({ integrationId: undefined, body: remapped });
   });
+
+  it("keeps an own __proto__ key as data when another value changes", () => {
+    const token = formatTemplateToken({ nodeId: "a", nodeLabel: "Fetch" });
+    const config = Object.fromEntries([
+      ["__proto__", "kept"],
+      ["body", token],
+    ]);
+
+    const result = mapTemplateTokens(config, () => "changed") as Record<
+      string,
+      unknown
+    >;
+
+    expect(Object.hasOwn(result, "__proto__")).toBe(true);
+    expect(result.__proto__).toBe("kept");
+    expect(result.body).toBe("changed");
+    expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
+  });
 });
 
 describe("formatTemplateToken", () => {
@@ -508,6 +527,24 @@ describe("resolveOutputPath", () => {
     expect(resolveOutputPath(output, "data.id")).toBe("raw");
   });
 
+  it("does not unwrap inherited wrapper data", () => {
+    const output = Object.assign(Object.create({ data: { id: "inherited" } }), {
+      success: true,
+    }) as { success: boolean; data: { id: string } };
+
+    expect(resolveOutputPath(output, "id")).toBeUndefined();
+    expect(resolveOutputPath(output, "data.id")).toBeUndefined();
+  });
+
+  it("does not treat an inherited success flag as a step wrapper", () => {
+    const output = Object.assign(Object.create({ success: true }), {
+      data: { id: "own" },
+    }) as { success: boolean; data: { id: string } };
+
+    expect(resolveOutputPath(output, "id")).toBeUndefined();
+    expect(resolveOutputPath(output, "data.id")).toBe("own");
+  });
+
   it("indexes into an array with a bracket segment", () => {
     const output = { rows: [{ id: "first" }, { id: "second" }] };
 
@@ -542,6 +579,22 @@ describe("resolveOutputPath", () => {
     expect(resolveOutputPath({ a: 1 }, "b.c.d")).toBeUndefined();
     expect(resolveOutputPath(null, "a")).toBeUndefined();
     expect(resolveOutputPath("a string", "length")).toBeUndefined();
+  });
+
+  it.each(["__proto__", "prototype", "constructor"])(
+    "rejects the reserved path segment %s",
+    (key) => {
+      expect(parseOutputPath(`payload.${key}.value`)).toBeNull();
+      expect(
+        resolveOutputPath({ payload: { value: "safe" } }, `payload.${key}`)
+      ).toBeUndefined();
+    }
+  );
+
+  it("does not read inherited output properties", () => {
+    const output = Object.create({ id: "inherited" }) as { id: string };
+
+    expect(resolveOutputPath(output, "id")).toBeUndefined();
   });
 
   it("preserves a null leaf so callers can tell it apart from a missing key", () => {

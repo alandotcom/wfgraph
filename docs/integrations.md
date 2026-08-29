@@ -6,8 +6,10 @@ For the five built-ins in this repository, also see `packages/plugins/src/AGENTS
 
 The server half builds against `@wfgraph/core/plugin` alone, so an outside package is written
 the same way. That surface exports `defineIntegration`, `CredentialFields`, `CredentialsOf`,
-`checkIntegration`, `StepFailure`, `StepBag`, `IntegrationTestResult`, `callExternal`,
-`callExternalAsync`, and `ExternalTransport`. `@wfgraph/core/testing` is a second entry, and
+`checkIntegration`, `StepFailure`, `StepBag`, `IntegrationTestResult`,
+`IntegrationTestContext`, `callExternal`,
+`callExternalAsync`, the OAuth contract types, and `ExternalTransport`.
+`@wfgraph/core/testing` is a second entry, and
 holds `runAction`, `actionData` and `actionError` for the integration's own suite.
 
 The browser half is the one gap. `@wfgraph/plugins/ui` exports the built-in icons and output
@@ -82,6 +84,320 @@ export const myService = defineIntegration({
 });
 ```
 
+## OAuth
+
+Add `oauth` when the external system can issue a grant. The integration owns the
+provider protocol. Core owns the browser flow, encrypted grant storage, and refresh
+coordination. Configure `publicUrl` on `createWfGraphApp`; Core derives stable callback
+and client metadata URLs from that origin.
+
+The OAuth value below is assigned to an integration's `oauth` property. The two
+complete forms are compile-checked in
+`packages/plugins/src/integration-oauth-contract.test.ts`.
+
+### Registered confidential client, without PKCE
+
+Close over the host-supplied registration. Its secret never enters the catalog or
+client metadata. Token writes use `callExternalAsync(callExternal(...))`; this
+example keeps the provider-specific response decode in a typed client helper.
+
+```ts
+import type {
+  IntegrationOAuth,
+  OAuthGrant,
+  OAuthRefreshInput,
+  OAuthRevokeInput,
+  OAuthTokenSet,
+} from "@wfgraph/core/plugin";
+
+type ConfidentialProvider = {
+  readonly exchange: (input: {
+    readonly clientId: string;
+    readonly clientSecret: string;
+    readonly code: string;
+    readonly redirectUri: string;
+  }) => Promise<OAuthGrant>;
+  readonly refresh: (input: {
+    readonly clientId: string;
+    readonly clientSecret: string;
+    readonly grant: OAuthGrant;
+  }) => Promise<OAuthTokenSet>;
+  readonly revoke: (input: {
+    readonly clientId: string;
+    readonly clientSecret: string;
+    readonly grant: OAuthGrant;
+  }) => Promise<void>;
+};
+
+export function registeredClientOAuth(
+  registration: { readonly clientId: string; readonly clientSecret: string },
+  provider: ConfidentialProvider
+): IntegrationOAuth {
+  return {
+    label: "My Service",
+    registerClient: () => registration,
+    authorize: ({ client, redirectUri, state }) => {
+      const url = new URL("https://auth.example.com/authorize");
+      url.searchParams.set("client_id", client.clientId);
+      url.searchParams.set("redirect_uri", redirectUri);
+      url.searchParams.set("response_type", "code");
+      url.searchParams.set("state", state);
+      return url;
+    },
+    async exchange({ client, code, redirectUri }) {
+      const clientSecret = client.clientSecret;
+      if (!clientSecret) {
+        throw new Error("My Service OAuth client secret is not configured.");
+      }
+
+      return provider.exchange({
+        clientId: client.clientId,
+        clientSecret,
+        code,
+        redirectUri,
+      });
+    },
+    async refresh({ client, grant }: OAuthRefreshInput) {
+      const clientSecret = client.clientSecret;
+      if (!clientSecret) {
+        throw new Error("My Service OAuth client secret is not configured.");
+      }
+
+      return provider.refresh({
+        clientId: client.clientId,
+        clientSecret,
+        grant,
+      });
+    },
+    async revoke({ client, grant }: OAuthRevokeInput) {
+      const clientSecret = client.clientSecret;
+      if (!clientSecret) {
+        throw new Error("My Service OAuth client secret is not configured.");
+      }
+
+      await provider.revoke({ clientId: client.clientId, clientSecret, grant });
+    },
+  } satisfies IntegrationOAuth;
+}
+```
+
+### Public metadata client, with S256 PKCE
+
+Use Core's metadata URL as the client ID. `pkce: "S256"` narrows both methods:
+`authorize` receives a challenge and `exchange` receives the matching verifier.
+
+```ts
+import type {
+  IntegrationOAuth,
+  OAuthGrant,
+  OAuthRefreshInput,
+  OAuthRevokeInput,
+  OAuthTokenSet,
+} from "@wfgraph/core/plugin";
+
+type PublicProvider = {
+  readonly exchange: (input: {
+    readonly clientId: string;
+    readonly code: string;
+    readonly redirectUri: string;
+    readonly codeVerifier: string;
+  }) => Promise<OAuthGrant>;
+  readonly refresh: (input: {
+    readonly clientId: string;
+    readonly grant: OAuthGrant;
+  }) => Promise<OAuthTokenSet>;
+  readonly revoke: (input: {
+    readonly clientId: string;
+    readonly grant: OAuthGrant;
+  }) => Promise<void>;
+};
+
+export function publicClientOAuth(provider: PublicProvider): IntegrationOAuth {
+  return {
+    label: "My Service",
+    pkce: "S256",
+    registerClient: (context) => ({
+      clientId: context.metadataDocumentUrl,
+      metadataDocument: {
+        client_id: context.metadataDocumentUrl,
+        client_name: "Workflow Graph",
+        client_uri: context.publicUrl,
+        redirect_uris: [context.callbackUrl],
+        grant_types: ["authorization_code", "refresh_token"],
+        response_types: ["code"],
+        token_endpoint_auth_method: "none",
+        scope: "things:write",
+      },
+    }),
+    authorize: ({ client, redirectUri, state, codeChallenge }) => {
+      const url = new URL("https://auth.example.com/authorize");
+      url.searchParams.set("client_id", client.clientId);
+      url.searchParams.set("redirect_uri", redirectUri);
+      url.searchParams.set("response_type", "code");
+      url.searchParams.set("scope", "things:write");
+      url.searchParams.set("state", state);
+      url.searchParams.set("code_challenge", codeChallenge);
+      url.searchParams.set("code_challenge_method", "S256");
+      return url;
+    },
+    async exchange({ client, code, redirectUri, codeVerifier }) {
+      return provider.exchange({
+        clientId: client.clientId,
+        code,
+        redirectUri,
+        codeVerifier,
+      });
+    },
+    async refresh({ client, grant }: OAuthRefreshInput) {
+      return provider.refresh({ clientId: client.clientId, grant });
+    },
+    async revoke({ client, grant }: OAuthRevokeInput) {
+      await provider.revoke({ clientId: client.clientId, grant });
+    },
+  } satisfies IntegrationOAuth;
+}
+```
+
+### Client registration and public metadata
+
+`registerClient` supports two client identity models:
+
+- A registered-client integration returns a provider-issued client ID and optional
+  client secret. The integration can close over host configuration to supply them.
+- A client metadata integration uses `context.metadataDocumentUrl` as its client ID
+  and returns a `metadataDocument`. Workflow Graph serves that document from a public
+  route because the provider, not an operator's browser session, reads it.
+
+Public client metadata has a strict allowlist of fields: client identity and name,
+client URI, redirect URIs, grant and response types, token endpoint authentication
+method, and scope. Unknown fields fail validation. Provider secrets, token values,
+and executable provider behavior cannot enter this document. The extension catalog
+carries only `oauth.label`; it doesn't expose registration details.
+The document's `redirect_uris` value must contain only `context.callbackUrl`.
+
+Register every scope the integration could ever need, because the registered set is
+the ceiling on what an operator is allowed to grant. A provider whose consent page
+offers its own permission chooser grays out anything outside that set, so a document
+naming one scope makes the wider one ungrantable however the authorization is built.
+
+### What the provider granted
+
+Where the provider owns the permission decision, leave it there: its consent page is
+the one place an operator picks, and an authorization that names no scope asks for the
+client's whole registered set. Do not add a control to the connection dialog that
+appears to change access. Access changes only by authorizing again.
+
+Report what came back instead. An adapter returns `grantedAccessLabel` on its token
+set, worded as the provider words it, read off the token response rather than assumed
+from the request. Both `exchange` and `refresh` return it, so a provider that narrows a
+grant is recorded rather than left claiming the old access, and the connection dialog
+shows it read-only beside the account. The dialog's Reconnect runs a fresh
+authorization, which is the only thing that can change a grant wherever a refresh
+cannot widen one.
+
+### Authorization lifecycle
+
+For a new connection, the editor starts authorization before it saves a connection
+row. Core keeps the reserved ID, name, type, and configuration in a short-lived,
+encrypted, one-use attempt. Core inserts the connection only after the callback
+returns a valid grant. A canceled, declined, expired, or interrupted attempt leaves
+no connection row to clean up.
+
+For an existing connection, Core associates the attempt with the stored row and its
+configuration revision. Core generates opaque state and binds both attempt types to
+the browser with an `HttpOnly`, `SameSite=Lax` cookie. The stored attempt contains
+hashes instead of the state and cookie values. It also contains an encrypted redirect
+URI and, when required, an encrypted PKCE verifier.
+
+The host authorization predicate protects the start, callback, and attempt-status
+routes. The client metadata route is the only public OAuth route because the provider
+must read it directly.
+
+For an integration with `pkce: "S256"`, Core generates the verifier and passes its
+SHA-256 challenge to `authorize`. The type of `authorize` requires `codeChallenge`,
+and the type of `exchange` requires `codeVerifier`. An integration without `pkce`
+receives neither value.
+
+The provider returns to Core's callback route with the authorization code and state.
+Core atomically claims a pending attempt after checking its expiry and browser binding.
+A callback with the wrong binding burns the pending attempt, and no claimed, expired,
+rejected, or replayed callback can exchange a code again. Core uses the exact redirect
+URI from the attempt when it exchanges the code.
+
+The callback records `succeeded` or `failed` instead of deleting the attempt. Create
+completion inserts the reserved connection and records success in one transaction;
+reconnect completion updates the revision-fenced connection and records success in one
+transaction. The editor polls the browser-bound status route, which exposes only
+pending, success with the connection ID, or a generic failure. Terminal attempts expire
+after ten minutes.
+
+After exchange, return an `OAuthGrant`. Core validates that `credentials` contains
+only keys declared by the integration, and then stores the normalized grant in the
+connection's encrypted configuration. Browser responses omit the stored grant. OAuth
+credential values override matching manual values, so an existing action handler reads
+the same credential name in either connection mode.
+
+If the operator closes or declines the provider page for a new connection, Core
+stores no connection. For an existing connection, Core preserves the preceding
+configuration so the operator can retry or enter manual credentials.
+
+### Refresh and disconnect
+
+`exchange` returns an `OAuthGrant`. `refresh` returns an `OAuthTokenSet`. Include an
+ISO 8601 `expiresAt` value when the provider gives an access-token lifetime. Core starts
+a refresh before expiry and persists the access token, refresh token, expiry, and
+credential mapping as one replacement.
+
+Core gives one caller a refresh claim for a connection. The claim includes the
+configuration revision, so a stale caller cannot overwrite a reconnect, edit, or newer
+refresh. Other callers wait for the stored replacement instead of sending the refresh
+token again. Core marks the connection as requiring reauthorization when a stale claim
+or an uncertain provider result makes token reuse unsafe.
+
+Disconnect calls `revoke` before it removes the stored grant. If revocation fails, Core
+preserves the grant so the operator can retry. If revocation succeeds but Core cannot
+confirm the storage update, Core prevents further credential use and requires a
+reconnect. A successful disconnect restores manual credentials as the active values.
+Deleting an OAuth-backed connection also revokes its grant before Core removes the row.
+
+### Failure behavior
+
+Provider errors become connection failures without exposing authorization codes,
+client secrets, access tokens, or refresh tokens. OAuth routes disable caching and
+referrer forwarding, and request logs omit callback query values. The callback page
+reports only whether the connection completed. Core returns a generic provider failure
+and writes a payload-free server log record.
+
+An action that reaches a connection marked `reauthorization_required` fails with an
+instruction to reconnect. A competing refresh that doesn't finish within the wait
+period fails as temporarily unavailable, which lets the workflow's outer retry try
+again without sending the same refresh token concurrently.
+
+### Test OAuth behavior
+
+Test the provider adapter separately from Core's generic OAuth lifecycle. Pin the
+following provider behavior in `[name]/oauth.test.ts`:
+
+- The client registration result and, for a metadata client, the complete public
+  metadata document.
+- The complete authorization URL, including state, redirect URI, scopes, and PKCE
+  parameters.
+- The exact exchange, refresh, and revocation requests, including form fields and
+  authentication headers.
+- Successful token normalization, rotating refresh-token replacement, rejected and
+  unreadable responses, and missing required token fields.
+- Error messages that don't contain any submitted client secret, authorization code,
+  access token, refresh token, or encoded equivalent.
+
+Use recorded provider responses as decoding fixtures. Core's service and persistence
+tests cover one-use attempts, browser binding, encrypted payloads, credential-key
+validation, refresh fencing, callback conflicts, and disconnect ordering.
+
+Token exchange, refresh, and revocation requests are writes. Pass them to
+`callExternalAsync` as `POST` requests with no idempotency key and do not set
+`safeToRepeat`. Core serializes refreshes for one connection and persists a
+rotated refresh token with its access token and expiry.
+
 **`defineIntegration` owns everything around the handler:** the config decode, the
 credential fetch, the run log rows, and the `StepResult` envelope the engine reads. A
 handler answers its output alone.
@@ -149,6 +465,12 @@ yields it directly. Fail with a `StepFailure`. Durable work is
 `readCredentials`, `callExternalAsync`, or a Promise factory for `step.run` in an integration
 handler — those are the host bridge.
 
+**A connection test is told where each credential came from.** Its second argument is an
+`IntegrationTestContext`, whose `oauthCredentialKeys` names the credentials a stored OAuth
+grant issued; it is empty for the form an operator is still filling in. A grant asks for the
+narrow scopes its actions need, so a provider's permission refusal on a wider read can be
+what proves the credential valid. `packages/plugins/src/resend/test.ts` is the worked case.
+
 **Host `defineAction` stays Promise-first.** An adopter needs no Effect. An `async` handler
 fails by a throw, and the message becomes the sentence in the run log. Durable work is
 `step.run(id, () => promise)`. A connection test is also a Promise seam and uses
@@ -193,6 +515,44 @@ says everything stands on its own.
 Order follows your entries, and Workflow Graph draws each key you left out after them, in schema
 order. A group takes its position from your list, because its placement is a decision you
 make.
+
+### Fields the connection fills in
+
+A field whose choices live in the operator's own account names a provider instead of a
+static `options` list. `provider-select` draws a dropdown over what that provider lists;
+`provider-fields` draws one input per value it declares, stored as one JSON object under the
+one config key, so the handler still reads one string and parses it.
+
+```ts
+configOptions: {
+  templates: {
+    answers: "options",
+    load: async () => (await import("./config-options")).templateOptions,
+  },
+},
+// ...on the action:
+configFields: [
+  {
+    key: "templateId",
+    label: "Template",
+    type: "provider-select",
+    optionsSource: { provider: "templates" },
+  },
+],
+```
+
+A provider is a function of the connection's credentials and the sibling config values its
+`optionsSource.parameters` named. It answers options, fields, or `unavailable` with a
+sentence saying what is wrong, because a provider refusing is something the builder acts on
+rather than a failed request. Return `unavailable` for a refusal and let anything else
+throw: the credentials never leave the server, and neither does the text of an exception,
+which can carry a request URL holding a key.
+
+Every one of these falls back to the template control it replaces. A builder with no
+connection chosen, a grant too narrow to read what the field needs, or a value that is
+already a `{{...}}` reference still types the value themselves. `checkIntegration` refuses a
+field naming a provider that does not exist or answers the wrong kind, so the wiring fails in
+your own suite rather than in someone's panel.
 
 ## Testing an integration
 

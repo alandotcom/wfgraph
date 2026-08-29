@@ -2,16 +2,18 @@ import { requireOutputFieldsFromSchema } from "@wfgraph/core/plugin";
 import { describe, expect, it } from "vitest";
 import { twilio } from "#src/twilio/index";
 
-const sendSms = twilio.actions["send-sms"];
+const integration = twilio;
+
+const sendSms = integration.actions["send-sms"];
 
 describe("the twilio integration", () => {
   // Nothing registers on import. The value is the whole of what an integration
   // is, and the line that passes it to `createWfGraphApp` is what turns it on.
   it("declares its credentials and its actions as one value", () => {
-    expect(twilio.type).toBe("twilio");
-    expect(twilio.label).toBe("Twilio");
-    expect(twilio.test).toBeDefined();
-    expect(Object.keys(twilio.credentials)).toEqual([
+    expect(integration.type).toBe("twilio");
+    expect(integration.label).toBe("Twilio");
+    expect(integration.test).toBeDefined();
+    expect(Object.keys(integration.credentials)).toEqual([
       "TWILIO_ACCOUNT_SID",
       "TWILIO_AUTH_TOKEN",
       "TWILIO_FROM_NUMBER",
@@ -19,7 +21,7 @@ describe("the twilio integration", () => {
     ]);
     // The slug is the record key and nowhere else, so the id "twilio/send-sms"
     // is computed at assembly rather than written here.
-    expect(Object.keys(twilio.actions)).toEqual(["send-sms"]);
+    expect(Object.keys(integration.actions)).toEqual(["send-sms"]);
     expect(sendSms.label).toBe("Send SMS");
     expect(sendSms.category).toBe("Twilio");
   });

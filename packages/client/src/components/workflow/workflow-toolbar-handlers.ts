@@ -19,8 +19,12 @@ import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useDeleteWorkflow } from "#src/hooks/use-delete-workflow";
 import { useGoToStep } from "#src/hooks/use-workflow-issues";
 import { useDomEvent } from "#src/hooks/effects";
+import {
+  PREFLIGHT_BUSY_MESSAGE,
+  type WorkflowIssuePreflightResult,
+  useWorkflowIssuePreflight,
+} from "#src/hooks/use-workflow-issue-preflight";
 import { isTextEntry } from "#src/lib/is-text-entry";
-import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
   cacheWorkflowPublication,
   integrationsQueryOptions,
@@ -84,11 +88,12 @@ import {
   manualStartAllowed,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
-  collectWorkflowIssues,
   groupWorkflowIssuesForOverlay,
   hasBlockingWorkflowIssues,
 } from "@wfgraph/shared/graph/workflow-issues";
-import { toPersistedNodes } from "#src/lib/workflow-graph-types";
+
+/** One toast id, so a held Cmd+Enter replaces the notice instead of stacking. */
+const PREFLIGHT_TOAST_ID = "workflow-preflight-busy";
 
 type WorkflowHandlerParams = {
   currentWorkflowId: string | null;
@@ -97,7 +102,10 @@ type WorkflowHandlerParams = {
   isExecuting: boolean;
   setIsExecuting: (value: boolean) => void;
   setSelectedNodeId: (id: string | null) => void;
-  userIntegrations: Array<{ id: string; type: string }>;
+  checkWorkflowIssues: (input: {
+    workflowId: string;
+    nodes: WorkflowNode[];
+  }) => Promise<WorkflowIssuePreflightResult>;
 };
 
 function useWorkflowHandlers({
@@ -107,9 +115,8 @@ function useWorkflowHandlers({
   isExecuting,
   setIsExecuting,
   setSelectedNodeId,
-  userIntegrations,
+  checkWorkflowIssues,
 }: WorkflowHandlerParams) {
-  const catalog = useExtensionCatalog();
   // The same implementation the status strip's issue count reaches for, so
   // "Fix" means one thing wherever the list was opened from. The hook is
   // instantiated per caller and each instance owns its own pending-focus state;
@@ -197,12 +204,26 @@ function useWorkflowHandlers({
     if (isExecuting) {
       return;
     }
+    if (!currentWorkflowId) {
+      toast.error("Please save the workflow before executing");
+      return;
+    }
 
-    const issues = collectWorkflowIssues({
-      nodes: toPersistedNodes(nodes),
-      catalog,
-      integrations: userIntegrations,
+    const preflight = await checkWorkflowIssues({
+      workflowId: currentWorkflowId,
+      nodes,
     });
+    if (preflight.status !== "ready") {
+      // Cmd+Enter reaches this without passing the command palette's disabled
+      // state, so a second press during a slow check would otherwise land on
+      // nothing at all. `workflow_changed` needs no notice: the operator has
+      // already left the workflow the answer was about.
+      if (preflight.status === "busy") {
+        toast.info(PREFLIGHT_BUSY_MESSAGE, { id: PREFLIGHT_TOAST_ID });
+      }
+      return;
+    }
+    const { issues } = preflight;
 
     if (issues.length > 0) {
       const hasBlocking = hasBlockingWorkflowIssues(issues);
@@ -281,7 +302,6 @@ export function useWorkflowState() {
 export type WorkflowToolbarState = ReturnType<typeof useWorkflowState>;
 
 export function useWorkflowActions(state: WorkflowToolbarState) {
-  const catalog = useExtensionCatalog();
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -312,6 +332,8 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     userIntegrations,
     publication,
   } = state;
+  const { checkWorkflowIssues, isPreflighting } =
+    useWorkflowIssuePreflight(userIntegrations);
   const { handleExecute, handleGoToStep } = useWorkflowHandlers({
     currentWorkflowId,
     nodes,
@@ -319,7 +341,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     isExecuting,
     setIsExecuting,
     setSelectedNodeId,
-    userIntegrations,
+    checkWorkflowIssues,
   });
 
   const handleSave = useCallback(async () => {
@@ -434,7 +456,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     duplicateWorkflow.mutate({ workflowId: currentWorkflowId });
   };
 
-  const handlePublish = () => {
+  const handlePublish = async () => {
     if (!currentWorkflowId || publicationReviewActive) {
       return;
     }
@@ -445,11 +467,17 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     // unreachable subtrees -- so a graph can still be refused after passing
     // here. A draft saves in any state; this gate does not move, so there is no
     // Publish Anyway.
-    const issues = collectWorkflowIssues({
-      nodes: toPersistedNodes(nodes),
-      catalog,
-      integrations: userIntegrations,
+    const preflight = await checkWorkflowIssues({
+      workflowId: currentWorkflowId,
+      nodes,
     });
+    if (preflight.status !== "ready") {
+      if (preflight.status === "busy") {
+        toast.info(PREFLIGHT_BUSY_MESSAGE, { id: PREFLIGHT_TOAST_ID });
+      }
+      return;
+    }
+    const { issues } = preflight;
     if (hasBlockingWorkflowIssues(issues)) {
       openOverlay(WorkflowIssuesOverlay, {
         issues: groupWorkflowIssuesForOverlay(issues),
@@ -597,6 +625,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     confirmPublish,
     isPublishing: publishWorkflow.isPending,
     isComparing: compareWorkflowVersion.isPending,
+    isPreflighting,
     publishReview,
     setPublishReviewOpen: (open: boolean) => {
       if (!open) {

@@ -28,6 +28,10 @@ import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type { WfGraphServices } from "#src/backend/runtime";
+import {
+  makeAppContextLayer,
+  type WfGraphAppContextValue,
+} from "#src/backend/lib/effect/app-context";
 
 /**
  * The Layers a backend test stands on.
@@ -149,6 +153,8 @@ export function stubExtensions(
     catalog: emptyExtensionCatalog,
     stepFor: () => undefined,
     connectionTestFor: () => undefined,
+    configOptionsFor: () => undefined,
+    oauthFor: () => undefined,
     eventByName: () => undefined,
     events: [],
     ...set,
@@ -365,8 +371,21 @@ const integrationRepoStubs: IntegrationRepo["Service"] = {
   findById: refuse("findById"),
   typesByIds: refuse("typesByIds"),
   insert: refuse("insert"),
+  insertWithId: refuse("insertWithId"),
   update: refuse("update"),
-  deleteById: refuse("deleteById"),
+  deleteOwnedRefreshClaim: refuse("deleteOwnedRefreshClaim"),
+  createOAuthAuthorizationAttempt: refuse("createOAuthAuthorizationAttempt"),
+  claimOAuthAuthorizationAttempt: refuse("claimOAuthAuthorizationAttempt"),
+  readOAuthAuthorizationAttemptStatus: refuse(
+    "readOAuthAuthorizationAttemptStatus"
+  ),
+  failOAuthAuthorizationAttempt: refuse("failOAuthAuthorizationAttempt"),
+  completeOAuthCreateAttempt: refuse("completeOAuthCreateAttempt"),
+  completeOAuthReconnectAttempt: refuse("completeOAuthReconnectAttempt"),
+  claimRefresh: refuse("claimRefresh"),
+  completeRefresh: refuse("completeRefresh"),
+  releaseRefreshClaim: refuse("releaseRefreshClaim"),
+  markReauthorizationRequired: refuse("markReauthorizationRequired"),
 };
 
 export function stubIntegrationRepo(
@@ -416,11 +435,18 @@ export function stubWfGraphRuntime(
     inngestClient?: Partial<InngestClient["Service"]>;
     /** The build agent is off unless a test turns it on. */
     agent?: AgentSettings;
+    /** Stable host URLs. OAuth is off in a test unless it supplies a public URL. */
+    appContext?: WfGraphAppContextValue;
   } = {}
 ): ManagedRuntime.ManagedRuntime<WfGraphServices, never> {
   return ManagedRuntime.make(
     Layer.mergeAll(
       SilentAppLoggerLayer,
+      makeAppContextLayer(
+        overrides.appContext ?? {
+          apiBasePath: "/api",
+        }
+      ),
       stubExtensions(overrides.extensions),
       stubWorkflowRepo(overrides.workflowRepo),
       stubExecutionRepo(overrides.executionRepo),

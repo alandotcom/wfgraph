@@ -5,6 +5,8 @@ import { afterEach, beforeEach, vi } from "vitest";
 import * as clerkClient from "#src/clerk/client";
 import { clerk } from "#src/clerk/index";
 
+const underTest = clerk;
+
 /**
  * The four Clerk steps in one file, because what they have to say is the same
  * four things each: which credential is missing, which field the action cannot
@@ -88,7 +90,7 @@ describe("clerk/get-user", () => {
   it.effect("flattens Clerk's user around its primary address", () =>
     Effect.gen(function* () {
       const result = actionData(
-        yield* runAction(clerk, "get-user", {
+        yield* runAction(underTest, "get-user", {
           input: { userId: "user_1" },
           credentials: credentialsRead(),
         })
@@ -102,7 +104,7 @@ describe("clerk/get-user", () => {
   it.effect("names the missing credential before reaching Clerk", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(clerk, "get-user", {
+        yield* runAction(underTest, "get-user", {
           input: { userId: "user_1" },
           credentials: credentialsRead({}),
         })
@@ -118,7 +120,7 @@ describe("clerk/get-user", () => {
   it.effect("asks for a user id before reaching Clerk", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(clerk, "get-user", {
+        yield* runAction(underTest, "get-user", {
           input: { userId: "" },
           credentials: credentialsRead(),
         })
@@ -139,7 +141,7 @@ describe("clerk/get-user", () => {
       });
 
       const error = actionError(
-        yield* runAction(clerk, "get-user", {
+        yield* runAction(underTest, "get-user", {
           input: { userId: "user_missing" },
           credentials: credentialsRead(),
         })
@@ -154,7 +156,7 @@ describe("clerk/create-user", () => {
   it.effect("sends the address as the list Clerk takes", () =>
     Effect.gen(function* () {
       const result = actionData(
-        yield* runAction(clerk, "create-user", {
+        yield* runAction(underTest, "create-user", {
           input: {
             emailAddress: "ada@example.com",
             firstName: "Ada",
@@ -176,7 +178,7 @@ describe("clerk/create-user", () => {
   it.effect("asks for an email address before reaching Clerk", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(clerk, "create-user", {
+        yield* runAction(underTest, "create-user", {
           input: { emailAddress: "" },
           credentials: credentialsRead(),
         })
@@ -192,7 +194,7 @@ describe("clerk/create-user", () => {
   it.effect("refuses metadata that is not a JSON object", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(clerk, "create-user", {
+        yield* runAction(underTest, "create-user", {
           input: { emailAddress: "ada@example.com", privateMetadata: "[1, 2]" },
           credentials: credentialsRead(),
         })
@@ -210,7 +212,7 @@ describe("clerk/create-user", () => {
       });
 
       const error = actionError(
-        yield* runAction(clerk, "create-user", {
+        yield* runAction(underTest, "create-user", {
           input: { emailAddress: "ada@example.com" },
           credentials: credentialsRead(),
         })
@@ -229,7 +231,7 @@ describe("clerk/update-user", () => {
   it.effect("sends only the fields that were filled in", () =>
     Effect.gen(function* () {
       const result = actionData(
-        yield* runAction(clerk, "update-user", {
+        yield* runAction(underTest, "update-user", {
           input: { userId: "user_1", lastName: "Byron" },
           credentials: credentialsRead(),
         })
@@ -245,7 +247,7 @@ describe("clerk/update-user", () => {
   it.effect("asks for a user id before reaching Clerk", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(clerk, "update-user", {
+        yield* runAction(underTest, "update-user", {
           input: { userId: "" },
           credentials: credentialsRead(),
         })
@@ -259,7 +261,7 @@ describe("clerk/update-user", () => {
   it.effect("refuses metadata that is not a JSON object", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(clerk, "update-user", {
+        yield* runAction(underTest, "update-user", {
           input: { userId: "user_1", publicMetadata: "not json" },
           credentials: credentialsRead(),
         })
@@ -275,7 +277,7 @@ describe("clerk/update-user", () => {
       mocks.updateUser.mockRejectedValue({ status: 422 });
 
       const error = actionError(
-        yield* runAction(clerk, "update-user", {
+        yield* runAction(underTest, "update-user", {
           input: { userId: "user_1" },
           credentials: credentialsRead(),
         })
@@ -290,7 +292,7 @@ describe("clerk/delete-user", () => {
   it.effect("answers with the flag the action offers downstream", () =>
     Effect.gen(function* () {
       const result = actionData(
-        yield* runAction(clerk, "delete-user", {
+        yield* runAction(underTest, "delete-user", {
           input: { userId: "user_1" },
           credentials: credentialsRead(),
         })
@@ -304,7 +306,7 @@ describe("clerk/delete-user", () => {
   it.effect("asks for a user id before reaching Clerk", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(clerk, "delete-user", {
+        yield* runAction(underTest, "delete-user", {
           input: { userId: "" },
           credentials: credentialsRead(),
         })
@@ -322,7 +324,7 @@ describe("clerk/delete-user", () => {
       });
 
       const error = actionError(
-        yield* runAction(clerk, "delete-user", {
+        yield* runAction(underTest, "delete-user", {
           input: { userId: "user_1" },
           credentials: credentialsRead(),
         })

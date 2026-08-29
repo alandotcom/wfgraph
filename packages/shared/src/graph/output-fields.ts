@@ -28,6 +28,7 @@ import {
   parseWorkflowSchemaFieldsOrJsonSchema,
   type WorkflowSchemaField,
 } from "#src/graph/schema-codec";
+import { isSafeRecordPath } from "#src/types/record-key";
 
 /**
  * What an output schema may be written in: any Standard Schema library, or a
@@ -146,6 +147,14 @@ function findDerivationProblem(
   const dropped = declared.filter((name) => !derived.has(name));
   if (dropped.length > 0) {
     return `${dropped.join(", ")} did not survive the derivation, so the editor would offer a shorter list than the step returns.`;
+  }
+
+  if (
+    flattenSchemaToReferenceFields(fields).some(
+      (field) => !isSafeRecordPath(field.path)
+    )
+  ) {
+    return "it declares a field path containing a key reserved by JavaScript objects.";
   }
 
   return undefined;

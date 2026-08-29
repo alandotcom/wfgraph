@@ -199,7 +199,8 @@ _Avoid_: vendor (the retired word, which named who was called rather than what
 the boundary guarantees)
 
 **Connection**:
-One set of stored credentials for one External System, with an id and a name.
+One authorization for one External System, with an id and a name. It can hold
+credentials an operator entered or an OAuth grant the External System issued.
 An application may hold several for the same system, which is two Slack
 workspaces or two Twilio accounts. An action node names the one it runs as.
 

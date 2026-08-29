@@ -125,6 +125,7 @@ function baseActions(): WorkflowToolbarActions {
     confirmPublish: vi.fn(),
     isPublishing: false,
     isComparing: false,
+    isPreflighting: false,
     publishReview: null,
     setPublishReviewOpen: vi.fn(),
     handleSetWorkflowMode: vi.fn(async () => {}),

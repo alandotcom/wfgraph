@@ -31,6 +31,7 @@ import {
 import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
 import { compileEventDataEquals } from "@wfgraph/shared/lifecycle/inngest-event-data";
 import { requireOutputFieldsFromSchema } from "@wfgraph/shared/graph/output-fields";
+import { isSafeRecordPath } from "@wfgraph/shared/types/record-key";
 
 /**
  * What an Event's payload schema may be written in: any Standard Schema library,
@@ -285,6 +286,18 @@ export function defineEvent<TPayload extends JsonObject>(
 
   const sourceEvent = input.source?.event.trim() || name;
   const when = input.source?.when;
+  const correlationPath = input.correlationPath?.trim() || undefined;
+
+  if (correlationPath && !isSafeRecordPath(correlationPath)) {
+    throw new Error(
+      `Event "${name}" declares a correlation path containing a key reserved by JavaScript objects.`
+    );
+  }
+  if (when && !isSafeRecordPath(when.path)) {
+    throw new Error(
+      `Event "${name}" declares a source filter path containing a key reserved by JavaScript objects.`
+    );
+  }
 
   // Compiled here rather than where the listener is built, so a filter that
   // cannot become a CEL expression fails at definition, in the build of whoever
@@ -303,7 +316,7 @@ export function defineEvent<TPayload extends JsonObject>(
     label,
     description: input.description,
     decodePayload: buildPayloadGate(name, input.schema, schema),
-    correlationPath: input.correlationPath?.trim() || undefined,
+    correlationPath,
     source: when ? { event: sourceEvent, when } : { event: sourceEvent },
     inngestFunctionOptions,
     payloadFields: requireOutputFieldsFromSchema(`Event "${name}"`, schema),

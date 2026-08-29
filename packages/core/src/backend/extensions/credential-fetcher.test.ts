@@ -11,6 +11,10 @@ import {
   EncryptionKeyMismatch,
 } from "#src/backend/services/integrations/cipher";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
+import {
+  OAUTH_GRANT_CONFIG_KEY,
+  serializeStoredOAuthGrant,
+} from "#src/backend/services/integrations/oauth-grant";
 
 /**
  * What the credential read answers with, which decides whether the step that
@@ -31,9 +35,7 @@ describe("fetchCredentials", () => {
     });
 
     const outcome = await runtime.runPromise(
-      Effect.result(
-        fetchCredentials(emptyExtensionCatalog, runtime, "int_missing")
-      )
+      Effect.result(fetchCredentials(runtime, "int_missing"))
     );
 
     expect(Result.isFailure(outcome)).toBe(true);
@@ -43,6 +45,12 @@ describe("fetchCredentials", () => {
         integrationId: "int_missing",
       },
     });
+    if (Result.isFailure(outcome)) {
+      expect(outcome.failure.message).toBe(
+        'Could not read the credentials for integration "int_missing".'
+      );
+    }
+    expect(JSON.stringify(outcome)).not.toContain("no connection");
   });
 
   // Both failures reach the step as `CredentialsUnavailable`, so the message is
@@ -58,7 +66,7 @@ describe("fetchCredentials", () => {
     });
 
     const outcome = await runtime.runPromise(
-      Effect.result(fetchCredentials(emptyExtensionCatalog, runtime, "int_1"))
+      Effect.result(fetchCredentials(runtime, "int_1"))
     );
 
     expect(outcome).toMatchObject({
@@ -70,16 +78,123 @@ describe("fetchCredentials", () => {
     });
   });
 
-  it("answers no credentials for an integration id no row carries", async () => {
+  it("answers a missing integration as unavailable", async () => {
     const runtime = stubWfGraphRuntime({
       integrationRepo: { findById: () => Effect.succeed(null) },
     });
 
-    const credentials = await runtime.runPromise(
-      fetchCredentials(emptyExtensionCatalog, runtime, "int_gone")
+    const outcome = await runtime.runPromise(
+      Effect.result(fetchCredentials(runtime, "int_gone"))
     );
 
-    expect(credentials).toEqual({});
+    expect(outcome).toMatchObject({
+      failure: {
+        _tag: "CredentialsUnavailable",
+        integrationId: "int_gone",
+      },
+    });
+  });
+
+  it("uses OAuth credential overrides ahead of manual configuration", async () => {
+    const catalog = {
+      ...emptyExtensionCatalog,
+      integrations: [
+        {
+          type: "example",
+          label: "Example",
+          description: "test integration",
+          hasTest: false,
+          credentialFields: {
+            ACCESS_TOKEN: { label: "Access token", type: "password" as const },
+          },
+        },
+      ],
+    };
+    const runtime = stubWfGraphRuntime({
+      extensions: { catalog },
+      integrationRepo: {
+        findById: () =>
+          Effect.succeed({
+            id: "int_1",
+            name: "Example",
+            type: "example",
+            config: {
+              ACCESS_TOKEN: "manual-token",
+              [OAUTH_GRANT_CONFIG_KEY]: serializeStoredOAuthGrant({
+                credentials: { ACCESS_TOKEN: "oauth-token" },
+                tokens: { accessToken: "oauth-token" },
+                connectedAt: "2026-08-24T00:00:00.000Z",
+              }),
+            },
+            configRevision: 0,
+            isManaged: false,
+            refreshState: "idle" as const,
+            refreshClaimId: null,
+            refreshClaimedAt: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }),
+      },
+    });
+    const credentials = await runtime.runPromise(
+      fetchCredentials(runtime, "int_1")
+    );
+
+    expect(credentials).toEqual({ ACCESS_TOKEN: "oauth-token" });
+  });
+
+  it("refuses a damaged reserved OAuth grant instead of using manual credentials", async () => {
+    const runtime = stubWfGraphRuntime({
+      integrationRepo: {
+        findById: () =>
+          Effect.succeed({
+            id: "int_1",
+            name: "Example",
+            type: "example",
+            config: {
+              ACCESS_TOKEN: "manual-token",
+              [OAUTH_GRANT_CONFIG_KEY]: "{damaged",
+            },
+            configRevision: 0,
+            isManaged: false,
+            refreshState: "idle" as const,
+            refreshClaimId: null,
+            refreshClaimedAt: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }),
+      },
+      extensions: {
+        catalog: {
+          ...emptyExtensionCatalog,
+          integrations: [
+            {
+              type: "example",
+              label: "Example",
+              description: "test integration",
+              hasTest: false,
+              credentialFields: {
+                ACCESS_TOKEN: {
+                  label: "Access token",
+                  type: "password" as const,
+                },
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    const outcome = await runtime.runPromise(
+      Effect.result(fetchCredentials(runtime, "int_1"))
+    );
+
+    expect(outcome).toMatchObject({
+      failure: {
+        _tag: "CredentialsUnavailable",
+        integrationId: "int_1",
+      },
+    });
   });
 });
 

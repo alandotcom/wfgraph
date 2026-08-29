@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 import { mapValues, omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
 import {
@@ -7,6 +7,7 @@ import {
 } from "#src/backend/lib/effect/app-logger";
 import { internalFailure } from "#src/backend/lib/effect/internal-failure";
 import {
+  Conflict,
   InternalFailure,
   InvalidInput,
   NotFound,
@@ -17,7 +18,10 @@ import {
   type ExtensionCatalog,
   findIntegration,
 } from "@wfgraph/shared/extensions/catalog";
-import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
+import type {
+  IntegrationConfig,
+  IntegrationRefreshState,
+} from "@wfgraph/shared/types/integration";
 import { getErrorMessage } from "@wfgraph/shared/utils";
 import { ENCRYPTION_KEY_MISMATCH_MESSAGE } from "#src/backend/services/integrations/cipher";
 import {
@@ -26,6 +30,18 @@ import {
   SECRET_MASK,
 } from "#src/backend/services/integrations/integration-config-masking";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
+import {
+  attemptVendorStep,
+  describeUnavailableIntegration,
+  type DescribeVendorFailure,
+} from "#src/backend/services/integrations/vendor-call";
+import {
+  manuallyConfiguredKeys,
+  OAUTH_GRANT_CONFIG_KEY,
+  readStoredOAuthGrant,
+} from "#src/backend/services/integrations/oauth-grant";
+import { resolveIntegrationCredentials } from "#src/backend/services/integrations/credential-resolver";
+import { deleteIntegrationOAuth } from "#src/backend/services/integrations/oauth";
 
 type IntegrationSummary = {
   id: string;
@@ -34,6 +50,13 @@ type IntegrationSummary = {
   isManaged?: boolean;
   createdAt: string;
   updatedAt: string;
+  configuredKeys: readonly string[];
+  oauth?: {
+    status: "connected" | "reauthorization_required";
+    connectedAt: string;
+    accountLabel?: string;
+    credentialKeys: readonly string[];
+  };
 };
 
 type IntegrationWithConfig = IntegrationSummary & {
@@ -56,27 +79,8 @@ type IntegrationDeleted = { success: true };
 const MISSING_TEST_MESSAGE =
   "Connection testing is unavailable for this integration, because it declares no test.";
 
-/**
- * What an editor served by a different build than this process runs into: it lists
- * an integration this server does not hold, and a request naming one arrives with
- * credentials attached. Both refusals below say what is available rather than only
- * that the request was wrong, because the two builds disagreeing is the cause and
- * the list is what shows it.
- */
-function describeUnavailableIntegration(
-  catalog: ExtensionCatalog,
-  type: string
-): string {
-  const available = catalog.integrations
-    .map((integration) => integration.type)
-    .toSorted();
-
-  const holds =
-    available.length > 0
-      ? `This server holds: ${available.join(", ")}.`
-      : "This server holds no integration at all.";
-
-  return `Integration "${type}" is not available on this server. Pass it to createWfGraphApp under extensions.integrations, or pass builtInIntegrations from "@wfgraph/plugins" for the built-in ones. ${holds}`;
+function hasReservedOAuthGrant(config: IntegrationConfig | undefined): boolean {
+  return config !== undefined && OAUTH_GRANT_CONFIG_KEY in config;
 }
 
 function mergeIntegrationConfig(
@@ -106,14 +110,48 @@ function mergeIntegrationConfig(
   };
 }
 
-function toIntegrationSummary(input: {
-  id: string;
-  name: string;
-  type: string;
-  isManaged?: boolean | null;
-  createdAt: Date;
-  updatedAt: Date;
-}): IntegrationSummary {
+function oauthCredentialKeys(config: IntegrationConfig): readonly string[] {
+  const grant = readStoredOAuthGrant(config);
+  return grant ? Object.keys(grant.credentials).toSorted() : [];
+}
+
+function rejectsOAuthCredentialOverride(
+  config: IntegrationConfig | undefined,
+  credentialKeys: readonly string[]
+): boolean {
+  if (!config || credentialKeys.length === 0) {
+    return false;
+  }
+
+  const oauthKeys = new Set(credentialKeys);
+  return Object.keys(config).some((key) => oauthKeys.has(key));
+}
+
+function oauthCredentialOverrideFailure(): InvalidInput {
+  return new InvalidInput({
+    error:
+      "OAuth-managed credentials cannot be changed while OAuth is connected. Disconnect OAuth first.",
+  });
+}
+
+function toIntegrationSummary(
+  catalog: ExtensionCatalog,
+  input: {
+    id: string;
+    name: string;
+    type: string;
+    isManaged?: boolean | null;
+    config: IntegrationConfig;
+    refreshState: IntegrationRefreshState;
+    createdAt: Date;
+    updatedAt: Date;
+  }
+): IntegrationSummary {
+  const grant = readStoredOAuthGrant(input.config);
+  const configuredKeys = manuallyConfiguredKeys(
+    findIntegration(catalog, input.type),
+    input.config
+  );
   return {
     id: input.id,
     name: input.name,
@@ -121,6 +159,23 @@ function toIntegrationSummary(input: {
     isManaged: input.isManaged ?? false,
     createdAt: input.createdAt.toISOString(),
     updatedAt: input.updatedAt.toISOString(),
+    configuredKeys,
+    ...(grant
+      ? {
+          oauth: {
+            status:
+              input.refreshState === "reauthorization_required"
+                ? ("reauthorization_required" as const)
+                : ("connected" as const),
+            connectedAt: grant.connectedAt,
+            ...(grant.accountLabel ? { accountLabel: grant.accountLabel } : {}),
+            credentialKeys: Object.keys(grant.credentials).toSorted(),
+            ...(grant.grantedAccessLabel
+              ? { grantedAccessLabel: grant.grantedAccessLabel }
+              : {}),
+          },
+        }
+      : {}),
   };
 }
 
@@ -132,13 +187,23 @@ function toIntegrationWithConfig(
     type: string;
     config: IntegrationConfig;
     isManaged?: boolean | null;
+    refreshState: IntegrationRefreshState;
     createdAt: Date;
     updatedAt: Date;
   }
 ): IntegrationWithConfig {
+  const managedKeys = new Set(oauthCredentialKeys(input.config));
   return {
-    ...toIntegrationSummary(input),
-    config: maskIntegrationConfig(catalog, input.type, input.config),
+    ...toIntegrationSummary(catalog, input),
+    config: maskIntegrationConfig(
+      catalog,
+      input.type,
+      Object.fromEntries(
+        Object.entries(input.config).filter(
+          ([key]) => key !== OAUTH_GRANT_CONFIG_KEY && !managedKeys.has(key)
+        )
+      )
+    ),
   };
 }
 
@@ -158,85 +223,31 @@ const onReadFailure = (logger: EffectLogger, databaseMessage: string) => ({
 });
 
 /**
- * How a connection test words the log line for something that threw.
- *
- * The two endpoints word theirs differently, and both wordings predate the
- * migration, so the wording is passed in rather than fixed.
+ * The two endpoints word their log line differently, and both wordings predate
+ * the migration, so `attemptVendorStep` takes the wording rather than fixing it.
  */
-type DescribeTestFailure = (cause: unknown) => string;
-
-const describeTestFailure: DescribeTestFailure = (cause) =>
+const describeTestFailure: DescribeVendorFailure = (cause) =>
   `Failed to test integration connection: ${getErrorMessage(cause)}`;
 
-const describeSavedTestFailure: DescribeTestFailure = () =>
+const describeSavedTestFailure: DescribeVendorFailure = () =>
   "Failed to test saved integration connection";
 
-const toTestFailure = (cause: unknown): InternalFailure =>
-  new InternalFailure({
-    error: cause instanceof Error ? cause.message : "Failed to test connection",
-    cause,
-  });
-
 /**
- * How a connection test reports something that threw.
+ * Does this integration type connect with these declared credentials?
  *
- * The other services answer with a fixed sentence and put the underlying message
- * in the log, which is what `internalFailure` does. A connection test is the one
- * place where the underlying message is the answer: "password authentication
- * failed" is what the person filling in the credentials form needs to read, so
- * it is what reaches them.
- *
- * Used directly only where a `DatabaseError` has to be reported this way;
- * everything a test actually runs goes through `attemptTestStep`.
- */
-const testFailure =
-  (logger: EffectLogger, describe: DescribeTestFailure) =>
-  (cause: unknown): Effect.Effect<never, InternalFailure> =>
-    Effect.gen(function* () {
-      yield* logger.error(describe(cause), { error: cause });
-      return yield* toTestFailure(cause);
-    });
-
-/**
- * Run one step of a connection test, reporting a throw the way `testFailure`
- * does.
- *
- * The catalog lookup, the test loader's dynamic import, and the vendor call
- * itself all sit outside the database, and the pre-Effect code caught them in
- * the same `try` as the query. This is that `try`, one step at a time.
- */
-const attemptTestStep =
-  (logger: EffectLogger, describe: DescribeTestFailure) =>
-  <A>(run: () => Promise<A> | A): Effect.Effect<A, InternalFailure> =>
-    Effect.tryPromise({
-      // The async wrapper is what makes a synchronous throw catchable: without
-      // it `run()` throws before a promise exists and the throw escapes past
-      // `catch` as a defect.
-      try: async () => await run(),
-      catch: toTestFailure,
-    }).pipe(
-      Effect.tapError((failure) =>
-        logger.error(describe(failure.cause), { error: failure.cause })
-      )
-    );
-
-/**
- * Does this (type, config) pair connect?
- *
- * Both endpoints ask exactly that; `postIntegrationTest` reads the pair out of a
- * stored row first and `postIntegrationsTest` is handed one that was typed into
- * the credentials form. Everything after the read is the same work, so it lives
- * here once: the catalog lookup, the test lookup, the credential mapping, and the
- * answer the UI shows.
+ * The saved endpoint resolves and refreshes its credential map first. The
+ * unsaved endpoint maps the config that the caller supplied directly, so it
+ * names no OAuth keys: nothing has been granted while the form is still open.
  */
 const runConnectionTest = Effect.fn("runConnectionTest")(function* (
   callerLogger: EffectLogger,
-  describe: DescribeTestFailure,
+  describe: DescribeVendorFailure,
   type: string,
-  config: IntegrationConfig
+  credentials: Record<string, string | undefined>,
+  grantedCredentialKeys: readonly string[]
 ) {
   const logger = callerLogger.with({ type });
-  const attempt = attemptTestStep(logger, describe);
+  const attempt = attemptVendorStep(logger, describe);
 
   const extensions = yield* Extensions;
   const integration = findIntegration(extensions.catalog, type);
@@ -257,7 +268,6 @@ const runConnectionTest = Effect.fn("runConnectionTest")(function* (
   // wraps as the vendor call below.
   const testFn = yield* attempt(() => loadTest());
 
-  const credentials = credentialsFromConfig(integration, config);
   yield* logger.info("Testing integration credentials", {
     credentialKeys: Object.keys(credentials),
     // Which credentials arrived and which came through empty, without the
@@ -267,7 +277,9 @@ const runConnectionTest = Effect.fn("runConnectionTest")(function* (
     ),
   });
 
-  const testResult = yield* attempt(() => testFn(credentials));
+  const testResult = yield* attempt(() =>
+    testFn(credentials, { oauthCredentialKeys: grantedCredentialKeys })
+  );
 
   if (!testResult.success) {
     yield* logger.warn(
@@ -292,6 +304,7 @@ export const getIntegrations = Effect.fn("getIntegrations")(function* (
   const logger = (yield* AppLogger)
     .get("integrations")
     .with({ type: type ?? null });
+  const { catalog } = yield* Extensions;
 
   const integrations = yield* repo
     .listByType(type)
@@ -299,7 +312,9 @@ export const getIntegrations = Effect.fn("getIntegrations")(function* (
       Effect.catchTags(onReadFailure(logger, "Failed to get integrations"))
     );
 
-  return integrations.map(toIntegrationSummary);
+  return integrations.map((integration) =>
+    toIntegrationSummary(catalog, integration)
+  );
 });
 
 export const getIntegration = Effect.fn("getIntegration")(function* (
@@ -328,6 +343,11 @@ export const putIntegration = Effect.fn("putIntegration")(function* (
     config?: IntegrationConfig;
   }
 ) {
+  if (hasReservedOAuthGrant(body.config)) {
+    return yield* new InvalidInput({
+      error: "The OAuth grant config key is reserved.",
+    });
+  }
   const repo = yield* IntegrationRepo;
   const { catalog } = yield* Extensions;
   const logger = (yield* AppLogger).get("integrations").with({ integrationId });
@@ -342,6 +362,11 @@ export const putIntegration = Effect.fn("putIntegration")(function* (
     return yield* new NotFound({ error: "Integration not found" });
   }
 
+  const managedCredentialKeys = oauthCredentialKeys(existingIntegration.config);
+  if (rejectsOAuthCredentialOverride(body.config, managedCredentialKeys)) {
+    return yield* oauthCredentialOverrideFailure();
+  }
+
   // A config the browser sent back still carries the mask over each secret, so
   // the stored value has to be merged back in before anything is written.
   const mergedConfig = body.config
@@ -353,24 +378,31 @@ export const putIntegration = Effect.fn("putIntegration")(function* (
       )
     : undefined;
 
-  const updatePayload = omitBy(
-    {
-      name: body.name,
-      config: mergedConfig,
-    },
-    isNil
-  );
+  const updatePayload =
+    mergedConfig === undefined
+      ? omitBy({ name: body.name }, isNil)
+      : {
+          ...(body.name === undefined ? {} : { name: body.name }),
+          config: mergedConfig,
+          expectedRevision: existingIntegration.configRevision,
+        };
 
-  const integration = yield* repo
+  const outcome = yield* repo
     .update(integrationId, updatePayload)
     .pipe(Effect.catchTags(onRepoFailure));
 
-  if (!integration) {
+  if (outcome.status === "not_found") {
     yield* logger.warn("Integration not found for update");
     return yield* new NotFound({ error: "Integration not found" });
   }
+  if (outcome.status === "conflict") {
+    yield* logger.warn("Integration config changed during update");
+    return yield* new Conflict({
+      error: "Integration configuration changed. Reload and try again.",
+    });
+  }
 
-  return toIntegrationWithConfig(catalog, integration);
+  return toIntegrationWithConfig(catalog, outcome.integration);
 });
 
 export const deleteIntegration = Effect.fn("deleteIntegration")(function* (
@@ -379,8 +411,50 @@ export const deleteIntegration = Effect.fn("deleteIntegration")(function* (
   const repo = yield* IntegrationRepo;
   const logger = (yield* AppLogger).get("integrations").with({ integrationId });
 
-  const deleted = yield* repo
-    .deleteById(integrationId)
+  let integration = yield* repo
+    .findById(integrationId)
+    .pipe(
+      Effect.catchTags(onReadFailure(logger, "Failed to delete integration"))
+    );
+
+  if (!integration) {
+    yield* logger.warn("Integration not found for delete");
+    return yield* new NotFound({ error: "Integration not found" });
+  }
+
+  const storedGrant = readStoredOAuthGrant(integration.config);
+  if (hasReservedOAuthGrant(integration.config) && !storedGrant) {
+    return yield* new InternalFailure({
+      error:
+        "The stored OAuth grant is invalid. Reconnect the integration before deleting it.",
+    });
+  }
+
+  if (storedGrant) {
+    const disconnect = yield* deleteIntegrationOAuth(integrationId);
+    // Disconnecting a connection the grant wholly supplied removes the row, so
+    // there is nothing left to delete and this call is already done.
+    if (disconnect.removed) {
+      const removed: IntegrationDeleted = { success: true };
+      return removed;
+    }
+    integration = yield* repo
+      .findById(integrationId)
+      .pipe(
+        Effect.catchTags(onReadFailure(logger, "Failed to delete integration"))
+      );
+    if (!integration) {
+      return yield* new NotFound({ error: "Integration not found" });
+    }
+  }
+
+  const claimInput = {
+    integrationId,
+    claimId: globalThis.crypto.randomUUID(),
+    expectedRevision: integration.configRevision,
+  };
+  const claim = yield* repo
+    .claimRefresh(claimInput)
     .pipe(
       Effect.catchTag(
         "DatabaseError",
@@ -388,9 +462,33 @@ export const deleteIntegration = Effect.fn("deleteIntegration")(function* (
       )
     );
 
-  if (!deleted) {
-    yield* logger.warn("Integration not found for delete");
+  if (claim.status === "not_found") {
     return yield* new NotFound({ error: "Integration not found" });
+  }
+  if (claim.status === "lost") {
+    return yield* new Conflict({
+      error: "Integration configuration changed during delete.",
+    });
+  }
+
+  const deletion = yield* Effect.result(
+    repo.deleteOwnedRefreshClaim(claimInput)
+  );
+  if (Result.isFailure(deletion)) {
+    yield* Effect.result(repo.releaseRefreshClaim(claimInput));
+    return yield* internalFailure(
+      logger,
+      "Failed to delete integration"
+    )(deletion.failure);
+  }
+
+  if (deletion.success.status === "not_found") {
+    return yield* new NotFound({ error: "Integration not found" });
+  }
+  if (deletion.success.status === "no_longer_owned") {
+    return yield* new Conflict({
+      error: "Integration configuration changed during delete.",
+    });
   }
 
   const result: IntegrationDeleted = { success: true };
@@ -407,42 +505,50 @@ export const postIntegrationsTest = Effect.fn("postIntegrationsTest")(
       logger,
       describeTestFailure,
       body.type,
-      body.config
+      credentialsFromConfig(
+        findIntegration((yield* Extensions).catalog, body.type),
+        body.config
+      ),
+      []
     );
   }
 );
 
 export const postIntegrationTest = Effect.fn("postIntegrationTest")(function* (
-  integrationId: string
+  integrationId: string,
+  config?: IntegrationConfig
 ) {
-  const repo = yield* IntegrationRepo;
   const logger = (yield* AppLogger).get("integrations").with({ integrationId });
-
-  // The one read that does not take `onReadFailure`: a database failure here is
-  // reported the way a failing test is, so the row that could not be read says
-  // why. The key failure keeps the shared sentence, since its `cause` is a GCM
-  // tag check saying nothing a person can act on.
-  const integration = yield* repo.findById(integrationId).pipe(
-    Effect.catchTags({
-      DatabaseError: ({ cause }) =>
-        testFailure(logger, describeSavedTestFailure)(cause),
-      EncryptionKeyMismatch: internalFailure(
-        logger,
-        ENCRYPTION_KEY_MISMATCH_MESSAGE
-      ),
-    })
+  const resolved = yield* resolveIntegrationCredentials(integrationId);
+  const extensions = yield* Extensions;
+  const integration = findIntegration(
+    extensions.catalog,
+    resolved.integrationType
   );
-
-  if (!integration) {
-    yield* logger.warn("Integration not found for test");
-    return yield* new NotFound({ error: "Integration not found" });
+  const managedCredentialKeys = resolved.oauthCredentialKeys;
+  if (rejectsOAuthCredentialOverride(config, managedCredentialKeys)) {
+    return yield* oauthCredentialOverrideFailure();
   }
+  const credentials = config
+    ? credentialsFromConfig(
+        integration,
+        mergeIntegrationConfig(
+          extensions.catalog,
+          resolved.integrationType,
+          resolved.credentials,
+          config
+        )
+      )
+    : resolved.credentials;
 
   return yield* runConnectionTest(
     logger,
     describeSavedTestFailure,
-    integration.type,
-    integration.config
+    resolved.integrationType,
+    credentials,
+    // An override naming one of these was already refused above, so every key
+    // here still carries the value the grant issued.
+    managedCredentialKeys
   );
 });
 
@@ -451,6 +557,11 @@ export const postIntegrations = Effect.fn("postIntegrations")(function* (body: {
   type: string;
   config: IntegrationConfig;
 }) {
+  if (hasReservedOAuthGrant(body.config)) {
+    return yield* new InvalidInput({
+      error: "The OAuth grant config key is reserved.",
+    });
+  }
   const repo = yield* IntegrationRepo;
   const logger = (yield* AppLogger)
     .get("integrations")
@@ -479,5 +590,5 @@ export const postIntegrations = Effect.fn("postIntegrations")(function* (body: {
       )
     );
 
-  return toIntegrationSummary(integration);
+  return toIntegrationSummary(catalog, integration);
 });

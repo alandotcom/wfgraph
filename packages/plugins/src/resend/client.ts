@@ -14,8 +14,7 @@
  */
 
 import type { JsonObject, JsonValue } from "@wfgraph/core/plugin";
-import type { Effect } from "effect";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 import {
   callExternal,
@@ -43,6 +42,55 @@ const sentEmailSchema = Schema.Struct({ id: Schema.String });
  */
 export function readResendError(payload: JsonValue | undefined) {
   return parsePayload(payload, resendErrorSchema);
+}
+
+/**
+ * Why Resend refused, in the vocabulary its two callers both act on.
+ *
+ * The slug alone is not enough: Resend answers `restricted_api_key` at 401 for a
+ * send-only key, which is a working credential, and at 403 for a key that is no
+ * longer active, which is not. Keying on both is what keeps a suspended key from
+ * being reported as one that only needs a wider grant.
+ */
+export type ResendRefusal =
+  /** A working key Resend restricts to sending, which only a manual key is. */
+  | "send_only_key"
+  /** A working token whose grant does not cover the route, which only OAuth is. */
+  | "insufficient_scope"
+  /** The credential itself will not work: inactive, suspended, over quota. */
+  | "key_unusable"
+  | "unreachable"
+  | "refused";
+
+export function classifyResendFailure(error: ExternalError): ResendRefusal {
+  if (error._tag === "ExternalUnreachable") {
+    return "unreachable";
+  }
+
+  const body =
+    error._tag === "ExternalRejected"
+      ? readResendError(error.payload)
+      : undefined;
+  // Resend quotes a status in its own error body, which is the number its
+  // documentation attaches to the slug. That one wins when it is there.
+  const status = body?.statusCode ?? error.status;
+
+  if (body?.name === "invalid_permission" && status === 403) {
+    return "insufficient_scope";
+  }
+  if (body?.name === "restricted_api_key") {
+    // Resend spells this slug twice: 401 for a key restricted to sending, which
+    // works, and 403 for a key that is no longer active, which does not.
+    return status === 403 ? "key_unusable" : "send_only_key";
+  }
+  if (
+    body?.name === "suspended_api_key" ||
+    body?.name === "email_above_quota"
+  ) {
+    return "key_unusable";
+  }
+
+  return "refused";
 }
 
 /**
@@ -91,6 +139,129 @@ function requestResend<S extends Schema.ConstraintDecoder<unknown>>(
     idempotencyKey: init.idempotencyKey,
     schema,
   });
+}
+
+/**
+ * Resend's template shapes, described as the wire sends them rather than as the
+ * SDK types them. Only what a caller reads is required; the rest is tolerant,
+ * because a field this plugin ignores must not fail the decode.
+ */
+const resendTemplateSummarySchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  status: Schema.optionalKey(Schema.NullOr(Schema.String)),
+});
+
+const resendTemplateListSchema = Schema.Struct({
+  data: Schema.Array(resendTemplateSummarySchema),
+  has_more: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
+});
+
+const resendTemplateVariableSchema = Schema.Struct({
+  key: Schema.String,
+  type: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  fallback_value: Schema.optionalKey(Schema.NullOr(Schema.String)),
+});
+
+/** Only the retrieve endpoint carries `variables`; the list endpoint does not. */
+const resendTemplateSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  status: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  variables: Schema.optionalKey(
+    Schema.NullOr(Schema.Array(resendTemplateVariableSchema))
+  ),
+});
+
+export type ResendTemplateSummary = typeof resendTemplateSummarySchema.Type;
+type ResendTemplate = typeof resendTemplateSchema.Type;
+
+/** Resend's own maximum, so a page never asks for more than it will answer. */
+const TEMPLATE_PAGE_SIZE = 100;
+
+/**
+ * How many pages a listing follows before it gives up.
+ *
+ * Each page carries `callExternal`'s own per-attempt timeout and retry schedule,
+ * so a page is worth tens of seconds in the worst case and this is the number a
+ * config panel can wait on. Reaching the bound is reported rather than passed
+ * off as the whole list: a dropdown quietly missing the template someone wants,
+ * with no way to type it either, is worse than saying the list is too long.
+ */
+const TEMPLATE_PAGE_LIMIT = 3;
+
+/**
+ * A listing, and whether it is all of them.
+ *
+ * Reaching the bound is a fact this reports rather than a failure it raises: a
+ * caller drawing a picker treats it as one, and a caller doing something else
+ * need not.
+ */
+export type ResendTemplateListing = {
+  readonly templates: readonly ResendTemplateSummary[];
+  readonly reachedPageLimit: boolean;
+};
+
+function listResendTemplatePage(
+  apiKey: string,
+  after?: string
+): Effect.Effect<
+  typeof resendTemplateListSchema.Type,
+  ExternalError,
+  HttpClient.HttpClient
+> {
+  const query = new URLSearchParams({ limit: String(TEMPLATE_PAGE_SIZE) });
+  if (after) {
+    query.set("after", after);
+  }
+
+  return requestResend(
+    apiKey,
+    `/templates?${query.toString()}`,
+    resendTemplateListSchema,
+    { method: "GET" }
+  );
+}
+
+/**
+ * Every template the account holds, or a refusal when there are more than the
+ * bound above will fetch.
+ */
+export function listResendTemplates(
+  apiKey: string
+): Effect.Effect<ResendTemplateListing, ExternalError, HttpClient.HttpClient> {
+  return Effect.gen(function* () {
+    const templates: ResendTemplateSummary[] = [];
+    let after: string | undefined;
+
+    for (let page = 0; page < TEMPLATE_PAGE_LIMIT; page += 1) {
+      const answer = yield* listResendTemplatePage(apiKey, after);
+      templates.push(...answer.data);
+
+      // A page claiming more while sending none has no cursor to follow, so it
+      // ends the listing rather than repeating the same request forever.
+      const last = answer.data.at(-1);
+      if (!answer.has_more || !last) {
+        return { templates, reachedPageLimit: false };
+      }
+      after = last.id;
+    }
+
+    return { templates, reachedPageLimit: true };
+  });
+}
+
+/** One template, with the variables only this endpoint carries. */
+export function getResendTemplate(
+  apiKey: string,
+  idOrAlias: string
+): Effect.Effect<ResendTemplate, ExternalError, HttpClient.HttpClient> {
+  return requestResend(
+    apiKey,
+    `/templates/${encodeURIComponent(idOrAlias)}`,
+    resendTemplateSchema,
+    { method: "GET" }
+  );
 }
 
 export function sendResendEmail(

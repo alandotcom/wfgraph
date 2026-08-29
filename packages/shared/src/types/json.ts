@@ -100,15 +100,15 @@ export function toJsonObject(
     return undefined;
   }
 
-  const object: JsonObject = {};
+  const entries: Array<[string, JsonValue]> = [];
 
   for (const [key, value] of Object.entries(draft)) {
     if (value !== undefined) {
-      object[key] = value;
+      entries.push([key, value]);
     }
   }
 
-  return object;
+  return Object.fromEntries(entries);
 }
 
 /**

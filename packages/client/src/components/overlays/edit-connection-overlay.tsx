@@ -1,17 +1,22 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Pencil, X } from "lucide-react";
-import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, Link, Pencil, TriangleAlert, X } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
 import { useIsMobile } from "#src/hooks/use-mobile";
+import { useOAuthConnection } from "#src/hooks/use-oauth-connection";
 import {
   announceTestResult,
   hasProvidedConfigValues,
 } from "#src/lib/connection-credentials";
 import type { Integration } from "#src/lib/rpc-client";
-import { orpcQuery, refreshIntegrations } from "#src/lib/rpc-query";
+import {
+  integrationsQueryOptions,
+  orpcQuery,
+  refreshIntegrations,
+} from "#src/lib/rpc-query";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
   findIntegration,
@@ -26,6 +31,169 @@ const integrationLabel = (
   entry: IntegrationMetadata | undefined,
   type: string
 ): string => entry?.label ?? type;
+
+/**
+ * One panel for every state an OAuth connection can be in.
+ *
+ * The three states differ in their icon, their heading, what they say underneath
+ * and which buttons they offer, and in nothing else. They were three copies of
+ * the same section, which is three places to keep an `aria-busy`, a label and a
+ * layout in step, so the shell lives here once and each state supplies only its
+ * own parts.
+ */
+function OAuthStatusPanel({
+  providerLabel,
+  pending,
+  icon,
+  title,
+  actions,
+  children,
+}: {
+  providerLabel: string;
+  pending: boolean;
+  icon: ReactNode;
+  title: string;
+  actions: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <section
+      aria-busy={pending}
+      aria-label={`${providerLabel} OAuth connection`}
+      className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="flex items-start gap-2" role="status">
+        {icon}
+        <div className="space-y-0.5 text-sm">
+          <p className="font-medium">{title}</p>
+          {children}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">{actions}</div>
+    </section>
+  );
+}
+
+/**
+ * The state a connection is in before OAuth has ever run, and the one it returns
+ * to after a disconnect. This is the only offer of the OAuth flow for a saved
+ * connection, so it stays reachable whenever the catalog declares a provider.
+ */
+function OAuthConnectPrompt({
+  providerLabel,
+  pending,
+  onConnect,
+}: {
+  providerLabel: string;
+  pending: boolean;
+  onConnect: () => void;
+}) {
+  return (
+    <OAuthStatusPanel
+      actions={
+        <Button disabled={pending} onClick={onConnect} type="button">
+          Connect
+        </Button>
+      }
+      icon={<Link aria-hidden="true" className="mt-0.5 size-4" />}
+      pending={pending}
+      providerLabel={providerLabel}
+      title="Disconnected"
+    >
+      <p className="text-muted-foreground">
+        Connect {providerLabel} to authorize this connection.
+      </p>
+    </OAuthStatusPanel>
+  );
+}
+
+function OAuthConnectionStatus({
+  oauth,
+  providerLabel,
+  pending,
+  onConnect,
+  onDisconnect,
+}: {
+  oauth: NonNullable<Integration["oauth"]>;
+  providerLabel: string;
+  pending: boolean;
+  onConnect: () => void;
+  onDisconnect: () => void;
+}) {
+  if (oauth.status === "connected") {
+    return (
+      <OAuthStatusPanel
+        actions={
+          <>
+            <Button
+              disabled={pending}
+              onClick={onConnect}
+              title={`Reconnect to change what ${providerLabel} allows`}
+              type="button"
+              variant="outline"
+            >
+              Reconnect
+            </Button>
+            <Button
+              disabled={pending}
+              onClick={onDisconnect}
+              type="button"
+              variant="outline"
+            >
+              Disconnect
+            </Button>
+          </>
+        }
+        icon={
+          <Check aria-hidden="true" className="mt-0.5 size-4 text-success" />
+        }
+        pending={pending}
+        providerLabel={providerLabel}
+        title="Connected"
+      >
+        {oauth.accountLabel && (
+          <p className="text-muted-foreground">Account: {oauth.accountLabel}</p>
+        )}
+        {/*
+          What the provider granted, in its own words. Read-only, because
+          access is changed at the provider's consent page and nowhere else:
+          Reconnect is the control, and this line is the current state.
+        */}
+        {oauth.grantedAccessLabel && (
+          <p className="text-muted-foreground">
+            Access: {oauth.grantedAccessLabel}
+          </p>
+        )}
+        <p className="text-muted-foreground">
+          Connected on {oauth.connectedAt.slice(0, 10)}
+        </p>
+      </OAuthStatusPanel>
+    );
+  }
+
+  return (
+    <OAuthStatusPanel
+      actions={
+        <Button disabled={pending} onClick={onConnect} type="button">
+          Reconnect
+        </Button>
+      }
+      icon={
+        <TriangleAlert
+          aria-hidden="true"
+          className="mt-0.5 size-4 text-warning"
+        />
+      }
+      pending={pending}
+      providerLabel={providerLabel}
+      title="Reauthorization required"
+    >
+      <p className="text-muted-foreground">
+        Reconnect {providerLabel} to continue using this connection.
+      </p>
+    </OAuthStatusPanel>
+  );
+}
 
 type EditConnectionOverlayProps = {
   overlayId: string;
@@ -44,6 +212,7 @@ function SecretField({
   placeholder,
   helpText,
   helpLink,
+  configured,
   value,
   onChange,
 }: {
@@ -53,6 +222,7 @@ function SecretField({
   placeholder?: string;
   helpText?: string;
   helpLink?: { url: string; text: string };
+  configured: boolean;
   value: string;
   onChange: (key: string, value: string) => void;
 }) {
@@ -60,7 +230,7 @@ function SecretField({
   const isMobile = useIsMobile();
   const hasNewValue = value.length > 0;
 
-  if (!(isEditing || hasNewValue)) {
+  if (configured && !(isEditing || hasNewValue)) {
     return (
       <div className="space-y-2">
         <Label htmlFor={fieldId}>{label}</Label>
@@ -128,6 +298,26 @@ function SecretField({
   );
 }
 
+function OAuthManagedCredentialField({
+  label,
+  providerLabel,
+}: {
+  label: string;
+  providerLabel: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/30 px-3">
+        <Check aria-hidden="true" className="size-4 text-success" />
+        <span className="text-muted-foreground text-sm">
+          Managed by {providerLabel} OAuth
+        </span>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Overlay for editing an existing connection
  */
@@ -141,6 +331,21 @@ export function EditConnectionOverlay({
   const queryClient = useQueryClient();
   const [name, setName] = useState(integration.name);
   const [config, setConfig] = useState<Record<string, string>>({});
+  const { data: integrations } = useQuery(integrationsQueryOptions());
+  const oauth =
+    integrations === undefined
+      ? integration.oauth
+      : integrations.find(({ id }) => id === integration.id)?.oauth;
+  // The keys the operator entered themselves. Disconnecting OAuth leaves them
+  // alone, so this stays true for the life of the overlay.
+  const configuredKeys = new Set(integration.configuredKeys);
+  const oauthConnection = useOAuthConnection({
+    onConnected: () => {
+      onSuccess?.();
+      closeAll();
+    },
+  });
+  const oauthPending = oauthConnection.pending;
 
   const updateConfig = (key: string, value: string) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
@@ -150,7 +355,7 @@ export function EditConnectionOverlay({
     orpcQuery.integration.update.mutationOptions({
       onSuccess: async () => {
         toast.success("Connection updated");
-        await refreshIntegrations(queryClient);
+        await refreshIntegrations(queryClient, integration.id);
         onSuccess?.();
         closeAll();
       },
@@ -161,20 +366,32 @@ export function EditConnectionOverlay({
   // A test run as part of saving, whose failure is an offer to save anyway
   // rather than something to toast.
   const testForSave = useMutation(
-    orpcQuery.integration.testCredentials.mutationOptions({
+    orpcQuery.integration.testConnection.mutationOptions({
       meta: { errorShownByCaller: true },
-    })
-  );
-
-  const testNewCredentials = useMutation(
-    orpcQuery.integration.testCredentials.mutationOptions({
-      onSuccess: announceTestResult,
     })
   );
 
   const testStoredCredentials = useMutation(
     orpcQuery.integration.testConnection.mutationOptions({
       onSuccess: announceTestResult,
+    })
+  );
+
+  const disconnectOAuth = useMutation(
+    orpcQuery.integration.disconnectOAuth.mutationOptions({
+      onSuccess: async (result) => {
+        await refreshIntegrations(queryClient, integration.id);
+        if (result.removed) {
+          // The grant was the whole connection, so there is no longer one to
+          // edit. Take the delete path: it repairs the nodes that named it.
+          toast.success("Connection removed");
+          onDelete?.();
+          closeAll();
+          return;
+        }
+        toast.success("OAuth connection disconnected");
+      },
+      meta: { errorMessage: "Failed to disconnect OAuth connection" },
     })
   );
 
@@ -186,8 +403,9 @@ export function EditConnectionOverlay({
   const hasTest = catalogEntry?.hasTest === true;
 
   const saving = update.isPending || testForSave.isPending;
-  const testing =
-    testNewCredentials.isPending || testStoredCredentials.isPending;
+  const testing = testStoredCredentials.isPending;
+  const oauthBusy = oauthPending || disconnectOAuth.isPending;
+  const controlsDisabled = saving || testing || oauthBusy;
 
   const saveConnection = () => {
     update.mutate({
@@ -221,8 +439,8 @@ export function EditConnectionOverlay({
     // Test before saving
     try {
       const result = await testForSave.mutateAsync({
-        type: integration.type,
-        config,
+        integrationId: integration.id,
+        config: hasNewConfig ? config : undefined,
       });
 
       if (result.status === "error") {
@@ -240,12 +458,10 @@ export function EditConnectionOverlay({
   };
 
   const handleTest = () => {
-    if (hasProvidedConfigValues(config)) {
-      testNewCredentials.mutate({ type: integration.type, config });
-      return;
-    }
-
-    testStoredCredentials.mutate({ integrationId: integration.id });
+    testStoredCredentials.mutate({
+      integrationId: integration.id,
+      config: hasProvidedConfigValues(config) ? config : undefined,
+    });
   };
 
   const handleDelete = () => {
@@ -258,15 +474,66 @@ export function EditConnectionOverlay({
     });
   };
 
+  const handleOAuthConnect = async () => {
+    await oauthConnection.startExisting(integration.id);
+  };
+
+  /**
+   * Disconnecting revokes the grant at the provider, which this app cannot undo,
+   * and when the grant was the only credential it takes the connection with it.
+   * So it asks first, and it says which of the two is about to happen: the
+   * server already told us, in `configuredKeys`, whether anything the operator
+   * typed themselves would survive.
+   */
+  const handleOAuthDisconnect = () => {
+    const grantIsWholeConnection = configuredKeys.size === 0;
+    const providerLabel = catalogEntry?.oauth?.label ?? integration.type;
+
+    push(ConfirmOverlay, {
+      title: grantIsWholeConnection
+        ? "Remove this connection"
+        : `Disconnect ${providerLabel}`,
+      message: grantIsWholeConnection
+        ? `${providerLabel} access is the only credential "${integration.name}" holds, so disconnecting removes the connection itself. Workflows using it will fail until a new one is configured.\n\nThis also revokes the authorization at ${providerLabel}, which cannot be undone from here.`
+        : `This revokes the authorization at ${providerLabel}, which cannot be undone from here. The credentials you entered yourself are kept, so "${integration.name}" stays available.`,
+      // Named rather than a bare "Disconnect", which is what the button behind
+      // this dialog already says: the confirming click should read differently
+      // from the one that opened it.
+      confirmLabel: grantIsWholeConnection
+        ? "Remove connection"
+        : `Disconnect ${providerLabel}`,
+      confirmVariant: "destructive" as const,
+      destructive: true,
+      onConfirm: () =>
+        disconnectOAuth.mutate({ integrationId: integration.id }),
+    });
+  };
+
   const renderConfigFields = () => {
     if (!formFields) {
       return null;
     }
 
     return Object.entries(formFields).map(([configKey, field]) => {
+      const isOAuthManaged =
+        (oauth?.status === "connected" ||
+          oauth?.status === "reauthorization_required") &&
+        oauth.credentialKeys.includes(configKey);
+
+      if (isOAuthManaged) {
+        return (
+          <OAuthManagedCredentialField
+            key={configKey}
+            label={field.label}
+            providerLabel={catalogEntry?.oauth?.label ?? integration.type}
+          />
+        );
+      }
+
       if (field.type === "password") {
         return (
           <SecretField
+            configured={configuredKeys.has(configKey)}
             configKey={configKey}
             fieldId={configKey}
             helpLink={field.helpLink}
@@ -317,7 +584,7 @@ export function EditConnectionOverlay({
           label: "Delete",
           variant: "ghost",
           onClick: handleDelete,
-          disabled: saving || testing,
+          disabled: controlsDisabled,
         },
         ...(hasTest
           ? [
@@ -326,11 +593,16 @@ export function EditConnectionOverlay({
                 variant: "outline" as const,
                 onClick: handleTest,
                 loading: testing,
-                disabled: saving,
+                disabled: saving || oauthBusy,
               },
             ]
           : []),
-        { label: "Update", onClick: handleSave, loading: saving },
+        {
+          label: "Update",
+          onClick: handleSave,
+          loading: saving,
+          disabled: testing || oauthBusy,
+        },
       ]}
       overlayId={overlayId}
       title={`Edit ${integrationLabel(catalogEntry, integration.type)}`}
@@ -340,17 +612,39 @@ export function EditConnectionOverlay({
       </p>
 
       <div className="space-y-4">
-        {renderConfigFields()}
+        {catalogEntry?.oauth &&
+          (oauth ? (
+            <OAuthConnectionStatus
+              oauth={oauth}
+              onConnect={handleOAuthConnect}
+              onDisconnect={handleOAuthDisconnect}
+              pending={oauthBusy}
+              providerLabel={catalogEntry.oauth.label}
+            />
+          ) : (
+            <OAuthConnectPrompt
+              onConnect={handleOAuthConnect}
+              pending={oauthBusy}
+              providerLabel={catalogEntry.oauth.label}
+            />
+          ))}
+        <fieldset
+          aria-busy={oauthBusy}
+          className="m-0 min-w-0 space-y-4 border-0 p-0"
+          disabled={oauthBusy}
+        >
+          {renderConfigFields()}
 
-        <div className="space-y-2">
-          <Label htmlFor="name">Label (Optional)</Label>
-          <Input
-            id="name"
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Production, Personal, Work"
-            value={name}
-          />
-        </div>
+          <div className="space-y-2">
+            <Label htmlFor="name">Label (Optional)</Label>
+            <Input
+              id="name"
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Production, Personal, Work"
+              value={name}
+            />
+          </div>
+        </fieldset>
       </div>
     </Overlay>
   );
@@ -393,7 +687,7 @@ export function DeleteConnectionOverlay({
         // passes one that only invalidates, kept the confirmation on screen
         // stuck in its loading state.
         dismiss();
-        await refreshIntegrations(queryClient);
+        await refreshIntegrations(queryClient, integration.id);
         onSuccess?.();
       },
       meta: { errorMessage: "Failed to delete connection" },

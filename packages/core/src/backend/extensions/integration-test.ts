@@ -15,6 +15,18 @@ export type IntegrationTestResult =
   | { success: false; error: string; details?: Record<string, unknown> };
 
 /**
+ * Where each credential came from, which the values themselves do not say.
+ *
+ * A provider issues an OAuth credential with the scopes the grant asked for, so
+ * the same refusal that condemns a hand-entered key can be the proof an
+ * OAuth-issued one is valid. `oauthCredentialKeys` is empty for a form the
+ * operator is still filling in, since nothing has been granted yet.
+ */
+export type IntegrationTestContext = {
+  readonly oauthCredentialKeys: readonly string[];
+};
+
+/**
  * `TCredentials` is the integration's own vocabulary, so a test reads the same
  * keys its handlers do. The default is the open record, for a caller holding an
  * integration whose vocabulary it does not know. Its values are optional because
@@ -23,7 +35,10 @@ export type IntegrationTestResult =
  */
 export type IntegrationTestFunction<
   TCredentials = Record<string, string | undefined>,
-> = (credentials: TCredentials) => Promise<IntegrationTestResult>;
+> = (
+  credentials: TCredentials,
+  context: IntegrationTestContext
+) => Promise<IntegrationTestResult>;
 
 /**
  * Loading is deferred, so declaring a test costs nothing until someone runs it

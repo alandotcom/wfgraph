@@ -1,0 +1,1 @@
+ALTER TABLE "oauth_authorization_attempts" ALTER COLUMN "integration_id" DROP NOT NULL;

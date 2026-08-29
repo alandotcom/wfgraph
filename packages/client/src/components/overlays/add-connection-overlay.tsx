@@ -6,6 +6,7 @@ import { Input } from "#src/components/ui/input";
 import { IntegrationIcon } from "#src/components/ui/integration-icon";
 import { Label } from "#src/components/ui/label";
 import { useIsMobile } from "#src/hooks/use-mobile";
+import { useOAuthConnection } from "#src/hooks/use-oauth-connection";
 import {
   announceTestResult,
   hasProvidedConfigValues,
@@ -194,14 +195,6 @@ export function ConfigureConnectionOverlay({
 
   const create = useMutation(
     orpcQuery.integration.create.mutationOptions({
-      onSuccess: async (newIntegration) => {
-        toast.success("Connection created");
-        // Before the caller hears about it: every consumer of the new id reads
-        // the connection list to resolve it.
-        await refreshIntegrations(queryClient);
-        onSuccess?.(newIntegration.id);
-        closeAll();
-      },
       meta: { errorMessage: "Failed to save connection" },
     })
   );
@@ -222,14 +215,45 @@ export function ConfigureConnectionOverlay({
 
   const catalogEntry = findIntegration(catalog, type);
   const formFields = catalogEntry?.credentialFields;
+  const oauthConnection = useOAuthConnection({
+    onConnected: (integrationId) => {
+      onSuccess?.(integrationId);
+      closeAll();
+    },
+  });
+  const oauthPending = oauthConnection.pending;
   // Whether this integration has a connection test at all. An integration that
   // declares none has nothing to press and nothing to run before a save.
   const hasTest = catalogEntry?.hasTest === true;
 
-  const saving = create.isPending || testForSave.isPending;
+  const saving = create.isPending || testForSave.isPending || oauthPending;
 
-  const saveConnection = () => {
-    create.mutate({ name: name.trim(), type, config });
+  const saveConnection = async () => {
+    try {
+      const newIntegration = await create.mutateAsync({
+        name: name.trim(),
+        type,
+        config,
+      });
+      toast.success("Connection created");
+      // Before the caller hears about it: every consumer of the new id reads the
+      // connection list to resolve it.
+      await refreshIntegrations(queryClient, newIntegration.id);
+      onSuccess?.(newIntegration.id);
+      closeAll();
+    } catch {
+      // The create mutation's shared error handling already announces failures.
+    }
+  };
+
+  const handleOAuthCreate = async () => {
+    await oauthConnection.startCreated({
+      name: name.trim(),
+      type,
+      // OAuth replaces only the credential keys it receives from the
+      // provider. Keep every setting entered here for the encrypted row.
+      config,
+    });
   };
 
   const offerToSaveAnyway = (reason: string) => {
@@ -249,7 +273,7 @@ export function ConfigureConnectionOverlay({
     }
 
     if (!hasTest) {
-      saveConnection();
+      await saveConnection();
       return;
     }
 
@@ -268,7 +292,7 @@ export function ConfigureConnectionOverlay({
       return;
     }
 
-    saveConnection();
+    await saveConnection();
   };
 
   const handleTest = () => {
@@ -347,16 +371,51 @@ export function ConfigureConnectionOverlay({
               },
             ]
           : []),
-        { label: "Create", onClick: handleSave, loading: saving },
+        ...(catalogEntry?.oauth
+          ? [
+              {
+                label: "Create manually",
+                variant: "outline" as const,
+                onClick: handleSave,
+                loading: create.isPending && !oauthPending,
+                disabled: saving,
+              },
+              {
+                label: `Connect with ${catalogEntry.oauth.label}`,
+                onClick: handleOAuthCreate,
+                loading: oauthPending,
+                disabled: saving && !oauthPending,
+              },
+            ]
+          : [{ label: "Create", onClick: handleSave, loading: saving }]),
       ]}
       overlayId={overlayId}
       title={`Add ${getLabel(catalog, type)}`}
     >
-      <p className="-mt-2 mb-4 text-muted-foreground text-sm">
-        Enter your credentials
-      </p>
+      {catalogEntry?.oauth ? (
+        <div className="-mt-2 mb-4 rounded-md border bg-muted/30 p-3">
+          <h3 className="font-medium text-sm">
+            Connect with {catalogEntry.oauth.label}
+          </h3>
+          <p className="mt-1 text-muted-foreground text-sm">
+            Authorize this connection in {catalogEntry.oauth.label}. You can
+            still enter settings below when this provider needs them.
+          </p>
+        </div>
+      ) : (
+        <p className="-mt-2 mb-4 text-muted-foreground text-sm">
+          Enter your credentials
+        </p>
+      )}
 
-      <div className="space-y-4">
+      <fieldset
+        aria-busy={oauthPending}
+        className="m-0 min-w-0 space-y-4 border-0 p-0"
+        disabled={oauthPending}
+      >
+        {catalogEntry?.oauth && (
+          <h3 className="font-medium text-sm">Manual configuration</h3>
+        )}
         {renderConfigFields()}
 
         <div className="space-y-2">
@@ -368,7 +427,7 @@ export function ConfigureConnectionOverlay({
             value={name}
           />
         </div>
-      </div>
+      </fieldset>
     </Overlay>
   );
 }

@@ -1,5 +1,6 @@
 import { compact } from "es-toolkit/array";
 import type { JsonObject, JsonValue } from "#src/types/json";
+import { isSafeRecordPath } from "#src/types/record-key";
 
 /**
  * Reads a dot-separated path out of a value that arrived as JSON: a webhook
@@ -19,7 +20,7 @@ export function getValueByPath(
   }
 
   const trimmed = path.trim();
-  if (!trimmed) {
+  if (!trimmed || !isSafeRecordPath(trimmed)) {
     return undefined;
   }
 
@@ -46,7 +47,7 @@ export function getValueByPath(
     // Null and arrays are handled above, so an object here is a keyed JSON
     // object and the index read narrows on its own.
     if (typeof current === "object") {
-      current = current[segment];
+      current = Object.hasOwn(current, segment) ? current[segment] : undefined;
       continue;
     }
 
@@ -66,21 +67,33 @@ export function getValueByPath(
  * than an array index. Whatever sat at a segment that is not an object is
  * replaced, because a path the caller asked for wins over a value that cannot
  * hold it.
+ *
+ * A path naming a reserved key writes nothing and answers `false`, so a caller
+ * assembling several fields can tell a refused write from a stored one. The form
+ * that calls this already drops such a path in `isFormAddressable`, which is
+ * where the operator sees the field is unavailable; this is the backstop under
+ * it.
  */
 export function setValueByPath(
   target: JsonObject,
   path: string,
   value: JsonValue
-): JsonObject {
+): boolean {
+  if (!isSafeRecordPath(path)) {
+    return false;
+  }
+
   const segments = compact(path.trim().split("."));
   const leaf = segments.pop();
   if (!leaf) {
-    return target;
+    return false;
   }
 
   let current = target;
   for (const segment of segments) {
-    const existing = current[segment];
+    const existing = Object.hasOwn(current, segment)
+      ? current[segment]
+      : undefined;
     const next =
       existing !== null &&
       typeof existing === "object" &&
@@ -92,5 +105,5 @@ export function setValueByPath(
   }
 
   current[leaf] = value;
-  return target;
+  return true;
 }

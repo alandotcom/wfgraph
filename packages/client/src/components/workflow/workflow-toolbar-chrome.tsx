@@ -437,6 +437,7 @@ export function ToolbarPublishControls({
     isSaving: state.isSaving,
     isComparing: actions.isComparing,
     isPublishing: actions.isPublishing,
+    isPreflighting: actions.isPreflighting,
     hasNodes: state.nodes.some((node) => node.type !== "add"),
     hasUnsavedChanges: state.hasUnsavedChanges,
     publication: state.publication,

@@ -199,6 +199,21 @@ describe("actionsByCategory", () => {
   it("answers with no groups for a catalog holding no actions", () => {
     expect(actionsByCategory(emptyExtensionCatalog)).toEqual({});
   });
+
+  it.each(["__proto__", "prototype", "constructor"])(
+    "supports the display category %s as ordinary data",
+    (category) => {
+      const action = { ...catalog.actions[0], category };
+      const grouped = actionsByCategory({
+        ...emptyExtensionCatalog,
+        actions: [action],
+      });
+
+      expect(Object.hasOwn(grouped, category)).toBe(true);
+      expect(grouped[category]).toEqual([action]);
+      expect(Object.getPrototypeOf(grouped)).toBe(Object.prototype);
+    }
+  );
 });
 
 describe("the catalog wire schema", () => {

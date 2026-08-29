@@ -72,6 +72,61 @@ describe("defineIntegration", () => {
       aTwilio({ category: "Messaging" }).actions["send-sms"].category
     ).toBe("Messaging");
   });
+
+  it("refuses an action declared through the __proto__ literal form", () => {
+    expect(() =>
+      defineIntegration({
+        type: "unsafe",
+        label: "Unsafe",
+        description: "Uses a prototype-changing action key",
+        credentials: {},
+        actions: {
+          __proto__: {
+            label: "Unsafe",
+            description: "Must not disappear",
+            input: Schema.Struct({}),
+            output: Schema.Struct({}),
+            handler: () => ({}),
+          },
+        },
+      })
+    ).toThrow(/actions in an ordinary object record/u);
+  });
+
+  it("refuses credentials declared through the __proto__ literal form", () => {
+    expect(() =>
+      defineIntegration({
+        type: "unsafe",
+        label: "Unsafe",
+        description: "Uses a prototype-changing credential key",
+        credentials: {
+          __proto__: { label: "Unsafe", type: "password" },
+        },
+        actions: {},
+      })
+    ).toThrow(/credentials in an ordinary object record/u);
+  });
+
+  it("refuses providers declared through the __proto__ literal form", () => {
+    expect(() =>
+      defineIntegration({
+        type: "unsafe",
+        label: "Unsafe",
+        description: "Uses a prototype-changing provider key",
+        credentials: {},
+        configOptions: {
+          __proto__: {
+            answers: "options",
+            load: async () => async () => ({
+              status: "options",
+              options: [],
+            }),
+          },
+        },
+        actions: {},
+      })
+    ).toThrow(/config options providers in an ordinary object record/u);
+  });
 });
 
 describe("CredentialsOf", () => {

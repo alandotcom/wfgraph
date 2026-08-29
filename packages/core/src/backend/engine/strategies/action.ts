@@ -115,10 +115,12 @@ function runAction(ctx: NodeWorkContext) {
     // a step's config decode.
     const { condition: originalCondition, ...configWithoutCondition } = config;
 
+    const resolutionRules = actions.metadataFor(actionType);
     const processedConfig = processTemplates(
       configWithoutCondition,
       traversal.outputs,
-      new Set(actions.metadataFor(actionType)?.literalConfigKeys ?? [])
+      new Set(resolutionRules?.literalConfigKeys ?? []),
+      new Set(resolutionRules?.templateObjectConfigKeys ?? [])
     );
 
     if (originalCondition !== undefined) {

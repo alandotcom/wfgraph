@@ -1,10 +1,11 @@
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import {
   orpcQuery,
   cacheWorkflow,
   cacheWorkflowPublication,
+  configOptionsQueryOptions,
   refreshIntegrations,
   refreshRunHistory,
   refreshWorkflowVersionHistory,
@@ -51,6 +52,9 @@ const workflowKey = (workflowId: string) =>
 
 const integrationsKey = orpcQuery.integration.getAll.queryKey({ input: {} });
 
+const configOptionsKey = (integrationId: string, provider = "channels") =>
+  configOptionsQueryOptions({ integrationId, provider }).queryKey;
+
 const workflowVersionHistoryKey = (workflowId: string) =>
   orpcQuery.workflow.getVersionHistory.infiniteKey({
     input: (cursor: undefined) => ({ workflowId, cursor }),
@@ -73,6 +77,12 @@ beforeEach(() => {
     pageParams: [undefined],
   });
   queryClient.setQueryData(integrationsKey, []);
+  queryClient
+    .getQueryCache()
+    .build(queryClient, { queryKey: configOptionsKey("integration_a") });
+  queryClient
+    .getQueryCache()
+    .build(queryClient, { queryKey: configOptionsKey("integration_b") });
   for (const statuses of [undefined, ["failed"] satisfies ["failed"]]) {
     queryClient.setQueryData(runHistoryKey(statuses), {
       pages: [{ items: [], nextCursor: null }],
@@ -145,6 +155,40 @@ describe("refreshIntegrations", () => {
 
     expect(isInvalidated(integrationsKey)).toBe(true);
     expect(isInvalidated(workflowListKey)).toBe(false);
+  });
+
+  it("marks only the affected connection's provider options stale", async () => {
+    await refreshIntegrations(queryClient, "integration_a");
+
+    expect(isInvalidated(integrationsKey)).toBe(true);
+    expect(isInvalidated(configOptionsKey("integration_a"))).toBe(true);
+    expect(isInvalidated(configOptionsKey("integration_b"))).toBe(false);
+    expect(isInvalidated(workflowListKey)).toBe(false);
+  });
+
+  // Every connection overlay awaits this before it closes and reports success.
+  // `invalidateQueries` settles on the refetch of each *active* match, and a
+  // provider options refetch is a round trip through the third party, so an
+  // open config panel behind the dialog would otherwise hold the dialog there.
+  it("settles without waiting for the provider options refetch", async () => {
+    const observer = new QueryObserver(queryClient, {
+      queryKey: configOptionsKey("integration_a"),
+      queryFn: () => new Promise<never>(() => undefined),
+      retry: false,
+    });
+    const unsubscribe = observer.subscribe(() => undefined);
+
+    try {
+      await refreshIntegrations(queryClient, "integration_a");
+
+      expect(isInvalidated(configOptionsKey("integration_a"))).toBe(true);
+      expect(
+        queryClient.getQueryState(configOptionsKey("integration_a"))
+          ?.fetchStatus
+      ).toBe("fetching");
+    } finally {
+      unsubscribe();
+    }
   });
 });
 

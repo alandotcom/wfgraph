@@ -67,6 +67,7 @@ const cancelAppointment = defineAction({
 });
 
 const wfgraph = await createWfGraphApp({
+  publicUrl: "https://workflows.example.com",
   persistence: wfPostgres({
     url: process.env.DATABASE_URL!,
     // Workflow Graph puts its tables in "_workflows". This option names a different schema.
@@ -89,7 +90,7 @@ const wfgraph = await createWfGraphApp({
   extensions: {
     events: [appointmentCreated],
     actions: [cancelAppointment],
-    integrations: builtInIntegrations,
+    integrations: builtInIntegrations(),
   },
 });
 
@@ -158,16 +159,55 @@ import { builtInIntegrations } from "@wfgraph/plugins";
 
 const wfgraph = await createWfGraphApp({
   // ...
-  extensions: { integrations: builtInIntegrations },
+  extensions: {
+    integrations: builtInIntegrations({
+      slack: {
+        oauthClient: {
+          clientId: process.env.SLACK_CLIENT_ID,
+          clientSecret: process.env.SLACK_CLIENT_SECRET,
+        },
+      },
+    }),
+  },
 });
 ```
 
-- Each integration is exported by name too, for a host that lists some of the five.
+Resend OAuth uses a public client metadata document and needs no provider secret.
+Slack OAuth needs the client ID and client secret of a registered Slack app. Omit
+`slack.oauthClient` to keep Slack manual-only. Both integrations keep their manual
+credential forms when OAuth is available.
+
+OAuth requires `publicUrl`, which names the external origin alone. Workflow Graph
+combines that origin with `basePath` to build exact callback and metadata URLs.
+Use HTTPS outside loopback development. The callback remains behind `auth`, so
+browser-based authentication must accept the provider's top-level redirect. A
+`SameSite=Lax` session cookie satisfies that requirement; an authorization check
+that depends on a custom request header does not.
+Expose these routes at the resulting API path:
+
+| Route                                                  | Caller and authorization                                                       |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| `POST /api/integrations/oauth/start`                   | The operator's browser for create and reconnect. Uses the host `auth` check    |
+| `GET /api/integrations/oauth/attempts/:attemptId`      | The originating operator browser. Uses the host `auth` and binding cookie      |
+| `GET /api/integrations/oauth/callback`                 | The operator's browser after the provider redirect. Uses the host `auth` check |
+| `GET /api/integrations/oauth/clients/:integrationType` | The OAuth provider. Public, read-only client metadata                          |
+
+The start route stores a short-lived browser-bound attempt without creating a new
+connection row. The callback claims it once and records a durable terminal result; the
+status route lets the originating browser observe that result. A successful create
+inserts the connection in the same transaction that records success, while a reconnect
+updates the existing row through its revision fence. The typed
+`integration.disconnectOAuth` RPC procedure handles disconnects. OAuth tokens stay in
+the encrypted connection configuration and don't enter the extension catalog or RPC
+responses.
+
+- Clerk, Linear, Resend, and Twilio are exported as values. Slack is a factory because
+  it accepts host-provided OAuth client credentials.
 - The editor shows what the server assembled. The action selector lists exactly the
   integrations you passed, and a connection can be stored for those alone.
 - That list controls what reaches `createWfGraphApp`. The process still loads every SDK the
-  package imports: two of the five carry one, and `@wfgraph/plugins` imports all five as
-  values. The static import buys the timing of a failure. A missing SDK stops the
+  package imports: two of the five carry one, and `@wfgraph/plugins` imports all five
+  integrations. The static import buys the timing of a failure. A missing SDK stops the
   application at start-up, where a lazy import would let a single run fail much later.
 - `@wfgraph/plugins` peer-depends on `@wfgraph/core`. Keep one core copy so the
   plugin definitions and the app share one runtime contract.
@@ -252,9 +292,12 @@ type Env = {
   HYPERDRIVE: { connectionString: string };
   INTEGRATION_ENCRYPTION_KEY: string;
   INNGEST_SIGNING_KEY: string;
+  SLACK_CLIENT_ID: string;
+  SLACK_CLIENT_SECRET: string;
 };
 
 export default wfWorker<Env>({
+  publicUrl: "https://workflows.example.com",
   request: (env) => ({
     auth: (request) => hasValidSession(request),
     persistence: wfHyperdrive(env.HYPERDRIVE),
@@ -264,7 +307,18 @@ export default wfWorker<Env>({
       signingKey: env.INNGEST_SIGNING_KEY,
     },
   }),
-  extensions: { events, actions, integrations },
+  extensions: (env) => ({
+    events,
+    actions,
+    integrations: builtInIntegrations({
+      slack: {
+        oauthClient: {
+          clientId: env.SLACK_CLIENT_ID,
+          clientSecret: env.SLACK_CLIENT_SECRET,
+        },
+      },
+    }),
+  }),
 });
 ```
 
@@ -325,7 +379,7 @@ different migration tool puts the tables in `public`. This repository's
 | `@wfgraph/core/migrate`  | `migrateWfGraphDatabase`, for migrations without an application                                                                                                                                                                                                  |
 | `@wfgraph/core/logging`  | `configureWfGraphLogging`, the console setup a host installs                                                                                                                                                                                                     |
 | `@wfgraph/client`        | `clientBundle`, the built editor, passed to `createWfGraphApp` as `client`                                                                                                                                                                                       |
-| `@wfgraph/plugins`       | The built-in integrations as values, by name and as `builtInIntegrations`                                                                                                                                                                                        |
+| `@wfgraph/plugins`       | Four built-in integration values, the configurable `slack(options?)` factory, and `builtInIntegrations(options?)`                                                                                                                                                |
 | `@wfgraph/plugins/ui`    | Their icons and output renderers as one record, imported by the browser alone                                                                                                                                                                                    |
 
 Workflow Graph cannot serialize a React component, so that last record is the one part of the catalog
@@ -341,6 +395,7 @@ application's router serves static files.
 | Option                    | Required | Description                                                                                                                                                    |
 | ------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `basePath`                | No       | Path the host mounts Workflow Graph at (default `/`)                                                                                                           |
+| `publicUrl`               | No       | External HTTPS origin. Required for OAuth callback and client metadata URLs. Loopback development can use HTTP                                                 |
 | `auth`                    | Yes      | Predicate that decides who reaches the editor, or `"external"`                                                                                                 |
 | `persistence`             | Yes      | A backend from `@wfgraph/core/postgres` or `@wfgraph/core/sqlite`                                                                                              |
 | `encryption.key`          | Yes      | 64-character hex string. It encrypts the integration secrets                                                                                                   |
@@ -363,12 +418,18 @@ Read these once:
   `(request: Request) => boolean | Promise<boolean>` that reads the session your application
   already uses, or `"external"` when something in front of Workflow Graph already gates it. It covers
   the RPC, REST, OpenAPI, extensions, and SPA routes.
-- **Two routes can sit outside that gate:** the wait resume path always, and the
+- **Three route classes define exposure.** Operator routes use `auth`. The wait
+  resume path and the Inngest HTTP callback are machine routes that carry their
+  own credentials. The OAuth client metadata route is public discovery data.
+  The wait resume path is always available outside the gate, and the
   Inngest HTTP callback only when `inngest.connect` is unset. Their callers are
   machines, each carrying a signing key or a resume token. Workflow Graph alone knows which
   of its routes are which, which is why it takes the predicate as an option and
   applies it route by route. Connect mode mounts no `/api/inngest` — the worker
   dials out — so a private network that Inngest cannot call into still runs.
+- **Set `publicUrl` when an integration offers OAuth.** Use the origin that a
+  provider reaches, such as `https://workflows.example.com`. Put the mount path
+  in `basePath`. Workflow Graph refuses a `publicUrl` that contains a path.
 - **Set `inngest.signingKey` on each cloud deployment.** With HTTP serve,
   `/api/inngest` sits outside the gate because Inngest signs its callbacks, and
   that holds with a configured signing key alone. Without one the SDK runs in

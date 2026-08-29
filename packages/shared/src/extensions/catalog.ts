@@ -92,6 +92,8 @@ export type IntegrationMetadata = {
   readonly credentialFields: CredentialFields;
   /** Whether "Test connection" has anything to call. */
   readonly hasTest: boolean;
+  /** Sanitized OAuth capability metadata. Provider behavior stays server-side. */
+  readonly oauth?: { readonly label: string };
 };
 
 export type ExtensionCatalog = {
@@ -207,18 +209,18 @@ export function selectableActionsByCategory(
 export function actionsByCategory(
   catalog: ExtensionCatalog
 ): Record<string, ActionMetadata[]> {
-  const grouped: Record<string, ActionMetadata[]> = {};
+  const grouped = new Map<string, ActionMetadata[]>();
 
   for (const action of catalog.actions) {
-    const group = grouped[action.category];
+    const group = grouped.get(action.category);
     if (group) {
       group.push(action);
     } else {
-      grouped[action.category] = [action];
+      grouped.set(action.category, [action]);
     }
   }
 
-  return grouped;
+  return Object.fromEntries(grouped);
 }
 
 /**

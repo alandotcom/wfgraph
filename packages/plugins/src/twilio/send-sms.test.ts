@@ -5,6 +5,8 @@ import { afterEach, beforeEach, vi } from "vitest";
 import * as twilioClient from "#src/twilio/client";
 import { twilio } from "#src/twilio/index";
 
+const underTest = twilio;
+
 // What this step decides is whether and what to send, so the seam under it is
 // the Twilio client. What that client puts on the wire is covered separately in
 // twilio/client.test.ts, against a stubbed fetch. Spy rather than `vi.mock` so
@@ -77,7 +79,7 @@ describe("the send-sms action", () => {
       const { reads, credentials } = credentialsRead();
 
       const result = actionData(
-        yield* runAction(twilio, "send-sms", {
+        yield* runAction(underTest, "send-sms", {
           input: { smsTo: "+15550001111", smsBody: "Hello" },
           credentials,
           runMode: "test",
@@ -100,7 +102,7 @@ describe("the send-sms action", () => {
       const { reads, credentials } = credentialsRead();
 
       const result = actionData(
-        yield* runAction(twilio, "send-sms", {
+        yield* runAction(underTest, "send-sms", {
           input: {
             smsTo: "+15550001111",
             smsBody: "Hello",
@@ -147,7 +149,7 @@ describe("the send-sms action", () => {
         });
 
         const result = actionData(
-          yield* runAction(twilio, "send-sms", {
+          yield* runAction(underTest, "send-sms", {
             input: {
               smsTo: "+15550001111",
               smsBody: "Hello",
@@ -192,7 +194,7 @@ describe("the send-sms action", () => {
       const { reads, credentials } = credentialsRead();
 
       const result = actionData(
-        yield* runAction(twilio, "send-sms", {
+        yield* runAction(underTest, "send-sms", {
           input: {
             smsTo: "+15550001111",
             smsBody: "Hello",
@@ -223,7 +225,7 @@ describe("the send-sms action", () => {
       const { credentials } = credentialsRead();
 
       const error = actionError(
-        yield* runAction(twilio, "send-sms", {
+        yield* runAction(underTest, "send-sms", {
           input: { smsTo: "+15550001111", smsBody: "Hello" },
           credentials,
         })
@@ -238,7 +240,7 @@ describe("the send-sms action", () => {
       const { credentials } = credentialsRead({});
 
       const error = actionError(
-        yield* runAction(twilio, "send-sms", {
+        yield* runAction(underTest, "send-sms", {
           input: { smsTo: "+15550001111", smsBody: "Hello" },
           credentials,
         })
@@ -259,7 +261,7 @@ describe("the send-sms action", () => {
       });
 
       const error = actionError(
-        yield* runAction(twilio, "send-sms", {
+        yield* runAction(underTest, "send-sms", {
           input: { smsTo: "+15550001111", smsBody: "Hello" },
           credentials,
         })
@@ -277,7 +279,7 @@ describe("the send-sms action", () => {
   // asserted whole here, since that is what the engine reads.
   it.effect("answers the log-only success a default test run expects", () =>
     Effect.gen(function* () {
-      const result = yield* runAction(twilio, "send-sms", {
+      const result = yield* runAction(underTest, "send-sms", {
         input: {
           smsTo: "+15550001111",
           smsBody: "Hello",

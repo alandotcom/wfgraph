@@ -13,10 +13,14 @@ import {
   useAtomValue,
   useSetAtom,
 } from "jotai";
-import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { type ReactNode, useState } from "react";
+import { toast } from "sonner";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
-import { OverlayProvider } from "#src/components/overlays/overlay-provider";
+import {
+  OverlayProvider,
+  useOverlay,
+} from "#src/components/overlays/overlay-provider";
 import {
   useWorkflowActions,
   type WorkflowToolbarState,
@@ -27,6 +31,7 @@ import {
   rpcJsonResponse,
   rpcUrl,
 } from "#src/lib/rpc-fetch-test-support";
+import { PREFLIGHT_BUSY_MESSAGE } from "#src/hooks/use-workflow-issue-preflight";
 import { orpcQuery } from "#src/lib/rpc-query";
 import { toSerializedGraph } from "#src/lib/rpc-client";
 import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
@@ -53,6 +58,65 @@ const graph = createSerializedWorkflowGraph({
 const nodes = toWorkflowGraphData(graph).nodes.map(toEditorNode);
 const expectedSnapshot = toSerializedGraph({ nodes, edges: [] });
 const catalog: ExtensionCatalog = { actions: [], events: [], integrations: [] };
+const providerCatalog: ExtensionCatalog = {
+  actions: [
+    {
+      id: "resend/send-email",
+      label: "Send Email",
+      description: "Sends an email",
+      category: "Resend",
+      integration: "resend",
+      sideEffect: true,
+      configFields: [
+        {
+          key: "emailTemplateId",
+          label: "Template",
+          type: "provider-select",
+          optionsSource: { provider: "templates" },
+        },
+        {
+          key: "emailTemplateVariables",
+          label: "Template Variables",
+          type: "provider-fields",
+          optionsSource: {
+            provider: "template-variables",
+            parameters: ["emailTemplateId"],
+          },
+        },
+      ],
+      outputFields: [],
+    },
+  ],
+  events: [],
+  integrations: [],
+};
+const providerGraph = createSerializedWorkflowGraph({
+  nodes: [
+    {
+      id: "lifecycle_1",
+      type: "lifecycle",
+      position: { x: 0, y: 0 },
+      data: { label: "Lifecycle", type: "lifecycle" },
+    },
+    {
+      id: "action_1",
+      type: "action",
+      position: { x: 0, y: 180 },
+      data: {
+        label: "Send Email",
+        type: "action",
+        config: {
+          actionType: "resend/send-email",
+          integrationId: "int_1",
+          emailTemplateId: "tpl_1",
+        },
+      },
+    },
+  ],
+  edges: [],
+});
+const providerNodes =
+  toWorkflowGraphData(providerGraph).nodes.map(toEditorNode);
 
 function workflowStore(id = workflowId) {
   const store = createStore();
@@ -93,6 +157,40 @@ function state(): WorkflowToolbarState {
   };
 }
 
+function providerState(
+  currentWorkflowId = workflowId,
+  templateId = "tpl_1"
+): WorkflowToolbarState {
+  return {
+    ...state(),
+    currentWorkflowId,
+    nodes: providerNodes.map((node) =>
+      node.data.type === "action"
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              config: {
+                ...node.data.config,
+                emailTemplateId: templateId,
+              },
+            },
+          }
+        : node
+    ),
+    userIntegrations: [
+      {
+        id: "int_1",
+        name: "Resend",
+        type: "resend",
+        createdAt: "2026-08-23T15:00:00.000Z",
+        updatedAt: "2026-08-23T15:00:00.000Z",
+        configuredKeys: [],
+      },
+    ],
+  };
+}
+
 function PublishProbe({
   workflowState = state(),
 }: {
@@ -100,10 +198,14 @@ function PublishProbe({
 }) {
   const actions = useWorkflowActions(workflowState);
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
+  const { stack } = useOverlay();
   return (
     <>
       <button onClick={actions.handlePublish} type="button">
         Start publish
+      </button>
+      <button onClick={() => void actions.handleExecute()} type="button">
+        Run workflow
       </button>
       <button onClick={actions.confirmPublish} type="button">
         Confirm publish
@@ -113,26 +215,55 @@ function PublishProbe({
       </button>
       <output>{actions.publishReview ? "ready" : "idle"}</output>
       <output aria-label="editing lock">{String(editingLocked)}</output>
+      <output aria-label="provider preflight">
+        {String(actions.isPreflighting)}
+      </output>
+      <output aria-label="overlay count">{stack.length}</output>
     </>
   );
 }
 
-function NavigationPublishProbe() {
-  const [workflowState, setWorkflowState] = useState(state);
+function NavigationPublishProbe({
+  initialState = state(),
+  nextState,
+}: {
+  initialState?: WorkflowToolbarState;
+  nextState?: WorkflowToolbarState;
+}) {
+  const [workflowState, setWorkflowState] = useState(initialState);
   const setCurrentWorkflowId = useSetAtom(currentWorkflowIdAtom);
+  const destinationState = nextState ?? {
+    ...initialState,
+    currentWorkflowId: "workflow_2",
+  };
 
   return (
     <>
       <button
         onClick={() => {
-          setCurrentWorkflowId("workflow_2");
-          setWorkflowState({ ...state(), currentWorkflowId: "workflow_2" });
+          setCurrentWorkflowId(destinationState.currentWorkflowId);
+          setWorkflowState(destinationState);
         }}
         type="button"
       >
         Open workflow 2
       </button>
       <PublishProbe workflowState={workflowState} />
+    </>
+  );
+}
+
+function UnmountPublishProbe() {
+  const [showWorkflow, setShowWorkflow] = useState(true);
+  const { stack } = useOverlay();
+
+  return (
+    <>
+      <button onClick={() => setShowWorkflow(false)} type="button">
+        Leave workflow
+      </button>
+      {showWorkflow && <PublishProbe workflowState={providerState()} />}
+      <output aria-label="persistent overlay count">{stack.length}</output>
     </>
   );
 }
@@ -145,7 +276,348 @@ function deferred<T>() {
   return { promise, resolve: (value: T) => resolveDeferred(value) };
 }
 
+function renderProbe({
+  probe = <PublishProbe />,
+  extensionCatalog = catalog,
+  store = workflowStore(),
+  queryClient = new QueryClient(),
+}: {
+  probe?: ReactNode;
+  extensionCatalog?: ExtensionCatalog;
+  store?: ReturnType<typeof workflowStore>;
+  queryClient?: QueryClient;
+} = {}) {
+  const rootRoute = createRootRoute({ component: () => probe });
+
+  return render(
+    <JotaiProvider store={store}>
+      <QueryClientProvider client={queryClient}>
+        <ReactFlowProvider>
+          <ExtensionCatalogProvider value={extensionCatalog}>
+            <OverlayProvider>
+              <RouterProvider
+                router={createRouter({
+                  routeTree: rootRoute,
+                  history: createMemoryHistory({ initialEntries: ["/"] }),
+                })}
+              />
+            </OverlayProvider>
+          </ExtensionCatalogProvider>
+        </ReactFlowProvider>
+      </QueryClientProvider>
+    </JotaiProvider>
+  );
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("useWorkflowActions publication preflight", () => {
+  it("waits for the same provider preflight before opening a test run", async () => {
+    const answer = deferred<Response>();
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (url: RequestInfo | URL) => {
+        const path = extractRpcProcedurePath(rpcUrl(url));
+        if (path === "integration/configOptions") {
+          return answer.promise;
+        }
+        throw new Error(`Unexpected RPC procedure: ${path}`);
+      }
+    );
+    const view = renderProbe({
+      probe: <PublishProbe workflowState={providerState()} />,
+      extensionCatalog: providerCatalog,
+      queryClient: new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+    });
+
+    fireEvent.click(await view.findByRole("button", { name: "Run workflow" }));
+    await waitFor(() =>
+      expect(
+        view.getByRole("status", { name: "provider preflight" }).textContent
+      ).toBe("true")
+    );
+    expect(
+      view.getByRole("status", { name: "overlay count" }).textContent
+    ).toBe("0");
+
+    await act(async () => {
+      answer.resolve(rpcJsonResponse({ status: "fields", fields: [] }));
+    });
+
+    await waitFor(() =>
+      expect(
+        view.getByRole("status", { name: "overlay count" }).textContent
+      ).toBe("1")
+    );
+  });
+
+  it("discards a Run preflight after navigating to another workflow", async () => {
+    const firstAnswer = deferred<Response>();
+    const secondAnswer = deferred<Response>();
+    let requestCount = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (url: RequestInfo | URL) => {
+        const path = extractRpcProcedurePath(rpcUrl(url));
+        if (path === "integration/configOptions") {
+          requestCount += 1;
+          return requestCount === 1
+            ? firstAnswer.promise
+            : secondAnswer.promise;
+        }
+        throw new Error(`Unexpected RPC procedure: ${path}`);
+      }
+    );
+    const view = renderProbe({
+      probe: (
+        <NavigationPublishProbe
+          initialState={providerState()}
+          nextState={providerState("workflow_2", "tpl_2")}
+        />
+      ),
+      extensionCatalog: providerCatalog,
+    });
+
+    fireEvent.click(await view.findByRole("button", { name: "Run workflow" }));
+    await waitFor(() =>
+      expect(
+        view.getByRole("status", { name: "provider preflight" }).textContent
+      ).toBe("true")
+    );
+    fireEvent.click(view.getByRole("button", { name: "Open workflow 2" }));
+
+    await waitFor(() =>
+      expect(
+        view.getByRole("status", { name: "provider preflight" }).textContent
+      ).toBe("false")
+    );
+    expect(
+      view.getByRole("status", { name: "overlay count" }).textContent
+    ).toBe("0");
+
+    fireEvent.click(view.getByRole("button", { name: "Run workflow" }));
+    await waitFor(() => expect(requestCount).toBe(2));
+    expect(
+      view.getByRole("status", { name: "provider preflight" }).textContent
+    ).toBe("true");
+
+    await act(async () => {
+      firstAnswer.resolve(rpcJsonResponse({ status: "fields", fields: [] }));
+    });
+
+    expect(
+      view.getByRole("status", { name: "overlay count" }).textContent
+    ).toBe("0");
+    expect(
+      view.getByRole("status", { name: "provider preflight" }).textContent
+    ).toBe("true");
+
+    await act(async () => {
+      secondAnswer.resolve(rpcJsonResponse({ status: "fields", fields: [] }));
+    });
+    await waitFor(() =>
+      expect(
+        view.getByRole("status", { name: "overlay count" }).textContent
+      ).toBe("1")
+    );
+  });
+
+  it("does not begin preflight from an already-stale workflow handler", async () => {
+    const fetch = vi.spyOn(globalThis, "fetch");
+    const view = renderProbe({
+      probe: <PublishProbe workflowState={providerState()} />,
+      extensionCatalog: providerCatalog,
+      store: workflowStore("workflow_2"),
+    });
+
+    fireEvent.click(await view.findByRole("button", { name: "Run workflow" }));
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(
+      view.getByRole("status", { name: "provider preflight" }).textContent
+    ).toBe("false");
+    expect(
+      view.getByRole("status", { name: "overlay count" }).textContent
+    ).toBe("0");
+  });
+
+  it("discards a Run preflight when the workflow UI unmounts", async () => {
+    const answer = deferred<Response>();
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (url: RequestInfo | URL) => {
+        const path = extractRpcProcedurePath(rpcUrl(url));
+        if (path === "integration/configOptions") {
+          return answer.promise;
+        }
+        throw new Error(`Unexpected RPC procedure: ${path}`);
+      }
+    );
+    const view = renderProbe({
+      probe: <UnmountPublishProbe />,
+      extensionCatalog: providerCatalog,
+    });
+
+    fireEvent.click(await view.findByRole("button", { name: "Run workflow" }));
+    await waitFor(() =>
+      expect(
+        view.getByRole("status", { name: "provider preflight" }).textContent
+      ).toBe("true")
+    );
+    fireEvent.click(view.getByRole("button", { name: "Leave workflow" }));
+
+    await act(async () => {
+      answer.resolve(rpcJsonResponse({ status: "fields", fields: [] }));
+    });
+
+    expect(
+      view.getByRole("status", { name: "persistent overlay count" }).textContent
+    ).toBe("0");
+  });
+
+  it("waits for provider fields and blocks duplicate publish attempts", async () => {
+    const answer = deferred<Response>();
+    const requests: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (url: RequestInfo | URL) => {
+        const path = extractRpcProcedurePath(rpcUrl(url));
+        requests.push(path);
+        if (path === "integration/configOptions") {
+          return answer.promise;
+        }
+        throw new Error(`Unexpected RPC procedure: ${path}`);
+      }
+    );
+    const view = renderProbe({
+      probe: <PublishProbe workflowState={providerState()} />,
+      extensionCatalog: providerCatalog,
+      queryClient: new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+    });
+
+    const infoToast = vi.spyOn(toast, "info").mockImplementation(() => "");
+    const publish = await view.findByRole("button", { name: "Start publish" });
+    fireEvent.click(publish);
+    fireEvent.click(publish);
+    await waitFor(() =>
+      expect(requests).toEqual(["integration/configOptions"])
+    );
+    expect(view.getByText("idle")).toBeTruthy();
+    // The second click is dropped, and says so. Cmd+Enter reaches this without
+    // passing the command palette's disabled state, so a swallowed press would
+    // otherwise look like a dead keyboard.
+    expect(infoToast).toHaveBeenCalledWith(
+      PREFLIGHT_BUSY_MESSAGE,
+      expect.objectContaining({ id: expect.any(String) })
+    );
+
+    await act(async () => {
+      answer.resolve(
+        rpcJsonResponse({
+          status: "fields",
+          fields: [
+            {
+              key: "DONOR_FIRST_NAME",
+              label: "DONOR_FIRST_NAME",
+              required: true,
+            },
+          ],
+        })
+      );
+    });
+
+    await waitFor(() =>
+      expect(
+        view.getByRole("status", { name: "provider preflight" }).textContent
+      ).toBe("false")
+    );
+    expect(view.getByText("idle")).toBeTruthy();
+    expect(requests).toEqual(["integration/configOptions"]);
+  });
+
+  // A connection whose grant has expired refuses every provider question asked
+  // of it. That used to reject the whole preflight, which put Publish behind a
+  // toast nothing the operator did could clear.
+  it("publishes past a provider-backed field it could not check", async () => {
+    const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "");
+    const requests: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (url: RequestInfo | URL) => {
+        const path = extractRpcProcedurePath(rpcUrl(url));
+        requests.push(path);
+        if (path === "workflow/compareVersion") {
+          return rpcJsonResponse({
+            baseVersion: {
+              id: "version_7",
+              version: 7,
+              publishedAt: "2026-08-23T15:00:00.000Z",
+              isCurrent: true,
+            },
+            proposedVersion: 8,
+            baseGraph: providerGraph,
+            draftGraph: providerGraph,
+            hasChanges: true,
+            nodeChanges: [],
+            edgeChanges: [],
+          });
+        }
+        throw new Error("provider response contained credentials");
+      }
+    );
+    const view = renderProbe({
+      probe: <PublishProbe workflowState={providerState()} />,
+      extensionCatalog: providerCatalog,
+      queryClient: new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+    });
+
+    fireEvent.click(await view.findByRole("button", { name: "Start publish" }));
+
+    await waitFor(() => expect(view.getByText("ready")).toBeTruthy());
+    expect(requests).toEqual([
+      "integration/configOptions",
+      "workflow/compareVersion",
+    ]);
+    expect(errorToast).not.toHaveBeenCalled();
+    errorToast.mockRestore();
+  });
+
+  // The half of the list the graph can answer on its own is the half that names
+  // the node to open, so a refused provider answer must not take it down too.
+  it("still lists the graph's own issues when the provider refuses", async () => {
+    const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "");
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      throw new Error("provider response contained credentials");
+    });
+    const unconnected = providerState();
+    const view = renderProbe({
+      probe: (
+        <PublishProbe
+          workflowState={{ ...unconnected, userIntegrations: [] }}
+        />
+      ),
+      extensionCatalog: providerCatalog,
+      queryClient: new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+    });
+
+    fireEvent.click(await view.findByRole("button", { name: "Run workflow" }));
+
+    // The overlay is what the refusal used to replace with a toast. Which rows
+    // it draws is `use-provider-field-issues.test.tsx`.
+    await waitFor(() =>
+      expect(
+        view.getByRole("status", { name: "overlay count" }).textContent
+      ).toBe("1")
+    );
+    expect(errorToast).not.toHaveBeenCalled();
+    errorToast.mockRestore();
+  });
+
   it("compares the exact editor snapshot before confirmation publishes that snapshot", async () => {
     const requests: Array<{ path: string; input: unknown }> = [];
     const queryClient = new QueryClient();
@@ -157,9 +629,8 @@ describe("useWorkflowActions publication preflight", () => {
       pages: [{ items: [], nextCursor: null }],
       pageParams: [undefined],
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (url: RequestInfo | URL, init?: RequestInit) => {
         const path = extractRpcProcedurePath(rpcUrl(url));
         const input = await parseRpcRequestInput(init);
         requests.push({ path, input });
@@ -199,28 +670,10 @@ describe("useWorkflowActions publication preflight", () => {
         }
 
         throw new Error(`Unexpected RPC procedure: ${path}`);
-      })
+      }
     );
 
-    const rootRoute = createRootRoute({ component: PublishProbe });
-    const view = render(
-      <JotaiProvider store={workflowStore()}>
-        <QueryClientProvider client={queryClient}>
-          <ReactFlowProvider>
-            <ExtensionCatalogProvider value={catalog}>
-              <OverlayProvider>
-                <RouterProvider
-                  router={createRouter({
-                    routeTree: rootRoute,
-                    history: createMemoryHistory({ initialEntries: ["/"] }),
-                  })}
-                />
-              </OverlayProvider>
-            </ExtensionCatalogProvider>
-          </ReactFlowProvider>
-        </QueryClientProvider>
-      </JotaiProvider>
-    );
+    const view = renderProbe({ queryClient });
 
     await act(async () => {
       fireEvent.click(
@@ -259,9 +712,8 @@ describe("useWorkflowActions publication preflight", () => {
 
   it("asks the server to compare a first publication with no base version", async () => {
     const requests: Array<{ path: string; input: unknown }> = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (url: RequestInfo | URL, init?: RequestInit) => {
         const path = extractRpcProcedurePath(rpcUrl(url));
         const input = await parseRpcRequestInput(init);
         requests.push({ path, input });
@@ -274,7 +726,7 @@ describe("useWorkflowActions publication preflight", () => {
           nodeChanges: [{ nodeId: "lifecycle_1", kind: "added", fields: [] }],
           edgeChanges: [],
         });
-      })
+      }
     );
 
     const firstState = state();
@@ -282,27 +734,9 @@ describe("useWorkflowActions publication preflight", () => {
       isPublished: false,
       hasUnpublishedChanges: false,
     };
-    const rootRoute = createRootRoute({
-      component: () => <PublishProbe workflowState={firstState} />,
+    const view = renderProbe({
+      probe: <PublishProbe workflowState={firstState} />,
     });
-    const view = render(
-      <JotaiProvider store={workflowStore()}>
-        <QueryClientProvider client={new QueryClient()}>
-          <ReactFlowProvider>
-            <ExtensionCatalogProvider value={catalog}>
-              <OverlayProvider>
-                <RouterProvider
-                  router={createRouter({
-                    routeTree: rootRoute,
-                    history: createMemoryHistory({ initialEntries: ["/"] }),
-                  })}
-                />
-              </OverlayProvider>
-            </ExtensionCatalogProvider>
-          </ReactFlowProvider>
-        </QueryClientProvider>
-      </JotaiProvider>
-    );
 
     fireEvent.click(await view.findByRole("button", { name: "Start publish" }));
     await waitFor(() => expect(view.getByText("ready")).toBeTruthy());
@@ -326,37 +760,16 @@ describe("useWorkflowActions publication preflight", () => {
 
   it("locks editing through comparison and confirmation, then unlocks on cancellation", async () => {
     const comparison = deferred<Response>();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: RequestInfo | URL) => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (url: RequestInfo | URL) => {
         const path = extractRpcProcedurePath(rpcUrl(url));
         if (path === "workflow/compareVersion") {
           return comparison.promise;
         }
         throw new Error(`Unexpected RPC procedure: ${path}`);
-      })
+      }
     );
-    const store = createStore();
-    store.set(currentWorkflowIdAtom, workflowId);
-    const rootRoute = createRootRoute({ component: PublishProbe });
-    const view = render(
-      <JotaiProvider store={store}>
-        <QueryClientProvider client={new QueryClient()}>
-          <ReactFlowProvider>
-            <ExtensionCatalogProvider value={catalog}>
-              <OverlayProvider>
-                <RouterProvider
-                  router={createRouter({
-                    routeTree: rootRoute,
-                    history: createMemoryHistory({ initialEntries: ["/"] }),
-                  })}
-                />
-              </OverlayProvider>
-            </ExtensionCatalogProvider>
-          </ReactFlowProvider>
-        </QueryClientProvider>
-      </JotaiProvider>
-    );
+    const view = renderProbe();
 
     fireEvent.click(await view.findByRole("button", { name: "Start publish" }));
     await waitFor(() =>
@@ -400,9 +813,8 @@ describe("useWorkflowActions publication preflight", () => {
   it("discards a comparison response after navigating to another workflow", async () => {
     const comparison = deferred<Response>();
     const requests: Array<{ path: string; input: unknown }> = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (url: RequestInfo | URL, init?: RequestInit) => {
         const path = extractRpcProcedurePath(rpcUrl(url));
         const input = await parseRpcRequestInput(init);
         requests.push({ path, input });
@@ -410,31 +822,16 @@ describe("useWorkflowActions publication preflight", () => {
           return comparison.promise;
         }
         throw new Error(`Unexpected RPC procedure: ${path}`);
-      })
+      }
     );
-    const store = createStore();
-    store.set(currentWorkflowIdAtom, workflowId);
-    const rootRoute = createRootRoute({ component: NavigationPublishProbe });
-    const view = render(
-      <JotaiProvider store={store}>
-        <QueryClientProvider client={new QueryClient()}>
-          <ReactFlowProvider>
-            <ExtensionCatalogProvider value={catalog}>
-              <OverlayProvider>
-                <RouterProvider
-                  router={createRouter({
-                    routeTree: rootRoute,
-                    history: createMemoryHistory({ initialEntries: ["/"] }),
-                  })}
-                />
-              </OverlayProvider>
-            </ExtensionCatalogProvider>
-          </ReactFlowProvider>
-        </QueryClientProvider>
-      </JotaiProvider>
-    );
+    const store = workflowStore();
+    const view = renderProbe({
+      probe: <NavigationPublishProbe />,
+      store,
+    });
 
     fireEvent.click(await view.findByRole("button", { name: "Start publish" }));
+    await waitFor(() => expect(requests).toHaveLength(1));
     fireEvent.click(view.getByRole("button", { name: "Open workflow 2" }));
     await act(async () => {
       comparison.resolve(

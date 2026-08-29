@@ -34,8 +34,12 @@ export function WorkflowIssuesOverlay({
   const isMobile = useIsMobile();
   const repairAgainstConnectionList = useConnectionRepair();
 
-  const { brokenReferences, missingRequiredFields, missingIntegrations } =
-    issues;
+  const {
+    brokenReferences,
+    missingRequiredFields,
+    missingIntegrations,
+    unverifiedProviderFields,
+  } = issues;
 
   const totalIssues = workflowIssueCount(issues);
 
@@ -167,6 +171,46 @@ export function WorkflowIssuesOverlay({
                         className="shrink-0"
                         onClick={() =>
                           handleGoToStep(broken.nodeId, ref.fieldKey)
+                        }
+                        size="sm"
+                        variant="outline"
+                      >
+                        Fix
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Unverified Provider Fields Section */}
+        {unverifiedProviderFields.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="font-medium text-muted-foreground text-sm">
+              Unchecked Fields
+            </h4>
+            <p className="text-muted-foreground text-xs">
+              The connection did not answer, so these fields went unchecked.
+              Reconnect it to see what they still need.
+            </p>
+            {unverifiedProviderFields.map((node) => (
+              <div key={node.nodeId}>
+                <p className="font-medium text-sm">{node.nodeLabel}</p>
+                <div className="mt-1 space-y-0.5">
+                  {node.fields.map((field) => (
+                    <div
+                      className="flex items-center gap-3 py-0.5 pl-3"
+                      key={`${node.nodeId}-${field.fieldKey}`}
+                    >
+                      <p className="min-w-0 flex-1 text-muted-foreground text-sm">
+                        {field.fieldLabel}
+                      </p>
+                      <Button
+                        className="shrink-0"
+                        onClick={() =>
+                          handleGoToStep(node.nodeId, field.fieldKey)
                         }
                         size="sm"
                         variant="outline"

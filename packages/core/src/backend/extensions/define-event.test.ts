@@ -50,6 +50,16 @@ describe("defineEvent identity", () => {
     ).toThrow("An Event's name must be a non-empty string");
   });
 
+  it("refuses reserved Correlation Path segments", () => {
+    expect(() =>
+      defineEvent({
+        name: "app/appointment.created",
+        schema: appointmentPayload,
+        correlationPath: "appointment.constructor.id" as never,
+      })
+    ).toThrow(/correlation path containing a key reserved/u);
+  });
+
   // An Event with no Correlation Path is a real case: an unlimited-concurrency
   // workflow may start on one, and a Wait node may subscribe to it. The Workflow
   // Builder supplies a path in the Lifecycle panel when one is needed.

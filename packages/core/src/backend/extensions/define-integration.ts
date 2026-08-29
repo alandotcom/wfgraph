@@ -13,6 +13,7 @@
  */
 
 import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
+import type { ConfigOptionsProvider } from "#src/backend/extensions/config-options";
 import {
   type ActionConfigFieldFor,
   type ActionStep,
@@ -23,6 +24,11 @@ import {
 } from "#src/backend/extensions/steps/define-step";
 import type { InputSchema } from "#src/backend/extensions/schema-io";
 import {
+  flattenConfigFields,
+  PROVIDER_FIELD_TYPES,
+} from "@wfgraph/shared/plugins/action-fields";
+import type { IntegrationOAuth } from "#src/backend/extensions/oauth";
+import {
   type CredentialFields,
   formatActionId,
 } from "@wfgraph/shared/extensions/catalog";
@@ -31,6 +37,7 @@ import {
   type OutputSchema,
   requireOutputFieldsFromSchema,
 } from "@wfgraph/shared/graph/output-fields";
+import { isSafeRecordKey } from "@wfgraph/shared/types/record-key";
 
 /**
  * The credential keys a handler of this integration may read.
@@ -56,6 +63,8 @@ export type IntegrationDefinition = {
   readonly label: string;
   readonly description: string;
   readonly credentials: CredentialFields;
+  /** Provider behavior retained on the server when this integration supports OAuth. */
+  readonly oauth?: IntegrationOAuth;
   /**
    * What "Test connection" calls, absent when the integration offers none.
    *
@@ -64,6 +73,11 @@ export type IntegrationDefinition = {
    * button.
    */
   readonly test?: IntegrationTestLoader;
+  /**
+   * What a `provider-select` or `provider-fields` field asks, keyed by the name
+   * its `optionsSource.provider` uses. Deferred for the reason `test` is.
+   */
+  readonly configOptions?: Readonly<Record<string, ConfigOptionsProvider>>;
   /** Keyed by action slug. */
   readonly actions: Readonly<Record<string, ActionStep>>;
 };
@@ -170,7 +184,11 @@ export function defineIntegration<
   readonly label: string;
   readonly description: string;
   readonly credentials: TCredentials;
+  readonly oauth?: IntegrationOAuth;
   readonly test?: IntegrationTestLoader<CredentialsOf<TCredentials>>;
+  readonly configOptions?: Readonly<
+    Record<string, ConfigOptionsProvider<CredentialsOf<TCredentials>>>
+  >;
   readonly actions: IntegrationActions<
     CredentialsOf<TCredentials>,
     TInputs,
@@ -187,24 +205,44 @@ export function defineIntegration(input: {
   readonly label: string;
   readonly description: string;
   readonly credentials: CredentialFields;
+  readonly oauth?: IntegrationOAuth;
   readonly test?: IntegrationTestLoader;
+  readonly configOptions?: Readonly<Record<string, ConfigOptionsProvider>>;
   readonly actions: Readonly<Record<string, unknown>>;
 }): IntegrationDefinition {
-  const actions: Record<string, ActionStep> = {};
+  assertOrdinaryDeclarationRecord(input.type, "credentials", input.credentials);
+  if (input.configOptions) {
+    assertOrdinaryDeclarationRecord(
+      input.type,
+      "config options providers",
+      input.configOptions
+    );
+  }
+  assertOrdinaryDeclarationRecord(input.type, "actions", input.actions);
+
+  const actions: Array<[string, ActionStep]> = [];
 
   for (const [slug, action] of Object.entries(input.actions)) {
+    if (!isSafeRecordKey(slug)) {
+      throw new Error(
+        `Integration "${input.type}" declares an action slug reserved by JavaScript objects.`
+      );
+    }
     if (!isDeclaredAction(action)) {
       throw new Error(
         `Integration "${input.type}" declares the action "${slug}" without an input schema, an output schema, or a handler. All three are what an action is.`
       );
     }
 
-    actions[slug] = defineStep({
-      ...action,
-      // An action's heading is its integration's label unless it says otherwise,
-      // which is what every built-in wanted and none of them had to write.
-      category: action.category ?? input.label,
-    });
+    actions.push([
+      slug,
+      defineStep({
+        ...action,
+        // An action's heading is its integration's label unless it says otherwise,
+        // which is what every built-in wanted and none of them had to write.
+        category: action.category ?? input.label,
+      }),
+    ]);
   }
 
   return {
@@ -213,8 +251,10 @@ export function defineIntegration(input: {
     label: input.label,
     description: input.description,
     credentials: input.credentials,
+    ...(input.oauth ? { oauth: input.oauth } : {}),
     test: input.test,
-    actions,
+    ...(input.configOptions ? { configOptions: input.configOptions } : {}),
+    actions: Object.fromEntries(actions),
   };
 }
 
@@ -263,7 +303,41 @@ export type CheckedAction = {
 export function checkIntegration(
   integration: IntegrationDefinition
 ): readonly CheckedAction[] {
+  assertOrdinaryDeclarationRecord(
+    integration.type,
+    "credentials",
+    integration.credentials
+  );
+  if (integration.configOptions) {
+    assertOrdinaryDeclarationRecord(
+      integration.type,
+      "config options providers",
+      integration.configOptions
+    );
+  }
+  assertOrdinaryDeclarationRecord(
+    integration.type,
+    "actions",
+    integration.actions
+  );
+
+  for (const credential of Object.keys(integration.credentials)) {
+    assertSafeIntegrationKey(integration.type, "credential", credential);
+  }
+  for (const provider of Object.keys(integration.configOptions ?? {})) {
+    assertSafeIntegrationKey(
+      integration.type,
+      "config options provider",
+      provider
+    );
+  }
+
   return Object.entries(integration.actions).map(([slug, step]) => {
+    if (!isSafeRecordKey(slug)) {
+      throw new Error(
+        `Integration "${integration.type}" declares an action slug reserved by JavaScript objects.`
+      );
+    }
     const id = formatActionId(integration.type, slug);
 
     const outputFields = requireOutputFieldsFromSchema(
@@ -271,6 +345,118 @@ export function checkIntegration(
       step.output
     );
 
+    checkProviderBackedFields(id, integration, step);
+
     return { id, step, outputFields };
   });
+}
+
+function assertOrdinaryDeclarationRecord(
+  integrationType: string,
+  role: string,
+  record: object
+): void {
+  if (Object.getPrototypeOf(record) !== Object.prototype) {
+    throw new Error(
+      `Integration "${integrationType}" must declare ${role} in an ordinary object record; a reserved __proto__ literal changes the record prototype instead of declaring a key.`
+    );
+  }
+}
+
+function assertSafeIntegrationKey(
+  integrationType: string,
+  role: string,
+  key: string
+): void {
+  if (!isSafeRecordKey(key)) {
+    throw new Error(
+      `Integration "${integrationType}" declares a ${role} with a key reserved by JavaScript objects.`
+    );
+  }
+}
+
+/**
+ * Hold a provider-backed field to a provider that can answer it.
+ *
+ * Every one of these is a wiring mistake nothing else would catch until a
+ * builder opened the panel and met a control with no data behind it, so they are
+ * checked where the definition is written rather than where it is drawn.
+ */
+function checkProviderBackedFields(
+  actionId: string,
+  integration: IntegrationDefinition,
+  step: ActionStep
+): void {
+  const fields = flattenConfigFields(step.configFields ?? []);
+  const declaredKeys = new Set(fields.map((field) => field.key));
+
+  for (const field of fields) {
+    const where = `Action "${actionId}" field "${field.key}"`;
+    const source = field.optionsSource;
+
+    if (!isSafeRecordKey(field.key)) {
+      throw new Error(
+        `Action "${actionId}" declares a config field with a key reserved by JavaScript objects.`
+      );
+    }
+    if (field.showWhen && !isSafeRecordKey(field.showWhen.field)) {
+      throw new Error(
+        `Action "${actionId}" declares a conditional field reference with a key reserved by JavaScript objects.`
+      );
+    }
+
+    if (!source) {
+      if (PROVIDER_FIELD_TYPES.has(field.type)) {
+        throw new Error(
+          `${where} is a ${field.type} field with no optionsSource, so nothing says which provider data to draw.`
+        );
+      }
+      continue;
+    }
+
+    if (!isSafeRecordKey(source.provider)) {
+      throw new Error(
+        `Action "${actionId}" declares a config options provider with a key reserved by JavaScript objects.`
+      );
+    }
+
+    // The field type is checked before the provider, so a field that draws no
+    // provider data is told that rather than being told its provider is
+    // undeclared, which would send the author looking in the wrong place.
+    if (!PROVIDER_FIELD_TYPES.has(field.type)) {
+      throw new Error(
+        `${where} declares an optionsSource on a "${field.type}" field, which draws no provider data.`
+      );
+    }
+
+    const wants = field.type === "provider-select" ? "options" : "fields";
+    const providers = integration.configOptions;
+    const provider =
+      providers && Object.hasOwn(providers, source.provider)
+        ? providers[source.provider]
+        : undefined;
+    if (!provider) {
+      throw new Error(
+        `${where} names the config options provider "${source.provider}", which integration "${integration.type}" does not declare.`
+      );
+    }
+    if (provider.answers !== wants) {
+      throw new Error(
+        `${where} needs a provider answering "${wants}", but "${source.provider}" answers "${provider.answers}".`
+      );
+    }
+
+    for (const parameter of source.parameters ?? []) {
+      if (!isSafeRecordKey(parameter)) {
+        throw new Error(
+          `Action "${actionId}" declares a provider parameter with a key reserved by JavaScript objects.`
+        );
+      }
+      if (!declaredKeys.has(parameter)) {
+        throw new Error(
+          `${where} names the parameter "${parameter}", which is not a config field of this action.`
+        );
+      }
+    }
+  }
 }

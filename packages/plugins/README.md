@@ -16,14 +16,29 @@ import { createWfGraphApp } from "@wfgraph/core";
 import { builtInIntegrations } from "@wfgraph/plugins";
 
 const wfgraph = await createWfGraphApp({
-  extensions: { integrations: builtInIntegrations /* ...events and actions */ },
+  extensions: {
+    integrations: builtInIntegrations({
+      slack: {
+        oauthClient: {
+          clientId: process.env.SLACK_CLIENT_ID,
+          clientSecret: process.env.SLACK_CLIENT_SECRET,
+        },
+      },
+    }) /* ...events and actions */,
+  },
   // ...the rest
 });
 ```
 
-Each integration is also exported by name, for a host that wants some of the five rather than
-all of them. That narrows what reaches `createWfGraphApp` rather than what the process loads,
-since this entry imports all five as values.
+Resend includes OAuth through a public client metadata document. Slack enables
+OAuth when you pass a registered Slack app client. Both retain manual credential
+entry. OAuth callback URLs also require `publicUrl` on `createWfGraphApp`.
+
+Clerk, Linear, Resend, and Twilio are also exported as values for a host that wants
+some of the five rather than all of them. Slack is a factory because it accepts OAuth
+client configuration. Selecting individual exports narrows what reaches
+`createWfGraphApp`, not what the process loads, because this entry imports all five
+integrations.
 
 `@wfgraph/core` is a peer dependency: an integration is built against it and handed back to it,
 so the two must resolve to one copy. They are released together and always share a version.

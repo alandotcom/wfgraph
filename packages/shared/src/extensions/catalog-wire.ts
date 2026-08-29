@@ -16,10 +16,37 @@ import type {
   CredentialFieldMetadata,
   ExtensionCatalog,
 } from "#src/extensions/catalog";
-import type { ActionConfigField } from "#src/plugins/action-fields";
+import type {
+  ActionConfigField,
+  FieldOptionsSource,
+} from "#src/plugins/action-fields";
 import type { ShowWhen } from "#src/types/show-when";
 import { NonEmptyTrimmedString, readAs } from "#src/types/schema";
+import {
+  hasOnlySafeRecordKeys,
+  isSafeRecordKey,
+  isSafeRecordPath,
+} from "#src/types/record-key";
 import type { ReferenceField } from "#src/graph/node-references";
+
+const safeRecordKey = Schema.String.check(
+  Schema.makeFilter(isSafeRecordKey, {
+    expected: "a record key that is not reserved by JavaScript objects",
+  })
+);
+
+const safeNonEmptyRecordKey = NonEmptyTrimmedString.check(
+  Schema.makeFilter(isSafeRecordKey, {
+    expected:
+      "a non-empty record key that is not reserved by JavaScript objects",
+  })
+);
+
+const safeRecordPath = Schema.String.check(
+  Schema.makeFilter(isSafeRecordPath, {
+    expected: "an object path without JavaScript object prototype segments",
+  })
+);
 
 const selectOptionSchema = Schema.Struct({
   value: Schema.String,
@@ -27,7 +54,7 @@ const selectOptionSchema = Schema.Struct({
 });
 
 const showWhenWireSchema: Schema.Codec<ShowWhen> = Schema.Struct({
-  field: Schema.String,
+  field: safeRecordKey,
   equals: Schema.String,
 });
 
@@ -40,8 +67,14 @@ const showWhenWireSchema: Schema.Codec<ShowWhen> = Schema.Struct({
  * The list fields are wrapped in `Schema.mutable` because that module spells them
  * as mutable arrays, and a decoded `readonly` array would not satisfy them.
  */
+const fieldOptionsSourceSchema: Schema.Codec<FieldOptionsSource> =
+  Schema.Struct({
+    provider: safeNonEmptyRecordKey,
+    parameters: Schema.optionalKey(Schema.mutable(Schema.Array(safeRecordKey))),
+  });
+
 const actionConfigFieldBaseSchema = Schema.Struct({
-  key: Schema.String,
+  key: safeRecordKey,
   label: Schema.String,
   type: Schema.Literals([
     "template-input",
@@ -50,11 +83,14 @@ const actionConfigFieldBaseSchema = Schema.Struct({
     "number",
     "select",
     "key-value",
+    "provider-select",
+    "provider-fields",
   ]),
   placeholder: Schema.optionalKey(Schema.String),
   defaultValue: Schema.optionalKey(Schema.String),
   example: Schema.optionalKey(Schema.String),
   options: Schema.optionalKey(Schema.mutable(Schema.Array(selectOptionSchema))),
+  optionsSource: Schema.optionalKey(fieldOptionsSourceSchema),
   rows: Schema.optionalKey(Schema.Finite),
   min: Schema.optionalKey(Schema.Finite),
   required: Schema.optionalKey(Schema.Boolean),
@@ -81,7 +117,7 @@ const actionConfigFieldWireSchema: Schema.Codec<ActionConfigField> =
 // fails the whole catalog decode at run time rather than the build. The
 // round-trip case in `catalog-wire.test.ts` is what holds the two in step.
 const referenceFieldWireSchema: Schema.Codec<ReferenceField> = Schema.Struct({
-  path: Schema.String,
+  path: safeRecordPath,
   description: Schema.optionalKey(Schema.String),
   type: Schema.optionalKey(
     Schema.Literals([
@@ -103,7 +139,7 @@ const eventMetadataSchema = Schema.Struct({
   name: NonEmptyTrimmedString,
   label: NonEmptyTrimmedString,
   description: Schema.optionalKey(Schema.String),
-  correlationPath: Schema.optionalKey(Schema.String),
+  correlationPath: Schema.optionalKey(safeRecordPath),
   payloadFields: Schema.Array(referenceFieldWireSchema),
 });
 
@@ -140,8 +176,16 @@ const integrationMetadataSchema = Schema.Struct({
   description: Schema.String,
   // A record, so the credential's name is its key. JSON preserves the order the
   // integration wrote, which is the order the connection dialog asks in.
-  credentialFields: Schema.Record(Schema.String, credentialFieldMetadataSchema),
+  credentialFields: Schema.Record(
+    Schema.String,
+    credentialFieldMetadataSchema
+  ).check(
+    Schema.makeFilter(hasOnlySafeRecordKeys, {
+      expected: "credential names that are not reserved by JavaScript objects",
+    })
+  ),
   hasTest: Schema.Boolean,
+  oauth: Schema.optionalKey(Schema.Struct({ label: NonEmptyTrimmedString })),
 });
 
 const extensionCatalogSchema: Schema.Codec<ExtensionCatalog> = Schema.Struct({

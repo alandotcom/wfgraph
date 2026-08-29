@@ -1,21 +1,24 @@
 /**
  * What is wrong with the graph on screen, kept current as it is edited.
  *
- * One pass over the whole graph feeds both surfaces that report it: the badge on
- * each broken node and the count in the toolbar. Validating per node render
+ * One settled pass over the whole graph feeds the badge on each broken node and
+ * the count in the toolbar. Validating per node render
  * instead would run the same walk once per card and give the two surfaces no way
  * to agree.
  *
- * The collector itself is `@wfgraph/shared/graph/workflow-issues`, shared with
- * the pre-run check and the server's own vocabulary for the same failures.
+ * Run and Publish call the same pure merger below with forced-fresh provider
+ * answers from their exact click-time graph snapshot.
  */
 
 import { groupBy } from "es-toolkit";
 import { atom } from "jotai";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import {
+  collectWorkflowIssues,
   hasBlockingWorkflowIssues,
   type WorkflowIssue,
 } from "@wfgraph/shared/graph/workflow-issues";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import type { NodeIssueSummary } from "#src/lib/workflow-graph-types";
 
 /**
@@ -31,6 +34,37 @@ export const NO_ISSUES: WorkflowIssue[] = [];
  * describe has just been replaced.
  */
 export const workflowIssuesAtom = atom<WorkflowIssue[]>(NO_ISSUES);
+
+/**
+ * Everything wrong with a graph: what the shared collector can see on its own,
+ * followed by what only the operator's connections can answer.
+ *
+ * The two halves are assembled here rather than restated at each consumer. The
+ * passive canvas pass supplies debounced provider answers; Run and Publish
+ * supply forced-fresh answers. All three therefore share one issue vocabulary
+ * without pretending they share one freshness policy.
+ *
+ * `providerIssues` is passed rather than read off the atom, because the pass
+ * that writes that atom is also a caller and must use the answers it just
+ * received rather than the ones it is about to store. `nodes` arrives already
+ * through `toPersistedNodes`, which is the same shape the provider half is asked
+ * about, so both halves judge one graph.
+ */
+export function collectAllWorkflowIssues(input: {
+  nodes: WorkflowNode[];
+  catalog: ExtensionCatalog;
+  integrations: ReadonlyArray<{ id: string; type: string }>;
+  providerIssues: readonly WorkflowIssue[];
+}): WorkflowIssue[] {
+  return [
+    ...collectWorkflowIssues({
+      nodes: input.nodes,
+      catalog: input.catalog,
+      integrations: input.integrations,
+    }),
+    ...input.providerIssues,
+  ];
+}
 
 /**
  * The badge each flagged node draws, built once per collection pass.

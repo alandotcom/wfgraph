@@ -19,14 +19,16 @@
  * Promise-first (`async` handlers, `readCredentials`, Promise `step.run`); that
  * bridge is not what an integration writes.
  *
- * A connection test answers the credentials UI over a Promise, so it calls out
- * through `callExternalAsync`. That is the one Promise HTTP seam on this entry.
+ * Connection tests and OAuth provider adapters answer Core over Promises, so
+ * they call out through `callExternalAsync`. Those are the Promise HTTP seams
+ * on this entry.
  *
  * An integration's own suite drives an action through `@wfgraph/core/testing`,
  * which is a separate entry because nothing in it runs in a server.
  */
 
 export type {
+  IntegrationTestContext,
   IntegrationTestFunction,
   IntegrationTestResult,
 } from "#src/backend/extensions/integration-test";
@@ -37,7 +39,32 @@ export {
   type Integration,
   type IntegrationDefinition,
 } from "#src/backend/extensions/define-integration";
+export type {
+  ConfigOptionChoice,
+  ConfigOptionField,
+  ConfigOptionsAnswer,
+  ConfigOptionsFunction,
+  ConfigOptionsLoader,
+  ConfigOptionsProvider,
+  ConfigOptionsRequest,
+  ConfigOptionsUnavailableReason,
+} from "#src/backend/extensions/config-options";
 export type { CredentialFields } from "@wfgraph/shared/extensions/catalog";
+export type {
+  IntegrationOAuth,
+  OAuthAuthorizationInput,
+  OAuthClientRegistration,
+  OAuthExchangeInput,
+  OAuthGrant,
+  OAuthPkceAuthorizationInput,
+  OAuthPkceExchangeInput,
+  PublicOAuthClientMetadata,
+  OAuthRefreshInput,
+  OAuthRegistrationContext,
+  OAuthRevokeInput,
+  OAuthTokens,
+  OAuthTokenSet,
+} from "#src/backend/extensions/oauth";
 export {
   type StepBag,
   StepFailure,

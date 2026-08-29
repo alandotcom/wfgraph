@@ -16,6 +16,8 @@ import {
 } from "#src/lifecycle/execution-contracts";
 import { serializedWorkflowGraphSchema } from "#src/graph/schemas";
 import { isoTimestampString } from "#src/types/timestamp";
+import { OAUTH_GRANT_CONFIG_KEY } from "#src/types/integration";
+import { hasOnlySafeRecordKeys, isSafeRecordKey } from "#src/types/record-key";
 import {
   agentMessageSchema,
   agentStreamPartSchema,
@@ -100,9 +102,26 @@ const idSchema = NonEmptyTrimmedString;
  */
 const integrationTypeSchema = NonEmptyTrimmedString;
 
+const safeNonEmptyRecordKeySchema = NonEmptyTrimmedString.check(
+  Schema.makeFilter(isSafeRecordKey, {
+    expected:
+      "a non-empty record key that is not reserved by JavaScript objects",
+  })
+);
+
 const integrationConfigSchema = Schema.Record(
   Schema.String,
   Schema.UndefinedOr(Schema.String)
+).check(
+  Schema.makeFilter(hasOnlySafeRecordKeys, {
+    expected: "integration config keys not reserved by JavaScript objects",
+  })
+);
+
+const manualIntegrationConfigSchema = integrationConfigSchema.check(
+  Schema.makeFilter((config) => !(OAUTH_GRANT_CONFIG_KEY in config), {
+    expected: "an integration config without the reserved OAuth grant key",
+  })
 );
 
 const apiKeyFields = {
@@ -120,6 +139,21 @@ const integrationFields = {
   isManaged: Schema.optionalKey(Schema.Boolean),
   createdAt: Schema.String,
   updatedAt: Schema.String,
+  configuredKeys: Schema.Array(Schema.String),
+  oauth: Schema.optionalKey(
+    Schema.Struct({
+      status: Schema.Literals(["connected", "reauthorization_required"]),
+      connectedAt: isoTimestampString(),
+      accountLabel: Schema.optionalKey(Schema.String),
+      credentialKeys: Schema.Array(NonEmptyTrimmedString),
+      /**
+       * How much access the provider granted, in its own words, for the
+       * connection dialog to show. Absent for a provider that never says, and
+       * for a grant issued before this connection last authorized.
+       */
+      grantedAccessLabel: Schema.optionalKey(NonEmptyTrimmedString),
+    })
+  ),
 };
 
 const integrationSchema = Schema.Struct(integrationFields);
@@ -128,6 +162,67 @@ const integrationWithConfigSchema = Schema.Struct({
   ...integrationFields,
   config: integrationConfigSchema,
 });
+
+/**
+ * What a provider-backed config field is filled with.
+ *
+ * Three arms, because a provider refusing is an answer rather than a failure:
+ * the sentence it wrote is what a builder acts on, and an error response would
+ * lose it. `not_permitted` is the one arm reconnecting can fix.
+ */
+const configOptionsAnswerSchema = Schema.Union([
+  Schema.Struct({
+    status: Schema.Literal("options"),
+    options: Schema.Array(
+      Schema.Struct({
+        value: NonEmptyTrimmedString,
+        label: Schema.String,
+      })
+    ),
+  }),
+  Schema.Struct({
+    status: Schema.Literal("fields"),
+    fields: Schema.Array(
+      Schema.Struct({
+        key: safeNonEmptyRecordKeySchema,
+        label: Schema.String,
+        defaultValue: Schema.optionalKey(Schema.String),
+        description: Schema.optionalKey(Schema.String),
+        type: Schema.optionalKey(Schema.Literals(["string", "number"])),
+        required: Schema.optionalKey(Schema.Boolean),
+      })
+    ),
+  }),
+  Schema.Struct({
+    status: Schema.Literal("unavailable"),
+    reason: Schema.Literals(["not_permitted", "unreachable", "refused"]),
+    message: Schema.String,
+  }),
+]);
+
+/**
+ * The sibling config values the field's `optionsSource` named. Bounded because
+ * each one lands in a request the connection's own credentials pay for.
+ */
+/**
+ * The sibling config values the field's `optionsSource` named.
+ *
+ * The real allowlist is server-side: the service intersects this against what a
+ * field actually declared for the provider being asked, so an undeclared key
+ * never reaches the integration. This bound is only what keeps an oversized body
+ * from being decoded at all.
+ */
+const configOptionsParametersSchema = Schema.Record(
+  Schema.String,
+  Schema.String.check(Schema.isMaxLength(2048))
+).check(
+  Schema.makeFilter(hasOnlySafeRecordKeys, {
+    expected: "provider parameter keys not reserved by JavaScript objects",
+  }),
+  Schema.makeFilter((values) => Object.keys(values).length <= 8, {
+    expected: "at most eight provider parameters",
+  })
+);
 
 const integrationTestResultSchema = Schema.Struct({
   status: Schema.Literals(["success", "error"]),
@@ -478,7 +573,7 @@ export const rpcContract = {
           Schema.Struct({
             name: Schema.String,
             type: integrationTypeSchema,
-            config: integrationConfigSchema,
+            config: manualIntegrationConfigSchema,
           })
         )
       )
@@ -489,7 +584,7 @@ export const rpcContract = {
           Schema.Struct({
             integrationId: idSchema,
             name: Schema.optionalKey(Schema.String),
-            config: Schema.optionalKey(integrationConfigSchema),
+            config: Schema.optionalKey(manualIntegrationConfigSchema),
           })
         )
       )
@@ -497,9 +592,42 @@ export const rpcContract = {
     delete: route("DELETE", "/integrations/{integrationId}")
       .input(contractSchema(Schema.Struct({ integrationId: idSchema })))
       .output(deleted),
-    testConnection: route("POST", "/integrations/{integrationId}/test")
+    disconnectOAuth: route("DELETE", "/integrations/{integrationId}/oauth")
       .input(contractSchema(Schema.Struct({ integrationId: idSchema })))
+      .output(
+        contractSchema(
+          Schema.Struct({
+            success: Schema.Literal(true),
+            /**
+             * Whether the connection itself is gone. A grant that supplied the
+             * whole connection leaves nothing behind, so disconnecting removes
+             * the row rather than offering a connection holding no credential.
+             */
+            removed: Schema.Boolean,
+          })
+        )
+      ),
+    testConnection: route("POST", "/integrations/{integrationId}/test")
+      .input(
+        contractSchema(
+          Schema.Struct({
+            integrationId: idSchema,
+            config: Schema.optionalKey(manualIntegrationConfigSchema),
+          })
+        )
+      )
       .output(integrationTestResult),
+    configOptions: route("POST", "/integrations/{integrationId}/config-options")
+      .input(
+        contractSchema(
+          Schema.Struct({
+            integrationId: idSchema,
+            provider: safeNonEmptyRecordKeySchema,
+            parameters: Schema.optionalKey(configOptionsParametersSchema),
+          })
+        )
+      )
+      .output(contractSchema(configOptionsAnswerSchema)),
     testCredentials: route("POST", "/integrations/test")
       .input(
         contractSchema(

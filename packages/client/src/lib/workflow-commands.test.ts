@@ -23,6 +23,7 @@ function commandInput(
       editingLocked: false,
       hasNodes: true,
       isExecuting: false,
+      isPreflighting: false,
       isGenerating: false,
       isSaving: false,
       workflowMode: "live",
@@ -139,6 +140,14 @@ describe("workflowCommands", () => {
     mode?.execute();
     expect(input.callbacks.switchMode).toHaveBeenCalledWith("live");
   });
+
+  it("disables Run while issue preflight is active", () => {
+    const run = workflowCommands(commandInput({ isPreflighting: true })).find(
+      (command) => command.id === "run"
+    );
+
+    expect(run?.disabled).toBe(true);
+  });
 });
 
 describe("isWorkflowPublishDisabled", () => {
@@ -157,6 +166,7 @@ describe("isWorkflowPublishDisabled", () => {
         isSaving: false,
         isComparing: false,
         isPublishing: false,
+        isPreflighting: false,
         hasNodes: true,
         hasUnsavedChanges: false,
         publication,
@@ -169,10 +179,26 @@ describe("isWorkflowPublishDisabled", () => {
         isSaving: false,
         isComparing: false,
         isPublishing: false,
+        isPreflighting: false,
         hasNodes: true,
         hasUnsavedChanges: true,
         publication,
       })
     ).toBe(false);
+  });
+
+  it("disables Publish while issue preflight is active", () => {
+    expect(
+      isWorkflowPublishDisabled({
+        editingLocked: false,
+        isSaving: false,
+        isComparing: false,
+        isPublishing: false,
+        isPreflighting: true,
+        hasNodes: true,
+        hasUnsavedChanges: true,
+        publication,
+      })
+    ).toBe(true);
   });
 });

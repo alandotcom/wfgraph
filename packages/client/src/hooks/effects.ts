@@ -58,6 +58,13 @@ function useLatestEvent<Args extends unknown[]>(
   return useCallback((...args: Args) => latest.current(...args), []);
 }
 
+/** Dispose an owned external operation when its component unmounts. */
+export function useUnmountCleanup(cleanup: () => void): void {
+  const onUnmount = useLatestEvent(cleanup);
+
+  useEffect(() => () => onUnmount(), [onUnmount]);
+}
+
 type DomEventOptions = {
   /** Attach the listener only while this is true. Defaults to true. */
   enabled?: boolean;

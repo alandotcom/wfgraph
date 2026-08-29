@@ -8,16 +8,10 @@
  */
 
 import { Effect, Schema } from "effect";
-import {
-  credentialsFromConfig,
-  findIntegration,
-} from "@wfgraph/shared/extensions/catalog";
-import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
-import { ENCRYPTION_KEY_MISMATCH_MESSAGE } from "#src/backend/services/integrations/cipher";
-import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import type { WfGraphRuntime } from "#src/backend/runtime";
 import { getAppLogger } from "#src/backend/lib/logger";
+import { resolveIntegrationCredentials } from "#src/backend/services/integrations/credential-resolver";
+import { ENCRYPTION_KEY_MISMATCH_MESSAGE } from "#src/backend/services/integrations/cipher";
 
 const credentialFetcherLogger = getAppLogger("credentials");
 
@@ -40,52 +34,13 @@ export class CredentialsUnavailable extends Schema.TaggedError<CredentialsUnavai
   }
 ) {}
 
-const NO_CREDENTIALS: WorkflowCredentials = {};
-
 /**
- * The stored config as the environment-variable names a handler reads it by.
+ * An integration's resolved credentials.
  *
- * Every mapping an integration has is in its credential fields, which the
- * assembled catalog carries, so that is where this reads it.
- */
-function mapIntegrationConfig(
-  catalog: ExtensionCatalog,
-  integrationType: string,
-  config: IntegrationConfig
-): WorkflowCredentials {
-  return credentialsFromConfig(
-    findIntegration(catalog, integrationType),
-    config
-  );
-}
-
-/**
- * Either way a credential read fails, as the one failure a node understands.
- *
- * The message is all that separates the two, so it is the only argument; the
- * tag itself reaches the log through the error value.
- */
-const unavailable =
-  (
-    logger: ReturnType<typeof getAppLogger>,
-    integrationId: string,
-    message: string
-  ) =>
-  (error: unknown): Effect.Effect<never, CredentialsUnavailable> => {
-    logger.error("Could not read the integration credentials", { error });
-    return Effect.fail(new CredentialsUnavailable({ integrationId, message }));
-  };
-
-/**
- * An integration's credentials, or nothing when no row carries that id.
- *
- * A row that is missing answers with no credentials, because a step configured
- * with no integration is a step working against a public API. A store that
- * refuses the read answers with `CredentialsUnavailable`, which fails the node
- * that asked.
+ * A missing row, an unreadable store, or an OAuth grant that cannot become safe
+ * to use answers with `CredentialsUnavailable`, which fails the node that asked.
  */
 export function fetchCredentials(
-  catalog: ExtensionCatalog,
   runtime: WfGraphRuntime,
   integrationId: string
 ): Effect.Effect<WorkflowCredentials, CredentialsUnavailable> {
@@ -98,40 +53,31 @@ export function fetchCredentials(
     // requires. That is what keeps the step's own requirement channel empty, and
     // it is what lets a plugin's test run a step on a runtime carrying nothing.
     const services = yield* runtime.contextEffect;
-    const integration = yield* Effect.provideContext(
-      Effect.flatMap(IntegrationRepo, (repo) => repo.findById(integrationId)),
+    const resolved = yield* Effect.provideContext(
+      resolveIntegrationCredentials(integrationId),
       services
     ).pipe(
-      Effect.catchTags({
-        DatabaseError: unavailable(
-          logger,
-          integrationId,
-          `Could not read the credentials for integration "${integrationId}".`
-        ),
-        EncryptionKeyMismatch: unavailable(
-          logger,
-          integrationId,
-          ENCRYPTION_KEY_MISMATCH_MESSAGE
-        ),
+      Effect.catch((failure) => {
+        logger.error("Could not read the integration credentials", {
+          failure: failure._tag,
+        });
+        return Effect.fail(
+          new CredentialsUnavailable({
+            integrationId,
+            message:
+              failure.error === ENCRYPTION_KEY_MISMATCH_MESSAGE
+                ? ENCRYPTION_KEY_MISMATCH_MESSAGE
+                : `Could not read the credentials for integration "${integrationId}".`,
+          })
+        );
       })
     );
 
-    if (!integration) {
-      logger.debug("Integration not found");
-      return NO_CREDENTIALS;
-    }
-
-    const credentials = mapIntegrationConfig(
-      catalog,
-      integration.type,
-      integration.config
-    );
-
     logger.debug("Mapped integration credentials", {
-      integrationType: integration.type,
-      credentialKeys: Object.keys(credentials),
+      integrationType: resolved.integrationType,
+      credentialKeys: Object.keys(resolved.credentials),
     });
 
-    return credentials;
+    return resolved.credentials;
   });
 }
