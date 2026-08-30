@@ -47,6 +47,9 @@ jobs:
       - name: Run knip
         run: pnpm run knip
 
+      - name: Validate agent skills
+        run: pnpm run skills:validate
+
       # The suite is self-contained: it was run with the local .env moved aside to
       # confirm all 1620 tests pass with no environment file, database or other
       # service, which is what this runner gives it. vitest.config.ts puts the

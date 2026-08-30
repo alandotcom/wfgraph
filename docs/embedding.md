@@ -384,7 +384,8 @@ different migration tool puts the tables in `public`. This repository's
 
 Workflow Graph cannot serialize a React component, so that last record is the one part of the catalog
 that stays off `/api/extensions`. `@wfgraph/shared` stays private, and the build inlines it
-into whichever bundle needs it.
+into whichever bundle needs it. `@wfgraph/core` and `@wfgraph/plugins` also include a
+`skills/` directory in the tarball; it is not a package export.
 
 `createWfGraphApp` is the Node host. `wfWorker` is the Cloudflare
 Worker host and serves the API while the platform's Assets binding or the

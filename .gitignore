@@ -77,3 +77,7 @@ dist/
 # file twice.
 .claude/worktrees/
 .impeccable/live
+
+# TanStack Intent generate dump (domain map, skill spec, skill tree). Published
+# skills are authored under packages/*/skills; do not commit this output.
+_artifacts/

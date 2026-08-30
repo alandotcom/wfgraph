@@ -7,6 +7,7 @@
     "clerk",
     "integrations",
     "linear",
+    "tanstack-intent",
     "workflow"
   ],
   "license": "Apache-2.0",
@@ -16,7 +17,8 @@
     "directory": "packages/plugins"
   },
   "files": [
-    "dist"
+    "dist",
+    "skills"
   ],
   "type": "module",
   "imports": {

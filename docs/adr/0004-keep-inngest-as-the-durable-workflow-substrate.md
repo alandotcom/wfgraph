@@ -53,7 +53,7 @@ not only implementing storage interfaces.
 `packages/core/package.json`, at `^4.18.0`. The host installs the SDK and picks the version
 inside that range.
 
-`docs/plans/embeddable-library.md` set the opposite rule for a vendor SDK, and that rule
+`docs/internal/plans/embeddable-library.md` set the opposite rule for a vendor SDK, and that rule
 still holds for the other four. Workflow Graph builds a Twilio or a Linear client out of
 credentials it decrypts, hands the client to nobody, and checks no class identity across the
 boundary, so a duplicate copy of one of those SDKs is inert weight. Inngest is the one
@@ -69,7 +69,7 @@ still built by `createInngestClient`, and `WfGraphApp` still exposes `fetch`, `b
 amendment leaves it undecided.
 
 `hono` moved to `peerDependencies` in the same change, at `^4.13.1`, which returns it to
-where `docs/plans/embeddable-library.md` took it from. The argument there was that an
+where `docs/internal/plans/embeddable-library.md` took it from. The argument there was that an
 Express host should not install a router it never calls, and that argument still describes
 the cost. What buys it back is the host's control of the version: a host that runs its own
 Hono application now resolves one copy of the router with Workflow Graph rather than two,

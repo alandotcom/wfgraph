@@ -65,6 +65,11 @@ pnpm add @wfgraph/core @wfgraph/client inngest hono
 `inngest` and `hono` are peer dependencies, so your application owns the version of each
 that runs in its process. Add `@wfgraph/plugins` for the built-in integrations.
 
+The published packages include Agent Skills (TanStack Intent). After install, run
+`pnpm dlx @tanstack/intent@latest install`, then `pnpm dlx @tanstack/intent@latest list`
+and `pnpm dlx @tanstack/intent@latest load @wfgraph/core#wfgraph-core` when embedding
+or writing an integration.
+
 `createWfGraphApp` returns a fetch handler. Pass Events, actions, and integrations in one
 `extensions` object:
 
@@ -151,7 +156,7 @@ SQLite, and Cloudflare Hyperdrive setup.
 | ---------------------------------------------- | ---------------------------------------------------------------- |
 | [`docs/embedding.md`](docs/embedding.md)       | Mounting, editor, database, migrations, package exports, options |
 | [`docs/events.md`](docs/events.md)             | `defineEvent`, umbrella sources, intake, Lifecycle model         |
-| [`docs/integrations.md`](docs/integrations.md) | `defineIntegration`, handlers, schemas, testing                  |
+| [`docs/integrations.md`](docs/integrations.md) | `defineIntegration`, OAuth adapters, handlers, schemas, testing  |
 | [`CONTEXT.md`](CONTEXT.md)                     | Domain vocabulary                                                |
 | [`docs/adr/`](docs/adr/)                       | Design decisions                                                 |
 

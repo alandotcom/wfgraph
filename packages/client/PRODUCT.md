@@ -36,6 +36,9 @@ The colorful automation-canvas look of Zapier or n8n, where every node type shou
 4. **Fast is a feature.** Interactions respond immediately: optimistic saves, instant panel transitions, polling that never blocks the user.
 5. **Legible to the second audience.** Every screen a developer builds must remain readable to the ops teammate: plain-language labels, visible structure, safe defaults.
 
+The 2026-08-21 editor chrome redesign intent is
+`docs/internal/intent/editor-ui-redesign.md`. This file stays the vocabulary home.
+
 ## Accessibility & Inclusion
 
 WCAG 2.1 AA. Body text at 4.5:1 contrast minimum in both themes, visible focus indicators, keyboard-operable controls, and reduced-motion alternatives for every animation. The React Flow canvas gets best-effort keyboard support within AA's practical limits.

@@ -22,9 +22,9 @@ workspace packages.
 │   ├── embedding.md       # mount, database, options, package exports
 │   ├── events.md          # defineEvent
 │   ├── integrations.md    # defineIntegration
-│   └── adr/
-│       ├── 0001-…
-│       └── …
+│   ├── adr/
+│   ├── agents/            # engineering-skill config, not host manuals
+│   └── internal/          # session plans and product intent; not adopter docs
 └── packages/
     ├── shared/
     ├── core/
