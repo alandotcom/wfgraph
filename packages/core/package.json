@@ -6,9 +6,9 @@
     "automation",
     "effect",
     "inngest",
+    "tanstack-intent",
     "workflow",
-    "workflow-engine",
-    "tanstack-intent"
+    "workflow-engine"
   ],
   "license": "Apache-2.0",
   "repository": {
