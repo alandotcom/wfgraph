@@ -175,7 +175,7 @@ describe("receiveWebhook", () => {
     }
   });
 
-  it("sends the catalog Event with user.connectionId and the raw-body id", async () => {
+  it("sends the catalog Event with connectionId and the raw-body id", async () => {
     const seen: { rawBody?: string } = {};
     const { runtime, sendCatalogEvent } = runtimeFor({
       webhook: webhook({

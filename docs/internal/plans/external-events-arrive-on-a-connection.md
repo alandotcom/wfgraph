@@ -46,11 +46,11 @@ Rules first, then Wait Subscriptions.
 into Event data and do not use `source.when` to scope a workspace. `source.when`
 is compiled at Event definition (Event Author), so using it for a Connection
 would smuggle Workflow Builder policy into vocabulary, which is the split
-ADR-0007 exists to keep. Carry the Connection id beside the Event name, on the
-same CEL root the run already has (`event.name` in
-`packages/shared/src/conditions/condition-model.ts` → `event.connectionId`).
-The Lifecycle Node (and a Wait that parks on an integration Event) gets a
-Connection picker, the same picker an action node already has.
+ADR-0007 exists to keep. Stamp `connectionId` on Inngest event `data` (v4 does
+not persist `event.user`) and strip it before decode. Matching is the stored
+id on Lifecycle Rules and Wait Subscriptions. The Lifecycle Node (and a Wait
+that parks on an integration Event) gets a Connection picker, the same picker
+an action node already has.
 
 Two intake bindings, because vendors do not agree on the grain of a URL:
 

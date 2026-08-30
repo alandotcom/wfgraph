@@ -1,5 +1,8 @@
 import type { Inngest } from "inngest";
+import { Result, Schema } from "effect";
+import { omit } from "es-toolkit/object";
 import type { JsonObject } from "@wfgraph/shared/types/json";
+import { NonEmptyTrimmedString } from "@wfgraph/shared/types/schema";
 import {
   workflowBranchKillRequested,
   workflowRunCancelRequested,
@@ -95,12 +98,14 @@ export async function sendWorkflowWaitSignal(
 }
 
 /**
- * Forward a catalog Event onto the bus, including the Connection it arrived
- * through as Inngest `user` rather than payload.
+ * Forward a catalog Event onto the bus, carrying the Connection it arrived
+ * through as an extra key on `data`.
  *
- * `user.connectionId` is first-class delivery metadata: listeners read it
- * beside the Event name, and CEL exposes it as `event.connectionId`. The
- * payload stays the vendor envelope.
+ * Inngest v4 dropped `event.user`: it is not stored and does not survive
+ * replay. The vendor envelope stays the rest of `data` (`type`, `created_at`,
+ * nested `data`, …) so `source.when` and Correlation Paths keep addressing it.
+ * The listener strips `connectionId` before decode and delivery, so Wait CEL
+ * and templates see the envelope the vendor posted.
  */
 export async function sendCatalogEvent(
   client: Inngest,
@@ -113,9 +118,39 @@ export async function sendCatalogEvent(
 ) {
   const event = {
     name: input.name,
-    data: input.data,
-    user: { connectionId: input.connectionId },
+    data: withCatalogConnection(input.data, input.connectionId),
     ...(input.id === undefined ? {} : { id: input.id }),
   };
   return await client.send(event);
+}
+
+const readCatalogConnection = Schema.decodeUnknownResult(
+  Schema.Struct({ connectionId: NonEmptyTrimmedString })
+);
+
+/** Stamp the Connection onto a vendor envelope for the Inngest send. */
+export function withCatalogConnection(
+  data: JsonObject,
+  connectionId: string
+): JsonObject {
+  return { ...data, connectionId };
+}
+
+/**
+ * Split the Connection stamp off a catalog Event's `data`.
+ *
+ * A host Event never carries one, and the vendor envelope is what remains.
+ */
+export function splitCatalogEventData(data: JsonObject): {
+  payload: JsonObject;
+  connectionId: string | undefined;
+} {
+  const parsed = readCatalogConnection(data);
+  if (Result.isFailure(parsed)) {
+    return { payload: data, connectionId: undefined };
+  }
+  return {
+    payload: omit(data, ["connectionId"]),
+    connectionId: parsed.success.connectionId,
+  };
 }

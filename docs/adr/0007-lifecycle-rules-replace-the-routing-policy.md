@@ -113,6 +113,8 @@ subscription. Publish refuses an integration-owned Start, Cancel, or Wait
 Event that names none, rather than fanning in across every Connection of that
 type.
 
-The Connection is delivery metadata, not payload. Intake sends it as Inngest
-`user.connectionId`; CEL reads `event.connectionId`. A start on the wrong
-Connection is `waits_only`. The subscription index stays keyed by Event name.
+The Connection is delivery metadata, not payload. Intake stamps `connectionId`
+on Inngest event `data` (v4 does not persist `event.user`) and the listener
+strips it before decode. Matching is the stored id on Lifecycle Rules and Wait
+Subscriptions. A start on the wrong Connection is `waits_only`. The
+subscription index stays keyed by Event name.

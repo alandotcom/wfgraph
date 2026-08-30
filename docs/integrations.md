@@ -121,7 +121,10 @@ and narrow with `source.when`. `receive` returns `{ data, id? }`; the route send
 `source`. `verify` sees the raw body (`c.req.text()`), because HMAC schemes are
 sensitive to a single byte of re-serialization. `receive` sees the parsed JSON. An
 ignored payload is `undefined` (200, no send). `SignatureRejected` is 401. The
-Connection id travels as Inngest `user.connectionId`, not inside the payload.
+Connection id is stamped on Inngest event `data` as `connectionId` (v4 does not
+persist `event.user`) and stripped before decode, so the payload the graph sees
+is the vendor envelope. Matching is the stored Connection on Lifecycle Rules and
+Wait Subscriptions, not a CEL field.
 `helpText` is shown under the copyable URL on the Connection dialog.
 
 **A handler takes one bag**, holding `input` (the decoded config), the credential reads,

@@ -62,7 +62,7 @@ export class InngestClient extends Context.Service<
     ) => Effect.Effect<void, InngestError>;
     /**
      * Forward a host or integration Event so its listener drives the fan-out.
-     * Carries `user.connectionId` for integration-owned Events.
+     * Carries `connectionId` on event data for integration-owned Events.
      */
     readonly sendCatalogEvent: (
       input: Parameters<typeof sendCatalogEvent>[1]
