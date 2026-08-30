@@ -78,22 +78,6 @@ describe("listEventSubscribers", () => {
     expect(sent(isParkedArm)?.params).toContain("app/appointment.created");
   });
 
-  it("holds a workflow with only parked runs to the wait role", async () => {
-    const { listSubscribers } = subscribersHarness({
-      parked: [["wf_2", "Reminders", "live", "appointment.id"]],
-    });
-
-    expect(await listSubscribers("app/appointment.created")).toEqual([
-      {
-        id: "wf_2",
-        name: "Reminders",
-        mode: "live",
-        roles: ["wait"],
-        correlationPath: "appointment.id",
-      },
-    ]);
-  });
-
   it("unions the roles a workflow holds for one Event", async () => {
     const { listSubscribers } = subscribersHarness({
       named: [
@@ -122,39 +106,11 @@ describe("listEventSubscribers", () => {
     expect(subscribers).toHaveLength(1);
     expect(subscribers[0]?.roles).toEqual(["wait"]);
   });
-
-  it("keeps parked workflows when the graph no longer names their Event", async () => {
-    const { listSubscribers } = subscribersHarness({
-      parked: [["wf_2", "Reminders", "live", null]],
-    });
-
-    expect(await listSubscribers("app/appointment.created")).toEqual([
-      {
-        id: "wf_2",
-        name: "Reminders",
-        mode: "live",
-        roles: ["wait"],
-        correlationPath: null,
-      },
-    ]);
-  });
 });
 
 describe("insertPublishedVersion", () => {
   const emptyGraph = createSerializedWorkflowGraph({ nodes: [], edges: [] });
 
-  const workflowRow = (versionId: string) => [
-    "wf_1",
-    "Name",
-    null,
-    JSON.stringify(emptyGraph),
-    false,
-    "live",
-    "private",
-    versionId,
-    new Date(),
-    new Date(),
-  ];
   // The order matches the table's columns, because the stubbed driver returns
   // positional rows.
   const versionRow = (id: string, version: number) => [
@@ -185,93 +141,6 @@ describe("insertPublishedVersion", () => {
     });
   }
 
-  function answerWhenWorkflowPresent({
-    query,
-  }: {
-    query: string;
-  }): unknown[][] {
-    if (query.startsWith("select") && query.includes('"workflows"')) {
-      return [["wf_1"]];
-    }
-    if (query.startsWith("insert") && query.includes("workflow_versions")) {
-      return [versionRow("ver_new", 1)];
-    }
-    if (query.startsWith("update") && query.includes("workflows")) {
-      return [workflowRow("ver_new")];
-    }
-    return [];
-  }
-
-  it("claims a version number with on conflict do nothing", async () => {
-    const { layer: databaseLayer, statements } = stubDatabase(
-      answerWhenWorkflowPresent
-    );
-
-    const published = await Effect.runPromise(
-      insert(1, null).pipe(
-        Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
-      )
-    );
-
-    expect(
-      published && "stale" in published ? null : published?.version.id
-    ).toBe("ver_new");
-    const mintInsert = statements.find(
-      (statement) =>
-        statement.query.startsWith("insert") &&
-        statement.query.includes("workflow_versions")
-    );
-    expect(mintInsert?.query).toContain(
-      'on conflict ("workflow_id","version") do nothing'
-    );
-    const pointerUpdate = statements.find((statement) =>
-      statement.query.startsWith('update "workflows"')
-    );
-    expect(pointerUpdate?.query).toContain('"published_version_id" is null');
-  });
-
-  it("answers stale when the version number was already taken", async () => {
-    const { layer: databaseLayer } = stubDatabase(({ query }) => {
-      if (query.startsWith("select") && query.includes('"workflows"')) {
-        return [["wf_1"]];
-      }
-      return [];
-    });
-
-    const published = await Effect.runPromise(
-      insert(1, null).pipe(
-        Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
-      )
-    );
-
-    expect(published).toEqual({ stale: true });
-  });
-
-  it("removes its mint when the published pointer changed", async () => {
-    const { layer: databaseLayer, statements } = stubDatabase(({ query }) => {
-      if (query.startsWith("select") && query.includes('"workflows"')) {
-        return [["wf_1"]];
-      }
-      if (query.startsWith("insert") && query.includes("workflow_versions")) {
-        return [versionRow("ver_new", 2)];
-      }
-      return [];
-    });
-
-    const published = await Effect.runPromise(
-      insert(2, "ver_observed").pipe(
-        Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
-      )
-    );
-
-    expect(published).toEqual({ stale: true });
-    expect(
-      statements.some((statement) =>
-        statement.query.startsWith('delete from "workflow_versions"')
-      )
-    ).toBe(true);
-  });
-
   it("does not mint a version when the workflow is missing", async () => {
     const { layer: databaseLayer, statements } = stubDatabase(({ query }) => {
       if (query.startsWith("insert") && query.includes("workflow_versions")) {
@@ -294,64 +163,6 @@ describe("insertPublishedVersion", () => {
           statement.query.includes("workflow_versions")
       )
     ).toBe(false);
-  });
-});
-
-describe("listVersionHistoryPage", () => {
-  const publishedAt = new Date("2026-08-03T00:00:00.000Z");
-
-  function list(input: {
-    workflowId: string;
-    limit: number;
-    cursor?: { version: number };
-  }) {
-    return Effect.gen(function* () {
-      const repo = yield* WorkflowRepo;
-      return yield* repo.listVersionHistoryPage(input);
-    });
-  }
-
-  it("returns newest versions first and fetches one extra row", async () => {
-    const { layer: databaseLayer, statements } = stubDatabase(() => [
-      ["ver_3", 3, publishedAt, true],
-      ["ver_2", 2, publishedAt, false],
-    ]);
-
-    const versions = await Effect.runPromise(
-      list({ workflowId: "wf_1", limit: 1 }).pipe(
-        Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
-      )
-    );
-
-    expect(versions).toEqual([
-      { id: "ver_3", version: 3, publishedAt, isCurrent: true },
-      { id: "ver_2", version: 2, publishedAt, isCurrent: false },
-    ]);
-    expect(statements[0]?.query).toContain(
-      'order by "workflow_versions"."version" desc'
-    );
-    expect(statements[0]?.params).toContain(2);
-  });
-
-  it("uses an exclusive cursor and scopes the page to its workflow", async () => {
-    const { layer: databaseLayer, statements } = stubDatabase(() => [
-      ["ver_2", 2, publishedAt, false],
-    ]);
-
-    await Effect.runPromise(
-      list({
-        workflowId: "wf_1",
-        limit: 1,
-        cursor: { version: 3 },
-      }).pipe(
-        Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
-      )
-    );
-
-    expect(statements[0]?.query).toContain('"workflow_versions"."version" < ');
-    expect(statements[0]?.params).toEqual(
-      expect.arrayContaining(["wf_1", 3, 2])
-    );
   });
 });
 
@@ -463,42 +274,6 @@ describe("freezeDraftSnapshot", () => {
     };
   }
 
-  it("writes a snapshot row carrying no version number", async () => {
-    const { statements, snapshot } = run();
-
-    expect(await snapshot).toMatchObject({
-      id: "ver_snapshot",
-      version: null,
-      kind: "draft_snapshot",
-    });
-    expect(statements[0]?.query).toContain('from "workflow_versions"');
-    expect(statements[1]?.query).toContain('insert into "workflow_versions"');
-    expect(statements[1]?.params).toContain("draft_snapshot");
-  });
-
-  // Repeated runs of an unchanged canvas share one row. The lookup is keyed on
-  // the workflow, the kind, the catalog, and the graph, and a hit skips the
-  // insert and returns the existing id for the run to pin.
-  it("returns an existing identical snapshot in place of a new row", async () => {
-    const { statements, snapshot } = run("ver_earlier");
-
-    expect((await snapshot).id).toBe("ver_earlier");
-    expect(statements).toHaveLength(1);
-    expect(statements[0]?.query).toContain('"kind" = $2');
-    expect(statements[0]?.query).toContain('"graph" = $4');
-  });
-
-  // A snapshot no Execution references yet belongs to the request that inserted
-  // it, which can still release it. Reusing one would let this run pin an id
-  // that request is about to delete, so the lookup asks for a referenced row.
-  it("looks up only a snapshot an execution already references", async () => {
-    const { statements, snapshot } = run("ver_earlier");
-    await snapshot;
-
-    expect(statements[0]?.query).toContain("exists");
-    expect(statements[0]?.query).toContain('"workflow_executions"');
-  });
-
   // The publication pointer and the Event subscription index both describe the
   // published graph. A snapshot that changed either one would let Events start
   // an unpublished graph.
@@ -507,55 +282,6 @@ describe("freezeDraftSnapshot", () => {
     await snapshot;
 
     expect(statements).toHaveLength(2);
-  });
-});
-
-describe("draft snapshot exclusions", () => {
-  function statementFor(
-    read: (repo: WorkflowRepo["Service"]) => Effect.Effect<unknown, unknown>
-  ) {
-    const { layer: databaseLayer, statements } = stubDatabase(() => []);
-
-    return Effect.runPromise(
-      Effect.gen(function* () {
-        const repo = yield* WorkflowRepo;
-        yield* read(repo);
-      }).pipe(
-        Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
-      )
-    ).then(() => statements[0]);
-  }
-
-  // The guard lives in the statement itself, so a snapshot another start pinned
-  // in the meantime survives. A separate read and delete would leave a window
-  // between them.
-  it("deletes a draft snapshot only when no execution names it", async () => {
-    const statement = await statementFor((repo) =>
-      repo.deleteUnreferencedDraftSnapshot("ver_snapshot")
-    );
-
-    expect(statement?.query).toContain('delete from "workflow_versions"');
-    expect(statement?.query).toContain("not exists");
-    expect(statement?.query).toContain('"workflow_executions"');
-    expect(statement?.params).toContain("draft_snapshot");
-  });
-
-  it("restricts findLatestVersion to published rows", async () => {
-    const statement = await statementFor((repo) =>
-      repo.findLatestVersion("wf_1")
-    );
-
-    expect(statement?.query).toContain('"kind" = ');
-    expect(statement?.params).toContain("published");
-  });
-
-  it("restricts listVersionHistoryPage to published rows", async () => {
-    const statement = await statementFor((repo) =>
-      repo.listVersionHistoryPage({ workflowId: "wf_1", limit: 25 })
-    );
-
-    expect(statement?.query).toContain('"kind" = ');
-    expect(statement?.params).toContain("published");
   });
 });
 

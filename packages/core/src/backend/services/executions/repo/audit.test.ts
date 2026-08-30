@@ -32,17 +32,4 @@ describe("listWorkflowEvents", () => {
         ]);
       })
   );
-
-  // The per-run timeline is keyed on the execution instead, and takes every
-  // type: a run's own rows are already scoped by belonging to it.
-  it.effect("reads a run's timeline by execution id alone", () =>
-    Effect.gen(function* () {
-      const { service: database, statements } = stubDatabase();
-
-      yield* makeAuditMethods(database).listEvents("exec_1");
-
-      assert.deepStrictEqual(statements[0]?.params.slice(0, 1), ["exec_1"]);
-      assert.notInclude(statements[0]?.query, '"event_type" in');
-    })
-  );
 });

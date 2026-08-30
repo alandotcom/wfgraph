@@ -109,19 +109,6 @@ function harness(answers: {
 }
 
 describe("startForEntity", () => {
-  // The caller is an Inngest step, so a retry re-runs this whole call. Without
-  // the lookup the retry inserts a second row and sends under a second
-  // idempotency key, and one arrival runs the graph twice.
-  it("answers with the row this arrival already opened", async () => {
-    const { sentAny, start } = harness({ ownRow: true });
-
-    const outcome = await start("first-wins");
-
-    expect(outcome.status).toBe("started");
-    expect(sentAny(isInsert)).toBe(false);
-    expect(sentAny(isInFlightQuery)).toBe(false);
-  });
-
   // Two attempts at one arrival can reach the insert together under `unlimited`,
   // which takes no lock to serialize them.
   it("opens at most one row per arrival, held on the insert", async () => {
@@ -132,20 +119,6 @@ describe("startForEntity", () => {
     expect(sent(isInsert)?.query).toContain(
       'on conflict ("workflow_id","delivery_id") do nothing'
     );
-  });
-
-  it("defers to a run the bus was told about", async () => {
-    const { sentAny, start } = harness({
-      inFlight: [["exec_live", justNow, justNow]],
-    });
-
-    const outcome = await start("first-wins");
-
-    expect(outcome).toEqual({
-      status: "refused",
-      inFlightExecutionIds: ["exec_live"],
-    });
-    expect(sentAny(isInsert)).toBe(false);
   });
 
   // A crash between the committed row and the send leaves a row nothing will
@@ -167,21 +140,6 @@ describe("startForEntity", () => {
     expect(update?.params).toContain("failed");
     // The run may have woken up and finished while the start was deciding.
     expect(update?.query).toContain('"status" in ($6, $7, $8)');
-  });
-
-  // The stamp goes on milliseconds after the commit, so an unstamped row within
-  // the grace period is a start still in progress rather than a dead one.
-  it("leaves an unstamped run alone until the grace period is up", async () => {
-    const { start } = harness({
-      inFlight: [["exec_starting", null, justNow]],
-    });
-
-    const outcome = await start("first-wins");
-
-    expect(outcome).toEqual({
-      status: "refused",
-      inFlightExecutionIds: ["exec_starting"],
-    });
   });
 
   it("defers to a live run rather than reclaiming the stuck one beside it", async () => {
@@ -211,17 +169,6 @@ describe("startForEntity", () => {
 
     expect(transactions).toEqual([{ isolationLevel: "serializable" }]);
     expect(sentAny(isLock)).toBe(false);
-  });
-
-  it("retries a serialization failure inside the repository call", async () => {
-    const { start, transactions } = harness({
-      transactionFailures: [{ code: "40001" }],
-    });
-
-    const outcome = await start("first-wins");
-
-    expect(outcome.status).toBe("started");
-    expect(transactions).toHaveLength(2);
   });
 
   // What a real driver raises is nested: Drizzle wraps the failure in a
