@@ -38,6 +38,7 @@ skills:
       createWfGraphApp, mount, auth, encryption, Inngest, clientBundle, logging.
     sources:
       - alandotcom/wfgraph:docs/embedding.md
+      - alandotcom/wfgraph:README.md
 
   - name: Events
     slug: wfgraph-core/events
