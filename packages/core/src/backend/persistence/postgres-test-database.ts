@@ -10,16 +10,26 @@
 import { randomBytes } from "node:crypto";
 import postgres from "postgres";
 import { describe } from "vitest";
-import { ManagedRuntime } from "effect";
 import { migrateWfGraphDatabase } from "#src/migrate";
 import { wfPostgres } from "#src/backend/persistence/postgres";
 import {
   conformanceCipher,
+  connect,
   type ConformanceDatabase,
 } from "#src/backend/persistence/persistence-conformance-test-support";
 
 /** Names the server. Unset means every case here skips. */
 export const POSTGRES_TEST_URL_VARIABLE = "WFGRAPH_TEST_DATABASE_URL";
+
+/**
+ * Set where a database is known to be there, which is the CI job that starts
+ * one. Skipping is how this suite stays out of a developer's way, and it is
+ * also how the whole of it could report green having run nothing: a service
+ * that failed to come up, a renamed variable or a drifted port would all look
+ * identical to a machine with no Docker. Where this is set, an absent URL is an
+ * error rather than a skip, so that failure has somewhere to surface.
+ */
+export const POSTGRES_REQUIRED_VARIABLE = "WFGRAPH_REQUIRE_POSTGRES";
 
 /**
  * Reserved. The sweep drops anything carrying it, so nothing else may be named
@@ -28,7 +38,15 @@ export const POSTGRES_TEST_URL_VARIABLE = "WFGRAPH_TEST_DATABASE_URL";
 export const TEST_SCHEMA_PREFIX = "wfgraph_test_";
 
 export function postgresTestUrl(): string | undefined {
-  return process.env[POSTGRES_TEST_URL_VARIABLE]?.trim() || undefined;
+  const url = process.env[POSTGRES_TEST_URL_VARIABLE]?.trim() || undefined;
+
+  if (!url && process.env[POSTGRES_REQUIRED_VARIABLE]?.trim()) {
+    throw new Error(
+      `${POSTGRES_REQUIRED_VARIABLE} is set, so this run is meant to have a database, but ${POSTGRES_TEST_URL_VARIABLE} names none. Skipping here would report a green suite that ran nothing.`
+    );
+  }
+
+  return url;
 }
 
 /**
@@ -96,21 +114,17 @@ export async function createPostgresTestDatabase(): Promise<ConformanceDatabase>
   await migrateWfGraphDatabase({ url, schema });
 
   return {
-    open: async (options) => {
-      const instance = await wfPostgres({
-        url,
-        schema,
-        maxConnections: 5,
-      }).open(options?.cipher ?? conformanceCipher);
-      const runtime = ManagedRuntime.make(instance.repositories);
-      return {
-        run: runtime.runPromise.bind(runtime),
-        close: async () => {
-          await runtime.dispose();
-          await instance.close();
-        },
-      };
-    },
+    open: async (options) =>
+      connect(
+        await wfPostgres({
+          url,
+          schema,
+          // Small, because a case may open several against one schema, and
+          // vitest.config.ts holds this project to one file at a time for the
+          // same reason: the server's default max_connections is 100.
+          maxConnections: 5,
+        }).open(options?.cipher ?? conformanceCipher)
+      ),
     drop: () =>
       withAdminClient(async (client) => {
         await client.unsafe(`drop schema if exists "${schema}" cascade`);

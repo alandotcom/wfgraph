@@ -8,6 +8,6 @@ A start that PostgreSQL aborted for a serialization conflict is retried again, r
 
 The check that recognised the abort read `error.cause` alone. Drizzle wraps a driver failure in a `DrizzleQueryError` carrying the SQL it ran, so the `PostgresError` holding the code sits one level further down and was never found. Every aborted start surfaced as a database failure. The check now walks the cause chain, and an unrelated code is still reported rather than retried.
 
-The retries then ran with no delay between them, so racers that aborted together retried together and spent their attempts on the same conflict. They now back off with jitter, over five attempts rather than three. Measured against PostgreSQL 17 with six connections starting one entity under `newest-wins`, that moves a consistent failure to none.
+The retries then ran with no delay between them, so racers that aborted together retried together and spent their attempts on the same conflict. They now back off with jitter, and the budget goes from three retries to five. Measured against PostgreSQL 17 with six connections starting one entity under `newest-wins`, that moves a consistent failure to none.
 
 This only ever affected PostgreSQL under concurrent starts for one entity value. SQLite serializes writes with `BEGIN IMMEDIATE` and raises no such code.

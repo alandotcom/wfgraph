@@ -125,3 +125,7 @@ jobs:
         run: pnpm run test:postgres
         env:
           WFGRAPH_TEST_DATABASE_URL: postgresql://workflow:workflow@localhost:5432/workflow_builder
+          # This job started a database, so a skip here is a fault rather than a
+          # developer without Docker. Without it the suite could report green
+          # having run nothing, and that is exactly what it exists to catch.
+          WFGRAPH_REQUIRE_POSTGRES: "1"

@@ -17,6 +17,42 @@ export class DatabaseError extends Schema.TaggedError<DatabaseError>()(
 ) {}
 
 /**
+ * How far down a cause chain a driver code is looked for.
+ *
+ * Bounded rather than walked to the end, because this runs inside a retry
+ * predicate on a run's critical path and a cause that points at itself would
+ * otherwise spin there forever. Nothing in this codebase nests deeper than two.
+ */
+const MAX_CAUSE_DEPTH = 8;
+
+/**
+ * Whether a failure carries one of the driver codes given, at any depth.
+ *
+ * The chain is walked rather than read at `error.cause`, because Drizzle wraps a
+ * driver error in a `DrizzleQueryError` carrying the failed SQL, which puts the
+ * `PostgresError` holding the code one level further down. Reading only the
+ * first link matched nothing a real database produces.
+ */
+export function hasDatabaseErrorCode(
+  error: DatabaseError,
+  code: string
+): boolean {
+  let cause: unknown = error.cause;
+
+  for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth += 1) {
+    if (typeof cause !== "object" || cause === null) {
+      return false;
+    }
+    if ("code" in cause && cause.code === code) {
+      return true;
+    }
+    cause = "cause" in cause ? cause.cause : undefined;
+  }
+
+  return false;
+}
+
+/**
  * The database, as a service rather than a module-level handle.
  *
  * A caller hands in the query it wants run and gets back an Effect whose error

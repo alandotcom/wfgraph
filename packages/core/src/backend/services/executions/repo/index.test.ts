@@ -126,8 +126,8 @@ describe("startForEntity", () => {
   });
 
   // A failure that is not a serialization abort is the caller's to see, however
-  // deep it sits, or a genuine outage would be retried four times and then
-  // reported as though it had been a race.
+  // deep it sits, or a genuine outage would be retried out and then reported as
+  // though it had been a race.
   it("does not retry an unrelated failure carried the same way", async () => {
     const { start, transactions } = harness({
       transactionFailures: [{ cause: { code: "23505" } }],

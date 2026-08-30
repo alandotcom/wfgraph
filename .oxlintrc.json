@@ -269,8 +269,6 @@
         "**/*.test.tsx",
         "**/*.spec.ts",
         "**/*.spec.tsx",
-        "**/*-test-support.ts",
-        "**/*-test-support.tsx",
         "**/test-setup.ts",
         "**/test-matchers.ts",
         "**/test-utils.ts",

@@ -63,10 +63,6 @@ export default defineConfig({
           // Cases drop their own schema, so this only finds what a killed run
           // left. It runs at setup rather than teardown so a failing run's
           // schema stays put for whoever wants to look at it.
-          // load-env is named twice on purpose. `setupFiles` runs per test file
-          // in a worker, and `globalSetup` runs before any of them in the main
-          // process, so a URL that lives in .env.local reaches the cases but not
-          // the sweep, which then skips without a word.
           // The entry sits in scripts/ so it can load the .env files first:
           // globalSetup runs in the main process before any worker, so the
           // setupFiles copy above has not run yet, and a URL that lives only in

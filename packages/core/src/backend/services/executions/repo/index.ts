@@ -10,7 +10,11 @@ import type {
   WfGraphDatabase,
   WfGraphTransaction,
 } from "#src/backend/lib/db/index";
-import { Database, type DatabaseError } from "#src/backend/lib/effect/database";
+import {
+  Database,
+  type DatabaseError,
+  hasDatabaseErrorCode,
+} from "#src/backend/lib/effect/database";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
@@ -71,25 +75,14 @@ const serializationRetrySchedule = Schedule.exponential(
 /**
  * SQLSTATE 40001 is what PostgreSQL raises when SERIALIZABLE aborts one of two
  * decisions that read and wrote the same predicate, and it is the whole reason
- * the start above is retried rather than failed.
- *
- * The code is looked for down the whole cause chain rather than on `error.cause`
- * alone, because Drizzle wraps a driver error in a `DrizzleQueryError` carrying
- * the failed SQL, which puts the `PostgresError` holding the code one level
- * further down. Reading only the first link matched nothing a real database
- * produces, so every aborted start failed its node instead of retrying.
+ * the start below is retried rather than failed. SQLite serializes its writes
+ * with BEGIN IMMEDIATE and raises nothing of the kind, so this only ever
+ * matches under the PostgreSQL backend.
  */
+const SERIALIZATION_FAILURE_CODE = "40001";
+
 function isSerializationFailure(error: DatabaseError): boolean {
-  let cause: unknown = error.cause;
-
-  while (typeof cause === "object" && cause !== null) {
-    if ("code" in cause && cause.code === "40001") {
-      return true;
-    }
-    cause = "cause" in cause ? cause.cause : undefined;
-  }
-
-  return false;
+  return hasDatabaseErrorCode(error, SERIALIZATION_FAILURE_CODE);
 }
 
 function isStuckBeforeTheBus(row: {

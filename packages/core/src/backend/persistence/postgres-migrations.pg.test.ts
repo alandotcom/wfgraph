@@ -3,10 +3,10 @@
  * ask: the generated SQL is only ever read as text elsewhere.
  */
 
-import { expect, it } from "vitest";
+import { afterEach, expect, it } from "vitest";
 import { getTableName } from "drizzle-orm";
 import { readMigrationFiles } from "drizzle-orm/migrator";
-import { Effect, ManagedRuntime } from "effect";
+import { Effect } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import {
   assertJournalHashesAreOurs,
@@ -18,6 +18,7 @@ import { wfPostgres } from "#src/backend/persistence/postgres";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
   conformanceCipher,
+  connect,
   type ConformanceConnection,
 } from "#src/backend/persistence/persistence-conformance-test-support";
 import {
@@ -30,174 +31,177 @@ import {
 const MIGRATIONS_TABLE = "__drizzle_migrations";
 const emptyGraph = createSerializedWorkflowGraph({ nodes: [], edges: [] });
 
-/** Every schema a case mints, dropped however the case ended. */
-const minted: string[] = [];
-
-async function freshSchema(): Promise<string> {
-  const schema = mintTestSchemaName();
-  minted.push(schema);
-  return schema;
-}
-
-async function dropMinted(): Promise<void> {
-  await withAdminClient(async (client) => {
-    for (const schema of minted.splice(0)) {
-      await client.unsafe(`drop schema if exists "${schema}" cascade`);
-    }
-  });
-}
-
 describePostgres("PostgreSQL migrations", () => {
+  // These cases migrate schemas by hand rather than through a harness, because
+  // migrating is the subject. The registration is the same idea as the
+  // conformance one: name it here, and it is gone however the case ended.
+  const minted: string[] = [];
+  const connections: ConformanceConnection[] = [];
+  const freshSchema = (): string => {
+    const schema = mintTestSchemaName();
+    minted.push(schema);
+    return schema;
+  };
+
+  afterEach(async () => {
+    await Promise.all(connections.splice(0).map((one) => one.close()));
+    const schemas = minted.splice(0);
+    if (schemas.length === 0) {
+      return;
+    }
+    await withAdminClient(async (client) => {
+      await Promise.all(
+        schemas.map((schema) =>
+          client.unsafe(`drop schema if exists "${schema}" cascade`)
+        )
+      );
+    });
+  });
+
   const shippedHashes = () =>
     readMigrationFiles({ migrationsFolder: wfgraphMigrationsDir() }).map(
       (migration) => migration.hash
     );
 
   it("builds every table in the schema it was given and nothing in public", async () => {
-    const schema = await freshSchema();
-    try {
-      await migrateWfGraphDatabase({ url: requirePostgresTestUrl(), schema });
+    const schema = freshSchema();
+    await migrateWfGraphDatabase({ url: requirePostgresTestUrl(), schema });
 
-      const state = await withAdminClient(async (client) => {
-        const present = await client<{ table_name: string }[]>`
+    const state = await withAdminClient(async (client) => {
+      const present = await client<{ table_name: string }[]>`
           select table_name from information_schema.tables
           where table_schema = ${schema}
         `;
-        // The shipped SQL names no schema, so a lost search_path would have
-        // built all of this in public instead. scripts/unqualify-migrations.ts
-        // is what keeps the qualifier out, and this is the only place its work
-        // is checked against a server rather than against the file it wrote.
-        const [stray] = await client<{ leaked: string | null }[]>`
+      // The shipped SQL names no schema, so a lost search_path would have
+      // built all of this in public instead. scripts/unqualify-migrations.ts
+      // is what keeps the qualifier out, and this is the only place its work
+      // is checked against a server rather than against the file it wrote.
+      const [stray] = await client<{ leaked: string | null }[]>`
           select to_regclass('public.workflows')::text as leaked
         `;
-        return {
-          names: present.map((row) => row.table_name),
-          leaked: stray?.leaked ?? null,
-        };
-      });
+      return {
+        names: present.map((row) => row.table_name),
+        leaked: stray?.leaked ?? null,
+      };
+    });
 
-      for (const table of Object.values(tables)) {
-        expect(state.names).toContain(getTableName(table));
-      }
-      expect(state.names).toContain(MIGRATIONS_TABLE);
-      expect(state.leaked).toBeNull();
-    } finally {
-      await dropMinted();
+    for (const table of Object.values(tables)) {
+      expect(state.names).toContain(getTableName(table));
     }
+    expect(state.names).toContain(MIGRATIONS_TABLE);
+    expect(state.leaked).toBeNull();
   });
 
   it("records the migrations this build ships, and reruns none of them", async () => {
-    const schema = await freshSchema();
-    try {
-      const url = requirePostgresTestUrl();
-      await migrateWfGraphDatabase({ url, schema });
-      const afterFirst = await recordedHashes(schema);
+    const schema = freshSchema();
+    const url = requirePostgresTestUrl();
+    await migrateWfGraphDatabase({ url, schema });
+    const afterFirst = await recordedHashes(schema);
 
-      // Every replica that starts with migrations.runOnStartup applies them
-      // again. Nothing here has ever proven the second pass is a no-op.
-      const instance = await wfPostgres({
-        url,
+    // Every replica that starts with migrations.runOnStartup applies them
+    // again. Nothing here has ever proven the second pass is a no-op.
+    const instance = await wfPostgres({
+      url,
+      schema,
+      migrations: { runOnStartup: true },
+    }).open(conformanceCipher);
+    await instance.close();
+    const afterSecond = await recordedHashes(schema);
+
+    expect(afterFirst).toEqual(shippedHashes());
+    expect(afterSecond).toEqual(afterFirst);
+    expect(() =>
+      assertJournalHashesAreOurs(afterSecond, {
+        migrationsFolder: wfgraphMigrationsDir(),
         schema,
-        migrations: { runOnStartup: true },
-      }).open(conformanceCipher);
-      await instance.close();
-      const afterSecond = await recordedHashes(schema);
-
-      expect(afterFirst).toEqual(shippedHashes());
-      expect(afterSecond).toEqual(afterFirst);
-      expect(() =>
-        assertJournalHashesAreOurs(afterSecond, {
-          migrationsFolder: wfgraphMigrationsDir(),
-          schema,
-        })
-      ).not.toThrow();
-    } finally {
-      await dropMinted();
-    }
+      })
+    ).not.toThrow();
   });
 
   it("refuses a journal carrying a migration this build does not ship", async () => {
-    const schema = await freshSchema();
-    try {
-      await migrateWfGraphDatabase({ url: requirePostgresTestUrl(), schema });
-      const recorded = [...(await recordedHashes(schema)), "a-foreign-hash"];
+    const schema = freshSchema();
+    await migrateWfGraphDatabase({ url: requirePostgresTestUrl(), schema });
+    const recorded = [...(await recordedHashes(schema)), "a-foreign-hash"];
 
-      expect(() =>
-        assertJournalHashesAreOurs(recorded, {
-          migrationsFolder: wfgraphMigrationsDir(),
-          schema,
-        })
-      ).toThrow(/does not ship/);
-    } finally {
-      await dropMinted();
-    }
+    expect(() =>
+      assertJournalHashesAreOurs(recorded, {
+        migrationsFolder: wfgraphMigrationsDir(),
+        schema,
+      })
+    ).toThrow(/does not ship/);
   });
 
   it("keeps two schemas in one database out of each other's way", async () => {
-    const first = await freshSchema();
-    const second = await freshSchema();
-    const connections: ConformanceConnection[] = [];
+    const first = freshSchema();
+    const second = freshSchema();
+    const url = requirePostgresTestUrl();
+    await migrateWfGraphDatabase({ url, schema: first });
+    await migrateWfGraphDatabase({ url, schema: second });
 
-    try {
-      const url = requirePostgresTestUrl();
-      await migrateWfGraphDatabase({ url, schema: first });
-      await migrateWfGraphDatabase({ url, schema: second });
+    const open = async (schema: string) => {
+      const connection = connect(
+        await wfPostgres({ url, schema }).open(conformanceCipher)
+      );
+      connections.push(connection);
+      return connection;
+    };
 
-      const connect = async (schema: string) => {
-        const instance = await wfPostgres({ url, schema }).open(
-          conformanceCipher
-        );
-        const runtime = ManagedRuntime.make(instance.repositories);
-        const connection = {
-          run: runtime.runPromise.bind(runtime),
-          close: async () => {
-            await runtime.dispose();
-            await instance.close();
-          },
-        };
-        connections.push(connection);
-        return connection;
-      };
+    const one = await open(first);
+    const other = await open(second);
 
-      const one = await connect(first);
-      const other = await connect(second);
+    await one.run(
+      Effect.gen(function* () {
+        const workflows = yield* WorkflowRepo;
+        yield* workflows.insert({
+          id: "wf_1",
+          name: "Appointments",
+          graph: emptyGraph,
+          eventSubscriptions: [],
+        });
+      })
+    );
 
-      await one.run(
+    // The second schema holds a row of its own, so the reads below can tell
+    // isolation from a read that has simply stopped answering.
+    await other.run(
+      Effect.gen(function* () {
+        const workflows = yield* WorkflowRepo;
+        yield* workflows.insert({
+          id: "wf_2",
+          name: "Reminders",
+          graph: emptyGraph,
+          eventSubscriptions: [],
+        });
+      })
+    );
+
+    const readOther = () =>
+      other.run(
         Effect.gen(function* () {
           const workflows = yield* WorkflowRepo;
-          yield* workflows.insert({
-            id: "wf_1",
-            name: "Appointments",
-            graph: emptyGraph,
-            eventSubscriptions: [],
-          });
+          return {
+            theirs: yield* workflows.findById("wf_1"),
+            own: yield* workflows.findById("wf_2"),
+            all: (yield* workflows.listSummariesNewestFirst).map(
+              (row) => row.id
+            ),
+          };
         })
       );
 
-      const readOther = () =>
-        other.run(
-          Effect.gen(function* () {
-            const workflows = yield* WorkflowRepo;
-            return {
-              byId: yield* workflows.findById("wf_1"),
-              all: yield* workflows.listSummariesNewestFirst,
-            };
-          })
-        );
+    const before = await readOther();
 
-      expect(await readOther()).toMatchObject({ byId: null, all: [] });
+    // Dropping one schema is how Workflow Graph leaves a database. The other
+    // one it shares the database with must not notice.
+    await withAdminClient(async (client) => {
+      await client.unsafe(`drop schema "${first}" cascade`);
+    });
 
-      // Dropping one schema is how Workflow Graph leaves a database. The other
-      // one it shares the database with must not notice.
-      await withAdminClient(async (client) => {
-        await client.unsafe(`drop schema "${first}" cascade`);
-      });
+    const after = await readOther();
 
-      expect(await readOther()).toMatchObject({ byId: null, all: [] });
-    } finally {
-      await Promise.all(connections.map((one) => one.close()));
-      await dropMinted();
-    }
+    expect(before).toMatchObject({ theirs: null, all: ["wf_2"] });
+    expect(before.own).toMatchObject({ id: "wf_2" });
+    expect(after).toEqual(before);
   });
 });
 

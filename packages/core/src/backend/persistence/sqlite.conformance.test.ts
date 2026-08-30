@@ -9,10 +9,10 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ManagedRuntime } from "effect";
 import { wfSqlite } from "#src/backend/persistence/sqlite";
 import {
   conformanceCipher,
+  connect,
   describePersistenceConformance,
 } from "#src/backend/persistence/persistence-conformance-test-support";
 
@@ -23,19 +23,12 @@ describePersistenceConformance({
     const filename = join(directory, "wfgraph.db");
 
     return {
-      open: async (options) => {
-        const instance = await wfSqlite({ filename }).open(
-          options?.cipher ?? conformanceCipher
-        );
-        const runtime = ManagedRuntime.make(instance.repositories);
-        return {
-          run: runtime.runPromise.bind(runtime),
-          close: async () => {
-            await runtime.dispose();
-            await instance.close();
-          },
-        };
-      },
+      open: async (options) =>
+        connect(
+          await wfSqlite({ filename }).open(
+            options?.cipher ?? conformanceCipher
+          )
+        ),
       drop: () => rm(directory, { recursive: true, force: true }),
     };
   },
