@@ -1,15 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "#src/components/ui/button";
 import { Label } from "#src/components/ui/label";
+import { IntegrationSelector } from "#src/components/ui/integration-selector";
 import { WebhookUrlField } from "#src/components/ui/webhook-url-field";
 import { EditConnectionOverlay } from "#src/components/overlays/edit-connection-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
+import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import {
   type ExtensionCatalog,
   findIntegration,
 } from "@wfgraph/shared/extensions/catalog";
-import { EventConnectionSelect } from "./event-connection-select";
 
 /**
  * One Connection for every Event of this integration on the node, plus the
@@ -20,94 +21,123 @@ import { EventConnectionSelect } from "./event-connection-select";
  * the workflow: Edit connection is how a builder pastes it after copying the
  * URL.
  */
-export function IntegrationEventConnection({
+export function IntegrationEventConnectionEditor({
   catalog,
   integrationType,
   connectionId,
   onChange,
   disabled,
-  editing,
 }: {
   catalog: ExtensionCatalog;
   integrationType: string;
   connectionId: string | undefined;
   onChange: (connectionId: string) => void;
   disabled?: boolean;
-  editing: boolean;
 }) {
   const entry = findIntegration(catalog, integrationType);
   const label = entry?.label ?? integrationType;
+  const connection = useConnection(connectionId);
 
   return (
     <div className="space-y-2">
-      {editing ? (
-        <div className="space-y-1">
-          <Label className="text-muted-foreground text-xs">
-            {`${label} Connection`}
-          </Label>
-          <EventConnectionSelect
-            disabled={disabled}
-            integrationType={integrationType}
-            onChange={onChange}
-            value={connectionId}
-          />
-        </div>
-      ) : connectionId ? (
-        <ConnectionName connectionId={connectionId} integrationLabel={label} />
-      ) : null}
+      <div className="space-y-1">
+        <Label className="text-muted-foreground text-xs">
+          {`${label} Connection`}
+        </Label>
+        <IntegrationSelector
+          disabled={disabled}
+          integrationType={integrationType}
+          onChange={onChange}
+          value={connectionId}
+        />
+      </div>
       {connectionId && entry?.hasWebhook ? (
-        <>
-          <WebhookUrlField
-            connectionId={connectionId}
-            helpText={entry.webhookHelpText}
-            type={integrationType}
-          />
-          <EditConnectionForWebhookButton connectionId={connectionId} />
-        </>
+        <WebhookConnectionDetails
+          connection={connection}
+          connectionId={connectionId}
+          helpText={entry.webhookHelpText}
+          type={integrationType}
+        />
       ) : null}
     </div>
   );
 }
 
-function ConnectionName({
-  connectionId,
-  integrationLabel,
-}: {
-  connectionId: string;
-  integrationLabel: string;
-}) {
-  const { data: connections = [] } = useQuery(integrationsQueryOptions());
-  const connection = connections.find((entry) => entry.id === connectionId);
-  const name = connection?.name || `${integrationLabel} API Key`;
-
-  return (
-    <p className="text-muted-foreground text-xs">
-      {"via "}
-      <span>{name}</span>
-    </p>
-  );
-}
-
-function EditConnectionForWebhookButton({
+export function IntegrationEventConnectionSummary({
+  catalog,
+  integrationType,
   connectionId,
 }: {
-  connectionId: string;
+  catalog: ExtensionCatalog;
+  integrationType: string;
+  connectionId: string | undefined;
 }) {
-  const { push } = useOverlay();
-  const { data: connections = [] } = useQuery(integrationsQueryOptions());
-  const connection = connections.find((entry) => entry.id === connectionId);
-  if (!connection) {
+  const entry = findIntegration(catalog, integrationType);
+  const label = entry?.label ?? integrationType;
+  const connection = useConnection(connectionId);
+  const name = connection?.name || `${label} API Key`;
+
+  if (!connectionId) {
     return null;
   }
 
   return (
-    <Button
-      onClick={() => push(EditConnectionOverlay, { integration: connection })}
-      size="sm"
-      type="button"
-      variant="outline"
-    >
-      Add signing secret
-    </Button>
+    <div className="space-y-2">
+      <p className="text-muted-foreground text-xs">
+        {"via "}
+        <span>{name}</span>
+      </p>
+      {entry?.hasWebhook ? (
+        <WebhookConnectionDetails
+          connection={connection}
+          connectionId={connectionId}
+          helpText={entry.webhookHelpText}
+          type={integrationType}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function useConnection(
+  connectionId: string | undefined
+): Integration | undefined {
+  const { data: connections = [] } = useQuery(integrationsQueryOptions());
+  return connections.find((entry) => entry.id === connectionId);
+}
+
+function WebhookConnectionDetails({
+  connectionId,
+  type,
+  helpText,
+  connection,
+}: {
+  connectionId: string;
+  type: string;
+  helpText?: string;
+  connection: Integration | undefined;
+}) {
+  const { push } = useOverlay();
+
+  return (
+    <>
+      <WebhookUrlField
+        connectionId={connectionId}
+        helpText={helpText}
+        type={type}
+      />
+      {connection ? (
+        <Button
+          onClick={() =>
+            push(EditConnectionOverlay, { integration: connection })
+          }
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          Add signing secret
+        </Button>
+      ) : null}
+    </>
   );
 }

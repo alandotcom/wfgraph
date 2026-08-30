@@ -150,7 +150,7 @@ describe("native SQLite persistence", () => {
           .all()
       ).toEqual([{ id: "wf_1", published_version_id: "ver_1" }]);
       expect(inspection.prepare("PRAGMA user_version").get()).toEqual({
-        user_version: 5,
+        user_version: 6,
       });
     } finally {
       inspection.close();

@@ -12,6 +12,11 @@ import {
   uniqueIntegrationsOfEvents,
 } from "@wfgraph/shared/extensions/catalog";
 import {
+  connectionIdFor,
+  inheritConnections,
+  stampConnection,
+} from "@wfgraph/shared/lifecycle/event-connections";
+import {
   createDefaultConditionModel,
   serializeConditionModel,
 } from "@wfgraph/shared/conditions/conditions";
@@ -25,7 +30,7 @@ import {
 } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import { EventMultiCombobox, catalogEventChoices } from "./event-combobox";
-import { IntegrationEventConnection } from "./integration-event-connection";
+import { IntegrationEventConnectionEditor } from "./integration-event-connection";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
 /**
@@ -66,26 +71,15 @@ export function WaitEventSelect({
   // edit keeps the match already written against it.
   const setEvents = (eventNames: string[]) => {
     write(
-      eventNames.map((eventName) => {
-        const existing = selected.find(
-          (subscription) => subscription.event === eventName
-        );
-        if (existing) {
-          return existing;
-        }
-        const integration = findEvent(catalog, eventName)?.integration;
-        const inherited = integration
-          ? selected.find(
-              (subscription) =>
-                findEvent(catalog, subscription.event)?.integration ===
-                integration
-            )?.connectionId
-          : undefined;
-        return {
-          event: eventName,
-          ...(inherited ? { connectionId: inherited } : {}),
-        };
-      })
+      inheritConnections(
+        eventNames.map((eventName) => {
+          const existing = selected.find(
+            (subscription) => subscription.event === eventName
+          );
+          return existing ?? { event: eventName };
+        }),
+        catalog
+      )
     );
   };
 
@@ -123,17 +117,11 @@ export function WaitEventSelect({
 
   const setConnectionId = (integration: string, connectionId: string) => {
     write(
-      selected.map((subscription) => {
-        if (
-          findEvent(catalog, subscription.event)?.integration !== integration
-        ) {
-          return subscription;
-        }
-        return {
-          event: subscription.event,
-          ...(subscription.match ? { match: subscription.match } : {}),
-          ...(connectionId ? { connectionId } : {}),
-        };
+      stampConnection({
+        bindings: selected,
+        catalog,
+        integration,
+        connectionId,
       })
     );
   };
@@ -177,17 +165,10 @@ export function WaitEventSelect({
           ))}
           {uniqueIntegrationsOfEvents(catalog, selectedNames).map(
             (integration) => (
-              <IntegrationEventConnection
+              <IntegrationEventConnectionEditor
                 catalog={catalog}
-                connectionId={
-                  selected.find(
-                    (subscription) =>
-                      findEvent(catalog, subscription.event)?.integration ===
-                      integration
-                  )?.connectionId
-                }
+                connectionId={connectionIdFor(selected, catalog, integration)}
                 disabled={disabled}
-                editing
                 integrationType={integration}
                 key={integration}
                 onChange={(connectionId) =>

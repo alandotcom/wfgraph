@@ -17,6 +17,7 @@ import {
   createWorkflowBranchFunction,
   createWorkflowRunFunction,
 } from "#src/backend/lib/inngest/workflow-function";
+import { findEvent } from "@wfgraph/shared/extensions/catalog";
 
 /**
  * Everything this app registers with Inngest: the run function, the branch
@@ -60,7 +61,14 @@ export async function buildInngestFunctions(
     createWorkflowRunFunction(client, ports),
     createWorkflowBranchFunction(client, ports),
     ...extensions.events.map((event) =>
-      createInngestEventListenerFunction({ client, event, runtime })
+      createInngestEventListenerFunction({
+        client,
+        event,
+        runtime,
+        connectionStamped: Boolean(
+          findEvent(extensions.catalog, event.name)?.integration
+        ),
+      })
     ),
   ];
 }

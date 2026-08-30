@@ -25,6 +25,17 @@ import { resendOAuth } from "#src/resend/oauth";
 import { resendWebhook } from "#src/resend/webhook";
 
 const resendCredentialFields = {
+  RESEND_WEBHOOK_SECRET: {
+    label: "Webhook Signing Secret",
+    type: "password",
+    placeholder: "whsec_...",
+    helpText:
+      "From the webhook details page in Resend. Optional on a send-only Connection; a POST without it is refused.",
+    helpLink: {
+      text: "resend.com/webhooks",
+      url: "https://resend.com/docs/webhooks/event-types",
+    },
+  },
   RESEND_API_KEY: {
     label: "API Key",
     type: "password",
@@ -40,17 +51,6 @@ const resendCredentialFields = {
     type: "text",
     placeholder: "Your Name <noreply@yourdomain.com>",
     helpText: "The name and email that will appear as the sender",
-  },
-  RESEND_WEBHOOK_SECRET: {
-    label: "Webhook Signing Secret",
-    type: "password",
-    placeholder: "whsec_...",
-    helpText:
-      "From the webhook details page in Resend. Optional on a send-only Connection; a POST without it is refused.",
-    helpLink: {
-      text: "resend.com/webhooks",
-      url: "https://resend.com/docs/webhooks/event-types",
-    },
   },
 } satisfies CredentialFields;
 

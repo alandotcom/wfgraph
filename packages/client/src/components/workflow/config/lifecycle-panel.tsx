@@ -1,9 +1,13 @@
 import { useId, useState } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { WarningCallout } from "#src/components/ui/callout";
-import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import {
+  type ExtensionCatalog,
+  uniqueIntegrationsOfEvents,
+} from "@wfgraph/shared/extensions/catalog";
 import {
   checkLifecycleRules,
+  connectionIdForIntegration,
   type Concurrency,
   inheritConnectionIds,
   initialLifecycleRules,
@@ -14,6 +18,10 @@ import {
   setConnectionForIntegration,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { ConfigSection } from "./config-section";
+import {
+  IntegrationEventConnectionEditor,
+  IntegrationEventConnectionSummary,
+} from "./integration-event-connection";
 import { LifecycleConcurrencyGroup } from "./lifecycle-concurrency-group";
 import { LifecycleEventGroup } from "./lifecycle-event-group";
 import type { UpdateNodeConfig } from "./node-config-patch";
@@ -103,7 +111,6 @@ export function LifecyclePanel({
     onManualStartChange: (allowed: boolean) =>
       write({ ...rules, allowManualStart: allowed }),
     onCorrelationPathChange: setCorrelationPath,
-    onConnectionChange: setConnectionId,
   };
 
   return (
@@ -117,9 +124,19 @@ export function LifecyclePanel({
         label="Lifecycle Rules"
         onEditingChange={setEditing}
         stickyHeader
-        view={<LifecycleGroups editing={false} {...groupProps} />}
+        view={
+          <LifecycleGroups
+            editing={false}
+            onConnectionChange={setConnectionId}
+            {...groupProps}
+          />
+        }
       >
-        <LifecycleGroups editing {...groupProps} />
+        <LifecycleGroups
+          editing
+          onConnectionChange={setConnectionId}
+          {...groupProps}
+        />
       </ConfigSection>
 
       {check.valid ? null : (
@@ -168,7 +185,6 @@ function LifecycleGroups({
         editing={editing}
         inputId={startEventId}
         onCorrelationPathChange={onCorrelationPathChange}
-        onConnectionChange={onConnectionChange}
         onEventNamesChange={onStartEventsChange}
         role="start"
         rules={rules}
@@ -187,11 +203,42 @@ function LifecycleGroups({
         editing={editing}
         inputId={cancelEventsId}
         onCorrelationPathChange={onCorrelationPathChange}
-        onConnectionChange={onConnectionChange}
         onEventNamesChange={onCancelEventsChange}
         role="cancel"
         rules={rules}
       />
+      {uniqueIntegrationsOfEvents(catalog, [
+        ...rules.startEvents,
+        ...rules.cancelEvents,
+      ]).map((integration) =>
+        editing ? (
+          <IntegrationEventConnectionEditor
+            catalog={catalog}
+            connectionId={connectionIdForIntegration(
+              rules,
+              catalog,
+              integration
+            )}
+            disabled={disabled}
+            integrationType={integration}
+            key={integration}
+            onChange={(connectionId) =>
+              onConnectionChange(integration, connectionId)
+            }
+          />
+        ) : (
+          <IntegrationEventConnectionSummary
+            catalog={catalog}
+            connectionId={connectionIdForIntegration(
+              rules,
+              catalog,
+              integration
+            )}
+            integrationType={integration}
+            key={integration}
+          />
+        )
+      )}
     </div>
   );
 }

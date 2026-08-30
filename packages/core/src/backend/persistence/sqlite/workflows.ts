@@ -80,10 +80,17 @@ function replaceSubscriptions(
     .run(workflowId);
   const insert = database.prepare(
     `INSERT INTO workflow_event_subscriptions
-     (workflow_id, event_name, role, correlation_path) VALUES (?, ?, ?, ?)`
+     (workflow_id, event_name, role, correlation_path, connection_id)
+     VALUES (?, ?, ?, ?, ?)`
   );
   for (const row of rows) {
-    insert.run(row.workflowId, row.eventName, row.role, row.correlationPath);
+    insert.run(
+      row.workflowId,
+      row.eventName,
+      row.role,
+      row.correlationPath,
+      row.connectionId
+    );
   }
 }
 
@@ -154,6 +161,7 @@ function addEventSubscriber(
     mode: workflowMode(requiredString(row, "mode")),
     roles: [role],
     correlationPath: optionalString(row, "correlation_path"),
+    connectionId: optionalString(row, "connection_id"),
   });
 }
 
@@ -212,7 +220,8 @@ export function makeSqliteWorkflowRepo(
 
         for (const row of database
           .prepare(
-            `SELECT w.id, w.name, w.mode, s.role, s.correlation_path
+            `SELECT w.id, w.name, w.mode, s.role, s.correlation_path,
+                    s.connection_id
              FROM workflow_event_subscriptions s
              JOIN workflows w ON w.id = s.workflow_id
              WHERE s.event_name = ? AND s.role <> 'wait' AND w.is_paused = 0`
@@ -223,7 +232,7 @@ export function makeSqliteWorkflowRepo(
         for (const row of database
           .prepare(
             `SELECT DISTINCT w.id, w.name, w.mode, 'wait' AS role,
-                    s.correlation_path
+                    s.correlation_path, s.connection_id
              FROM workflow_wait_states ws
              JOIN workflows w ON w.id = ws.workflow_id
              LEFT JOIN workflow_event_subscriptions s

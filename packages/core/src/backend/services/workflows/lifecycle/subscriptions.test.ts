@@ -52,12 +52,14 @@ describe("deriveEventSubscriptions", () => {
         eventName: "app/appointment.created",
         role: "start",
         correlationPath: null,
+        connectionId: null,
       },
       {
         workflowId: "wf_1",
         eventName: "app/appointment.canceled",
         role: "cancel",
         correlationPath: null,
+        connectionId: null,
       },
     ]);
   });
@@ -82,6 +84,7 @@ describe("deriveEventSubscriptions", () => {
       eventName: "billing/payment.settled",
       role: "wait",
       correlationPath: null,
+      connectionId: null,
     });
   });
 
@@ -112,12 +115,14 @@ describe("deriveEventSubscriptions", () => {
         eventName: "ops/nightly.swept",
         role: "wait",
         correlationPath: "sweep.id",
+        connectionId: null,
       },
       {
         workflowId: "wf_1",
         eventName: "app/appointment.created",
         role: "start",
         correlationPath: "appointment.id",
+        connectionId: null,
       },
     ]);
   });
@@ -143,7 +148,40 @@ describe("deriveEventSubscriptions", () => {
       eventName: "app/appointment.canceled",
       role: "cancel",
       correlationPath: "patient.id",
+      connectionId: null,
     });
+  });
+
+  it("carries the builder's Connection onto every role of that Event", () => {
+    const rows = deriveEventSubscriptions({
+      workflowId: "wf_1",
+      nodes: [
+        waitNode({ id: "wait-1", waitFor: ["resend/email.delivered"] }),
+        lifecycleNode({
+          startEvents: ["resend/email.delivered"],
+          cancelEvents: [],
+          concurrency: "unlimited",
+          connectionIds: { "resend/email.delivered": "conn_1" },
+        }),
+      ],
+    });
+
+    expect(rows).toEqual([
+      {
+        workflowId: "wf_1",
+        eventName: "resend/email.delivered",
+        role: "wait",
+        correlationPath: null,
+        connectionId: "conn_1",
+      },
+      {
+        workflowId: "wf_1",
+        eventName: "resend/email.delivered",
+        role: "start",
+        correlationPath: null,
+        connectionId: "conn_1",
+      },
+    ]);
   });
 
   it("keeps one row per Event and role however many nodes ask", () => {

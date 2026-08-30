@@ -62,6 +62,7 @@ function subscriber(overrides: Partial<EventSubscriber> = {}): EventSubscriber {
     mode: "live",
     roles: ["start"],
     correlationPath: null,
+    connectionId: null,
     ...overrides,
   };
 }
@@ -357,6 +358,7 @@ describe("createInngestEventListenerFunction", () => {
       client,
       event,
       runtime: testRuntime(stubWorkflowRepo()),
+      connectionStamped: false,
     });
 
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion

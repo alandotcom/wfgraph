@@ -242,8 +242,13 @@ export function createInngestEventListenerFunction(input: {
    * services on the same repositories and logger the HTTP side does.
    */
   runtime: WfGraphRuntime;
+  /**
+   * Whether `sendCatalogEvent` stamped `connectionId` onto this Event's data.
+   * Host Events never stamp; a payload key of that name stays on the envelope.
+   */
+  connectionStamped: boolean;
 }): InngestFunction.Any {
-  const { client, event, runtime } = input;
+  const { client, event, runtime, connectionStamped } = input;
   const when = event.source.when;
 
   return client.createFunction(
@@ -262,7 +267,8 @@ export function createInngestEventListenerFunction(input: {
     },
     async ({ event: delivered, step, runId }) => {
       const { payload, connectionId } = splitCatalogEventData(
-        toEventPayload(delivered.data)
+        toEventPayload(delivered.data),
+        { connectionStamped }
       );
       return await runEventListener({
         event,

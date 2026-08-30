@@ -578,12 +578,6 @@ export function EditConnectionOverlay({
   };
 
   const credentialEntries = Object.entries(formFields ?? {});
-  const webhookCredentialEntries = credentialEntries.filter(([key]) =>
-    key.includes("WEBHOOK")
-  );
-  const otherCredentialEntries = credentialEntries.filter(
-    ([key]) => !key.includes("WEBHOOK")
-  );
 
   return (
     <Overlay
@@ -649,8 +643,7 @@ export function EditConnectionOverlay({
             />
           ) : null}
 
-          {renderConfigFields(webhookCredentialEntries)}
-          {renderConfigFields(otherCredentialEntries)}
+          {renderConfigFields(credentialEntries)}
 
           <div className="space-y-2">
             <Label htmlFor="name">Label (Optional)</Label>

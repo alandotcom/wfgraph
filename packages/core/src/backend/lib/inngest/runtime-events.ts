@@ -139,12 +139,19 @@ export function withCatalogConnection(
 /**
  * Split the Connection stamp off a catalog Event's `data`.
  *
- * A host Event never carries one, and the vendor envelope is what remains.
+ * Only the integration send path stamps `connectionId`. A host Event that
+ * happens to carry that key keeps it as payload.
  */
-export function splitCatalogEventData(data: JsonObject): {
+export function splitCatalogEventData(
+  data: JsonObject,
+  input: { connectionStamped: boolean }
+): {
   payload: JsonObject;
   connectionId: string | undefined;
 } {
+  if (!input.connectionStamped) {
+    return { payload: data, connectionId: undefined };
+  }
   const parsed = readCatalogConnection(data);
   if (Result.isFailure(parsed)) {
     return { payload: data, connectionId: undefined };

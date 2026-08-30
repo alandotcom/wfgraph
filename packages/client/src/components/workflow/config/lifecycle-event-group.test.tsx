@@ -1,14 +1,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { describe, expect, it } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
+import { LifecyclePanel } from "#src/components/workflow/config/lifecycle-panel";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
-import { LifecycleEventGroup } from "./lifecycle-event-group";
 
 const resendCatalog: ExtensionCatalog = {
   events: [
@@ -28,6 +28,13 @@ const resendCatalog: ExtensionCatalog = {
     {
       name: "resend/email.delivered",
       label: "Email delivered",
+      integration: "resend",
+      correlationPath: "data.email_id",
+      payloadFields: [{ path: "data.email_id", type: "string" }],
+    },
+    {
+      name: "resend/email.bounced",
+      label: "Email bounced",
       integration: "resend",
       correlationPath: "data.email_id",
       payloadFields: [{ path: "data.email_id", type: "string" }],
@@ -64,7 +71,7 @@ const resendConnection: Integration = {
   configuredKeys: [],
 };
 
-function renderGroup(input: {
+function renderPanel(input: {
   editing: boolean;
   rules?: LifecycleRules;
   connections?: Integration[];
@@ -79,32 +86,32 @@ function renderGroup(input: {
     input.connections ?? []
   );
 
-  return render(
+  const view = render(
     <ExtensionCatalogProvider value={resendCatalog}>
       <QueryClientProvider client={queryClient}>
         <JotaiProvider store={createStore()}>
           <OverlayProvider>
-            <LifecycleEventGroup
-              catalog={resendCatalog}
+            <LifecyclePanel
+              config={{ lifecycleRules: input.rules ?? startRules }}
               disabled={false}
-              editing={input.editing}
-              inputId="start-events"
-              onConnectionChange={() => undefined}
-              onCorrelationPathChange={() => undefined}
-              onEventNamesChange={() => undefined}
-              role="start"
-              rules={input.rules ?? startRules}
+              onUpdateConfig={() => undefined}
             />
           </OverlayProvider>
         </JotaiProvider>
       </QueryClientProvider>
     </ExtensionCatalogProvider>
   );
+
+  if (input.editing) {
+    fireEvent.click(view.getByRole("button", { name: "Edit Lifecycle Rules" }));
+  }
+
+  return view;
 }
 
-describe("LifecycleEventGroup Connection picker", () => {
+describe("LifecyclePanel Connection picker", () => {
   it("offers a Connection only for an integration-owned Event", () => {
-    const view = renderGroup({ editing: true });
+    const view = renderPanel({ editing: true });
 
     expect(view.getByText("Appointment created")).toBeTruthy();
     expect(view.getByText("Email delivered")).toBeTruthy();
@@ -117,7 +124,7 @@ describe("LifecycleEventGroup Connection picker", () => {
   });
 
   it("offers one Connection for every Event of the same integration", () => {
-    const view = renderGroup({
+    const view = renderPanel({
       editing: true,
       rules: {
         startEvents: ["resend/email.sent", "resend/email.delivered"],
@@ -133,8 +140,25 @@ describe("LifecycleEventGroup Connection picker", () => {
     ).toHaveLength(1);
   });
 
+  it("offers one Connection when Start and Cancel name the same integration", () => {
+    const view = renderPanel({
+      editing: true,
+      rules: {
+        startEvents: ["resend/email.sent"],
+        cancelEvents: ["resend/email.bounced"],
+        concurrency: "unlimited",
+      },
+    });
+
+    expect(view.getByText("Email sent")).toBeTruthy();
+    expect(view.getByText("Email bounced")).toBeTruthy();
+    expect(
+      view.getAllByRole("button", { name: "Add Resend connection" })
+    ).toHaveLength(1);
+  });
+
   it("shows the webhook URL next to that Connection", () => {
-    const view = renderGroup({
+    const view = renderPanel({
       editing: true,
       connections: [resendConnection],
     });
@@ -146,7 +170,7 @@ describe("LifecycleEventGroup Connection picker", () => {
   });
 
   it("shows the stored Connection in view mode", () => {
-    const view = renderGroup({
+    const view = renderPanel({
       editing: false,
       connections: [resendConnection],
     });

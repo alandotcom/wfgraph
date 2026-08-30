@@ -15,6 +15,11 @@ import {
   findEvent,
   findIntegration,
 } from "#src/extensions/catalog";
+import {
+  connectionIdFor,
+  inheritConnections,
+  stampConnection,
+} from "#src/lifecycle/event-connections";
 import { NonEmptyTrimmedString, readAs } from "#src/types/schema";
 
 /**
@@ -312,6 +317,35 @@ export function pruneCorrelationPaths(rules: LifecycleRules): LifecycleRules {
 }
 
 /**
+ * The named start and cancel Events as the shared Connection policy reads
+ * them. Matching still keys `connectionIds` by Event name.
+ */
+function namedEventConnections(rules: LifecycleRules) {
+  return [...rules.startEvents, ...rules.cancelEvents].map((event) => ({
+    event,
+    ...(rules.connectionIds?.[event]
+      ? { connectionId: rules.connectionIds[event] }
+      : {}),
+  }));
+}
+
+function writeEventConnections(
+  rules: LifecycleRules,
+  bindings: readonly { event: string; connectionId?: string }[]
+): LifecycleRules {
+  const next = Object.fromEntries(
+    bindings.flatMap((binding) =>
+      binding.connectionId ? [[binding.event, binding.connectionId]] : []
+    )
+  );
+
+  return {
+    ...rules,
+    connectionIds: Object.keys(next).length > 0 ? next : undefined,
+  };
+}
+
+/**
  * The stored Connection for this integration among the named start and cancel
  * Events, if any of them already hold one.
  */
@@ -320,16 +354,7 @@ export function connectionIdForIntegration(
   catalog: ExtensionCatalog,
   integration: string
 ): string | undefined {
-  for (const name of [...rules.startEvents, ...rules.cancelEvents]) {
-    if (findEvent(catalog, name)?.integration !== integration) {
-      continue;
-    }
-    const stored = rules.connectionIds?.[name];
-    if (stored) {
-      return stored;
-    }
-  }
-  return undefined;
+  return connectionIdFor(namedEventConnections(rules), catalog, integration);
 }
 
 /**
@@ -345,23 +370,15 @@ export function setConnectionForIntegration(input: {
   integration: string;
   connectionId: string;
 }): LifecycleRules {
-  const { rules, catalog, integration, connectionId } = input;
-  const next = { ...rules.connectionIds };
-  for (const name of [...rules.startEvents, ...rules.cancelEvents]) {
-    if (findEvent(catalog, name)?.integration !== integration) {
-      continue;
-    }
-    if (connectionId) {
-      next[name] = connectionId;
-    } else {
-      delete next[name];
-    }
-  }
-
-  return {
-    ...rules,
-    connectionIds: Object.keys(next).length > 0 ? next : undefined,
-  };
+  return writeEventConnections(
+    input.rules,
+    stampConnection({
+      bindings: namedEventConnections(input.rules),
+      catalog: input.catalog,
+      integration: input.integration,
+      connectionId: input.connectionId,
+    })
+  );
 }
 
 /**
@@ -375,36 +392,10 @@ export function inheritConnectionIds(
   rules: LifecycleRules,
   catalog: ExtensionCatalog
 ): LifecycleRules {
-  const named = [...rules.startEvents, ...rules.cancelEvents];
-  const byIntegration = new Map<string, string>();
-  for (const name of named) {
-    const integration = findEvent(catalog, name)?.integration;
-    const stored = rules.connectionIds?.[name];
-    if (integration && stored && !byIntegration.has(integration)) {
-      byIntegration.set(integration, stored);
-    }
-  }
-
-  const next = { ...rules.connectionIds };
-  let changed = false;
-  for (const name of named) {
-    const integration = findEvent(catalog, name)?.integration;
-    const inherited = integration ? byIntegration.get(integration) : undefined;
-    if (!integration || next[name] || !inherited) {
-      continue;
-    }
-    next[name] = inherited;
-    changed = true;
-  }
-
-  if (!changed) {
-    return rules;
-  }
-
-  return {
-    ...rules,
-    connectionIds: next,
-  };
+  return writeEventConnections(
+    rules,
+    inheritConnections(namedEventConnections(rules), catalog)
+  );
 }
 
 /**
@@ -431,20 +422,6 @@ export function pruneConnectionIds(rules: LifecycleRules): LifecycleRules {
     ...rules,
     connectionIds: Object.keys(next).length > 0 ? next : undefined,
   };
-}
-
-/**
- * Whether a stored Connection still matches the arrival.
- *
- * A host Event never names one, and a stored blank (an unpublished draft that
- * has not picked yet) matches every arrival. A stored id matches only that
- * Connection, so a deleted Connection refuses rather than silently fanning in.
- */
-export function connectionMatches(
-  stored: string | undefined,
-  delivered: string | undefined
-): boolean {
-  return stored === undefined || stored === delivered;
 }
 
 /**

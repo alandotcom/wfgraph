@@ -106,6 +106,12 @@ export type EventSubscriber = {
    * Event declares. Null where they wrote none, leaving the declaration to stand.
    */
   correlationPath: string | null;
+  /**
+   * The Connection a start or cancel of this Event must arrive on. Null for a
+   * host Event, and for a wait-only subscriber whose match lives on the parked
+   * row instead.
+   */
+  connectionId: string | null;
 };
 
 /**
@@ -504,6 +510,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                   mode: workflows.mode,
                   role: workflowEventSubscriptions.role,
                   correlationPath: workflowEventSubscriptions.correlationPath,
+                  connectionId: workflowEventSubscriptions.connectionId,
                 })
                 .from(workflowEventSubscriptions)
                 .innerJoin(
@@ -530,6 +537,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                   name: workflows.name,
                   mode: workflows.mode,
                   correlationPath: workflowEventSubscriptions.correlationPath,
+                  connectionId: workflowEventSubscriptions.connectionId,
                 })
                 .from(workflowWaitStates)
                 .innerJoin(
@@ -569,6 +577,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                 mode: row.mode,
                 roles: [row.role],
                 correlationPath: row.correlationPath,
+                connectionId: row.connectionId,
               });
             }
 
@@ -586,6 +595,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                 mode: row.mode,
                 roles: ["wait"],
                 correlationPath: row.correlationPath,
+                connectionId: row.connectionId,
               });
             }
 

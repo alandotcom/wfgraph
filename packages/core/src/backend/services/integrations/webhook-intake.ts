@@ -11,9 +11,11 @@ import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
-import { statedSeamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
 import {
-  InternalFailure,
+  statedSeamFailureHandlers,
+  internalFailureFromCause,
+} from "#src/backend/lib/effect/internal-failure";
+import {
   InvalidInput,
   NotFound,
   Unauthorized,
@@ -24,7 +26,6 @@ import {
   findIntegration,
 } from "@wfgraph/shared/extensions/catalog";
 import { readJsonObject } from "@wfgraph/shared/types/json";
-import { getErrorMessage } from "@wfgraph/shared/utils";
 
 const webhookLogger = Effect.map(AppLogger, (appLogger) =>
   appLogger.get("webhook")
@@ -122,18 +123,11 @@ export const receiveWebhook = Effect.fn("receiveWebhook")(
           "Failed to receive webhook",
           "Could not receive this webhook"
         ),
-        EncryptionKeyMismatch: (failure) =>
-          Effect.gen(function* () {
-            const logger = yield* webhookLogger;
-            yield* logger.error(
-              `Failed to receive webhook: ${getErrorMessage(failure.cause)}`,
-              { error: failure.cause }
-            );
-            return yield* new InternalFailure({
-              error: "Could not receive this webhook",
-              cause: failure.cause,
-            });
-          }),
+        EncryptionKeyMismatch: internalFailureFromCause(
+          webhookLogger,
+          "Failed to receive webhook",
+          "Could not receive this webhook"
+        ),
       })
     )
 );

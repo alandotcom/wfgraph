@@ -221,6 +221,7 @@ function subscriber(overrides: Partial<EventSubscriber> = {}): EventSubscriber {
     mode: "live",
     roles: ["start"],
     correlationPath: null,
+    connectionId: null,
     ...overrides,
   };
 }
@@ -378,22 +379,13 @@ describe("applyLifecycleRules", () => {
     it.effect("is waits_only when the arrival is a different Connection", () =>
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({
-          subscriber: subscriber(),
+          subscriber: subscriber({ connectionId: "conn_1" }),
           event: { ...appointmentCreated, connectionId: "conn_other" },
           payload,
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              stubPublishedWorkflow(
-                createWorkflow({
-                  rules: {
-                    ...startRules,
-                    connectionIds: {
-                      "app/appointment.created": "conn_1",
-                    },
-                  },
-                })
-              ),
+              stubPublishedWorkflow(createWorkflow({ rules: startRules })),
               lifecyclePorts
             )
           )
@@ -410,22 +402,13 @@ describe("applyLifecycleRules", () => {
     it.effect("starts when the arrival is the Connection the rules name", () =>
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({
-          subscriber: subscriber(),
+          subscriber: subscriber({ connectionId: "conn_1" }),
           event: { ...appointmentCreated, connectionId: "conn_1" },
           payload,
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              stubPublishedWorkflow(
-                createWorkflow({
-                  rules: {
-                    ...startRules,
-                    connectionIds: {
-                      "app/appointment.created": "conn_1",
-                    },
-                  },
-                })
-              ),
+              stubPublishedWorkflow(createWorkflow({ rules: startRules })),
               lifecyclePorts
             )
           )

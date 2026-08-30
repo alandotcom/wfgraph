@@ -13,13 +13,10 @@ import {
 import {
   type ExtensionCatalog,
   findEvent,
-  uniqueIntegrationsOfEvents,
 } from "@wfgraph/shared/extensions/catalog";
 import { catalogEventChoices } from "./event-combobox";
-import { IntegrationEventConnection } from "./integration-event-connection";
 import {
   type CorrelationPathRequest,
-  connectionIdForIntegration,
   correlationPathRequestFor,
   type LifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
@@ -58,7 +55,6 @@ export function LifecycleEventGroup({
   inputId,
   onEventNamesChange,
   onCorrelationPathChange,
-  onConnectionChange,
 }: {
   role: EventRole;
   editing: boolean;
@@ -68,11 +64,9 @@ export function LifecycleEventGroup({
   inputId: string;
   onEventNamesChange: (eventNames: string[]) => void;
   onCorrelationPathChange: (eventName: string, path: string) => void;
-  onConnectionChange: (integration: string, connectionId: string) => void;
 }) {
   const copy = ROLE_COPY[role];
   const eventNames = role === "start" ? rules.startEvents : rules.cancelEvents;
-  const integrations = uniqueIntegrationsOfEvents(catalog, eventNames);
 
   return (
     <ConfigGroup
@@ -117,30 +111,12 @@ export function LifecycleEventGroup({
               })}
             />
           ))}
-          {integrations.map((integration) => (
-            <IntegrationEventConnection
-              catalog={catalog}
-              connectionId={connectionIdForIntegration(
-                rules,
-                catalog,
-                integration
-              )}
-              disabled={disabled}
-              editing
-              integrationType={integration}
-              key={integration}
-              onChange={(connectionId) =>
-                onConnectionChange(integration, connectionId)
-              }
-            />
-          ))}
         </div>
       ) : (
         <ChosenEventSummary
           catalog={catalog}
           empty={copy.empty}
           eventNames={eventNames}
-          integrations={integrations}
           role={role}
           rules={rules}
         />
@@ -155,14 +131,12 @@ function ChosenEventSummary({
   rules,
   catalog,
   empty,
-  integrations,
 }: {
   eventNames: readonly string[];
   role: EventRole;
   rules: LifecycleRules;
   catalog: ExtensionCatalog;
   empty: string;
-  integrations: readonly string[];
 }) {
   if (eventNames.length === 0) {
     return <ConfigViewEmpty>{empty}</ConfigViewEmpty>;
@@ -195,17 +169,6 @@ function ChosenEventSummary({
           );
         })}
       </ul>
-      {integrations.map((integration) => (
-        <IntegrationEventConnection
-          catalog={catalog}
-          connectionId={connectionIdForIntegration(rules, catalog, integration)}
-          disabled
-          editing={false}
-          integrationType={integration}
-          key={integration}
-          onChange={() => undefined}
-        />
-      ))}
     </div>
   );
 }

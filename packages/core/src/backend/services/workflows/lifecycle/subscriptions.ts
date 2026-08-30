@@ -46,6 +46,7 @@ export function deriveEventSubscriptions(input: {
       eventName,
       role,
       correlationPath: entryRules?.correlationPaths?.[eventName] ?? null,
+      connectionId: entryRules?.connectionIds?.[eventName] ?? null,
     });
   };
 

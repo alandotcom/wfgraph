@@ -16,9 +16,9 @@ describe("the resend integration", () => {
     expect(integration.type).toBe("resend");
     expect(integration.test).toBeDefined();
     expect(Object.keys(integration.credentials)).toEqual([
+      "RESEND_WEBHOOK_SECRET",
       "RESEND_API_KEY",
       "RESEND_FROM_EMAIL",
-      "RESEND_WEBHOOK_SECRET",
     ]);
     expect(integration.events?.map((event) => event.name)).toContain(
       "resend/email.delivered"

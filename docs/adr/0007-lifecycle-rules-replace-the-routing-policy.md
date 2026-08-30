@@ -115,9 +115,10 @@ type.
 
 The Connection is delivery metadata, not payload. Intake stamps `connectionId`
 on Inngest event `data` (v4 does not persist `event.user`) and the listener
-strips it before decode. Matching is the stored id on Lifecycle Rules and Wait
-Subscriptions. A start on the wrong Connection is `waits_only`. The
-subscription index stays keyed by Event name.
+strips it before decode, and only on Events the catalog marks as integration-
+owned. Matching is the stored id, denormalized onto the subscription index the
+same way Correlation Path already is. A start on the wrong Connection is
+`waits_only` without opening the published graph.
 
 ## Amendment, 2026-08-30: one Connection per integration in the editor
 
