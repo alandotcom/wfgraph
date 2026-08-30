@@ -55,24 +55,42 @@ jobs:
       #   packing, which keeps a preview off the real semver line. Without it a
       #   preview tarball packs as 3.1.1 and a lockfile can go on resolving the
       #   published 3.1.1 to it.
-      # --peerDeps carries that preview version into cross-package
-      #   peerDependencies, which @wfgraph/plugins needs: it names
-      #   @wfgraph/core as a peer at `*`, and a bare range refuses a
-      #   prerelease, so an install would report the peer unmet.
+      # --commentWithSha prints the commit-sha install URL instead of the pull
+      #   request one. The paragraph below has the reasoning.
+      #
+      # --peerDeps is deliberately absent, though it reads like the flag this
+      # repo wants: it carries the preview version into cross-package
+      # peerDependencies, and @wfgraph/plugins does name @wfgraph/core as a
+      # peer. What it actually produces is a requirement nothing can satisfy.
+      # pkg.pr.new rewrites ordinary dependencies to pkg.pr.new URLs, while
+      # --peerDeps writes a bare version string, and a semver requirement never
+      # matches a URL-resolved package. A consumer installing core from a
+      # preview URL gets `No version matching "0.0.0-preview-<sha>" found for
+      # peer dependency "@wfgraph/core" (but package exists)` under bun, even
+      # though the installed core's version is that exact string. Left at `*`
+      # the peer resolves quietly under bun and under pnpm. The rule that
+      # motivates the flag, a bare range refusing a prerelease, applies to a
+      # version resolution and does not fire on a URL one.
       #
       # Every publish registers three refs for the same tarball: the commit
-      # sha, the pull request number, and the branch name. The comment prints
-      # the pull request one, which is stable text that resolves to whatever
-      # was published most recently, so a reader copies the install line once.
-      # `--commentWithSha` would print the sha form instead, immutable and
-      # different on every push. Either way the ref is pinned by an integrity
-      # hash once it reaches a lockfile, so moving to a newer build is
-      # `pnpm update @wfgraph/core` rather than a plain install.
+      # sha, the pull request number, and the branch name. Only the sha ref is
+      # safe to hand a consumer. The pull request ref reads as stable text that
+      # follows the newest build, but a lockfile stores the URL verbatim next
+      # to the integrity hash of whatever it fetched, and the URL string is the
+      # resolution key. So `@172` stops moving the moment it lands in a
+      # lockfile. Against a warm cache the old tarball reinstalls with no
+      # warning; against a cold one (a fresh clone, or CI) the newer tarball
+      # arrives, fails the recorded hash, and the install dies with
+      # IntegrityCheckFailed. Neither `bun update` nor `bun install --force`
+      # re-resolves it, since both are defined over semver ranges and a URL has
+      # none, so a bump means deleting the lockfile entry by hand. A sha URL is
+      # immutable, which keeps the hash valid and makes the bump a visible
+      # diff.
       #
       # Run from the lockfile with `pnpm exec`. pkg.pr.new asks CI to avoid
       # `pnpm dlx` here.
       - name: Publish preview packages
         run: >
-          pnpm exec pkg-pr-new publish --pnpm --previewVersion --peerDeps
+          pnpm exec pkg-pr-new publish --pnpm --previewVersion --commentWithSha
           --packageManager=pnpm
           ./packages/core ./packages/client ./packages/plugins
