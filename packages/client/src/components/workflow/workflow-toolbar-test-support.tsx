@@ -14,9 +14,11 @@ import {
 } from "@tanstack/react-query";
 import {
   createMemoryHistory,
+  createRoute,
   createRootRoute,
   createRouter,
   RouterProvider,
+  type SearchSchemaInput,
 } from "@tanstack/react-router";
 import { render } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
@@ -150,8 +152,8 @@ export function PublishProbe({
       <button onClick={actions.handlePublish} type="button">
         Start publish
       </button>
-      <button onClick={() => void actions.handleExecute()} type="button">
-        Run workflow
+      <button onClick={() => void actions.handleExecute("draft")} type="button">
+        Run draft
       </button>
       <button onClick={actions.confirmPublish} type="button">
         Confirm publish
@@ -181,6 +183,21 @@ export function renderProbe({
   queryClient?: QueryClient;
 } = {}) {
   const rootRoute = createRootRoute({ component: () => probe });
+  // A started run navigates here through `navigateToExecution` in
+  // workflow-run-actions.ts, so the route must exist or that call throws on an
+  // unmatched path. The route's component never renders, because the root
+  // component has no `<Outlet />`.
+  const workflowRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/workflows/$workflowId",
+    validateSearch: (search: { executionId?: string } & SearchSchemaInput) => ({
+      executionId:
+        typeof search.executionId === "string" && search.executionId.length > 0
+          ? search.executionId
+          : undefined,
+    }),
+    component: () => null,
+  });
 
   return render(
     <JotaiProvider store={store}>
@@ -190,7 +207,7 @@ export function renderProbe({
             <OverlayProvider>
               <RouterProvider
                 router={createRouter({
-                  routeTree: rootRoute,
+                  routeTree: rootRoute.addChildren([workflowRoute]),
                   history: createMemoryHistory({ initialEntries: ["/"] }),
                 })}
               />

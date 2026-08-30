@@ -137,11 +137,11 @@ An achromatic graphite ramp carries the entire interface; saturated hues exist o
 
 ### Tertiary (signals)
 
-Each signal is one token carrying both the fill and the text form, and each light-mode value is solved so its text form clears 4.5:1 on its own 10% tint, which is the `bg-x/10 text-x` pattern the run panel uses throughout.
+Each signal is one token carrying both the fill and the text form. On Paper, every light-mode value clears the 4.5:1 body floor as text: Amber 5.05:1, Green 5.01:1, Red 4.77:1, Blue 6.72:1. A signal's own 10% tint costs it about six tenths of a point, leaving Red at 4.01:1, Green at 4.35:1 and Amber at 4.42:1. The `bg-x/10 text-x` pattern is therefore below the floor for those three at Caption and Body sizes. Blue holds at 5.76:1. Where words must be read at those sizes, drop the fill and let the signal carry a dot, the border, or the word itself on Paper, as the dashboard's Published mode cell does with an Amber dot and an Amber word. Closing the gap for the tint pattern needs a second token per signal, a foreground tuned against the tinted ground. Until those tokens exist, a tinted band carrying its own signal text is a known shortfall.
 
 - **Signal Red** (oklch(0.577 0.245 27.325)): Destructive actions and failed runs. `--destructive`.
 - **Signal Green** (oklch(0.526 0.148 149.58)): Successful runs. `--success`.
-- **Signal Amber** (oklch(0.546 0.12 70.08)): Waiting runs, test mode, and unmet prerequisites. `--warning`.
+- **Signal Amber** (oklch(0.546 0.12 70.08)): Waiting runs, test recipients (a Published mode of Test, and every Draft run), and unmet prerequisites. Nothing else uses it; a paused workflow is graphite. `--warning`.
 - **Signal Blue** (oklch(0.482 0.18 259.8)): Work in progress, including the running-node border sweep, and live template variables. `--info`.
 - **Selection Blue** (oklch(0.56 0.21 264), oklch(0.72 0.17 264) in dark): The persistent outer halo on the selected canvas object. `--selection`. It stays separate from Signal Blue so selection never reads as execution state, and it leaves the node surface unchanged.
 - **Signal Slate** (oklch(0.52 0.046 257.417)): Cancelled and superseded runs. `--cancelled`.
@@ -157,6 +157,40 @@ The exception is bounded. It applies to the glyph of a built-in node and to noth
 **The Signal Rule.** Chroma is earned by state. If an element is not communicating run status, a destructive consequence, selection, or an integration's identity, it is grayscale. There is no decorative color anywhere in the editor.
 
 **The One Ramp Rule.** All neutrals come from the zero-chroma graphite ramp. The single exception is Signal Slate, which carries cancelled and superseded runs: the tint is what separates "this run stopped" from "this text is quiet", and it is spent on status rather than on the field. Everywhere else a warm or cool tinted gray breaks the achromatic field.
+
+### Routine work and warnings
+
+Signal Red and the confirmation dialog are the two loudest things the editor owns, and both are spent on loss. The rules below keep them there, and hold every surface to one vocabulary.
+
+**Red marks a failure or a deletion.** Running a workflow, publishing a version, and switching Published mode are routine work. Each uses the default button and no signal color.
+
+**A confirmation dialog that warns is for an action that destroys data.** A dialog that collects what a run or a publish needs is not a warning. A setting a person can switch back is not confirmed at all.
+
+**One fact, one vocabulary.** Every surface that shows a fact uses the words of the control that sets it. Published mode is Live or Test, Graph is Draft or v7, and Recipients is Live or Test. A column or a badge never coins its own words for a fact a control already names.
+
+**Do not explain one control in the copy of another.** If a control needs a sentence about what its neighbor does, move or regroup the controls.
+
+**A setting is a control, not a command.** It lives where its state is shown, which for Published mode is the status strip. It never appears in the Actions menu or the command palette.
+
+**Rows offering the same kind of repair use the same button weight.** Filling one button ranks it above the others, and the reader picks the row that matches the problem.
+
+**UI copy follows Google's developer documentation style guide.** Present tense, one idea per sentence, plain words.
+
+### Copy
+
+The rules above decide what a control is. These decide what it says.
+
+**A label says what the control does. A detail line adds a fact the label cannot carry.** A shortcut, the current state ("Live"), or the reason the row is disabled ("Nothing published yet") earns a detail line. A paraphrase of the label ("Add step: pick what the new step does") is removed.
+
+**A help popover is at most three paragraphs of one sentence each.** A popover that needs more is a control that needs a visible label.
+
+**No UI sentence runs past 20 words.** Split it, or cut it.
+
+**The product is not a character.** An Event has fields; it does not "declare" them. A run has an Event; it does not "stand in for" one. A path is a default; it is not "read instead". Say what the thing is or does.
+
+**Facts are nouns, actions are imperatives.** A column, badge, or status is the noun the control uses. A button or menu item is the action it performs, in the same words the toolbar uses.
+
+**Every string follows Google's developer documentation style guide,** and a review of a change reads its UI copy against that guide before the change lands.
 
 ## 3. Typography
 
@@ -243,8 +277,9 @@ the active workspace view. The selected workspace uses a Graphite Ink fill with
 Paper text. Tone, rather than an accent stripe, marks the active workflow.
 
 The workflow workspace has three views: **Draft**, **Runs**, and **Changes**. A
-segmented control precedes run mode and **Publish** at desktop widths. A menu
-that names the active view replaces the control on mobile devices. The control
+segmented control precedes the Run split button and **Publish** at desktop
+widths. Below `md` the three views sit at the top of the toolbar's overflow
+menu, the active one checked, above the run commands and **Publish**. The control
 remains available when the inspector is collapsed or dismissed. The canvas,
 inspector, editing lock, and status strip always follow the same active view.
 When the view changes, the canvas keeps its zoom and anchors the Lifecycle card
@@ -259,18 +294,30 @@ and version history. Entering **Runs** or **Changes** opens the inspector.
 Collapsing or dismissing the inspector doesn't change the active view.
 
 A Panel-toned status strip closes the canvas column: 32px tall, Caption type, a
-hairline top border, and one line that never wraps. It identifies **Runs** and
-**Changes**, explains that editing is off, and provides **Back to draft**. With
-a read-only view on the canvas, the strip tints toward `--info`. Its height
-remains constant because the strip and graph share the column height.
+hairline top border, and one line that never wraps. While the draft is on
+screen, the strip names the published version and carries **Published mode** one
+divider from it, as a ghost menu button reading Live or Test behind a dot. The
+dot is an outline for Live and a filled Signal Amber for Test. The setting sits
+there because the badge beside it already names the version the mode governs.
+The strip also identifies **Runs** and **Changes**, explains that editing is
+off, and provides **Back to draft**. With a read-only view on the canvas, the
+strip tints toward `--info`. Its height remains constant because the strip and
+graph share the column height.
 
 The 44px editor toolbar spans the full editor shell. Workflow navigation,
 **Actions**, and **Settings** form the leading group. The 320px search control
 stays centered in the shell and hides at 70rem or narrower; its keyboard
-shortcut remains available. The workspace control, run mode, and **Publish**
-form the trailing group. Test mode uses Signal Amber because it changes where
-configured messages go. Publication state stays in the status strip, separate
-from run mode.
+shortcut remains available. It sits between the two groups in DOM order, so Tab
+reaches it in the position it appears. The workspace control, the Run split
+button, and **Publish** form the trailing group, which sticks to the shell's
+right edge so a scrolling row never carries a write control out of reach. The
+split button's face is **Run draft**, which always sends to test recipients. Its
+menu holds the run of the published version, labelled with that version number
+and the Published mode. Below `md` the workspace control, both run commands and
+**Publish** collapse into one overflow menu, each disabled for the reason its
+desktop control is disabled. **Configuration** stays beside that menu as an icon
+button, joined by **Delete** while something is selected, because the properties
+rail those two belong to is absent at that width.
 
 ### Publication review
 

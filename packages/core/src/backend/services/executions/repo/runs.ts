@@ -6,12 +6,18 @@ import {
   inArray,
   isNull,
   lt,
+  ne,
   or,
   type SQL,
   sql,
 } from "drizzle-orm";
+import type { PgColumn } from "drizzle-orm/pg-core";
 import type { Effect } from "effect";
-import { workflowExecutions, workflows } from "#src/backend/lib/db/schema";
+import {
+  workflowExecutions,
+  workflows,
+  workflowVersions,
+} from "#src/backend/lib/db/schema";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
@@ -27,26 +33,37 @@ import type {
 } from "#src/backend/services/executions/repo/contracts";
 
 /**
- * The columns both run-list queries select. JSONB payloads and routing columns
- * the lists never paint stay off it, so a poll does not pull TOAST the panel
- * would discard.
+ * The columns both run-list queries select, plus the two they join for.
+ *
+ * JSONB payloads and the routing columns the lists never paint stay off this
+ * list, so a poll does not pull TOAST the panel would discard. `versionKind` and
+ * `versionNumber` come from the version the run pinned, looked up by primary
+ * key, so the panel can label a run's graph without reading the graph.
  */
 const EXECUTION_LIST_COLUMNS = {
-  id: true,
-  workflowId: true,
-  status: true,
-  startSource: true,
-  runMode: true,
-  startEventName: true,
-  entityValue: true,
-  workflowRunId: true,
-  error: true,
-  startedAt: true,
-  waitingAt: true,
-  cancelledAt: true,
-  completedAt: true,
-  duration: true,
-} as const satisfies Record<keyof WorkflowExecutionListRow, true>;
+  id: workflowExecutions.id,
+  workflowId: workflowExecutions.workflowId,
+  status: workflowExecutions.status,
+  startSource: workflowExecutions.startSource,
+  runMode: workflowExecutions.runMode,
+  startEventName: workflowExecutions.startEventName,
+  entityValue: workflowExecutions.entityValue,
+  workflowRunId: workflowExecutions.workflowRunId,
+  versionKind: workflowVersions.kind,
+  versionNumber: workflowVersions.version,
+  error: workflowExecutions.error,
+  startedAt: workflowExecutions.startedAt,
+  waitingAt: workflowExecutions.waitingAt,
+  cancelledAt: workflowExecutions.cancelledAt,
+  completedAt: workflowExecutions.completedAt,
+  duration: workflowExecutions.duration,
+} as const satisfies Record<keyof WorkflowExecutionListRow, PgColumn>;
+
+/** Join condition for the pinned version. Every execution pins exactly one. */
+const pinnedVersion = eq(
+  workflowExecutions.workflowVersionId,
+  workflowVersions.id
+);
 
 /** The most recent runs one workflow's panel shows. */
 const WORKFLOW_EXECUTIONS_LIMIT = 50;
@@ -233,21 +250,22 @@ export function makeRunsMethods(
 ): RunsRepoMethods {
   return {
     listByWorkflow: ({ workflowId, includeSuperseded }) =>
-      database.query((db) => {
-        const where = includeSuperseded
-          ? { workflowId }
-          : {
-              workflowId,
-              status: { ne: "superseded" as const },
-            };
-
-        return db.query.workflowExecutions.findMany({
-          where,
-          columns: EXECUTION_LIST_COLUMNS,
-          orderBy: { startedAt: "desc" },
-          limit: WORKFLOW_EXECUTIONS_LIMIT,
-        });
-      }),
+      database.query((db) =>
+        db
+          .select(EXECUTION_LIST_COLUMNS)
+          .from(workflowExecutions)
+          .innerJoin(workflowVersions, pinnedVersion)
+          .where(
+            and(
+              eq(workflowExecutions.workflowId, workflowId),
+              includeSuperseded
+                ? undefined
+                : ne(workflowExecutions.status, "superseded")
+            )
+          )
+          .orderBy(desc(workflowExecutions.startedAt))
+          .limit(WORKFLOW_EXECUTIONS_LIMIT)
+      ),
 
     countSuperseded: (workflowId) =>
       database.query(async (db) => {
@@ -270,25 +288,13 @@ export function makeRunsMethods(
 
         return db
           .select({
-            id: workflowExecutions.id,
-            workflowId: workflowExecutions.workflowId,
+            ...EXECUTION_LIST_COLUMNS,
             workflowName: workflows.name,
             workflowIsPaused: workflows.isPaused,
-            status: workflowExecutions.status,
-            startSource: workflowExecutions.startSource,
-            runMode: workflowExecutions.runMode,
-            startEventName: workflowExecutions.startEventName,
-            entityValue: workflowExecutions.entityValue,
-            workflowRunId: workflowExecutions.workflowRunId,
-            error: workflowExecutions.error,
-            startedAt: workflowExecutions.startedAt,
-            waitingAt: workflowExecutions.waitingAt,
-            cancelledAt: workflowExecutions.cancelledAt,
-            completedAt: workflowExecutions.completedAt,
-            duration: workflowExecutions.duration,
           })
           .from(workflowExecutions)
           .innerJoin(workflows, eq(workflowExecutions.workflowId, workflows.id))
+          .innerJoin(workflowVersions, pinnedVersion)
           .where(filters.length > 0 ? and(...filters) : undefined)
           .orderBy(
             desc(workflowExecutions.startedAt),
@@ -299,25 +305,29 @@ export function makeRunsMethods(
 
     findSummaryById: (executionId) =>
       database.query(async (db) => {
-        const execution = await db.query.workflowExecutions.findFirst({
-          where: { id: executionId },
-          columns: {
-            id: true,
-            workflowId: true,
-            workflowVersionId: true,
-            status: true,
-            startSource: true,
-            runMode: true,
-            startEventName: true,
-            entityValue: true,
-            input: true,
-            output: true,
-            error: true,
-            startedAt: true,
-            completedAt: true,
-            duration: true,
-          },
-        });
+        const [execution] = await db
+          .select({
+            id: workflowExecutions.id,
+            workflowId: workflowExecutions.workflowId,
+            workflowVersionId: workflowExecutions.workflowVersionId,
+            versionKind: workflowVersions.kind,
+            versionNumber: workflowVersions.version,
+            status: workflowExecutions.status,
+            startSource: workflowExecutions.startSource,
+            runMode: workflowExecutions.runMode,
+            startEventName: workflowExecutions.startEventName,
+            entityValue: workflowExecutions.entityValue,
+            input: workflowExecutions.input,
+            output: workflowExecutions.output,
+            error: workflowExecutions.error,
+            startedAt: workflowExecutions.startedAt,
+            completedAt: workflowExecutions.completedAt,
+            duration: workflowExecutions.duration,
+          })
+          .from(workflowExecutions)
+          .innerJoin(workflowVersions, pinnedVersion)
+          .where(eq(workflowExecutions.id, executionId))
+          .limit(1);
 
         return execution ?? null;
       }),

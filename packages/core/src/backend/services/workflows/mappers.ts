@@ -1,5 +1,8 @@
 import { nanoid } from "nanoid";
-import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
+import type {
+  PublishedWorkflowVersion,
+  Workflow,
+} from "#src/backend/lib/db/schema";
 import type {
   WorkflowApiPayload,
   WorkflowSummaryPayload,
@@ -67,7 +70,7 @@ export function toWorkflowSummaryPayload(
 export function toWorkflowApiPayload(
   workflow: WorkflowPayloadSource,
   published: Pick<
-    WorkflowVersion,
+    PublishedWorkflowVersion,
     "id" | "version" | "publishedAt" | "graph" | "graphDigest"
   > | null
 ): WorkflowApiPayload {

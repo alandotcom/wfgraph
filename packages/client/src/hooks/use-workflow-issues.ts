@@ -120,7 +120,7 @@ export function useGoToStep(): (nodeId: string, fieldKey?: string) => void {
 
 /**
  * Open the issues list on its own, for a reader who asked rather than for a run
- * that was refused. It offers no "Run anyway" for that reason.
+ * that was refused. It offers no "Run draft anyway" for that reason.
  *
  * It opens the complete settled list that produced the visible badges and count.
  * Reading one atom keeps the graph and provider halves on the same snapshot;
@@ -136,7 +136,7 @@ export function useShowWorkflowIssues(): () => void {
     openOverlay(WorkflowIssuesOverlay, {
       issues: groupWorkflowIssuesForOverlay(issues),
       onGoToStep: goToStep,
-      allowRunAnyway: false,
+      allowRunDraftAnyway: false,
     });
   }, [issues, openOverlay, goToStep]);
 }

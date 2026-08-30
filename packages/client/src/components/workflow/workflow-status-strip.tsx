@@ -1,9 +1,10 @@
 /**
  * The one line along the bottom of the canvas saying what the editor is doing.
  *
- * Two states, one height. Editing the draft it reports publication, save, and
- * issues; with a run pinned to the canvas it reports the run and offers the
- * way back to the draft. Both render inside the same fixed-height row on
+ * Two states share one height. While the draft is on screen, the strip shows
+ * the publication badge, the Published mode control beside the version that
+ * mode governs, the save state and the issue count. With a run pinned to the
+ * canvas it shows the run and a way back to the draft. Both render inside the same fixed-height row on
  * purpose: the strip is a `shrink-0` sibling of the canvas box, so any change in
  * its height comes straight out of React Flow's, which measures what it is given
  * and reacts to every pixel of it. Nothing in here may wrap, and nothing may
@@ -19,9 +20,25 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
-import { ArrowLeft, Clock3 } from "lucide-react";
+import { ArrowLeft, ChevronDown, Circle, Clock3 } from "lucide-react";
 import { Button } from "#src/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "#src/components/ui/dropdown-menu";
 import { Separator } from "#src/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "#src/components/ui/tooltip";
+import { useSetPublishedMode } from "#src/hooks/use-set-published-mode";
 import { WorkflowIssuesChip } from "#src/components/workflow/workflow-issues-chip";
 import { WorkflowPublicationBadge } from "#src/components/workflow/workflow-publication-badge";
 import {
@@ -31,6 +48,16 @@ import {
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import { toPinnedRunSummary } from "#src/lib/execution-logs";
 import { orpcQuery, workflowPublicationQueryOptions } from "#src/lib/rpc-query";
+import {
+  publishedModeChoice,
+  publishedModeWord,
+  runGraphRecipientsLabel,
+  type WorkflowRunGraphIdentity,
+} from "#src/lib/workflow-run-labels";
+import {
+  currentWorkflowModeAtom,
+  isWorkflowOwnerAtom,
+} from "#src/lib/workflow-save-store";
 import {
   comparisonSessionAtom,
   isComparisonPendingAtom,
@@ -73,6 +100,27 @@ export function pinnedRunLabel(
 }
 
 /**
+ * Names the pinned run by the graph it ran and the recipients it reached, as
+ * "Draft · Test run" or "v7 · Live run".
+ *
+ * The phrase comes from `workflow-run-labels`, so the strip, the run history
+ * table and the summary row stay in step. Returns empty while the run's payload
+ * is loading, and empty for a published run with no version number, which the
+ * contract rejects. The strip then falls back to "Viewing a past run".
+ */
+export function pinnedRunModeLabel(
+  run: WorkflowRunGraphIdentity | undefined
+): string {
+  if (!run) {
+    return "";
+  }
+  if (run.versionKind === "published" && run.versionNumber === null) {
+    return "";
+  }
+  return `${runGraphRecipientsLabel(run)} run`;
+}
+
+/**
  * A hairline between two of the strip's items.
  *
  * The height override carries the `data-vertical:` prefix the base style uses
@@ -103,6 +151,141 @@ function StatusItems({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** The two modes, live first, because that is the mode a workflow ends up in. */
+const PUBLISHED_MODES = ["live", "test"] as const;
+
+/**
+ * The Published mode control, placed next to the badge that names the version.
+ *
+ * The label is "Live" or "Test" alone, because the badge beside it already
+ * reads "Published version 5". Test uses the warning tone and a filled dot;
+ * Live uses an outline, so the mode does not rely on color alone.
+ *
+ * `useSetPublishedMode` performs the change, on one press in either direction.
+ * A viewer who does not own the workflow sees the same control with no menu,
+ * and a tooltip gives the reason.
+ */
+function PublishedModeControl({
+  publishedVersion,
+}: {
+  publishedVersion?: number;
+}) {
+  const workflowMode = useAtomValue(currentWorkflowModeAtom);
+  const isOwner = useAtomValue(isWorkflowOwnerAtom);
+  const setPublishedMode = useSetPublishedMode();
+  const isTest = workflowMode === "test";
+  const label = publishedModeWord(workflowMode);
+  const faceClass = cn(
+    "h-6 shrink-0 px-1.5 font-medium",
+    isTest && "text-warning hover:bg-warning/10 hover:text-warning"
+  );
+  // The accessible name starts with the visible word and adds the setting it
+  // belongs to, as WCAG 2.5.3 requires.
+  const faceName = `Published mode: ${label}`;
+  const dot = (
+    <Circle
+      className={cn("size-2.5", isTest && "fill-current")}
+      data-icon="inline-start"
+    />
+  );
+
+  if (!isOwner) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          {/* A disabled button carries `disabled:pointer-events-none`, so it is
+              never a hover target and never takes focus, and a reason written
+              on it alone reaches nobody. The wrapper receives both, and it is
+              what the tooltip hangs from. */}
+          <TooltipTrigger
+            render={<span className="inline-flex shrink-0" tabIndex={0} />}
+          >
+            <Button
+              aria-label={faceName}
+              className={faceClass}
+              disabled
+              size="sm"
+              variant="ghost"
+            >
+              {dot}
+              {label}
+            </Button>
+          </TooltipTrigger>
+          {/* The tooltip is the only surface for this sentence. A `title` beside
+              it paints the browser's own tooltip on top of this one, and the
+              face reads "Live" or "Test" alone, so the sentence names the
+              setting the two words belong to. */}
+          <TooltipContent>
+            Only the workflow's owner can change Published mode.
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            aria-label={faceName}
+            className={faceClass}
+            size="sm"
+            variant="ghost"
+          />
+        }
+      >
+        {dot}
+        {label}
+        <ChevronDown className="size-3 opacity-50" data-icon="inline-end" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-56">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>
+            Published mode
+            {/* Before the first publish the setting describes a version nobody
+                can run yet, so the title says when it starts to matter. */}
+            {publishedVersion === undefined ? (
+              <span className="block font-normal text-muted-foreground text-xs">
+                Takes effect on publish
+              </span>
+            ) : null}
+          </DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            onValueChange={(mode) => {
+              if (mode === "live" || mode === "test") {
+                void setPublishedMode(mode);
+              }
+            }}
+            value={workflowMode}
+          >
+            {PUBLISHED_MODES.map((mode) => {
+              const choice = publishedModeChoice(mode);
+              return (
+                <DropdownMenuRadioItem
+                  // Put the check at the start of the row so the current mode
+                  // is read before the word. The primitive pins its indicator
+                  // to the right, and this is the only place that moves it.
+                  className="pr-2 pl-8 [&>[data-slot=dropdown-menu-radio-item-indicator]]:right-auto [&>[data-slot=dropdown-menu-radio-item-indicator]]:left-2"
+                  key={mode}
+                  value={mode}
+                >
+                  <span>
+                    {choice.label}
+                    <span className="block font-normal text-muted-foreground text-xs">
+                      {choice.description}
+                    </span>
+                  </span>
+                </DropdownMenuRadioItem>
+              );
+            })}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function DraftStatus({ workflowId }: { workflowId?: string }) {
   const { data: publication } = useQuery({
     ...workflowPublicationQueryOptions(workflowId ?? ""),
@@ -114,14 +297,19 @@ function DraftStatus({ workflowId }: { workflowId?: string }) {
       <StatusItems>
         {/* Both of these wait on the payload rather than on `workflowId`. The
             mode atom answers "live" until a workflow is hydrated into it, and
-            "Live mode" is an affirmative claim about whether real email and SMS
-            go out; a blank is the only honest thing to say before it is known.
-            The payload's arrival is what says a workflow has been loaded. */}
+            a Published mode of Live is an affirmative claim about whether real
+            email and SMS go out; a blank is the only honest thing to say before
+            it is known. The payload's arrival is what says a workflow has been
+            loaded. */}
         {publication && (
           <>
             <WorkflowPublicationBadge
               hasUnpublishedChanges={publication.hasUnpublishedChanges}
               isPublished={publication.isPublished}
+              publishedVersion={publication.publishedVersion}
+            />
+            <StripDivider />
+            <PublishedModeControl
               publishedVersion={publication.publishedVersion}
             />
             <StripDivider />
@@ -153,13 +341,14 @@ function PinnedRunStatus() {
   });
 
   const label = pinnedRunLabel(run);
+  const modeLabel = pinnedRunModeLabel(run);
 
   return (
     <>
       <StatusItems>
         <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap font-medium">
           <Clock3 aria-hidden className="size-3" />
-          {executionId ? "Viewing a past run" : "Runs"}
+          {executionId ? modeLabel || "Viewing a past run" : "Runs"}
         </span>
         {label && (
           <>

@@ -30,7 +30,7 @@ const comparison: WorkflowComparisonPayload = {
 };
 
 describe("PublishReviewDialog", () => {
-  it("presents deterministic structural facts and the Test mode consequence", () => {
+  it("presents deterministic structural facts and the Published mode consequence", () => {
     const view = render(
       <PublishReviewDialog
         review={publicationReviewFromComparison(comparison)}
@@ -42,11 +42,9 @@ describe("PublishReviewDialog", () => {
       />
     );
 
-    expect(
-      view.getByRole("dialog", { name: "Publish version 8?" })
-    ).toBeTruthy();
-    expect(view.getByText("Based on version 7")).toBeTruthy();
-    expect(view.getByText("Proposed version 8")).toBeTruthy();
+    expect(view.getByRole("dialog", { name: "Publish v8?" })).toBeTruthy();
+    expect(view.getByText("Based on v7")).toBeTruthy();
+    expect(view.getByText("Proposed v8")).toBeTruthy();
     expect(view.getByText("Added nodes").nextSibling?.textContent).toBe("1");
     expect(view.getByText("Modified nodes").nextSibling?.textContent).toBe("1");
     expect(view.getByText("Removed nodes").nextSibling?.textContent).toBe("1");
@@ -56,9 +54,43 @@ describe("PublishReviewDialog", () => {
     expect(view.getByText("Removed connections").nextSibling?.textContent).toBe(
       "1"
     );
-    expect(
-      view.getByText("Publishing does not change recipient routing.")
-    ).toBeTruthy();
+    const note = view.getByText(
+      "Published mode is Test. v8 sends to test recipients until you switch to Live."
+    );
+    // The sentence stays muted in both modes, because a tinted box here would
+    // rank one publish above the other. Amber marks Test on the dot alone, the
+    // way the status strip's Published mode control marks it.
+    expect(note.className).toContain("text-muted-foreground");
+    expect(note.className).not.toContain("border-warning/30");
+    expect(note.querySelector("svg")?.getAttribute("class")).toContain(
+      "text-warning"
+    );
+  });
+
+  // The Test note says the version is held back from real recipients. The Live
+  // note says it reaches them at once. Both are one muted sentence.
+  it("says a Live publish reaches real recipients at once", () => {
+    const view = render(
+      <PublishReviewDialog
+        review={publicationReviewFromComparison(comparison)}
+        isPublishing={false}
+        mode="live"
+        onConfirm={vi.fn()}
+        onOpenChange={vi.fn()}
+        open
+      />
+    );
+
+    const note = view.getByText(
+      "Published mode is Live. v8 sends to real recipients as soon as you publish."
+    );
+    expect(note.className).toContain("text-muted-foreground");
+    expect(note.className).not.toContain("border-destructive/30");
+    // Amber belongs to Test, so the Live dot stays in muted ink.
+    expect(note.querySelector("svg")?.getAttribute("class")).not.toContain(
+      "text-warning"
+    );
+    expect(view.queryByText(/Published mode is Test/)).toBeNull();
   });
 
   it("does not confirm publication when cancelled", () => {

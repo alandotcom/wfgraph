@@ -23,6 +23,8 @@ function execution(
     startEventName: "app/appointment.created",
     entityValue: "appt_1",
     workflowRunId: null,
+    versionKind: "published",
+    versionNumber: 1,
     error: null,
     startedAt: new Date("2026-03-01T10:00:00.000Z"),
     waitingAt: null,

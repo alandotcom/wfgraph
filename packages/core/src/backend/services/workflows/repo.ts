@@ -1,6 +1,7 @@
 import { and, arrayContains, desc, eq, isNull, lt, ne, sql } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
 import {
+  type PublishedWorkflowVersion,
   type Workflow,
   type WorkflowVersion,
   workflowEventSubscriptions,
@@ -9,6 +10,7 @@ import {
   workflows,
   workflowVersions,
   workflowWaitStates,
+  workflowExecutions,
 } from "#src/backend/lib/db/schema";
 import type {
   WfGraphDatabase,
@@ -46,11 +48,45 @@ export type WorkflowRunRow = Pick<
 /** The fields a version-history page needs, ordered by descending version. */
 export type WorkflowVersionHistoryRow = Pick<
   WorkflowVersion,
-  "id" | "version" | "publishedAt"
+  "id" | "publishedAt"
 > & {
+  version: number;
   /** Whether this row is the version the workflow currently publishes. */
   isCurrent: boolean;
 };
+
+/** Reports whether a version row is a published version or a draft snapshot. */
+function isPublishedVersion(
+  version: WorkflowVersion
+): version is PublishedWorkflowVersion {
+  return version.kind === "published" && version.version !== null;
+}
+
+/**
+ * The same check for a row that may be absent. Every read of the publication
+ * pointer returns a version row, null, or undefined, so they all pass through
+ * here.
+ */
+export function asPublishedVersion(
+  version: WorkflowVersion | null | undefined
+): PublishedWorkflowVersion | null {
+  return version && isPublishedVersion(version) ? version : null;
+}
+
+/**
+ * The version number of a row that a query already restricted to published
+ * versions.
+ *
+ * Only a draft snapshot leaves the column null, so a null here means the query
+ * failed to exclude the snapshots. The throw reports that bug instead of
+ * passing a bad number on.
+ */
+function publishedVersionNumber(value: number | null): number {
+  if (value === null) {
+    throw new Error("A published workflow version carries no version number");
+  }
+  return value;
+}
 
 /**
  * A workflow one delivered Event concerns, and what it holds that Event for.
@@ -200,23 +236,33 @@ export class WorkflowRepo extends Context.Service<
       id: string;
       graph: SerializedWorkflowGraph;
     }) => Effect.Effect<Workflow | null, DatabaseError>;
-    /** The newest published version for this workflow, or null when none exist. */
+    /**
+     * The newest published version for this workflow, or null when none exist.
+     * Draft snapshots are skipped because they carry no version number, so they
+     * cannot be the latest version or decide the next one.
+     */
     readonly findLatestVersion: (
       workflowId: string
-    ) => Effect.Effect<Pick<WorkflowVersion, "version"> | null, DatabaseError>;
+    ) => Effect.Effect<{ version: number } | null, DatabaseError>;
     /**
      * A version-history page for one workflow, newest version first.
      *
      * `cursor.version` is exclusive, so it returns versions strictly older than
      * that one. The result holds up to `limit + 1` rows; callers keep `limit`
      * rows and use the extra row to determine whether a next cursor exists.
+     * Draft snapshots are left out because the history covers published
+     * versions only.
      */
     readonly listVersionHistoryPage: (input: {
       workflowId: string;
       limit: number;
       cursor?: { version: number };
     }) => Effect.Effect<WorkflowVersionHistoryRow[], DatabaseError>;
-    /** One version by id, or null when it is gone. */
+    /**
+     * One version by id, of either kind, or null when it is gone. The engine and
+     * the run panel read a run's pinned version through this, so it must also
+     * return the draft snapshots that the other version reads exclude.
+     */
     readonly findVersionById: (
       versionId: string
     ) => Effect.Effect<WorkflowVersion | null, DatabaseError>;
@@ -226,7 +272,7 @@ export class WorkflowRepo extends Context.Service<
      */
     readonly findPublishedVersion: (
       workflowId: string
-    ) => Effect.Effect<WorkflowVersion | null, DatabaseError>;
+    ) => Effect.Effect<PublishedWorkflowVersion | null, DatabaseError>;
     /**
      * The workflow and the version it currently points at, in one round trip.
      * `publishedVersion` is null when the workflow exists but has never been
@@ -235,7 +281,10 @@ export class WorkflowRepo extends Context.Service<
     readonly findByIdWithPublishedVersion: (
       workflowId: string
     ) => Effect.Effect<
-      { workflow: Workflow; publishedVersion: WorkflowVersion | null } | null,
+      {
+        workflow: Workflow;
+        publishedVersion: PublishedWorkflowVersion | null;
+      } | null,
       DatabaseError
     >;
     /**
@@ -253,7 +302,24 @@ export class WorkflowRepo extends Context.Service<
     ) => Effect.Effect<
       {
         workflow: WorkflowRunRow;
-        publishedVersion: WorkflowVersion | null;
+        publishedVersion: PublishedWorkflowVersion | null;
+      } | null,
+      DatabaseError
+    >;
+    /**
+     * The same four workflow columns as the read above, paired with the draft
+     * graph, for a test-mode run of the graph the canvas holds.
+     *
+     * This is a separate read because the published path leaves the draft
+     * column unread on purpose. That graph reaches megabytes on the workflows
+     * every Event start goes through.
+     */
+    readonly findByIdWithDraftGraphForRun: (
+      workflowId: string
+    ) => Effect.Effect<
+      {
+        workflow: WorkflowRunRow;
+        draftGraph: SerializedWorkflowGraph;
       } | null,
       DatabaseError
     >;
@@ -274,14 +340,55 @@ export class WorkflowRepo extends Context.Service<
       draftGraph: SerializedWorkflowGraph;
       eventSubscriptions: WorkflowEventSubscriptionRow[];
     }) => Effect.Effect<InsertPublishedVersionResult, DatabaseError>;
+    /**
+     * Freezes the draft graph as a version a run can pin to, and returns the
+     * row. When this workflow already has a snapshot of this exact graph under
+     * this catalog, and an Execution already references that snapshot, that row
+     * comes back instead of a new one. So `versionId` is a proposal, and the
+     * caller pins the returned `id`. Repeated runs of an unchanged canvas share
+     * one row from the second run onward.
+     *
+     * A snapshot no Execution references yet belongs to the request that
+     * inserted it, which can still release it, so this never hands one to
+     * another request.
+     *
+     * The call writes nothing else. It claims no version number and the
+     * publication pointer does not move. The Event subscription index keeps
+     * describing the published graph, so only a manual start runs a draft.
+     */
+    readonly freezeDraftSnapshot: (input: {
+      workflowId: string;
+      versionId: string;
+      graph: SerializedWorkflowGraph;
+      catalogFingerprint: string;
+      graphDigest: string;
+    }) => Effect.Effect<WorkflowVersion, DatabaseError>;
+    /**
+     * Deletes a draft snapshot that no Execution references, and keeps one that
+     * an Execution does reference. A start refused after the freeze, such as a
+     * first-wins concurrency refusal, calls this so the refusal leaves no row
+     * behind. A concurrent start that pinned the same snapshot keeps it.
+     * Returns whether a row was deleted.
+     */
+    readonly deleteUnreferencedDraftSnapshot: (
+      versionId: string
+    ) => Effect.Effect<boolean, DatabaseError>;
   }
 >()("@wfgraph/core/WorkflowRepo") {}
 
 /** Outcome of `insertPublishedVersion`: published, behind, or workflow missing. */
 export type InsertPublishedVersionResult =
-  | { workflow: Workflow; version: WorkflowVersion }
+  | { workflow: Workflow; version: PublishedWorkflowVersion }
   | { stale: true }
   | null;
+
+/** The four workflow columns a run reads before it starts. */
+const RUN_WORKFLOW_COLUMNS = {
+  id: true,
+  name: true,
+  mode: true,
+  isPaused: true,
+} as const;
 
 /**
  * Load a workflow and its published version in one RQB round trip.
@@ -293,12 +400,7 @@ export type InsertPublishedVersionResult =
 async function findWorkflowWithPublishedVersion(
   db: WfGraphDatabase,
   workflowId: string,
-  columns?: {
-    id: true;
-    name: true;
-    mode: true;
-    isPaused: true;
-  }
+  columns?: typeof RUN_WORKFLOW_COLUMNS
 ) {
   const row = await db.query.workflows.findFirst({
     where: { id: workflowId },
@@ -311,7 +413,7 @@ async function findWorkflowWithPublishedVersion(
   }
 
   const { publishedVersion, ...workflow } = row;
-  return { workflow, publishedVersion };
+  return { workflow, publishedVersion: asPublishedVersion(publishedVersion) };
 }
 
 export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
@@ -597,16 +699,23 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
             const [row] = await db
               .select({ version: workflowVersions.version })
               .from(workflowVersions)
-              .where(eq(workflowVersions.workflowId, workflowId))
+              .where(
+                and(
+                  eq(workflowVersions.workflowId, workflowId),
+                  eq(workflowVersions.kind, "published")
+                )
+              )
               .orderBy(desc(workflowVersions.version))
               .limit(1);
 
-            return row ?? null;
+            return row
+              ? { version: publishedVersionNumber(row.version) }
+              : null;
           }),
 
         listVersionHistoryPage: (input) =>
-          database.query((db) =>
-            db
+          database.query(async (db) => {
+            const rows = await db
               .select({
                 id: workflowVersions.id,
                 version: workflowVersions.version,
@@ -624,14 +733,20 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
               .where(
                 and(
                   eq(workflowVersions.workflowId, input.workflowId),
+                  eq(workflowVersions.kind, "published"),
                   input.cursor
                     ? lt(workflowVersions.version, input.cursor.version)
                     : undefined
                 )
               )
               .orderBy(desc(workflowVersions.version))
-              .limit(input.limit + 1)
-          ),
+              .limit(input.limit + 1);
+
+            return rows.map((row) => ({
+              ...row,
+              version: publishedVersionNumber(row.version),
+            }));
+          }),
 
         findVersionById: (versionId) =>
           database.query(async (db) => {
@@ -650,7 +765,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
               with: { publishedVersion: true },
             });
 
-            return row?.publishedVersion ?? null;
+            return asPublishedVersion(row?.publishedVersion);
           }),
 
         findByIdWithPublishedVersion: (workflowId) =>
@@ -660,13 +775,27 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
 
         findByIdWithPublishedVersionForRun: (workflowId) =>
           database.query((db) =>
-            findWorkflowWithPublishedVersion(db, workflowId, {
-              id: true,
-              name: true,
-              mode: true,
-              isPaused: true,
-            })
+            findWorkflowWithPublishedVersion(
+              db,
+              workflowId,
+              RUN_WORKFLOW_COLUMNS
+            )
           ),
+
+        findByIdWithDraftGraphForRun: (workflowId) =>
+          database.query(async (db) => {
+            const row = await db.query.workflows.findFirst({
+              where: { id: workflowId },
+              columns: { ...RUN_WORKFLOW_COLUMNS, graph: true },
+            });
+
+            if (!row) {
+              return null;
+            }
+
+            const { graph, ...workflow } = row;
+            return { workflow, draftGraph: graph };
+          }),
 
         insertPublishedVersion: (input) =>
           database.query(
@@ -691,6 +820,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                     id: input.versionId,
                     workflowId: input.workflowId,
                     version: input.version,
+                    kind: "published",
                     graph: input.graph,
                     catalogFingerprint: input.catalogFingerprint,
                     graphDigest: input.graphDigest,
@@ -705,10 +835,14 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                 if (!minted) {
                   return { stale: true };
                 }
+                const published = asPublishedVersion(minted);
+                if (!published) {
+                  throw new Error("The minted version is not a published one");
+                }
 
                 const activated = await activatePublishedVersion(tx, {
                   workflowId: input.workflowId,
-                  version: minted,
+                  version: published,
                   expectedPublishedVersionId: input.expectedPublishedVersionId,
                   draftGraph: input.draftGraph,
                   eventSubscriptions: input.eventSubscriptions,
@@ -726,6 +860,77 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                 return { stale: true };
               })
           ),
+
+        freezeDraftSnapshot: (input) =>
+          database.query(async (db) => {
+            // jsonb equality is structural, so key order and whitespace in the
+            // stored column do not affect the match.
+            //
+            // The EXISTS clause is what makes the reuse safe against a
+            // concurrent start. A snapshot no Execution references yet is
+            // private to the request that inserted it, and that request can
+            // still release it if a later gate refuses the start. Reusing such
+            // a row would let this run pin an id the other request is about to
+            // delete. A referenced row can never be deleted, because
+            // `deleteUnreferencedDraftSnapshot` refuses it.
+            const [existing] = await db
+              .select()
+              .from(workflowVersions)
+              .where(
+                and(
+                  eq(workflowVersions.workflowId, input.workflowId),
+                  eq(workflowVersions.kind, "draft_snapshot"),
+                  eq(
+                    workflowVersions.catalogFingerprint,
+                    input.catalogFingerprint
+                  ),
+                  eq(workflowVersions.graph, input.graph),
+                  sql`exists (select 1 from ${workflowExecutions} where ${workflowExecutions.workflowVersionId} = ${workflowVersions.id})`
+                )
+              )
+              .orderBy(desc(workflowVersions.publishedAt))
+              .limit(1);
+            if (existing) {
+              return existing;
+            }
+
+            const [snapshot] = await db
+              .insert(workflowVersions)
+              .values({
+                id: input.versionId,
+                workflowId: input.workflowId,
+                version: null,
+                kind: "draft_snapshot",
+                graph: input.graph,
+                catalogFingerprint: input.catalogFingerprint,
+                graphDigest: input.graphDigest,
+              })
+              .returning();
+
+            if (!snapshot) {
+              throw new Error("The draft snapshot was not written");
+            }
+
+            return snapshot;
+          }),
+
+        deleteUnreferencedDraftSnapshot: (versionId) =>
+          database.query(async (db) => {
+            // The NOT EXISTS clause keeps this delete from racing a concurrent
+            // pin. That insert holds a share lock on the row, so the delete
+            // waits for its transaction and then sees the reference.
+            const deleted = await db
+              .delete(workflowVersions)
+              .where(
+                and(
+                  eq(workflowVersions.id, versionId),
+                  eq(workflowVersions.kind, "draft_snapshot"),
+                  sql`not exists (select 1 from ${workflowExecutions} where ${workflowExecutions.workflowVersionId} = ${workflowVersions.id})`
+                )
+              )
+              .returning({ id: workflowVersions.id });
+            return deleted.length > 0;
+          }),
       };
     })
   );
@@ -734,12 +939,12 @@ async function activatePublishedVersion(
   tx: WfGraphDatabase | WfGraphTransaction,
   input: {
     workflowId: string;
-    version: WorkflowVersion;
+    version: PublishedWorkflowVersion;
     expectedPublishedVersionId: string | null;
     draftGraph: SerializedWorkflowGraph;
     eventSubscriptions: WorkflowEventSubscriptionRow[];
   }
-): Promise<{ workflow: Workflow; version: WorkflowVersion } | null> {
+): Promise<{ workflow: Workflow; version: PublishedWorkflowVersion } | null> {
   const updated = await tx
     .update(workflows)
     .set({

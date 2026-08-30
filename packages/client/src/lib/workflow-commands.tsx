@@ -1,5 +1,5 @@
 import {
-  ArrowLeftRight,
+  CirclePlay,
   ClipboardPaste,
   Copy,
   CopyPlus,
@@ -16,12 +16,17 @@ import {
 } from "lucide-react";
 import type { EditorShortcutLabels } from "#src/lib/shortcut-label";
 import type { WorkflowMode } from "#src/lib/workflow-graph-types";
+import {
+  NOTHING_PUBLISHED_LABEL,
+  publishedModeChoice,
+  publishedRunLabel,
+} from "#src/lib/workflow-run-labels";
 
 export type WorkflowCommandId =
   | "add-step"
   | "save"
-  | "run"
-  | "mode"
+  | "run-draft"
+  | "run-published"
   | "show-runs"
   | "show-changes"
   | "publish"
@@ -41,6 +46,17 @@ export type WorkflowCommand = {
   readonly detail?: string;
   readonly keywords: string;
   readonly hint?: string;
+  /**
+   * Whether running this command reaches real recipients. A surface that
+   * highlights rows on its own must skip these, because a highlighted row plus
+   * the Return key would send without anyone choosing to.
+   */
+  readonly consequential?: boolean;
+  /**
+   * Whether this command belongs to the command palette alone. The Actions menu
+   * skips these, because the toolbar already offers them as their own control.
+   */
+  readonly paletteOnly?: boolean;
   readonly disabled: boolean;
   readonly execute: () => void;
 };
@@ -48,10 +64,11 @@ export type WorkflowCommand = {
 type WorkflowCommandState = {
   readonly currentWorkflowId: string | null;
   readonly workflowMode: WorkflowMode;
+  /** The published version's number, absent until the first publish. */
+  readonly publishedVersion?: number;
   readonly isExecuting: boolean;
   readonly isPreflighting: boolean;
   readonly isGenerating: boolean;
-  readonly isSaving: boolean;
   readonly hasNodes: boolean;
   readonly canUndo: boolean;
   readonly canRedo: boolean;
@@ -69,8 +86,8 @@ type WorkflowCommandState = {
 type WorkflowCommandCallbacks = {
   readonly addStep: () => void;
   readonly save: () => void;
-  readonly run: () => void;
-  readonly switchMode: (mode: WorkflowMode) => void;
+  readonly runDraft: () => void;
+  readonly runPublished: () => void;
   readonly showRuns: () => void;
   readonly showChanges: () => void;
   readonly publish: () => void;
@@ -124,6 +141,51 @@ export function isWorkflowPublishDisabled({
   );
 }
 
+/**
+ * The state both run commands are gated on. One shape, so a surface offering
+ * both commands checks them against the same facts.
+ */
+export type WorkflowRunEligibility = {
+  readonly currentWorkflowId: string | null;
+  readonly isExecuting: boolean;
+  readonly isPreflighting: boolean;
+  readonly isGenerating: boolean;
+  readonly hasNodes: boolean;
+  /** The published version's number, absent until the first publish. */
+  readonly publishedVersion?: number;
+};
+
+/**
+ * The conditions both run commands need: a saved workflow, and no run already
+ * in flight from this editor. Canvas state is checked elsewhere, because a
+ * published version is frozen and the canvas cannot affect it.
+ */
+function isRunUnavailable(state: WorkflowRunEligibility): boolean {
+  return state.isExecuting || !state.currentWorkflowId;
+}
+
+/**
+ * The gate for Run draft, which is where the canvas conditions live. An empty
+ * canvas has no draft to run, a generating canvas is being rewritten, and the
+ * issue preflight applies to this command alone.
+ */
+export function isDraftRunDisabled(state: WorkflowRunEligibility): boolean {
+  return (
+    isRunUnavailable(state) ||
+    !state.hasNodes ||
+    state.isGenerating ||
+    state.isPreflighting
+  );
+}
+
+/**
+ * The gate for the published run. Its only extra condition is that a version
+ * exists. A published version is immutable, so canvas edits cannot disable it.
+ */
+export function isPublishedRunDisabled(state: WorkflowRunEligibility): boolean {
+  return isRunUnavailable(state) || state.publishedVersion === undefined;
+}
+
 /** The command policy shared by the menu and command palette. */
 export function workflowCommands({
   state,
@@ -134,21 +196,13 @@ export function workflowCommands({
   shortcuts: EditorShortcutLabels;
   callbacks: WorkflowCommandCallbacks;
 }): readonly WorkflowCommand[] {
-  const runDisabled =
-    state.isExecuting ||
-    state.isPreflighting ||
-    !state.hasNodes ||
-    state.isGenerating ||
-    !state.currentWorkflowId;
-  const otherMode: WorkflowMode =
-    state.workflowMode === "live" ? "test" : "live";
+  const hasPublishedVersion = state.publishedVersion !== undefined;
 
   return [
     {
       id: "add-step",
       group: "steps",
       label: "Add step",
-      detail: "Pick what the new step does",
       keywords: "Add step node action new create insert",
       disabled: state.editingLocked,
       execute: callbacks.addStep,
@@ -163,26 +217,47 @@ export function workflowCommands({
       execute: callbacks.save,
     },
     {
-      id: "run",
+      id: "run-draft",
       group: "workflow",
-      label: "Run workflow",
-      keywords: "Run workflow execute test start trigger",
+      label: "Run draft",
+      // A draft run always reaches test recipients, so the detail says so in
+      // the words the Published mode menu uses for the same fact.
+      detail: "Test recipients",
+      keywords: "Run draft canvas execute test start trigger",
       hint: shortcuts.run,
-      disabled: runDisabled,
-      execute: callbacks.run,
+      // The toolbar's run control offers this already; the palette is the
+      // second way to reach it rather than a second copy in the same menu.
+      paletteOnly: true,
+      disabled: isDraftRunDisabled(state),
+      execute: callbacks.runDraft,
     },
-    ...(state.currentWorkflowId
-      ? [
-          {
-            id: "mode" as const,
-            group: "workflow" as const,
-            label: `Switch to ${otherMode === "live" ? "Live" : "Test"} mode`,
-            keywords: `Switch mode live test ${otherMode}`,
-            disabled: state.isSaving || state.isGenerating,
-            execute: () => callbacks.switchMode(otherMode),
-          },
-        ]
-      : []),
+    {
+      id: "run-published",
+      group: "workflow",
+      // The label names the version and the Published mode, which is what
+      // distinguishes it from Run draft. Before the first publish the label
+      // still names an action, because the palette lists this row flat beside
+      // "Run draft" and a bare "Nothing published yet" would name none. The
+      // reason goes in the detail line underneath.
+      label: hasPublishedVersion
+        ? publishedRunLabel({
+            workflowMode: state.workflowMode,
+            publishedVersion: state.publishedVersion,
+          })
+        : "Run published version",
+      // Who the run reaches is the one fact the version number leaves out, and
+      // the Published mode menu already owns the words for it.
+      detail: hasPublishedVersion
+        ? publishedModeChoice(state.workflowMode).description
+        : NOTHING_PUBLISHED_LABEL,
+      keywords: "Run published version live test execute start trigger",
+      disabled: isPublishedRunDisabled(state),
+      paletteOnly: true,
+      // A live run is the only one that reaches real recipients, so the palette
+      // requires an arrow key on this row before Return takes it.
+      consequential: hasPublishedVersion && state.workflowMode === "live",
+      execute: callbacks.runPublished,
+    },
     {
       id: "show-runs",
       group: "workflow",
@@ -294,10 +369,10 @@ export function WorkflowCommandIcon({
       return <Plus className={className} />;
     case "save":
       return <Save className={className} />;
-    case "run":
+    case "run-draft":
       return <Play className={className} />;
-    case "mode":
-      return <ArrowLeftRight className={className} />;
+    case "run-published":
+      return <CirclePlay className={className} />;
     case "show-runs":
     case "show-changes":
       return <History className={className} />;

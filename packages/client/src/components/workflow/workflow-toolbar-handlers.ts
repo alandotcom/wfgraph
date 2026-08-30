@@ -11,9 +11,9 @@ import { useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import {
-  TestRunOverlay,
-  type TestRunRequest,
-} from "#src/components/overlays/test-run-overlay";
+  RunOverlay,
+  type RunRequest,
+} from "#src/components/overlays/run-overlay";
 import { WorkflowIssuesOverlay } from "#src/components/overlays/workflow-issues-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useDeleteWorkflow } from "#src/hooks/use-delete-workflow";
@@ -50,12 +50,26 @@ import {
   redoAtom,
   undoAtom,
 } from "#src/lib/workflow-graph-store";
-import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import {
+  toEditorEdge,
+  toEditorNode,
+  type WorkflowEdge,
+  type WorkflowMode,
+  type WorkflowNode,
+} from "#src/lib/workflow-graph-types";
 import {
   executeWorkflowRun,
   rememberTestPayload,
   type UpdateNodeData,
 } from "#src/lib/workflow-run-actions";
+import {
+  type RunSends,
+  runSends,
+  runCommandLabel,
+  workflowRunTarget,
+  type WorkflowRunGraph,
+  type WorkflowRunTarget,
+} from "#src/lib/workflow-run-labels";
 import {
   currentWorkflowIdAtom,
   currentWorkflowModeAtom,
@@ -64,7 +78,8 @@ import {
   isSavingAtom,
   isWorkflowOwnerAtom,
   saveWorkflowAtom,
-  setWorkflowModeAtom,
+  type SaveOutcome,
+  type WorkflowPatch,
 } from "#src/lib/workflow-save-store";
 import { ApiError, toSerializedGraph } from "#src/lib/rpc-client";
 import {
@@ -97,6 +112,10 @@ import {
   groupWorkflowIssuesForOverlay,
   hasBlockingWorkflowIssues,
 } from "@wfgraph/shared/graph/workflow-issues";
+import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
+import type { TestPayloads } from "@wfgraph/shared/lifecycle/test-payloads";
 
 /**
  * Which publication conflict a refused publish is, read off the failure's code.
@@ -111,12 +130,42 @@ function publicationConflictCode(
   return isPublicationConflictCode(code) ? code : undefined;
 }
 
+/** The status an oRPC conflict arrives as, which `ApiError` carries. */
+const CONFLICT_STATUS = 409;
+
+/**
+ * Whether a refused run is the one the staleness gate turned away.
+ *
+ * A published run repeats the version id and the Published mode the run dialog
+ * displayed, and the server refuses it with a conflict when either has moved
+ * since. A run that sent no `expected` cannot be refused that way, and the
+ * staleness gate is the only conflict `workflow.execute` answers with, so the
+ * pair identifies it without reading the message.
+ */
+function isStalePublishedRun(
+  error: unknown,
+  variables: { expected?: unknown }
+): boolean {
+  return (
+    variables.expected !== undefined &&
+    error instanceof ApiError &&
+    error.status === CONFLICT_STATUS
+  );
+}
+
 /** One toast id, so a held Cmd+Enter replaces the notice instead of stacking. */
 const PREFLIGHT_TOAST_ID = "workflow-preflight-busy";
+
+/** `saveWorkflowAtom`'s setter, as the handlers below are handed it. */
+type SaveWorkflow = (
+  patch: WorkflowPatch,
+  options?: { immediate?: boolean }
+) => Promise<SaveOutcome | null>;
 
 type WorkflowHandlerParams = {
   currentWorkflowId: string | null;
   nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
   updateNodeData: UpdateNodeData;
   isExecuting: boolean;
   setIsExecuting: (value: boolean) => void;
@@ -125,16 +174,65 @@ type WorkflowHandlerParams = {
     workflowId: string;
     nodes: WorkflowNode[];
   }) => Promise<WorkflowIssuePreflightResult>;
+  workflowMode: WorkflowMode;
+  /** The published version's number, absent until the first publish. */
+  publishedVersion: number | undefined;
+  /** The published version's id, which is the key its graph is read by. */
+  publishedVersionId: string | undefined;
+  hasUnsavedChanges: boolean;
+  saveWorkflow: SaveWorkflow;
 };
+
+/**
+ * The facts the run overlay needs about the graph a run executes: which Events
+ * start it, whether it accepts an Event-less start, whether it splits on the
+ * Event, the samples it kept, and what it can send outward.
+ *
+ * The server validates a start against the graph it is about to run, so read
+ * these from that same graph. Reading them from the canvas for a published run
+ * would offer a Start Event that the published version rejects.
+ */
+type RunOverlayGraphFacts = {
+  startEvents: readonly string[];
+  allowManualStart: boolean;
+  hasEventSplit: boolean;
+  savedPayloads: TestPayloads;
+  sends: RunSends;
+};
+
+/**
+ * The edges are needed only to count the sends. A step sends outward only when
+ * the run can reach it, and reachability is computed from the edges.
+ */
+function runOverlayGraphFacts(
+  nodes: readonly WorkflowNode[],
+  edges: readonly WorkflowEdge[],
+  catalog: ExtensionCatalog
+): RunOverlayGraphFacts {
+  const rules = readEntryLifecycleRules(nodes) ?? initialLifecycleRules;
+  return {
+    startEvents: rules.startEvents,
+    allowManualStart: manualStartAllowed(rules),
+    hasEventSplit: nodes.some(isEventSplitNode),
+    savedPayloads: readEntryTestPayloads(nodes),
+    sends: runSends({ nodes, edges, catalog }),
+  };
+}
 
 function useWorkflowHandlers({
   currentWorkflowId,
   nodes,
+  edges,
   updateNodeData,
   isExecuting,
   setIsExecuting,
   setSelectedNodeId,
   checkWorkflowIssues,
+  workflowMode,
+  publishedVersion,
+  publishedVersionId,
+  hasUnsavedChanges,
+  saveWorkflow,
 }: WorkflowHandlerParams) {
   // The same implementation the status strip's issue count reaches for, so
   // "Fix" means one thing wherever the list was opened from. The hook is
@@ -142,6 +240,9 @@ function useWorkflowHandlers({
   // that state is write-then-consume within a single click, so only the
   // instance whose overlay was clicked ever holds one.
   const handleGoToStep = useGoToStep();
+  // Used only to name the integrations a live published run sends through,
+  // which the run overlay states before it confirms.
+  const catalog = useExtensionCatalog();
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -149,6 +250,25 @@ function useWorkflowHandlers({
   const setExecutionOverlay = useSetAtom(executionOverlayGraphAtom);
   const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
   const enterRuns = useSetAtom(enterRunsWorkspaceAtom);
+  const setCurrentWorkflowMode = useSetAtom(currentWorkflowModeAtom);
+
+  /**
+   * Re-read the workflow after the server refused a run as stale.
+   *
+   * The toolbar builds `expected` from the publication badge's cache entry and
+   * from `currentWorkflowModeAtom`, so both have to move before the next press
+   * sends anything different. Invalidating the entry repaints the badge, and
+   * the read that follows returns what that refetch produced, or fetches once
+   * itself when nothing was observing the entry.
+   */
+  const rereadPublishedState = async (workflowId: string) => {
+    await refreshWorkflowPublication(queryClient, workflowId);
+    const workflow = await queryClient.fetchQuery(
+      orpcQuery.workflow.getById.queryOptions({ input: { workflowId } })
+    );
+    setCurrentWorkflowMode(workflow.mode);
+  };
+
   // No errorMessage: a rejected run carries a server message worth reading, and
   // the mutation cache falls back to it. Every other outcome arrives as a
   // successful response with a status on it, which executeWorkflowRun reads.
@@ -157,19 +277,52 @@ function useWorkflowHandlers({
       // A started run belongs in both run lists, and the dashboard's is the one
       // nobody is looking at when this fires.
       onSuccess: () => refreshRunHistory(queryClient),
+      // A stale refusal leaves the toolbar holding the version and the mode
+      // that produced it, so pressing Run again would send the same request
+      // and be refused the same way. Read the workflow back so the next press
+      // offers what is published now. A read that fails leaves the toast the
+      // mutation cache is about to show, and the next page load seeds the
+      // state from the route loader.
+      onError: (error, variables) => {
+        if (isStalePublishedRun(error, variables)) {
+          void rereadPublishedState(variables.workflowId).catch(
+            () => undefined
+          );
+        }
+      },
     })
   );
 
-  const executeWorkflow = async (request: TestRunRequest) => {
+  const executeWorkflow = async (
+    target: WorkflowRunTarget,
+    request: RunRequest
+  ) => {
     if (!currentWorkflowId) {
       toast.error("Please save the workflow before executing");
       return;
     }
 
-    // The sample is kept on the entry node, so the next run of this workflow
-    // opens on what this one sent. Autosave carries it; the run itself travels
-    // on the request and waits for no save.
-    rememberTestPayload({ nodes, updateNodeData, request });
+    // Run draft executes the canvas, and the server reads that canvas from the
+    // workflow row, so a queued edit must land before the run starts. Autosave
+    // is debounced, so a run started inside that window would execute the
+    // previous graph while the canvas paints statuses on the current one. A
+    // published run skips this, because it runs the published version.
+    if (target.graph === "draft" && hasUnsavedChanges) {
+      const saved = await saveWorkflow({ nodes, edges }, { immediate: true });
+      if (saved && !saved.ok) {
+        toast.error(saved.error.message || "Failed to save workflow");
+        return;
+      }
+    }
+
+    // Store the sample on the entry node so the next Run draft opens on what
+    // this run sent. The write happens after the flush above, so it rides the
+    // next autosave instead of replacing the graph the flush just sent. The run
+    // request carries its own copy of the sample. Only a draft run writes it,
+    // because writing it for a published run would dirty an untouched draft.
+    if (target.graph === "draft") {
+      rememberTestPayload({ nodes, updateNodeData, request });
+    }
 
     enterRuns();
 
@@ -188,10 +341,25 @@ function useWorkflowHandlers({
           workflowId: currentWorkflowId,
           input: request.input,
           ...(request.eventName ? { eventName: request.eventName } : {}),
+          // An absent field means the published graph, on the wire and in the UI.
+          ...(target.graph === "draft" ? { graph: "draft" as const } : {}),
+          // What the run dialog displayed. The server refuses the run when the
+          // published version or the Published mode has moved since, so a
+          // dialog left open across a publish or a mode change cannot start a
+          // run for a graph or a set of recipients nobody saw.
+          ...(target.graph === "published" && publishedVersionId
+            ? {
+                expected: {
+                  versionId: publishedVersionId,
+                  mode: target.workflowMode,
+                },
+              }
+            : {}),
         }),
       nodes,
       setNodeStatuses,
       setIsExecuting,
+      runLabel: runCommandLabel(target),
       // The URL is the one writer of which run is open; workflow-runs.tsx
       // derives the selection atom and the pinned-graph overlay from it.
       navigateToExecution: (executionId) =>
@@ -204,27 +372,95 @@ function useWorkflowHandlers({
     // Don't set executing to false here - let polling handle it
   };
 
-  const openTestRunOverlay = () => {
-    const rules = readEntryLifecycleRules(nodes) ?? initialLifecycleRules;
-
-    openOverlay(TestRunOverlay, {
-      startEvents: rules.startEvents,
-      allowManualStart: manualStartAllowed(rules),
-      hasEventSplit: nodes.some(isEventSplitNode),
-      savedPayloads: readEntryTestPayloads(nodes),
-      onRun: (request: TestRunRequest) => {
-        void executeWorkflow(request);
+  /**
+   * Opens the overlay over the facts of the graph the command names. The facts
+   * are passed in, so the two run commands cannot read the same graph twice.
+   */
+  const openRunOverlay = (
+    target: WorkflowRunTarget,
+    facts: RunOverlayGraphFacts
+  ) => {
+    openOverlay(RunOverlay, {
+      target,
+      ...facts,
+      onRun: (request: RunRequest) => {
+        void executeWorkflow(target, request);
       },
     });
   };
 
-  const handleExecute = async () => {
+  /**
+   * The published version's own graph, read by version id.
+   *
+   * A published version is immutable (ADR-0012), so this is fetched once and
+   * kept: `fetchQuery` at an infinite stale time answers from the cache on
+   * every press after the first.
+   */
+  const readPublishedGraphFacts = async (
+    versionId: string
+  ): Promise<RunOverlayGraphFacts | null> => {
+    try {
+      const payload = await queryClient.fetchQuery({
+        ...orpcQuery.workflow.getVersionGraph.queryOptions({
+          input: { versionId },
+        }),
+        staleTime: Number.POSITIVE_INFINITY,
+      });
+      // Take the lifecycle facts from the published graph and the sample
+      // payload from the canvas. `getVersionGraph` redacts sensitive-looking
+      // values, so a sample read from it would send the mask as the run input.
+      const published = toWorkflowGraphData(payload.graph);
+      return {
+        ...runOverlayGraphFacts(
+          published.nodes.map(toEditorNode),
+          published.edges.map(toEditorEdge),
+          catalog
+        ),
+        savedPayloads: readEntryTestPayloads(nodes),
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const handleExecute = async (graph: WorkflowRunGraph) => {
     // Guard against concurrent executions
     if (isExecuting) {
       return;
     }
     if (!currentWorkflowId) {
       toast.error("Please save the workflow before executing");
+      return;
+    }
+
+    const target = workflowRunTarget({
+      graph,
+      workflowMode,
+      publishedVersion,
+    });
+    if (!target) {
+      // A published run of a workflow with nothing published. Every control
+      // that offers it is already disabled with that reason, so do nothing.
+      return;
+    }
+
+    // The draft's issues gate the draft run only. Publish rejects blocking
+    // issues before a graph becomes a version, so a published run is not held
+    // back by problems introduced on the canvas since.
+    if (target.graph === "published") {
+      if (!publishedVersionId) {
+        // A version number with no id. There is no graph to read the run's
+        // Events from, so there is nothing to open.
+        return;
+      }
+      const facts = await readPublishedGraphFacts(publishedVersionId);
+      if (!facts) {
+        toast.error(
+          `Could not read Published v${target.publishedVersion}. Try again.`
+        );
+        return;
+      }
+      openRunOverlay(target, facts);
       return;
     }
 
@@ -243,19 +479,22 @@ function useWorkflowHandlers({
       return;
     }
     const { issues } = preflight;
+    const draftFacts = runOverlayGraphFacts(nodes, edges, catalog);
 
     if (issues.length > 0) {
       const hasBlocking = hasBlockingWorkflowIssues(issues);
       openOverlay(WorkflowIssuesOverlay, {
         issues: groupWorkflowIssuesForOverlay(issues),
         onGoToStep: handleGoToStep,
-        onRunAnyway: hasBlocking ? undefined : openTestRunOverlay,
-        allowRunAnyway: !hasBlocking,
+        onRunDraftAnyway: hasBlocking
+          ? undefined
+          : () => openRunOverlay(target, draftFacts),
+        allowRunDraftAnyway: !hasBlocking,
       });
       return;
     }
 
-    openTestRunOverlay();
+    openRunOverlay(target, draftFacts);
   };
 
   return {
@@ -325,7 +564,6 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const deleteWorkflow = useDeleteWorkflow();
-  const setWorkflowMode = useSetAtom(setWorkflowModeAtom);
   const saveWorkflow = useSetAtom(saveWorkflowAtom);
   const publishReview = useAtomValue(publicationReviewAtom);
   const publicationReviewActive = useAtomValue(isPublicationReviewActiveAtom);
@@ -339,7 +577,6 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     currentWorkflowId,
     workflowName,
     workflowMode,
-    setCurrentWorkflowMode,
     nodes,
     edges,
     updateNodeData,
@@ -350,17 +587,25 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     setSelectedNodeId,
     userIntegrations,
     publication,
+    hasUnsavedChanges,
+    isOwner,
   } = state;
   const { checkWorkflowIssues, isPreflighting } =
     useWorkflowIssuePreflight(userIntegrations);
   const { handleExecute, handleGoToStep } = useWorkflowHandlers({
     currentWorkflowId,
     nodes,
+    edges,
     updateNodeData,
     isExecuting,
     setIsExecuting,
     setSelectedNodeId,
     checkWorkflowIssues,
+    workflowMode,
+    publishedVersion: publication?.publishedVersion,
+    publishedVersionId: publication?.publishedVersionId,
+    hasUnsavedChanges,
+    saveWorkflow,
   });
 
   const handleSave = useCallback(async () => {
@@ -388,25 +633,30 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
 
   useDomEvent(document, "keydown", handleSaveShortcut, { capture: true });
 
-  // Cmd+Enter runs the workflow. The listener lives here, beside handleExecute,
-  // so the shortcut and the Run button are the same call rather than a store
-  // round trip for something one function call away.
+  // Cmd+Enter runs the draft. The listener sits beside handleExecute so the
+  // shortcut and the split button's face make the same call. A published run
+  // has no shortcut, because it must be chosen by name.
   //
-  // Capture phase, because a focused node in the canvas would otherwise get the
-  // keystroke first.
+  // The listener runs in the capture phase, because a focused canvas node would
+  // otherwise receive the keystroke first.
+  //
+  // A viewer who does not own the workflow sees no run controls, but this
+  // listener is on the document rather than on a control, so it repeats the
+  // owner check. Without it the shortcut would run a graph the viewer cannot
+  // edit and flush the autosave queue on the way.
   const handleRunShortcut = useCallback(
     (event: KeyboardEvent) => {
       if (!((event.metaKey || event.ctrlKey) && event.key === "Enter")) {
         return;
       }
-      if (isTextEntry(event.target)) {
+      if (!isOwner || isTextEntry(event.target)) {
         return;
       }
       event.preventDefault();
       event.stopPropagation();
-      void handleExecute();
+      void handleExecute("draft");
     },
-    [handleExecute]
+    [handleExecute, isOwner]
   );
 
   useDomEvent(document, "keydown", handleRunShortcut, { capture: true });
@@ -526,7 +776,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
       openOverlay(WorkflowIssuesOverlay, {
         issues: groupWorkflowIssuesForOverlay(issues),
         onGoToStep: handleGoToStep,
-        allowRunAnyway: false,
+        allowRunDraftAnyway: false,
       });
       return;
     }
@@ -672,27 +922,6 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     );
   };
 
-  const handleSetWorkflowMode = async (mode: "live" | "test") => {
-    if (!currentWorkflowId || workflowMode === mode) {
-      return;
-    }
-
-    const outcome = await setWorkflowMode(mode);
-    if (!outcome?.ok) {
-      toast.error("Failed to update workflow mode");
-      return;
-    }
-
-    // No loadWorkflows: this went through the save queue, which marks the list
-    // stale on every write it lands.
-    setCurrentWorkflowMode(outcome.workflow.mode);
-    toast.success(
-      mode === "test"
-        ? "Workflow set to Test mode"
-        : "Workflow set to Live mode"
-    );
-  };
-
   return {
     handleSave,
     handleExecute,
@@ -721,7 +950,6 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
         }
       }
     },
-    handleSetWorkflowMode,
   };
 }
 

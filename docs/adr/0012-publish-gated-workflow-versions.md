@@ -146,3 +146,59 @@ Durable history retains historical configuration values for the lifetime of the
 workflow. Responses apply the same graph redaction policy as pinned run graphs.
 This retention and redaction policy supersedes the bounded-storage decision in
 the 2026-08-07 amendment.
+
+## Amendment, 2026-08-29: draft runs execute the canvas with test recipients
+
+`workflow_versions` holds two kinds of row. A `published` row is what Publish
+creates and what `workflows.published_version_id` points at. A `draft_snapshot`
+row carries `version: null` and is created by a manual start that asked for
+`graph: "draft"`. It freezes the canvas graph so the run pins to an immutable
+copy, as a published run does. Readers are unchanged, because `findVersionById`
+answers for both kinds.
+
+The Decision above says a start loads the published version and a
+never-published workflow is refused. One start no longer does. A Draft run loads
+`workflows.graph`, puts it through the checks Publish runs
+(`runWorkflowExecutionPreflight`), and pins the run to the snapshot it creates.
+
+The editor offers two run commands instead of one command and a mode, and the
+server follows the command. A Draft run records `runMode: "test"` on its
+response, its Execution row, its Inngest event and its audit rows, whatever the
+workflow says. `workflows.mode` is the Published mode: it governs Events and
+manual runs of the published version, and `loadDraftForRun` never reads it. The
+reason is that nobody has reviewed the canvas graph, so the recipients a run
+reaches follow from which graph runs rather than from a setting left switched
+on. This replaces the earlier gate, which refused a live workflow's draft
+outright and made publishing to test the only way to try an edit.
+
+The two runs coexist. Concurrency keys its in-flight set on `runMode`, so a
+Draft run of an entity does not supersede the live run of that same entity.
+
+An Event start still requires a publication. Publish is the sole writer of the
+event subscription index (2026-08-17 amendment), so the index describes the
+published graph alone, and an Event arriving for a workflow with no publication
+finds nothing to start. Deriving the index from the draft would let an autosave
+change what a live Event does, which is the property the publish gate exists
+for.
+
+That asymmetry reaches cancellation, which is worth stating because it is easy
+to miss. `applyLifecycleRules` reads the published version's Lifecycle Rules, so
+a Cancel Event declared only in the draft cancels nothing, and no Event can
+cancel a Draft run of a never-published workflow. Wait resumption is unaffected,
+because it derives its candidates from the parked `workflow_wait_states` rows
+rather than from a version. Until the graph is published, a Draft run is
+cancelled from the Runs panel.
+
+Two measures bound the snapshot rows. `loadDraftForRun` returns a `pinVersion`
+Effect rather than writing the row itself, and `postWorkflowExecute` runs that
+Effect immediately before each of the two writes that store a version id on an
+Execution. A start the lifecycle gates turn away therefore leaves nothing
+behind, whether it fails on `manual_start_not_allowed`, `start_event_required`,
+an unknown or refused Event, or a concurrency `not_started`. `freezeDraftSnapshot`
+then returns an existing snapshot holding this exact graph and catalog
+fingerprint, but only where an Execution already references that snapshot, so
+repeated clicks on an unchanged draft share one row and no request is ever
+handed a row a concurrent request can still release. One row per distinct draft
+graph ever run remains unbounded. A sweep would
+have to be selective, because `workflow_executions.workflow_version_id` cascades
+and deleting a snapshot would take the run history that pinned it.

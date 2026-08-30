@@ -15,6 +15,7 @@ function version(overrides: Partial<WorkflowVersion> = {}): WorkflowVersion {
     id: "ver_1",
     workflowId: "wf_1",
     version: 1,
+    kind: "published",
     graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
     catalogFingerprint: "fp_1",
     graphDigest: "digest_1",

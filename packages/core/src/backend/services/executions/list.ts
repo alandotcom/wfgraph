@@ -12,6 +12,7 @@ import type {
   WorkflowExecutionStartSource,
   WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
+import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 
 type WorkflowExecutionItem = {
   id: string;
@@ -22,6 +23,8 @@ type WorkflowExecutionItem = {
   startEventName: string | null;
   entityValue: string | null;
   workflowRunId: string | null;
+  versionKind: WorkflowVersionKind;
+  versionNumber: number | null;
   error: string | null;
   startedAt: string;
   waitingAt: string | null;
@@ -46,6 +49,8 @@ function toWorkflowExecutionItem(
     startEventName: row.startEventName,
     entityValue: row.entityValue,
     workflowRunId: row.workflowRunId,
+    versionKind: row.versionKind,
+    versionNumber: row.versionNumber,
     error: redactSensitiveText(row.error),
     startedAt: row.startedAt.toISOString(),
     waitingAt: toIso(row.waitingAt),

@@ -94,8 +94,13 @@ function workflowPayload(overrides: {
     isOwner: true,
     graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
     hasUnpublishedChanges: overrides.hasUnpublishedChanges,
+    // A published workflow carries both the id the version is read by and the
+    // number every surface displays.
     ...(overrides.publishedVersionId
-      ? { publishedVersionId: overrides.publishedVersionId }
+      ? {
+          publishedVersionId: overrides.publishedVersionId,
+          publishedVersion: 1,
+        }
       : {}),
   };
 }
@@ -125,12 +130,13 @@ function renderStrip(
   options: {
     executionId?: string;
     hasUnsavedChanges?: boolean;
+    isOwner?: boolean;
     mode?: "live" | "test";
     published?: boolean;
   } = {}
 ) {
   const store = createStore();
-  store.set(isWorkflowOwnerAtom, true);
+  store.set(isWorkflowOwnerAtom, options.isOwner ?? true);
   store.set(currentWorkflowIdAtom, WORKFLOW_ID);
   store.set(hasUnsavedChangesAtom, options.hasUnsavedChanges ?? false);
   // The route loader's hydrate writes the id and the mode together, so the
@@ -232,9 +238,10 @@ describe("WorkflowStatusStrip", () => {
     const { view } = renderStrip({ mode: "test", published: true });
 
     await waitFor(() => {
-      expect(view.getByText("Unpublished changes")).toBeTruthy();
+      expect(
+        view.getByText("Unpublished changes since version 1")
+      ).toBeTruthy();
     });
-    expect(view.getByText("Unpublished changes")).toBeTruthy();
     expect(view.queryByText("Test mode")).toBeNull();
     expect(view.getByText("Saved")).toBeTruthy();
     expect(view.queryByText("Back to draft")).toBeNull();
@@ -246,13 +253,86 @@ describe("WorkflowStatusStrip", () => {
     expect(view.queryByText("Test mode")).toBeNull();
   });
 
+  // Published mode lives in this row, one divider from the badge that names
+  // the version it governs.
+  it("carries Published mode beside the publication badge", async () => {
+    const { view } = renderStrip({ mode: "test", published: true });
+
+    const mode = await view.findByRole("button", {
+      name: "Published mode: Test",
+    });
+    expect(mode.textContent).toContain("Test");
+    expect(mode.className).toContain("text-warning");
+
+    const badge = view.getByText("Unpublished changes since version 1");
+    expect(
+      badge.compareDocumentPosition(mode) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  it("describes each mode in one clause", async () => {
+    const { view } = renderStrip({ published: true });
+
+    const mode = await view.findByRole("button", {
+      name: "Published mode: Live",
+    });
+    fireEvent.keyDown(mode, { key: "ArrowDown" });
+    fireEvent.keyUp(mode, { key: "ArrowDown" });
+
+    const live = view.getByRole("menuitemradio", { name: /Real recipients/ });
+    expect(live.getAttribute("aria-checked")).toBe("true");
+    expect(
+      view.getByRole("menuitemradio", { name: /Test recipients/ })
+    ).toBeTruthy();
+    // A version is published, so the setting is already in force and the menu
+    // adds no note about when it takes effect.
+    expect(view.queryByText("Takes effect on publish")).toBeNull();
+  });
+
+  // The mode can be set before the first publish, and the menu is where the
+  // reader learns it takes effect at that publish.
+  it("says when the mode takes effect before the first publish", async () => {
+    const { view } = renderStrip();
+
+    const mode = await view.findByRole("button", {
+      name: "Published mode: Live",
+    });
+    fireEvent.keyDown(mode, { key: "ArrowDown" });
+    fireEvent.keyUp(mode, { key: "ArrowDown" });
+
+    expect(view.getByText("Takes effect on publish")).toBeTruthy();
+  });
+
+  it("disables the mode for a viewer and gives the reason", async () => {
+    const { view } = renderStrip({ isOwner: false, published: true });
+
+    const mode = await view.findByRole("button", {
+      name: "Published mode: Live",
+    });
+    expect(mode.hasAttribute("disabled")).toBe(true);
+    // The tooltip is the one surface for the reason. A `title` beside it would
+    // paint the browser's own tooltip over the same sentence.
+    expect(mode.hasAttribute("title")).toBe(false);
+
+    const trigger = mode.closest("[data-slot='tooltip-trigger']");
+    expect(trigger).toBeTruthy();
+    fireEvent.pointerEnter(trigger as Element, { pointerType: "mouse" });
+    fireEvent.mouseEnter(trigger as Element);
+
+    expect(
+      await view.findByText(
+        "Only the workflow's owner can change Published mode."
+      )
+    ).toBeTruthy();
+  });
+
   it("switches to the run state and offers the way back to the draft", async () => {
     const { view, store, router } = renderStrip({
       executionId: EXECUTION_ID,
     });
 
     await waitFor(() => {
-      expect(view.getByText("Viewing a past run")).toBeTruthy();
+      expect(view.getByText("v7 · Live run")).toBeTruthy();
     });
     expect(view.getByText("Editing is off")).toBeTruthy();
     expect(store.get(canvasEditingLockedAtom)).toBe(true);
@@ -267,7 +347,7 @@ describe("WorkflowStatusStrip", () => {
       expect(store.get(canvasEditingLockedAtom)).toBe(false);
     });
     expect(router.state.location.search).toEqual({});
-    expect(view.queryByText("Viewing a past run")).toBeNull();
+    expect(view.queryByText("v7 · Live run")).toBeNull();
   });
 
   it("arms the reload guard while a run is pinned over an unsaved draft", async () => {
@@ -280,7 +360,7 @@ describe("WorkflowStatusStrip", () => {
     });
 
     await waitFor(() => {
-      expect(view.getByText("Viewing a past run")).toBeTruthy();
+      expect(view.getByText("v7 · Live run")).toBeTruthy();
     });
 
     expect(armedUnloadGuard()).toBe(true);

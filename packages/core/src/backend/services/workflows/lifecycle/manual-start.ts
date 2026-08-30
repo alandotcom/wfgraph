@@ -4,12 +4,15 @@ import {
   type EffectLogger,
 } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
-import { InvalidInput } from "#src/backend/lib/effect/failures";
+import { Conflict, InvalidInput } from "#src/backend/lib/effect/failures";
 import { seamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
 import { annotateServiceSpan } from "#src/backend/lib/telemetry";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
-import { loadWorkflowForRun } from "#src/backend/services/executions/preflight";
+import {
+  loadDraftForRun,
+  loadWorkflowForRun,
+} from "#src/backend/services/executions/preflight";
 import {
   buildIgnoredRunAuditMessage,
   recordPausedRunIgnored,
@@ -149,21 +152,76 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
        * are the ones holding no such node.
        */
       eventName?: string;
+      /**
+       * Which graph this run travels. When omitted, the run uses the published
+       * version, which is what an Event start always gets and what runs in the
+       * workflow's Published mode. `"draft"` runs the graph the canvas holds,
+       * frozen into a snapshot version the run pins to, and always uses test
+       * recipients.
+       */
+      graph?: "published" | "draft";
+      /**
+       * What the caller was shown when it offered this run: the published
+       * version's id and the workflow's Published mode. A published run
+       * carrying this is refused when either has moved since, so a run dialog
+       * left open across a publish or a mode change cannot start a run for a
+       * graph or a set of recipients the person never saw. A draft run ignores
+       * it, because the canvas is the graph the run reads.
+       */
+      expected?: { versionId: string; mode: WorkflowMode };
     }
   ) {
     const logger = yield* loggerFor(workflowId);
     yield* annotateServiceSpan({ workflowId });
 
-    const { workflow, preflight } = yield* loadWorkflowForRun(workflowId).pipe(
-      Effect.tapError((failure) =>
-        "error" in failure
-          ? logger.error("Refused a manual run", { error: failure.error })
-          : Effect.void
-      )
-    );
+    // Both loads return the same fields, so every gate below reads the same
+    // way whichever graph the run uses.
+    const source = body.graph ?? "published";
+    const { workflow, preflight, version, pinVersion, releaseVersion } =
+      yield* (
+        source === "draft"
+          ? loadDraftForRun(workflowId)
+          : loadWorkflowForRun(workflowId)
+      ).pipe(
+        Effect.tapError((failure) =>
+          "error" in failure
+            ? logger.error("Refused a manual run", { error: failure.error })
+            : Effect.void
+        )
+      );
+
+    // The staleness gate comes before every other check, because a request
+    // built against a version or a mode that has since moved is about a run
+    // nobody asked for. It leaves no row and writes no audit line: the caller
+    // reads the workflow back and decides again on what is published now.
+    if (
+      source === "published" &&
+      body.expected &&
+      (body.expected.versionId !== preflight.workflowVersionId ||
+        body.expected.mode !== workflow.mode)
+    ) {
+      yield* logger.info("Refused a stale published run", {
+        request: {
+          expectedVersionId: body.expected.versionId,
+          expectedMode: body.expected.mode,
+        },
+        run: { versionId: preflight.workflowVersionId, mode: workflow.mode },
+      });
+      // The sentence names only what the server knows. This procedure is
+      // public, so it answers callers that never had a run dialog to close,
+      // and Published mode is a workflow setting rather than a property of the
+      // version beside it.
+      return yield* new Conflict({
+        error:
+          "The published version or the Published mode changed. Start the run again.",
+      });
+    }
 
     const payload = body.input ?? {};
-    const runMode = workflow.mode;
+    // A draft run travels a graph nobody has reviewed, so it uses test
+    // recipients whatever the workflow's Published mode says. That mode governs
+    // Events and runs of the published version, which the other branch loads.
+    const runMode: WorkflowMode = source === "draft" ? "test" : workflow.mode;
     const rules = preflight.lifecycleRules ?? emptyLifecycleRules;
     const extensions = yield* Extensions;
     const eventName = body.eventName;
@@ -207,6 +265,7 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
     }
 
     if (workflow.isPaused) {
+      yield* pinVersion;
       const ignoredExecution = yield* recordPausedRunIgnored({
         workflowId,
         workflowVersionId: preflight.workflowVersionId,
@@ -249,17 +308,23 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
       request: {
         workflowName: workflow.name,
         runMode,
+        graph: source,
         eventName,
         payloadKeys: Object.keys(payload),
       },
     });
 
+    // An Execution records `preflight.workflowVersionId` here and in the paused
+    // branch above. The pin runs immediately ahead of each write, so a start
+    // refused earlier leaves no version row behind.
+    yield* pinVersion;
     const started = yield* startWithConcurrency({
       workflow: toWorkflowRunTarget({
         workflow: { id: workflowId, name: workflow.name },
         versionId: preflight.workflowVersionId,
         catalogFingerprint: preflight.catalogFingerprint,
         graph: preflight.workflowGraph,
+        version,
       }),
       concurrency: rules.concurrency,
       start: {
@@ -280,7 +345,9 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
 
     if (started.status === "not_started") {
       // No execution id: the refusal wrote no run, and the run it deferred to
-      // belongs to whoever started it. The timeline carries the refusal.
+      // belongs to whoever started it. The timeline carries the refusal. The
+      // snapshot pinned above is deleted unless another run pinned it too.
+      yield* releaseVersion;
       const response: WorkflowExecuteResponse = {
         status: "ignored",
         runMode,

@@ -45,6 +45,19 @@ describe("native SQLite integration persistence", () => {
     versionTwo.exec(`
       PRAGMA foreign_keys = ON;
       CREATE TABLE integrations (id TEXT PRIMARY KEY) STRICT;
+      -- Migration step 5 rebuilds workflow_versions, so this fixture includes
+      -- the workflow tables a database at that version actually had.
+      CREATE TABLE workflows (id TEXT PRIMARY KEY) STRICT;
+      CREATE TABLE workflow_versions (
+        id TEXT PRIMARY KEY,
+        workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+        version INTEGER NOT NULL,
+        graph TEXT NOT NULL,
+        catalog_fingerprint TEXT NOT NULL,
+        graph_digest TEXT NOT NULL,
+        published_at INTEGER NOT NULL,
+        UNIQUE (workflow_id, version)
+      ) STRICT;
       CREATE TABLE oauth_authorization_attempts (
         state_hash TEXT PRIMARY KEY,
         integration_id TEXT NOT NULL REFERENCES integrations(id) ON DELETE CASCADE,
@@ -104,7 +117,7 @@ describe("native SQLite integration persistence", () => {
         updated_at: 0,
       });
       expect(inspection.prepare("PRAGMA user_version").get()).toEqual({
-        user_version: 4,
+        user_version: 5,
       });
     } finally {
       inspection.close();
@@ -872,6 +885,19 @@ describe("native SQLite integration persistence", () => {
       is_managed INTEGER DEFAULT 0 CHECK (is_managed IS NULL OR is_managed IN (0, 1)),
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
+    ) STRICT;
+    -- Migration step 5 rebuilds workflow_versions, so this fixture includes
+    -- the workflow tables a database at that version actually had.
+    CREATE TABLE workflows (id TEXT PRIMARY KEY) STRICT;
+    CREATE TABLE workflow_versions (
+      id TEXT PRIMARY KEY,
+      workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+      version INTEGER NOT NULL,
+      graph TEXT NOT NULL,
+      catalog_fingerprint TEXT NOT NULL,
+      graph_digest TEXT NOT NULL,
+      published_at INTEGER NOT NULL,
+      UNIQUE (workflow_id, version)
     ) STRICT;
     PRAGMA user_version = 1;
   `);

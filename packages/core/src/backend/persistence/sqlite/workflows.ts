@@ -1,7 +1,12 @@
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
-import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
+import type {
+  PublishedWorkflowVersion,
+  Workflow,
+  WorkflowVersion,
+} from "#src/backend/lib/db/schema";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
 import {
+  asPublishedVersion,
   WorkflowRepo,
   type EventSubscriber,
   type WorkflowEventSubscriptionRow,
@@ -10,12 +15,14 @@ import {
 import type { SqliteDatabase } from "#src/backend/persistence/sqlite/database";
 import {
   encodeGraph,
+  optionalNumber,
   optionalString,
   requiredBoolean,
   requiredDate,
   requiredGraph,
   requiredNumber,
   requiredString,
+  requiredVersionKind,
 } from "#src/backend/persistence/sqlite/database";
 
 function workflowMode(value: string): Workflow["mode"] {
@@ -54,7 +61,8 @@ export function sqliteWorkflowVersion(
   return {
     id: requiredString(row, `${prefix}id`),
     workflowId: requiredString(row, `${prefix}workflow_id`),
-    version: requiredNumber(row, `${prefix}version`),
+    version: optionalNumber(row, `${prefix}version`),
+    kind: requiredVersionKind(row, `${prefix}kind`),
     graph: requiredGraph(row, `${prefix}graph`),
     catalogFingerprint: requiredString(row, `${prefix}catalog_fingerprint`),
     graphDigest: requiredString(row, `${prefix}graph_digest`),
@@ -92,12 +100,16 @@ function findWorkflow(
 function publishedPair(
   database: DatabaseSync,
   workflowId: string
-): { workflow: Workflow; publishedVersion: WorkflowVersion | null } | null {
+): {
+  workflow: Workflow;
+  publishedVersion: PublishedWorkflowVersion | null;
+} | null {
   const row = database
     .prepare(
       `SELECT w.*,
          v.id AS version_id, v.workflow_id AS version_workflow_id,
-         v.version AS version_version, v.graph AS version_graph,
+         v.version AS version_version, v.kind AS version_kind,
+         v.graph AS version_graph,
          v.catalog_fingerprint AS version_catalog_fingerprint,
          v.graph_digest AS version_graph_digest,
          v.published_at AS version_published_at
@@ -110,7 +122,9 @@ function publishedPair(
   return {
     workflow: sqliteWorkflow(row),
     publishedVersion:
-      row.version_id === null ? null : sqliteWorkflowVersion(row, "version_"),
+      row.version_id === null
+        ? null
+        : asPublishedVersion(sqliteWorkflowVersion(row, "version_")),
   };
 }
 
@@ -340,7 +354,8 @@ export function makeSqliteWorkflowRepo(
         const row = database
           .prepare(
             `SELECT version FROM workflow_versions
-             WHERE workflow_id = ? ORDER BY version DESC LIMIT 1`
+             WHERE workflow_id = ? AND kind = 'published'
+             ORDER BY version DESC LIMIT 1`
           )
           .get(workflowId);
         return row ? { version: requiredNumber(row, "version") } : null;
@@ -353,7 +368,7 @@ export function makeSqliteWorkflowRepo(
                     v.id = w.published_version_id AS is_current
              FROM workflow_versions v
              JOIN workflows w ON w.id = v.workflow_id
-             WHERE v.workflow_id = ?
+             WHERE v.workflow_id = ? AND v.kind = 'published'
                AND (? IS NULL OR v.version < ?)
              ORDER BY v.version DESC
              LIMIT ?`
@@ -395,6 +410,16 @@ export function makeSqliteWorkflowRepo(
           publishedVersion: pair.publishedVersion,
         };
       }),
+    findByIdWithDraftGraphForRun: (workflowId) =>
+      store.read((database) => {
+        const workflow = findWorkflow(database, workflowId);
+        if (!workflow) return null;
+        const { id, name, mode, isPaused } = workflow;
+        return {
+          workflow: { id, name, mode, isPaused },
+          draftGraph: workflow.graph,
+        };
+      }),
     insertPublishedVersion: (input) =>
       store.write((database) => {
         if (!findWorkflow(database, input.workflowId)) return null;
@@ -402,9 +427,9 @@ export function makeSqliteWorkflowRepo(
         const inserted = database
           .prepare(
             `INSERT INTO workflow_versions
-             (id, workflow_id, version, graph, catalog_fingerprint,
+             (id, workflow_id, version, kind, graph, catalog_fingerprint,
               graph_digest, published_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
+             VALUES (?, ?, ?, 'published', ?, ?, ?, ?)
              ON CONFLICT (workflow_id, version) DO NOTHING RETURNING id`
           )
           .get(
@@ -447,10 +472,76 @@ export function makeSqliteWorkflowRepo(
         const versionRow = database
           .prepare("SELECT * FROM workflow_versions WHERE id = ?")
           .get(input.versionId);
-        if (!workflow || !versionRow) {
+        const version = asPublishedVersion(
+          versionRow ? sqliteWorkflowVersion(versionRow) : null
+        );
+        if (!workflow || !version) {
           throw new Error("Published SQLite version is missing");
         }
-        return { workflow, version: sqliteWorkflowVersion(versionRow) };
+        return { workflow, version };
+      }),
+    freezeDraftSnapshot: (input) =>
+      store.write((database) => {
+        // The column holds `encodeGraph` output, so an identical graph encodes
+        // to identical text and a plain equality finds it.
+        //
+        // The EXISTS clause is what makes the reuse safe against a concurrent
+        // start. A snapshot no Execution references yet is private to the
+        // request that inserted it, and that request can still release it if a
+        // later gate refuses the start. Reusing such a row would let this run
+        // pin an id the other request is about to delete. A referenced row can
+        // never be deleted, because `deleteUnreferencedDraftSnapshot` refuses
+        // it.
+        const graph = encodeGraph(input.graph);
+        const existing = database
+          .prepare(
+            `SELECT * FROM workflow_versions
+             WHERE workflow_id = ? AND kind = 'draft_snapshot'
+               AND catalog_fingerprint = ? AND graph = ?
+               AND EXISTS (
+                 SELECT 1 FROM workflow_executions
+                 WHERE workflow_version_id = workflow_versions.id
+               )
+             ORDER BY published_at DESC LIMIT 1`
+          )
+          .get(input.workflowId, input.catalogFingerprint, graph);
+        if (existing) return sqliteWorkflowVersion(existing);
+
+        database
+          .prepare(
+            `INSERT INTO workflow_versions
+             (id, workflow_id, version, kind, graph, catalog_fingerprint,
+              graph_digest, published_at)
+             VALUES (?, ?, NULL, 'draft_snapshot', ?, ?, ?, ?)`
+          )
+          .run(
+            input.versionId,
+            input.workflowId,
+            graph,
+            input.catalogFingerprint,
+            input.graphDigest,
+            Date.now()
+          );
+        const row = database
+          .prepare("SELECT * FROM workflow_versions WHERE id = ?")
+          .get(input.versionId);
+        if (!row) throw new Error("The draft snapshot was not written");
+        return sqliteWorkflowVersion(row);
+      }),
+
+    deleteUnreferencedDraftSnapshot: (versionId) =>
+      store.write((database) => {
+        const result = database
+          .prepare(
+            `DELETE FROM workflow_versions
+             WHERE id = ? AND kind = 'draft_snapshot'
+               AND NOT EXISTS (
+                 SELECT 1 FROM workflow_executions
+                 WHERE workflow_version_id = workflow_versions.id
+               )`
+          )
+          .run(versionId);
+        return result.changes > 0;
       }),
   };
 }

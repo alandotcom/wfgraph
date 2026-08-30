@@ -10,9 +10,11 @@ import {
   optionalDate,
   optionalJsonObject,
   optionalJsonValue,
+  optionalNumber,
   optionalString,
   requiredDate,
   requiredString,
+  requiredVersionKind,
 } from "#src/backend/persistence/sqlite/database";
 
 export function sqliteExecutionStatus(
@@ -51,9 +53,14 @@ function runMode(value: string): WorkflowExecution["runMode"] {
   return value;
 }
 
-export function sqliteExecutionListRow(
+/**
+ * The execution's own columns that the run lists read. The version kind and
+ * number come from a join, so the readers that ask for them add those two. The
+ * whole-row reader has no join and so has no values for them.
+ */
+function executionListColumns(
   row: Record<string, unknown>
-): WorkflowExecutionListRow {
+): Omit<WorkflowExecutionListRow, "versionKind" | "versionNumber"> {
   return {
     id: requiredString(row, "id"),
     workflowId: requiredString(row, "workflow_id"),
@@ -72,11 +79,22 @@ export function sqliteExecutionListRow(
   };
 }
 
+/** One run-list row, from a query that joined the version it pinned. */
+export function sqliteExecutionListRow(
+  row: Record<string, unknown>
+): WorkflowExecutionListRow {
+  return {
+    ...executionListColumns(row),
+    versionKind: requiredVersionKind(row, "version_kind"),
+    versionNumber: optionalNumber(row, "version_number"),
+  };
+}
+
 export function sqliteExecution(
   row: Record<string, unknown>
 ): WorkflowExecution {
   return {
-    ...sqliteExecutionListRow(row),
+    ...executionListColumns(row),
     workflowVersionId: requiredString(row, "workflow_version_id"),
     deliveryId: optionalString(row, "delivery_id"),
     enqueuedAt: optionalDate(row, "enqueued_at"),

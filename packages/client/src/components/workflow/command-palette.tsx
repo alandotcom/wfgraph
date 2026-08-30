@@ -14,6 +14,8 @@
 
 import { Autocomplete } from "@base-ui/react/autocomplete";
 import type { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+import type { BaseUIEvent } from "@base-ui/react/types";
+import { partition } from "es-toolkit";
 import { useAtomValue, useSetAtom } from "jotai";
 import { ChevronLeft, Search } from "lucide-react";
 import {
@@ -24,6 +26,7 @@ import {
   useId,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import { toast } from "sonner";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
@@ -71,6 +74,8 @@ type PaletteItem = {
   /** Everything the item can be found by, which is what the filter matches. */
   readonly keywords: string;
   readonly disabled: boolean;
+  /** Whether the row reaches real recipients. The highlight rules below skip these. */
+  readonly consequential: boolean;
   readonly icon: ReactNode;
   readonly select: () => void;
 };
@@ -89,8 +94,95 @@ function itemKeywords(item: PaletteItem): string {
   return item.keywords;
 }
 
+/**
+ * Returns the group with its sending rows moved to the end.
+ *
+ * Base UI highlights the first row a query leaves standing, and Return takes
+ * the highlighted row, so plain matches go ahead of rows that send. This
+ * applies only while a query narrows the list. At rest the palette keeps its
+ * authored order, where the run commands sit together after "Add step".
+ */
+function plainRowsFirst(group: PaletteGroup): PaletteGroup {
+  const [plain, consequential] = partition(
+    group.items,
+    (item) => !item.consequential
+  );
+  return consequential.length === 0
+    ? group
+    : { ...group, items: [...plain, ...consequential] };
+}
+
+/**
+ * The highlight styles, applied only while Return would take the row.
+ *
+ * Disabled rows keep pointer events so the pointer does not fall through to the
+ * list, which `autoHighlight="always"` would read as leaving and then highlight
+ * the first row. Skipping `data-disabled` keeps a disabled row visually inert.
+ */
+const HIGHLIGHTED_ROW =
+  "data-highlighted:not-data-disabled:bg-muted data-highlighted:not-data-disabled:text-foreground";
+
 function countItems(groups: readonly PaletteGroup[]): number {
   return groups.reduce((total, group) => total + group.items.length, 0);
+}
+
+/**
+ * The highlighted row, and whether an arrow key put the highlight there.
+ *
+ * Only an arrow key arms a row that sends. Base UI highlights the first row on
+ * its own and follows the pointer, and it keeps that highlight when a query
+ * narrows the list to rows that all send. An armed row is the only one that
+ * shows the highlight and responds to Return.
+ *
+ * The row is held by id rather than by object, because the pages below are
+ * rebuilt on every render and Base UI re-announces the highlight whenever the
+ * item it holds changes identity.
+ */
+type PaletteHighlight = {
+  readonly id: string | undefined;
+  readonly consequential: boolean;
+  readonly armed: boolean;
+};
+
+const NO_HIGHLIGHT: PaletteHighlight = {
+  id: undefined,
+  consequential: false,
+  armed: false,
+};
+
+function sameHighlight(a: PaletteHighlight, b: PaletteHighlight): boolean {
+  return (
+    a.id === b.id && a.consequential === b.consequential && a.armed === b.armed
+  );
+}
+
+/**
+ * Computes the highlight state after one of Base UI's highlight events.
+ *
+ * An arrow key arms the row it lands on. The pointer arms nothing. A reason of
+ * "none" means Base UI placed the highlight itself, either on a narrowed list
+ * or as a re-announcement after an arrow key, so it keeps whatever arming the
+ * row already had and grants none to a row that had none.
+ *
+ * An unchanged highlight returns the same state object, so a re-announcement
+ * does not cause a render.
+ */
+function nextHighlight(
+  current: PaletteHighlight,
+  item: PaletteItem | undefined,
+  reason: Autocomplete.Root.HighlightEventReason
+): PaletteHighlight {
+  const next: PaletteHighlight =
+    item === undefined
+      ? NO_HIGHLIGHT
+      : {
+          id: item.id,
+          consequential: item.consequential,
+          armed:
+            reason === "keyboard" ||
+            (reason === "none" && current.armed && current.id === item.id),
+        };
+  return sameHighlight(current, next) ? current : next;
 }
 
 /**
@@ -107,6 +199,9 @@ const NO_GROUPS: readonly PaletteGroup[] = [];
 
 /** The toast id, so holding the chord down replaces the notice rather than stacking it. */
 const REFUSAL_TOAST_ID = "command-palette-refused";
+
+/** The toast id for a Return the palette refused, held down or repeated. */
+const UNARMED_TOAST_ID = "command-palette-unarmed";
 
 type CommandPaletteProps = {
   commands: readonly WorkflowCommand[];
@@ -197,6 +292,12 @@ function CommandPaletteDialog({
   const page = currentPalettePage(palette);
   const canGoBack = paletteCanGoBack(palette);
 
+  /**
+   * The highlight, which the list paints from and Return reads. One fact, so
+   * the row wearing the highlight is always the row Return will take.
+   */
+  const [highlight, setHighlight] = useState<PaletteHighlight>(NO_HIGHLIGHT);
+
   const close = useCallback(() => setPalette(null), [setPalette]);
 
   /**
@@ -240,6 +341,8 @@ function CommandPaletteDialog({
         // context menu opens this page directly, which is the one way in that
         // does not pass that item.
         disabled: editingLocked,
+        // Adding a step edits the canvas and sends nothing outward.
+        consequential: false,
         icon: <ActionIcon action={action} className="size-3.5" />,
         select: () => {
           addStep({ actionType: action.id, at: stepAt });
@@ -264,6 +367,7 @@ function CommandPaletteDialog({
         hint: command.id === "add-step" ? "→" : command.hint,
         keywords: command.keywords,
         disabled: command.disabled,
+        consequential: command.consequential === true,
         icon: (
           <WorkflowCommandIcon
             className="size-3.5 text-muted-foreground"
@@ -281,12 +385,15 @@ function CommandPaletteDialog({
       })),
   }));
 
-  let groups: readonly PaletteGroup[];
+  let authoredGroups: readonly PaletteGroup[];
   if (onStepPage) {
-    groups = stepPageGroups;
+    authoredGroups = stepPageGroups;
   } else {
-    groups = rootPageGroups;
+    authoredGroups = rootPageGroups;
   }
+
+  const groups =
+    palette.query === "" ? authoredGroups : authoredGroups.map(plainRowsFirst);
 
   // An empty list is two different facts, and the reader is owed the right one:
   // a query that matched nothing, or a surface with no node types in it at all.
@@ -322,12 +429,32 @@ function CommandPaletteDialog({
     close();
   };
 
-  const handleInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+  const handleInputKeyDown = (
+    // Base UI passes a merged handler the event with its own opt-out, which is
+    // how the Return handler below takes the key from Base UI's list navigation.
+    event: BaseUIEvent<ReactKeyboardEvent<HTMLInputElement>>
+  ) => {
     // Backspace on an empty box is the other way back, and it must not also
     // delete a character that is not there.
     if (event.key === "Backspace" && palette.query === "" && canGoBack) {
       event.preventDefault();
       goBack();
+      return;
+    }
+
+    // Return takes the armed row only. Base UI highlights row zero and follows
+    // the pointer, so without this check a query narrowed to "Run v5 · Live",
+    // or a pointer resting on it, would start that run on a keystroke aimed at
+    // the search box.
+    if (event.key === "Enter" && highlight.consequential && !highlight.armed) {
+      event.preventDefault();
+      event.preventBaseUIHandler();
+      // Announce the refusal. A keystroke that does nothing explains nothing,
+      // and a screen reader never receives the missing highlight.
+      toast.info(
+        "Use the arrow keys to choose a command that reaches real recipients.",
+        { id: UNARMED_TOAST_ID }
+      );
     }
   };
 
@@ -360,6 +487,14 @@ function CommandPaletteDialog({
           inline
           items={groups}
           itemToStringValue={itemKeywords}
+          onItemHighlighted={(item, details) => {
+            // One rule for every event, so a pointer highlight disarms what an
+            // arrow key armed. Otherwise the painted row and the row Return
+            // takes could differ.
+            setHighlight((current) =>
+              nextHighlight(current, item, details.reason)
+            );
+          }}
           onValueChange={(next, details) => {
             // Pressing an item makes Base UI offer the item's own text as the
             // next input value. The query belongs to the page, and the page has
@@ -374,6 +509,10 @@ function CommandPaletteDialog({
             if (details.reason === "item-press") {
               return;
             }
+            // The list has changed, so the row the arrow keys armed no longer
+            // holds the highlight. Base UI highlights the narrowed list a
+            // moment later, and that highlight arms nothing.
+            setHighlight(NO_HIGHLIGHT);
             setPalette(setPaletteQuery(palette, next));
           }}
           open
@@ -446,12 +585,12 @@ function CommandPaletteDialog({
                     <Autocomplete.Item
                       className={cn(
                         "flex min-h-7 cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-xs/relaxed outline-none select-none",
-                        // Disabled rows keep pointer events so hover does not
-                        // fall through to the list. autoHighlight="always"
-                        // would otherwise treat that as leaving and paint the
-                        // first row. Highlight styles skip data-disabled, so
-                        // the row stays visually inert.
-                        "data-highlighted:not-data-disabled:bg-muted data-highlighted:not-data-disabled:text-foreground",
+                        // A row that sends shows the highlight only after an
+                        // arrow key arms it, so an automatically highlighted or
+                        // hovered row never looks like the row Return takes.
+                        (!item.consequential ||
+                          (highlight.armed && highlight.id === item.id)) &&
+                          HIGHLIGHTED_ROW,
                         "data-disabled:opacity-50"
                       )}
                       disabled={item.disabled}

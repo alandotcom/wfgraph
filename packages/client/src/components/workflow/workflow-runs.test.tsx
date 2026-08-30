@@ -357,7 +357,7 @@ describe("WorkflowRuns", () => {
     });
 
     await waitFor(() => {
-      expect(view.getByText(/has left the runs list/)).toBeTruthy();
+      expect(view.getByText(/no longer in the runs list/)).toBeTruthy();
     });
     expect(
       view.getByRole("button", { name: "Back to runs list" })
@@ -375,7 +375,7 @@ describe("WorkflowRuns", () => {
         view.getByRole("button", { name: "Back to runs list" })
       ).toBeTruthy();
     });
-    expect(view.queryByText(/has left the runs list/)).toBeNull();
+    expect(view.queryByText(/no longer in the runs list/)).toBeNull();
   });
 
   it("opens the run named in the search param", async () => {
@@ -385,7 +385,7 @@ describe("WorkflowRuns", () => {
     expect(
       await view.findByRole("button", { name: "Back to runs list" })
     ).toBeTruthy();
-    expect(view.queryByText(/has left the runs list/)).toBeNull();
+    expect(view.queryByText(/no longer in the runs list/)).toBeNull();
   });
 
   it("opens a superseded run from the search param", async () => {
@@ -419,7 +419,7 @@ describe("WorkflowRuns", () => {
     expect(
       await view.findByRole("button", { name: "Back to runs list" })
     ).toBeTruthy();
-    expect(view.getByText(/has left the runs list/)).toBeTruthy();
+    expect(view.getByText(/no longer in the runs list/)).toBeTruthy();
     expect(view.getByText("Test")).toBeTruthy();
     expect(view.getByText("Manual")).toBeTruthy();
   });

@@ -24,6 +24,8 @@ function run(
     workflowName: "Onboarding",
     status: "completed",
     runMode: "live",
+    versionKind: "published",
+    versionNumber: 7,
     startSource: "manual",
     startEventName: null,
     entityValue: null,
@@ -171,6 +173,28 @@ describe("filterRuns", () => {
     expect(filtered.map((row) => row.id)).toEqual(["exec_2"]);
   });
 
+  it("filters by graph kind", () => {
+    const withDraft = [
+      ...rows,
+      run({
+        id: "exec_4",
+        workflowId: "wf_1",
+        workflowName: "Onboarding",
+        versionKind: "draft_snapshot",
+        versionNumber: null,
+      }),
+    ];
+
+    expect(
+      filterRuns(withDraft, {
+        query: "",
+        filters: [
+          filter({ field: "graph", operator: "is", value: "draft_snapshot" }),
+        ],
+      }).map((row) => row.id)
+    ).toEqual(["exec_4"]);
+  });
+
   it("searches name, id, event, entity, and error", () => {
     expect(
       filterRuns(rows, { query: "timeout", filters: [] }).map((row) => row.id)
@@ -181,6 +205,43 @@ describe("filterRuns", () => {
     expect(
       filterRuns(rows, { query: "user_1", filters: [] }).map((row) => row.id)
     ).toEqual(["exec_1"]);
+  });
+
+  it("matches a free-text search for 'draft' against Graph=Draft rows", () => {
+    const withDraft = [
+      ...rows,
+      run({
+        id: "exec_4",
+        workflowId: "wf_1",
+        workflowName: "Onboarding",
+        versionKind: "draft_snapshot",
+        versionNumber: null,
+      }),
+    ];
+
+    expect(
+      filterRuns(withDraft, { query: "draft", filters: [] }).map(
+        (row) => row.id
+      )
+    ).toEqual(["exec_4"]);
+  });
+
+  it("matches a free-text search for a version number against its Graph label", () => {
+    const withVersions = [
+      run({ id: "exec_5", versionNumber: 7 }),
+      run({ id: "exec_6", versionNumber: 12 }),
+      run({
+        id: "exec_7",
+        versionKind: "draft_snapshot",
+        versionNumber: null,
+      }),
+    ];
+
+    expect(
+      filterRuns(withVersions, { query: "v7", filters: [] }).map(
+        (row) => row.id
+      )
+    ).toEqual(["exec_5"]);
   });
 });
 

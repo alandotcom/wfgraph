@@ -73,6 +73,30 @@ describe("listByWorkflow", () => {
   );
 });
 
+describe("pinned version joins", () => {
+  // The panel labels a draft run from the version it pinned. Reading the graph
+  // to find that out would defeat the point of the thin list row.
+  it.effect("joins the pinned version on all three run reads", () =>
+    Effect.gen(function* () {
+      const { service: database, statements } = stubDatabase();
+      const runs = makeRunsMethods(database);
+
+      yield* runs.listByWorkflow({
+        workflowId: "wf_1",
+        includeSuperseded: false,
+      });
+      yield* runs.listPage({ limit: 10 });
+      yield* runs.findSummaryById("exec_1");
+
+      for (const statement of statements) {
+        assert.include(statement.query, '"workflow_versions"."kind"');
+        assert.include(statement.query, '"workflow_version_id"');
+      }
+      assert.lengthOf(statements, 3);
+    })
+  );
+});
+
 describe("listPage", () => {
   it.effect("does not read the JSONB columns the list never shows", () =>
     Effect.gen(function* () {

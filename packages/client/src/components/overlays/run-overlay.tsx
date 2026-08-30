@@ -1,3 +1,4 @@
+import { Send } from "lucide-react";
 import { useState } from "react";
 import { Button } from "#src/components/ui/button";
 import { Checkbox } from "#src/components/ui/checkbox";
@@ -21,6 +22,12 @@ import {
 } from "#src/lib/test-payload";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
+  type RunSends,
+  runOverlayCopy,
+  runSendsLabel,
+  type WorkflowRunTarget,
+} from "#src/lib/workflow-run-labels";
+import {
   findEvent,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
@@ -34,29 +41,41 @@ import { useOverlay } from "./overlay-provider";
 import type { OverlayComponentProps } from "./types";
 
 /**
- * The value the Event select carries for a run that stands in for no Event. An
- * Event name is never empty, so no real choice collides with it.
+ * The Event select's value for a run that stands in for no Event. An Event name
+ * is never empty, so this value collides with no real choice.
  */
 const NO_EVENT = "";
 
-export type TestRunRequest = {
+export type RunRequest = {
   eventName?: string;
   input: JsonObject;
 };
 
-type TestRunOverlayProps = OverlayComponentProps<{
+type RunOverlayProps = OverlayComponentProps<{
+  /**
+   * Which graph this run starts, and its label. The heading, the opening
+   * sentence and the confirm button all read this one value, so the overlay
+   * confirms the command that opened it.
+   */
+  target: WorkflowRunTarget;
   /** The workflow's Start Events, in the order the Lifecycle panel lists them. */
   startEvents: readonly string[];
   /** Whether a run naming no Event is one this workflow takes at all. */
   allowManualStart: boolean;
   /**
-   * Whether the graph splits on the Event a run is on. Such a graph refuses an
-   * Event-less run, so the overlay says so before the request rather than after.
+   * Whether the graph splits on the Event a run stands in for. A graph that
+   * splits rejects an Event-less run, so the overlay reports that before the
+   * request is sent.
    */
   hasEventSplit: boolean;
   /** The samples the workflow kept, one per Event plus the Event-less one. */
   savedPayloads: TestPayloads;
-  onRun: (request: TestRunRequest) => void;
+  /**
+   * What the graph this run executes can send outward. Only a live published
+   * run displays it, counted from that version's own nodes.
+   */
+  sends: RunSends;
+  onRun: (request: RunRequest) => void;
 }>;
 
 /** What the Event select shows for one Start Event: its label, then its name. */
@@ -124,16 +143,21 @@ function PayloadForm({
   fields,
   values,
   onChange,
+  hasEvent,
 }: {
   fields: readonly TestPayloadField[];
   values: TestPayloadFormValues;
   onChange: (path: string, next: string) => void;
+  /** Whether the run stands in for an Event. The Event declares the fields. */
+  hasEvent: boolean;
 }) {
   if (fields.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
-        This Event declares no payload field the form can draw. Use the JSON tab
-        to write the payload.
+        {hasEvent
+          ? "This Event has no payload fields."
+          : "This run has no Event, so there are no form fields."}{" "}
+        Enter the payload on the JSON tab.
       </p>
     );
   }
@@ -165,27 +189,36 @@ function PayloadForm({
 }
 
 /**
- * The data a test run carries, gathered before the run starts.
+ * Collects the data a run carries before it starts: the payload that downstream
+ * templates address, and the Event the run stands in for, which an Event Split
+ * routes on. A run missing either one stops at the first node that needs it.
  *
- * Two things leave here: the payload, which every template downstream addresses,
- * and the Event the run stands in for, which is what an Event Split routes on. A
- * run given neither reaches the first node that needs one and stops there, so
- * this is the screen that keeps a test run from being a different thing than the
- * run it is testing.
+ * Both run commands use this component. `target` decides the wording around the
+ * Event and payload fields, which are the same either way.
  */
-export function TestRunOverlay({
+export function RunOverlay({
   overlayId,
+  target,
   startEvents,
   allowManualStart,
   hasEventSplit,
   savedPayloads,
+  sends,
   onRun,
-}: TestRunOverlayProps) {
+}: RunOverlayProps) {
   const catalog = useExtensionCatalog();
   const { closeAll } = useOverlay();
+  const copy = runOverlayCopy(target);
+  // The sends line states what the published graph sends when it reaches real
+  // recipients. A version built only from waits, conditions and internal steps
+  // sends nothing, so the line is left out rather than reading "0".
+  const showSends =
+    target.graph === "published" &&
+    target.workflowMode === "live" &&
+    sends.count > 0;
 
-  // The first Start Event, since one of them is the ordinary shape. A workflow
-  // with none can only be the Event-less manual start.
+  // Default to the first Start Event. A workflow with no Start Event can only
+  // take the Event-less manual start.
   const [selectedEvent, setSelectedEvent] = useState<string>(
     startEvents[0] ?? NO_EVENT
   );
@@ -206,8 +239,8 @@ export function TestRunOverlay({
   );
   const [jsonError, setJsonError] = useState<string | null>(null);
 
-  // The payload the JSON pane holds, which is also what the form writes into: a
-  // path the form has no field for survives the round trip that way.
+  // The form writes into the same payload the JSON pane holds, so a path with
+  // no matching form field survives the round trip.
   const [basePayload, setBasePayload] = useState<JsonObject>(
     () => savedPayload ?? {}
   );
@@ -226,7 +259,7 @@ export function TestRunOverlay({
     setJsonError(null);
   };
 
-  /** The form's values as a payload, on top of whatever the JSON pane holds. */
+  /** The form's values as a payload, merged over whatever the JSON pane holds. */
   const currentPayload = () =>
     payloadFromFormValues(fields, values, basePayload);
 
@@ -269,13 +302,19 @@ export function TestRunOverlay({
     closeAll();
   };
 
+  // A manual-only workflow has one way to start and no Event to stand in for,
+  // so the select would offer a single unchangeable choice. A graph with an
+  // Event Split keeps the block, because its sentence explains why Run is off.
+  const showEventSelect =
+    startEvents.length > 0 || !allowManualStart || hasEventSplit;
+
   const eventItems = [
     ...startEvents.map((name) => ({
       label: eventLabel(catalog, name),
       value: name,
     })),
     ...(allowManualStart
-      ? [{ label: "No Event (manual start)", value: NO_EVENT }]
+      ? [{ label: "None (manual start)", value: NO_EVENT }]
       : []),
   ];
 
@@ -283,45 +322,58 @@ export function TestRunOverlay({
     <Overlay
       actions={[
         { label: "Cancel", variant: "outline", onClick: closeAll },
-        { label: "Run", onClick: handleRun, disabled: !canRun },
+        {
+          label: copy.confirmLabel,
+          onClick: handleRun,
+          disabled: !canRun,
+        },
       ]}
-      description="A test run carries the payload an Event would have sent, so every template downstream resolves the way it will in production."
+      description={copy.description}
       overlayId={overlayId}
-      title="Test run"
+      title={copy.title}
     >
       <div className="space-y-6">
-        <div className="space-y-2">
-          <Label htmlFor="testRunEvent">
-            Which Event does this run stand in for?
-          </Label>
-          <Select
-            items={eventItems}
-            onValueChange={whenChosen(chooseEvent)}
-            value={selectedEvent}
-          >
-            <SelectTrigger className="w-full" id="testRunEvent">
-              <SelectValue placeholder="Choose an Event" />
-            </SelectTrigger>
-            <SelectContent>
-              {startEvents.map((name) => (
-                <SelectItem key={name} value={name}>
-                  {eventLabel(catalog, name)}
-                </SelectItem>
-              ))}
-              {allowManualStart && (
-                <SelectItem disabled={hasEventSplit} value={NO_EVENT}>
-                  No Event (manual start)
-                </SelectItem>
-              )}
-            </SelectContent>
-          </Select>
-          {hasEventSplit && (
-            <p className="text-muted-foreground text-xs">
-              This workflow splits on the Event a run is on, so a run has to
-              name one.
-            </p>
-          )}
-        </div>
+        {/* A plain line rather than a banner: the sentence above already says
+            the run reaches real recipients, and a second box around the same
+            fact reads as a warning about something else. */}
+        {showSends && (
+          <p className="flex items-center gap-2 text-muted-foreground text-sm">
+            <Send aria-hidden className="size-3.5 shrink-0" />
+            {runSendsLabel(sends)}
+          </p>
+        )}
+
+        {showEventSelect ? (
+          <div className="space-y-2">
+            <Label htmlFor="runEvent">Event</Label>
+            <Select
+              items={eventItems}
+              onValueChange={whenChosen(chooseEvent)}
+              value={selectedEvent}
+            >
+              <SelectTrigger className="w-full" id="runEvent">
+                <SelectValue placeholder="Choose an Event" />
+              </SelectTrigger>
+              <SelectContent>
+                {startEvents.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {eventLabel(catalog, name)}
+                  </SelectItem>
+                ))}
+                {allowManualStart && (
+                  <SelectItem disabled={hasEventSplit} value={NO_EVENT}>
+                    None (manual start)
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+            {eventIsRequired && (
+              <p className="text-muted-foreground text-xs">
+                This workflow has an Event Split, so the run must name an Event.
+              </p>
+            )}
+          </div>
+        ) : null}
 
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -347,6 +399,7 @@ export function TestRunOverlay({
           {pane === "form" ? (
             <PayloadForm
               fields={fields}
+              hasEvent={eventName !== undefined}
               onChange={(path, next) =>
                 setValues((current) => ({ ...current, [path]: next }))
               }

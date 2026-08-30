@@ -157,7 +157,7 @@ function chooseEvent(view: RenderResult, label: string, query: string) {
  * `<Label>`, because the Event's own heading is the caller's to render.
  */
 function pathPicker(view: RenderResult, eventName: string): HTMLElement {
-  return view.getByLabelText(eventName);
+  return view.getByLabelText(`Correlation Path for ${eventName}`);
 }
 
 /** What a closed picker shows, which is the label of the path in force. */
@@ -852,7 +852,9 @@ describe("LifecyclePanel Correlation Paths", () => {
     );
 
     editRules(view);
-    expect(view.getByLabelText("ops/nightly.swept")).toBeTruthy();
+    expect(
+      view.getByLabelText("Correlation Path for ops/nightly.swept")
+    ).toBeTruthy();
     expect(view.getByText("Nightly sweep")).toBeTruthy();
   });
 

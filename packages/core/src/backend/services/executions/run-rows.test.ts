@@ -55,25 +55,49 @@ const runTarget = {
   graph: { nodes: [], edges: [] },
   versionId: "ver_1",
   catalogFingerprint: "fp",
+  version: { kind: "published" as const, number: 3 },
 };
 
 describe("buildRunStartedAuditMessage", () => {
   it("names the start source that opened the run", () => {
     expect(
       buildRunStartedAuditMessage({ startSource: "manual", runMode: "live" })
-    ).toBe("Manual run started");
+    ).toBe("Manual run started, to real recipients");
     expect(
       buildRunStartedAuditMessage({ startSource: "schedule", runMode: "live" })
-    ).toBe("Scheduled run started");
+    ).toBe("Scheduled run started, to real recipients");
     expect(
       buildRunStartedAuditMessage({ startSource: "event", runMode: "live" })
-    ).toBe("Event-triggered run started");
+    ).toBe("Event-triggered run started, to real recipients");
   });
 
-  it("marks test mode runs", () => {
+  it("names the recipients a test run reached", () => {
     expect(
       buildRunStartedAuditMessage({ startSource: "event", runMode: "test" })
-    ).toBe("Event-triggered test mode run started");
+    ).toBe("Event-triggered run started, to test recipients");
+  });
+
+  // A Draft run of a Live workflow reaches test recipients, and so does a test
+  // run of the published version. The pinned version is what tells the two rows
+  // apart.
+  it("names the Draft graph a snapshot run pinned", () => {
+    expect(
+      buildRunStartedAuditMessage({
+        startSource: "manual",
+        runMode: "test",
+        version: { kind: "draft_snapshot", number: null },
+      })
+    ).toBe("Manual Draft run started, to test recipients");
+  });
+
+  it("names the published version by its number", () => {
+    expect(
+      buildRunStartedAuditMessage({
+        startSource: "manual",
+        runMode: "test",
+        version: { kind: "published", number: 7 },
+      })
+    ).toBe("Manual run of v7 started, to test recipients");
   });
 
   it("appends the Event that started the run", () => {
@@ -82,8 +106,11 @@ describe("buildRunStartedAuditMessage", () => {
         startSource: "event",
         runMode: "test",
         eventName: "app/appointment.created",
+        version: { kind: "published", number: 7 },
       })
-    ).toBe("Event-triggered test mode run started for app/appointment.created");
+    ).toBe(
+      "Event-triggered run of v7 started for app/appointment.created, to test recipients"
+    );
   });
 });
 

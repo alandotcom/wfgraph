@@ -3,10 +3,10 @@
  *
  * The client pre-run checks (required fields, missing connections, orphan
  * template refs, and provider-backed fields that went unchecked) land here as a
- * flat discriminated list. Overlay grouping and
- * Run Anyway are derived from that list so the toolbar is chrome, not a second
- * validator. Server save/preflight reuse the same required-field and missing-
- * connection pieces; wrapping every server refusal into this model is deferred.
+ * flat discriminated list. Overlay grouping and "Run draft anyway" are derived
+ * from that list so the toolbar is chrome, not a second validator. Server
+ * save/preflight reuse the same required-field and missing-connection pieces;
+ * wrapping every server refusal into this model is deferred.
  */
 
 import {
@@ -52,7 +52,7 @@ export type MissingIntegrationIssue = {
  * wired, a provider that is down -- leaves that one field unjudged. It is a
  * warning rather than a blocker because nothing here says the field is wrong,
  * only that it went unchecked; the reader gets the node's name and a way into
- * it, and Run Anyway stays available.
+ * it, and "Run draft anyway" stays available.
  */
 export type UnverifiedProviderFieldIssue = {
   kind: "unverified_provider_field";

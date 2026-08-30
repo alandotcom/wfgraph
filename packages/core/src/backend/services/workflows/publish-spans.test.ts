@@ -6,7 +6,10 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { Effect, Layer } from "effect";
-import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
+import type {
+  PublishedWorkflowVersion,
+  Workflow,
+} from "#src/backend/lib/db/schema";
 import {
   expectIdentifierAttributesOnly,
   lifecycleGraphFixture,
@@ -75,11 +78,14 @@ const draft: Workflow = {
   updatedAt: new Date("2026-03-01T00:00:00.000Z"),
 };
 
-function versionRow(overrides: Partial<WorkflowVersion> = {}): WorkflowVersion {
+function versionRow(
+  overrides: Partial<PublishedWorkflowVersion> = {}
+): PublishedWorkflowVersion {
   return {
     id: "ver_1",
     workflowId: "wf_1",
     version: 1,
+    kind: "published",
     graph: graphWith(),
     catalogFingerprint: "fp",
     graphDigest: "digest",
@@ -91,7 +97,7 @@ function versionRow(overrides: Partial<WorkflowVersion> = {}): WorkflowVersion {
 /** What `insertPublishedVersion` answers for the input it was handed. */
 function mintedFrom(
   input: Parameters<WorkflowRepo["Service"]["insertPublishedVersion"]>[0]
-): { workflow: Workflow; version: WorkflowVersion } {
+): { workflow: Workflow; version: PublishedWorkflowVersion } {
   const version = versionRow({
     id: input.versionId,
     version: input.version,

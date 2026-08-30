@@ -261,7 +261,9 @@ describe("the command palette", () => {
   async function openedPalette(
     rendered: Awaited<ReturnType<typeof renderChrome>>
   ) {
-    await rendered.findByRole("button", { name: /^Publish/ });
+    // The name is anchored at both ends, because the Published mode pill also
+    // starts with "Publish" and this waits for the write button beside it.
+    await rendered.findByRole("button", { name: /^Publish( v\d+)?$/ });
     pressCommandK();
     const input = paletteInput();
     if (!input) {
@@ -393,6 +395,110 @@ describe("the command palette", () => {
 
     expect(save.hasAttribute("data-highlighted")).toBe(true);
     expect(addStep.hasAttribute("data-highlighted")).toBe(false);
+  });
+
+  /**
+   * A published workflow in Live Published mode, where the run of that version
+   * is the one command that reaches real recipients.
+   */
+  function publishedInLiveMode() {
+    return renderChrome(ToolbarActions, {
+      state: {
+        workflowMode: "live",
+        publication: {
+          isPublished: true,
+          hasUnpublishedChanges: true,
+          publishedVersionId: "version_5",
+          publishedVersion: 5,
+          publishedAt: "2026-08-23T15:00:00.000Z",
+        },
+      },
+    });
+  }
+
+  /**
+   * Return takes the highlighted row, so a row that reaches real recipients is
+   * never highlighted automatically. Plain matches sort ahead of it, and the
+   * automatic highlight lands on the first of those.
+   */
+  it("places the automatic highlight past a row that sends", async () => {
+    const rendered = publishedInLiveMode();
+    const input = await openedPalette(rendered);
+
+    // Both run commands carry "trigger", and nothing else does.
+    fireEvent.change(input, { target: { value: "trigger" } });
+
+    const draft = rendered.getByRole("option", { name: /^Run draft/ });
+    const live = rendered.getByRole("option", { name: /^Run v5 · Live/ });
+    expect(draft.hasAttribute("data-highlighted")).toBe(true);
+    expect(live.hasAttribute("data-highlighted")).toBe(false);
+  });
+
+  /**
+   * With no plain match left to sort ahead of it, Base UI highlights row zero
+   * anyway and offers no way to move that highlight. The row stays unarmed
+   * instead: it shows no highlight styling, and Return does nothing until an
+   * arrow key arms it.
+   */
+  it("leaves a row that sends unarmed until an arrow key arms it", async () => {
+    const rendered = publishedInLiveMode();
+    const input = await openedPalette(rendered);
+
+    fireEvent.change(input, { target: { value: "published version" } });
+
+    expect(rendered.getAllByRole("option")).toHaveLength(1);
+    const live = rendered.getByRole("option", { name: /^Run v5 · Live/ });
+    expect(live.className).not.toContain("data-highlighted:");
+
+    // Return before the arrow key is the press this rule rejects.
+    fireEvent.keyDown(paletteInput() ?? input, { key: "Enter" });
+    expect(rendered.actions.handleExecute).not.toHaveBeenCalled();
+
+    // Base UI moves the highlight off the single row and back onto it.
+    fireEvent.keyDown(paletteInput() ?? input, { key: "ArrowDown" });
+    fireEvent.keyDown(paletteInput() ?? input, { key: "ArrowDown" });
+
+    const armed = rendered.getByRole("option", { name: /^Run v5 · Live/ });
+    expect(armed.hasAttribute("data-highlighted")).toBe(true);
+    expect(armed.className).toContain("data-highlighted:");
+
+    fireEvent.click(armed);
+    expect(rendered.actions.handleExecute).toHaveBeenCalledWith("published");
+  });
+
+  /**
+   * The arming rule rejects Return on a row the keyboard has not armed. An
+   * armed row must still respond to Return, which is what the palette's hint
+   * tells the reader.
+   */
+  it("takes the armed row on Return", async () => {
+    const rendered = publishedInLiveMode();
+    const input = await openedPalette(rendered);
+
+    fireEvent.change(input, { target: { value: "published version" } });
+    fireEvent.keyDown(paletteInput() ?? input, { key: "ArrowDown" });
+    fireEvent.keyDown(paletteInput() ?? input, { key: "Enter" });
+
+    expect(rendered.actions.handleExecute).toHaveBeenCalledWith("published");
+    expect(paletteInput()).toBeNull();
+  });
+
+  // The label names the version and the Published mode; the detail says who
+  // that mode reaches.
+  it("names the recipients each run command reaches", async () => {
+    const rendered = publishedInLiveMode();
+    await openedPalette(rendered);
+
+    expect(
+      rendered.getByRole("option", {
+        name: /^Run draft — Test recipients/,
+      })
+    ).toBeTruthy();
+    expect(
+      rendered.getByRole("option", {
+        name: "Run v5 · Live — Real recipients",
+      })
+    ).toBeTruthy();
   });
 
   // The page stack clears the query, and this is that reaching the box the

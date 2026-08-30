@@ -12,8 +12,17 @@ import { validateWorkflowGraph } from "#src/backend/services/workflows/validatio
 import { validateWorkflowIntegrations } from "#src/backend/services/workflows/validation/workflow-integration-validation";
 import { validateWorkflowEvents } from "#src/backend/services/workflows/validation/workflow-lifecycle-validation";
 import { annotateServiceSpan } from "#src/backend/lib/telemetry";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import { graphDigest } from "#src/backend/services/workflows/version-digest";
+import {
+  WorkflowRepo,
+  type WorkflowRunRow,
+} from "#src/backend/services/workflows/repo";
+import type { DatabaseError } from "#src/backend/lib/effect/database";
+import type { PinnedRunVersion } from "#src/backend/services/executions/run-rows";
+import {
+  catalogFingerprint,
+  graphDigest,
+} from "#src/backend/services/workflows/version-digest";
+import { generateId } from "@wfgraph/shared/utils/id";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import {
   type LifecycleRules,
@@ -31,7 +40,11 @@ type WorkflowForPreflight = {
 
 export type WorkflowExecutionPreflight = {
   workflowGraph: SerializedWorkflowGraph;
-  /** The published version this preflight loaded; starts pin the run to it. */
+  /**
+   * The version the run pins to. For a published start, the version this
+   * preflight loaded. For a draft start, the snapshot the caller is about to
+   * mint; that row does not exist yet when this preflight receives the id.
+   */
   workflowVersionId: string;
   /** Catalog fingerprint stored on that version. */
   catalogFingerprint: string;
@@ -44,6 +57,24 @@ export type WorkflowExecutionPreflight = {
    * halfway.
    */
   hasEventSplit: boolean;
+};
+
+/**
+ * What a start reads off either loader.
+ *
+ * Run `pinVersion` before storing `preflight.workflowVersionId` on an Execution.
+ * A published start's `pinVersion` is `Effect.void`. A draft start's writes the
+ * snapshot row, and can replace the id with that of an existing identical
+ * snapshot. `releaseVersion` undoes the pin when a later gate refuses the start.
+ * It never fails, because a leftover snapshot row costs only storage.
+ */
+export type LoadedForRun = {
+  workflow: WorkflowRunRow;
+  preflight: WorkflowExecutionPreflight;
+  /** Which graph the run pins, in the wording the timeline uses. */
+  version: PinnedRunVersion;
+  pinVersion: Effect.Effect<void, DatabaseError>;
+  releaseVersion: Effect.Effect<void>;
 };
 
 /**
@@ -267,6 +298,99 @@ export const loadWorkflowForRun = Effect.fn("wfgraph.execution.load_workflow")(
       catalogFingerprint: version.catalogFingerprint,
     });
 
-    return { workflow, preflight };
+    const result: LoadedForRun = {
+      workflow,
+      preflight,
+      version: { kind: "published", number: version.version },
+      pinVersion: Effect.void,
+      releaseVersion: Effect.void,
+    };
+    return result;
+  }
+);
+
+/**
+ * Prepares a run of the draft graph the canvas holds. Reads the workflow with
+ * its draft graph, puts that graph through the same preflight a published start
+ * runs (parse, action configs, conditions, Events, integrations), and returns
+ * the version id the run pins to. A workflow that was never published can run
+ * this way.
+ *
+ * This skips the readiness checks Publish adds: templates, Event Split outlets,
+ * and outlet reachability. A half-built graph therefore fails at the node it
+ * reaches instead of at the request, which is what a builder wants while the
+ * graph is still half-built.
+ *
+ * This also ignores the workflow's Published mode, which governs Events and runs
+ * of the published version. A Draft run always goes to test recipients, chosen
+ * by `postWorkflowExecute` from the request.
+ *
+ * `pinVersion` writes the snapshot row. The caller runs it right before the step
+ * that stores the version id on an Execution, so a start refused by a later gate
+ * (the Start Event name, the Event payload, the manual-start rule, the Event
+ * Split rule, Concurrency) leaves no row behind.
+ */
+export const loadDraftForRun = Effect.fn("wfgraph.execution.load_draft")(
+  function* (workflowId: string) {
+    yield* annotateServiceSpan({ workflowId });
+    const repo = yield* WorkflowRepo;
+    const loaded = yield* repo.findByIdWithDraftGraphForRun(workflowId);
+
+    if (!loaded) {
+      return yield* new NotFound({ error: "Workflow not found" });
+    }
+
+    const { workflow, draftGraph } = loaded;
+    const { catalog } = yield* Extensions;
+    const fingerprint = catalogFingerprint(catalog);
+    const versionId = generateId();
+    yield* annotateServiceSpan({ versionId });
+
+    const preflight = yield* runWorkflowExecutionPreflight({
+      workflow: { graph: draftGraph },
+      workflowVersionId: versionId,
+      catalogFingerprint: fingerprint,
+    });
+
+    // The row stores the workflow's own draft column rather than the graph the
+    // preflight returned. The preflight graph comes from a memo keyed on the
+    // semantic digest, which drops node positions and generated edge ids. A memo
+    // hit therefore answers with the first graph validated for those semantics,
+    // which can be an older layout of this workflow or another workflow's graph.
+    // The run panel paints this row, so a hit would show positions the builder
+    // has already moved. The digest is the memo key, so it is the same either
+    // way.
+    //
+    // The repository can answer with an earlier snapshot holding this exact
+    // graph. The run pins the id that row carries, so
+    // `preflight.workflowVersionId` is rewritten here.
+    const pinVersion = Effect.map(
+      repo.freezeDraftSnapshot({
+        workflowId,
+        versionId,
+        graph: draftGraph,
+        catalogFingerprint: fingerprint,
+        graphDigest: graphDigest(draftGraph),
+      }),
+      (snapshot) => {
+        preflight.workflowVersionId = snapshot.id;
+      }
+    );
+
+    const releaseVersion = repo
+      .deleteUnreferencedDraftSnapshot(preflight.workflowVersionId)
+      .pipe(
+        Effect.asVoid,
+        Effect.catchTag("DatabaseError", () => Effect.void)
+      );
+
+    const result: LoadedForRun = {
+      workflow,
+      preflight,
+      version: { kind: "draft_snapshot", number: null },
+      pinVersion,
+      releaseVersion,
+    };
+    return result;
   }
 );

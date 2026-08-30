@@ -20,6 +20,10 @@ import {
   getStatusLabel,
 } from "#src/components/workflow/workflow-run-shared";
 import type { WorkflowExecutionsGlobalResult } from "#src/lib/rpc-client";
+import {
+  runGraphLabel,
+  runRecipientsLabel,
+} from "#src/lib/workflow-run-labels";
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
 import { cn } from "@wfgraph/shared/utils";
 
@@ -49,7 +53,7 @@ const PAGE_SIZE = 50;
 /** Matches `max-h-[min(65vh,32rem)]` so the first paint has a range before measure. */
 const VIEWPORT_HEIGHT_PX = 512;
 
-const GRID_TEMPLATE = "minmax(0,1.6fr) 7.5rem 4.5rem 7rem 5.5rem";
+const GRID_TEMPLATE = "minmax(0,1.6fr) 7.5rem 4.5rem 4.5rem 7rem 5.5rem";
 
 /**
  * Reports the scroller's size immediately. The library observer waits on
@@ -92,8 +96,13 @@ function formatRunDuration(duration: string | null): string {
   return formatDuration(duration);
 }
 
-function modeLabel(mode: "live" | "test"): string {
-  return mode === "test" ? "Test" : "Live";
+/**
+ * The value the Graph column sorts on. It orders the version numbers the column
+ * shows, and ranks a draft run below v1 so snapshots group at one end instead of
+ * tying with every published run.
+ */
+function graphRank(row: RunHistoryTableRow): number {
+  return row.versionKind === "draft_snapshot" ? -1 : (row.versionNumber ?? 0);
 }
 
 function durationMs(duration: string | null): number {
@@ -144,11 +153,21 @@ function createRunHistoryColumns(onOpenRun: (run: RunHistoryTableRow) => void) {
       ),
     }),
     columnHelper.accessor("runMode", {
-      header: "Mode",
+      header: "Recipients",
       sortFn: "alphanumeric",
       cell: (info) => (
         <span className="text-muted-foreground text-xs">
-          {modeLabel(info.getValue())}
+          {runRecipientsLabel(info.getValue())}
+        </span>
+      ),
+    }),
+    columnHelper.accessor(graphRank, {
+      id: "graph",
+      header: "Graph",
+      sortFn: "basic",
+      cell: (info) => (
+        <span className="text-muted-foreground text-xs">
+          {runGraphLabel(info.row.original)}
         </span>
       ),
     }),

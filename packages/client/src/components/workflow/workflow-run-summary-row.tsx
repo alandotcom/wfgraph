@@ -9,6 +9,11 @@ import {
   type WorkflowExecution,
 } from "#src/lib/execution-logs";
 import {
+  runGraphLabel,
+  runGraphRecipientsLabel,
+  runRecipientsLabel,
+} from "#src/lib/workflow-run-labels";
+import {
   formatDuration,
   getStatusDotClass,
   getStatusLabel,
@@ -140,12 +145,8 @@ function ListSummary({
           <span className={getStatusTextClass(execution.status)}>
             {getStatusLabel(execution.status)}
           </span>
-          {execution.runMode === "test" ? (
-            <>
-              <span aria-hidden="true">·</span>
-              <span>Test</span>
-            </>
-          ) : null}
+          <span aria-hidden="true">·</span>
+          <span>{runGraphRecipientsLabel(execution)}</span>
           {execution.duration ? (
             <>
               <span aria-hidden="true">·</span>
@@ -258,8 +259,12 @@ function HeaderSummary({
           })}
         />
         <MetadataRow
-          label="Mode"
-          value={execution.runMode === "test" ? "Test" : "Live"}
+          label="Graph"
+          value={runGraphLabel(execution, "qualified")}
+        />
+        <MetadataRow
+          label="Recipients"
+          value={runRecipientsLabel(execution.runMode)}
         />
         <MetadataRow
           label="Run"

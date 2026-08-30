@@ -185,7 +185,9 @@ describe("WorkflowToolbarChrome", () => {
       }
     );
 
-    expect(await findAllByRole("button", { name: "Draft" })).toHaveLength(2);
+    // Each view is rendered once. Below `md` the trailing group becomes the
+    // overflow menu, so no view is named twice.
+    expect(await findAllByRole("button", { name: "Draft" })).toHaveLength(1);
     expect(await findByRole("button", { name: "Changes" })).toBeTruthy();
 
     const workspaceSwitcher = await findByRole("group", {
@@ -202,7 +204,7 @@ describe("WorkflowToolbarChrome", () => {
     expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
   });
 
-  it("keeps navigation, Actions, and Settings on the left with mode and Publish on the right", async () => {
+  it("puts navigation, Actions and Settings on the left and the views and Publish on the right", async () => {
     const { findByRole } = renderChrome(WorkflowToolbarChrome);
 
     const dashboard = await findByRole("link", { name: "Dashboard" });
@@ -212,7 +214,7 @@ describe("WorkflowToolbarChrome", () => {
     const workspaceSwitcher = await findByRole("group", {
       name: "Workspace view",
     });
-    const mode = await findByRole("button", { name: "Live mode" });
+    const run = await findByRole("group", { name: "Run" });
     const publish = await findByRole("button", { name: "Publish" });
 
     expect(
@@ -221,7 +223,7 @@ describe("WorkflowToolbarChrome", () => {
       )
     ).not.toContain(null);
     expect(
-      [workspaceSwitcher, mode, publish].map((element) =>
+      [workspaceSwitcher, run, publish].map((element) =>
         element.closest("[data-slot='workflow-toolbar-right']")
       )
     ).not.toContain(null);
@@ -229,6 +231,90 @@ describe("WorkflowToolbarChrome", () => {
       (await findByRole("button", { name: "Search commands or add a step" }))
         .className
     ).toContain("w-80");
+  });
+
+  // Published mode lives in the status strip, beside the version it governs.
+  // The toolbar renders neither the setting nor the version.
+  it("leaves Published mode out of the toolbar", async () => {
+    const { findByRole, queryByRole } = renderChrome(WorkflowToolbarChrome, {
+      state: {
+        workflowMode: "test",
+        publication: {
+          isPublished: true,
+          hasUnpublishedChanges: false,
+          publishedVersionId: "version_7",
+          publishedVersion: 7,
+          publishedAt: "2026-08-23T15:00:00.000Z",
+        },
+      },
+    });
+
+    await findByRole("button", { name: "Publish v8" });
+    expect(queryByRole("button", { name: /^Published mode/ })).toBeNull();
+  });
+
+  // Below `md` the trailing group is one button, so it must hold every desktop
+  // control and disable each one for the same reason.
+  it("collapses the trailing group into one overflow menu", async () => {
+    const { findByRole, getByRole } = renderChrome(WorkflowToolbarChrome, {
+      graph: [],
+      state: {
+        nodes: [],
+        publication: {
+          isPublished: true,
+          hasUnpublishedChanges: true,
+          publishedVersionId: "version_7",
+          publishedVersion: 7,
+          publishedAt: "2026-08-23T15:00:00.000Z",
+        },
+      },
+    });
+
+    const trigger = await findByRole("button", { name: "Workflow actions" });
+    expect(trigger.className).toContain("md:hidden");
+    // The desktop controls are hidden at this width, so the overflow menu
+    // replaces them instead of adding a control.
+    expect(
+      getByRole("group", { name: "Run" }).parentElement?.className
+    ).toContain("md:flex");
+
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    fireEvent.keyUp(trigger, { key: "ArrowDown" });
+
+    for (const name of ["Draft", "Runs", "Changes"]) {
+      expect(getByRole("menuitemradio", { name })).toBeTruthy();
+    }
+    expect(getByRole("menuitem", { name: "Run v7 · Live" })).toBeTruthy();
+    expect(getByRole("menuitem", { name: "Publish v8" })).toBeTruthy();
+    // An empty canvas disables the draft run here as it does on the desktop
+    // button.
+    expect(
+      getByRole("menuitem", { name: "Run draft" }).getAttribute("data-disabled")
+    ).not.toBeNull();
+  });
+
+  // The palette sits between the two groups, so Tab must reach it there. It
+  // was previously written last and received focus after Publish.
+  it("puts the palette trigger between the two groups in DOM order", async () => {
+    const { findByRole } = renderChrome(WorkflowToolbarChrome);
+    const palette = await findByRole("button", {
+      name: "Search commands or add a step",
+    });
+    const trailing = palette
+      .closest(".relative")
+      ?.querySelector("[data-slot='workflow-toolbar-right']");
+    const leading = palette
+      .closest(".relative")
+      ?.querySelector("[data-slot='workflow-toolbar-left']");
+
+    expect(
+      (leading?.compareDocumentPosition(palette) ?? 0) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      (trailing?.compareDocumentPosition(palette) ?? 0) &
+        Node.DOCUMENT_POSITION_PRECEDING
+    ).toBeTruthy();
   });
 
   it("keeps Settings available to a non-owner", async () => {
@@ -270,34 +356,134 @@ describe("WorkflowToolbarChrome", () => {
     );
   });
 
-  it("uses amber Test mode and sends a mode change through the existing handler", async () => {
-    const { actions, findByRole, getByRole } = renderChrome(
-      WorkflowToolbarChrome,
-      { state: { workflowMode: "test" } }
-    );
+  describe("the Run split button", () => {
+    it("runs the draft from its face in any Published mode", async () => {
+      const { actions, findByRole } = renderChrome(WorkflowToolbarChrome, {
+        state: { workflowMode: "live" },
+      });
 
-    const trigger = await findByRole("button", { name: "Test mode" });
-    expect(trigger.className).toContain("bg-warning/10");
-    fireEvent.keyDown(trigger, { key: "ArrowDown" });
-    fireEvent.keyUp(trigger, { key: "ArrowDown" });
-    expect(
-      getByRole("menuitemradio", {
-        name: /Routes configured messages to test recipients/,
-      })
-    ).toBeTruthy();
-    fireEvent.click(
-      getByRole("menuitemradio", {
-        name: /Sends messages to configured recipients/,
-      })
-    );
+      fireEvent.click(await findByRole("button", { name: "Run draft" }));
 
-    expect(actions.handleSetWorkflowMode).toHaveBeenCalledWith("live");
+      expect(actions.handleExecute).toHaveBeenCalledExactlyOnceWith("draft");
+    });
+
+    it("labels the published run with its version and mode", async () => {
+      const { actions, findByRole, getByRole } = renderChrome(
+        WorkflowToolbarChrome,
+        {
+          state: {
+            workflowMode: "test",
+            publication: {
+              isPublished: true,
+              hasUnpublishedChanges: false,
+              publishedVersionId: "version_7",
+              publishedVersion: 7,
+              publishedAt: "2026-08-23T15:00:00.000Z",
+            },
+          },
+        }
+      );
+
+      const trigger = await findByRole("button", { name: "More ways to run" });
+      fireEvent.keyDown(trigger, { key: "ArrowDown" });
+      fireEvent.keyUp(trigger, { key: "ArrowDown" });
+
+      fireEvent.click(getByRole("menuitem", { name: "Run v7 · Test" }));
+      expect(actions.handleExecute).toHaveBeenCalledExactlyOnceWith(
+        "published"
+      );
+    });
+
+    // The draft runs as soon as the canvas has a node. A published version
+    // exists only after a publish, and the menu item states that instead of
+    // disappearing.
+    it("gives the reason instead of a published run before the first publish", async () => {
+      const { findByRole, getByRole } = renderChrome(WorkflowToolbarChrome);
+
+      expect(
+        (await findByRole("button", { name: "Run draft" })).hasAttribute(
+          "disabled"
+        )
+      ).toBe(false);
+
+      const trigger = getByRole("button", { name: "More ways to run" });
+      fireEvent.keyDown(trigger, { key: "ArrowDown" });
+      fireEvent.keyUp(trigger, { key: "ArrowDown" });
+
+      const item = getByRole("menuitem", { name: "Nothing published yet" });
+      expect(item.getAttribute("data-disabled")).not.toBeNull();
+    });
+
+    // A published version is frozen and still handles Events. Clearing the
+    // canvas does not affect whether it can run, and disabling it would leave
+    // no way to reach it from the editor.
+    it("leaves the published run available while the canvas is empty", async () => {
+      const { findByRole, getByRole } = renderChrome(WorkflowToolbarChrome, {
+        graph: [],
+        state: {
+          nodes: [],
+          publication: {
+            isPublished: true,
+            hasUnpublishedChanges: true,
+            publishedVersionId: "version_7",
+            publishedVersion: 7,
+            publishedAt: "2026-08-23T15:00:00.000Z",
+          },
+        },
+      });
+
+      expect(
+        (await findByRole("button", { name: "Run draft" })).hasAttribute(
+          "disabled"
+        )
+      ).toBe(true);
+
+      const trigger = getByRole("button", { name: "More ways to run" });
+      fireEvent.keyDown(trigger, { key: "ArrowDown" });
+      fireEvent.keyUp(trigger, { key: "ArrowDown" });
+
+      expect(
+        getByRole("menuitem", {
+          name: "Run v7 · Live",
+        }).getAttribute("data-disabled")
+      ).toBeNull();
+    });
+
+    // Two ghost buttons carry a transparent border, so the group draws nothing
+    // between them and the pair reads as two separate controls.
+    it("draws a divider between the run button and the chevron", async () => {
+      const { findByRole } = renderChrome(WorkflowToolbarChrome);
+
+      const group = (await findByRole("button", { name: "Run draft" })).closest(
+        "[data-slot='button-group']"
+      );
+
+      expect(
+        group?.querySelector("[data-slot='button-group-separator']")
+      ).toBeTruthy();
+    });
+
+    it("renders no run controls for a viewer who does not own the workflow", async () => {
+      const { findByTestId, queryByRole } = renderChrome(
+        WorkflowToolbarChrome,
+        {
+          state: { isOwner: false },
+        }
+      );
+
+      await findByTestId("toolbar-actions-host");
+      expect(queryByRole("button", { name: "Run draft" })).toBeNull();
+      expect(queryByRole("button", { name: "More ways to run" })).toBeNull();
+      // The overflow menu is hidden too, because it would open onto a radio
+      // group holding the one view already on screen.
+      expect(queryByRole("button", { name: "Workflow actions" })).toBeNull();
+    });
   });
 });
 
 describe("ToolbarActions menu", () => {
-  it("names every action it offers, and offers the mode it is not in", async () => {
-    const { findByRole, getByRole } = renderChrome(ToolbarActions);
+  it("names every action it offers, and leaves the run commands to the toolbar", async () => {
+    const { findByRole, getByRole, queryByRole } = renderChrome(ToolbarActions);
 
     // Base UI opens a menu on the pointer going down, not on the click that
     // follows it, so a bare `click` leaves the popup closed.
@@ -310,7 +496,7 @@ describe("ToolbarActions menu", () => {
     // exists: the shortcuts are the item's promise, not decoration.
     for (const label of [
       /^Add step/,
-      /^Run workflow/,
+      /^Save workflow/,
       /^Undo/,
       /^Redo/,
       /^Tidy layout/,
@@ -318,8 +504,11 @@ describe("ToolbarActions menu", () => {
     ]) {
       expect(getByRole("menuitem", { name: label })).toBeTruthy();
     }
-    // Live is the mode `baseState` is in, so the offer is the other one.
-    expect(getByRole("menuitem", { name: "Switch to Test mode" })).toBeTruthy();
+    // The run control sits a few pixels away in the same bar, so the menu does
+    // not repeat it. The palette is where a run is searched for by name.
+    expect(queryByRole("menuitem", { name: /^Run/ })).toBeNull();
+    // Published mode is the status strip's setting, and no menu writes it.
+    expect(queryByRole("menuitem", { name: /Published mode/ })).toBeNull();
   });
 
   it("renders every canvas command through the keyboard submenu", async () => {

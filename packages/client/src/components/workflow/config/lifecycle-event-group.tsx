@@ -28,12 +28,20 @@ const ROLE_COPY = {
   start: {
     label: "Start Events",
     empty: "No Start Events.",
-    help: "A run starts when one of these Events arrives. Naming several is how one workflow answers an appointment being booked and being moved: Concurrency decides what happens to the run already going.",
+    help: [
+      "A run starts when one of these Events arrives.",
+      "Correlation Path: the payload field that identifies the entity. Runs with the same value belong to the same entity.",
+      "With several Events, Concurrency decides what happens to a run already in progress.",
+    ],
   },
   cancel: {
     label: "Cancel Events",
     empty: "No Cancel Events.",
-    help: "When one of these arrives, Workflow Graph reads its Entity Value at the Correlation Path you set for it and cancels the runs already going for that entity. A canceled run leaves through the Canceled outlet.",
+    help: [
+      "When one of these Events arrives, the runs in progress for its entity are canceled.",
+      "The entity is read at the Event's Correlation Path.",
+      "A canceled run leaves through the Canceled outlet.",
+    ],
   },
 } as const;
 
@@ -62,7 +70,9 @@ export function LifecycleEventGroup({
   return (
     <ConfigGroup
       className="py-3 first:pt-0 last:pb-0"
-      help={<p>{copy.help}</p>}
+      help={copy.help.map((sentence) => (
+        <p key={sentence}>{sentence}</p>
+      ))}
       label={copy.label}
     >
       {editing ? (
@@ -249,8 +259,9 @@ function CorrelationPathInput({
 
   return (
     <div className="space-y-1">
-      <Label className="sr-only" htmlFor={inputId}>
-        {eventName}
+      <Label className="text-muted-foreground text-xs" htmlFor={inputId}>
+        Correlation Path
+        <span className="sr-only">{` for ${eventName}`}</span>
       </Label>
       <Select
         disabled={disabled}
@@ -280,11 +291,6 @@ function CorrelationPathInput({
           ))}
         </SelectContent>
       </Select>
-      <p className="text-muted-foreground text-xs">
-        {declaredPath
-          ? `Runs are matched on this payload path. The Event declares ${declaredPath}; a path here is read instead.`
-          : "Runs are matched on this payload path. This Event declares none, so choose the one holding the value that identifies the entity."}
-      </p>
     </div>
   );
 }

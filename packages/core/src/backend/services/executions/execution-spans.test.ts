@@ -86,6 +86,7 @@ function workflowRepoFor(workflow: Workflow) {
           id: "ver_1",
           workflowId: workflow.id,
           version: 1,
+          kind: "published",
           graph: workflow.graph,
           catalogFingerprint: "fp",
           graphDigest: "digest",

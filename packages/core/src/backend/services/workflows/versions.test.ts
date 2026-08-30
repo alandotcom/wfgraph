@@ -1,6 +1,9 @@
 import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
-import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
+import type {
+  PublishedWorkflowVersion,
+  Workflow,
+} from "#src/backend/lib/db/schema";
 import { NotFound } from "#src/backend/lib/effect/failures";
 import {
   SilentAppLoggerLayer,
@@ -64,11 +67,14 @@ function workflow(overrides: Partial<Workflow> = {}): Workflow {
   };
 }
 
-function version(overrides: Partial<WorkflowVersion> = {}): WorkflowVersion {
+function version(
+  overrides: Partial<PublishedWorkflowVersion> = {}
+): PublishedWorkflowVersion {
   return {
     id: "ver_1",
     workflowId: "wf_1",
     version: 1,
+    kind: "published",
     graph: graph({ message: "published" }),
     catalogFingerprint: "catalog",
     graphDigest: "digest",
@@ -351,6 +357,34 @@ describe("workflow versions", () => {
       })
     );
 
+    // A test-mode draft run mints a snapshot and a Publish does not, so the
+    // history never offers a snapshot to compare against.
+    it.effect("conceals a draft snapshot", () =>
+      Effect.gen(function* () {
+        const snapshot = {
+          ...version(),
+          version: null,
+          kind: "draft_snapshot" as const,
+        };
+        const failure = yield* compareWorkflowVersion({
+          workflowId: "wf_1",
+          baseVersionId: snapshot.id,
+          draftGraph: graph(),
+        }).pipe(
+          Effect.provide(
+            stubWorkflowRepo({
+              findById: () => Effect.succeed(workflow()),
+              findVersionById: () => Effect.succeed(snapshot),
+            })
+          ),
+          Effect.flip
+        );
+
+        assert.instanceOf(failure, NotFound);
+        assert.strictEqual(failure.error, "Workflow version not found");
+      })
+    );
+
     it.effect("conceals a version owned by another workflow", () =>
       Effect.gen(function* () {
         const foreign = version({ workflowId: "wf_other" });
@@ -380,6 +414,7 @@ describe("workflow versions", () => {
           const restored = version({
             id: "ver_restore",
             version: 1,
+            kind: "published",
             graph: graph({ message: "restore me" }),
           });
           const current = version({

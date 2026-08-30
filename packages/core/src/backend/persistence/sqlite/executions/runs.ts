@@ -13,10 +13,12 @@ import {
   encodeJson,
   optionalDate,
   optionalJsonObject,
+  optionalNumber,
   optionalString,
   placeholders,
   requiredBoolean,
   requiredString,
+  requiredVersionKind,
 } from "#src/backend/persistence/sqlite/database";
 import {
   sqliteExecution,
@@ -28,13 +30,19 @@ const IN_FLIGHT = "'pending', 'running', 'waiting'";
 const WORKFLOW_EXECUTIONS_LIMIT = 50;
 
 /**
- * The columns both run-list queries select. JSONB payloads and routing columns
- * the lists never paint stay off it, so a poll does not pull blobs the panel
- * would discard.
+ * The columns both run-list queries select, plus the two they join for. JSONB
+ * payloads and the routing columns the lists never paint stay off this list, so
+ * a poll does not pull blobs the panel would discard. `version_kind` and
+ * `version_number` come from the version the run pinned, and they label a run's
+ * graph.
  */
-const EXECUTION_LIST_SELECT = `id, workflow_id, status, start_source, run_mode,
-         start_event_name, entity_value, workflow_run_id, error, started_at,
-         waiting_at, cancelled_at, completed_at, duration`;
+const EXECUTION_LIST_SELECT = `e.id, e.workflow_id, e.status, e.start_source,
+         e.run_mode, e.start_event_name, e.entity_value, e.workflow_run_id,
+         e.error, e.started_at, e.waiting_at, e.cancelled_at, e.completed_at,
+         e.duration, v.kind AS version_kind, v.version AS version_number`;
+
+/** Every run pins exactly one version, so both list reads join it. */
+const PINNED_VERSION_JOIN = `JOIN workflow_versions v ON v.id = e.workflow_version_id`;
 
 export function insertExecution(
   database: import("node:sqlite").DatabaseSync,
@@ -84,6 +92,8 @@ function executionSummary(row: Record<string, unknown>): ExecutionSummary {
     id: execution.id,
     workflowId: execution.workflowId,
     workflowVersionId: execution.workflowVersionId,
+    versionKind: requiredVersionKind(row, "version_kind"),
+    versionNumber: optionalNumber(row, "version_number"),
     status: execution.status,
     startSource: execution.startSource,
     runMode: execution.runMode,
@@ -112,9 +122,10 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
       store.read((database) =>
         database
           .prepare(
-            `SELECT ${EXECUTION_LIST_SELECT} FROM workflow_executions
-             WHERE workflow_id = ? ${includeSuperseded ? "" : "AND status <> 'superseded'"}
-             ORDER BY started_at DESC, id DESC LIMIT ${WORKFLOW_EXECUTIONS_LIMIT}`
+            `SELECT ${EXECUTION_LIST_SELECT}
+             FROM workflow_executions e ${PINNED_VERSION_JOIN}
+             WHERE e.workflow_id = ? ${includeSuperseded ? "" : "AND e.status <> 'superseded'"}
+             ORDER BY e.started_at DESC, e.id DESC LIMIT ${WORKFLOW_EXECUTIONS_LIMIT}`
           )
           .all(workflowId)
           .map(sqliteExecutionListRow)
@@ -152,13 +163,11 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
         values.push(query.limit);
         return database
           .prepare(
-            `SELECT e.id, e.workflow_id, e.status, e.start_source, e.run_mode,
-                    e.start_event_name, e.entity_value, e.workflow_run_id, e.error,
-                    e.started_at, e.waiting_at, e.cancelled_at, e.completed_at,
-                    e.duration, w.name AS workflow_name,
+            `SELECT ${EXECUTION_LIST_SELECT}, w.name AS workflow_name,
                     w.is_paused AS workflow_is_paused
              FROM workflow_executions e
              JOIN workflows w ON w.id = e.workflow_id
+             ${PINNED_VERSION_JOIN}
              ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
              ORDER BY e.started_at DESC, e.id DESC LIMIT ?`
           )
@@ -168,7 +177,11 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
     findSummaryById: (executionId) =>
       store.read((database) => {
         const row = database
-          .prepare("SELECT * FROM workflow_executions WHERE id = ?")
+          .prepare(
+            `SELECT e.*, v.kind AS version_kind, v.version AS version_number
+             FROM workflow_executions e ${PINNED_VERSION_JOIN}
+             WHERE e.id = ?`
+          )
           .get(executionId);
         return row ? executionSummary(row) : null;
       }),

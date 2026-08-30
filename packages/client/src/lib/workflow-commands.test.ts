@@ -25,8 +25,8 @@ function commandInput(
       isExecuting: false,
       isPreflighting: false,
       isGenerating: false,
-      isSaving: false,
       workflowMode: "live",
+      publishedVersion: 7,
       ...overrides,
     },
     shortcuts: {
@@ -51,11 +51,11 @@ function commandInput(
       publish: vi.fn(),
       redo: vi.fn(),
       reflow: vi.fn(),
-      run: vi.fn(),
+      runDraft: vi.fn(),
+      runPublished: vi.fn(),
       save: vi.fn(),
       showChanges: vi.fn(),
       showRuns: vi.fn(),
-      switchMode: vi.fn(),
       undo: vi.fn(),
     },
   };
@@ -108,12 +108,14 @@ describe("workflowCommands", () => {
     expect(input.callbacks.groupSelection).toHaveBeenCalledOnce();
   });
 
-  it("omits mode switching until a workflow is available", () => {
-    const commands = workflowCommands(
-      commandInput({ currentWorkflowId: null })
-    );
+  // Published mode is a setting, and the status strip is where it is read and
+  // written. A command that flipped it would be a second writer.
+  it("offers no command that changes Published mode", () => {
+    const commands = workflowCommands(commandInput());
 
-    expect(commands.map((command) => command.id)).not.toContain("mode");
+    expect(
+      commands.some((command) => command.label.includes("Published mode"))
+    ).toBe(false);
   });
 
   it("derives one disabled policy for graph commands", () => {
@@ -130,23 +132,135 @@ describe("workflowCommands", () => {
     );
   });
 
-  it("switches to the mode opposite the current one", () => {
-    const input = commandInput({ workflowMode: "test" });
-    const mode = workflowCommands(input).find(
-      (command) => command.id === "mode"
+  /**
+   * `consequential` marks the rows that reach real recipients. A surface that
+   * highlights a row on its own reads this flag first. One row carries it: the
+   * run of a version already in Live.
+   */
+  it("marks only the command that reaches real recipients", () => {
+    const live = workflowCommands(commandInput({ workflowMode: "live" }));
+    expect(
+      live.find((command) => command.id === "run-published")?.consequential
+    ).toBe(true);
+    expect(live.find((command) => command.id === "run-published")?.detail).toBe(
+      "Real recipients"
     );
 
-    expect(mode?.label).toBe("Switch to Live mode");
-    mode?.execute();
-    expect(input.callbacks.switchMode).toHaveBeenCalledWith("live");
+    const test = workflowCommands(commandInput({ workflowMode: "test" }));
+    expect(
+      test.find((command) => command.id === "run-published")?.consequential
+    ).toBe(false);
+    expect(test.find((command) => command.id === "run-published")?.detail).toBe(
+      "Test recipients"
+    );
+    expect(test.find((command) => command.id === "save")?.consequential).toBe(
+      undefined
+    );
   });
 
-  it("disables Run while issue preflight is active", () => {
-    const run = workflowCommands(commandInput({ isPreflighting: true })).find(
-      (command) => command.id === "run"
+  // The toolbar's run control already offers both runs, so the Actions menu
+  // skips them and the palette is where they are searched for by name.
+  it("marks both run commands as belonging to the palette alone", () => {
+    const commands = workflowCommands(commandInput());
+
+    expect(
+      commands.find((command) => command.id === "run-draft")?.paletteOnly
+    ).toBe(true);
+    expect(
+      commands.find((command) => command.id === "run-published")?.paletteOnly
+    ).toBe(true);
+    expect(
+      commands.find((command) => command.id === "publish")?.paletteOnly
+    ).toBe(undefined);
+  });
+
+  // Nothing is published, so the published run reaches nobody.
+  it("does not mark the published run before the first publish", () => {
+    const commands = workflowCommands(
+      commandInput({ workflowMode: "live", publishedVersion: undefined })
     );
 
-    expect(run?.disabled).toBe(true);
+    expect(
+      commands.find((command) => command.id === "run-published")?.consequential
+    ).toBe(false);
+  });
+
+  // Each run command starts the graph its label names. Nothing here reads the
+  // publication state to pick a graph.
+  it("offers both run commands, each labelled with the graph it starts", () => {
+    const input = commandInput({ workflowMode: "test", publishedVersion: 7 });
+    const commands = workflowCommands(input);
+    const draft = commands.find((command) => command.id === "run-draft");
+    const published = commands.find(
+      (command) => command.id === "run-published"
+    );
+
+    expect(draft?.detail).toBe("Test recipients");
+    expect(draft?.label).toBe("Run draft");
+    expect(published?.label).toBe("Run v7 · Test");
+
+    draft?.execute();
+    published?.execute();
+    expect(input.callbacks.runDraft).toHaveBeenCalledOnce();
+    expect(input.callbacks.runPublished).toHaveBeenCalledOnce();
+  });
+
+  // The palette lists both commands flat, with no "Run options" heading, so a
+  // disabled row must still name an action. The reason goes in the detail line
+  // underneath.
+  it("keeps Run draft available before the first publish and explains why the other is not", () => {
+    const commands = workflowCommands(
+      commandInput({ publishedVersion: undefined })
+    );
+
+    expect(
+      commands.find((command) => command.id === "run-draft")?.disabled
+    ).toBe(false);
+    const published = commands.find(
+      (command) => command.id === "run-published"
+    );
+    expect(published?.label).toBe("Run published version");
+    expect(published?.detail).toBe("Nothing published yet");
+    expect(published?.disabled).toBe(true);
+  });
+
+  // The preflight checks the canvas for the run about to execute it. Publish
+  // already validated the published version, and a version is frozen.
+  it("disables Run draft during its issue preflight and leaves the published run enabled", () => {
+    const commands = workflowCommands(commandInput({ isPreflighting: true }));
+
+    expect(
+      commands.find((command) => command.id === "run-draft")?.disabled
+    ).toBe(true);
+    expect(
+      commands.find((command) => command.id === "run-published")?.disabled
+    ).toBe(false);
+  });
+
+  // A published version is a frozen graph that still handles Events. Clearing
+  // the canvas or handing it to the build agent does not affect it.
+  it("keeps the published run enabled while the canvas is empty or generating", () => {
+    for (const canvas of [{ hasNodes: false }, { isGenerating: true }]) {
+      const commands = workflowCommands(commandInput(canvas));
+
+      expect(
+        commands.find((command) => command.id === "run-draft")?.disabled
+      ).toBe(true);
+      expect(
+        commands.find((command) => command.id === "run-published")?.disabled
+      ).toBe(false);
+    }
+  });
+
+  it("disables both run commands while a run is already in flight", () => {
+    const commands = workflowCommands(commandInput({ isExecuting: true }));
+
+    expect(
+      commands.find((command) => command.id === "run-draft")?.disabled
+    ).toBe(true);
+    expect(
+      commands.find((command) => command.id === "run-published")?.disabled
+    ).toBe(true);
   });
 });
 

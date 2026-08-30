@@ -155,10 +155,13 @@ describe("insertPublishedVersion", () => {
     new Date(),
     new Date(),
   ];
+  // The order matches the table's columns, because the stubbed driver returns
+  // positional rows.
   const versionRow = (id: string, version: number) => [
     id,
     "wf_1",
     version,
+    "published",
     JSON.stringify(emptyGraph),
     "fp",
     "digest",
@@ -409,5 +412,172 @@ describe("findLatestVersion", () => {
     expect(found).toEqual({ version: 4 });
     expect(query).toContain('select "version" from "workflow_versions"');
     expect(query).not.toContain("graph");
+  });
+});
+
+describe("freezeDraftSnapshot", () => {
+  const emptyGraph = createSerializedWorkflowGraph({ nodes: [], edges: [] });
+
+  function insertSnapshot() {
+    return Effect.gen(function* () {
+      const repo = yield* WorkflowRepo;
+      return yield* repo.freezeDraftSnapshot({
+        workflowId: "wf_1",
+        versionId: "ver_snapshot",
+        graph: emptyGraph,
+        catalogFingerprint: "fp",
+        graphDigest: "digest",
+      });
+    });
+  }
+
+  const snapshotRow = (id: string) => [
+    id,
+    "wf_1",
+    null,
+    "draft_snapshot",
+    JSON.stringify(emptyGraph),
+    "fp",
+    "digest",
+    new Date(),
+  ];
+
+  // With no existing snapshot, the lookup returns nothing, so the insert runs
+  // and returns the minted row.
+  function run(existing: string | null = null) {
+    const { layer: databaseLayer, statements } = stubDatabase((statement) =>
+      statement.query.startsWith("select")
+        ? existing
+          ? [snapshotRow(existing)]
+          : []
+        : [snapshotRow("ver_snapshot")]
+    );
+
+    return {
+      statements,
+      snapshot: Effect.runPromise(
+        insertSnapshot().pipe(
+          Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
+        )
+      ),
+    };
+  }
+
+  it("writes a snapshot row carrying no version number", async () => {
+    const { statements, snapshot } = run();
+
+    expect(await snapshot).toMatchObject({
+      id: "ver_snapshot",
+      version: null,
+      kind: "draft_snapshot",
+    });
+    expect(statements[0]?.query).toContain('from "workflow_versions"');
+    expect(statements[1]?.query).toContain('insert into "workflow_versions"');
+    expect(statements[1]?.params).toContain("draft_snapshot");
+  });
+
+  // Repeated runs of an unchanged canvas share one row. The lookup is keyed on
+  // the workflow, the kind, the catalog, and the graph, and a hit skips the
+  // insert and returns the existing id for the run to pin.
+  it("returns an existing identical snapshot in place of a new row", async () => {
+    const { statements, snapshot } = run("ver_earlier");
+
+    expect((await snapshot).id).toBe("ver_earlier");
+    expect(statements).toHaveLength(1);
+    expect(statements[0]?.query).toContain('"kind" = $2');
+    expect(statements[0]?.query).toContain('"graph" = $4');
+  });
+
+  // A snapshot no Execution references yet belongs to the request that inserted
+  // it, which can still release it. Reusing one would let this run pin an id
+  // that request is about to delete, so the lookup asks for a referenced row.
+  it("looks up only a snapshot an execution already references", async () => {
+    const { statements, snapshot } = run("ver_earlier");
+    await snapshot;
+
+    expect(statements[0]?.query).toContain("exists");
+    expect(statements[0]?.query).toContain('"workflow_executions"');
+  });
+
+  // The publication pointer and the Event subscription index both describe the
+  // published graph. A snapshot that changed either one would let Events start
+  // an unpublished graph.
+  it("writes to the versions table only", async () => {
+    const { statements, snapshot } = run();
+    await snapshot;
+
+    expect(statements).toHaveLength(2);
+  });
+});
+
+describe("draft snapshot exclusions", () => {
+  function statementFor(
+    read: (repo: WorkflowRepo["Service"]) => Effect.Effect<unknown, unknown>
+  ) {
+    const { layer: databaseLayer, statements } = stubDatabase(() => []);
+
+    return Effect.runPromise(
+      Effect.gen(function* () {
+        const repo = yield* WorkflowRepo;
+        yield* read(repo);
+      }).pipe(
+        Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
+      )
+    ).then(() => statements[0]);
+  }
+
+  // The guard lives in the statement itself, so a snapshot another start pinned
+  // in the meantime survives. A separate read and delete would leave a window
+  // between them.
+  it("deletes a draft snapshot only when no execution names it", async () => {
+    const statement = await statementFor((repo) =>
+      repo.deleteUnreferencedDraftSnapshot("ver_snapshot")
+    );
+
+    expect(statement?.query).toContain('delete from "workflow_versions"');
+    expect(statement?.query).toContain("not exists");
+    expect(statement?.query).toContain('"workflow_executions"');
+    expect(statement?.params).toContain("draft_snapshot");
+  });
+
+  it("restricts findLatestVersion to published rows", async () => {
+    const statement = await statementFor((repo) =>
+      repo.findLatestVersion("wf_1")
+    );
+
+    expect(statement?.query).toContain('"kind" = ');
+    expect(statement?.params).toContain("published");
+  });
+
+  it("restricts listVersionHistoryPage to published rows", async () => {
+    const statement = await statementFor((repo) =>
+      repo.listVersionHistoryPage({ workflowId: "wf_1", limit: 25 })
+    );
+
+    expect(statement?.query).toContain('"kind" = ');
+    expect(statement?.params).toContain("published");
+  });
+});
+
+describe("findByIdWithDraftGraphForRun", () => {
+  it("reads the draft graph alongside the columns a run needs", async () => {
+    const { layer: databaseLayer, statements } = stubDatabase(() => []);
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const repo = yield* WorkflowRepo;
+        return yield* repo.findByIdWithDraftGraphForRun("wf_1");
+      }).pipe(
+        Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
+      )
+    );
+
+    const query = statements[0]?.query ?? "";
+    expect(query).toContain('as "graph"');
+    expect(query).toContain('as "isPaused"');
+    expect(query).toContain('as "mode"');
+    // The query joins no published version. A draft run pins a snapshot of the
+    // graph this read returns.
+    expect(query).not.toContain("workflow_versions");
   });
 });

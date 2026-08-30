@@ -1,4 +1,4 @@
-import { CircleDot, Loader2, Upload } from "lucide-react";
+import { Circle, Loader2, Upload } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,7 @@ import { Button } from "#src/components/ui/button";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import type { WorkflowMode } from "@wfgraph/shared/graph/types";
 import type { PublicationReview } from "#src/lib/workflow-publication-review-store";
+import { cn } from "@wfgraph/shared/utils";
 
 type PublishReviewDialogProps = {
   review: PublicationReview;
@@ -86,10 +87,10 @@ export function PublishReviewDialog({
     >
       <DialogContent className="sm:max-w-lg" showCloseButton={!isPublishing}>
         <DialogHeader>
-          <DialogTitle>Publish version {proposedVersion}?</DialogTitle>
+          <DialogTitle>Publish v{proposedVersion}?</DialogTitle>
           <DialogDescription>
-            New starts will use version {proposedVersion}. Existing runs remain
-            pinned to the version they started with.
+            New starts will use v{proposedVersion}. Existing runs remain pinned
+            to the version they started with.
           </DialogDescription>
         </DialogHeader>
 
@@ -97,11 +98,11 @@ export function PublishReviewDialog({
           <div className="flex items-center justify-between border-b bg-muted/30 px-3 py-2 text-xs">
             <span>
               {review.baseVersion
-                ? `Based on version ${review.baseVersion}`
+                ? `Based on v${review.baseVersion}`
                 : "No published version"}
             </span>
             <span className="text-muted-foreground">
-              Proposed version {proposedVersion}
+              Proposed v{proposedVersion}
             </span>
           </div>
           <dl className="grid grid-cols-2 gap-px bg-border">
@@ -117,12 +118,28 @@ export function PublishReviewDialog({
           </dl>
         </div>
 
-        {mode === "test" ? (
-          <div className="flex items-start gap-2 rounded-lg bg-warning/10 px-3 py-2 text-warning">
-            <CircleDot aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-            <p>Publishing does not change recipient routing.</p>
-          </div>
-        ) : null}
+        {/* Says where v{n} sends as soon as it is published. Both modes are
+            worth stating, and the Live case must be read before the press
+            rather than discovered from a delivered message. One plain line
+            either way: the fact is the same size in both modes, and a box
+            around it would rank one press as more dangerous than the other. */}
+        <p className="flex items-start gap-2 text-muted-foreground">
+          {/* The same dot the status strip's Published mode control wears:
+              filled and Amber for Test, an outline in muted ink for Live, so
+              the mode is legible without reading the sentence. Amber marks Test
+              and nothing else, and it stays on the dot rather than the whole
+              line, which keeps the sentence above the 4.5:1 body floor. */}
+          <Circle
+            aria-hidden
+            className={cn(
+              "mt-1 size-2.5 shrink-0",
+              mode === "test" && "fill-current text-warning"
+            )}
+          />
+          {mode === "test"
+            ? `Published mode is Test. v${proposedVersion} sends to test recipients until you switch to Live.`
+            : `Published mode is Live. v${proposedVersion} sends to real recipients as soon as you publish.`}
+        </p>
 
         <DialogFooter>
           <Button
@@ -141,7 +158,7 @@ export function PublishReviewDialog({
             ) : (
               <Upload data-icon="inline-start" />
             )}
-            {isPublishing ? "Publishing" : `Publish version ${proposedVersion}`}
+            {isPublishing ? "Publishing" : `Publish v${proposedVersion}`}
           </Button>
         </DialogFooter>
       </DialogContent>

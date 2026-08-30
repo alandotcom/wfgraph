@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isRunInProgress,
+  toPinnedRunSummary,
   toWorkflowExecutionFromSummary,
   toWorkflowExecutions,
 } from "#src/lib/execution-logs";
@@ -12,6 +13,8 @@ const rawExecution = {
   status: "completed" as const,
   startSource: "event" as const,
   runMode: "live" as const,
+  versionKind: "published" as const,
+  versionNumber: 3,
   startEventName: "app/appointment.created",
   entityValue: "appt_1",
   workflowRunId: null,
@@ -84,6 +87,8 @@ describe("toWorkflowExecutionFromSummary", () => {
       id: "exec_past_cap",
       workflowId: "wf_1",
       workflowVersionId: "ver_1",
+      versionKind: "published",
+      versionNumber: 9,
       status: "completed",
       input: {},
       output: {},
@@ -100,8 +105,88 @@ describe("toWorkflowExecutionFromSummary", () => {
     const mapped = toWorkflowExecutionFromSummary(summary);
 
     expect(mapped.runMode).toBe("test");
+    expect(mapped.versionKind).toBe("published");
+    expect(mapped.versionNumber).toBe(9);
     expect(mapped.startSource).toBe("event");
     expect(mapped.startEventName).toBe("app/appointment.created");
     expect(mapped.entityValue).toBe("appt_99");
+  });
+
+  // A draft-snapshot run pins to a version with no number. The deep-link path
+  // needs the kind as well, so a run reopened past the newest-50 list still
+  // reads "Draft" instead of only "Test".
+  it("keeps a draft snapshot's kind from the summary", () => {
+    const summary: ExecutionLogsResult["execution"] = {
+      id: "exec_draft",
+      workflowId: "wf_1",
+      workflowVersionId: "ver_draft_1",
+      versionKind: "draft_snapshot",
+      versionNumber: null,
+      status: "completed",
+      input: {},
+      output: {},
+      error: null,
+      startedAt: "2026-03-01T10:00:00.000Z",
+      completedAt: "2026-03-01T10:00:30.000Z",
+      duration: "30s",
+      runMode: "test",
+      startSource: "manual",
+      startEventName: null,
+      entityValue: null,
+    };
+
+    const mapped = toWorkflowExecutionFromSummary(summary);
+    expect(mapped.versionKind).toBe("draft_snapshot");
+    expect(mapped.versionNumber).toBeNull();
+  });
+});
+
+describe("toPinnedRunSummary", () => {
+  const basePayload: ExecutionLogsResult = {
+    execution: {
+      id: "exec_1",
+      workflowId: "wf_1",
+      workflowVersionId: "ver_1",
+      versionKind: "published",
+      versionNumber: 7,
+      status: "completed",
+      input: {},
+      output: {},
+      error: null,
+      startedAt: "2026-03-01T10:00:00.000Z",
+      completedAt: "2026-03-01T10:00:30.000Z",
+      duration: "30s",
+      runMode: "live",
+      startSource: "event",
+      startEventName: "app/appointment.created",
+      entityValue: null,
+    },
+    logs: [],
+    waits: [],
+  };
+
+  it("carries the pinned run's version and run mode", () => {
+    const summary = toPinnedRunSummary(basePayload);
+
+    expect(summary.id).toBe("exec_1");
+    expect(summary.versionKind).toBe("published");
+    expect(summary.versionNumber).toBe(7);
+    expect(summary.runMode).toBe("live");
+  });
+
+  it("carries a null version number for a draft snapshot", () => {
+    const summary = toPinnedRunSummary({
+      ...basePayload,
+      execution: {
+        ...basePayload.execution,
+        versionKind: "draft_snapshot",
+        versionNumber: null,
+        runMode: "test",
+      },
+    });
+
+    expect(summary.versionKind).toBe("draft_snapshot");
+    expect(summary.versionNumber).toBeNull();
+    expect(summary.runMode).toBe("test");
   });
 });

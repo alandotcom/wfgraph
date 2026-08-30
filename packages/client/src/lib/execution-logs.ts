@@ -5,6 +5,7 @@ import {
   type WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { ExecutionLogEntry } from "@wfgraph/shared/graph/types";
+import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 import type { ExecutionLogsResult } from "#src/lib/rpc-client";
 
 /**
@@ -36,6 +37,15 @@ export type WorkflowExecution = {
   status: WorkflowExecutionStatus;
   startSource: WorkflowExecutionStartSource | null;
   runMode: "live" | "test";
+  /**
+   * The graph this run pinned to. A `draft_snapshot` is the canvas graph a draft
+   * run froze for itself. The UI labels a snapshot "Draft" and a published
+   * version by the number in `versionNumber`, then renders the run as
+   * "<graph> · <recipients>", for example "Draft · Test" or "v7 · Live".
+   */
+  versionKind: WorkflowVersionKind;
+  /** The pinned version's number, rendered as "v7". Null for a draft snapshot. */
+  versionNumber: number | null;
   startEventName: string | null;
   entityValue: string | null;
   workflowRunId: string | null;
@@ -171,6 +181,8 @@ export function toWorkflowExecutionFromSummary(
     status: toExecutionStatus(summary.status),
     startSource: summary.startSource,
     runMode: summary.runMode,
+    versionKind: summary.versionKind,
+    versionNumber: summary.versionNumber,
     startEventName: summary.startEventName,
     entityValue: summary.entityValue,
     workflowRunId: null,
@@ -215,11 +227,12 @@ export function toExecutionOverlaySource(payload: ExecutionLogsResult): {
 
 /**
  * The little the status strip says about the run pinned to the canvas: which run
- * it is, and when it started.
+ * it is, when it started, and which graph and recipients it ran with.
  *
  * A third narrow select on the logs key, beside the panel's detail select and
- * the overlay sync's. Neither field moves once the run exists, so this observer
- * carries no `refetchInterval` and reads whatever the other two fetched.
+ * the overlay sync's. None of these fields move once the run exists, so this
+ * observer carries no `refetchInterval` and reads whatever the other two
+ * fetched.
  *
  * `startedAt` crosses the wire as a plain string, so it is parsed defensively
  * here rather than at the strip: the other two selects hand their `Date` to a
@@ -229,12 +242,18 @@ export function toExecutionOverlaySource(payload: ExecutionLogsResult): {
 export function toPinnedRunSummary(payload: ExecutionLogsResult): {
   id: string;
   startedAt: Date | null;
+  versionKind: WorkflowVersionKind;
+  versionNumber: number | null;
+  runMode: "live" | "test";
 } {
   const startedAt = new Date(payload.execution.startedAt);
 
   return {
     id: payload.execution.id,
     startedAt: Number.isNaN(startedAt.getTime()) ? null : startedAt,
+    versionKind: payload.execution.versionKind,
+    versionNumber: payload.execution.versionNumber,
+    runMode: payload.execution.runMode,
   };
 }
 

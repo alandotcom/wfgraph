@@ -18,7 +18,10 @@ import {
   buildWorkflowUpdateData,
   toWorkflowApiPayload,
 } from "#src/backend/services/workflows/mappers";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import {
+  asPublishedVersion,
+  WorkflowRepo,
+} from "#src/backend/services/workflows/repo";
 import { resolvePublishedVersion } from "#src/backend/services/workflows/workflow";
 import {
   WORKFLOW_VERSION_HISTORY_DEFAULT_LIMIT,
@@ -168,8 +171,10 @@ export const compareWorkflowVersion = Effect.fn(
     }
 
     const baseVersionId = input.baseVersionId ?? workflow.publishedVersionId;
+    // A draft snapshot sits outside the published history, so a comparison
+    // against one fails the same way a version from another workflow does.
     const baseVersion = baseVersionId
-      ? yield* repo.findVersionById(baseVersionId)
+      ? asPublishedVersion(yield* repo.findVersionById(baseVersionId))
       : null;
     if (
       (baseVersionId && !baseVersion) ||
@@ -233,7 +238,12 @@ export const restoreWorkflowVersion = Effect.fn(
       return yield* new NotFound({ error: "Workflow not found" });
     }
 
-    const version = yield* repo.findVersionById(input.versionId);
+    // A draft snapshot is reachable by id, because it is the execution
+    // summary's `workflowVersionId`. It sits outside the published history, so
+    // a restore refuses it the way the comparison above does.
+    const version = asPublishedVersion(
+      yield* repo.findVersionById(input.versionId)
+    );
     if (!version || version.workflowId !== input.workflowId) {
       yield* logger.warn("Workflow version not found for restore");
       return yield* versionNotFound();

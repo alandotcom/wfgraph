@@ -8,7 +8,7 @@
 
 import { toast } from "sonner";
 import { getClientLogger } from "#src/lib/logger";
-import type { TestRunRequest } from "#src/components/overlays/test-run-overlay";
+import type { RunRequest } from "#src/components/overlays/run-overlay";
 import type { WorkflowExecuteResult } from "#src/lib/rpc-client";
 import type {
   NodeRunStatus,
@@ -27,15 +27,17 @@ import {
 const logger = getClientLogger("workflow", "run");
 
 export const IGNORED_REASON_MESSAGES = {
-  workflow_paused: "Workflow is paused and cannot start new runs.",
+  workflow_paused: "The workflow is paused, so it can't start runs.",
   concurrency_first_wins:
-    "A run for this entity is already going, and this workflow keeps the first one.",
+    "A run for this entity is already in progress. This workflow keeps the first run.",
   entity_value_missing:
-    "This payload carries nothing at the workflow's Correlation Path, and its Concurrency needs an entity to compare.",
+    "The payload has no value at the Correlation Path, so Concurrency can't identify the entity.",
+  // Named by its own label: the setting is the "Allow manual runs" checkbox on
+  // the Lifecycle node, so the sentence sends the reader to that control.
   manual_start_not_allowed:
-    "This workflow does not list manual runs as a start source.",
+    "This workflow does not allow manual runs. Select Allow manual runs on the Lifecycle node.",
   start_event_required:
-    "This workflow splits on the Event a run is on, so a run has to name one.",
+    "This workflow has an Event Split, so the run must name an Event.",
 } satisfies Record<WorkflowExecutionIgnoredReason, string>;
 
 /**
@@ -59,14 +61,14 @@ export function updateNodesStatus(
 }
 
 /**
- * Keeps this run's payload on the entry node, so the Test Run overlay opens on
- * it next time. The write goes through the graph store, which is what the
- * autosave queue watches.
+ * Stores this run's payload on the entry node, so the run overlay opens on it
+ * next time. The write goes through the graph store, which the autosave queue
+ * watches.
  */
 export function rememberTestPayload(input: {
   nodes: WorkflowNode[];
   updateNodeData: UpdateNodeData;
-  request: TestRunRequest;
+  request: RunRequest;
 }) {
   const entryNode = findEntryNode(input.nodes);
   if (!entryNode) {
@@ -94,6 +96,12 @@ type ExecuteWorkflowRunParams = {
   setNodeStatuses: SetNodeStatuses;
   setIsExecuting: (value: boolean) => void;
   /**
+   * The command label, from `runCommandLabel`. Both run commands open the same
+   * run panel, so the start toast is what tells "Run draft" and "Run v7 · Live"
+   * apart.
+   */
+  runLabel: string;
+  /**
    * Opens the new run in the URL, which is what the Runs panel and the
    * canvas overlay both read (#33). Called only once a run has actually
    * started: the ignored and error paths below leave the URL exactly where
@@ -107,6 +115,7 @@ export async function executeWorkflowRun({
   nodes,
   setNodeStatuses,
   setIsExecuting,
+  runLabel,
   navigateToExecution,
 }: ExecuteWorkflowRunParams) {
   updateNodesStatus(nodes, setNodeStatuses, "idle");
@@ -125,7 +134,7 @@ export async function executeWorkflowRun({
       toast.message(
         result.status === "ignored"
           ? IGNORED_REASON_MESSAGES[result.reason]
-          : "Execution completed without starting a new run."
+          : "No run started."
       );
 
       // No execution was created, so there is no id for the URL to own.
@@ -142,18 +151,26 @@ export async function executeWorkflowRun({
       const failed = Array.isArray(result.failedToSupersede)
         ? result.failedToSupersede.length
         : 0;
-      const superseded = `Superseded ${result.supersededExecutions} run${result.supersededExecutions === 1 ? "" : "s"} for this entity and started a new one.`;
+      const replaced =
+        result.supersededExecutions === 1
+          ? "1 earlier run for this entity was replaced"
+          : `${result.supersededExecutions} earlier runs for this entity were replaced`;
+      const superseded = `${runLabel} started. ${replaced}.`;
 
       if (failed > 0) {
         // A run the engine could not signal keeps going against the entity the
         // new one is now working on, which is the duplicate work newest-wins
         // exists to prevent. It reads as routine in the same tone as the success.
         toast.error(
-          `${superseded} ${failed} could not be signalled and may still be running. Cancel them from the Runs panel.`
+          `${superseded} ${failed} couldn't be stopped and might still be running. Cancel them in Runs.`
         );
       } else {
         toast.success(superseded);
       }
+    } else {
+      // One toast per start, naming the command. The canvas paints the same
+      // statuses for either run, so this toast says which graph is running.
+      toast.success(`${runLabel} started`);
     }
 
     // The URL is the one writer of which run is open; the Runs panel and the
