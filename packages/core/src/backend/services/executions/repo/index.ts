@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { Context, Effect, Layer } from "effect";
+import { Context, Duration, Effect, Layer, Schedule } from "effect";
 import { partition } from "es-toolkit";
 import {
   workflowExecutionEvents,
@@ -52,7 +52,21 @@ export const UNSENT_RUN_GRACE_MS = 5 * 60 * 1000;
 export const UNSENT_RUN_RECLAIM_REASON =
   "The run was opened but never reached the bus, so a later start for this entity closed it";
 
-const SERIALIZATION_RETRIES = 3;
+const SERIALIZATION_RETRIES = 5;
+const SERIALIZATION_RETRY_BASE_DELAY = Duration.millis(5);
+
+/**
+ * Backoff, because the racers abort together and would otherwise retry together.
+ *
+ * `Effect.retry` with a plain attempt count reschedules every aborted decision
+ * at once, so a burst of starts for one entity keeps colliding at full speed
+ * and burns its attempts on the same conflict. Jitter spreads them; the delays
+ * are small because a start is on a run's critical path.
+ */
+const serializationRetrySchedule = Schedule.exponential(
+  SERIALIZATION_RETRY_BASE_DELAY,
+  2
+).pipe(Schedule.jittered, Schedule.upTo({ times: SERIALIZATION_RETRIES }));
 
 /**
  * SQLSTATE 40001 is what PostgreSQL raises when SERIALIZABLE aborts one of two
@@ -373,7 +387,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
             })
             .pipe(
               Effect.retry({
-                times: SERIALIZATION_RETRIES,
+                schedule: serializationRetrySchedule,
                 while: isSerializationFailure,
               })
             ),

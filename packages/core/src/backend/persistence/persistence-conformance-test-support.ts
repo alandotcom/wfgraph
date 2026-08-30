@@ -50,6 +50,12 @@ export type PersistenceConformanceHarness = {
   readonly backend: string;
   /** A fresh, empty, migrated database the calling case owns. */
   readonly createDatabase: () => Promise<ConformanceDatabase>;
+  /**
+   * Set to skip the run and say why. It reaches the suite title, because a
+   * reporter prints that whether the suite ran or not, while a console line
+   * from a skipped file may go unseen.
+   */
+  readonly skip?: string;
 };
 
 export function describePersistenceConformance(
@@ -98,7 +104,10 @@ export function describePersistenceConformance(
     return database.open();
   }
 
-  describe(`${harness.backend} persistence conformance`, () => {
+  const title = `${harness.backend} persistence conformance`;
+  const describeSuite = harness.skip ? describe.skip : describe;
+
+  describeSuite(harness.skip ? `${title} (${harness.skip})` : title, () => {
     it("keeps a draft snapshot out of the published history", async () => {
       const database = await openConnection();
       const result = await database.run(
