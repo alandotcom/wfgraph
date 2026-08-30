@@ -5,6 +5,7 @@ import { rejectUnknownKeys } from "#src/types/schema";
 import {
   checkLifecycleRules,
   configDeclaresCancelEvent,
+  connectionMatches,
   eventsNeedingCorrelationPath,
   hasStartSource,
   type LifecycleRules,
@@ -607,5 +608,18 @@ describe("hasStartSource", () => {
       hasStartSource(rules({ startEvents: [], allowManualStart: false }))
     ).toBe(false);
     expect(hasStartSource(rules({ startEvents: [] }))).toBe(false);
+  });
+});
+
+describe("connectionMatches", () => {
+  it("matches every arrival when nothing was stored", () => {
+    expect(connectionMatches(undefined, undefined)).toBe(true);
+    expect(connectionMatches(undefined, "conn_1")).toBe(true);
+  });
+
+  it("matches only the stored Connection", () => {
+    expect(connectionMatches("conn_1", "conn_1")).toBe(true);
+    expect(connectionMatches("conn_1", "conn_other")).toBe(false);
+    expect(connectionMatches("conn_1", undefined)).toBe(false);
   });
 });

@@ -126,6 +126,8 @@ describe("readExtensionCatalog", () => {
           credentialFields: {},
           hasTest: true,
           hasWebhook: true,
+          webhookHelpText:
+            "Create a webhook in Resend with all event types selected, then paste this URL and the signing secret from that page.",
         },
       ],
     };

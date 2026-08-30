@@ -187,6 +187,7 @@ const integrationMetadataSchema = Schema.Struct({
   ),
   hasTest: Schema.Boolean,
   hasWebhook: Schema.Boolean,
+  webhookHelpText: Schema.optionalKey(Schema.String),
   oauth: Schema.optionalKey(Schema.Struct({ label: NonEmptyTrimmedString })),
 });
 

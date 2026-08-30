@@ -13,7 +13,6 @@ import {
 import {
   type ConditionModel,
   type ConditionRule,
-  EVENT_CONNECTION_ID_FIELD_PATH,
   EVENT_NAME_FIELD_PATH,
   isNullCheckConditionRule,
   parseConditionModel,
@@ -62,14 +61,8 @@ function ruleCouldHold(input: {
   const { rule, event } = input;
   const path = rule.field.trim();
 
-  if (
-    path === EVENT_NAME_FIELD_PATH ||
-    path === EVENT_CONNECTION_ID_FIELD_PATH
-  ) {
+  if (path === EVENT_NAME_FIELD_PATH) {
     if (isNullCheckConditionRule(rule)) {
-      return true;
-    }
-    if (path === EVENT_CONNECTION_ID_FIELD_PATH) {
       return true;
     }
     if (rule.operator === "equals") {
@@ -108,14 +101,9 @@ function ruleCouldFail(input: {
   const { rule, event } = input;
 
   if (
-    (rule.field.trim() !== EVENT_NAME_FIELD_PATH &&
-      rule.field.trim() !== EVENT_CONNECTION_ID_FIELD_PATH) ||
+    rule.field.trim() !== EVENT_NAME_FIELD_PATH ||
     isNullCheckConditionRule(rule)
   ) {
-    return true;
-  }
-
-  if (rule.field.trim() === EVENT_CONNECTION_ID_FIELD_PATH) {
     return true;
   }
 

@@ -39,6 +39,7 @@ function evaluate(
     timestampPaths,
     payload,
     eventName,
+    connectionId: null,
   });
 }
 

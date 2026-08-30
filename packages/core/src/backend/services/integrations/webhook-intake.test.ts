@@ -54,9 +54,9 @@ function webhook(
   overrides: Partial<IntegrationWebhook> = {}
 ): IntegrationWebhook {
   return {
+    source: "resend/webhook",
     verify: () => Effect.void,
     receive: () => ({
-      event: "resend/webhook",
       data: envelope,
       id: "msg_1",
     }),

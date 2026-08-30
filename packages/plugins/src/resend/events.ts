@@ -267,16 +267,34 @@ const suppressionData = Schema.Struct({
   ),
 });
 
-function resendEmailEvent(type: string, label: string, description: string) {
+function resendEnvelope<D extends Schema.Struct<Schema.Struct.Fields>>(
+  data: D
+) {
+  return Schema.Struct({
+    type: Schema.String.annotate({ description: "Resend event type" }),
+    created_at: createdAt,
+    data,
+  });
+}
+
+type EmailDataSchema =
+  | typeof emailData
+  | typeof emailBouncedData
+  | typeof emailClickedData
+  | typeof emailFailedData
+  | typeof emailReceivedData;
+
+function emailEvent(
+  type: string,
+  label: string,
+  description: string,
+  data: EmailDataSchema = emailData
+) {
   return defineEvent({
     name: `resend/${type}`,
     label,
     description,
-    schema: Schema.Struct({
-      type: Schema.String.annotate({ description: "Resend event type" }),
-      created_at: createdAt,
-      data: emailData,
-    }),
+    schema: resendEnvelope(data),
     correlationPath: "data.email_id",
     source: {
       event: RESEND_WEBHOOK_SOURCE,
@@ -285,56 +303,22 @@ function resendEmailEvent(type: string, label: string, description: string) {
   });
 }
 
-function resendDomainEvent(type: string, label: string, description: string) {
-  return defineEvent({
-    name: `resend/${type}`,
-    label,
-    description,
-    schema: Schema.Struct({
-      type: Schema.String.annotate({ description: "Resend event type" }),
-      created_at: createdAt,
-      data: domainData,
-    }),
-    correlationPath: "data.id",
-    source: {
-      event: RESEND_WEBHOOK_SOURCE,
-      when: { path: "type", equals: type },
-    },
-  });
-}
+type IdDataSchema =
+  | typeof domainData
+  | typeof contactData
+  | typeof suppressionData;
 
-function resendContactEvent(type: string, label: string, description: string) {
-  return defineEvent({
-    name: `resend/${type}`,
-    label,
-    description,
-    schema: Schema.Struct({
-      type: Schema.String.annotate({ description: "Resend event type" }),
-      created_at: createdAt,
-      data: contactData,
-    }),
-    correlationPath: "data.id",
-    source: {
-      event: RESEND_WEBHOOK_SOURCE,
-      when: { path: "type", equals: type },
-    },
-  });
-}
-
-function resendSuppressionEvent(
+function idEvent(
   type: string,
   label: string,
-  description: string
+  description: string,
+  data: IdDataSchema
 ) {
   return defineEvent({
     name: `resend/${type}`,
     label,
     description,
-    schema: Schema.Struct({
-      type: Schema.String.annotate({ description: "Resend event type" }),
-      created_at: createdAt,
-      data: suppressionData,
-    }),
+    schema: resendEnvelope(data),
     correlationPath: "data.id",
     source: {
       event: RESEND_WEBHOOK_SOURCE,
@@ -344,140 +328,107 @@ function resendSuppressionEvent(
 }
 
 export const resendEvents = [
-  resendEmailEvent(
+  emailEvent(
     "email.sent",
     "Email sent",
     "Resend accepted the email and queued it for delivery."
   ),
-  resendEmailEvent(
+  emailEvent(
     "email.delivered",
     "Email delivered",
     "The recipient's mail server accepted the email."
   ),
-  resendEmailEvent(
+  emailEvent(
     "email.delivery_delayed",
     "Email delivery delayed",
     "Delivery was delayed by a temporary issue at the receiving server."
   ),
-  defineEvent({
-    name: "resend/email.bounced",
-    label: "Email bounced",
-    description: "The recipient's mail server permanently rejected the email.",
-    schema: Schema.Struct({
-      type: Schema.Literal("email.bounced"),
-      created_at: createdAt,
-      data: emailBouncedData,
-    }),
-    correlationPath: "data.email_id",
-    source: {
-      event: RESEND_WEBHOOK_SOURCE,
-      when: { path: "type", equals: "email.bounced" },
-    },
-  }),
-  resendEmailEvent(
+  emailEvent(
+    "email.bounced",
+    "Email bounced",
+    "The recipient's mail server permanently rejected the email.",
+    emailBouncedData
+  ),
+  emailEvent(
     "email.complained",
     "Email complained",
     "The recipient marked the email as spam."
   ),
-  resendEmailEvent(
-    "email.opened",
-    "Email opened",
-    "The recipient opened the email."
+  emailEvent("email.opened", "Email opened", "The recipient opened the email."),
+  emailEvent(
+    "email.clicked",
+    "Email clicked",
+    "The recipient clicked a link in the email.",
+    emailClickedData
   ),
-  defineEvent({
-    name: "resend/email.clicked",
-    label: "Email clicked",
-    description: "The recipient clicked a link in the email.",
-    schema: Schema.Struct({
-      type: Schema.Literal("email.clicked"),
-      created_at: createdAt,
-      data: emailClickedData,
-    }),
-    correlationPath: "data.email_id",
-    source: {
-      event: RESEND_WEBHOOK_SOURCE,
-      when: { path: "type", equals: "email.clicked" },
-    },
-  }),
-  defineEvent({
-    name: "resend/email.failed",
-    label: "Email failed",
-    description: "Resend could not send the email.",
-    schema: Schema.Struct({
-      type: Schema.Literal("email.failed"),
-      created_at: createdAt,
-      data: emailFailedData,
-    }),
-    correlationPath: "data.email_id",
-    source: {
-      event: RESEND_WEBHOOK_SOURCE,
-      when: { path: "type", equals: "email.failed" },
-    },
-  }),
-  resendEmailEvent(
+  emailEvent(
+    "email.failed",
+    "Email failed",
+    "Resend could not send the email.",
+    emailFailedData
+  ),
+  emailEvent(
     "email.scheduled",
     "Email scheduled",
     "The email was scheduled for later sending."
   ),
-  resendEmailEvent(
+  emailEvent(
     "email.suppressed",
     "Email suppressed",
     "Resend did not send the email because the address is suppressed."
   ),
-  defineEvent({
-    name: "resend/email.received",
-    label: "Email received",
-    description:
-      "Resend received an inbound email. The body is not in the payload.",
-    schema: Schema.Struct({
-      type: Schema.Literal("email.received"),
-      created_at: createdAt,
-      data: emailReceivedData,
-    }),
-    correlationPath: "data.email_id",
-    source: {
-      event: RESEND_WEBHOOK_SOURCE,
-      when: { path: "type", equals: "email.received" },
-    },
-  }),
-  resendDomainEvent(
+  emailEvent(
+    "email.received",
+    "Email received",
+    "Resend received an inbound email. The body is not in the payload.",
+    emailReceivedData
+  ),
+  idEvent(
     "domain.created",
     "Domain created",
-    "A sending or receiving domain was created."
+    "A sending or receiving domain was created.",
+    domainData
   ),
-  resendDomainEvent(
+  idEvent(
     "domain.updated",
     "Domain updated",
-    "A domain's records or status changed."
+    "A domain's records or status changed.",
+    domainData
   ),
-  resendDomainEvent(
+  idEvent(
     "domain.deleted",
     "Domain deleted",
-    "A domain was deleted."
+    "A domain was deleted.",
+    domainData
   ),
-  resendContactEvent(
+  idEvent(
     "contact.created",
     "Contact created",
-    "A contact was created in an audience."
+    "A contact was created in an audience.",
+    contactData
   ),
-  resendContactEvent(
+  idEvent(
     "contact.updated",
     "Contact updated",
-    "A contact was updated."
+    "A contact was updated.",
+    contactData
   ),
-  resendContactEvent(
+  idEvent(
     "contact.deleted",
     "Contact deleted",
-    "A contact was deleted."
+    "A contact was deleted.",
+    contactData
   ),
-  resendSuppressionEvent(
+  idEvent(
     "suppression.added",
     "Suppression added",
-    "An address was added to the suppression list."
+    "An address was added to the suppression list.",
+    suppressionData
   ),
-  resendSuppressionEvent(
+  idEvent(
     "suppression.removed",
     "Suppression removed",
-    "An address was removed from the suppression list."
+    "An address was removed from the suppression list.",
+    suppressionData
   ),
 ] as const;

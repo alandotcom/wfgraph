@@ -322,9 +322,11 @@ function OAuthManagedCredentialField({
 
 function WebhookUrlField({
   type,
+  helpText,
   connectionId,
 }: {
   type: string;
+  helpText: string | undefined;
   connectionId: string;
 }) {
   const intake = getWebhookIntake();
@@ -369,9 +371,8 @@ function WebhookUrlField({
         </Button>
       </div>
       <p className="text-muted-foreground text-xs">
-        {type === "resend"
-          ? "Create a webhook in Resend with all event types selected, then paste this URL and the signing secret from that page."
-          : "Paste this URL into the vendor's webhook settings for this Connection."}
+        {helpText ??
+          "Paste this URL into the vendor's webhook settings for this Connection."}
       </p>
     </div>
   );
@@ -697,6 +698,7 @@ export function EditConnectionOverlay({
           {catalogEntry?.hasWebhook ? (
             <WebhookUrlField
               connectionId={integration.id}
+              helpText={catalogEntry.webhookHelpText}
               type={integration.type}
             />
           ) : null}

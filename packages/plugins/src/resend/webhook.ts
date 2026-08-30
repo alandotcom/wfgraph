@@ -30,6 +30,9 @@ function isResendWebhookEventType(
 export const resendWebhook: IntegrationWebhook<{
   RESEND_WEBHOOK_SECRET?: string;
 }> = {
+  source: RESEND_WEBHOOK_SOURCE,
+  helpText:
+    "Create a webhook in Resend with all event types selected, then paste this URL and the signing secret from that page.",
   verify: ({ rawBody, headers, credentials }) => {
     const secret = credentials.RESEND_WEBHOOK_SECRET;
     if (!secret) {
@@ -64,7 +67,6 @@ export const resendWebhook: IntegrationWebhook<{
 
     const svixId = headers.get("svix-id");
     return {
-      event: RESEND_WEBHOOK_SOURCE,
       data: body,
       ...(svixId ? { id: svixId } : {}),
     };

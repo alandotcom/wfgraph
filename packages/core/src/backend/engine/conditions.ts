@@ -119,6 +119,7 @@ export function evaluateConditionExpression(
       timestampPaths: yield* readConditionTimestampPaths(conditionModel),
       payload: merged,
       eventName,
+      connectionId: null,
     });
 
     if (!evaluation.ok) {

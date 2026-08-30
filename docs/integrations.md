@@ -115,12 +115,14 @@ Connection picker. Identity stays the Event name; a webhook is how they arrive.
 Export `defineEvent` from `@wfgraph/core/plugin`. An integration-owned Start, Cancel,
 or Wait Event must name a Connection at Publish.
 
-**`webhook` is the ungated intake** that verifies a vendor POST and returns
-`{ event, data, id? }` for `inngest.send`. `verify` sees the raw body (`c.req.text()`),
-because HMAC schemes are sensitive to a single byte of re-serialization. `receive`
-sees the parsed JSON. An ignored payload is `undefined` (200, no send).
-`SignatureRejected` is 401. The Connection id travels as Inngest `user.connectionId`,
-not inside the payload.
+**`webhook` is the ungated intake** that verifies a vendor POST and maps it onto
+the webhook's `source` name for `inngest.send`. Catalog Events listen on that source
+and narrow with `source.when`. `receive` returns `{ data, id? }`; the route sends
+`source`. `verify` sees the raw body (`c.req.text()`), because HMAC schemes are
+sensitive to a single byte of re-serialization. `receive` sees the parsed JSON. An
+ignored payload is `undefined` (200, no send). `SignatureRejected` is 401. The
+Connection id travels as Inngest `user.connectionId`, not inside the payload.
+`helpText` is shown under the copyable URL on the Connection dialog.
 
 **A handler takes one bag**, holding `input` (the decoded config), the credential reads,
 `step`, and the run's identity: `runMode`, `executionId`, `nodeId`, `nodeName`,
@@ -353,11 +355,12 @@ Schema.optionalKey(Schema.NullOr(Schema.String));
 however many actions it declares, and its SDK, where it has one, is a plain import of that
 file.
 
-**`checkIntegration` is the assembly check, exported for your own suite.** Assembly calls it
-for each integration a host passes, so a bad definition fails the application that turned it
-on. Call it in the tests of the defining package and the failure lands where the author
-reads it, so an output schema the derivation cannot read is caught before a review sees a
-green run.
+**`checkIntegration` is the assembly check for one integration, exported for your own suite.**
+Assembly calls it for each integration a host passes, so a bad definition fails the
+application that turned it on: actions, credentials, provider-backed fields, Events, and
+the webhook that produces them. Cross-integration uniqueness (two plugins declaring the
+same Event name) stays in `assembleExtensions`. Call `checkIntegration` in the tests of
+the defining package and the failure lands where the author reads it.
 
 **Describe the wire.** The types of an SDK are its own promise about the JSON of somebody
 else, and a typed client casts a response rather than validating it. Model what a recorded

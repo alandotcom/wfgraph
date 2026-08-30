@@ -183,13 +183,15 @@ export function compileWaitSubscriptions(input: {
   const subscriptions: CompiledWaitSubscription[] = [];
 
   for (const subscription of input.subscriptions) {
+    const base: CompiledWaitSubscription = {
+      event: subscription.event,
+      ...(subscription.connectionId
+        ? { connectionId: subscription.connectionId }
+        : {}),
+    };
+
     if (subscription.match === undefined || subscription.match.trim() === "") {
-      subscriptions.push({
-        event: subscription.event,
-        ...(subscription.connectionId
-          ? { connectionId: subscription.connectionId }
-          : {}),
-      });
+      subscriptions.push(base);
       continue;
     }
 
@@ -227,10 +229,7 @@ export function compileWaitSubscriptions(input: {
     }
 
     subscriptions.push({
-      event: subscription.event,
-      ...(subscription.connectionId
-        ? { connectionId: subscription.connectionId }
-        : {}),
+      ...base,
       match: {
         expression: compiled.expression,
         timestampPaths: collectTimestampFieldPaths(resolved),

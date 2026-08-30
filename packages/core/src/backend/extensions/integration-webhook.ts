@@ -6,10 +6,11 @@
  * parsed JSON. The route reads the body once and hands both halves what they
  * need; nothing here consumes the Request.
  *
- * Handshake (a Slack `url_verification`) is a `receive` answer that returns a
- * Response and does not send. An ignored payload is `undefined`, which the
- * route answers 200 rather than an error, so a vendor retry storm does not
- * follow a subtype this integration chose not to model.
+ * The Inngest source lives on the webhook, not on each `receive` return, so a
+ * payload this integration chose to model cannot be sent under a name no Event
+ * listens to. An ignored payload is `undefined`, which the route answers 200
+ * rather than an error, so a vendor retry storm does not follow a subtype this
+ * integration chose not to model.
  */
 
 import type { Effect } from "effect";
@@ -29,32 +30,18 @@ export class SignatureRejected extends Schema.TaggedError<SignatureRejected>()(
   }
 ) {}
 
-/** An accepted payload, as `inngest.send` takes it. */
+/** An accepted payload, as `inngest.send` takes its `data` and idempotency key. */
 export type WebhookAccepted = {
-  readonly event: string;
   readonly data: JsonObject;
   /** Inngest idempotency key. Resend sets this from `svix-id`. */
   readonly id?: string;
 };
 
-/** A challenge the vendor must hear back, with no Event send. */
-export type WebhookHandshake = {
-  readonly handshake: Response;
-};
-
-export type WebhookReceiveResult =
-  | WebhookAccepted
-  | WebhookHandshake
-  | undefined;
-
-export function isWebhookHandshake(
-  result: WebhookAccepted | WebhookHandshake
-): result is WebhookHandshake {
-  return "handshake" in result;
-}
+export type WebhookReceiveResult = WebhookAccepted | undefined;
 
 /**
- * The two functions an integration writes to own its webhook.
+ * The two functions an integration writes to own its webhook, plus the bus
+ * name every accepted payload is sent as.
  *
  * `TCredentials` is the integration's own credential record, so `verify` naming
  * a key the form never declared fails to compile.
@@ -65,6 +52,16 @@ export type IntegrationWebhook<
     string | undefined
   >,
 > = {
+  /**
+   * The Inngest event name `receive` maps onto. Catalog Events listen on this
+   * and narrow with `source.when`.
+   */
+  readonly source: string;
+  /**
+   * Shown under the copyable webhook URL on the Connection dialog. Absent, the
+   * dialog uses a generic sentence.
+   */
+  readonly helpText?: string;
   readonly verify: (input: {
     readonly rawBody: string;
     readonly headers: Headers;

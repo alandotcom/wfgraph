@@ -19,7 +19,6 @@ import {
   Unauthorized,
 } from "#src/backend/lib/effect/failures";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
-import { isWebhookHandshake } from "#src/backend/extensions/integration-webhook";
 import {
   credentialsFromConfig,
   findIntegration,
@@ -97,15 +96,8 @@ export const receiveWebhook = Effect.fn("receiveWebhook")(
       return { kind: "ignored" as const };
     }
 
-    if (isWebhookHandshake(received)) {
-      return {
-        kind: "handshake" as const,
-        response: received.handshake,
-      };
-    }
-
     yield* inngest.sendCatalogEvent({
-      name: received.event,
+      name: webhook.source,
       data: received.data,
       connectionId: input.connectionId,
       id: received.id,
@@ -115,12 +107,12 @@ export const receiveWebhook = Effect.fn("receiveWebhook")(
       webhook: {
         type: input.type,
         connectionId: input.connectionId,
-        event: received.event,
+        event: webhook.source,
         bytes: input.rawBody.length,
       },
     });
 
-    return { kind: "sent" as const, event: received.event };
+    return { kind: "sent" as const, event: webhook.source };
   },
   (effect) =>
     effect.pipe(

@@ -76,8 +76,8 @@ describe("the Resend webhook", () => {
       headers
     );
 
+    expect(resendWebhook.source).toBe(RESEND_WEBHOOK_SOURCE);
     expect(accepted).toEqual({
-      event: RESEND_WEBHOOK_SOURCE,
       data: resendWebhookFixtures["email.delivered"],
       id: "msg_p5jXN8AQM9LWM0D4loKWxJek",
     });

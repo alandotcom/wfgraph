@@ -19,7 +19,7 @@ const integrations = builtInIntegrations();
  * place for a host and the wrong place for this repo: a description missing from one
  * field of one output schema would otherwise reach a reviewer as a green suite and an
  * adopter as a startup crash. `checkIntegration` is the function assembly itself
- * calls, exported for exactly this, and it throws naming the action -- so the line
+ * calls, exported for exactly this, and it throws naming the offender -- so the line
  * below is a check as much as the cases are, and a bad definition fails this file's
  * collection.
  */

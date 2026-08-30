@@ -4,7 +4,6 @@ import { useCallback, useId, useMemo, useState } from "react";
 import { Button } from "#src/components/ui/button";
 import { WarningCallout } from "#src/components/ui/callout";
 import { Label } from "#src/components/ui/label";
-import { IntegrationSelector } from "#src/components/ui/integration-selector";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { getEventConditionFields } from "#src/lib/upstream-node-fields";
 import { nodesAtom, selectedNodeAtom } from "#src/lib/workflow-graph-store";
@@ -22,6 +21,7 @@ import {
   readWaitSubscriptions,
 } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { ConditionBuilderRow } from "./condition-builder-row";
+import { EventConnectionSelect } from "./event-connection-select";
 import { EventMultiCombobox, catalogEventChoices } from "./event-combobox";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
@@ -76,34 +76,43 @@ export function WaitEventSelect({
     write(selected.filter((subscription) => subscription.event !== eventName));
   };
 
-  const setMatch = (eventName: string, match: string) => {
+  const patchSubscription = (
+    eventName: string,
+    patch: Partial<Pick<EventSubscription, "match" | "connectionId">>
+  ) => {
     write(
-      selected.map((subscription) =>
-        subscription.event === eventName
-          ? {
-              event: subscription.event,
-              ...(subscription.connectionId
-                ? { connectionId: subscription.connectionId }
-                : {}),
-              ...(match ? { match } : {}),
-            }
-          : subscription
-      )
+      selected.map((subscription) => {
+        if (subscription.event !== eventName) {
+          return subscription;
+        }
+        const next: EventSubscription = {
+          event: subscription.event,
+          ...(patch.match !== undefined
+            ? patch.match
+              ? { match: patch.match }
+              : {}
+            : subscription.match
+              ? { match: subscription.match }
+              : {}),
+          ...(patch.connectionId !== undefined
+            ? patch.connectionId
+              ? { connectionId: patch.connectionId }
+              : {}
+            : subscription.connectionId
+              ? { connectionId: subscription.connectionId }
+              : {}),
+        };
+        return next;
+      })
     );
   };
 
+  const setMatch = (eventName: string, match: string) => {
+    patchSubscription(eventName, { match });
+  };
+
   const setConnectionId = (eventName: string, connectionId: string) => {
-    write(
-      selected.map((subscription) =>
-        subscription.event === eventName
-          ? {
-              event: subscription.event,
-              ...(subscription.match ? { match: subscription.match } : {}),
-              ...(connectionId ? { connectionId } : {}),
-            }
-          : subscription
-      )
-    );
+    patchSubscription(eventName, { connectionId });
   };
 
   return (
@@ -269,9 +278,10 @@ function WaitSubscriptionRow({
       </div>
 
       {event?.integration ? (
-        <IntegrationSelector
+        <EventConnectionSelect
+          catalog={catalog}
           disabled={disabled}
-          integrationType={event.integration}
+          eventName={subscription.event}
           onChange={(id) => onConnectionChange(subscription.event, id)}
           value={subscription.connectionId}
         />

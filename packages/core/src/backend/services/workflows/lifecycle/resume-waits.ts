@@ -14,6 +14,7 @@ import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import { readCompiledWaitSubscriptions } from "#src/backend/engine/wait-match";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { JsonObject } from "@wfgraph/shared/types/json";
+import { connectionMatches } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 
 type CandidateWaitState = {
   id: string;
@@ -52,8 +53,7 @@ function waitStateMatches(input: {
   ).filter(
     (subscription) =>
       subscription.event === input.eventType &&
-      (subscription.connectionId === undefined ||
-        subscription.connectionId === input.connectionId)
+      connectionMatches(subscription.connectionId, input.connectionId)
   );
 
   const unevaluated: string[] = [];

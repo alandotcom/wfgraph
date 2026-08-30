@@ -10,12 +10,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "#src/components/ui/select";
-import { IntegrationSelector } from "#src/components/ui/integration-selector";
 import {
   type ExtensionCatalog,
   findEvent,
 } from "@wfgraph/shared/extensions/catalog";
 import { catalogEventChoices } from "./event-combobox";
+import { EventConnectionSelect } from "./event-connection-select";
 import {
   type CorrelationPathRequest,
   correlationPathRequestFor,
@@ -169,6 +169,14 @@ function ChosenEventSummary({
                 <span className="font-mono">{path}</span>
               </span>
             ) : null}
+            {rules.connectionIds?.[eventName] ? (
+              <span className="text-muted-foreground text-xs">
+                {" via "}
+                <span className="font-mono">
+                  {rules.connectionIds[eventName]}
+                </span>
+              </span>
+            ) : null}
           </li>
         );
       })}
@@ -238,9 +246,10 @@ function ChosenEvent({
         </Button>
       </div>
       {event?.integration ? (
-        <IntegrationSelector
+        <EventConnectionSelect
+          catalog={catalog}
           disabled={disabled}
-          integrationType={event.integration}
+          eventName={eventName}
           onChange={(id) => onConnectionChange(eventName, id)}
           value={connectionId}
         />

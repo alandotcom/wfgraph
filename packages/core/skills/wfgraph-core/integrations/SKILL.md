@@ -95,7 +95,8 @@ wfgraph-plugins.
 - `runAction`, `actionData`, `actionError` from `@wfgraph/core/testing`. The
   slug is typed. `input` is the encoded side (what a builder typed).
 - Call `checkIntegration` in the defining package's suite. Assembly runs the
-  same check.
+  same per-integration check (actions, Events, webhook). Cross-integration
+  uniqueness stays in `assembleExtensions`.
 - Published workflows pin action ids and config/output **keys**, not handler
   bodies. Add config keys with `Schema.optionalKey` only. Add output paths
   only. Never rename or remove a live key.

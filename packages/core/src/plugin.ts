@@ -46,11 +46,9 @@ export {
   PayloadRejected,
 } from "#src/backend/extensions/define-event";
 export {
-  isWebhookHandshake,
   SignatureRejected,
   type IntegrationWebhook,
   type WebhookAccepted,
-  type WebhookHandshake,
   type WebhookReceiveResult,
 } from "#src/backend/extensions/integration-webhook";
 export type {

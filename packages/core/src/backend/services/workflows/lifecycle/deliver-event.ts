@@ -26,10 +26,16 @@ import {
   WorkflowRepo,
 } from "#src/backend/services/workflows/repo";
 import { toWorkflowRunTarget } from "#src/backend/services/executions/run-rows";
-import type { JsonObject } from "@wfgraph/shared/types/json";
-import { getValueByPath } from "@wfgraph/shared/utils/object-path";
-import { emptyLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import { isLifecycleNode } from "@wfgraph/shared/graph/node-config";
+import {
+  connectionMatches,
+  emptyLifecycleRules,
+  type LifecycleRules,
+  readLifecycleRules,
+} from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
 import { asNonEmptyString } from "@wfgraph/shared/types/string";
+import { getValueByPath } from "@wfgraph/shared/utils/object-path";
 
 /**
  * The Event as delivery reads it: its identity, and where its payload carries an
@@ -134,14 +140,33 @@ function readEntityValue(input: {
   return asNonEmptyString(getValueByPath(input.payload, path));
 }
 
-function connectionFilterHolds(
-  stored: string | undefined,
-  delivered: string | undefined
-): boolean {
-  if (stored === undefined) {
-    return true;
+/**
+ * The published graph's Lifecycle Rules, without validating the rest of the
+ * graph. Wrong-Connection arrivals and Events that hold no start or cancel role
+ * become `waits_only` here, so preflight (every action, every condition) runs
+ * only when this Event still has a start or cancel to perform.
+ */
+function lifecycleRulesFromPublishedGraph(graph: unknown): LifecycleRules {
+  const record = readJsonObject(graph);
+  const nodes = record?.nodes;
+  if (!Array.isArray(nodes)) {
+    return emptyLifecycleRules;
   }
-  return stored === delivered;
+
+  for (const node of nodes) {
+    const asNode = readJsonObject(node);
+    const data = asNode ? readJsonObject(asNode.data) : undefined;
+    if (!data || typeof data.type !== "string") {
+      continue;
+    }
+    const config = readJsonObject(data.config) ?? undefined;
+    if (!isLifecycleNode({ data: { type: data.type, config } })) {
+      continue;
+    }
+    return readLifecycleRules(config) ?? emptyLifecycleRules;
+  }
+
+  return emptyLifecycleRules;
 }
 
 /** The workflows this Event concerns, with the roles it holds in each. */
@@ -197,10 +222,30 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       return skipped(input.subscriber.id, "not_published");
     }
 
-    // Preflight is the start branch's alone: it validates every action, condition
-    // and integration reference in the graph, and a wait delivery needs none of
-    // that. Its refusals are this workflow's problem rather than the Event's, so
-    // they answer here instead of failing.
+    // Cheap: the published graph's rules, without validating every action.
+    // A wrong Connection, or an Event that holds no start or cancel role here,
+    // is waits_only. Preflight is the start/cancel branch's alone.
+    const publishedRules = lifecycleRulesFromPublishedGraph(version.graph);
+    if (
+      !connectionMatches(
+        publishedRules.connectionIds?.[input.event.name],
+        input.event.connectionId
+      )
+    ) {
+      return { kind: "waits_only" as const, workflowId: workflow.id };
+    }
+
+    const holdsStartOrCancel =
+      publishedRules.startEvents.includes(input.event.name) ||
+      publishedRules.cancelEvents.includes(input.event.name);
+    if (!holdsStartOrCancel) {
+      return { kind: "waits_only" as const, workflowId: workflow.id };
+    }
+
+    // Preflight is the start/cancel branch's alone: it validates every action,
+    // condition and integration reference in the graph, and a wait delivery
+    // needs none of that. Its refusals are this workflow's problem rather than
+    // the Event's, so they answer here instead of failing.
     const preflight = yield* runWorkflowExecutionPreflight({
       workflow: { graph: version.graph },
       workflowVersionId: version.id,
@@ -226,23 +271,11 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       return skipped(input.subscriber.id, "graph_unrunnable");
     }
 
-    // A graph carrying no rules starts on nothing, which is not the same as a
-    // graph that cannot run: its parked runs still have Events owed to them.
-    //
     // These rules come from the published version, and the cancel role below
     // reads them too. A Cancel Event added to the draft alone therefore reaches
     // no run of that draft, whether or not the workflow is published
     // (ADR-0012, 2026-08-29).
     const rules = preflight.lifecycleRules ?? emptyLifecycleRules;
-
-    if (
-      !connectionFilterHolds(
-        rules.connectionIds?.[input.event.name],
-        input.event.connectionId
-      )
-    ) {
-      return { kind: "waits_only" as const, workflowId: workflow.id };
-    }
 
     const entityValue = readEntityValue({
       event: input.event,

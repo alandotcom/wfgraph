@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { defineEvent } from "#src/backend/extensions/define-event";
 import {
+  checkIntegration,
   type CredentialsOf,
   defineIntegration,
 } from "#src/backend/extensions/define-integration";
@@ -88,6 +89,7 @@ describe("defineIntegration", () => {
       },
     });
     const webhook: IntegrationWebhook = {
+      source: "twilio/webhook",
       verify: () => Effect.void,
       receive: () => undefined,
     };
@@ -172,6 +174,55 @@ describe("defineIntegration", () => {
         actions: {},
       })
     ).toThrow(/config options providers in an ordinary object record/u);
+  });
+});
+
+describe("checkIntegration Events", () => {
+  it("refuses a webhook with no Events", () => {
+    expect(() =>
+      checkIntegration(
+        defineIntegration({
+          type: "x",
+          label: "X",
+          description: "Webhook with no Events",
+          credentials: {},
+          actions: {},
+          webhook: {
+            source: "x/webhook",
+            verify: () => Effect.void,
+            receive: () => undefined,
+          },
+        })
+      )
+    ).toThrow(/webhook with no Events/u);
+  });
+
+  it("refuses an Event whose source is not the webhook's", () => {
+    expect(() =>
+      checkIntegration(
+        defineIntegration({
+          type: "x",
+          label: "X",
+          description: "Mismatched source",
+          credentials: {},
+          actions: {},
+          events: [
+            defineEvent({
+              name: "x/happened",
+              schema: Schema.Struct({
+                id: Schema.String.annotate({ description: "Id" }),
+              }),
+              source: { event: "other/webhook" },
+            }),
+          ],
+          webhook: {
+            source: "x/webhook",
+            verify: () => Effect.void,
+            receive: () => undefined,
+          },
+        })
+      )
+    ).toThrow(/not this webhook's source/u);
   });
 });
 

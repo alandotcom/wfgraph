@@ -15,6 +15,7 @@
 import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
 import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
 import type { IntegrationWebhook } from "#src/backend/extensions/integration-webhook";
+import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
 import type { ConfigOptionsProvider } from "#src/backend/extensions/config-options";
 import {
   type ActionConfigFieldFor,
@@ -310,14 +311,15 @@ export type CheckedAction = {
 };
 
 /**
- * Hold an integration's actions to what the editor and the engine need of them,
- * naming the offender.
+ * Hold an integration to what the editor and the engine need of it, naming the
+ * offender: actions, credentials, provider-backed fields, Events, and the
+ * webhook that produces them.
  *
  * Assembly calls this for every integration a host passes, so a bad definition
- * fails the app that turned it on. It is exported for the package that wrote the
+ * fails the app that turned it on. Cross-integration uniqueness stays in
+ * `assembleExtensions`. It is exported for the package that wrote the
  * definition to call in its own suite: a host meeting the throw at startup is the
- * right place for a host and the wrong place for the author, where a missing
- * annotation would otherwise pass review as a green run.
+ * right place for a host and the wrong place for the author.
  */
 export function checkIntegration(
   integration: IntegrationDefinition
@@ -351,6 +353,8 @@ export function checkIntegration(
     );
   }
 
+  checkIntegrationEvents(integration);
+
   return Object.entries(integration.actions).map(([slug, step]) => {
     if (!isSafeRecordKey(slug)) {
       throw new Error(
@@ -368,6 +372,70 @@ export function checkIntegration(
 
     return { id, step, outputFields };
   });
+}
+
+/**
+ * Hold this integration's Events and webhook to what assembly will also refuse.
+ *
+ * Cross-integration uniqueness stays in `assembleExtensions`. What belongs here
+ * is everything true of this definition on its own: a webhook with no Events, a
+ * source name no Event listens on, two Events that cannot be told apart, two
+ * names that slug to one listener.
+ */
+function checkIntegrationEvents(integration: IntegrationDefinition): void {
+  const events = integration.events ?? [];
+  const webhook = integration.webhook;
+
+  if (webhook && events.length === 0) {
+    throw new Error(
+      `Integration "${integration.type}" declares a webhook with no Events, so a verified POST would have nothing to become.`
+    );
+  }
+
+  if (webhook && webhook.source.trim().length === 0) {
+    throw new Error(
+      `Integration "${integration.type}" declares a webhook without a source name.`
+    );
+  }
+
+  const byName = new Map<string, AnyEventDefinition>();
+  const unfilteredBySource = new Map<string, string>();
+  const byListenerId = new Map<string, string>();
+
+  for (const event of events) {
+    const existing = byName.get(event.name);
+    if (existing && existing !== event) {
+      throw new Error(
+        `Integration "${integration.type}" declares two Events named "${event.name}".`
+      );
+    }
+    byName.set(event.name, event);
+
+    if (webhook && event.source.event !== webhook.source) {
+      throw new Error(
+        `Integration "${integration.type}" Event "${event.name}" arrives as "${event.source.event}", which is not this webhook's source "${webhook.source}".`
+      );
+    }
+
+    if (!event.source.when) {
+      const existingUnfiltered = unfilteredBySource.get(event.source.event);
+      if (existingUnfiltered) {
+        throw new Error(
+          `Events "${existingUnfiltered}" and "${event.name}" both arrive as "${event.source.event}" and neither narrows it with source.when, so every payload would be delivered as both. Give one of them a filter, or a source name of its own.`
+        );
+      }
+      unfilteredBySource.set(event.source.event, event.name);
+    }
+
+    const listenerId = toListenerFunctionId(event.name);
+    const existingId = byListenerId.get(listenerId);
+    if (existingId) {
+      throw new Error(
+        `Events "${existingId}" and "${event.name}" both name the Inngest function "${listenerId}". An Event's listener id is its name slugged, so two names differing only in punctuation collide; rename one.`
+      );
+    }
+    byListenerId.set(listenerId, event.name);
+  }
 }
 
 function assertOrdinaryDeclarationRecord(

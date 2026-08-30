@@ -368,6 +368,9 @@ function readIntegration(
     credentialFields: integration.credentials,
     hasTest: integration.test !== undefined,
     hasWebhook: integration.webhook !== undefined,
+    ...(integration.webhook?.helpText
+      ? { webhookHelpText: integration.webhook.helpText }
+      : {}),
     ...(integration.oauth ? { oauth: { label: integration.oauth.label } } : {}),
   };
 }

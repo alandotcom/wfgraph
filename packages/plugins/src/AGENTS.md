@@ -219,7 +219,9 @@ each output schema. What Workflow Graph itself does around a handler is covered 
 `packages/core/src/backend/extensions/steps/define-step.test.ts`.
 
 `src/index.test.ts` runs `checkIntegration` over all six at module level, which is every
-check `assembleExtensions` runs, so a bad definition fails that file's collection. A host
-would otherwise meet it as a startup crash, and a description missing from one field of one
-output schema would reach a reviewer as a green suite. `checkIntegration` is exported from
-`@wfgraph/core/plugin` so an outside integration package can do the same.
+check `assembleExtensions` runs on one integration — including its Events and webhook —
+so a bad definition fails that file's collection. Cross-integration uniqueness stays in
+`assembleExtensions`. A host would otherwise meet a bad definition as a startup crash,
+and a description missing from one field of one output schema would reach a reviewer as
+a green suite. `checkIntegration` is exported from `@wfgraph/core/plugin` so an outside
+integration package can do the same.

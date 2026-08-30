@@ -337,6 +337,20 @@ export function pruneConnectionIds(rules: LifecycleRules): LifecycleRules {
 }
 
 /**
+ * Whether a stored Connection still matches the arrival.
+ *
+ * A host Event never names one, and a stored blank (an unpublished draft that
+ * has not picked yet) matches every arrival. A stored id matches only that
+ * Connection, so a deleted Connection refuses rather than silently fanning in.
+ */
+export function connectionMatches(
+  stored: string | undefined,
+  delivered: string | undefined
+): boolean {
+  return stored === undefined || stored === delivered;
+}
+
+/**
  * What a save is held to, as sentences a builder can be shown.
  *
  * The catalog is the vocabulary these rules are checked against, so a workflow

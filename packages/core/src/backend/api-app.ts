@@ -485,12 +485,7 @@ export function createApiApp(options: CreateApiAppOptions) {
         headers: c.req.raw.headers,
       }).pipe(
         Effect.match({
-          onSuccess: (result) => {
-            if (result.kind === "handshake") {
-              return result.response;
-            }
-            return Response.json({ ok: true });
-          },
+          onSuccess: () => Response.json({ ok: true }),
           onFailure: (failure) => responseFromServiceFailure(failure),
         })
       )

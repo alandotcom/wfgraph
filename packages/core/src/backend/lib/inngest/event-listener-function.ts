@@ -14,7 +14,7 @@
  * carries that Event's compiled `source.when`.
  */
 
-import { Effect } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { NonRetriableError } from "inngest";
 import type { Inngest, InngestFunction } from "inngest";
 import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
@@ -27,6 +27,7 @@ import {
   listEventSubscribers,
 } from "#src/backend/services/workflows/lifecycle/deliver-event";
 import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
+import { NonEmptyTrimmedString } from "@wfgraph/shared/types/schema";
 import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
 import { compileEventDataEquals } from "@wfgraph/shared/lifecycle/inngest-event-data";
 
@@ -45,15 +46,16 @@ function toEventPayload(value: unknown): JsonObject {
   return readJsonObject(value) ?? {};
 }
 
+const readDeliveredUser = Schema.decodeUnknownResult(
+  Schema.Struct({ connectionId: NonEmptyTrimmedString })
+);
+
 function connectionIdOf(delivered: { user?: unknown }): string | undefined {
-  const user = delivered.user;
-  if (typeof user !== "object" || user === null) {
+  if (delivered.user === undefined) {
     return undefined;
   }
-  const connectionId = Reflect.get(user, "connectionId");
-  return typeof connectionId === "string" && connectionId.length > 0
-    ? connectionId
-    : undefined;
+  const parsed = readDeliveredUser(delivered.user);
+  return Result.isFailure(parsed) ? undefined : parsed.success.connectionId;
 }
 
 /** The runs the Lifecycle Rules settled, which the wait half then leaves alone. */

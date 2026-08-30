@@ -99,6 +99,11 @@ export type IntegrationMetadata = {
   readonly hasTest: boolean;
   /** Whether this integration mounts a Connection-addressed webhook. */
   readonly hasWebhook: boolean;
+  /**
+   * Shown under the copyable webhook URL on the Connection dialog. Absent when
+   * the integration did not supply one; the dialog then uses a generic sentence.
+   */
+  readonly webhookHelpText?: string;
   /** Sanitized OAuth capability metadata. Provider behavior stays server-side. */
   readonly oauth?: { readonly label: string };
 };
