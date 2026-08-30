@@ -14,61 +14,19 @@ sources:
 ---
 
 This skill builds on wfgraph-core. For vendor integrations, load
-wfgraph-core/integrations instead.
+wfgraph-core/integrations instead. Copy-paste the host action from
+`docs/embedding.md`; the Effect vs Promise table is in `docs/integrations.md`.
 
 # Host actions
 
 `defineAction` is the host vocabulary. An adopter needs no Effect. Fail by
-throwing; durable work is `step.run(id, () => promise)`.
-
-## Setup
-
-```ts
-import { defineAction } from "@wfgraph/core";
-import { z } from "zod";
-
-const cancelAppointment = defineAction({
-  id: "appointments/cancel",
-  label: "Cancel Appointment",
-  description: "Cancels an appointment and records the reason.",
-  category: "Appointments",
-  input: z.object({
-    appointmentId: z.string().describe("Appointment ID"),
-    reason: z.string().min(1),
-  }),
-  output: z.object({
-    appointmentId: z.string().describe("Appointment ID"),
-    status: z.string(),
-    cancelledAt: z.iso.datetime(),
-  }),
-  handler({ input }) {
-    return {
-      appointmentId: input.appointmentId,
-      status: "cancelled",
-      cancelledAt: new Date().toISOString(),
-    };
-  },
-});
-```
-
-Pass it in `extensions.actions`. The input schema draws the config form. A
-field label is the key in title case unless `description` replaces it.
+throwing; durable work is `step.run(id, () => promise)`. Pass the value in
+`extensions.actions`. The input schema draws the config form. A field label is
+the key in title case unless `description` replaces it.
 
 ## Core Patterns
 
-### Promise handler with credentials and step.run
-
-```ts
-handler: async ({ input, readCredentials, step }) => {
-  const { MY_SERVICE_API_KEY } = await readCredentials();
-  if (!MY_SERVICE_API_KEY) {
-    throw new Error("MY_SERVICE_API_KEY is not configured.");
-  }
-  return step.run("create", () =>
-    createThing(MY_SERVICE_API_KEY, input.text)
-  );
-},
-```
+### Promise handler, not Effect
 
 | Host `defineAction`                     | Integration (`@wfgraph/core/plugin`) |
 | --------------------------------------- | ------------------------------------ |
@@ -77,6 +35,10 @@ handler: async ({ input, readCredentials, step }) => {
 | `callExternalAsync`                     | `callExternal`                       |
 | `await bag.step.run(id, () => promise)` | `yield* bag.step.run(id, effect)`    |
 | Fails by a throw                        | Fails with `StepFailure`             |
+
+Credentials and `step.run` usage: `docs/embedding.md` (the host action
+example) and `docs/integrations.md` ("Effect for integrations, Promise for
+host actions").
 
 ### sideEffect
 
@@ -87,50 +49,27 @@ Default `false` (read). The editor keeps a side-effect action out of a Group.
 
 ### HIGH Effect handler on defineAction
 
-Wrong:
+Wrong: `handler: Effect.fn(function* (bag) { return yield* doWork(bag.input) })`.
 
-```ts
-handler: Effect.fn(function* (bag) {
-  return yield* doWork(bag.input);
-}),
-```
-
-Correct: `async` function or plain return, as in Setup. Effect is the
-integration path (`defineIntegration`), not the host path.
+Correct: `async` function or plain return. Effect is the integration path
+(`defineIntegration`), not the host path.
 
 Source: alandotcom/wfgraph:docs/integrations.md (Effect for integrations, Promise for host actions)
 
 ### HIGH Catch around readCredentials
 
-Wrong:
+Wrong: `try { return await readCredentials() } catch { return { ok: false } }`.
 
-```ts
-try {
-  return await readCredentials();
-} catch {
-  return { ok: false };
-}
-```
-
-Correct: let the refusal fail the node. `readCredentials` rejects with the
-store failure; catching it turns that into whatever the handler answers next.
+Correct: let the refusal fail the node. Catching it turns a store failure into
+whatever the handler answers next.
 
 Source: alandotcom/wfgraph:docs/integrations.md
 
 ### MEDIUM Missing output field descriptions
 
-Wrong:
+Wrong: `output: z.object({ id: z.string() })`.
 
-```ts
-output: z.object({ id: z.string() });
-```
-
-Correct:
-
-```ts
-output: z.object({ id: z.string().describe("Item ID") });
-```
-
-Template autocomplete and the run panel derive labels from descriptions.
+Correct: `id: z.string().describe("Item ID")`. Template autocomplete and the
+run panel derive labels from descriptions.
 
 Source: alandotcom/wfgraph:docs/embedding.md

@@ -18,64 +18,32 @@ sources:
 Clerk, Linear, Resend, Slack, and Twilio. Nothing registers on import. Pass
 the values into `createWfGraphApp` under `extensions.integrations`.
 
-Writing a new vendor integration is `@wfgraph/core/plugin` (wfgraph-core/integrations),
-not this package's internals.
+Writing a new vendor integration is `@wfgraph/core/plugin`
+(wfgraph-core/integrations), not this package's internals.
 
-## Setup
-
-```ts
-import { createWfGraphApp } from "@wfgraph/core";
-import { builtInIntegrations } from "@wfgraph/plugins";
-
-const wfgraph = await createWfGraphApp({
-  publicUrl: "https://workflows.example.com",
-  // persistence, encryption, auth, inngest, client
-  extensions: {
-    integrations: builtInIntegrations({
-      slack: {
-        oauthClient: {
-          clientId: process.env.SLACK_CLIENT_ID,
-          clientSecret: process.env.SLACK_CLIENT_SECRET,
-        },
-      },
-    }),
-  },
-});
-```
-
-Omit `slack.oauthClient` to keep Slack manual-only. Resend OAuth uses a public
-client metadata document and needs no provider secret. Both keep manual
-credential forms when OAuth is available.
-
-OAuth requires `publicUrl`. HTTPS except loopback. Callback stays behind
-`auth`; `SameSite=Lax` cookies work, custom request headers on the provider
-redirect do not.
-
-| Route                                                  | Who                         |
-| ------------------------------------------------------ | --------------------------- |
-| `POST /api/integrations/oauth/start`                   | Operator browser, `auth`    |
-| `GET /api/integrations/oauth/attempts/:attemptId`      | Originating browser, `auth` |
-| `GET /api/integrations/oauth/callback`                 | Provider redirect, `auth`   |
-| `GET /api/integrations/oauth/clients/:integrationType` | Provider, public metadata   |
+Copy-paste `builtInIntegrations({ slack: { oauthClient } })` from
+`packages/plugins/README.md`. Host `publicUrl` and the OAuth route table:
+`docs/embedding.md` ("Built-in integrations").
 
 ## Core Patterns
 
 ### Some of the five
 
-```ts
-import { clerk, linear, twilio } from "@wfgraph/plugins";
-
-extensions: {
-  integrations: [clerk, linear, twilio];
-}
-```
-
 Clerk, Linear, Resend, and Twilio are values. Slack is `slack(options?)`
-because it closes over host OAuth client credentials.
+because it closes over host OAuth client credentials. Selecting individual
+exports narrows what reaches `createWfGraphApp`, not what the process loads:
+the package still imports all five. `@wfgraph/core` is a peer; keep one copy.
 
-Selecting individual exports narrows what reaches `createWfGraphApp`, not what
-the process loads: the package still imports all five. `@wfgraph/core` is a
-peer; keep one copy.
+Omit `slack.oauthClient` to keep Slack manual-only. Resend OAuth uses a public
+client metadata document and needs no provider secret. Both keep manual
+credential forms when OAuth is available.
+
+### OAuth host requirements
+
+OAuth requires `publicUrl`. HTTPS except loopback. Callback stays behind
+`auth`; `SameSite=Lax` cookies work, custom request headers on the provider
+redirect do not. Core derives callback and metadata URLs from `publicUrl` plus
+`basePath`.
 
 ### Editor UI
 
@@ -86,12 +54,7 @@ Browser-only; the server entry does not import React.
 
 ### CRITICAL Expect import to enable integrations
 
-Wrong:
-
-```ts
-import "@wfgraph/plugins";
-await createWfGraphApp({ extensions: {} });
-```
+Wrong: `import "@wfgraph/plugins"` then `createWfGraphApp({ extensions: {} })`.
 
 Correct: `extensions.integrations: builtInIntegrations()` (or an explicit list).
 
@@ -99,17 +62,9 @@ Source: alandotcom/wfgraph:packages/plugins/README.md
 
 ### HIGH Slack OAuth without publicUrl
 
-Wrong:
+Wrong: `builtInIntegrations({ slack: { oauthClient } })` with no `publicUrl`.
 
-```ts
-builtInIntegrations({
-  slack: { oauthClient: { clientId, clientSecret } },
-});
-// createWfGraphApp without publicUrl
-```
-
-Correct: set `publicUrl` to the external origin. Core derives callback and
-metadata URLs from that origin plus `basePath`.
+Correct: set `publicUrl` to the external origin.
 
 Source: alandotcom/wfgraph:docs/embedding.md (Built-in integrations)
 

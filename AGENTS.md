@@ -331,8 +331,8 @@ a page view, so nothing outside Workflow Graph applies the SPA-path rule. `clien
 development, because the option takes a built bundle. `pnpm run start` is one process, with
 the built bundle handed to `createWfGraphApp`.
 
-**The published package is not the dev tree.** `packages/core` publishes `dist` and
-`drizzle`, with `@wfgraph/shared` inlined into the build so it never appears as a dependency,
+**The published package is not the dev tree.** `packages/core` publishes `dist`,
+`drizzle`, and `skills`, with `@wfgraph/shared` inlined into the build so it never appears as a dependency,
 and `backend/lib/effect/test-layers.ts` and `backend/lib/effect/span-test-support.ts`
 reachable from no entry. Verify a packaging change with `pnpm pack` and read the extracted
 manifest. `docs/embedding.md` ("Package exports")
@@ -455,11 +455,12 @@ No emojis. Do not create new markdown docs unless asked.
 - **CONTEXT.md** owns domain vocabulary, one paragraph per term.
 - **An ADR** owns why a design was chosen: once, in past tense, never updated. A decision
   that changes gets a dated amendment, not a rewrite.
-- **README.md** owns the short entrypoint: what Workflow Graph is, how to run it locally, and a
-  minimal embed. Detail lives under `docs/`: `docs/embedding.md` (mount, database,
-  options, package exports), `docs/events.md` (`defineEvent`), `docs/integrations.md`
-  (`defineIntegration`, including OAuth adapters). `docs/internal/` is working notes for
-  this repository and is not adopter documentation.
+- **README.md** owns the short entrypoint: what Workflow Graph is, how to run it locally, a
+  minimal embed, and the Intent CLI (`intent install` / `list` / `load`). Detail lives
+  under `docs/`: `docs/embedding.md` (mount, database, options, package exports),
+  `docs/events.md` (`defineEvent`), `docs/integrations.md` (`defineIntegration`,
+  including OAuth adapters). `docs/internal/` is working notes for this repository
+  and is not adopter documentation.
 - **AGENTS.md** owns what an agent must know that no other file says.
 - **A module header** owns the contract a caller cannot read off the signature (units,
   nullability, call order, failure modes). At most five lines, and it never repeats a
@@ -474,9 +475,22 @@ machinery that greps to nothing costs a future session an hour.
 ## Agent skills
 
 Published Agent Skills for adopters live under `packages/core/skills` and
-`packages/plugins/skills`. They distill the host manuals and ship inside those
-npm packages. `pnpm run skills:validate` is a required check. Bump
-`metadata.library_version` in a skill when the APIs it teaches move.
+`packages/plugins/skills` and ship in those npm tarballs. They are load routing,
+invariants, and common mistakes. Copy-paste forms live in the host manuals
+(`README.md`, `docs/embedding.md`, `docs/events.md`, `docs/integrations.md`).
+Do not paste those examples into a skill.
+
+Edit `SKILL.md` when the published contract a skill teaches changes.
+`pnpm run skills:validate` is a required check.
+
+`metadata.library_version` is the published package version the skill targets
+(the four packages share one number). Move it with
+`pnpm exec intent validate --set-version <version>` when that version bumps;
+do not hand-edit one file.
+
+`pnpm run skills:stale` compares skills to a local Intent generate dump. That
+dump is gitignored; do not commit it. The command is not a required check,
+because the published skills are authored, not generated from it.
 
 Configuration the engineering skills in this repository read before they act.
 Editing these changes their behaviour; nothing in them is enforced by lint or tests.

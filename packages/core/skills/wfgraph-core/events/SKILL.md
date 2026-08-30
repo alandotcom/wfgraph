@@ -12,37 +12,21 @@ sources:
   - alandotcom/wfgraph:docs/events.md
 ---
 
-This skill builds on wfgraph-core. Read it first.
+This skill builds on wfgraph-core. Copy-paste forms live in `docs/events.md`.
 
 # Defining an Event
 
 An Event is a named payload shape the host raises. Lifecycle (which workflow
-starts or cancels) is declared in the editor, not here.
-
-## Setup
-
-```ts
-import { defineEvent } from "@wfgraph/core";
-import { z } from "zod";
-
-const paymentSettled = defineEvent({
-  name: "billing/payment.settled",
-  label: "Payment settled",
-  description: "The billing service raises this Event when a charge clears.",
-  schema: z.object({
-    appointmentId: z.string().describe("Appointment ID"),
-    amountCents: z.number().describe("Amount settled, in cents"),
-    settledAt: z.iso.datetime(),
-  }),
-  correlationPath: "appointmentId",
-});
-```
-
-Pass it in `extensions.events`. `name` is the identity. `schema` must publish
-both Standard Schema halves (validate + JSON Schema) from one object. Zod,
-arktype, and Effect Schema all work. A non-object root throws at definition.
+starts or cancels) is declared in the editor, not here. Pass the value in
+`extensions.events`.
 
 ## Core Patterns
+
+### Identity and schema
+
+`name` is the identity. `schema` must publish both Standard Schema halves
+(validate + JSON Schema) from one object. Zod, arktype, and Effect Schema all
+work. A non-object root throws at definition.
 
 ### correlationPath
 
@@ -53,70 +37,32 @@ path outranks the author's.
 
 ### Datetime fields
 
-JSON Schema `format: "date-time"` gives before/after operators:
-
-```ts
-z.iso.datetime();
-// arktype: type("string.date.iso").configure({ format: "date-time" })
-// Effect: Schema.String.annotate({ format: "date-time" })
-```
-
-Effect's own date schemas omit the keyword; annotate by hand.
+JSON Schema `format: "date-time"` gives before/after operators. Use
+`z.iso.datetime()`, arktype `type("string.date.iso").configure({ format: "date-time" })`,
+or Effect `Schema.String.annotate({ format: "date-time" })`. Effect's own date
+schemas omit the keyword; annotate by hand.
 
 ### Umbrella source
 
-When an existing bus sends one name:
-
-```ts
-const invoicePaid = defineEvent({
-  name: "billing/invoice.paid",
-  label: "Invoice paid",
-  schema: Schema.Struct({
-    type: Schema.String.annotate({ description: "Subtype" }),
-    invoiceId: Schema.String.annotate({ description: "Invoice ID" }),
-  }),
-  correlationPath: "invoiceId",
-  source: { event: "billing/webhook", when: { path: "type", equals: "paid" } },
-});
-```
-
-Identity stays the Workflow Graph name. Assembly refuses two Events on one
-source that both omit `when`.
+When an existing bus sends one name, keep Workflow Graph identity on `name` and
+filter with `source: { event, when: { path, equals } }`. Assembly refuses two
+Events on one source that both omit `when`.
 
 ### Intake
 
-```ts
-inngest.send({
-  name: "app/appointment.created",
-  data: { appointment },
-});
-```
-
-The gate validates declared fields and ignores unknown keys. Workflow Graph
-discards the decoded value and carries the raw JSON on. Do not transform at
-intake: a `Date` round-trip breaks Wait matches captured at park time.
+`inngest.send({ name, data })`. The gate validates declared fields and ignores
+unknown keys. Workflow Graph discards the decoded value and carries the raw JSON
+on. Do not transform at intake: a `Date` round-trip breaks Wait matches captured
+at park time.
 
 ## Common Mistakes
 
 ### HIGH One Event with a subtype field for two lifecycle roles
 
-Wrong:
+Wrong: one `appointment.changed` Event with `type: "created" | "canceled"`.
 
-```ts
-defineEvent({
-  name: "appointment.changed",
-  schema: z.object({ type: z.enum(["created", "canceled"]), id: z.string() }),
-});
-```
-
-Correct:
-
-```ts
-defineEvent({ name: "appointment.created" /* ... */ });
-defineEvent({ name: "appointment.canceled" /* ... */ });
-```
-
-Lifecycle rules are over Event names. Subtypes belong on an umbrella `source`.
+Correct: `appointment.created` and `appointment.canceled` as two Events.
+Subtypes belong on an umbrella `source`.
 
 Source: alandotcom/wfgraph:docs/events.md
 
@@ -124,8 +70,8 @@ Source: alandotcom/wfgraph:docs/events.md
 
 Wrong: decode to `Date` objects, then persist that as the Event payload.
 
-Correct: keep ISO strings in the JSON the run carries. Annotate `format:
-"date-time"` so the editor offers date operators.
+Correct: keep ISO strings in the JSON the run carries. Annotate
+`format: "date-time"` so the editor offers date operators.
 
 Source: alandotcom/wfgraph:docs/events.md (The intake gate)
 
