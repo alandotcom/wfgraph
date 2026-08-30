@@ -294,8 +294,8 @@ export class WorkflowRepo extends Context.Service<
      * The delivery fan-out and the manual-start preflight take this instead:
      * both gate and route a run off these four columns and never the draft
      * graph, which is what `findByIdWithPublishedVersion` still carries for the
-     * editor's load. The published version rides along in full, since preflight
-     * validates that graph.
+     * editor's load. The published version rides along in full, because
+     * preflight validates that graph.
      */
     readonly findByIdWithPublishedVersionForRun: (
       workflowId: string

@@ -48,7 +48,7 @@ export function createWorkflowActions(
         }
 
         // Only an answer is kept. A refused read is left for the next node to
-        // ask again, since a store that was briefly unreachable clears.
+        // ask again, because a store that was briefly unreachable clears.
         return Effect.tap(
           fetchCredentials(runtime, integrationId),
           (credentials) =>

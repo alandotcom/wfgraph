@@ -29,8 +29,8 @@ describe("the database connection options", () => {
   });
 
   // The fields survive as fields. Folding them into a URL first would hand this
-  // database name over as "wfgraph%20test", since postgres.js decodes a URL's user
-  // and password but not its path segment.
+  // database name over as "wfgraph%20test", because postgres.js decodes a URL's
+  // user and password but not its path segment.
   it("take the discrete fields a platform hands out separately", () => {
     expect(
       normalizeDatabaseConfig({ ...DISCRETE_CONFIG, database: "wfgraph test" })

@@ -188,9 +188,9 @@ export function renderChrome(
   const workflowId = "workflowId" in lock ? lock.workflowId : "workflow_1";
 
   // The toolbar calls `useNavigate` for the workflow switcher, so it needs a
-  // router above it. One root route carries the whole tree, since no case here
-  // reads a param or a search value; the toolbar is rendered directly rather
-  // than reached by a path.
+  // router above it. One root route carries the whole tree, because no case
+  // here reads a param or a search value; the toolbar is rendered directly
+  // rather than reached by a path.
   const rootRoute = createRootRoute({
     component: () => (
       <JotaiProvider store={store}>

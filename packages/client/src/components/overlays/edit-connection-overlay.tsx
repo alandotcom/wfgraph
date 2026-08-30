@@ -656,7 +656,7 @@ type DeleteConnectionOverlayProps = {
   /**
    * How much of the stack to close once the delete lands. Defaults to this
    * confirmation alone; a caller that pushed it over its own overlay closes
-   * both, since what it reveals is the edit form for a deleted connection.
+   * both, because what it reveals is the edit form for a deleted connection.
    */
   onDismiss?: () => void;
   /** Runs after the connection list has been refreshed. */

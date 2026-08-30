@@ -26,7 +26,7 @@ const MAX_LISTED_ISSUES = 3;
  * no-match, no-nested-issues case is the hole.
  *
  * The annotated branch below restores a `message` annotation that Effect's own
- * empty-AnyOf handling would have honoured, since rewriting the node is what
+ * empty-AnyOf handling would have honoured, because rewriting the node is what
  * loses it.
  */
 function rewriteEmptyAnyOf(issue: SchemaIssue.Issue): SchemaIssue.Issue {

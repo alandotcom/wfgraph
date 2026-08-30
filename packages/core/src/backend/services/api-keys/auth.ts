@@ -65,8 +65,8 @@ export const createApiKeyRecord = Effect.fn("createApiKeyRecord")(function* () {
  * The visible prefix is indexed and the hash is not, so a lookup by prefix
  * narrows the work to the few keys that could match and bcrypt compares those
  * one at a time. A comparison that throws is logged and skipped rather than
- * failing the whole verification, since one unreadable row should not lock out a
- * caller whose key is stored in another.
+ * failing the whole verification, because one unreadable row should not lock
+ * out a caller whose key is stored in another.
  *
  * Every rejection is an `Unauthorized` in the error channel, so a caller cannot
  * read past one, and a database that will not answer is an `InternalFailure`

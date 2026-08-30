@@ -467,9 +467,9 @@ async function driveWithReplayInstalled<T>(
     }
 
     // Steps a pass asked for all run before that run is called again, which is
-    // the whole of what parallel discovery buys. The stored value is JSON, since
-    // that is what the next invocation reads back. Host timers inside a step
-    // callback use the real clock, not the pass queue.
+    // the whole of what parallel discovery buys. The stored value is JSON,
+    // because that is what the next invocation reads back. Host timers inside a
+    // step callback use the real clock, not the pass queue.
     for (const [stepId, fn] of pass.runs) {
       // eslint-disable-next-line eslint/no-await-in-loop -- running them in order is what gives `executed` a stable sequence for a test to read
       const value = await timers.withHostTimers(fn);

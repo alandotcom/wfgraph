@@ -20,8 +20,8 @@ import { createServer } from "node:net";
 
 /**
  * Reserve `count` distinct free ports. Every server stays open until the last
- * port is known, since closing one before asking for the next lets the OS hand
- * the same number out twice.
+ * port is known, because closing one before asking for the next lets the OS
+ * hand the same number out twice.
  *
  * Between this returning and the CLI binding, nothing holds the ports. That
  * window is why an explicit override exists at all.

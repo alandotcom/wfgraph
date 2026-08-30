@@ -47,7 +47,7 @@ import { readWaitSubscriptions } from "#src/lifecycle/wait-subscription";
  *
  * Two rules say something about which Event arrived. One names it. The other
  * names a payload field, which only an Event declaring that field can satisfy,
- * since a rule about a field the payload lacks reads false.
+ * because a rule about a field the payload lacks reads false.
  *
  * `declaredElsewhere` are the paths the actions upstream also produce. A
  * condition reads the run's outputs merged flat, so such a path may be an

@@ -15,7 +15,7 @@
  * Every value crossing this interface is JSON-safe (timestamps travel as ISO
  * strings) because store calls happen inside memoized steps whose results
  * round-trip through the durable runtime's storage. A step's own payload is
- * still `unknown` here, since that is all a step result carries; the adapter
+ * still `unknown` here, because that is all a step result carries; the adapter
  * that stores it is where it is read back as JSON.
  */
 

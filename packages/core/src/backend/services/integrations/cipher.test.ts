@@ -99,8 +99,8 @@ describe("opening something this key cannot read", () => {
   });
 
   // Same key, altered ciphertext: GCM refuses it on the same tag check and the
-  // read cannot tell the two apart. Refusing suits both, since a row nobody wrote
-  // is not a row to show either.
+  // read cannot tell the two apart. Refusing suits both, because a row nobody
+  // wrote is not a row to show either.
   it("fails for an envelope whose ciphertext was altered", () => {
     const [iv, authTag, ciphertext] = envelope({ API_KEY: "secret" });
     const altered = ciphertext.startsWith("0")

@@ -81,9 +81,9 @@ describe("defineStep and the JSON codec", () => {
     });
   });
 
-  // Reachable only through an `as`, an `any`, or a widened vendor type, because a
-  // handler's return type is the decoded type. It fails the node once rather than
-  // retrying, since the same value comes back on every attempt.
+  // Reachable only through an `as`, an `any`, or a widened vendor type, because
+  // a handler's return type is the decoded type. It fails the node once rather
+  // than retrying, because the same value comes back on every attempt.
   it("fails the step when the handler answers with something unencodable", async () => {
     const step = defineStep({
       ...METADATA,

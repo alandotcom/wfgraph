@@ -59,7 +59,7 @@ type ValueAtPath<
  * The dot-paths into `TPayload` that resolve to a string.
  *
  * This is what a path naming an identifier may be -- a Correlation Path, an
- * Event Type path -- since the value it points at is compared as a string.
+ * Event Type path -- because the value it points at is compared as a string.
  */
 export type StringPath<TPayload> = {
   [Path in PayloadPath<TPayload>]: Extract<

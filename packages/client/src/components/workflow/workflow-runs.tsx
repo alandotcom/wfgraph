@@ -153,7 +153,7 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
   // Both detail queries follow the same run, so they read its status from the
   // same place: the list, which is polling anyway. Deriving it from each
   // query's own payload would give the events poll no way to know it had
-  // finished, since the events endpoint does not report a status. A run that
+  // finished, because the events endpoint does not report a status. A run that
   // has left the list reports no status, which is what stops the polling.
   const detailPollInterval = isRunInProgress(listedRun?.status)
     ? RUN_POLL_MS

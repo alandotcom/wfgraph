@@ -78,9 +78,9 @@ export class EncryptionKeyMismatch extends Schema.TaggedError<EncryptionKeyMisma
 /**
  * What a person can do about a key mismatch, for whoever the failure reaches.
  *
- * A constant rather than the class's `message`, since a `Schema.TaggedError`
- * declares no message field and its `.message` is always the empty string. Every
- * handler that translates this failure words it from here.
+ * A constant rather than the class's `message`, because a `Schema.TaggedError`
+ * declares no message field and its `.message` is always the empty string.
+ * Every handler that translates this failure words it from here.
  */
 export const ENCRYPTION_KEY_MISMATCH_MESSAGE =
   "Stored integration credentials do not decrypt under this process's encryption.key. They were sealed under a different key; start the app with that key before you manage or delete the connections.";
@@ -149,7 +149,7 @@ function encrypt(key: Buffer, plaintext: string): string {
   return `${iv.toString("hex")}:${authTag.toString("hex")}:${encrypted}`;
 }
 
-/** Hex of an exact byte count, since `Buffer.from(x, "hex")` truncates instead. */
+/** Hex of an exact byte count, because `Buffer.from(x, "hex")` truncates instead. */
 function isHex(value: string | undefined, bytes?: number): value is string {
   return (
     value !== undefined &&

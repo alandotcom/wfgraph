@@ -134,7 +134,8 @@ function inlineGroup(group: Record<string, unknown>, depth: number): string {
 
 /**
  * A value in a position that has a whole line to itself. A group flattens into
- * its pairs there, since the line's own key already names what they belong to.
+ * its pairs there, because the line's own key already names what they belong
+ * to.
  */
 function openValue(value: unknown, depth: number): string {
   return isGroup(value)

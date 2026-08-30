@@ -403,9 +403,9 @@ function unreachableFrom(
  * Whether sending this request a second time can do the work twice.
  *
  * A GET or a HEAD cannot by definition, and neither can a write carrying an
- * idempotency key, since the system replays its first answer for a repeat. Every
- * other write can, so a send that timed out on the way back stays sent once,
- * unless the caller vouched for it with `safeToRepeat`.
+ * idempotency key, because the system replays its first answer for a repeat.
+ * Every other write can, so a send that timed out on the way back stays sent
+ * once, unless the caller vouched for it with `safeToRepeat`.
  */
 function isSafeToRepeat<T>(request: ExternalRequest<T>): boolean {
   return (

@@ -135,8 +135,8 @@ export function createRequestListener(
 
     // Restore the path the client actually asked for. Mutating `url` is how the
     // underlying adapter is told about it; the change is confined to this
-    // request and to the part of the pipeline Workflow Graph owns, since this listener
-    // always answers rather than calling next().
+    // request and to the part of the pipeline Workflow Graph owns, because this
+    // listener always answers rather than calling next().
     if (mounted.originalUrl !== undefined) {
       // What the host stripped off is where the host thinks Workflow Graph is mounted.
       // Comparing it to what Workflow Graph was told catches the mount call and the

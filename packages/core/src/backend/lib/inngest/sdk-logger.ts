@@ -30,7 +30,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 /**
  * The first string is the message and every object is a field bag. Anything
  * else (a number, an Error, an array) is kept under a numbered key rather than
- * dropped, since the SDK is free to pass it and losing it silently is worse
+ * dropped, because the SDK is free to pass it and losing it silently is worse
  * than an odd key name.
  */
 function splitSdkArgs(args: unknown[]): {

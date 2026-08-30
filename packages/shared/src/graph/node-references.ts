@@ -107,9 +107,9 @@ const MAX_REFERENCE_FIELD_DEPTH = 3;
  * Container fields are emitted alongside their children, so a caller sees both
  * the whole object and every leaf inside it. Arrays of objects contribute
  * `name[0].child` paths; arrays of primitives contribute only the array itself,
- * since there is no child to name. An object with no named properties -- an open
- * record, or one whose properties the reader could not use -- has no children to
- * emit and stays a single entry.
+ * because there is no child to name. An object with no named properties -- an
+ * open record, or one whose properties the reader could not use -- has no
+ * children to emit and stays a single entry.
  *
  * A derived path is reachable only when every ancestor on it is present, so its
  * nullability is the OR of its own and its ancestors'. Array `[0]` children are
@@ -180,8 +180,8 @@ function collectReferenceFields(
  * the editor can show something readable and detect a renamed node.
  *
  * Neither the id nor the body may contain a brace, so a malformed token cannot
- * swallow the text that follows it. The label may not contain a dot, since the
- * first dot is what separates the label from the field path.
+ * swallow the text that follows it. The label may not contain a dot, because
+ * the first dot is what separates the label from the field path.
  */
 const TEMPLATE_TOKEN_PATTERN = /\{\{@([^:{}]+):([^{}]+)\}\}/g;
 

@@ -329,14 +329,14 @@ const bookkeeping = <A>(
  * Undoes a start whose send was refused: the run is told to stop, then its row
  * is closed.
  *
- * The order is what makes the close safe. A refused send is ambiguous -- Inngest
- * may have taken the event and failed on the way back, in which case the run is
- * already executing -- and the row's in-flight guard cannot tell those apart,
- * since a run that started a moment ago is `running` like one that never
- * started. The cancel resolves it: an accepted run is stopped, and a signal for a
- * run that does not exist is a no-op at Inngest. A cancel that itself fails to
- * send leaves the row closed anyway and says so on the timeline, which is the
- * same half-failure `cancelInFlightRuns` reports.
+ * The order is what makes the close safe. A refused send is ambiguous --
+ * Inngest may have taken the event and failed on the way back, in which case
+ * the run is already executing -- and the row's in-flight guard cannot tell
+ * those apart, because a run that started a moment ago is `running` like one
+ * that never started. The cancel resolves it: an accepted run is stopped, and a
+ * signal for a run that does not exist is a no-op at Inngest. A cancel that
+ * itself fails to send leaves the row closed anyway and says so on the
+ * timeline, which is the same half-failure `cancelInFlightRuns` reports.
  */
 const closeRefusedEnqueue = Effect.fn("closeRefusedEnqueue")(function* (
   input: EnqueueStartedRunInput,

@@ -139,9 +139,9 @@ function maskValue(value: string): string {
  *
  * The walk answers JSON, which is what the run-log columns hold. Anything JSON
  * has no spelling for -- a function, a symbol, a bigint -- comes back
- * `undefined`, which is what `JSON.stringify` does with the same value inside an
- * object. A `Date` reaches the object branch and becomes `{}`, since it carries
- * no own enumerable properties.
+ * `undefined`, which is what `JSON.stringify` does with the same value inside
+ * an object. A `Date` reaches the object branch and becomes `{}`, because it
+ * carries no own enumerable properties.
  */
 function redactObject(obj: unknown, depth = 0): JsonValue | undefined {
   // Bound hostile or cyclic input without returning the uninspected subtree:

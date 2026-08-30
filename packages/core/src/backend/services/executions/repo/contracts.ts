@@ -162,9 +162,9 @@ export type EntityStartOutcome =
       supersededExecutionIds: string[];
       /**
        * Runs this start found stuck between their row and the bus, already
-       * `failed` in the same transaction. The caller still signals each one, since
-       * a stamped `enqueued_at` that never landed would otherwise leave a live run
-       * against a failed row.
+       * `failed` in the same transaction. The caller still signals each one,
+       * because a stamped `enqueued_at` that never landed would otherwise leave
+       * a live run against a failed row.
        */
       reclaimedExecutionIds: string[];
     }

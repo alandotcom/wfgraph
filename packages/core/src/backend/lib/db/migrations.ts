@@ -71,10 +71,10 @@ export type MigrationsOptions = {
   /**
    * Apply every pending migration while the app starts, before it serves a
    * request; `createWfGraphApp` is what reads this. False unless the host says
-   * otherwise, since whether a deployment migrates from its own instances or from
-   * a step of its own is the deployment's decision. Several instances starting
-   * together is safe either way: `runMigrations` holds an advisory lock and the
-   * ones that lose the race wait, then find nothing to do.
+   * otherwise, because whether a deployment migrates from its own instances or
+   * from a step of its own is the deployment's decision. Several instances
+   * starting together is safe either way: `runMigrations` holds an advisory
+   * lock and the ones that lose the race wait, then find nothing to do.
    */
   runOnStartup?: boolean;
   /**

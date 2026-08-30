@@ -166,7 +166,7 @@ export const DescribeAction = Tool.make("describe_action", {
   }),
   success: Schema.Struct({
     action: actionSummarySchema,
-    /** Field groups are flattened, since a group is a form layout and nothing else. */
+    /** Field groups are flattened, because a group is a form layout and nothing else. */
     configFields: Schema.Array(configFieldSchema),
     outputFields: Schema.Array(referenceFieldSchema),
     /** True when the action needs a connected integration before it can run. */

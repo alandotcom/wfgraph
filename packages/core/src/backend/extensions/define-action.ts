@@ -1,11 +1,11 @@
 /**
  * How a host writes an action of its own.
  *
- * The step half of the same vocabulary is `defineStep`, and the two read alike on
- * purpose: `input`, `output`, `handler`. Everything between the engine's input
- * record and the handler is `buildStep`, which both call and neither copies.
- * What is here is the identity an action carries, since a host's action names
- * itself where an integration names its steps.
+ * The step half of the same vocabulary is `defineStep`, and the two read alike
+ * on purpose: `input`, `output`, `handler`. Everything between the engine's
+ * input record and the handler is `buildStep`, which both call and neither
+ * copies. What is here is the identity an action carries, because a host's
+ * action names itself where an integration names its steps.
  *
  * This is server code: `buildStep` runs the host's handler and builds the
  * `StepResult` envelope the engine reads, so the file lives beside assembly

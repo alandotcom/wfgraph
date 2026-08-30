@@ -401,15 +401,15 @@ export class NodeScheduler {
    *
    * The ordering is the whole of what makes this safe, so it is stated here.
    * It runs after the kill has been observed, when no branch run is alive to
-   * write to those rows, and before the Canceled outlet is entered, since a
+   * write to those rows, and before the Canceled outlet is entered, because a
    * Canceled branch opening with a one-week Wait would otherwise leave a killed
    * node reading Running for a week. One event kills every branch of a run at
    * once, which is why closing all of them at the first observed kill closes
    * nothing that is still going.
    *
-   * Two killed branches resolving in one pass both reach this, since neither has
-   * been memoized yet. The write is idempotent, and the step id keeps a later
-   * replay from repeating it.
+   * Two killed branches resolving in one pass both reach this, because neither
+   * has been memoized yet. The write is idempotent, and the step id keeps a
+   * later replay from repeating it.
    */
   private sweepKilledBranchWork(): Effect.Effect<void, EngineFailure> {
     const { runtime, store, executionId } = this.input;

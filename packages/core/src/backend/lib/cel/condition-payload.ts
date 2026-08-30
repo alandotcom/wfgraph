@@ -76,17 +76,17 @@ function readContextPath(
  *
  * A payload carries a timestamp as an ISO string, and CEL refuses to compare a
  * string against a Timestamp: without this step `appointment.startsAt > now`
- * fails to evaluate and the expression silently reads false. The model names the
- * paths it treats as timestamps, so those paths, and nothing else, are converted.
- * Values the templating path reads are untouched, because that path renders text
- * and wants the string exactly as the payload sent it.
+ * fails to evaluate and the expression silently reads false. The model names
+ * the paths it treats as timestamps, so those paths, and nothing else, are
+ * converted. Values the templating path reads are untouched, because that path
+ * renders text and wants the string exactly as the payload sent it.
  *
  * A path that is missing, already a `Date`, or holding text that is not a
  * timestamp is left as found, and the expression then fails the way it would
  * have anyway, naming the field in its error.
  *
- * The context handed here has to be private to this evaluation, since the write
- * lands inside whatever object holds the path.
+ * The context handed here has to be private to this evaluation, because the
+ * write lands inside whatever object holds the path.
  */
 function decodeConditionTimestamps(
   context: JsonObject,

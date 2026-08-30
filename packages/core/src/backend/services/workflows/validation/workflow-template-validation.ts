@@ -49,12 +49,12 @@ type ValueTarget = {
 /**
  * What each config key of this node expects.
  *
- * The Wait node's own keys are declared as data beside its config schema, since
- * its panel is bespoke and its catalog entry lists no fields, and they are seeded
- * only for that node: another action is free to have a key called `waitUntil` and
- * mean something else by it. Everything else reads the fields the action
- * declared, which carry a required flag and no type: a plugin's template input
- * takes whatever text it is given.
+ * The Wait node's own keys are declared as data beside its config schema,
+ * because its panel is bespoke and its catalog entry lists no fields, and they
+ * are seeded only for that node: another action is free to have a key called
+ * `waitUntil` and mean something else by it. Everything else reads the fields
+ * the action declared, which carry a required flag and no type: a plugin's
+ * template input takes whatever text it is given.
  */
 function valueTargets(
   node: WorkflowNode,

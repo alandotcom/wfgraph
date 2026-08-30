@@ -55,7 +55,7 @@ export function WorkflowIssuesOverlay({
     onGoToStep(nodeId, fieldKey);
 
     // On mobile, push ConfigurationOverlay on top so back button returns here
-    // On desktop, close all overlays since the sidebar shows the config
+    // On desktop, close all overlays because the sidebar shows the config
     if (isMobile) {
       pushSheet();
     } else {

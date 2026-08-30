@@ -92,7 +92,7 @@ type DurableStep = {
  * Whether an invoke answered with Inngest's own end-of-run envelope rather than
  * with what the branch returned, which is how a cancelled child resolves.
  *
- * The envelope is read at both depths it has been seen at, since which one a
+ * The envelope is read at both depths it has been seen at, because which one a
  * given executor sends is not something the engine should have to know.
  */
 function isCancelledInvocation(answer: unknown): boolean {

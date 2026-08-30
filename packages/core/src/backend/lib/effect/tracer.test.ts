@@ -27,7 +27,7 @@ describe("TracerBridgeLayer", () => {
   test("sends an Effect.fn span to the provider the host registered", async () => {
     spans = recordSpans();
 
-    // Merged beside another layer the way `runtime.ts` merges it, since what
+    // Merged beside another layer the way `runtime.ts` merges it, because what
     // this contributes is a reference rather than a service of its own.
     const runtime = ManagedRuntime.make(
       Layer.mergeAll(TracerBridgeLayer, SilentAppLoggerLayer)
