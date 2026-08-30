@@ -18,6 +18,7 @@ import {
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type {
   EntityStartOutcome,
@@ -738,8 +739,36 @@ describe("applyLifecycleRules", () => {
               stubPublishedWorkflow(
                 createWorkflow({
                   graph: createSerializedWorkflowGraph({
-                    nodes: [],
-                    edges: [],
+                    nodes: [
+                      {
+                        id: "lifecycle-1",
+                        type: "lifecycle",
+                        position: { x: 0, y: 0 },
+                        data: {
+                          label: "Start",
+                          type: "lifecycle",
+                          config: { lifecycleRules: startRules },
+                        },
+                      },
+                      {
+                        id: "action-1",
+                        type: "action",
+                        position: { x: 0, y: 120 },
+                        data: {
+                          label: "Unset",
+                          type: "action",
+                          config: {},
+                        },
+                      },
+                    ],
+                    edges: [
+                      {
+                        id: "e1",
+                        source: "lifecycle-1",
+                        target: "action-1",
+                        sourceHandle: LIFECYCLE_STARTED_HANDLE,
+                      },
+                    ],
                   }),
                 })
               ),

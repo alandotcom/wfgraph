@@ -28,12 +28,16 @@ import {
 import { toWorkflowRunTarget } from "#src/backend/services/executions/run-rows";
 import { isLifecycleNode } from "@wfgraph/shared/graph/node-config";
 import {
+  isSerializedWorkflowGraph,
+  toWorkflowGraphData,
+} from "@wfgraph/shared/graph/graph";
+import {
   connectionMatches,
   emptyLifecycleRules,
   type LifecycleRules,
   readLifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
-import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import { asNonEmptyString } from "@wfgraph/shared/types/string";
 import { getValueByPath } from "@wfgraph/shared/utils/object-path";
 
@@ -146,27 +150,15 @@ function readEntityValue(input: {
  * become `waits_only` here, so preflight (every action, every condition) runs
  * only when this Event still has a start or cancel to perform.
  */
-function lifecycleRulesFromPublishedGraph(graph: unknown): LifecycleRules {
-  const record = readJsonObject(graph);
-  const nodes = record?.nodes;
-  if (!Array.isArray(nodes)) {
-    return emptyLifecycleRules;
+function lifecycleRulesFromPublishedGraph(
+  graph: unknown
+): LifecycleRules | undefined {
+  if (!isSerializedWorkflowGraph(graph)) {
+    return undefined;
   }
 
-  for (const node of nodes) {
-    const asNode = readJsonObject(node);
-    const data = asNode ? readJsonObject(asNode.data) : undefined;
-    if (!data || typeof data.type !== "string") {
-      continue;
-    }
-    const config = readJsonObject(data.config) ?? undefined;
-    if (!isLifecycleNode({ data: { type: data.type, config } })) {
-      continue;
-    }
-    return readLifecycleRules(config) ?? emptyLifecycleRules;
-  }
-
-  return emptyLifecycleRules;
+  const lifecycle = toWorkflowGraphData(graph).nodes.find(isLifecycleNode);
+  return readLifecycleRules(lifecycle?.data.config) ?? emptyLifecycleRules;
 }
 
 /** The workflows this Event concerns, with the roles it holds in each. */
@@ -224,22 +216,25 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
 
     // Cheap: the published graph's rules, without validating every action.
     // A wrong Connection, or an Event that holds no start or cancel role here,
-    // is waits_only. Preflight is the start/cancel branch's alone.
+    // is waits_only. Preflight is the start/cancel branch's alone. A graph
+    // this helper cannot read falls through so preflight can skip it.
     const publishedRules = lifecycleRulesFromPublishedGraph(version.graph);
-    if (
-      !connectionMatches(
-        publishedRules.connectionIds?.[input.event.name],
-        input.event.connectionId
-      )
-    ) {
-      return { kind: "waits_only" as const, workflowId: workflow.id };
-    }
+    if (publishedRules) {
+      if (
+        !connectionMatches(
+          publishedRules.connectionIds?.[input.event.name],
+          input.event.connectionId
+        )
+      ) {
+        return { kind: "waits_only" as const, workflowId: workflow.id };
+      }
 
-    const holdsStartOrCancel =
-      publishedRules.startEvents.includes(input.event.name) ||
-      publishedRules.cancelEvents.includes(input.event.name);
-    if (!holdsStartOrCancel) {
-      return { kind: "waits_only" as const, workflowId: workflow.id };
+      const holdsStartOrCancel =
+        publishedRules.startEvents.includes(input.event.name) ||
+        publishedRules.cancelEvents.includes(input.event.name);
+      if (!holdsStartOrCancel) {
+        return { kind: "waits_only" as const, workflowId: workflow.id };
+      }
     }
 
     // Preflight is the start/cancel branch's alone: it validates every action,
