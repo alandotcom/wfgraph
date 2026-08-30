@@ -7,7 +7,7 @@
  * cannot describe what that is for a backend whose isolation is a schema.
  */
 
-import { afterEach } from "vitest";
+import { afterAll, afterEach } from "vitest";
 import { Effect, ManagedRuntime } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
@@ -90,7 +90,9 @@ export function connect(
  * subject.
  */
 export function usePersistenceRegistry(
-  createDatabase: () => Promise<ConformanceDatabase>
+  createDatabase: () => Promise<ConformanceDatabase>,
+  /** Called once every case is done, for a harness holding something shared. */
+  teardown?: () => Promise<void>
 ): PersistenceTestRegistry {
   const databases: ConformanceDatabase[] = [];
   const connections: ConformanceConnection[] = [];
@@ -101,6 +103,10 @@ export function usePersistenceRegistry(
     await Promise.all(connections.splice(0).map((one) => one.close()));
     await Promise.all(databases.splice(0).map((one) => one.drop()));
   });
+
+  if (teardown) {
+    afterAll(teardown);
+  }
 
   async function openDatabase(): Promise<CaseDatabase> {
     const database = await createDatabase();

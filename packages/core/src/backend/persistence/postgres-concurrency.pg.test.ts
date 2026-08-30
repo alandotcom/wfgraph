@@ -21,14 +21,18 @@ import {
   usePersistenceRegistry,
 } from "#src/backend/persistence/persistence-conformance-test-support";
 import {
-  createPostgresTestDatabase,
+  sharedPostgresTestDatabase,
   describePostgres,
 } from "#src/backend/persistence/postgres-test-database";
 
 const emptyGraph = createSerializedWorkflowGraph({ nodes: [], edges: [] });
 
 describePostgres("PostgreSQL concurrency", () => {
-  const { openDatabase } = usePersistenceRegistry(createPostgresTestDatabase);
+  const shared = sharedPostgresTestDatabase();
+  const { openDatabase } = usePersistenceRegistry(
+    shared.createDatabase,
+    shared.teardown
+  );
 
   /**
    * Independent connections against one database, which is what makes the

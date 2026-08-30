@@ -9,9 +9,11 @@
 
 import { randomBytes } from "node:crypto";
 import postgres from "postgres";
+import { getTableName } from "drizzle-orm";
 import { describe } from "vitest";
 import { migrateWfGraphDatabase } from "#src/migrate";
 import { wfPostgres } from "#src/backend/persistence/postgres";
+import { tables } from "#src/backend/lib/db/schema";
 import {
   conformanceCipher,
   connect,
@@ -92,7 +94,13 @@ export function mintTestSchemaName(): string {
 export async function withAdminClient<A>(
   query: (client: postgres.Sql) => Promise<A>
 ): Promise<A> {
-  const client = postgres(requirePostgresTestUrl(), { max: 1 });
+  const client = postgres(requirePostgresTestUrl(), {
+    max: 1,
+    // A `drop schema ... cascade` reports every object it took with it, and
+    // postgres.js prints that with console.log unless it is given somewhere
+    // else to put it. Nothing here reads them.
+    onnotice: () => undefined,
+  });
 
   try {
     return await query(client);
@@ -102,32 +110,79 @@ export async function withAdminClient<A>(
 }
 
 /**
- * One migrated schema, opened as often as a case asks.
+ * One migrated schema for a whole file, emptied between cases.
  *
- * Migrations run once per database rather than per connection, so a second
- * connection for a race does not queue behind the advisory lock the migrator
- * holds.
+ * Migrating costs about 50ms and dropping another 15; truncating every table
+ * costs 13. Nothing outside `postgres-migrations.pg.test.ts` is about migrating,
+ * so paying that per case bought only a slower suite. The schema is still one
+ * case's worth of isolation, because a case never sees a row another left.
+ *
+ * The returned `teardown` drops the schema, and the registry calls it once the
+ * last case is done.
  */
-export async function createPostgresTestDatabase(): Promise<ConformanceDatabase> {
-  const url = requirePostgresTestUrl();
-  const schema = mintTestSchemaName();
-  await migrateWfGraphDatabase({ url, schema });
+export function sharedPostgresTestDatabase(): {
+  createDatabase: () => Promise<ConformanceDatabase>;
+  teardown: () => Promise<void>;
+} {
+  // Nothing is reached for until a case asks, because a skipped `describe` still
+  // evaluates its body: naming the server here would fail collection on a
+  // machine that has none, which is the case this suite skips for.
+  let ready:
+    | {
+        url: string;
+        schema: string;
+        qualified: string;
+        migrated: Promise<void>;
+      }
+    | undefined;
+
+  const start = () => {
+    if (!ready) {
+      const url = requirePostgresTestUrl();
+      const schema = mintTestSchemaName();
+      ready = {
+        url,
+        schema,
+        qualified: Object.values(tables)
+          .map((table) => `"${schema}"."${getTableName(table)}"`)
+          .join(", "),
+        migrated: migrateWfGraphDatabase({ url, schema }),
+      };
+    }
+    return ready;
+  };
 
   return {
-    open: async (options) =>
-      connect(
-        await wfPostgres({
-          url,
-          schema,
-          // Small, because a case may open several against one schema, and
-          // vitest.config.ts holds this project to one file at a time for the
-          // same reason: the server's default max_connections is 100.
-          maxConnections: 5,
-        }).open(options?.cipher ?? conformanceCipher)
-      ),
-    drop: () =>
-      withAdminClient(async (client) => {
+    createDatabase: async () => {
+      const { url, schema, qualified, migrated } = start();
+      await migrated;
+
+      return {
+        open: async (options) =>
+          connect(
+            await wfPostgres({ url, schema, maxConnections: 5 }).open(
+              options?.cipher ?? conformanceCipher
+            )
+          ),
+        // One statement, so the foreign keys between these tables never decide
+        // an order. RESTART IDENTITY because a case may read a sequence back.
+        drop: () =>
+          withAdminClient(async (client) => {
+            await client.unsafe(
+              `truncate ${qualified} restart identity cascade`
+            );
+          }),
+      };
+    },
+    // Nothing to drop where no case ever asked for a database.
+    teardown: async () => {
+      if (!ready) {
+        return;
+      }
+      const { schema } = ready;
+      await withAdminClient(async (client) => {
         await client.unsafe(`drop schema if exists "${schema}" cascade`);
-      }),
+      });
+    },
   };
 }

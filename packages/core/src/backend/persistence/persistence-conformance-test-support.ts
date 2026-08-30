@@ -35,8 +35,10 @@ export type {
 export type PersistenceConformanceHarness = {
   /** Names the run, as in "native SQLite" or "PostgreSQL". */
   readonly backend: string;
-  /** A fresh, empty, migrated database the calling case owns. */
+  /** A migrated database the calling case owns, empty of any other case's rows. */
   readonly createDatabase: () => Promise<ConformanceDatabase>;
+  /** Called once every case is done, for a harness holding something shared. */
+  readonly teardown?: () => Promise<void>;
   /**
    * Set to skip the run and say why. It reaches the suite title, because a
    * reporter prints that whether the suite ran or not, while a console line
@@ -52,7 +54,10 @@ export function describePersistenceConformance(
   const describeSuite = harness.skip ? describe.skip : describe;
 
   describeSuite(harness.skip ? `${title} (${harness.skip})` : title, () => {
-    const registry = usePersistenceRegistry(harness.createDatabase);
+    const registry = usePersistenceRegistry(
+      harness.createDatabase,
+      harness.teardown
+    );
 
     describeWorkflowConformance(registry);
     describeExecutionConformance(registry);

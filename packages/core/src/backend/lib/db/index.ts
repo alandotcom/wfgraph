@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres, { type Sql } from "postgres";
 import type { NormalizedDatabaseConfig } from "#src/backend/lib/db/config";
 import { relations } from "#src/backend/lib/db/schema";
+import { getAppLogger } from "#src/backend/lib/logger";
 
 /**
  * The Drizzle handle, with this app's relational config attached. The `Database`
@@ -38,6 +39,8 @@ const MIGRATION_CONNECTIONS = 1;
  * is there because Workflow Graph now cohabits a host's database and its connections should
  * be attributable in `pg_stat_activity`.
  */
+const logger = getAppLogger("database");
+
 function createSqlClient(
   config: NormalizedDatabaseConfig,
   pool: { max: number; applicationName: string }
@@ -56,6 +59,21 @@ function createSqlClient(
     connection: {
       search_path: config.schema,
       application_name: pool.applicationName,
+    },
+    // postgres.js prints a notice with console.log unless it is given somewhere
+    // to put one, and a migration raises several ("schema already exists",
+    // "identifier will be truncated"). Printing them is this library writing to
+    // a host's stdout in a shape nothing configured, which is the arrangement
+    // ADR-0013 exists to avoid. They are a server's own commentary rather than
+    // anything the caller asked for, so they go at debug.
+    onnotice: (notice) => {
+      logger.debug("PostgreSQL notice", {
+        postgres: {
+          code: notice.code,
+          severity: notice.severity,
+          message: notice.message,
+        },
+      });
     },
   });
 }
