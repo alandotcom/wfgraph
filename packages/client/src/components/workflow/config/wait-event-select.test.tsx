@@ -428,6 +428,13 @@ const resendWaitCatalog: ExtensionCatalog = {
       payloadFields: [{ path: "appointmentId", type: "string" }],
     },
     {
+      name: "resend/email.sent",
+      label: "Email sent",
+      integration: "resend",
+      correlationPath: "data.email_id",
+      payloadFields: [{ path: "data.email_id", type: "string" }],
+    },
+    {
       name: "resend/email.delivered",
       label: "Email delivered",
       integration: "resend",
@@ -487,5 +494,42 @@ describe("WaitEventSelect Connection picker", () => {
     expect(
       view.queryByRole("button", { name: "Add Payment settled connection" })
     ).toBeNull();
+  });
+
+  it("offers one Connection for every Event of the same integration", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+      },
+    });
+    queryClient.setQueryData(integrationsQueryOptions().queryKey, []);
+    const onUpdateConfig = vi.fn();
+
+    const view = render(
+      <ExtensionCatalogProvider value={resendWaitCatalog}>
+        <QueryClientProvider client={queryClient}>
+          <JotaiProvider store={createStore()}>
+            <OverlayProvider>
+              <WaitEventSelect
+                config={{
+                  waitFor: [
+                    { event: "resend/email.sent" },
+                    { event: "resend/email.delivered" },
+                  ],
+                }}
+                disabled={false}
+                onUpdateConfig={onUpdateConfig}
+              />
+            </OverlayProvider>
+          </JotaiProvider>
+        </QueryClientProvider>
+      </ExtensionCatalogProvider>
+    );
+
+    expect(view.getByText("Email sent")).toBeTruthy();
+    expect(view.getByText("Email delivered")).toBeTruthy();
+    expect(
+      view.getAllByRole("button", { name: "Add Resend connection" })
+    ).toHaveLength(1);
   });
 });

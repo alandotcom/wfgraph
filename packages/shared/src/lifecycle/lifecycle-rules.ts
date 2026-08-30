@@ -67,9 +67,10 @@ export const lifecycleRulesSchema = Schema.Struct({
 
   /**
    * The Connection an integration-owned Event must arrive on, keyed by Event
-   * name. Host Events have none. Required at Publish for every named Event
-   * whose catalog entry carries `integration`, so two Resend Connections never
-   * silently fan in.
+   * name so matching stays on the arrival. The editor offers one picker per
+   * integration and stamps every named Event of that integration with the same
+   * id. Host Events have none. Required at Publish for every named Event whose
+   * catalog entry carries `integration`.
    */
   connectionIds: Schema.optional(Schema.Record(Schema.String, Schema.String)),
 });
@@ -307,6 +308,102 @@ export function pruneCorrelationPaths(rules: LifecycleRules): LifecycleRules {
   return {
     ...rules,
     correlationPaths: Object.keys(next).length > 0 ? next : undefined,
+  };
+}
+
+/**
+ * The stored Connection for this integration among the named start and cancel
+ * Events, if any of them already hold one.
+ */
+export function connectionIdForIntegration(
+  rules: LifecycleRules,
+  catalog: ExtensionCatalog,
+  integration: string
+): string | undefined {
+  for (const name of [...rules.startEvents, ...rules.cancelEvents]) {
+    if (findEvent(catalog, name)?.integration !== integration) {
+      continue;
+    }
+    const stored = rules.connectionIds?.[name];
+    if (stored) {
+      return stored;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Stamp this Connection onto every named start and cancel Event of this
+ * integration. A blank id clears them.
+ *
+ * Two Resend Events share one picker; this is how choosing it writes both
+ * keys. Matching still reads `connectionIds[eventName]`.
+ */
+export function setConnectionForIntegration(input: {
+  rules: LifecycleRules;
+  catalog: ExtensionCatalog;
+  integration: string;
+  connectionId: string;
+}): LifecycleRules {
+  const { rules, catalog, integration, connectionId } = input;
+  const next = { ...rules.connectionIds };
+  for (const name of [...rules.startEvents, ...rules.cancelEvents]) {
+    if (findEvent(catalog, name)?.integration !== integration) {
+      continue;
+    }
+    if (connectionId) {
+      next[name] = connectionId;
+    } else {
+      delete next[name];
+    }
+  }
+
+  return {
+    ...rules,
+    connectionIds: Object.keys(next).length > 0 ? next : undefined,
+  };
+}
+
+/**
+ * Copy a sibling's Connection onto named Events of the same integration that
+ * do not yet hold one.
+ *
+ * Adding Email delivered next to Email sent should not ask for the Resend
+ * Connection a second time.
+ */
+export function inheritConnectionIds(
+  rules: LifecycleRules,
+  catalog: ExtensionCatalog
+): LifecycleRules {
+  const named = [...rules.startEvents, ...rules.cancelEvents];
+  const byIntegration = new Map<string, string>();
+  for (const name of named) {
+    const integration = findEvent(catalog, name)?.integration;
+    const stored = rules.connectionIds?.[name];
+    if (integration && stored && !byIntegration.has(integration)) {
+      byIntegration.set(integration, stored);
+    }
+  }
+
+  const next = { ...rules.connectionIds };
+  let changed = false;
+  for (const name of named) {
+    const integration = findEvent(catalog, name)?.integration;
+    const inherited = integration ? byIntegration.get(integration) : undefined;
+    if (!integration || next[name] || !inherited) {
+      continue;
+    }
+    next[name] = inherited;
+    changed = true;
+  }
+
+  if (!changed) {
+    return rules;
+  }
+
+  return {
+    ...rules,
+    connectionIds: next,
   };
 }
 

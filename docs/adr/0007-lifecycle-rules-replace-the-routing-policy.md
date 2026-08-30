@@ -118,3 +118,11 @@ on Inngest event `data` (v4 does not persist `event.user`) and the listener
 strips it before decode. Matching is the stored id on Lifecycle Rules and Wait
 Subscriptions. A start on the wrong Connection is `waits_only`. The
 subscription index stays keyed by Event name.
+
+## Amendment, 2026-08-30: one Connection per integration in the editor
+
+The editor offers one Connection picker, and one webhook URL, per integration
+named by the rules, not per Event. Two Resend Start Events share the Resend
+Connection and paste the same Connection-addressed URL. The stored
+`connectionIds` map still keys by Event name so matching stays on the arrival;
+choosing a Connection stamps every named Event of that integration.

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Link, Pencil, TriangleAlert, X } from "lucide-react";
+import { Check, Link, Pencil, TriangleAlert, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
@@ -11,7 +11,7 @@ import {
   announceTestResult,
   hasProvidedConfigValues,
 } from "#src/lib/connection-credentials";
-import { getWebhookIntake } from "#src/lib/extensions";
+import { WebhookUrlField } from "#src/components/ui/webhook-url-field";
 import type { Integration } from "#src/lib/rpc-client";
 import {
   integrationsQueryOptions,
@@ -23,7 +23,6 @@ import {
   findIntegration,
   type IntegrationMetadata,
 } from "@wfgraph/shared/extensions/catalog";
-import { connectionWebhookUrl } from "@wfgraph/shared/extensions/webhook-url";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
@@ -316,64 +315,6 @@ function OAuthManagedCredentialField({
           Managed by {providerLabel} OAuth
         </span>
       </div>
-    </div>
-  );
-}
-
-function WebhookUrlField({
-  type,
-  helpText,
-  connectionId,
-}: {
-  type: string;
-  helpText: string | undefined;
-  connectionId: string;
-}) {
-  const intake = getWebhookIntake();
-
-  if (!intake) {
-    return (
-      <div className="space-y-1">
-        <Label>Webhook URL</Label>
-        <p className="text-muted-foreground text-xs">
-          This host has no publicUrl, so a webhook URL cannot be copied. Set
-          publicUrl on createWfGraphApp.
-        </p>
-      </div>
-    );
-  }
-
-  const url = connectionWebhookUrl({
-    publicUrl: intake.publicUrl,
-    apiBasePath: intake.apiBasePath,
-    type,
-    connectionId,
-  });
-
-  const copyUrl = () => {
-    void navigator.clipboard.writeText(url);
-    toast.success("Webhook URL copied");
-  };
-
-  return (
-    <div className="space-y-2">
-      <Label htmlFor="webhook-url">Webhook URL</Label>
-      <div className="flex gap-2">
-        <Input id="webhook-url" readOnly value={url} />
-        <Button
-          aria-label="Copy webhook URL"
-          onClick={copyUrl}
-          size="icon"
-          type="button"
-          variant="outline"
-        >
-          <Copy className="size-4" />
-        </Button>
-      </div>
-      <p className="text-muted-foreground text-xs">
-        {helpText ??
-          "Paste this URL into the vendor's webhook settings for this Connection."}
-      </p>
     </div>
   );
 }

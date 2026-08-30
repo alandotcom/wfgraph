@@ -5,9 +5,11 @@ import { rejectUnknownKeys } from "#src/types/schema";
 import {
   checkLifecycleRules,
   configDeclaresCancelEvent,
+  connectionIdForIntegration,
   connectionMatches,
   eventsNeedingCorrelationPath,
   hasStartSource,
+  inheritConnectionIds,
   type LifecycleRules,
   type LifecycleRulesCheck,
   lifecycleRulesSchema,
@@ -16,6 +18,7 @@ import {
   pruneCorrelationPaths,
   readLifecycleRules,
   resolveCorrelationPath,
+  setConnectionForIntegration,
 } from "./lifecycle-rules";
 
 /** The sentence a refused save is shown, or a failure naming the acceptance. */
@@ -47,6 +50,13 @@ const catalog: ExtensionCatalog = {
     {
       name: "ops/nightly.swept",
       label: "Nightly sweep finished",
+      payloadFields: [],
+    },
+    {
+      name: "resend/email.sent",
+      label: "Email sent",
+      integration: "resend",
+      correlationPath: "data.email_id",
       payloadFields: [],
     },
     {
@@ -559,6 +569,57 @@ describe("checkLifecycleRules", () => {
         catalog,
       })
     ).toEqual({ valid: true });
+  });
+});
+
+describe("setConnectionForIntegration", () => {
+  it("stamps one Connection onto every named Event of that integration", () => {
+    expect(
+      setConnectionForIntegration({
+        rules: rules({
+          startEvents: ["resend/email.sent", "resend/email.delivered"],
+          cancelEvents: ["app/appointment.canceled"],
+        }),
+        catalog,
+        integration: "resend",
+        connectionId: "conn_1",
+      }).connectionIds
+    ).toEqual({
+      "resend/email.sent": "conn_1",
+      "resend/email.delivered": "conn_1",
+    });
+  });
+});
+
+describe("inheritConnectionIds", () => {
+  it("copies a sibling Connection onto a newly named Event of the same integration", () => {
+    expect(
+      inheritConnectionIds(
+        rules({
+          startEvents: ["resend/email.sent", "resend/email.delivered"],
+          connectionIds: { "resend/email.sent": "conn_1" },
+        }),
+        catalog
+      ).connectionIds
+    ).toEqual({
+      "resend/email.sent": "conn_1",
+      "resend/email.delivered": "conn_1",
+    });
+  });
+});
+
+describe("connectionIdForIntegration", () => {
+  it("reads the stored Connection for an integration from any of its Events", () => {
+    expect(
+      connectionIdForIntegration(
+        rules({
+          startEvents: ["resend/email.sent", "resend/email.delivered"],
+          connectionIds: { "resend/email.delivered": "conn_1" },
+        }),
+        catalog,
+        "resend"
+      )
+    ).toBe("conn_1");
   });
 });
 

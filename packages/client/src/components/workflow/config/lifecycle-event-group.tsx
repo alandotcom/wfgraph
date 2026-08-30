@@ -13,11 +13,13 @@ import {
 import {
   type ExtensionCatalog,
   findEvent,
+  uniqueIntegrationsOfEvents,
 } from "@wfgraph/shared/extensions/catalog";
 import { catalogEventChoices } from "./event-combobox";
-import { EventConnectionSelect } from "./event-connection-select";
+import { IntegrationEventConnection } from "./integration-event-connection";
 import {
   type CorrelationPathRequest,
+  connectionIdForIntegration,
   correlationPathRequestFor,
   type LifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
@@ -66,10 +68,11 @@ export function LifecycleEventGroup({
   inputId: string;
   onEventNamesChange: (eventNames: string[]) => void;
   onCorrelationPathChange: (eventName: string, path: string) => void;
-  onConnectionChange: (eventName: string, connectionId: string) => void;
+  onConnectionChange: (integration: string, connectionId: string) => void;
 }) {
   const copy = ROLE_COPY[role];
   const eventNames = role === "start" ? rules.startEvents : rules.cancelEvents;
+  const integrations = uniqueIntegrationsOfEvents(catalog, eventNames);
 
   return (
     <ConfigGroup
@@ -96,13 +99,11 @@ export function LifecycleEventGroup({
           {eventNames.map((eventName) => (
             <ChosenEvent
               catalog={catalog}
-              connectionId={rules.connectionIds?.[eventName]}
               disabled={disabled}
               eventName={eventName}
               key={eventName}
               label={findEvent(catalog, eventName)?.label}
               onCommitPath={onCorrelationPathChange}
-              onConnectionChange={onConnectionChange}
               onRemove={() =>
                 onEventNamesChange(
                   eventNames.filter((entry) => entry !== eventName)
@@ -116,12 +117,30 @@ export function LifecycleEventGroup({
               })}
             />
           ))}
+          {integrations.map((integration) => (
+            <IntegrationEventConnection
+              catalog={catalog}
+              connectionId={connectionIdForIntegration(
+                rules,
+                catalog,
+                integration
+              )}
+              disabled={disabled}
+              editing
+              integrationType={integration}
+              key={integration}
+              onChange={(connectionId) =>
+                onConnectionChange(integration, connectionId)
+              }
+            />
+          ))}
         </div>
       ) : (
         <ChosenEventSummary
           catalog={catalog}
           empty={copy.empty}
           eventNames={eventNames}
+          integrations={integrations}
           role={role}
           rules={rules}
         />
@@ -136,51 +155,58 @@ function ChosenEventSummary({
   rules,
   catalog,
   empty,
+  integrations,
 }: {
   eventNames: readonly string[];
   role: EventRole;
   rules: LifecycleRules;
   catalog: ExtensionCatalog;
   empty: string;
+  integrations: readonly string[];
 }) {
   if (eventNames.length === 0) {
     return <ConfigViewEmpty>{empty}</ConfigViewEmpty>;
   }
 
   return (
-    <ul className="space-y-1">
-      {eventNames.map((eventName) => {
-        const request = correlationPathRequestFor({
-          rules,
-          catalog,
-          eventName,
-          role,
-        });
-        const path = request?.suppliedPath ?? request?.declaredPath;
+    <div className="space-y-2">
+      <ul className="space-y-1">
+        {eventNames.map((eventName) => {
+          const request = correlationPathRequestFor({
+            rules,
+            catalog,
+            eventName,
+            role,
+          });
+          const path = request?.suppliedPath ?? request?.declaredPath;
 
-        return (
-          <li className="text-sm" key={eventName}>
-            <span title={eventName}>
-              {findEvent(catalog, eventName)?.label ?? eventName}
-            </span>
-            {path ? (
-              <span className="text-muted-foreground text-xs">
-                {" correlated on "}
-                <span className="font-mono">{path}</span>
+          return (
+            <li className="text-sm" key={eventName}>
+              <span title={eventName}>
+                {findEvent(catalog, eventName)?.label ?? eventName}
               </span>
-            ) : null}
-            {rules.connectionIds?.[eventName] ? (
-              <span className="text-muted-foreground text-xs">
-                {" via "}
-                <span className="font-mono">
-                  {rules.connectionIds[eventName]}
+              {path ? (
+                <span className="text-muted-foreground text-xs">
+                  {" correlated on "}
+                  <span className="font-mono">{path}</span>
                 </span>
-              </span>
-            ) : null}
-          </li>
-        );
-      })}
-    </ul>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+      {integrations.map((integration) => (
+        <IntegrationEventConnection
+          catalog={catalog}
+          connectionId={connectionIdForIntegration(rules, catalog, integration)}
+          disabled
+          editing={false}
+          integrationType={integration}
+          key={integration}
+          onChange={() => undefined}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -209,9 +235,7 @@ function ChosenEvent({
   label,
   request,
   catalog,
-  connectionId,
   onCommitPath,
-  onConnectionChange,
   onRemove,
   disabled,
 }: {
@@ -219,14 +243,10 @@ function ChosenEvent({
   label: string | undefined;
   request: CorrelationPathRequest | undefined;
   catalog: ExtensionCatalog;
-  connectionId: string | undefined;
   onCommitPath: (eventName: string, path: string) => void;
-  onConnectionChange: (eventName: string, connectionId: string) => void;
   onRemove: () => void;
   disabled: boolean;
 }) {
-  const event = findEvent(catalog, eventName);
-
   return (
     <div className="space-y-2 rounded-md border p-2">
       <div className="flex items-start justify-between gap-2">
@@ -245,15 +265,6 @@ function ChosenEvent({
           <X className="size-3.5" />
         </Button>
       </div>
-      {event?.integration ? (
-        <EventConnectionSelect
-          catalog={catalog}
-          disabled={disabled}
-          eventName={eventName}
-          onChange={(id) => onConnectionChange(eventName, id)}
-          value={connectionId}
-        />
-      ) : null}
       {request ? (
         <CorrelationPathInput
           catalog={catalog}

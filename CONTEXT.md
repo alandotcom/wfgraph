@@ -31,8 +31,8 @@ _Avoid_: trigger (the retired authored bundle of events and policy)
 
 **Integration Event**:
 An Event declared on `defineIntegration` rather than by the host. The catalog
-stamps `EventMetadata.integration`. A Workflow Builder must name a Connection
-for each such Start, Cancel, or Wait Event at Publish.
+stamps `EventMetadata.integration`. A Workflow Builder names one Connection
+per integration those Events belong to at Publish.
 
 **Webhook intake**:
 The ungated POST that turns a vendor callback into an Event send. Addressed at

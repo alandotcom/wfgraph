@@ -1,37 +1,27 @@
 import { IntegrationSelector } from "#src/components/ui/integration-selector";
-import {
-  type ExtensionCatalog,
-  findEvent,
-} from "@wfgraph/shared/extensions/catalog";
 
 /**
  * The Connection an integration-owned Event arrives through.
  *
  * Host Events never name one. The picker is the same control an action uses,
- * so adding a Connection here is the same flow as adding one on an action.
+ * so adding a Connection here is the same flow as adding one on an action. One
+ * picker per integration, not per Event: two Resend Events share this control.
  */
 export function EventConnectionSelect({
-  catalog,
-  eventName,
+  integrationType,
   value,
   onChange,
   disabled,
 }: {
-  catalog: ExtensionCatalog;
-  eventName: string;
+  integrationType: string;
   value: string | undefined;
   onChange: (connectionId: string) => void;
   disabled?: boolean;
 }) {
-  const event = findEvent(catalog, eventName);
-  if (!event?.integration) {
-    return null;
-  }
-
   return (
     <IntegrationSelector
       disabled={disabled}
-      integrationType={event.integration}
+      integrationType={integrationType}
       onChange={onChange}
       value={value}
     />

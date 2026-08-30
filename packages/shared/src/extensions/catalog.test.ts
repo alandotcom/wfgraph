@@ -11,6 +11,7 @@ import {
   findAction,
   findEvent,
   findIntegration,
+  uniqueIntegrationsOfEvents,
 } from "./catalog";
 import { readExtensionCatalog } from "./catalog-wire";
 
@@ -306,6 +307,42 @@ describe("the catalog wire schema", () => {
 
   it("refuses a document missing a list", () => {
     expect(readExtensionCatalog({ events: [], actions: [] })).toBeUndefined();
+  });
+});
+
+describe("uniqueIntegrationsOfEvents", () => {
+  it("names each integration once, in the order its Events appear", () => {
+    const withIntegrations: ExtensionCatalog = {
+      events: [
+        {
+          name: "app/appointment.created",
+          label: "Appointment created",
+          payloadFields: [],
+        },
+        {
+          name: "resend/email.sent",
+          label: "Email sent",
+          integration: "resend",
+          payloadFields: [],
+        },
+        {
+          name: "resend/email.delivered",
+          label: "Email delivered",
+          integration: "resend",
+          payloadFields: [],
+        },
+      ],
+      actions: [],
+      integrations: [],
+    };
+
+    expect(
+      uniqueIntegrationsOfEvents(withIntegrations, [
+        "app/appointment.created",
+        "resend/email.sent",
+        "resend/email.delivered",
+      ])
+    ).toEqual(["resend"]);
   });
 });
 

@@ -5,11 +5,13 @@ import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import {
   checkLifecycleRules,
   type Concurrency,
+  inheritConnectionIds,
   initialLifecycleRules,
   type LifecycleRules,
   pruneConnectionIds,
   pruneCorrelationPaths,
   readLifecycleRules,
+  setConnectionForIntegration,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { ConfigSection } from "./config-section";
 import { LifecycleConcurrencyGroup } from "./lifecycle-concurrency-group";
@@ -18,8 +20,10 @@ import type { UpdateNodeConfig } from "./node-config-patch";
 
 export { CONCURRENCY_OPTIONS } from "./lifecycle-concurrency-group";
 
-function prune(next: LifecycleRules) {
-  return pruneConnectionIds(pruneCorrelationPaths(next));
+function prune(next: LifecycleRules, catalog: ExtensionCatalog) {
+  return pruneConnectionIds(
+    inheritConnectionIds(pruneCorrelationPaths(next), catalog)
+  );
 }
 
 /**
@@ -49,29 +53,26 @@ export function LifecyclePanel({
   };
 
   const setStartEvents = (eventNames: string[]) => {
-    write(prune({ ...rules, startEvents: eventNames }));
+    write(prune({ ...rules, startEvents: eventNames }, catalog));
   };
 
   const setCancelEvents = (eventNames: string[]) => {
-    write(prune({ ...rules, cancelEvents: eventNames }));
+    write(prune({ ...rules, cancelEvents: eventNames }, catalog));
   };
 
   const setConcurrency = (value: Concurrency) => {
-    write(prune({ ...rules, concurrency: value }));
+    write(prune({ ...rules, concurrency: value }, catalog));
   };
 
-  const setConnectionId = (eventName: string, connectionId: string) => {
-    const next = { ...rules.connectionIds };
-    if (connectionId) {
-      next[eventName] = connectionId;
-    } else {
-      delete next[eventName];
-    }
-
-    write({
-      ...rules,
-      connectionIds: Object.keys(next).length > 0 ? next : undefined,
-    });
+  const setConnectionId = (integration: string, connectionId: string) => {
+    write(
+      setConnectionForIntegration({
+        rules,
+        catalog,
+        integration,
+        connectionId,
+      })
+    );
   };
 
   const setCorrelationPath = (eventName: string, path: string) => {
@@ -157,7 +158,7 @@ function LifecycleGroups({
   onConcurrencyChange: (value: Concurrency) => void;
   onManualStartChange: (allowed: boolean) => void;
   onCorrelationPathChange: (eventName: string, path: string) => void;
-  onConnectionChange: (eventName: string, connectionId: string) => void;
+  onConnectionChange: (integration: string, connectionId: string) => void;
 }) {
   return (
     <div className="divide-y">

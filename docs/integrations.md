@@ -125,7 +125,8 @@ Connection id is stamped on Inngest event `data` as `connectionId` (v4 does not
 persist `event.user`) and stripped before decode, so the payload the graph sees
 is the vendor envelope. Matching is the stored Connection on Lifecycle Rules and
 Wait Subscriptions, not a CEL field.
-`helpText` is shown under the copyable URL on the Connection dialog.
+`helpText` is shown under the copyable URL on the Lifecycle Node, Wait node, and
+Connection dialog.
 
 **A handler takes one bag**, holding `input` (the decoded config), the credential reads,
 `step`, and the run's identity: `runMode`, `executionId`, `nodeId`, `nodeName`,

@@ -100,8 +100,8 @@ export type IntegrationMetadata = {
   /** Whether this integration mounts a Connection-addressed webhook. */
   readonly hasWebhook: boolean;
   /**
-   * Shown under the copyable webhook URL on the Connection dialog. Absent when
-   * the integration did not supply one; the dialog then uses a generic sentence.
+   * Shown under the copyable webhook URL. Absent when the integration did not
+   * supply one; the field then uses a generic sentence.
    */
   readonly webhookHelpText?: string;
   /** Sanitized OAuth capability metadata. Provider behavior stays server-side. */
@@ -144,6 +144,29 @@ export function findEvent(
   name: string
 ): EventMetadata | undefined {
   return catalog.events.find((event) => event.name === name);
+}
+
+/**
+ * Integration types named by these Events, once each, in first-seen order.
+ *
+ * A Connection and its webhook URL are per integration, not per Event: two
+ * Resend Start Events share one picker.
+ */
+export function uniqueIntegrationsOfEvents(
+  catalog: ExtensionCatalog,
+  eventNames: readonly string[]
+): string[] {
+  const types: string[] = [];
+  const seen = new Set<string>();
+  for (const name of eventNames) {
+    const type = findEvent(catalog, name)?.integration;
+    if (!type || seen.has(type)) {
+      continue;
+    }
+    seen.add(type);
+    types.push(type);
+  }
+  return types;
 }
 
 export function findAction(

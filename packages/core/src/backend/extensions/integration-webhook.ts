@@ -58,8 +58,8 @@ export type IntegrationWebhook<
    */
   readonly source: string;
   /**
-   * Shown under the copyable webhook URL on the Connection dialog. Absent, the
-   * dialog uses a generic sentence.
+   * Shown under the copyable webhook URL. Absent, the field uses a generic
+   * sentence.
    */
   readonly helpText?: string;
   readonly verify: (input: {

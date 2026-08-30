@@ -7,7 +7,10 @@ import { Label } from "#src/components/ui/label";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { getEventConditionFields } from "#src/lib/upstream-node-fields";
 import { nodesAtom, selectedNodeAtom } from "#src/lib/workflow-graph-store";
-import { findEvent } from "@wfgraph/shared/extensions/catalog";
+import {
+  findEvent,
+  uniqueIntegrationsOfEvents,
+} from "@wfgraph/shared/extensions/catalog";
 import {
   createDefaultConditionModel,
   serializeConditionModel,
@@ -21,8 +24,8 @@ import {
   readWaitSubscriptions,
 } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { ConditionBuilderRow } from "./condition-builder-row";
-import { EventConnectionSelect } from "./event-connection-select";
 import { EventMultiCombobox, catalogEventChoices } from "./event-combobox";
+import { IntegrationEventConnection } from "./integration-event-connection";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
 /**
@@ -63,12 +66,26 @@ export function WaitEventSelect({
   // edit keeps the match already written against it.
   const setEvents = (eventNames: string[]) => {
     write(
-      eventNames.map(
-        (eventName) =>
-          selected.find((subscription) => subscription.event === eventName) ?? {
-            event: eventName,
-          }
-      )
+      eventNames.map((eventName) => {
+        const existing = selected.find(
+          (subscription) => subscription.event === eventName
+        );
+        if (existing) {
+          return existing;
+        }
+        const integration = findEvent(catalog, eventName)?.integration;
+        const inherited = integration
+          ? selected.find(
+              (subscription) =>
+                findEvent(catalog, subscription.event)?.integration ===
+                integration
+            )?.connectionId
+          : undefined;
+        return {
+          event: eventName,
+          ...(inherited ? { connectionId: inherited } : {}),
+        };
+      })
     );
   };
 
@@ -104,8 +121,21 @@ export function WaitEventSelect({
     patchSubscription(eventName, { match });
   };
 
-  const setConnectionId = (eventName: string, connectionId: string) => {
-    patchSubscription(eventName, { connectionId });
+  const setConnectionId = (integration: string, connectionId: string) => {
+    write(
+      selected.map((subscription) => {
+        if (
+          findEvent(catalog, subscription.event)?.integration !== integration
+        ) {
+          return subscription;
+        }
+        return {
+          event: subscription.event,
+          ...(subscription.match ? { match: subscription.match } : {}),
+          ...(connectionId ? { connectionId } : {}),
+        };
+      })
+    );
   };
 
   return (
@@ -135,16 +165,38 @@ export function WaitEventSelect({
           anything, and the workflow will not save.
         </WarningCallout>
       ) : (
-        selected.map((subscription) => (
-          <WaitSubscriptionRow
-            disabled={disabled}
-            key={subscription.event}
-            onConnectionChange={setConnectionId}
-            onMatchChange={setMatch}
-            onRemove={remove}
-            subscription={subscription}
-          />
-        ))
+        <>
+          {selected.map((subscription) => (
+            <WaitSubscriptionRow
+              disabled={disabled}
+              key={subscription.event}
+              onMatchChange={setMatch}
+              onRemove={remove}
+              subscription={subscription}
+            />
+          ))}
+          {uniqueIntegrationsOfEvents(catalog, selectedNames).map(
+            (integration) => (
+              <IntegrationEventConnection
+                catalog={catalog}
+                connectionId={
+                  selected.find(
+                    (subscription) =>
+                      findEvent(catalog, subscription.event)?.integration ===
+                      integration
+                  )?.connectionId
+                }
+                disabled={disabled}
+                editing
+                integrationType={integration}
+                key={integration}
+                onChange={(connectionId) =>
+                  setConnectionId(integration, connectionId)
+                }
+              />
+            )
+          )}
+        </>
       )}
     </div>
   );
@@ -154,13 +206,11 @@ export function WaitEventSelect({
 function WaitSubscriptionRow({
   subscription,
   onMatchChange,
-  onConnectionChange,
   onRemove,
   disabled,
 }: {
   subscription: EventSubscription;
   onMatchChange: (eventName: string, match: string) => void;
-  onConnectionChange: (eventName: string, connectionId: string) => void;
   onRemove: (eventName: string) => void;
   disabled: boolean;
 }) {
@@ -269,16 +319,6 @@ function WaitSubscriptionRow({
           <X className="size-3.5" />
         </Button>
       </div>
-
-      {event?.integration ? (
-        <EventConnectionSelect
-          catalog={catalog}
-          disabled={disabled}
-          eventName={subscription.event}
-          onChange={(id) => onConnectionChange(subscription.event, id)}
-          value={subscription.connectionId}
-        />
-      ) : null}
 
       {subscription.match ? (
         <>
