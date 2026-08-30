@@ -46,6 +46,7 @@ pnpm run lint         # oxlint --type-aware, prints nothing when clean
 pnpm run test         # vitest, one project per environment
 pnpm run build        # pnpm -r build, each package building itself
 pnpm run knip         # unused files, exports, dependencies
+pnpm run skills:validate # intent validate --check, published Agent Skills
 pnpm run fix          # oxfmt, must leave the tree clean
 ```
 
@@ -472,8 +473,13 @@ machinery that greps to nothing costs a future session an hour.
 
 ## Agent skills
 
-Configuration the engineering skills read before they act. Editing these changes their
-behaviour; nothing in them is enforced by lint or tests.
+Published Agent Skills for adopters live under `packages/core/skills` and
+`packages/plugins/skills`. They distill the host manuals and ship inside those
+npm packages. `pnpm run skills:validate` is a required check. Bump
+`metadata.library_version` in a skill when the APIs it teaches move.
+
+Configuration the engineering skills in this repository read before they act.
+Editing these changes their behaviour; nothing in them is enforced by lint or tests.
 
 - `docs/agents/issue-tracker.md` — issues are GitHub issues on `alandotcom/wfgraph`, via `gh`.
 - `docs/agents/triage-labels.md` — the five triage roles, each label equal to its name.

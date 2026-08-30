@@ -386,6 +386,15 @@ Workflow Graph cannot serialize a React component, so that last record is the on
 that stays off `/api/extensions`. `@wfgraph/shared` stays private, and the build inlines it
 into whichever bundle needs it.
 
+## Agent skills
+
+`@wfgraph/core` and `@wfgraph/plugins` ship Agent Skills (TanStack Intent) in each
+tarball under `skills/`. They are derived from this manual, `docs/events.md`, and
+`docs/integrations.md`. After installing the packages, discover them with
+`pnpm dlx @tanstack/intent@latest list` and load one with
+`pnpm dlx @tanstack/intent@latest load @wfgraph/core#wfgraph-core`. They are not
+package exports.
+
 `createWfGraphApp` is the Node host. `wfWorker` is the Cloudflare
 Worker host and serves the API while the platform's Assets binding or the
 application's router serves static files.

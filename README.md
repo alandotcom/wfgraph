@@ -65,6 +65,11 @@ pnpm add @wfgraph/core @wfgraph/client inngest hono
 `inngest` and `hono` are peer dependencies, so your application owns the version of each
 that runs in its process. Add `@wfgraph/plugins` for the built-in integrations.
 
+The published packages include Agent Skills (TanStack Intent). After install, run
+`pnpm dlx @tanstack/intent@latest install`, then `pnpm dlx @tanstack/intent@latest list`
+and `pnpm dlx @tanstack/intent@latest load @wfgraph/core#wfgraph-core` when embedding
+or writing an integration.
+
 `createWfGraphApp` returns a fetch handler. Pass Events, actions, and integrations in one
 `extensions` object:
 
