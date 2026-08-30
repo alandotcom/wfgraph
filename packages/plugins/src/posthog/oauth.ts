@@ -255,43 +255,64 @@ function credentialsFromProject(
   };
 }
 
+async function fetchProject(
+  region: (typeof POSTHOG_REGIONS)[number],
+  accessToken: string,
+  projectId: number | undefined
+): Promise<
+  { ok: true; project: PostHogProject } | { ok: false; failure: ExternalError }
+> {
+  const url =
+    projectId === undefined
+      ? `${region.apiHost}/api/projects/`
+      : `${region.apiHost}/api/projects/${projectId}/`;
+  const result =
+    projectId === undefined
+      ? await requestApi(url, accessToken, posthogProjectListSchema)
+      : await requestApi(url, accessToken, posthogProjectSchema);
+
+  if (!result.ok) {
+    return result;
+  }
+
+  return {
+    ok: true,
+    project:
+      "results" in result.data
+        ? projectFromList(result.data.results)
+        : result.data,
+  };
+}
+
+/**
+ * US first, then EU. Parallel would spend a request on the wrong cloud on
+ * every grant, and a 5xx from the right cloud must not be hidden by trying
+ * the other.
+ */
 async function resolveProject(
   accessToken: string,
   projectId: number | undefined,
   secrets: readonly string[]
 ): Promise<{ credentials: ProjectCredentials; accountLabel: string }> {
-  let lastFailure: string | undefined;
+  const us = POSTHOG_REGIONS[0];
+  const eu = POSTHOG_REGIONS[1];
+  const first = await fetchProject(us, accessToken, projectId);
 
-  for (const region of POSTHOG_REGIONS) {
-    const url =
-      projectId === undefined
-        ? `${region.apiHost}/api/projects/`
-        : `${region.apiHost}/api/projects/${projectId}/`;
-    const result =
-      projectId === undefined
-        ? await requestApi(url, accessToken, posthogProjectListSchema)
-        : await requestApi(url, accessToken, posthogProjectSchema);
-
-    if (!result.ok) {
-      lastFailure = describeApiFailure(result.failure, secrets);
-      if (isWrongRegion(result.failure)) {
-        continue;
-      }
-
-      throw new Error(lastFailure);
-    }
-
-    const project =
-      "results" in result.data
-        ? projectFromList(result.data.results)
-        : result.data;
-
-    return credentialsFromProject(project, region.captureHost);
+  if (first.ok) {
+    return credentialsFromProject(first.project, us.captureHost);
   }
 
-  throw new Error(
-    lastFailure ?? "PostHog OAuth could not find a project for this grant."
-  );
+  if (!isWrongRegion(first.failure)) {
+    throw new Error(describeApiFailure(first.failure, secrets));
+  }
+
+  const second = await fetchProject(eu, accessToken, projectId);
+
+  if (second.ok) {
+    return credentialsFromProject(second.project, eu.captureHost);
+  }
+
+  throw new Error(describeApiFailure(second.failure, secrets));
 }
 
 function tokenSet(
