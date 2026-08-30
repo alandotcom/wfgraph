@@ -8,20 +8,18 @@
 
 import type {
   IntegrationOAuth,
-  JsonValue,
   OAuthGrant,
   OAuthPkceExchangeInput,
   OAuthRefreshInput,
   OAuthRevokeInput,
   OAuthTokenSet,
 } from "@wfgraph/core/plugin";
+import { Schema } from "effect";
 import {
-  callExternal,
-  callExternalAsync,
-  parsePayload,
-  type ExternalError,
-} from "@wfgraph/core/plugin";
-import { Schema, SchemaTransformation } from "effect";
+  currentRefreshToken,
+  emptyOAuthRevokeResponseSchema,
+  requestCimdToken,
+} from "#src/oauth-cimd";
 
 const RESEND_AUTHORIZE_URL = "https://api.resend.com/oauth/authorize";
 const RESEND_TOKEN_URL = "https://api.resend.com/oauth/token";
@@ -69,98 +67,7 @@ const resendOAuthTokenResponseSchema = Schema.Struct({
   scope: Schema.String,
 });
 
-const resendOAuthErrorSchema = Schema.Struct({
-  error: Schema.optionalKey(Schema.String),
-  error_description: Schema.optionalKey(Schema.String),
-  error_uri: Schema.optionalKey(Schema.String),
-});
-
-/** A successful revocation has an empty 200 response body. */
-const emptyOAuthResponseSchema = Schema.Undefined.pipe(
-  Schema.decodeTo(
-    Schema.Literal(true),
-    SchemaTransformation.transform({
-      decode: (): true => true,
-      encode: (): undefined => undefined,
-    })
-  )
-);
-
 type ResendOAuthTokenResponse = typeof resendOAuthTokenResponseSchema.Type;
-
-function safeOAuthError(
-  payload: JsonValue | undefined,
-  secrets: readonly string[]
-): string {
-  const parsed = parsePayload(payload, resendOAuthErrorSchema);
-  const code = parsed?.error;
-  const safeCode =
-    code !== undefined && /^[a-z0-9_]{1,100}$/.test(code) ? code : undefined;
-  const description = parsed?.error_description;
-  const safeDescription = description
-    ? sanitize(description, secrets).slice(0, 500)
-    : undefined;
-
-  return (
-    [safeCode, safeDescription].filter(Boolean).join(": ") || "unknown error"
-  );
-}
-
-function sanitize(value: string, secrets: readonly string[]): string {
-  let sanitized = value;
-
-  for (const secret of secrets) {
-    if (secret.length === 0) {
-      continue;
-    }
-
-    sanitized = sanitized
-      .replaceAll(secret, "[redacted]")
-      .replaceAll(encodeURIComponent(secret), "[redacted]");
-  }
-
-  return sanitized;
-}
-
-function describeOAuthFailure(
-  error: ExternalError,
-  secrets: readonly string[]
-): string {
-  if (error._tag === "ExternalUnreachable") {
-    return `Resend OAuth request failed: ${sanitize(error.message, secrets)}`;
-  }
-
-  if (error._tag === "ExternalRejected") {
-    return `Resend OAuth request rejected: ${safeOAuthError(error.payload, secrets)}`;
-  }
-
-  return `Resend OAuth request failed: HTTP ${error.status}`;
-}
-
-async function requestOAuth<T extends Schema.ConstraintDecoder<unknown>>(
-  url: string,
-  body: URLSearchParams,
-  schema: T,
-  secrets: readonly string[]
-): Promise<T["Type"]> {
-  const result = await callExternalAsync(
-    callExternal({
-      system: "Resend OAuth",
-      url,
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: { kind: "form", value: body },
-      schema,
-    }),
-    (error) => error
-  );
-
-  if (!result.ok) {
-    throw new Error(describeOAuthFailure(result.failure, secrets));
-  }
-
-  return result.data;
-}
 
 function tokenSet(response: ResendOAuthTokenResponse): OAuthTokenSet {
   const accessLabel = accessLabelFromScope(response.scope);
@@ -179,13 +86,19 @@ function tokenSet(response: ResendOAuthTokenResponse): OAuthTokenSet {
   };
 }
 
-function currentRefreshToken(grant: OAuthGrant): string {
-  const refreshToken = grant.tokens.refreshToken;
-  if (!refreshToken) {
-    throw new Error("Resend OAuth refresh requires the current refresh token");
-  }
-
-  return refreshToken;
+function requestResendToken<T extends Schema.ConstraintDecoder<unknown>>(
+  url: string,
+  body: URLSearchParams,
+  schema: T,
+  secrets: readonly string[]
+): Promise<T["Type"]> {
+  return requestCimdToken({
+    system: "Resend OAuth",
+    url,
+    body,
+    schema,
+    secrets,
+  });
 }
 
 export const resendOAuth: IntegrationOAuth = {
@@ -223,7 +136,7 @@ export const resendOAuth: IntegrationOAuth = {
     redirectUri,
     codeVerifier,
   }: OAuthPkceExchangeInput): Promise<OAuthGrant> => {
-    const response = await requestOAuth(
+    const response = await requestResendToken(
       RESEND_TOKEN_URL,
       new URLSearchParams({
         grant_type: "authorization_code",
@@ -243,8 +156,8 @@ export const resendOAuth: IntegrationOAuth = {
     client,
     grant,
   }: OAuthRefreshInput): Promise<OAuthTokenSet> => {
-    const refreshToken = currentRefreshToken(grant);
-    const response = await requestOAuth(
+    const refreshToken = currentRefreshToken("Resend", grant);
+    const response = await requestResendToken(
       RESEND_TOKEN_URL,
       new URLSearchParams({
         grant_type: "refresh_token",
@@ -259,15 +172,15 @@ export const resendOAuth: IntegrationOAuth = {
   },
 
   revoke: async ({ client, grant }: OAuthRevokeInput): Promise<void> => {
-    const refreshToken = currentRefreshToken(grant);
-    await requestOAuth(
+    const refreshToken = currentRefreshToken("Resend", grant);
+    await requestResendToken(
       RESEND_REVOKE_URL,
       new URLSearchParams({
         client_id: client.clientId,
         token: refreshToken,
         token_type_hint: "refresh_token",
       }),
-      emptyOAuthResponseSchema,
+      emptyOAuthRevokeResponseSchema,
       [client.clientId, refreshToken, grant.tokens.accessToken]
     );
   },

@@ -172,9 +172,9 @@ const wfgraph = await createWfGraphApp({
 });
 ```
 
-Resend OAuth uses a public client metadata document and needs no provider secret.
+Resend and PostHog OAuth use a public client metadata document and need no provider secret.
 Slack OAuth needs the client ID and client secret of a registered Slack app. Omit
-`slack.oauthClient` to keep Slack manual-only. Both integrations keep their manual
+`slack.oauthClient` to keep Slack manual-only. All three integrations keep their manual
 credential forms when OAuth is available.
 
 OAuth requires `publicUrl`, which names the external origin alone. Workflow Graph
@@ -201,12 +201,12 @@ updates the existing row through its revision fence. The typed
 the encrypted connection configuration and don't enter the extension catalog or RPC
 responses.
 
-- Clerk, Linear, Resend, and Twilio are exported as values. Slack is a factory because
+- Clerk, Linear, PostHog, Resend, and Twilio are exported as values. Slack is a factory because
   it accepts host-provided OAuth client credentials.
 - The editor shows what the server assembled. The action selector lists exactly the
   integrations you passed, and a connection can be stored for those alone.
 - That list controls what reaches `createWfGraphApp`. The process still loads every SDK the
-  package imports: two of the five carry one, and `@wfgraph/plugins` imports all five
+  package imports: two of the six carry one, and `@wfgraph/plugins` imports all six
   integrations. The static import buys the timing of a failure. A missing SDK stops the
   application at start-up, where a lazy import would let a single run fail much later.
 - `@wfgraph/plugins` peer-depends on `@wfgraph/core`. Keep one core copy so the
@@ -379,7 +379,7 @@ different migration tool puts the tables in `public`. This repository's
 | `@wfgraph/core/migrate`  | `migrateWfGraphDatabase`, for migrations without an application                                                                                                                                                                                                  |
 | `@wfgraph/core/logging`  | `configureWfGraphLogging`, the console setup a host installs                                                                                                                                                                                                     |
 | `@wfgraph/client`        | `clientBundle`, the built editor, passed to `createWfGraphApp` as `client`                                                                                                                                                                                       |
-| `@wfgraph/plugins`       | Four built-in integration values, the configurable `slack(options?)` factory, and `builtInIntegrations(options?)`                                                                                                                                                |
+| `@wfgraph/plugins`       | Five built-in integration values, the configurable `slack(options?)` factory, and `builtInIntegrations(options?)`                                                                                                                                                |
 | `@wfgraph/plugins/ui`    | Their icons and output renderers as one record, imported by the browser alone                                                                                                                                                                                    |
 
 Workflow Graph cannot serialize a React component, so that last record is the one part of the catalog

@@ -4,7 +4,6 @@ import { readJsonObject } from "@wfgraph/shared/types/json";
 
 const OAUTH_POLL_INTERVAL_MS = 1_000;
 const OAUTH_POLL_TIMEOUT_MS = 10 * 60_000;
-const CLOSED_POPUP_FINAL_POLLS = 3;
 
 export type NewOAuthConnectionInput = {
   name: string;
@@ -30,17 +29,19 @@ export type OAuthAttemptStatus =
  * How a poll ended, which the server's own `pending` cannot say.
  *
  * The two terminal statuses are the server's verdict and travel through
- * unchanged. The other two are this loop's: the attempt is still open at the
- * server in both cases, and they are kept apart because the sentence a person
- * needs is different. `timed_out` means nobody finished the authorization inside
- * the window; `abandoned` means the popup went away while it was still pending,
- * which is what closing it looks like from here.
+ * unchanged. `timed_out` is this loop's: the attempt is still open at the
+ * server, and nobody finished the authorization inside the window.
+ *
+ * The poll does not watch `popup.closed`. A provider page with
+ * Cross-Origin-Opener-Policy severs the window handle as soon as it loads, so
+ * `closed` becomes true while the operator is still confirming. Treating that
+ * as abandoned left a completed grant on the server and a stale connection
+ * list in the editor until a full refresh. Closing the overlay aborts instead.
  */
 export type OAuthPollOutcome =
   | { status: "succeeded"; integrationId: string }
   | { status: "failed" }
-  | { status: "timed_out" }
-  | { status: "abandoned" };
+  | { status: "timed_out" };
 
 export type OAuthPopup = Pick<Window, "closed" | "close"> & {
   location: Pick<Location, "assign">;
@@ -191,7 +192,6 @@ export function reserveOAuthPopup(): OAuthPopup | null {
 /** Polls durable attempt state until it becomes terminal or times out. */
 export async function pollOAuthAttempt({
   attemptId,
-  popup,
   intervalMs = OAUTH_POLL_INTERVAL_MS,
   timeoutMs = OAUTH_POLL_TIMEOUT_MS,
   getStatus = readOAuthAttemptStatus,
@@ -200,7 +200,6 @@ export async function pollOAuthAttempt({
   signal,
 }: {
   attemptId: string;
-  popup: Pick<OAuthPopup, "closed">;
   intervalMs?: number;
   timeoutMs?: number;
   getStatus?: GetStatus;
@@ -209,7 +208,6 @@ export async function pollOAuthAttempt({
   signal?: AbortSignal;
 }): Promise<OAuthPollOutcome> {
   const startedAt = now();
-  let closedPopupPolls = 0;
 
   while (true) {
     throwIfAborted(signal);
@@ -225,15 +223,6 @@ export async function pollOAuthAttempt({
     throwIfAborted(signal);
     if (status.status !== "pending") {
       return status;
-    }
-
-    if (popup.closed) {
-      closedPopupPolls += 1;
-      if (closedPopupPolls >= CLOSED_POPUP_FINAL_POLLS) {
-        return { status: "abandoned" };
-      }
-    } else {
-      closedPopupPolls = 0;
     }
 
     // eslint-disable-next-line no-await-in-loop -- OAuth polls are intentionally sequential and separated by an abortable delay.

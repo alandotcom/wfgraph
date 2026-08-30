@@ -204,22 +204,23 @@ function KeyValueField({ value, onChange, disabled }: FieldProps) {
       {rows.map((entry) => (
         <div className="flex items-center gap-2" key={entry._id}>
           <Input
+            aria-label="Name"
             className="flex-1"
             disabled={disabled}
             onChange={(e) => updateEntry(entry._id, "name", e.target.value)}
             placeholder="Name"
             value={entry.name}
           />
-          <TemplateBadgeInput
-            ariaLabel="Value"
+          <Input
+            aria-label="Value"
             className="flex-1"
             disabled={disabled}
-            onChange={(val) => updateEntry(entry._id, "value", val ?? "")}
+            onChange={(e) => updateEntry(entry._id, "value", e.target.value)}
             placeholder="Value"
             value={entry.value}
           />
           <Button
-            className="size-8 shrink-0"
+            className="size-7 shrink-0"
             disabled={disabled}
             onClick={() => removeEntry(entry._id)}
             size="icon"

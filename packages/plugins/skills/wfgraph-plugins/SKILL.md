@@ -1,9 +1,10 @@
 ---
 name: wfgraph-plugins
 description: >
-  builtInIntegrations, slack(options?) OAuth factory, clerk linear resend twilio
-  value exports, publicUrl OAuth routes, @wfgraph/plugins/ui. Load when turning
-  on the five built-in integrations or wiring Slack/Resend OAuth in the host.
+  builtInIntegrations, slack(options?) OAuth factory, clerk linear posthog
+  resend twilio value exports, publicUrl OAuth routes, @wfgraph/plugins/ui.
+  Load when turning on the six built-in integrations or wiring Slack, Resend,
+  or PostHog OAuth in the host.
 metadata:
   type: core
   library: wfgraph
@@ -15,8 +16,9 @@ sources:
 
 # Built-in integrations
 
-Clerk, Linear, Resend, Slack, and Twilio. Nothing registers on import. Pass
-the values into `createWfGraphApp` under `extensions.integrations`.
+Clerk, Linear, PostHog, Resend, Slack, and Twilio. Nothing registers on
+import. Pass the values into `createWfGraphApp` under
+`extensions.integrations`.
 
 Writing a new vendor integration is `@wfgraph/core/plugin`
 (wfgraph-core/integrations), not this package's internals.
@@ -27,23 +29,24 @@ Copy-paste `builtInIntegrations({ slack: { oauthClient } })` from
 
 ## Core Patterns
 
-### Some of the five
+### Some of the six
 
-Clerk, Linear, Resend, and Twilio are values. Slack is `slack(options?)`
-because it closes over host OAuth client credentials. Selecting individual
-exports narrows what reaches `createWfGraphApp`, not what the process loads:
-the package still imports all five. `@wfgraph/core` is a peer; keep one copy.
+Clerk, Linear, PostHog, Resend, and Twilio are values. Slack is
+`slack(options?)` because it closes over host OAuth client credentials.
+Selecting individual exports narrows what reaches `createWfGraphApp`, not
+what the process loads: the package still imports all six. `@wfgraph/core`
+is a peer; keep one copy.
 
-Omit `slack.oauthClient` to keep Slack manual-only. Resend OAuth uses a public
-client metadata document and needs no provider secret. Both keep manual
-credential forms when OAuth is available.
+Omit `slack.oauthClient` to keep Slack manual-only. Resend and PostHog OAuth
+use a public client metadata document and need no provider secret. All three
+keep manual credential forms when OAuth is available.
 
 ### OAuth host requirements
 
 OAuth requires `publicUrl`. HTTPS except loopback. Callback stays behind
 `auth`; `SameSite=Lax` cookies work, custom request headers on the provider
-redirect do not. Core derives callback and metadata URLs from `publicUrl` plus
-`basePath`.
+redirect do not. Core derives callback and metadata URLs from `publicUrl`
+plus `basePath`.
 
 ### Editor UI
 

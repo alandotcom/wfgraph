@@ -1,7 +1,7 @@
 # @wfgraph/plugins
 
-The five built-in integrations for
-[Workflow Graph](https://github.com/alandotcom/wfgraph): Clerk, Linear, Resend, Slack, and
+The six built-in integrations for
+[Workflow Graph](https://github.com/alandotcom/wfgraph): Clerk, Linear, PostHog, Resend, Slack, and
 Twilio.
 
 ```bash
@@ -30,14 +30,14 @@ const wfgraph = await createWfGraphApp({
 });
 ```
 
-Resend includes OAuth through a public client metadata document. Slack enables
-OAuth when you pass a registered Slack app client. Both retain manual credential
+Resend and PostHog include OAuth through a public client metadata document. Slack enables
+OAuth when you pass a registered Slack app client. All three retain manual credential
 entry. OAuth callback URLs also require `publicUrl` on `createWfGraphApp`.
 
-Clerk, Linear, Resend, and Twilio are also exported as values for a host that wants
-some of the five rather than all of them. Slack is a factory because it accepts OAuth
+Clerk, Linear, PostHog, Resend, and Twilio are also exported as values for a host that wants
+some of the six rather than all of them. Slack is a factory because it accepts OAuth
 client configuration. Selecting individual exports narrows what reaches
-`createWfGraphApp`, not what the process loads, because this entry imports all five
+`createWfGraphApp`, not what the process loads, because this entry imports all six
 integrations.
 
 `@wfgraph/core` is a peer dependency: an integration is built against it and handed back to it,

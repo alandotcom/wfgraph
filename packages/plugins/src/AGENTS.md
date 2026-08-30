@@ -2,7 +2,7 @@
 
 `docs/integrations.md` is the walkthrough: the `defineIntegration` shape, what it owns
 around a handler, the canonical JSON codec and which optional spelling goes on which side.
-This file holds what is specific to the five integrations in this directory.
+This file holds what is specific to the six integrations in this directory.
 
 ## The files
 
@@ -61,8 +61,8 @@ the outer policy beyond it.
 
 An SDK earns its place only where it carries protocol logic worth borrowing, which is why
 `@clerk/backend` (JWT verification) and `@linear/sdk` (a typed GraphQL client) stayed while
-`twilio`, `resend` and `@slack/web-api` did not. Those three keep their own transport and
-error handling and do not go through `callExternal`.
+`twilio`, `resend`, `@slack/web-api` and `posthog-node` did not. Those keep their own
+transport and error handling and do not go through `callExternal`.
 
 ## OAuth adapters
 
@@ -72,11 +72,13 @@ are specific to maintaining the built-in adapters in this package.
 Put a provider's OAuth protocol in `[name]/oauth.ts` when it is more than a few lines.
 Export one `IntegrationOAuth` value and attach it to the integration in `index.ts`. Keep
 an integration as a static value unless host-provided client credentials require a
-factory. Slack is the example of that exception; Resend is the metadata-client pattern.
+factory. Slack is the example of that exception; Resend and PostHog are the
+metadata-client pattern.
 
 Keep provider behavior out of core. The adapter owns client registration, authorization
 parameters, token and error response schemas, exchange, refresh, revocation, and the
-mapping from an access token to declared credential keys.
+mapping from an access token to declared credential keys. CIMD form POSTs live in
+`oauth-cimd.ts`.
 
 Register every scope the integration could ever need. The registered set is the ceiling
 on what an operator may grant, so a document naming one scope makes the wider one
@@ -214,7 +216,7 @@ vocabulary, the action slugs, and the field list `requireOutputFieldsFromSchema`
 each output schema. What Workflow Graph itself does around a handler is covered once, in
 `packages/core/src/backend/extensions/steps/define-step.test.ts`.
 
-`src/index.test.ts` runs `checkIntegration` over all five at module level, which is every
+`src/index.test.ts` runs `checkIntegration` over all six at module level, which is every
 check `assembleExtensions` runs, so a bad definition fails that file's collection. A host
 would otherwise meet it as a startup crash, and a description missing from one field of one
 output schema would reach a reviewer as a green suite. `checkIntegration` is exported from

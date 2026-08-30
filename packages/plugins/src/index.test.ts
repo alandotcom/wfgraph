@@ -1,12 +1,19 @@
 import { checkIntegration } from "@wfgraph/core/plugin";
 import { describe, expect, it } from "vitest";
-import { builtInIntegrations, clerk, linear, resend, twilio } from "#src/index";
+import {
+  builtInIntegrations,
+  clerk,
+  linear,
+  posthog,
+  resend,
+  twilio,
+} from "#src/index";
 
 const integrations = builtInIntegrations();
 
 /**
  * Every check `assembleExtensions` runs over an integration, run here over the real
- * five.
+ * six.
  *
  * A host finds out about a bad definition when its app starts, which is the right
  * place for a host and the wrong place for this repo: a description missing from one
@@ -21,10 +28,11 @@ const actions = integrations.flatMap((integration) =>
 );
 
 describe("every built-in integration", () => {
-  it("covers all five", () => {
+  it("covers all six", () => {
     expect(integrations.map((integration) => integration.type)).toEqual([
       "clerk",
       "linear",
+      "posthog",
       "resend",
       "slack",
       "twilio",
@@ -48,9 +56,10 @@ describe("every built-in integration", () => {
     );
     expect(configured[0]).toBe(clerk);
     expect(configured[1]).toBe(linear);
-    expect(configured[2]).toBe(resend);
-    expect(configured[4]).toBe(twilio);
-    expect(configured[3]).not.toHaveProperty("oauthClient");
+    expect(configured[2]).toBe(posthog);
+    expect(configured[3]).toBe(resend);
+    expect(configured[5]).toBe(twilio);
+    expect(configured[4]).not.toHaveProperty("oauthClient");
     expect(JSON.stringify(configured)).not.toContain("client-secret");
   });
 

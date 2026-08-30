@@ -41,8 +41,11 @@ export function useOAuthConnection({
     const attempt = activeAttempt.current;
     activeAttempt.current = null;
     attempt?.controller.abort();
-    if (attempt?.popup && !attempt.popup.closed) {
-      attempt.popup.close();
+    try {
+      attempt?.popup.close();
+    } catch {
+      // Cross-Origin-Opener-Policy on the provider page can make the handle
+      // unusable once that page has loaded.
     }
     if (updateState) {
       setPending(false);
@@ -83,20 +86,15 @@ export function useOAuthConnection({
       popup.location.assign(authorization.authorizeUrl);
       const result = await pollOAuthAttempt({
         attemptId: authorization.attemptId,
-        popup,
         signal: attempt.controller.signal,
       });
       if (activeAttempt.current !== attempt) {
         return;
       }
 
-      // Neither outcome is the server's verdict, so nothing has changed and
-      // there is nothing to refresh. They are worded apart because the next
-      // step differs: a closed window is a decision, a timeout is a retry.
-      if (result.status === "abandoned") {
-        toast.message("Authorization was closed before it finished");
-        return;
-      }
+      // A timeout is not the server's verdict, so nothing has changed and
+      // there is nothing to refresh. Closing the overlay aborts instead of
+      // treating a severed popup handle as a cancelled authorization.
       if (result.status === "timed_out") {
         toast.error("Authorization timed out. Try connecting again.");
         return;

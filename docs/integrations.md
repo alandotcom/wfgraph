@@ -2,7 +2,7 @@
 
 How to author an integration against `@wfgraph/core/plugin`: `defineIntegration`, replay safety, Effect vs Promise, config forms, testing, step-boundary schemas, and OAuth adapters.
 
-For the five built-ins in this repository, also see `packages/plugins/src/AGENTS.md`.
+For the six built-ins in this repository, also see `packages/plugins/src/AGENTS.md`.
 
 The server half builds against `@wfgraph/core/plugin` alone, so an outside package is written
 the same way. That surface exports `defineIntegration`, `CredentialFields`, `CredentialsOf`,
@@ -146,7 +146,7 @@ Three rules:
 
 ## Effect for integrations, Promise for host actions
 
-**Integrations author with Effect.** The five built-ins and anything built against
+**Integrations author with Effect.** The six built-ins and anything built against
 `@wfgraph/core/plugin` use `Effect.fn`, because `callExternal` answers an Effect and a handler
 yields it directly. Fail with a `StepFailure`. Durable work is
 `yield* bag.step.run(id, effect)`. Credentials are `yield* bag.credentials`. Do not reach for
@@ -352,7 +352,7 @@ Twilio is the worked example: `twilioMessageSchema` in
 `packages/plugins/src/twilio/client.ts` requires the three fields its handler reads and
 leaves the rest optional and nullish.
 
-For the file layout of the five built-ins, the external HTTP layer, config field types,
+For the file layout of the six built-ins, the external HTTP layer, config field types,
 and the test pattern, see `packages/plugins/src/AGENTS.md`.
 
 ## OAuth
@@ -361,7 +361,7 @@ Add `oauth` when the external system can issue a grant. The integration owns the
 provider protocol. Core owns the browser flow, encrypted grant storage, and refresh
 coordination. Configure `publicUrl` on `createWfGraphApp`; Core derives stable callback
 and client metadata URLs from that origin. Host routes, `auth` cookie rules, and
-turning on Slack or Resend OAuth are in `docs/embedding.md` ("Built-in integrations").
+turning on Slack, Resend, or PostHog OAuth are in `docs/embedding.md` ("Built-in integrations").
 
 The OAuth value below is assigned to an integration's `oauth` property. The two
 complete forms are compile-checked in
