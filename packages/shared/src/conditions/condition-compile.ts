@@ -2,7 +2,6 @@ import { celStringLiteral } from "#src/conditions/cel-string-literal";
 import {
   CONDITION_CONTEXT_ROOT,
   EVENT_CONTEXT_ROOT,
-  EVENT_CONNECTION_ID_FIELD_PATH,
   EVENT_NAME_FIELD_PATH,
   type BooleanConditionRule,
   type ConditionCompileResult,
@@ -299,11 +298,8 @@ function compileComparisonRule(
  * The root is written on every run and holds null where nothing named an Event,
  * so a comparison needs no presence guard and a null check reads as a null test.
  */
-function compileEventRootRule(
-  rule: ConditionRule,
-  property: "name" | "connectionId"
-): ConditionCompileResult {
-  const field = `${EVENT_CONTEXT_ROOT}.${property}`;
+function compileEventNameRule(rule: ConditionRule): ConditionCompileResult {
+  const field = `${EVENT_CONTEXT_ROOT}.name`;
 
   if (isNullCheckConditionRule(rule)) {
     return {
@@ -333,11 +329,7 @@ export function compileConditionRule(
   }
 
   if (path === EVENT_NAME_FIELD_PATH) {
-    return compileEventRootRule(rule, "name");
-  }
-
-  if (path === EVENT_CONNECTION_ID_FIELD_PATH) {
-    return compileEventRootRule(rule, "connectionId");
+    return compileEventNameRule(rule);
   }
 
   // A rule stores the path as the field picker offered it, relative to the node

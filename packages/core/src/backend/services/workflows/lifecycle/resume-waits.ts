@@ -67,7 +67,6 @@ function waitStateMatches(input: {
       ...subscription.match,
       payload: input.payload,
       eventName: input.eventType,
-      connectionId: input.connectionId ?? null,
     });
 
     if (!evaluation.ok) {

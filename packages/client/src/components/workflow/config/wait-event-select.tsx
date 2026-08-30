@@ -85,24 +85,17 @@ export function WaitEventSelect({
         if (subscription.event !== eventName) {
           return subscription;
         }
-        const next: EventSubscription = {
-          event: subscription.event,
-          ...(patch.match !== undefined
-            ? patch.match
-              ? { match: patch.match }
-              : {}
-            : subscription.match
-              ? { match: subscription.match }
-              : {}),
-          ...(patch.connectionId !== undefined
+        const match =
+          patch.match !== undefined ? patch.match : subscription.match;
+        const connectionId =
+          patch.connectionId !== undefined
             ? patch.connectionId
-              ? { connectionId: patch.connectionId }
-              : {}
-            : subscription.connectionId
-              ? { connectionId: subscription.connectionId }
-              : {}),
+            : subscription.connectionId;
+        return {
+          event: subscription.event,
+          ...(match ? { match } : {}),
+          ...(connectionId ? { connectionId } : {}),
         };
-        return next;
       })
     );
   };

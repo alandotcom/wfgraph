@@ -26,11 +26,7 @@ import {
   WorkflowRepo,
 } from "#src/backend/services/workflows/repo";
 import { toWorkflowRunTarget } from "#src/backend/services/executions/run-rows";
-import { isLifecycleNode } from "@wfgraph/shared/graph/node-config";
-import {
-  isSerializedWorkflowGraph,
-  toWorkflowGraphData,
-} from "@wfgraph/shared/graph/graph";
+import { isSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import {
   connectionMatches,
   emptyLifecycleRules,
@@ -157,8 +153,14 @@ function lifecycleRulesFromPublishedGraph(
     return undefined;
   }
 
-  const lifecycle = toWorkflowGraphData(graph).nodes.find(isLifecycleNode);
-  return readLifecycleRules(lifecycle?.data.config) ?? emptyLifecycleRules;
+  for (const node of graph.nodes) {
+    if (node.attributes.data.type === "lifecycle") {
+      return (
+        readLifecycleRules(node.attributes.data.config) ?? emptyLifecycleRules
+      );
+    }
+  }
+  return emptyLifecycleRules;
 }
 
 /** The workflows this Event concerns, with the roles it holds in each. */

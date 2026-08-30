@@ -10,7 +10,6 @@ export {
   CONDITION_CONTEXT_ROOT,
   EVENT_CONTEXT_ROOT,
   EVENT_NAME_FIELD_PATH,
-  EVENT_CONNECTION_ID_FIELD_PATH,
   type ConditionFieldDefinition,
   type ConditionFieldType,
   type ConditionModel,

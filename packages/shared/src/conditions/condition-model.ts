@@ -27,13 +27,6 @@ export const EVENT_CONTEXT_ROOT = "event";
  */
 export const EVENT_NAME_FIELD_PATH = "$event.name";
 
-/**
- * The stored field path a rule names the Connection an integration Event
- * arrived on by. Host Events carry null here, the same way they carry no
- * Connection on the wire.
- */
-export const EVENT_CONNECTION_ID_FIELD_PATH = "$event.connectionId";
-
 export type ConditionFieldType = "timestamp" | "string" | "number" | "boolean";
 
 export type TimeUnit = "minutes" | "hours" | "days" | "weeks";

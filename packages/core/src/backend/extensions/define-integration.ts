@@ -15,7 +15,10 @@
 import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
 import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
 import type { IntegrationWebhook } from "#src/backend/extensions/integration-webhook";
-import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
+import {
+  assertDistinctListenerIds,
+  assertSourcesAreDistinguishable,
+} from "#src/backend/extensions/event-uniqueness";
 import type { ConfigOptionsProvider } from "#src/backend/extensions/config-options";
 import {
   type ActionConfigFieldFor,
@@ -399,8 +402,6 @@ function checkIntegrationEvents(integration: IntegrationDefinition): void {
   }
 
   const byName = new Map<string, AnyEventDefinition>();
-  const unfilteredBySource = new Map<string, string>();
-  const byListenerId = new Map<string, string>();
 
   for (const event of events) {
     const existing = byName.get(event.name);
@@ -416,26 +417,10 @@ function checkIntegrationEvents(integration: IntegrationDefinition): void {
         `Integration "${integration.type}" Event "${event.name}" arrives as "${event.source.event}", which is not this webhook's source "${webhook.source}".`
       );
     }
-
-    if (!event.source.when) {
-      const existingUnfiltered = unfilteredBySource.get(event.source.event);
-      if (existingUnfiltered) {
-        throw new Error(
-          `Events "${existingUnfiltered}" and "${event.name}" both arrive as "${event.source.event}" and neither narrows it with source.when, so every payload would be delivered as both. Give one of them a filter, or a source name of its own.`
-        );
-      }
-      unfilteredBySource.set(event.source.event, event.name);
-    }
-
-    const listenerId = toListenerFunctionId(event.name);
-    const existingId = byListenerId.get(listenerId);
-    if (existingId) {
-      throw new Error(
-        `Events "${existingId}" and "${event.name}" both name the Inngest function "${listenerId}". An Event's listener id is its name slugged, so two names differing only in punctuation collide; rename one.`
-      );
-    }
-    byListenerId.set(listenerId, event.name);
   }
+
+  assertSourcesAreDistinguishable(events);
+  assertDistinctListenerIds(events);
 }
 
 function assertOrdinaryDeclarationRecord(

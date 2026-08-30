@@ -3,7 +3,6 @@ import {
   type ConditionFieldDefinition,
   type ConditionModel,
   compileConditionModel,
-  EVENT_CONNECTION_ID_FIELD_PATH,
   EVENT_NAME_FIELD_PATH,
   createDefaultConditionModel,
   parseConditionModel,
@@ -298,34 +297,6 @@ describe("conditions", () => {
       expect(compiled.expression).toBe(
         '((event.name == "appointment.rescheduled"))'
       );
-    }
-  });
-
-  it("compiles a rule about the Connection to event.connectionId", () => {
-    const model: ConditionModel = {
-      version: 2,
-      groupLogic: "and",
-      groups: [
-        {
-          id: "group-1",
-          logic: "and",
-          conditions: [
-            {
-              id: "condition-1",
-              field: EVENT_CONNECTION_ID_FIELD_PATH,
-              fieldType: "string",
-              operator: "equals",
-              value: "conn_1",
-            },
-          ],
-        },
-      ],
-    };
-
-    const compiled = compileConditionModel(model);
-    expect(compiled.valid).toBe(true);
-    if (compiled.valid) {
-      expect(compiled.expression).toBe('((event.connectionId == "conn_1"))');
     }
   });
 
