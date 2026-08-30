@@ -71,7 +71,7 @@ function renderOverlay(
   return { onRun };
 }
 
-/** A published run of v7 in the given Published mode, which the sends band reads. */
+/** A published run of v7 in the given Published mode, which the sends line reads. */
 function publishedTarget(workflowMode: "live" | "test"): WorkflowRunTarget {
   return { graph: "published", publishedVersion: 7, workflowMode };
 }
@@ -87,47 +87,50 @@ describe("RunOverlay", () => {
 
     expect(screen.getByRole("heading", { name: "Run draft" })).toBeTruthy();
     expect(
-      screen.getByText("Runs the draft on this canvas with test recipients.")
+      screen.getByText("Runs the draft and sends to test recipients.")
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Run draft" })).toBeTruthy();
-    expect(screen.queryByText(/sends?:/)).toBeNull();
+    expect(screen.queryByText(/reaches? outside this workflow/)).toBeNull();
   });
 
   /**
-   * A live published run is the only run that reaches real recipients. The band
-   * counts the sends in the published graph, and the button names the
-   * consequence instead of the version number.
+   * A live published run is the only run that reaches real recipients, so it is
+   * the only one that counts what the version sends. The dialog wears the
+   * default style either way: the sentence carries the difference.
    */
-  it("states the sends a live published run makes", () => {
+  it("counts the steps a live published run sends outward", () => {
     renderOverlay({
       sends: { count: 3, integrations: ["Slack", "Resend"] },
       target: publishedTarget("live"),
     });
 
+    expect(screen.getByRole("heading", { name: "Run v7" })).toBeTruthy();
     expect(
-      screen.getByRole("heading", { name: "Run Published v7" })
+      screen.getByText("Runs v7 and sends to real recipients.")
     ).toBeTruthy();
-    expect(screen.getByText("3 sends: Slack, Resend")).toBeTruthy();
-    const confirm = screen.getByRole("button", {
-      name: "Send to real recipients",
-    });
-    expect(confirm.className).toContain("destructive");
+    expect(
+      screen.getByText("3 steps reach outside this workflow: Slack, Resend")
+    ).toBeTruthy();
+    // The default ink, so the dialog reads as a run rather than a deletion.
+    const confirm = screen.getByRole("button", { name: "Run v7" });
+    expect(confirm.className).toContain("bg-primary");
+    expect(confirm.className).not.toContain("bg-destructive");
   });
 
-  it("hides the sends band for a published run in Test Published mode", () => {
+  it("hides the sends line for a published run in Test Published mode", () => {
     renderOverlay({
       sends: { count: 3, integrations: ["Slack", "Resend"] },
       target: publishedTarget("test"),
     });
 
+    expect(screen.getByRole("heading", { name: "Run v7" })).toBeTruthy();
     expect(
-      screen.getByRole("heading", { name: "Run Published v7" })
+      screen.getByText("Runs v7 and sends to test recipients.")
     ).toBeTruthy();
     expect(
-      screen.getByText("Runs Published v7 with test recipients.")
-    ).toBeTruthy();
-    expect(screen.queryByText("3 sends: Slack, Resend")).toBeNull();
-    expect(screen.getByRole("button", { name: "Run v7 · Test" })).toBeTruthy();
+      screen.queryByText("3 steps reach outside this workflow: Slack, Resend")
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Run v7" })).toBeTruthy();
   });
 
   // A manual-only workflow has one way to start, so there is no choice to
@@ -138,10 +141,10 @@ describe("RunOverlay", () => {
       startEvents: [],
     });
 
-    expect(screen.queryByLabelText(/Which Event/)).toBeNull();
+    expect(screen.queryByLabelText("Event")).toBeNull();
     // With no select above it, the payload note cannot say "this Event".
     expect(
-      screen.getByText(/stands in for no Event has no declared field/)
+      screen.getByText(/This run has no Event, so there are no form fields/)
     ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Run draft" }));
@@ -191,7 +194,7 @@ describe("RunOverlay", () => {
   it("explains why a split graph accepts no Event-less run", () => {
     renderOverlay({ hasEventSplit: true });
 
-    expect(screen.getByText(/splits on the Event a run is on/)).toBeTruthy();
+    expect(screen.getByText(/This workflow has an Event Split/)).toBeTruthy();
   });
 
   // A manual-only graph hides the Event block. Mid-build, with a split and no
@@ -204,7 +207,7 @@ describe("RunOverlay", () => {
       startEvents: [],
     });
 
-    expect(screen.getByText(/splits on the Event a run is on/)).toBeTruthy();
+    expect(screen.getByText(/This workflow has an Event Split/)).toBeTruthy();
   });
 
   it("reports invalid JSON instead of sending it", () => {

@@ -130,7 +130,28 @@ describe("executeWorkflowRun", () => {
     );
 
     expect(success).toHaveBeenCalledExactlyOnceWith(
-      "Run draft superseded 2 runs for this entity and started a new one."
+      "Run draft started. 2 earlier runs for this entity were replaced."
+    );
+  });
+
+  // One replaced run reads in the singular, because the count is the whole
+  // point of the sentence.
+  it("counts a single replaced run in the singular", async () => {
+    const success = vi.spyOn(toast, "success");
+
+    await executeWorkflowRun(
+      baseParams({
+        nodes: [lifecycleNode("t")],
+        runLabel: "Run draft",
+        runWorkflow: vi.fn(async (): Promise<WorkflowExecuteResult> => ({
+          ...runningResult,
+          supersededExecutions: 1,
+        })),
+      })
+    );
+
+    expect(success).toHaveBeenCalledExactlyOnceWith(
+      "Run draft started. 1 earlier run for this entity was replaced."
     );
   });
 

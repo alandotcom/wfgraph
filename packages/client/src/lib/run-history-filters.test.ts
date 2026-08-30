@@ -25,6 +25,7 @@ function run(
     status: "completed",
     runMode: "live",
     versionKind: "published",
+    versionNumber: 7,
     startSource: "manual",
     startEventName: null,
     entityValue: null,
@@ -180,6 +181,7 @@ describe("filterRuns", () => {
         workflowId: "wf_1",
         workflowName: "Onboarding",
         versionKind: "draft_snapshot",
+        versionNumber: null,
       }),
     ];
 
@@ -213,6 +215,7 @@ describe("filterRuns", () => {
         workflowId: "wf_1",
         workflowName: "Onboarding",
         versionKind: "draft_snapshot",
+        versionNumber: null,
       }),
     ];
 
@@ -221,6 +224,24 @@ describe("filterRuns", () => {
         (row) => row.id
       )
     ).toEqual(["exec_4"]);
+  });
+
+  it("matches a free-text search for a version number against its Graph label", () => {
+    const withVersions = [
+      run({ id: "exec_5", versionNumber: 7 }),
+      run({ id: "exec_6", versionNumber: 12 }),
+      run({
+        id: "exec_7",
+        versionKind: "draft_snapshot",
+        versionNumber: null,
+      }),
+    ];
+
+    expect(
+      filterRuns(withVersions, { query: "v7", filters: [] }).map(
+        (row) => row.id
+      )
+    ).toEqual(["exec_5"]);
   });
 });
 

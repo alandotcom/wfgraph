@@ -4,7 +4,7 @@ import {
   type EffectLogger,
 } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
-import { InvalidInput } from "#src/backend/lib/effect/failures";
+import { Conflict, InvalidInput } from "#src/backend/lib/effect/failures";
 import { seamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
 import { annotateServiceSpan } from "#src/backend/lib/telemetry";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
@@ -160,6 +160,15 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
        * recipients.
        */
       graph?: "published" | "draft";
+      /**
+       * What the caller was shown when it offered this run: the published
+       * version's id and the workflow's Published mode. A published run
+       * carrying this is refused when either has moved since, so a run dialog
+       * left open across a publish or a mode change cannot start a run for a
+       * graph or a set of recipients the person never saw. A draft run ignores
+       * it, because the canvas is the graph the run reads.
+       */
+      expected?: { versionId: string; mode: WorkflowMode };
     }
   ) {
     const logger = yield* loggerFor(workflowId);
@@ -180,6 +189,33 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
             : Effect.void
         )
       );
+
+    // The staleness gate comes before every other check, because a request
+    // built against a version or a mode that has since moved is about a run
+    // nobody asked for. It leaves no row and writes no audit line: the caller
+    // reads the workflow back and decides again on what is published now.
+    if (
+      source === "published" &&
+      body.expected &&
+      (body.expected.versionId !== preflight.workflowVersionId ||
+        body.expected.mode !== workflow.mode)
+    ) {
+      yield* logger.info("Refused a stale published run", {
+        request: {
+          expectedVersionId: body.expected.versionId,
+          expectedMode: body.expected.mode,
+        },
+        run: { versionId: preflight.workflowVersionId, mode: workflow.mode },
+      });
+      // The sentence names only what the server knows. This procedure is
+      // public, so it answers callers that never had a run dialog to close,
+      // and Published mode is a workflow setting rather than a property of the
+      // version beside it.
+      return yield* new Conflict({
+        error:
+          "The published version or the Published mode changed. Start the run again.",
+      });
+    }
 
     const payload = body.input ?? {};
     // A draft run travels a graph nobody has reviewed, so it uses test

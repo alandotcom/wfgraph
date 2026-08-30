@@ -25,7 +25,6 @@ function commandInput(
       isExecuting: false,
       isPreflighting: false,
       isGenerating: false,
-      isSaving: false,
       workflowMode: "live",
       publishedVersion: 7,
       ...overrides,
@@ -57,7 +56,6 @@ function commandInput(
       save: vi.fn(),
       showChanges: vi.fn(),
       showRuns: vi.fn(),
-      switchMode: vi.fn(),
       undo: vi.fn(),
     },
   };
@@ -110,12 +108,14 @@ describe("workflowCommands", () => {
     expect(input.callbacks.groupSelection).toHaveBeenCalledOnce();
   });
 
-  it("omits mode switching until a workflow is available", () => {
-    const commands = workflowCommands(
-      commandInput({ currentWorkflowId: null })
-    );
+  // Published mode is a setting, and the status strip is where it is read and
+  // written. A command that flipped it would be a second writer.
+  it("offers no command that changes Published mode", () => {
+    const commands = workflowCommands(commandInput());
 
-    expect(commands.map((command) => command.id)).not.toContain("mode");
+    expect(
+      commands.some((command) => command.label.includes("Published mode"))
+    ).toBe(false);
   });
 
   it("derives one disabled policy for graph commands", () => {
@@ -132,31 +132,16 @@ describe("workflowCommands", () => {
     );
   });
 
-  it("switches to the opposite mode and names the mode it leaves", () => {
-    const input = commandInput({ workflowMode: "test" });
-    const mode = workflowCommands(input).find(
-      (command) => command.id === "mode"
-    );
-
-    expect(mode?.label).toBe("Set published mode to Live");
-    expect(mode?.detail).toBe("Currently Test, test recipients");
-    mode?.execute();
-    expect(input.callbacks.switchMode).toHaveBeenCalledWith("live");
-  });
-
   /**
    * `consequential` marks the rows that reach real recipients. A surface that
-   * highlights a row on its own reads this flag first. Two rows carry it: the
-   * command that switches to Live, and the run of a version already in Live.
+   * highlights a row on its own reads this flag first. One row carries it: the
+   * run of a version already in Live.
    */
-  it("marks only the two commands that reach real recipients", () => {
+  it("marks only the command that reaches real recipients", () => {
     const live = workflowCommands(commandInput({ workflowMode: "live" }));
     expect(
       live.find((command) => command.id === "run-published")?.consequential
     ).toBe(true);
-    expect(live.find((command) => command.id === "mode")?.consequential).toBe(
-      false
-    );
     expect(live.find((command) => command.id === "run-published")?.detail).toBe(
       "Real recipients"
     );
@@ -165,12 +150,28 @@ describe("workflowCommands", () => {
     expect(
       test.find((command) => command.id === "run-published")?.consequential
     ).toBe(false);
-    expect(test.find((command) => command.id === "mode")?.consequential).toBe(
-      true
+    expect(test.find((command) => command.id === "run-published")?.detail).toBe(
+      "Test recipients"
     );
     expect(test.find((command) => command.id === "save")?.consequential).toBe(
       undefined
     );
+  });
+
+  // The toolbar's run control already offers both runs, so the Actions menu
+  // skips them and the palette is where they are searched for by name.
+  it("marks both run commands as belonging to the palette alone", () => {
+    const commands = workflowCommands(commandInput());
+
+    expect(
+      commands.find((command) => command.id === "run-draft")?.paletteOnly
+    ).toBe(true);
+    expect(
+      commands.find((command) => command.id === "run-published")?.paletteOnly
+    ).toBe(true);
+    expect(
+      commands.find((command) => command.id === "publish")?.paletteOnly
+    ).toBe(undefined);
   });
 
   // Nothing is published, so the published run reaches nobody.
@@ -194,6 +195,7 @@ describe("workflowCommands", () => {
       (command) => command.id === "run-published"
     );
 
+    expect(draft?.detail).toBe("Test recipients");
     expect(draft?.label).toBe("Run draft");
     expect(published?.label).toBe("Run v7 · Test");
 
@@ -203,9 +205,9 @@ describe("workflowCommands", () => {
     expect(input.callbacks.runPublished).toHaveBeenCalledOnce();
   });
 
-  // The Actions menu and the palette list both commands flat, with no "Run
-  // options" heading, so a disabled row must still name an action. The reason
-  // goes in the detail line underneath.
+  // The palette lists both commands flat, with no "Run options" heading, so a
+  // disabled row must still name an action. The reason goes in the detail line
+  // underneath.
   it("keeps Run draft available before the first publish and explains why the other is not", () => {
     const commands = workflowCommands(
       commandInput({ publishedVersion: undefined })

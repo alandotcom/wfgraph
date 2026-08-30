@@ -189,7 +189,8 @@ _Avoid_: workflow (a workflow is the definition; an Execution is one run of it)
 **Draft run**:
 One run of the graph on the canvas, started by the Run draft command. It freezes
 that graph as a draft snapshot and pins itself to the snapshot, so a workflow
-that has never been published can still run. A Draft run always reaches test
+that has never been published can still run. Repeated runs of an unchanged
+canvas share one snapshot, from the second run onward. A Draft run always reaches test
 recipients, whatever the Published mode is, because nobody has reviewed the
 graph it executes.
 _Avoid_: current graph, working copy, unsaved changes (the canvas graph is the

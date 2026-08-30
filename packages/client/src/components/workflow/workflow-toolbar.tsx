@@ -145,6 +145,9 @@ function WorkflowActionsMenu({
       >
         <MoreHorizontal className="size-4" />
       </DropdownMenuTrigger>
+      {/* This trigger is the overflow button in the trailing group, which sits
+          against the shell's right edge. A 14rem menu aligned to the end of it
+          stays on screen at phone width without a collision shift. */}
       <DropdownMenuContent align="end" className="w-56">
         {/* One view is not a choice: the reader is already looking at it, and a
             radio group of one row offers nothing to move to. */}

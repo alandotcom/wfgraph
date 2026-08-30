@@ -160,26 +160,32 @@ export function runSends(input: {
 }
 
 /**
- * Renders the sends as a phrase: "3 sends: Slack, Resend". The confirmation for
- * a live published run shows this, so it names the count and the integrations
- * and never a recipient.
+ * Renders the sends as a phrase: "2 steps reach outside this workflow: Linear,
+ * Clerk". A counted step is any step with a side effect, which covers filing a
+ * ticket and deleting a user as well as sending a message, so the phrase names
+ * the count and the integrations rather than a medium or a recipient. The run
+ * dialog hides the line when the count is 0, so the zero phrase is a fallback
+ * for a caller that renders it anyway.
  */
 export function runSendsLabel(sends: RunSends): string {
   if (sends.count === 0) {
-    return "No sends";
+    return "No steps reach outside this workflow";
   }
-  const counted = sends.count === 1 ? "1 send" : `${sends.count} sends`;
+  const counted =
+    sends.count === 1
+      ? "1 step reaches outside this workflow"
+      : `${sends.count} steps reach outside this workflow`;
   return sends.integrations.length === 0
     ? counted
     : `${counted}: ${sends.integrations.join(", ")}`;
 }
 
 /**
- * The run overlay's heading, opening sentence, and confirm button.
+ * The run dialog's heading, opening sentence, and confirm button.
  *
- * A published heading names the version in prose ("Run Published v7"). Its
- * confirm button repeats the command label, except in live mode, where the
- * button names the consequence instead.
+ * The heading and the button both repeat the command that opened the dialog.
+ * The sentence is where the recipients are named, so the button never has to
+ * carry them.
  */
 export function runOverlayCopy(target: WorkflowRunTarget): {
   title: string;
@@ -187,26 +193,23 @@ export function runOverlayCopy(target: WorkflowRunTarget): {
   confirmLabel: string;
 } {
   if (target.graph === "draft") {
-    const command = runCommandLabel(target);
     return {
-      title: command,
-      description: "Runs the draft on this canvas with test recipients.",
-      confirmLabel: command,
+      title: "Run draft",
+      description: "Runs the draft and sends to test recipients.",
+      confirmLabel: "Run draft",
     };
   }
 
-  const title = `Run Published v${target.publishedVersion}`;
-  if (target.workflowMode === "live") {
-    return {
-      title,
-      description: `Runs Published v${target.publishedVersion} and sends to real recipients.`,
-      confirmLabel: "Send to real recipients",
-    };
-  }
+  // "Run v5" rather than the full command label: the dialog confirms one
+  // version, and its sentence already says which recipients that mode reaches.
+  const command = `Run v${target.publishedVersion}`;
   return {
-    title,
-    description: `Runs Published v${target.publishedVersion} with test recipients.`,
-    confirmLabel: runCommandLabel(target),
+    title: command,
+    description:
+      target.workflowMode === "live"
+        ? `Runs v${target.publishedVersion} and sends to real recipients.`
+        : `Runs v${target.publishedVersion} and sends to test recipients.`,
+    confirmLabel: command,
   };
 }
 

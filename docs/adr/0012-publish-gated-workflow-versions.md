@@ -196,7 +196,9 @@ Execution. A start the lifecycle gates turn away therefore leaves nothing
 behind, whether it fails on `manual_start_not_allowed`, `start_event_required`,
 an unknown or refused Event, or a concurrency `not_started`. `freezeDraftSnapshot`
 then returns an existing snapshot holding this exact graph and catalog
-fingerprint where one exists, so repeated clicks on an unchanged draft share one
-row. One row per distinct draft graph ever run remains unbounded. A sweep would
+fingerprint, but only where an Execution already references that snapshot, so
+repeated clicks on an unchanged draft share one row and no request is ever
+handed a row a concurrent request can still release. One row per distinct draft
+graph ever run remains unbounded. A sweep would
 have to be selective, because `workflow_executions.workflow_version_id` cascades
 and deleting a snapshot would take the run history that pinned it.

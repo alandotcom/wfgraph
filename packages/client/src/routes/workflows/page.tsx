@@ -8,8 +8,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { Circle, MoreHorizontalIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
-import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { getClientLogger } from "#src/lib/logger";
 import {
   AlertDialog,
@@ -49,6 +47,7 @@ import {
   refreshWorkflowList,
 } from "#src/lib/rpc-query";
 import type { WorkflowMode } from "#src/lib/workflow-graph-types";
+import { publishedModeWord } from "#src/lib/workflow-run-labels";
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
 
 type GlobalExecutionItem = WorkflowExecutionsGlobalResult["items"][number];
@@ -109,7 +108,6 @@ function pluralize(count: number, singular: string, plural: string): string {
 export default function WorkflowsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { push } = useOverlay();
   const [selectedWorkflowIds, setSelectedWorkflowIds] = useState<Set<string>>(
     new Set()
   );
@@ -225,49 +223,34 @@ export default function WorkflowsPage() {
   // view that a different id would clear.
   const setPublishedMode = useMutation(
     orpcQuery.workflow.update.mutationOptions({
-      // The "Sends to" cell in this table shows the setting being written, and
-      // the table is mounted while the write lands. Refetch the list rather
-      // than only marking it stale.
+      // The "Published mode" cell in this table shows the setting being
+      // written, and the table is mounted while the write lands. Refetch the
+      // list rather than only marking it stale.
       onSuccess: async (_payload, { mode }) => {
         await refreshWorkflowList(queryClient);
-        toast.success(
-          mode === "test"
-            ? "Published mode set to Test"
-            : "Published mode set to Live"
-        );
+        // `update` can write other fields, so its `mode` is optional. This page
+        // only ever writes the mode, and a call without one has nothing to say.
+        if (mode !== undefined) {
+          toast.success(`Published mode set to ${publishedModeWord(mode)}`);
+        }
       },
       meta: { errorMessage: "Failed to set Published mode" },
     })
   );
 
   const writePublishedMode = setPublishedMode.mutate;
-  // Switching to Live confirms first, because it is the moment a workflow
-  // starts sending to real people. Switching to Test writes on one press: it
-  // can only narrow who a run reaches. The dashboard's list payload carries no
-  // version number, so the question names the published version in general.
+  // Published mode is a setting, so the menu item writes it on one click. A
+  // person can switch it back from the same menu, and the toast says which
+  // value it now holds.
   const changePublishedMode = useCallback(
     (workflow: WorkflowSummaryPayload, mode: WorkflowMode) => {
       if (workflow.mode === mode) {
         return;
       }
 
-      if (mode === "test") {
-        writePublishedMode({ workflowId: workflow.id, mode: "test" });
-        return;
-      }
-
-      push(ConfirmOverlay, {
-        title: `Send real messages from ${workflow.name}?`,
-        message:
-          "Events and manual runs of the published version will reach real recipients.",
-        confirmLabel: "Send real messages",
-        destructive: true,
-        onConfirm: () => {
-          writePublishedMode({ workflowId: workflow.id, mode: "live" });
-        },
-      });
+      writePublishedMode({ workflowId: workflow.id, mode });
     },
-    [push, writePublishedMode]
+    [writePublishedMode]
   );
 
   const toggleSelectAll = (checked: boolean) => {
@@ -435,7 +418,7 @@ export default function WorkflowsPage() {
             </th>
             <th className="px-2 py-2">Name</th>
             <th className="px-2 py-2">State</th>
-            <th className="px-2 py-2">Sends to</th>
+            <th className="px-2 py-2">Published mode</th>
             <th className="px-2 py-2">Updated</th>
             <th className="w-10" />
           </tr>
@@ -445,24 +428,22 @@ export default function WorkflowsPage() {
             const isSelected = selectedWorkflowIds.has(workflow.id);
             const canMutate = workflow.isOwner !== false;
             // Paused or Active is a neutral fact, marked by a green dot when
-            // the workflow is active. Signal Amber is reserved for Test,
-            // because this row shows both facts at once, three columns apart at
-            // the same 12px.
+            // the workflow is active. Amber belongs to the Published mode cell
+            // beside it, so the row's two dots never share a color.
             const stateDotClass = workflow.isPaused
               ? "text-muted-foreground"
               : "text-success fill-current";
             const stateLabel = workflow.isPaused ? "Paused" : "Active";
-            const isTestOnly = workflow.mode === "test";
-            // The dot reuses the status strip's Published mode vocabulary,
-            // filled when Published mode is Test and outlined when it is Live.
-            // The signal colour sits on the border and the label instead of a
-            // fill behind them. Each light token clears 4.5:1 as text on Paper
-            // and falls below it on its own 10% tint, which is under the floor
-            // at Caption size.
-            const sendsToClass = isTestOnly
-              ? "border-warning/40 text-warning"
-              : "border-border text-muted-foreground";
-            const sendsToLabel = isTestOnly ? "Test only" : "Real people";
+            const isTestMode = workflow.mode === "test";
+            // The cell reads the way the status strip does: a filled dot and
+            // the word in Amber for Test, an outline dot and the muted
+            // foreground for Live. Amber sits on the dot and the word rather
+            // than behind them, because each light token clears 4.5:1 as text
+            // on Paper and falls below it on its own 10% tint.
+            const publishedModeClass = isTestMode
+              ? "text-warning"
+              : "text-muted-foreground";
+            const publishedModeLabel = publishedModeWord(workflow.mode);
             const toggleAction = workflow.isPaused ? "resume" : "pause";
             const toggleActionLabel = workflow.isPaused ? "Resume" : "Pause";
 
@@ -495,8 +476,6 @@ export default function WorkflowsPage() {
                   </div>
                 </td>
                 <td className="px-2 py-3">
-                  {/* A dot and a word, with no pill. The row's one bordered
-                      chip is "Sends to", the cell an operator scans for. */}
                   <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-medium text-foreground text-xs">
                     <Circle
                       aria-hidden
@@ -507,13 +486,13 @@ export default function WorkflowsPage() {
                 </td>
                 <td className="px-2 py-3">
                   <span
-                    className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded border px-2 py-0.5 font-medium text-xs transition-colors duration-200 ${sendsToClass}`}
+                    className={`inline-flex items-center gap-1.5 whitespace-nowrap font-medium text-xs transition-colors duration-200 ${publishedModeClass}`}
                   >
                     <Circle
                       aria-hidden
-                      className={`size-2.5 ${isTestOnly ? "fill-current" : ""}`}
+                      className={`size-2.5 ${isTestMode ? "fill-current" : ""}`}
                     />
-                    {sendsToLabel}
+                    {publishedModeLabel}
                   </span>
                 </td>
                 <td className="px-2 py-3 text-muted-foreground text-xs">
@@ -533,13 +512,13 @@ export default function WorkflowsPage() {
                         onClick={() => {
                           changePublishedMode(
                             workflow,
-                            isTestOnly ? "live" : "test"
+                            isTestMode ? "live" : "test"
                           );
                         }}
                       >
-                        {isTestOnly
-                          ? "Set published mode to Live"
-                          : "Set published mode to Test"}
+                        {isTestMode
+                          ? "Set Published mode to Live"
+                          : "Set Published mode to Test"}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => {

@@ -484,12 +484,24 @@ export function makeSqliteWorkflowRepo(
       store.write((database) => {
         // The column holds `encodeGraph` output, so an identical graph encodes
         // to identical text and a plain equality finds it.
+        //
+        // The EXISTS clause is what makes the reuse safe against a concurrent
+        // start. A snapshot no Execution references yet is private to the
+        // request that inserted it, and that request can still release it if a
+        // later gate refuses the start. Reusing such a row would let this run
+        // pin an id the other request is about to delete. A referenced row can
+        // never be deleted, because `deleteUnreferencedDraftSnapshot` refuses
+        // it.
         const graph = encodeGraph(input.graph);
         const existing = database
           .prepare(
             `SELECT * FROM workflow_versions
              WHERE workflow_id = ? AND kind = 'draft_snapshot'
                AND catalog_fingerprint = ? AND graph = ?
+               AND EXISTS (
+                 SELECT 1 FROM workflow_executions
+                 WHERE workflow_version_id = workflow_versions.id
+               )
              ORDER BY published_at DESC LIMIT 1`
           )
           .get(input.workflowId, input.catalogFingerprint, graph);

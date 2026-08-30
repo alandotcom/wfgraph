@@ -161,9 +161,9 @@ const PUBLISHED_MODES = ["live", "test"] as const;
  * reads "Published version 5". Test uses the warning tone and a filled dot;
  * Live uses an outline, so the mode does not rely on color alone.
  *
- * `useSetPublishedMode` performs the change, and it confirms before a workflow
- * starts sending to real people. A viewer who does not own the workflow sees
- * the same control with no menu, and a tooltip gives the reason.
+ * `useSetPublishedMode` performs the change, on one press in either direction.
+ * A viewer who does not own the workflow sees the same control with no menu,
+ * and a tooltip gives the reason.
  */
 function PublishedModeControl({
   publishedVersion,
@@ -205,15 +205,18 @@ function PublishedModeControl({
               className={faceClass}
               disabled
               size="sm"
-              title="Owner only"
               variant="ghost"
             >
               {dot}
               {label}
             </Button>
           </TooltipTrigger>
+          {/* The tooltip is the only surface for this sentence. A `title` beside
+              it paints the browser's own tooltip on top of this one, and the
+              face reads "Live" or "Test" alone, so the sentence names the
+              setting the two words belong to. */}
           <TooltipContent>
-            Only this workflow&apos;s owner can change Published mode
+            Only the workflow's owner can change Published mode.
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

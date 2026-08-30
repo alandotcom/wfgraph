@@ -128,7 +128,6 @@ function baseActions(): WorkflowToolbarActions {
     isPreflighting: false,
     publishReview: null,
     setPublishReviewOpen: vi.fn(),
-    handleSetWorkflowMode: vi.fn(async () => {}),
   };
 }
 

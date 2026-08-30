@@ -379,6 +379,7 @@ export const rpcRouter = rpc.router({
           input: input.input,
           eventName: input.eventName,
           graph: input.graph,
+          expected: input.expected,
         })
       )
     ),

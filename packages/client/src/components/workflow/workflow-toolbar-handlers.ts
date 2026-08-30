@@ -17,7 +17,6 @@ import {
 import { WorkflowIssuesOverlay } from "#src/components/overlays/workflow-issues-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useDeleteWorkflow } from "#src/hooks/use-delete-workflow";
-import { useSetPublishedMode } from "#src/hooks/use-set-published-mode";
 import { useGoToStep } from "#src/hooks/use-workflow-issues";
 import { useDomEvent } from "#src/hooks/effects";
 import {
@@ -131,6 +130,29 @@ function publicationConflictCode(
   return isPublicationConflictCode(code) ? code : undefined;
 }
 
+/** The status an oRPC conflict arrives as, which `ApiError` carries. */
+const CONFLICT_STATUS = 409;
+
+/**
+ * Whether a refused run is the one the staleness gate turned away.
+ *
+ * A published run repeats the version id and the Published mode the run dialog
+ * displayed, and the server refuses it with a conflict when either has moved
+ * since. A run that sent no `expected` cannot be refused that way, and the
+ * staleness gate is the only conflict `workflow.execute` answers with, so the
+ * pair identifies it without reading the message.
+ */
+function isStalePublishedRun(
+  error: unknown,
+  variables: { expected?: unknown }
+): boolean {
+  return (
+    variables.expected !== undefined &&
+    error instanceof ApiError &&
+    error.status === CONFLICT_STATUS
+  );
+}
+
 /** One toast id, so a held Cmd+Enter replaces the notice instead of stacking. */
 const PREFLIGHT_TOAST_ID = "workflow-preflight-busy";
 
@@ -228,6 +250,25 @@ function useWorkflowHandlers({
   const setExecutionOverlay = useSetAtom(executionOverlayGraphAtom);
   const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
   const enterRuns = useSetAtom(enterRunsWorkspaceAtom);
+  const setCurrentWorkflowMode = useSetAtom(currentWorkflowModeAtom);
+
+  /**
+   * Re-read the workflow after the server refused a run as stale.
+   *
+   * The toolbar builds `expected` from the publication badge's cache entry and
+   * from `currentWorkflowModeAtom`, so both have to move before the next press
+   * sends anything different. Invalidating the entry repaints the badge, and
+   * the read that follows returns what that refetch produced, or fetches once
+   * itself when nothing was observing the entry.
+   */
+  const rereadPublishedState = async (workflowId: string) => {
+    await refreshWorkflowPublication(queryClient, workflowId);
+    const workflow = await queryClient.fetchQuery(
+      orpcQuery.workflow.getById.queryOptions({ input: { workflowId } })
+    );
+    setCurrentWorkflowMode(workflow.mode);
+  };
+
   // No errorMessage: a rejected run carries a server message worth reading, and
   // the mutation cache falls back to it. Every other outcome arrives as a
   // successful response with a status on it, which executeWorkflowRun reads.
@@ -236,6 +277,19 @@ function useWorkflowHandlers({
       // A started run belongs in both run lists, and the dashboard's is the one
       // nobody is looking at when this fires.
       onSuccess: () => refreshRunHistory(queryClient),
+      // A stale refusal leaves the toolbar holding the version and the mode
+      // that produced it, so pressing Run again would send the same request
+      // and be refused the same way. Read the workflow back so the next press
+      // offers what is published now. A read that fails leaves the toast the
+      // mutation cache is about to show, and the next page load seeds the
+      // state from the route loader.
+      onError: (error, variables) => {
+        if (isStalePublishedRun(error, variables)) {
+          void rereadPublishedState(variables.workflowId).catch(
+            () => undefined
+          );
+        }
+      },
     })
   );
 
@@ -289,6 +343,18 @@ function useWorkflowHandlers({
           ...(request.eventName ? { eventName: request.eventName } : {}),
           // An absent field means the published graph, on the wire and in the UI.
           ...(target.graph === "draft" ? { graph: "draft" as const } : {}),
+          // What the run dialog displayed. The server refuses the run when the
+          // published version or the Published mode has moved since, so a
+          // dialog left open across a publish or a mode change cannot start a
+          // run for a graph or a set of recipients nobody saw.
+          ...(target.graph === "published" && publishedVersionId
+            ? {
+                expected: {
+                  versionId: publishedVersionId,
+                  mode: target.workflowMode,
+                },
+              }
+            : {}),
         }),
       nodes,
       setNodeStatuses,
@@ -856,11 +922,6 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     );
   };
 
-  // `useSetPublishedMode` owns the write, the toast and the confirmation, so
-  // the command palette and the Actions menu get the switch-to-live
-  // confirmation by calling this hook.
-  const handleSetWorkflowMode = useSetPublishedMode();
-
   return {
     handleSave,
     handleExecute,
@@ -889,7 +950,6 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
         }
       }
     },
-    handleSetWorkflowMode,
   };
 }
 

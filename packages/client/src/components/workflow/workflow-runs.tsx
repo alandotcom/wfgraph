@@ -35,7 +35,7 @@ const RUN_POLL_MS = 2000;
 const EXECUTIONS_PAGE_CAP = 50;
 
 const LEFT_THE_LIST_NOTICE =
-  "This run has left the runs list, so what it shows stops here. A newer start supersedes the runs going for the same entity, and the list holds the newest 50.";
+  "This run is no longer in the runs list. The list shows the newest 50 runs, and a newer start replaces runs in progress for the same entity.";
 
 const workflowRouteApi = getRouteApi("/workflows/$workflowId");
 

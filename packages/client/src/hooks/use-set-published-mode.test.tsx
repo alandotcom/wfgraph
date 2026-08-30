@@ -1,17 +1,15 @@
 /**
- * Covers what the hook adds to the write it wraps. Switching to Live confirms
- * first and names the version the mode governs. Switching to Test writes on one
- * press, because it can only narrow who a run reaches.
+ * Covers what the hook adds to the write it wraps: one press in either
+ * direction, a toast naming the mode it landed in, and no write at all when the
+ * workflow is already in that mode.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
+import { toast } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { OverlayContainer } from "#src/components/overlays/overlay-container";
-import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { useSetPublishedMode } from "#src/hooks/use-set-published-mode";
-import { orpcQuery } from "#src/lib/rpc-query";
 import type { WorkflowMode } from "#src/lib/workflow-graph-types";
 import { savedWorkflow } from "#src/lib/workflow-save-test-support";
 import {
@@ -37,7 +35,6 @@ function ModeProbe({ mode }: { mode: WorkflowMode }) {
 function renderProbe(options: {
   ask: WorkflowMode;
   currentMode?: WorkflowMode;
-  publishedVersion?: number;
 }) {
   const store = createStore();
   const update = vi.fn(async (_workflowId: string, _payload: unknown) => ({
@@ -53,30 +50,13 @@ function renderProbe(options: {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  // The confirmation names the published version. The hook reads it from the
-  // same cache entry the status strip's badge uses.
-  queryClient.setQueryData(
-    orpcQuery.workflow.getById.queryKey({ input: { workflowId: WORKFLOW_ID } }),
-    {
-      ...savedWorkflow(WORKFLOW_ID),
-      ...(options.publishedVersion === undefined
-        ? {}
-        : {
-            publishedVersionId: `version_${options.publishedVersion}`,
-            publishedVersion: options.publishedVersion,
-          }),
-    }
-  );
 
   return {
     update,
     ...render(
       <JotaiProvider store={store}>
         <QueryClientProvider client={queryClient}>
-          <OverlayProvider>
-            <ModeProbe mode={options.ask} />
-            <OverlayContainer />
-          </OverlayProvider>
+          <ModeProbe mode={options.ask} />
         </QueryClientProvider>
       </JotaiProvider>
     ),
@@ -89,7 +69,8 @@ afterEach(() => {
 
 describe("useSetPublishedMode", () => {
   it("sets Test on one press", async () => {
-    const { getByRole, queryByRole, update } = renderProbe({
+    const success = vi.spyOn(toast, "success");
+    const { getByRole, update } = renderProbe({
       ask: "test",
       currentMode: "live",
     });
@@ -99,58 +80,31 @@ describe("useSetPublishedMode", () => {
     await waitFor(() => {
       expect(update).toHaveBeenCalledWith(WORKFLOW_ID, { mode: "test" });
     });
-    expect(queryByRole("button", { name: "Send real messages" })).toBeNull();
+    expect(success).toHaveBeenCalledWith("Published mode set to Test");
   });
 
-  it("asks before a workflow starts sending to real people", async () => {
-    const { findByText, getByRole, update } = renderProbe({
-      ask: "live",
-      publishedVersion: 5,
-    });
+  // The mode is a setting, and the status strip states it at all times, so
+  // turning it on takes the same single press as turning it off.
+  it("sets Live on one press", async () => {
+    const success = vi.spyOn(toast, "success");
+    const { getByRole, update } = renderProbe({ ask: "live" });
 
     fireEvent.click(getByRole("button", { name: "Ask for live" }));
-
-    expect(
-      await findByText("Send real messages from Appointment reminders?")
-    ).toBeTruthy();
-    expect(
-      await findByText(
-        "Events and manual runs of Published v5 will reach real recipients."
-      )
-    ).toBeTruthy();
-    // Showing the confirmation writes nothing on its own.
-    expect(update).not.toHaveBeenCalled();
-
-    fireEvent.click(getByRole("button", { name: "Send real messages" }));
 
     await waitFor(() => {
       expect(update).toHaveBeenCalledWith(WORKFLOW_ID, { mode: "live" });
     });
+    expect(success).toHaveBeenCalledWith("Published mode set to Live");
   });
 
-  // Nothing is published yet, so the confirmation names the published version
-  // in general instead of a number.
-  it("names no version before the first publish", async () => {
-    const { findByText, getByRole } = renderProbe({ ask: "live" });
-
-    fireEvent.click(getByRole("button", { name: "Ask for live" }));
-
-    expect(
-      await findByText(
-        "Events and manual runs of the published version will reach real recipients."
-      )
-    ).toBeTruthy();
-  });
-
-  it("writes nothing when the workflow is already in the mode asked for", async () => {
-    const { getByRole, queryByRole, update } = renderProbe({
+  it("writes nothing when the workflow is already in the mode asked for", () => {
+    const { getByRole, update } = renderProbe({
       ask: "live",
       currentMode: "live",
     });
 
     fireEvent.click(getByRole("button", { name: "Ask for live" }));
 
-    expect(queryByRole("button", { name: "Send real messages" })).toBeNull();
     expect(update).not.toHaveBeenCalled();
   });
 });

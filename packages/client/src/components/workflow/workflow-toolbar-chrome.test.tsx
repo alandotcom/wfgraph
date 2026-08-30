@@ -482,8 +482,8 @@ describe("WorkflowToolbarChrome", () => {
 });
 
 describe("ToolbarActions menu", () => {
-  it("names every action it offers, and offers the mode it is not in", async () => {
-    const { findByRole, getByRole } = renderChrome(ToolbarActions);
+  it("names every action it offers, and leaves the run commands to the toolbar", async () => {
+    const { findByRole, getByRole, queryByRole } = renderChrome(ToolbarActions);
 
     // Base UI opens a menu on the pointer going down, not on the click that
     // follows it, so a bare `click` leaves the popup closed.
@@ -496,10 +496,7 @@ describe("ToolbarActions menu", () => {
     // exists: the shortcuts are the item's promise, not decoration.
     for (const label of [
       /^Add step/,
-      /^Run draft/,
-      // The row sits flat beside "Run draft" with no heading over the pair, so
-      // it names its own action and prints the disabled reason underneath.
-      /^Run published version.*Nothing published yet/,
+      /^Save workflow/,
       /^Undo/,
       /^Redo/,
       /^Tidy layout/,
@@ -507,10 +504,11 @@ describe("ToolbarActions menu", () => {
     ]) {
       expect(getByRole("menuitem", { name: label })).toBeTruthy();
     }
-    // Live is the mode `baseState` is in, so the offer is the other one.
-    expect(
-      getByRole("menuitem", { name: /^Set published mode to Test/ })
-    ).toBeTruthy();
+    // The run control sits a few pixels away in the same bar, so the menu does
+    // not repeat it. The palette is where a run is searched for by name.
+    expect(queryByRole("menuitem", { name: /^Run/ })).toBeNull();
+    // Published mode is the status strip's setting, and no menu writes it.
+    expect(queryByRole("menuitem", { name: /Published mode/ })).toBeNull();
   });
 
   it("renders every canvas command through the keyboard submenu", async () => {

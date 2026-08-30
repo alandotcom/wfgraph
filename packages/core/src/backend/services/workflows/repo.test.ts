@@ -488,6 +488,17 @@ describe("freezeDraftSnapshot", () => {
     expect(statements[0]?.query).toContain('"graph" = $4');
   });
 
+  // A snapshot no Execution references yet belongs to the request that inserted
+  // it, which can still release it. Reusing one would let this run pin an id
+  // that request is about to delete, so the lookup asks for a referenced row.
+  it("looks up only a snapshot an execution already references", async () => {
+    const { statements, snapshot } = run("ver_earlier");
+    await snapshot;
+
+    expect(statements[0]?.query).toContain("exists");
+    expect(statements[0]?.query).toContain('"workflow_executions"');
+  });
+
   // The publication pointer and the Event subscription index both describe the
   // published graph. A snapshot that changed either one would let Events start
   // an unpublished graph.

@@ -398,13 +398,13 @@ describe("the command palette", () => {
   });
 
   /**
-   * A published workflow in Test Published mode, where the switch to Live is
-   * the only command that reaches real recipients.
+   * A published workflow in Live Published mode, where the run of that version
+   * is the one command that reaches real recipients.
    */
-  function publishedInTestMode() {
+  function publishedInLiveMode() {
     return renderChrome(ToolbarActions, {
       state: {
-        workflowMode: "test",
+        workflowMode: "live",
         publication: {
           isPublished: true,
           hasUnpublishedChanges: true,
@@ -422,17 +422,16 @@ describe("the command palette", () => {
    * automatic highlight lands on the first of those.
    */
   it("places the automatic highlight past a row that sends", async () => {
-    const rendered = publishedInTestMode();
+    const rendered = publishedInLiveMode();
     const input = await openedPalette(rendered);
 
-    fireEvent.change(input, { target: { value: "live" } });
+    // Both run commands carry "trigger", and nothing else does.
+    fireEvent.change(input, { target: { value: "trigger" } });
 
-    const run = rendered.getByRole("option", { name: /^Run v5 · Test/ });
-    const toLive = rendered.getByRole("option", {
-      name: /^Set published mode to Live/,
-    });
-    expect(run.hasAttribute("data-highlighted")).toBe(true);
-    expect(toLive.hasAttribute("data-highlighted")).toBe(false);
+    const draft = rendered.getByRole("option", { name: /^Run draft/ });
+    const live = rendered.getByRole("option", { name: /^Run v5 · Live/ });
+    expect(draft.hasAttribute("data-highlighted")).toBe(true);
+    expect(live.hasAttribute("data-highlighted")).toBe(false);
   });
 
   /**
@@ -442,33 +441,29 @@ describe("the command palette", () => {
    * arrow key arms it.
    */
   it("leaves a row that sends unarmed until an arrow key arms it", async () => {
-    const rendered = publishedInTestMode();
+    const rendered = publishedInLiveMode();
     const input = await openedPalette(rendered);
 
-    fireEvent.change(input, { target: { value: "recipients" } });
+    fireEvent.change(input, { target: { value: "published version" } });
 
     expect(rendered.getAllByRole("option")).toHaveLength(1);
-    const toLive = rendered.getByRole("option", {
-      name: /^Set published mode to Live/,
-    });
-    expect(toLive.className).not.toContain("data-highlighted:");
+    const live = rendered.getByRole("option", { name: /^Run v5 · Live/ });
+    expect(live.className).not.toContain("data-highlighted:");
 
     // Return before the arrow key is the press this rule rejects.
     fireEvent.keyDown(paletteInput() ?? input, { key: "Enter" });
-    expect(rendered.actions.handleSetWorkflowMode).not.toHaveBeenCalled();
+    expect(rendered.actions.handleExecute).not.toHaveBeenCalled();
 
     // Base UI moves the highlight off the single row and back onto it.
     fireEvent.keyDown(paletteInput() ?? input, { key: "ArrowDown" });
     fireEvent.keyDown(paletteInput() ?? input, { key: "ArrowDown" });
 
-    const armed = rendered.getByRole("option", {
-      name: /^Set published mode to Live/,
-    });
+    const armed = rendered.getByRole("option", { name: /^Run v5 · Live/ });
     expect(armed.hasAttribute("data-highlighted")).toBe(true);
     expect(armed.className).toContain("data-highlighted:");
 
     fireEvent.click(armed);
-    expect(rendered.actions.handleSetWorkflowMode).toHaveBeenCalledWith("live");
+    expect(rendered.actions.handleExecute).toHaveBeenCalledWith("published");
   });
 
   /**
@@ -477,26 +472,31 @@ describe("the command palette", () => {
    * tells the reader.
    */
   it("takes the armed row on Return", async () => {
-    const rendered = publishedInTestMode();
+    const rendered = publishedInLiveMode();
     const input = await openedPalette(rendered);
 
-    fireEvent.change(input, { target: { value: "recipients" } });
+    fireEvent.change(input, { target: { value: "published version" } });
     fireEvent.keyDown(paletteInput() ?? input, { key: "ArrowDown" });
     fireEvent.keyDown(paletteInput() ?? input, { key: "Enter" });
 
-    expect(rendered.actions.handleSetWorkflowMode).toHaveBeenCalledWith("live");
+    expect(rendered.actions.handleExecute).toHaveBeenCalledWith("published");
     expect(paletteInput()).toBeNull();
   });
 
-  // The row names the mode currently in force, which is what the switch is
-  // measured against.
-  it("names the mode the switch leaves", async () => {
-    const rendered = publishedInTestMode();
+  // The label names the version and the Published mode; the detail says who
+  // that mode reaches.
+  it("names the recipients each run command reaches", async () => {
+    const rendered = publishedInLiveMode();
     await openedPalette(rendered);
 
     expect(
       rendered.getByRole("option", {
-        name: "Set published mode to Live — Currently Test, test recipients",
+        name: /^Run draft — Test recipients/,
+      })
+    ).toBeTruthy();
+    expect(
+      rendered.getByRole("option", {
+        name: "Run v5 · Live — Real recipients",
       })
     ).toBeTruthy();
   });

@@ -101,9 +101,9 @@ describe("native SQLite persistence", () => {
             graphDigest: "draft-digest",
           });
 
-          // The same graph under the same catalog is one row however many runs
-          // ask for it. The proposed id gives way to the existing row's id.
-          const again = yield* workflows.freezeDraftSnapshot({
+          // No run references the first row yet, so it stays private to the
+          // request that inserted it and this freeze mints a row of its own.
+          const unreferenced = yield* workflows.freezeDraftSnapshot({
             workflowId: "wf_1",
             versionId: "ver_snapshot_2",
             graph: emptyGraph,
@@ -111,8 +111,6 @@ describe("native SQLite persistence", () => {
             graphDigest: "draft-digest",
           });
 
-          // A run pins the reused row, so the release must keep it. A row no
-          // run references is deleted.
           const executions = yield* ExecutionRepo;
           yield* executions.insertTerminal({
             workflowId: "wf_1",
@@ -122,6 +120,20 @@ describe("native SQLite persistence", () => {
             input: {},
             status: "completed",
           });
+
+          // A run now references the first row, which puts it beyond the
+          // release. The same graph under the same catalog therefore reuses it,
+          // and the proposed id gives way to that row's id.
+          const reused = yield* workflows.freezeDraftSnapshot({
+            workflowId: "wf_1",
+            versionId: "ver_snapshot_3",
+            graph: emptyGraph,
+            catalogFingerprint: "catalog",
+            graphDigest: "draft-digest",
+          });
+
+          // A run pins the reused row, so the release must keep it. A row no
+          // run references is deleted.
           const keptPinned =
             yield* workflows.deleteUnreferencedDraftSnapshot("ver_snapshot");
           const loose = yield* workflows.freezeDraftSnapshot({
@@ -141,7 +153,8 @@ describe("native SQLite persistence", () => {
 
           return {
             snapshot,
-            again,
+            unreferenced,
+            reused,
             keptPinned,
             droppedLoose,
             looseAfter: yield* workflows.findVersionById(loose.id),
@@ -166,7 +179,8 @@ describe("native SQLite persistence", () => {
       // a snapshot appears in neither. The engine still reads it by id.
       expect(result.history).toMatchObject([{ id: "ver_1", version: 1 }]);
       expect(result.latest).toEqual({ version: 1 });
-      expect(result.again.id).toBe("ver_snapshot");
+      expect(result.unreferenced.id).toBe("ver_snapshot_2");
+      expect(result.reused.id).toBe("ver_snapshot");
       expect(result.keptPinned).toBe(false);
       expect(result.droppedLoose).toBe(true);
       expect(result.looseAfter).toBeNull();

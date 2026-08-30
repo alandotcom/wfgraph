@@ -310,7 +310,20 @@ describe("WorkflowStatusStrip", () => {
       name: "Published mode: Live",
     });
     expect(mode.hasAttribute("disabled")).toBe(true);
-    expect(mode.getAttribute("title")).toBe("Owner only");
+    // The tooltip is the one surface for the reason. A `title` beside it would
+    // paint the browser's own tooltip over the same sentence.
+    expect(mode.hasAttribute("title")).toBe(false);
+
+    const trigger = mode.closest("[data-slot='tooltip-trigger']");
+    expect(trigger).toBeTruthy();
+    fireEvent.pointerEnter(trigger as Element, { pointerType: "mouse" });
+    fireEvent.mouseEnter(trigger as Element);
+
+    expect(
+      await view.findByText(
+        "Only the workflow's owner can change Published mode."
+      )
+    ).toBeTruthy();
   });
 
   it("switches to the run state and offers the way back to the draft", async () => {

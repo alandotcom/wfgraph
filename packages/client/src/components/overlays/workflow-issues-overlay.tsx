@@ -29,52 +29,6 @@ export function workflowIssueCount(issues: WorkflowIssuesOverlayModel): number {
   return issues.totalIssues;
 }
 
-/**
- * Which repair row wears the dialog's ink, named by its section and the row it
- * sits in. Null when the list holds no repair at all.
- */
-type PrimaryRepair = {
-  section: "integration" | "reference" | "unverified" | "required";
-  rowKey: string;
-};
-
-/**
- * The first repair button the body renders, wherever it turns up.
- *
- * The reader came here to fix something, so one button is filled and it is the
- * first one they can press. Choosing it from a single section left a dialog
- * whose issues were all node-level with every button in the same outline
- * weight. Sections are searched in the order they render, and one whose rows
- * are all empty is passed over.
- */
-function primaryRepair(
-  issues: WorkflowIssuesOverlayModel
-): PrimaryRepair | null {
-  const integration = issues.missingIntegrations[0];
-  if (integration) {
-    return { section: "integration", rowKey: integration.integrationType };
-  }
-
-  const reference = issues.brokenReferences.find(
-    (node) => node.brokenReferences.length > 0
-  );
-  if (reference) {
-    return { section: "reference", rowKey: reference.nodeId };
-  }
-
-  const unverified = issues.unverifiedProviderFields.find(
-    (node) => node.fields.length > 0
-  );
-  if (unverified) {
-    return { section: "unverified", rowKey: unverified.nodeId };
-  }
-
-  const required = issues.missingRequiredFields.find(
-    (node) => node.missingFields.length > 0
-  );
-  return required ? { section: "required", rowKey: required.nodeId } : null;
-}
-
 export function WorkflowIssuesOverlay({
   overlayId,
   issues,
@@ -131,15 +85,6 @@ export function WorkflowIssuesOverlay({
   const blockingIssueCount =
     missingRequiredFields.length + missingIntegrations.length;
 
-  const primary = primaryRepair(issues);
-
-  /** Whether this row is the one repair the dialog fills. */
-  const isPrimaryRepair = (
-    section: PrimaryRepair["section"],
-    rowKey: string,
-    index: number
-  ) => index === 0 && primary?.section === section && primary.rowKey === rowKey;
-
   return (
     <Overlay
       actions={
@@ -153,12 +98,12 @@ export function WorkflowIssuesOverlay({
               { label: "Cancel", variant: "outline", onClick: closeAll },
             ]
           : [
+              // The dialog fills no button. Every row here is a repair the
+              // reader might take, and Close is the way out rather than the
+              // thing to do, so none of them outranks the others.
               {
                 label: "Close",
-                // Ink only when the list offers nothing to repair. Otherwise
-                // the filled button belongs to the first repair, and Close is
-                // the way out rather than the thing to do.
-                variant: primary ? "outline" : "default",
+                variant: "outline" as const,
                 onClick: closeAll,
               },
             ]
@@ -182,7 +127,7 @@ export function WorkflowIssuesOverlay({
         <div className="flex items-center gap-2 text-warning">
           <AlertTriangle className="size-5" />
           <p className="text-sm">
-            The draft has issues that may cause it to fail.
+            The draft has issues that might cause the run to fail.
           </p>
         </div>
       )}
@@ -194,7 +139,7 @@ export function WorkflowIssuesOverlay({
             <h4 className="font-medium text-muted-foreground text-sm">
               Missing Connections
             </h4>
-            {missingIntegrations.map((missing, index) => (
+            {missingIntegrations.map((missing) => (
               <div
                 className="flex items-center gap-3 py-1"
                 key={missing.integrationType}
@@ -218,15 +163,7 @@ export function WorkflowIssuesOverlay({
                   className="shrink-0"
                   onClick={() => handleAddIntegration(missing.integrationType)}
                   size="sm"
-                  variant={
-                    isPrimaryRepair(
-                      "integration",
-                      missing.integrationType,
-                      index
-                    )
-                      ? "default"
-                      : "outline"
-                  }
+                  variant="outline"
                 >
                   Add
                 </Button>
@@ -245,7 +182,7 @@ export function WorkflowIssuesOverlay({
               <div key={broken.nodeId}>
                 <p className="font-medium text-sm">{broken.nodeLabel}</p>
                 <div className="mt-1 space-y-0.5">
-                  {broken.brokenReferences.map((ref, index) => (
+                  {broken.brokenReferences.map((ref) => (
                     <div
                       className="flex items-center gap-3 py-0.5 pl-3"
                       key={`${broken.nodeId}-${ref.fieldKey}-${ref.displayText}-${ref.fieldLabel}`}
@@ -261,11 +198,7 @@ export function WorkflowIssuesOverlay({
                           handleGoToStep(broken.nodeId, ref.fieldKey)
                         }
                         size="sm"
-                        variant={
-                          isPrimaryRepair("reference", broken.nodeId, index)
-                            ? "default"
-                            : "outline"
-                        }
+                        variant="outline"
                       >
                         Fix
                       </Button>
@@ -291,7 +224,7 @@ export function WorkflowIssuesOverlay({
               <div key={node.nodeId}>
                 <p className="font-medium text-sm">{node.nodeLabel}</p>
                 <div className="mt-1 space-y-0.5">
-                  {node.fields.map((field, index) => (
+                  {node.fields.map((field) => (
                     <div
                       className="flex items-center gap-3 py-0.5 pl-3"
                       key={`${node.nodeId}-${field.fieldKey}`}
@@ -305,11 +238,7 @@ export function WorkflowIssuesOverlay({
                           handleGoToStep(node.nodeId, field.fieldKey)
                         }
                         size="sm"
-                        variant={
-                          isPrimaryRepair("unverified", node.nodeId, index)
-                            ? "default"
-                            : "outline"
-                        }
+                        variant="outline"
                       >
                         Fix
                       </Button>
@@ -331,7 +260,7 @@ export function WorkflowIssuesOverlay({
               <div key={node.nodeId}>
                 <p className="font-medium text-sm">{node.nodeLabel}</p>
                 <div className="mt-1 space-y-0.5">
-                  {node.missingFields.map((field, index) => (
+                  {node.missingFields.map((field) => (
                     <div
                       className="flex items-center gap-3 py-0.5 pl-3"
                       key={`${node.nodeId}-${field.fieldKey}`}
@@ -345,11 +274,7 @@ export function WorkflowIssuesOverlay({
                           handleGoToStep(node.nodeId, field.fieldKey)
                         }
                         size="sm"
-                        variant={
-                          isPrimaryRepair("required", node.nodeId, index)
-                            ? "default"
-                            : "outline"
-                        }
+                        variant="outline"
                       >
                         Fix
                       </Button>

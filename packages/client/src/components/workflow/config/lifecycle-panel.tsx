@@ -90,7 +90,9 @@ export function LifecyclePanel({
       <ConfigSection
         editable={!disabled}
         editing={editing}
-        help={<p>{LIFECYCLE_RULES_HELP}</p>}
+        help={LIFECYCLE_RULES_HELP.map((sentence) => (
+          <p key={sentence}>{sentence}</p>
+        ))}
         label="Lifecycle Rules"
         onEditingChange={setEditing}
         stickyHeader
@@ -169,5 +171,7 @@ function LifecycleGroups({
   );
 }
 
-const LIFECYCLE_RULES_HELP =
-  "What starts a run of this workflow, and what happens to the runs already going when another start arrives.";
+const LIFECYCLE_RULES_HELP = [
+  "What starts a run of this workflow.",
+  "What happens to runs in progress when another start arrives.",
+];

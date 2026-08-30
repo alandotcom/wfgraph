@@ -199,16 +199,17 @@ describe("WorkflowIssuesOverlay", () => {
     );
 
     expect(getByText("2 issues")).toBeTruthy();
-    // No blocking issue, so only the warning sentence appears. Close stays an
-    // outline button and leaves the filled style to the repairs in the list.
+    // No blocking issue, so only the warning sentence appears.
     expect(
-      getByText("The draft has issues that may cause it to fail.")
+      getByText("The draft has issues that might cause the run to fail.")
     ).toBeTruthy();
-    // The footer's Close, rather than the header's icon of the same name.
+    // The footer's Close, rather than the header's icon of the same name. It is
+    // an outline button, like every repair in the list: the dialog fills none.
     const close = getAllByRole("button", { name: "Close" }).find(
       (button) => button.textContent === "Close"
     );
     expect(close?.className).toContain("border-border");
+    expect(close?.className).not.toContain("bg-primary");
   });
 
   // A blocking issue shows one sentence on its own. Showing both would put the
@@ -231,10 +232,14 @@ describe("WorkflowIssuesOverlay", () => {
       getByText("Resolve blocking issues before running the draft.")
     ).toBeTruthy();
     expect(
-      queryByText("The draft has issues that may cause it to fail.")
+      queryByText("The draft has issues that might cause the run to fail.")
     ).toBeNull();
-    // The one repair on offer is the filled button.
+    // Every repair wears the same outline weight, whether it is the first row
+    // or the fifth.
     expect(getByRole("button", { name: "Add" }).className).toContain(
+      "border-border"
+    );
+    expect(getByRole("button", { name: "Add" }).className).not.toContain(
       "bg-primary"
     );
   });

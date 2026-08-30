@@ -155,9 +155,9 @@ function PayloadForm({
     return (
       <p className="text-muted-foreground text-sm">
         {hasEvent
-          ? "This Event declares no payload field the form can draw."
-          : "A run that stands in for no Event has no declared field to draw."}{" "}
-        Use the JSON tab to write the payload.
+          ? "This Event has no payload fields."
+          : "This run has no Event, so there are no form fields."}{" "}
+        Enter the payload on the JSON tab.
       </p>
     );
   }
@@ -209,14 +209,13 @@ export function RunOverlay({
   const catalog = useExtensionCatalog();
   const { closeAll } = useOverlay();
   const copy = runOverlayCopy(target);
-  // A live published run is the only run that reaches real recipients, so the
-  // confirm button takes the destructive variant for it.
-  const reachesRealRecipients =
-    target.graph === "published" && target.workflowMode === "live";
-  // The band states the sends the published graph holds. A version built only
-  // from waits, conditions and internal steps has none, so the alarm styling is
-  // reserved for versions that actually send.
-  const showSendsBand = reachesRealRecipients && sends.count > 0;
+  // The sends line states what the published graph sends when it reaches real
+  // recipients. A version built only from waits, conditions and internal steps
+  // sends nothing, so the line is left out rather than reading "0".
+  const showSends =
+    target.graph === "published" &&
+    target.workflowMode === "live" &&
+    sends.count > 0;
 
   // Default to the first Start Event. A workflow with no Start Event can only
   // take the Event-less manual start.
@@ -315,7 +314,7 @@ export function RunOverlay({
       value: name,
     })),
     ...(allowManualStart
-      ? [{ label: "No Event (manual start)", value: NO_EVENT }]
+      ? [{ label: "None (manual start)", value: NO_EVENT }]
       : []),
   ];
 
@@ -327,7 +326,6 @@ export function RunOverlay({
           label: copy.confirmLabel,
           onClick: handleRun,
           disabled: !canRun,
-          ...(reachesRealRecipients ? { variant: "destructive" as const } : {}),
         },
       ]}
       description={copy.description}
@@ -335,21 +333,19 @@ export function RunOverlay({
       title={copy.title}
     >
       <div className="space-y-6">
-        {/* Bordered rather than filled: the confirm button carries the
-            dialog's one destructive fill, and a band wearing the same fill
-            reads as a second banner beside it. */}
-        {showSendsBand && (
-          <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-foreground text-sm">
-            <Send aria-hidden className="size-3.5 shrink-0 text-destructive" />
-            <p>{runSendsLabel(sends)}</p>
-          </div>
+        {/* A plain line rather than a banner: the sentence above already says
+            the run reaches real recipients, and a second box around the same
+            fact reads as a warning about something else. */}
+        {showSends && (
+          <p className="flex items-center gap-2 text-muted-foreground text-sm">
+            <Send aria-hidden className="size-3.5 shrink-0" />
+            {runSendsLabel(sends)}
+          </p>
         )}
 
         {showEventSelect ? (
           <div className="space-y-2">
-            <Label htmlFor="runEvent">
-              Which Event does this run stand in for?
-            </Label>
+            <Label htmlFor="runEvent">Event</Label>
             <Select
               items={eventItems}
               onValueChange={whenChosen(chooseEvent)}
@@ -366,28 +362,18 @@ export function RunOverlay({
                 ))}
                 {allowManualStart && (
                   <SelectItem disabled={hasEventSplit} value={NO_EVENT}>
-                    No Event (manual start)
+                    None (manual start)
                   </SelectItem>
                 )}
               </SelectContent>
             </Select>
             {eventIsRequired && (
               <p className="text-muted-foreground text-xs">
-                This workflow splits on the Event a run is on, so a run has to
-                name one.
+                This workflow has an Event Split, so the run must name an Event.
               </p>
             )}
           </div>
-        ) : (
-          // With no select above it, this sentence is the only explanation
-          // for the disabled confirm button, so it is rendered on its own.
-          eventIsRequired && (
-            <p className="text-muted-foreground text-sm">
-              This workflow splits on the Event a run is on, and the Lifecycle
-              node declares no Start Event for a run to name.
-            </p>
-          )
-        )}
+        ) : null}
 
         <div className="space-y-3">
           <div className="flex items-center justify-between">

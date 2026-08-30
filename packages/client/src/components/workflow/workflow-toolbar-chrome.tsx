@@ -441,13 +441,20 @@ export function DuplicateButton({
 }
 
 /**
- * Everything the builder can do to the open workflow, as one menu.
+ * What the builder can do to the open workflow, as one menu.
  *
  * Each item states its own name, which the six grey icon squares this replaced
  * could only do on hover. Only shortcuts that are bound appear beside an item.
+ * The run commands are left out: the toolbar's run control is right beside this
+ * menu, and the command palette lists them for anyone searching by name.
  */
 function ActionsMenu({ commands }: { commands: readonly WorkflowCommand[] }) {
-  const menuCommands = commands.filter((command) => command.group !== "canvas");
+  // Canvas commands move to the shortcuts submenu below, and a `paletteOnly`
+  // command has its own control in the toolbar, so listing it here would offer
+  // the same press twice in one bar.
+  const menuCommands = commands.filter(
+    (command) => command.group !== "canvas" && !command.paletteOnly
+  );
   const canvasCommands = commands.filter(
     (command) => command.group === "canvas"
   );
@@ -473,10 +480,9 @@ function ActionsMenu({ commands }: { commands: readonly WorkflowCommand[] }) {
               onClick={command.execute}
             >
               <WorkflowCommandIcon id={command.id} />
-              {/* The detail line says what the label has no room for. On a
-                  disabled row it gives the reason, so "Run published version"
-                  is never greyed out without an explanation. It is styled the
-                  same way as the Published mode menu's descriptions. */}
+              {/* The detail line says what the label has no room for, and on
+                  a disabled row it gives the reason. It is styled the same way
+                  as the Published mode menu's descriptions. */}
               <span>
                 {command.label}
                 {command.detail ? (

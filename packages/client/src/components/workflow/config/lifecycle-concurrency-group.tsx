@@ -9,9 +9,9 @@ import { cn } from "@wfgraph/shared/utils";
 import { ConfigGroup, ConfigViewRow } from "./config-section";
 
 const ENTITY_HELP =
-  "The entity is the value at the Correlation Path. A start carrying no payload uses the workflow itself, so every manual run is about the same entity.";
+  "The entity is the value at the Correlation Path. A run with no payload uses the workflow as its entity.";
 const MANUAL_RUNS_HELP =
-  "The Run button and the execute route. With this off, only a Start Event starts a run.";
+  "Allows Run draft, Run vN, and the execute API. When off, only a Start Event can start a run.";
 
 export function LifecycleConcurrencyGroup({
   editing,

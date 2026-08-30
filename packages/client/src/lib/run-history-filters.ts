@@ -8,6 +8,7 @@ import {
   WORKFLOW_VERSION_KINDS,
   type WorkflowVersionKind,
 } from "@wfgraph/shared/graph/version-kinds";
+import { runGraphLabel } from "#src/lib/workflow-run-labels";
 
 /**
  * The statuses this list asks for when nothing is ticked.
@@ -58,6 +59,7 @@ export type RunHistorySearchRow = {
   status: WorkflowExecutionStatus;
   runMode: "live" | "test";
   versionKind: WorkflowVersionKind;
+  versionNumber: number | null;
   startSource: WorkflowExecutionStartSource | null;
   startEventName: string | null;
   entityValue: string | null;
@@ -262,10 +264,12 @@ function runSearchText(run: RunHistorySearchRow): string {
     run.id,
     run.status,
     run.runMode,
-    // The stored kind. Both visible labels are prefixes of it, so a search for
-    // "draft" matches `draft_snapshot` and one for "published" matches
-    // `published`.
+    // The stored kind, so a search for "draft" matches `draft_snapshot` and one
+    // for "published" matches `published`.
     run.versionKind,
+    // The label the Graph column prints, so a search for "v7" keeps the runs of
+    // published version 7.
+    runGraphLabel(run),
     run.startSource,
     run.startEventName,
     run.entityValue,

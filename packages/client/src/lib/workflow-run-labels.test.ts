@@ -104,22 +104,24 @@ describe("publishedModeChoice", () => {
 });
 
 describe("runSendsLabel", () => {
-  it("counts the sends and names the integrations that carry them", () => {
+  it("counts the steps and names the integrations they reach", () => {
     expect(runSendsLabel({ count: 3, integrations: ["Slack", "Resend"] })).toBe(
-      "3 sends: Slack, Resend"
+      "3 steps reach outside this workflow: Slack, Resend"
     );
   });
 
-  it("uses the singular for one send", () => {
+  it("uses the singular for one step", () => {
     expect(runSendsLabel({ count: 1, integrations: ["Slack"] })).toBe(
-      "1 send: Slack"
+      "1 step reaches outside this workflow: Slack"
     );
   });
 
-  // A published graph whose steps only read data still needs a label, because
-  // the band is where a reader looks for what a live run does.
-  it("reports no sends when the graph sends nothing", () => {
-    expect(runSendsLabel({ count: 0, integrations: [] })).toBe("No sends");
+  // The run dialog leaves the line out at a count of 0, so this phrase is what
+  // any other caller gets rather than a sentence about "0 steps".
+  it("reports no steps when the graph reaches nothing outside", () => {
+    expect(runSendsLabel({ count: 0, integrations: [] })).toBe(
+      "No steps reach outside this workflow"
+    );
   });
 });
 
@@ -127,14 +129,14 @@ describe("runOverlayCopy", () => {
   it("describes the draft run and names no version", () => {
     expect(runOverlayCopy({ graph: "draft" })).toEqual({
       title: "Run draft",
-      description: "Runs the draft on this canvas with test recipients.",
+      description: "Runs the draft and sends to test recipients.",
       confirmLabel: "Run draft",
     });
   });
 
-  // The heading names the version in prose. The button names the consequence
-  // instead of repeating the version.
-  it("names the consequence on a live published run's button", () => {
+  // The sentence is where the recipients are named, so the heading and the
+  // button read the same in both Published modes.
+  it("names the real recipients a live published run reaches", () => {
     expect(
       runOverlayCopy({
         graph: "published",
@@ -142,13 +144,13 @@ describe("runOverlayCopy", () => {
         workflowMode: "live",
       })
     ).toEqual({
-      title: "Run Published v7",
-      description: "Runs Published v7 and sends to real recipients.",
-      confirmLabel: "Send to real recipients",
+      title: "Run v7",
+      description: "Runs v7 and sends to real recipients.",
+      confirmLabel: "Run v7",
     });
   });
 
-  it("keeps the command label on a test published run's button", () => {
+  it("names the test recipients a test published run reaches", () => {
     expect(
       runOverlayCopy({
         graph: "published",
@@ -156,9 +158,9 @@ describe("runOverlayCopy", () => {
         workflowMode: "test",
       })
     ).toEqual({
-      title: "Run Published v7",
-      description: "Runs Published v7 with test recipients.",
-      confirmLabel: "Run v7 · Test",
+      title: "Run v7",
+      description: "Runs v7 and sends to test recipients.",
+      confirmLabel: "Run v7",
     });
   });
 });

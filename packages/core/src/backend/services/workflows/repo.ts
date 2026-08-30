@@ -343,9 +343,14 @@ export class WorkflowRepo extends Context.Service<
     /**
      * Freezes the draft graph as a version a run can pin to, and returns the
      * row. When this workflow already has a snapshot of this exact graph under
-     * this catalog, that row comes back instead of a new one. So `versionId` is
-     * a proposal, and the caller pins the returned `id`. Repeated runs of an
-     * unchanged canvas share one row.
+     * this catalog, and an Execution already references that snapshot, that row
+     * comes back instead of a new one. So `versionId` is a proposal, and the
+     * caller pins the returned `id`. Repeated runs of an unchanged canvas share
+     * one row from the second run onward.
+     *
+     * A snapshot no Execution references yet belongs to the request that
+     * inserted it, which can still release it, so this never hands one to
+     * another request.
      *
      * The call writes nothing else. It claims no version number and the
      * publication pointer does not move. The Event subscription index keeps
@@ -860,6 +865,14 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
           database.query(async (db) => {
             // jsonb equality is structural, so key order and whitespace in the
             // stored column do not affect the match.
+            //
+            // The EXISTS clause is what makes the reuse safe against a
+            // concurrent start. A snapshot no Execution references yet is
+            // private to the request that inserted it, and that request can
+            // still release it if a later gate refuses the start. Reusing such
+            // a row would let this run pin an id the other request is about to
+            // delete. A referenced row can never be deleted, because
+            // `deleteUnreferencedDraftSnapshot` refuses it.
             const [existing] = await db
               .select()
               .from(workflowVersions)
@@ -871,7 +884,8 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                     workflowVersions.catalogFingerprint,
                     input.catalogFingerprint
                   ),
-                  eq(workflowVersions.graph, input.graph)
+                  eq(workflowVersions.graph, input.graph),
+                  sql`exists (select 1 from ${workflowExecutions} where ${workflowExecutions.workflowVersionId} = ${workflowVersions.id})`
                 )
               )
               .orderBy(desc(workflowVersions.publishedAt))

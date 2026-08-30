@@ -456,9 +456,55 @@ describe("useWorkflowActions Run graph selection", () => {
       input: { versionId: "version_7" },
     });
     // No `graph` key at all. An absent field means the published graph.
+    // `expected` names what the dialog displayed, so the server can refuse a
+    // run against a version or a mode that has moved since.
     expect(requests[1]).toEqual({
       path: "workflow/execute",
-      input: { workflowId, input: {} },
+      input: {
+        workflowId,
+        input: {},
+        expected: { versionId: "version_7", mode: "live" },
+      },
+    });
+  });
+
+  // The mode travels with the version id, because the two together decide who a
+  // published run reaches. A Test workflow sends its own word.
+  it("sends the displayed version and mode with a published run", async () => {
+    const requests = serveRunRequests({ runMode: "test" });
+
+    const view = renderProbe({
+      probe: <RunGraphProbe workflowState={state()} />,
+    });
+
+    await confirmRun(view, "Run published");
+
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests[1]?.input).toEqual({
+      workflowId,
+      input: {},
+      expected: { versionId: "version_7", mode: "test" },
+    });
+  });
+
+  // A draft run reads the canvas, so there is no published version to compare
+  // against and the key stays off the request.
+  it("sends no expected version with a draft run", async () => {
+    const requests = serveRunRequests({
+      saved: { hasUnpublishedChanges: true, publishedVersionId: "version_7" },
+    });
+
+    const view = renderProbe({
+      probe: <RunGraphProbe workflowState={state()} />,
+    });
+
+    await confirmRun(view);
+
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests[1]?.input).toEqual({
+      workflowId,
+      input: {},
+      graph: "draft",
     });
   });
 

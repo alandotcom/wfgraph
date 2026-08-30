@@ -27,15 +27,17 @@ import {
 const logger = getClientLogger("workflow", "run");
 
 export const IGNORED_REASON_MESSAGES = {
-  workflow_paused: "Workflow is paused and cannot start new runs.",
+  workflow_paused: "The workflow is paused, so it can't start runs.",
   concurrency_first_wins:
-    "A run for this entity is already going, and this workflow keeps the first one.",
+    "A run for this entity is already in progress. This workflow keeps the first run.",
   entity_value_missing:
-    "This payload carries nothing at the workflow's Correlation Path, and its Concurrency needs an entity to compare.",
+    "The payload has no value at the Correlation Path, so Concurrency can't identify the entity.",
+  // Named by its own label: the setting is the "Allow manual runs" checkbox on
+  // the Lifecycle node, so the sentence sends the reader to that control.
   manual_start_not_allowed:
-    "This workflow does not list manual runs as a start source.",
+    "This workflow does not allow manual runs. Select Allow manual runs on the Lifecycle node.",
   start_event_required:
-    "This workflow splits on the Event a run is on, so a run has to name one.",
+    "This workflow has an Event Split, so the run must name an Event.",
 } satisfies Record<WorkflowExecutionIgnoredReason, string>;
 
 /**
@@ -132,7 +134,7 @@ export async function executeWorkflowRun({
       toast.message(
         result.status === "ignored"
           ? IGNORED_REASON_MESSAGES[result.reason]
-          : "Execution completed without starting a new run."
+          : "No run started."
       );
 
       // No execution was created, so there is no id for the URL to own.
@@ -149,14 +151,18 @@ export async function executeWorkflowRun({
       const failed = Array.isArray(result.failedToSupersede)
         ? result.failedToSupersede.length
         : 0;
-      const superseded = `${runLabel} superseded ${result.supersededExecutions} run${result.supersededExecutions === 1 ? "" : "s"} for this entity and started a new one.`;
+      const replaced =
+        result.supersededExecutions === 1
+          ? "1 earlier run for this entity was replaced"
+          : `${result.supersededExecutions} earlier runs for this entity were replaced`;
+      const superseded = `${runLabel} started. ${replaced}.`;
 
       if (failed > 0) {
         // A run the engine could not signal keeps going against the entity the
         // new one is now working on, which is the duplicate work newest-wins
         // exists to prevent. It reads as routine in the same tone as the success.
         toast.error(
-          `${superseded} ${failed} could not be signalled and may still be running. Cancel them from the Runs panel.`
+          `${superseded} ${failed} couldn't be stopped and might still be running. Cancel them in Runs.`
         );
       } else {
         toast.success(superseded);

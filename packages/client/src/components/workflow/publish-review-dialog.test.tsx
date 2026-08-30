@@ -54,16 +54,21 @@ describe("PublishReviewDialog", () => {
     expect(view.getByText("Removed connections").nextSibling?.textContent).toBe(
       "1"
     );
-    expect(
-      view.getByText(
-        "Published mode is Test, so v8's Events and manual runs go to test recipients until you set it to Live."
-      )
-    ).toBeTruthy();
+    const note = view.getByText(
+      "Published mode is Test. v8 sends to test recipients until you switch to Live."
+    );
+    // The sentence stays muted in both modes, because a tinted box here would
+    // rank one publish above the other. Amber marks Test on the dot alone, the
+    // way the status strip's Published mode control marks it.
+    expect(note.className).toContain("text-muted-foreground");
+    expect(note.className).not.toContain("border-warning/30");
+    expect(note.querySelector("svg")?.getAttribute("class")).toContain(
+      "text-warning"
+    );
   });
 
   // The Test note says the version is held back from real recipients. The Live
-  // note says it reaches them at once, so that note carries the destructive
-  // tone.
+  // note says it reaches them at once. Both are one muted sentence.
   it("says a Live publish reaches real recipients at once", () => {
     const view = render(
       <PublishReviewDialog
@@ -77,9 +82,14 @@ describe("PublishReviewDialog", () => {
     );
 
     const note = view.getByText(
-      "v8 will reach real recipients as soon as it is published."
+      "Published mode is Live. v8 sends to real recipients as soon as you publish."
     );
-    expect(note.parentElement?.className).toContain("border-destructive/30");
+    expect(note.className).toContain("text-muted-foreground");
+    expect(note.className).not.toContain("border-destructive/30");
+    // Amber belongs to Test, so the Live dot stays in muted ink.
+    expect(note.querySelector("svg")?.getAttribute("class")).not.toContain(
+      "text-warning"
+    );
     expect(view.queryByText(/Published mode is Test/)).toBeNull();
   });
 

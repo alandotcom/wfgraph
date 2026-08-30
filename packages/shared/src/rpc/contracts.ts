@@ -749,6 +749,20 @@ export const rpcContract = {
              * whatever the workflow's Published mode says.
              */
             graph: Schema.optionalKey(Schema.Literals(["published", "draft"])),
+            /**
+             * What the caller was shown when it offered this run. A published
+             * run carries the version id and the Published mode the run dialog
+             * displayed, and the server refuses the run when either has moved
+             * since. Without it a dialog left open through a publish or a mode
+             * change starts a run the person did not ask for. A draft run
+             * carries none, because the canvas is the graph the run reads.
+             */
+            expected: Schema.optionalKey(
+              Schema.Struct({
+                versionId: idSchema,
+                mode: workflowRunModeSchema,
+              })
+            ),
           })
         )
       )

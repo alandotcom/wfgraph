@@ -769,5 +769,90 @@ describe("postWorkflowExecute", () => {
         );
       })
     );
+
+    // The run dialog names one version and one set of recipients. A publish or
+    // a mode change while it is open would leave those words describing a run
+    // nobody asked for, so the request repeats them and the server checks.
+    it.effect("refuses a published run naming a version that has moved", () =>
+      Effect.gen(function* () {
+        const repo = makeRepo();
+
+        const failure = yield* postWorkflowExecute("wf_1", {
+          expected: { versionId: "ver_0", mode: "live" },
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(repo.layer, workflowLayer(workflowRow()))
+          ),
+          Effect.flip
+        );
+
+        assert.strictEqual(failure.kind, "conflict");
+        assert.strictEqual(
+          failure.payload.error,
+          "The published version or the Published mode changed. Start the run again."
+        );
+        assert.deepStrictEqual(repo.starts, []);
+      })
+    );
+
+    // The mode decides who the run reaches, so a stale one is refused for the
+    // same reason a stale version is, even with the version id still current.
+    it.effect("refuses a published run naming a mode that has moved", () =>
+      Effect.gen(function* () {
+        const repo = makeRepo();
+
+        const failure = yield* postWorkflowExecute("wf_1", {
+          expected: { versionId: "ver_1", mode: "test" },
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(repo.layer, workflowLayer(workflowRow()))
+          ),
+          Effect.flip
+        );
+
+        assert.strictEqual(failure.kind, "conflict");
+        assert.deepStrictEqual(repo.starts, []);
+      })
+    );
+
+    it.effect(
+      "starts a published run naming the current version and mode",
+      () =>
+        Effect.gen(function* () {
+          const repo = makeRepo();
+
+          const response = yield* postWorkflowExecute("wf_1", {
+            input: { appointment: { id: "appt_1" } },
+            expected: { versionId: "ver_1", mode: "live" },
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(repo.layer, workflowLayer(workflowRow()))
+            )
+          );
+
+          assert.strictEqual(response.status, "running");
+          assert.strictEqual(
+            repo.starts[0]?.execution.workflowVersionId,
+            "ver_1"
+          );
+        })
+    );
+
+    // A draft run reads the canvas, which no publish and no mode change moves,
+    // so the check does not apply to it.
+    it.effect("runs a draft even when the published version has moved", () =>
+      Effect.gen(function* () {
+        const repo = makeRepo();
+        const workflows = makeDraftRepo(workflowRow({ mode: "live" }));
+
+        const response = yield* postWorkflowExecute("wf_1", {
+          graph: "draft",
+          expected: { versionId: "ver_0", mode: "test" },
+        }).pipe(Effect.provide(Layer.mergeAll(repo.layer, workflows.layer)));
+
+        assert.strictEqual(response.status, "running");
+        assert.strictEqual(response.runMode, "test");
+      })
+    );
   });
 });

@@ -1,4 +1,4 @@
-import { CircleDot, Loader2, Upload } from "lucide-react";
+import { Circle, Loader2, Upload } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,7 @@ import { Button } from "#src/components/ui/button";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import type { WorkflowMode } from "@wfgraph/shared/graph/types";
 import type { PublicationReview } from "#src/lib/workflow-publication-review-store";
+import { cn } from "@wfgraph/shared/utils";
 
 type PublishReviewDialogProps = {
   review: PublicationReview;
@@ -119,27 +120,26 @@ export function PublishReviewDialog({
 
         {/* Says where v{n} sends as soon as it is published. Both modes are
             worth stating, and the Live case must be read before the press
-            rather than discovered from a delivered message. */}
-        {/* The border and the icon carry the signal colour. The words stay in
-            foreground ink, because signal text on its own tint falls under the
-            contrast floor at this size (DESIGN.md, Tertiary). */}
-        {mode === "test" ? (
-          <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-foreground">
-            <CircleDot
-              aria-hidden
-              className="mt-0.5 size-3.5 shrink-0 text-warning"
-            />
-            <p>{`Published mode is Test, so v${proposedVersion}'s Events and manual runs go to test recipients until you set it to Live.`}</p>
-          </div>
-        ) : (
-          <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-foreground">
-            <CircleDot
-              aria-hidden
-              className="mt-0.5 size-3.5 shrink-0 text-destructive"
-            />
-            <p>{`v${proposedVersion} will reach real recipients as soon as it is published.`}</p>
-          </div>
-        )}
+            rather than discovered from a delivered message. One plain line
+            either way: the fact is the same size in both modes, and a box
+            around it would rank one press as more dangerous than the other. */}
+        <p className="flex items-start gap-2 text-muted-foreground">
+          {/* The same dot the status strip's Published mode control wears:
+              filled and Amber for Test, an outline in muted ink for Live, so
+              the mode is legible without reading the sentence. Amber marks Test
+              and nothing else, and it stays on the dot rather than the whole
+              line, which keeps the sentence above the 4.5:1 body floor. */}
+          <Circle
+            aria-hidden
+            className={cn(
+              "mt-1 size-2.5 shrink-0",
+              mode === "test" && "fill-current text-warning"
+            )}
+          />
+          {mode === "test"
+            ? `Published mode is Test. v${proposedVersion} sends to test recipients until you switch to Live.`
+            : `Published mode is Live. v${proposedVersion} sends to real recipients as soon as you publish.`}
+        </p>
 
         <DialogFooter>
           <Button
