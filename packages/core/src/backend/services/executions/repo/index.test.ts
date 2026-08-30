@@ -14,14 +14,10 @@ import {
   type EntityStartOutcome,
   ExecutionRepo,
   ExecutionRepoLayer,
-  UNSENT_RUN_GRACE_MS,
 } from "#src/backend/services/executions/repo/index";
 
 /** One row of the in-flight candidate query, in the order it selects columns. */
 type InFlightRow = [id: string, enqueuedAt: Date | null, startedAt: Date];
-
-const longAgo = new Date(Date.now() - UNSENT_RUN_GRACE_MS - 60_000);
-const justNow = new Date();
 
 function isInFlightQuery(query: string): boolean {
   return query.includes('"enqueued_at", "started_at"');
@@ -29,14 +25,6 @@ function isInFlightQuery(query: string): boolean {
 
 function isDeliveryLookup(query: string): boolean {
   return query.startsWith("select") && query.includes('"delivery_id" = $2');
-}
-
-function isInsert(query: string): boolean {
-  return query.startsWith("insert");
-}
-
-function isUpdate(query: string): boolean {
-  return query.startsWith("update");
 }
 
 function isLock(query: string): boolean {
@@ -109,98 +97,6 @@ function harness(answers: {
 }
 
 describe("startForEntity", () => {
-  // The caller is an Inngest step, so a retry re-runs this whole call. Without
-  // the lookup the retry inserts a second row and sends under a second
-  // idempotency key, and one arrival runs the graph twice.
-  it("answers with the row this arrival already opened", async () => {
-    const { sentAny, start } = harness({ ownRow: true });
-
-    const outcome = await start("first-wins");
-
-    expect(outcome.status).toBe("started");
-    expect(sentAny(isInsert)).toBe(false);
-    expect(sentAny(isInFlightQuery)).toBe(false);
-  });
-
-  // Two attempts at one arrival can reach the insert together under `unlimited`,
-  // which takes no lock to serialize them.
-  it("opens at most one row per arrival, held on the insert", async () => {
-    const { sent, start } = harness({});
-
-    await start("unlimited");
-
-    expect(sent(isInsert)?.query).toContain(
-      'on conflict ("workflow_id","delivery_id") do nothing'
-    );
-  });
-
-  it("defers to a run the bus was told about", async () => {
-    const { sentAny, start } = harness({
-      inFlight: [["exec_live", justNow, justNow]],
-    });
-
-    const outcome = await start("first-wins");
-
-    expect(outcome).toEqual({
-      status: "refused",
-      inFlightExecutionIds: ["exec_live"],
-    });
-    expect(sentAny(isInsert)).toBe(false);
-  });
-
-  // A crash between the committed row and the send leaves a row nothing will
-  // ever finish, and first-wins would defer to it for the life of the entity.
-  it("closes a run stuck before the bus and starts anyway", async () => {
-    const { sent, start } = harness({
-      inFlight: [["exec_stuck", null, longAgo]],
-      updated: ["exec_stuck"],
-    });
-
-    const outcome = await start("first-wins");
-
-    expect(outcome).toMatchObject({
-      status: "started",
-      reclaimedExecutionIds: ["exec_stuck"],
-    });
-
-    const update = sent(isUpdate);
-    expect(update?.params).toContain("failed");
-    // The run may have woken up and finished while the start was deciding.
-    expect(update?.query).toContain('"status" in ($6, $7, $8)');
-  });
-
-  // The stamp goes on milliseconds after the commit, so an unstamped row within
-  // the grace period is a start still in progress rather than a dead one.
-  it("leaves an unstamped run alone until the grace period is up", async () => {
-    const { start } = harness({
-      inFlight: [["exec_starting", null, justNow]],
-    });
-
-    const outcome = await start("first-wins");
-
-    expect(outcome).toEqual({
-      status: "refused",
-      inFlightExecutionIds: ["exec_starting"],
-    });
-  });
-
-  it("defers to a live run rather than reclaiming the stuck one beside it", async () => {
-    const { sentAny, start } = harness({
-      inFlight: [
-        ["exec_stuck", null, longAgo],
-        ["exec_live", justNow, justNow],
-      ],
-    });
-
-    const outcome = await start("first-wins");
-
-    expect(outcome).toEqual({
-      status: "refused",
-      inFlightExecutionIds: ["exec_live"],
-    });
-    expect(sentAny(isUpdate)).toBe(false);
-  });
-
   // Two reschedules arriving together otherwise both read an empty in-flight set
   // and both start. PostgreSQL's predicate locks detect that write skew at
   // SERIALIZABLE and abort one whole decision for retry.
@@ -213,15 +109,32 @@ describe("startForEntity", () => {
     expect(sentAny(isLock)).toBe(false);
   });
 
-  it("retries a serialization failure inside the repository call", async () => {
+  // What a real driver raises is nested: Drizzle wraps the failure in a
+  // `DrizzleQueryError` carrying the SQL it ran, and the `PostgresError`
+  // holding the SQLSTATE sits under that. Reading the first link alone matched
+  // only a top-level `{ code }`, which nothing outside this file produces, so
+  // every aborted start failed its node instead of retrying.
+  it("retries when the code sits under a driver wrapper", async () => {
     const { start, transactions } = harness({
-      transactionFailures: [{ code: "40001" }],
+      transactionFailures: [{ cause: { code: "40001" } }],
     });
 
     const outcome = await start("first-wins");
 
     expect(outcome.status).toBe("started");
     expect(transactions).toHaveLength(2);
+  });
+
+  // A failure that is not a serialization abort is the caller's to see, however
+  // deep it sits. Otherwise a genuine outage would be retried out and then
+  // reported as though it had been a race.
+  it("does not retry an unrelated failure carried the same way", async () => {
+    const { start, transactions } = harness({
+      transactionFailures: [{ cause: { code: "23505" } }],
+    });
+
+    await expect(start("first-wins")).rejects.toBeDefined();
+    expect(transactions).toHaveLength(1);
   });
 
   // Unlimited compares nothing, so a lock would only make concurrent starts of
@@ -232,27 +145,6 @@ describe("startForEntity", () => {
     await start("unlimited");
 
     expect(sentAny(isLock)).toBe(false);
-  });
-
-  // The four equalities are the whole scope of what this start may displace.
-  // Without the run mode a test run supersedes the live run it was meant to sit
-  // beside; without the correlation key one arrival supersedes every in-flight
-  // run of the workflow.
-  it("looks only at this workflow's in-flight runs for this entity and mode", async () => {
-    const { sent, start } = harness({});
-
-    await start("newest-wins");
-
-    const candidates = sent(isInFlightQuery);
-    expect(candidates?.query).toContain('"workflow_id" = ');
-    expect(candidates?.query).toContain('"entity_value" = ');
-    expect(candidates?.query).toContain('"run_mode" = ');
-    expect(candidates?.params.slice(0, 3)).toEqual(["wf_1", "appt_1", "live"]);
-    expect(candidates?.params.slice(3)).toEqual([
-      "pending",
-      "running",
-      "waiting",
-    ]);
   });
 
   // A start with nothing to serialize on cannot be replayed by a retry loop, so

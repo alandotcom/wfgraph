@@ -111,3 +111,65 @@ by writes, and the origin role's default `search_path` must put Workflow Graph's
 schema first. The adapter checks `current_schema()` before exposing its
 repositories. PostgreSQL migrations remain an out-of-band deployment step for
 the Worker host.
+
+## Amendment: the Effect v4 Drizzle bridge arrived, and postgres.js stayed (2026-08-30)
+
+The option rejected above was rejected for a reason that has since expired.
+`drizzle-orm@1.0.0-rc.4`, the version in the tree, ships `drizzle-orm/effect-postgres`:
+a first-party bridge peering `@effect/sql-pg` and `effect` at
+`>=4.0.0-beta.83 || >=4.0.0`, which covers the `4.0.0-rc.112` this repo pins in
+`pnpm-workspace.yaml`. `@effect/sql-drizzle`, whose missing v4 release decided the
+original question, stayed on its v3 line at 0.51.0 and is no longer the route.
+
+Workflow Graph stays on postgres.js through `drizzle-orm/postgres-js` anyway. The
+Effect client is halfway through a rewrite, and two things this repo's PostgreSQL
+arrangement is built on have no equivalent in it yet.
+
+**The published client is not the one worth moving to.** `@effect/sql-pg@4.0.0-rc.112`
+is the newest release on npm and still runs on node-postgres; its README says so and
+`PgClient.ts` is `Pg.Pool` and `Pg.Client` throughout. On the Effect repository's `main`,
+`packages/sql/pg/package.json` declares no `dependencies` at all, and `PgClient.ts`
+reaches PostgreSQL through the package's own `PgConnection` and `PgPool` over the v3 wire
+protocol. Moving today would swap postgres.js for node-postgres and then take the rewrite
+as a second migration.
+
+**The startup packet carries three parameters.** `PgConnection` writes `user`, `database`
+and `application_name`, and nothing else. `PgProtocol.encodeStartupMessage` iterates an
+open record, so the encoder would carry a `search_path`, but no field on `PgClientConfig`,
+`PgConnection.Config` or `PgPool.Config` reaches it, and the pool exposes no
+per-connection init hook. The schema amendment above rests on that parameter travelling in
+the startup packet, and issuing `SET search_path` after checkout is the arrangement it
+rejected, because a pool that reopens a connection after a network drop comes back
+pointing at the wrong schema.
+
+**Server notices are discarded.** `PgConnection`'s message switch returns on
+`NoticeResponse` with no hook, so the routing in `packages/core/src/backend/lib/db/index.ts`
+that puts a notice at debug on the `database` logger has nowhere to land. Nothing reaches
+a host's stdout either, so the failure is silence rather than the unconfigured printing
+ADR-0013 exists to avoid.
+
+**What the native client offers in return** is a zero-dependency driver and a
+`stream?: () => Duplex` option that lets the caller supply the socket, which is a cleaner
+seam for the Hyperdrive backend in
+`packages/core/src/backend/persistence/hyperdrive-postgres.ts` than either driver gives
+today.
+
+Four things have to be true before this is worth reopening:
+
+- `@effect/sql-pg` publishes the native client, at a version whose `dependencies` are
+  empty.
+- Arbitrary startup parameters are reachable from its config, upstream rather than as a
+  patch here.
+- `drizzle-orm/effect-postgres` is verified against the rewritten `PgClient`. Drizzle's
+  peer range predates the rewrite, and the client's `types` option changes shape from
+  `Pg.CustomTypesConfig` to the package's own `PgTypes.Registry`.
+- Losing server notices is accepted, or a hook for them exists.
+
+The payoff is bounded and known. Five source files import postgres.js:
+`backend/lib/db/index.ts`, `backend/lib/db/migrations.ts`,
+`backend/persistence/hyperdrive-postgres.ts`,
+`backend/persistence/postgres-test-database.ts` and `src/migrate.test.ts`, all under
+`packages/core`. Queries would arrive as Effects, which retires the `Effect.tryPromise`
+wrapper in `packages/core/src/backend/lib/effect/database.ts`, the boilerplate this ADR's
+Consequences named. The repository contracts and the Drizzle schema are unaffected either
+way.

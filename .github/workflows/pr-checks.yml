@@ -50,13 +50,82 @@ jobs:
       - name: Validate agent skills
         run: pnpm run skills:validate
 
-      # The suite is self-contained: it was run with the local .env moved aside to
-      # confirm all 1620 tests pass with no environment file, database or other
-      # service, which is what this runner gives it. vitest.config.ts puts the
-      # client project in a happy-dom environment, so the client-side tests get
-      # their DOM here too. isolate is off, so import cost is paid once per worker.
+      # The node and client projects are self-contained. They ran with the
+      # local `.env` moved aside, to confirm they pass on a bare runner, which
+      # is what this one is. The postgres project is the deliberate exception
+      # and skips itself here because `WFGRAPH_TEST_DATABASE_URL` is set only
+      # in the postgres job. `vitest.config.ts` puts the client project in a
+      # happy-dom environment, so the client-side tests get their DOM here too.
+      # `isolate` is off, so import cost is paid once per worker.
       - name: Run tests
         run: pnpm run test
 
       - name: Run build
         run: pnpm run build
+
+  postgres:
+    runs-on: ubuntu-latest
+
+    # PostgreSQL is the backend an adopter runs at scale, and the one the
+    # `checks` job cannot reach. That job stands up no service, so a fake driver
+    # is all it can answer these repositories with. This is a job of its own
+    # rather than a step in `checks`, so the two run at the same time. A service
+    # that fails to come up then cannot fail the format, lint, type, and build
+    # checks, which never needed one.
+    services:
+      postgres:
+        # This takes the image and the credentials `docker-compose.yml` serves,
+        # so a failure here reproduces locally with `docker compose up -d` alone.
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: workflow_builder
+          POSTGRES_USER: workflow
+          POSTGRES_PASSWORD: workflow
+        ports:
+          # `5432` rather than the `55437` in `docker-compose.yml`, which
+          # exists to keep the dev container clear of a PostgreSQL installed on
+          # a developer's own machine. This runner has none, and the Run
+          # PostgreSQL tests step is handed the whole URL, so the two never have
+          # to agree.
+          - 5432:5432
+        # A service container takes its health check as Docker flags, and the
+        # `healthcheck:` block in `docker-compose.yml` is not read here. No step
+        # starts until this check reports healthy, which is what makes a
+        # hand-written wait unnecessary.
+        options: >-
+          --health-cmd "pg_isready -U workflow -d workflow_builder"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          cache: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The URL is the gate: without it every case skips, which is what the
+      # `checks` job and a developer without Docker both get. It is set here
+      # rather than in a repository variable nothing in the tree names. That
+      # keeps what decides between running the suite and reporting a wall of
+      # skips visible. Each file builds its own schema inside this database and
+      # drops it after.
+      - name: Run PostgreSQL tests
+        run: pnpm run test:postgres
+        env:
+          WFGRAPH_TEST_DATABASE_URL: postgresql://workflow:workflow@localhost:5432/workflow_builder
+          # This job started a database, so a skip is a fault here rather than
+          # a machine without one. Without this variable, the suite could report
+          # green having run nothing, which is the failure it exists to catch.
+          WFGRAPH_REQUIRE_POSTGRES: "1"
