@@ -31,11 +31,6 @@ const webhookLogger = Effect.map(AppLogger, (appLogger) =>
   appLogger.get("webhook")
 );
 
-export type WebhookIntakeResult =
-  | { kind: "ignored" }
-  | { kind: "sent"; event: string }
-  | { kind: "handshake"; response: Response };
-
 export const receiveWebhook = Effect.fn("receiveWebhook")(
   function* (input: {
     type: string;
