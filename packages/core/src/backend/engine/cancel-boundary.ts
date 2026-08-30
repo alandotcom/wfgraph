@@ -69,8 +69,8 @@ export class CancelBoundary {
 
   /**
    * The Cancel Event that claimed this run, which the Canceled branch reads as
-   * the Event it arrived on. Rebuilt on a replay along with `entered`, since the
-   * boundary read is memoized and hands back the same claim.
+   * the Event it arrived on. Rebuilt on a replay along with `entered`, because
+   * the boundary read is memoized and hands back the same claim.
    */
   private cancelEventName: string | null = null;
 
@@ -109,9 +109,10 @@ export class CancelBoundary {
   /**
    * Whether this node sits behind the Canceled outlet.
    *
-   * Asked by anything holding a node back across the boundary, since a node
-   * scheduled before the crossing and run after it would put the run back on the
-   * branch it just left. The scheduler's deferred waits are the one such queue.
+   * Asked by anything holding a node back across the boundary, because a node
+   * scheduled before the crossing and run after it would put the run back on
+   * the branch it just left. The scheduler's deferred waits are the one such
+   * queue.
    */
   isOnCanceledBranch(nodeId: string): boolean {
     return this.canceledBranchNodeIds.has(nodeId);

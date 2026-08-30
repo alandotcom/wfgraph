@@ -81,8 +81,8 @@ export type { CredentialsUnavailable } from "#src/backend/extensions/credential-
  * it there, the Effect Schema helper for a value already typed as JSON, the
  * error-message helper for a caught exception, and the output-field derivation
  * an integration's own tests run. A browser file (an integration's icon, or a
- * custom output renderer) does not import this entry point at all, since it must
- * not pull the backend graph into the client bundle.
+ * custom output renderer) does not import this entry point at all, because it
+ * must not pull the backend graph into the client bundle.
  */
 export {
   type JsonObject,

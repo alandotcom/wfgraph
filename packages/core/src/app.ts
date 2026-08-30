@@ -72,11 +72,11 @@ export type WfGraphAppOptions = {
    * Who may reach the editor: a predicate over the request, or "external" when
    * something in front of Workflow Graph already gates it.
    *
-   * Required everywhere rather than only in production, since the check that
+   * Required everywhere rather than only in production, because the check that
    * would tell the two apart reads an environment variable that says
-   * "production" and misses "prod" and an unset one. Covers everything Workflow Graph
-   * serves except machine routes (the wait resume path, and `/inngest` when
-   * HTTP serve is mounted).
+   * "production" and misses "prod" and an unset one. Covers everything Workflow
+   * Graph serves except machine routes (the wait resume path, and `/inngest`
+   * when HTTP serve is mounted).
    */
   auth: WfGraphAuth;
   /**

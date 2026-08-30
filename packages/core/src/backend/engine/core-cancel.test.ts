@@ -235,7 +235,8 @@ describe("a run claimed for the Canceled outlet", () => {
   });
 
   // Which Cancel Event claimed the run is the only thing telling two of them
-  // apart, since the Canceled outlet is one outlet however many Events feed it.
+  // apart, because the Canceled outlet is one outlet however many Events feed
+  // it.
   it("offers the canceling Event's name to a Condition on the branch", async () => {
     const model: ConditionModel = {
       version: 2,

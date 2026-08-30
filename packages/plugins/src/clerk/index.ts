@@ -5,7 +5,7 @@
  * One file, because only the server imports it. The editor gets this plugin's
  * metadata as JSON over `/api/extensions`, so nothing here reaches a browser
  * bundle and `@clerk/backend`, which `client.ts` pulls in, costs the browser
- * nothing. The icon is the exception, since a React component cannot be
+ * nothing. The icon is the exception, because a React component cannot be
  * serialized: it stays in `ui.ts`, which only the browser imports.
  */
 
@@ -44,8 +44,8 @@ export type ClerkCredentials = CredentialsOf<typeof clerkCredentialFields>;
 /**
  * The user three of the four actions answer with, flattened out of Clerk's
  * resource: the primary address is picked out of the address list, and the
- * metadata objects stay behind, since a downstream node has no shape to address
- * them by.
+ * metadata objects stay behind, because a downstream node has no shape to
+ * address them by.
  *
  * The three Clerk may have nothing to give are `optionalKey(NullOr(...))`, which is
  * the one spelling that survives an absent key and an explicit null alike. The

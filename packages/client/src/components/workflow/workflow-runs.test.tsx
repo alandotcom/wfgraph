@@ -812,7 +812,7 @@ describe("ExecutionOverlaySync", () => {
     // page.tsx), so a node still reading "running" here can only be the
     // previous run's stale entry surviving the switch. With the map reset,
     // displayNodesAtom's fast path (no statuses, no inactive branch) hands
-    // the node back with no status field at all -- equivalent to idle, since
+    // the node back with no status field at all -- equivalent to idle, because
     // the node components treat a missing status the same as "idle".
     expect(
       store.get(displayNodesAtom).find((node) => node.id === "shared_lifecycle")

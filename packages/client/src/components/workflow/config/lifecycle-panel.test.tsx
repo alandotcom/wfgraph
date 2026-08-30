@@ -127,10 +127,11 @@ function rulesOf(config: Record<string, unknown>): LifecycleRules {
  * Search one of the two pickers and take the first Event it offers.
  *
  * The popup opens on an arrow key rather than a click: a pointer press reaches
- * the list through events happy-dom does not deliver whole, and the keyboard path
- * is the one a builder filtering a long list takes anyway. The option is looked
- * up through the input's own `aria-controls` rather than the page's whole
- * role="option" set, since two comboboxes can be open on this screen at once.
+ * the list through events happy-dom does not deliver whole, and the keyboard
+ * path is the one a builder filtering a long list takes anyway. The option is
+ * looked up through the input's own `aria-controls` rather than the page's
+ * whole role="option" set, because two comboboxes can be open on this screen at
+ * once.
  */
 function chooseEvent(view: RenderResult, label: string, query: string) {
   const input = view.getByLabelText(label);

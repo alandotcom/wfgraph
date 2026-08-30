@@ -7,8 +7,8 @@ import { workspaceSourceAliases } from "./scripts/plugins/workspace-source-alias
  * The test runner's own Vite config. It does not extend the client's:
  * `packages/client/vite.config.ts` configures a dev server and a build for one
  * package, while the suite spans all four, and vitest would not read it in any
- * case, since it looks for `vitest.config` first and stops at the first match.
- * Anything the tests need is declared here.
+ * case, because it looks for `vitest.config` first and stops at the first
+ * match. Anything the tests need is declared here.
  */
 
 // A test file outside every project's `include` is skipped in silence, so the

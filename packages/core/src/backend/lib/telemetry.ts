@@ -26,7 +26,7 @@ export type ServiceSpanFacts = {
   versionNumber?: number | undefined;
   /**
    * How the call ended, in one machine word: a status, a refusal reason, or the
-   * code a failure carries. Never a sentence, since a sentence quotes values.
+   * code a failure carries. Never a sentence, because a sentence quotes values.
    */
   outcome?: string | undefined;
 };

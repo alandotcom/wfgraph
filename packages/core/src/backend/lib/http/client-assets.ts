@@ -175,7 +175,7 @@ export async function serveClientAsset(
   const configuredIndexPath = join(clientDir, CLIENT_ENTRY_FILE);
   const indexPath = await resolveContainedFile(clientDir, configuredIndexPath);
   if (!indexPath) {
-    // Name the directory that was searched, since "build the client" is only
+    // Name the directory that was searched, because "build the client" is only
     // actionable once an operator knows where the server expected to find it.
     clientLogger.error("Client bundle entrypoint is missing", {
       indexPath: configuredIndexPath,

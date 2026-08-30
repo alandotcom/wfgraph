@@ -628,8 +628,8 @@ describe("displayNodesAtom memoization", () => {
   // React.memo on ActionNode and LifecycleNode bails out on a shallow prop
   // comparison, which only works if a node that has not changed keeps its old
   // object identity. Rebuilding every node into a fresh object on every
-  // recompute -- the common case, since most recomputes carry no status and no
-  // inactive Canceled branch to paint -- would re-render every node on every
+  // recompute -- the common case, because most recomputes carry no status and
+  // no inactive Canceled branch to paint -- would re-render every node on every
   // drag frame and every keystroke.
   it("returns the draft's own node objects when there is nothing to merge", () => {
     const store = createGraphStore(...standardGraph());
@@ -826,7 +826,7 @@ describe("run status", () => {
     expect(store.get(executionOverlayGraphAtom)).toBeNull();
     // An empty status map trips displayNodesAtom's fast path, so the draft's
     // node "a" comes back exactly as stored rather than carrying an explicit
-    // "idle" -- equivalent to idle in every way that matters, since the node
+    // "idle" -- equivalent to idle in every way that matters, because the node
     // components treat a missing status the same as "idle".
     expect(
       store.get(displayNodesAtom).find((node) => node.id === "a")?.data

@@ -180,7 +180,7 @@ describe("createInngestSurface connect", () => {
   // timeout has rejected boot: nothing cancels it, so it can still land a
   // WorkerConnection later. Left alone, that connection sits registered
   // with the gateway (WORKER_READY already sent) with nothing holding it,
-  // since createWfGraphApp tore its runtime and pool down when boot's promise
+  // because createWfGraphApp tore its runtime and pool down when boot's promise
   // rejected. The late arrival must be closed, not silently dropped.
   it("closes a handshake that resolves after boot's timeout already rejected", async () => {
     let resolveConnect!: (value: {

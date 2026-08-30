@@ -61,8 +61,8 @@ export type LifecycleDeliveryOutcome =
     }
   /**
    * This Event holds the cancel role here; the ids are the runs it claimed. A
-   * claimed run whose last node had already finished ends `completed`, since it
-   * reaches no further boundary to read the flag at.
+   * claimed run whose last node had already finished ends `completed`, because
+   * it reaches no further boundary to read the flag at.
    */
   | {
       kind: "canceled";

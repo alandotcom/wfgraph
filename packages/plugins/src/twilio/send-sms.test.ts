@@ -276,7 +276,7 @@ describe("the send-sms action", () => {
 
   // What pressing "Test" on a freshly configured Send SMS node does, with the
   // behaviour left at its default and no test phone typed in. The envelope is
-  // asserted whole here, since that is what the engine reads.
+  // asserted whole here, because that is what the engine reads.
   it.effect("answers the log-only success a default test run expects", () =>
     Effect.gen(function* () {
       const result = yield* runAction(underTest, "send-sms", {

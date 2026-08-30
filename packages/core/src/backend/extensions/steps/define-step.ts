@@ -226,9 +226,9 @@ function runToPromise<A, E>(effect: Effect.Effect<A, E>): Promise<A> {
  *
  * `TCredentials` is the integration's own credential vocabulary, which
  * `defineIntegration` infers for a handler written inline. A helper that takes
- * the bag rather than a handler has to name it, since there is no inline handler
- * to infer it from. The default is the open record, for a step belonging to no
- * integration.
+ * the bag rather than a handler has to name it, because there is no inline
+ * handler to infer it from. The default is the open record, for a step
+ * belonging to no integration.
  */
 export type StepBag<
   TInput,

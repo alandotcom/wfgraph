@@ -84,7 +84,7 @@ describe("testLinear", () => {
     });
   });
 
-  // Anything else keeps Linear's own sentence, since a generic one would say
+  // Anything else keeps Linear's own sentence, because a generic one would say
   // less than the message the API sent.
   it("passes any other failure through in Linear's own words", async () => {
     mocks.viewer.mockRejectedValue(new Error("ECONNREFUSED"));

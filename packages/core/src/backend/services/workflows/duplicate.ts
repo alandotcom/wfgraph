@@ -117,9 +117,9 @@ export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(
 
     // The rewrite renames every node and edge, so the copy is a graph this
     // function built rather than one it read. Checking its shape here turns our
-    // own bug into a failure the caller can read, instead of a row no screen can
-    // load afterwards. A copy of a half-built source duplicates as happily as
-    // that source saves, since readiness is publish's question.
+    // own bug into a failure the caller can read, instead of a row no screen
+    // can load afterwards. A copy of a half-built source duplicates as happily
+    // as that source saves, because readiness is publish's question.
     const prepared = yield* prepareGraphSave({ graph: newGraph }).pipe(
       Effect.catchIf(
         (failure) => "error" in failure,

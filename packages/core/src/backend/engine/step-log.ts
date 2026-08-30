@@ -142,11 +142,11 @@ function closeStepLogQuietly(
  * with the row's id, so a duration taken from it would grow with everything that
  * happened between the two attempts, a wait included.
  *
- * The two have opposite failure policies. A refused open fails the node, since
- * nothing has happened yet and Inngest's retry of it costs one wasted call. A
- * refused close is swallowed inside its own step, because a run that did its
- * work has not failed because a row could not be closed. The price is a row left
- * open, which the run panel shows.
+ * The two have opposite failure policies. A refused open fails the node,
+ * because nothing has happened yet and Inngest's retry of it costs one wasted
+ * call. A refused close is swallowed inside its own step, because a run that
+ * did its work has not failed because a row could not be closed. The price is a
+ * row left open, which the run panel shows.
  */
 export function runWithStepLog<T extends StepResult, E, R>(
   target: {

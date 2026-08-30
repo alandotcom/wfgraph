@@ -2,11 +2,11 @@
  * The Inngest flow control an Event may declare, and its translation into what
  * `createFunction` takes.
  *
- * An Event Author writes every path against the payload, so the translation into
- * the `event.data.` form belongs somewhere; `defineEvent` is the only caller, and
- * this sits beside it. The prefixing and the CEL rewrite themselves are
- * `@wfgraph/shared/lifecycle/inngest-event-data`, since a path and an expression over
- * a payload are the same problem wherever they are written.
+ * An Event Author writes every path against the payload, so the translation
+ * into the `event.data.` form belongs somewhere; `defineEvent` is the only
+ * caller, and this sits beside it. The prefixing and the CEL rewrite themselves
+ * are `@wfgraph/shared/lifecycle/inngest-event-data`, because a path and an
+ * expression over a payload are the same problem wherever they are written.
  */
 
 import type { InngestFunction } from "inngest";

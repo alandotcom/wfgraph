@@ -105,7 +105,7 @@ type ExecuteWorkflowRunParams = {
    * Opens the new run in the URL, which is what the Runs panel and the
    * canvas overlay both read (#33). Called only once a run has actually
    * started: the ignored and error paths below leave the URL exactly where
-   * it stood, since neither one created an execution for it to point at.
+   * it stood, because neither one created an execution for it to point at.
    */
   navigateToExecution: (executionId: string) => Promise<void>;
 };

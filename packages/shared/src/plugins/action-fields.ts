@@ -95,7 +95,7 @@ export type ActionConfigFieldBase = {
   required?: boolean;
 
   // The value reaches the step as the builder typed it: template resolution
-  // never reads this key. A test destination is the case it exists for, since
+  // never reads this key. A test destination is the case it exists for, because
   // steering where a test message goes from a run's own payload is never what
   // the person who typed the address meant.
   literal?: true;

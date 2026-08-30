@@ -90,7 +90,7 @@ export type JsonObjectDraft = { [key: string]: JsonValue | undefined };
  * The draft with its valueless keys removed, which is what `JSON.stringify`
  * would have done to them anyway.
  *
- * Takes `undefined` through unchanged, since both call sites hold an optional
+ * Takes `undefined` through unchanged, because both call sites hold an optional
  * draft and would otherwise repeat the `&&` guard at the call site.
  */
 export function toJsonObject(

@@ -129,8 +129,8 @@ export type CreateApiAppOptions = {
 };
 
 /**
- * Where a parked wait is resumed by token. Local to this file, since the editor
- * resumes over RPC and nothing else addresses the path.
+ * Where a parked wait is resumed by token. Local to this file, because the
+ * editor resumes over RPC and nothing else addresses the path.
  */
 const WAIT_RESUME_ROUTE = "/workflows/waits/:token/resume";
 

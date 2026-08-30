@@ -177,7 +177,7 @@ function buildPayloadGate(
   // hands back strings it rendered itself, which spell out the shape of every
   // arm a union offered. A direct decode keeps the Effect issue, which this
   // project renders to a line of its own. The sender and the operator read the
-  // same string here, since neither carries the payload.
+  // same string here, because neither carries the payload.
   if (isEffectSchema(authored)) {
     const decode = Schema.decodeUnknownEffect(authored, { errors: "all" });
     return (payload) =>
@@ -191,8 +191,9 @@ function buildPayloadGate(
 
   // A foreign library's own validate, whose messages are its own. The answer is
   // joined by path rather than passed through whole, because a library free to
-  // quote the value it rejected would put a payload in the reply. The operator's
-  // string keeps each library's own message, since it never leaves the process.
+  // quote the value it rejected would put a payload in the reply. The
+  // operator's string keeps each library's own message, because it never leaves
+  // the process.
   return (payload) =>
     Effect.suspend<void, PayloadRejected, never>(() => {
       const result = bridged["~standard"].validate(payload);

@@ -145,7 +145,7 @@ export function WorkflowSidebarPanel() {
         // of the window, because the shell is inset from the viewport and a
         // percentage of `window.innerWidth` would release the panel's edge a
         // whole inset away from the cursor. The edge it grows from is measured
-        // rather than derived, since the shell's hairline border leaves the
+        // rather than derived, because the shell's hairline border leaves the
         // column starting a pixel inside the rectangle that width describes.
         const shellWidth = editorShellWidth();
         const panelRight = column.getBoundingClientRect().right;
@@ -203,11 +203,11 @@ export function WorkflowSidebarPanel() {
           <div
             className="workflow-sidebar-panel absolute inset-y-0 right-0 z-20 border-l bg-sidebar"
             // Collapsing moves the surface past the shell's right edge rather
-            // than unmounting it, so the Runs workspace keeps its state. Everything
-            // inside stays focusable without this: tabbing to it makes the
-            // browser scroll it into view, and since the shell is an
-            // `overflow: hidden` scrollport holding the canvas, that carries the
-            // graph off screen with no scrollbar to bring it back.
+            // than unmounting it, so the Runs workspace keeps its state.
+            // Everything inside stays focusable without this: tabbing to it
+            // makes the browser scroll it into view, and because the shell is
+            // an `overflow: hidden` scrollport holding the canvas, that carries
+            // the graph off screen with no scrollbar to bring it back.
             inert={panelCollapsed}
             style={{
               // The same expression the box above reserves with, from one

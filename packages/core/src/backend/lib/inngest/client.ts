@@ -37,7 +37,7 @@ const DEFAULT_CONNECT_TIMEOUT_MS = 30_000;
  * it hands back is already registered with the gateway (WORKER_READY sent)
  * with nothing holding it: `createWfGraphApp` rejected on the timeout and tore
  * its runtime and database pool down. Resolving the outer promise at that
- * point would be a no-op, since it already settled, so a late arrival is
+ * point would be a no-op, because it already settled, so a late arrival is
  * closed instead, and left alone otherwise.
  */
 function withConnectTimeout(
@@ -187,10 +187,11 @@ function createInngestClient(
     // as four unformatted lines and a bare object in the middle of the stream.
     internalLogger: createInngestSdkLogger(),
     // What makes `client.metadata` reachable at all: the getter throws without
-    // it. A run writes its own identity there, since every workflow executes on
-    // the one function and Inngest labels them all "Workflow run". The feature
-    // is experimental, and its GA removes this middleware and makes the metadata
-    // surface unconditional, so this line is deleted rather than rewritten then.
+    // it. A run writes its own identity there, because every workflow executes
+    // on the one function and Inngest labels them all "Workflow run". The
+    // feature is experimental, and its GA removes this middleware and makes the
+    // metadata surface unconditional, so this line is deleted rather than
+    // rewritten then.
     middleware: [metadataMiddleware()],
   });
 }

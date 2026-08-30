@@ -52,7 +52,7 @@ export type WorkflowExecutionRuntime = {
    *
    * Stated rather than typed: `JsonSafe` guards the two signatures an author
    * writes against, and a port that adapters implement and forward through
-   * cannot carry it, since comparing two generic signatures re-applies the
+   * cannot carry it, because comparing two generic signatures re-applies the
    * check to a value that already passed it.
    */
   run: <T>(step: DurableStepRef, fn: () => Promise<T>) => Promise<T>;

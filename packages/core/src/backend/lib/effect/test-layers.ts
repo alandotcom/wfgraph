@@ -207,8 +207,9 @@ export type StubbedDatabase = {
  *
  * This is the seam below the repository stubs above: those replace a repository
  * for a service test, this replaces the connection for a repository's own test.
- * A guard living in a `WHERE` is invisible to every caller, since each of them
- * stubs the repository whole, so the statement itself has to be the assertion.
+ * A guard living in a `WHERE` is invisible to every caller, because each of
+ * them stubs the repository whole, so the statement itself has to be the
+ * assertion.
  *
  * `drizzle-orm/pg-proxy` runs the real query builder and hands each statement to
  * `answer` rather than to a connection. The proxy driver has no transactions, so

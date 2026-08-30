@@ -18,12 +18,12 @@ import { formatSchemaFailure } from "#src/types/schema-message";
  * arrival belongs to this run.
  *
  * `event` is an Event name the app declares. This schema takes any non-empty
- * string, because it has no catalog to compare against; the save is what holds a
- * name to the catalog, since a wait on an Event nothing sends can only time out.
- * `match` is the serialized `ConditionModel` the Condition node already stores,
- * evaluated against the arriving payload rather than against merged node outputs.
- * A subscription with no match resumes on the next occurrence of that Event,
- * whatever it carries.
+ * string, because it has no catalog to compare against; the save is what holds
+ * a name to the catalog, because a wait on an Event nothing sends can only time
+ * out. `match` is the serialized `ConditionModel` the Condition node already
+ * stores, evaluated against the arriving payload rather than against merged
+ * node outputs. A subscription with no match resumes on the next occurrence of
+ * that Event, whatever it carries.
  */
 export const eventSubscriptionSchema = Schema.Struct({
   event: NonEmptyTrimmedString,
@@ -40,15 +40,16 @@ const waitForSchema = Schema.mutable(
 /**
  * The Wait node's config, both modes in one schema.
  *
- * Every key a mode reads is `optional` because the engine resolves templates into
- * every declared config key, so a field the builder left blank arrives present and
- * holding `undefined`.
+ * Every key a mode reads is `optional` because the engine resolves templates
+ * into every declared config key, so a field the builder left blank arrives
+ * present and holding `undefined`.
  *
  * `waitMode` is optional for a different reason: absence and `"delay"` mean the
- * same thing to a builder, since the selector opens on "Wait for time" and only a
- * deliberate choice writes the key. `readWaitConfig` applies that default. What
- * absence does not admit is the retired third mode -- a node holding
- * `waitMode: "hook"` fails this decode, which is the intended end of it.
+ * same thing to a builder, because the selector opens on "Wait for time" and
+ * only a deliberate choice writes the key. `readWaitConfig` applies that
+ * default. What absence does not admit is the retired third mode -- a node
+ * holding `waitMode: "hook"` fails this decode, which is the intended end of
+ * it.
  */
 export const waitConfigSchema = Schema.Struct({
   waitMode: Schema.optional(Schema.Literals(["delay", "event"])),

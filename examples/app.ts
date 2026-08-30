@@ -249,7 +249,7 @@ const port = Number(process.env.PORT ?? DEFAULT_PORT);
 
 // An unset HOST binds every interface, which is what a container platform
 // expects to reach. A platform that wants one interface sets HOST, and this
-// repo's dev script sets it to 127.0.0.1, since the app above admits every
+// repo's dev script sets it to 127.0.0.1, because the app above admits every
 // request that arrives.
 server.listen(port, process.env.HOST, () => {
   console.log(`Workflow Graph listening on http://localhost:${port}/`);

@@ -95,8 +95,8 @@ export function toWorkflowApiPayload(
  *
  * Both ways a workflow is written for the first time go through here: the
  * create endpoint and the editor's autosave. A graph with nodes is handed back
- * untouched, and so is anything that is not a graph at all, since deciding that
- * is validation's job and it runs next.
+ * untouched, and so is anything that is not a graph at all, because deciding
+ * that is validation's job and it runs next.
  */
 export function withDefaultLifecycleNode(graph: unknown): unknown {
   if (!isSerializedWorkflowGraph(graph) || graph.nodes.length > 0) {

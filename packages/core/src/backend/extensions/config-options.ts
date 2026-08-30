@@ -29,8 +29,8 @@ export type ConfigOptionField = {
   readonly description?: string;
   readonly type?: "string" | "number";
   /**
-   * Whether the provider needs a value here. A field with a `defaultValue` never
-   * is, since leaving it alone is what asks for that default.
+   * Whether the provider needs a value here. A field with a `defaultValue`
+   * never is, because leaving it alone is what asks for that default.
    */
   readonly required?: boolean;
 };

@@ -38,7 +38,7 @@ type WaitMatchResult = { matched: boolean; unevaluated: string[] };
  * An expression that fails to evaluate does not wake the run: the payload
  * arrived from outside and may carry anything, so a field of the wrong type is
  * a payload that does not satisfy the match rather than a reason to resume. Its
- * error is handed back rather than logged here, since a pure predicate has no
+ * error is handed back rather than logged here, because a pure predicate has no
  * logger of its own; `resumeOneWait` narrates it.
  */
 function waitStateMatches(input: {

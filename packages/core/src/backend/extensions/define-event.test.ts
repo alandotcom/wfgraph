@@ -262,7 +262,7 @@ describe("the intake gate", () => {
   // An Effect payload schema renders through `formatSchemaFailure`, which holds
   // nothing of what arrived, so the sender's answer and the operator's log line
   // are the same string. A payload schema from a foreign library is the case
-  // where the two still differ, since its own messages stay in `detail`.
+  // where the two still differ, because its own messages stay in `detail`.
   it("keeps the payload out of both the answer and the log line", () => {
     const rejected = Effect.runSync(
       appointmentCreated

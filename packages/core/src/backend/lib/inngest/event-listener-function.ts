@@ -115,8 +115,8 @@ export async function runEventListener(input: {
   });
 
   // The gate, because what arrives is a host's own message onto the bus rather
-  // than a contract between Workflow Graph's two halves. A refusal is not retried, since
-  // the same payload fails the same way on the next attempt.
+  // than a contract between Workflow Graph's two halves. A refusal is not
+  // retried, because the same payload fails the same way on the next attempt.
   const rejection = await runtime.runPromise(
     event.decodePayload(payload).pipe(
       Effect.match({

@@ -5,8 +5,8 @@
  * One file, because only the server imports it. The editor gets this plugin's
  * metadata as JSON over `/api/extensions`, so nothing here reaches a browser
  * bundle and the SDK below costs the browser nothing. The icon is the
- * exception, since a React component cannot be serialized: it stays in `ui.ts`,
- * which only the browser imports.
+ * exception, because a React component cannot be serialized: it stays in
+ * `ui.ts`, which only the browser imports.
  */
 
 import { LinearClient, type LinearDocument } from "@linear/sdk";

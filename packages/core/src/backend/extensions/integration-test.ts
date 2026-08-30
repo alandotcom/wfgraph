@@ -20,7 +20,7 @@ export type IntegrationTestResult =
  * A provider issues an OAuth credential with the scopes the grant asked for, so
  * the same refusal that condemns a hand-entered key can be the proof an
  * OAuth-issued one is valid. `oauthCredentialKeys` is empty for a form the
- * operator is still filling in, since nothing has been granted yet.
+ * operator is still filling in, because nothing has been granted yet.
  */
 export type IntegrationTestContext = {
   readonly oauthCredentialKeys: readonly string[];

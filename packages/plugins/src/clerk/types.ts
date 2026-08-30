@@ -28,7 +28,7 @@ export type ClerkUserData = {
 /**
  * Clerk's user resource as the three user-returning steps answer with it: the
  * primary address picked out of the address list, and the metadata objects left
- * behind, since a downstream node has no shape to address them by.
+ * behind, because a downstream node has no shape to address them by.
  */
 export function toClerkUserData(apiUser: ClerkApiUser): ClerkUserData {
   const primaryEmail = apiUser.email_addresses.find(

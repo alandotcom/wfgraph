@@ -45,7 +45,7 @@ function readWaitSignal(resumeEvent: unknown) {
  *
  * A wait subscribes to several Events at once, and this is the only thing that
  * says which of them arrived. The caller decides what an unnamed one means: the
- * node's output leaves the field out rather than carrying a null, since the
+ * node's output leaves the field out rather than carrying a null, because the
  * catalog offers it as a string a condition can compare.
  */
 function readWaitEventName(signal: JsonObject | null): string | null {

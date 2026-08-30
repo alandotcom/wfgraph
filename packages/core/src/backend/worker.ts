@@ -41,7 +41,8 @@ export type WfGraphWorkerRequestConfig = {
   inngest: WfGraphInngestConfig;
   /**
    * The build agent's model settings. Per request like every other secret here,
-   * since a Worker reads its bindings from the environment it was invoked with.
+   * because a Worker reads its bindings from the environment it was invoked
+   * with.
    */
   agent?: WfGraphAgentConfig;
 };
