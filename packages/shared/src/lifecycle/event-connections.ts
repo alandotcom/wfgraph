@@ -4,6 +4,7 @@
  * integration.
  */
 
+import { omit } from "es-toolkit/object";
 import { type ExtensionCatalog, findEvent } from "#src/extensions/catalog";
 
 /** One Event's stored Connection, before any other subscription fields. */
@@ -56,7 +57,7 @@ export function stampConnection<T extends EventConnection>(input: {
   catalog: ExtensionCatalog;
   integration: string;
   connectionId: string;
-}): T[] {
+}): Array<Omit<T, "connectionId"> & { connectionId?: string }> {
   const { bindings, catalog, integration, connectionId } = input;
   return bindings.map((binding) => {
     if (findEvent(catalog, binding.event)?.integration !== integration) {
@@ -65,9 +66,7 @@ export function stampConnection<T extends EventConnection>(input: {
     if (connectionId) {
       return { ...binding, connectionId };
     }
-    const next = { ...binding };
-    delete next.connectionId;
-    return next;
+    return omit(binding, ["connectionId"]);
   });
 }
 
