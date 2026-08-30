@@ -203,10 +203,11 @@ function KeyValueField({ value, onChange, disabled }: FieldProps) {
     <div className="space-y-2">
       {rows.map((entry) => (
         <div className="flex items-center gap-2" key={entry._id}>
-          <Input
+          <TemplateBadgeInput
+            ariaLabel="Name"
             className="flex-1"
             disabled={disabled}
-            onChange={(e) => updateEntry(entry._id, "name", e.target.value)}
+            onChange={(val) => updateEntry(entry._id, "name", val ?? "")}
             placeholder="Name"
             value={entry.name}
           />
@@ -219,7 +220,7 @@ function KeyValueField({ value, onChange, disabled }: FieldProps) {
             value={entry.value}
           />
           <Button
-            className="size-8 shrink-0"
+            className="size-9 shrink-0"
             disabled={disabled}
             onClick={() => removeEntry(entry._id)}
             size="icon"
