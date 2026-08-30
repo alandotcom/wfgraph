@@ -11,6 +11,7 @@ import type { ComponentType } from "react";
 import { UserCard } from "#src/clerk/components/user-card";
 import { ClerkIcon } from "#src/clerk/icon";
 import { LinearIcon } from "#src/linear/icon";
+import { PostHogIcon } from "#src/posthog/icon";
 import { ResendIcon } from "#src/resend/icon";
 import { SlackIcon } from "#src/slack/icon";
 import { TwilioIcon } from "#src/twilio/icon";
@@ -42,6 +43,7 @@ export const integrationUi = {
     },
   },
   linear: { icon: LinearIcon },
+  posthog: { icon: PostHogIcon },
   resend: { icon: ResendIcon },
   slack: { icon: SlackIcon },
   twilio: { icon: TwilioIcon },
