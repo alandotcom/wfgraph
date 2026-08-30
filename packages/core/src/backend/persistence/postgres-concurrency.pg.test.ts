@@ -6,11 +6,15 @@
  * is the server's to detect rather than one process serialising itself.
  */
 
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { Effect } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import {
+  ExecutionRepo,
+  UNSENT_RUN_GRACE_MS,
+  UNSENT_RUN_RECLAIM_REASON,
+} from "#src/backend/services/executions/repo";
 import type {
   ConformanceConnection,
   ConformanceDatabase,
@@ -297,6 +301,175 @@ describePostgres("PostgreSQL concurrency", () => {
         })
       );
       expect(history).toHaveLength(1);
+    } finally {
+      await cleanup();
+    }
+  });
+  // One arrival is one run however many callers replay it: the caller is an
+  // Inngest step whose retry re-runs the whole call, and `unlimited` compares
+  // nothing, so the unique index on (workflow_id, delivery_id) is the only
+  // thing standing between a burst of replays and a row each.
+  it("opens one run per arrival when a delivery is replayed at once", async () => {
+    try {
+      const racers = await openRacers(6);
+      await seedPublishedWorkflow(racers[0]!);
+
+      const outcomes = await Promise.all(
+        racers.map((connection) =>
+          connection.run(
+            Effect.gen(function* () {
+              const executions = yield* ExecutionRepo;
+              return yield* executions.startForEntity({
+                execution: {
+                  workflowId: "wf_1",
+                  workflowVersionId: "ver_1",
+                  startSource: "event",
+                  runMode: "live",
+                  entityValue: "appointment_1",
+                  deliveryId: "one_delivery",
+                  input: {},
+                },
+                concurrency: "unlimited",
+                supersededReason: "newer start",
+              });
+            })
+          )
+        )
+      );
+
+      const ids = new Set(
+        outcomes.map((one) =>
+          one.status === "started" ? one.execution.id : one.status
+        )
+      );
+      expect(ids.size).toBe(1);
+
+      const rows = await racers[0]!.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          return yield* executions.listByWorkflow({
+            workflowId: "wf_1",
+            includeSuperseded: true,
+          });
+        })
+      );
+      expect(rows).toHaveLength(1);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  // A crash between the commit and the send leaves a row in flight that nothing
+  // will ever drive. first-wins would otherwise defer to it forever, so a start
+  // past the grace window closes it and goes. Only the clock moves here: the
+  // row's own started_at is what the window is measured from.
+  it("closes a run stuck before the bus, and defers to a live one beside it", async () => {
+    try {
+      const [connection] = await openRacers(1);
+      await seedPublishedWorkflow(connection!);
+
+      const start = (deliveryId: string) =>
+        connection!.run(
+          Effect.gen(function* () {
+            const executions = yield* ExecutionRepo;
+            return yield* executions.startForEntity({
+              execution: {
+                workflowId: "wf_1",
+                workflowVersionId: "ver_1",
+                startSource: "event",
+                runMode: "live",
+                entityValue: "appointment_1",
+                deliveryId,
+                input: {},
+              },
+              concurrency: "first-wins",
+              supersededReason: "newer start",
+            });
+          })
+        );
+
+      const stuck = await start("delivery_stuck");
+      if (stuck.status !== "started") {
+        throw new Error("The first start was refused");
+      }
+
+      // Inside the window the stuck row still counts, so the next start defers.
+      expect((await start("delivery_early")).status).toBe("refused");
+
+      // Only Date is faked: the driver's own timers have to keep working, and
+      // the comparison is `Date.now() - startedAt` against a row the database
+      // stamped.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        vi.setSystemTime(new Date(Date.now() + UNSENT_RUN_GRACE_MS + 1000));
+        const afterGrace = await start("delivery_late");
+        expect(afterGrace.status).toBe("started");
+        if (afterGrace.status === "started") {
+          expect(afterGrace.reclaimedExecutionIds).toEqual([
+            stuck.execution.id,
+          ]);
+        }
+      } finally {
+        vi.useRealTimers();
+      }
+
+      const rows = await connection!.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          return yield* executions.listByWorkflow({
+            workflowId: "wf_1",
+            includeSuperseded: true,
+          });
+        })
+      );
+      const reclaimed = rows.find((row) => row.id === stuck.execution.id);
+      expect(reclaimed?.status).toBe("failed");
+      expect(reclaimed?.error).toBe(UNSENT_RUN_RECLAIM_REASON);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  // Concurrency serializes on one entity in one mode of one workflow. A start
+  // that compared more widely would refuse runs that have nothing to do with
+  // each other, and a test run of the canvas would block the live one.
+  it("compares only the runs of this entity, this mode and this workflow", async () => {
+    try {
+      const [connection] = await openRacers(1);
+      await seedPublishedWorkflow(connection!);
+
+      const start = (
+        overrides: {
+          entityValue?: string;
+          runMode?: "live" | "test";
+        },
+        deliveryId: string
+      ) =>
+        connection!.run(
+          Effect.gen(function* () {
+            const executions = yield* ExecutionRepo;
+            return yield* executions.startForEntity({
+              execution: {
+                workflowId: "wf_1",
+                workflowVersionId: "ver_1",
+                startSource: "event",
+                runMode: overrides.runMode ?? "live",
+                entityValue: overrides.entityValue ?? "appointment_1",
+                deliveryId,
+                input: {},
+              },
+              concurrency: "first-wins",
+              supersededReason: "newer start",
+            });
+          })
+        );
+
+      expect((await start({}, "d_1")).status).toBe("started");
+      expect((await start({}, "d_2")).status).toBe("refused");
+      expect(
+        (await start({ entityValue: "appointment_2" }, "d_3")).status
+      ).toBe("started");
+      expect((await start({ runMode: "test" }, "d_4")).status).toBe("started");
     } finally {
       await cleanup();
     }

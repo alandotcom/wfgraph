@@ -13,7 +13,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Effect, type ManagedRuntime } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
-import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
+import {
+  createIntegrationCipher,
+  type IntegrationCipher,
+} from "#src/backend/services/integrations/cipher";
 import { ApiKeyRepo } from "#src/backend/services/api-keys/repo";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
@@ -41,7 +44,14 @@ export type ConformanceConnection = {
 
 /** One isolated database, which a case may open more than one connection on. */
 export type ConformanceDatabase = {
-  readonly open: () => Promise<ConformanceConnection>;
+  /**
+   * `cipher` defaults to {@link conformanceCipher}. A case passes another to
+   * reopen rows it sealed under the first, which is how a host rotating a key
+   * without its old value is reproduced.
+   */
+  readonly open: (options?: {
+    cipher?: IntegrationCipher;
+  }) => Promise<ConformanceConnection>;
   readonly drop: () => Promise<void>;
 };
 
@@ -75,8 +85,8 @@ export function describePersistenceConformance(
     const database = await harness.createDatabase();
     databases.push(database);
     return {
-      open: async () => {
-        const connection = await database.open();
+      open: async (options) => {
+        const connection = await database.open(options);
         // Closed once however often it is asked, because a case testing what
         // survives a restart hands its own connection back mid-test and the
         // sweep below would otherwise close an already-closed handle.
@@ -1445,6 +1455,601 @@ export function describePersistenceConformance(
         configRevision: 2,
         refreshState: "idle",
       });
+    });
+
+    // listEventSubscribers unions two arms: the subscription index a publish
+    // writes, and the waits a run parked. These four cases cover what one
+    // subscriber and one parked wait cannot say.
+    it("unions every role one workflow holds for an Event and names it once", async () => {
+      const database = await openConnection();
+      const result = await database.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          yield* workflows.insert({
+            id: "wf_1",
+            name: "Appointments",
+            graph: emptyGraph,
+            eventSubscriptions: [],
+          });
+          yield* workflows.insertPublishedVersion({
+            workflowId: "wf_1",
+            versionId: "ver_1",
+            version: 1,
+            expectedPublishedVersionId: null,
+            graph: emptyGraph,
+            draftGraph: emptyGraph,
+            catalogFingerprint: "catalog",
+            graphDigest: "digest",
+            eventSubscriptions: [
+              {
+                workflowId: "wf_1",
+                eventName: "appointment/approved",
+                role: "start",
+                correlationPath: "data.id",
+              },
+              {
+                workflowId: "wf_1",
+                eventName: "appointment/approved",
+                role: "cancel",
+                correlationPath: null,
+              },
+            ],
+          });
+
+          const executions = yield* ExecutionRepo;
+          // Two runs park on the same Event, which is what makes the index read
+          // name this workflow twice unless the query says otherwise.
+          for (const suffix of ["a", "b"]) {
+            const started = yield* executions.startForEntity({
+              execution: {
+                workflowId: "wf_1",
+                workflowVersionId: "ver_1",
+                startSource: "event",
+                runMode: "live",
+                entityValue: `appointment_${suffix}`,
+                deliveryId: `delivery_${suffix}`,
+                input: {},
+              },
+              concurrency: "unlimited",
+              supersededReason: "newer start",
+            });
+            if (started.status !== "started") {
+              throw new Error("Start was refused");
+            }
+            yield* executions.startWait({
+              executionId: started.execution.id,
+              workflowId: "wf_1",
+              runId: `run_${suffix}`,
+              nodeId: "wait_1",
+              nodeName: "Wait for approval",
+              waitType: "event",
+              resumeToken: `resume_${suffix}`,
+              subscribedEvents: ["appointment/approved"],
+              metadata: {},
+            });
+          }
+
+          // A wait role in the index is not what makes a workflow wake: a
+          // parked run is. This workflow declares one and parks nothing, so the
+          // index arm has to pass it over.
+          yield* workflows.insert({
+            id: "wf_declared_only",
+            name: "Reminders",
+            graph: emptyGraph,
+            eventSubscriptions: [
+              {
+                workflowId: "wf_declared_only",
+                eventName: "appointment/approved",
+                role: "wait",
+                correlationPath: null,
+              },
+            ],
+          });
+
+          return {
+            subscribers: yield* workflows.listEventSubscribers(
+              "appointment/approved"
+            ),
+            otherEvent:
+              yield* workflows.listEventSubscribers("appointment/other"),
+          };
+        })
+      );
+
+      expect(result.subscribers).toHaveLength(1);
+      expect(result.subscribers[0]?.id).toBe("wf_1");
+      expect(result.subscribers[0]?.roles.toSorted()).toEqual([
+        "cancel",
+        "start",
+        "wait",
+      ]);
+      expect(result.otherEvent).toEqual([]);
+    });
+
+    it("leaves a paused workflow out of both subscriber reads", async () => {
+      const database = await openConnection();
+      const result = await database.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          yield* workflows.insert({
+            id: "wf_1",
+            name: "Appointments",
+            graph: emptyGraph,
+            eventSubscriptions: [],
+          });
+          yield* workflows.insertPublishedVersion({
+            workflowId: "wf_1",
+            versionId: "ver_1",
+            version: 1,
+            expectedPublishedVersionId: null,
+            graph: emptyGraph,
+            draftGraph: emptyGraph,
+            catalogFingerprint: "catalog",
+            graphDigest: "digest",
+            eventSubscriptions: [
+              {
+                workflowId: "wf_1",
+                eventName: "appointment/approved",
+                role: "start",
+                correlationPath: null,
+              },
+            ],
+          });
+
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "event",
+              runMode: "live",
+              entityValue: "appointment_1",
+              deliveryId: "delivery_1",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started") {
+            throw new Error("Start was refused");
+          }
+          yield* executions.startWait({
+            executionId: started.execution.id,
+            workflowId: "wf_1",
+            runId: "run_1",
+            nodeId: "wait_1",
+            nodeName: "Wait for approval",
+            waitType: "event",
+            resumeToken: "resume_1",
+            subscribedEvents: ["appointment/approved"],
+            metadata: {},
+          });
+
+          const whileRunning = yield* workflows.listEventSubscribers(
+            "appointment/approved"
+          );
+          // Pausing has to close both arms. A workflow paused mid-run would
+          // otherwise keep waking on the wait it already parked.
+          yield* workflows.setPaused({ workflowId: "wf_1", isPaused: true });
+
+          return {
+            whileRunning,
+            whilePaused: yield* workflows.listEventSubscribers(
+              "appointment/approved"
+            ),
+            paused: yield* workflows.findPausedById("wf_1"),
+          };
+        })
+      );
+
+      expect(result.whileRunning).toHaveLength(1);
+      expect(result.whilePaused).toEqual([]);
+      expect(result.paused).toMatchObject({ id: "wf_1", isPaused: true });
+    });
+
+    it("answers the run reads for a published workflow, a draft one, and neither", async () => {
+      const database = await openConnection();
+      const result = await database.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          yield* workflows.insert({
+            id: "wf_published",
+            name: "Appointments",
+            graph: emptyGraph,
+            eventSubscriptions: [],
+          });
+          yield* workflows.insertPublishedVersion({
+            workflowId: "wf_published",
+            versionId: "ver_1",
+            version: 1,
+            expectedPublishedVersionId: null,
+            graph: emptyGraph,
+            draftGraph: emptyGraph,
+            catalogFingerprint: "catalog",
+            graphDigest: "digest",
+            eventSubscriptions: [],
+          });
+          // Never published, which is the case a test run of the canvas is: the
+          // draft read has to answer it while the published read does not.
+          yield* workflows.insert({
+            id: "wf_draft",
+            name: "Reminders",
+            graph: emptyGraph,
+            eventSubscriptions: [],
+          });
+
+          return {
+            published:
+              yield* workflows.findByIdWithPublishedVersionForRun(
+                "wf_published"
+              ),
+            draftOnlyPublished:
+              yield* workflows.findByIdWithPublishedVersionForRun("wf_draft"),
+            draftGraph:
+              yield* workflows.findByIdWithDraftGraphForRun("wf_draft"),
+            missingPublished:
+              yield* workflows.findByIdWithPublishedVersionForRun("wf_missing"),
+            missingDraft:
+              yield* workflows.findByIdWithDraftGraphForRun("wf_missing"),
+            mintedForMissing: yield* workflows.insertPublishedVersion({
+              workflowId: "wf_missing",
+              versionId: "ver_orphan",
+              version: 1,
+              expectedPublishedVersionId: null,
+              graph: emptyGraph,
+              draftGraph: emptyGraph,
+              catalogFingerprint: "catalog",
+              graphDigest: "digest",
+              eventSubscriptions: [],
+            }),
+            orphan: yield* workflows.findVersionById("ver_orphan"),
+          };
+        })
+      );
+
+      expect(result.published).toMatchObject({
+        workflow: { id: "wf_published" },
+        publishedVersion: { id: "ver_1", version: 1 },
+      });
+      expect(result.draftOnlyPublished).toMatchObject({
+        workflow: { id: "wf_draft" },
+        publishedVersion: null,
+      });
+      expect(result.draftGraph).toMatchObject({
+        workflow: { id: "wf_draft" },
+        draftGraph: emptyGraph,
+      });
+      expect(result.missingPublished).toBeNull();
+      expect(result.missingDraft).toBeNull();
+      // A publish against a workflow that is gone answers rather than leaving a
+      // version row nothing points at.
+      expect(result.mintedForMissing).toBeNull();
+      expect(result.orphan).toBeNull();
+    });
+
+    it("pages waits for an Event by id, and filters the runs a delivery settled", async () => {
+      const database = await openConnection();
+      const result = await database.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          yield* workflows.insert({
+            id: "wf_1",
+            name: "Appointments",
+            graph: emptyGraph,
+            eventSubscriptions: [],
+          });
+          yield* workflows.insertPublishedVersion({
+            workflowId: "wf_1",
+            versionId: "ver_1",
+            version: 1,
+            expectedPublishedVersionId: null,
+            graph: emptyGraph,
+            draftGraph: emptyGraph,
+            catalogFingerprint: "catalog",
+            graphDigest: "digest",
+            eventSubscriptions: [],
+          });
+
+          const executions = yield* ExecutionRepo;
+          const executionIds: string[] = [];
+          for (const suffix of ["a", "b", "c"]) {
+            const started = yield* executions.startForEntity({
+              execution: {
+                workflowId: "wf_1",
+                workflowVersionId: "ver_1",
+                startSource: "event",
+                runMode: "live",
+                entityValue: `appointment_${suffix}`,
+                deliveryId: `delivery_${suffix}`,
+                input: {},
+              },
+              concurrency: "unlimited",
+              supersededReason: "newer start",
+            });
+            if (started.status !== "started") {
+              throw new Error("Start was refused");
+            }
+            executionIds.push(started.execution.id);
+            yield* executions.startWait({
+              executionId: started.execution.id,
+              workflowId: "wf_1",
+              runId: `run_${suffix}`,
+              nodeId: "wait_1",
+              nodeName: "Wait for approval",
+              waitType: "event",
+              resumeToken: `resume_${suffix}`,
+              subscribedEvents: ["appointment/approved"],
+              metadata: {},
+            });
+          }
+
+          const query = {
+            workflowId: "wf_1",
+            eventName: "appointment/approved",
+            runMode: "live" as const,
+          };
+          const firstPage = yield* executions.listWaitsForEvent({
+            ...query,
+            limit: 2,
+          });
+          return {
+            all: yield* executions.listWaitsForEvent({ ...query, limit: 10 }),
+            firstPage,
+            secondPage: yield* executions.listWaitsForEvent({
+              ...query,
+              limit: 2,
+              afterId: firstPage.at(-1)?.id,
+            }),
+            excludingOne: yield* executions.listWaitsForEvent({
+              ...query,
+              limit: 10,
+              excludingExecutionIds: [executionIds[0] ?? ""],
+            }),
+            // An empty exclusion has to mean "exclude nothing" rather than reach
+            // the database as an empty `in ()`, which is a syntax error there.
+            excludingNone: yield* executions.listWaitsForEvent({
+              ...query,
+              limit: 10,
+              excludingExecutionIds: [],
+            }),
+            otherEvent: yield* executions.listWaitsForEvent({
+              ...query,
+              eventName: "appointment/other",
+              limit: 10,
+            }),
+            executionIds,
+          };
+        })
+      );
+
+      const ids = result.all.map((wait) => wait.id);
+      expect(ids).toEqual(ids.toSorted());
+      expect(result.firstPage.map((wait) => wait.id)).toEqual(ids.slice(0, 2));
+      expect(result.secondPage.map((wait) => wait.id)).toEqual(ids.slice(2));
+      expect(result.excludingOne.map((wait) => wait.executionId)).not.toContain(
+        result.executionIds[0]
+      );
+      expect(result.excludingOne).toHaveLength(2);
+      expect(result.excludingNone).toHaveLength(3);
+      expect(result.otherEvent).toEqual([]);
+    });
+
+    it("lets the first Cancel Event claim a run and the second claim nothing", async () => {
+      const database = await openConnection();
+      const result = await database.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          yield* workflows.insert({
+            id: "wf_1",
+            name: "Appointments",
+            graph: emptyGraph,
+            eventSubscriptions: [],
+          });
+          yield* workflows.insertPublishedVersion({
+            workflowId: "wf_1",
+            versionId: "ver_1",
+            version: 1,
+            expectedPublishedVersionId: null,
+            graph: emptyGraph,
+            draftGraph: emptyGraph,
+            catalogFingerprint: "catalog",
+            graphDigest: "digest",
+            eventSubscriptions: [],
+          });
+
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "event",
+              runMode: "live",
+              entityValue: "appointment_1",
+              deliveryId: "delivery_1",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started") {
+            throw new Error("Start was refused");
+          }
+
+          const cancel = (reason: string) =>
+            executions.requestCancelForEntity({
+              workflowId: "wf_1",
+              entityValue: "appointment_1",
+              runMode: "live",
+              eventName: "appointment/cancelled",
+              payload: { reason },
+            });
+
+          return {
+            first: yield* cancel("first"),
+            second: yield* cancel("second"),
+            pending: yield* executions.findPendingCancel(started.execution.id),
+          };
+        })
+      );
+
+      expect(result.first).toHaveLength(1);
+      // The second Cancel Event finds the run already claimed, so it claims
+      // nothing and the payload the first one carried is the one that stands.
+      expect(result.second).toEqual([]);
+      expect(result.pending).toMatchObject({
+        eventName: "appointment/cancelled",
+        payload: { reason: "first" },
+      });
+    });
+
+    it("keeps the workflow's own audit rows apart from a run's timeline", async () => {
+      const database = await openConnection();
+      const result = await database.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          yield* workflows.insert({
+            id: "wf_1",
+            name: "Appointments",
+            graph: emptyGraph,
+            eventSubscriptions: [],
+          });
+          yield* workflows.insertPublishedVersion({
+            workflowId: "wf_1",
+            versionId: "ver_1",
+            version: 1,
+            expectedPublishedVersionId: null,
+            graph: emptyGraph,
+            draftGraph: emptyGraph,
+            catalogFingerprint: "catalog",
+            graphDigest: "digest",
+            eventSubscriptions: [],
+          });
+
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "event",
+              runMode: "live",
+              entityValue: "appointment_1",
+              deliveryId: "delivery_1",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (started.status !== "started") {
+            throw new Error("Start was refused");
+          }
+
+          // One row of each scope. A workflow read that did not filter by type
+          // would return the run's row too, which is the regression this pins.
+          yield* executions.recordAuditEvent({
+            workflowId: "wf_1",
+            eventType: "run_refused",
+            message: "A run for this entity was already going",
+          });
+          yield* executions.recordAuditEvent({
+            workflowId: "wf_1",
+            executionId: started.execution.id,
+            eventType: "run_completed",
+            message: "Completed",
+          });
+
+          return {
+            workflowEvents: yield* executions.listWorkflowEvents("wf_1"),
+            runEvents: yield* executions.listEvents(started.execution.id),
+          };
+        })
+      );
+
+      expect(result.workflowEvents.map((event) => event.eventType)).toEqual([
+        "run_refused",
+      ]);
+      expect(result.runEvents.map((event) => event.eventType)).toEqual([
+        "run_completed",
+      ]);
+    });
+
+    it("refuses every read of a row sealed under a key it no longer has", async () => {
+      const store = await openDatabase();
+      const sealed = await store.open();
+      const integration = await sealed.run(
+        Effect.gen(function* () {
+          const integrations = yield* IntegrationRepo;
+          return yield* integrations.insert({
+            name: "Linear",
+            type: "linear",
+            config: { apiKey: "secret" },
+          });
+        })
+      );
+      await sealed.close();
+
+      // A host that rotated INTEGRATION_ENCRYPTION_KEY without the old value has
+      // rows nothing can open. Both reads say so rather than answering an empty
+      // config, which would read as a connection someone had cleared.
+      const rotated = await store.open({
+        cipher: createIntegrationCipher({ key: "d".repeat(64) }),
+      });
+      const readFailure = (
+        effect: Effect.Effect<unknown, { _tag: string }, WfGraphRepositories>
+      ) =>
+        rotated.run(
+          Effect.catch(effect, (failure) => Effect.succeed(failure._tag))
+        );
+
+      expect(
+        await readFailure(
+          Effect.gen(function* () {
+            const integrations = yield* IntegrationRepo;
+            return yield* integrations.listByType("linear");
+          })
+        )
+      ).toBe("EncryptionKeyMismatch");
+      expect(
+        await readFailure(
+          Effect.gen(function* () {
+            const integrations = yield* IntegrationRepo;
+            return yield* integrations.findById(integration.id);
+          })
+        )
+      ).toBe("EncryptionKeyMismatch");
+
+      // The row is still there; only its config is unreadable.
+      expect(
+        await rotated.run(
+          Effect.gen(function* () {
+            const integrations = yield* IntegrationRepo;
+            return yield* integrations.typesByIds([integration.id]);
+          })
+        )
+      ).toEqual({ [integration.id]: "linear" });
+    });
+
+    it("answers not_found when a refresh claim names an integration that is gone", async () => {
+      const database = await openConnection();
+      const result = await database.run(
+        Effect.gen(function* () {
+          const integrations = yield* IntegrationRepo;
+          return {
+            claim: yield* integrations.claimRefresh({
+              integrationId: "int_missing",
+              claimId: "claim_1",
+              expectedRevision: 0,
+            }),
+            deletion: yield* integrations.deleteOwnedRefreshClaim({
+              integrationId: "int_missing",
+              claimId: "claim_1",
+              expectedRevision: 0,
+            }),
+          };
+        })
+      );
+
+      expect(result.claim).toEqual({ status: "not_found" });
+      expect(result.deletion).toEqual({ status: "not_found" });
     });
   });
 }

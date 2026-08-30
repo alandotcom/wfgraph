@@ -96,12 +96,12 @@ export async function createPostgresTestDatabase(): Promise<ConformanceDatabase>
   await migrateWfGraphDatabase({ url, schema });
 
   return {
-    open: async () => {
+    open: async (options) => {
       const instance = await wfPostgres({
         url,
         schema,
         maxConnections: 5,
-      }).open(conformanceCipher);
+      }).open(options?.cipher ?? conformanceCipher);
       const runtime = ManagedRuntime.make(instance.repositories);
       return {
         run: runtime.runPromise.bind(runtime),

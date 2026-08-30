@@ -12,26 +12,6 @@ import { Effect } from "effect";
 import { stubDatabase } from "#src/backend/lib/effect/test-layers";
 import { makeRunsMethods } from "#src/backend/services/executions/repo/runs";
 
-describe("requestCancelForEntity", () => {
-  it.effect(
-    "claims only a run carrying no cancel yet, so the first Cancel Event wins",
-    () =>
-      Effect.gen(function* () {
-        const { service: database, statements } = stubDatabase();
-
-        yield* makeRunsMethods(database).requestCancelForEntity({
-          workflowId: "workflow_1",
-          entityValue: "sub_9",
-          runMode: "live",
-          eventName: "billing/subscription.canceled",
-          payload: { reason: "customer left" },
-        });
-
-        assert.include(statements[0]?.query, '"cancel_requested_at" is null');
-      })
-  );
-});
-
 describe("finishRun", () => {
   // The engine's function body is replayed on every attempt and after every
   // wait, so any elapsed it measures itself covers the last attempt alone. A run

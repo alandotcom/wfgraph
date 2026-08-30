@@ -13,10 +13,7 @@ import {
   type CapturedStatement,
   stubDatabase,
 } from "#src/backend/lib/effect/test-layers";
-import {
-  createIntegrationCipher,
-  EncryptionKeyMismatch,
-} from "#src/backend/services/integrations/cipher";
+import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
 import {
   type DecryptedIntegration,
   IntegrationRepo,
@@ -24,14 +21,7 @@ import {
 } from "#src/backend/services/integrations/repo";
 
 const KEY = "a".repeat(64);
-const OTHER_KEY = "b".repeat(64);
-
 const cipher = createIntegrationCipher({ key: KEY });
-
-/** An envelope this cipher's key cannot authenticate, whatever it holds. */
-const sealedElsewhere = createIntegrationCipher({ key: OTHER_KEY }).seal({
-  SLACK_API_KEY: "secret",
-});
 
 /** One `integrations` row, in the order the table declares its columns. */
 type IntegrationRow = [
@@ -90,20 +80,6 @@ function harness(rows: IntegrationRow[]) {
 }
 
 describe("reading a row this key cannot open", () => {
-  // Every row in the table is unreadable when the key is wrong, so answering an
-  // empty config for each would draw a table of connections nobody filled in.
-  it("fails the list when the row was sealed under another key", async () => {
-    const failure = await harness([row(sealedElsewhere)]).listFailure();
-
-    expect(failure).toBeInstanceOf(EncryptionKeyMismatch);
-  });
-
-  it("fails a single read under that key with the tagged failure", async () => {
-    const failure = await harness([row(sealedElsewhere)]).findFailure();
-
-    expect(failure).toBeInstanceOf(EncryptionKeyMismatch);
-  });
-
   // One row nobody can parse is one connection the editor can still show and
   // repair, which is the case the empty config exists for.
   it("answers an empty config for a row holding no envelope", async () => {
@@ -326,36 +302,5 @@ describe("integration refresh claims", () => {
     expect(statement?.query).toContain("config_revision");
     expect(statement?.params).toContain(4);
     expect(statement?.params).not.toContain("replacement");
-  });
-
-  it.each([
-    { deleteRows: [["int_1"]], lookupRows: [], expected: "deleted" },
-    {
-      deleteRows: [],
-      lookupRows: [["int_1"]],
-      expected: "no_longer_owned",
-    },
-    { deleteRows: [], lookupRows: [], expected: "not_found" },
-  ])("reports $expected when deleting an owned claim", async (scenario) => {
-    const repoHarness = repositoryHarness((statement) => {
-      if (statement.query.startsWith("delete")) return scenario.deleteRows;
-      if (statement.query.startsWith("select")) return scenario.lookupRows;
-      return [];
-    });
-
-    const outcome = await repoHarness.run((repo) =>
-      repo.deleteOwnedRefreshClaim({
-        integrationId: "int_1",
-        claimId: "claim_1",
-        expectedRevision: 4,
-      })
-    );
-
-    expect(outcome).toEqual({ status: scenario.expected });
-    const statement = repoHarness.statements[0];
-    expect(statement?.query).toContain("refresh_claim_id");
-    expect(statement?.query).toContain("config_revision");
-    expect(statement?.params).toContain("claim_1");
-    expect(statement?.params).toContain(4);
   });
 });

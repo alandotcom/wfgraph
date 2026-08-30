@@ -23,8 +23,10 @@ describePersistenceConformance({
     const filename = join(directory, "wfgraph.db");
 
     return {
-      open: async () => {
-        const instance = await wfSqlite({ filename }).open(conformanceCipher);
+      open: async (options) => {
+        const instance = await wfSqlite({ filename }).open(
+          options?.cipher ?? conformanceCipher
+        );
         const runtime = ManagedRuntime.make(instance.repositories);
         return {
           run: runtime.runPromise.bind(runtime),
