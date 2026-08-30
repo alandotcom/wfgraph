@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterContextProvider,
+} from "@tanstack/react-router";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
@@ -230,6 +237,46 @@ describe("comparison properties", () => {
   });
 });
 
+/**
+ * A router for a panel that never navigates.
+ *
+ * `useWorkflowWorkspaceNavigation` calls `useNavigate({ from:
+ * "/workflows/$workflowId" })`, and that is the only router call in the panel's
+ * subtree. `RouterContextProvider` is `RouterProvider` without `<Matches>`: it
+ * puts the router in context and renders its children in the same pass. Nothing
+ * resolves a match, so these cases stay synchronous. A case that reads route
+ * state needs a real `RouterProvider`, and has to await its first match.
+ */
+const rootRoute = createRootRoute();
+const router = createRouter({
+  routeTree: rootRoute.addChildren([
+    // The path the hook names. Nothing renders a match for it. It is here so
+    // that `from` resolves rather than throwing.
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: "/workflows/$workflowId",
+    }),
+  ]),
+  history: createMemoryHistory({ initialEntries: ["/workflows/workflow_1"] }),
+});
+
+function renderPanel(
+  store: ReturnType<typeof createStore>,
+  actions: Parameters<typeof WorkflowChangesPanel>[0]["actions"]
+) {
+  return render(
+    <RouterContextProvider router={router}>
+      <JotaiProvider store={store}>
+        <OverlayProvider>
+          <ExtensionCatalogProvider value={catalog}>
+            <WorkflowChangesPanel actions={actions} />
+          </ExtensionCatalogProvider>
+        </OverlayProvider>
+      </JotaiProvider>
+    </RouterContextProvider>
+  );
+}
+
 describe("WorkflowChangesPanel", () => {
   it("keeps the review header mounted during the initial comparison request", () => {
     const store = createStore();
@@ -241,15 +288,7 @@ describe("WorkflowChangesPanel", () => {
       compare: { isError: false },
       openComparison: async () => undefined,
     } as never;
-    const view = render(
-      <JotaiProvider store={store}>
-        <OverlayProvider>
-          <ExtensionCatalogProvider value={catalog}>
-            <WorkflowChangesPanel actions={actions} />
-          </ExtensionCatalogProvider>
-        </OverlayProvider>
-      </JotaiProvider>
-    );
+    const view = renderPanel(store, actions);
 
     expect(view.getByRole("heading", { name: "Review changes" })).toBeTruthy();
     expect(
@@ -281,15 +320,7 @@ describe("WorkflowChangesPanel", () => {
       compare: { isError: false },
       openComparison: async () => undefined,
     } as never;
-    const view = render(
-      <JotaiProvider store={store}>
-        <OverlayProvider>
-          <ExtensionCatalogProvider value={catalog}>
-            <WorkflowChangesPanel actions={actions} />
-          </ExtensionCatalogProvider>
-        </OverlayProvider>
-      </JotaiProvider>
-    );
+    const view = renderPanel(store, actions);
 
     const status = view.getByText("Refreshing comparison");
     expect(status.getAttribute("aria-live")).toBe("polite");
@@ -313,15 +344,7 @@ describe("WorkflowChangesPanel", () => {
       compare: { isError: false },
       openComparison: async () => undefined,
     } as never;
-    const view = render(
-      <JotaiProvider store={store}>
-        <OverlayProvider>
-          <ExtensionCatalogProvider value={catalog}>
-            <WorkflowChangesPanel actions={actions} />
-          </ExtensionCatalogProvider>
-        </OverlayProvider>
-      </JotaiProvider>
-    );
+    const view = renderPanel(store, actions);
 
     const row = view.getByRole("button", { name: /Current email/ });
     expect(row.getAttribute("aria-pressed")).toBe("false");

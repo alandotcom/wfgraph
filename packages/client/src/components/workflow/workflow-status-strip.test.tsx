@@ -126,7 +126,7 @@ function stubRpc(payload: ReturnType<typeof workflowPayload>): void {
   );
 }
 
-function renderStrip(
+async function renderStrip(
   options: {
     executionId?: string;
     hasUnsavedChanges?: boolean;
@@ -192,20 +192,26 @@ function renderStrip(
     }),
   });
 
-  const view = render(
-    <JotaiProvider store={store}>
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
-        <ExtensionCatalogProvider value={emptyCatalog}>
-          <OverlayProvider>
-            <RouterProvider router={router} />
-          </OverlayProvider>
-        </ExtensionCatalogProvider>
-      </QueryClientProvider>
-    </JotaiProvider>
+  // This history starts on a route carrying a `beforeLoad`, and the router
+  // resolves that first match in a microtask. Mounting is therefore an update
+  // act has to cover. Without this, a case that asserts before its first
+  // `await` reports the match as an update outside act.
+  const view = await act(async () =>
+    render(
+      <JotaiProvider store={store}>
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          <ExtensionCatalogProvider value={emptyCatalog}>
+            <OverlayProvider>
+              <RouterProvider router={router} />
+            </OverlayProvider>
+          </ExtensionCatalogProvider>
+        </QueryClientProvider>
+      </JotaiProvider>
+    )
   );
 
   return {
@@ -224,18 +230,22 @@ afterEach(() => {
 
 describe("WorkflowStatusStrip", () => {
   it("identifies Changes and provides a return to Draft before comparison loads", async () => {
-    const { view, store } = renderStrip();
+    const { view, store } = await renderStrip();
 
     act(() => store.set(workflowWorkspaceViewAtom, "changes"));
 
     expect(await view.findByText("Changes")).toBeTruthy();
     expect(view.getByText("Editing is off")).toBeTruthy();
-    fireEvent.click(view.getByRole("button", { name: "Back to draft" }));
+    // Leaving Changes clears the run search, which is a real navigation. The
+    // match tree settles after the click, so the click holds the act scope.
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Back to draft" }));
+    });
     expect(store.get(workflowWorkspaceViewAtom)).toBe("draft");
   });
 
   it("reports publication and save state in the fixed status row", async () => {
-    const { view } = renderStrip({ mode: "test", published: true });
+    const { view } = await renderStrip({ mode: "test", published: true });
 
     await waitFor(() => {
       expect(
@@ -247,16 +257,21 @@ describe("WorkflowStatusStrip", () => {
     expect(view.queryByText("Back to draft")).toBeNull();
   });
 
-  it("keeps execution mode out of the status row", () => {
-    const { view } = renderStrip({ mode: "test" });
+  it("keeps execution mode out of the status row", async () => {
+    const { view } = await renderStrip({ mode: "test" });
 
+    // The status row only exists once `getById` has answered. Waiting for the
+    // mode button is what makes the missing label mean anything.
+    expect(
+      await view.findByRole("button", { name: "Published mode: Test" })
+    ).toBeTruthy();
     expect(view.queryByText("Test mode")).toBeNull();
   });
 
   // Published mode lives in this row, one divider from the badge that names
   // the version it governs.
   it("carries Published mode beside the publication badge", async () => {
-    const { view } = renderStrip({ mode: "test", published: true });
+    const { view } = await renderStrip({ mode: "test", published: true });
 
     const mode = await view.findByRole("button", {
       name: "Published mode: Test",
@@ -271,7 +286,7 @@ describe("WorkflowStatusStrip", () => {
   });
 
   it("describes each mode in one clause", async () => {
-    const { view } = renderStrip({ published: true });
+    const { view } = await renderStrip({ published: true });
 
     const mode = await view.findByRole("button", {
       name: "Published mode: Live",
@@ -292,7 +307,7 @@ describe("WorkflowStatusStrip", () => {
   // The mode can be set before the first publish, and the menu is where the
   // reader learns it takes effect at that publish.
   it("says when the mode takes effect before the first publish", async () => {
-    const { view } = renderStrip();
+    const { view } = await renderStrip();
 
     const mode = await view.findByRole("button", {
       name: "Published mode: Live",
@@ -304,7 +319,7 @@ describe("WorkflowStatusStrip", () => {
   });
 
   it("disables the mode for a viewer and gives the reason", async () => {
-    const { view } = renderStrip({ isOwner: false, published: true });
+    const { view } = await renderStrip({ isOwner: false, published: true });
 
     const mode = await view.findByRole("button", {
       name: "Published mode: Live",
@@ -327,7 +342,7 @@ describe("WorkflowStatusStrip", () => {
   });
 
   it("switches to the run state and offers the way back to the draft", async () => {
-    const { view, store, router } = renderStrip({
+    const { view, store, router } = await renderStrip({
       executionId: EXECUTION_ID,
     });
 
@@ -354,7 +369,7 @@ describe("WorkflowStatusStrip", () => {
     // The guard used to live inside the save label, which the run state does
     // not mount: an edit made inside the 1s autosave debounce and followed by a
     // click on a run was dropped on reload with no prompt.
-    const { view, armedUnloadGuard } = renderStrip({
+    const { view, armedUnloadGuard } = await renderStrip({
       executionId: EXECUTION_ID,
       hasUnsavedChanges: true,
     });

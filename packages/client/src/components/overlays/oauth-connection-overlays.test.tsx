@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { ConfigureConnectionOverlay } from "#src/components/overlays/add-connection-overlay";
@@ -65,7 +71,13 @@ function integrationListResponse(
  */
 async function confirmDisconnect(confirmLabel: string): Promise<void> {
   fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
-  fireEvent.click(await screen.findByRole("button", { name: confirmLabel }));
+  const confirm = await screen.findByRole("button", { name: confirmLabel });
+  // The confirm click starts the disconnect mutation, and the answer pops this
+  // overlay off the stack. Settling that here keeps the update inside act, and
+  // the caller's `waitFor` then runs against a stack that has changed.
+  await act(async () => {
+    fireEvent.click(confirm);
+  });
 }
 
 type RenderOverlayOptions = {
