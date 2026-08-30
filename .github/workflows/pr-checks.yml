@@ -50,13 +50,78 @@ jobs:
       - name: Validate agent skills
         run: pnpm run skills:validate
 
-      # The suite is self-contained: it was run with the local .env moved aside to
-      # confirm all 1620 tests pass with no environment file, database or other
-      # service, which is what this runner gives it. vitest.config.ts puts the
-      # client project in a happy-dom environment, so the client-side tests get
-      # their DOM here too. isolate is off, so import cost is paid once per worker.
+      # The node and client projects are self-contained: they were run with the
+      # local .env moved aside to confirm they pass with no environment file, no
+      # database and no other service, which is what this runner gives them. The
+      # postgres project is the deliberate exception and skips itself here,
+      # because WFGRAPH_TEST_DATABASE_URL is set only in the job below.
+      # vitest.config.ts puts the client project in a happy-dom environment, so
+      # the client-side tests get their DOM here too. isolate is off, so import
+      # cost is paid once per worker.
       - name: Run tests
         run: pnpm run test
 
       - name: Run build
         run: pnpm run build
+
+  postgres:
+    runs-on: ubuntu-latest
+
+    # PostgreSQL is the backend an adopter runs at scale, and the one the job
+    # above cannot reach: it stands up no service, so these repositories were
+    # only ever answered by a fake driver. This is a job of its own rather than a
+    # step in `checks` so the two run at the same time, and so a service that
+    # fails to come up cannot fail the format, lint, type and build checks that
+    # never needed one.
+    services:
+      postgres:
+        # The image and the credentials docker-compose.yml serves, so a failure
+        # here reproduces locally with `docker compose up -d` and nothing else.
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: workflow_builder
+          POSTGRES_USER: workflow
+          POSTGRES_PASSWORD: workflow
+        ports:
+          # 5432 rather than compose's 55437, which exists to keep the dev
+          # container clear of a PostgreSQL installed on a developer's own
+          # machine. This runner has none, and the suite is handed the whole URL
+          # below, so the two never have to agree.
+          - 5432:5432
+        # A service container takes its health check as docker flags; compose's
+        # `healthcheck:` block is not read here. No step starts until this
+        # reports healthy, which is what makes a hand-written wait unnecessary.
+        options: >-
+          --health-cmd "pg_isready -U workflow -d workflow_builder"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          cache: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # This one variable is the whole gate: every case in the postgres project
+      # skips itself when it names no server, which is what the job above gets
+      # and what a developer without `docker compose up -d` gets. It is set here
+      # rather than in a repository variable nothing in the tree names, so the
+      # difference between running the suite and reporting a wall of skips is
+      # visible in this file. Each test file migrates a schema of its own inside
+      # this database and drops it again.
+      - name: Run PostgreSQL tests
+        run: pnpm run test:postgres
+        env:
+          WFGRAPH_TEST_DATABASE_URL: postgresql://workflow:workflow@localhost:5432/workflow_builder

@@ -60,6 +60,12 @@ export default defineConfig({
           // entrypoint asks it to. vitest.evals.config.ts loads it for the same
           // reason.
           setupFiles: ["./load-env.ts"],
+          // Cases drop their own schema, so this only finds what a killed run
+          // left. It runs at setup rather than teardown so a failing run's
+          // schema stays put for whoever wants to look at it.
+          globalSetup: [
+            "./packages/core/src/backend/persistence/postgres-test-global-setup.ts",
+          ],
           // A case mints a schema, migrates it and drops it again. The default
           // 5000ms is one cold container away from being exceeded, and a
           // timeout there reads as a failing test rather than a slow service.

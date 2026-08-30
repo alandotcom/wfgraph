@@ -43,7 +43,7 @@ shipping an install script, or the install ends with `ERR_PNPM_IGNORED_BUILDS`.
 ```bash
 pnpm run type-check   # tsc --noEmit, TypeScript 7
 pnpm run lint         # oxlint --type-aware, prints nothing when clean
-pnpm run test         # vitest, one project per environment
+pnpm run test         # vitest, one project per environment; postgres skips with no database
 pnpm run build        # pnpm -r build, each package building itself
 pnpm run knip         # unused files, exports, dependencies
 pnpm run skills:validate # intent validate --check, published Agent Skills
@@ -52,6 +52,11 @@ pnpm run fix          # oxfmt, must leave the tree clean
 
 Do not leave the repo with a failing check. `pnpm run lint` printing nothing means it
 passed; oxlint has no summary line on success.
+
+`pnpm run test:postgres` is the live PostgreSQL suite, and it skips every case unless
+`WFGRAPH_TEST_DATABASE_URL` names a server, so a green `pnpm run test` on a machine with no
+database has not touched the production backend. Run it after `docker compose up -d` whenever
+anything under `backend/persistence/`, a repository, or `packages/core/drizzle/` changed.
 
 ## Releasing
 
@@ -172,6 +177,14 @@ literals inside that one call, and `defineStep` is the internal builder each is 
 through, reachable from no entry. `docs/integrations.md` owns the canonical JSON codec
 contract a step boundary runs both directions through; `steps/define-step.ts`'s header
 states the invariant in brief.
+
+**One contract, two backends, one suite.** `backend/persistence/persistence-conformance-test-support.ts`
+holds every case that is about the repository contract rather than about an engine, and both
+backends run it: `sqlite.conformance.test.ts` and `postgres.conformance.pg.test.ts`. A case
+belongs there unless it reaches past the repositories into one engine's own storage, which is
+what is left in `sqlite.test.ts` and `sqlite.integrations.test.ts`. A `*.pg.test.ts` file runs
+in the `postgres` vitest project, which mints a schema per case and drops it afterwards; the
+`wfgraph_test_` schema prefix is reserved for that and swept before each run.
 
 **The extension surface is one JSON catalog, served on one route** (ADR-0008). A test that
 needs one provides `stubExtensions` or `stubExtensionCatalog` from
@@ -509,5 +522,6 @@ The app refuses to start without `INTEGRATION_ENCRYPTION_KEY` (64-char hex). Put
 
 ### Cloud VM gotchas
 
+- The live PostgreSQL suite wants `docker compose up -d` and `WFGRAPH_TEST_DATABASE_URL`; without them `pnpm run test:postgres` skips every case.
 - **Node 24 is required** (`engines` / `.node-version`). nvm's default alias is set to 24, so a normal `bash` shell already resolves the nvm Node 24 binary and its corepack `pnpm` (verify with `node -v`). If a stray older Node (e.g. `/exec-daemon/node`) is ever ahead on `PATH`, put nvm first: `export PATH="$HOME/.nvm/versions/node/$(nvm version 24)/bin:$PATH"`.
 - For driving a real workflow against Inngest (not vitest), use `.claude/skills/live-run/SKILL.md`.
