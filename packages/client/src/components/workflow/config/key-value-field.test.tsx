@@ -1,14 +1,11 @@
 /**
- * The key-value row: two cells of one control, not a compact name beside a
- * template value. Mixing those is what made Name a short pill and Value a
- * taller box.
+ * The key-value row: two compact inputs of one size. Mixing a short Name with a
+ * tall template Value is what made the cells look like different controls.
  */
 
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ActionConfigRenderer } from "#src/components/workflow/config/action-config-renderer";
-import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
-import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { ActionConfigField } from "@wfgraph/shared/plugins/action-fields";
 
 const propertiesField: ActionConfigField = {
@@ -19,36 +16,27 @@ const propertiesField: ActionConfigField = {
 
 function renderRow() {
   render(
-    <ExtensionCatalogProvider value={emptyExtensionCatalog}>
-      <ActionConfigRenderer
-        config={{
-          properties: JSON.stringify([{ name: "plan", value: "pro" }]),
-        }}
-        fields={[propertiesField]}
-        onUpdateConfig={vi.fn()}
-      />
-    </ExtensionCatalogProvider>
+    <ActionConfigRenderer
+      config={{
+        properties: JSON.stringify([{ name: "plan", value: "pro" }]),
+      }}
+      fields={[propertiesField]}
+      onUpdateConfig={vi.fn()}
+    />
   );
 }
 
-function chromeOf(label: string): HTMLElement {
-  const field = screen.getByLabelText(label);
-  const chrome = field.parentElement;
-  if (!chrome) {
-    throw new Error(`no chrome around ${label}`);
-  }
-  return chrome;
-}
-
 describe("a key-value row", () => {
-  it("draws name and value with the same template-input chrome", () => {
+  it("draws name and value as matching compact inputs", () => {
     renderRow();
 
-    const name = chromeOf("Name");
-    const value = chromeOf("Value");
+    const name = screen.getByLabelText("Name");
+    const value = screen.getByLabelText("Value");
 
-    expect(name.className).toContain("min-h-9");
-    expect(value.className).toContain("min-h-9");
+    expect(name.tagName).toBe("INPUT");
+    expect(value.tagName).toBe("INPUT");
+    expect(name.className).toContain("h-7");
+    expect(value.className).toContain("h-7");
     expect(name.className).toBe(value.className);
   });
 });
