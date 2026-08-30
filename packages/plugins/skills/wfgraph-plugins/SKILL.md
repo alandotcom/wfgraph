@@ -43,9 +43,9 @@ keep manual credential forms when OAuth is available.
 
 Resend also declares webhook Events (`resend/email.delivered` and the rest of
 the official types) on the umbrella source `resend/webhook`. Paste the
-Connection URL from the Lifecycle Node (or Wait node) and
-`RESEND_WEBHOOK_SECRET` from the Resend webhook details page. Copying the URL
-needs `publicUrl`.
+Connection URL from the Lifecycle Node (or Wait node). Add the signing secret
+on that Connection (`RESEND_WEBHOOK_SECRET`). Copying the URL needs
+`publicUrl`.
 
 ### OAuth host requirements
 

@@ -1,6 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
+import { Button } from "#src/components/ui/button";
 import { Label } from "#src/components/ui/label";
 import { WebhookUrlField } from "#src/components/ui/webhook-url-field";
+import { EditConnectionOverlay } from "#src/components/overlays/edit-connection-overlay";
+import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import {
   type ExtensionCatalog,
@@ -13,8 +16,9 @@ import { EventConnectionSelect } from "./event-connection-select";
  * webhook URL that Connection answers on.
  *
  * The URL is Connection-addressed, so Email sent and Email delivered paste the
- * same Resend endpoint. Showing it here is what makes the Events usable: the
- * vendor settings page is where the builder leaves the editor.
+ * same Resend endpoint. The signing secret lives on that Connection, not on
+ * the workflow: Edit connection is how a builder pastes it after copying the
+ * URL.
  */
 export function IntegrationEventConnection({
   catalog,
@@ -52,11 +56,14 @@ export function IntegrationEventConnection({
         <ConnectionName connectionId={connectionId} integrationLabel={label} />
       ) : null}
       {connectionId && entry?.hasWebhook ? (
-        <WebhookUrlField
-          connectionId={connectionId}
-          helpText={entry.webhookHelpText}
-          type={integrationType}
-        />
+        <>
+          <WebhookUrlField
+            connectionId={connectionId}
+            helpText={entry.webhookHelpText}
+            type={integrationType}
+          />
+          <EditConnectionForWebhookButton connectionId={connectionId} />
+        </>
       ) : null}
     </div>
   );
@@ -78,5 +85,29 @@ function ConnectionName({
       {"via "}
       <span>{name}</span>
     </p>
+  );
+}
+
+function EditConnectionForWebhookButton({
+  connectionId,
+}: {
+  connectionId: string;
+}) {
+  const { push } = useOverlay();
+  const { data: connections = [] } = useQuery(integrationsQueryOptions());
+  const connection = connections.find((entry) => entry.id === connectionId);
+  if (!connection) {
+    return null;
+  }
+
+  return (
+    <Button
+      onClick={() => push(EditConnectionOverlay, { integration: connection })}
+      size="sm"
+      type="button"
+      variant="outline"
+    >
+      Add signing secret
+    </Button>
   );
 }

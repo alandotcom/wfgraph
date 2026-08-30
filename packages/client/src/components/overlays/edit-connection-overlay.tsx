@@ -21,6 +21,7 @@ import {
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
   findIntegration,
+  type CredentialFieldMetadata,
   type IntegrationMetadata,
 } from "@wfgraph/shared/extensions/catalog";
 import { ConfirmOverlay } from "./confirm-overlay";
@@ -510,12 +511,10 @@ export function EditConnectionOverlay({
     });
   };
 
-  const renderConfigFields = () => {
-    if (!formFields) {
-      return null;
-    }
-
-    return Object.entries(formFields).map(([configKey, field]) => {
+  const renderConfigFields = (
+    entries: readonly (readonly [string, CredentialFieldMetadata])[]
+  ) => {
+    return entries.map(([configKey, field]) => {
       const isOAuthManaged =
         (oauth?.status === "connected" ||
           oauth?.status === "reauthorization_required") &&
@@ -578,6 +577,14 @@ export function EditConnectionOverlay({
     });
   };
 
+  const credentialEntries = Object.entries(formFields ?? {});
+  const webhookCredentialEntries = credentialEntries.filter(([key]) =>
+    key.includes("WEBHOOK")
+  );
+  const otherCredentialEntries = credentialEntries.filter(
+    ([key]) => !key.includes("WEBHOOK")
+  );
+
   return (
     <Overlay
       actions={[
@@ -634,8 +641,6 @@ export function EditConnectionOverlay({
           className="m-0 min-w-0 space-y-4 border-0 p-0"
           disabled={oauthBusy}
         >
-          {renderConfigFields()}
-
           {catalogEntry?.hasWebhook ? (
             <WebhookUrlField
               connectionId={integration.id}
@@ -643,6 +648,9 @@ export function EditConnectionOverlay({
               type={integration.type}
             />
           ) : null}
+
+          {renderConfigFields(webhookCredentialEntries)}
+          {renderConfigFields(otherCredentialEntries)}
 
           <div className="space-y-2">
             <Label htmlFor="name">Label (Optional)</Label>

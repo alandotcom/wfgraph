@@ -34,8 +34,7 @@ Resend and PostHog include OAuth through a public client metadata document. Slac
 OAuth when you pass a registered Slack app client. All three retain manual credential
 entry. OAuth callback URLs also require `publicUrl` on `createWfGraphApp`.
 Resend's webhook Events use the same `publicUrl` to copy a Connection-addressed
-intake URL; paste the signing secret (`RESEND_WEBHOOK_SECRET`) from the Resend
-webhook details page.
+intake URL; add the signing secret (`RESEND_WEBHOOK_SECRET`) on that Connection.
 
 Clerk, Linear, PostHog, Resend, and Twilio are also exported as values for a host that wants
 some of the six rather than all of them. Slack is a factory because it accepts OAuth

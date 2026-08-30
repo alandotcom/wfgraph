@@ -67,7 +67,7 @@ export function WebhookUrlField({
       </div>
       <p className="text-muted-foreground text-xs">
         {helpText ??
-          "Paste this URL into the vendor's webhook settings for this Connection."}
+          "Paste this URL into the vendor's webhook settings for this Connection. Add the signing secret on this Connection."}
       </p>
     </div>
   );

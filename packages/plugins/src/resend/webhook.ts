@@ -32,7 +32,7 @@ export const resendWebhook: IntegrationWebhook<{
 }> = {
   source: RESEND_WEBHOOK_SOURCE,
   helpText:
-    "Create a webhook in Resend with all event types selected, then paste this URL and the signing secret from that page.",
+    "Paste this URL into Resend. Then open this Connection and add the signing secret from that page.",
   verify: ({ rawBody, headers, credentials }) => {
     const secret = credentials.RESEND_WEBHOOK_SECRET;
     if (!secret) {

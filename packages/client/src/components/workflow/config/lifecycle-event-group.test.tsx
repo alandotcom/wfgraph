@@ -140,6 +140,9 @@ describe("LifecycleEventGroup Connection picker", () => {
     });
 
     expect(view.getByText("Webhook URL")).toBeTruthy();
+    expect(
+      view.getByRole("button", { name: "Add signing secret" })
+    ).toBeTruthy();
   });
 
   it("shows the stored Connection in view mode", () => {
@@ -151,6 +154,9 @@ describe("LifecycleEventGroup Connection picker", () => {
     expect(view.getByText("Email delivered")).toBeTruthy();
     expect(view.getByText("Resend API Key")).toBeTruthy();
     expect(view.getByText("Webhook URL")).toBeTruthy();
+    expect(
+      view.getByRole("button", { name: "Add signing secret" })
+    ).toBeTruthy();
     expect(view.queryByText("conn_1")).toBeNull();
   });
 });
