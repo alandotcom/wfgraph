@@ -178,13 +178,17 @@ through, reachable from no entry. `docs/integrations.md` owns the canonical JSON
 contract a step boundary runs both directions through; `steps/define-step.ts`'s header
 states the invariant in brief.
 
-**One contract, two backends, one suite.** `backend/persistence/persistence-conformance-test-support.ts`
-holds every case that is about the repository contract rather than about an engine, and both
-backends run it: `sqlite.conformance.test.ts` and `postgres.conformance.pg.test.ts`. A case
-belongs there unless it reaches past the repositories into one engine's own storage, which is
-what is left in `sqlite.test.ts` and `sqlite.integrations.test.ts`. A `*.pg.test.ts` file runs
-in the `postgres` vitest project, which mints a schema per case and drops it afterwards; the
-`wfgraph_test_` schema prefix is reserved for that and swept before each run.
+**One contract, two backends, one suite.** `backend/persistence/conformance/` holds every case
+that is about the repository contract rather than about an engine, one file per aggregate over
+`support.ts`, which owns the cipher, the seed, and the registry that closes what a case opened.
+`persistence-conformance-test-support.ts` composes them, and both backends run the result:
+`sqlite.conformance.test.ts` and `postgres.conformance.pg.test.ts`. A case belongs there unless
+it reaches past the repositories into one engine's own storage, which is what is left in
+`sqlite.test.ts` and `sqlite.integrations.test.ts`. A `*.pg.test.ts` file runs in the `postgres`
+vitest project, which mints a schema per case and drops it afterwards; the `wfgraph_test_`
+schema prefix is reserved for that and swept before each run. `WFGRAPH_REQUIRE_POSTGRES` turns
+that project's skip into an error, which is what keeps CI from reporting a suite that ran
+nothing.
 
 **The extension surface is one JSON catalog, served on one route** (ADR-0008). A test that
 needs one provides `stubExtensions` or `stubExtensionCatalog` from
