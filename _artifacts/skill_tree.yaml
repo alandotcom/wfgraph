@@ -1,0 +1,142 @@
+# _artifacts/skill_tree.yaml
+library:
+  name: "@wfgraph/core"
+  version: "3.1.1"
+  repository: https://github.com/alandotcom/wfgraph
+  description: Host app, authoring vocabulary, and plugin surface for Workflow Graph
+generated_from:
+  domain_map: domain_map.yaml
+  skill_spec: skill_spec.md
+generated_at: "2026-08-30"
+
+coverage:
+  ignored_packages:
+    - name: "@wfgraph/client"
+      reason: The editor is clientBundle passed to createWfGraphApp; embedding lives in @wfgraph/core skills.
+
+skills:
+  - name: wfgraph-core
+    slug: wfgraph-core
+    type: core
+    domain: embed
+    path: skills/wfgraph-core/SKILL.md
+    package: packages/core
+    description: >
+      Entry point for embedding Workflow Graph and writing integrations.
+      createWfGraphApp, defineEvent, defineAction, persistence, defineIntegration.
+    sources:
+      - alandotcom/wfgraph:README.md
+      - alandotcom/wfgraph:docs/embedding.md
+
+  - name: Embed
+    slug: wfgraph-core/embed
+    type: sub-skill
+    domain: embed
+    path: skills/wfgraph-core/embed/SKILL.md
+    package: packages/core
+    description: >
+      createWfGraphApp, mount, auth, encryption, Inngest, clientBundle, logging.
+    sources:
+      - alandotcom/wfgraph:docs/embedding.md
+
+  - name: Events
+    slug: wfgraph-core/events
+    type: sub-skill
+    domain: events
+    path: skills/wfgraph-core/events/SKILL.md
+    package: packages/core
+    description: >
+      defineEvent, correlationPath, umbrella source, intake gate, Lifecycle.
+    sources:
+      - alandotcom/wfgraph:docs/events.md
+
+  - name: Host actions
+    slug: wfgraph-core/host-actions
+    type: sub-skill
+    domain: host_actions
+    path: skills/wfgraph-core/host-actions/SKILL.md
+    package: packages/core
+    description: >
+      defineAction Promise handlers, Standard Schema, step.run.
+    sources:
+      - alandotcom/wfgraph:docs/embedding.md
+      - alandotcom/wfgraph:docs/integrations.md
+
+  - name: Persistence
+    slug: wfgraph-core/persistence
+    type: sub-skill
+    domain: persistence
+    path: skills/wfgraph-core/persistence/SKILL.md
+    package: packages/core
+    description: >
+      wfPostgres, wfSqlite, wfWorker, wfHyperdrive, migrateWfGraphDatabase.
+    sources:
+      - alandotcom/wfgraph:docs/embedding.md
+
+  - name: Integrations
+    slug: wfgraph-core/integrations
+    type: sub-skill
+    domain: integrations
+    path: skills/wfgraph-core/integrations/SKILL.md
+    package: packages/core
+    description: >
+      Router for writing an integration against @wfgraph/core/plugin.
+    sources:
+      - alandotcom/wfgraph:docs/integrations.md
+
+  - name: Authoring
+    slug: wfgraph-core/integrations/authoring
+    type: sub-skill
+    domain: integrations
+    path: skills/wfgraph-core/integrations/authoring/SKILL.md
+    package: packages/core
+    description: >
+      defineIntegration, credentials, inline handlers, config form, schemas.
+    sources:
+      - alandotcom/wfgraph:docs/integrations.md
+
+  - name: HTTP
+    slug: wfgraph-core/integrations/http
+    type: sub-skill
+    domain: integrations
+    path: skills/wfgraph-core/integrations/http/SKILL.md
+    package: packages/core
+    description: >
+      callExternal, replay safety, Effect vs Promise, describe the wire.
+    sources:
+      - alandotcom/wfgraph:docs/integrations.md
+
+  - name: OAuth
+    slug: wfgraph-core/integrations/oauth
+    type: sub-skill
+    domain: integrations
+    path: skills/wfgraph-core/integrations/oauth/SKILL.md
+    package: packages/core
+    description: >
+      IntegrationOAuth adapters. Host publicUrl and routes stay in embed.
+    sources:
+      - alandotcom/wfgraph:docs/integrations.md
+      - alandotcom/wfgraph:docs/embedding.md
+
+  - name: Testing
+    slug: wfgraph-core/integrations/testing
+    type: sub-skill
+    domain: integrations
+    path: skills/wfgraph-core/integrations/testing/SKILL.md
+    package: packages/core
+    description: >
+      runAction, checkIntegration, evolve and retire action ids.
+    sources:
+      - alandotcom/wfgraph:docs/integrations.md
+
+  - name: wfgraph-plugins
+    slug: wfgraph-plugins
+    type: core
+    domain: plugins
+    path: skills/wfgraph-plugins/SKILL.md
+    package: packages/plugins
+    description: >
+      builtInIntegrations, Slack OAuth factory, Resend metadata client, plugins/ui.
+    sources:
+      - alandotcom/wfgraph:docs/embedding.md
+      - alandotcom/wfgraph:packages/plugins/README.md

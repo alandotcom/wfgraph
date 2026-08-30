@@ -7,7 +7,8 @@
     "effect",
     "inngest",
     "workflow",
-    "workflow-engine"
+    "workflow-engine",
+    "tanstack-intent"
   ],
   "license": "Apache-2.0",
   "repository": {
@@ -17,7 +18,8 @@
   },
   "files": [
     "dist",
-    "drizzle"
+    "drizzle",
+    "skills"
   ],
   "type": "module",
   "main": "./dist/index.js",
