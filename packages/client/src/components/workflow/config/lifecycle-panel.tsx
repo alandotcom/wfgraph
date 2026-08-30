@@ -18,6 +18,10 @@ import type { UpdateNodeConfig } from "./node-config-patch";
 
 export { CONCURRENCY_OPTIONS } from "./lifecycle-concurrency-group";
 
+function prune(next: LifecycleRules) {
+  return pruneConnectionIds(pruneCorrelationPaths(next));
+}
+
 /**
  * The Lifecycle Node's panel: what starts a run and what happens to runs already
  * in progress. Every control writes the complete Lifecycle Rules object. Reads
@@ -43,9 +47,6 @@ export function LifecyclePanel({
   const write = (next: LifecycleRules) => {
     onUpdateConfig({ lifecycleRules: next });
   };
-
-  const prune = (next: LifecycleRules) =>
-    pruneConnectionIds(pruneCorrelationPaths(next));
 
   const setStartEvents = (eventNames: string[]) => {
     write(prune({ ...rules, startEvents: eventNames }));

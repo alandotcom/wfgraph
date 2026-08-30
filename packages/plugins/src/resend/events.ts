@@ -267,11 +267,7 @@ const suppressionData = Schema.Struct({
   ),
 });
 
-function resendEmailEvent<const T extends string>(
-  type: T,
-  label: string,
-  description: string
-) {
+function resendEmailEvent(type: string, label: string, description: string) {
   return defineEvent({
     name: `resend/${type}`,
     label,
@@ -289,11 +285,7 @@ function resendEmailEvent<const T extends string>(
   });
 }
 
-function resendDomainEvent<const T extends string>(
-  type: T,
-  label: string,
-  description: string
-) {
+function resendDomainEvent(type: string, label: string, description: string) {
   return defineEvent({
     name: `resend/${type}`,
     label,
@@ -311,11 +303,7 @@ function resendDomainEvent<const T extends string>(
   });
 }
 
-function resendContactEvent<const T extends string>(
-  type: T,
-  label: string,
-  description: string
-) {
+function resendContactEvent(type: string, label: string, description: string) {
   return defineEvent({
     name: `resend/${type}`,
     label,
@@ -333,8 +321,8 @@ function resendContactEvent<const T extends string>(
   });
 }
 
-function resendSuppressionEvent<const T extends string>(
-  type: T,
+function resendSuppressionEvent(
+  type: string,
   label: string,
   description: string
 ) {
