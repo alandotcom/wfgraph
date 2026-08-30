@@ -199,14 +199,19 @@ describe("useOAuthConnection", () => {
       first = result.current.startExisting("connection_1");
       second = result.current.startExisting("connection_2");
     });
-    await second;
-    firstStart.resolve(
-      jsonResponse({
-        attemptId: "attempt_1",
-        authorizeUrl: "https://provider.example/authorize",
-      })
-    );
-    await first;
+    // This case keeps the hook mounted, where the ones that unmount first do
+    // not. The superseded attempt's cancellation and the winner's success both
+    // settle inside this scope.
+    await act(async () => {
+      await second;
+      firstStart.resolve(
+        jsonResponse({
+          attemptId: "attempt_1",
+          authorizeUrl: "https://provider.example/authorize",
+        })
+      );
+      await first;
+    });
 
     expect(firstPopup.close).toHaveBeenCalledOnce();
     expect(firstPopup.location.assign).not.toHaveBeenCalled();

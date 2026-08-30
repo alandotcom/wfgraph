@@ -104,11 +104,24 @@ function collect(options: {
     );
   }
 
-  return renderHook(() => useProviderFieldIssues(options.nodes, catalog), {
-    wrapper: ({ children }) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    ),
-  }).result.current;
+  const { result, unmount } = renderHook(
+    () => useProviderFieldIssues(options.nodes, catalog),
+    {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      ),
+    }
+  );
+  const issues = result.current;
+  // These cases read one answer the cache already holds, so nothing is left to
+  // wait for. Unmount before returning: a question the seed does not cover then
+  // resolves against no mounted hook. Left mounted, it lands as an update after
+  // the case has ended, and `isolate: false` reports that against whichever file
+  // runs next.
+  unmount();
+  return issues;
 }
 
 describe("issues a provider-backed field raises", () => {

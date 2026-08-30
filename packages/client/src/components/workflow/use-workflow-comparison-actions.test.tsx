@@ -67,7 +67,9 @@ describe("useWorkflowComparisonActions", () => {
       wrapper: Wrapper,
     });
 
-    await expect(result.current.openComparison()).resolves.toBeUndefined();
+    await act(async () =>
+      expect(result.current.openComparison()).resolves.toBeUndefined()
+    );
 
     expect(store.get(isComparisonPendingAtom)).toBe(false);
   });
@@ -174,9 +176,11 @@ describe("useWorkflowComparisonActions", () => {
       wrapper: Wrapper,
     });
 
-    await expect(
-      result.current.openComparison({ force: true })
-    ).resolves.toBeUndefined();
+    await act(async () =>
+      expect(
+        result.current.openComparison({ force: true })
+      ).resolves.toBeUndefined()
+    );
 
     expect(store.get(isComparisonPendingAtom)).toBe(false);
     expect(store.get(comparisonSessionAtom)).toBe(installed);
