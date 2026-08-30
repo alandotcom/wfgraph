@@ -224,6 +224,34 @@ describe("startForEntity", () => {
     expect(transactions).toHaveLength(2);
   });
 
+  // What a real driver raises is nested: Drizzle wraps the failure in a
+  // DrizzleQueryError carrying the SQL it ran, and the PostgresError holding the
+  // SQLSTATE sits under that. Reading the first link alone matched only the
+  // shape above, which nothing outside this file produces, so every aborted
+  // start failed its node instead of retrying.
+  it("retries when the code sits under a driver wrapper", async () => {
+    const { start, transactions } = harness({
+      transactionFailures: [{ cause: { code: "40001" } }],
+    });
+
+    const outcome = await start("first-wins");
+
+    expect(outcome.status).toBe("started");
+    expect(transactions).toHaveLength(2);
+  });
+
+  // A failure that is not a serialization abort is the caller's to see, however
+  // deep it sits, or a genuine outage would be retried four times and then
+  // reported as though it had been a race.
+  it("does not retry an unrelated failure carried the same way", async () => {
+    const { start, transactions } = harness({
+      transactionFailures: [{ cause: { code: "23505" } }],
+    });
+
+    await expect(start("first-wins")).rejects.toBeDefined();
+    expect(transactions).toHaveLength(1);
+  });
+
   // Unlimited compares nothing, so a lock would only make concurrent starts of
   // one entity queue up behind each other for no decision.
   it("takes no lock where nothing is compared", async () => {

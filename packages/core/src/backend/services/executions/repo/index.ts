@@ -54,14 +54,28 @@ export const UNSENT_RUN_RECLAIM_REASON =
 
 const SERIALIZATION_RETRIES = 3;
 
+/**
+ * SQLSTATE 40001 is what PostgreSQL raises when SERIALIZABLE aborts one of two
+ * decisions that read and wrote the same predicate, and it is the whole reason
+ * the start above is retried rather than failed.
+ *
+ * The code is looked for down the whole cause chain rather than on `error.cause`
+ * alone, because Drizzle wraps a driver error in a `DrizzleQueryError` carrying
+ * the failed SQL, which puts the `PostgresError` holding the code one level
+ * further down. Reading only the first link matched nothing a real database
+ * produces, so every aborted start failed its node instead of retrying.
+ */
 function isSerializationFailure(error: DatabaseError): boolean {
-  const cause = error.cause;
-  return (
-    typeof cause === "object" &&
-    cause !== null &&
-    "code" in cause &&
-    cause.code === "40001"
-  );
+  let cause: unknown = error.cause;
+
+  while (typeof cause === "object" && cause !== null) {
+    if ("code" in cause && cause.code === "40001") {
+      return true;
+    }
+    cause = "cause" in cause ? cause.cause : undefined;
+  }
+
+  return false;
 }
 
 function isStuckBeforeTheBus(row: {
