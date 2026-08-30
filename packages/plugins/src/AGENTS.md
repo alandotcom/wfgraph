@@ -77,7 +77,8 @@ metadata-client pattern.
 
 Keep provider behavior out of core. The adapter owns client registration, authorization
 parameters, token and error response schemas, exchange, refresh, revocation, and the
-mapping from an access token to declared credential keys.
+mapping from an access token to declared credential keys. CIMD form POSTs live in
+`oauth-cimd.ts`.
 
 Register every scope the integration could ever need. The registered set is the ceiling
 on what an operator may grant, so a document naming one scope makes the wider one
