@@ -457,7 +457,8 @@ No emojis. Do not create new markdown docs unless asked.
 - **README.md** owns the short entrypoint: what Workflow Graph is, how to run it locally, and a
   minimal embed. Detail lives under `docs/`: `docs/embedding.md` (mount, database,
   options, package exports), `docs/events.md` (`defineEvent`), `docs/integrations.md`
-  (`defineIntegration`).
+  (`defineIntegration`, including OAuth adapters). `docs/internal/` is working notes for
+  this repository and is not adopter documentation.
 - **AGENTS.md** owns what an agent must know that no other file says.
 - **A module header** owns the contract a caller cannot read off the signature (units,
   nullability, call order, failure modes). At most five lines, and it never repeats a

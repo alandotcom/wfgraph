@@ -151,7 +151,7 @@ SQLite, and Cloudflare Hyperdrive setup.
 | ---------------------------------------------- | ---------------------------------------------------------------- |
 | [`docs/embedding.md`](docs/embedding.md)       | Mounting, editor, database, migrations, package exports, options |
 | [`docs/events.md`](docs/events.md)             | `defineEvent`, umbrella sources, intake, Lifecycle model         |
-| [`docs/integrations.md`](docs/integrations.md) | `defineIntegration`, handlers, schemas, testing                  |
+| [`docs/integrations.md`](docs/integrations.md) | `defineIntegration`, OAuth adapters, handlers, schemas, testing  |
 | [`CONTEXT.md`](CONTEXT.md)                     | Domain vocabulary                                                |
 | [`docs/adr/`](docs/adr/)                       | Design decisions                                                 |
 
