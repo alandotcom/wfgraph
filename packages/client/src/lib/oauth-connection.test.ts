@@ -125,7 +125,6 @@ describe("OAuth connection helpers", () => {
 
     const result = await pollOAuthAttempt({
       attemptId: "attempt_1",
-      popup: { closed: false },
       getStatus,
       sleep,
     });
@@ -138,41 +137,38 @@ describe("OAuth connection helpers", () => {
     expect(sleep).toHaveBeenCalledOnce();
   });
 
-  it("answers abandoned after final status reads when the popup is closed", async () => {
-    const popup = { closed: true };
-    const getStatus = vi.fn().mockResolvedValue({ status: "pending" });
+  it("keeps polling after the popup reports closed until the server records success", async () => {
+    const getStatus = vi
+      .fn()
+      .mockResolvedValueOnce({ status: "pending" })
+      .mockResolvedValueOnce({ status: "pending" })
+      .mockResolvedValueOnce({ status: "pending" })
+      .mockResolvedValueOnce({
+        status: "succeeded",
+        integrationId: "connection_1",
+      });
     const sleep = vi.fn(async () => undefined);
-    let reads = 0;
-    getStatus.mockImplementation(async () => {
-      reads += 1;
-      return { status: "pending" };
-    });
 
     const result = await pollOAuthAttempt({
       attemptId: "attempt_1",
-      popup,
       getStatus,
       sleep,
-      timeoutMs: 100,
-      now: () => (reads >= 4 ? 100 : 0),
     });
 
-    expect(result).toEqual({ status: "abandoned" });
-    expect(getStatus).toHaveBeenCalledTimes(3);
-    expect(sleep).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({
+      status: "succeeded",
+      integrationId: "connection_1",
+    });
+    expect(getStatus).toHaveBeenCalledTimes(4);
   });
 
-  // The window is open and the attempt is still pending, which is the case a
-  // closed popup cannot account for. It answers separately so the caller can
-  // offer a retry rather than the sentence a person who walked away should read.
-  it("answers timed out when the poll window closes on an open popup", async () => {
+  it("answers timed out when nobody finishes the authorization in time", async () => {
     const getStatus = vi.fn().mockResolvedValue({ status: "pending" });
     const sleep = vi.fn(async () => undefined);
     let elapsed = 0;
 
     const result = await pollOAuthAttempt({
       attemptId: "attempt_1",
-      popup: { closed: false },
       getStatus,
       sleep,
       timeoutMs: 100,
@@ -193,7 +189,6 @@ describe("OAuth connection helpers", () => {
 
     const polling = pollOAuthAttempt({
       attemptId: "attempt_1",
-      popup: { closed: false },
       getStatus,
       signal: controller.signal,
       sleep,
@@ -221,7 +216,6 @@ describe("OAuth connection helpers", () => {
 
     const polling = pollOAuthAttempt({
       attemptId: "attempt_1",
-      popup: { closed: false },
       getStatus,
       signal: controller.signal,
     });

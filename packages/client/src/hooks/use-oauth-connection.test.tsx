@@ -123,21 +123,33 @@ describe("useOAuthConnection", () => {
     });
   });
 
-  it("releases the controller for retry after the provider popup closes", async () => {
+  it("keeps waiting after the provider popup reports closed until the grant lands", async () => {
     vi.useFakeTimers();
     const reservedPopup = popup();
     vi.spyOn(window, "open").mockReturnValue(
       reservedPopup as unknown as Window
     );
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        jsonResponse({
+    let statusReads = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (String(input).endsWith("/api/integrations/oauth/start")) {
+        return jsonResponse({
           attemptId: "attempt_1",
           authorizeUrl: "https://provider.example/authorize",
-        })
-      )
-      .mockImplementation(async () => jsonResponse({ status: "pending" }));
+        });
+      }
+      statusReads += 1;
+      if (statusReads < 5) {
+        return jsonResponse({ status: "pending" });
+      }
+      return jsonResponse({
+        status: "succeeded",
+        integrationId: "connection_1",
+      });
+    });
     const queryClient = new QueryClient();
+    const invalidateQueries = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
@@ -152,12 +164,18 @@ describe("useOAuthConnection", () => {
     });
     reservedPopup.closed = true;
     await act(async () => vi.advanceTimersByTimeAsync(0));
+    await act(async () => vi.advanceTimersByTimeAsync(3_000));
+
+    expect(result.current.pending).toBe(true);
+    expect(onConnected).not.toHaveBeenCalled();
+    expect(statusReads).toBeGreaterThan(3);
+
     await act(async () => vi.advanceTimersByTimeAsync(2_000));
     await attempt;
 
+    expect(onConnected).toHaveBeenCalledWith("connection_1");
+    expect(invalidateQueries).toHaveBeenCalled();
     expect(result.current.pending).toBe(false);
-    expect(onConnected).not.toHaveBeenCalled();
-    expect(globalThis.fetch).toHaveBeenCalledTimes(4);
   });
 
   it("cancels a superseded attempt and only reports the current success", async () => {
