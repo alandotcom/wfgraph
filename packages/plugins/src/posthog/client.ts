@@ -58,14 +58,12 @@ const captureResponseSchema = Schema.Struct({
   status: Schema.optionalKey(Schema.Union([Schema.Finite, Schema.String])),
 });
 
-/** As much of the flags response as the connection test needs. */
-const flagsResponseSchema = Schema.Struct({
-  featureFlags: Schema.optionalKey(
-    Schema.Record(Schema.String, Schema.Unknown)
-  ),
-  flags: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
-  errorsWhileComputingFlags: Schema.optionalKey(Schema.Boolean),
-});
+/**
+ * The flags body is only checked for arrival. The connection test reads
+ * `result.ok`, so recording unused flag maps would describe a shape nobody
+ * consults.
+ */
+const flagsResponseSchema = Schema.Unknown;
 
 export type PostHogConnection = {
   projectApiKey: string;

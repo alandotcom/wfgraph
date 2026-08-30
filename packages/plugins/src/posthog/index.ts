@@ -16,17 +16,16 @@ import {
   type CredentialFields,
   type CredentialsOf,
   defineIntegration,
-  type JsonObject,
-  readJsonValue,
   StepFailure,
 } from "@wfgraph/core/plugin";
-import { Effect, Result, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import {
-  captureEvent,
-  describePostHogFailure,
-  resolvePostHogHost,
-} from "#src/posthog/client";
+  captureOrFail,
+  connectionFrom,
+  eventIdentity,
+} from "#src/posthog/capture";
 import { posthogOAuth } from "#src/posthog/oauth";
+import { readProperties } from "#src/posthog/properties";
 
 const posthogCredentialFields = {
   POSTHOG_PROJECT_API_KEY: {
@@ -50,14 +49,11 @@ const posthogCredentialFields = {
 
 export type PostHogCredentials = CredentialsOf<typeof posthogCredentialFields>;
 
-type PostHogTestBehavior = "log_only" | "capture_event";
+type PostHogTestBehavior = "log_only" | "send";
 
 /** The distinct id PostHog will not accept an event without. */
 const MISSING_DISTINCT_ID =
   "distinctId resolved to nothing. PostHog needs a distinct id to attach the event to a person.";
-
-const MISSING_CREDENTIAL =
-  "POSTHOG_PROJECT_API_KEY is not configured. Please add it in Project Integrations.";
 
 /**
  * The Capture Event config, as the step reads it.
@@ -124,124 +120,8 @@ const identifyPersonOutput = Schema.Struct({
 function resolvePostHogTestBehavior(
   value: string | undefined
 ): PostHogTestBehavior {
-  return value === "capture_event" ? "capture_event" : "log_only";
+  return value === "send" ? "send" : "log_only";
 }
-
-// A key-value field reaches the step as the JSON the widget wrote,
-// `[{ name, value }]`, with every template in it already resolved. Text that
-// does not describe that shape is logged and dropped, leaving the event to
-// capture without those properties -- losing a property is better than losing
-// the event. The decode asks for every issue rather than the first, so one log
-// line accounts for the whole string.
-const propertyEntriesSchema = Schema.Array(
-  Schema.Struct({ name: Schema.String, value: Schema.String })
-);
-
-const decodePropertyEntries = Schema.decodeUnknownResult(
-  propertyEntriesSchema,
-  { errors: "all" }
-);
-
-/** The rows of a key-value field, as the object PostHog takes. */
-function readKeyValueProperties(entriesJson: string): JsonObject | undefined {
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(entriesJson);
-  } catch (error) {
-    console.error("[PostHog] Failed to parse properties JSON:", error);
-    return undefined;
-  }
-
-  const result = decodePropertyEntries(parsed);
-
-  if (Result.isFailure(result)) {
-    console.error(
-      "[PostHog] Properties must be a list of { name, value } entries:",
-      result.failure.message
-    );
-    return undefined;
-  }
-
-  const properties: JsonObject = {};
-
-  for (const entry of result.success) {
-    // A row the builder added and never named carries no property.
-    if (entry.name.trim()) {
-      properties[entry.name] = entry.value;
-    }
-  }
-
-  return properties;
-}
-
-/**
- * The advanced JSON box, which is how a property that is not a string is sent.
- *
- * A key-value row is always text, so a number, a boolean or a nested object has
- * nowhere else to come from.
- */
-function readJsonProperties(text: string): JsonObject | undefined {
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(text);
-  } catch (error) {
-    console.error("[PostHog] Failed to parse the properties JSON box:", error);
-    return undefined;
-  }
-
-  const json = readJsonValue(parsed);
-
-  if (json === null || typeof json !== "object" || Array.isArray(json)) {
-    console.error(
-      "[PostHog] The properties JSON box must hold a JSON object of property names to values."
-    );
-    return undefined;
-  }
-
-  return json;
-}
-
-/**
- * One property bag out of the two fields that feed it.
- *
- * The JSON box goes on last, so a builder can override a single key the
- * key-value rows set without rewriting the rows as JSON. Answers `undefined`
- * when neither field contributed anything, which keeps the key off the wire
- * rather than sending an empty object.
- */
-function readProperties(
-  entriesJson: string | undefined,
-  text: string | undefined
-): JsonObject | undefined {
-  const merged: JsonObject = {
-    ...(entriesJson ? readKeyValueProperties(entriesJson) : undefined),
-    ...(text?.trim() ? readJsonProperties(text) : undefined),
-  };
-
-  return Object.keys(merged).length > 0 ? merged : undefined;
-}
-
-/**
- * The uuid and timestamp an event is sent under, taken in a step of their own.
- *
- * This is what makes a resend safe. PostHog has no idempotency key and
- * deduplicates on `[timestamp, distinct_id, event, uuid]`, so two attempts
- * collapse only when both of these are the same on each. Memoizing them means
- * every attempt -- `callExternal`'s retry inside the step, a resumed run
- * replaying it, Inngest retrying the whole function -- sends bytes identical to
- * the ones that may already have arrived. Taking either inside the send itself
- * would leave two events instead of one.
- *
- * PostHog's dedup runs during background merges, so it is eventual: a duplicate
- * can show in insights before it merges away. The trade is deliberate, because
- * a dropped analytics event is a hole nobody can reconstruct.
- */
-const eventIdentity = Effect.sync(() => ({
-  uuid: globalThis.crypto.randomUUID(),
-  timestamp: new Date().toISOString(),
-}));
 
 export const posthog = defineIntegration({
   type: "posthog",
@@ -300,7 +180,7 @@ export const posthog = defineIntegration({
           defaultValue: "log_only",
           options: [
             { value: "log_only", label: "Log only (do nothing)" },
-            { value: "capture_event", label: "Capture a real event" },
+            { value: "send", label: "Capture a real event" },
           ],
         },
         {
@@ -346,12 +226,7 @@ export const posthog = defineIntegration({
 
         // Read late, so a test run deciding it has nothing to capture never
         // touches the integration's secrets.
-        const credentials = yield* bag.credentials;
-        const projectApiKey = credentials.POSTHOG_PROJECT_API_KEY;
-
-        if (!projectApiKey) {
-          return yield* new StepFailure({ message: MISSING_CREDENTIAL });
-        }
+        const connection = yield* connectionFrom(yield* bag.credentials);
 
         // Both fields are required in the form, but a template resolving to
         // nothing still arrives blank. PostHog would take the event and file it
@@ -372,8 +247,11 @@ export const posthog = defineIntegration({
 
         const identity = yield* bag.step.run("identity", eventIdentity);
         const timestamp = input.timestamp?.trim() || identity.timestamp;
-
-        const authored = readProperties(input.properties, input.propertiesJson);
+        const authored = yield* readProperties(
+          input.properties,
+          input.propertiesJson,
+          "drop"
+        );
 
         // An anonymous event is one PostHog files without building a person
         // profile, which is what its own property name says.
@@ -384,26 +262,13 @@ export const posthog = defineIntegration({
 
         yield* bag.step.run(
           "capture",
-          captureEvent(
-            {
-              projectApiKey,
-              host: resolvePostHogHost(credentials.POSTHOG_HOST),
-            },
-            {
-              event: eventName,
-              distinct_id: distinctId,
-              uuid: identity.uuid,
-              timestamp,
-              ...(properties ? { properties } : {}),
-            }
-          ).pipe(
-            Effect.mapError(
-              (error) =>
-                new StepFailure({
-                  message: `Failed to capture event: ${describePostHogFailure(error)}`,
-                })
-            )
-          )
+          captureOrFail("Failed to capture event", connection, {
+            event: eventName,
+            distinct_id: distinctId,
+            uuid: identity.uuid,
+            timestamp,
+            ...(properties ? { properties } : {}),
+          })
         );
 
         return {
@@ -447,7 +312,7 @@ export const posthog = defineIntegration({
           defaultValue: "log_only",
           options: [
             { value: "log_only", label: "Log only (do nothing)" },
-            { value: "capture_event", label: "Identify for real" },
+            { value: "send", label: "Identify for real" },
           ],
         },
         {
@@ -479,24 +344,23 @@ export const posthog = defineIntegration({
           };
         }
 
-        const credentials = yield* bag.credentials;
-        const projectApiKey = credentials.POSTHOG_PROJECT_API_KEY;
-
-        if (!projectApiKey) {
-          return yield* new StepFailure({ message: MISSING_CREDENTIAL });
-        }
-
+        const connection = yield* connectionFrom(yield* bag.credentials);
         const distinctId = input.distinctId.trim();
 
         if (!distinctId) {
           return yield* new StepFailure({ message: MISSING_DISTINCT_ID });
         }
 
-        const set = readProperties(
+        const set = yield* readProperties(
           input.setProperties,
-          input.setPropertiesJson
+          input.setPropertiesJson,
+          "fail"
         );
-        const setOnce = readProperties(input.setOnceProperties, undefined);
+        const setOnce = yield* readProperties(
+          input.setOnceProperties,
+          undefined,
+          "fail"
+        );
 
         // An identify carrying neither bag would create a bare person profile
         // and say nothing about them, which is never what the builder meant.
@@ -511,27 +375,14 @@ export const posthog = defineIntegration({
 
         yield* bag.step.run(
           "identify",
-          captureEvent(
-            {
-              projectApiKey,
-              host: resolvePostHogHost(credentials.POSTHOG_HOST),
-            },
-            {
-              event: "$identify",
-              distinct_id: distinctId,
-              uuid: identity.uuid,
-              timestamp: identity.timestamp,
-              ...(set ? { $set: set } : {}),
-              ...(setOnce ? { $set_once: setOnce } : {}),
-            }
-          ).pipe(
-            Effect.mapError(
-              (error) =>
-                new StepFailure({
-                  message: `Failed to identify person: ${describePostHogFailure(error)}`,
-                })
-            )
-          )
+          captureOrFail("Failed to identify person", connection, {
+            event: "$identify",
+            distinct_id: distinctId,
+            uuid: identity.uuid,
+            timestamp: identity.timestamp,
+            ...(set ? { $set: set } : {}),
+            ...(setOnce ? { $set_once: setOnce } : {}),
+          })
         );
 
         return {

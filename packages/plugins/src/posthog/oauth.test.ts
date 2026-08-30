@@ -240,6 +240,87 @@ describe("PostHog OAuth token exchange", () => {
     expect(requests[1]?.url).toBe("https://us.posthog.com/api/projects/");
   });
 
+  it("refuses a token scoped to more than one project before listing any", async () => {
+    stubFetch((request) => {
+      if (request.url === "https://oauth.posthog.com/oauth/token/") {
+        return Response.json({
+          ...tokenResponse,
+          scoped_teams: [12, 13],
+        });
+      }
+
+      throw new Error(`unexpected request: ${request.url}`);
+    });
+
+    await expect(
+      oauth.exchange({
+        client,
+        code: "authorization-code",
+        redirectUri: clientContext.callbackUrl,
+        codeVerifier: "code-verifier",
+      })
+    ).rejects.toThrow("PostHog OAuth must be scoped to a single project.");
+    expect(requests.map((request) => request.url)).toEqual([
+      "https://oauth.posthog.com/oauth/token/",
+    ]);
+  });
+
+  it("does not probe EU after a US 503", async () => {
+    stubFetch(
+      respondForRegion({
+        us: () =>
+          new Response("", { status: 503, headers: { "retry-after": "0" } }),
+      })
+    );
+
+    await expect(
+      oauth.exchange({
+        client,
+        code: "authorization-code",
+        redirectUri: clientContext.callbackUrl,
+        codeVerifier: "code-verifier",
+      })
+    ).rejects.toThrow("PostHog API request failed: HTTP 503");
+    expect(
+      requests.some((request) =>
+        request.url.startsWith("https://eu.posthog.com")
+      )
+    ).toBe(false);
+    expect(
+      requests.filter((request) =>
+        request.url.startsWith("https://us.posthog.com")
+      ).length
+    ).toBeGreaterThan(1);
+  });
+
+  it("does not probe EU when the US private API never answers", async () => {
+    stubFetch((request) => {
+      if (request.url === "https://oauth.posthog.com/oauth/token/") {
+        return Response.json(tokenResponse);
+      }
+
+      if (request.url.startsWith("https://us.posthog.com")) {
+        return Promise.reject(new Error("ECONNRESET"));
+      }
+
+      throw new Error(`unexpected request: ${request.url}`);
+    });
+
+    await expect(
+      oauth.exchange({
+        client,
+        code: "authorization-code",
+        redirectUri: clientContext.callbackUrl,
+        codeVerifier: "code-verifier",
+      })
+    ).rejects.toThrow("PostHog API request failed: ECONNRESET");
+    expect(
+      requests.some((request) =>
+        request.url.startsWith("https://eu.posthog.com")
+      )
+    ).toBe(false);
+  }, 20_000);
+
   it("refuses a grant that is not scoped to a single project", async () => {
     stubFetch((request) => {
       if (request.url === "https://oauth.posthog.com/oauth/token/") {

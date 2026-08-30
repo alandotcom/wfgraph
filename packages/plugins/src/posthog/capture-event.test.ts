@@ -107,7 +107,7 @@ describe("the capture-event action", () => {
         input: {
           eventName: "user_signed_up",
           distinctId: "user_1",
-          testBehavior: "capture_event",
+          testBehavior: "send",
         },
         credentials,
         runMode: "test",
@@ -511,6 +511,29 @@ describe("the identify-person action", () => {
       );
 
       expect(error.message).toBe("Failed to identify person: ECONNRESET");
+    })
+  );
+
+  // A parser miss is not an empty bag. Identify would otherwise report that
+  // nothing was authored, which is the wrong recovery for text the builder
+  // meant to send.
+  it.effect("fails identify when the properties JSON does not parse", () =>
+    Effect.gen(function* () {
+      const { credentials } = credentialsRead();
+
+      const error = actionError(
+        yield* runAction(posthog, "identify-person", {
+          input: {
+            distinctId: "user_1",
+            setPropertiesJson: "{not json",
+          },
+          credentials,
+        })
+      );
+
+      expect(error.message).toBe("Properties JSON is not valid JSON.");
+      expect(error.message).not.toContain("needs at least one property");
+      expect(mocks.captureEvent).toHaveBeenCalledTimes(0);
     })
   );
 });

@@ -6,11 +6,13 @@
  * exchanges the code, then reads the granted project's `api_token` and maps that
  * (plus the matching capture host) into the credentials the actions already
  * read. Refresh keeps those two values and only rotates the grant tokens.
+ *
+ * Token writes go through `oauth-cimd.ts`. What stays here is the authorize
+ * URL, the token schema, and which project the grant is for.
  */
 
 import type {
   IntegrationOAuth,
-  JsonValue,
   OAuthGrant,
   OAuthPkceExchangeInput,
   OAuthRefreshInput,
@@ -20,10 +22,14 @@ import type {
 import {
   callExternal,
   callExternalAsync,
-  parsePayload,
   type ExternalError,
 } from "@wfgraph/core/plugin";
 import { Schema, SchemaTransformation } from "effect";
+import {
+  currentRefreshToken,
+  emptyOAuthRevokeResponseSchema,
+  requestCimdToken,
+} from "#src/oauth-cimd";
 
 const POSTHOG_AUTHORIZE_URL = "https://oauth.posthog.com/oauth/authorize/";
 const POSTHOG_TOKEN_URL = "https://oauth.posthog.com/oauth/token/";
@@ -50,6 +56,12 @@ const POSTHOG_REGIONS = [
   },
 ] as const;
 
+type PostHogRegion = (typeof POSTHOG_REGIONS)[number];
+
+const NonEmptyTrimmedString = Schema.String.pipe(
+  Schema.decodeTo(Schema.String, SchemaTransformation.trim())
+).check(Schema.isMinLength(1));
+
 const posthogOAuthTokenResponseSchema = Schema.Struct({
   access_token: Schema.String,
   token_type: Schema.Literal("Bearer"),
@@ -59,32 +71,15 @@ const posthogOAuthTokenResponseSchema = Schema.Struct({
   scoped_teams: Schema.optionalKey(Schema.Array(Schema.Finite)),
 });
 
-const posthogOAuthErrorSchema = Schema.Struct({
-  error: Schema.optionalKey(Schema.String),
-  error_description: Schema.optionalKey(Schema.String),
-  error_uri: Schema.optionalKey(Schema.String),
-});
-
 const posthogProjectSchema = Schema.Struct({
   id: Schema.Finite,
   name: Schema.String,
-  api_token: Schema.optionalKey(Schema.String),
+  api_token: NonEmptyTrimmedString,
 });
 
 const posthogProjectListSchema = Schema.Struct({
   results: Schema.Array(posthogProjectSchema),
 });
-
-/** A successful revocation has an empty 200 response body. */
-const emptyOAuthResponseSchema = Schema.Undefined.pipe(
-  Schema.decodeTo(
-    Schema.Literal(true),
-    SchemaTransformation.transform({
-      decode: (): true => true,
-      encode: (): undefined => undefined,
-    })
-  )
-);
 
 type PostHogOAuthTokenResponse = typeof posthogOAuthTokenResponseSchema.Type;
 type PostHogProject = typeof posthogProjectSchema.Type;
@@ -94,22 +89,23 @@ type ProjectCredentials = {
   readonly POSTHOG_HOST: string;
 };
 
-function safeOAuthError(
-  payload: JsonValue | undefined,
-  secrets: readonly string[]
-): string {
-  const parsed = parsePayload(payload, posthogOAuthErrorSchema);
-  const code = parsed?.error;
-  const safeCode =
-    code !== undefined && /^[a-z0-9_]{1,100}$/.test(code) ? code : undefined;
-  const description = parsed?.error_description;
-  const safeDescription = description
-    ? sanitize(description, secrets).slice(0, 500)
-    : undefined;
+const NO_PROJECT = "PostHog OAuth could not find a project for this grant.";
+const MANY_PROJECTS = "PostHog OAuth must be scoped to a single project.";
+const NO_API_KEY = "PostHog did not return a project API key for this grant.";
 
-  return (
-    [safeCode, safeDescription].filter(Boolean).join(": ") || "unknown error"
-  );
+function soleItem<T>(items: readonly T[]): T {
+  if (items.length === 1) {
+    const item = items[0];
+    if (item !== undefined) {
+      return item;
+    }
+  }
+
+  if (items.length === 0) {
+    throw new Error(NO_PROJECT);
+  }
+
+  throw new Error(MANY_PROJECTS);
 }
 
 function sanitize(value: string, secrets: readonly string[]): string {
@@ -128,159 +124,109 @@ function sanitize(value: string, secrets: readonly string[]): string {
   return sanitized;
 }
 
-function describeOAuthFailure(
-  error: ExternalError,
-  secrets: readonly string[]
-): string {
-  if (error._tag === "ExternalUnreachable") {
-    return `PostHog OAuth request failed: ${sanitize(error.message, secrets)}`;
-  }
-
-  if (error._tag === "ExternalRejected") {
-    return `PostHog OAuth request rejected: ${safeOAuthError(error.payload, secrets)}`;
-  }
-
-  return `PostHog OAuth request failed: HTTP ${error.status}`;
-}
-
 function describeApiFailure(
   error: ExternalError,
   secrets: readonly string[]
 ): string {
-  if (error._tag === "ExternalUnreachable") {
-    return `PostHog API request failed: ${sanitize(error.message, secrets)}`;
+  if (error._tag === "ExternalUnreadable" && error.status === 200) {
+    return NO_API_KEY;
   }
 
-  if (error._tag === "ExternalRejected") {
-    return `PostHog API request rejected: HTTP ${error.status}`;
+  if (error._tag === "ExternalUnreachable") {
+    return `PostHog API request failed: ${sanitize(error.message, secrets)}`;
   }
 
   return `PostHog API request failed: HTTP ${error.status}`;
 }
 
-function isWrongRegion(error: ExternalError): boolean {
-  if (error._tag === "ExternalUnreachable") {
-    return true;
-  }
-
-  if (error._tag !== "ExternalRejected") {
-    return false;
-  }
-
-  return error.status === 401 || error.status === 403 || error.status === 404;
+/**
+ * Probe the other cloud only when this one said the token is not for it.
+ *
+ * A GET is safe to repeat, so a 503 is retried against the same host. Treating
+ * that, or a timeout, as a region miss would hide a 5xx from the right cloud
+ * behind a second request to the wrong one.
+ */
+function shouldProbeNextRegion(error: ExternalError): boolean {
+  return (
+    error._tag === "ExternalRejected" &&
+    (error.status === 401 || error.status === 403 || error.status === 404)
+  );
 }
 
-async function requestOAuth<T extends Schema.ConstraintDecoder<unknown>>(
+function requestPostHogToken<T extends Schema.ConstraintDecoder<unknown>>(
   url: string,
   body: URLSearchParams,
   schema: T,
   secrets: readonly string[]
 ): Promise<T["Type"]> {
-  const result = await callExternalAsync(
-    callExternal({
-      system: "PostHog OAuth",
-      url,
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: { kind: "form", value: body },
-      schema,
-    }),
-    (error) => error
-  );
-
-  if (!result.ok) {
-    throw new Error(describeOAuthFailure(result.failure, secrets));
-  }
-
-  return result.data;
+  return requestCimdToken({
+    system: "PostHog OAuth",
+    url,
+    body,
+    schema,
+    secrets,
+  });
 }
 
-async function requestApi<T extends Schema.ConstraintDecoder<unknown>>(
-  url: string,
+async function fetchProjectById(
+  region: PostHogRegion,
   accessToken: string,
-  schema: T
+  projectId: number
 ): Promise<
-  { ok: true; data: T["Type"] } | { ok: false; failure: ExternalError }
+  { ok: true; project: PostHogProject } | { ok: false; failure: ExternalError }
 > {
   const result = await callExternalAsync(
     callExternal({
       system: "PostHog",
-      url,
+      url: `${region.apiHost}/api/projects/${projectId}/`,
       method: "GET",
       headers: { authorization: `Bearer ${accessToken}` },
-      schema,
+      schema: posthogProjectSchema,
     }),
     (error) => error
   );
 
   if (!result.ok) {
-    return { ok: false, failure: result.failure };
+    return result;
   }
 
-  return { ok: true, data: result.data };
+  return { ok: true, project: result.data };
 }
 
-function projectFromList(projects: readonly PostHogProject[]): PostHogProject {
-  if (projects.length === 0) {
-    throw new Error("PostHog OAuth could not find a project for this grant.");
+async function fetchSoleListedProject(
+  region: PostHogRegion,
+  accessToken: string
+): Promise<
+  { ok: true; project: PostHogProject } | { ok: false; failure: ExternalError }
+> {
+  const result = await callExternalAsync(
+    callExternal({
+      system: "PostHog",
+      url: `${region.apiHost}/api/projects/`,
+      method: "GET",
+      headers: { authorization: `Bearer ${accessToken}` },
+      schema: posthogProjectListSchema,
+    }),
+    (error) => error
+  );
+
+  if (!result.ok) {
+    return result;
   }
 
-  if (projects.length > 1) {
-    throw new Error("PostHog OAuth must be scoped to a single project.");
-  }
-
-  const project = projects[0];
-  if (!project) {
-    throw new Error("PostHog OAuth could not find a project for this grant.");
-  }
-
-  return project;
+  return { ok: true, project: soleItem(result.data.results) };
 }
 
 function credentialsFromProject(
   project: PostHogProject,
   captureHost: string
 ): { credentials: ProjectCredentials; accountLabel: string } {
-  const apiToken = project.api_token?.trim();
-  if (!apiToken) {
-    throw new Error("PostHog did not return a project API key for this grant.");
-  }
-
   return {
     credentials: {
-      POSTHOG_PROJECT_API_KEY: apiToken,
+      POSTHOG_PROJECT_API_KEY: project.api_token,
       POSTHOG_HOST: captureHost,
     },
     accountLabel: project.name,
-  };
-}
-
-async function fetchProject(
-  region: (typeof POSTHOG_REGIONS)[number],
-  accessToken: string,
-  projectId: number | undefined
-): Promise<
-  { ok: true; project: PostHogProject } | { ok: false; failure: ExternalError }
-> {
-  const url =
-    projectId === undefined
-      ? `${region.apiHost}/api/projects/`
-      : `${region.apiHost}/api/projects/${projectId}/`;
-  const result =
-    projectId === undefined
-      ? await requestApi(url, accessToken, posthogProjectListSchema)
-      : await requestApi(url, accessToken, posthogProjectSchema);
-
-  if (!result.ok) {
-    return result;
-  }
-
-  return {
-    ok: true,
-    project:
-      "results" in result.data
-        ? projectFromList(result.data.results)
-        : result.data,
   };
 }
 
@@ -296,17 +242,23 @@ async function resolveProject(
 ): Promise<{ credentials: ProjectCredentials; accountLabel: string }> {
   const us = POSTHOG_REGIONS[0];
   const eu = POSTHOG_REGIONS[1];
-  const first = await fetchProject(us, accessToken, projectId);
+  const fetch =
+    projectId === undefined
+      ? (region: PostHogRegion) => fetchSoleListedProject(region, accessToken)
+      : (region: PostHogRegion) =>
+          fetchProjectById(region, accessToken, projectId);
+
+  const first = await fetch(us);
 
   if (first.ok) {
     return credentialsFromProject(first.project, us.captureHost);
   }
 
-  if (!isWrongRegion(first.failure)) {
+  if (!shouldProbeNextRegion(first.failure)) {
     throw new Error(describeApiFailure(first.failure, secrets));
   }
 
-  const second = await fetchProject(eu, accessToken, projectId);
+  const second = await fetch(eu);
 
   if (second.ok) {
     return credentialsFromProject(second.project, eu.captureHost);
@@ -334,15 +286,6 @@ function tokenSet(
   };
 }
 
-function currentRefreshToken(grant: OAuthGrant): string {
-  const refreshToken = grant.tokens.refreshToken;
-  if (!refreshToken) {
-    throw new Error("PostHog OAuth refresh requires the current refresh token");
-  }
-
-  return refreshToken;
-}
-
 function projectCredentialsFromGrant(grant: OAuthGrant): ProjectCredentials {
   const projectApiKey = grant.credentials.POSTHOG_PROJECT_API_KEY;
   const host = grant.credentials.POSTHOG_HOST;
@@ -358,11 +301,18 @@ function projectCredentialsFromGrant(grant: OAuthGrant): ProjectCredentials {
   };
 }
 
-function scopedProjectId(
+/**
+ * Empty `scoped_teams` means list and take the only project. One id means
+ * fetch that project. More than one is the same refusal as a list of two.
+ */
+function projectIdFromGrant(
   scopedTeams: readonly number[] | undefined
 ): number | undefined {
-  const projectId = scopedTeams?.[0];
-  return typeof projectId === "number" ? projectId : undefined;
+  if (scopedTeams === undefined || scopedTeams.length === 0) {
+    return undefined;
+  }
+
+  return soleItem(scopedTeams);
 }
 
 export const posthogOAuth: IntegrationOAuth = {
@@ -403,7 +353,7 @@ export const posthogOAuth: IntegrationOAuth = {
     codeVerifier,
   }: OAuthPkceExchangeInput): Promise<OAuthGrant> => {
     const secrets = [client.clientId, code, codeVerifier];
-    const response = await requestOAuth(
+    const response = await requestPostHogToken(
       POSTHOG_TOKEN_URL,
       new URLSearchParams({
         grant_type: "authorization_code",
@@ -418,7 +368,7 @@ export const posthogOAuth: IntegrationOAuth = {
 
     const project = await resolveProject(
       response.access_token,
-      scopedProjectId(response.scoped_teams),
+      projectIdFromGrant(response.scoped_teams),
       [...secrets, response.access_token, response.refresh_token]
     );
 
@@ -429,9 +379,9 @@ export const posthogOAuth: IntegrationOAuth = {
     client,
     grant,
   }: OAuthRefreshInput): Promise<OAuthTokenSet> => {
-    const refreshToken = currentRefreshToken(grant);
+    const refreshToken = currentRefreshToken("PostHog", grant);
     const credentials = projectCredentialsFromGrant(grant);
-    const response = await requestOAuth(
+    const response = await requestPostHogToken(
       POSTHOG_TOKEN_URL,
       new URLSearchParams({
         grant_type: "refresh_token",
@@ -446,15 +396,15 @@ export const posthogOAuth: IntegrationOAuth = {
   },
 
   revoke: async ({ client, grant }: OAuthRevokeInput): Promise<void> => {
-    const refreshToken = currentRefreshToken(grant);
-    await requestOAuth(
+    const refreshToken = currentRefreshToken("PostHog", grant);
+    await requestPostHogToken(
       POSTHOG_REVOKE_URL,
       new URLSearchParams({
         client_id: client.clientId,
         token: refreshToken,
         token_type_hint: "refresh_token",
       }),
-      emptyOAuthResponseSchema,
+      emptyOAuthRevokeResponseSchema,
       [client.clientId, refreshToken, grant.tokens.accessToken]
     );
   },
