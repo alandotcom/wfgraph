@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   fireEvent,
   render,
@@ -9,6 +10,8 @@ import { createStore, Provider as JotaiProvider } from "jotai";
 import { type ReactElement, type ReactNode, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
+import { OverlayProvider } from "#src/components/overlays/overlay-provider";
+import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import {
   CONCURRENCY_OPTIONS,
   LifecyclePanel,
@@ -925,5 +928,79 @@ describe("LifecyclePanel refusals", () => {
     expect(
       view.getByText(/^No Event named "app\/appointment\.moved" is defined/)
     ).toBeTruthy();
+  });
+});
+
+const resendCatalog: ExtensionCatalog = {
+  events: [
+    {
+      name: "app/appointment.created",
+      label: "Appointment created",
+      correlationPath: "appointment.id",
+      payloadFields: [{ path: "appointment.id", type: "string" }],
+    },
+    {
+      name: "resend/email.delivered",
+      label: "Email delivered",
+      integration: "resend",
+      correlationPath: "data.email_id",
+      payloadFields: [{ path: "data.email_id", type: "string" }],
+    },
+  ],
+  actions: [],
+  integrations: [
+    {
+      type: "resend",
+      label: "Resend",
+      description: "Send transactional emails",
+      credentialFields: {},
+      hasTest: true,
+      hasWebhook: true,
+    },
+  ],
+};
+
+describe("LifecyclePanel Connection picker", () => {
+  it("offers a Connection only for an integration-owned Event", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+      },
+    });
+    queryClient.setQueryData(integrationsQueryOptions().queryKey, []);
+
+    const view = render(
+      <ExtensionCatalogProvider value={resendCatalog}>
+        <QueryClientProvider client={queryClient}>
+          <JotaiProvider store={createStore()}>
+            <OverlayProvider>
+              <ControlledPanel
+                initialConfig={{
+                  lifecycleRules: {
+                    startEvents: [
+                      "app/appointment.created",
+                      "resend/email.delivered",
+                    ],
+                    cancelEvents: [],
+                    concurrency: "unlimited",
+                  },
+                }}
+              />
+            </OverlayProvider>
+          </JotaiProvider>
+        </QueryClientProvider>
+      </ExtensionCatalogProvider>
+    );
+
+    editRules(view);
+
+    expect(view.getByText("Appointment created")).toBeTruthy();
+    expect(view.getByText("Email delivered")).toBeTruthy();
+    expect(
+      view.getByRole("button", { name: "Add Resend connection" })
+    ).toBeTruthy();
+    expect(
+      view.queryByRole("button", { name: "Add Appointment created connection" })
+    ).toBeNull();
   });
 });

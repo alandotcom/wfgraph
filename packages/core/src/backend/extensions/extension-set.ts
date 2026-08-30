@@ -35,6 +35,7 @@ import {
 import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
 import type { IntegrationOAuth } from "#src/backend/extensions/oauth";
 import type { ConfigOptionsProvider } from "#src/backend/extensions/config-options";
+import type { IntegrationWebhook } from "#src/backend/extensions/integration-webhook";
 import {
   isSafeRecordKey,
   isSafeRecordPath,
@@ -88,6 +89,11 @@ export type ExtensionSet = {
   ) => ConfigOptionsProvider | undefined;
   /** Provider behavior for OAuth routes; none of this map crosses the catalog. */
   readonly oauthFor: (type: string) => IntegrationOAuth | undefined;
+  /**
+   * The webhook an integration declared, if any. Server-only: verify and receive
+   * stay off the catalog, which is what the editor reads.
+   */
+  readonly webhookFor: (type: string) => IntegrationWebhook | undefined;
   readonly eventByName: (name: string) => RegisteredEvent | undefined;
   /** Every Event, which is the Inngest listener set: one function each. */
   readonly events: readonly RegisteredEvent[];
@@ -269,7 +275,10 @@ function assertDistinctIntegrationTypes(
  * server holds is the object the browser decodes: JSON drops an undefined value,
  * and the wire schema's `optionalKey` fields accept an absent key only.
  */
-function toEventMetadata(event: RegisteredEvent): EventMetadata {
+function toEventMetadata(
+  event: RegisteredEvent,
+  integration?: string
+): EventMetadata {
   return {
     name: event.name,
     label: event.label,
@@ -277,6 +286,7 @@ function toEventMetadata(event: RegisteredEvent): EventMetadata {
     ...(event.correlationPath
       ? { correlationPath: event.correlationPath }
       : {}),
+    ...(integration ? { integration } : {}),
     payloadFields: event.payloadFields,
   };
 }
@@ -294,6 +304,7 @@ type Assembly = {
   /** Keyed first by integration type, then by the provider it declares. */
   configOptions: Map<string, Map<string, ConfigOptionsProvider>>;
   oauth: Map<string, IntegrationOAuth>;
+  webhooks: Map<string, IntegrationWebhook>;
 };
 
 /**
@@ -346,12 +357,17 @@ function readIntegration(
     into.oauth.set(integration.type, integration.oauth);
   }
 
+  if (integration.webhook) {
+    into.webhooks.set(integration.type, integration.webhook);
+  }
+
   return {
     type: integration.type,
     label: integration.label,
     description: integration.description,
     credentialFields: integration.credentials,
     hasTest: integration.test !== undefined,
+    hasWebhook: integration.webhook !== undefined,
     ...(integration.oauth ? { oauth: { label: integration.oauth.label } } : {}),
   };
 }
@@ -404,7 +420,22 @@ function readHostAction(action: ActionDefinition, into: Assembly): void {
 }
 
 export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
-  const eventsByName = indexEvents(input.events ?? []);
+  // Integration Events go in first, so a host listing the same `defineEvent`
+  // object a plugin already declared is identity-equal and kept once. The owner
+  // map is what stamps `EventMetadata.integration` without mutating the value.
+  const eventOwners = new Map<string, string>();
+  const integrationEvents: AnyEventDefinition[] = [];
+  for (const integration of input.integrations ?? []) {
+    for (const event of integration.events ?? []) {
+      integrationEvents.push(event);
+      eventOwners.set(event.name, integration.type);
+    }
+  }
+
+  const eventsByName = indexEvents([
+    ...integrationEvents,
+    ...(input.events ?? []),
+  ]);
   const events = Array.from(eventsByName.values());
   for (const event of events) {
     assertSafeReferencePaths(`Event "${event.name}"`, event.payloadFields);
@@ -423,6 +454,7 @@ export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
     tests: new Map(),
     configOptions: new Map(),
     oauth: new Map(),
+    webhooks: new Map(),
   };
 
   const integrations = (input.integrations ?? []).map((integration) =>
@@ -444,7 +476,9 @@ export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
 
   return {
     catalog: {
-      events: events.map(toEventMetadata),
+      events: events.map((event) =>
+        toEventMetadata(event, eventOwners.get(event.name))
+      ),
       actions: into.actions,
       integrations,
     },
@@ -453,6 +487,7 @@ export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
     configOptionsFor: (type, provider) =>
       into.configOptions.get(type)?.get(provider),
     oauthFor: (type) => into.oauth.get(type),
+    webhookFor: (type) => into.webhooks.get(type),
     eventByName: (name) => eventsByName.get(name),
     events,
   };

@@ -45,10 +45,16 @@ function waitStateMatches(input: {
   waitState: CandidateWaitState;
   eventType: string;
   payload: JsonObject;
+  connectionId?: string;
 }): WaitMatchResult {
   const subscriptions = readCompiledWaitSubscriptions(
     input.waitState.metadata
-  ).filter((subscription) => subscription.event === input.eventType);
+  ).filter(
+    (subscription) =>
+      subscription.event === input.eventType &&
+      (subscription.connectionId === undefined ||
+        subscription.connectionId === input.connectionId)
+  );
 
   const unevaluated: string[] = [];
 
@@ -61,6 +67,7 @@ function waitStateMatches(input: {
       ...subscription.match,
       payload: input.payload,
       eventName: input.eventType,
+      connectionId: input.connectionId ?? null,
     });
 
     if (!evaluation.ok) {
@@ -83,6 +90,7 @@ export const resumeWaitsMatchingEvent = Effect.fn("resumeWaitsMatchingEvent")(
     eventType?: string;
     payload: JsonObject;
     waitStates: CandidateWaitState[];
+    connectionId?: string;
   }) {
     const { eventType } = input;
     if (!eventType) {
@@ -100,6 +108,7 @@ export const resumeWaitsMatchingEvent = Effect.fn("resumeWaitsMatchingEvent")(
           eventType,
           payload: input.payload,
           waitState,
+          connectionId: input.connectionId,
         }),
       { concurrency: DEFAULT_QUERY_CONNECTIONS }
     );
@@ -120,6 +129,7 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
   eventType: string;
   payload: JsonObject;
   waitState: CandidateWaitState;
+  connectionId?: string;
 }) {
   const { waitState, eventType } = input;
   const logger = (yield* AppLogger).get("wait-resume");
@@ -141,6 +151,7 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
     waitState,
     eventType,
     payload: input.payload,
+    connectionId: input.connectionId,
   });
 
   for (const error of unevaluated) {

@@ -103,3 +103,16 @@ output lives in the run-log rows, and the run itself survives to read the flag a
 its next boundary and enter the Canceled outlet with that history in hand. What
 the kill ends is work that would otherwise carry on for a run already claimed,
 and the run is what closes the rows those invocations left open.
+
+## Amendment, 2026-08-30: an integration-owned Event names a Connection
+
+An Event may belong to an integration. When it does, the Lifecycle Rules name
+the Connection that Event arrives through, stored as `connectionIds` on the
+same grain as `correlationPaths`. A Wait names its own `connectionId` per
+subscription. Publish refuses an integration-owned Start, Cancel, or Wait
+Event that names none, rather than fanning in across every Connection of that
+type.
+
+The Connection is delivery metadata, not payload. Intake sends it as Inngest
+`user.connectionId`; CEL reads `event.connectionId`. A start on the wrong
+Connection is `waits_only`. The subscription index stays keyed by Event name.

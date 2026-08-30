@@ -10,6 +10,7 @@ const slackLike = {
   label: "Slack",
   description: "test double",
   hasTest: false,
+  hasWebhook: false,
   credentialFields: {
     apiKey: { label: "Bot Token", type: "password" },
     team: { label: "Team", type: "text" },

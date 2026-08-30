@@ -7,6 +7,7 @@ import {
   type Concurrency,
   initialLifecycleRules,
   type LifecycleRules,
+  pruneConnectionIds,
   pruneCorrelationPaths,
   readLifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
@@ -43,16 +44,33 @@ export function LifecyclePanel({
     onUpdateConfig({ lifecycleRules: next });
   };
 
+  const prune = (next: LifecycleRules) =>
+    pruneConnectionIds(pruneCorrelationPaths(next));
+
   const setStartEvents = (eventNames: string[]) => {
-    write(pruneCorrelationPaths({ ...rules, startEvents: eventNames }));
+    write(prune({ ...rules, startEvents: eventNames }));
   };
 
   const setCancelEvents = (eventNames: string[]) => {
-    write(pruneCorrelationPaths({ ...rules, cancelEvents: eventNames }));
+    write(prune({ ...rules, cancelEvents: eventNames }));
   };
 
   const setConcurrency = (value: Concurrency) => {
-    write(pruneCorrelationPaths({ ...rules, concurrency: value }));
+    write(prune({ ...rules, concurrency: value }));
+  };
+
+  const setConnectionId = (eventName: string, connectionId: string) => {
+    const next = { ...rules.connectionIds };
+    if (connectionId) {
+      next[eventName] = connectionId;
+    } else {
+      delete next[eventName];
+    }
+
+    write({
+      ...rules,
+      connectionIds: Object.keys(next).length > 0 ? next : undefined,
+    });
   };
 
   const setCorrelationPath = (eventName: string, path: string) => {
@@ -83,6 +101,7 @@ export function LifecyclePanel({
     onManualStartChange: (allowed: boolean) =>
       write({ ...rules, allowManualStart: allowed }),
     onCorrelationPathChange: setCorrelationPath,
+    onConnectionChange: setConnectionId,
   };
 
   return (
@@ -123,6 +142,7 @@ function LifecycleGroups({
   onConcurrencyChange,
   onManualStartChange,
   onCorrelationPathChange,
+  onConnectionChange,
 }: {
   editing: boolean;
   rules: LifecycleRules;
@@ -136,6 +156,7 @@ function LifecycleGroups({
   onConcurrencyChange: (value: Concurrency) => void;
   onManualStartChange: (allowed: boolean) => void;
   onCorrelationPathChange: (eventName: string, path: string) => void;
+  onConnectionChange: (eventName: string, connectionId: string) => void;
 }) {
   return (
     <div className="divide-y">
@@ -145,6 +166,7 @@ function LifecycleGroups({
         editing={editing}
         inputId={startEventId}
         onCorrelationPathChange={onCorrelationPathChange}
+        onConnectionChange={onConnectionChange}
         onEventNamesChange={onStartEventsChange}
         role="start"
         rules={rules}
@@ -163,6 +185,7 @@ function LifecycleGroups({
         editing={editing}
         inputId={cancelEventsId}
         onCorrelationPathChange={onCorrelationPathChange}
+        onConnectionChange={onConnectionChange}
         onEventNamesChange={onCancelEventsChange}
         role="cancel"
         rules={rules}

@@ -125,6 +125,11 @@ export function evaluateCompiledCondition(input: {
    * compares false.
    */
   eventName: string | null;
+  /**
+   * The Connection an integration Event arrived on, null for a host Event.
+   * Written either way for the same reason `eventName` is.
+   */
+  connectionId?: string | null;
 }) {
   const payload = structuredClone(input.payload);
   decodeConditionTimestamps(payload, input.timestampPaths);
@@ -133,7 +138,10 @@ export function evaluateCompiledCondition(input: {
     expression: input.expression,
     context: {
       now: new Date(),
-      [EVENT_CONTEXT_ROOT]: { name: input.eventName },
+      [EVENT_CONTEXT_ROOT]: {
+        name: input.eventName,
+        connectionId: input.connectionId ?? null,
+      },
       [CONDITION_CONTEXT_ROOT]: payload,
     },
   });

@@ -45,7 +45,8 @@
     "@clerk/backend": "^2.33.6",
     "@linear/sdk": "^75.0.0",
     "effect": "catalog:",
-    "es-toolkit": "catalog:"
+    "es-toolkit": "catalog:",
+    "svix": "^2.1.0"
   },
   "devDependencies": {
     "@types/react": "catalog:",

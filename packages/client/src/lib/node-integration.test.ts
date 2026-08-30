@@ -41,6 +41,7 @@ const served: ExtensionCatalog = {
       description: "Send SMS messages with Twilio",
       credentialFields: {},
       hasTest: true,
+      hasWebhook: false,
     },
   ],
 };

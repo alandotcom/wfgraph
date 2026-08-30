@@ -41,6 +41,7 @@ const logger = getAppLogger("waits");
  */
 const compiledWaitSubscriptionSchema = Schema.Struct({
   event: Schema.String,
+  connectionId: Schema.optional(Schema.String),
   match: Schema.optional(
     Schema.Struct({
       expression: Schema.String,
@@ -183,7 +184,12 @@ export function compileWaitSubscriptions(input: {
 
   for (const subscription of input.subscriptions) {
     if (subscription.match === undefined || subscription.match.trim() === "") {
-      subscriptions.push({ event: subscription.event });
+      subscriptions.push({
+        event: subscription.event,
+        ...(subscription.connectionId
+          ? { connectionId: subscription.connectionId }
+          : {}),
+      });
       continue;
     }
 
@@ -222,6 +228,9 @@ export function compileWaitSubscriptions(input: {
 
     subscriptions.push({
       event: subscription.event,
+      ...(subscription.connectionId
+        ? { connectionId: subscription.connectionId }
+        : {}),
       match: {
         expression: compiled.expression,
         timestampPaths: collectTimestampFieldPaths(resolved),

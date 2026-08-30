@@ -19,6 +19,7 @@ const testCatalog: ExtensionCatalog = {
       description: "Linear issue tracking",
       credentialFields: {},
       hasTest: true,
+      hasWebhook: false,
     },
   ],
 };

@@ -30,6 +30,7 @@ const catalog: ExtensionCatalog = {
         RESEND_FROM_EMAIL: { label: "From email", type: "text" },
       },
       hasTest: true,
+      hasWebhook: false,
       oauth: { label: "Resend" },
     },
   ],

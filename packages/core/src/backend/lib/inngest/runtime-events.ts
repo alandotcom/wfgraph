@@ -93,3 +93,29 @@ export async function sendWorkflowWaitSignal(
     })
   );
 }
+
+/**
+ * Forward a catalog Event onto the bus, including the Connection it arrived
+ * through as Inngest `user` rather than payload.
+ *
+ * `user.connectionId` is first-class delivery metadata: listeners read it
+ * beside the Event name, and CEL exposes it as `event.connectionId`. The
+ * payload stays the vendor envelope.
+ */
+export async function sendCatalogEvent(
+  client: Inngest,
+  input: {
+    name: string;
+    data: JsonObject;
+    connectionId: string;
+    id?: string;
+  }
+) {
+  const event = {
+    name: input.name,
+    data: input.data,
+    user: { connectionId: input.connectionId },
+    ...(input.id === undefined ? {} : { id: input.id }),
+  };
+  return await client.send(event);
+}

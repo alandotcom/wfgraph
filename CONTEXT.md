@@ -29,6 +29,18 @@ Correlation Path. An Event carries no lifecycle role; roles are assigned per
 workflow by the Workflow Builder.
 _Avoid_: trigger (the retired authored bundle of events and policy)
 
+**Integration Event**:
+An Event declared on `defineIntegration` rather than by the host. The catalog
+stamps `EventMetadata.integration`. A Workflow Builder must name a Connection
+for each such Start, Cancel, or Wait Event at Publish.
+
+**Webhook intake**:
+The ungated POST that turns a vendor callback into an Event send. Addressed at
+a Connection (`POST {basePath}/api/webhooks/{type}/{connectionId}`), mounted
+on machine routes so host `auth` does not consume the body. The vendor
+signature is the credential. The Connection id travels as delivery metadata,
+not as a payload field.
+
 **Correlation Path**:
 The payload path on an Event where its Entity Value sits. The Event Author
 declares one as the default; the Workflow Builder sets the path their own
@@ -231,6 +243,7 @@ One authorization for one External System, with an id and a name. It can hold
 credentials an operator entered or an OAuth grant the External System issued.
 An application may hold several for the same system, which is two Slack
 workspaces or two Twilio accounts. An action node names the one it runs as.
+An integration-owned Event names the one it arrives through.
 
 ### Build Agent
 

@@ -45,6 +45,17 @@ function toEventPayload(value: unknown): JsonObject {
   return readJsonObject(value) ?? {};
 }
 
+function connectionIdOf(delivered: { user?: unknown }): string | undefined {
+  const user = delivered.user;
+  if (typeof user !== "object" || user === null) {
+    return undefined;
+  }
+  const connectionId = Reflect.get(user, "connectionId");
+  return typeof connectionId === "string" && connectionId.length > 0
+    ? connectionId
+    : undefined;
+}
+
 /** The runs the Lifecycle Rules settled, which the wait half then leaves alone. */
 function settledExecutionIds(outcome: LifecycleDeliveryOutcome): string[] {
   if (outcome.kind === "started") {
@@ -104,11 +115,20 @@ export async function runEventListener(input: {
   payload: JsonObject;
   /** Names the arrival in every line and row this delivery writes. */
   arrival: { eventId?: string; runId?: string };
+  /**
+   * The Connection this arrival came through. Absent for a host Event.
+   */
+  connectionId?: string;
   runtime: WfGraphRuntime;
   step: EventListenerSteps;
   deliver: EventListenerDeliverPorts;
 }): Promise<{ eventName: string; workflows: WorkflowDelivery[] }> {
   const { event, payload, runtime, step, deliver } = input;
+  const deliveredEvent = {
+    name: event.name,
+    correlationPath: event.correlationPath,
+    ...(input.connectionId ? { connectionId: input.connectionId } : {}),
+  };
   const arrivalLogger = logger.with({
     eventName: event.name,
     ...input.arrival,
@@ -156,7 +176,7 @@ export async function runEventListener(input: {
             await runtime.runPromise(
               deliver.applyLifecycle({
                 subscriber,
-                event,
+                event: deliveredEvent,
                 payload,
                 // Inngest's id for this arrival, which is the sender's own
                 // idempotency id wherever they sent one.
@@ -186,7 +206,12 @@ export async function runEventListener(input: {
           `waits-${subscriber.id}`,
           async () =>
             await runtime.runPromise(
-              deliver.deliverWaits({ subscriber, event, payload, excluding })
+              deliver.deliverWaits({
+                subscriber,
+                event: deliveredEvent,
+                payload,
+                excluding,
+              })
             )
         )
       : { workflowId: subscriber.id, resumedWaits: 0 };
@@ -250,6 +275,7 @@ export function createInngestEventListenerFunction(input: {
         event,
         payload: toEventPayload(delivered.data),
         arrival: { eventId: delivered.id, runId },
+        connectionId: connectionIdOf(delivered),
         runtime,
         step,
         deliver: defaultDeliverPorts,

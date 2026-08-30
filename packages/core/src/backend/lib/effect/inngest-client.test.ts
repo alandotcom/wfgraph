@@ -27,12 +27,14 @@ const runtimeEvents = vi.hoisted(() => ({
   sendWorkflowRunRequested: vi.fn(),
   sendWorkflowCancelRequested: vi.fn(),
   sendWorkflowWaitSignal: vi.fn(),
+  sendCatalogEvent: vi.fn(),
 }));
 
 beforeEach(() => {
   runtimeEvents.sendWorkflowRunRequested.mockReset();
   runtimeEvents.sendWorkflowCancelRequested.mockReset();
   runtimeEvents.sendWorkflowWaitSignal.mockReset();
+  runtimeEvents.sendCatalogEvent.mockReset();
 
   vi.spyOn(runtimeEventsModule, "sendWorkflowRunRequested").mockImplementation(
     runtimeEvents.sendWorkflowRunRequested
@@ -43,6 +45,9 @@ beforeEach(() => {
   ).mockImplementation(runtimeEvents.sendWorkflowCancelRequested);
   vi.spyOn(runtimeEventsModule, "sendWorkflowWaitSignal").mockImplementation(
     runtimeEvents.sendWorkflowWaitSignal
+  );
+  vi.spyOn(runtimeEventsModule, "sendCatalogEvent").mockImplementation(
+    runtimeEvents.sendCatalogEvent
   );
 });
 

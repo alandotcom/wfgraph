@@ -43,6 +43,12 @@ import { asNonEmptyString } from "@wfgraph/shared/types/string";
 export type DeliveredEvent = {
   readonly name: string;
   readonly correlationPath?: string;
+  /**
+   * The Connection this arrival came through. Absent for a host Event, which
+   * never names one. A stored rule that names a Connection matches only when
+   * these agree.
+   */
+  readonly connectionId?: string;
 };
 
 /** What the Lifecycle Rules did to one workflow, as the listener records it. */
@@ -126,6 +132,16 @@ function readEntityValue(input: {
   }
 
   return asNonEmptyString(getValueByPath(input.payload, path));
+}
+
+function connectionFilterHolds(
+  stored: string | undefined,
+  delivered: string | undefined
+): boolean {
+  if (stored === undefined) {
+    return true;
+  }
+  return stored === delivered;
 }
 
 /** The workflows this Event concerns, with the roles it holds in each. */
@@ -218,6 +234,15 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
     // no run of that draft, whether or not the workflow is published
     // (ADR-0012, 2026-08-29).
     const rules = preflight.lifecycleRules ?? emptyLifecycleRules;
+
+    if (
+      !connectionFilterHolds(
+        rules.connectionIds?.[input.event.name],
+        input.event.connectionId
+      )
+    ) {
+      return { kind: "waits_only" as const, workflowId: workflow.id };
+    }
 
     const entityValue = readEntityValue({
       event: input.event,
@@ -369,6 +394,7 @@ export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
       eventType: input.event.name,
       payload: input.payload,
       waitStates: candidates,
+      connectionId: input.event.connectionId,
     });
 
     if (candidates.length < WAIT_CANDIDATE_PAGE_SIZE) {

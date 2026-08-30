@@ -1,9 +1,11 @@
 import { Effect, Schema } from "effect";
 import { describe, expect, expectTypeOf, it } from "vitest";
+import { defineEvent } from "#src/backend/extensions/define-event";
 import {
   type CredentialsOf,
   defineIntegration,
 } from "#src/backend/extensions/define-integration";
+import type { IntegrationWebhook } from "#src/backend/extensions/integration-webhook";
 import type { CredentialFields } from "@wfgraph/shared/extensions/catalog";
 
 const twilioCredentialFields = {
@@ -71,6 +73,50 @@ describe("defineIntegration", () => {
     expect(
       aTwilio({ category: "Messaging" }).actions["send-sms"].category
     ).toBe("Messaging");
+  });
+
+  it("holds the Events and webhook it was given", () => {
+    const delivered = defineEvent({
+      name: "twilio/message.sent",
+      schema: Schema.Struct({
+        type: Schema.String,
+        data: Schema.Struct({ sid: Schema.String }),
+      }),
+      source: {
+        event: "twilio/webhook",
+        when: { path: "type", equals: "message.sent" },
+      },
+    });
+    const webhook: IntegrationWebhook = {
+      verify: () => Effect.void,
+      receive: () => undefined,
+    };
+
+    const twilio = defineIntegration({
+      type: "twilio",
+      label: "Twilio",
+      description: "Send SMS messages",
+      credentials: twilioCredentialFields,
+      events: [delivered],
+      webhook,
+      actions: {
+        "send-sms": {
+          label: "Send SMS",
+          description: "Sends a message",
+          input: Schema.Struct({ to: Schema.String }),
+          output: Schema.Struct({
+            sid: Schema.String.annotate({ description: "Message SID" }),
+          }),
+          configFields: [{ key: "to", label: "To", type: "template-input" }],
+          handler: Effect.fn(function* () {
+            return yield* Effect.succeed({ sid: "SM1" });
+          }),
+        },
+      },
+    });
+
+    expect(twilio.events).toEqual([delivered]);
+    expect(twilio.webhook).toBe(webhook);
   });
 
   it("refuses an action declared through the __proto__ literal form", () => {

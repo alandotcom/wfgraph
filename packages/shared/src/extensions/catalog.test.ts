@@ -77,6 +77,7 @@ const catalog: ExtensionCatalog = {
         TWILIO_ACCOUNT_SID: { label: "Account SID", type: "text" },
       },
       hasTest: true,
+      hasWebhook: false,
     },
   ],
 };
@@ -319,6 +320,7 @@ describe("credentialsFromConfig", () => {
     label: "Twilio",
     description: "Send SMS messages",
     hasTest: true,
+    hasWebhook: false,
     credentialFields: {
       TWILIO_AUTH_TOKEN: { label: "Auth Token", type: "password" as const },
       TWILIO_FROM_NUMBER: { label: "From Number", type: "text" as const },

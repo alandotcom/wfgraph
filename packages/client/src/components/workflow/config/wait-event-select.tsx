@@ -4,6 +4,7 @@ import { useCallback, useId, useMemo, useState } from "react";
 import { Button } from "#src/components/ui/button";
 import { WarningCallout } from "#src/components/ui/callout";
 import { Label } from "#src/components/ui/label";
+import { IntegrationSelector } from "#src/components/ui/integration-selector";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { getEventConditionFields } from "#src/lib/upstream-node-fields";
 import { nodesAtom, selectedNodeAtom } from "#src/lib/workflow-graph-store";
@@ -21,7 +22,7 @@ import {
   readWaitSubscriptions,
 } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { ConditionBuilderRow } from "./condition-builder-row";
-import { EventMultiCombobox } from "./event-combobox";
+import { EventMultiCombobox, catalogEventChoices } from "./event-combobox";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
 /**
@@ -79,7 +80,27 @@ export function WaitEventSelect({
     write(
       selected.map((subscription) =>
         subscription.event === eventName
-          ? { event: subscription.event, ...(match ? { match } : {}) }
+          ? {
+              event: subscription.event,
+              ...(subscription.connectionId
+                ? { connectionId: subscription.connectionId }
+                : {}),
+              ...(match ? { match } : {}),
+            }
+          : subscription
+      )
+    );
+  };
+
+  const setConnectionId = (eventName: string, connectionId: string) => {
+    write(
+      selected.map((subscription) =>
+        subscription.event === eventName
+          ? {
+              event: subscription.event,
+              ...(subscription.match ? { match: subscription.match } : {}),
+              ...(connectionId ? { connectionId } : {}),
+            }
           : subscription
       )
     );
@@ -92,7 +113,7 @@ export function WaitEventSelect({
 
         {catalog.events.length > 0 ? (
           <EventMultiCombobox
-            choices={catalog.events}
+            choices={catalogEventChoices(catalog)}
             disabled={disabled}
             inputId={eventsInputId}
             onValueChange={setEvents}
@@ -116,6 +137,7 @@ export function WaitEventSelect({
           <WaitSubscriptionRow
             disabled={disabled}
             key={subscription.event}
+            onConnectionChange={setConnectionId}
             onMatchChange={setMatch}
             onRemove={remove}
             subscription={subscription}
@@ -130,11 +152,13 @@ export function WaitEventSelect({
 function WaitSubscriptionRow({
   subscription,
   onMatchChange,
+  onConnectionChange,
   onRemove,
   disabled,
 }: {
   subscription: EventSubscription;
   onMatchChange: (eventName: string, match: string) => void;
+  onConnectionChange: (eventName: string, connectionId: string) => void;
   onRemove: (eventName: string) => void;
   disabled: boolean;
 }) {
@@ -243,6 +267,15 @@ function WaitSubscriptionRow({
           <X className="size-3.5" />
         </Button>
       </div>
+
+      {event?.integration ? (
+        <IntegrationSelector
+          disabled={disabled}
+          integrationType={event.integration}
+          onChange={(id) => onConnectionChange(subscription.event, id)}
+          value={subscription.connectionId}
+        />
+      ) : null}
 
       {subscription.match ? (
         <>

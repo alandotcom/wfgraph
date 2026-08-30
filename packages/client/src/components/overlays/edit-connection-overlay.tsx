@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Link, Pencil, TriangleAlert, X } from "lucide-react";
+import { Check, Copy, Link, Pencil, TriangleAlert, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
@@ -11,6 +11,7 @@ import {
   announceTestResult,
   hasProvidedConfigValues,
 } from "#src/lib/connection-credentials";
+import { getWebhookIntake } from "#src/lib/extensions";
 import type { Integration } from "#src/lib/rpc-client";
 import {
   integrationsQueryOptions,
@@ -22,6 +23,7 @@ import {
   findIntegration,
   type IntegrationMetadata,
 } from "@wfgraph/shared/extensions/catalog";
+import { connectionWebhookUrl } from "@wfgraph/shared/extensions/webhook-url";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
@@ -314,6 +316,63 @@ function OAuthManagedCredentialField({
           Managed by {providerLabel} OAuth
         </span>
       </div>
+    </div>
+  );
+}
+
+function WebhookUrlField({
+  type,
+  connectionId,
+}: {
+  type: string;
+  connectionId: string;
+}) {
+  const intake = getWebhookIntake();
+
+  if (!intake) {
+    return (
+      <div className="space-y-1">
+        <Label>Webhook URL</Label>
+        <p className="text-muted-foreground text-xs">
+          This host has no publicUrl, so a webhook URL cannot be copied. Set
+          publicUrl on createWfGraphApp.
+        </p>
+      </div>
+    );
+  }
+
+  const url = connectionWebhookUrl({
+    publicUrl: intake.publicUrl,
+    apiBasePath: intake.apiBasePath,
+    type,
+    connectionId,
+  });
+
+  const copyUrl = () => {
+    void navigator.clipboard.writeText(url);
+    toast.success("Webhook URL copied");
+  };
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="webhook-url">Webhook URL</Label>
+      <div className="flex gap-2">
+        <Input id="webhook-url" readOnly value={url} />
+        <Button
+          aria-label="Copy webhook URL"
+          onClick={copyUrl}
+          size="icon"
+          type="button"
+          variant="outline"
+        >
+          <Copy className="size-4" />
+        </Button>
+      </div>
+      <p className="text-muted-foreground text-xs">
+        {type === "resend"
+          ? "Create a webhook in Resend with all event types selected, then paste this URL and the signing secret from that page."
+          : "Paste this URL into the vendor's webhook settings for this Connection."}
+      </p>
     </div>
   );
 }
@@ -634,6 +693,13 @@ export function EditConnectionOverlay({
           disabled={oauthBusy}
         >
           {renderConfigFields()}
+
+          {catalogEntry?.hasWebhook ? (
+            <WebhookUrlField
+              connectionId={integration.id}
+              type={integration.type}
+            />
+          ) : null}
 
           <div className="space-y-2">
             <Label htmlFor="name">Label (Optional)</Label>

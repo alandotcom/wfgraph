@@ -8,6 +8,7 @@ import {
 import {
   type ConditionFieldDefinition,
   type ConditionFieldType,
+  EVENT_CONNECTION_ID_FIELD_PATH,
   EVENT_NAME_FIELD_PATH,
 } from "@wfgraph/shared/conditions/conditions";
 import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
@@ -60,6 +61,7 @@ const SHARED_EVENT_FIELDS_LABEL = "Carried by every Event";
 
 /** What the picker calls the field naming the Event a run arrived on. */
 const EVENT_NAME_FIELD_LABEL = "Event name";
+const EVENT_CONNECTION_ID_FIELD_LABEL = "Connection";
 
 /**
  * Every path any of these Events declares, each offered once, under the section
@@ -302,12 +304,9 @@ function eventNameConditionField(input: {
     edges,
     catalog,
   });
-  if (events.length < 2) {
-    return [];
-  }
-
-  return [
-    {
+  const fields: ConditionSelectableField[] = [];
+  if (events.length >= 2) {
+    fields.push({
       path: EVENT_NAME_FIELD_PATH,
       label: EVENT_NAME_FIELD_LABEL,
       type: "string",
@@ -315,8 +314,19 @@ function eventNameConditionField(input: {
       sourceNodeLabel: SHARED_EVENT_FIELDS_LABEL,
       sourceNodeLabels: [SHARED_EVENT_FIELDS_LABEL],
       enumValues: events.map((event) => event.name),
-    },
-  ];
+    });
+  }
+  if (events.some((event) => event.integration)) {
+    fields.push({
+      path: EVENT_CONNECTION_ID_FIELD_PATH,
+      label: EVENT_CONNECTION_ID_FIELD_LABEL,
+      type: "string",
+      sourceNodeId: entryNode.id,
+      sourceNodeLabel: SHARED_EVENT_FIELDS_LABEL,
+      sourceNodeLabels: [SHARED_EVENT_FIELDS_LABEL],
+    });
+  }
+  return fields;
 }
 
 export function getUpstreamConditionFields(input: {

@@ -374,6 +374,66 @@ describe("applyLifecycleRules", () => {
       })
     );
 
+    it.effect("is waits_only when the arrival is a different Connection", () =>
+      Effect.gen(function* () {
+        const outcome = yield* applyLifecycleRules({
+          subscriber: subscriber(),
+          event: { ...appointmentCreated, connectionId: "conn_other" },
+          payload,
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              stubPublishedWorkflow(
+                createWorkflow({
+                  rules: {
+                    ...startRules,
+                    connectionIds: {
+                      "app/appointment.created": "conn_1",
+                    },
+                  },
+                })
+              ),
+              lifecyclePorts
+            )
+          )
+        );
+
+        assert.deepStrictEqual(outcome, {
+          kind: "waits_only",
+          workflowId: "wf_1",
+        });
+        assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+      })
+    );
+
+    it.effect("starts when the arrival is the Connection the rules name", () =>
+      Effect.gen(function* () {
+        const outcome = yield* applyLifecycleRules({
+          subscriber: subscriber(),
+          event: { ...appointmentCreated, connectionId: "conn_1" },
+          payload,
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              stubPublishedWorkflow(
+                createWorkflow({
+                  rules: {
+                    ...startRules,
+                    connectionIds: {
+                      "app/appointment.created": "conn_1",
+                    },
+                  },
+                })
+              ),
+              lifecyclePorts
+            )
+          )
+        );
+
+        assert.strictEqual(outcome.kind, "started");
+      })
+    );
+
     // A workflow answering an appointment being booked and being moved lists
     // both, and either one starts a run. Both read the same entity, so
     // newest-wins is what ends the run the earlier Event began.

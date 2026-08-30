@@ -43,6 +43,7 @@ function slowStep() {
     connectionTestFor: () => undefined,
     configOptionsFor: () => undefined,
     oauthFor: () => undefined,
+    webhookFor: () => undefined,
     eventByName: () => undefined,
     events: [],
   };

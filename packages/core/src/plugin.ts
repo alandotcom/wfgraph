@@ -39,6 +39,20 @@ export {
   type Integration,
   type IntegrationDefinition,
 } from "#src/backend/extensions/define-integration";
+export {
+  defineEvent,
+  type AnyEventDefinition,
+  type EventDefinition,
+  PayloadRejected,
+} from "#src/backend/extensions/define-event";
+export {
+  isWebhookHandshake,
+  SignatureRejected,
+  type IntegrationWebhook,
+  type WebhookAccepted,
+  type WebhookHandshake,
+  type WebhookReceiveResult,
+} from "#src/backend/extensions/integration-webhook";
 export type {
   ConfigOptionChoice,
   ConfigOptionField,

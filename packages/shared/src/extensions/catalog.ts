@@ -29,6 +29,11 @@ export type EventMetadata = {
   readonly description?: string;
   /** Absent when the Event declares none; the Workflow Builder supplies one. */
   readonly correlationPath?: string;
+  /**
+   * The integration that declared this Event, absent for a host `defineEvent`.
+   * The editor uses it to offer a Connection picker on the Lifecycle Node.
+   */
+  readonly integration?: string;
   readonly payloadFields: readonly ReferenceField[];
 };
 
@@ -92,6 +97,8 @@ export type IntegrationMetadata = {
   readonly credentialFields: CredentialFields;
   /** Whether "Test connection" has anything to call. */
   readonly hasTest: boolean;
+  /** Whether this integration mounts a Connection-addressed webhook. */
+  readonly hasWebhook: boolean;
   /** Sanitized OAuth capability metadata. Provider behavior stays server-side. */
   readonly oauth?: { readonly label: string };
 };

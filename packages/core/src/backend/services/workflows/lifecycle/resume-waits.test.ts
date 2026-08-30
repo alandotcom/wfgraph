@@ -69,6 +69,7 @@ const services = Layer.mergeAll(
 
 type Subscription = {
   event: string;
+  connectionId?: string;
   match?: { expression: string; timestampPaths: string[] };
 };
 
@@ -205,6 +206,40 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(0);
+  });
+
+  it("leaves a wait parked when the arrival is a different Connection", async () => {
+    const result = await resumeWaits({
+      workflowId: "workflow_1",
+      eventType: "event.update",
+      payload: { data: "test" },
+      connectionId: "conn_other",
+      waitStates: [
+        createWaitState("1", "exec_1", {
+          subscriptions: [{ event: "event.update", connectionId: "conn_1" }],
+        }),
+      ],
+    });
+
+    expect(result).toBe(0);
+    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+  });
+
+  it("wakes a wait when the arrival is the Connection it named", async () => {
+    const result = await resumeWaits({
+      workflowId: "workflow_1",
+      eventType: "event.update",
+      payload: { data: "test" },
+      connectionId: "conn_1",
+      waitStates: [
+        createWaitState("1", "exec_1", {
+          subscriptions: [{ event: "event.update", connectionId: "conn_1" }],
+        }),
+      ],
+    });
+
+    expect(result).toBe(1);
+    expect(sendWaitSignalMock).toHaveBeenCalledTimes(1);
   });
 
   // A row with no token can never be woken by an Event, so it is a defect in

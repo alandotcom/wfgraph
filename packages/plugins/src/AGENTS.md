@@ -23,8 +23,9 @@ plugins/[name]/
 A larger integration adds modules beside those rather than growing `index.ts` without
 limit: `clerk/` has `types.ts` for the system's wire shapes, `metadata.ts` for the config
 parser two of its actions share, and a `components/` directory for its output renderer;
-`linear/` has an `errors.ts`. What stays in `index.ts` either way is the integration
-itself, so a reader opens one file to learn what it does. `clerk/` is the largest at four
+`linear/` has an `errors.ts`; `resend/` has `events.ts` and `webhook.ts` for the Events a
+Svix POST raises. What stays in `index.ts` either way is the integration itself, so a
+reader opens one file to learn what it does. `clerk/` is the largest at four
 actions, with its schemas above the `defineIntegration` call and each action written
 inline in the `actions` record.
 
@@ -60,9 +61,10 @@ retry policy is stated once, above `RETRY_ATTEMPTS`, and Inngest's function-leve
 the outer policy beyond it.
 
 An SDK earns its place only where it carries protocol logic worth borrowing, which is why
-`@clerk/backend` (JWT verification) and `@linear/sdk` (a typed GraphQL client) stayed while
-`twilio`, `resend`, `@slack/web-api` and `posthog-node` did not. Those keep their own
-transport and error handling and do not go through `callExternal`.
+`@clerk/backend` (JWT verification), `@linear/sdk` (a typed GraphQL client) and `svix`
+(Resend webhook signatures) stayed while `twilio`, `resend`, `@slack/web-api` and
+`posthog-node` did not. Those keep their own transport and error handling and do not go
+through `callExternal`.
 
 ## OAuth adapters
 

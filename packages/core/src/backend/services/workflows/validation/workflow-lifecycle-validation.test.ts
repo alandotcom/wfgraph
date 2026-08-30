@@ -21,9 +21,25 @@ const catalog: ExtensionCatalog = {
       correlationPath: "appointment.id",
       payloadFields: [],
     },
+    {
+      name: "resend/email.delivered",
+      label: "Email delivered",
+      integration: "resend",
+      correlationPath: "data.email_id",
+      payloadFields: [],
+    },
   ],
   actions: [],
-  integrations: [],
+  integrations: [
+    {
+      type: "resend",
+      label: "Resend",
+      description: "Transactional email",
+      credentialFields: {},
+      hasTest: false,
+      hasWebhook: true,
+    },
+  ],
 };
 
 function lifecycleNode(rules?: LifecycleRules): WorkflowNode {
@@ -39,7 +55,10 @@ function lifecycleNode(rules?: LifecycleRules): WorkflowNode {
   };
 }
 
-function waitNode(eventNames: string[]): WorkflowNode {
+function waitNode(
+  eventNames: string[],
+  connectionIds: Record<string, string> = {}
+): WorkflowNode {
   return {
     id: "wait-1",
     type: "action",
@@ -50,7 +69,12 @@ function waitNode(eventNames: string[]): WorkflowNode {
       config: {
         actionType: "Wait",
         waitMode: "event",
-        waitFor: eventNames.map((event) => ({ event })),
+        waitFor: eventNames.map((event) => ({
+          event,
+          ...(connectionIds[event]
+            ? { connectionId: connectionIds[event] }
+            : {}),
+        })),
       },
     },
   };
@@ -139,6 +163,28 @@ describe("validateWorkflowEvents - wait subscription", () => {
         'No Event named "billing/payment.settled"'
       ),
     });
+  });
+
+  it("refuses a wait on an integration Event that names no Connection", () => {
+    expect(
+      validateWorkflowEvents([waitNode(["resend/email.delivered"])], catalog)
+    ).toMatchObject({
+      valid: false,
+      error: expect.stringContaining("needs a Connection"),
+    });
+  });
+
+  it("accepts a wait on an integration Event that names a Connection", () => {
+    expect(
+      validateWorkflowEvents(
+        [
+          waitNode(["resend/email.delivered"], {
+            "resend/email.delivered": "conn_1",
+          }),
+        ],
+        catalog
+      )
+    ).toEqual({ valid: true });
   });
 
   it("asks nothing of a node that is not a Wait", () => {

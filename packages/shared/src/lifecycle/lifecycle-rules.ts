@@ -10,7 +10,11 @@
 
 import { Schema } from "effect";
 import { compact } from "es-toolkit/array";
-import { type ExtensionCatalog, findEvent } from "#src/extensions/catalog";
+import {
+  type ExtensionCatalog,
+  findEvent,
+  findIntegration,
+} from "#src/extensions/catalog";
 import { NonEmptyTrimmedString, readAs } from "#src/types/schema";
 
 /**
@@ -60,6 +64,14 @@ export const lifecycleRulesSchema = Schema.Struct({
   correlationPaths: Schema.optional(
     Schema.Record(Schema.String, NonEmptyTrimmedString)
   ),
+
+  /**
+   * The Connection an integration-owned Event must arrive on, keyed by Event
+   * name. Host Events have none. Required at Publish for every named Event
+   * whose catalog entry carries `integration`, so two Resend Connections never
+   * silently fan in.
+   */
+  connectionIds: Schema.optional(Schema.Record(Schema.String, Schema.String)),
 });
 
 export type LifecycleRules = typeof lifecycleRulesSchema.Type;
@@ -299,6 +311,32 @@ export function pruneCorrelationPaths(rules: LifecycleRules): LifecycleRules {
 }
 
 /**
+ * `rules.connectionIds`, holding only Events that currently hold a start or
+ * cancel role.
+ *
+ * The panel calls this from every setter that can drop an Event, so a
+ * Connection chosen for an Event that just lost its role does not keep
+ * governing runs once its own control has left the screen.
+ */
+export function pruneConnectionIds(rules: LifecycleRules): LifecycleRules {
+  if (!rules.connectionIds) {
+    return rules;
+  }
+
+  const named = new Set([...rules.startEvents, ...rules.cancelEvents]);
+  const next = Object.fromEntries(
+    Object.entries(rules.connectionIds).filter(([eventName]) =>
+      named.has(eventName)
+    )
+  );
+
+  return {
+    ...rules,
+    connectionIds: Object.keys(next).length > 0 ? next : undefined,
+  };
+}
+
+/**
  * What a save is held to, as sentences a builder can be shown.
  *
  * The catalog is the vocabulary these rules are checked against, so a workflow
@@ -324,8 +362,12 @@ export function checkLifecycleRules(input: {
 
   const named = [...rules.startEvents, ...rules.cancelEvents];
   for (const name of named) {
-    if (!findEvent(catalog, name)) {
+    const event = findEvent(catalog, name);
+    if (!event) {
       return refuse(unknownEventMessage(name));
+    }
+    if (event.integration && !rules.connectionIds?.[name]) {
+      return refuse(missingConnectionMessage(name, event.integration, catalog));
     }
   }
 
@@ -359,4 +401,18 @@ export function checkLifecycleRules(input: {
  */
 function missingCorrelationPathMessage(eventName: string): string {
   return `Event "${eventName}" declares no Correlation Path. Enter the payload path holding the value that identifies the entity, or ask whoever defined the Event to declare it.`;
+}
+
+/**
+ * The sentence a save is refused with when an integration Event names no
+ * Connection. Exported so the wait check shares this copy.
+ */
+export function missingConnectionMessage(
+  eventName: string,
+  integrationType: string,
+  catalog: ExtensionCatalog
+): string {
+  const label =
+    findIntegration(catalog, integrationType)?.label ?? integrationType;
+  return `Event "${eventName}" belongs to ${label} and needs a Connection. Pick one, or this workflow would start on every ${label} Connection.`;
 }

@@ -1,6 +1,6 @@
 /**
- * An integration as one value: its credentials, its actions, and the connection
- * test behind them.
+ * An integration as one value: its credentials, its actions, the Events it
+ * owns, and the webhook that produces them.
  *
  * Nothing registers on import. A host hands the value to `createWfGraphApp` under
  * `extensions.integrations`, so the line that turns an integration on is a line
@@ -12,7 +12,9 @@
  * everything else an action needs, which is why nothing here mentions a handler.
  */
 
+import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
 import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
+import type { IntegrationWebhook } from "#src/backend/extensions/integration-webhook";
 import type { ConfigOptionsProvider } from "#src/backend/extensions/config-options";
 import {
   type ActionConfigFieldFor,
@@ -80,6 +82,17 @@ export type IntegrationDefinition = {
   readonly configOptions?: Readonly<Record<string, ConfigOptionsProvider>>;
   /** Keyed by action slug. */
   readonly actions: Readonly<Record<string, ActionStep>>;
+  /**
+   * Events this integration owns. Assembly folds them into the one catalog and
+   * stamps `EventMetadata.integration`, so the editor can offer a Connection
+   * picker. Identity stays the Event name; a webhook is how they arrive.
+   */
+  readonly events?: readonly AnyEventDefinition[];
+  /**
+   * The ungated intake that turns a vendor POST into an Event send. Absent when
+   * this integration only sends.
+   */
+  readonly webhook?: IntegrationWebhook;
 };
 
 /**
@@ -145,8 +158,8 @@ export type Integration<
 };
 
 /**
- * Declare an integration: its credentials, its actions, and the connection test
- * behind them.
+ * Declare an integration: its credentials, its actions, the Events it owns, and
+ * the webhook that produces them.
  *
  * An action is an object literal, so the credential vocabulary and each action's
  * own input type reach its handler without an annotation. A handler naming a
@@ -194,6 +207,8 @@ export function defineIntegration<
     TInputs,
     TOutputs
   >;
+  readonly events?: readonly AnyEventDefinition[];
+  readonly webhook?: IntegrationWebhook<CredentialsOf<TCredentials>>;
 }): Integration<TInputs, TOutputs>;
 /**
  * The body runs on the erased shape. The signature above has said everything the
@@ -209,6 +224,8 @@ export function defineIntegration(input: {
   readonly test?: IntegrationTestLoader;
   readonly configOptions?: Readonly<Record<string, ConfigOptionsProvider>>;
   readonly actions: Readonly<Record<string, unknown>>;
+  readonly events?: readonly AnyEventDefinition[];
+  readonly webhook?: IntegrationWebhook;
 }): IntegrationDefinition {
   assertOrdinaryDeclarationRecord(input.type, "credentials", input.credentials);
   if (input.configOptions) {
@@ -255,6 +272,8 @@ export function defineIntegration(input: {
     test: input.test,
     ...(input.configOptions ? { configOptions: input.configOptions } : {}),
     actions: Object.fromEntries(actions),
+    ...(input.events ? { events: input.events } : {}),
+    ...(input.webhook ? { webhook: input.webhook } : {}),
   };
 }
 

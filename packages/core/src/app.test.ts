@@ -88,9 +88,28 @@ describe("createWfGraphApp mounted at the root", () => {
       });
       // The build agent is off, because these options name no model key.
       expect(payload).toMatchObject({ agent: { enabled: false } });
-      // And those are the whole envelope. The browser reads exactly these two
-      // members, so a third here would be a surface the editor never sees.
+      // And those are the whole envelope when the host set no publicUrl.
+      // webhookIntake is present only then, so the editor can copy a URL.
       expect(Object.keys(payload as object)).toEqual(["catalog", "agent"]);
+    } finally {
+      await app.dispose();
+    }
+  });
+
+  it("includes webhook intake on the catalog envelope when publicUrl is set", async () => {
+    const app = await createWfGraphApp({
+      ...BASE_OPTIONS,
+      publicUrl: "https://workflows.example.com",
+    });
+    try {
+      const payload = (await (await get(app, "/api/extensions")).json()) as {
+        webhookIntake?: { publicUrl: string; apiBasePath: string };
+      };
+
+      expect(payload.webhookIntake).toEqual({
+        publicUrl: "https://workflows.example.com",
+        apiBasePath: "/api",
+      });
     } finally {
       await app.dispose();
     }

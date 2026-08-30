@@ -396,7 +396,7 @@ application's router serves static files.
 | Option                    | Required | Description                                                                                                                                                    |
 | ------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `basePath`                | No       | Path the host mounts Workflow Graph at (default `/`)                                                                                                           |
-| `publicUrl`               | No       | External HTTPS origin. Required for OAuth callback and client metadata URLs. Loopback development can use HTTP                                                 |
+| `publicUrl`               | No       | External HTTPS origin. Required for OAuth callback and client metadata URLs, and to copy a Connection webhook URL. Loopback development can use HTTP           |
 | `auth`                    | Yes      | Predicate that decides who reaches the editor, or `"external"`                                                                                                 |
 | `persistence`             | Yes      | A backend from `@wfgraph/core/postgres` or `@wfgraph/core/sqlite`                                                                                              |
 | `encryption.key`          | Yes      | 64-character hex string. It encrypts the integration secrets                                                                                                   |
@@ -420,17 +420,22 @@ Read these once:
   already uses, or `"external"` when something in front of Workflow Graph already gates it. It covers
   the RPC, REST, OpenAPI, extensions, and SPA routes.
 - **Three route classes define exposure.** Operator routes use `auth`. The wait
-  resume path and the Inngest HTTP callback are machine routes that carry their
-  own credentials. The OAuth client metadata route is public discovery data.
-  The wait resume path is always available outside the gate, and the
-  Inngest HTTP callback only when `inngest.connect` is unset. Their callers are
-  machines, each carrying a signing key or a resume token. Workflow Graph alone knows which
-  of its routes are which, which is why it takes the predicate as an option and
-  applies it route by route. Connect mode mounts no `/api/inngest` — the worker
-  dials out — so a private network that Inngest cannot call into still runs.
-- **Set `publicUrl` when an integration offers OAuth.** Use the origin that a
-  provider reaches, such as `https://workflows.example.com`. Put the mount path
-  in `basePath`. Workflow Graph refuses a `publicUrl` that contains a path.
+  resume path, the Connection-addressed webhook intake
+  (`POST /api/webhooks/{type}/{connectionId}`), and the Inngest HTTP callback are
+  machine routes that carry their own credentials. The OAuth client metadata
+  route is public discovery data.
+  The wait resume path and the webhook intake are always available outside the
+  gate, and the Inngest HTTP callback only when `inngest.connect` is unset. Their
+  callers are machines, each carrying a signing key, a resume token, or a vendor
+  signature. Workflow Graph alone knows which of its routes are which, which is
+  why it takes the predicate as an option and applies it route by route. Connect
+  mode mounts no `/api/inngest` — the worker dials out — so a private network that
+  Inngest cannot call into still runs.
+- **Set `publicUrl` when an integration offers OAuth or a webhook.** Use the
+  origin that a provider reaches, such as `https://workflows.example.com`. Put
+  the mount path in `basePath`. Workflow Graph refuses a `publicUrl` that contains
+  a path. Absent `publicUrl`, the editor cannot copy a webhook URL and says so
+  rather than offering `window.location`.
 - **Set `inngest.signingKey` on each cloud deployment.** With HTTP serve,
   `/api/inngest` sits outside the gate because Inngest signs its callbacks, and
   that holds with a configured signing key alone. Without one the SDK runs in

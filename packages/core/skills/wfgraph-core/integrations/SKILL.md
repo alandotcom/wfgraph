@@ -40,6 +40,10 @@ The host passes it in `extensions.integrations`. Build against
   `description`.
 - `category` defaults to the integration `label`. `sideEffect: true` marks an
   external write; the editor keeps those out of a Group.
+- `events` are `defineEvent` values. Assembly stamps `EventMetadata.integration`.
+  Optional `webhook`: `verify` on the raw body, `receive` on parsed JSON.
+  `SignatureRejected` is 401. Ignored payload is `undefined` (200, no send).
+  Export `defineEvent` and webhook types from `@wfgraph/core/plugin`.
 
 The browser UI record (`@wfgraph/plugins/ui`) is not a public host API for
 outside packages today.
@@ -55,7 +59,8 @@ function after a sleep, wait, or retry. Work with a side effect goes in
 - `callExternal` answers an Effect (timeout, retry, JSON decode, three
   failures: `ExternalUnreachable`, `ExternalRejected`, `ExternalUnreadable`).
 - An SDK earns its place only when it owns protocol (Clerk JWT, Linear
-  GraphQL). Do not wrap Twilio/Slack/Resend-style HTTP SDKs.
+  GraphQL, Svix webhook signatures). Do not wrap Twilio/Slack/Resend-style HTTP
+  SDKs.
 - What `step.run` answers must be JSON. Carry timestamps as ISO strings.
 - `StepFailure` travels as a value, so a refused call fails the node once
   rather than burning function-level retries.

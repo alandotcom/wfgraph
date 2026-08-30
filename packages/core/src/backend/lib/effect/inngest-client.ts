@@ -1,6 +1,7 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import type { Inngest } from "inngest";
 import {
+  sendCatalogEvent,
   sendWorkflowBranchKill,
   sendWorkflowCancelRequested,
   sendWorkflowRunRequested,
@@ -28,7 +29,7 @@ export class InngestError extends Schema.TaggedError<InngestError>()(
  *
  * Five sends is the whole of what the services ask Inngest for: start a run,
  * cancel one, kill the branch invocations of one, wake a waiting one, and
- * forward a host's Event so its listener drives the fan-out durably. Each
+ * forward a catalog Event so its listener drives the fan-out durably. Each
  * answers an Effect whose error channel names `InngestError`, so a service that
  * enqueues cannot forget that enqueueing fails, and a test provides its own
  * sends instead of reaching a dev server.
@@ -58,6 +59,13 @@ export class InngestClient extends Context.Service<
      */
     readonly sendBranchKill: (
       input: Parameters<typeof sendWorkflowBranchKill>[1]
+    ) => Effect.Effect<void, InngestError>;
+    /**
+     * Forward a host or integration Event so its listener drives the fan-out.
+     * Carries `user.connectionId` for integration-owned Events.
+     */
+    readonly sendCatalogEvent: (
+      input: Parameters<typeof sendCatalogEvent>[1]
     ) => Effect.Effect<void, InngestError>;
   }
 >()("@wfgraph/core/InngestClient") {}
@@ -93,6 +101,10 @@ export function makeInngestClientLayer(
     sendBranchKill: (input) =>
       send(async () => {
         await sendWorkflowBranchKill(client, input);
+      }),
+    sendCatalogEvent: (input) =>
+      send(async () => {
+        await sendCatalogEvent(client, input);
       }),
   });
 }

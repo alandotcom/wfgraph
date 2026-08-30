@@ -106,6 +106,7 @@ export const fixtureCatalog: ExtensionCatalog = {
         botToken: { label: "Bot token", type: "password" },
       },
       hasTest: true,
+      hasWebhook: false,
     },
     {
       type: "linear",
@@ -113,6 +114,7 @@ export const fixtureCatalog: ExtensionCatalog = {
       description: "Linear workspace.",
       credentialFields: { apiKey: { label: "API key", type: "password" } },
       hasTest: false,
+      hasWebhook: false,
     },
   ],
 };

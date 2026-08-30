@@ -19,6 +19,7 @@ import {
 } from "@wfgraph/shared/lifecycle/event-split";
 import {
   checkLifecycleRules,
+  missingConnectionMessage,
   readLifecycleRules,
   unknownEventMessage,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
@@ -111,10 +112,21 @@ export function validateWorkflowEvents(
 
     if (node.data.config?.actionType === BUILT_IN_ACTION_IDS.wait) {
       for (const subscription of readWaitSubscriptions(node.data.config)) {
-        if (!findEvent(catalog, subscription.event)) {
+        const event = findEvent(catalog, subscription.event);
+        if (!event) {
           return {
             valid: false,
             error: unknownEventMessage(subscription.event),
+          };
+        }
+        if (event.integration && !subscription.connectionId) {
+          return {
+            valid: false,
+            error: missingConnectionMessage(
+              subscription.event,
+              event.integration,
+              catalog
+            ),
           };
         }
       }

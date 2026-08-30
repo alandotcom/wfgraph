@@ -18,7 +18,8 @@ and provides it through React context, so today that record is reachable from in
 repository alone.
 
 An integration is one `defineIntegration` value. It holds the credential form, an action
-per record key, and a loader for the connection test.
+per record key, the Events it owns, an optional webhook that produces them, and a loader
+for the connection test.
 
 ```ts
 import {
@@ -107,6 +108,19 @@ change to the outside world would land again with every paste. Note that this is
 narrower question than the replay sense of the phrase the next section uses, where a
 lookup's own HTTP call counts too because `step.run` has to memoize it. `defineAction`
 takes the same field.
+
+**`events` are `defineEvent` values this integration owns.** Assembly folds them into
+the one catalog and stamps `EventMetadata.integration`, so the editor can offer a
+Connection picker. Identity stays the Event name; a webhook is how they arrive.
+Export `defineEvent` from `@wfgraph/core/plugin`. An integration-owned Start, Cancel,
+or Wait Event must name a Connection at Publish.
+
+**`webhook` is the ungated intake** that verifies a vendor POST and returns
+`{ event, data, id? }` for `inngest.send`. `verify` sees the raw body (`c.req.text()`),
+because HMAC schemes are sensitive to a single byte of re-serialization. `receive`
+sees the parsed JSON. An ignored payload is `undefined` (200, no send).
+`SignatureRejected` is 401. The Connection id travels as Inngest `user.connectionId`,
+not inside the payload.
 
 **A handler takes one bag**, holding `input` (the decoded config), the credential reads,
 `step`, and the run's identity: `runMode`, `executionId`, `nodeId`, `nodeName`,

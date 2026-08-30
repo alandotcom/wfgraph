@@ -29,6 +29,7 @@ const catalog: ExtensionCatalog = {
       description: "Slack",
       credentialFields: {},
       hasTest: false,
+      hasWebhook: false,
     },
   ],
   actions: [

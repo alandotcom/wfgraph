@@ -10,10 +10,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "#src/components/ui/select";
+import { IntegrationSelector } from "#src/components/ui/integration-selector";
 import {
   type ExtensionCatalog,
   findEvent,
 } from "@wfgraph/shared/extensions/catalog";
+import { catalogEventChoices } from "./event-combobox";
 import {
   type CorrelationPathRequest,
   correlationPathRequestFor,
@@ -54,6 +56,7 @@ export function LifecycleEventGroup({
   inputId,
   onEventNamesChange,
   onCorrelationPathChange,
+  onConnectionChange,
 }: {
   role: EventRole;
   editing: boolean;
@@ -63,6 +66,7 @@ export function LifecycleEventGroup({
   inputId: string;
   onEventNamesChange: (eventNames: string[]) => void;
   onCorrelationPathChange: (eventName: string, path: string) => void;
+  onConnectionChange: (eventName: string, connectionId: string) => void;
 }) {
   const copy = ROLE_COPY[role];
   const eventNames = role === "start" ? rules.startEvents : rules.cancelEvents;
@@ -82,7 +86,7 @@ export function LifecycleEventGroup({
               {copy.label}
             </Label>
             <EventMultiCombobox
-              choices={catalog.events}
+              choices={catalogEventChoices(catalog)}
               disabled={disabled}
               inputId={inputId}
               onValueChange={onEventNamesChange}
@@ -92,11 +96,13 @@ export function LifecycleEventGroup({
           {eventNames.map((eventName) => (
             <ChosenEvent
               catalog={catalog}
+              connectionId={rules.connectionIds?.[eventName]}
               disabled={disabled}
               eventName={eventName}
               key={eventName}
               label={findEvent(catalog, eventName)?.label}
               onCommitPath={onCorrelationPathChange}
+              onConnectionChange={onConnectionChange}
               onRemove={() =>
                 onEventNamesChange(
                   eventNames.filter((entry) => entry !== eventName)
@@ -195,7 +201,9 @@ function ChosenEvent({
   label,
   request,
   catalog,
+  connectionId,
   onCommitPath,
+  onConnectionChange,
   onRemove,
   disabled,
 }: {
@@ -203,10 +211,14 @@ function ChosenEvent({
   label: string | undefined;
   request: CorrelationPathRequest | undefined;
   catalog: ExtensionCatalog;
+  connectionId: string | undefined;
   onCommitPath: (eventName: string, path: string) => void;
+  onConnectionChange: (eventName: string, connectionId: string) => void;
   onRemove: () => void;
   disabled: boolean;
 }) {
+  const event = findEvent(catalog, eventName);
+
   return (
     <div className="space-y-2 rounded-md border p-2">
       <div className="flex items-start justify-between gap-2">
@@ -225,6 +237,14 @@ function ChosenEvent({
           <X className="size-3.5" />
         </Button>
       </div>
+      {event?.integration ? (
+        <IntegrationSelector
+          disabled={disabled}
+          integrationType={event.integration}
+          onChange={(id) => onConnectionChange(eventName, id)}
+          value={connectionId}
+        />
+      ) : null}
       {request ? (
         <CorrelationPathInput
           catalog={catalog}

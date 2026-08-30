@@ -140,6 +140,7 @@ const eventMetadataSchema = Schema.Struct({
   label: NonEmptyTrimmedString,
   description: Schema.optionalKey(Schema.String),
   correlationPath: Schema.optionalKey(safeRecordPath),
+  integration: Schema.optionalKey(Schema.String),
   payloadFields: Schema.Array(referenceFieldWireSchema),
 });
 
@@ -185,6 +186,7 @@ const integrationMetadataSchema = Schema.Struct({
     })
   ),
   hasTest: Schema.Boolean,
+  hasWebhook: Schema.Boolean,
   oauth: Schema.optionalKey(Schema.Struct({ label: NonEmptyTrimmedString })),
 });
 
@@ -216,5 +218,16 @@ export const readExtensionsResponse = readAs(
      * control the user cannot enable is worse than no control.
      */
     agent: Schema.optionalKey(Schema.Struct({ enabled: Schema.Boolean })),
+    /**
+     * The origin a vendor POSTs webhooks to. Absent when the host did not set
+     * `publicUrl`, which is also what leaves OAuth off: the editor cannot copy
+     * a URL from `window.location`.
+     */
+    webhookIntake: Schema.optionalKey(
+      Schema.Struct({
+        publicUrl: Schema.String,
+        apiBasePath: Schema.String,
+      })
+    ),
   })
 );

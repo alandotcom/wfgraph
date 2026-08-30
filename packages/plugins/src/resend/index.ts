@@ -1,12 +1,12 @@
 /**
- * The Resend integration: its credentials, its one action, and what that action
- * takes and gives back.
+ * The Resend integration: its credentials, its one action, the Events a
+ * webhook raises, and the webhook that produces them.
  *
- * One file, because only the server imports it. The editor gets this plugin's
- * metadata as JSON over `/api/extensions`, so nothing here reaches a browser
- * bundle and the system client below costs the browser nothing. The icon is the
- * exception, because a React component cannot be serialized: it stays in
- * `ui.ts`, which only the browser imports.
+ * The `defineIntegration` call stays in this file. Event schemas and Svix
+ * verify live in sibling modules, because they are large enough on their own.
+ * The editor gets this plugin's metadata as JSON over `/api/extensions`, so
+ * nothing here reaches a browser bundle. The icon is the exception, because a
+ * React component cannot be serialized: it stays in `ui.ts`.
  */
 
 import {
@@ -20,7 +20,9 @@ import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
 import { Effect, Result, Schema } from "effect";
 import { describeResendFailure, sendResendEmail } from "#src/resend/client";
+import { resendEvents } from "#src/resend/events";
 import { resendOAuth } from "#src/resend/oauth";
+import { resendWebhook } from "#src/resend/webhook";
 
 const resendCredentialFields = {
   RESEND_API_KEY: {
@@ -38,6 +40,17 @@ const resendCredentialFields = {
     type: "text",
     placeholder: "Your Name <noreply@yourdomain.com>",
     helpText: "The name and email that will appear as the sender",
+  },
+  RESEND_WEBHOOK_SECRET: {
+    label: "Webhook Signing Secret",
+    type: "password",
+    placeholder: "whsec_...",
+    helpText:
+      "From the webhook details page in Resend. Optional on a send-only Connection; a POST without it is refused.",
+    helpLink: {
+      text: "resend.com/webhooks",
+      url: "https://resend.com/docs/webhooks/event-types",
+    },
   },
 } satisfies CredentialFields;
 
@@ -260,6 +273,8 @@ export const resend = defineIntegration({
   description: "Send transactional emails",
   credentials: resendCredentialFields,
   oauth: resendOAuth,
+  events: resendEvents,
+  webhook: resendWebhook,
 
   test: async () => (await import("#src/resend/test")).testResend,
 

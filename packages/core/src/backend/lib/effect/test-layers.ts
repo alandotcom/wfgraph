@@ -155,6 +155,7 @@ export function stubExtensions(
     connectionTestFor: () => undefined,
     configOptionsFor: () => undefined,
     oauthFor: () => undefined,
+    webhookFor: () => undefined,
     eventByName: () => undefined,
     events: [],
     ...set,
@@ -406,6 +407,7 @@ const inngestClientStubs: InngestClient["Service"] = {
   sendCancelRequested: refuse("sendCancelRequested"),
   sendWaitSignal: refuse("sendWaitSignal"),
   sendBranchKill: refuse("sendBranchKill"),
+  sendCatalogEvent: refuse("sendCatalogEvent"),
 };
 
 export function stubInngestClient(

@@ -97,7 +97,35 @@ describe("readExtensionCatalog", () => {
           description: "Sends email",
           credentialFields: {},
           hasTest: true,
+          hasWebhook: false,
           oauth: { label: "Connect with Resend" },
+        },
+      ],
+    };
+
+    expect(readExtensionCatalog(catalog)).toEqual(catalog);
+  });
+
+  it("carries Event ownership and webhook capability across the wire", () => {
+    const catalog: ExtensionCatalog = {
+      events: [
+        {
+          name: "resend/email.delivered",
+          label: "Email delivered",
+          integration: "resend",
+          correlationPath: "data.email_id",
+          payloadFields: [{ path: "data.email_id", type: "string" }],
+        },
+      ],
+      actions: [],
+      integrations: [
+        {
+          type: "resend",
+          label: "Resend",
+          description: "Sends email",
+          credentialFields: {},
+          hasTest: true,
+          hasWebhook: true,
         },
       ],
     };
@@ -176,6 +204,7 @@ describe("readExtensionCatalog", () => {
               [key, { label: "Unsafe", type: "text" }],
             ]),
             hasTest: false,
+            hasWebhook: false,
           },
         ],
       };

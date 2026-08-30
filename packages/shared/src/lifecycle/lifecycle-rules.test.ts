@@ -11,6 +11,7 @@ import {
   type LifecycleRulesCheck,
   lifecycleRulesSchema,
   manualStartAllowed,
+  pruneConnectionIds,
   pruneCorrelationPaths,
   readLifecycleRules,
   resolveCorrelationPath,
@@ -47,9 +48,25 @@ const catalog: ExtensionCatalog = {
       label: "Nightly sweep finished",
       payloadFields: [],
     },
+    {
+      name: "resend/email.delivered",
+      label: "Email delivered",
+      integration: "resend",
+      correlationPath: "data.email_id",
+      payloadFields: [],
+    },
   ],
   actions: [],
-  integrations: [],
+  integrations: [
+    {
+      type: "resend",
+      label: "Resend",
+      description: "Transactional email",
+      credentialFields: {},
+      hasTest: false,
+      hasWebhook: true,
+    },
+  ],
 };
 
 function rules(overrides: Partial<LifecycleRules> = {}): LifecycleRules {
@@ -515,6 +532,53 @@ describe("checkLifecycleRules", () => {
         catalog,
       })
     ).toEqual([]);
+  });
+
+  it("refuses an integration Event that names no Connection", () => {
+    const check = checkLifecycleRules({
+      rules: rules({
+        startEvents: ["resend/email.delivered"],
+        concurrency: "unlimited",
+      }),
+      catalog,
+    });
+
+    expect(refusalOf(check)).toContain("needs a Connection");
+    expect(refusalOf(check)).toContain("Resend");
+  });
+
+  it("accepts an integration Event that names a Connection", () => {
+    expect(
+      checkLifecycleRules({
+        rules: rules({
+          startEvents: ["resend/email.delivered"],
+          concurrency: "unlimited",
+          connectionIds: { "resend/email.delivered": "conn_1" },
+        }),
+        catalog,
+      })
+    ).toEqual({ valid: true });
+  });
+});
+
+describe("pruneConnectionIds", () => {
+  it("drops a Connection for an Event that lost its role", () => {
+    expect(
+      pruneConnectionIds(
+        rules({
+          startEvents: ["app/appointment.created"],
+          connectionIds: {
+            "app/appointment.created": "conn_1",
+            "resend/email.delivered": "conn_2",
+          },
+        })
+      )
+    ).toEqual(
+      rules({
+        startEvents: ["app/appointment.created"],
+        connectionIds: { "app/appointment.created": "conn_1" },
+      })
+    );
   });
 });
 

@@ -586,7 +586,100 @@ describe("assembleExtensions and an integration definition", () => {
     const set = assembleExtensions({ integrations: [aDefinition("twilio")] });
 
     expect(findIntegration(set.catalog, "twilio")?.hasTest).toBe(false);
+    expect(findIntegration(set.catalog, "twilio")?.hasWebhook).toBe(false);
     expect(set.connectionTestFor("twilio")).toBeUndefined();
+    expect(set.webhookFor("twilio")).toBeUndefined();
+  });
+
+  it("folds an integration's Events into the catalog and stamps the owner", () => {
+    const delivered = defineEvent({
+      name: "resend/email.delivered",
+      label: "Email delivered",
+      schema: Schema.Struct({
+        type: Schema.String,
+        data: Schema.Struct({
+          email_id: Schema.String.annotate({ description: "Email ID" }),
+        }),
+      }),
+      correlationPath: "data.email_id",
+      source: {
+        event: "resend/webhook",
+        when: { path: "type", equals: "email.delivered" },
+      },
+    });
+    const webhook = {
+      verify: () => Effect.void,
+      receive: () => undefined,
+    };
+    const set = assembleExtensions({
+      integrations: [
+        defineIntegration({
+          type: "resend",
+          label: "Resend",
+          description: "Sends email",
+          credentials: {},
+          actions: {},
+          events: [delivered],
+          webhook,
+        }),
+      ],
+    });
+
+    expect(set.catalog.events).toEqual([
+      expect.objectContaining({
+        name: "resend/email.delivered",
+        label: "Email delivered",
+        integration: "resend",
+        correlationPath: "data.email_id",
+      }),
+    ]);
+    expect(findIntegration(set.catalog, "resend")?.hasWebhook).toBe(true);
+    expect(set.webhookFor("resend")).toBe(webhook);
+    expect(set.eventByName("resend/email.delivered")).toBe(delivered);
+  });
+
+  // One `defineEvent` result listed by the host and by a plugin is the ordinary
+  // case: the plugin declared it, the host passed the plugin, and may also list
+  // it under `events`. Identity, not a second definition, is what keeps it.
+  it("keeps one Event when the host lists the same object an integration declared", () => {
+    const event = anEvent("resend/email.delivered", {
+      event: "resend/webhook",
+      when: { path: "kind", equals: "email.delivered" },
+    });
+    const set = assembleExtensions({
+      events: [event],
+      integrations: [
+        defineIntegration({
+          type: "resend",
+          label: "Resend",
+          description: "Sends email",
+          credentials: {},
+          actions: {},
+          events: [event],
+        }),
+      ],
+    });
+
+    expect(set.events).toEqual([event]);
+    expect(set.catalog.events[0]?.integration).toBe("resend");
+  });
+
+  it("refuses an integration Event whose name collides with a different host Event", () => {
+    expect(() =>
+      assembleExtensions({
+        events: [anEvent("resend/email.delivered")],
+        integrations: [
+          defineIntegration({
+            type: "resend",
+            label: "Resend",
+            description: "Sends email",
+            credentials: {},
+            actions: {},
+            events: [anEvent("resend/email.delivered")],
+          }),
+        ],
+      })
+    ).toThrow(/Two Events are defined with the name "resend\/email.delivered"/);
   });
 
   it("carries the credential form into the catalog", () => {
