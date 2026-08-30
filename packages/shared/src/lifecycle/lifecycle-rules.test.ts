@@ -554,7 +554,7 @@ describe("checkLifecycleRules", () => {
     });
 
     expect(refusalOf(check)).toContain("needs a Connection");
-    expect(refusalOf(check)).toContain("Resend");
+    expect(refusalOf(check)).toContain("would start on every");
   });
 
   it("accepts an integration Event that names a Connection", () => {

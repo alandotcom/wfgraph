@@ -1,3 +1,4 @@
+import { omit } from "es-toolkit/object";
 import { useAtomValue } from "jotai";
 import { X } from "lucide-react";
 import { useCallback, useId, useMemo, useState } from "react";
@@ -87,32 +88,17 @@ export function WaitEventSelect({
     write(selected.filter((subscription) => subscription.event !== eventName));
   };
 
-  const patchSubscription = (
-    eventName: string,
-    patch: Partial<Pick<EventSubscription, "match" | "connectionId">>
-  ) => {
+  const setMatch = (eventName: string, match: string) => {
     write(
       selected.map((subscription) => {
         if (subscription.event !== eventName) {
           return subscription;
         }
-        const match =
-          patch.match !== undefined ? patch.match : subscription.match;
-        const connectionId =
-          patch.connectionId !== undefined
-            ? patch.connectionId
-            : subscription.connectionId;
-        return {
-          event: subscription.event,
-          ...(match ? { match } : {}),
-          ...(connectionId ? { connectionId } : {}),
-        };
+        return match
+          ? { ...subscription, match }
+          : omit(subscription, ["match"]);
       })
     );
-  };
-
-  const setMatch = (eventName: string, match: string) => {
-    patchSubscription(eventName, { match });
   };
 
   const setConnectionId = (integration: string, connectionId: string) => {

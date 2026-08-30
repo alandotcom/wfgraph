@@ -455,7 +455,9 @@ export function checkLifecycleRules(input: {
       return refuse(unknownEventMessage(name));
     }
     if (event.integration && !rules.connectionIds?.[name]) {
-      return refuse(missingConnectionMessage(name, event.integration, catalog));
+      return refuse(
+        missingConnectionMessage(name, event.integration, catalog, "start")
+      );
     }
   }
 
@@ -493,14 +495,15 @@ function missingCorrelationPathMessage(eventName: string): string {
 
 /**
  * The sentence a save is refused with when an integration Event names no
- * Connection. Exported so the wait check shares this copy.
+ * Connection. Lifecycle starts; a Wait resumes.
  */
 export function missingConnectionMessage(
   eventName: string,
   integrationType: string,
-  catalog: ExtensionCatalog
+  catalog: ExtensionCatalog,
+  consequence: "start" | "resume"
 ): string {
   const label =
     findIntegration(catalog, integrationType)?.label ?? integrationType;
-  return `Event "${eventName}" belongs to ${label} and needs a Connection. Pick one, or this workflow would start on every ${label} Connection.`;
+  return `Event "${eventName}" belongs to ${label} and needs a Connection. Pick one, or this workflow would ${consequence} on every ${label} Connection.`;
 }

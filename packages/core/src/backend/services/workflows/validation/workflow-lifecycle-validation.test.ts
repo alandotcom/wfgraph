@@ -170,7 +170,7 @@ describe("validateWorkflowEvents - wait subscription", () => {
       validateWorkflowEvents([waitNode(["resend/email.delivered"])], catalog)
     ).toMatchObject({
       valid: false,
-      error: expect.stringContaining("needs a Connection"),
+      error: expect.stringContaining("would resume on every"),
     });
   });
 

@@ -152,7 +152,7 @@ describe("deriveEventSubscriptions", () => {
     });
   });
 
-  it("carries the builder's Connection onto every role of that Event", () => {
+  it("carries the builder's Connection onto start and cancel, not wait", () => {
     const rows = deriveEventSubscriptions({
       workflowId: "wf_1",
       nodes: [
@@ -172,7 +172,7 @@ describe("deriveEventSubscriptions", () => {
         eventName: "resend/email.delivered",
         role: "wait",
         correlationPath: null,
-        connectionId: "conn_1",
+        connectionId: null,
       },
       {
         workflowId: "wf_1",

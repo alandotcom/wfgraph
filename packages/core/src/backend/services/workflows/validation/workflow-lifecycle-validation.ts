@@ -125,7 +125,8 @@ export function validateWorkflowEvents(
             error: missingConnectionMessage(
               subscription.event,
               event.integration,
-              catalog
+              catalog,
+              "resume"
             ),
           };
         }
