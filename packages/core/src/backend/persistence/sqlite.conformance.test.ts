@@ -1,9 +1,6 @@
 /**
- * The shared repository contract, answered by native SQLite.
- *
- * A database is one file in a temp directory, and dropping it is removing that
- * directory. Cases that reach into SQLite's own storage live in sqlite.test.ts
- * and sqlite.integrations.test.ts beside this.
+ * The shared repository contract, answered by native SQLite. A database is one
+ * temp directory. Cases reaching into SQLite's own storage live beside this.
  */
 
 import { mkdtemp, rm } from "node:fs/promises";

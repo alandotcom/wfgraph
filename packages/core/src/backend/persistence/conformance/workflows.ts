@@ -335,8 +335,7 @@ export function describeWorkflowConformance({
     });
 
     // listEventSubscribers unions two arms: the subscription index a publish
-    // writes, and the waits a run parked. These four cases cover what one
-    // subscriber and one parked wait cannot say.
+    // writes, and the waits a run parked.
     it("unions every role one workflow holds for an Event and names it once", async () => {
       const database = await openConnection();
       const result = await database.run(
@@ -406,9 +405,8 @@ export function describeWorkflowConformance({
             });
           }
 
-          // A wait role in the index is not what makes a workflow wake: a
-          // parked run is. This workflow declares one and parks nothing, so the
-          // index arm has to pass it over.
+          // A parked run is what makes a workflow wake, not a wait role in
+          // the index. This one declares the role and parks nothing.
           yield* workflows.insert({
             id: "wf_declared_only",
             name: "Reminders",

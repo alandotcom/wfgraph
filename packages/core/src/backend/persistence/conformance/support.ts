@@ -1,10 +1,8 @@
 /**
- * What a conformance case stands on: its database, its connections, and the seed
- * it needs before it can say anything.
+ * What a conformance case stands on: its database, its connections, its seed.
  *
  * A harness gives out a database rather than a path, because the concurrency
- * cases race two connections against one, and a path cannot describe that for a
- * backend whose isolation is a schema.
+ * cases race two connections against one.
  */
 
 import { afterAll, afterEach } from "vitest";
@@ -25,10 +23,7 @@ export const emptyGraph = createSerializedWorkflowGraph({
   edges: [],
 });
 
-/**
- * The one key every backend seals with, so a config round-trip means the same
- * thing on each side.
- */
+/** The one key every backend seals with. */
 export const conformanceCipher = createIntegrationCipher({
   key: "c".repeat(64),
 });
@@ -54,11 +49,7 @@ export type ConformanceDatabase = {
   readonly drop: () => Promise<void>;
 };
 
-/**
- * What a case holds. Dropping is the registry's, not the case's: a case that
- * dropped its own database would pull it out from under connections the sweep
- * still has to close.
- */
+/** No `drop`: a case dropping its own database would outrun the sweep. */
 export type CaseDatabase = Pick<ConformanceDatabase, "open">;
 
 export type PersistenceTestRegistry = {
@@ -82,10 +73,7 @@ export function connect(
   };
 }
 
-/**
- * Call inside the `describe` whose cases it serves, so the hooks it registers
- * have the same scope as their subject.
- */
+/** Call inside the `describe` it serves, so its hooks share that scope. */
 export function usePersistenceRegistry(
   createDatabase: () => Promise<ConformanceDatabase>,
   /** Called once every case is done, for a harness holding something shared. */
@@ -112,9 +100,8 @@ export function usePersistenceRegistry(
     return {
       open: async (options) => {
         const connection = await database.open(options);
-        // Closed once however often it is asked, because a case testing what
-        // survives a restart hands its own connection back mid-test and the
-        // sweep above would otherwise close an already-closed handle.
+        // Idempotent, because the restart case closes its own connection
+        // mid-test and the sweep above would close it again.
         let closed = false;
         const registered: ConformanceConnection = {
           run: connection.run,
@@ -138,10 +125,7 @@ export function usePersistenceRegistry(
   };
 }
 
-/**
- * A workflow with one published version, which every case that opens a run
- * needs first: `workflow_executions.workflow_version_id` is a foreign key.
- */
+/** Every case that opens a run needs one: the version id is a foreign key. */
 export function seedPublishedWorkflow(
   connection: ConformanceConnection,
   options: {

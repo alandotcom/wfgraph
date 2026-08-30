@@ -1,13 +1,9 @@
 /**
  * The repository contract both persistence backends answer, written once.
  *
- * A backend passes a harness that mints an isolated, migrated database per case.
- * The cases themselves live beside this under `conformance/`, one file per
- * aggregate, because a case is about workflows or about runs or about
- * integrations and almost never about two of them.
- *
- * A case that reaches past the repositories into one engine's own storage
- * belongs in that backend's own file, not here.
+ * The cases live under `conformance/`, one file per aggregate. A case reaching
+ * past the repositories into one engine's storage belongs in that backend's
+ * own file.
  */
 
 import { describe } from "vitest";

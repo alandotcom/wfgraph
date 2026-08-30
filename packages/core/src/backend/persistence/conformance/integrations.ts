@@ -664,9 +664,9 @@ export function describeIntegrationConformance({
       );
       await sealed.close();
 
-      // A host that rotated INTEGRATION_ENCRYPTION_KEY without the old value has
-      // rows nothing can open. Both reads say so rather than answering an empty
-      // config, which would read as a connection someone had cleared.
+      // A host that rotated INTEGRATION_ENCRYPTION_KEY without keeping the old
+      // value. Both reads say so rather than answering an empty config, which
+      // would read as a connection someone had cleared.
       const rotated = await store.open({
         cipher: createIntegrationCipher({ key: "d".repeat(64) }),
       });

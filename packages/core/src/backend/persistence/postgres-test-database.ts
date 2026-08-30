@@ -1,10 +1,9 @@
 /**
  * Where the live PostgreSQL suite gets a database, and what it does without one.
  *
- * Isolation is a schema: the tables are declared unqualified and the connection's
- * search_path decides where they land (ADR-0005), so a schema is the whole of one
- * Workflow Graph and dropping it removes the journal with it. Every schema this
- * mints carries TEST_SCHEMA_PREFIX, which is reserved.
+ * Isolation is a schema, because the tables are unqualified and search_path
+ * decides where they land (ADR-0005): one schema is the whole of one Workflow
+ * Graph, journal included.
  */
 
 import { randomBytes } from "node:crypto";
@@ -23,20 +22,10 @@ import {
 /** Names the server. Unset means every case here skips. */
 export const POSTGRES_TEST_URL_VARIABLE = "WFGRAPH_TEST_DATABASE_URL";
 
-/**
- * Set where a database is known to be there, which is the CI job that starts
- * one. Skipping is how this suite stays out of a developer's way, and it is
- * also how the whole of it could report green having run nothing: a service
- * that failed to come up, a renamed variable or a drifted port would all look
- * identical to a machine with no Docker. Where this is set, an absent URL is an
- * error rather than a skip, so that failure has somewhere to surface.
- */
+/** Set where a database is known to be there, so a missing URL fails the run. */
 export const POSTGRES_REQUIRED_VARIABLE = "WFGRAPH_REQUIRE_POSTGRES";
 
-/**
- * Reserved. The sweep drops anything carrying it, so nothing else may be named
- * this way in a database the suite is pointed at.
- */
+/** Reserved: the sweep drops every schema carrying it. */
 export const TEST_SCHEMA_PREFIX = "wfgraph_test_";
 
 export function postgresTestUrl(): string | undefined {
@@ -51,11 +40,7 @@ export function postgresTestUrl(): string | undefined {
   return url;
 }
 
-/**
- * Runs a suite of its own when a server was named, and says why in the skipped
- * title when one was not. The conformance run carries the same sentence on its
- * harness instead, rather than nesting two describes that say it twice.
- */
+/** A suite of its own, whose skipped title names what would run it. */
 export function describePostgres(name: string, suite: () => void): void {
   if (postgresTestUrl()) {
     describe(name, suite);
@@ -68,10 +53,7 @@ export function describePostgres(name: string, suite: () => void): void {
   );
 }
 
-/**
- * The URL, or a sentence naming the variable. Called inside a case rather than
- * at module scope, because a skipped suite still evaluates its own body.
- */
+/** Call from inside a case: a skipped suite still evaluates its own body. */
 export function requirePostgresTestUrl(): string {
   const url = postgresTestUrl();
 
@@ -110,9 +92,9 @@ export async function withAdminClient<A>(
 /**
  * One migrated schema for a whole file, emptied between cases.
  *
- * Migrating a schema costs roughly four times what truncating one does, and
- * nothing outside `postgres-migrations.pg.test.ts` is about migrating. A case
- * still never sees a row another left, which is the isolation that matters.
+ * Migrating costs roughly four times what truncating does, and nothing outside
+ * `postgres-migrations.pg.test.ts` is about migrating. A case still never sees
+ * a row another left.
  */
 export function sharedPostgresTestDatabase(): {
   createDatabase: () => Promise<ConformanceDatabase>;
