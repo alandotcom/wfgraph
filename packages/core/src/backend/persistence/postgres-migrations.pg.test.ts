@@ -1,6 +1,6 @@
 /**
- * What the shipped migrations do to a real PostgreSQL, which no other test can
- * ask: the generated SQL is only ever read as text elsewhere.
+ * This is what the shipped migrations do to a real PostgreSQL, which no other
+ * test can ask: the generated SQL is only ever read as text elsewhere.
  */
 
 import { afterEach, expect, it } from "vitest";
@@ -72,10 +72,10 @@ describePostgres("PostgreSQL migrations", () => {
           select table_name from information_schema.tables
           where table_schema = ${schema}
         `;
-      // The shipped SQL names no schema, so a lost search_path would have
-      // built all of this in public instead. scripts/unqualify-migrations.ts
-      // is what keeps the qualifier out, and this is the only place its work
-      // is checked against a server rather than against the file it wrote.
+      // The shipped SQL names no schema, so a lost `search_path` would have
+      // built all of this in `public` instead. `scripts/unqualify-migrations.ts`
+      // is what keeps the qualifier out. This is the only place its work is
+      // checked against a server, rather than against the file it wrote.
       const [stray] = await client<{ leaked: string | null }[]>`
           select to_regclass('public.workflows')::text as leaked
         `;
@@ -98,7 +98,7 @@ describePostgres("PostgreSQL migrations", () => {
     await migrateWfGraphDatabase({ url, schema });
     const afterFirst = await recordedHashes(schema);
 
-    // Every replica that starts with migrations.runOnStartup applies them
+    // Every replica that starts with `migrations.runOnStartup` applies them
     // again. Nothing here has ever proven the second pass is a no-op.
     const instance = await wfPostgres({
       url,
@@ -161,8 +161,8 @@ describePostgres("PostgreSQL migrations", () => {
       })
     );
 
-    // The second schema holds a row of its own, so the reads below can tell
-    // isolation from a read that has simply stopped answering.
+    // The second schema holds a row of its own, so the reads that follow can
+    // tell isolation from a read that has stopped answering.
     await other.run(
       Effect.gen(function* () {
         const workflows = yield* WorkflowRepo;

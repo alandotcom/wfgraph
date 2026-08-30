@@ -12,8 +12,9 @@ describe("hasDatabaseErrorCode", () => {
     expect(hasDatabaseErrorCode(error, "23505")).toBe(false);
   });
 
-  // What a real driver raises: Drizzle wraps the failure in a DrizzleQueryError
-  // carrying the SQL it ran, so the code sits one level further down.
+  // What a real driver raises is nested: Drizzle wraps the failure in a
+  // `DrizzleQueryError` carrying the SQL it ran, so the code sits one level
+  // further down.
   it("reads a code under a driver wrapper", () => {
     const error = new DatabaseError({
       cause: { query: "insert into ...", cause: { code: "40001" } },

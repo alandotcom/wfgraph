@@ -1,6 +1,7 @@
 /**
- * The shared repository contract, answered by native SQLite. A database is one
- * temp directory. Cases reaching into SQLite's own storage live beside this.
+ * The shared repository contract is answered by native SQLite. A database is one
+ * temp directory. Cases reaching into SQLite's own storage live beside this
+ * file.
  */
 
 import { mkdtemp, rm } from "node:fs/promises";

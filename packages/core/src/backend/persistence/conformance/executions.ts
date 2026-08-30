@@ -1,5 +1,6 @@
 /**
- * Runs: how they open, park, resume, cancel and are read back.
+ * These cases cover runs: how they open, park, resume, cancel, and are read
+ * back.
  */
 
 import { describe, expect, it } from "vitest";
@@ -17,7 +18,7 @@ import {
   seedPublishedWorkflow,
 } from "#src/backend/persistence/conformance/support";
 
-/** The first-wins start the race cases in this file make. */
+/** The first-wins start that the race cases in this file make. */
 const startFirstWins = (
   connection: ConformanceConnection,
   deliveryId: string

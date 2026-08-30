@@ -60,10 +60,11 @@ function createSqlClient(
       search_path: config.schema,
       application_name: pool.applicationName,
     },
-    // postgres.js prints a notice with console.log unless it is given somewhere
-    // else to put one, and migrating raises several. Printing them is this
-    // library writing to a host's stdout in a shape nothing configured, which
-    // ADR-0013 exists to avoid. They are the server's own commentary, so debug.
+    // postgres.js prints a notice with `console.log` unless it is given
+    // somewhere else to put one, and migrating raises several. Printing them is
+    // this library writing to a host's stdout in a shape nothing configured,
+    // which ADR-0013 exists to avoid. They are the server's own notices, so
+    // this logs them at debug.
     onnotice: (notice) => {
       logger.debug("PostgreSQL notice", {
         postgres: {

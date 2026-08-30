@@ -1,4 +1,4 @@
-/** The shared repository contract, answered by a live PostgreSQL. */
+/** The shared repository contract, answered by a live PostgreSQL server. */
 
 import {
   POSTGRES_TEST_URL_VARIABLE,

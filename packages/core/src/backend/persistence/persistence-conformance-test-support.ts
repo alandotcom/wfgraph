@@ -1,5 +1,5 @@
 /**
- * The repository contract both persistence backends answer, written once.
+ * The repository contract both persistence backends answer is written once.
  *
  * The cases live under `conformance/`, one file per aggregate. A case reaching
  * past the repositories into one engine's storage belongs in that backend's
@@ -36,9 +36,9 @@ export type PersistenceConformanceHarness = {
   /** Called once every case is done, for a harness holding something shared. */
   readonly teardown?: () => Promise<void>;
   /**
-   * Set to skip the run and say why. It reaches the suite title, because a
-   * reporter prints that whether the suite ran or not, while a console line
-   * from a skipped file may go unseen.
+   * Set to skip the run and say why. It reaches the suite title because a
+   * reporter prints that whether the suite ran or not. A console line from a
+   * skipped file may go unseen.
    */
   readonly skip?: string;
 };

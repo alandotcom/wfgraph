@@ -1,9 +1,9 @@
 /**
- * What PostgreSQL decides when two connections race, which is the half of these
- * repositories a single connection cannot exercise.
+ * This suite covers what PostgreSQL decides when two connections race, the half
+ * of these repositories a single connection cannot exercise.
  *
  * Each case opens several independent pools against one schema, so the conflict
- * is the server's to detect rather than one process serialising itself.
+ * is the server's to detect rather than one process serializing itself.
  */
 
 import { expect, it, vi } from "vitest";
@@ -35,8 +35,9 @@ describePostgres("PostgreSQL concurrency", () => {
   );
 
   /**
-   * Independent connections against one database, which is what makes the
-   * conflict the server's to detect rather than one process serialising itself.
+   * These are independent connections against one database, which is what
+   * makes the conflict the server's to detect rather than one process
+   * serializing itself.
    */
   const openRacers = async (
     count: number
@@ -51,10 +52,11 @@ describePostgres("PostgreSQL concurrency", () => {
     return [first, ...rest];
   };
 
-  // SERIALIZABLE aborts one of two decisions that read and wrote the same
-  // predicate, and startForEntity retries the whole decision when it does. Six
-  // racers is enough that PostgreSQL really raises 40001; a stubbed driver
-  // cannot raise it at all, which is how a retry that never fired went unseen.
+  // `SERIALIZABLE` aborts one of two decisions that read and wrote the same
+  // predicate, and `startForEntity` retries the whole decision when it does.
+  // Six racers is enough that PostgreSQL really raises `40001`. A stubbed
+  // driver cannot raise it at all, which is how a retry that never fired went
+  // unseen.
   it("starts one run per entity however many deliveries race", async () => {
     const racers = await openRacers(6);
     await seedPublishedWorkflow(racers[0]);
@@ -264,10 +266,10 @@ describePostgres("PostgreSQL concurrency", () => {
     );
     expect(history).toHaveLength(1);
   });
-  // One arrival is one run however many callers replay it: the caller is an
+  // One arrival is one run however many callers replay it. The caller is an
   // Inngest step whose retry re-runs the whole call, and `unlimited` compares
-  // nothing, so the unique index on (workflow_id, delivery_id) is the only
-  // thing standing between a burst of replays and a row each.
+  // nothing. The unique index on `(workflow_id, delivery_id)` is the only thing
+  // standing between a burst of replays and a row each.
   it("opens one run per arrival when a delivery is replayed at once", async () => {
     const racers = await openRacers(6);
     await seedPublishedWorkflow(racers[0]);
@@ -315,9 +317,9 @@ describePostgres("PostgreSQL concurrency", () => {
   });
 
   // A crash between the commit and the send leaves a row in flight that nothing
-  // will ever drive. first-wins would otherwise defer to it forever, so a start
-  // past the grace window closes it and goes. Only the clock moves here: the
-  // row's own started_at is what the window is measured from.
+  // drives. `first-wins` would otherwise defer to it forever, so a start past
+  // the grace window closes it and goes. Only the clock moves here: the row's
+  // own `started_at` is what the window is measured from.
   it("closes a run stuck before the bus, and defers to a live one beside it", async () => {
     const [connection] = await openRacers(1);
     await seedPublishedWorkflow(connection);
@@ -350,7 +352,7 @@ describePostgres("PostgreSQL concurrency", () => {
     // Inside the window the stuck row still counts, so the next start defers.
     expect((await start("delivery_early")).status).toBe("refused");
 
-    // Only Date is faked: the driver's own timers have to keep working, and
+    // Only `Date` is faked: the driver's own timers have to keep working, and
     // the comparison is `Date.now() - startedAt` against a row the database
     // stamped.
     vi.useFakeTimers({ toFake: ["Date"] });

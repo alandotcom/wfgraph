@@ -1,5 +1,6 @@
 /**
- * Integrations: their sealed config, refresh claims and OAuth attempts.
+ * These cases cover integrations: their sealed config, refresh claims, and
+ * OAuth attempts.
  */
 
 import { describe, expect, it } from "vitest";
@@ -664,9 +665,9 @@ export function describeIntegrationConformance({
       );
       await sealed.close();
 
-      // A host that rotated INTEGRATION_ENCRYPTION_KEY without keeping the old
-      // value. Both reads say so rather than answering an empty config, which
-      // would read as a connection someone had cleared.
+      // Here a host rotated `INTEGRATION_ENCRYPTION_KEY` without keeping the
+      // old value. Both reads say so rather than answering an empty config,
+      // which would read as a connection someone had cleared.
       const rotated = await store.open({
         cipher: createIntegrationCipher({ key: "d".repeat(64) }),
       });

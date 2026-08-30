@@ -1,5 +1,6 @@
 /**
- * What a conformance case stands on: its database, its connections, its seed.
+ * A conformance case stands on a database, the connections it opens against
+ * that database, and the rows it seeds first.
  *
  * A harness gives out a database rather than a path, because the concurrency
  * cases race two connections against one.
@@ -53,7 +54,7 @@ export type ConformanceDatabase = {
 export type CaseDatabase = Pick<ConformanceDatabase, "open">;
 
 export type PersistenceTestRegistry = {
-  /** A fresh database, and the one connection most cases need. */
+  /** A fresh database and the one connection most cases need. */
   readonly openConnection: () => Promise<ConformanceConnection>;
   /** A fresh database a case may open more than one connection on. */
   readonly openDatabase: () => Promise<CaseDatabase>;
@@ -82,8 +83,8 @@ export function usePersistenceRegistry(
   const databases: ConformanceDatabase[] = [];
   const connections: ConformanceConnection[] = [];
 
-  // Connections go back before the databases they are checked out of, since a
-  // backend that drops a schema cannot do it while a pool still holds it.
+  // Connections go back before the databases they came from. A backend that
+  // drops a schema cannot do it while a pool still holds it.
   afterEach(async () => {
     await Promise.all(connections.splice(0).map((one) => one.close()));
     await Promise.all(databases.splice(0).map((one) => one.drop()));
@@ -101,7 +102,7 @@ export function usePersistenceRegistry(
       open: async (options) => {
         const connection = await database.open(options);
         // Idempotent, because the restart case closes its own connection
-        // mid-test and the sweep above would close it again.
+        // mid-test and the `afterEach` sweep would close it again.
         let closed = false;
         const registered: ConformanceConnection = {
           run: connection.run,
@@ -173,7 +174,10 @@ export type StartOptions = {
   versionId?: string;
 };
 
-/** Try to open a run against the seed above, and answer whatever it decided. */
+/**
+ * Tries to open a run against {@link seedPublishedWorkflow}, and answers
+ * whatever it decided.
+ */
 export function attemptStart(
   connection: ConformanceConnection,
   options: StartOptions

@@ -1,6 +1,7 @@
 /**
- * Drops what a previous run left behind, before this one starts. At setup, not
- * teardown: a schema a failing run left is evidence worth keeping.
+ * Drops what a previous run left behind, before this one starts. This runs at
+ * setup rather than teardown, because a schema a failing run left is evidence
+ * worth keeping.
  */
 
 import {

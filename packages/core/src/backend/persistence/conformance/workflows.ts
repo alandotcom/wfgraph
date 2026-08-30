@@ -1,5 +1,6 @@
 /**
- * Workflows, their published versions and their draft snapshots.
+ * These cases cover workflows, their published versions, and their draft
+ * snapshots.
  */
 
 import { describe, expect, it } from "vitest";
@@ -276,8 +277,9 @@ export function describeWorkflowConformance({
             graphDigest: "digest",
             eventSubscriptions: [],
           });
-          // Never published, which is the case a test run of the canvas is: the
-          // draft read has to answer it while the published read does not.
+          // This one is never published, the state a canvas test run is also
+          // in: the draft read has to answer it while the published read does
+          // not.
           yield* workflows.insert({
             id: "wf_draft",
             name: "Reminders",
@@ -334,7 +336,7 @@ export function describeWorkflowConformance({
       expect(result.orphan).toBeNull();
     });
 
-    // listEventSubscribers unions two arms: the subscription index a publish
+    // `listEventSubscribers` unions two arms: the subscription index a publish
     // writes, and the waits a run parked.
     it("unions every role one workflow holds for an Event and names it once", async () => {
       const database = await openConnection();

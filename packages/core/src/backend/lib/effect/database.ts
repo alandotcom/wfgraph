@@ -16,11 +16,11 @@ export class DatabaseError extends Schema.TaggedError<DatabaseError>()(
   }
 ) {}
 
-/** Bounded, so a cause that points at itself cannot spin a retry predicate. */
+/** Bounds the walk, so a cause that points at itself cannot spin a predicate. */
 const MAX_CAUSE_DEPTH = 8;
 
 /**
- * Whether a failure carries this driver code, at any depth.
+ * Checks whether a failure carries this driver code, at any depth.
  *
  * Drizzle wraps a driver error in a `DrizzleQueryError` carrying the failed SQL,
  * so the code sits below `error.cause` rather than on it. Reading only the first

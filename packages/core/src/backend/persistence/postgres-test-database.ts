@@ -1,8 +1,9 @@
 /**
- * Where the live PostgreSQL suite gets a database, and what it does without one.
+ * This is where the live PostgreSQL suite gets a database, and what it does
+ * without one.
  *
- * Isolation is a schema, because the tables are unqualified and search_path
- * decides where they land (ADR-0005): one schema is the whole of one Workflow
+ * Isolation is a schema, because the tables are unqualified and `search_path`
+ * decides where they land (ADR-0005). One schema is the whole of one Workflow
  * Graph, journal included.
  */
 
@@ -66,7 +67,7 @@ export function requirePostgresTestUrl(): string {
   return url;
 }
 
-/** A schema name Postgres reads back as written: lowercase, well under 63 bytes. */
+/** A schema name PostgreSQL reads back as written, lowercase and under 63 bytes. */
 export function mintTestSchemaName(): string {
   return `${TEST_SCHEMA_PREFIX}${process.pid}_${randomBytes(6).toString("hex")}`;
 }
@@ -76,9 +77,9 @@ export async function withAdminClient<A>(
 ): Promise<A> {
   const client = postgres(requirePostgresTestUrl(), {
     max: 1,
-    // A `drop schema ... cascade` reports every object it took with it, and
-    // postgres.js prints that with console.log unless it is given somewhere
-    // else to put it. Nothing here reads them.
+    // A `drop schema ... cascade` reports every object it took with it.
+    // postgres.js prints those notices with `console.log` unless it is given
+    // somewhere else to put them, and nothing here reads them.
     onnotice: () => undefined,
   });
 
@@ -90,7 +91,7 @@ export async function withAdminClient<A>(
 }
 
 /**
- * One migrated schema for a whole file, emptied between cases.
+ * There is one migrated schema for a whole file, emptied between cases.
  *
  * Migrating costs roughly four times what truncating does, and nothing outside
  * `postgres-migrations.pg.test.ts` is about migrating. A case still never sees
@@ -100,7 +101,7 @@ export function sharedPostgresTestDatabase(): {
   createDatabase: () => Promise<ConformanceDatabase>;
   teardown: () => Promise<void>;
 } {
-  // Reached for only when a case asks, since a skipped `describe` still
+  // Reached for only when a case asks because a skipped `describe` still
   // evaluates its body.
   let ready:
     | {
@@ -139,8 +140,9 @@ export function sharedPostgresTestDatabase(): {
               options?.cipher ?? conformanceCipher
             )
           ),
-        // One statement, so the foreign keys between these tables never decide
-        // an order. RESTART IDENTITY because a case may read a sequence back.
+        // This is one statement, so the foreign keys between these tables never
+        // decide an order. It uses `restart identity` because a case may read a
+        // sequence back.
         drop: () =>
           withAdminClient(async (client) => {
             await client.unsafe(

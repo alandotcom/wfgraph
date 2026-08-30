@@ -110,10 +110,10 @@ describe("startForEntity", () => {
   });
 
   // What a real driver raises is nested: Drizzle wraps the failure in a
-  // DrizzleQueryError carrying the SQL it ran, and the PostgresError holding the
-  // SQLSTATE sits under that. Reading the first link alone matched only the
-  // shape above, which nothing outside this file produces, so every aborted
-  // start failed its node instead of retrying.
+  // `DrizzleQueryError` carrying the SQL it ran, and the `PostgresError`
+  // holding the SQLSTATE sits under that. Reading the first link alone matched
+  // only a top-level `{ code }`, which nothing outside this file produces, so
+  // every aborted start failed its node instead of retrying.
   it("retries when the code sits under a driver wrapper", async () => {
     const { start, transactions } = harness({
       transactionFailures: [{ cause: { code: "40001" } }],
@@ -126,8 +126,8 @@ describe("startForEntity", () => {
   });
 
   // A failure that is not a serialization abort is the caller's to see, however
-  // deep it sits, or a genuine outage would be retried out and then reported as
-  // though it had been a race.
+  // deep it sits. Otherwise a genuine outage would be retried out and then
+  // reported as though it had been a race.
   it("does not retry an unrelated failure carried the same way", async () => {
     const { start, transactions } = harness({
       transactionFailures: [{ cause: { code: "23505" } }],
