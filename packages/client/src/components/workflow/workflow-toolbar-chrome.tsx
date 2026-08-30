@@ -734,8 +734,7 @@ export function WorkflowMenuComponent({
           title={state.workflowName || undefined}
         >
           {/* Named for what it is when there is no id yet: a canvas nobody has
-              saved. It used to read "Workflow Dashboard" here, which named a
-              screen the user was not on. */}
+              saved. */}
           <span className="truncate">
             {state.workflowName || "Untitled workflow"}
           </span>

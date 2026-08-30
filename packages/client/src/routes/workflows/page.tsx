@@ -405,9 +405,9 @@ export default function WorkflowsPage() {
 
     return (
       <table className="w-full text-left text-sm">
-        <thead className="sticky top-0 bg-card">
+        <thead className="sticky top-0 bg-card font-medium text-muted-foreground text-xs">
           <tr className="border-b">
-            <th className="w-10 px-4 py-2">
+            <th className="w-10 px-4 py-2 font-medium">
               <Checkbox
                 aria-label="Select all workflows"
                 checked={allSelected}
@@ -416,10 +416,10 @@ export default function WorkflowsPage() {
                 }}
               />
             </th>
-            <th className="px-2 py-2">Name</th>
-            <th className="px-2 py-2">State</th>
-            <th className="px-2 py-2">Published mode</th>
-            <th className="px-2 py-2">Updated</th>
+            <th className="px-2 py-2 font-medium">Name</th>
+            <th className="px-2 py-2 font-medium">State</th>
+            <th className="px-2 py-2 font-medium">Published mode</th>
+            <th className="px-2 py-2 font-medium">Updated</th>
             <th className="w-10" />
           </tr>
         </thead>
@@ -552,24 +552,16 @@ export default function WorkflowsPage() {
   return (
     <div className="h-dvh overflow-auto bg-background">
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 p-6">
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h1 className="font-semibold text-2xl text-foreground">
-              Workflow Dashboard
-            </h1>
-            <Button
-              onClick={() => {
-                setCreateDialogSession((session) => session + 1);
-                setIsCreateDialogOpen(true);
-              }}
-              type="button"
-            >
-              New Workflow
-            </Button>
-          </div>
-          <p className="text-muted-foreground text-sm">
-            Manage workflows in bulk and review runs across every workflow.
-          </p>
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <Button
+            onClick={() => {
+              setCreateDialogSession((session) => session + 1);
+              setIsCreateDialogOpen(true);
+            }}
+            type="button"
+          >
+            New Workflow
+          </Button>
         </div>
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1.5fr]">
