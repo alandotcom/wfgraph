@@ -62,10 +62,9 @@ const SERIALIZATION_RETRY_BASE_DELAY = Duration.millis(5);
 /**
  * Backoff, because the racers abort together and would otherwise retry together.
  *
- * `Effect.retry` with a plain attempt count reschedules every aborted decision
- * at once, so a burst of starts for one entity keeps colliding at full speed
- * and burns its attempts on the same conflict. Jitter spreads them; the delays
- * are small because a start is on a run's critical path.
+ * A plain attempt count reschedules every aborted decision at once, so a burst
+ * of starts for one entity keeps colliding and spends its attempts on the same
+ * conflict. The delays are small because a start is on a run's critical path.
  */
 const serializationRetrySchedule = Schedule.exponential(
   SERIALIZATION_RETRY_BASE_DELAY,
@@ -73,11 +72,10 @@ const serializationRetrySchedule = Schedule.exponential(
 ).pipe(Schedule.jittered, Schedule.upTo({ times: SERIALIZATION_RETRIES }));
 
 /**
- * SQLSTATE 40001 is what PostgreSQL raises when SERIALIZABLE aborts one of two
- * decisions that read and wrote the same predicate, and it is the whole reason
- * the start below is retried rather than failed. SQLite serializes its writes
- * with BEGIN IMMEDIATE and raises nothing of the kind, so this only ever
- * matches under the PostgreSQL backend.
+ * What PostgreSQL raises when SERIALIZABLE aborts one of two decisions that read
+ * and wrote the same predicate, which is the whole reason the start below is
+ * retried rather than failed. SQLite serializes writes with BEGIN IMMEDIATE and
+ * raises nothing of the kind.
  */
 const SERIALIZATION_FAILURE_CODE = "40001";
 

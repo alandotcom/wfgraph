@@ -136,9 +136,6 @@ describePostgres("PostgreSQL concurrency", () => {
       })
     );
 
-    // Every start is let through and displaces the runs it found, so the
-    // invariant is the survivor: one run still live, the rest superseded
-    // exactly once each.
     expect(rows).toHaveLength(6);
     expect(rows.filter((row) => row.status === "running")).toHaveLength(1);
     expect(rows.filter((row) => row.status === "superseded")).toHaveLength(5);

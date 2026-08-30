@@ -114,18 +114,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # This one variable is the whole gate: every case in the postgres project
-      # skips itself when it names no server, which is what the job above gets
-      # and what a developer without `docker compose up -d` gets. It is set here
-      # rather than in a repository variable nothing in the tree names, so the
-      # difference between running the suite and reporting a wall of skips is
-      # visible in this file. Each test file migrates a schema of its own inside
-      # this database and drops it again.
+      # The URL is the gate: without it every case skips, which is what the job
+      # above and a developer without Docker both get. It is set here rather
+      # than in a repository variable nothing in the tree names, so what decides
+      # between running the suite and reporting a wall of skips is visible.
+      # Each file builds its own schema inside this database and drops it after.
       - name: Run PostgreSQL tests
         run: pnpm run test:postgres
         env:
           WFGRAPH_TEST_DATABASE_URL: postgresql://workflow:workflow@localhost:5432/workflow_builder
-          # This job started a database, so a skip here is a fault rather than a
-          # developer without Docker. Without it the suite could report green
-          # having run nothing, and that is exactly what it exists to catch.
+          # This job started a database, so a skip is a fault here rather than a
+          # machine without one. Without this the suite could report green
+          # having run nothing, which is the failure it exists to catch.
           WFGRAPH_REQUIRE_POSTGRES: "1"

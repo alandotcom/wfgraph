@@ -1,10 +1,10 @@
 /**
  * Where the live PostgreSQL suite gets a database, and what it does without one.
  *
- * Isolation is a schema per case: the tables are declared unqualified and the
- * connection's search_path decides where they land (ADR-0005), so a schema is
- * the whole of one Workflow Graph and dropping it removes the journal with it.
- * Every schema this mints carries TEST_SCHEMA_PREFIX, which is reserved.
+ * Isolation is a schema: the tables are declared unqualified and the connection's
+ * search_path decides where they land (ADR-0005), so a schema is the whole of one
+ * Workflow Graph and dropping it removes the journal with it. Every schema this
+ * mints carries TEST_SCHEMA_PREFIX, which is reserved.
  */
 
 import { randomBytes } from "node:crypto";
@@ -53,9 +53,8 @@ export function postgresTestUrl(): string | undefined {
 
 /**
  * Runs a suite of its own when a server was named, and says why in the skipped
- * title when one was not. The conformance run does not use this; it carries the
- * same sentence on its harness, which keeps it from nesting one describe in
- * another that says the same thing.
+ * title when one was not. The conformance run carries the same sentence on its
+ * harness instead, rather than nesting two describes that say it twice.
  */
 export function describePostgres(name: string, suite: () => void): void {
   if (postgresTestUrl()) {
@@ -90,7 +89,6 @@ export function mintTestSchemaName(): string {
   return `${TEST_SCHEMA_PREFIX}${process.pid}_${randomBytes(6).toString("hex")}`;
 }
 
-/** A short-lived client for the setup and teardown the repositories cannot do. */
 export async function withAdminClient<A>(
   query: (client: postgres.Sql) => Promise<A>
 ): Promise<A> {
@@ -112,21 +110,16 @@ export async function withAdminClient<A>(
 /**
  * One migrated schema for a whole file, emptied between cases.
  *
- * Migrating costs about 50ms and dropping another 15; truncating every table
- * costs 13. Nothing outside `postgres-migrations.pg.test.ts` is about migrating,
- * so paying that per case bought only a slower suite. The schema is still one
- * case's worth of isolation, because a case never sees a row another left.
- *
- * The returned `teardown` drops the schema, and the registry calls it once the
- * last case is done.
+ * Migrating a schema costs roughly four times what truncating one does, and
+ * nothing outside `postgres-migrations.pg.test.ts` is about migrating. A case
+ * still never sees a row another left, which is the isolation that matters.
  */
 export function sharedPostgresTestDatabase(): {
   createDatabase: () => Promise<ConformanceDatabase>;
   teardown: () => Promise<void>;
 } {
-  // Nothing is reached for until a case asks, because a skipped `describe` still
-  // evaluates its body: naming the server here would fail collection on a
-  // machine that has none, which is the case this suite skips for.
+  // Reached for only when a case asks, since a skipped `describe` still
+  // evaluates its body.
   let ready:
     | {
         url: string;
@@ -174,7 +167,6 @@ export function sharedPostgresTestDatabase(): {
           }),
       };
     },
-    // Nothing to drop where no case ever asked for a database.
     teardown: async () => {
       if (!ready) {
         return;

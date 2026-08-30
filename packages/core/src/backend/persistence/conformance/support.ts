@@ -1,10 +1,10 @@
 /**
- * What a conformance case stands on: a database per case, the connections it
- * opens, and the seed every case needs before it can say anything.
+ * What a conformance case stands on: its database, its connections, and the seed
+ * it needs before it can say anything.
  *
- * A harness gives out a database rather than a path or a single handle, because
- * the concurrency cases race two connections against one database and a path
- * cannot describe what that is for a backend whose isolation is a schema.
+ * A harness gives out a database rather than a path, because the concurrency
+ * cases race two connections against one, and a path cannot describe that for a
+ * backend whose isolation is a schema.
  */
 
 import { afterAll, afterEach } from "vitest";
@@ -42,7 +42,6 @@ export type ConformanceConnection = {
   readonly close: () => Promise<void>;
 };
 
-/** What a harness hands back: a database, and the way to be rid of it. */
 export type ConformanceDatabase = {
   /**
    * `cipher` defaults to {@link conformanceCipher}. A case passes another to
@@ -69,7 +68,6 @@ export type PersistenceTestRegistry = {
   readonly openDatabase: () => Promise<CaseDatabase>;
 };
 
-/** The repositories of an opened backend, as a connection. */
 export function connect(
   instance: WfGraphPersistenceInstance
 ): ConformanceConnection {
@@ -85,9 +83,8 @@ export function connect(
 }
 
 /**
- * Registers the teardown and answers what a case opens things through. Call it
- * inside the `describe` whose cases it serves, so the hook's scope matches its
- * subject.
+ * Call inside the `describe` whose cases it serves, so the hooks it registers
+ * have the same scope as their subject.
  */
 export function usePersistenceRegistry(
   createDatabase: () => Promise<ConformanceDatabase>,
