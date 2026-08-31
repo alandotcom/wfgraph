@@ -531,7 +531,11 @@ export function parseOutputPath(path: string): OutputPathStep[] | null {
         return null;
       }
       cursor += 1;
-      if (cursor >= path.length || path[cursor] === "." || path[cursor] === "[") {
+      if (
+        cursor >= path.length ||
+        path[cursor] === "." ||
+        path[cursor] === "["
+      ) {
         return null;
       }
     }
