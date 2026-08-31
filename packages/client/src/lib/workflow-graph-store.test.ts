@@ -46,6 +46,7 @@ import {
   hasUnsavedChangesAtom,
   isSavingAtom,
   isWorkflowOwnerAtom,
+  successfulSaveGenerationAtom,
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
 import {
@@ -612,6 +613,29 @@ describe("hydrateWorkflowAtom", () => {
     );
 
     expect(store.get(edgesAtom).map((saved) => saved.id)).toEqual(["e1"]);
+  });
+
+  it("discards a hydration snapshot that started before a successful save", () => {
+    const store = createGraphStore(...standardGraph());
+    const requestGeneration =
+      store.get(successfulSaveGenerationAtom).get("workflow_1") ?? 0;
+
+    // The loader captured the older server snapshot before the save landed.
+    // Model the save settling before the loader completes, including the state
+    // changes that make the existing dirty and in-flight guards pass.
+    store.set(successfulSaveGenerationAtom, new Map([["workflow_1", 1]]));
+    store.set(isSavingAtom, false);
+    store.set(hasUnsavedChangesAtom, false);
+
+    store.set(hydrateWorkflowAtom, {
+      ...savedWorkflow("workflow_1", {
+        nodes: [actionNode("stale")],
+        edges: [],
+      }),
+      saveGeneration: requestGeneration,
+    });
+
+    expect(store.get(nodesAtom).map((node) => node.id)).not.toEqual(["stale"]);
   });
 
   it("takes the server's graph once the client and the server agree", () => {

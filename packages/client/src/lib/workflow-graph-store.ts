@@ -22,6 +22,7 @@ import {
   hasUnsavedChangesAtom,
   isSavingAtom,
   isWorkflowOwnerAtom,
+  successfulSaveGenerationAtom,
   workflowNotFoundAtom,
   workflowLoadErrorAtom,
 } from "#src/lib/workflow-save-store";
@@ -174,7 +175,18 @@ export const loadWorkflowGraphAtom = atom(
  */
 export const hydrateWorkflowAtom = atom(
   null,
-  (get, set, workflow: SavedWorkflow) => {
+  (get, set, workflow: SavedWorkflow & { saveGeneration?: number }) => {
+    // A loader can hold an older server snapshot while a save completes. The
+    // save clears both guards used below, so compare the loader's start
+    // generation before changing any editor state.
+    if (
+      workflow.saveGeneration !== undefined &&
+      (get(successfulSaveGenerationAtom).get(workflow.id) ?? 0) >
+        workflow.saveGeneration
+    ) {
+      return;
+    }
+
     // Hydration starts a new editor lifetime even when the route resolves the
     // same workflow again. A comparison snapshot belongs to the lifetime that
     // requested it and must not lock the newly loaded draft.

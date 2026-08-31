@@ -21,6 +21,7 @@ import { toSavedWorkflow } from "#src/lib/rpc-client";
 import { integrationsQueryOptions, orpcQuery } from "#src/lib/rpc-query";
 import { hydrateWorkflowAtom } from "#src/lib/workflow-graph-store";
 import {
+  successfulSaveGenerationAtom,
   workflowLoadErrorAtom,
   workflowNotFoundAtom,
 } from "#src/lib/workflow-save-store";
@@ -141,7 +142,14 @@ const workflowRoute = createRoute({
    * Run selection is not a loader concern: hydrating on `executionId` cleared
    * the pinned-graph overlay and left the canvas on the live draft.
    */
-  loader: async ({ params, location }) => {
+  loader: async ({ params, location, abortController }) => {
+    const saveGeneration =
+      appStore.get(successfulSaveGenerationAtom).get(params.workflowId) ?? 0;
+
+    if (abortController.signal.aborted) {
+      return;
+    }
+
     appStore.set(workflowNotFoundAtom, false);
     appStore.set(workflowLoadErrorAtom, null);
 
@@ -154,6 +162,13 @@ const workflowRoute = createRoute({
       ),
       queryClient.fetchQuery(integrationsQueryOptions()),
     ]);
+
+    // Query cancellation and route cancellation are separate concerns. The
+    // checks keep a loader that no longer owns the navigation from publishing
+    // error state or hydrating its stale response into the shared editor store.
+    if (abortController.signal.aborted) {
+      return;
+    }
 
     if (workflowResult.status === "rejected") {
       const failure = classifyWorkflowLoadFailure(workflowResult.reason);
@@ -168,8 +183,13 @@ const workflowRoute = createRoute({
     }
 
     const workflow = toSavedWorkflow(workflowResult.value);
+    if (abortController.signal.aborted) {
+      return;
+    }
+
     appStore.set(hydrateWorkflowAtom, {
       ...workflow,
+      saveGeneration,
       nodes: repairNodeIntegrations(
         getExtensionCatalog(),
         workflow.nodes,
