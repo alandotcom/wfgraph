@@ -1,11 +1,10 @@
 /**
  * Resend's email API over fetch.
  *
- * One call is made against Resend in this plugin, `POST /emails`, plus a
- * credential check. The `resend` SDK was a thin wrapper over those, so the calls
- * are written out here instead. Everything after the request is described in
- * `external-http.ts`, so what is left here is the bearer token, the two endpoints,
- * and how Resend's error body reads.
+ * The `resend` SDK is a thin wrapper over the endpoints this plugin needs, so
+ * the calls are written out here. Everything after the request is described in
+ * `external-http.ts`; this module owns the bearer token, endpoint paths, wire
+ * schemas, and how Resend's error body reads.
  *
  * The request body uses Resend's own field names, which are snake_case on the
  * wire (`reply_to`, `scheduled_at`, `topic_id`) where the SDK spelled them
@@ -32,6 +31,28 @@ const resendErrorSchema = Schema.Struct({
 });
 
 const sentEmailSchema = Schema.Struct({ id: Schema.String });
+
+/** The fields the Find Email action reads from Resend's retrieve response. */
+const resendEmailSchema = Schema.Struct({
+  id: Schema.String,
+  message_id: Schema.String,
+  from: Schema.String,
+  to: Schema.Array(Schema.String),
+  cc: Schema.NullOr(Schema.Array(Schema.String)),
+  bcc: Schema.NullOr(Schema.Array(Schema.String)),
+  reply_to: Schema.NullOr(Schema.Array(Schema.String)),
+  subject: Schema.String,
+  html: Schema.NullOr(Schema.String),
+  text: Schema.NullOr(Schema.String),
+  created_at: Schema.DateFromString,
+  last_event: Schema.String,
+  scheduled_at: Schema.NullOr(Schema.DateFromString),
+  tags: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ name: Schema.String, value: Schema.String }))
+  ),
+});
+
+type ResendEmail = typeof resendEmailSchema.Type;
 
 /**
  * Resend's error body, for a caller that reports more than the message.
@@ -274,6 +295,19 @@ export function sendResendEmail(
     jsonBody: payload,
     idempotencyKey,
   });
+}
+
+/** Retrieve one sent email by its Resend email ID. */
+export function getResendEmail(
+  apiKey: string,
+  emailId: string
+): Effect.Effect<ResendEmail, ExternalError, HttpClient.HttpClient> {
+  return requestResend(
+    apiKey,
+    `/emails/${encodeURIComponent(emailId)}`,
+    resendEmailSchema,
+    { method: "GET" }
+  );
 }
 
 /**

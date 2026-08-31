@@ -4,6 +4,7 @@ import { Effect } from "effect";
 import { afterEach, beforeEach } from "vitest";
 import {
   describeResendFailure,
+  getResendEmail,
   getResendTemplate,
   listResendDomains,
   listResendTemplates,
@@ -143,6 +144,74 @@ describe("sendResendEmail", () => {
 
       expect(error._tag).toBe("ExternalUnreachable");
       expect(describeResendFailure(error)).toBe("ECONNRESET");
+    }).pipe(withTransport)
+  );
+});
+
+describe("getResendEmail", () => {
+  it.effect("retrieves one email with a bearer token and an encoded id", () =>
+    Effect.gen(function* () {
+      stubFetch(() =>
+        Response.json({
+          object: "email",
+          id: "email_123",
+          message_id: "<message@example.com>",
+          to: ["delivered@example.com"],
+          from: "Support <support@example.com>",
+          created_at: "2026-04-03 22:13:42.674981+00",
+          subject: "Hello World",
+          html: "<strong>Hello</strong>",
+          text: null,
+          bcc: [],
+          cc: ["manager@example.com"],
+          reply_to: ["reply@example.com"],
+          last_event: "delivered",
+          scheduled_at: null,
+          tags: [{ name: "order_id", value: "ord_7" }],
+        })
+      );
+
+      const email = yield* getResendEmail("re_key", "email a/b");
+
+      expect(email.id).toBe("email_123");
+      expect(email.text).toBeNull();
+      expect(email.created_at).toEqual(new Date("2026-04-03T22:13:42.674981Z"));
+      expect(email.tags).toEqual([{ name: "order_id", value: "ord_7" }]);
+      expect(requests[0]?.url).toBe(
+        "https://api.resend.com/emails/email%20a%2Fb"
+      );
+      expect(requests[0]?.method).toBe("GET");
+      expect(requests[0]?.headers.get("authorization")).toBe("Bearer re_key");
+      expect(requests[0]?.headers.get("content-type")).toBeNull();
+    }).pipe(withTransport)
+  );
+
+  it.effect("accepts null recipient lists and an omitted tags field", () =>
+    Effect.gen(function* () {
+      stubFetch(() =>
+        Response.json({
+          id: "email_123",
+          message_id: "<message@example.com>",
+          to: ["delivered@example.com"],
+          from: "Support <support@example.com>",
+          created_at: "2026-04-03 22:13:42.674981+00",
+          subject: "Hello World",
+          html: null,
+          text: "Hello",
+          bcc: null,
+          cc: null,
+          reply_to: null,
+          last_event: "delivered",
+          scheduled_at: null,
+        })
+      );
+
+      const email = yield* getResendEmail("re_key", "email_123");
+
+      expect(email.cc).toBeNull();
+      expect(email.bcc).toBeNull();
+      expect(email.reply_to).toBeNull();
+      expect(email.tags).toBeUndefined();
     }).pipe(withTransport)
   );
 });
