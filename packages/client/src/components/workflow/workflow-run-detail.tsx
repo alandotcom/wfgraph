@@ -73,7 +73,7 @@ export function WorkflowRunDetail({
   ).toSorted(
     (a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime()
   );
-  const activeWaits = execution.status === "waiting" ? waits : [];
+  const activeWaits = isRunInProgress(execution.status) ? waits : [];
   useAfterCommit(selectedNodeId, () => {
     const selectedLog = selectedLogId
       ? sortedLogs.find((log) => log.id === selectedLogId)

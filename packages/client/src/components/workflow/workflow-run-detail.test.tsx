@@ -582,4 +582,33 @@ describe("WorkflowRunDetail", () => {
     expect(view.queryByText(/Waiting for resend\/email.delivered/)).toBeNull();
     expect(view.queryByRole("button", { name: "Resume now" })).toBeNull();
   });
+
+  it.each(["pending", "running", "waiting"] as const)(
+    "shows parked waits while the run is %s",
+    (status) => {
+      const view = renderDetail(
+        { ...BASE_EXECUTION, status },
+        {
+          waits: [
+            {
+              id: "wait_1",
+              nodeId: "wait_1",
+              nodeName: "Wait",
+              resumeToken: "tok_1",
+              subscribedEvents: ["resend/email.delivered"],
+              waitUntil: null,
+            },
+          ],
+        }
+      );
+
+      expect(
+        view.getByRole("heading", { name: "Waiting at Wait" })
+      ).toBeTruthy();
+      expect(
+        view.getByText(/Waiting for resend\/email.delivered/)
+      ).toBeTruthy();
+      expect(view.getByRole("button", { name: "Resume now" })).toBeTruthy();
+    }
+  );
 });
