@@ -5,25 +5,14 @@ import { getAppLogger } from "#src/backend/lib/logger";
 import {
   type ExtensionCatalog,
   findAction,
+  findEvent,
 } from "@wfgraph/shared/extensions/catalog";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { readConfigTrimmedString } from "@wfgraph/shared/graph/node-config";
+import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import { readWaitSubscriptions } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { findUnconfiguredIntegrationNodes } from "@wfgraph/shared/graph/workflow-issues";
-
-/** As much of a catalog entry as the checks below read. */
-type ResolvedAction = {
-  integration?: string;
-};
-
-type ResolveActionByType = (actionType: string) => ResolvedAction | undefined;
-
-/**
- * Where an action's required integration comes from: the assembled catalog the
- * caller read off the `Extensions` service.
- */
-function resolveFromCatalog(catalog: ExtensionCatalog): ResolveActionByType {
-  return (actionType) => findAction(catalog, actionType);
-}
 
 type IntegrationTypeMap = Record<string, string>;
 
@@ -72,59 +61,95 @@ function shouldEnforceStrictValidation(
   return !["0", "false", "no", "off"].includes(configured);
 }
 
+/**
+ * Every integration a graph names, as a reference the database can be asked
+ * about.
+ *
+ * Two kinds of node name one. An action node names the Connection it runs
+ * through, and an Event's Connection is named twice over: the Lifecycle node
+ * binds one per start or cancel Event, and a Wait node binds one per
+ * subscription. Both kinds land here so a single query answers whether each id
+ * exists and whether it is the type the reference needs.
+ *
+ * A blank id is not this function's business. `checkLifecycleRules` and
+ * `validateWorkflowEvents` already refuse an integration-owned Event that names
+ * no Connection, with a sentence naming the Event, and they run first at both
+ * call sites.
+ */
 function extractRequiredIntegrationRequirements(
   nodes: WorkflowNode[],
-  resolveActionByType: ResolveActionByType
+  catalog: ExtensionCatalog
 ): IntegrationRequirement[] {
   const requirements: IntegrationRequirement[] = [];
 
+  const require = (
+    integrationId: string | undefined,
+    requiredType: string | undefined
+  ) => {
+    if (integrationId && requiredType) {
+      requirements.push({ integrationId, requiredType });
+    }
+  };
+
   for (const node of nodes) {
-    if (node.data.type !== "action" || node.data.enabled === false) {
+    if (node.data.enabled === false) {
+      continue;
+    }
+
+    if (node.data.type === "lifecycle") {
+      const rules = readLifecycleRules(node.data.config);
+      for (const eventName of [
+        ...(rules?.startEvents ?? []),
+        ...(rules?.cancelEvents ?? []),
+      ]) {
+        require(rules?.connectionIds?.[eventName], findEvent(catalog, eventName)
+          ?.integration);
+      }
+      continue;
+    }
+
+    if (node.data.type !== "action") {
       continue;
     }
 
     const actionType = readConfigTrimmedString(node.data.config, "actionType");
+
+    if (actionType === BUILT_IN_ACTION_IDS.wait) {
+      for (const subscription of readWaitSubscriptions(node.data.config)) {
+        require(subscription.connectionId, findEvent(
+          catalog,
+          subscription.event
+        )?.integration);
+      }
+      continue;
+    }
+
     // Which integration an action needs is the catalog's answer, the same for a
     // plugin action and a host's own.
-    const requiredType = actionType
-      ? resolveActionByType(actionType)?.integration
-      : undefined;
-    if (!(actionType && requiredType)) {
-      continue;
-    }
-
-    const integrationId = readConfigTrimmedString(
+    require(readConfigTrimmedString(
       node.data.config,
       "integrationId"
-    );
-    if (!integrationId) {
-      continue;
-    }
-
-    requirements.push({
-      integrationId,
-      requiredType,
-    });
+    ), actionType ? findAction(catalog, actionType)?.integration : undefined);
   }
 
   return requirements;
 }
 
 /**
- * The integration ids a graph's enabled action nodes name, deduplicated.
+ * The integration ids a graph's enabled nodes name, deduplicated.
  *
- * Which of them an action actually needs is the catalog's answer, so a node
- * carrying a stale id for an action that needs no connection contributes none.
+ * Which of them a node actually needs is the catalog's answer, so a node
+ * carrying a stale id for an action or an Event that needs no connection
+ * contributes none.
  */
 export function extractRequiredIntegrationIds(
   nodes: WorkflowNode[],
   catalog: ExtensionCatalog
 ): string[] {
   return uniq(
-    extractRequiredIntegrationRequirements(
-      nodes,
-      resolveFromCatalog(catalog)
-    ).map((requirement) => requirement.integrationId)
+    extractRequiredIntegrationRequirements(nodes, catalog).map(
+      (requirement) => requirement.integrationId
+    )
   );
 }
 
@@ -132,10 +157,10 @@ export function extractRequiredIntegrationIds(
  * The integrations a graph names, checked in one read.
  *
  * One query answers both questions the graph asks -- whether each integration
- * exists, and whether it is the type the action needs -- because an id absent from
- * the type map is an id no row carries. This runs once per subscribing workflow on
- * every delivered Event, so a second read of the same rows would be paid per
- * delivery.
+ * exists, and whether it is the type the reference needs -- because an id absent
+ * from the type map is an id no row carries. This runs once per subscribing
+ * workflow on every delivered Event, so a second read of the same rows would be
+ * paid per delivery.
  */
 const findInvalidIntegrations = Effect.fn("findInvalidIntegrations")(
   function* (input: {
@@ -206,10 +231,7 @@ export const validateWorkflowIntegrations = Effect.fn(
     }
   }
 
-  const requirements = extractRequiredIntegrationRequirements(
-    nodes,
-    resolveFromCatalog(catalog)
-  );
+  const requirements = extractRequiredIntegrationRequirements(nodes, catalog);
 
   const { missingIds, mismatchedIds } = yield* findInvalidIntegrations({
     requirements,
