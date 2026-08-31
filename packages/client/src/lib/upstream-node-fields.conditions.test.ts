@@ -363,6 +363,28 @@ describe("upstream-node-fields conditions", () => {
       ).toBeUndefined();
     });
 
+    it("keeps punctuation in a graph-derived key literal", () => {
+      surface.actions = [aSendAction()];
+      const fields = getUpstreamConditionFields({
+        catalog: surface,
+        currentNodeId: "condition-1",
+        nodes: [
+          anEntryNode({}),
+          aSendNode([
+            { name: "campaign.name", value: "spring" },
+            { name: "items[0]", value: "first" },
+          ]),
+          conditionNode,
+        ],
+        edges,
+      });
+
+      expect(fields.map((field) => field.path)).toContain(
+        'tags["campaign.name"]'
+      );
+      expect(fields.map((field) => field.path)).toContain('tags["items[0]"]');
+    });
+
     it("offers the record alone when no node in the graph fills it", () => {
       surface.events = [
         anEvent({

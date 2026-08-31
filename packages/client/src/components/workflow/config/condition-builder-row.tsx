@@ -41,7 +41,10 @@ import {
   type TimestampRelativeOperator,
   type TimeUnit,
 } from "@wfgraph/shared/conditions/conditions";
-import { displayTemplateText } from "@wfgraph/shared/graph/node-references";
+import {
+  appendOutputPathKey,
+  displayTemplateText,
+} from "@wfgraph/shared/graph/node-references";
 
 /**
  * What the row is written against, rather than where it is stored.
@@ -129,7 +132,7 @@ function isTimeUnitValue(value: string): value is TimeUnit {
   return TIME_UNIT_OPTIONS.some((option) => option.value === value);
 }
 
-function getOperatorOptionsByFieldType(
+export function getOperatorOptionsByFieldType(
   fieldType: ConditionFieldType,
   nullable?: boolean
 ) {
@@ -194,6 +197,9 @@ function buildTimestampOperatorRule(input: {
       field: condition.field,
       fieldType: "timestamp",
       operator: operatorValue,
+      ...(condition.recordKey !== undefined
+        ? { recordKey: condition.recordKey }
+        : {}),
       amount: isTimestampRelativeConditionRule(condition)
         ? condition.amount
         : 1,
@@ -209,6 +215,9 @@ function buildTimestampOperatorRule(input: {
       field: condition.field,
       fieldType: "timestamp",
       operator: operatorValue,
+      ...(condition.recordKey !== undefined
+        ? { recordKey: condition.recordKey }
+        : {}),
       dateTime: isTimestampAbsoluteConditionRule(condition)
         ? condition.dateTime
         : new Date().toISOString(),
@@ -224,11 +233,17 @@ function isNullCheckOperatorValue(
   return value === "is_set" || value === "is_not_set";
 }
 
-function applyOperatorValueToCondition(
+export function applyOperatorValueToCondition(
   condition: ConditionRule,
   operatorValue: string
 ): ConditionRule | null {
-  const base = { id: condition.id, field: condition.field };
+  const base = {
+    id: condition.id,
+    field: condition.field,
+    ...(condition.recordKey !== undefined
+      ? { recordKey: condition.recordKey }
+      : {}),
+  };
 
   if (isNullCheckOperatorValue(operatorValue)) {
     return {
@@ -737,7 +752,7 @@ export function ConditionBuilderRow({
                   // so a rule reached by typing a key reads back as the row that
                   // names it.
                   const namedPath = condition.recordKey
-                    ? `${condition.field}.${condition.recordKey}`
+                    ? appendOutputPathKey(condition.field, condition.recordKey)
                     : condition.field;
                   // A key the graph names has a row of its own; one nobody names
                   // leaves the record itself selected, with the key beside it.
@@ -746,7 +761,8 @@ export function ConditionBuilderRow({
                     : condition.field;
                   const operatorOptions = getOperatorOptionsByFieldType(
                     condition.fieldType,
-                    selectedFieldDef?.nullable
+                    selectedFieldDef?.nullable ||
+                      condition.recordKey !== undefined
                   );
                   const canDeleteCondition = group.conditions.length > 1;
 

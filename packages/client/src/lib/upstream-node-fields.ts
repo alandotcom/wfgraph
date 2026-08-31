@@ -12,7 +12,10 @@ import {
   EVENT_NAME_FIELD_PATH,
 } from "@wfgraph/shared/conditions/conditions";
 import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
-import { fieldsVisibleForConfig } from "@wfgraph/shared/graph/node-references";
+import {
+  appendOutputPathKey,
+  fieldsVisibleForConfig,
+} from "@wfgraph/shared/graph/node-references";
 import {
   type ReachableField,
   reachableEventFields,
@@ -316,8 +319,8 @@ function keyFieldsUnderRecord(
 ): ConditionSelectableField[] {
   return keys.map((key) => ({
     ...omit(record, ["openRecord"]),
-    path: `${record.path}.${key}`,
-    label: `${record.path}.${key}`,
+    path: appendOutputPathKey(record.path, key),
+    label: appendOutputPathKey(record.path, key),
     recordPath: record.path,
     recordKey: key,
     nullable: true,

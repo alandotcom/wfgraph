@@ -2,7 +2,11 @@ import { fireEvent, render, type RenderResult } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
-import { ConditionBuilderRow } from "#src/components/workflow/config/condition-builder-row";
+import {
+  applyOperatorValueToCondition,
+  ConditionBuilderRow,
+  getOperatorOptionsByFieldType,
+} from "#src/components/workflow/config/condition-builder-row";
 import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
 import {
   parseConditionModel,
@@ -328,6 +332,56 @@ describe("ConditionBuilderRow field picker", () => {
       recordKey: "campaign",
       operator: "equals",
       fieldType: "string",
+    });
+  });
+
+  it("preserves an open-record key when an operator is rewritten", () => {
+    const rewritten = applyOperatorValueToCondition(
+      {
+        id: "r",
+        field: "data.tags",
+        recordKey: "order_id",
+        fieldType: "string",
+        operator: "equals",
+        value: "",
+      },
+      "is_not_set"
+    );
+
+    expect(rewritten).toMatchObject({
+      field: "data.tags",
+      recordKey: "order_id",
+      operator: "is_not_set",
+    });
+  });
+
+  it("offers presence operators for an arbitrary key of an open record", () => {
+    expect(getOperatorOptionsByFieldType("string", true)).toEqual(
+      expect.arrayContaining([
+        { value: "is_set", label: "is set" },
+        { value: "is_not_set", label: "is not set" },
+      ])
+    );
+  });
+
+  it("preserves an open-record key when a timestamp operator is rewritten", () => {
+    const rewritten = applyOperatorValueToCondition(
+      {
+        id: "r",
+        field: "data.tags",
+        recordKey: "occurred.at",
+        fieldType: "timestamp",
+        operator: "within_next",
+        amount: 1,
+        unit: "days",
+      },
+      "after"
+    );
+
+    expect(rewritten).toMatchObject({
+      field: "data.tags",
+      recordKey: "occurred.at",
+      operator: "after",
     });
   });
 
