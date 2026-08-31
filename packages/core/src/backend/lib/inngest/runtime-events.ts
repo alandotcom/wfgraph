@@ -104,6 +104,12 @@ export async function sendWorkflowWaitSignal(
  * nested `data`, …) so `source.when` and Correlation Paths keep addressing it.
  * The listener strips the stamp before decode and delivery, so Wait CEL and
  * templates see the envelope the vendor posted.
+ *
+ * The idempotency id is namespaced by Connection, because the vendor's own id
+ * is unique per message and not per endpoint. Two Connections subscribed to the
+ * same vendor account receive one message under one id, and passing it through
+ * raw would make Inngest read the second Connection's send as a duplicate and
+ * drop it. Namespacing keeps a retry to one Connection deduplicated.
  */
 export async function sendCatalogEvent(
   client: Inngest,
@@ -117,7 +123,9 @@ export async function sendCatalogEvent(
   const event = {
     name: input.name,
     data: withCatalogConnection(input.data, input.connectionId),
-    ...(input.id === undefined ? {} : { id: input.id }),
+    ...(input.id === undefined
+      ? {}
+      : { id: `${input.name}-${input.connectionId}-${input.id}` }),
   };
   return await client.send(event);
 }
