@@ -92,20 +92,24 @@ function publishedVersionNumber(value: number | null): number {
  * A workflow one delivered Event concerns, and what it holds that Event for.
  *
  * The roles decide how much work the delivery is worth: a `start` runs the full
- * preflight, and a workflow holding only `wait` needs none of it. The name and
- * mode ride along because the join reads them anyway, which is what keeps a
- * wait-only delivery off the graph column.
+ * preflight, and a workflow holding only `wait` needs none of it. The subscriber
+ * carries only the routing data delivery uses, which keeps a wait-only delivery
+ * off the workflow's graph and published-mode columns.
  */
 export type EventSubscriber = {
   id: string;
-  name: string;
-  mode: WorkflowMode;
   roles: WorkflowEventSubscriptionRow["role"][];
   /**
    * The builder's own Correlation Path for this Event, which outranks the one the
    * Event declares. Null where they wrote none, leaving the declaration to stand.
    */
   correlationPath: string | null;
+  /**
+   * The Connection a start or cancel of this Event must arrive on. Null for a
+   * host Event, and for a wait-only subscriber whose match lives on the parked
+   * row instead.
+   */
+  connectionId: string | null;
 };
 
 /**
@@ -500,10 +504,9 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
               db
                 .select({
                   id: workflows.id,
-                  name: workflows.name,
-                  mode: workflows.mode,
                   role: workflowEventSubscriptions.role,
                   correlationPath: workflowEventSubscriptions.correlationPath,
+                  connectionId: workflowEventSubscriptions.connectionId,
                 })
                 .from(workflowEventSubscriptions)
                 .innerJoin(
@@ -527,9 +530,8 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
               db
                 .selectDistinct({
                   id: workflows.id,
-                  name: workflows.name,
-                  mode: workflows.mode,
                   correlationPath: workflowEventSubscriptions.correlationPath,
+                  connectionId: workflowEventSubscriptions.connectionId,
                 })
                 .from(workflowWaitStates)
                 .innerJoin(
@@ -565,10 +567,9 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
               }
               byId.set(row.id, {
                 id: row.id,
-                name: row.name,
-                mode: row.mode,
                 roles: [row.role],
                 correlationPath: row.correlationPath,
+                connectionId: row.connectionId,
               });
             }
 
@@ -582,10 +583,9 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
               }
               byId.set(row.id, {
                 id: row.id,
-                name: row.name,
-                mode: row.mode,
                 roles: ["wait"],
                 correlationPath: row.correlationPath,
+                connectionId: row.connectionId,
               });
             }
 

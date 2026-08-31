@@ -166,12 +166,14 @@ describe("requireOutputFieldsFromSchema", () => {
         'Action "test/nonempty"',
         describingItselfAs({
           type: "object",
+          required: ["items"],
           properties: {
             items: {
               type: "array",
               minItems: 1,
               items: {
                 type: "object",
+                required: ["sku"],
                 properties: { sku: { type: "string" } },
               },
             },

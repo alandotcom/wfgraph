@@ -19,6 +19,7 @@ import { matchesShowWhen, type ShowWhen } from "#src/types/show-when";
 import type {
   WorkflowSchemaField,
   WorkflowSchemaFieldType,
+  WorkflowSchemaItemType,
 } from "./schema-codec";
 
 /**
@@ -35,12 +36,24 @@ import type {
  * `showWhen` belongs to action output fields: offer the path only when another
  * config key holds a given value. Absent means always offered. Event payload
  * fields do not use it.
+ *
+ * `valueType` marks an open record: an object accepting keys its schema never
+ * named, such as Resend's email tags. The entry addresses the whole record, and
+ * the type it carries is what a key under it holds, which is how
+ * a key under it is addressable even though this list cannot enumerate one.
+ *
+ * `nullable` says a run can reach this node with no value at this path, whether
+ * the schema declares the value as null or leaves its key optional. The picker
+ * badges such a field and offers `is_set` and `is_not_set` on it alone, so a
+ * field wrongly left unmarked costs a builder the only two operators that can
+ * ask whether the value arrived.
  */
 export type ReferenceField = {
   path: string;
   /** The author's own words for the field, absent when they wrote none. */
   description?: string;
   type?: WorkflowSchemaFieldType;
+  valueType?: WorkflowSchemaItemType;
   nullable?: boolean;
   enumValues?: string[];
   showWhen?: ShowWhen;
@@ -58,15 +71,6 @@ export function fieldsVisibleForConfig(
   return fields.filter((field) => matchesShowWhen(config, field.showWhen));
 }
 
-/**
- * A reference field together with the node that produces it. This is what a
- * config form shows when it lists what is available from upstream.
- */
-export type UpstreamField = ReferenceField & {
-  sourceNodeId: string;
-  sourceNodeName: string;
-};
-
 /** Turn one schema-tree node into the flat reference field that addresses it. */
 function schemaFieldToReferenceField(
   field: WorkflowSchemaField,
@@ -79,6 +83,7 @@ function schemaFieldToReferenceField(
     path,
     ...(description ? { description } : {}),
     type: field.type,
+    ...(field.valueType ? { valueType: field.valueType } : {}),
     ...(nullable ? { nullable: true } : {}),
     ...(field.enumValues ? { enumValues: field.enumValues } : {}),
   };
@@ -107,9 +112,10 @@ const MAX_REFERENCE_FIELD_DEPTH = 3;
  * Container fields are emitted alongside their children, so a caller sees both
  * the whole object and every leaf inside it. Arrays of objects contribute
  * `name[0].child` paths; arrays of primitives contribute only the array itself,
- * because there is no child to name. An object with no named properties -- an
- * open record, or one whose properties the reader could not use -- has no
- * children to emit and stays a single entry.
+ * because there is no child to name. An object with no named properties stays a
+ * single entry, having no children to emit. An open record is that case with a
+ * `valueType` on it, saying a key nobody could list is still addressable. Which
+ * keys exist is a question for whoever holds the graph, not for this walk.
  *
  * A derived path is reachable only when every ancestor on it is present, so its
  * nullability is the OR of its own and its ancestors'. Array `[0]` children are
@@ -281,6 +287,35 @@ export function formatTemplateToken(input: {
 }
 
 /**
+ * What a builder reads for one token: the label and path, never the node id
+ * the engine resolves by. A token is `{{@id:Label.path}}`; the id is wiring.
+ */
+export function templateTokenDisplayText(
+  token: Pick<TemplateToken, "nodeLabel" | "fieldPath">
+): string {
+  return token.fieldPath
+    ? `${token.nodeLabel}.${token.fieldPath}`
+    : token.nodeLabel;
+}
+
+/**
+ * The authored string with every token collapsed to the label a builder sees.
+ *
+ * A condition summary and the compiled-CEL line both read this so a Wait match
+ * against `{{@n1:Lifecycle.data.email_id}}` does not print the node id. A string
+ * with no tokens is returned unchanged.
+ */
+export function displayTemplateText(value: string): string {
+  return parseTemplate(value)
+    .map((segment) =>
+      segment.kind === "literal"
+        ? segment.text
+        : templateTokenDisplayText(segment.token)
+    )
+    .join("");
+}
+
+/**
  * Rewrite every template token inside a config or JSON value. Returning
  * `undefined` leaves that token as it was. The same reference comes back when
  * nothing changed, so a rename can tell a dirty config from an untouched one.
@@ -357,12 +392,66 @@ function mapTemplateString(
   return changed ? next : value;
 }
 
-const BRACKET_INDEX_PATTERN = /\[(\d+)\]/g;
-const PATH_PART_PATTERN = /^([^[]*)((?:\[\d+\])*)$/;
+const SIMPLE_PATH_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const BRACKET_INDEX_PATTERN = /^\[(\d+)\]/;
 
 export type OutputPathStep =
   | { kind: "key"; key: string }
   | { kind: "index"; index: number };
+
+/** Append one record key while preserving punctuation as part of that key. */
+export function appendOutputPathKey(path: string, key: string): string {
+  if (SIMPLE_PATH_KEY_PATTERN.test(key) && isSafeRecordKey(key)) {
+    return path ? `${path}.${key}` : key;
+  }
+
+  // Template tokens use braces as their outer delimiter. JSON's Unicode escape
+  // keeps a brace in the key while leaving the token parser an unambiguous end.
+  const encoded = JSON.stringify(key)
+    .replaceAll("{", "\\u007b")
+    .replaceAll("}", "\\u007d");
+  return `${path}[${encoded}]`;
+}
+
+function readQuotedPathKey(
+  path: string,
+  start: number
+): { key: string; end: number } | null {
+  if (path[start] !== "[" || path[start + 1] !== '"') {
+    return null;
+  }
+
+  const quoteStart = start + 1;
+  let escaped = false;
+  for (let index = quoteStart + 1; index < path.length; index += 1) {
+    const character = path[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (character === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (character !== '"') {
+      continue;
+    }
+    if (path[index + 1] !== "]") {
+      return null;
+    }
+
+    try {
+      const key = JSON.parse(path.slice(quoteStart, index + 1)) as unknown;
+      return typeof key === "string" && isSafeRecordKey(key)
+        ? { key, end: index + 2 }
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
 
 /**
  * Plugin steps return `{ success, data }`. A user writing `{{@n1:Step.id}}`
@@ -397,32 +486,58 @@ export function unwrapStepOutput(output: JsonValue): JsonValue {
 
 export function parseOutputPath(path: string): OutputPathStep[] | null {
   const steps: OutputPathStep[] = [];
+  let cursor = 0;
 
-  for (const part of path.split(".")) {
-    const trimmed = part.trim();
-    if (!trimmed) {
+  while (cursor < path.length) {
+    if (path[cursor] === ".") {
       return null;
     }
 
-    const parsed = PATH_PART_PATTERN.exec(trimmed);
-    if (!parsed) {
-      return null;
-    }
-
-    const key = parsed[1];
-    if (key.includes("]") || (key && !isSafeRecordKey(key))) {
-      return null;
-    }
-    if (key) {
+    if (path[cursor] !== "[") {
+      let end = cursor;
+      while (end < path.length && path[end] !== "." && path[end] !== "[") {
+        end += 1;
+      }
+      const key = path.slice(cursor, end).trim();
+      if (!key || key.includes("]") || !isSafeRecordKey(key)) {
+        return null;
+      }
       steps.push({ kind: "key", key });
+      cursor = end;
     }
 
-    for (const match of trimmed.matchAll(BRACKET_INDEX_PATTERN)) {
-      const index = Number(match[1]);
+    while (path[cursor] === "[") {
+      const quoted = readQuotedPathKey(path, cursor);
+      if (quoted) {
+        steps.push({ kind: "key", key: quoted.key });
+        cursor = quoted.end;
+        continue;
+      }
+
+      const indexed = BRACKET_INDEX_PATTERN.exec(path.slice(cursor));
+      if (!indexed) {
+        return null;
+      }
+      const index = Number(indexed[1]);
       if (!Number.isSafeInteger(index)) {
         return null;
       }
       steps.push({ kind: "index", index });
+      cursor += indexed[0].length;
+    }
+
+    if (cursor < path.length) {
+      if (path[cursor] !== ".") {
+        return null;
+      }
+      cursor += 1;
+      if (
+        cursor >= path.length ||
+        path[cursor] === "." ||
+        path[cursor] === "["
+      ) {
+        return null;
+      }
     }
   }
 

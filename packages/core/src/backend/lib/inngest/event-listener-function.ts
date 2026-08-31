@@ -27,8 +27,9 @@ import {
   listEventSubscribers,
 } from "#src/backend/services/workflows/lifecycle/deliver-event";
 import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
-import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
 import { compileEventDataEquals } from "@wfgraph/shared/lifecycle/inngest-event-data";
+import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
+import { splitCatalogEventData } from "#src/backend/lib/inngest/catalog-connection";
 
 const logger = getAppLogger("events");
 
@@ -104,11 +105,20 @@ export async function runEventListener(input: {
   payload: JsonObject;
   /** Names the arrival in every line and row this delivery writes. */
   arrival: { eventId?: string; runId?: string };
+  /**
+   * The Connection this arrival came through. Absent for a host Event.
+   */
+  connectionId?: string;
   runtime: WfGraphRuntime;
   step: EventListenerSteps;
   deliver: EventListenerDeliverPorts;
 }): Promise<{ eventName: string; workflows: WorkflowDelivery[] }> {
   const { event, payload, runtime, step, deliver } = input;
+  const deliveredEvent = {
+    name: event.name,
+    correlationPath: event.correlationPath,
+    ...(input.connectionId ? { connectionId: input.connectionId } : {}),
+  };
   const arrivalLogger = logger.with({
     eventName: event.name,
     ...input.arrival,
@@ -156,7 +166,7 @@ export async function runEventListener(input: {
             await runtime.runPromise(
               deliver.applyLifecycle({
                 subscriber,
-                event,
+                event: deliveredEvent,
                 payload,
                 // Inngest's id for this arrival, which is the sender's own
                 // idempotency id wherever they sent one.
@@ -186,7 +196,12 @@ export async function runEventListener(input: {
           `waits-${subscriber.id}`,
           async () =>
             await runtime.runPromise(
-              deliver.deliverWaits({ subscriber, event, payload, excluding })
+              deliver.deliverWaits({
+                workflowId: subscriber.id,
+                event: deliveredEvent,
+                payload,
+                excluding,
+              })
             )
         )
       : { workflowId: subscriber.id, resumedWaits: 0 };
@@ -227,8 +242,13 @@ export function createInngestEventListenerFunction(input: {
    * services on the same repositories and logger the HTTP side does.
    */
   runtime: WfGraphRuntime;
+  /**
+   * Whether `sendCatalogEvent` stamped `connectionId` onto this Event's data.
+   * Host Events never stamp; a payload key of that name stays on the envelope.
+   */
+  connectionStamped: boolean;
 }): InngestFunction.Any {
-  const { client, event, runtime } = input;
+  const { client, event, runtime, connectionStamped } = input;
   const when = event.source.when;
 
   return client.createFunction(
@@ -245,14 +265,20 @@ export function createInngestEventListenerFunction(input: {
         },
       ],
     },
-    async ({ event: delivered, step, runId }) =>
-      await runEventListener({
+    async ({ event: delivered, step, runId }) => {
+      const { payload, connectionId } = splitCatalogEventData(
+        toEventPayload(delivered.data),
+        { connectionStamped }
+      );
+      return await runEventListener({
         event,
-        payload: toEventPayload(delivered.data),
+        payload,
         arrival: { eventId: delivered.id, runId },
+        connectionId,
         runtime,
         step,
         deliver: defaultDeliverPorts,
-      })
+      });
+    }
   );
 }

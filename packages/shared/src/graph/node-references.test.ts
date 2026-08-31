@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  appendOutputPathKey,
+  displayTemplateText,
   fieldsVisibleForConfig,
   findTemplateTokens,
   flattenSchemaToReferenceFields,
@@ -201,13 +203,30 @@ describe("flattenSchemaToReferenceFields", () => {
   });
 
   it("leaves an object with no named properties as a single entry", () => {
-    // An open record, and also what a property the reader could not use leaves
-    // behind. Either way there is no child to name.
+    // A property the reader could not use leaves this behind, and there is no
+    // child to name.
     const fields = flattenSchemaToReferenceFields([
       { name: "metadata", type: "object", fields: [] },
     ]);
 
     expect(fields).toEqual([{ path: "metadata", type: "object" }]);
+  });
+
+  it("carries an open record's value type onto its one entry", () => {
+    const fields = flattenSchemaToReferenceFields([
+      {
+        name: "data",
+        type: "object",
+        fields: [
+          { name: "tags", type: "object", fields: [], valueType: "string" },
+        ],
+      },
+    ]);
+
+    expect(fields).toEqual([
+      { path: "data", type: "object" },
+      { path: "data.tags", type: "object", valueType: "string" },
+    ]);
   });
 
   it("stops descending three segments down", () => {
@@ -459,6 +478,41 @@ describe("formatTemplateToken", () => {
       "{{@n1:Fetch User}}"
     );
   });
+
+  it("round-trips a literal record key inside a field path", () => {
+    const fieldPath = appendOutputPathKey("data.tags", "campaign.name");
+    const raw = formatTemplateToken({
+      nodeId: "n1",
+      nodeLabel: "Send Email",
+      fieldPath,
+    });
+
+    expect(fieldPath).toBe('data.tags["campaign.name"]');
+    expect(matchTemplateToken(raw)?.fieldPath).toBe(fieldPath);
+  });
+});
+
+describe("displayTemplateText", () => {
+  it("drops the node id from a token so a person reads the label and path", () => {
+    expect(
+      displayTemplateText(
+        formatTemplateToken({
+          nodeId: "V1StGXR8_Z5jdHi6B-myT",
+          nodeLabel: "Lifecycle",
+          fieldPath: "data.email_id",
+        })
+      )
+    ).toBe("Lifecycle.data.email_id");
+  });
+
+  it("leaves surrounding prose and a token without a path", () => {
+    const token = formatTemplateToken({
+      nodeId: "n1",
+      nodeLabel: "Send Email",
+    });
+
+    expect(displayTemplateText(`id is ${token}`)).toBe("id is Send Email");
+  });
 });
 
 describe("resolveOutputPath", () => {
@@ -555,6 +609,38 @@ describe("resolveOutputPath", () => {
     const output = { grid: [[10, 20], [30]] };
 
     expect(resolveOutputPath(output, "grid[0][1]")).toBe(20);
+  });
+
+  it("reads a quoted bracket segment as one literal record key", () => {
+    const path = appendOutputPathKey("data.tags", 'campaign.name[0] "primary"');
+
+    expect(
+      resolveOutputPath(
+        {
+          data: {
+            tags: { 'campaign.name[0] "primary"': "spring" },
+          },
+        },
+        path
+      )
+    ).toBe("spring");
+  });
+
+  it("keeps braces escaped so a literal key fits inside a template token", () => {
+    const fieldPath = appendOutputPathKey("data.tags", "campaign{primary}");
+    const raw = formatTemplateToken({
+      nodeId: "n1",
+      nodeLabel: "Send Email",
+      fieldPath,
+    });
+
+    expect(findTemplateTokens(raw)).toHaveLength(1);
+    expect(
+      resolveOutputPath(
+        { data: { tags: { "campaign{primary}": "spring" } } },
+        fieldPath
+      )
+    ).toBe("spring");
   });
 
   it("indexes a top-level array output", () => {

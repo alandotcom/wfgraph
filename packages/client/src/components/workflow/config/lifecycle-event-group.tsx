@@ -14,6 +14,7 @@ import {
   type ExtensionCatalog,
   findEvent,
 } from "@wfgraph/shared/extensions/catalog";
+import { catalogEventChoices } from "./event-combobox";
 import {
   type CorrelationPathRequest,
   correlationPathRequestFor,
@@ -82,7 +83,7 @@ export function LifecycleEventGroup({
               {copy.label}
             </Label>
             <EventMultiCombobox
-              choices={catalog.events}
+              choices={catalogEventChoices(catalog)}
               disabled={disabled}
               inputId={inputId}
               onValueChange={onEventNamesChange}
@@ -142,31 +143,33 @@ function ChosenEventSummary({
   }
 
   return (
-    <ul className="space-y-1">
-      {eventNames.map((eventName) => {
-        const request = correlationPathRequestFor({
-          rules,
-          catalog,
-          eventName,
-          role,
-        });
-        const path = request?.suppliedPath ?? request?.declaredPath;
+    <div className="space-y-2">
+      <ul className="space-y-1">
+        {eventNames.map((eventName) => {
+          const request = correlationPathRequestFor({
+            rules,
+            catalog,
+            eventName,
+            role,
+          });
+          const path = request?.suppliedPath ?? request?.declaredPath;
 
-        return (
-          <li className="text-sm" key={eventName}>
-            <span title={eventName}>
-              {findEvent(catalog, eventName)?.label ?? eventName}
-            </span>
-            {path ? (
-              <span className="text-muted-foreground text-xs">
-                {" correlated on "}
-                <span className="font-mono">{path}</span>
+          return (
+            <li className="text-sm" key={eventName}>
+              <span title={eventName}>
+                {findEvent(catalog, eventName)?.label ?? eventName}
               </span>
-            ) : null}
-          </li>
-        );
-      })}
-    </ul>
+              {path ? (
+                <span className="text-muted-foreground text-xs">
+                  {" correlated on "}
+                  <span className="font-mono">{path}</span>
+                </span>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 

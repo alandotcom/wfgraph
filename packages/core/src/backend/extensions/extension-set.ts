@@ -25,9 +25,12 @@ import {
 } from "@wfgraph/shared/plugins/action-fields";
 import type { StepFactory } from "#src/backend/extensions/steps/step-runner";
 import { builtInActions } from "#src/backend/extensions/built-ins";
-import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
 import type { ActionDefinition } from "#src/backend/extensions/define-action";
 import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
+import {
+  assertDistinctListenerIds,
+  assertSourcesAreDistinguishable,
+} from "#src/backend/extensions/event-uniqueness";
 import {
   checkIntegration,
   type IntegrationDefinition,
@@ -35,11 +38,13 @@ import {
 import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
 import type { IntegrationOAuth } from "#src/backend/extensions/oauth";
 import type { ConfigOptionsProvider } from "#src/backend/extensions/config-options";
+import type { IntegrationWebhook } from "#src/backend/extensions/integration-webhook";
 import {
   isSafeRecordKey,
   isSafeRecordPath,
 } from "@wfgraph/shared/types/record-key";
 import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
+import { CONNECTION_STAMP_KEY } from "#src/backend/lib/inngest/catalog-connection";
 
 /**
  * An Event as the set holds it, which is what `eventByName` answers with.
@@ -88,6 +93,11 @@ export type ExtensionSet = {
   ) => ConfigOptionsProvider | undefined;
   /** Provider behavior for OAuth routes; none of this map crosses the catalog. */
   readonly oauthFor: (type: string) => IntegrationOAuth | undefined;
+  /**
+   * The webhook an integration declared, if any. Server-only: verify and receive
+   * stay off the catalog, which is what the editor reads.
+   */
+  readonly webhookFor: (type: string) => IntegrationWebhook | undefined;
   readonly eventByName: (name: string) => RegisteredEvent | undefined;
   /** Every Event, which is the Inngest listener set: one function each. */
   readonly events: readonly RegisteredEvent[];
@@ -116,56 +126,6 @@ function indexEvents(
   }
 
   return byName;
-}
-
-/**
- * Two Events on one source have to be told apart by their payloads.
- *
- * `source.when` is what tells them apart, and an Event declaring none matches
- * every payload on that source. Two such Events would both be delivered every
- * time, which is one arrival counted twice: two runs where the builder configured
- * one, and the same wait woken twice.
- */
-function assertSourcesAreDistinguishable(
-  events: readonly RegisteredEvent[]
-): void {
-  const unfilteredBySource = new Map<string, string>();
-
-  for (const event of events) {
-    if (event.source.when) {
-      continue;
-    }
-
-    const existing = unfilteredBySource.get(event.source.event);
-    if (existing) {
-      throw new Error(
-        `Events "${existing}" and "${event.name}" both arrive as "${event.source.event}" and neither narrows it with source.when, so every payload would be delivered as both. Give one of them a filter, or a source name of its own.`
-      );
-    }
-    unfilteredBySource.set(event.source.event, event.name);
-  }
-}
-
-/**
- * Two Events may not slug to one Inngest function id.
- *
- * The id is `slugify(name)`, so `app/appointment.created` and
- * `app-appointment-created` are the same function to Inngest. It would sync one
- * and drop the other, which reads as an Event that quietly never arrives.
- */
-function assertDistinctListenerIds(events: readonly RegisteredEvent[]): void {
-  const byId = new Map<string, string>();
-
-  for (const event of events) {
-    const id = toListenerFunctionId(event.name);
-    const existing = byId.get(id);
-    if (existing) {
-      throw new Error(
-        `Events "${existing}" and "${event.name}" both name the Inngest function "${id}". An Event's listener id is its name slugged, so two names differing only in punctuation collide; rename one.`
-      );
-    }
-    byId.set(id, event.name);
-  }
 }
 
 /**
@@ -249,6 +209,27 @@ function assertSafeReferencePaths(
   }
 }
 
+/**
+ * An integration-owned Event may not declare the key the Connection stamp uses.
+ *
+ * `sendCatalogEvent` writes the Connection onto `data` under
+ * `CONNECTION_STAMP_KEY` and the listener removes it again, so a field declared
+ * there would be overwritten on the way out and missing on the way in. The
+ * prefix makes that collision unlikely; this makes it loud rather than silent.
+ */
+function assertNoConnectionStampField(
+  eventName: string,
+  fields: readonly ReferenceField[]
+): void {
+  if (
+    fields.some((field) => field.path.split(".")[0] === CONNECTION_STAMP_KEY)
+  ) {
+    throw new Error(
+      `Event "${eventName}" declares a payload field at "${CONNECTION_STAMP_KEY}", which Workflow Graph reserves for the Connection an integration Event arrived through. Give the field another name.`
+    );
+  }
+}
+
 function assertDistinctIntegrationTypes(
   integrations: readonly IntegrationMetadata[]
 ): void {
@@ -269,7 +250,10 @@ function assertDistinctIntegrationTypes(
  * server holds is the object the browser decodes: JSON drops an undefined value,
  * and the wire schema's `optionalKey` fields accept an absent key only.
  */
-function toEventMetadata(event: RegisteredEvent): EventMetadata {
+function toEventMetadata(
+  event: RegisteredEvent,
+  integration?: string
+): EventMetadata {
   return {
     name: event.name,
     label: event.label,
@@ -277,6 +261,7 @@ function toEventMetadata(event: RegisteredEvent): EventMetadata {
     ...(event.correlationPath
       ? { correlationPath: event.correlationPath }
       : {}),
+    ...(integration ? { integration } : {}),
     payloadFields: event.payloadFields,
   };
 }
@@ -294,6 +279,7 @@ type Assembly = {
   /** Keyed first by integration type, then by the provider it declares. */
   configOptions: Map<string, Map<string, ConfigOptionsProvider>>;
   oauth: Map<string, IntegrationOAuth>;
+  webhooks: Map<string, IntegrationWebhook>;
 };
 
 /**
@@ -346,12 +332,23 @@ function readIntegration(
     into.oauth.set(integration.type, integration.oauth);
   }
 
+  if (integration.webhook) {
+    into.webhooks.set(integration.type, integration.webhook);
+  }
+
   return {
     type: integration.type,
     label: integration.label,
     description: integration.description,
     credentialFields: integration.credentials,
     hasTest: integration.test !== undefined,
+    hasWebhook: integration.webhook !== undefined,
+    ...(integration.webhook?.helpText
+      ? { webhookHelpText: integration.webhook.helpText }
+      : {}),
+    ...(integration.webhook?.secret
+      ? { webhookSecretKey: integration.webhook.secret }
+      : {}),
     ...(integration.oauth ? { oauth: { label: integration.oauth.label } } : {}),
   };
 }
@@ -404,10 +401,39 @@ function readHostAction(action: ActionDefinition, into: Assembly): void {
 }
 
 export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
-  const eventsByName = indexEvents(input.events ?? []);
+  // Integration Events go in first, so a host listing the same `defineEvent`
+  // object a plugin already declared is identity-equal and kept once. The owner
+  // map is what stamps `EventMetadata.integration` without mutating the value.
+  const eventOwners = new Map<string, string>();
+  const integrationEvents: AnyEventDefinition[] = [];
+  for (const integration of input.integrations ?? []) {
+    for (const event of integration.events ?? []) {
+      // Two integrations listing the same `defineEvent` object pass indexEvents,
+      // which only refuses two definitions sharing a name. Taking the last
+      // writer would leave the catalog offering one integration's Connections
+      // for an Event the other's webhook also delivers, so arrivals through the
+      // loser could match nothing.
+      const owner = eventOwners.get(event.name);
+      if (owner && owner !== integration.type) {
+        throw new Error(
+          `Event "${event.name}" is declared by integrations "${owner}" and "${integration.type}". An integration-owned Event belongs to one integration, because the Connection it arrives through is chosen from that integration's Connections.`
+        );
+      }
+      integrationEvents.push(event);
+      eventOwners.set(event.name, integration.type);
+    }
+  }
+
+  const eventsByName = indexEvents([
+    ...integrationEvents,
+    ...(input.events ?? []),
+  ]);
   const events = Array.from(eventsByName.values());
   for (const event of events) {
     assertSafeReferencePaths(`Event "${event.name}"`, event.payloadFields);
+    if (eventOwners.has(event.name)) {
+      assertNoConnectionStampField(event.name, event.payloadFields);
+    }
   }
   assertSourcesAreDistinguishable(events);
   assertDistinctListenerIds(events);
@@ -423,6 +449,7 @@ export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
     tests: new Map(),
     configOptions: new Map(),
     oauth: new Map(),
+    webhooks: new Map(),
   };
 
   const integrations = (input.integrations ?? []).map((integration) =>
@@ -444,7 +471,9 @@ export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
 
   return {
     catalog: {
-      events: events.map(toEventMetadata),
+      events: events.map((event) =>
+        toEventMetadata(event, eventOwners.get(event.name))
+      ),
       actions: into.actions,
       integrations,
     },
@@ -453,6 +482,7 @@ export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
     configOptionsFor: (type, provider) =>
       into.configOptions.get(type)?.get(provider),
     oauthFor: (type) => into.oauth.get(type),
+    webhookFor: (type) => into.webhooks.get(type),
     eventByName: (name) => eventsByName.get(name),
     events,
   };

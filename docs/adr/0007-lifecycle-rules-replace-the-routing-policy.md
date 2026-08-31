@@ -103,3 +103,30 @@ output lives in the run-log rows, and the run itself survives to read the flag a
 its next boundary and enter the Canceled outlet with that history in hand. What
 the kill ends is work that would otherwise carry on for a run already claimed,
 and the run is what closes the rows those invocations left open.
+
+## Amendment, 2026-08-30: an integration-owned Event names a Connection
+
+An Event may belong to an integration. When it does, the Lifecycle Rules name
+the Connection that Event arrives through, stored as `connectionIds` on the
+same grain as `correlationPaths`. A Wait names its own `connectionId` per
+subscription. Publish refuses an integration-owned Start, Cancel, or Wait
+Event that names none, rather than fanning in across every Connection of that
+type.
+
+The Connection is delivery metadata, not payload. Intake stamps
+`__wfgraphConnectionId` on Inngest event `data` (v4 does not persist
+`event.user`) and the listener strips it before decode, and only on Events the
+catalog marks as integration-owned. The key is prefixed because the rest of
+`data` is a vendor envelope Workflow Graph does not own, and a plain
+`connectionId` would collide with a vendor sending that field itself. Matching
+is the stored id, denormalized onto the subscription index the same way
+Correlation Path already is. A start on the wrong Connection is `waits_only`
+without opening the published graph.
+
+## Amendment, 2026-08-30: one Connection per integration in the editor
+
+The editor offers one Connection picker, and one webhook URL, per integration
+named by the rules, not per Event. Two Resend Start Events share the Resend
+Connection and paste the same Connection-addressed URL. The stored
+`connectionIds` map still keys by Event name so matching stays on the arrival;
+choosing a Connection stamps every named Event of that integration.

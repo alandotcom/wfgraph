@@ -1,0 +1,1 @@
+ALTER TABLE "workflow_event_subscriptions" ADD COLUMN "connection_id" text;

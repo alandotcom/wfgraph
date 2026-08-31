@@ -20,7 +20,9 @@ import {
   currentWorkflowNameAtom,
   currentWorkflowVisibilityAtom,
   hasUnsavedChangesAtom,
+  isSavingAtom,
   isWorkflowOwnerAtom,
+  successfulSaveGenerationAtom,
   workflowNotFoundAtom,
   workflowLoadErrorAtom,
 } from "#src/lib/workflow-save-store";
@@ -173,7 +175,18 @@ export const loadWorkflowGraphAtom = atom(
  */
 export const hydrateWorkflowAtom = atom(
   null,
-  (get, set, workflow: SavedWorkflow) => {
+  (get, set, workflow: SavedWorkflow & { saveGeneration?: number }) => {
+    // A loader can hold an older server snapshot while a save completes. The
+    // save clears both guards used below, so compare the loader's start
+    // generation before changing any editor state.
+    if (
+      workflow.saveGeneration !== undefined &&
+      (get(successfulSaveGenerationAtom).get(workflow.id) ?? 0) >
+        workflow.saveGeneration
+    ) {
+      return;
+    }
+
     // Hydration starts a new editor lifetime even when the route resolves the
     // same workflow again. A comparison snapshot belongs to the lifetime that
     // requested it and must not lock the newly loaded draft.
@@ -186,9 +199,26 @@ export const hydrateWorkflowAtom = atom(
       selected: false,
     }));
 
+    // Reopening the workflow already on screen must not overwrite edits the
+    // server has not stored. A failed save leaves the dirty flag raised on
+    // purpose, so without this a later route re-run installs the server's older
+    // graph and lowers the flag, dropping the edit and the failure notice with
+    // it. Route re-runs are routine: selecting a run writes `executionId` into
+    // the search and leaving Runs clears it, each one refetching the workflow.
+    // The same guard covers a read that overtakes a write still in flight,
+    // where the reverted graph stays on screen while the write lands.
+    //
+    // A different workflow always replaces the graph, and so does this one once
+    // the queue has drained and the two agree.
+    const clientIsAheadOfServer =
+      get(currentWorkflowIdAtom) === workflow.id &&
+      (get(hasUnsavedChangesAtom) || get(isSavingAtom));
+
     // Also clears undo history, so undo cannot reach back past the switch and
     // write the previous workflow's graph into this one.
-    set(loadWorkflowGraphAtom, { nodes, edges: workflow.edges });
+    if (!clientIsAheadOfServer) {
+      set(loadWorkflowGraphAtom, { nodes, edges: workflow.edges });
+    }
     // Overlay, selection and statuses belong to the open run. Switching
     // workflows has to drop them — a reused node id would otherwise keep the
     // previous run's badges. Reloading the same workflow (dashboard round-trip,

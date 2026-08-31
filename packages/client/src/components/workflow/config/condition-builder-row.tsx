@@ -1,6 +1,6 @@
 import { Plus, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { Button } from "#src/components/ui/button";
 import { Input } from "#src/components/ui/input";
 import {
@@ -41,6 +41,10 @@ import {
   type TimestampRelativeOperator,
   type TimeUnit,
 } from "@wfgraph/shared/conditions/conditions";
+import {
+  appendOutputPathKey,
+  displayTemplateText,
+} from "@wfgraph/shared/graph/node-references";
 
 /**
  * What the row is written against, rather than where it is stored.
@@ -128,7 +132,7 @@ function isTimeUnitValue(value: string): value is TimeUnit {
   return TIME_UNIT_OPTIONS.some((option) => option.value === value);
 }
 
-function getOperatorOptionsByFieldType(
+export function getOperatorOptionsByFieldType(
   fieldType: ConditionFieldType,
   nullable?: boolean
 ) {
@@ -193,6 +197,9 @@ function buildTimestampOperatorRule(input: {
       field: condition.field,
       fieldType: "timestamp",
       operator: operatorValue,
+      ...(condition.recordKey !== undefined
+        ? { recordKey: condition.recordKey }
+        : {}),
       amount: isTimestampRelativeConditionRule(condition)
         ? condition.amount
         : 1,
@@ -208,6 +215,9 @@ function buildTimestampOperatorRule(input: {
       field: condition.field,
       fieldType: "timestamp",
       operator: operatorValue,
+      ...(condition.recordKey !== undefined
+        ? { recordKey: condition.recordKey }
+        : {}),
       dateTime: isTimestampAbsoluteConditionRule(condition)
         ? condition.dateTime
         : new Date().toISOString(),
@@ -223,11 +233,17 @@ function isNullCheckOperatorValue(
   return value === "is_set" || value === "is_not_set";
 }
 
-function applyOperatorValueToCondition(
+export function applyOperatorValueToCondition(
   condition: ConditionRule,
   operatorValue: string
 ): ConditionRule | null {
-  const base = { id: condition.id, field: condition.field };
+  const base = {
+    id: condition.id,
+    field: condition.field,
+    ...(condition.recordKey !== undefined
+      ? { recordKey: condition.recordKey }
+      : {}),
+  };
 
   if (isNullCheckOperatorValue(operatorValue)) {
     return {
@@ -317,15 +333,23 @@ function LogicToggle({
   );
 }
 
+function enumOptionLabel(
+  field: ConditionSelectableField | undefined,
+  value: string
+): string {
+  return field?.enumLabels?.[value] ?? value;
+}
+
 function ConditionValueInput(input: {
   condition: ConditionRule;
   disabled: boolean;
   currentNodeId?: string;
-  enumValues?: string[];
+  field?: ConditionSelectableField;
   onConditionChange: (condition: ConditionRule) => void;
 }) {
-  const { condition, disabled, currentNodeId, enumValues, onConditionChange } =
+  const { condition, disabled, currentNodeId, field, onConditionChange } =
     input;
+  const enumValues = field?.enumValues;
 
   // Null-check operators need no value input
   if (isNullCheckConditionRule(condition)) {
@@ -411,7 +435,10 @@ function ConditionValueInput(input: {
       return (
         <Select
           disabled={disabled}
-          items={enumValues.map((value) => ({ label: value, value }))}
+          items={enumValues.map((value) => ({
+            label: enumOptionLabel(field, value),
+            value,
+          }))}
           onValueChange={whenChosen((value) => {
             onConditionChange({ ...condition, value });
           })}
@@ -427,7 +454,7 @@ function ConditionValueInput(input: {
           <SelectContent>
             {enumValues.map((opt) => (
               <SelectItem key={opt} value={opt}>
-                {opt}
+                {enumOptionLabel(field, opt)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -491,14 +518,13 @@ export function ConditionBuilderRow({
   // starts where `defaultEditing` says, whatever the last one was left in.
   const [editing, setEditing] = useState(defaultEditing);
 
-  const fieldByPath = useMemo(
-    () => new Map(availableFields.map((field) => [field.path, field])),
-    [availableFields]
-  );
-
   const modelValue = storedValue.trim();
   const modelParseResult = parseConditionModel(modelValue);
   const storedModel = modelParseResult.valid ? modelParseResult.model : null;
+
+  const fieldByPath = new Map(
+    availableFields.map((field) => [field.path, field])
+  );
 
   const persistModel = useCallback(
     (model: ConditionModel) => {
@@ -721,9 +747,22 @@ export function ConditionBuilderRow({
               <div className="mt-1 ml-2.5 space-y-2 border-l pl-3">
                 {group.conditions.map((condition, conditionIndex) => {
                   const selectedFieldDef = fieldByPath.get(condition.field);
+                  // The picker deals in whole paths; the rule stores the record
+                  // and its key apart. This is the one conversion between them,
+                  // so a rule reached by typing a key reads back as the row that
+                  // names it.
+                  const namedPath = condition.recordKey
+                    ? appendOutputPathKey(condition.field, condition.recordKey)
+                    : condition.field;
+                  // A key the graph names has a row of its own; one nobody names
+                  // leaves the record itself selected, with the key beside it.
+                  const pickedPath = fieldByPath.has(namedPath)
+                    ? namedPath
+                    : condition.field;
                   const operatorOptions = getOperatorOptionsByFieldType(
                     condition.fieldType,
-                    selectedFieldDef?.nullable
+                    selectedFieldDef?.nullable ||
+                      condition.recordKey !== undefined
                   );
                   const canDeleteCondition = group.conditions.length > 1;
 
@@ -734,22 +773,67 @@ export function ConditionBuilderRow({
                           disabled={disabled || availableFields.length === 0}
                           fields={availableFields}
                           onValueChange={(nextField) => {
-                            if (nextField.path === condition.field) {
+                            if (nextField.path === pickedPath) {
                               return;
                             }
+
+                            // A row for a key the graph names is a shortcut for
+                            // the record plus that key, and it carries the split
+                            // so the rule it writes is the one typing the key
+                            // would have written.
+                            const chosen: ConditionFieldDefinition =
+                              nextField.recordPath
+                                ? {
+                                    ...nextField,
+                                    path: nextField.recordPath,
+                                    openRecord: true,
+                                  }
+                                : nextField;
 
                             updateCondition(
                               group.id,
                               condition.id,
-                              (existing) =>
-                                createDefaultConditionRule(
-                                  nextField,
+                              (existing) => {
+                                const seeded = createDefaultConditionRule(
+                                  chosen,
                                   existing.id
-                                )
+                                );
+                                return nextField.recordKey
+                                  ? {
+                                      ...seeded,
+                                      recordKey: nextField.recordKey,
+                                    }
+                                  : seeded;
+                              }
                             );
                           }}
-                          valuePath={condition.field}
+                          valuePath={pickedPath}
                         />
+
+                        {condition.recordKey !== undefined && (
+                          <Input
+                            aria-label="Key"
+                            className="w-36"
+                            disabled={disabled}
+                            onChange={(event) =>
+                              updateCondition(
+                                group.id,
+                                condition.id,
+                                (existing) => ({
+                                  ...existing,
+                                  // The key alone: every key of a record carries
+                                  // the record's value type, so the operator and
+                                  // the value the builder already chose still
+                                  // stand. Rebuilding the rule here would throw
+                                  // them away on every keystroke.
+                                  recordKey: event.target.value,
+                                })
+                              )
+                            }
+                            placeholder="key"
+                            value={condition.recordKey}
+                          />
+                        )}
 
                         <Select
                           disabled={disabled}
@@ -790,7 +874,7 @@ export function ConditionBuilderRow({
                           condition={condition}
                           currentNodeId={currentNodeId}
                           disabled={disabled}
-                          enumValues={selectedFieldDef?.enumValues}
+                          field={selectedFieldDef}
                           onConditionChange={(nextCondition) => {
                             updateCondition(
                               group.id,
@@ -863,7 +947,7 @@ export function ConditionBuilderRow({
           )}
           {compiled?.valid && (
             <p className="text-muted-foreground text-xs">
-              Compiled CEL: {compiled.expression}
+              Compiled CEL: {displayTemplateText(compiled.expression)}
             </p>
           )}
         </>

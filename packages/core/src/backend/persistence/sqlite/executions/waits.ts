@@ -14,6 +14,7 @@ import {
 import { sqliteWaitState } from "#src/backend/persistence/sqlite/executions/rows";
 
 const WAIT_RESUME_CLAIM_LEASE_MS = 5 * 60 * 1000;
+const IN_FLIGHT = "'pending', 'running', 'waiting'";
 
 function claimWait(
   database: DatabaseSync,
@@ -30,7 +31,7 @@ function claimWait(
        WHERE ws.${column} = ?
          AND (ws.status = 'waiting' OR
               (ws.status = 'resuming' AND ws.resumed_at <= ?))
-         AND e.status = 'waiting'`
+          AND e.status IN (${IN_FLIGHT})`
     )
     .get(value, staleBefore);
   if (!candidate || typeof candidate.id !== "string") return null;
@@ -61,7 +62,7 @@ export function makeSqliteWaitsMethods(
         const parked = database
           .prepare(
             `UPDATE workflow_executions SET status = 'waiting', waiting_at = ?
-             WHERE id = ? AND status IN ('pending', 'running', 'waiting')`
+             WHERE id = ? AND status IN (${IN_FLIGHT})`
           )
           .run(now, input.executionId).changes;
         if (parked === 0) return undefined;
@@ -146,15 +147,10 @@ export function makeSqliteWaitsMethods(
         const filters = [
           "ws.workflow_id = ?",
           "ws.status = 'waiting'",
-          "e.run_mode = ?",
-          "e.status IN ('pending', 'running', 'waiting')",
+          `e.status IN (${IN_FLIGHT})`,
           "EXISTS (SELECT 1 FROM json_each(ws.subscribed_events) j WHERE j.value = ?)",
         ];
-        const values: SQLInputValue[] = [
-          input.workflowId,
-          input.runMode,
-          input.eventName,
-        ];
+        const values: SQLInputValue[] = [input.workflowId, input.eventName];
         if (input.afterId) {
           filters.push("ws.id > ?");
           values.push(input.afterId);

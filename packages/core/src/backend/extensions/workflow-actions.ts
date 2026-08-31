@@ -11,7 +11,7 @@ import { Effect } from "effect";
 import { findAction } from "@wfgraph/shared/extensions/catalog";
 import {
   literalFieldKeys,
-  templateObjectFieldKeys,
+  templateJsonFieldShapes,
 } from "@wfgraph/shared/plugins/action-fields";
 import {
   fetchCredentials,
@@ -76,7 +76,7 @@ export function createWorkflowActions(
       return {
         label: action.label,
         literalConfigKeys: literalFieldKeys(action.configFields),
-        templateObjectConfigKeys: templateObjectFieldKeys(action.configFields),
+        templateJsonConfigShapes: templateJsonFieldShapes(action.configFields),
       };
     },
     catalogFingerprint: () => fingerprintCatalog(extensions.catalog),

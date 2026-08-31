@@ -37,6 +37,7 @@ export function oauthExtensions(overrides: {
           label: "Example",
           description: "Test integration",
           hasTest: false,
+          hasWebhook: false,
           credentialFields: {
             ACCESS_TOKEN: { label: "Access token", type: "password" },
           },

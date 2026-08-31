@@ -18,7 +18,8 @@ and provides it through React context, so today that record is reachable from in
 repository alone.
 
 An integration is one `defineIntegration` value. It holds the credential form, an action
-per record key, and a loader for the connection test.
+per record key, the Events it owns, an optional webhook that produces them, and a loader
+for the connection test.
 
 ```ts
 import {
@@ -107,6 +108,29 @@ change to the outside world would land again with every paste. Note that this is
 narrower question than the replay sense of the phrase the next section uses, where a
 lookup's own HTTP call counts too because `step.run` has to memoize it. `defineAction`
 takes the same field.
+
+**`events` are `defineEvent` values this integration owns.** Assembly folds them into
+the one catalog and stamps `EventMetadata.integration`, so the editor can offer a
+Connection picker. Identity stays the Event name. An integration declaring Events
+must declare a webhook; an integration that only sends omits `webhook`.
+Export `defineEvent` from `@wfgraph/core/plugin`. An integration-owned Start, Cancel,
+or Wait Event must name a Connection at Publish.
+
+**`webhook` is the ungated intake** that verifies a vendor POST and maps it onto
+the webhook's `source` name for `inngest.send`. Catalog Events listen on that source
+and narrow with `source.when`. `receive` returns `{ data, id? }`; the route sends
+`source`. `verify` sees the raw body (`c.req.text()`), because HMAC schemes are
+sensitive to a single byte of re-serialization. `receive` sees the parsed JSON. An
+ignored payload is `undefined` (200, no send). `SignatureRejected` is 401. The
+Connection id is stamped on Inngest event `data` as `__wfgraphConnectionId` (v4
+does not persist `event.user`) and stripped before decode, so the payload the
+graph sees is the vendor envelope, including any `connectionId` the vendor sends
+of its own. Assembly refuses an integration Event declaring a payload field at
+the reserved key. Matching is the stored Connection on Lifecycle Rules and
+Wait Subscriptions, not a CEL field.
+`helpText` is shown under the copyable URL on the Lifecycle Node, Wait node, and
+Connection dialog. `secret` names the Connection credential `verify` reads; the
+editor uses it to tell a filled secret from a send-only Connection.
 
 **A handler takes one bag**, holding `input` (the decoded config), the credential reads,
 `step`, and the run's identity: `runMode`, `executionId`, `nodeId`, `nodeName`,
@@ -204,6 +228,12 @@ Order follows your entries, and Workflow Graph draws each key you left out after
 order. A group takes its position from your list, because its placement is a decision you
 make.
 
+A `key-value` field stores its rows as one JSON string, and each row's value carries
+`{{@nodeId:Label.path}}` references. The engine resolves them one row at a time and
+re-serialises, so a resolved value holding a quotation mark reaches your handler escaped
+rather than leaving the string unparseable. A row's name is left as authored, because it is
+the key of whatever you build from it.
+
 ### Fields the connection fills in
 
 A field whose choices live in the operator's own account names a provider instead of a
@@ -241,6 +271,39 @@ connection chosen, a grant too narrow to read what the field needs, or a value t
 already a `{{...}}` reference still types the value themselves. `checkIntegration` refuses a
 field naming a provider that does not exist or answers the wrong kind, so the wiring fails in
 your own suite rather than in someone's panel.
+
+### Fields that fall back to the connection
+
+An optional field whose handler reads a connection value when it is blank says so with
+`connectionDefaultKey`, and the editor draws that stored value as the field's placeholder.
+A builder then sees the address the send will actually go out as, instead of a generic
+example.
+
+```ts
+credentials: {
+  MY_SERVICE_FROM: { label: "Default Sender", type: "text" },
+},
+// ...on the action:
+configFields: [
+  {
+    key: "from",
+    label: "From",
+    type: "template-input",
+    placeholder: "Your Name <noreply@example.com>",
+    connectionDefaultKey: "MY_SERVICE_FROM",
+  },
+],
+// ...in the handler:
+const sender = input.from || credentials.MY_SERVICE_FROM;
+```
+
+The key names one of the fields your `credentials` record declares, and never a `password`
+one: the browser is served a mask in place of a secret, so there would be no value to draw.
+`checkIntegration` refuses both mistakes. The declaration is also what decides which stored
+values reach the editor at all -- a connection value no field names stays on the server.
+
+The fallback itself is the handler's, and the placeholder only reports it. Nothing fills the
+field in, so a blank field is still stored blank and the run reads the connection.
 
 ## Testing an integration
 
@@ -321,6 +384,21 @@ describe each field it means to pass on. `Schema.StructWithRest` over a `Schema.
 rest is the other spelling, for a shape that is genuinely open. A foreign library follows
 its own object policy for the same question (`z.looseObject` in Zod, for example).
 
+**An open record is addressable by key.** A `Schema.Record` names no properties, so the
+editor lists the record itself and asks for the key beside it: choosing `tags` on a
+condition draws a Key box, and the run reads `tags.order_id` off the payload. Resend's email
+tags are the case this is for. Declare the value type, because that is what a condition
+compares against; a record of strings makes `tags.order_id` a text rule. A rule whose key is
+still unnamed is refused rather than compared against the whole record.
+
+Where a `key-value` config field is what fills the record, name the record paths on it with
+`fillsRecords` and the editor offers the keys instead of asking for them. Resend's Tags field
+declares `["tags", "data.tags"]`: the first is the Send Email step's own output, the second is
+what every outbound `resend/email.*` Event carries, so tagging a send with `order_id` makes
+`data.tags.order_id` a path a Wait match can be built on. Paths are matched inside one
+integration. Treat it as a suggestion: a key nothing in the workflow names still resolves when
+it is typed.
+
 **Each side takes its own optional spelling.** The codec rewrites `optional(X)` to
 `optionalKey(NullOr(X))`.
 
@@ -333,17 +411,23 @@ Schema.optionalKey(Schema.String);
 Schema.optionalKey(Schema.NullOr(Schema.String));
 ```
 
+Either spelling reaches the editor as a nullable field. The condition picker badges
+such a path and offers `is set` and `is not set` on it, which is how a rule asks
+whether the value arrived at all, so leave a key optional only where the system
+really can omit it.
+
 ## Three rules
 
 **A handler sits inline, and that is the only spelling.** An integration is the one file,
 however many actions it declares, and its SDK, where it has one, is a plain import of that
 file.
 
-**`checkIntegration` is the assembly check, exported for your own suite.** Assembly calls it
-for each integration a host passes, so a bad definition fails the application that turned it
-on. Call it in the tests of the defining package and the failure lands where the author
-reads it, so an output schema the derivation cannot read is caught before a review sees a
-green run.
+**`checkIntegration` is the assembly check for one integration, exported for your own suite.**
+Assembly calls it for each integration a host passes, so a bad definition fails the
+application that turned it on: actions, credentials, provider-backed fields, Events, and
+the webhook that produces them. Cross-integration uniqueness (two plugins declaring the
+same Event name) stays in `assembleExtensions`. Call `checkIntegration` in the tests of
+the defining package and the failure lands where the author reads it.
 
 **Describe the wire.** The types of an SDK are its own promise about the JSON of somebody
 else, and a typed client casts a response rather than validating it. Model what a recorded

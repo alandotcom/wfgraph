@@ -25,6 +25,7 @@ import type {
 import { getErrorMessage } from "@wfgraph/shared/utils";
 import { ENCRYPTION_KEY_MISMATCH_MESSAGE } from "#src/backend/services/integrations/cipher";
 import {
+  connectionDefaultsForBrowser,
   createSecretConfigKeyTest,
   maskIntegrationConfig,
   SECRET_MASK,
@@ -51,6 +52,11 @@ type IntegrationSummary = {
   createdAt: string;
   updatedAt: string;
   configuredKeys: readonly string[];
+  /**
+   * The stored values a config field named with `connectionDefaultKey`, for the
+   * editor to draw as that field's placeholder. Never a secret.
+   */
+  connectionDefaults: Record<string, string>;
   oauth?: {
     status: "connected" | "reauthorization_required";
     connectedAt: string;
@@ -160,6 +166,11 @@ function toIntegrationSummary(
     createdAt: input.createdAt.toISOString(),
     updatedAt: input.updatedAt.toISOString(),
     configuredKeys,
+    connectionDefaults: connectionDefaultsForBrowser(
+      catalog,
+      input.type,
+      input.config
+    ),
     ...(grant
       ? {
           oauth: {

@@ -83,6 +83,7 @@ const anIntegration = (type: string): IntegrationMetadata => ({
   description: "",
   credentialFields: { apiKey: { label: "API key", type: "password" } },
   hasTest: false,
+  hasWebhook: false,
 });
 
 const catalogOf = (parts: Partial<ExtensionCatalog>): ExtensionCatalog => ({

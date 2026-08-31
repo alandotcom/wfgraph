@@ -17,6 +17,10 @@ import {
   type ActionConfigFieldBase,
   isFieldGroup,
 } from "@wfgraph/shared/plugins/action-fields";
+import {
+  type KeyValueRow,
+  readKeyValueRows,
+} from "@wfgraph/shared/plugins/key-value-rows";
 import { matchesShowWhen } from "@wfgraph/shared/types/show-when";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import { ProviderFieldsField } from "./provider-fields-field";
@@ -32,18 +36,30 @@ type FieldProps = {
    * own keys.
    */
   config: Record<string, unknown>;
+  /**
+   * What to show while the field is empty. Resolved by `renderField` rather
+   * than read off `field`, because a field that falls back to a Connection
+   * value shows that value instead of the catalog's example.
+   */
+  placeholder: string | undefined;
   onChange: (value: unknown) => void;
   disabled?: boolean;
 };
 
-function TemplateInputField({ field, value, onChange, disabled }: FieldProps) {
+function TemplateInputField({
+  field,
+  value,
+  onChange,
+  disabled,
+  placeholder,
+}: FieldProps) {
   return (
     <TemplateBadgeInput
       disabled={disabled}
       id={field.key}
       labelledBy={field.label ? `${field.key}-label` : undefined}
       onChange={onChange}
-      placeholder={field.placeholder}
+      placeholder={placeholder}
       required={field.required}
       value={typeof value === "string" ? value : ""}
     />
@@ -55,6 +71,7 @@ function TemplateTextareaField({
   value,
   onChange,
   disabled,
+  placeholder,
 }: FieldProps) {
   return (
     <TemplateBadgeTextarea
@@ -62,7 +79,7 @@ function TemplateTextareaField({
       id={field.key}
       labelledBy={field.label ? `${field.key}-label` : undefined}
       onChange={onChange}
-      placeholder={field.placeholder}
+      placeholder={placeholder}
       required={field.required}
       rows={field.rows || 4}
       value={typeof value === "string" ? value : ""}
@@ -70,19 +87,31 @@ function TemplateTextareaField({
   );
 }
 
-function TextInputField({ field, value, onChange, disabled }: FieldProps) {
+function TextInputField({
+  field,
+  value,
+  onChange,
+  disabled,
+  placeholder,
+}: FieldProps) {
   return (
     <Input
       disabled={disabled}
       id={field.key}
       onChange={(e) => onChange(e.target.value)}
-      placeholder={field.placeholder}
+      placeholder={placeholder}
       value={typeof value === "string" ? value : ""}
     />
   );
 }
 
-function NumberInputField({ field, value, onChange, disabled }: FieldProps) {
+function NumberInputField({
+  field,
+  value,
+  onChange,
+  disabled,
+  placeholder,
+}: FieldProps) {
   const displayValue =
     typeof value === "number" || typeof value === "string" ? `${value}` : "";
 
@@ -105,14 +134,20 @@ function NumberInputField({ field, value, onChange, disabled }: FieldProps) {
 
         onChange(parsed);
       }}
-      placeholder={field.placeholder}
+      placeholder={placeholder}
       type="number"
       value={displayValue}
     />
   );
 }
 
-function SelectField({ field, value, onChange, disabled }: FieldProps) {
+function SelectField({
+  field,
+  value,
+  onChange,
+  disabled,
+  placeholder,
+}: FieldProps) {
   if (!field.options) {
     return null;
   }
@@ -125,7 +160,7 @@ function SelectField({ field, value, onChange, disabled }: FieldProps) {
       value={typeof value === "string" ? value : ""}
     >
       <SelectTrigger className="w-full" id={field.key}>
-        <SelectValue placeholder={field.placeholder} />
+        <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
         {field.options.map((option) => (
@@ -138,39 +173,30 @@ function SelectField({ field, value, onChange, disabled }: FieldProps) {
   );
 }
 
-type KeyValueEntry = { name: string; value: string };
-type KeyValueEntryWithId = KeyValueEntry & { _id: string };
+type KeyValueEntryWithId = KeyValueRow & { _id: string };
 
 let kvIdCounter = 0;
 function nextKvId(): string {
   return `kv-${++kvIdCounter}`;
 }
 
-function isKeyValueEntry(e: unknown): e is KeyValueEntry {
-  if (typeof e !== "object" || e === null) {
-    return false;
-  }
-  if (!("name" in e && "value" in e)) {
-    return false;
-  }
-  return typeof e.name === "string" && typeof e.value === "string";
-}
-
-function parseKeyValueJson(raw: unknown): KeyValueEntry[] {
+function parseKeyValueJson(raw: unknown): KeyValueRow[] {
   if (typeof raw !== "string" || !raw) {
     return [];
   }
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return parsed.filter(isKeyValueEntry);
-    }
-  } catch {
-    // invalid JSON, return empty
-  }
-  return [];
+  return readKeyValueRows(raw) ?? [];
 }
 
+/**
+ * The rows a `key-value` field stores, with a template control on each value.
+ *
+ * The name column stays plain text: it is the key of whatever the step builds,
+ * and the systems that take one hold it to a short constrained alphabet, so a
+ * reference resolved into it would name a key nobody could match. A value is
+ * ordinary text, and the engine resolves each row's own before the step reads
+ * them (`templateJsonFieldShapes`), so a reference here reaches the wire escaped
+ * rather than breaking the JSON around it.
+ */
 function KeyValueField({ value, onChange, disabled }: FieldProps) {
   const [rows, setRows] = useState<KeyValueEntryWithId[]>(() =>
     parseKeyValueJson(value).map((e) => ({ ...e, _id: nextKvId() }))
@@ -211,11 +237,14 @@ function KeyValueField({ value, onChange, disabled }: FieldProps) {
             placeholder="Name"
             value={entry.name}
           />
-          <Input
-            aria-label="Value"
-            className="flex-1"
+          <TemplateBadgeInput
+            ariaLabel="Value"
+            // Sized against the Name box beside it: the shared Input is h-7 with
+            // px-2 py-0.5 at text-sm, and a template control left at its own
+            // min-h-9 made the two cells read as different kinds of control.
+            className="min-h-7 flex-1 bg-input/20 px-2 py-0.5 text-sm md:text-xs/relaxed dark:bg-input/30"
             disabled={disabled}
-            onChange={(e) => updateEntry(entry._id, "value", e.target.value)}
+            onChange={(next) => updateEntry(entry._id, "value", next)}
             placeholder="Value"
             value={entry.value}
           />
@@ -267,6 +296,7 @@ function renderField(
   field: ActionConfigFieldBase,
   config: Record<string, unknown>,
   onUpdateConfig: UpdateNodeConfig,
+  connectionDefaults: Record<string, string>,
   disabled?: boolean
 ) {
   // Check conditional rendering
@@ -276,6 +306,12 @@ function renderField(
 
   const rawValue = config[field.key];
   const value = rawValue ?? field.defaultValue ?? "";
+  // A field that falls back to a Connection value shows that value while it is
+  // empty, so a builder reads what the run would actually send rather than a
+  // generic example. Nothing is stored: this is the hint alone.
+  const placeholder = field.connectionDefaultKey
+    ? connectionDefaults[field.connectionDefaultKey] || field.placeholder
+    : field.placeholder;
   const FieldRenderer = FIELD_RENDERERS[field.type];
 
   return (
@@ -298,6 +334,7 @@ function renderField(
         disabled={disabled}
         field={field}
         onChange={(val) => onUpdateConfig({ [field.key]: val })}
+        placeholder={placeholder}
         value={value}
       />
     </div>
@@ -312,6 +349,7 @@ function FieldGroup({
   fields,
   config,
   onUpdateConfig,
+  connectionDefaults,
   disabled,
   defaultExpanded = false,
 }: {
@@ -319,6 +357,7 @@ function FieldGroup({
   fields: readonly ActionConfigFieldBase[];
   config: Record<string, unknown>;
   onUpdateConfig: UpdateNodeConfig;
+  connectionDefaults: Record<string, string>;
   disabled?: boolean;
   defaultExpanded?: boolean;
 }) {
@@ -341,7 +380,13 @@ function FieldGroup({
       {isExpanded && (
         <div className="ml-1 space-y-4 border-primary/50 border-l-2 py-2 pl-3">
           {fields.map((field) =>
-            renderField(field, config, onUpdateConfig, disabled)
+            renderField(
+              field,
+              config,
+              onUpdateConfig,
+              connectionDefaults,
+              disabled
+            )
           )}
         </div>
       )}
@@ -349,10 +394,19 @@ function FieldGroup({
   );
 }
 
+/** Stable, so a panel passing nothing does not re-render every field. */
+const NO_CONNECTION_DEFAULTS: Record<string, string> = {};
+
 type ActionConfigRendererProps = {
   fields: readonly ActionConfigField[];
   config: Record<string, unknown>;
   onUpdateConfig: UpdateNodeConfig;
+  /**
+   * What the Connection this node names holds for each key a field declared as
+   * its `connectionDefaultKey`. The panel above resolves it, because it already
+   * reads the connection list to draw the picker.
+   */
+  connectionDefaults?: Record<string, string>;
   disabled?: boolean;
 };
 
@@ -364,6 +418,7 @@ export function ActionConfigRenderer({
   fields,
   config,
   onUpdateConfig,
+  connectionDefaults = NO_CONNECTION_DEFAULTS,
   disabled,
 }: ActionConfigRendererProps) {
   return (
@@ -373,6 +428,7 @@ export function ActionConfigRenderer({
           return (
             <FieldGroup
               config={config}
+              connectionDefaults={connectionDefaults}
               defaultExpanded={field.defaultExpanded}
               disabled={disabled}
               fields={field.fields}
@@ -383,7 +439,13 @@ export function ActionConfigRenderer({
           );
         }
 
-        return renderField(field, config, onUpdateConfig, disabled);
+        return renderField(
+          field,
+          config,
+          onUpdateConfig,
+          connectionDefaults,
+          disabled
+        );
       })}
     </>
   );

@@ -44,6 +44,7 @@ const catalogLayer = stubExtensionCatalog({
       description: "Slack",
       credentialFields: {},
       hasTest: false,
+      hasWebhook: false,
     },
   ],
 });

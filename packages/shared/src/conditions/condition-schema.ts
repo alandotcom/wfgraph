@@ -60,6 +60,10 @@ function conditionRuleShape<TFieldType extends ConditionFieldType>(
     id: requiredTextSchema("Condition id is required"),
     field: requiredTextSchema("Condition field is required"),
     fieldType: Schema.Literal(fieldType),
+    // Blank on purpose where a rule reaches into an open record and nobody has
+    // named the key yet, so this is the one key here that a blank string is a
+    // meaningful value for. The compiler is what refuses it.
+    recordKey: Schema.optionalKey(Schema.String),
   };
 }
 

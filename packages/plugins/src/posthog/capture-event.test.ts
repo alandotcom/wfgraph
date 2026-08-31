@@ -208,6 +208,32 @@ describe("the capture-event action", () => {
     })
   );
 
+  // A row value carries templates, and the engine resolves each one on its own
+  // before the step reads them. Substituting into the whole string is what left
+  // the JSON unparseable and cost the capture every property, not one.
+  it.effect("keeps the rows when a value carries a quotation mark", () =>
+    Effect.gen(function* () {
+      const { credentials } = credentialsRead();
+
+      yield* runAction(posthog, "capture-event", {
+        input: {
+          eventName: "user_signed_up",
+          distinctId: "user_1",
+          properties: keyValue({
+            plan: "pro",
+            note: 'She said "hi"\nthen left',
+          }),
+        },
+        credentials,
+      });
+
+      expect(capturedEvent().properties).toEqual({
+        plan: "pro",
+        note: 'She said "hi"\nthen left',
+      });
+    })
+  );
+
   // A key-value row is always text, so the JSON box is the only way to send a
   // number or a boolean. It goes on last so one key can be overridden without
   // rewriting the rows.

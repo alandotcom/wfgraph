@@ -10,7 +10,16 @@
 
 import { Schema } from "effect";
 import { compact } from "es-toolkit/array";
-import { type ExtensionCatalog, findEvent } from "#src/extensions/catalog";
+import {
+  type ExtensionCatalog,
+  findEvent,
+  findIntegration,
+} from "#src/extensions/catalog";
+import {
+  connectionIdFor,
+  inheritConnections,
+  stampConnection,
+} from "#src/lifecycle/event-connections";
 import { NonEmptyTrimmedString, readAs } from "#src/types/schema";
 
 /**
@@ -60,6 +69,15 @@ export const lifecycleRulesSchema = Schema.Struct({
   correlationPaths: Schema.optional(
     Schema.Record(Schema.String, NonEmptyTrimmedString)
   ),
+
+  /**
+   * The Connection an integration-owned Event must arrive on, keyed by Event
+   * name so matching stays on the arrival. The editor offers one picker per
+   * integration and stamps every named Event of that integration with the same
+   * id. Host Events have none. Required at Publish for every named Event whose
+   * catalog entry carries `integration`.
+   */
+  connectionIds: Schema.optional(Schema.Record(Schema.String, Schema.String)),
 });
 
 export type LifecycleRules = typeof lifecycleRulesSchema.Type;
@@ -166,6 +184,11 @@ const refuse = (error: string): LifecycleRulesCheck => ({
  */
 export function unknownEventMessage(name: string): string {
   return `No Event named "${name}" is defined. Choose an Event this app declares, or ask whoever defines them to add it.`;
+}
+
+/** The sentence a save is refused with when a host Event names a Connection. */
+export function hostEventConnectionMessage(eventName: string): string {
+  return `Event "${eventName}" is owned by the host and cannot name a Connection. Remove the Connection ID from this Event.`;
 }
 
 /** Which node is asking a builder for an Event's Correlation Path. */
@@ -299,6 +322,114 @@ export function pruneCorrelationPaths(rules: LifecycleRules): LifecycleRules {
 }
 
 /**
+ * The named start and cancel Events as the shared Connection policy reads
+ * them. Matching still keys `connectionIds` by Event name.
+ */
+function namedEventConnections(rules: LifecycleRules) {
+  return [...rules.startEvents, ...rules.cancelEvents].map((event) => ({
+    event,
+    ...(rules.connectionIds?.[event]
+      ? { connectionId: rules.connectionIds[event] }
+      : {}),
+  }));
+}
+
+function writeEventConnections(
+  rules: LifecycleRules,
+  bindings: readonly { event: string; connectionId?: string }[]
+): LifecycleRules {
+  const next = Object.fromEntries(
+    bindings.flatMap((binding) =>
+      binding.connectionId ? [[binding.event, binding.connectionId]] : []
+    )
+  );
+
+  return {
+    ...rules,
+    connectionIds: Object.keys(next).length > 0 ? next : undefined,
+  };
+}
+
+/**
+ * The stored Connection for this integration among the named start and cancel
+ * Events, if any of them already hold one.
+ */
+export function connectionIdForIntegration(
+  rules: LifecycleRules,
+  catalog: ExtensionCatalog,
+  integration: string
+): string | undefined {
+  return connectionIdFor(namedEventConnections(rules), catalog, integration);
+}
+
+/**
+ * Stamp this Connection onto every named start and cancel Event of this
+ * integration. A blank id clears them.
+ *
+ * Two Resend Events share one picker; this is how choosing it writes both
+ * keys. Matching still reads `connectionIds[eventName]`.
+ */
+export function setConnectionForIntegration(input: {
+  rules: LifecycleRules;
+  catalog: ExtensionCatalog;
+  integration: string;
+  connectionId: string;
+}): LifecycleRules {
+  return writeEventConnections(
+    input.rules,
+    stampConnection({
+      bindings: namedEventConnections(input.rules),
+      catalog: input.catalog,
+      integration: input.integration,
+      connectionId: input.connectionId,
+    })
+  );
+}
+
+/**
+ * Copy a sibling's Connection onto named Events of the same integration that
+ * do not yet hold one.
+ *
+ * Adding Email delivered next to Email sent should not ask for the Resend
+ * Connection a second time.
+ */
+export function inheritConnectionIds(
+  rules: LifecycleRules,
+  catalog: ExtensionCatalog
+): LifecycleRules {
+  return writeEventConnections(
+    rules,
+    inheritConnections(namedEventConnections(rules), catalog)
+  );
+}
+
+/**
+ * `rules.connectionIds`, holding only Events that currently hold a start or
+ * cancel role.
+ *
+ * The panel calls this from every setter that can drop an Event, so a
+ * Connection chosen for an Event that just lost its role does not keep
+ * governing runs once its own control has left the screen.
+ */
+export function pruneConnectionIds(rules: LifecycleRules): LifecycleRules {
+  if (!rules.connectionIds) {
+    return rules;
+  }
+
+  const named = new Set([...rules.startEvents, ...rules.cancelEvents]);
+  const next = Object.fromEntries(
+    Object.entries(rules.connectionIds).filter(([eventName]) =>
+      named.has(eventName)
+    )
+  );
+
+  return {
+    ...rules,
+    connectionIds: Object.keys(next).length > 0 ? next : undefined,
+  };
+}
+
+/**
  * What a save is held to, as sentences a builder can be shown.
  *
  * The catalog is the vocabulary these rules are checked against, so a workflow
@@ -324,8 +455,17 @@ export function checkLifecycleRules(input: {
 
   const named = [...rules.startEvents, ...rules.cancelEvents];
   for (const name of named) {
-    if (!findEvent(catalog, name)) {
+    const event = findEvent(catalog, name);
+    if (!event) {
       return refuse(unknownEventMessage(name));
+    }
+    if (!event.integration && rules.connectionIds?.[name]) {
+      return refuse(hostEventConnectionMessage(name));
+    }
+    if (event.integration && !rules.connectionIds?.[name]) {
+      return refuse(
+        missingConnectionMessage(name, event.integration, catalog, "start")
+      );
     }
   }
 
@@ -359,4 +499,19 @@ export function checkLifecycleRules(input: {
  */
 function missingCorrelationPathMessage(eventName: string): string {
   return `Event "${eventName}" declares no Correlation Path. Enter the payload path holding the value that identifies the entity, or ask whoever defined the Event to declare it.`;
+}
+
+/**
+ * The sentence a save is refused with when an integration Event names no
+ * Connection. Lifecycle starts; a Wait resumes.
+ */
+export function missingConnectionMessage(
+  eventName: string,
+  integrationType: string,
+  catalog: ExtensionCatalog,
+  consequence: "start" | "resume"
+): string {
+  const label =
+    findIntegration(catalog, integrationType)?.label ?? integrationType;
+  return `Event "${eventName}" belongs to ${label} and needs a Connection. Pick one, or this workflow would ${consequence} on every ${label} Connection.`;
 }

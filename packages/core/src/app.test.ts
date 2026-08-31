@@ -21,6 +21,7 @@ import {
   publicRoutes,
 } from "#src/backend/api-app";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
+import { MAX_REQUEST_BODY_BYTES } from "#src/backend/lib/http/capped-body";
 import { connect as connectInngestSdk } from "inngest/connect";
 import { createInngestSurface } from "#src/backend/lib/inngest/client";
 import * as inngestClientModule from "#src/backend/lib/inngest/client";
@@ -88,9 +89,28 @@ describe("createWfGraphApp mounted at the root", () => {
       });
       // The build agent is off, because these options name no model key.
       expect(payload).toMatchObject({ agent: { enabled: false } });
-      // And those are the whole envelope. The browser reads exactly these two
-      // members, so a third here would be a surface the editor never sees.
+      // And those are the whole envelope when the host set no publicUrl.
+      // webhookIntake is present only then, so the editor can copy a URL.
       expect(Object.keys(payload as object)).toEqual(["catalog", "agent"]);
+    } finally {
+      await app.dispose();
+    }
+  });
+
+  it("includes webhook intake on the catalog envelope when publicUrl is set", async () => {
+    const app = await createWfGraphApp({
+      ...BASE_OPTIONS,
+      publicUrl: "https://workflows.example.com",
+    });
+    try {
+      const payload = (await (await get(app, "/api/extensions")).json()) as {
+        webhookIntake?: { publicUrl: string; apiBasePath: string };
+      };
+
+      expect(payload.webhookIntake).toEqual({
+        publicUrl: "https://workflows.example.com",
+        apiBasePath: "/api",
+      });
     } finally {
       await app.dispose();
     }
@@ -414,6 +434,29 @@ describe("createWfGraphApp with an auth predicate", () => {
       // callback and with it every workflow run.
       const inngest = await get(app, "/wfgraph/api/inngest");
       expect(inngest.status).not.toBe(401);
+    } finally {
+      await app.dispose();
+    }
+  });
+
+  it("bounds the body on the resume route, which host auth does not guard", async () => {
+    const app = await createGuardedApp(false);
+    try {
+      const response = await app.fetch(
+        new Request(
+          "http://localhost/wfgraph/api/workflows/waits/tok_1/resume",
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: "x".repeat(MAX_REQUEST_BODY_BYTES + 1),
+          }
+        )
+      );
+
+      expect(response.status).toBe(413);
+      expect(await response.json()).toEqual({
+        error: "Request body is too large",
+      });
     } finally {
       await app.dispose();
     }

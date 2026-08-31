@@ -1,6 +1,6 @@
 /**
- * An integration as one value: its credentials, its actions, and the connection
- * test behind them.
+ * An integration as one value: its credentials, its actions, the Events it
+ * owns, and the webhook that produces them.
  *
  * Nothing registers on import. A host hands the value to `createWfGraphApp` under
  * `extensions.integrations`, so the line that turns an integration on is a line
@@ -12,7 +12,13 @@
  * everything else an action needs, which is why nothing here mentions a handler.
  */
 
+import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
 import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
+import type { IntegrationWebhook } from "#src/backend/extensions/integration-webhook";
+import {
+  assertDistinctListenerIds,
+  assertSourcesAreDistinguishable,
+} from "#src/backend/extensions/event-uniqueness";
 import type { ConfigOptionsProvider } from "#src/backend/extensions/config-options";
 import {
   type ActionConfigFieldFor,
@@ -80,6 +86,17 @@ export type IntegrationDefinition = {
   readonly configOptions?: Readonly<Record<string, ConfigOptionsProvider>>;
   /** Keyed by action slug. */
   readonly actions: Readonly<Record<string, ActionStep>>;
+  /**
+   * Events this integration owns. Assembly folds them into the one catalog and
+   * stamps `EventMetadata.integration`, so the editor can offer a Connection
+   * picker. Identity stays the Event name; a webhook is how they arrive.
+   */
+  readonly events?: readonly AnyEventDefinition[];
+  /**
+   * The ungated intake that turns a vendor POST into an Event send. Absent when
+   * this integration only sends.
+   */
+  readonly webhook?: IntegrationWebhook;
 };
 
 /**
@@ -106,7 +123,10 @@ type ActionInputSide<TCredentials, TInput, TOutput> = {
   /** When true, the editor's action picker omits this action. */
   readonly hidden?: boolean;
   readonly input: InputSchema<TInput>;
-  readonly configFields?: readonly ActionConfigFieldFor<TInput>[];
+  readonly configFields?: readonly ActionConfigFieldFor<
+    TInput,
+    keyof TCredentials & string
+  >[];
   readonly handler: (
     bag: StepBag<NoInfer<TInput>, TCredentials>
   ) => HandlerAnswer<TOutput>;
@@ -145,8 +165,8 @@ export type Integration<
 };
 
 /**
- * Declare an integration: its credentials, its actions, and the connection test
- * behind them.
+ * Declare an integration: its credentials, its actions, the Events it owns, and
+ * the webhook that produces them.
  *
  * An action is an object literal, so the credential vocabulary and each action's
  * own input type reach its handler without an annotation. A handler naming a
@@ -194,6 +214,8 @@ export function defineIntegration<
     TInputs,
     TOutputs
   >;
+  readonly events?: readonly AnyEventDefinition[];
+  readonly webhook?: IntegrationWebhook<CredentialsOf<TCredentials>>;
 }): Integration<TInputs, TOutputs>;
 /**
  * The body runs on the erased shape. The signature above has said everything the
@@ -209,6 +231,8 @@ export function defineIntegration(input: {
   readonly test?: IntegrationTestLoader;
   readonly configOptions?: Readonly<Record<string, ConfigOptionsProvider>>;
   readonly actions: Readonly<Record<string, unknown>>;
+  readonly events?: readonly AnyEventDefinition[];
+  readonly webhook?: IntegrationWebhook;
 }): IntegrationDefinition {
   assertOrdinaryDeclarationRecord(input.type, "credentials", input.credentials);
   if (input.configOptions) {
@@ -255,6 +279,8 @@ export function defineIntegration(input: {
     test: input.test,
     ...(input.configOptions ? { configOptions: input.configOptions } : {}),
     actions: Object.fromEntries(actions),
+    ...(input.events ? { events: input.events } : {}),
+    ...(input.webhook ? { webhook: input.webhook } : {}),
   };
 }
 
@@ -291,14 +317,15 @@ export type CheckedAction = {
 };
 
 /**
- * Hold an integration's actions to what the editor and the engine need of them,
- * naming the offender.
+ * Hold an integration to what the editor and the engine need of it, naming the
+ * offender: actions, credentials, provider-backed fields, Events, and the
+ * webhook that produces them.
  *
  * Assembly calls this for every integration a host passes, so a bad definition
- * fails the app that turned it on. It is exported for the package that wrote the
+ * fails the app that turned it on. Cross-integration uniqueness stays in
+ * `assembleExtensions`. It is exported for the package that wrote the
  * definition to call in its own suite: a host meeting the throw at startup is the
- * right place for a host and the wrong place for the author, where a missing
- * annotation would otherwise pass review as a green run.
+ * right place for a host and the wrong place for the author.
  */
 export function checkIntegration(
   integration: IntegrationDefinition
@@ -332,6 +359,8 @@ export function checkIntegration(
     );
   }
 
+  checkIntegrationEvents(integration);
+
   return Object.entries(integration.actions).map(([slug, step]) => {
     if (!isSafeRecordKey(slug)) {
       throw new Error(
@@ -346,9 +375,71 @@ export function checkIntegration(
     );
 
     checkProviderBackedFields(id, integration, step);
+    checkConnectionDefaultKeys(id, integration, step);
 
     return { id, step, outputFields };
   });
+}
+
+/**
+ * Hold this integration's Events and webhook to what assembly will also refuse.
+ *
+ * Cross-integration uniqueness stays in `assembleExtensions`. What belongs here
+ * is everything true of this definition on its own: a webhook with no Events, a
+ * source name no Event listens on, a webhook secret that is not a credential,
+ * two Events that cannot be told apart, two names that slug to one listener.
+ */
+function checkIntegrationEvents(integration: IntegrationDefinition): void {
+  const events = integration.events ?? [];
+  const webhook = integration.webhook;
+
+  if (webhook && events.length === 0) {
+    throw new Error(
+      `Integration "${integration.type}" declares a webhook with no Events, so a verified POST would have nothing to become.`
+    );
+  }
+
+  if (events.length > 0 && !webhook) {
+    throw new Error(
+      `Integration "${integration.type}" declares Events but no webhook, so those Events have no intake.`
+    );
+  }
+
+  if (webhook && webhook.source.trim().length === 0) {
+    throw new Error(
+      `Integration "${integration.type}" declares a webhook without a source name.`
+    );
+  }
+
+  if (
+    webhook?.secret !== undefined &&
+    !(webhook.secret in integration.credentials)
+  ) {
+    throw new Error(
+      `Integration "${integration.type}" webhook secret "${webhook.secret}" is not a credential this integration declares.`
+    );
+  }
+
+  const byName = new Map<string, AnyEventDefinition>();
+
+  for (const event of events) {
+    const existing = byName.get(event.name);
+    if (existing && existing !== event) {
+      throw new Error(
+        `Integration "${integration.type}" declares two Events named "${event.name}".`
+      );
+    }
+    byName.set(event.name, event);
+
+    if (webhook && event.source.event !== webhook.source) {
+      throw new Error(
+        `Integration "${integration.type}" Event "${event.name}" arrives as "${event.source.event}", which is not this webhook's source "${webhook.source}".`
+      );
+    }
+  }
+
+  assertSourcesAreDistinguishable(events);
+  assertDistinctListenerIds(events);
 }
 
 function assertOrdinaryDeclarationRecord(
@@ -457,6 +548,43 @@ function checkProviderBackedFields(
           `${where} names the parameter "${parameter}", which is not a config field of this action.`
         );
       }
+    }
+  }
+}
+
+/**
+ * Hold a field's `connectionDefaultKey` to a Connection value the editor can
+ * actually draw.
+ *
+ * An undeclared key would leave the placeholder silently falling back to the
+ * static example, and a password key would draw the mask the browser is served
+ * in place of a secret, so both are caught where the definition is written.
+ */
+function checkConnectionDefaultKeys(
+  actionId: string,
+  integration: IntegrationDefinition,
+  step: ActionStep
+): void {
+  for (const field of flattenConfigFields(step.configFields)) {
+    const key = field.connectionDefaultKey;
+    if (!key) {
+      continue;
+    }
+
+    const where = `Action "${actionId}" field "${field.key}"`;
+    const declared = Object.hasOwn(integration.credentials, key)
+      ? integration.credentials[key]
+      : undefined;
+
+    if (!declared) {
+      throw new Error(
+        `${where} names the connection default "${key}", which integration "${integration.type}" does not declare.`
+      );
+    }
+    if (declared.type === "password") {
+      throw new Error(
+        `${where} names the connection default "${key}", which is a password field. The browser is served a mask in place of a secret, so it has no value to draw.`
+      );
     }
   }
 }

@@ -10,6 +10,7 @@ import {
   lastSaveErrorAtom,
   renameWorkflowAtom,
   saveWorkflowAtom,
+  successfulSaveGenerationAtom,
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -132,6 +133,20 @@ describe("saveWorkflowAtom", () => {
     await secondSave;
     expect(store.get(hasUnsavedChangesAtom)).toBe(false);
     expect(store.get(isSavingAtom)).toBe(false);
+  });
+
+  it("advances the workflow generation after a successful write", async () => {
+    const store = createSaveStore();
+
+    const save = store.set(
+      saveWorkflowAtom,
+      { nodes: [actionNode("node_1")], edges: [] },
+      { immediate: true }
+    );
+    pending.shift()?.resolve(savedWorkflow("workflow_1"));
+    await save;
+
+    expect(store.get(successfulSaveGenerationAtom).get("workflow_1")).toBe(1);
   });
 
   it("keeps unsaved changes when a stale save lands after a workflow switch", async () => {

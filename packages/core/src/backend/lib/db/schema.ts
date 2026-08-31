@@ -368,9 +368,9 @@ export const workflowExecutions = pgTable(
  *
  * The listener set is app-wide, so a delivered Event needs one indexed lookup to
  * find the workflows it concerns rather than a scan of every stored graph. The
- * rows are rewritten on publish from the published graph, and the fan-out
- * re-reads a workflow's rules before acting, so a row that somehow outlived its
- * graph costs a wasted read and nothing else. Draft saves leave this index alone.
+ * rows are rewritten on publish from the published graph. Connection and
+ * Correlation Path ride on the row so a delivery matches without reading the
+ * graph column. Draft saves leave this index alone.
  */
 export const workflowEventSubscriptions = pgTable(
   "workflow_event_subscriptions",
@@ -387,6 +387,12 @@ export const workflowEventSubscriptions = pgTable(
      * reading the graph column the rules sit in.
      */
     correlationPath: text("correlation_path"),
+    /**
+     * The Connection an integration-owned Event must arrive on. Null for a
+     * host Event. Delivery matches this from the index instead of reading the
+     * graph the rules sit in, the same way `correlationPath` already does.
+     */
+    connectionId: text("connection_id"),
   },
   (table) => [
     primaryKey({

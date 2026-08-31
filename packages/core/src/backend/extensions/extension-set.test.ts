@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { findIntegration } from "@wfgraph/shared/extensions/catalog";
 import { defineAction } from "#src/backend/extensions/define-action";
 import { defineEvent } from "#src/backend/extensions/define-event";
+import { CONNECTION_STAMP_KEY } from "#src/backend/lib/inngest/catalog-connection";
 import {
   defineIntegration,
   type IntegrationDefinition,
@@ -429,6 +430,54 @@ describe("assembleExtensions checks", () => {
     ).not.toThrow();
   });
 
+  it("refuses two Events on one source with duplicate filters", () => {
+    expect(() =>
+      assembleExtensions({
+        events: [
+          anEvent("appointment.created", {
+            event: "app/appointment.updated",
+            when: { path: "kind", equals: "created" },
+          }),
+          anEvent("appointment.created.again", {
+            event: "app/appointment.updated",
+            when: { path: "kind", equals: "created" },
+          }),
+        ],
+      })
+    ).toThrow(/same source filter/u);
+  });
+
+  it("refuses two Events on one source with filters on different paths", () => {
+    expect(() =>
+      assembleExtensions({
+        events: [
+          anEvent("appointment.created", {
+            event: "app/appointment.updated",
+            when: { path: "kind", equals: "created" },
+          }),
+          anEvent("appointment.canceled", {
+            event: "app/appointment.updated",
+            when: { path: "otherKind" as "kind", equals: "canceled" },
+          }),
+        ],
+      })
+    ).toThrow(/different source filter paths/u);
+  });
+
+  it("refuses an unfiltered Event alongside a filtered Event on one source", () => {
+    expect(() =>
+      assembleExtensions({
+        events: [
+          anEvent("appointment.created", { event: "app/appointment.updated" }),
+          anEvent("appointment.canceled", {
+            event: "app/appointment.updated",
+            when: { path: "kind", equals: "canceled" },
+          }),
+        ],
+      })
+    ).toThrow(/unfiltered Event overlaps every filtered Event/u);
+  });
+
   // The listener id is the Event name slugged, so two names differing only in
   // punctuation are one function to Inngest: it would sync one and drop the other.
   it("refuses two Events whose names slug to one listener id", () => {
@@ -586,7 +635,187 @@ describe("assembleExtensions and an integration definition", () => {
     const set = assembleExtensions({ integrations: [aDefinition("twilio")] });
 
     expect(findIntegration(set.catalog, "twilio")?.hasTest).toBe(false);
+    expect(findIntegration(set.catalog, "twilio")?.hasWebhook).toBe(false);
     expect(set.connectionTestFor("twilio")).toBeUndefined();
+    expect(set.webhookFor("twilio")).toBeUndefined();
+  });
+
+  it("folds an integration's Events into the catalog and stamps the owner", () => {
+    const delivered = defineEvent({
+      name: "resend/email.delivered",
+      label: "Email delivered",
+      schema: Schema.Struct({
+        type: Schema.String,
+        data: Schema.Struct({
+          email_id: Schema.String.annotate({ description: "Email ID" }),
+        }),
+      }),
+      correlationPath: "data.email_id",
+      source: {
+        event: "resend/webhook",
+        when: { path: "type", equals: "email.delivered" },
+      },
+    });
+    const webhook = {
+      source: "resend/webhook",
+      helpText: "Paste this URL into Resend.",
+      secret: "RESEND_WEBHOOK_SECRET" as const,
+      verify: () => Effect.void,
+      receive: () => undefined,
+    };
+    const set = assembleExtensions({
+      integrations: [
+        defineIntegration({
+          type: "resend",
+          label: "Resend",
+          description: "Sends email",
+          credentials: {
+            RESEND_WEBHOOK_SECRET: {
+              label: "Webhook Signing Secret",
+              type: "password",
+            },
+          },
+          actions: {},
+          events: [delivered],
+          webhook,
+        }),
+      ],
+    });
+
+    expect(set.catalog.events).toEqual([
+      expect.objectContaining({
+        name: "resend/email.delivered",
+        label: "Email delivered",
+        integration: "resend",
+        correlationPath: "data.email_id",
+      }),
+    ]);
+    expect(findIntegration(set.catalog, "resend")?.hasWebhook).toBe(true);
+    expect(findIntegration(set.catalog, "resend")?.webhookHelpText).toBe(
+      "Paste this URL into Resend."
+    );
+    expect(findIntegration(set.catalog, "resend")?.webhookSecretKey).toBe(
+      "RESEND_WEBHOOK_SECRET"
+    );
+    expect(set.webhookFor("resend")).toBe(webhook);
+    expect(set.eventByName("resend/email.delivered")).toBe(delivered);
+  });
+
+  // One `defineEvent` result listed by the host and by a plugin is the ordinary
+  // case: the plugin declared it, the host passed the plugin, and may also list
+  // it under `events`. Identity, not a second definition, is what keeps it.
+  it("keeps one Event when the host lists the same object an integration declared", () => {
+    const event = anEvent("resend/email.delivered", {
+      event: "resend/webhook",
+      when: { path: "kind", equals: "email.delivered" },
+    });
+    const set = assembleExtensions({
+      events: [event],
+      integrations: [
+        defineIntegration({
+          type: "resend",
+          label: "Resend",
+          description: "Sends email",
+          credentials: {},
+          actions: {},
+          events: [event],
+          webhook: {
+            source: "resend/webhook",
+            verify: () => Effect.void,
+            receive: () => undefined,
+          },
+        }),
+      ],
+    });
+
+    expect(set.events).toEqual([event]);
+    expect(set.catalog.events[0]?.integration).toBe("resend");
+  });
+
+  it("refuses one Event object claimed by two integrations", () => {
+    // Identity-equal, so indexEvents keeps it once; without this the owner would
+    // be whichever integration was declared last, and the catalog would offer
+    // only that one's Connections.
+    const event = anEvent("shared/email.delivered", {
+      event: "shared/webhook",
+    });
+    const claiming = (type: string) =>
+      defineIntegration({
+        type,
+        label: type,
+        description: `The ${type} integration`,
+        credentials: {},
+        actions: {},
+        events: [event],
+      });
+
+    expect(() =>
+      assembleExtensions({
+        integrations: [claiming("resend"), claiming("postmark")],
+      })
+    ).toThrow(
+      /Event "shared\/email.delivered" is declared by integrations "resend" and "postmark"/
+    );
+  });
+
+  it("refuses an integration Event declaring a field at the Connection stamp key", () => {
+    // The stamp is written onto `data` on the way out and removed on the way
+    // in, so a field declared there would never reach a condition or template.
+    expect(() =>
+      assembleExtensions({
+        integrations: [
+          defineIntegration({
+            type: "resend",
+            label: "Resend",
+            description: "Sends email",
+            credentials: {},
+            actions: {},
+            events: [
+              defineEvent({
+                name: "resend/email.delivered",
+                schema: Schema.Struct({
+                  [CONNECTION_STAMP_KEY]: Schema.String,
+                }),
+              }),
+            ],
+          }),
+        ],
+      })
+    ).toThrow(
+      /reserves for the Connection an integration Event arrived through/
+    );
+  });
+
+  it("leaves a host Event free to declare that key", () => {
+    // Nothing stamps a host Event, so the key carries no meaning there.
+    const set = assembleExtensions({
+      events: [
+        defineEvent({
+          name: "app/anything",
+          schema: Schema.Struct({ [CONNECTION_STAMP_KEY]: Schema.String }),
+        }),
+      ],
+    });
+
+    expect(set.catalog.events[0]?.name).toBe("app/anything");
+  });
+
+  it("refuses an integration Event whose name collides with a different host Event", () => {
+    expect(() =>
+      assembleExtensions({
+        events: [anEvent("resend/email.delivered")],
+        integrations: [
+          defineIntegration({
+            type: "resend",
+            label: "Resend",
+            description: "Sends email",
+            credentials: {},
+            actions: {},
+            events: [anEvent("resend/email.delivered")],
+          }),
+        ],
+      })
+    ).toThrow(/Two Events are defined with the name "resend\/email.delivered"/);
   });
 
   it("carries the credential form into the catalog", () => {

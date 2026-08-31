@@ -229,12 +229,14 @@ export function describeWorkflowConformance({
                   eventName: "appointment/created",
                   role: "start",
                   correlationPath: null,
+                  connectionId: null,
                 },
                 {
                   workflowId: "wf_1",
                   eventName: "appointment/created",
                   role: "start",
                   correlationPath: null,
+                  connectionId: null,
                 },
               ],
             });
@@ -364,12 +366,14 @@ export function describeWorkflowConformance({
                 eventName: "appointment/approved",
                 role: "start",
                 correlationPath: "data.id",
+                connectionId: null,
               },
               {
                 workflowId: "wf_1",
                 eventName: "appointment/approved",
                 role: "cancel",
                 correlationPath: null,
+                connectionId: null,
               },
             ],
           });
@@ -419,6 +423,7 @@ export function describeWorkflowConformance({
                 eventName: "appointment/approved",
                 role: "wait",
                 correlationPath: null,
+                connectionId: null,
               },
             ],
           });
@@ -469,6 +474,7 @@ export function describeWorkflowConformance({
                 eventName: "appointment/approved",
                 role: "start",
                 correlationPath: null,
+                connectionId: null,
               },
             ],
           });

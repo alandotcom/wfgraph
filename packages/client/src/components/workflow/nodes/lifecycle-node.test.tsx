@@ -1,6 +1,7 @@
 import { render } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { describe, expect, it } from "vitest";
+import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import {
   getStartSummary,
   LifecycleNode,
@@ -13,24 +14,69 @@ import {
   COMPARISON_NODE_ANNOTATION,
   type WorkflowNodeData,
 } from "#src/lib/workflow-graph-types";
+import {
+  emptyExtensionCatalog,
+  type ExtensionCatalog,
+} from "@wfgraph/shared/extensions/catalog";
+
+const labeledCatalog: ExtensionCatalog = {
+  ...emptyExtensionCatalog,
+  events: [
+    {
+      name: "app/appointment.created",
+      label: "Appointment created",
+      payloadFields: [],
+    },
+    {
+      name: "resend/email.sent",
+      label: "Email sent",
+      payloadFields: [],
+    },
+    {
+      name: "resend/email.delivered",
+      label: "Email delivered",
+      payloadFields: [],
+    },
+  ],
+};
 
 describe("getStartSummary", () => {
   // A workflow the panel has never touched is one the Run button starts, so the
   // canvas has to say so rather than contradict the button beside it.
   it("says manual runs for a node carrying no rules at all", () => {
-    expect(getStartSummary(undefined)).toBe("Manual runs only");
-    expect(getStartSummary({})).toBe("Manual runs only");
+    expect(getStartSummary(undefined, emptyExtensionCatalog)).toBe(
+      "Manual runs only"
+    );
+    expect(getStartSummary({}, emptyExtensionCatalog)).toBe("Manual runs only");
   });
 
-  it("names the Start Event when there is one", () => {
+  it("names the Start Event by its catalog label", () => {
     expect(
-      getStartSummary({
-        lifecycleRules: {
-          startEvents: ["app/appointment.created"],
-          cancelEvents: [],
-          concurrency: "unlimited",
+      getStartSummary(
+        {
+          lifecycleRules: {
+            startEvents: ["resend/email.sent", "resend/email.delivered"],
+            cancelEvents: [],
+            concurrency: "unlimited",
+          },
         },
-      })
+        labeledCatalog
+      )
+    ).toBe("On Email sent, Email delivered");
+  });
+
+  it("falls back to the event name when the catalog has no label", () => {
+    expect(
+      getStartSummary(
+        {
+          lifecycleRules: {
+            startEvents: ["app/appointment.created"],
+            cancelEvents: [],
+            concurrency: "unlimited",
+          },
+        },
+        emptyExtensionCatalog
+      )
     ).toBe("On app/appointment.created");
   });
 
@@ -38,14 +84,17 @@ describe("getStartSummary", () => {
   // canvas is where a builder finds out they made it.
   it("says nothing starts a workflow whose rules allow nothing", () => {
     expect(
-      getStartSummary({
-        lifecycleRules: {
-          startEvents: [],
-          cancelEvents: [],
-          concurrency: "unlimited",
-          allowManualStart: false,
+      getStartSummary(
+        {
+          lifecycleRules: {
+            startEvents: [],
+            cancelEvents: [],
+            concurrency: "unlimited",
+            allowManualStart: false,
+          },
         },
-      })
+        emptyExtensionCatalog
+      )
     ).toBe("Nothing starts this yet");
   });
 });
@@ -64,17 +113,23 @@ describe("LifecycleNode handles", () => {
     positionAbsoluteY: 0,
   } as const;
 
-  function renderLifecycleNode(data: WorkflowNodeData, selected = false) {
+  function renderLifecycleNode(
+    data: WorkflowNodeData,
+    selected = false,
+    catalog: ExtensionCatalog = emptyExtensionCatalog
+  ) {
     return render(
-      <ReactFlowProvider>
-        <LifecycleNode
-          data={data}
-          id="entry"
-          selected={selected}
-          type="lifecycle"
-          {...requiredNodeProps}
-        />
-      </ReactFlowProvider>
+      <ExtensionCatalogProvider value={catalog}>
+        <ReactFlowProvider>
+          <LifecycleNode
+            data={data}
+            id="entry"
+            selected={selected}
+            type="lifecycle"
+            {...requiredNodeProps}
+          />
+        </ReactFlowProvider>
+      </ExtensionCatalogProvider>
     );
   }
 
@@ -156,6 +211,29 @@ describe("LifecycleNode handles", () => {
     });
 
     expect(view.getByText("Manual runs only")).toBeTruthy();
+  });
+
+  it("prints Start Event labels on the card, not the stored event names", () => {
+    const view = renderLifecycleNode(
+      {
+        label: "Lifecycle",
+        description: "",
+        type: "lifecycle",
+        config: {
+          lifecycleRules: {
+            startEvents: ["resend/email.sent", "resend/email.delivered"],
+            cancelEvents: [],
+            concurrency: "unlimited",
+          },
+        },
+        status: "idle",
+      },
+      false,
+      labeledCatalog
+    );
+
+    expect(view.getByText("On Email sent, Email delivered")).toBeTruthy();
+    expect(view.queryByText(/resend\/email\.sent/)).toBeNull();
   });
 
   it("softens the Canceled chip when no Cancel Event is declared", () => {

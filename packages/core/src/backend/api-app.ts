@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { AgentConfig } from "#src/backend/agent/config";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
+import { readCappedText } from "#src/backend/lib/http/capped-body";
 import type { InngestServeHandler } from "#src/backend/lib/inngest/client";
 import { getAppLogger } from "#src/backend/lib/logger";
 import {
@@ -22,6 +23,8 @@ import {
 } from "#src/backend/rpc/openapi";
 import { rpcRouter } from "#src/backend/rpc/router";
 import { postWorkflowResume } from "#src/backend/services/workflows/lifecycle/resume";
+import { receiveWebhook } from "#src/backend/services/integrations/webhook-intake";
+import { WfGraphAppContext } from "#src/backend/lib/effect/app-context";
 import {
   createOAuthRoutes,
   OAUTH_CLIENT_METADATA_ROUTE,
@@ -47,6 +50,13 @@ const readParams = {
 } as const satisfies SchemaAST.ParseOptions;
 const readTokenParams = Schema.decodeUnknownResult(
   Schema.Struct({ token: NonEmptyTrimmedString }),
+  readParams
+);
+const readWebhookParams = Schema.decodeUnknownResult(
+  Schema.Struct({
+    type: NonEmptyTrimmedString,
+    connectionId: NonEmptyTrimmedString,
+  }),
   readParams
 );
 
@@ -80,27 +90,43 @@ function rpcProcedureOf(path: string): string | null {
   return procedure || null;
 }
 
+/** The refusal a route answers with when a sender exceeds the body ceiling. */
+const TOO_LARGE_BODY = { error: "Request body is too large" } as const;
+
 /**
  * Read a request body as the JSON object a resume call carries.
  *
  * Workflow Graph parses untrusted input at the route boundary, which is what the project
  * asks for anyway, so no validator middleware sits between the request and the
  * service. A body that is not JSON and a body that is JSON but not an object
- * both come back as a message the caller can act on.
+ * both come back as a message the caller can act on, and one over the ceiling
+ * comes back as the status that says so.
  */
 async function parseJsonObjectBody(
   request: Request
-): Promise<{ ok: true; data: JsonObject } | { ok: false; error: string }> {
-  let raw: unknown;
-  try {
-    raw = await request.json();
-  } catch {
-    return { ok: false, error: "Request body must be valid JSON" };
+): Promise<
+  | { ok: true; data: JsonObject }
+  | { ok: false; status: 400 | 413; error: string }
+> {
+  const raw = await readCappedText(request);
+  if (!raw.ok) {
+    return { ok: false, status: 413, ...TOO_LARGE_BODY };
   }
 
-  const body = readJsonObject(raw);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw.text);
+  } catch {
+    return { ok: false, status: 400, error: "Request body must be valid JSON" };
+  }
+
+  const body = readJsonObject(parsed);
   if (!body) {
-    return { ok: false, error: "Request body must be a JSON object" };
+    return {
+      ok: false,
+      status: 400,
+      error: "Request body must be a JSON object",
+    };
   }
 
   return { ok: true, data: body };
@@ -134,12 +160,15 @@ export type CreateApiAppOptions = {
  */
 const WAIT_RESUME_ROUTE = "/workflows/waits/:token/resume";
 
+const WEBHOOK_ROUTE = "/webhooks/:type/:connectionId";
+
 const INNGEST_SERVE_ROUTE = "/inngest";
 
 /**
  * Routes reached by machines, each carrying a credential of its own: Inngest
  * signs its HTTP callback (when that route is mounted), the resume path carries
- * a resume token. A session check would break both.
+ * a resume token, and a webhook carries the vendor's signature. A session check
+ * would break all three. Host `auth` must not consume the webhook body.
  *
  * Written as the exception, so a route added to this file is gated by default
  * and opening one is an edit here with a reason attached. Listing what to gate
@@ -157,8 +186,8 @@ export function machineRoutes(options: {
   serveInngest: boolean;
 }): readonly string[] {
   return options.serveInngest
-    ? [INNGEST_SERVE_ROUTE, WAIT_RESUME_ROUTE]
-    : [WAIT_RESUME_ROUTE];
+    ? [INNGEST_SERVE_ROUTE, WAIT_RESUME_ROUTE, WEBHOOK_ROUTE]
+    : [WAIT_RESUME_ROUTE, WEBHOOK_ROUTE];
 }
 
 /** OAuth client metadata is provider-discovery data, so it reaches no host auth. */
@@ -200,13 +229,13 @@ async function readRefusalMessage(res: Response): Promise<string | undefined> {
 }
 
 const OAUTH_ATTEMPT_LOG_PATH = /\/integrations\/oauth\/attempts\/[^/]+$/;
+const WEBHOOK_LOG_PATH = /\/webhooks\/([^/]+)\/[^/]+$/;
 
 /** Keep the provider state out of request records while preserving route identity. */
 export function requestLogPath(path: string): string {
-  return path.replace(
-    OAUTH_ATTEMPT_LOG_PATH,
-    "/integrations/oauth/attempts/:attemptId"
-  );
+  return path
+    .replace(OAUTH_ATTEMPT_LOG_PATH, "/integrations/oauth/attempts/:attemptId")
+    .replace(WEBHOOK_LOG_PATH, "/webhooks/$1/:connectionId");
 }
 
 export function createApiApp(options: CreateApiAppOptions) {
@@ -404,12 +433,20 @@ export function createApiApp(options: CreateApiAppOptions) {
     // editor learns it through: an Event, an action and an integration all reach it
     // here, the built-in Condition and Wait and a host's own actions included.
     .get("/extensions", async (c) => {
-      const [extensions, agent] = await runtime.runPromise(
-        Effect.all([Extensions, AgentConfig])
+      const [extensions, agent, appContext] = await runtime.runPromise(
+        Effect.all([Extensions, AgentConfig, WfGraphAppContext])
       );
       return c.json({
         catalog: extensions.catalog,
         agent: { enabled: agent.enabled },
+        ...(appContext.publicUrl
+          ? {
+              webhookIntake: {
+                publicUrl: appContext.publicUrl,
+                apiBasePath: appContext.apiBasePath,
+              },
+            }
+          : {}),
       });
     })
     .route("/", createOAuthRoutes({ basePath, runtime }))
@@ -432,7 +469,7 @@ export function createApiApp(options: CreateApiAppOptions) {
 
     const body = await parseJsonObjectBody(c.req.raw);
     if (!body.ok) {
-      return c.json({ error: body.error }, 400);
+      return c.json({ error: body.error }, body.status);
     }
 
     return await runtime.runPromise(
@@ -443,6 +480,34 @@ export function createApiApp(options: CreateApiAppOptions) {
       }).pipe(
         Effect.match({
           onSuccess: (data) => Response.json(data),
+          onFailure: (failure) => responseFromServiceFailure(failure),
+        })
+      )
+    );
+  });
+
+  routes.post(WEBHOOK_ROUTE, async (c) => {
+    const params = readWebhookParams(c.req.param());
+    if (Result.isFailure(params)) {
+      return c.json({ error: formatSchemaFailure(params.failure.issue) }, 400);
+    }
+
+    // Before the Connection is looked up, because the lookup is what this ceiling
+    // protects: host `auth` does not run here, so the sender is unauthenticated.
+    const rawBody = await readCappedText(c.req.raw);
+    if (!rawBody.ok) {
+      return c.json(TOO_LARGE_BODY, 413);
+    }
+
+    return await runtime.runPromise(
+      receiveWebhook({
+        type: params.success.type,
+        connectionId: params.success.connectionId,
+        rawBody: rawBody.text,
+        headers: c.req.raw.headers,
+      }).pipe(
+        Effect.match({
+          onSuccess: () => Response.json({ ok: true }),
           onFailure: (failure) => responseFromServiceFailure(failure),
         })
       )

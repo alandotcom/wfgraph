@@ -29,6 +29,12 @@ export const eventSubscriptionSchema = Schema.Struct({
   event: NonEmptyTrimmedString,
   /** Serialized `ConditionModel`, the same string the Condition node stores. */
   match: Schema.optional(Schema.String),
+  /**
+   * The Connection an integration-owned Event must arrive on. Host Events have
+   * none. Required at Publish when the Event's catalog entry carries
+   * `integration`.
+   */
+  connectionId: Schema.optional(Schema.String),
 });
 
 export type EventSubscription = typeof eventSubscriptionSchema.Type;

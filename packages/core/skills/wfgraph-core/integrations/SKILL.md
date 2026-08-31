@@ -34,12 +34,25 @@ The host passes it in `extensions.integrations`. Build against
 - `input` draws fields. `configFields` adds what a schema cannot (placeholder,
   `showWhen`, `provider-select`). `configOptions` load choices from the
   connection; never leak exception text (it can hold a key in a URL).
+- `connectionDefaultKey` names the credential a blank field falls back to, and
+  the editor draws that stored value as the placeholder. It must name a
+  declared credential and never a `password` one: the browser holds a mask in
+  place of a secret. The handler still has to apply the fallback itself.
 - Effect Schema crosses the canonical JSON codec both ways. Optional input uses
   `Schema.optionalKey`; a vendor null uses
   `Schema.optionalKey(Schema.NullOr(...))`. Annotate output fields with
-  `description`.
+  `description`. An optional output or payload key reaches the editor as a
+  nullable field, which is what offers a condition `is set`, so keep a key
+  required where the system always sends it.
 - `category` defaults to the integration `label`. `sideEffect: true` marks an
   external write; the editor keeps those out of a Group.
+- `events` are `defineEvent` values. Assembly stamps `EventMetadata.integration`.
+  Optional `webhook`: `verify` on the raw body, `receive` on parsed JSON.
+  `secret` names the Connection credential that verifies a POST. `helpText`
+  is the paste-URL sentence; the editor asks for the secret only when that
+  Connection does not yet hold it.
+  `SignatureRejected` is 401. Ignored payload is `undefined` (200, no send).
+  Export `defineEvent` and webhook types from `@wfgraph/core/plugin`.
 
 The browser UI record (`@wfgraph/plugins/ui`) is not a public host API for
 outside packages today.
@@ -55,7 +68,8 @@ function after a sleep, wait, or retry. Work with a side effect goes in
 - `callExternal` answers an Effect (timeout, retry, JSON decode, three
   failures: `ExternalUnreachable`, `ExternalRejected`, `ExternalUnreadable`).
 - An SDK earns its place only when it owns protocol (Clerk JWT, Linear
-  GraphQL). Do not wrap Twilio/Slack/Resend-style HTTP SDKs.
+  GraphQL, Svix webhook signatures). Do not wrap Twilio/Slack/Resend-style HTTP
+  SDKs.
 - What `step.run` answers must be JSON. Carry timestamps as ISO strings.
 - `StepFailure` travels as a value, so a refused call fails the node once
   rather than burning function-level retries.
@@ -90,7 +104,8 @@ wfgraph-plugins.
 - `runAction`, `actionData`, `actionError` from `@wfgraph/core/testing`. The
   slug is typed. `input` is the encoded side (what a builder typed).
 - Call `checkIntegration` in the defining package's suite. Assembly runs the
-  same check.
+  same per-integration check (actions, Events, webhook). Cross-integration
+  uniqueness stays in `assembleExtensions`.
 - Published workflows pin action ids and config/output **keys**, not handler
   bodies. Add config keys with `Schema.optionalKey` only. Add output paths
   only. Never rename or remove a live key.

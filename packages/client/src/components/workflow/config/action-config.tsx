@@ -51,6 +51,7 @@ import { ConditionBuilderRow } from "./condition-builder-row";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import { WaitEventSelect } from "./wait-event-select";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
+import { settledProviderParameter } from "#src/lib/provider-parameters";
 import {
   readConfigString,
   readConfigStringOr,
@@ -673,6 +674,12 @@ export function ActionConfig({
   const { data: globalIntegrations = [] } = useQuery(
     integrationsQueryOptions()
   );
+  // What the Connection this node names holds for the keys its fields fall back
+  // to. Read here rather than in the renderer, because the list is already in
+  // hand for the picker below.
+  const connectionDefaults = globalIntegrations.find(
+    (entry) => entry.id === settledProviderParameter(config.integrationId)
+  )?.connectionDefaults;
   const { push } = useOverlay();
 
   const handleCategoryChange = (newCategory: string) => {
@@ -881,6 +888,7 @@ export function ActionConfig({
       {catalogAction && catalogAction.configFields.length > 0 && (
         <ActionConfigRenderer
           config={config}
+          connectionDefaults={connectionDefaults}
           disabled={disabled}
           fields={catalogAction.configFields}
           onUpdateConfig={onUpdateConfig}

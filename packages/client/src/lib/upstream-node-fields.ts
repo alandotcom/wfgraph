@@ -1,4 +1,5 @@
-import { compact, partition } from "es-toolkit/array";
+import { compact, partition, uniq } from "es-toolkit/array";
+import { omit } from "es-toolkit/object";
 import {
   type EventMetadata,
   type ExtensionCatalog,
@@ -12,18 +13,25 @@ import {
 } from "@wfgraph/shared/conditions/conditions";
 import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
 import {
+  appendOutputPathKey,
   fieldsVisibleForConfig,
-  type ReferenceField,
-  type UpstreamField,
 } from "@wfgraph/shared/graph/node-references";
 import {
   type ReachableField,
   reachableEventFields,
 } from "@wfgraph/shared/graph/reachable-fields";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
+import {
+  collectOpenRecordKeys,
+  keysForRecord,
+} from "#src/lib/open-record-keys";
 import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
 import { readConfigString } from "@wfgraph/shared/graph/node-config";
 import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
+import type {
+  WorkflowSchemaFieldType,
+  WorkflowSchemaItemType,
+} from "@wfgraph/shared/graph/schema-codec";
 
 export { getNodeDisplayName };
 
@@ -33,7 +41,34 @@ export type ConditionSelectableField = ConditionFieldDefinition & {
   sourceNodeLabels: string[];
   nullable?: boolean;
   enumValues?: string[];
+  /** Human labels for `enumValues`, keyed by the stored comparison value. */
+  enumLabels?: Readonly<Record<string, string>>;
+  /**
+   * The record a graph-derived key sits under, and the key itself.
+   *
+   * A row like `tags.name` is a shortcut for a record plus a key the graph
+   * happens to name, so it carries the split the rule stores rather than
+   * leaving the picker to take the path apart again.
+   */
+  recordPath?: string;
+  recordKey?: string;
 };
+
+/**
+ * The field a rule names.
+ *
+ * A rule stores the path the picker offered and, for an open record, its key
+ * beside it, so every path a rule holds is one this list already carries. The
+ * lookup is therefore exact: what is left for this function is saying so in one
+ * place, which is what keeps the picker, the summary and the reconcile from
+ * disagreeing about whether a rule still points at anything.
+ */
+export function conditionFieldForPath(
+  fields: readonly ConditionSelectableField[],
+  path: string
+): ConditionSelectableField | undefined {
+  return fields.find((field) => field.path === path);
+}
 
 /**
  * A field together with the picker section it belongs under, where that differs
@@ -47,6 +82,12 @@ export type SourcedField = Omit<ReachableField, "declaredBy"> & {
   sourceLabel?: string;
   /** The Events reaching the node that leave this path out, by label. */
   absentOn?: string[];
+  /**
+   * Whose vocabulary this path belongs to, where an integration owns it. Read
+   * only for an open record, to scope the keys the graph fills it with
+   * (`open-record-keys.ts`), so one integration's rows never name another's.
+   */
+  integration?: string;
 };
 
 /** One upstream field, under the node that produced it. */
@@ -75,8 +116,14 @@ function entryPayloadFields(events: readonly EventMetadata[]): SourcedField[] {
       declaredBy.includes(event.name)
     );
 
+    // The declaring Events agreeing on one owner is what makes the path that
+    // owner's. Two integrations declaring it leaves it owned by neither, which
+    // is the same stance `reachableEventFields` takes on a clashing type.
+    const owners = uniq(compact(declaring.map((event) => event.integration)));
+
     return {
       ...field,
+      ...(owners.length === 1 ? { integration: owners[0] } : {}),
       ...(absent.length > 0
         ? { absentOn: absent.map((event) => event.label) }
         : {}),
@@ -107,10 +154,16 @@ export function eventsReachingTarget(request: FieldRequest): EventMetadata[] {
 function getPluginActionOutputFields(
   catalog: ExtensionCatalog,
   actionType: string
-): ReferenceField[] {
+): SourcedField[] {
   const action = findAction(catalog, actionType);
+  if (!action) {
+    return [];
+  }
 
-  return action ? [...action.outputFields] : [];
+  return action.outputFields.map((field) => ({
+    ...field,
+    ...(action.integration ? { integration: action.integration } : {}),
+  }));
 }
 
 /**
@@ -201,7 +254,9 @@ export function getUpstreamFields(input: {
   });
 }
 
-function toConditionFieldType(field: UpstreamField): ConditionFieldType | null {
+function toConditionFieldType(field: {
+  type?: WorkflowSchemaFieldType;
+}): ConditionFieldType | null {
   if (field.type === "timestamp") {
     return "timestamp";
   }
@@ -229,6 +284,50 @@ function toConditionFieldType(field: UpstreamField): ConditionFieldType | null {
 }
 
 /**
+ * The rule vocabulary one catalog field offers, records included.
+ *
+ * An open record is an object, and an object has no operators, so reading its
+ * own type would drop it. What a rule actually compares is a key under it, so
+ * the record answers with the type its values carry and the row asks for the
+ * key. Anything else answers for itself.
+ */
+function conditionTypeOf(field: {
+  type?: WorkflowSchemaFieldType;
+  valueType?: WorkflowSchemaItemType;
+}): ConditionFieldType | null {
+  return toConditionFieldType(
+    field.valueType ? { type: field.valueType } : field
+  );
+}
+
+/**
+ * The rows a record's known keys become, beside the record itself.
+ *
+ * The record entry stays, because a key nothing in this graph writes is still a
+ * key somebody can name. What is added is the keys the graph does write, which
+ * is the difference between a picker offering only "a tag" and one offering
+ * `tags.name` because a Send Email node upstream set it.
+ *
+ * Each row carries the split a rule stores, so choosing one writes the same rule
+ * as choosing the record and typing the key. Nullable, because a record promises
+ * no particular key: the node that fills it may not have run on the path this
+ * rule is read on, and an email tagged elsewhere carries whatever it carries.
+ */
+function keyFieldsUnderRecord(
+  record: ConditionSelectableField,
+  keys: readonly string[]
+): ConditionSelectableField[] {
+  return keys.map((key) => ({
+    ...omit(record, ["openRecord"]),
+    path: appendOutputPathKey(record.path, key),
+    label: appendOutputPathKey(record.path, key),
+    recordPath: record.path,
+    recordKey: key,
+    nullable: true,
+  }));
+}
+
+/**
  * The typed vocabulary a Wait node's match editor builds rules from: the fields
  * of the Event being waited on, as the catalog declares them.
  *
@@ -239,35 +338,50 @@ function toConditionFieldType(field: UpstreamField): ConditionFieldType | null {
  */
 export function getEventConditionFields(
   catalog: ExtensionCatalog,
-  eventName: string
+  eventName: string,
+  // The Event's own payload is the vocabulary. The nodes come along for its open
+  // records alone: the tags a `resend/email.delivered` carries are the tags a
+  // Send Email node in this workflow set, so the graph is where their names are.
+  // Required rather than defaulted, because a caller that forgot it would get a
+  // picker quietly missing every key the graph names.
+  nodes: readonly WorkflowNode[]
 ): ConditionSelectableField[] {
   const event = findEvent(catalog, eventName);
   if (!event) {
     return [];
   }
 
+  const graphKeys = collectOpenRecordKeys(nodes, catalog);
+
   return compact(
-    event.payloadFields.map((field) => {
+    event.payloadFields.flatMap((field) => {
       const path = field.path.trim();
-      const type = toConditionFieldType({
-        ...field,
-        sourceNodeId: eventName,
-        sourceNodeName: event.label,
-      });
+      const type = conditionTypeOf(field);
       if (!(path && type)) {
-        return null;
+        return [null];
       }
 
-      return {
+      const entry: ConditionSelectableField = {
         path,
         label: path,
         type,
         sourceNodeId: eventName,
         sourceNodeLabel: event.label,
         sourceNodeLabels: [event.label],
+        ...(field.valueType ? { openRecord: true as const } : {}),
         ...(field.nullable ? { nullable: true } : {}),
         ...(field.enumValues ? { enumValues: field.enumValues } : {}),
       };
+
+      return field.valueType
+        ? [
+            entry,
+            ...keyFieldsUnderRecord(
+              entry,
+              keysForRecord(graphKeys, event.integration, path)
+            ),
+          ]
+        : [entry];
     })
   ).toSorted((a, b) => a.path.localeCompare(b.path));
 }
@@ -302,12 +416,9 @@ function eventNameConditionField(input: {
     edges,
     catalog,
   });
-  if (events.length < 2) {
-    return [];
-  }
-
-  return [
-    {
+  const fields: ConditionSelectableField[] = [];
+  if (events.length >= 2) {
+    fields.push({
       path: EVENT_NAME_FIELD_PATH,
       label: EVENT_NAME_FIELD_LABEL,
       type: "string",
@@ -315,8 +426,12 @@ function eventNameConditionField(input: {
       sourceNodeLabel: SHARED_EVENT_FIELDS_LABEL,
       sourceNodeLabels: [SHARED_EVENT_FIELDS_LABEL],
       enumValues: events.map((event) => event.name),
-    },
-  ];
+      enumLabels: Object.fromEntries(
+        events.map((event) => [event.name, event.label])
+      ),
+    });
+  }
+  return fields;
 }
 
 export function getUpstreamConditionFields(input: {
@@ -328,6 +443,7 @@ export function getUpstreamConditionFields(input: {
   const fieldsByPath = new Map<string, ConditionSelectableField>(
     eventNameConditionField(input).map((field) => [field.path, field])
   );
+  const graphKeys = collectOpenRecordKeys(input.nodes, input.catalog);
 
   for (const field of getUpstreamFields(input)) {
     const path = field.path.trim();
@@ -337,7 +453,7 @@ export function getUpstreamConditionFields(input: {
       continue;
     }
 
-    const conditionFieldType = toConditionFieldType(field);
+    const conditionFieldType = conditionTypeOf(field);
     if (!conditionFieldType) {
       continue;
     }
@@ -351,16 +467,34 @@ export function getUpstreamConditionFields(input: {
       continue;
     }
 
-    fieldsByPath.set(path, {
+    const entry: ConditionSelectableField = {
       path,
       label: path,
       type: conditionFieldType,
       sourceNodeId: field.sourceNodeId,
       sourceNodeLabel: field.sourceNodeName,
       sourceNodeLabels: [field.sourceNodeName],
+      ...(field.valueType ? { openRecord: true as const } : {}),
       ...(field.nullable ? { nullable: true } : {}),
       ...(field.enumValues ? { enumValues: field.enumValues } : {}),
-    });
+    };
+    fieldsByPath.set(path, entry);
+
+    if (!field.valueType) {
+      continue;
+    }
+
+    // The keys this graph fills the record with, offered beside it. A path
+    // already listed stays as it is: a schema declaring it says more than a
+    // config row naming it.
+    for (const keyField of keyFieldsUnderRecord(
+      entry,
+      keysForRecord(graphKeys, field.integration, path)
+    )) {
+      if (!fieldsByPath.has(keyField.path)) {
+        fieldsByPath.set(keyField.path, keyField);
+      }
+    }
   }
 
   return Array.from(fieldsByPath.values()).toSorted((a, b) =>

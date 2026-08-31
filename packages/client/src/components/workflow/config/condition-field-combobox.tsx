@@ -10,7 +10,10 @@ import {
   ComboboxLabel,
   ComboboxList,
 } from "#src/components/ui/combobox";
-import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
+import {
+  conditionFieldForPath,
+  type ConditionSelectableField,
+} from "#src/lib/upstream-node-fields";
 
 /** One section in the picker: the node (or Event) the fields belong under. */
 type ConditionFieldGroup = {
@@ -65,14 +68,22 @@ function groupsBySource(
     }));
 }
 
+/**
+ * The list the picker shows, and which of its entries the rule currently names.
+ *
+ * The list never depends on what has been typed. Base UI reads the input back
+ * off a fresh `items` array, so rebuilding this per keystroke wipes the query
+ * mid-search; the open record earns its key through `keyUnderOpenRecord`
+ * instead, which needs no new item.
+ */
 function pickerItems(
   fields: readonly ConditionSelectableField[],
   valuePath: string
 ): { selected: ConditionSelectableField; groups: ConditionFieldGroup[] } {
-  const fromCatalog = fields.find((field) => field.path === valuePath);
   const groups = groupsBySource(fields);
-  if (fromCatalog) {
-    return { selected: fromCatalog, groups };
+  const chosen = conditionFieldForPath(fields, valuePath);
+  if (chosen) {
+    return { selected: chosen, groups };
   }
 
   const selected = unavailableField(valuePath);
@@ -166,35 +177,42 @@ export function ConditionFieldCombobox({
             <ComboboxGroup items={group.items} key={group.value}>
               <ComboboxLabel>{group.value}</ComboboxLabel>
               <ComboboxCollection>
-                {(field: ConditionSelectableField) => (
-                  <ComboboxItem
-                    className="items-start"
-                    key={field.path}
-                    value={field}
-                  >
-                    <span className="flex w-full flex-col items-start">
-                      <span className="flex items-center gap-1.5">
-                        {field.label}
-                        {field.nullable && (
-                          <span className="rounded bg-muted px-1 py-0.5 font-normal text-xs text-muted-foreground leading-none">
-                            nullable
+                {(field: ConditionSelectableField) => {
+                  return (
+                    <ComboboxItem
+                      className="items-start"
+                      key={field.path}
+                      value={field}
+                    >
+                      <span className="flex w-full flex-col items-start">
+                        <span className="flex items-center gap-1.5">
+                          {field.label}
+                          {field.nullable && (
+                            <span className="rounded bg-muted px-1 py-0.5 font-normal text-xs text-muted-foreground leading-none">
+                              nullable
+                            </span>
+                          )}
+                        </span>
+                        {field.openRecord && (
+                          <span className="text-muted-foreground text-xs">
+                            One key of this record, named beside it
+                          </span>
+                        )}
+                        {field.sourceNodeLabels.length > 1 && (
+                          <span className="text-muted-foreground text-xs">
+                            Also from{" "}
+                            {field.sourceNodeLabels
+                              .filter(
+                                (sourceLabelName) =>
+                                  sourceLabelName !== group.value
+                              )
+                              .join(", ")}
                           </span>
                         )}
                       </span>
-                      {field.sourceNodeLabels.length > 1 && (
-                        <span className="text-muted-foreground text-xs">
-                          Also from{" "}
-                          {field.sourceNodeLabels
-                            .filter(
-                              (sourceLabelName) =>
-                                sourceLabelName !== group.value
-                            )
-                            .join(", ")}
-                        </span>
-                      )}
-                    </span>
-                  </ComboboxItem>
-                )}
+                    </ComboboxItem>
+                  );
+                }}
               </ComboboxCollection>
             </ComboboxGroup>
           )}

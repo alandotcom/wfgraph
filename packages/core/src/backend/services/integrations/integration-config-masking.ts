@@ -8,6 +8,7 @@
 
 import {
   type ExtensionCatalog,
+  fieldsForIntegration,
   findIntegration,
 } from "@wfgraph/shared/extensions/catalog";
 import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
@@ -65,4 +66,43 @@ export function maskIntegrationConfig(
   }
 
   return maskedConfig;
+}
+
+/**
+ * The Connection values the editor may draw as a config field's placeholder.
+ *
+ * A field says which Connection value it falls back to with
+ * `connectionDefaultKey`, and that declaration is the whole allowlist: a stored
+ * value no field names never reaches the browser, however harmless it looks.
+ *
+ * The secret test below cannot fire in an assembled app, because
+ * `checkIntegration` already refused a password key against the same
+ * declaration this catalog was built from. It is kept as the last gate before a
+ * value leaves the process, where one `&&` is cheaper than the failure it
+ * guards.
+ */
+export function connectionDefaultsForBrowser(
+  catalog: ExtensionCatalog,
+  type: string,
+  config: IntegrationConfig
+): Record<string, string> {
+  // Fail-closed for free: an integration the catalog does not hold contributes
+  // no fields to walk, so this answers the empty record without a case of its
+  // own.
+  const isSecretKey = createSecretConfigKeyTest(catalog, type);
+  const defaults: Record<string, string> = {};
+
+  for (const field of fieldsForIntegration(catalog, type)) {
+    const key = field.connectionDefaultKey;
+    if (!key || isSecretKey(key)) {
+      continue;
+    }
+
+    const value = config[key];
+    if (typeof value === "string" && value) {
+      defaults[key] = value;
+    }
+  }
+
+  return defaults;
 }

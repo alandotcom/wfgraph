@@ -122,3 +122,13 @@ A Workflow Builder declares the Lifecycle Rules in the Lifecycle panel:
 `CONTEXT.md` defines Lifecycle Node, Start Event, Cancel Events, Arriving Event, Concurrency,
 Precedence, Refused Start, and Execution status in full. `docs/adr/0007` says why the model looks like
 this. An Event Author designs against that shape.
+
+## Integration-owned Events
+
+An integration may declare Events on `defineIntegration`. They are ordinary Events:
+name identity, payload schema, Correlation Path, optional umbrella `source`. The
+catalog stamps the owner so the editor offers a Connection picker. Publish requires
+a Connection for a Start, Cancel, or Wait that names one of these. Host Events still
+arrive through `inngest.send` with no Connection. The webhook route that produces
+integration Events is on machine routes; see `docs/embedding.md` and
+`docs/integrations.md`.

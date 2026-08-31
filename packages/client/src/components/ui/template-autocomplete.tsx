@@ -10,9 +10,15 @@ import {
   getUpstreamNodes,
   type SourcedField,
 } from "#src/lib/upstream-node-fields";
+import {
+  collectOpenRecordKeys,
+  keysForRecord,
+} from "#src/lib/open-record-keys";
 import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
 import { cn } from "@wfgraph/shared/utils";
+import type { WorkflowSchemaItemType } from "@wfgraph/shared/graph/schema-codec";
 import {
+  appendOutputPathKey,
   formatTemplateToken,
   type ReferenceField,
 } from "@wfgraph/shared/graph/node-references";
@@ -92,7 +98,62 @@ type TemplateOption = {
   unusable?: string;
   /** The Events reaching this node that leave the path out. */
   absentOn?: string[];
+  /** Internal record metadata used to complete a key typed under an open record. */
+  recordOnly?: boolean;
+  /**
+   * Set on an open record, such as Resend's email tags: the type a key under
+   * `field` carries. `keyUnderOpenRecordOptions` turns it into a row.
+   */
+  valueType?: WorkflowSchemaItemType;
 };
+
+/**
+ * The row for a key somebody typed under an open record, or nothing.
+ *
+ * A record's keys are invented by the payload, so the menu cannot list them all.
+ * What it can do is recognise one the moment it is written: typing
+ * `data.tags.order_id` finds every `data.tags` record and offers the full path,
+ * which `resolveOutputPath` walks at run time the same way. The query is matched
+ * against each record's own path, so it is the path alone rather than the node
+ * name and the path together.
+ */
+function keyUnderOpenRecordOptions(
+  options: readonly TemplateOption[],
+  query: string,
+  targetType: ValueTargetType | undefined
+): TemplateOption[] {
+  return options.flatMap((record) => {
+    if (
+      !record.valueType ||
+      !record.field ||
+      !query.startsWith(`${record.field}.`) ||
+      !offeredFor({ type: record.valueType }, targetType)
+    ) {
+      return [];
+    }
+
+    const key = query.slice(record.field.length + 1);
+    if (!key) {
+      return [];
+    }
+
+    const fieldPath = appendOutputPathKey(record.field, key);
+    return [
+      {
+        type: "field",
+        rank: fieldRank({ type: record.valueType }, targetType, undefined),
+        nodeId: record.nodeId,
+        nodeName: record.nodeName,
+        field: fieldPath,
+        template: formatTemplateToken({
+          nodeId: record.nodeId,
+          nodeLabel: record.nodeName,
+          fieldPath,
+        }),
+      },
+    ];
+  });
+}
 
 export function TemplateAutocomplete({
   isOpen,
@@ -128,6 +189,7 @@ export function TemplateAutocomplete({
     }
 
     const nextOptions: TemplateOption[] = [];
+    const graphKeys = collectOpenRecordKeys(nodes, catalog);
 
     for (const node of upstreamNodes) {
       const nodeName = getNodeDisplayName(catalog, node);
@@ -157,25 +219,77 @@ export function TemplateAutocomplete({
 
       for (const field of outputFields) {
         const unusable = unusableReason(field, fieldType);
-        if (!(unusable || offeredFor(field, fieldType))) {
+        if (unusable || offeredFor(field, fieldType)) {
+          nextOptions.push({
+            type: "field",
+            rank: fieldRank(field, fieldType, unusable),
+            nodeId: node.id,
+            nodeName,
+            field: field.path,
+            description: field.description,
+            template: formatTemplateToken({
+              nodeId: node.id,
+              nodeLabel: nodeName,
+              fieldPath: field.path,
+            }),
+            ...(unusable ? { unusable } : {}),
+            ...(field.absentOn?.length ? { absentOn: field.absentOn } : {}),
+            ...(field.valueType ? { valueType: field.valueType } : {}),
+          });
+        }
+
+        // A record's keys are judged on what a key carries, not on the record
+        // being an object: a record of timestamps serves a Wait's date field
+        // even though the record itself never could.
+        const valueType = field.valueType;
+        if (
+          !valueType ||
+          unusable ||
+          !offeredFor({ type: valueType }, fieldType)
+        ) {
           continue;
         }
 
+        // The record itself is not a selectable value for a typed target, but it
+        // remains in the option set as metadata so a key typed under this record
+        // can produce one option for every upstream node that owns the record.
         nextOptions.push({
           type: "field",
-          rank: fieldRank(field, fieldType, unusable),
+          rank: fieldRank({ type: valueType }, fieldType, undefined),
           nodeId: node.id,
           nodeName,
           field: field.path,
-          description: field.description,
           template: formatTemplateToken({
             nodeId: node.id,
             nodeLabel: nodeName,
             fieldPath: field.path,
           }),
-          ...(unusable ? { unusable } : {}),
-          ...(field.absentOn?.length ? { absentOn: field.absentOn } : {}),
+          recordOnly: true,
+          valueType,
         });
+
+        // The keys this graph fills the record with, listed beside it. A Send
+        // Email node tagged `name` is why `tags.name` is a row rather than
+        // something a builder has to know to type.
+        for (const key of keysForRecord(
+          graphKeys,
+          field.integration,
+          field.path
+        )) {
+          const fieldPath = appendOutputPathKey(field.path, key);
+          nextOptions.push({
+            type: "field",
+            rank: fieldRank({ type: valueType }, fieldType, undefined),
+            nodeId: node.id,
+            nodeName,
+            field: fieldPath,
+            template: formatTemplateToken({
+              nodeId: node.id,
+              nodeLabel: nodeName,
+              fieldPath,
+            }),
+          });
+        }
       }
     }
 
@@ -185,17 +299,35 @@ export function TemplateAutocomplete({
   }, [upstreamNodes, fieldType, currentNodeId, nodes, edges, catalog]);
 
   const filteredOptions = useMemo(() => {
+    const visibleOptions = options.filter((option) => !option.recordOnly);
     const trimmedFilter = filter.trim().toLowerCase();
     if (!trimmedFilter) {
-      return options;
+      return visibleOptions;
     }
 
-    return options.filter(
+    const matched = visibleOptions.filter(
       (opt) =>
         opt.nodeName.toLowerCase().includes(trimmedFilter) ||
         (opt.field && opt.field.toLowerCase().includes(trimmedFilter))
     );
-  }, [filter, options]);
+
+    // Matched case-sensitively, because a record key is compared as written: a
+    // tag named `orderId` is a different key from `orderid`. A key the graph
+    // already named is in `matched`, and offering it twice would render two rows
+    // under one React key.
+    const typedKeys = keyUnderOpenRecordOptions(
+      options,
+      filter.trim(),
+      fieldType
+    ).filter(
+      (typedKey) =>
+        !matched.some(
+          (row) =>
+            row.nodeId === typedKey.nodeId && row.field === typedKey.field
+        )
+    );
+    return [...typedKeys, ...matched];
+  }, [filter, options, fieldType]);
 
   const selectedOptionIndex =
     filteredOptions.length === 0

@@ -1,3 +1,4 @@
+import { omit } from "es-toolkit/object";
 import { useAtomValue } from "jotai";
 import { X } from "lucide-react";
 import { useCallback, useId, useMemo, useState } from "react";
@@ -7,7 +8,15 @@ import { Label } from "#src/components/ui/label";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { getEventConditionFields } from "#src/lib/upstream-node-fields";
 import { nodesAtom, selectedNodeAtom } from "#src/lib/workflow-graph-store";
-import { findEvent } from "@wfgraph/shared/extensions/catalog";
+import {
+  findEvent,
+  uniqueIntegrationsOfEvents,
+} from "@wfgraph/shared/extensions/catalog";
+import {
+  connectionIdFor,
+  inheritConnections,
+  stampConnection,
+} from "@wfgraph/shared/lifecycle/event-connections";
 import {
   createDefaultConditionModel,
   serializeConditionModel,
@@ -21,7 +30,8 @@ import {
   readWaitSubscriptions,
 } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { ConditionBuilderRow } from "./condition-builder-row";
-import { EventMultiCombobox } from "./event-combobox";
+import { EventMultiCombobox, catalogEventChoices } from "./event-combobox";
+import { IntegrationEventConnectionEditor } from "./integration-event-connection";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
 /**
@@ -62,11 +72,14 @@ export function WaitEventSelect({
   // edit keeps the match already written against it.
   const setEvents = (eventNames: string[]) => {
     write(
-      eventNames.map(
-        (eventName) =>
-          selected.find((subscription) => subscription.event === eventName) ?? {
-            event: eventName,
-          }
+      inheritConnections(
+        eventNames.map((eventName) => {
+          const existing = selected.find(
+            (subscription) => subscription.event === eventName
+          );
+          return existing ?? { event: eventName };
+        }),
+        catalog
       )
     );
   };
@@ -77,11 +90,25 @@ export function WaitEventSelect({
 
   const setMatch = (eventName: string, match: string) => {
     write(
-      selected.map((subscription) =>
-        subscription.event === eventName
-          ? { event: subscription.event, ...(match ? { match } : {}) }
-          : subscription
-      )
+      selected.map((subscription) => {
+        if (subscription.event !== eventName) {
+          return subscription;
+        }
+        return match
+          ? { ...subscription, match }
+          : omit(subscription, ["match"]);
+      })
+    );
+  };
+
+  const setConnectionId = (integration: string, connectionId: string) => {
+    write(
+      stampConnection({
+        bindings: selected,
+        catalog,
+        integration,
+        connectionId,
+      })
     );
   };
 
@@ -92,7 +119,7 @@ export function WaitEventSelect({
 
         {catalog.events.length > 0 ? (
           <EventMultiCombobox
-            choices={catalog.events}
+            choices={catalogEventChoices(catalog)}
             disabled={disabled}
             inputId={eventsInputId}
             onValueChange={setEvents}
@@ -112,15 +139,31 @@ export function WaitEventSelect({
           anything, and the workflow will not save.
         </WarningCallout>
       ) : (
-        selected.map((subscription) => (
-          <WaitSubscriptionRow
-            disabled={disabled}
-            key={subscription.event}
-            onMatchChange={setMatch}
-            onRemove={remove}
-            subscription={subscription}
-          />
-        ))
+        <>
+          {selected.map((subscription) => (
+            <WaitSubscriptionRow
+              disabled={disabled}
+              key={subscription.event}
+              onMatchChange={setMatch}
+              onRemove={remove}
+              subscription={subscription}
+            />
+          ))}
+          {uniqueIntegrationsOfEvents(catalog, selectedNames).map(
+            (integration) => (
+              <IntegrationEventConnectionEditor
+                catalog={catalog}
+                connectionId={connectionIdFor(selected, catalog, integration)}
+                disabled={disabled}
+                integrationType={integration}
+                key={integration}
+                onChange={(connectionId) =>
+                  setConnectionId(integration, connectionId)
+                }
+              />
+            )
+          )}
+        </>
       )}
     </div>
   );
@@ -156,8 +199,8 @@ function WaitSubscriptionRow({
   );
 
   const fields = useMemo(
-    () => getEventConditionFields(catalog, subscription.event),
-    [catalog, subscription.event]
+    () => getEventConditionFields(catalog, subscription.event, nodes),
+    [catalog, subscription.event, nodes]
   );
 
   const handleChange = useCallback(

@@ -44,7 +44,9 @@ import {
   autosaveDelayAtom,
   currentWorkflowIdAtom,
   hasUnsavedChangesAtom,
+  isSavingAtom,
   isWorkflowOwnerAtom,
+  successfulSaveGenerationAtom,
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
 import {
@@ -575,6 +577,78 @@ describe("hydrateWorkflowAtom", () => {
       store.get(displayNodesAtom).find((node) => node.id === "v1_lifecycle")
         ?.data.status
     ).toBe("running");
+  });
+
+  // A failed save keeps the dirty flag raised, and selecting a run or leaving
+  // Runs re-runs the route loader. Without the guard that pairing replaces the
+  // edit with the server's older graph and clears the failure notice, so the
+  // work is gone with nothing on screen saying so.
+  it("keeps a graph the server has not stored when the same workflow reloads", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(hasUnsavedChangesAtom, true);
+
+    store.set(
+      hydrateWorkflowAtom,
+      savedWorkflow("workflow_1", { nodes: [actionNode("stale")], edges: [] })
+    );
+
+    expect(store.get(nodesAtom).map((node) => node.id)).not.toEqual(["stale"]);
+    expect(store.get(hasUnsavedChangesAtom)).toBe(true);
+  });
+
+  it("keeps the edges of a write still in flight", () => {
+    const store = createGraphStore(
+      [lifecycleNode("a"), actionNode("b")],
+      [{ id: "e1", source: "a", target: "b" }]
+    );
+    store.set(hasUnsavedChangesAtom, false);
+    store.set(isSavingAtom, true);
+
+    store.set(
+      hydrateWorkflowAtom,
+      savedWorkflow("workflow_1", {
+        nodes: [lifecycleNode("a"), actionNode("b")],
+        edges: [],
+      })
+    );
+
+    expect(store.get(edgesAtom).map((saved) => saved.id)).toEqual(["e1"]);
+  });
+
+  it("discards a hydration snapshot that started before a successful save", () => {
+    const store = createGraphStore(...standardGraph());
+    const requestGeneration =
+      store.get(successfulSaveGenerationAtom).get("workflow_1") ?? 0;
+
+    // The loader captured the older server snapshot before the save landed.
+    // Model the save settling before the loader completes, including the state
+    // changes that make the existing dirty and in-flight guards pass.
+    store.set(successfulSaveGenerationAtom, new Map([["workflow_1", 1]]));
+    store.set(isSavingAtom, false);
+    store.set(hasUnsavedChangesAtom, false);
+
+    store.set(hydrateWorkflowAtom, {
+      ...savedWorkflow("workflow_1", {
+        nodes: [actionNode("stale")],
+        edges: [],
+      }),
+      saveGeneration: requestGeneration,
+    });
+
+    expect(store.get(nodesAtom).map((node) => node.id)).not.toEqual(["stale"]);
+  });
+
+  it("takes the server's graph once the client and the server agree", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(hasUnsavedChangesAtom, false);
+    store.set(isSavingAtom, false);
+
+    store.set(
+      hydrateWorkflowAtom,
+      savedWorkflow("workflow_1", { nodes: [actionNode("fresh")], edges: [] })
+    );
+
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["fresh"]);
   });
 });
 

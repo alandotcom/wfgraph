@@ -41,6 +41,12 @@ Omit `slack.oauthClient` to keep Slack manual-only. Resend and PostHog OAuth
 use a public client metadata document and need no provider secret. All three
 keep manual credential forms when OAuth is available.
 
+Resend also declares webhook Events (`resend/email.delivered` and the rest of
+the official types) on the umbrella source `resend/webhook`. Paste the
+Connection URL from the Lifecycle Node (or Wait node). Add the signing secret
+on that Connection (`RESEND_WEBHOOK_SECRET`). Copying the URL needs
+`publicUrl`.
+
 ### OAuth host requirements
 
 OAuth requires `publicUrl`. HTTPS except loopback. Callback stays behind

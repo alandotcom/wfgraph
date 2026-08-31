@@ -19,6 +19,7 @@ const testCatalog: ExtensionCatalog = {
       description: "Linear issue tracking",
       credentialFields: {},
       hasTest: true,
+      hasWebhook: false,
     },
   ],
 };
@@ -39,6 +40,7 @@ function connection(id: string, name: string): Integration {
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     configuredKeys: [],
+    connectionDefaults: {},
   };
 }
 

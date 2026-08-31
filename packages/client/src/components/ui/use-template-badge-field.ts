@@ -71,10 +71,18 @@ export function useTemplateBadgeField(input: {
     [multiline, catalog]
   );
 
+  // What the field should be showing: its text, and the placeholder that stands
+  // in while there is none. Both are drawn into the same contenteditable, and a
+  // field falling back to a Connection value gets a new placeholder with its
+  // text unchanged, so keying on the text alone would leave the old hint in the
+  // DOM. Paired rather than concatenated, because either half can hold whatever
+  // separator the other would have used.
+  const shownText = JSON.stringify([value, placeholder]);
+
   // The parent handed over different text while the user was somewhere else.
   // While the field is focused the key is frozen, because the handlers below
   // are already keeping the DOM current and a redraw would fight the caret.
-  useAfterCommit(isFocused ? FOCUSED : value, () => {
+  useAfterCommit(isFocused ? FOCUSED : shownText, () => {
     if (!isFocused) {
       editorRef.current?.render(value, {
         focused: false,

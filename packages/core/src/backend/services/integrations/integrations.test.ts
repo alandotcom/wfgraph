@@ -52,6 +52,7 @@ const slackLike: IntegrationMetadata = {
   label: "Slack",
   description: "test double",
   hasTest: false,
+  hasWebhook: false,
   credentialFields: {
     SLACK_API_KEY: { label: "API Key", type: "password" },
     SLACK_TEAM_ID: { label: "Team ID", type: "text" },

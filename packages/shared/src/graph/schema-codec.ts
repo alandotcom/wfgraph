@@ -46,6 +46,12 @@ export type WorkflowSchemaField = {
   name: string;
   type: WorkflowSchemaFieldType;
   itemType?: WorkflowSchemaItemType;
+  /**
+   * The type every value under an open record carries, the mirror of `itemType`
+   * for an array. Present only on an object that accepts keys its schema does
+   * not name, which is what makes an unlisted key addressable downstream.
+   */
+  valueType?: WorkflowSchemaItemType;
   fields?: WorkflowSchemaField[];
   description?: string;
   nullable?: boolean;
@@ -73,6 +79,14 @@ interface JsonSchemaNode {
   minimum?: number;
   minItems?: number;
   properties?: JsonSchemaProperties;
+  /**
+   * Present only when the document wrote the keyword. `false` closes the object;
+   * `true` or a node opens it. An absent keyword is read as closed even though
+   * JSON Schema defaults it to open, because a library that leaves it out has
+   * said nothing about extra keys and offering `user.anything` off that silence
+   * would fill the picker with paths no payload holds.
+   */
+  additionalProperties?: JsonSchemaNode | boolean;
   items?: JsonSchemaNode;
   anyOf?: (JsonSchemaNode | undefined)[];
   oneOf?: (JsonSchemaNode | undefined)[];
@@ -153,6 +167,17 @@ function readJsonSchemaProperties(
 }
 
 /**
+ * An `additionalProperties` keyword: the boolean the document wrote, or the node
+ * it wrote, or `undefined` when it wrote something this reader cannot use.
+ */
+function readAdditionalProperties(
+  value: unknown,
+  seen: WeakSet<object>
+): JsonSchemaNode | boolean | undefined {
+  return typeof value === "boolean" ? value : readJsonSchemaNode(value, seen);
+}
+
+/**
  * A JSON Schema node, or `undefined` when the value is not an object or when
  * this walk has already seen it.
  *
@@ -195,6 +220,14 @@ function readJsonSchemaNode(
     minimum: readNumber(node.minimum),
     minItems: readNumber(node.minItems),
     properties: readJsonSchemaProperties(node.properties, seen),
+    ...(Object.hasOwn(node, "additionalProperties")
+      ? {
+          additionalProperties: readAdditionalProperties(
+            node.additionalProperties,
+            seen
+          ),
+        }
+      : {}),
     items: readJsonSchemaNode(node.items, seen),
     anyOf: readNodeBranches(node.anyOf, seen),
     oneOf: readNodeBranches(node.oneOf, seen),
@@ -426,6 +459,16 @@ function stringFormatFor(
   }
 
   return type === "duration" ? "duration" : undefined;
+}
+
+function workflowSchemaItemTypeToJsonSchemaNode(
+  type: WorkflowSchemaItemType
+): Record<string, unknown> {
+  const format = stringFormatFor(type);
+  return {
+    type: format ? "string" : type,
+    ...(format ? { format } : {}),
+  };
 }
 
 function workflowSchemaFieldsFromRecords(
@@ -686,6 +729,40 @@ function resolveJsonSchemaUnion(
   return null;
 }
 
+/**
+ * The type an open record's values carry, or null when the object is closed.
+ *
+ * `Schema.Record(Schema.String, Schema.String)` describes itself as
+ * `{ type: "object", additionalProperties: { type: "string" } }` and names no
+ * properties, so this keyword is the only evidence that a key the schema never
+ * listed is still a real path.
+ *
+ * An opening that declares no type answers nothing rather than guessing text.
+ * The type is what a condition compares against, so guessing it wrong offers a
+ * record of numbers as a text rule and compiles a string comparison against a
+ * number. An array's untyped item defaults to text instead, which is safe there
+ * because nothing compares an array element directly.
+ */
+function openRecordValueType(
+  additional: JsonSchemaNode | boolean | undefined
+): WorkflowSchemaItemType | null {
+  if (additional === undefined || typeof additional === "boolean") {
+    return null;
+  }
+
+  const declared =
+    normalizeJsonSchemaType(additional.type) ||
+    (additional.properties ? "object" : null);
+  if (!declared) {
+    return null;
+  }
+
+  const valueType =
+    declared === "string" ? (stringSubtype(additional) ?? declared) : declared;
+
+  return isWorkflowSchemaItemType(valueType) ? valueType : null;
+}
+
 function parseNonNullableJsonSchemaProperty(
   name: string,
   value: JsonSchemaNode
@@ -722,11 +799,13 @@ function parseNonNullableJsonSchemaProperty(
   }
 
   if (normalizedType === "object") {
+    const valueType = openRecordValueType(value.additionalProperties);
     return {
       name,
       type: "object",
-      fields: parseJsonSchemaProperties(value.properties),
+      fields: parseJsonSchemaProperties(value.properties, value.required),
       description,
+      ...(valueType ? { valueType } : {}),
     };
   }
 
@@ -756,7 +835,7 @@ function parseNonNullableJsonSchemaProperty(
     itemType: normalizedItemType,
     fields:
       normalizedItemType === "object"
-        ? parseJsonSchemaProperties(items?.properties)
+        ? parseJsonSchemaProperties(items?.properties, items?.required)
         : undefined,
     description,
     ...(minItems !== undefined ? { minItems } : {}),
@@ -778,27 +857,51 @@ function parseJsonSchemaProperty(
   const resolved = resolveJsonSchemaUnion(value);
   if (resolved) {
     const field = parseJsonSchemaProperty(name, resolved.node, depth + 1);
-    if (field && resolved.nullable) {
-      field.nullable = true;
-    }
-    return field;
+    return field && markNullable(field, resolved.nullable);
   }
 
   return parseNonNullableJsonSchemaProperty(name, value);
 }
 
+/**
+ * `nullable` is a disjunction: any one way for the value to go missing sets it,
+ * and none of them clears it. A null branch in a union, a name the parent's
+ * `required` leaves out, and an absent ancestor are the three ways, and the
+ * third is applied by the walk in `node-references.ts`.
+ */
+function markNullable(
+  field: WorkflowSchemaField,
+  nullable: boolean
+): WorkflowSchemaField {
+  return nullable ? { ...field, nullable: true } : field;
+}
+
+/**
+ * The fields one object's `properties` describe, given the `required` list that
+ * says which of them a payload always carries.
+ *
+ * A property the list leaves out is marked `nullable`, which is that flag's
+ * absent-key case: `Schema.optionalKey(...)` reaches here as a property whose
+ * name is missing from `required` and which carries no null branch, so reading
+ * the keyword is the only thing that tells it apart from a guaranteed field.
+ *
+ * An absent `required` is read as JSON Schema defines it, meaning no property is
+ * required, which is the same reading `configFieldsFromJsonSchema` takes of the
+ * keyword.
+ */
 function parseJsonSchemaProperties(
-  properties: JsonSchemaProperties | undefined
+  properties: JsonSchemaProperties | undefined,
+  required: string[] | undefined
 ): WorkflowSchemaField[] {
   if (!properties) {
     return [];
   }
 
+  const requiredNames = new Set(required ?? []);
+
   return Object.entries(properties).flatMap(([name, property]) => {
-    const parsedProperty = property
-      ? parseJsonSchemaProperty(name, property)
-      : null;
-    return parsedProperty ? [parsedProperty] : [];
+    const field = property ? parseJsonSchemaProperty(name, property) : null;
+    return field ? [markNullable(field, !requiredNames.has(name))] : [];
   });
 }
 
@@ -822,7 +925,7 @@ export function parseWorkflowSchemaFieldsOrJsonSchema(
     return null;
   }
 
-  return parseJsonSchemaProperties(document.properties);
+  return parseJsonSchemaProperties(document.properties, document.required);
 }
 
 function workflowSchemaFieldToJsonSchemaNode(
@@ -856,6 +959,14 @@ function workflowSchemaFieldToJsonSchemaNode(
       properties: workflowSchemaFieldsToJsonSchemaProperties(
         field.fields ?? []
       ),
+      ...requiredNamesOf(field.fields ?? []),
+      ...(field.valueType
+        ? {
+            additionalProperties: workflowSchemaItemTypeToJsonSchemaNode(
+              field.valueType
+            ),
+          }
+        : {}),
     };
   }
 
@@ -868,6 +979,7 @@ function workflowSchemaFieldToJsonSchemaNode(
         properties: workflowSchemaFieldsToJsonSchemaProperties(
           field.fields ?? []
         ),
+        ...requiredNamesOf(field.fields ?? []),
       },
     };
   }
@@ -881,6 +993,25 @@ function workflowSchemaFieldToJsonSchemaNode(
       ...(itemFormat ? { format: itemFormat } : {}),
     },
   };
+}
+
+/**
+ * The `required` keyword for these fields, or nothing when none is guaranteed.
+ *
+ * The reader treats a name missing from `required` as a field a payload can
+ * arrive without, so an encode that never wrote the keyword would read back with
+ * every field nullable. Omitting it where nothing is required says the same
+ * thing the reader concludes, so the pair round-trips either way.
+ */
+function requiredNamesOf(fields: WorkflowSchemaField[]): {
+  required?: string[];
+} {
+  const names = fields
+    .filter((field) => field.nullable !== true)
+    .map((field) => field.name.trim())
+    .filter((name) => name.length > 0);
+
+  return names.length > 0 ? { required: names } : {};
 }
 
 export function workflowSchemaFieldsToJsonSchemaProperties(
@@ -906,6 +1037,7 @@ export function workflowSchemaFieldsToJsonSchemaDocument(
   return {
     type: "object",
     properties: workflowSchemaFieldsToJsonSchemaProperties(schema),
+    ...requiredNamesOf(schema),
   };
 }
 

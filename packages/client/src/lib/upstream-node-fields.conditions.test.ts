@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  getEventConditionFields,
   getUpstreamConditionFields,
   getUpstreamNodes,
 } from "#src/lib/upstream-node-fields";
@@ -159,4 +160,254 @@ describe("upstream-node-fields conditions", () => {
 
   // Output fields declare showWhen the same way config fields do. A delay Wait
   // leaves waitMode unset or "delay", so event-only paths stay out of the picker.
+
+  // A record's keys are invented by whatever produced the payload, so no schema
+  // can list them. The graph can: a node that tagged its send named them.
+  describe("an open record's keys, read off the graph", () => {
+    /** Resend's Send Email, in the shape the catalog carries it. */
+    function aSendAction() {
+      return anAction({
+        id: "resend/send-email",
+        integration: "resend",
+        configFields: [
+          {
+            key: "emailTags",
+            label: "Tags",
+            type: "key-value",
+            fillsRecords: ["tags", "data.tags"],
+          },
+        ],
+        outputFields: [
+          { path: "id", description: "Email ID", type: "string" },
+          {
+            path: "tags",
+            description: "Email tags",
+            type: "object",
+            valueType: "string",
+          },
+        ],
+      });
+    }
+
+    function aSendNode(tags: Array<{ name: string; value: string }>) {
+      return createNode({
+        id: "send-1",
+        type: "action",
+        label: "Send Email",
+        config: {
+          actionType: "resend/send-email",
+          emailTags: JSON.stringify(tags),
+        },
+      });
+    }
+
+    const conditionNode = createNode({
+      id: "condition-1",
+      type: "action",
+      label: "Condition",
+      config: { actionType: "Condition" },
+    });
+
+    const edges: WorkflowEdge[] = [
+      createEdge({ id: "e1", source: "lifecycle-1", target: "send-1" }),
+      createEdge({ id: "e2", source: "send-1", target: "condition-1" }),
+    ];
+
+    it("offers a tag the upstream node named, beside the record itself", () => {
+      surface.actions = [aSendAction()];
+      const fields = getUpstreamConditionFields({
+        catalog: surface,
+        currentNodeId: "condition-1",
+        nodes: [
+          anEntryNode({}),
+          aSendNode([{ name: "name", value: "alan" }]),
+          conditionNode,
+        ],
+        edges,
+      });
+
+      const record = fields.find((field) => field.path === "tags");
+      expect(record?.openRecord).toBe(true);
+
+      // The whole point: a rule can be built on this without anybody typing it.
+      expect(fields.find((field) => field.path === "tags.name")).toMatchObject({
+        path: "tags.name",
+        label: "tags.name",
+        type: "string",
+        nullable: true,
+      });
+      expect(
+        fields.find((field) => field.path === "tags.name")?.openRecord
+      ).toBeUndefined();
+    });
+
+    it("leaves a row nobody has named yet out of the picker", () => {
+      surface.actions = [aSendAction()];
+      const fields = getUpstreamConditionFields({
+        catalog: surface,
+        currentNodeId: "condition-1",
+        nodes: [
+          anEntryNode({}),
+          aSendNode([{ name: "  ", value: "half typed" }]),
+          conditionNode,
+        ],
+        edges,
+      });
+
+      expect(fields.some((field) => field.path.startsWith("tags."))).toBe(
+        false
+      );
+    });
+
+    // One integration's rows must never name another's record, which is what
+    // scoping the collection by integration is for.
+    it("keeps one integration's keys off another's record", () => {
+      surface.actions = [
+        aSendAction(),
+        anAction({
+          id: "posthog/capture-event",
+          integration: "posthog",
+          configFields: [
+            {
+              key: "properties",
+              label: "Properties",
+              type: "key-value",
+              fillsRecords: ["properties"],
+            },
+          ],
+        }),
+      ];
+
+      const fields = getUpstreamConditionFields({
+        catalog: surface,
+        currentNodeId: "condition-1",
+        nodes: [
+          anEntryNode({}),
+          aSendNode([{ name: "name", value: "alan" }]),
+          createNode({
+            id: "capture-1",
+            type: "action",
+            label: "Capture",
+            config: {
+              actionType: "posthog/capture-event",
+              properties: JSON.stringify([{ name: "plan", value: "pro" }]),
+            },
+          }),
+          conditionNode,
+        ],
+        edges: [
+          ...edges,
+          createEdge({ id: "e3", source: "send-1", target: "capture-1" }),
+        ],
+      });
+
+      expect(fields.some((field) => field.path === "tags.name")).toBe(true);
+      expect(fields.some((field) => field.path === "tags.plan")).toBe(false);
+    });
+
+    // The Wait node's case, and the second half of the answer: the tags on a
+    // `resend/email.*` payload are the tags the send set, so the same names are
+    // what a match on that Event compares.
+    it("offers the same tag on the Event a Wait node matches", () => {
+      surface.actions = [aSendAction()];
+      surface.events = [
+        anEvent({
+          name: "resend/email.delivered",
+          label: "Email delivered",
+          integration: "resend",
+          schema: Schema.Struct({
+            data: Schema.Struct({
+              email_id: Schema.String.annotate({ description: "Email ID" }),
+              tags: Schema.optionalKey(
+                Schema.Record(Schema.String, Schema.String).annotate({
+                  description: "Email tags",
+                })
+              ),
+            }),
+          }),
+        }),
+      ];
+
+      const fields = getEventConditionFields(
+        surface,
+        "resend/email.delivered",
+        [anEntryNode({}), aSendNode([{ name: "name", value: "alan" }])]
+      );
+
+      expect(
+        fields.find((field) => field.path === "data.tags.name")
+      ).toMatchObject({ path: "data.tags.name", type: "string" });
+    });
+
+    // A row for a key the graph names carries the split a rule stores, so
+    // choosing it writes the same rule as choosing the record and typing one.
+    it("carries the record and the key on a graph-derived row", () => {
+      surface.actions = [aSendAction()];
+      const fields = getUpstreamConditionFields({
+        catalog: surface,
+        currentNodeId: "condition-1",
+        nodes: [
+          anEntryNode({}),
+          aSendNode([{ name: "name", value: "alan" }]),
+          conditionNode,
+        ],
+        edges,
+      });
+
+      expect(fields.find((field) => field.path === "tags.name")).toMatchObject({
+        recordPath: "tags",
+        recordKey: "name",
+      });
+      expect(
+        fields.find((field) => field.path === "tags")?.recordKey
+      ).toBeUndefined();
+    });
+
+    it("keeps punctuation in a graph-derived key literal", () => {
+      surface.actions = [aSendAction()];
+      const fields = getUpstreamConditionFields({
+        catalog: surface,
+        currentNodeId: "condition-1",
+        nodes: [
+          anEntryNode({}),
+          aSendNode([
+            { name: "campaign.name", value: "spring" },
+            { name: "items[0]", value: "first" },
+          ]),
+          conditionNode,
+        ],
+        edges,
+      });
+
+      expect(fields.map((field) => field.path)).toContain(
+        'tags["campaign.name"]'
+      );
+      expect(fields.map((field) => field.path)).toContain('tags["items[0]"]');
+    });
+
+    it("offers the record alone when no node in the graph fills it", () => {
+      surface.events = [
+        anEvent({
+          name: "resend/email.delivered",
+          integration: "resend",
+          schema: Schema.Struct({
+            data: Schema.Struct({
+              tags: Schema.optionalKey(
+                Schema.Record(Schema.String, Schema.String)
+              ),
+            }),
+          }),
+        }),
+      ];
+
+      const fields = getEventConditionFields(
+        surface,
+        "resend/email.delivered",
+        []
+      );
+
+      expect(fields.find((f) => f.path === "data.tags")?.openRecord).toBe(true);
+      expect(fields.some((f) => f.path.startsWith("data.tags."))).toBe(false);
+    });
+  });
 });

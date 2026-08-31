@@ -63,7 +63,7 @@ describe("processTemplates over a JSON object of authored values", () => {
       { vars: JSON.stringify({ NOTE: "{{@n1:Lead.note}}" }) },
       outputs,
       new Set(),
-      new Set(["vars"])
+      new Map([["vars", "provider-fields" as const]])
     );
 
     expect(JSON.parse(String(processed.vars))).toEqual({
@@ -78,7 +78,7 @@ describe("processTemplates over a JSON object of authored values", () => {
       { vars: JSON.stringify({ NOTE: "{{@n1:Lead.note}}" }) },
       outputs,
       new Set(),
-      new Set()
+      new Map()
     );
 
     // The bug this guards against: whole-string substitution leaves text no
@@ -93,7 +93,7 @@ describe("processTemplates over a JSON object of authored values", () => {
       { vars: JSON.stringify({ NAME: "{{@n1:Lead.name}}", COUNT: 3 }) },
       outputs,
       new Set(),
-      new Set(["vars"])
+      new Map([["vars", "provider-fields" as const]])
     );
 
     expect(JSON.parse(String(processed.vars))).toEqual({
@@ -116,6 +116,74 @@ describe("processTemplates over a JSON object of authored values", () => {
     expect(Object.getPrototypeOf(processed)).toBe(Object.prototype);
   });
 
+  // Resend's email tags and PostHog's properties are both this widget. Before
+  // the key was named, one resolved quotation mark cost the step every row.
+  it("survives the same value in a key-value row list", () => {
+    const outputs = outputsWith({ note: 'She said "hi"\nthen left' });
+
+    const processed = processTemplates(
+      {
+        emailTags: JSON.stringify([
+          { name: "campaign", value: "spring" },
+          { name: "note", value: "{{@n1:Lead.note}}" },
+        ]),
+      },
+      outputs,
+      new Set(),
+      new Map([["emailTags", "key-value" as const]])
+    );
+
+    expect(JSON.parse(String(processed.emailTags))).toEqual([
+      { name: "campaign", value: "spring" },
+      { name: "note", value: 'She said "hi"\nthen left' },
+    ]);
+  });
+
+  // A row is a row: the order is the one they were added in, and two rows may
+  // carry the same name.
+  it("keeps row order and repeated names", () => {
+    const outputs = outputsWith({ id: "b" });
+
+    const processed = processTemplates(
+      {
+        emailTags: JSON.stringify([
+          { name: "batch", value: "a" },
+          { name: "batch", value: "{{@n1:Lead.id}}" },
+        ]),
+      },
+      outputs,
+      new Set(),
+      new Map([["emailTags", "key-value" as const]])
+    );
+
+    expect(JSON.parse(String(processed.emailTags))).toEqual([
+      { name: "batch", value: "a" },
+      { name: "batch", value: "b" },
+    ]);
+  });
+
+  // The name is the key of whatever the step builds, and the systems that take
+  // one hold it to a short alphabet, so a resolved reference there would name a
+  // key nobody could match.
+  it("leaves a row name as authored", () => {
+    const outputs = outputsWith({ name: "Ada" });
+
+    const processed = processTemplates(
+      {
+        emailTags: JSON.stringify([
+          { name: "{{@n1:Lead.name}}", value: "one" },
+        ]),
+      },
+      outputs,
+      new Set(),
+      new Map([["emailTags", "key-value" as const]])
+    );
+
+    expect(JSON.parse(String(processed.emailTags))).toEqual([
+      { name: "{{@n1:Lead.name}}", value: "one" },
+    ]);
+  });
+
   it("falls back to whole-string resolution for text that is not such an object", () => {
     const outputs = outputsWith({ name: "Ada" });
 
@@ -125,7 +193,7 @@ describe("processTemplates over a JSON object of authored values", () => {
       { vars: "just {{@n1:Lead.name}} text" },
       outputs,
       new Set(),
-      new Set(["vars"])
+      new Map([["vars", "provider-fields" as const]])
     );
 
     expect(processed.vars).toBe("just Ada text");
@@ -139,7 +207,7 @@ describe("processTemplates over a JSON object of authored values", () => {
       { vars: authored },
       outputs,
       new Set(["vars"]),
-      new Set(["vars"])
+      new Map([["vars", "provider-fields" as const]])
     );
 
     expect(processed.vars).toBe(authored);

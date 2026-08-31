@@ -117,7 +117,7 @@ describe("native SQLite integration persistence", () => {
         updated_at: 0,
       });
       expect(inspection.prepare("PRAGMA user_version").get()).toEqual({
-        user_version: 5,
+        user_version: 6,
       });
     } finally {
       inspection.close();

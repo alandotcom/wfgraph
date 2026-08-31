@@ -1,21 +1,38 @@
 import { useId, useState } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { WarningCallout } from "#src/components/ui/callout";
-import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import {
+  type ExtensionCatalog,
+  uniqueIntegrationsOfEvents,
+} from "@wfgraph/shared/extensions/catalog";
 import {
   checkLifecycleRules,
+  connectionIdForIntegration,
   type Concurrency,
+  inheritConnectionIds,
   initialLifecycleRules,
   type LifecycleRules,
+  pruneConnectionIds,
   pruneCorrelationPaths,
   readLifecycleRules,
+  setConnectionForIntegration,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { ConfigSection } from "./config-section";
+import {
+  IntegrationEventConnectionEditor,
+  IntegrationEventConnectionSummary,
+} from "./integration-event-connection";
 import { LifecycleConcurrencyGroup } from "./lifecycle-concurrency-group";
 import { LifecycleEventGroup } from "./lifecycle-event-group";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
 export { CONCURRENCY_OPTIONS } from "./lifecycle-concurrency-group";
+
+function prune(next: LifecycleRules, catalog: ExtensionCatalog) {
+  return pruneConnectionIds(
+    inheritConnectionIds(pruneCorrelationPaths(next), catalog)
+  );
+}
 
 /**
  * The Lifecycle Node's panel: what starts a run and what happens to runs already
@@ -44,15 +61,26 @@ export function LifecyclePanel({
   };
 
   const setStartEvents = (eventNames: string[]) => {
-    write(pruneCorrelationPaths({ ...rules, startEvents: eventNames }));
+    write(prune({ ...rules, startEvents: eventNames }, catalog));
   };
 
   const setCancelEvents = (eventNames: string[]) => {
-    write(pruneCorrelationPaths({ ...rules, cancelEvents: eventNames }));
+    write(prune({ ...rules, cancelEvents: eventNames }, catalog));
   };
 
   const setConcurrency = (value: Concurrency) => {
-    write(pruneCorrelationPaths({ ...rules, concurrency: value }));
+    write(prune({ ...rules, concurrency: value }, catalog));
+  };
+
+  const setConnectionId = (integration: string, connectionId: string) => {
+    write(
+      setConnectionForIntegration({
+        rules,
+        catalog,
+        integration,
+        connectionId,
+      })
+    );
   };
 
   const setCorrelationPath = (eventName: string, path: string) => {
@@ -96,9 +124,19 @@ export function LifecyclePanel({
         label="Lifecycle Rules"
         onEditingChange={setEditing}
         stickyHeader
-        view={<LifecycleGroups editing={false} {...groupProps} />}
+        view={
+          <LifecycleGroups
+            editing={false}
+            onConnectionChange={setConnectionId}
+            {...groupProps}
+          />
+        }
       >
-        <LifecycleGroups editing {...groupProps} />
+        <LifecycleGroups
+          editing
+          onConnectionChange={setConnectionId}
+          {...groupProps}
+        />
       </ConfigSection>
 
       {check.valid ? null : (
@@ -123,6 +161,7 @@ function LifecycleGroups({
   onConcurrencyChange,
   onManualStartChange,
   onCorrelationPathChange,
+  onConnectionChange,
 }: {
   editing: boolean;
   rules: LifecycleRules;
@@ -136,6 +175,7 @@ function LifecycleGroups({
   onConcurrencyChange: (value: Concurrency) => void;
   onManualStartChange: (allowed: boolean) => void;
   onCorrelationPathChange: (eventName: string, path: string) => void;
+  onConnectionChange: (integration: string, connectionId: string) => void;
 }) {
   return (
     <div className="divide-y">
@@ -167,6 +207,38 @@ function LifecycleGroups({
         role="cancel"
         rules={rules}
       />
+      {uniqueIntegrationsOfEvents(catalog, [
+        ...rules.startEvents,
+        ...rules.cancelEvents,
+      ]).map((integration) =>
+        editing ? (
+          <IntegrationEventConnectionEditor
+            catalog={catalog}
+            connectionId={connectionIdForIntegration(
+              rules,
+              catalog,
+              integration
+            )}
+            disabled={disabled}
+            integrationType={integration}
+            key={integration}
+            onChange={(connectionId) =>
+              onConnectionChange(integration, connectionId)
+            }
+          />
+        ) : (
+          <IntegrationEventConnectionSummary
+            catalog={catalog}
+            connectionId={connectionIdForIntegration(
+              rules,
+              catalog,
+              integration
+            )}
+            integrationType={integration}
+            key={integration}
+          />
+        )
+      )}
     </div>
   );
 }

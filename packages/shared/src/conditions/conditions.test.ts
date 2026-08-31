@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   type ConditionFieldDefinition,
   type ConditionModel,
+  collectTimestampFieldPaths,
   compileConditionModel,
+  compileConditionRule,
   EVENT_NAME_FIELD_PATH,
   createDefaultConditionModel,
+  createDefaultConditionRule,
   parseConditionModel,
   reconcileModelWithFields,
   serializeConditionModel,
@@ -509,6 +512,104 @@ describe("conditions", () => {
     if (!compiled.valid) {
       expect(compiled.error).toBe("Text conditions require a value");
     }
+  });
+
+  // The record itself is an object no arrival can equal, so a rule left with its
+  // key unnamed would publish clean and never match.
+  it("refuses a rule whose record key has not been named", () => {
+    const compiled = compileConditionRule({
+      id: "condition-1",
+      field: "data.tags",
+      recordKey: "",
+      fieldType: "string",
+      operator: "equals",
+      value: "alan",
+    });
+
+    expect(compiled.valid).toBe(false);
+    if (!compiled.valid) {
+      expect(compiled.error).toBe("Name the key this rule compares");
+      // The flag, not the sentence, is what the node badge and the Wait node's
+      // own check read.
+      expect(compiled.incomplete).toBe(true);
+    }
+  });
+
+  it("compiles the key beside the record path", () => {
+    const compiled = compileConditionRule({
+      id: "condition-1",
+      field: "data.tags",
+      recordKey: "order_id",
+      fieldType: "string",
+      operator: "equals",
+      value: "ord_7",
+    });
+
+    expect(compiled.valid).toBe(true);
+    if (compiled.valid) {
+      expect(compiled.expression).toContain("order_id");
+    }
+  });
+
+  it("compiles punctuation in a record key as one literal map key", () => {
+    const compiled = compileConditionRule({
+      id: "condition-1",
+      field: "data.tags",
+      recordKey: "campaign.name[0]",
+      fieldType: "string",
+      operator: "equals",
+      value: "spring",
+    });
+
+    expect(compiled).toEqual({
+      valid: true,
+      expression:
+        '"data" in payload && "tags" in payload["data"] && "campaign.name[0]" in payload["data"]["tags"] && (payload["data"]["tags"]["campaign.name[0]"] == "spring")',
+    });
+  });
+
+  it("includes the literal record key in timestamp preprocessing paths", () => {
+    const model: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group-1",
+          logic: "and",
+          conditions: [
+            {
+              id: "condition-1",
+              field: "data.timestamps",
+              recordKey: "campaign.startedAt",
+              fieldType: "timestamp",
+              operator: "before",
+              dateTime: "2030-01-01T00:00:00.000Z",
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(collectTimestampFieldPaths(model)).toEqual([
+      'data.timestamps["campaign.startedAt"]',
+    ]);
+  });
+
+  // A rebuild goes through `createDefaultConditionRule`, and one that dropped
+  // the key would leave a rule comparing the whole record.
+  it("keeps a rebuilt record rule unfinished rather than comparing the record", () => {
+    const rebuilt = createDefaultConditionRule(
+      {
+        path: "data.tags",
+        label: "data.tags",
+        type: "string",
+        openRecord: true,
+      },
+      "condition-1"
+    );
+
+    expect(rebuilt.recordKey).toBe("");
+    expect(compileConditionRule(rebuilt).valid).toBe(false);
   });
 });
 

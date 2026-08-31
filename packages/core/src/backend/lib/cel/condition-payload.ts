@@ -133,7 +133,9 @@ export function evaluateCompiledCondition(input: {
     expression: input.expression,
     context: {
       now: new Date(),
-      [EVENT_CONTEXT_ROOT]: { name: input.eventName },
+      [EVENT_CONTEXT_ROOT]: {
+        name: input.eventName,
+      },
       [CONDITION_CONTEXT_ROOT]: payload,
     },
   });

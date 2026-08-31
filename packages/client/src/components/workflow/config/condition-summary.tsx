@@ -1,5 +1,8 @@
 import { WarningCallout } from "#src/components/ui/callout";
-import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
+import {
+  conditionFieldForPath,
+  type ConditionSelectableField,
+} from "#src/lib/upstream-node-fields";
 import {
   BOOLEAN_OPERATOR_OPTIONS,
   compileConditionRule,
@@ -15,6 +18,7 @@ import {
   TIME_UNIT_OPTIONS,
   TIMESTAMP_OPERATOR_OPTIONS,
 } from "@wfgraph/shared/conditions/conditions";
+import { displayTemplateText } from "@wfgraph/shared/graph/node-references";
 import { unavailableFieldLabel } from "./condition-field-combobox";
 
 /**
@@ -38,8 +42,6 @@ export function ConditionSummary({
   model: ConditionModel;
   fields: readonly ConditionSelectableField[];
 }) {
-  const fieldByPath = new Map(fields.map((field) => [field.path, field]));
-
   return (
     <div>
       {model.groups.map((group, groupIndex) => (
@@ -62,7 +64,7 @@ export function ConditionSummary({
             {group.conditions.map((condition, conditionIndex) => (
               <RuleLine
                 condition={condition}
-                field={fieldByPath.get(condition.field)}
+                field={conditionFieldForPath(fields, condition.field)}
                 joiner={conditionIndex > 0 ? logicLabel(group.logic) : null}
                 key={condition.id}
               />
@@ -72,6 +74,22 @@ export function ConditionSummary({
       ))}
     </div>
   );
+}
+
+/**
+ * What the line calls the field this rule reads.
+ *
+ * A rule reaching into an open record stores the record and its key apart, and
+ * the line names the whole of it: `data.tags.order_id`, the way the run reads
+ * it. An unnamed key leaves the record alone, with the refusal below saying what
+ * it still owes.
+ */
+function ruleFieldLabel(
+  condition: ConditionRule,
+  field: ConditionSelectableField | undefined
+): string {
+  const label = field?.label ?? unavailableFieldLabel(condition.field);
+  return condition.recordKey ? `${label}.${condition.recordKey}` : label;
 }
 
 /** One rule, and whatever stands between it and being a rule that runs. */
@@ -92,13 +110,11 @@ function RuleLine({
         <p className="text-muted-foreground text-xs">{joiner}</p>
       ) : null}
       <p className="text-sm">
-        <span className="font-medium">
-          {field?.label ?? unavailableFieldLabel(condition.field)}
-        </span>
+        <span className="font-medium">{ruleFieldLabel(condition, field)}</span>
         <span className="mx-1.5 text-muted-foreground">
           {operatorLabel(condition)}
         </span>
-        {valueLabel(condition)}
+        {valueLabel(condition, field)}
       </p>
       {refusal ? (
         <WarningCallout variant="text">{refusal}</WarningCallout>
@@ -195,7 +211,10 @@ function operatorTable(
  * A value the builder has not filled in renders as nothing, and the line under
  * it is what names the gap.
  */
-function valueLabel(rule: ConditionRule): string {
+function valueLabel(
+  rule: ConditionRule,
+  field: ConditionSelectableField | undefined
+): string {
   if (isNullCheckConditionRule(rule)) {
     return "";
   }
@@ -219,7 +238,7 @@ function valueLabel(rule: ConditionRule): string {
   }
 
   if (rule.fieldType === "string") {
-    return rule.value;
+    return displayTemplateText(field?.enumLabels?.[rule.value] ?? rule.value);
   }
 
   if (rule.fieldType === "number") {

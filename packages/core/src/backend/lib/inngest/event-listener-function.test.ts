@@ -58,10 +58,9 @@ function testRuntime(services = Layer.empty): WfGraphRuntime {
 function subscriber(overrides: Partial<EventSubscriber> = {}): EventSubscriber {
   return {
     id: "wf_1",
-    name: "Appointment Reminders",
-    mode: "live",
     roles: ["start"],
     correlationPath: null,
+    connectionId: null,
     ...overrides,
   };
 }
@@ -357,6 +356,7 @@ describe("createInngestEventListenerFunction", () => {
       client,
       event,
       runtime: testRuntime(stubWorkflowRepo()),
+      connectionStamped: false,
     });
 
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion

@@ -26,10 +26,11 @@ import {
   WorkflowRepo,
 } from "#src/backend/services/workflows/repo";
 import { toWorkflowRunTarget } from "#src/backend/services/executions/run-rows";
-import type { JsonObject } from "@wfgraph/shared/types/json";
-import { getValueByPath } from "@wfgraph/shared/utils/object-path";
+import { connectionMatches } from "@wfgraph/shared/lifecycle/event-connections";
 import { emptyLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import { asNonEmptyString } from "@wfgraph/shared/types/string";
+import { getValueByPath } from "@wfgraph/shared/utils/object-path";
 
 /**
  * The Event as delivery reads it: its identity, and where its payload carries an
@@ -43,6 +44,12 @@ import { asNonEmptyString } from "@wfgraph/shared/types/string";
 export type DeliveredEvent = {
   readonly name: string;
   readonly correlationPath?: string;
+  /**
+   * The Connection this arrival came through. Absent for a host Event, which
+   * never names one. A stored rule that names a Connection matches only when
+   * these agree.
+   */
+  readonly connectionId?: string;
 };
 
 /** What the Lifecycle Rules did to one workflow, as the listener records it. */
@@ -162,6 +169,18 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       .get("deliver-event")
       .with({ eventName: input.event.name, workflowId: input.subscriber.id });
 
+    // The index already named this workflow as a start or cancel. Connection is
+    // on that row, so a wrong-Connection arrival is waits_only without opening
+    // the published graph or running preflight.
+    if (
+      !connectionMatches(
+        input.subscriber.connectionId ?? undefined,
+        input.event.connectionId
+      )
+    ) {
+      return { kind: "waits_only" as const, workflowId: input.subscriber.id };
+    }
+
     const loaded = yield* repo.findByIdWithPublishedVersionForRun(
       input.subscriber.id
     );
@@ -181,10 +200,10 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       return skipped(input.subscriber.id, "not_published");
     }
 
-    // Preflight is the start branch's alone: it validates every action, condition
-    // and integration reference in the graph, and a wait delivery needs none of
-    // that. Its refusals are this workflow's problem rather than the Event's, so
-    // they answer here instead of failing.
+    // Preflight is the start/cancel branch's alone: it validates every action,
+    // condition and integration reference in the graph, and a wait delivery
+    // needs none of that. Its refusals are this workflow's problem rather than
+    // the Event's, so they answer here instead of failing.
     const preflight = yield* runWorkflowExecutionPreflight({
       workflow: { graph: version.graph },
       workflowVersionId: version.id,
@@ -210,9 +229,6 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       return skipped(input.subscriber.id, "graph_unrunnable");
     }
 
-    // A graph carrying no rules starts on nothing, which is not the same as a
-    // graph that cannot run: its parked runs still have Events owed to them.
-    //
     // These rules come from the published version, and the cancel role below
     // reads them too. A Cancel Event added to the draft alone therefore reaches
     // no run of that draft, whether or not the workflow is published
@@ -331,13 +347,13 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
  * no entity of its own still wakes exactly the runs that asked for it.
  */
 export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
-  subscriber: EventSubscriber;
+  workflowId: string;
   event: DeliveredEvent;
   payload: JsonObject;
   excluding: string[];
 }) {
   const nothing: WaitDeliveryOutcome = {
-    workflowId: input.subscriber.id,
+    workflowId: input.workflowId,
     resumedWaits: 0,
   };
 
@@ -352,9 +368,8 @@ export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
   // owed this Event is skipped.
   for (;;) {
     const candidates = yield* repo.listWaitsForEvent({
-      workflowId: input.subscriber.id,
+      workflowId: input.workflowId,
       eventName: input.event.name,
-      runMode: input.subscriber.mode,
       limit: WAIT_CANDIDATE_PAGE_SIZE,
       afterId,
       excludingExecutionIds: input.excluding,
@@ -365,10 +380,11 @@ export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
     }
 
     resumedWaits += yield* resumeWaitsMatchingEvent({
-      workflowId: input.subscriber.id,
+      workflowId: input.workflowId,
       eventType: input.event.name,
       payload: input.payload,
       waitStates: candidates,
+      connectionId: input.event.connectionId,
     });
 
     if (candidates.length < WAIT_CANDIDATE_PAGE_SIZE) {
@@ -382,7 +398,7 @@ export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
     return nothing;
   }
 
-  return { workflowId: input.subscriber.id, resumedWaits };
+  return { workflowId: input.workflowId, resumedWaits };
 });
 
 function skipped(

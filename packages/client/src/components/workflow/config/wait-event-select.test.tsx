@@ -1,10 +1,13 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, type RenderResult } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { type ReactNode, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
+import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import type { NodeConfigPatch } from "#src/components/workflow/config/node-config-patch";
 import { WaitEventSelect } from "#src/components/workflow/config/wait-event-select";
+import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
 import { parseConditionModel } from "@wfgraph/shared/conditions/conditions";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
@@ -413,5 +416,120 @@ describe("WaitEventSelect seeded match", () => {
     expect(view.queryByLabelText("Select field")).toBeNull();
     expect(view.getByText("1 condition")).toBeTruthy();
     expect(view.getByRole("button", { name: "Edit Match" })).toBeTruthy();
+  });
+});
+
+const resendWaitCatalog: ExtensionCatalog = {
+  events: [
+    {
+      name: "billing/payment.settled",
+      label: "Payment settled",
+      correlationPath: "appointmentId",
+      payloadFields: [{ path: "appointmentId", type: "string" }],
+    },
+    {
+      name: "resend/email.sent",
+      label: "Email sent",
+      integration: "resend",
+      correlationPath: "data.email_id",
+      payloadFields: [{ path: "data.email_id", type: "string" }],
+    },
+    {
+      name: "resend/email.delivered",
+      label: "Email delivered",
+      integration: "resend",
+      correlationPath: "data.email_id",
+      payloadFields: [{ path: "data.email_id", type: "string" }],
+    },
+  ],
+  actions: [],
+  integrations: [
+    {
+      type: "resend",
+      label: "Resend",
+      description: "Send transactional emails",
+      credentialFields: {},
+      hasTest: true,
+      hasWebhook: true,
+    },
+  ],
+};
+
+describe("WaitEventSelect Connection picker", () => {
+  it("offers a Connection only for an integration-owned Event", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+      },
+    });
+    queryClient.setQueryData(integrationsQueryOptions().queryKey, []);
+    const onUpdateConfig = vi.fn();
+
+    const view = render(
+      <ExtensionCatalogProvider value={resendWaitCatalog}>
+        <QueryClientProvider client={queryClient}>
+          <JotaiProvider store={createStore()}>
+            <OverlayProvider>
+              <WaitEventSelect
+                config={{
+                  waitFor: [
+                    { event: "billing/payment.settled" },
+                    { event: "resend/email.delivered" },
+                  ],
+                }}
+                disabled={false}
+                onUpdateConfig={onUpdateConfig}
+              />
+            </OverlayProvider>
+          </JotaiProvider>
+        </QueryClientProvider>
+      </ExtensionCatalogProvider>
+    );
+
+    expect(view.getByText("Payment settled")).toBeTruthy();
+    expect(view.getByText("Email delivered")).toBeTruthy();
+    expect(
+      view.getByRole("button", { name: "Add Resend connection" })
+    ).toBeTruthy();
+    expect(
+      view.queryByRole("button", { name: "Add Payment settled connection" })
+    ).toBeNull();
+  });
+
+  it("offers one Connection for every Event of the same integration", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+      },
+    });
+    queryClient.setQueryData(integrationsQueryOptions().queryKey, []);
+    const onUpdateConfig = vi.fn();
+
+    const view = render(
+      <ExtensionCatalogProvider value={resendWaitCatalog}>
+        <QueryClientProvider client={queryClient}>
+          <JotaiProvider store={createStore()}>
+            <OverlayProvider>
+              <WaitEventSelect
+                config={{
+                  waitFor: [
+                    { event: "resend/email.sent" },
+                    { event: "resend/email.delivered" },
+                  ],
+                }}
+                disabled={false}
+                onUpdateConfig={onUpdateConfig}
+              />
+            </OverlayProvider>
+          </JotaiProvider>
+        </QueryClientProvider>
+      </ExtensionCatalogProvider>
+    );
+
+    expect(view.getByText("Email sent")).toBeTruthy();
+    expect(view.getByText("Email delivered")).toBeTruthy();
+    expect(
+      view.getAllByRole("button", { name: "Add Resend connection" })
+    ).toHaveLength(1);
   });
 });

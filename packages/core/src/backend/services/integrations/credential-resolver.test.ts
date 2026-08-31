@@ -79,6 +79,7 @@ function extensionSet(oauth?: IntegrationOAuth): Partial<ExtensionSet> {
           label: "Example",
           description: "Test integration",
           hasTest: true,
+          hasWebhook: false,
           credentialFields: {
             ACCESS_TOKEN: { label: "Access token", type: "password" },
             MANUAL_TOKEN: { label: "Manual token", type: "password" },

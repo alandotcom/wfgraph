@@ -5,6 +5,7 @@ import {
 } from "@wfgraph/shared/extensions/catalog";
 import {
   getExtensionCatalog,
+  getWebhookIntake,
   hydrateExtensionsFromApi,
 } from "#src/lib/extensions";
 
@@ -45,6 +46,7 @@ const served: ExtensionCatalog = {
         TWILIO_AUTH_TOKEN: { label: "Auth Token", type: "password" },
       },
       hasTest: true,
+      hasWebhook: false,
     },
   ],
 };
@@ -117,6 +119,24 @@ describe("hydrateExtensionsFromApi", () => {
 
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(getExtensionCatalog()).toEqual(served);
+  });
+
+  it("holds webhook intake when the host set publicUrl", async () => {
+    respondWith({
+      catalog: served,
+      agent: { enabled: false },
+      webhookIntake: {
+        publicUrl: "https://workflows.example.com",
+        apiBasePath: "/api",
+      },
+    });
+
+    await hydrateExtensionsFromApi();
+
+    expect(getWebhookIntake()).toEqual({
+      publicUrl: "https://workflows.example.com",
+      apiBasePath: "/api",
+    });
   });
 
   it("says so when the catalog does not fit the wire schema", async () => {

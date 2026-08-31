@@ -1,6 +1,8 @@
 import { Effect, Schema } from "effect";
 import { describe, expect, expectTypeOf, it } from "vitest";
+import { defineEvent } from "#src/backend/extensions/define-event";
 import {
+  checkIntegration,
   type CredentialsOf,
   defineIntegration,
 } from "#src/backend/extensions/define-integration";
@@ -73,6 +75,51 @@ describe("defineIntegration", () => {
     ).toBe("Messaging");
   });
 
+  it("holds the Events and webhook it was given", () => {
+    const delivered = defineEvent({
+      name: "twilio/message.sent",
+      schema: Schema.Struct({
+        type: Schema.String,
+        data: Schema.Struct({ sid: Schema.String }),
+      }),
+      source: {
+        event: "twilio/webhook",
+        when: { path: "type", equals: "message.sent" },
+      },
+    });
+    const webhook = {
+      source: "twilio/webhook",
+      verify: () => Effect.void,
+      receive: () => undefined,
+    };
+
+    const twilio = defineIntegration({
+      type: "twilio",
+      label: "Twilio",
+      description: "Send SMS messages",
+      credentials: twilioCredentialFields,
+      events: [delivered],
+      webhook,
+      actions: {
+        "send-sms": {
+          label: "Send SMS",
+          description: "Sends a message",
+          input: Schema.Struct({ to: Schema.String }),
+          output: Schema.Struct({
+            sid: Schema.String.annotate({ description: "Message SID" }),
+          }),
+          configFields: [{ key: "to", label: "To", type: "template-input" }],
+          handler: Effect.fn(function* () {
+            return yield* Effect.succeed({ sid: "SM1" });
+          }),
+        },
+      },
+    });
+
+    expect(twilio.events).toEqual([delivered]);
+    expect(twilio.webhook).toBe(webhook);
+  });
+
   it("refuses an action declared through the __proto__ literal form", () => {
     expect(() =>
       defineIntegration({
@@ -126,6 +173,112 @@ describe("defineIntegration", () => {
         actions: {},
       })
     ).toThrow(/config options providers in an ordinary object record/u);
+  });
+});
+
+describe("checkIntegration Events", () => {
+  it("refuses Events when the integration declares no webhook", () => {
+    expect(() =>
+      checkIntegration(
+        defineIntegration({
+          type: "x",
+          label: "X",
+          description: "Events without intake",
+          credentials: {},
+          actions: {},
+          events: [
+            defineEvent({
+              name: "x/happened",
+              schema: Schema.Struct({ id: Schema.String }),
+            }),
+          ],
+        })
+      )
+    ).toThrow(/declares Events but no webhook/u);
+  });
+
+  it("accepts an integration that only sends without a webhook", () => {
+    expect(checkIntegration(aTwilio())).toEqual([
+      expect.objectContaining({ id: "twilio/send-sms" }),
+    ]);
+  });
+
+  it("refuses a webhook with no Events", () => {
+    expect(() =>
+      checkIntegration(
+        defineIntegration({
+          type: "x",
+          label: "X",
+          description: "Webhook with no Events",
+          credentials: {},
+          actions: {},
+          webhook: {
+            source: "x/webhook",
+            verify: () => Effect.void,
+            receive: () => undefined,
+          },
+        })
+      )
+    ).toThrow(/webhook with no Events/u);
+  });
+
+  it("refuses an Event whose source is not the webhook's", () => {
+    expect(() =>
+      checkIntegration(
+        defineIntegration({
+          type: "x",
+          label: "X",
+          description: "Mismatched source",
+          credentials: {},
+          actions: {},
+          events: [
+            defineEvent({
+              name: "x/happened",
+              schema: Schema.Struct({
+                id: Schema.String.annotate({ description: "Id" }),
+              }),
+              source: { event: "other/webhook" },
+            }),
+          ],
+          webhook: {
+            source: "x/webhook",
+            verify: () => Effect.void,
+            receive: () => undefined,
+          },
+        })
+      )
+    ).toThrow(/not this webhook's source/u);
+  });
+
+  it("refuses a webhook secret that is not a credential", () => {
+    expect(() =>
+      checkIntegration(
+        defineIntegration({
+          type: "x",
+          label: "X",
+          description: "Webhook secret is not a credential",
+          credentials: {},
+          actions: {},
+          events: [
+            defineEvent({
+              name: "x/happened",
+              schema: Schema.Struct({
+                id: Schema.String.annotate({ description: "Id" }),
+              }),
+              source: { event: "x/webhook" },
+            }),
+          ],
+          webhook: {
+            source: "x/webhook",
+            // Deliberately not a declared credential: the type forbids this,
+            // and checkIntegration is what still catches a bypass.
+            secret: "MISSING_SECRET" as never,
+            verify: () => Effect.void,
+            receive: () => undefined,
+          },
+        })
+      )
+    ).toThrow(/webhook secret "MISSING_SECRET" is not a credential/u);
   });
 });
 

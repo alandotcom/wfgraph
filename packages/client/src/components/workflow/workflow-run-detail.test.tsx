@@ -32,6 +32,7 @@ function renderDetail(
   execution: WorkflowExecution,
   extras?: {
     logs?: WorkflowRunDetailLogs;
+    waits?: Parameters<typeof WorkflowRunDetail>[0]["waits"];
     selectedNodeId?: string;
   }
 ) {
@@ -55,7 +56,7 @@ function renderDetail(
               onCancel={vi.fn(() => undefined)}
               onResume={vi.fn(() => undefined)}
               runNumber={1}
-              waits={[]}
+              waits={extras?.waits ?? []}
             />
           </IntegrationUiProvider>
         </ExtensionCatalogProvider>
@@ -520,4 +521,94 @@ describe("WorkflowRunDetail", () => {
     expect(view.queryByRole("tab", { name: "Input" })).toBeNull();
     expect(view.getByRole("tab", { name: "Output" })).toBeTruthy();
   });
+
+  // Cancel paints the list row first and stops the logs poll. The journey and
+  // waits can still be the last in-flight snapshot, so they follow the run
+  // status rather than those leftover rows.
+  it("treats leftover running steps as cancelled once the run is canceled", () => {
+    const logs: WorkflowRunDetailLogs = [
+      {
+        id: "log_lifecycle",
+        nodeId: "lifecycle_1",
+        nodeName: "Lifecycle",
+        nodeType: "lifecycle",
+        status: "success",
+        startedAt: new Date("2026-02-22T10:00:00Z"),
+        completedAt: new Date("2026-02-22T10:00:01Z"),
+        duration: "1000",
+        error: null,
+      },
+      {
+        id: "log_wait",
+        nodeId: "wait_1",
+        nodeName: "Wait",
+        nodeType: "action",
+        status: "running",
+        startedAt: new Date("2026-02-22T10:00:01Z"),
+        completedAt: null,
+        duration: null,
+        error: null,
+      },
+    ];
+
+    const view = renderDetail(
+      { ...BASE_EXECUTION, status: "canceled" },
+      { logs }
+    );
+
+    expect(view.getByRole("button", { name: "Wait, Cancelled" })).toBeTruthy();
+    expect(view.queryByText("In progress")).toBeNull();
+    expect(view.queryByText("Running")).toBeNull();
+  });
+
+  it("hides parked waits once the run is no longer waiting", () => {
+    const view = renderDetail(
+      { ...BASE_EXECUTION, status: "canceled" },
+      {
+        waits: [
+          {
+            id: "wait_1",
+            nodeId: "wait_1",
+            nodeName: "Wait",
+            resumeToken: "tok_1",
+            subscribedEvents: ["resend/email.delivered"],
+            waitUntil: null,
+          },
+        ],
+      }
+    );
+
+    expect(view.queryByText("Waiting at Wait")).toBeNull();
+    expect(view.queryByText(/Waiting for resend\/email.delivered/)).toBeNull();
+    expect(view.queryByRole("button", { name: "Resume now" })).toBeNull();
+  });
+
+  it.each(["pending", "running", "waiting"] as const)(
+    "shows parked waits while the run is %s",
+    (status) => {
+      const view = renderDetail(
+        { ...BASE_EXECUTION, status },
+        {
+          waits: [
+            {
+              id: "wait_1",
+              nodeId: "wait_1",
+              nodeName: "Wait",
+              resumeToken: "tok_1",
+              subscribedEvents: ["resend/email.delivered"],
+              waitUntil: null,
+            },
+          ],
+        }
+      );
+
+      expect(
+        view.getByRole("heading", { name: "Waiting at Wait" })
+      ).toBeTruthy();
+      expect(
+        view.getByText(/Waiting for resend\/email.delivered/)
+      ).toBeTruthy();
+      expect(view.getByRole("button", { name: "Resume now" })).toBeTruthy();
+    }
+  );
 });

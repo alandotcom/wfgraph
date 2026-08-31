@@ -11,6 +11,7 @@ import {
   findAction,
   findEvent,
   findIntegration,
+  uniqueIntegrationsOfEvents,
 } from "./catalog";
 import { readExtensionCatalog } from "./catalog-wire";
 
@@ -77,6 +78,7 @@ const catalog: ExtensionCatalog = {
         TWILIO_ACCOUNT_SID: { label: "Account SID", type: "text" },
       },
       hasTest: true,
+      hasWebhook: false,
     },
   ],
 };
@@ -308,6 +310,42 @@ describe("the catalog wire schema", () => {
   });
 });
 
+describe("uniqueIntegrationsOfEvents", () => {
+  it("names each integration once, in the order its Events appear", () => {
+    const withIntegrations: ExtensionCatalog = {
+      events: [
+        {
+          name: "app/appointment.created",
+          label: "Appointment created",
+          payloadFields: [],
+        },
+        {
+          name: "resend/email.sent",
+          label: "Email sent",
+          integration: "resend",
+          payloadFields: [],
+        },
+        {
+          name: "resend/email.delivered",
+          label: "Email delivered",
+          integration: "resend",
+          payloadFields: [],
+        },
+      ],
+      actions: [],
+      integrations: [],
+    };
+
+    expect(
+      uniqueIntegrationsOfEvents(withIntegrations, [
+        "app/appointment.created",
+        "resend/email.sent",
+        "resend/email.delivered",
+      ])
+    ).toEqual(["resend"]);
+  });
+});
+
 /**
  * The mapping from a stored config to the environment-variable names a handler
  * reads it by. Every mapping an integration has is in its credential fields, so
@@ -319,6 +357,7 @@ describe("credentialsFromConfig", () => {
     label: "Twilio",
     description: "Send SMS messages",
     hasTest: true,
+    hasWebhook: false,
     credentialFields: {
       TWILIO_AUTH_TOKEN: { label: "Auth Token", type: "password" as const },
       TWILIO_FROM_NUMBER: { label: "From Number", type: "text" as const },

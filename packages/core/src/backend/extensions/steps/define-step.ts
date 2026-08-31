@@ -303,12 +303,23 @@ export type HandlerAnswer<TOutput> =
  * An author writing `{ key: "body", type: "template-textarea", rows: 4 }` keeps
  * the label and the required flag the schema already stated.
  */
-type ConfigFieldFor<TInput> = Partial<Omit<ActionConfigFieldBase, "key">> & {
+type ConfigFieldFor<TInput, TConnectionKey extends string = string> = Partial<
+  Omit<ActionConfigFieldBase, "key" | "connectionDefaultKey">
+> & {
   key: Extract<keyof TInput, string>;
+  /**
+   * Held to the Connection fields the owning integration declares, which is
+   * what `defineIntegration` passes in. A host calling `defineStep` outside an
+   * integration has no such record, and the default admits any string.
+   */
+  connectionDefaultKey?: TConnectionKey;
 };
 
-type ConfigFieldGroupFor<TInput> = Omit<ActionConfigFieldGroup, "fields"> & {
-  fields: ConfigFieldFor<TInput>[];
+type ConfigFieldGroupFor<TInput, TConnectionKey extends string = string> = Omit<
+  ActionConfigFieldGroup,
+  "fields"
+> & {
+  fields: ConfigFieldFor<TInput, TConnectionKey>[];
 };
 
 /**
@@ -316,11 +327,15 @@ type ConfigFieldGroupFor<TInput> = Omit<ActionConfigFieldGroup, "fields"> & {
  *
  * A field naming a key the input schema does not declare would render an input
  * whose value the handler never sees, so it fails to compile here rather than
- * being discovered by a builder filling it in.
+ * being discovered by a builder filling it in. `connectionDefaultKey` is held
+ * the same way, to the credentials its integration declares.
  */
-export type ActionConfigFieldFor<TInput> =
-  | ConfigFieldFor<TInput>
-  | ConfigFieldGroupFor<TInput>;
+export type ActionConfigFieldFor<
+  TInput,
+  TConnectionKey extends string = string,
+> =
+  | ConfigFieldFor<TInput, TConnectionKey>
+  | ConfigFieldGroupFor<TInput, TConnectionKey>;
 
 /**
  * A step's schemas and metadata, before an integration names it.

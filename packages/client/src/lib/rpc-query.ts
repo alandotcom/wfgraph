@@ -191,10 +191,12 @@ export function cacheWorkflow(
 }
 
 /**
- * Both views of run history: the editor's per-workflow payload, which carries the
- * Refused Starts with it, and the dashboard's combined list. Starting, cancelling,
- * or deleting runs makes both wrong, and whichever one is not on screen is the one
- * that gets forgotten.
+ * Both views of run history, and the open run's logs, events, and status.
+ *
+ * Starting, cancelling, or deleting a run makes the lists wrong. Cancelling also
+ * stops the open-run poll: that interval is derived from the list row, so a list
+ * refetch that lands first would freeze the journey and waits on the last in-flight
+ * snapshot unless those keys are marked here too.
  */
 export function refreshRunHistory(queryClient: QueryClient) {
   return Promise.all([
@@ -203,6 +205,15 @@ export function refreshRunHistory(queryClient: QueryClient) {
     }),
     queryClient.invalidateQueries({
       queryKey: orpcQuery.workflow.getExecutionsGlobal.key(),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: orpcQuery.workflow.getExecutionLogs.key(),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: orpcQuery.workflow.getExecutionEvents.key(),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: orpcQuery.workflow.getExecutionStatus.key(),
     }),
   ]);
 }

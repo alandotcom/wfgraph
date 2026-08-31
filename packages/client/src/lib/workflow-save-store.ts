@@ -61,6 +61,15 @@ export const lastSavedAtAtom = atom<Date | null>(null);
 export const lastSaveErrorAtom = atom<Error | null>(null);
 
 /**
+ * Successful writes completed for each workflow during this editor lifetime.
+ * A route loader captures the current number when it starts; hydration compares
+ * that snapshot with the current number before replacing the graph. The map is
+ * replaced on every write so stores remain independent and derived reads see
+ * each completed save.
+ */
+export const successfulSaveGenerationAtom = atom(new Map<string, number>());
+
+/**
  * The subset of the workflow API this module calls, as an atom so a test can
  * substitute it per store rather than reassigning the shared client singleton.
  */
@@ -253,6 +262,14 @@ export const saveWorkflowAtom = atom(
               toUpdatePayload(next.patch)
             );
             outcome = { ok: true, workflow };
+            const saveGenerations = get(successfulSaveGenerationAtom);
+            set(
+              successfulSaveGenerationAtom,
+              new Map(saveGenerations).set(
+                next.workflowId,
+                (saveGenerations.get(next.workflowId) ?? 0) + 1
+              )
+            );
             const rename = queue.renames.get(next.workflowId);
             if (rename) {
               rename.confirmedName = workflow.name;

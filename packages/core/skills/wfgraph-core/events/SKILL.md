@@ -55,6 +55,11 @@ unknown keys. Workflow Graph discards the decoded value and carries the raw JSON
 on. Do not transform at intake: a `Date` round-trip breaks Wait matches captured
 at park time.
 
+### Integration-owned Events
+
+Pass `events` on `defineIntegration`. Identity stays the Event name. A webhook
+is intake. Publish requires a Connection. Host Events have no Connection.
+
 ## Common Mistakes
 
 ### HIGH One Event with a subtype field for two lifecycle roles

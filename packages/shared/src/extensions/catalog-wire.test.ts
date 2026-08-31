@@ -49,6 +49,18 @@ describe("readExtensionCatalog", () => {
     );
   });
 
+  // Without this the editor cannot tell an open record from an empty object, and
+  // a builder loses every path under it.
+  it("carries an open record's value type across the wire", () => {
+    const payloadFields: ReferenceField[] = [
+      { path: "data.tags", type: "object", valueType: "string" },
+    ];
+
+    expect(readExtensionCatalog(aCatalog(payloadFields))).toEqual(
+      aCatalog(payloadFields)
+    );
+  });
+
   it("carries showWhen on a reference field across the wire", () => {
     const payloadFields: ReferenceField[] = [
       {
@@ -97,7 +109,38 @@ describe("readExtensionCatalog", () => {
           description: "Sends email",
           credentialFields: {},
           hasTest: true,
+          hasWebhook: false,
           oauth: { label: "Connect with Resend" },
+        },
+      ],
+    };
+
+    expect(readExtensionCatalog(catalog)).toEqual(catalog);
+  });
+
+  it("carries Event ownership and webhook capability across the wire", () => {
+    const catalog: ExtensionCatalog = {
+      events: [
+        {
+          name: "resend/email.delivered",
+          label: "Email delivered",
+          integration: "resend",
+          correlationPath: "data.email_id",
+          payloadFields: [{ path: "data.email_id", type: "string" }],
+        },
+      ],
+      actions: [],
+      integrations: [
+        {
+          type: "resend",
+          label: "Resend",
+          description: "Sends email",
+          credentialFields: {},
+          hasTest: true,
+          hasWebhook: true,
+          webhookHelpText:
+            "Create a webhook in Resend with all event types selected, then paste this URL and the signing secret from that page.",
+          webhookSecretKey: "RESEND_WEBHOOK_SECRET",
         },
       ],
     };
@@ -131,6 +174,33 @@ describe("readExtensionCatalog", () => {
                 provider: "template-variables",
                 parameters: ["emailTemplateId"],
               },
+            },
+          ],
+          outputFields: [],
+        },
+      ],
+      integrations: [],
+    };
+
+    expect(readExtensionCatalog(catalog)).toEqual(catalog);
+  });
+
+  it("carries a field's connectionDefaultKey across the wire", () => {
+    const catalog: ExtensionCatalog = {
+      events: [],
+      actions: [
+        {
+          id: "resend/send-email",
+          label: "Send Email",
+          description: "Sends an email",
+          category: "Resend",
+          integration: "resend",
+          configFields: [
+            {
+              key: "emailFrom",
+              label: "From (Sender)",
+              type: "template-input",
+              connectionDefaultKey: "RESEND_FROM_EMAIL",
             },
           ],
           outputFields: [],
@@ -176,6 +246,7 @@ describe("readExtensionCatalog", () => {
               [key, { label: "Unsafe", type: "text" }],
             ]),
             hasTest: false,
+            hasWebhook: false,
           },
         ],
       };

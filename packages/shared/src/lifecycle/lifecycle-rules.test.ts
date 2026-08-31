@@ -5,15 +5,19 @@ import { rejectUnknownKeys } from "#src/types/schema";
 import {
   checkLifecycleRules,
   configDeclaresCancelEvent,
+  connectionIdForIntegration,
   eventsNeedingCorrelationPath,
   hasStartSource,
+  inheritConnectionIds,
   type LifecycleRules,
   type LifecycleRulesCheck,
   lifecycleRulesSchema,
   manualStartAllowed,
+  pruneConnectionIds,
   pruneCorrelationPaths,
   readLifecycleRules,
   resolveCorrelationPath,
+  setConnectionForIntegration,
 } from "./lifecycle-rules";
 
 /** The sentence a refused save is shown, or a failure naming the acceptance. */
@@ -47,9 +51,32 @@ const catalog: ExtensionCatalog = {
       label: "Nightly sweep finished",
       payloadFields: [],
     },
+    {
+      name: "resend/email.sent",
+      label: "Email sent",
+      integration: "resend",
+      correlationPath: "data.email_id",
+      payloadFields: [],
+    },
+    {
+      name: "resend/email.delivered",
+      label: "Email delivered",
+      integration: "resend",
+      correlationPath: "data.email_id",
+      payloadFields: [],
+    },
   ],
   actions: [],
-  integrations: [],
+  integrations: [
+    {
+      type: "resend",
+      label: "Resend",
+      description: "Transactional email",
+      credentialFields: {},
+      hasTest: false,
+      hasWebhook: true,
+    },
+  ],
 };
 
 function rules(overrides: Partial<LifecycleRules> = {}): LifecycleRules {
@@ -515,6 +542,119 @@ describe("checkLifecycleRules", () => {
         catalog,
       })
     ).toEqual([]);
+  });
+
+  it("refuses an integration Event that names no Connection", () => {
+    const check = checkLifecycleRules({
+      rules: rules({
+        startEvents: ["resend/email.delivered"],
+        concurrency: "unlimited",
+      }),
+      catalog,
+    });
+
+    expect(refusalOf(check)).toContain("needs a Connection");
+    expect(refusalOf(check)).toContain("would start on every");
+  });
+
+  it("accepts an integration Event that names a Connection", () => {
+    expect(
+      checkLifecycleRules({
+        rules: rules({
+          startEvents: ["resend/email.delivered"],
+          concurrency: "unlimited",
+          connectionIds: { "resend/email.delivered": "conn_1" },
+        }),
+        catalog,
+      })
+    ).toEqual({ valid: true });
+  });
+
+  it("refuses a host Event that names a Connection", () => {
+    const check = checkLifecycleRules({
+      rules: rules({
+        startEvents: ["app/appointment.created"],
+        concurrency: "unlimited",
+        connectionIds: { "app/appointment.created": "stale_1" },
+      }),
+      catalog,
+    });
+
+    expect(refusalOf(check)).toContain(
+      'Event "app/appointment.created" is owned by the host and cannot name a Connection'
+    );
+  });
+});
+
+describe("setConnectionForIntegration", () => {
+  it("stamps one Connection onto every named Event of that integration", () => {
+    expect(
+      setConnectionForIntegration({
+        rules: rules({
+          startEvents: ["resend/email.sent", "resend/email.delivered"],
+          cancelEvents: ["app/appointment.canceled"],
+        }),
+        catalog,
+        integration: "resend",
+        connectionId: "conn_1",
+      }).connectionIds
+    ).toEqual({
+      "resend/email.sent": "conn_1",
+      "resend/email.delivered": "conn_1",
+    });
+  });
+});
+
+describe("inheritConnectionIds", () => {
+  it("copies a sibling Connection onto a newly named Event of the same integration", () => {
+    expect(
+      inheritConnectionIds(
+        rules({
+          startEvents: ["resend/email.sent", "resend/email.delivered"],
+          connectionIds: { "resend/email.sent": "conn_1" },
+        }),
+        catalog
+      ).connectionIds
+    ).toEqual({
+      "resend/email.sent": "conn_1",
+      "resend/email.delivered": "conn_1",
+    });
+  });
+});
+
+describe("connectionIdForIntegration", () => {
+  it("reads the stored Connection for an integration from any of its Events", () => {
+    expect(
+      connectionIdForIntegration(
+        rules({
+          startEvents: ["resend/email.sent", "resend/email.delivered"],
+          connectionIds: { "resend/email.delivered": "conn_1" },
+        }),
+        catalog,
+        "resend"
+      )
+    ).toBe("conn_1");
+  });
+});
+
+describe("pruneConnectionIds", () => {
+  it("drops a Connection for an Event that lost its role", () => {
+    expect(
+      pruneConnectionIds(
+        rules({
+          startEvents: ["app/appointment.created"],
+          connectionIds: {
+            "app/appointment.created": "conn_1",
+            "resend/email.delivered": "conn_2",
+          },
+        })
+      )
+    ).toEqual(
+      rules({
+        startEvents: ["app/appointment.created"],
+        connectionIds: { "app/appointment.created": "conn_1" },
+      })
+    );
   });
 });
 

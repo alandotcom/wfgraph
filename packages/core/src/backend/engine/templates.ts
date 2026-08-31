@@ -8,6 +8,8 @@ import {
   resolveOutputPath,
   type TemplateToken,
 } from "@wfgraph/shared/graph/node-references";
+import type { TemplateJsonShape } from "@wfgraph/shared/plugins/action-fields";
+import { readKeyValueRows } from "@wfgraph/shared/plugins/key-value-rows";
 import { readProviderFieldValues } from "@wfgraph/shared/plugins/provider-field-values";
 import type { NodeOutputs } from "#src/backend/engine/contracts";
 import { outputKey } from "#src/backend/engine/traversal";
@@ -72,16 +74,16 @@ function resolveTemplateToken(
  * `literalKeys` are the keys the action declared `literal`, whose values pass
  * through as they were authored.
  *
- * `templateObjectKeys` are the keys holding a JSON object of authored values.
- * Those resolve one value at a time, because substituting into the whole string
- * lets a resolved `"` or newline break the JSON and cost the step every value in
- * it rather than one.
+ * `jsonShapes` names the keys whose text is JSON holding authored values, and
+ * which layout each is in. Those resolve one value at a time, because
+ * substituting into the whole string lets a resolved `"` or newline break the
+ * JSON and cost the step every value in it rather than one.
  */
 export function processTemplates(
   config: Record<string, unknown>,
   outputs: NodeOutputs,
   literalKeys: ReadonlySet<string>,
-  templateObjectKeys: ReadonlySet<string> = new Set()
+  jsonShapes: ReadonlyMap<string, TemplateJsonShape> = new Map()
 ): Record<string, unknown> {
   const processed: Array<[string, unknown]> = [];
 
@@ -96,7 +98,7 @@ export function processTemplates(
         value,
         outputs,
         literal: literalKeys.has(key),
-        asTemplateObject: templateObjectKeys.has(key),
+        jsonShape: jsonShapes.get(key),
       }),
     ]);
   }
@@ -108,29 +110,60 @@ function resolveConfigValue(input: {
   value: unknown;
   outputs: NodeOutputs;
   literal: boolean;
-  asTemplateObject: boolean;
+  jsonShape: TemplateJsonShape | undefined;
 }): unknown {
-  const { value, outputs, literal, asTemplateObject } = input;
+  const { value, outputs, literal, jsonShape } = input;
   if (typeof value !== "string" || literal) {
     return value;
   }
 
-  return asTemplateObject
-    ? resolveTemplateObjectString(value, outputs)
-    : resolveTemplateString(value, outputs);
+  if (!jsonShape) {
+    return resolveTemplateString(value, outputs);
+  }
+
+  return jsonShape === "key-value"
+    ? resolveKeyValueRows(value, outputs)
+    : resolveProviderFields(value, outputs);
 }
 
 /**
- * Resolve each value of a JSON object of authored templates, and re-serialise.
+ * Resolve each row's value in a `key-value` field, and re-serialise.
  *
- * Text that is not such an object falls back to resolving the whole string.
- * That is the escape hatch a builder gets when the provider-backed form cannot
- * draw, so the value they typed by hand keeps behaving as it always did.
+ * A row list stays a list because a row is a row: two rows may carry the same
+ * name, and the order is the one they were added in.
+ *
+ * A row's name is left as authored. It is the key of whatever the step is
+ * building, and the systems that take one hold it to a short constrained
+ * alphabet, so a reference resolved into it would name a key nobody could match.
+ *
+ * Text this cannot read falls back to resolving the whole string, which is the
+ * escape hatch a builder gets when the widget cannot draw: what they typed by
+ * hand keeps behaving as it always did.
  */
-function resolveTemplateObjectString(
-  value: string,
-  outputs: NodeOutputs
-): string {
+function resolveKeyValueRows(value: string, outputs: NodeOutputs): string {
+  const rows = readKeyValueRows(value);
+  if (!rows) {
+    return resolveTemplateString(value, outputs);
+  }
+
+  // `JSON.stringify` is what escapes a resolved quotation mark or newline, and
+  // doing it here rather than in the step is what keeps the boundary a string.
+  return JSON.stringify(
+    rows.map((row) => ({
+      name: row.name,
+      value: resolveTemplateString(row.value, outputs),
+    }))
+  );
+}
+
+/**
+ * Resolve each value of a `provider-fields` object, and re-serialise.
+ *
+ * One object keyed by the variable each value fills. A number stays a number:
+ * the panel stores a variable the provider declared numeric as a JSON number,
+ * and only the strings hold templates.
+ */
+function resolveProviderFields(value: string, outputs: NodeOutputs): string {
   const entries = readProviderFieldValues(value);
   if (!entries) {
     return resolveTemplateString(value, outputs);
@@ -144,8 +177,6 @@ function resolveTemplateObjectString(
     ]);
   }
 
-  // `JSON.stringify` is what escapes a resolved quotation mark or newline, and
-  // doing it here rather than in the step is what keeps the boundary a string.
   return JSON.stringify(Object.fromEntries(resolved));
 }
 

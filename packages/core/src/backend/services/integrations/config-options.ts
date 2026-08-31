@@ -26,9 +26,11 @@ import {
   describeUnavailableIntegration,
 } from "#src/backend/services/integrations/vendor-call";
 import type { ConfigOptionsAnswer } from "#src/backend/extensions/config-options";
-import { findIntegration } from "@wfgraph/shared/extensions/catalog";
-import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
+import {
+  type ExtensionCatalog,
+  fieldsForIntegration,
+  findIntegration,
+} from "@wfgraph/shared/extensions/catalog";
 import { isSafeRecordKey } from "@wfgraph/shared/types/record-key";
 
 const describeConfigOptionsFailure = () =>
@@ -146,15 +148,10 @@ function acceptedParameters(
   parameters: Record<string, string>
 ): Record<string, string> {
   const declared = new Set<string>();
-  for (const action of catalog.actions) {
-    if (action.integration !== integrationType) {
-      continue;
-    }
-    for (const field of flattenConfigFields(action.configFields)) {
-      if (field.optionsSource?.provider === provider) {
-        for (const key of field.optionsSource.parameters ?? []) {
-          declared.add(key);
-        }
+  for (const field of fieldsForIntegration(catalog, integrationType)) {
+    if (field.optionsSource?.provider === provider) {
+      for (const key of field.optionsSource.parameters ?? []) {
+        declared.add(key);
       }
     }
   }

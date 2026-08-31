@@ -18,6 +18,7 @@ import {
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type {
   EntityStartOutcome,
@@ -216,10 +217,9 @@ function stubPublishedWorkflow(workflow: Workflow) {
 function subscriber(overrides: Partial<EventSubscriber> = {}): EventSubscriber {
   return {
     id: "wf_1",
-    name: "Appointment Reminders",
-    mode: "live",
     roles: ["start"],
     correlationPath: null,
+    connectionId: null,
     ...overrides,
   };
 }
@@ -371,6 +371,48 @@ describe("applyLifecycleRules", () => {
         assert.deepStrictEqual(sendRunRequestedMock.mock.calls[0]?.[0], {
           executionId: "exec_new",
         });
+      })
+    );
+
+    it.effect("is waits_only when the arrival is a different Connection", () =>
+      Effect.gen(function* () {
+        const outcome = yield* applyLifecycleRules({
+          subscriber: subscriber({ connectionId: "conn_1" }),
+          event: { ...appointmentCreated, connectionId: "conn_other" },
+          payload,
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              stubPublishedWorkflow(createWorkflow({ rules: startRules })),
+              lifecyclePorts
+            )
+          )
+        );
+
+        assert.deepStrictEqual(outcome, {
+          kind: "waits_only",
+          workflowId: "wf_1",
+        });
+        assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+      })
+    );
+
+    it.effect("starts when the arrival is the Connection the rules name", () =>
+      Effect.gen(function* () {
+        const outcome = yield* applyLifecycleRules({
+          subscriber: subscriber({ connectionId: "conn_1" }),
+          event: { ...appointmentCreated, connectionId: "conn_1" },
+          payload,
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              stubPublishedWorkflow(createWorkflow({ rules: startRules })),
+              lifecyclePorts
+            )
+          )
+        );
+
+        assert.strictEqual(outcome.kind, "started");
       })
     );
 
@@ -678,8 +720,36 @@ describe("applyLifecycleRules", () => {
               stubPublishedWorkflow(
                 createWorkflow({
                   graph: createSerializedWorkflowGraph({
-                    nodes: [],
-                    edges: [],
+                    nodes: [
+                      {
+                        id: "lifecycle-1",
+                        type: "lifecycle",
+                        position: { x: 0, y: 0 },
+                        data: {
+                          label: "Start",
+                          type: "lifecycle",
+                          config: { lifecycleRules: startRules },
+                        },
+                      },
+                      {
+                        id: "action-1",
+                        type: "action",
+                        position: { x: 0, y: 120 },
+                        data: {
+                          label: "Unset",
+                          type: "action",
+                          config: {},
+                        },
+                      },
+                    ],
+                    edges: [
+                      {
+                        id: "e1",
+                        source: "lifecycle-1",
+                        target: "action-1",
+                        sourceHandle: LIFECYCLE_STARTED_HANDLE,
+                      },
+                    ],
                   }),
                 })
               ),
@@ -729,17 +799,17 @@ describe("applyLifecycleRules", () => {
 
 describe("deliverToWaits", () => {
   layer(Layer.mergeAll(SilentAppLoggerLayer, catalogLayer, waitPorts))((it) => {
-    // Candidates are found by Event name, and each row's own compiled match
-    // decides. Nothing here reads a Correlation Path, which is what lets a run
-    // park on an Event that has no entity of its own.
-    it.effect("offers the Event to the runs parked on its name", () =>
+    // Candidates are found by Event name across both run modes, and each row's
+    // own compiled match decides. The lookup takes no published-mode input, so
+    // a draft test run remains reachable while the workflow is live.
+    it.effect("offers the Event to parked runs regardless of run mode", () =>
       Effect.gen(function* () {
         listWaitsForEventMock.mockReturnValueOnce(
           Effect.succeed([parkedWait("app/appointment.created")])
         );
 
         const outcome = yield* deliverToWaits({
-          subscriber: subscriber({ roles: ["wait"] }),
+          workflowId: "wf_1",
           event: appointmentCreated,
           payload,
           excluding: [],
@@ -753,7 +823,6 @@ describe("deliverToWaits", () => {
           {
             workflowId: "wf_1",
             eventName: "app/appointment.created",
-            runMode: "live",
             limit: 200,
             afterId: undefined,
             excludingExecutionIds: [],
@@ -775,7 +844,7 @@ describe("deliverToWaits", () => {
         listWaitsForEventMock.mockReturnValueOnce(Effect.succeed([]));
 
         const outcome = yield* deliverToWaits({
-          subscriber: subscriber(),
+          workflowId: "wf_1",
           event: appointmentCreated,
           payload,
           excluding: ["exec_superseded"],
@@ -799,7 +868,7 @@ describe("deliverToWaits", () => {
         );
 
         const outcome = yield* deliverToWaits({
-          subscriber: subscriber({ roles: ["wait"] }),
+          workflowId: "wf_1",
           event: { name: "ops/nightly.swept" },
           payload: { sweep: { id: "sweep_1" } },
           excluding: [],
@@ -810,7 +879,6 @@ describe("deliverToWaits", () => {
           {
             workflowId: "wf_1",
             eventName: "ops/nightly.swept",
-            runMode: "live",
             limit: 200,
             afterId: undefined,
             excludingExecutionIds: [],
@@ -828,7 +896,7 @@ describe("deliverToWaits", () => {
         listWaitsForEventMock.mockReturnValueOnce(Effect.succeed([]));
 
         yield* deliverToWaits({
-          subscriber: subscriber({ roles: ["wait"] }),
+          workflowId: "wf_1",
           event: appointmentCreated,
           payload,
           excluding: [],
@@ -843,7 +911,7 @@ describe("deliverToWaits", () => {
         listWaitsForEventMock.mockReturnValueOnce(Effect.succeed([]));
 
         const outcome = yield* deliverToWaits({
-          subscriber: subscriber({ roles: ["wait"] }),
+          workflowId: "wf_1",
           event: { name: "ops/nightly.swept" },
           payload: { sweep: { id: "sweep_1" } },
           excluding: [],

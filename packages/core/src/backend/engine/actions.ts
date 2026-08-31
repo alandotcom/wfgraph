@@ -19,6 +19,7 @@ import type {
   StepResult,
 } from "@wfgraph/shared/actions/step-result";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
+import type { TemplateJsonShape } from "@wfgraph/shared/plugins/action-fields";
 
 /** What the catalog says about an action, as the run needs it. */
 export type ActionRunMetadata = {
@@ -33,11 +34,12 @@ export type ActionRunMetadata = {
    */
   literalConfigKeys: readonly string[];
   /**
-   * The config keys whose value is a JSON object of authored templates, which
-   * the engine resolves value by value so an authored `"` or newline cannot
-   * break the JSON around it.
+   * The config keys whose value is JSON holding authored templates, each with
+   * the layout its text is in. The engine resolves those value by value, so an
+   * authored `"` or newline cannot break the JSON around it, and it dispatches
+   * on the declared shape rather than guessing which one a string holds.
    */
-  templateObjectConfigKeys: readonly string[];
+  templateJsonConfigShapes: ReadonlyArray<[string, TemplateJsonShape]>;
 };
 
 /** An assembled action in the Effect-native shape the engine dispatches. */

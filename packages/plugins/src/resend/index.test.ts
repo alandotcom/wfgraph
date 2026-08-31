@@ -16,9 +16,15 @@ describe("the resend integration", () => {
     expect(integration.type).toBe("resend");
     expect(integration.test).toBeDefined();
     expect(Object.keys(integration.credentials)).toEqual([
+      "RESEND_WEBHOOK_SECRET",
       "RESEND_API_KEY",
       "RESEND_FROM_EMAIL",
     ]);
+    expect(integration.events?.map((event) => event.name)).toContain(
+      "resend/email.delivered"
+    );
+    expect(integration.webhook).toBeDefined();
+    expect(integration.webhook?.secret).toBe("RESEND_WEBHOOK_SECRET");
     expect(Object.keys(integration.actions)).toEqual(["send-email"]);
   });
 
@@ -73,6 +79,19 @@ describe("the resend integration", () => {
         path: "reasonCode",
         description: "Why a test run did not send",
         type: "string",
+        nullable: true,
+      },
+      // An open record, so the editor lists the record and offers a key under it
+      // by name. That is the same entry a `resend/email.*` payload carries, and
+      // the two agreeing is what lets one workflow tag a send and the next read
+      // the tag off the webhook.
+      // Nullable because a send that carried no tags omits the key entirely,
+      // which is what offers a downstream rule `is set` on the record.
+      {
+        path: "tags",
+        description: "Email tags",
+        type: "object",
+        valueType: "string",
         nullable: true,
       },
     ]);

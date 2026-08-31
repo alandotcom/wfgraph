@@ -1,12 +1,12 @@
 /**
- * The Resend integration: its credentials, its one action, and what that action
- * takes and gives back.
+ * The Resend integration: its credentials, its one action, the Events a
+ * webhook raises, and the webhook that produces them.
  *
- * One file, because only the server imports it. The editor gets this plugin's
- * metadata as JSON over `/api/extensions`, so nothing here reaches a browser
- * bundle and the system client below costs the browser nothing. The icon is the
- * exception, because a React component cannot be serialized: it stays in
- * `ui.ts`, which only the browser imports.
+ * The `defineIntegration` call stays in this file. Event schemas and Svix
+ * verify live in sibling modules, because they are large enough on their own.
+ * The editor gets this plugin's metadata as JSON over `/api/extensions`, so
+ * nothing here reaches a browser bundle. The icon is the exception, because a
+ * React component cannot be serialized: it stays in `ui.ts`.
  */
 
 import {
@@ -20,9 +20,22 @@ import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
 import { Effect, Result, Schema } from "effect";
 import { describeResendFailure, sendResendEmail } from "#src/resend/client";
+import { resendEvents } from "#src/resend/events";
 import { resendOAuth } from "#src/resend/oauth";
+import { resendWebhook } from "#src/resend/webhook";
 
 const resendCredentialFields = {
+  RESEND_WEBHOOK_SECRET: {
+    label: "Webhook Signing Secret",
+    type: "password",
+    placeholder: "whsec_...",
+    helpText:
+      "From the webhook details page in Resend. Optional on a send-only Connection; a POST without it is refused.",
+    helpLink: {
+      text: "resend.com/webhooks",
+      url: "https://resend.com/docs/webhooks/event-types",
+    },
+  },
   RESEND_API_KEY: {
     label: "API Key",
     type: "password",
@@ -43,17 +56,24 @@ const resendCredentialFields = {
 
 export type ResendCredentials = CredentialsOf<typeof resendCredentialFields>;
 
-type ResendTestBehavior = "log_only" | "send_to_test_email";
 const TEST_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** The three shapes of body a Send Email node can carry. */
+const contentModes = ["text", "html", "template"] as const;
+
+/** What a test run does instead of sending to the real recipient. */
+const testBehaviors = ["log_only", "send_to_test_email"] as const;
 
 /**
  * The Send Email config, as the step reads it.
  *
- * Every field is a string because that is what a resolved config field is: the
- * editor writes text, and a template variable resolves to text. Which of them a
+ * Every field a builder types into is a string because that is what a resolved
+ * config field is: the editor writes text, and a template variable resolves to
+ * text. `emailContentMode` and `testBehavior` are the exception, because a
+ * `select` writes one of its own option values and nothing else. Which fields a
  * builder has to fill in is stated in `configFields`; what this schema says is
- * what the step may read. `optionalKey` for a field left blank, which reaches a
- * step as an absent key.
+ * what the step may read.
+ * `optionalKey` for a field left blank, which reaches a step as an absent key.
  */
 const sendEmailInput = Schema.Struct({
   emailTo: Schema.String,
@@ -61,7 +81,7 @@ const sendEmailInput = Schema.Struct({
   emailFrom: Schema.optionalKey(Schema.String),
   emailBody: Schema.optionalKey(Schema.String),
   emailHtml: Schema.optionalKey(Schema.String),
-  emailContentMode: Schema.optionalKey(Schema.String),
+  emailContentMode: Schema.optionalKey(Schema.Literals(contentModes)),
   emailTemplateId: Schema.optionalKey(Schema.String),
   /** JSON the workflow author typed, parsed by the step. */
   emailTemplateVariables: Schema.optionalKey(Schema.String),
@@ -72,7 +92,7 @@ const sendEmailInput = Schema.Struct({
   emailTopicId: Schema.optionalKey(Schema.String),
   /** JSON the workflow author typed, parsed by the step. */
   emailTags: Schema.optionalKey(Schema.String),
-  testBehavior: Schema.optionalKey(Schema.String),
+  testBehavior: Schema.optionalKey(Schema.Literals(testBehaviors)),
   testEmailTo: Schema.optionalKey(Schema.String),
 });
 
@@ -91,23 +111,33 @@ const sendEmailOutput = Schema.Struct({
       Schema.String.annotate({ description: "Why a test run did not send" })
     )
   ),
+  /**
+   * The tags this send carried, in the shape Resend's own webhooks echo them:
+   * a key per tag name. The wire body sends the list Resend's send API takes,
+   * so the boundary translates and `tags.order_id` then means the same thing
+   * here and on a `resend/email.delivered` payload. A repeated tag name folds
+   * to one key, which is what the webhook does with it too.
+   */
+  tags: Schema.optionalKey(
+    Schema.Record(Schema.String, Schema.String).annotate({
+      description: "Email tags",
+    })
+  ),
 });
-
-function resolveResendTestBehavior(
-  value: string | undefined
-): ResendTestBehavior {
-  return value === "send_to_test_email" ? "send_to_test_email" : "log_only";
-}
 
 function isValidTestEmailAddress(value: string): boolean {
   return TEST_EMAIL_PATTERN.test(value);
 }
 
 // Tags and template variables reach this step as JSON strings a workflow author
-// typed into the node config, so both are parsed at that boundary. Text that does
-// not describe what Resend accepts is logged and dropped, leaving the email to
-// send without it. Both decodes ask for every issue rather than the first, so one
-// log line accounts for the whole string the author typed.
+// typed into the node config, so both are parsed at that boundary.
+//
+// The engine resolves each authored value on its own and re-serialises the list
+// (`templateJsonFieldShapes`), so a reference resolving to text with a quotation
+// mark in it arrives here escaped rather than as text no parser accepts. Text
+// that still does not parse is the author's own, and it fails the step: an email
+// that sends without the tags the workflow says it carries leaves every node
+// reading `tags.order_id` downstream with nothing, and reports success.
 const emailTagsSchema = Schema.mutable(
   Schema.Array(Schema.Struct({ name: Schema.String, value: Schema.String }))
 );
@@ -126,133 +156,170 @@ const decodeTemplateVariables = Schema.decodeUnknownResult(
   { errors: "all" }
 );
 
-function parseTags(tagsJson: string): typeof emailTagsSchema.Type | undefined {
-  let parsed: unknown;
+/**
+ * The value a JSON config box holds, or the failure naming a box whose text does
+ * not describe what Resend accepts.
+ *
+ * Each decode asks for every issue rather than the first, so one failure accounts
+ * for the whole string the author typed. The message names the field as the form
+ * labels it and the shape it wanted, never the value it rejected.
+ */
+function readAuthoredJson<T>(
+  text: string,
+  decode: (input: unknown) => Result.Result<T, Schema.SchemaError>,
+  field: { label: string; shape: string }
+): Effect.Effect<T, StepFailure> {
+  return Effect.gen(function* () {
+    const parsed = yield* Effect.try({
+      try: () => JSON.parse(text) as unknown,
+      catch: () =>
+        new StepFailure({ message: `${field.label} is not valid JSON.` }),
+    });
 
-  try {
-    parsed = JSON.parse(tagsJson);
-  } catch (error) {
-    console.error("[Resend] Failed to parse tags JSON:", error);
-    return undefined;
-  }
+    const result = decode(parsed);
 
-  const result = decodeEmailTags(parsed);
+    if (Result.isFailure(result)) {
+      return yield* new StepFailure({
+        message: `${field.label} must be ${field.shape}.`,
+      });
+    }
 
-  if (Result.isFailure(result)) {
-    console.error(
-      "[Resend] Tags JSON must be a list of { name, value } entries:",
-      result.failure.message
-    );
-    return undefined;
-  }
-
-  return result.success;
+    return result.success;
+  });
 }
 
-function parseTemplateVariables(
-  templateVariables: string | undefined
-): typeof templateVariablesSchema.Type | undefined {
-  if (!templateVariables) {
-    return undefined;
-  }
+function readTags(
+  tagsJson: string
+): Effect.Effect<typeof emailTagsSchema.Type, StepFailure> {
+  return readAuthoredJson(tagsJson, decodeEmailTags, {
+    label: "Tags",
+    shape: "a list of name and value entries",
+  });
+}
 
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(templateVariables);
-  } catch (error) {
-    console.error("[Resend] Failed to parse template variables JSON:", error);
-    return undefined;
-  }
-
-  const result = decodeTemplateVariables(parsed);
-
-  if (Result.isFailure(result)) {
-    console.error(
-      "[Resend] Template variables JSON must map names to strings or numbers:",
-      result.failure.message
-    );
-    return undefined;
-  }
-
-  return result.success;
+function readTemplateVariables(
+  templateVariables: string
+): Effect.Effect<typeof templateVariablesSchema.Type, StepFailure> {
+  return readAuthoredJson(templateVariables, decodeTemplateVariables, {
+    label: "Template Variables",
+    shape: "a JSON object of names to strings or numbers",
+  });
 }
 
 /**
- * The body Resend is sent, or the failure that says why one could not be built.
+ * The tags a send carried, keyed by name, or nothing where it carried none.
  *
- * The three content modes differ only in which fields they add to a common set,
- * and each names the field it cannot do without, so the message tells an author
- * which box to fill in.
+ * Resend takes a list on the way out and answers a record on its webhooks, so
+ * this is the fold between them. A repeated name keeps the last row, matching
+ * what Resend does with one.
  */
-function buildEmailPayload(
+function tagsByName(
+  tags: typeof emailTagsSchema.Type | undefined
+): Record<string, string> | undefined {
+  return tags?.length
+    ? Object.fromEntries(tags.map((tag) => [tag.name, tag.value]))
+    : undefined;
+}
+
+/**
+ * The body fields one content mode contributes.
+ *
+ * Named as a type so all three modes answer one shape. Left to inference, each
+ * mode answers a shape of its own, and a key another mode sets gets the type
+ * `undefined`, which a `JsonObject` value rejects.
+ */
+type EmailContent = {
+  text?: string;
+  html?: string;
+  template?: { id?: string; variables?: typeof templateVariablesSchema.Type };
+};
+
+/**
+ * The body fields the chosen content mode contributes, or the failure naming the
+ * box a builder still has to fill in.
+ *
+ * A template request carries neither html nor text, which Resend rejects, so each
+ * mode adds its own fields and nothing else.
+ */
+function emailContent(
+  input: typeof sendEmailInput.Type
+): Effect.Effect<EmailContent, StepFailure> {
+  return Effect.gen(function* () {
+    switch (input.emailContentMode ?? "text") {
+      case "template": {
+        if (!input.emailTemplateId) {
+          return yield* new StepFailure({
+            message: "Content Mode is Template, so a Template must be chosen.",
+          });
+        }
+
+        const variables = input.emailTemplateVariables
+          ? yield* readTemplateVariables(input.emailTemplateVariables)
+          : undefined;
+
+        return {
+          template: omitBy({ id: input.emailTemplateId, variables }, isNil),
+        };
+      }
+
+      case "html": {
+        if (!input.emailHtml) {
+          return yield* new StepFailure({
+            message: "Content Mode is HTML, so HTML Body must be filled in.",
+          });
+        }
+
+        return { html: input.emailHtml, text: input.emailBody };
+      }
+
+      // Text, the mode `emailContentMode` defaults to. It carries the `default`
+      // label because `typescript(consistent-return)` reads a switch over three
+      // named cases as a function that can fall out of the end.
+      default: {
+        if (!input.emailBody) {
+          return yield* new StepFailure({
+            message: "Content Mode is Text, so Text Body must be filled in.",
+          });
+        }
+
+        return { text: input.emailBody, html: input.emailHtml };
+      }
+    }
+  });
+}
+
+/** The body Resend is sent. */
+const buildEmailPayload = Effect.fn(function* (
   input: typeof sendEmailInput.Type,
   senderEmail: string,
-  recipients: { to: string; cc?: string; bcc?: string }
-): Effect.Effect<JsonObject, StepFailure> {
-  // Resend's own field names, which are snake_case on the wire.
-  const basePayload: JsonObject = {
-    from: senderEmail,
-    to: recipients.to,
-    subject: input.emailSubject,
+  recipients: { to: string; cc?: string; bcc?: string },
+  tags: typeof emailTagsSchema.Type | undefined
+) {
+  const content = yield* emailContent(input);
+
+  // Resend's own field names, which are snake_case on the wire. Every optional
+  // field is written out and the blank ones dropped in one pass, because Resend
+  // reads an absent field and an empty one differently.
+  const payload: JsonObject = {
     ...omitBy(
       {
+        from: senderEmail,
+        to: recipients.to,
+        subject: input.emailSubject,
         cc: recipients.cc,
         bcc: recipients.bcc,
         reply_to: input.emailReplyTo,
         scheduled_at: input.emailScheduledAt,
         topic_id: input.emailTopicId,
-        tags: input.emailTags ? parseTags(input.emailTags) : undefined,
+        tags,
+        ...content,
       },
       isNil
     ),
   };
 
-  const contentMode = input.emailContentMode || "text";
-
-  if (contentMode === "template") {
-    return input.emailTemplateId
-      ? Effect.succeed({
-          ...basePayload,
-          template: {
-            id: input.emailTemplateId,
-            ...omitBy(
-              {
-                variables: parseTemplateVariables(input.emailTemplateVariables),
-              },
-              isNil
-            ),
-          },
-        })
-      : Effect.fail(
-          new StepFailure({
-            message: "Template mode requires emailTemplateId.",
-          })
-        );
-  }
-
-  if (contentMode === "html") {
-    return input.emailHtml
-      ? Effect.succeed({
-          ...basePayload,
-          html: input.emailHtml,
-          ...omitBy({ text: input.emailBody }, isNil),
-        })
-      : Effect.fail(
-          new StepFailure({ message: "HTML mode requires emailHtml." })
-        );
-  }
-
-  return input.emailBody
-    ? Effect.succeed({
-        ...basePayload,
-        text: input.emailBody,
-        ...omitBy({ html: input.emailHtml }, isNil),
-      })
-    : Effect.fail(
-        new StepFailure({ message: "Text mode requires emailBody." })
-      );
-}
+  return payload;
+});
 
 export const resend = defineIntegration({
   type: "resend",
@@ -260,6 +327,8 @@ export const resend = defineIntegration({
   description: "Send transactional emails",
   credentials: resendCredentialFields,
   oauth: resendOAuth,
+  events: resendEvents,
+  webhook: resendWebhook,
 
   test: async () => (await import("#src/resend/test")).testResend,
 
@@ -292,6 +361,7 @@ export const resend = defineIntegration({
           label: "From (Sender)",
           type: "template-input",
           placeholder: "Your Name <noreply@example.com>",
+          connectionDefaultKey: "RESEND_FROM_EMAIL",
           example: "Support <support@example.com>",
         },
         {
@@ -448,6 +518,12 @@ export const resend = defineIntegration({
               key: "emailTags",
               label: "",
               type: "key-value",
+              // A tag name typed here is a key of this step's own `tags` output
+              // and of `data.tags` on every outbound `resend/email.*` Event,
+              // which is Resend echoing the same tags back. Naming both is what
+              // lets the editor offer `tags.name` rather than asking for it to
+              // be typed. An inbound `email.received` carries no tags.
+              fillsRecords: ["tags", "data.tags"],
             },
           ],
         },
@@ -460,7 +536,16 @@ export const resend = defineIntegration({
         // rather than sending a second email.
         const idempotencyKey = bag.executionId;
         const syntheticIdSuffix = idempotencyKey ?? "no_execution";
-        const testBehavior = resolveResendTestBehavior(input.testBehavior);
+        const testBehavior = input.testBehavior ?? "log_only";
+
+        // Parsed once, up here, because both the wire body and this step's own
+        // answer are built from it. A test run that sends nothing still reports
+        // the tags it would have carried, which is how the resolved templates
+        // are read back without spending a send.
+        const tags = input.emailTags
+          ? yield* readTags(input.emailTags)
+          : undefined;
+        const tagOutput = omitBy({ tags: tagsByName(tags) }, isNil);
 
         // A test run either sends nothing at all or sends to one address the
         // user nominated. Both answers are a success carrying the reason, so
@@ -468,6 +553,7 @@ export const resend = defineIntegration({
         // interpret.
         if (bag.runMode === "test" && testBehavior === "log_only") {
           return {
+            ...tagOutput,
             id: `resend:test-log-only:${syntheticIdSuffix}`,
             reasonCode: "test_mode_log_only",
           };
@@ -479,6 +565,7 @@ export const resend = defineIntegration({
 
         if (routeToTestRecipient && testRecipient.length === 0) {
           return {
+            ...tagOutput,
             id: `resend:test-log-fallback:${syntheticIdSuffix}`,
             reasonCode: "test_mode_log_fallback_missing_test_email",
           };
@@ -486,6 +573,7 @@ export const resend = defineIntegration({
 
         if (routeToTestRecipient && !isValidTestEmailAddress(testRecipient)) {
           return {
+            ...tagOutput,
             id: `resend:test-log-fallback:${syntheticIdSuffix}`,
             reasonCode: "test_mode_log_fallback_invalid_test_email",
           };
@@ -519,7 +607,8 @@ export const resend = defineIntegration({
           senderEmail,
           routeToTestRecipient
             ? { to: testRecipient }
-            : { to: input.emailTo, cc: input.emailCc, bcc: input.emailBcc }
+            : { to: input.emailTo, cc: input.emailCc, bcc: input.emailBcc },
+          tags
         );
 
         const sent = yield* bag.step.run(
@@ -534,7 +623,7 @@ export const resend = defineIntegration({
           )
         );
 
-        return { id: sent.id };
+        return { ...tagOutput, id: sent.id };
       }),
     },
   },

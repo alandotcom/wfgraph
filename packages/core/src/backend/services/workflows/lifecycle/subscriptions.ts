@@ -46,6 +46,12 @@ export function deriveEventSubscriptions(input: {
       eventName,
       role,
       correlationPath: entryRules?.correlationPaths?.[eventName] ?? null,
+      // Wait matching reads Connection off the parked subscription, not this
+      // index. Start and cancel are what delivery matches from the row.
+      connectionId:
+        role === "wait"
+          ? null
+          : (entryRules?.connectionIds?.[eventName] ?? null),
     });
   };
 

@@ -44,6 +44,7 @@ const linearCatalog = {
       description: "Linear issue tracking",
       credentialFields: {},
       hasTest: true,
+      hasWebhook: false,
     },
   ],
 };

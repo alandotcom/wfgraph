@@ -30,6 +30,7 @@ const catalog: ExtensionCatalog = {
         RESEND_FROM_EMAIL: { label: "From email", type: "text" },
       },
       hasTest: true,
+      hasWebhook: false,
       oauth: { label: "Resend" },
     },
   ],
@@ -50,6 +51,7 @@ function connection(
     createdAt: "2026-08-24T10:00:00.000Z",
     updatedAt: "2026-08-24T10:00:00.000Z",
     configuredKeys,
+    connectionDefaults: {},
     oauth: oauth && { credentialKeys: [], ...oauth },
   };
 }

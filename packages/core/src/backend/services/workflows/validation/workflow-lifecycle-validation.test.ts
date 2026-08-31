@@ -21,9 +21,25 @@ const catalog: ExtensionCatalog = {
       correlationPath: "appointment.id",
       payloadFields: [],
     },
+    {
+      name: "resend/email.delivered",
+      label: "Email delivered",
+      integration: "resend",
+      correlationPath: "data.email_id",
+      payloadFields: [],
+    },
   ],
   actions: [],
-  integrations: [],
+  integrations: [
+    {
+      type: "resend",
+      label: "Resend",
+      description: "Transactional email",
+      credentialFields: {},
+      hasTest: false,
+      hasWebhook: true,
+    },
+  ],
 };
 
 function lifecycleNode(rules?: LifecycleRules): WorkflowNode {
@@ -39,7 +55,10 @@ function lifecycleNode(rules?: LifecycleRules): WorkflowNode {
   };
 }
 
-function waitNode(eventNames: string[]): WorkflowNode {
+function waitNode(
+  eventNames: string[],
+  connectionIds: Record<string, string> = {}
+): WorkflowNode {
   return {
     id: "wait-1",
     type: "action",
@@ -50,7 +69,12 @@ function waitNode(eventNames: string[]): WorkflowNode {
       config: {
         actionType: "Wait",
         waitMode: "event",
-        waitFor: eventNames.map((event) => ({ event })),
+        waitFor: eventNames.map((event) => ({
+          event,
+          ...(connectionIds[event]
+            ? { connectionId: connectionIds[event] }
+            : {}),
+        })),
       },
     },
   };
@@ -137,6 +161,46 @@ describe("validateWorkflowEvents - wait subscription", () => {
       valid: false,
       error: expect.stringContaining(
         'No Event named "billing/payment.settled"'
+      ),
+    });
+  });
+
+  it("refuses a wait on an integration Event that names no Connection", () => {
+    expect(
+      validateWorkflowEvents([waitNode(["resend/email.delivered"])], catalog)
+    ).toMatchObject({
+      valid: false,
+      error: expect.stringContaining("would resume on every"),
+    });
+  });
+
+  it("accepts a wait on an integration Event that names a Connection", () => {
+    expect(
+      validateWorkflowEvents(
+        [
+          waitNode(["resend/email.delivered"], {
+            "resend/email.delivered": "conn_1",
+          }),
+        ],
+        catalog
+      )
+    ).toEqual({ valid: true });
+  });
+
+  it("refuses a wait on a host Event that names a Connection", () => {
+    expect(
+      validateWorkflowEvents(
+        [
+          waitNode(["app/appointment.created"], {
+            "app/appointment.created": "stale_1",
+          }),
+        ],
+        catalog
+      )
+    ).toMatchObject({
+      valid: false,
+      error: expect.stringContaining(
+        'Event "app/appointment.created" is owned by the host and cannot name a Connection'
       ),
     });
   });

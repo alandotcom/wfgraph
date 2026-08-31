@@ -76,6 +76,15 @@ export type ActionConfigFieldBase = {
   // Default value
   defaultValue?: string;
 
+  /**
+   * The Connection value this field falls back to when it is left blank, so the
+   * editor can draw it as the field's placeholder. Names one of the fields the
+   * owning integration declares, and never a `password` one: a masked secret
+   * would draw as `********`. The handler is what applies the fallback; this
+   * only says where to read the hint.
+   */
+  connectionDefaultKey?: string;
+
   // Example value for AI prompt generation
   example?: string;
 
@@ -102,6 +111,23 @@ export type ActionConfigFieldBase = {
 
   // Conditional rendering: only show if another field has a specific value
   showWhen?: ShowWhen;
+
+  /**
+   * The open records whose keys this `key-value` field's names are, by the path
+   * each record sits at.
+   *
+   * A record accepts keys no schema can list, so the editor would otherwise ask
+   * for one to be typed. This is what lets it offer the keys instead: a Send
+   * Email node tagged `name` makes `tags.name` a path the picker lists, on that
+   * node's own output and on the integration's Events, which carry the same tags
+   * back. Paths are matched inside one integration, so one integration's rows
+   * never name another's record.
+   *
+   * Suggestions rather than a guarantee. An email tagged by something outside
+   * this workflow carries keys no node here names, so a key typed by hand keeps
+   * resolving whether it was offered or not.
+   */
+  fillsRecords?: string[];
 };
 
 /**
@@ -157,23 +183,38 @@ export function flattenConfigFields(
   return result;
 }
 
+/** How a config key's JSON is laid out, for the engine resolving inside it. */
+export type TemplateJsonShape = "provider-fields" | "key-value";
+
 /**
- * The config keys holding a JSON object whose values are authored templates.
+ * The config keys whose stored text is JSON holding authored templates, each
+ * with the shape its text is in.
  *
  * The engine resolves those values one at a time rather than substituting into
  * the whole string. Substituting into the string is how a resolved value
  * carrying a quotation mark or a newline leaves the JSON unparseable, and the
  * step then reads no values at all rather than one wrong one.
  *
+ * The shape comes along because the field already declares it. Handing over the
+ * keys alone left the engine guessing which layout a string held, and a
+ * `key-value` field holding text neither reader accepts would fall through to
+ * the other one's rules rather than being handed back as authored.
+ *
  * A group is a rendering decision, so a field inside one counts the same as one
  * beside it.
  */
-export function templateObjectFieldKeys(
+export function templateJsonFieldShapes(
   fields: readonly ActionConfigField[]
-): string[] {
-  return flattenConfigFields(fields)
-    .filter((field) => field.type === "provider-fields")
-    .map((field) => field.key);
+): Array<[string, TemplateJsonShape]> {
+  return flattenConfigFields(fields).flatMap((field) =>
+    isTemplateJsonShape(field.type) ? [[field.key, field.type]] : []
+  );
+}
+
+function isTemplateJsonShape(
+  type: ActionConfigFieldBase["type"]
+): type is TemplateJsonShape {
+  return type === "provider-fields" || type === "key-value";
 }
 
 /**

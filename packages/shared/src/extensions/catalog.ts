@@ -13,7 +13,11 @@
  * the server and the browser run one implementation over the same document.
  */
 
-import type { ActionConfigField } from "#src/plugins/action-fields";
+import {
+  type ActionConfigField,
+  type ActionConfigFieldBase,
+  flattenConfigFields,
+} from "#src/plugins/action-fields";
 import type { ReferenceField } from "#src/graph/node-references";
 
 /**
@@ -29,6 +33,11 @@ export type EventMetadata = {
   readonly description?: string;
   /** Absent when the Event declares none; the Workflow Builder supplies one. */
   readonly correlationPath?: string;
+  /**
+   * The integration that declared this Event, absent for a host `defineEvent`.
+   * The editor uses it to offer a Connection picker on the Lifecycle Node.
+   */
+  readonly integration?: string;
   readonly payloadFields: readonly ReferenceField[];
 };
 
@@ -92,6 +101,18 @@ export type IntegrationMetadata = {
   readonly credentialFields: CredentialFields;
   /** Whether "Test connection" has anything to call. */
   readonly hasTest: boolean;
+  /** Whether this integration mounts a Connection-addressed webhook. */
+  readonly hasWebhook: boolean;
+  /**
+   * Shown under the copyable webhook URL. Absent when the integration did not
+   * supply one; the field then uses a generic sentence.
+   */
+  readonly webhookHelpText?: string;
+  /**
+   * The Connection credential that verifies a webhook POST. Absent when the
+   * integration declared no webhook, or a webhook with no Connection secret.
+   */
+  readonly webhookSecretKey?: string;
   /** Sanitized OAuth capability metadata. Provider behavior stays server-side. */
   readonly oauth?: { readonly label: string };
 };
@@ -134,6 +155,29 @@ export function findEvent(
   return catalog.events.find((event) => event.name === name);
 }
 
+/**
+ * Integration types named by these Events, once each, in first-seen order.
+ *
+ * A Connection and its webhook URL are per integration, not per Event: two
+ * Resend Start Events share one picker.
+ */
+export function uniqueIntegrationsOfEvents(
+  catalog: ExtensionCatalog,
+  eventNames: readonly string[]
+): string[] {
+  const types: string[] = [];
+  const seen = new Set<string>();
+  for (const name of eventNames) {
+    const type = findEvent(catalog, name)?.integration;
+    if (!type || seen.has(type)) {
+      continue;
+    }
+    seen.add(type);
+    types.push(type);
+  }
+  return types;
+}
+
 export function findAction(
   catalog: ExtensionCatalog,
   id: string
@@ -146,6 +190,22 @@ export function findIntegration(
   type: string
 ): IntegrationMetadata | undefined {
   return catalog.integrations.find((integration) => integration.type === type);
+}
+
+/**
+ * Every config field of every action one integration owns, groups flattened.
+ *
+ * Two server-side allowlists are read off these declarations -- which provider
+ * parameters a browser may send, and which Connection values it may be shown --
+ * so both ask the question here rather than each walking the catalog itself.
+ */
+export function fieldsForIntegration(
+  catalog: ExtensionCatalog,
+  type: string
+): readonly ActionConfigFieldBase[] {
+  return catalog.actions
+    .filter((action) => action.integration === type)
+    .flatMap((action) => flattenConfigFields(action.configFields));
 }
 
 /**

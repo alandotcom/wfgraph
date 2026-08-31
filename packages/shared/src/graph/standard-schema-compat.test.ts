@@ -296,7 +296,8 @@ describe("the derivations over a bridged schema", () => {
           }),
         }).annotate({ description: "Who it went to" }),
       }).annotate({ description: "The message that was sent" }),
-      // No named properties, so there is no leaf under it to offer.
+      // An open record: no named property to offer a leaf for, and a value type
+      // saying a key somebody knows the name of is still addressable.
       metadata: Schema.Record(Schema.String, Schema.String).annotate({
         description: "Whatever the account attaches",
       }),
@@ -325,6 +326,7 @@ describe("the derivations over a bridged schema", () => {
         path: "metadata",
         description: "Whatever the account attaches",
         type: "object",
+        valueType: "string",
       },
     ]);
   });
@@ -490,6 +492,7 @@ describe("the field derivation over Effect schemas", () => {
     expect(
       parseWorkflowSchemaFieldsOrJsonSchema({
         type: "object",
+        required: ["createdAt"],
         properties: {
           createdAt: {
             type: "string",
@@ -612,6 +615,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema with date formats", () => {
   it("recognizes format: date-time as timestamp", () => {
     const fields = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["createdAt"],
       properties: {
         createdAt: { type: "string", format: "date-time" },
       },
@@ -625,6 +629,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema with date formats", () => {
   it("keeps a calendar date as text", () => {
     const fields = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["birthday"],
       properties: {
         birthday: { type: "string", format: "date" },
       },
@@ -646,6 +651,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema and the format keyword", () => {
     // by its opening characters, and an author had no way to ask for the type.
     const fields = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["nextEligibleDate"],
       properties: {
         nextEligibleDate: { type: "string", pattern: ISO_DATE_PATTERN },
       },

@@ -157,6 +157,12 @@ function typeAtSymbol(textbox: HTMLElement) {
   fireEvent.input(textbox);
 }
 
+function typeTemplateFilter(textbox: HTMLElement, filter: string) {
+  fireEvent.focus(textbox);
+  textbox.textContent = `@${filter}`;
+  fireEvent.input(textbox);
+}
+
 function mockFieldChromeRect(
   textbox: HTMLElement,
   rect: { top: number; bottom: number; left: number }
@@ -832,5 +838,214 @@ describe("Template badge autocomplete node rows", () => {
       expect(menuRows()).toContain("Send Message");
     });
     expect(menuRows()).not.toContain("Event Split");
+  });
+
+  it("offers a typed open-record key for every upstream record", async () => {
+    surface.actions = [
+      {
+        id: "custom/timestamp-tags",
+        label: "Timestamp Tags",
+        description: "",
+        category: "Custom",
+        integration: "custom",
+        configFields: [
+          {
+            key: "tags",
+            label: "Tags",
+            type: "key-value",
+            fillsRecords: ["tags"],
+          },
+        ],
+        outputFields: [
+          {
+            path: "tags",
+            type: "object",
+            valueType: "timestamp",
+          },
+        ],
+      },
+    ];
+
+    const store = getDefaultStore();
+    store.set(loadWorkflowGraphAtom, {
+      nodes: [
+        {
+          id: "lifecycle_1",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "Webhook",
+            type: "lifecycle",
+            config: {
+              lifecycleRules: {
+                startEvents: [APPOINTMENT_CREATED.name],
+                cancelEvents: [],
+                concurrency: "unlimited",
+              },
+            },
+          },
+        },
+        {
+          id: "send_1",
+          position: { x: 0, y: 100 },
+          data: {
+            label: "Tag First",
+            type: "action",
+            config: {
+              actionType: "custom/timestamp-tags",
+              tags: JSON.stringify([{ name: "campaign.name", value: "" }]),
+            },
+          },
+        },
+        {
+          id: "send_2",
+          position: { x: 0, y: 200 },
+          data: {
+            label: "Tag Second",
+            type: "action",
+            config: {
+              actionType: "custom/timestamp-tags",
+              tags: JSON.stringify([{ name: "items[0]", value: "" }]),
+            },
+          },
+        },
+        {
+          id: "wait_1",
+          position: { x: 0, y: 300 },
+          data: {
+            label: "Wait",
+            type: "action",
+            config: { actionType: "Wait" },
+          },
+          selected: true,
+        },
+      ],
+      edges: [
+        {
+          id: "edge_1",
+          source: "lifecycle_1",
+          sourceHandle: LIFECYCLE_STARTED_HANDLE,
+          target: "send_1",
+        },
+        { id: "edge_2", source: "send_1", target: "send_2" },
+        { id: "edge_3", source: "send_2", target: "wait_1" },
+      ],
+    });
+
+    let latestValue = "";
+    const view = renderWithCatalog(
+      <ControlledTemplateBadgeInput
+        onValueChange={(value) => {
+          latestValue = value;
+        }}
+      />
+    );
+    const textbox = view.getByRole("textbox");
+    typeTemplateFilter(textbox, "tags.order.id");
+
+    await waitFor(() => {
+      expect(menuRows()).toEqual([
+        'Tag First.tags["order.id"]',
+        'Tag Second.tags["order.id"]',
+      ]);
+    });
+
+    fireEvent.mouseDown(
+      findAutocompleteOptionByText('Tag First.tags["order.id"]')
+    );
+    await waitFor(() => {
+      expect(latestValue).toBe('{{@send_1:Tag First.tags["order.id"]}}');
+    });
+  });
+
+  it("uses literal paths for known open-record keys with punctuation", async () => {
+    surface.actions = [
+      {
+        id: "custom/timestamp-tags",
+        label: "Timestamp Tags",
+        description: "",
+        category: "Custom",
+        integration: "custom",
+        configFields: [
+          {
+            key: "tags",
+            label: "Tags",
+            type: "key-value",
+            fillsRecords: ["tags"],
+          },
+        ],
+        outputFields: [
+          {
+            path: "tags",
+            type: "object",
+            valueType: "timestamp",
+          },
+        ],
+      },
+    ];
+
+    const store = getDefaultStore();
+    store.set(loadWorkflowGraphAtom, {
+      nodes: [
+        {
+          id: "lifecycle_1",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "Webhook",
+            type: "lifecycle",
+            config: {
+              lifecycleRules: {
+                startEvents: [APPOINTMENT_CREATED.name],
+                cancelEvents: [],
+                concurrency: "unlimited",
+              },
+            },
+          },
+        },
+        {
+          id: "send_1",
+          position: { x: 0, y: 100 },
+          data: {
+            label: "Tag First",
+            type: "action",
+            config: {
+              actionType: "custom/timestamp-tags",
+              tags: JSON.stringify([
+                { name: "campaign.name", value: "" },
+                { name: "items[0]", value: "" },
+              ]),
+            },
+          },
+        },
+        {
+          id: "wait_1",
+          position: { x: 0, y: 200 },
+          data: {
+            label: "Wait",
+            type: "action",
+            config: { actionType: "Wait" },
+          },
+          selected: true,
+        },
+      ],
+      edges: [
+        {
+          id: "edge_1",
+          source: "lifecycle_1",
+          sourceHandle: LIFECYCLE_STARTED_HANDLE,
+          target: "send_1",
+        },
+        { id: "edge_2", source: "send_1", target: "wait_1" },
+      ],
+    });
+
+    const view = renderWithCatalog(
+      <ControlledTemplateBadgeInput onValueChange={() => {}} />
+    );
+    typeAtSymbol(view.getByRole("textbox"));
+
+    await waitFor(() => {
+      expect(menuRows()).toContain('Tag First.tags["campaign.name"]');
+      expect(menuRows()).toContain('Tag First.tags["items[0]"]');
+    });
   });
 });

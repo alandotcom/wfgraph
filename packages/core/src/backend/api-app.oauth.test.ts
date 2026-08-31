@@ -68,6 +68,7 @@ const exampleMetadata: IntegrationMetadata = {
   label: "Example",
   description: "test integration",
   hasTest: false,
+  hasWebhook: false,
   credentialFields: {
     ACCESS_TOKEN: { label: "Access token", type: "password" },
   },

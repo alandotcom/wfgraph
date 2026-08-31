@@ -14,7 +14,7 @@ import {
   type JsonValue,
 } from "@wfgraph/shared/types/json";
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 const MIGRATION_1 = `
   CREATE TABLE workflows (
@@ -277,6 +277,22 @@ const MIGRATION_5 = `
   ALTER TABLE workflow_versions_v2 RENAME TO workflow_versions;
 `;
 
+/**
+ * The Connection a start or cancel Event must arrive on, denormalized the
+ * same way Correlation Path already is. Incomplete upgrade fixtures may lack
+ * this table, so the create is what lets them reach the column add.
+ */
+const MIGRATION_6 = `
+  CREATE TABLE IF NOT EXISTS workflow_event_subscriptions (
+    workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+    event_name TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('start', 'cancel', 'wait')),
+    correlation_path TEXT,
+    PRIMARY KEY (workflow_id, event_name, role)
+  ) STRICT, WITHOUT ROWID;
+  ALTER TABLE workflow_event_subscriptions ADD COLUMN connection_id TEXT;
+`;
+
 export type SqliteDatabase = {
   readonly read: <A>(
     run: (database: DatabaseSync) => A
@@ -345,6 +361,12 @@ function migrate(database: DatabaseSync): void {
     rebuildTable(database, () => {
       database.exec(MIGRATION_5);
       database.exec("PRAGMA user_version = 5");
+    });
+  }
+  if (version <= 5) {
+    inImmediateTransaction(database, () => {
+      database.exec(MIGRATION_6);
+      database.exec("PRAGMA user_version = 6");
     });
   }
 }

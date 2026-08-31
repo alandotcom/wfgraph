@@ -14,6 +14,7 @@ import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import { readCompiledWaitSubscriptions } from "#src/backend/engine/wait-match";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { JsonObject } from "@wfgraph/shared/types/json";
+import { connectionMatches } from "@wfgraph/shared/lifecycle/event-connections";
 
 type CandidateWaitState = {
   id: string;
@@ -45,10 +46,15 @@ function waitStateMatches(input: {
   waitState: CandidateWaitState;
   eventType: string;
   payload: JsonObject;
+  connectionId?: string;
 }): WaitMatchResult {
   const subscriptions = readCompiledWaitSubscriptions(
     input.waitState.metadata
-  ).filter((subscription) => subscription.event === input.eventType);
+  ).filter(
+    (subscription) =>
+      subscription.event === input.eventType &&
+      connectionMatches(subscription.connectionId, input.connectionId)
+  );
 
   const unevaluated: string[] = [];
 
@@ -83,6 +89,7 @@ export const resumeWaitsMatchingEvent = Effect.fn("resumeWaitsMatchingEvent")(
     eventType?: string;
     payload: JsonObject;
     waitStates: CandidateWaitState[];
+    connectionId?: string;
   }) {
     const { eventType } = input;
     if (!eventType) {
@@ -100,6 +107,7 @@ export const resumeWaitsMatchingEvent = Effect.fn("resumeWaitsMatchingEvent")(
           eventType,
           payload: input.payload,
           waitState,
+          connectionId: input.connectionId,
         }),
       { concurrency: DEFAULT_QUERY_CONNECTIONS }
     );
@@ -120,6 +128,7 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
   eventType: string;
   payload: JsonObject;
   waitState: CandidateWaitState;
+  connectionId?: string;
 }) {
   const { waitState, eventType } = input;
   const logger = (yield* AppLogger).get("wait-resume");
@@ -141,6 +150,7 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
     waitState,
     eventType,
     payload: input.payload,
+    connectionId: input.connectionId,
   });
 
   for (const error of unevaluated) {

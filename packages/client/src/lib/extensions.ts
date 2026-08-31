@@ -26,6 +26,7 @@ const logger = getClientLogger("extensions");
 
 let catalog: ExtensionCatalog = emptyExtensionCatalog;
 let agentEnabled = false;
+let webhookIntake: { publicUrl: string; apiBasePath: string } | undefined;
 
 /**
  * Whether this server has a build agent configured.
@@ -39,6 +40,16 @@ export function isAgentEnabled(): boolean {
 
 export function getExtensionCatalog(): ExtensionCatalog {
   return catalog;
+}
+
+/**
+ * The origin a vendor POSTs webhooks to, from the same `/api/extensions`
+ * document. Absent when the host did not set `publicUrl`.
+ */
+export function getWebhookIntake():
+  | { publicUrl: string; apiBasePath: string }
+  | undefined {
+  return webhookIntake;
 }
 
 /**
@@ -105,5 +116,6 @@ export async function hydrateExtensionsFromApi(): Promise<CatalogLoadResult> {
   // shows no agent against a server that has one is a missing feature, where the
   // reverse is a control that refuses every click.
   agentEnabled = envelope?.agent?.enabled === true;
+  webhookIntake = envelope?.webhookIntake;
   return { ok: true };
 }
