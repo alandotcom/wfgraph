@@ -20,6 +20,7 @@ import {
   currentWorkflowNameAtom,
   currentWorkflowVisibilityAtom,
   hasUnsavedChangesAtom,
+  isSavingAtom,
   isWorkflowOwnerAtom,
   workflowNotFoundAtom,
   workflowLoadErrorAtom,
@@ -186,9 +187,26 @@ export const hydrateWorkflowAtom = atom(
       selected: false,
     }));
 
+    // Reopening the workflow already on screen must not overwrite edits the
+    // server has not stored. A failed save leaves the dirty flag raised on
+    // purpose, so without this a later route re-run installs the server's older
+    // graph and lowers the flag, dropping the edit and the failure notice with
+    // it. Route re-runs are routine: selecting a run writes `executionId` into
+    // the search and leaving Runs clears it, each one refetching the workflow.
+    // The same guard covers a read that overtakes a write still in flight,
+    // where the reverted graph stays on screen while the write lands.
+    //
+    // A different workflow always replaces the graph, and so does this one once
+    // the queue has drained and the two agree.
+    const clientIsAheadOfServer =
+      get(currentWorkflowIdAtom) === workflow.id &&
+      (get(hasUnsavedChangesAtom) || get(isSavingAtom));
+
     // Also clears undo history, so undo cannot reach back past the switch and
     // write the previous workflow's graph into this one.
-    set(loadWorkflowGraphAtom, { nodes, edges: workflow.edges });
+    if (!clientIsAheadOfServer) {
+      set(loadWorkflowGraphAtom, { nodes, edges: workflow.edges });
+    }
     // Overlay, selection and statuses belong to the open run. Switching
     // workflows has to drop them — a reused node id would otherwise keep the
     // previous run's badges. Reloading the same workflow (dashboard round-trip,
