@@ -22,6 +22,7 @@ import {
 import { parseConditionModel } from "#src/conditions/condition-schema";
 import { decodeIsoTimestamp } from "#src/types/timestamp";
 import {
+  appendOutputPathKey,
   parseOutputPath,
   type OutputPathStep,
 } from "#src/graph/node-references";
@@ -348,7 +349,9 @@ export function compileConditionRule(
   // A rule stores the path as the field picker offered it, relative to the node
   // output. The root belongs to the expression, not the model.
   const compiledPath = compilePayloadPath(
-    rule.recordKey === undefined ? path : `${path}.${rule.recordKey.trim()}`
+    rule.recordKey === undefined
+      ? path
+      : appendOutputPathKey(path, rule.recordKey.trim())
   );
   if (!compiledPath) {
     return { valid: false, error: "Condition field path is invalid" };

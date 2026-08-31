@@ -187,6 +187,26 @@ describe("a compiled condition against a payload", () => {
     expect(evaluation).toEqual({ ok: true, value: true });
   });
 
+  it("decodes a timestamp stored under a literal open-record key", () => {
+    const rule: ConditionRule = {
+      id: "rule-1",
+      field: "timestamps",
+      recordKey: "campaign.startedAt",
+      fieldType: "timestamp",
+      operator: "before",
+      dateTime: "2030-01-01T00:00:00.000Z",
+    };
+
+    expect(
+      evaluate(
+        [[rule]],
+        { timestamps: { "campaign.startedAt": "2026-08-09T12:00:00.000Z" } },
+        null,
+        ['timestamps["campaign.startedAt"]']
+      )
+    ).toEqual({ ok: true, value: true });
+  });
+
   it("answers is_not_set for a path whose parent object never arrived", () => {
     const evaluation = evaluate(
       [

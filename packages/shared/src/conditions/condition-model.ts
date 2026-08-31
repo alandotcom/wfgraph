@@ -1,3 +1,5 @@
+import { appendOutputPathKey } from "#src/graph/node-references";
+
 /**
  * The single CEL root every condition field hangs off.
  *
@@ -217,7 +219,11 @@ export function collectTimestampFieldPaths(model: ConditionModel): string[] {
         continue;
       }
 
-      const field = rule.field.trim();
+      const baseField = rule.field.trim();
+      const field =
+        rule.recordKey === undefined
+          ? baseField
+          : appendOutputPathKey(baseField, rule.recordKey.trim());
       if (field) {
         paths.add(field);
       }
