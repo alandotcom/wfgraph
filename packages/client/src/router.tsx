@@ -28,6 +28,7 @@ import {
 import {
   classifyWorkflowLoadFailure,
   executionIdFromWorkflowSearch,
+  publishWorkflowAfterCompletedSaves,
   WORKFLOW_LOAD_ERROR_MESSAGE,
   workflowWorkspaceView,
 } from "#src/lib/workflow-route-state";
@@ -143,8 +144,12 @@ const workflowRoute = createRoute({
    * the pinned-graph overlay and left the canvas on the live draft.
    */
   loader: async ({ params, location, abortController }) => {
-    const saveGeneration =
+    const initialSaveGeneration =
       appStore.get(successfulSaveGenerationAtom).get(params.workflowId) ?? 0;
+    const workflowQueryOptions = orpcQuery.workflow.getById.queryOptions({
+      input: { workflowId: params.workflowId },
+      staleTime: 0,
+    });
 
     if (abortController.signal.aborted) {
       return;
@@ -154,12 +159,7 @@ const workflowRoute = createRoute({
     appStore.set(workflowLoadErrorAtom, null);
 
     const [workflowResult, integrationsResult] = await Promise.allSettled([
-      queryClient.fetchQuery(
-        orpcQuery.workflow.getById.queryOptions({
-          input: { workflowId: params.workflowId },
-          staleTime: 0,
-        })
-      ),
+      queryClient.fetchQuery(workflowQueryOptions),
       queryClient.fetchQuery(integrationsQueryOptions()),
     ]);
 
@@ -182,22 +182,39 @@ const workflowRoute = createRoute({
       throw integrationsResult.reason;
     }
 
-    const workflow = toSavedWorkflow(workflowResult.value);
-    if (abortController.signal.aborted) {
-      return;
-    }
-
-    appStore.set(hydrateWorkflowAtom, {
-      ...workflow,
-      saveGeneration,
-      nodes: repairNodeIntegrations(
-        getExtensionCatalog(),
-        workflow.nodes,
-        integrationsResult.value
-      ),
-    });
-    if (executionIdFromWorkflowSearch(location.search)) {
-      appStore.set(enterRunsWorkspaceAtom);
+    try {
+      await publishWorkflowAfterCompletedSaves({
+        workflow: workflowResult.value,
+        saveGeneration: initialSaveGeneration,
+        getSaveGeneration: () =>
+          appStore.get(successfulSaveGenerationAtom).get(params.workflowId) ??
+          0,
+        fetchWorkflow: () => queryClient.fetchQuery(workflowQueryOptions),
+        publishWorkflow: (workflowSnapshot) => {
+          const workflow = toSavedWorkflow(workflowSnapshot.workflow);
+          appStore.set(hydrateWorkflowAtom, {
+            ...workflow,
+            saveGeneration: workflowSnapshot.saveGeneration,
+            nodes: repairNodeIntegrations(
+              getExtensionCatalog(),
+              workflow.nodes,
+              integrationsResult.value
+            ),
+          });
+          if (executionIdFromWorkflowSearch(location.search)) {
+            appStore.set(enterRunsWorkspaceAtom);
+          }
+        },
+        signal: abortController.signal,
+      });
+    } catch (error) {
+      if (abortController.signal.aborted) {
+        return;
+      }
+      const failure = classifyWorkflowLoadFailure(error);
+      appStore.set(workflowNotFoundAtom, failure.notFound);
+      appStore.set(workflowLoadErrorAtom, failure.message);
+      throw error;
     }
   },
   errorComponent: WorkflowRouteComponent,

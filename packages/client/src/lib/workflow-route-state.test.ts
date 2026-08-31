@@ -3,6 +3,7 @@ import { ApiError } from "#src/lib/rpc-client";
 import {
   classifyWorkflowLoadFailure,
   executionIdFromWorkflowSearch,
+  publishWorkflowAfterCompletedSaves,
   WORKFLOW_LOAD_ERROR_MESSAGE,
   workflowWorkspaceView,
 } from "#src/lib/workflow-route-state";
@@ -37,5 +38,59 @@ describe("workflow route state", () => {
     expect(executionIdFromWorkflowSearch({ executionId: "" })).toBeUndefined();
     expect(executionIdFromWorkflowSearch({ executionId: 1 })).toBeUndefined();
     expect(executionIdFromWorkflowSearch(null)).toBeUndefined();
+  });
+
+  it("refetches until no save completes during a workflow load", async () => {
+    let saveGeneration = 1;
+    const fetchedWorkflows = ["saved_once", "saved_twice"];
+    const publishedWorkflows: Array<{
+      workflow: string;
+      saveGeneration: number;
+    }> = [];
+    const fetchWorkflow = async () => {
+      const workflow = fetchedWorkflows.shift();
+      if (!workflow) {
+        throw new Error("Unexpected workflow fetch");
+      }
+      if (workflow === "saved_once") {
+        saveGeneration = 2;
+      }
+      return workflow;
+    };
+
+    const result = await publishWorkflowAfterCompletedSaves({
+      workflow: "before_save",
+      saveGeneration: 0,
+      getSaveGeneration: () => saveGeneration,
+      fetchWorkflow,
+      publishWorkflow: (snapshot) => publishedWorkflows.push(snapshot),
+      signal: new AbortController().signal,
+    });
+
+    expect(result).toBe(true);
+    expect(publishedWorkflows).toEqual([
+      { workflow: "saved_twice", saveGeneration: 2 },
+    ]);
+    expect(fetchedWorkflows).toEqual([]);
+  });
+
+  it("does not publish a replacement workflow after route cancellation", async () => {
+    const abortController = new AbortController();
+    const publishedWorkflows: string[] = [];
+
+    const result = await publishWorkflowAfterCompletedSaves({
+      workflow: "before_save",
+      saveGeneration: 0,
+      getSaveGeneration: () => 1,
+      fetchWorkflow: async () => {
+        abortController.abort();
+        return "after_save";
+      },
+      publishWorkflow: ({ workflow }) => publishedWorkflows.push(workflow),
+      signal: abortController.signal,
+    });
+
+    expect(result).toBe(false);
+    expect(publishedWorkflows).toEqual([]);
   });
 });

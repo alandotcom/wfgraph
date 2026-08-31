@@ -35,6 +35,52 @@ export function classifyWorkflowLoadFailure(
       };
 }
 
+type WorkflowLoadSnapshot<T> = {
+  workflow: T;
+  saveGeneration: number;
+};
+
+/**
+ * Refetch a workflow when a save completed during its route load.
+ *
+ * A save can also complete during the replacement request, so the generation
+ * must remain unchanged across one complete fetch before the snapshot is safe
+ * to hydrate. The callback runs in the same task as the final generation check,
+ * which closes the race between accepting and publishing the snapshot. Route
+ * cancellation suppresses the result of an in-flight fetch.
+ */
+export async function publishWorkflowAfterCompletedSaves<T>({
+  workflow,
+  saveGeneration,
+  getSaveGeneration,
+  fetchWorkflow,
+  publishWorkflow,
+  signal,
+}: WorkflowLoadSnapshot<T> & {
+  getSaveGeneration: () => number;
+  fetchWorkflow: () => Promise<T>;
+  publishWorkflow: (snapshot: WorkflowLoadSnapshot<T>) => void;
+  signal: AbortSignal;
+}): Promise<boolean> {
+  let snapshot = { workflow, saveGeneration };
+
+  while (!signal.aborted) {
+    const latestSaveGeneration = getSaveGeneration();
+    if (latestSaveGeneration === snapshot.saveGeneration) {
+      publishWorkflow(snapshot);
+      return true;
+    }
+
+    snapshot = {
+      saveGeneration: latestSaveGeneration,
+      // eslint-disable-next-line no-await-in-loop -- each replacement must start after the save that invalidated its predecessor.
+      workflow: await fetchWorkflow(),
+    };
+  }
+
+  return false;
+}
+
 /**
  * The workspace a deep-linked run opens, or null when the URL names no run and
  * the editor's current workspace stands.
