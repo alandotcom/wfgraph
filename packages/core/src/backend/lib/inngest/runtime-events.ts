@@ -1,8 +1,6 @@
 import type { Inngest } from "inngest";
-import { Result, Schema } from "effect";
-import { omit } from "es-toolkit/object";
 import type { JsonObject } from "@wfgraph/shared/types/json";
-import { NonEmptyTrimmedString } from "@wfgraph/shared/types/schema";
+import { withCatalogConnection } from "#src/backend/lib/inngest/catalog-connection";
 import {
   workflowBranchKillRequested,
   workflowRunCancelRequested,
@@ -104,8 +102,8 @@ export async function sendWorkflowWaitSignal(
  * Inngest v4 dropped `event.user`: it is not stored and does not survive
  * replay. The vendor envelope stays the rest of `data` (`type`, `created_at`,
  * nested `data`, …) so `source.when` and Correlation Paths keep addressing it.
- * The listener strips `connectionId` before decode and delivery, so Wait CEL
- * and templates see the envelope the vendor posted.
+ * The listener strips the stamp before decode and delivery, so Wait CEL and
+ * templates see the envelope the vendor posted.
  */
 export async function sendCatalogEvent(
   client: Inngest,
@@ -122,42 +120,4 @@ export async function sendCatalogEvent(
     ...(input.id === undefined ? {} : { id: input.id }),
   };
   return await client.send(event);
-}
-
-const readCatalogConnection = Schema.decodeUnknownResult(
-  Schema.Struct({ connectionId: NonEmptyTrimmedString })
-);
-
-/** Stamp the Connection onto a vendor envelope for the Inngest send. */
-export function withCatalogConnection(
-  data: JsonObject,
-  connectionId: string
-): JsonObject {
-  return { ...data, connectionId };
-}
-
-/**
- * Split the Connection stamp off a catalog Event's `data`.
- *
- * Only the integration send path stamps `connectionId`. A host Event that
- * happens to carry that key keeps it as payload.
- */
-export function splitCatalogEventData(
-  data: JsonObject,
-  input: { connectionStamped: boolean }
-): {
-  payload: JsonObject;
-  connectionId: string | undefined;
-} {
-  if (!input.connectionStamped) {
-    return { payload: data, connectionId: undefined };
-  }
-  const parsed = readCatalogConnection(data);
-  if (Result.isFailure(parsed)) {
-    return { payload: data, connectionId: undefined };
-  }
-  return {
-    payload: omit(data, ["connectionId"]),
-    connectionId: parsed.success.connectionId,
-  };
 }

@@ -1,73 +1,48 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Inngest } from "inngest";
-import {
-  sendCatalogEvent,
-  splitCatalogEventData,
-  withCatalogConnection,
-} from "#src/backend/lib/inngest/runtime-events";
+import { CONNECTION_STAMP_KEY } from "#src/backend/lib/inngest/catalog-connection";
+import { sendCatalogEvent } from "#src/backend/lib/inngest/runtime-events";
 
-describe("catalog Event data", () => {
-  it("stamps connectionId on data rather than user", async () => {
-    const send = vi.fn(async () => ({ ids: ["evt_1"] }));
-    const client = { send } as unknown as Inngest;
+/** As much of an Inngest send as these cases read. */
+type SentEvent = { name: string; data: unknown; id?: string };
+
+function clientSpy() {
+  const send = vi.fn(async (_event: SentEvent) => ({ ids: ["evt_1"] }));
+  return { send, client: { send } as unknown as Inngest };
+}
+
+const envelope = { type: "email.delivered", created_at: "2026-01-01" };
+
+describe("sendCatalogEvent", () => {
+  it("stamps the Connection on data rather than user", async () => {
+    const { send, client } = clientSpy();
 
     await sendCatalogEvent(client, {
       name: "resend/webhook",
-      data: { type: "email.delivered", created_at: "2026-01-01" },
+      data: envelope,
       connectionId: "conn_1",
       id: "msg_1",
     });
 
     expect(send).toHaveBeenCalledWith({
       name: "resend/webhook",
-      data: {
-        type: "email.delivered",
-        created_at: "2026-01-01",
-        connectionId: "conn_1",
-      },
+      data: { ...envelope, [CONNECTION_STAMP_KEY]: "conn_1" },
       id: "msg_1",
     });
   });
 
-  it("splits the stamp off and leaves the vendor envelope", () => {
-    const stamped = withCatalogConnection(
-      {
-        type: "email.delivered",
-        created_at: "2026-01-01",
-        data: { email_id: "e1" },
-      },
-      "conn_1"
-    );
+  it("sends no id when the vendor gave none", async () => {
+    const { send, client } = clientSpy();
 
-    expect(splitCatalogEventData(stamped, { connectionStamped: true })).toEqual(
-      {
-        payload: {
-          type: "email.delivered",
-          created_at: "2026-01-01",
-          data: { email_id: "e1" },
-        },
-        connectionId: "conn_1",
-      }
-    );
-  });
-
-  it("leaves a host Event's data alone", () => {
-    const payload = { appointment: { id: "appt_1" } };
-    expect(
-      splitCatalogEventData(payload, { connectionStamped: false })
-    ).toEqual({
-      payload,
-      connectionId: undefined,
+    await sendCatalogEvent(client, {
+      name: "resend/webhook",
+      data: envelope,
+      connectionId: "conn_1",
     });
-  });
 
-  it("does not treat a host Event's connectionId field as delivery metadata", () => {
-    const payload = { appointment: { id: "appt_1" }, connectionId: "not-ours" };
-    expect(
-      splitCatalogEventData(payload, { connectionStamped: false })
-    ).toEqual({
-      payload,
-      connectionId: undefined,
+    expect(send).toHaveBeenCalledWith({
+      name: "resend/webhook",
+      data: { ...envelope, [CONNECTION_STAMP_KEY]: "conn_1" },
     });
   });
 });

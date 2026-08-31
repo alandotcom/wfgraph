@@ -113,12 +113,15 @@ subscription. Publish refuses an integration-owned Start, Cancel, or Wait
 Event that names none, rather than fanning in across every Connection of that
 type.
 
-The Connection is delivery metadata, not payload. Intake stamps `connectionId`
-on Inngest event `data` (v4 does not persist `event.user`) and the listener
-strips it before decode, and only on Events the catalog marks as integration-
-owned. Matching is the stored id, denormalized onto the subscription index the
-same way Correlation Path already is. A start on the wrong Connection is
-`waits_only` without opening the published graph.
+The Connection is delivery metadata, not payload. Intake stamps
+`__wfgraphConnectionId` on Inngest event `data` (v4 does not persist
+`event.user`) and the listener strips it before decode, and only on Events the
+catalog marks as integration-owned. The key is prefixed because the rest of
+`data` is a vendor envelope Workflow Graph does not own, and a plain
+`connectionId` would collide with a vendor sending that field itself. Matching
+is the stored id, denormalized onto the subscription index the same way
+Correlation Path already is. A start on the wrong Connection is `waits_only`
+without opening the published graph.
 
 ## Amendment, 2026-08-30: one Connection per integration in the editor
 

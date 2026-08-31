@@ -29,7 +29,7 @@ import {
 import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
 import { compileEventDataEquals } from "@wfgraph/shared/lifecycle/inngest-event-data";
 import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
-import { splitCatalogEventData } from "#src/backend/lib/inngest/runtime-events";
+import { splitCatalogEventData } from "#src/backend/lib/inngest/catalog-connection";
 
 const logger = getAppLogger("events");
 

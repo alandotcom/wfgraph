@@ -44,6 +44,7 @@ import {
   isSafeRecordPath,
 } from "@wfgraph/shared/types/record-key";
 import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
+import { CONNECTION_STAMP_KEY } from "#src/backend/lib/inngest/catalog-connection";
 
 /**
  * An Event as the set holds it, which is what `eventByName` answers with.
@@ -204,6 +205,27 @@ function assertSafeReferencePaths(
   if (fields.some((field) => !isSafeRecordPath(field.path))) {
     throw new Error(
       `${subject} declares a field path containing a key reserved by JavaScript objects.`
+    );
+  }
+}
+
+/**
+ * An integration-owned Event may not declare the key the Connection stamp uses.
+ *
+ * `sendCatalogEvent` writes the Connection onto `data` under
+ * `CONNECTION_STAMP_KEY` and the listener removes it again, so a field declared
+ * there would be overwritten on the way out and missing on the way in. The
+ * prefix makes that collision unlikely; this makes it loud rather than silent.
+ */
+function assertNoConnectionStampField(
+  eventName: string,
+  fields: readonly ReferenceField[]
+): void {
+  if (
+    fields.some((field) => field.path.split(".")[0] === CONNECTION_STAMP_KEY)
+  ) {
+    throw new Error(
+      `Event "${eventName}" declares a payload field at "${CONNECTION_STAMP_KEY}", which Workflow Graph reserves for the Connection an integration Event arrived through. Give the field another name.`
     );
   }
 }
@@ -398,6 +420,9 @@ export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
   const events = Array.from(eventsByName.values());
   for (const event of events) {
     assertSafeReferencePaths(`Event "${event.name}"`, event.payloadFields);
+    if (eventOwners.has(event.name)) {
+      assertNoConnectionStampField(event.name, event.payloadFields);
+    }
   }
   assertSourcesAreDistinguishable(events);
   assertDistinctListenerIds(events);
