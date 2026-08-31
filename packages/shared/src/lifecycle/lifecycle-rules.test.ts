@@ -569,6 +569,21 @@ describe("checkLifecycleRules", () => {
       })
     ).toEqual({ valid: true });
   });
+
+  it("refuses a host Event that names a Connection", () => {
+    const check = checkLifecycleRules({
+      rules: rules({
+        startEvents: ["app/appointment.created"],
+        concurrency: "unlimited",
+        connectionIds: { "app/appointment.created": "stale_1" },
+      }),
+      catalog,
+    });
+
+    expect(refusalOf(check)).toContain(
+      'Event "app/appointment.created" is owned by the host and cannot name a Connection'
+    );
+  });
 });
 
 describe("setConnectionForIntegration", () => {

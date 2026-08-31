@@ -186,6 +186,11 @@ export function unknownEventMessage(name: string): string {
   return `No Event named "${name}" is defined. Choose an Event this app declares, or ask whoever defines them to add it.`;
 }
 
+/** The sentence a save is refused with when a host Event names a Connection. */
+export function hostEventConnectionMessage(eventName: string): string {
+  return `Event "${eventName}" is owned by the host and cannot name a Connection. Remove the Connection ID from this Event.`;
+}
+
 /** Which node is asking a builder for an Event's Correlation Path. */
 export type CorrelationPathRole = "start" | "cancel";
 
@@ -453,6 +458,9 @@ export function checkLifecycleRules(input: {
     const event = findEvent(catalog, name);
     if (!event) {
       return refuse(unknownEventMessage(name));
+    }
+    if (!event.integration && rules.connectionIds?.[name]) {
+      return refuse(hostEventConnectionMessage(name));
     }
     if (event.integration && !rules.connectionIds?.[name]) {
       return refuse(

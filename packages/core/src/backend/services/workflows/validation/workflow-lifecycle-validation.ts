@@ -19,6 +19,7 @@ import {
 } from "@wfgraph/shared/lifecycle/event-split";
 import {
   checkLifecycleRules,
+  hostEventConnectionMessage,
   missingConnectionMessage,
   readLifecycleRules,
   unknownEventMessage,
@@ -117,6 +118,12 @@ export function validateWorkflowEvents(
           return {
             valid: false,
             error: unknownEventMessage(subscription.event),
+          };
+        }
+        if (!event.integration && subscription.connectionId) {
+          return {
+            valid: false,
+            error: hostEventConnectionMessage(subscription.event),
           };
         }
         if (event.integration && !subscription.connectionId) {

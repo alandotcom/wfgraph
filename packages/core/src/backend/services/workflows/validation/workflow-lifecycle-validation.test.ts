@@ -187,6 +187,24 @@ describe("validateWorkflowEvents - wait subscription", () => {
     ).toEqual({ valid: true });
   });
 
+  it("refuses a wait on a host Event that names a Connection", () => {
+    expect(
+      validateWorkflowEvents(
+        [
+          waitNode(["app/appointment.created"], {
+            "app/appointment.created": "stale_1",
+          }),
+        ],
+        catalog
+      )
+    ).toMatchObject({
+      valid: false,
+      error: expect.stringContaining(
+        'Event "app/appointment.created" is owned by the host and cannot name a Connection'
+      ),
+    });
+  });
+
   it("asks nothing of a node that is not a Wait", () => {
     expect(validateWorkflowEvents([lifecycleNode()], catalog)).toEqual({
       valid: true,
