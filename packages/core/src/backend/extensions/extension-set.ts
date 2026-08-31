@@ -408,6 +408,17 @@ export function assembleExtensions(input: WfGraphExtensions): ExtensionSet {
   const integrationEvents: AnyEventDefinition[] = [];
   for (const integration of input.integrations ?? []) {
     for (const event of integration.events ?? []) {
+      // Two integrations listing the same `defineEvent` object pass indexEvents,
+      // which only refuses two definitions sharing a name. Taking the last
+      // writer would leave the catalog offering one integration's Connections
+      // for an Event the other's webhook also delivers, so arrivals through the
+      // loser could match nothing.
+      const owner = eventOwners.get(event.name);
+      if (owner && owner !== integration.type) {
+        throw new Error(
+          `Event "${event.name}" is declared by integrations "${owner}" and "${integration.type}". An integration-owned Event belongs to one integration, because the Connection it arrives through is chosen from that integration's Connections.`
+        );
+      }
       integrationEvents.push(event);
       eventOwners.set(event.name, integration.type);
     }

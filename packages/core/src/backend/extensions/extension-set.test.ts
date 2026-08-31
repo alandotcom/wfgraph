@@ -679,6 +679,32 @@ describe("assembleExtensions and an integration definition", () => {
     expect(set.catalog.events[0]?.integration).toBe("resend");
   });
 
+  it("refuses one Event object claimed by two integrations", () => {
+    // Identity-equal, so indexEvents keeps it once; without this the owner would
+    // be whichever integration was declared last, and the catalog would offer
+    // only that one's Connections.
+    const event = anEvent("shared/email.delivered", {
+      event: "shared/webhook",
+    });
+    const claiming = (type: string) =>
+      defineIntegration({
+        type,
+        label: type,
+        description: `The ${type} integration`,
+        credentials: {},
+        actions: {},
+        events: [event],
+      });
+
+    expect(() =>
+      assembleExtensions({
+        integrations: [claiming("resend"), claiming("postmark")],
+      })
+    ).toThrow(
+      /Event "shared\/email.delivered" is declared by integrations "resend" and "postmark"/
+    );
+  });
+
   it("refuses an integration Event declaring a field at the Connection stamp key", () => {
     // The stamp is written onto `data` on the way out and removed on the way
     // in, so a field declared there would never reach a condition or template.
