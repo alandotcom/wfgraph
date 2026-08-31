@@ -201,37 +201,30 @@ describe("NodeConfigPanel with nothing selected", () => {
 });
 
 describe("NodeConfigPanel config scoping", () => {
-  // The Lifecycle panel holds one view/edit mode, and that mode belongs to the
-  // node being configured rather than to the panel. Selecting anything of
-  // another type unmounts the panel whatever its key, so the case the key
-  // answers for is one entry node replaced by another in the same slot -- which
-  // is what opening a second workflow does. Two of them in one graph is the
-  // fixture for that; a real workflow has one.
-  it("starts another entry node's configuration on view", async () => {
+  // The panel is keyed to the node, and the pickers inside it are what that
+  // buys. Selecting anything of another type unmounts the panel whatever its
+  // key, so the case the key answers for is one entry node replaced by another
+  // in the same slot, which is what opening a second workflow does. Two of them
+  // in one graph is the fixture for that; a real workflow has one.
+  it("starts another entry node's pickers clean", async () => {
     const { view, store } = renderPanel({
       nodes: [lifecycleNode(), lifecycleNode("lifecycle_2")],
       selected: "lifecycle_1",
     });
 
-    await waitFor(() => {
-      expect(
-        view.getByRole("button", { name: "Edit Lifecycle Rules" })
-      ).toBeTruthy();
-    });
-
-    fireEvent.click(view.getByRole("button", { name: "Edit Lifecycle Rules" }));
-    expect(view.getByLabelText("Start Events")).toBeTruthy();
+    const picker = await view.findByLabelText("Start Events");
+    fireEvent.change(picker, { target: { value: "appoint" } });
+    expect((picker as HTMLInputElement).value).toBe("appoint");
 
     await act(async () => {
       store.set(selectedNodeAtom, "lifecycle_2");
     });
 
-    // Unkeyed, the same component instance carries the open section over and
-    // the second node opens on controls its builder never asked for.
-    expect(view.queryByLabelText("Start Events")).toBeNull();
+    // Unkeyed, the same component instance carries the search term over and the
+    // second node opens on a list filtered by something nobody typed into it.
     expect(
-      view.getByRole("button", { name: "Edit Lifecycle Rules" })
-    ).toBeTruthy();
+      (view.getByLabelText("Start Events") as HTMLInputElement).value
+    ).toBe("");
   });
 });
 

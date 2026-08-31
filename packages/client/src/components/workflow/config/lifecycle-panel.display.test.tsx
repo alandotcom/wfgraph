@@ -2,10 +2,7 @@ import { fireEvent, render } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
-import {
-  CONCURRENCY_OPTIONS,
-  LifecyclePanel,
-} from "#src/components/workflow/config/lifecycle-panel";
+import { LifecyclePanel } from "#src/components/workflow/config/lifecycle-panel";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
 const testCatalog: ExtensionCatalog = {
@@ -57,55 +54,57 @@ function renderPanel(ui = <ControlledPanel />) {
   );
 }
 
-describe("LifecyclePanel view mode", () => {
-  it("reads the configuration back as text", () => {
+describe("LifecyclePanel display", () => {
+  it("shows the stored configuration in the controls that set it", () => {
     const view = renderPanel();
 
-    expect(view.getByText("Appointment created")).toBeTruthy();
-    expect(view.getByText("appointment.id")).toBeTruthy();
-    expect(view.getByText("Nightly sweep")).toBeTruthy();
-    expect(view.getByText("sweep.id")).toBeTruthy();
-    expect(view.getByText("Newest wins")).toBeTruthy();
-    expect(view.getByText("Allowed")).toBeTruthy();
-    expect(view.queryByLabelText("Start Events")).toBeNull();
-    expect(view.queryAllByRole("radio")).toEqual([]);
-  });
-
-  it("switches the whole section between its two modes", () => {
-    const view = renderPanel();
-
-    fireEvent.click(view.getByRole("button", { name: "Edit Lifecycle Rules" }));
+    // No summary step stands between the panel and its controls, so each
+    // stored value is read off the control that writes it.
     expect(view.getByLabelText("Start Events")).toBeTruthy();
     expect(view.getByLabelText("Cancel Events")).toBeTruthy();
-    expect(view.queryAllByRole("radio")).toHaveLength(
-      CONCURRENCY_OPTIONS.length
-    );
-
-    fireEvent.click(
-      view.getByRole("button", { name: "Done editing Lifecycle Rules" })
-    );
-    expect(view.queryByLabelText("Start Events")).toBeNull();
-    expect(view.queryAllByRole("radio")).toEqual([]);
+    expect(
+      view.getByRole("combobox", { name: "Concurrency" }).textContent
+    ).toContain("Newest wins");
+    expect(
+      view.getByRole("checkbox", { name: "Allow manual runs" })
+    ).toBeTruthy();
     expect(view.getByText("Appointment created")).toBeTruthy();
+    expect(view.getByText("Nightly sweep")).toBeTruthy();
   });
 
-  it("offers one Edit button for the whole configuration", () => {
+  it("offers no button that switches the panel's mode", () => {
     const view = renderPanel();
 
-    expect(view.getAllByRole("button", { name: /^Edit / })).toHaveLength(1);
-    fireEvent.click(view.getByRole("button", { name: "Edit Lifecycle Rules" }));
-    expect(
-      view.getAllByRole("button", { name: /^Done editing / })
-    ).toHaveLength(1);
+    expect(view.queryAllByRole("button", { name: /^Edit / })).toEqual([]);
+    expect(view.queryAllByRole("button", { name: /^Done editing / })).toEqual(
+      []
+    );
   });
 
-  it("gives a disabled panel no way into edit mode", () => {
+  it("disables every control on a disabled panel", () => {
     const view = renderPanel(
       <LifecyclePanel config={CONFIGURED} disabled onUpdateConfig={vi.fn()} />
     );
 
-    expect(view.queryAllByRole("button", { name: /^Edit / })).toEqual([]);
-    expect(view.getByText("Newest wins")).toBeTruthy();
+    // A non-owner still reads what the rules are, and every way of changing
+    // them is refused where it stands rather than hidden.
+    expect(
+      view
+        .getByRole("combobox", { name: "Concurrency" })
+        .hasAttribute("disabled")
+    ).toBe(true);
+    // Base UI draws this one as a span rather than a control the browser can
+    // disable, so the refusal is carried by aria-disabled.
+    expect(
+      view
+        .getByRole("checkbox", { name: "Allow manual runs" })
+        .getAttribute("aria-disabled")
+    ).toBe("true");
+    expect(
+      view
+        .getByRole("button", { name: "Remove ops/nightly.swept" })
+        .hasAttribute("disabled")
+    ).toBe(true);
   });
 
   it("opens a section's help on a click", () => {

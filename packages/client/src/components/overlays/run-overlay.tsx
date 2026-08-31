@@ -408,7 +408,7 @@ export function RunOverlay({
           ) : (
             <textarea
               aria-label="Payload JSON"
-              className="min-h-64 w-full rounded-md border border-input bg-transparent p-3 font-mono text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              className="min-h-64 w-full rounded-md border border-input bg-input/20 p-2 font-mono text-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 dark:bg-input/30"
               onChange={(event) => {
                 setJsonText(event.target.value);
                 setJsonError(null);

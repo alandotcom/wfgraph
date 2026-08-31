@@ -253,7 +253,7 @@ export function RunHistorySearch({
     <div className="relative z-20" ref={rootRef}>
       <div
         className={cn(
-          "flex min-h-8 flex-wrap items-center gap-1 rounded-md border border-input bg-input/20 px-2 py-1 shadow-xs transition-colors",
+          "flex min-h-7 flex-wrap items-center gap-1 rounded-md border border-input bg-input/20 px-2 py-0.5 transition-colors",
           "focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30"
         )}
         onClick={() => {

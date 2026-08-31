@@ -680,3 +680,119 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
     expect(compiled.textContent).not.toContain("V1StGXR8_Z5jdHi6B-myT");
   });
 });
+
+/**
+ * A model of two groups, each holding one rule, for the cases about what a
+ * removal takes with it.
+ */
+function twoGroups(): string {
+  return serializeConditionModel({
+    version: 2,
+    groupLogic: "and",
+    groups: [
+      {
+        id: "g1",
+        logic: "and",
+        conditions: [
+          {
+            id: "r1",
+            field: "appointment.id",
+            fieldType: "string",
+            operator: "equals",
+            value: "a",
+          },
+        ],
+      },
+      {
+        id: "g2",
+        logic: "and",
+        conditions: [
+          {
+            id: "r2",
+            field: "appointment.id",
+            fieldType: "string",
+            operator: "equals",
+            value: "b",
+          },
+        ],
+      },
+    ],
+  });
+}
+
+// A configured row used to be permanent: the last rule and the last group both
+// refused to go, so nothing returned the row to naming no condition at all.
+describe("ConditionBuilderRow removal", () => {
+  it("clears the whole condition when the only rule goes", () => {
+    const onChange = vi.fn();
+    const view = renderRow(
+      APPOINTMENT_FIELDS,
+      storedModel("appointment.id"),
+      onChange
+    );
+
+    enterEdit(view);
+    fireEvent.click(
+      view.getByRole("button", { name: "Remove condition on appointment.id" })
+    );
+
+    expect(onChange).toHaveBeenCalledWith({ model: "", expression: "" });
+    expect(
+      view.getByRole("button", { name: "Configure condition" })
+    ).toBeTruthy();
+  });
+
+  it("keeps the other rule when one of two goes", () => {
+    const onChange = vi.fn();
+    const view = renderRow(APPOINTMENT_FIELDS, twoGroups(), onChange);
+
+    enterEdit(view);
+    fireEvent.click(
+      view.getAllByRole("button", { name: /^Remove condition on / })[0]
+    );
+
+    const written = parseConditionModel(onChange.mock.calls.at(-1)?.[0].model);
+    expect(written.valid).toBe(true);
+    expect(written.valid && written.model.groups).toHaveLength(1);
+    expect(written.valid && written.model.groups[0].conditions[0].id).toBe(
+      "r2"
+    );
+  });
+
+  it("keeps the other group when one of two goes", () => {
+    const onChange = vi.fn();
+    const view = renderRow(APPOINTMENT_FIELDS, twoGroups(), onChange);
+
+    enterEdit(view);
+    fireEvent.click(view.getByRole("button", { name: "Remove group 1" }));
+
+    const written = parseConditionModel(onChange.mock.calls.at(-1)?.[0].model);
+    expect(written.valid).toBe(true);
+    expect(written.valid && written.model.groups).toHaveLength(1);
+    expect(written.valid && written.model.groups[0].conditions[0].id).toBe(
+      "r2"
+    );
+  });
+
+  it("keeps a disabled row on its summary, with no removal to reach", () => {
+    const view = render(
+      <ConditionBuilderRow
+        currentNodeId="condition-1"
+        defaultEditing
+        description="Build a condition"
+        disabled
+        editActionName="condition"
+        emptyFieldsMessage="No fields"
+        fields={APPOINTMENT_FIELDS}
+        label="Continue when"
+        onChange={vi.fn()}
+        value={storedModel("appointment.id")}
+      />
+    );
+
+    // `editable` is the verdict over the mode the caller asked for, so a row
+    // nobody may write to reads as its summary and offers no trash to press.
+    expect(view.queryAllByRole("button", { name: /^Remove /u })).toEqual([]);
+    expect(view.queryAllByRole("button", { name: /^Edit /u })).toEqual([]);
+  });
+});

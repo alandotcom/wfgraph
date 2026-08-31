@@ -342,8 +342,11 @@ describe("WaitEventSelect match editor", () => {
       ],
     });
 
+    // Deleting the only rule is what clears the match: the subscription keeps
+    // its Event and goes back to resuming on any arrival of it.
+    fireEvent.click(view.getByRole("button", { name: "Edit Match" }));
     fireEvent.click(
-      view.getByRole("button", { name: /Resume on any billing/ })
+      view.getByRole("button", { name: /^Remove condition on / })
     );
 
     expect(lastWaitFor()).toEqual([{ event: "billing/payment.settled" }]);
@@ -489,7 +492,7 @@ describe("WaitEventSelect Connection picker", () => {
     expect(view.getByText("Payment settled")).toBeTruthy();
     expect(view.getByText("Email delivered")).toBeTruthy();
     expect(
-      view.getByRole("button", { name: "Add Resend connection" })
+      view.getByRole("combobox", { name: "Resend connection" })
     ).toBeTruthy();
     expect(
       view.queryByRole("button", { name: "Add Payment settled connection" })
@@ -529,7 +532,7 @@ describe("WaitEventSelect Connection picker", () => {
     expect(view.getByText("Email sent")).toBeTruthy();
     expect(view.getByText("Email delivered")).toBeTruthy();
     expect(
-      view.getAllByRole("button", { name: "Add Resend connection" })
+      view.getAllByRole("combobox", { name: "Resend connection" })
     ).toHaveLength(1);
   });
 });

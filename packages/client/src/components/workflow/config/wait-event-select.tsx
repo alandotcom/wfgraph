@@ -219,11 +219,6 @@ function WaitSubscriptionRow({
    */
   const [seededHere, setSeededHere] = useState(false);
 
-  const handleClear = useCallback(() => {
-    onMatchChange(subscription.event, "");
-    setSeededHere(false);
-  }, [onMatchChange, subscription.event]);
-
   // The comparison the common case wants, offered as one click: the arriving
   // payload at this workflow's Correlation Path for the Event, against whatever
   // the builder puts on the right. `payload.` is not in the path, because the
@@ -289,28 +284,17 @@ function WaitSubscriptionRow({
       </div>
 
       {subscription.match ? (
-        <>
-          <ConditionBuilderRow
-            currentNodeId={selectedNodeId ?? undefined}
-            defaultEditing={seededHere}
-            description="Only an arrival satisfying this resumes the run. Compare a payload field against a literal, or against a value from this run."
-            disabled={disabled}
-            emptyFieldsMessage="This Event declares no fields, so there is nothing to match on."
-            fields={fields}
-            label="Match"
-            onChange={handleChange}
-            value={subscription.match}
-          />
-          <Button
-            disabled={disabled}
-            onClick={handleClear}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            Resume on any {subscription.event}
-          </Button>
-        </>
+        <ConditionBuilderRow
+          currentNodeId={selectedNodeId ?? undefined}
+          defaultEditing={seededHere}
+          description="Only an arrival satisfying this resumes the run. Compare a payload field against a literal, or against a value from this run."
+          disabled={disabled}
+          emptyFieldsMessage="This Event declares no fields, so there is nothing to match on."
+          fields={fields}
+          label="Match"
+          onChange={handleChange}
+          value={subscription.match}
+        />
       ) : (
         <div className="space-y-1">
           <p className="text-muted-foreground text-xs">

@@ -237,9 +237,11 @@ function SecretField({
       <div className="space-y-2">
         <Label htmlFor={fieldId}>{label}</Label>
         <div className="flex items-center gap-2">
-          <div className="flex h-9 flex-1 items-center gap-2 rounded-md border bg-muted/30 px-3">
-            <Check className="size-4 text-success" />
-            <span className="text-muted-foreground text-sm">Configured</span>
+          <div className="flex h-7 flex-1 items-center gap-2 rounded-md border bg-muted/30 px-2">
+            <Check className="size-3.5 text-success" />
+            <span className="text-muted-foreground text-xs/relaxed">
+              Configured
+            </span>
           </div>
           <Button
             onClick={() => setIsEditing(true)}
@@ -310,9 +312,9 @@ function OAuthManagedCredentialField({
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
-      <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/30 px-3">
-        <Check aria-hidden="true" className="size-4 text-success" />
-        <span className="text-muted-foreground text-sm">
+      <div className="flex h-7 items-center gap-2 rounded-md border bg-muted/30 px-2">
+        <Check aria-hidden="true" className="size-3.5 text-success" />
+        <span className="text-muted-foreground text-xs/relaxed">
           Managed by {providerLabel} OAuth
         </span>
       </div>

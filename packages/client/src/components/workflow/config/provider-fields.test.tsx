@@ -168,7 +168,7 @@ describe("a provider-backed picker", () => {
       ],
     });
     const picking = rowClass();
-    expect(picking).toContain("min-h-9");
+    expect(picking).toContain("min-h-7");
 
     fireEvent.click(screen.getByRole("button", { name: /upstream value/u }));
     expect(rowClass()).toBe(picking);

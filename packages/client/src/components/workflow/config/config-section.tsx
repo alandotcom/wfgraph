@@ -71,59 +71,89 @@ export function ConfigSection({
           being edited has to survive the scroll that height costs. The
           background is the one both frames paint on that column: `bg-card` on
           the rail's <aside> and on the sheet's drawer. */}
-      <div
-        className={cn(
-          // The padding is unconditional. Applied with the sticky state it
-          // appeared on the click that entered edit mode, moving the title down
-          // and everything below it twice as far.
-          "flex items-center justify-between gap-2 py-1",
-          stickyHeader && isEditing && "sticky top-0 z-20 bg-card"
-        )}
-      >
-        <div className="flex min-w-0 items-center gap-1">
-          {/* A heading rather than a <label>: the block it names holds several
-              controls, and a <label> with nothing to point at is one every
-              `getByLabelText` in the suite has to step over. */}
-          <h3 className="truncate font-medium text-xs/relaxed">{label}</h3>
-          {help ? <HelpPopover label={label}>{help}</HelpPopover> : null}
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {trailing}
-          {editable ? (
-            // A panel shows several of these at once, so the accessible name
-            // carries the section: a list of three buttons all called "Edit" says
-            // nothing about which block each one opens. The visible word leads it,
-            // which is what keeps voice control working on what is on screen.
-            <Button
-              aria-label={
-                isEditing
-                  ? `Done editing ${editActionName}`
-                  : `Edit ${editActionName}`
-              }
-              // Outline rather than ghost, and a fixed width. A ghost button is
-              // a bare word until it is hovered, which is no affordance at all
-              // for the one control that changes what the panel is for; and
-              // "Edit" and "Done" are different widths in Geist, so an unpinned
-              // button moved under the pointer as it was pressed.
-              className="w-[4.5rem] justify-center"
-              onClick={() => onEditingChange(!isEditing)}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              {isEditing ? (
-                <Check data-icon="inline-start" />
-              ) : (
-                <Pencil data-icon="inline-start" />
-              )}
-              {isEditing ? "Done" : "Edit"}
-            </Button>
-          ) : null}
-        </div>
-      </div>
+      <ConfigHeading
+        className={cn(stickyHeader && isEditing && "sticky top-0 z-20 bg-card")}
+        help={help}
+        label={label}
+        trailing={
+          <>
+            {trailing}
+            {editable ? (
+              // A panel shows several of these at once, so the accessible name
+              // carries the section: a list of three buttons all called "Edit" says
+              // nothing about which block each one opens. The visible word leads it,
+              // which is what keeps voice control working on what is on screen.
+              <Button
+                aria-label={
+                  isEditing
+                    ? `Done editing ${editActionName}`
+                    : `Edit ${editActionName}`
+                }
+                // Outline rather than ghost, and a fixed width. A ghost button
+                // is a bare word until it is hovered, which is no affordance at
+                // all for the one control that changes what the panel is for;
+                // and "Edit" and "Done" are different widths in Geist, so an
+                // unpinned button moved under the pointer as it was pressed.
+                className="w-[4.5rem] justify-center"
+                onClick={() => onEditingChange(!isEditing)}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {isEditing ? (
+                  <Check data-icon="inline-start" />
+                ) : (
+                  <Pencil data-icon="inline-start" />
+                )}
+                {isEditing ? "Done" : "Edit"}
+              </Button>
+            ) : null}
+          </>
+        }
+      />
 
       {isEditing ? <div className="space-y-2">{children}</div> : view}
     </section>
+  );
+}
+
+/**
+ * The name of a configuration block, with its explanation and its controls.
+ *
+ * Shared so a section that owns an Edit button and one that renders its controls
+ * outright still name themselves identically. The heading is the fixed point a
+ * reader keeps while what sits under it changes.
+ */
+export function ConfigHeading({
+  label,
+  help,
+  className,
+  trailing,
+}: {
+  label: string;
+  /** Long-form explanation, behind the icon beside the label. */
+  help?: ReactNode;
+  /** Positioning the caller owns, such as pinning the row while it scrolls. */
+  className?: string;
+  /** Controls belonging to the block, such as Edit. */
+  trailing?: ReactNode;
+}) {
+  return (
+    // The padding is unconditional. Applied together with a sticky state it
+    // appeared on the click that pinned the row, moving the title down and
+    // everything under it twice as far.
+    <div
+      className={cn("flex items-center justify-between gap-2 py-1", className)}
+    >
+      <div className="flex min-w-0 items-center gap-1">
+        {/* A heading rather than a <label>: the block it names holds several
+            controls, and a <label> with nothing to point at is one every
+            `getByLabelText` in the suite has to step over. */}
+        <h3 className="truncate font-medium text-xs/relaxed">{label}</h3>
+        {help ? <HelpPopover label={label}>{help}</HelpPopover> : null}
+      </div>
+      <div className="flex shrink-0 items-center gap-1">{trailing}</div>
+    </div>
   );
 }
 
@@ -214,30 +244,4 @@ function HelpPopover({
       </PopoverContent>
     </Popover>
   );
-}
-
-/**
- * One setting in view mode: its name, and what it is set to.
- *
- * The name column wraps rather than truncating, because the panel is resizable
- * down to 320px and a clipped setting name is worse than a second line.
- */
-export function ConfigViewRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-sm">
-      <span className="text-muted-foreground text-xs">{label}</span>
-      <span className="min-w-0">{children}</span>
-    </div>
-  );
-}
-
-/** What a section reads as when nothing is configured in it. */
-export function ConfigViewEmpty({ children }: { children: ReactNode }) {
-  return <p className="text-muted-foreground text-sm">{children}</p>;
 }

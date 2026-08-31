@@ -64,43 +64,6 @@ export function IntegrationEventConnectionEditor({
   );
 }
 
-export function IntegrationEventConnectionSummary({
-  catalog,
-  integrationType,
-  connectionId,
-}: {
-  catalog: ExtensionCatalog;
-  integrationType: string;
-  connectionId: string | undefined;
-}) {
-  const entry = findIntegration(catalog, integrationType);
-  const label = entry?.label ?? integrationType;
-  const connection = useConnection(connectionId);
-  const name = connection?.name || `${label} API Key`;
-
-  if (!connectionId) {
-    return null;
-  }
-
-  return (
-    <div className="space-y-2">
-      <p className="text-muted-foreground text-xs">
-        {"via "}
-        <span>{name}</span>
-      </p>
-      {entry?.hasWebhook ? (
-        <WebhookConnectionDetails
-          connection={connection}
-          connectionId={connectionId}
-          helpText={entry.webhookHelpText}
-          secretKey={entry.webhookSecretKey}
-          type={integrationType}
-        />
-      ) : null}
-    </div>
-  );
-}
-
 function useConnection(
   connectionId: string | undefined
 ): Integration | undefined {

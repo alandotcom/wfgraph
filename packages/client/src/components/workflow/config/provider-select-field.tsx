@@ -88,10 +88,11 @@ export function ProviderSelectField({
   );
 
   const row = (control: React.ReactNode) => (
-    // `min-h-9` is the taller of the two controls, which the template editor
-    // sets. Without it the row is 8px shorter in the picker mode and the whole
-    // panel below jumps every time the toggle is pressed.
-    <div className="flex min-h-9 items-start gap-1">
+    // `min-h-7` is what both controls measure, so the row keeps its height
+    // whichever mode the toggle is in. Without a floor the row collapses to
+    // whatever the shorter control happens to be and the panel jumps on every
+    // press.
+    <div className="flex min-h-7 items-start gap-1">
       <div className="min-w-0 flex-1">{control}</div>
       {modeToggle}
     </div>
@@ -141,7 +142,7 @@ export function ProviderSelectField({
     return row(
       <div
         aria-busy="true"
-        className="h-9 w-full animate-pulse rounded-md bg-muted motion-reduce:animate-none"
+        className="h-7 w-full animate-pulse rounded-md bg-muted motion-reduce:animate-none"
       />
     );
   }

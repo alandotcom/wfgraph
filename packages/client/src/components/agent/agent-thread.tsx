@@ -141,7 +141,7 @@ function ToolCall({
 function ThinkingDisclosure({ children }: { children: React.ReactNode }) {
   return (
     <Collapsible.Root className="rounded-md border">
-      <Collapsible.Trigger className="group flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1.5 text-muted-foreground text-xs hover:bg-accent focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
+      <Collapsible.Trigger className="group flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1.5 text-muted-foreground text-xs hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30">
         <ChevronRightIcon
           aria-hidden
           className="size-3.5 shrink-0 transition-transform duration-150 group-data-[panel-open]:rotate-90"

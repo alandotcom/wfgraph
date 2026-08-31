@@ -55,17 +55,6 @@ function renderWithCatalog(ui: ReactElement) {
 
 const NO_CONFIG: Record<string, unknown> = {};
 
-/**
- * Open the panel's controls.
- *
- * The node's configuration is one section with one Edit button, so this opens
- * all three groups at once: a test wanting the Concurrency radios and the Start
- * Event picker together presses this once, not twice.
- */
-function editRules(view: RenderResult) {
-  fireEvent.click(view.getByRole("button", { name: "Edit Lifecycle Rules" }));
-}
-
 function ControlledPanel({
   initialConfig = NO_CONFIG,
   onConfigChange,
@@ -182,6 +171,15 @@ function choosePath(view: RenderResult, eventName: string, option: string) {
   fireEvent.click(choice);
 }
 
+/** Pick a Concurrency setting by the word its option carries. */
+function chooseConcurrency(view: RenderResult, label: string) {
+  fireEvent.click(view.getByRole("combobox", { name: "Concurrency" }));
+
+  const choice = view.getByRole("option", { name: label });
+  fireEvent.pointerDown(choice);
+  fireEvent.click(choice);
+}
+
 /** Every path the picker offers, in the order it lists them. */
 function pathChoices(view: RenderResult, eventName: string): string[] {
   fireEvent.click(pathPicker(view, eventName));
@@ -202,7 +200,6 @@ describe("LifecyclePanel", () => {
       />
     );
 
-    editRules(view);
     chooseEvent(view, "Start Events", "Appointment created");
 
     await waitFor(() => {
@@ -230,11 +227,6 @@ describe("LifecyclePanel", () => {
 
     expect(onUpdateConfig).not.toHaveBeenCalled();
 
-    // Opening a section is not an edit either: the panel is now two modes deep
-    // and neither of the two doors writes anything on the way through.
-    editRules(view);
-    expect(onUpdateConfig).not.toHaveBeenCalled();
-
     chooseEvent(view, "Start Events", "Appointment created");
 
     expect(onUpdateConfig).toHaveBeenCalledTimes(1);
@@ -247,7 +239,6 @@ describe("LifecyclePanel", () => {
       <LifecyclePanel config={{}} disabled={false} onUpdateConfig={vi.fn()} />
     );
 
-    editRules(view);
     fireEvent.click(
       view.getAllByRole("button", { name: "Show the Events" })[0]
     );
@@ -269,7 +260,6 @@ describe("LifecyclePanel", () => {
       />
     );
 
-    editRules(view);
     chooseEvent(view, "Start Events", "ops/nightly");
 
     await waitFor(() => {
@@ -297,7 +287,6 @@ describe("LifecyclePanel", () => {
       />
     );
 
-    editRules(view);
     chooseEvent(view, "Start Events", "Nightly sweep");
 
     await waitFor(() => {
@@ -327,10 +316,7 @@ describe("LifecyclePanel", () => {
         />
       );
 
-      editRules(view);
-      fireEvent.click(
-        view.getByRole("radio", { name: new RegExp(`^${label}`) })
-      );
+      chooseConcurrency(view, label);
 
       await waitFor(() => {
         expect(rulesOf(latest).concurrency).toBe(value);
@@ -356,7 +342,6 @@ describe("LifecyclePanel", () => {
       />
     );
 
-    editRules(view);
     fireEvent.click(view.getByRole("checkbox", { name: "Allow manual runs" }));
     await waitFor(() => {
       expect(rulesOf(latest).allowManualStart).toBe(false);
@@ -393,13 +378,13 @@ describe("LifecyclePanel", () => {
 
     expect(view.queryByText(/described by nothing/)).toBeNull();
 
-    editRules(view);
     fireEvent.click(
       view.getByRole("button", { name: "Remove app/appointment.created" })
     );
 
     // A consequence of the configuration rather than an explanation of a
-    // control, so it stays in the column and shows in view mode.
+    // control, so it stays in the column rather than moving into the help
+    // popover the Concurrency heading offers.
     await waitFor(() => {
       expect(view.getByText(/described by nothing/)).toBeTruthy();
     });
@@ -425,7 +410,6 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
-    editRules(view);
     chooseEvent(view, "Cancel Events", "Appointment created");
 
     await waitFor(() => {
@@ -452,7 +436,6 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
-    editRules(view);
     fireEvent.click(
       view.getByRole("button", { name: "Remove app/appointment.created" })
     );
@@ -479,7 +462,6 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
-    editRules(view);
     expect(pathInForce(view, "app/appointment.created")).toBe("appointment.id");
     expect(pathInForce(view, "ops/nightly.swept")).toBe("Choose a path");
   });
@@ -499,7 +481,6 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
-    editRules(view);
     expect(pathInForce(view, "ops/nightly.swept")).toBe("sweep.id");
   });
 
@@ -523,7 +504,6 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
-    editRules(view);
     choosePath(view, "app/appointment.created", "patient.id");
 
     await waitFor(() => {
@@ -555,7 +535,6 @@ describe("LifecyclePanel Cancel Events", () => {
 
     expect(view.queryByText("This will not save")).toBeNull();
 
-    editRules(view);
     chooseEvent(view, "Cancel Events", "Appointment created");
 
     await waitFor(() => {
@@ -588,7 +567,6 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    editRules(view);
     choosePath(view, "ops/nightly.swept", "sweep.id");
 
     await waitFor(() => {
@@ -621,7 +599,6 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    editRules(view);
     choosePath(view, "ops/nightly.swept", "Choose a path");
 
     await waitFor(() => {
@@ -655,7 +632,6 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    editRules(view);
     choosePath(view, "app/appointment.created", "appointment.id");
 
     await waitFor(() => {
@@ -685,7 +661,6 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    editRules(view);
     choosePath(view, "ops/nightly.swept", "Choose a path");
 
     await waitFor(() => {
@@ -709,7 +684,6 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    editRules(view);
     expect(pathChoices(view, "app/appointment.created")).toEqual([
       "appointment.id",
       "appointment.duration",
@@ -734,7 +708,6 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    editRules(view);
     expect(pathInForce(view, "app/appointment.created")).toBe(
       "legacy.reference"
     );
@@ -766,10 +739,7 @@ describe("LifecyclePanel Correlation Paths", () => {
     );
 
     // Concurrency now compares, so the field appears; the builder overrides it.
-    // One Edit opens the whole configuration, which is how one panel shows the
-    // switch and the field it brings with it.
-    editRules(view);
-    fireEvent.click(view.getByRole("radio", { name: /^Newest wins/ }));
+    chooseConcurrency(view, "Newest wins");
     await waitFor(() => {
       expect(rulesOf(latest).concurrency).toBe("newest-wins");
     });
@@ -784,7 +754,7 @@ describe("LifecyclePanel Correlation Paths", () => {
     // Back to Unlimited, with no Cancel Event to keep the override alive: the
     // field leaves the screen, and the pruned outcome is what is pinned here --
     // the stored override goes with it rather than surviving unseen.
-    fireEvent.click(view.getByRole("radio", { name: /^Unlimited/ }));
+    chooseConcurrency(view, "Unlimited");
     await waitFor(() => {
       expect(rulesOf(latest).concurrency).toBe("unlimited");
     });
@@ -811,7 +781,6 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    editRules(view);
     expect(pathInForce(view, "app/appointment.created")).toBe("appointment.id");
     expect(onConfigChange).not.toHaveBeenCalled();
     expect(view.queryByText("This will not save")).toBeNull();
@@ -831,7 +800,6 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    editRules(view);
     expect(view.queryByLabelText("ops/nightly.swept")).toBeNull();
   });
 
@@ -852,7 +820,6 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    editRules(view);
     expect(
       view.getByLabelText("Correlation Path for ops/nightly.swept")
     ).toBeTruthy();
@@ -878,7 +845,6 @@ describe("LifecyclePanel Correlation Paths", () => {
       )
     );
 
-    editRules(view);
     expect(view.queryByLabelText("ops/nightly.swept")).toBeNull();
     expect(view.queryByText("This will not save")).toBeNull();
   });

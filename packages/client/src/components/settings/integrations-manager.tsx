@@ -6,6 +6,7 @@ import {
   EditConnectionOverlay,
 } from "#src/components/overlays/edit-connection-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
+import { useConnectionRepair } from "#src/hooks/use-connection-repair";
 import { Button } from "#src/components/ui/button";
 import { IntegrationIcon } from "#src/components/ui/integration-icon";
 import { Spinner } from "#src/components/ui/spinner";
@@ -22,6 +23,7 @@ type IntegrationsManagerProps = {
 export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
   const catalog = useExtensionCatalog();
   const { push } = useOverlay();
+  const repairAgainstConnectionList = useConnectionRepair();
   const { data: integrations = [], isPending } = useQuery({
     ...integrationsQueryOptions(),
     meta: { errorMessage: "Failed to load integrations" },
@@ -70,14 +72,23 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
       });
   }, [integrations, filter, catalog]);
 
-  // No onSuccess: refreshing the connection list is the write's own business
-  // now, and this screen reads the same cache entry every selector does.
+  // Refreshing the connection list is the write's own business, and this screen
+  // reads the same cache entry every selector does. The repair is the separate
+  // job: a node stores a connection id, and a connection edited or deleted here
+  // leaves that id naming something the run cannot reach.
   const handleEdit = (integration: Integration) => {
-    push(EditConnectionOverlay, { integration });
+    push(EditConnectionOverlay, {
+      integration,
+      onSuccess: repairAgainstConnectionList,
+      onDelete: repairAgainstConnectionList,
+    });
   };
 
   const handleDelete = (integration: Integration) => {
-    push(DeleteConnectionOverlay, { integration });
+    push(DeleteConnectionOverlay, {
+      integration,
+      onSuccess: repairAgainstConnectionList,
+    });
   };
 
   // `variables` holds the input of the call in flight, which is what the old
@@ -155,7 +166,11 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
                   )}
                 </Button>
               )}
+              {/* Named for the connection each one acts on. A list of icon
+                  buttons all called "Edit" leaves a screen reader with no way
+                  to tell which connection is about to change. */}
               <Button
+                aria-label={`Edit ${integration.name}`}
                 className="size-7"
                 onClick={() => handleEdit(integration)}
                 size="icon"
@@ -164,6 +179,7 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
                 <Pencil className="size-3" />
               </Button>
               <Button
+                aria-label={`Delete ${integration.name}`}
                 className="size-7"
                 onClick={() => handleDelete(integration)}
                 size="icon"

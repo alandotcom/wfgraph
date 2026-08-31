@@ -353,6 +353,18 @@ export function ConditionBuilderRow({
     [onChange]
   );
 
+  /**
+   * Drop the whole condition, which is what deleting the last rule means.
+   *
+   * The stored model and the compiled expression are one fact, so both are
+   * cleared together and the row goes back to offering "Configure condition".
+   * Without this a configured row was permanent: the last rule of the last
+   * group had nowhere to go.
+   */
+  const clearModel = useCallback(() => {
+    onChange({ model: "", expression: "" });
+  }, [onChange]);
+
   const addConditionModel = useCallback(() => {
     if (!seedField) {
       return;
@@ -415,23 +427,48 @@ export function ConditionBuilderRow({
     }));
   };
 
+  const removeGroup = (groupId: string) => {
+    if (!parsedModel) {
+      return;
+    }
+
+    const kept = parsedModel.groups.filter((group) => group.id !== groupId);
+    if (kept.length === 0) {
+      clearModel();
+      return;
+    }
+
+    persistModel({ ...parsedModel, groups: kept });
+  };
+
+  /**
+   * Remove one rule, and let the removal carry upward when it empties something.
+   *
+   * A group that loses its last rule goes with it, and a model that loses its
+   * last group is cleared. Refusing the removal instead is what left a builder
+   * with a rule they could edit but never delete.
+   */
   const removeConditionFromGroup = (groupId: string, conditionId: string) => {
     if (!parsedModel) {
       return;
     }
 
-    updateGroup(groupId, (group) => {
-      if (group.conditions.length <= 1) {
-        return group;
-      }
+    const group = parsedModel.groups.find((entry) => entry.id === groupId);
+    if (!group) {
+      return;
+    }
 
-      return {
-        ...group,
-        conditions: group.conditions.filter(
+    if (group.conditions.length > 1) {
+      updateGroup(groupId, (existing) => ({
+        ...existing,
+        conditions: existing.conditions.filter(
           (condition) => condition.id !== conditionId
         ),
-      };
-    });
+      }));
+      return;
+    }
+
+    removeGroup(groupId);
   };
 
   const addGroup = () => {
@@ -449,17 +486,6 @@ export function ConditionBuilderRow({
           conditions: [createInitialRule(seedField)],
         },
       ],
-    });
-  };
-
-  const removeGroup = (groupId: string) => {
-    if (!parsedModel || parsedModel.groups.length <= 1) {
-      return;
-    }
-
-    persistModel({
-      ...parsedModel,
-      groups: parsedModel.groups.filter((group) => group.id !== groupId),
     });
   };
 
@@ -544,7 +570,8 @@ export function ConditionBuilderRow({
                   </span>
                 </div>
                 <Button
-                  disabled={disabled || parsedModel.groups.length <= 1}
+                  aria-label={`Remove group ${groupIndex + 1}`}
+                  disabled={disabled}
                   onClick={() => removeGroup(group.id)}
                   size="icon-sm"
                   type="button"
@@ -576,7 +603,10 @@ export function ConditionBuilderRow({
                     selectedFieldDef?.nullable ||
                       condition.recordKey !== undefined
                   );
-                  const canDeleteCondition = group.conditions.length > 1;
+                  // Names the row's delete button. Several rows can sit in one
+                  // group, and a list of buttons all called "Remove" says
+                  // nothing about which rule each one drops.
+                  const conditionName = selectedFieldDef?.label ?? pickedPath;
 
                   return (
                     <div key={condition.id}>
@@ -697,7 +727,8 @@ export function ConditionBuilderRow({
                         />
 
                         <Button
-                          disabled={disabled || !canDeleteCondition}
+                          aria-label={`Remove condition on ${conditionName}`}
+                          disabled={disabled}
                           onClick={() =>
                             removeConditionFromGroup(group.id, condition.id)
                           }
