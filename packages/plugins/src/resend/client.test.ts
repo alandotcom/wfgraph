@@ -18,8 +18,8 @@ import {
  * of handing arguments to the `resend` SDK. These assertions are the record of
  * what Resend's send-email reference says the call looks like.
  *
- * The payload's field names are the step's business, not this module's, so the
- * snake_case mapping is asserted in send-email.test.ts where it happens.
+ * The client owns the accepted payload type; the step owns constructing it, so
+ * send-email.test.ts also asserts the exact snake_case body it produces.
  */
 
 const realFetch = globalThis.fetch;

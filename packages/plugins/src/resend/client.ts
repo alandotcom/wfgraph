@@ -51,17 +51,23 @@ type ResendEmailBase = Omit<
 export type ResendEmailContent =
   | {
       html: NonNullable<EmailApiOptions["html"]>;
+      template?: never;
       text?: EmailApiOptions["text"];
     }
   | {
       html?: EmailApiOptions["html"];
+      template?: never;
       text: NonNullable<EmailApiOptions["text"]>;
     }
   | {
+      html?: never;
       template: NonNullable<EmailApiOptions["template"]>;
+      text?: never;
     };
 
-export type ResendEmailPayload = ResendEmailBase & ResendEmailContent;
+export type ResendEmailPayload = JsonObject &
+  ResendEmailBase &
+  ResendEmailContent;
 
 type SameWireShape<Actual, Expected> = [Actual] extends [DeepReadonly<Expected>]
   ? [DeepReadonly<Expected>] extends [Actual]
