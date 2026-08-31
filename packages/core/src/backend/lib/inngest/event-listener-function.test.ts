@@ -58,8 +58,6 @@ function testRuntime(services = Layer.empty): WfGraphRuntime {
 function subscriber(overrides: Partial<EventSubscriber> = {}): EventSubscriber {
   return {
     id: "wf_1",
-    name: "Appointment Reminders",
-    mode: "live",
     roles: ["start"],
     correlationPath: null,
     connectionId: null,

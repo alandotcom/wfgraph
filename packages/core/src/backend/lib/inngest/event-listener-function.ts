@@ -197,7 +197,7 @@ export async function runEventListener(input: {
           async () =>
             await runtime.runPromise(
               deliver.deliverWaits({
-                subscriber,
+                workflowId: subscriber.id,
                 event: deliveredEvent,
                 payload,
                 excluding,

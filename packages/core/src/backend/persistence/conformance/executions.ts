@@ -112,13 +112,13 @@ export function describeExecutionConformance({
       expect(retry.execution.id).toBe(started.execution.id);
     });
 
-    it("fences concurrent wait claims", async () => {
+    it("fences concurrent claims and keeps sibling waits claimable", async () => {
       const store = await openDatabase();
       const database = await store.open();
       const otherConnection = await store.open();
       await seedPublishedWorkflow(database);
 
-      const waitStateId = await database.run(
+      const waitStateIds = await database.run(
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
           const started = yield* executions.startForEntity({
@@ -143,7 +143,21 @@ export function describeExecutionConformance({
             resumeToken: "resume_1",
           });
           if (!wait) throw new Error("wait refused");
-          return wait.waitStateId;
+          const sibling = yield* executions.startWait({
+            executionId: started.execution.id,
+            workflowId: "wf_1",
+            runId: "run_1",
+            nodeId: "node_2",
+            nodeName: "Escalation",
+            waitType: "event",
+            resumeToken: "resume_2",
+          });
+          if (!sibling) throw new Error("sibling wait refused");
+          return {
+            executionId: started.execution.id,
+            first: wait.waitStateId,
+            sibling: sibling.waitStateId,
+          };
         })
       );
 
@@ -151,14 +165,31 @@ export function describeExecutionConformance({
         connection.run(
           Effect.gen(function* () {
             const executions = yield* ExecutionRepo;
-            return yield* executions.claimWaitingStateById(waitStateId);
+            return yield* executions.claimWaitingStateById(waitStateIds.first);
           })
         );
       const claims = await Promise.all([
         claim(database),
         claim(otherConnection),
       ]);
-      expect(claims.filter((value) => value !== null)).toHaveLength(1);
+      const successfulClaims = claims.filter((value) => value !== null);
+      expect(successfulClaims).toHaveLength(1);
+
+      const firstClaim = successfulClaims[0];
+      if (!firstClaim) throw new Error("No wait claim succeeded");
+      const siblingClaim = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          yield* executions.settleWaitingStateClaim({
+            waitStateId: waitStateIds.first,
+            claimedAt: firstClaim.claimedAt,
+          });
+          yield* executions.markRunning(waitStateIds.executionId);
+          return yield* executions.claimWaitingStateById(waitStateIds.sibling);
+        })
+      );
+
+      expect(siblingClaim).not.toBeNull();
     });
 
     it("enforces workflow-name and workflow-run uniqueness", async () => {
@@ -318,7 +349,6 @@ export function describeExecutionConformance({
           const waitsForEvent = yield* executions.listWaitsForEvent({
             workflowId: "wf_1",
             eventName: "appointment/approved",
-            runMode: "live",
             limit: 10,
           });
           const subscribers = yield* workflows.listEventSubscribers(
@@ -421,7 +451,7 @@ export function describeExecutionConformance({
       expect(result.existsAfterDelete).toBe(false);
     });
 
-    it("pages waits for an Event by id, and filters the runs a delivery settled", async () => {
+    it("pages waits across run modes and filters the runs a delivery settled", async () => {
       const database = await openConnection();
       await seedPublishedWorkflow(database);
 
@@ -429,13 +459,17 @@ export function describeExecutionConformance({
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
           const executionIds: string[] = [];
-          for (const suffix of ["a", "b", "c"]) {
+          for (const [suffix, runMode] of [
+            ["a", "live"],
+            ["b", "test"],
+            ["c", "live"],
+          ] as const) {
             const started = yield* executions.startForEntity({
               execution: {
                 workflowId: "wf_1",
                 workflowVersionId: "ver_1",
                 startSource: "event",
-                runMode: "live",
+                runMode,
                 entityValue: `appointment_${suffix}`,
                 deliveryId: `delivery_${suffix}`,
                 input: {},
@@ -468,7 +502,6 @@ export function describeExecutionConformance({
           const query = {
             workflowId: "wf_1",
             eventName: "appointment/approved",
-            runMode: "live" as const,
           };
           const firstPage = yield* executions.listWaitsForEvent({
             ...query,
@@ -506,6 +539,9 @@ export function describeExecutionConformance({
 
       const ids = result.all.map((wait) => wait.id);
       expect(ids).toEqual(ids.toSorted());
+      expect(result.all.map((wait) => wait.executionId).toSorted()).toEqual(
+        result.executionIds.toSorted()
+      );
       expect(result.firstPage.map((wait) => wait.id)).toEqual(ids.slice(0, 2));
       expect(result.secondPage.map((wait) => wait.id)).toEqual(ids.slice(2));
       expect(result.excludingOne.map((wait) => wait.executionId)).not.toContain(

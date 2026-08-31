@@ -347,13 +347,13 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
  * no entity of its own still wakes exactly the runs that asked for it.
  */
 export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
-  subscriber: EventSubscriber;
+  workflowId: string;
   event: DeliveredEvent;
   payload: JsonObject;
   excluding: string[];
 }) {
   const nothing: WaitDeliveryOutcome = {
-    workflowId: input.subscriber.id,
+    workflowId: input.workflowId,
     resumedWaits: 0,
   };
 
@@ -368,9 +368,8 @@ export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
   // owed this Event is skipped.
   for (;;) {
     const candidates = yield* repo.listWaitsForEvent({
-      workflowId: input.subscriber.id,
+      workflowId: input.workflowId,
       eventName: input.event.name,
-      runMode: input.subscriber.mode,
       limit: WAIT_CANDIDATE_PAGE_SIZE,
       afterId,
       excludingExecutionIds: input.excluding,
@@ -381,7 +380,7 @@ export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
     }
 
     resumedWaits += yield* resumeWaitsMatchingEvent({
-      workflowId: input.subscriber.id,
+      workflowId: input.workflowId,
       eventType: input.event.name,
       payload: input.payload,
       waitStates: candidates,
@@ -399,7 +398,7 @@ export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
     return nothing;
   }
 
-  return { workflowId: input.subscriber.id, resumedWaits };
+  return { workflowId: input.workflowId, resumedWaits };
 });
 
 function skipped(

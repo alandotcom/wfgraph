@@ -23,7 +23,6 @@ import { type JsonObjectDraft, toJsonObject } from "@wfgraph/shared/types/json";
 import { inFlightExecution } from "#src/backend/services/executions/repo/runs";
 import type {
   SettledWaitStatus,
-  WorkflowExecution,
   WorkflowWaitState,
 } from "#src/backend/services/executions/repo/contracts";
 
@@ -90,6 +89,10 @@ export type WaitsRepoMethods = {
    * the whole point of a Wait Subscription being independent of the Lifecycle
    * Rules.
    *
+   * Candidate selection spans execution modes. Published live runs and draft
+   * test runs can coexist for one workflow, and each parked row keeps the Event
+   * subscription its own run requested.
+   *
    * Paged by id because nothing bounds the parked population -- an event wait
    * defaults to a 7-day timeout -- and every row carries the JSONB holding its
    * compiled match. The caller walks the pages; `afterId` is the last id it saw.
@@ -102,7 +105,6 @@ export type WaitsRepoMethods = {
   readonly listWaitsForEvent: (input: {
     workflowId: string;
     eventName: string;
-    runMode: WorkflowExecution["runMode"];
     limit: number;
     afterId?: string;
     /** Runs this delivery already settled, filtered in SQL rather than after. */
@@ -117,7 +119,10 @@ export type WaitsRepoMethods = {
   readonly claimWaitingStateByToken: (
     resumeToken: string
   ) => Effect.Effect<WaitResumeClaim | null, DatabaseError>;
-  /** Claim one candidate previously found by event delivery. */
+  /**
+   * Claim one candidate previously found by event delivery. The execution may
+   * already be running because a sibling wait resumed first.
+   */
   readonly claimWaitingStateById: (
     waitStateId: string
   ) => Effect.Effect<WaitResumeClaim | null, DatabaseError>;
@@ -261,7 +266,6 @@ export function makeWaitsMethods(
                 input.eventName,
               ]),
               eq(workflowWaitStates.status, "waiting"),
-              eq(workflowExecutions.runMode, input.runMode),
               inArray(workflowExecutions.status, [
                 ...IN_FLIGHT_EXECUTION_STATUSES,
               ]),
@@ -390,7 +394,9 @@ async function claimWaitState(
             .where(
               and(
                 eq(workflowExecutions.id, workflowWaitStates.executionId),
-                eq(workflowExecutions.status, "waiting")
+                inArray(workflowExecutions.status, [
+                  ...IN_FLIGHT_EXECUTION_STATUSES,
+                ])
               )
             )
         )
