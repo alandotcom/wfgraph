@@ -334,3 +334,31 @@ describe("keys beside a badge", () => {
     expect(onChange).toHaveBeenCalledWith("one\n");
   });
 });
+
+describe("badge display names", () => {
+  it("names an unlabeled Lifecycle node Lifecycle, not its id", () => {
+    container = document.createElement("div");
+    container.contentEditable = "true";
+    document.body.appendChild(container);
+
+    const editor = createBadgeEditor(container, {
+      catalog: emptyExtensionCatalog,
+    });
+    const token = "{{@V1StGXR8_Z5jdHi6B-myT:Lifecycle.data.email_id}}";
+    editor.render(token, {
+      focused: true,
+      nodes: [
+        {
+          id: "V1StGXR8_Z5jdHi6B-myT",
+          position: { x: 0, y: 0 },
+          data: { label: "", type: "lifecycle", config: {} },
+        },
+      ],
+    });
+
+    expect(container.querySelector("[data-template]")?.textContent).toBe(
+      "Lifecycle.data.email_id"
+    );
+    expect(container.textContent).not.toContain("V1StGXR8_Z5jdHi6B-myT");
+  });
+});
