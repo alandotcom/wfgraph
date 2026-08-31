@@ -1,5 +1,5 @@
 /**
- * The Resend integration: its credentials, its one action, the Events a
+ * The Resend integration: its credentials, its actions, the Events a
  * webhook raises, and the webhook that produces them.
  *
  * The `defineIntegration` call stays in this file. Event schemas and Svix
@@ -13,13 +13,18 @@ import {
   type CredentialFields,
   type CredentialsOf,
   defineIntegration,
+  isoTimestampString,
   type JsonObject,
   StepFailure,
 } from "@wfgraph/core/plugin";
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
 import { Effect, Result, Schema } from "effect";
-import { describeResendFailure, sendResendEmail } from "#src/resend/client";
+import {
+  describeResendFailure,
+  getResendEmail,
+  sendResendEmail,
+} from "#src/resend/client";
 import { resendEvents } from "#src/resend/events";
 import { resendOAuth } from "#src/resend/oauth";
 import { resendWebhook } from "#src/resend/webhook";
@@ -125,6 +130,41 @@ const sendEmailOutput = Schema.Struct({
   ),
 });
 
+const findEmailInput = Schema.Struct({
+  emailId: Schema.String,
+});
+
+const findEmailOutput = Schema.Struct({
+  id: Schema.String.annotate({ description: "Email ID" }),
+  messageId: Schema.String.annotate({ description: "Provider message ID" }),
+  from: Schema.String.annotate({ description: "Sender" }),
+  to: Schema.Array(Schema.String).annotate({ description: "Recipients" }),
+  cc: Schema.NullOr(
+    Schema.Array(Schema.String).annotate({ description: "CC recipients" })
+  ),
+  bcc: Schema.NullOr(
+    Schema.Array(Schema.String).annotate({ description: "BCC recipients" })
+  ),
+  replyTo: Schema.NullOr(
+    Schema.Array(Schema.String).annotate({
+      description: "Reply-to addresses",
+    })
+  ),
+  subject: Schema.String.annotate({ description: "Email subject" }),
+  html: Schema.NullOr(Schema.String.annotate({ description: "HTML body" })),
+  text: Schema.NullOr(
+    Schema.String.annotate({ description: "Plain-text body" })
+  ),
+  createdAt: isoTimestampString("Creation timestamp"),
+  lastEvent: Schema.String.annotate({ description: "Latest email event" }),
+  scheduledAt: Schema.NullOr(isoTimestampString("Scheduled send timestamp")),
+  tags: Schema.optionalKey(
+    Schema.Record(Schema.String, Schema.String).annotate({
+      description: "Email tags",
+    })
+  ),
+});
+
 function isValidTestEmailAddress(value: string): boolean {
   return TEST_EMAIL_PATTERN.test(value);
 }
@@ -207,14 +247,16 @@ function readTemplateVariables(
 }
 
 /**
- * The tags a send carried, keyed by name, or nothing where it carried none.
+ * Email tags keyed by name, or nothing where Resend returned no tags.
  *
- * Resend takes a list on the way out and answers a record on its webhooks, so
- * this is the fold between them. A repeated name keeps the last row, matching
- * what Resend does with one.
+ * Resend's email API uses a list while its webhooks use a record, so this fold
+ * gives both actions and Events the same reference shape. A repeated name keeps
+ * the last row, matching what Resend does with one.
  */
 function tagsByName(
-  tags: typeof emailTagsSchema.Type | undefined
+  tags:
+    | ReadonlyArray<{ readonly name: string; readonly value: string }>
+    | undefined
 ): Record<string, string> | undefined {
   return tags?.length
     ? Object.fromEntries(tags.map((tag) => [tag.name, tag.value]))
@@ -624,6 +666,67 @@ export const resend = defineIntegration({
         );
 
         return { ...tagOutput, id: sent.id };
+      }),
+    },
+    "find-email": {
+      label: "Find Email",
+      description: "Retrieve a sent email by ID from Resend",
+      input: findEmailInput,
+      output: findEmailOutput,
+      configFields: [
+        {
+          key: "emailId",
+          label: "Email ID",
+          type: "template-input",
+          placeholder: "Email ID or {{NodeName.id}}",
+          example: "4ef9a417-02e9-4d39-ad75-9611e0fcc33c",
+          required: true,
+        },
+      ],
+      handler: Effect.fn(function* (bag) {
+        const emailId = bag.input.emailId.trim();
+
+        if (!emailId) {
+          return yield* new StepFailure({ message: "Email ID is required." });
+        }
+
+        const credentials = yield* bag.credentials;
+        const apiKey = credentials.RESEND_API_KEY;
+
+        if (!apiKey) {
+          return yield* new StepFailure({
+            message:
+              "RESEND_API_KEY is not configured. Please add it in Project Integrations.",
+          });
+        }
+
+        return yield* bag.step.run(
+          "find-email",
+          getResendEmail(apiKey, emailId).pipe(
+            Effect.map((email) => ({
+              id: email.id,
+              messageId: email.message_id,
+              from: email.from,
+              to: email.to,
+              cc: email.cc,
+              bcc: email.bcc,
+              replyTo: email.reply_to,
+              subject: email.subject,
+              html: email.html,
+              text: email.text,
+              createdAt: email.created_at.toISOString(),
+              lastEvent: email.last_event,
+              scheduledAt: email.scheduled_at?.toISOString() ?? null,
+              ...omitBy({ tags: tagsByName(email.tags) }, isNil),
+            })),
+            Effect.mapError(
+              (error) =>
+                new StepFailure({
+                  message: `Failed to find email: ${describeResendFailure(error)}`,
+                })
+            )
+          )
+        );
       }),
     },
   },

@@ -25,7 +25,10 @@ describe("the resend integration", () => {
     );
     expect(integration.webhook).toBeDefined();
     expect(integration.webhook?.secret).toBe("RESEND_WEBHOOK_SECRET");
-    expect(Object.keys(integration.actions)).toEqual(["send-email"]);
+    expect(Object.keys(integration.actions)).toEqual([
+      "send-email",
+      "find-email",
+    ]);
   });
 
   it("declares Resend's provider-owned OAuth adapter", () => {
@@ -87,6 +90,70 @@ describe("the resend integration", () => {
       // the tag off the webhook.
       // Nullable because a send that carried no tags omits the key entirely,
       // which is what offers a downstream rule `is set` on the record.
+      {
+        path: "tags",
+        description: "Email tags",
+        type: "object",
+        valueType: "string",
+        nullable: true,
+      },
+    ]);
+  });
+
+  it("offers every field returned by find-email", () => {
+    expect(
+      requireOutputFieldsFromSchema(
+        'Action "resend/find-email"',
+        integration.actions["find-email"].output
+      )
+    ).toEqual([
+      { path: "id", description: "Email ID", type: "string" },
+      { path: "messageId", description: "Provider message ID", type: "string" },
+      { path: "from", description: "Sender", type: "string" },
+      { path: "to", description: "Recipients", type: "array" },
+      {
+        path: "cc",
+        description: "CC recipients",
+        type: "array",
+        nullable: true,
+      },
+      {
+        path: "bcc",
+        description: "BCC recipients",
+        type: "array",
+        nullable: true,
+      },
+      {
+        path: "replyTo",
+        description: "Reply-to addresses",
+        type: "array",
+        nullable: true,
+      },
+      { path: "subject", description: "Email subject", type: "string" },
+      {
+        path: "html",
+        description: "HTML body",
+        type: "string",
+        nullable: true,
+      },
+      {
+        path: "text",
+        description: "Plain-text body",
+        type: "string",
+        nullable: true,
+      },
+      {
+        path: "createdAt",
+        description: "Creation timestamp",
+        type: "timestamp",
+      },
+      { path: "lastEvent", description: "Latest email event", type: "string" },
+      {
+        path: "scheduledAt",
+        description: "Scheduled send timestamp",
+        type: "timestamp",
+        nullable: true,
+      },
       {
         path: "tags",
         description: "Email tags",
