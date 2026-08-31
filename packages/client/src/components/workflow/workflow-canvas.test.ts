@@ -4,6 +4,7 @@ import {
   canvasNodeWithInitialDimensions,
   canvasFitViewKey,
   canvasInteractionState,
+  canvasSynchronizationKey,
   fitInitialWorkflowViewport,
   keyboardFitViewOptions,
   lifecycleAnchorViewport,
@@ -143,6 +144,79 @@ describe("useSynchronizedCanvas", () => {
     rerender({ presentation: {} });
 
     expect(setViewport).toHaveBeenCalledOnce();
+  });
+});
+
+describe("canvasSynchronizationKey", () => {
+  it("synchronizes again when same-workflow hydration replaces the Draft edges", () => {
+    const lifecycle = lifecycleNode(100);
+    const synchronizePresentation = vi.fn();
+    const runGraph = {
+      nodes: [lifecycleNode(500)],
+      edges: [{ id: "run-edge", source: "lifecycle", target: "run-action" }],
+    };
+    const initialDraftEdges: WorkflowEdge[] = [
+      { id: "draft-edge", source: "lifecycle", target: "draft-action" },
+    ];
+    const hydratedDraftEdges = initialDraftEdges.map((edge) => ({ ...edge }));
+    type Props = {
+      workspaceView: "draft" | "runs";
+      executionOverlay: unknown;
+      draftEdges: WorkflowEdge[];
+    };
+    const { rerender } = renderHook(
+      ({ workspaceView, executionOverlay, draftEdges }: Props) =>
+        useSynchronizedCanvas({
+          presentation: canvasSynchronizationKey({
+            workspaceView,
+            executionOverlay,
+            comparison: null,
+            draftEdges,
+          }),
+          synchronizePresentation,
+          currentWorkflowId: "workflow_1",
+          lifecycleNode: lifecycle,
+          internalNode: {
+            userNode: lifecycle,
+            position: lifecycle.position,
+            width: 192,
+          },
+          fitGenerationRef: { current: 0 },
+        }),
+      {
+        initialProps: {
+          workspaceView: "runs",
+          executionOverlay: runGraph,
+          draftEdges: initialDraftEdges,
+        },
+      }
+    );
+    synchronizePresentation.mockClear();
+
+    rerender({
+      workspaceView: "draft",
+      executionOverlay: null,
+      draftEdges: initialDraftEdges,
+    });
+    expect(synchronizePresentation).toHaveBeenCalledOnce();
+    synchronizePresentation.mockClear();
+
+    rerender({
+      workspaceView: "draft",
+      executionOverlay: null,
+      draftEdges: hydratedDraftEdges,
+    });
+    expect(synchronizePresentation).toHaveBeenCalledOnce();
+    synchronizePresentation.mockClear();
+
+    // Node dragging retains the edge array, so an otherwise identical render
+    // does not trigger presentation synchronization.
+    rerender({
+      workspaceView: "draft",
+      executionOverlay: null,
+      draftEdges: hydratedDraftEdges,
+    });
+    expect(synchronizePresentation).not.toHaveBeenCalled();
   });
 });
 

@@ -295,7 +295,26 @@ const accessibleEdgeArrayCache = new WeakMap<
 >();
 const EMPTY_RUN_PRESENTATION = {};
 const EMPTY_CHANGES_PRESENTATION = {};
-const DRAFT_PRESENTATION = {};
+
+export function canvasSynchronizationKey({
+  workspaceView,
+  executionOverlay,
+  comparison,
+  draftEdges,
+}: {
+  workspaceView: "draft" | "runs" | "changes";
+  executionOverlay: unknown;
+  comparison: unknown;
+  draftEdges: WorkflowEdge[];
+}): unknown {
+  if (workspaceView === "runs") {
+    return executionOverlay ?? EMPTY_RUN_PRESENTATION;
+  }
+  if (workspaceView === "changes") {
+    return comparison ?? EMPTY_CHANGES_PRESENTATION;
+  }
+  return draftEdges;
+}
 
 export function canvasNodeWithInitialDimensions(
   node: WorkflowNode
@@ -462,12 +481,12 @@ export function WorkflowCanvas() {
   // their names from the same catalog labels the cards render, while preserving
   // element identity until the graph or catalog actually changes.
   const accessibleGraph = accessibleGraphElements(nodes, edges, catalog);
-  const canvasPresentation =
-    workspaceView === "runs"
-      ? (executionOverlay ?? EMPTY_RUN_PRESENTATION)
-      : workspaceView === "changes"
-        ? (comparison ?? EMPTY_CHANGES_PRESENTATION)
-        : DRAFT_PRESENTATION;
+  const canvasPresentation = canvasSynchronizationKey({
+    workspaceView,
+    executionOverlay,
+    comparison,
+    draftEdges: storeEdges,
+  });
   const reactFlowStore = useStoreApi<WorkflowNode, WorkflowEdge>();
   const synchronizeGraph = () => {
     const state = reactFlowStore.getState();
@@ -543,6 +562,8 @@ export function WorkflowCanvas() {
     // React Flow applies controlled graph props in a passive effect. Install
     // the same graph and viewport during the layout phase so a workspace
     // change cannot paint the incoming view through the outgoing viewport.
+    // Draft uses stored edge identity so route hydration also replaces React
+    // Flow's graph, while node-only drag updates keep the key stable.
     presentation: canvasPresentation,
     synchronizePresentation: synchronizeGraph,
     currentWorkflowId,
