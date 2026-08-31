@@ -8,6 +8,7 @@ import {
 import type { IntegrationWebhook } from "#src/backend/extensions/integration-webhook";
 import { SignatureRejected } from "#src/backend/extensions/integration-webhook";
 import type { InngestClient } from "#src/backend/lib/effect/inngest-client";
+import { MAX_REQUEST_BODY_BYTES } from "#src/backend/lib/http/capped-body";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import type { DecryptedIntegration } from "#src/backend/services/integrations/repo";
 import { receiveWebhook } from "#src/backend/services/integrations/webhook-intake";
@@ -285,6 +286,49 @@ describe("webhook HTTP route", () => {
       );
       expect(response.status).toBe(401);
       expect(await response.json()).toEqual({ error: "Bad signature" });
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
+  it("answers 413 for a body over the ceiling, before the Connection is read", async () => {
+    let lookups = 0;
+    const sendCatalogEvent = vi.fn<
+      InngestClient["Service"]["sendCatalogEvent"]
+    >(() => Effect.void);
+    const runtime = stubWfGraphRuntime({
+      extensions: {
+        catalog: { ...emptyExtensionCatalog, integrations: [resendMeta] },
+        webhookFor: (type) => (type === "resend" ? webhook() : undefined),
+      },
+      integrationRepo: {
+        findById: (id) =>
+          Effect.sync(() => {
+            lookups += 1;
+            return id === connection.id ? connection : null;
+          }),
+      },
+      inngestClient: { sendCatalogEvent },
+    });
+    const app = createApiApp({
+      basePath: "/api",
+      authorize: () => Promise.resolve(false),
+      runtime,
+    });
+
+    try {
+      const response = await app.fetch(
+        new Request("http://localhost/api/webhooks/resend/conn_1", {
+          method: "POST",
+          body: "x".repeat(MAX_REQUEST_BODY_BYTES + 1),
+        })
+      );
+      expect(response.status).toBe(413);
+      expect(await response.json()).toEqual({
+        error: "Request body is too large",
+      });
+      expect(lookups).toBe(0);
+      expect(sendCatalogEvent).not.toHaveBeenCalled();
     } finally {
       await runtime.dispose();
     }

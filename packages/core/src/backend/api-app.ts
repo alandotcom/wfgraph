@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { AgentConfig } from "#src/backend/agent/config";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
+import { readCappedText } from "#src/backend/lib/http/capped-body";
 import type { InngestServeHandler } from "#src/backend/lib/inngest/client";
 import { getAppLogger } from "#src/backend/lib/logger";
 import {
@@ -89,27 +90,43 @@ function rpcProcedureOf(path: string): string | null {
   return procedure || null;
 }
 
+/** The refusal a route answers with when a sender exceeds the body ceiling. */
+const TOO_LARGE_BODY = { error: "Request body is too large" } as const;
+
 /**
  * Read a request body as the JSON object a resume call carries.
  *
  * Workflow Graph parses untrusted input at the route boundary, which is what the project
  * asks for anyway, so no validator middleware sits between the request and the
  * service. A body that is not JSON and a body that is JSON but not an object
- * both come back as a message the caller can act on.
+ * both come back as a message the caller can act on, and one over the ceiling
+ * comes back as the status that says so.
  */
 async function parseJsonObjectBody(
   request: Request
-): Promise<{ ok: true; data: JsonObject } | { ok: false; error: string }> {
-  let raw: unknown;
-  try {
-    raw = await request.json();
-  } catch {
-    return { ok: false, error: "Request body must be valid JSON" };
+): Promise<
+  | { ok: true; data: JsonObject }
+  | { ok: false; status: 400 | 413; error: string }
+> {
+  const raw = await readCappedText(request);
+  if (!raw.ok) {
+    return { ok: false, status: 413, ...TOO_LARGE_BODY };
   }
 
-  const body = readJsonObject(raw);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw.text);
+  } catch {
+    return { ok: false, status: 400, error: "Request body must be valid JSON" };
+  }
+
+  const body = readJsonObject(parsed);
   if (!body) {
-    return { ok: false, error: "Request body must be a JSON object" };
+    return {
+      ok: false,
+      status: 400,
+      error: "Request body must be a JSON object",
+    };
   }
 
   return { ok: true, data: body };
@@ -452,7 +469,7 @@ export function createApiApp(options: CreateApiAppOptions) {
 
     const body = await parseJsonObjectBody(c.req.raw);
     if (!body.ok) {
-      return c.json({ error: body.error }, 400);
+      return c.json({ error: body.error }, body.status);
     }
 
     return await runtime.runPromise(
@@ -475,13 +492,18 @@ export function createApiApp(options: CreateApiAppOptions) {
       return c.json({ error: formatSchemaFailure(params.failure.issue) }, 400);
     }
 
-    const rawBody = await c.req.text();
+    // Before the Connection is looked up, because the lookup is what this ceiling
+    // protects: host `auth` does not run here, so the sender is unauthenticated.
+    const rawBody = await readCappedText(c.req.raw);
+    if (!rawBody.ok) {
+      return c.json(TOO_LARGE_BODY, 413);
+    }
 
     return await runtime.runPromise(
       receiveWebhook({
         type: params.success.type,
         connectionId: params.success.connectionId,
-        rawBody,
+        rawBody: rawBody.text,
         headers: c.req.raw.headers,
       }).pipe(
         Effect.match({

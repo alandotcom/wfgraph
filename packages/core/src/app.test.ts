@@ -21,6 +21,7 @@ import {
   publicRoutes,
 } from "#src/backend/api-app";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
+import { MAX_REQUEST_BODY_BYTES } from "#src/backend/lib/http/capped-body";
 import { connect as connectInngestSdk } from "inngest/connect";
 import { createInngestSurface } from "#src/backend/lib/inngest/client";
 import * as inngestClientModule from "#src/backend/lib/inngest/client";
@@ -433,6 +434,29 @@ describe("createWfGraphApp with an auth predicate", () => {
       // callback and with it every workflow run.
       const inngest = await get(app, "/wfgraph/api/inngest");
       expect(inngest.status).not.toBe(401);
+    } finally {
+      await app.dispose();
+    }
+  });
+
+  it("bounds the body on the resume route, which host auth does not guard", async () => {
+    const app = await createGuardedApp(false);
+    try {
+      const response = await app.fetch(
+        new Request(
+          "http://localhost/wfgraph/api/workflows/waits/tok_1/resume",
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: "x".repeat(MAX_REQUEST_BODY_BYTES + 1),
+          }
+        )
+      );
+
+      expect(response.status).toBe(413);
+      expect(await response.json()).toEqual({
+        error: "Request body is too large",
+      });
     } finally {
       await app.dispose();
     }
