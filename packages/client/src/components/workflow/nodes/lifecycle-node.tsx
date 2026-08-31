@@ -22,6 +22,11 @@ import {
   COMPARISON_NODE_ANNOTATION,
   type WorkflowNodeData,
 } from "#src/lib/workflow-graph-types";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
+import {
+  type ExtensionCatalog,
+  findEvent,
+} from "@wfgraph/shared/extensions/catalog";
 import {
   configDeclaresCancelEvent,
   manualStartAllowed,
@@ -45,15 +50,20 @@ type LifecycleNodeProps = NodeProps & {
  * What the node says starts a run.
  *
  * Absent rules are answered by `manualStartAllowed`, which is the same function
- * the execute route is held to: a workflow the Lifecycle panel has never touched is
- * one the Run button starts, and saying otherwise on the canvas contradicted the
- * button beside it.
+ * the execute route is held to. Named Events use the catalog label, not the
+ * event name the picker stores.
  */
-export function getStartSummary(config: WorkflowNodeData["config"]): string {
+export function getStartSummary(
+  config: WorkflowNodeData["config"],
+  catalog: ExtensionCatalog
+): string {
   const rules = readLifecycleRules(config);
 
   if (rules?.startEvents.length) {
-    return `On ${rules.startEvents.join(", ")}`;
+    const labels = rules.startEvents.map(
+      (name) => findEvent(catalog, name)?.label ?? name
+    );
+    return `On ${labels.join(", ")}`;
   }
 
   return manualStartAllowed(rules)
@@ -62,12 +72,14 @@ export function getStartSummary(config: WorkflowNodeData["config"]): string {
 }
 
 export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
+  const catalog = useExtensionCatalog();
+
   if (!data) {
     return null;
   }
 
   const displayTitle = data.label || "Lifecycle";
-  const startSummary = getStartSummary(data.config);
+  const startSummary = getStartSummary(data.config, catalog);
   const displayDescription = data.description || startSummary;
   const status = data.status;
   // Soften the chip when no Cancel Event can take this outlet; the handle stays
