@@ -56,6 +56,14 @@ afterEach(() => {
 });
 
 describe("sendResendEmail", () => {
+  it("makes template and body content mutually exclusive", () => {
+    // @ts-expect-error A template send cannot carry a text body.
+    void sendResendEmail("re_key", {
+      ...validEmailPayload,
+      template: { id: "template_123" },
+    });
+  });
+
   it.effect("posts the payload with a bearer token", () =>
     Effect.gen(function* () {
       stubFetch(() => Response.json({ id: "email_123" }));
