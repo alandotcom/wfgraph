@@ -102,7 +102,7 @@ type TemplateOption = {
   recordOnly?: boolean;
   /**
    * Set on an open record, such as Resend's email tags: the type a key under
-   * `field` carries. `keyUnderOpenRecordOption` is what turns it into a row.
+   * `field` carries. `keyUnderOpenRecordOptions` turns it into a row.
    */
   valueType?: WorkflowSchemaItemType;
 };
