@@ -2,15 +2,14 @@
  * Resend's email API over fetch.
  *
  * The `resend` SDK is a thin runtime wrapper over the endpoints this plugin
- * needs, so the calls are written out here. Its public types still pin the
- * success side of these wire schemas at compile time. Everything after the
- * request is described in `external-http.ts`; this module owns the bearer
- * token, endpoint paths, wire schemas, and how Resend's error body reads.
+ * needs, so the calls are written out here. Its public raw-request and success
+ * types still pin these wire contracts at compile time. Everything after the
+ * request is described in `external-http.ts`; this module owns the bearer token,
+ * endpoint paths, wire schemas, and how Resend's error body reads.
  *
- * The request body uses Resend's own field names, which are snake_case on the
- * wire (`reply_to`, `scheduled_at`, `topic_id`) where the SDK spelled them
- * camelCase. Getting that backwards drops those fields silently, so the mapping
- * is asserted in resend/send-email.test.ts.
+ * The request body uses Resend's snake_case wire names (`reply_to`,
+ * `scheduled_at`, `topic_id`). Getting that backwards drops those fields
+ * silently, so the mapping is also asserted in resend/send-email.test.ts.
  */
 
 import type { JsonObject, JsonValue } from "@wfgraph/core/plugin";
@@ -19,6 +18,7 @@ import { Effect, Schema } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 import type {
   CreateEmailResponseSuccess,
+  EmailApiOptions,
   GetEmailResponseSuccess,
   GetTemplateResponseSuccess,
   ListTemplatesResponseSuccess,
@@ -30,6 +30,38 @@ import {
 } from "@wfgraph/core/plugin";
 
 const RESEND_API_BASE = "https://api.resend.com";
+
+type ResendEmailBaseOption =
+  | "bcc"
+  | "cc"
+  | "from"
+  | "reply_to"
+  | "scheduled_at"
+  | "subject"
+  | "tags"
+  | "to"
+  | "topic_id";
+
+type ResendEmailBase = Omit<
+  Pick<EmailApiOptions, ResendEmailBaseOption>,
+  "from" | "subject" | "to"
+> &
+  Required<Pick<EmailApiOptions, "from" | "subject" | "to">>;
+
+export type ResendEmailContent =
+  | {
+      html: NonNullable<EmailApiOptions["html"]>;
+      text?: EmailApiOptions["text"];
+    }
+  | {
+      html?: EmailApiOptions["html"];
+      text: NonNullable<EmailApiOptions["text"]>;
+    }
+  | {
+      template: NonNullable<EmailApiOptions["template"]>;
+    };
+
+export type ResendEmailPayload = ResendEmailBase & ResendEmailContent;
 
 type SameWireShape<Actual, Expected> = [Actual] extends [DeepReadonly<Expected>]
   ? [DeepReadonly<Expected>] extends [Actual]
@@ -393,7 +425,7 @@ export function getResendTemplate(
 
 export function sendResendEmail(
   apiKey: string,
-  payload: JsonObject,
+  payload: ResendEmailPayload,
   idempotencyKey?: string
 ): Effect.Effect<{ id: string }, ExternalError, HttpClient.HttpClient> {
   return requestResend(apiKey, "/emails", sentEmailSchema, {

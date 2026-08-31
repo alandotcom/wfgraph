@@ -9,6 +9,7 @@ import {
   listResendDomains,
   listResendTemplates,
   readResendError,
+  type ResendEmailPayload,
   sendResendEmail,
 } from "#src/resend/client";
 
@@ -39,6 +40,13 @@ const failure = Effect.flip;
 
 const withTransport = Effect.provide(ExternalTransport);
 
+const validEmailPayload = {
+  from: "a@example.com",
+  to: "b@example.com",
+  subject: "Hi",
+  text: "Body",
+} satisfies ResendEmailPayload;
+
 beforeEach(() => {
   requests = [];
 });
@@ -52,12 +60,7 @@ describe("sendResendEmail", () => {
     Effect.gen(function* () {
       stubFetch(() => Response.json({ id: "email_123" }));
 
-      const sent = yield* sendResendEmail("re_key", {
-        from: "a@example.com",
-        to: "b@example.com",
-        subject: "Hi",
-        text: "Body",
-      });
+      const sent = yield* sendResendEmail("re_key", validEmailPayload);
 
       expect(sent).toEqual({ id: "email_123" });
 
@@ -76,7 +79,7 @@ describe("sendResendEmail", () => {
     Effect.gen(function* () {
       stubFetch(() => Response.json({ id: "email_123" }));
 
-      yield* sendResendEmail("re_key", { subject: "Hi" }, "exec_42");
+      yield* sendResendEmail("re_key", validEmailPayload, "exec_42");
 
       expect(requests[0]?.headers.get("idempotency-key")).toBe("exec_42");
     }).pipe(withTransport)
@@ -96,7 +99,7 @@ describe("sendResendEmail", () => {
       );
 
       const error = yield* failure(
-        sendResendEmail("re_key", { subject: "Hi" })
+        sendResendEmail("re_key", validEmailPayload)
       );
 
       expect(error._tag).toBe("ExternalRejected");
@@ -121,7 +124,7 @@ describe("sendResendEmail", () => {
       stubFetch(() => Response.json({ queued: true }));
 
       const error = yield* failure(
-        sendResendEmail("re_key", { subject: "Hi" })
+        sendResendEmail("re_key", validEmailPayload)
       );
 
       expect(error._tag).toBe("ExternalUnreadable");
@@ -139,7 +142,7 @@ describe("sendResendEmail", () => {
       stubFetch(() => Promise.reject(new Error("ECONNRESET")));
 
       const error = yield* failure(
-        sendResendEmail("re_key", { subject: "Hi" })
+        sendResendEmail("re_key", validEmailPayload)
       );
 
       expect(error._tag).toBe("ExternalUnreachable");

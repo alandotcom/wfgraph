@@ -65,10 +65,9 @@ is why `@clerk/backend` (JWT verification), `@linear/sdk` (a typed GraphQL clien
 `svix` (Resend webhook signatures) stayed while `twilio`, `resend`, `@slack/web-api` and
 `posthog-node` did not. Those keep their own transport and error handling and do not go
 through `callExternal`. An SDK may still be a type-only dev dependency when its public
-types describe the raw wire contract: Resend is the worked case, with its request names
-converted to snake case at the type level and its success types projected onto Effect
-Schema codecs. Never use a recursive case converter at runtime on a body containing
-user-authored record keys.
+types describe the raw wire contract: Resend is the worked case, with its public
+`EmailApiOptions` request and success types projected onto the local boundary. Effect
+Schema and recorded fixtures remain the runtime authority.
 
 ## OAuth adapters
 

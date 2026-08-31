@@ -14,17 +14,16 @@ import {
   type CredentialsOf,
   defineIntegration,
   isoTimestampString,
-  type JsonObject,
   StepFailure,
 } from "@wfgraph/core/plugin";
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
-import type { ToSnakeCaseKeys } from "es-toolkit/types";
 import { Effect, Result, Schema } from "effect";
-import type { CreateEmailOptions } from "resend";
 import {
   describeResendFailure,
   getResendEmail,
+  type ResendEmailContent,
+  type ResendEmailPayload,
   sendResendEmail,
 } from "#src/resend/client";
 import { resendEvents } from "#src/resend/events";
@@ -265,50 +264,6 @@ function tagsByName(
     : undefined;
 }
 
-type WithoutReact<T> = T extends { react: unknown } ? never : T;
-
-type SupportedEmailOption =
-  | "bcc"
-  | "cc"
-  | "from"
-  | "html"
-  | "replyTo"
-  | "scheduledAt"
-  | "subject"
-  | "tags"
-  | "template"
-  | "text"
-  | "to"
-  | "topicId";
-
-type PickSupportedEmailOptions<T> = T extends unknown
-  ? Pick<T, Extract<keyof T, SupportedEmailOption>>
-  : never;
-
-type RemoveNeverProperties<T> = T extends unknown
-  ? {
-      [K in keyof T as Exclude<T[K], undefined> extends never
-        ? never
-        : K]: T[K];
-    }
-  : never;
-
-/**
- * The JSON subset of Resend's SDK request, named as the REST API receives it.
- *
- * The type conversion is recursive, but the runtime object is built explicitly:
- * converting at runtime would also rename keys authored inside template variables.
- */
-type ResendEmailPayload = RemoveNeverProperties<
-  ToSnakeCaseKeys<PickSupportedEmailOptions<WithoutReact<CreateEmailOptions>>>
->;
-
-type PickEmailContent<T> = T extends unknown
-  ? Pick<T, Extract<keyof T, "html" | "template" | "text">>
-  : never;
-
-type EmailContent = PickEmailContent<ResendEmailPayload>;
-
 /**
  * The body fields the chosen content mode contributes, or the failure naming the
  * box a builder still has to fill in.
@@ -318,7 +273,7 @@ type EmailContent = PickEmailContent<ResendEmailPayload>;
  */
 function emailContent(
   input: typeof sendEmailInput.Type
-): Effect.Effect<EmailContent, StepFailure> {
+): Effect.Effect<ResendEmailContent, StepFailure> {
   return Effect.gen(function* () {
     switch (input.emailContentMode ?? "text") {
       case "template": {
@@ -366,6 +321,16 @@ function emailContent(
   });
 }
 
+/**
+ * Remove only optional absent fields. The request contract keeps every required
+ * field non-nullish, so `omitBy` cannot erase one while satisfying this type.
+ */
+function omitAbsentEmailFields(
+  payload: ResendEmailPayload
+): ResendEmailPayload {
+  return omitBy(payload, isNil) as ResendEmailPayload;
+}
+
 /** The body Resend is sent. */
 const buildEmailPayload = Effect.fn(function* (
   input: typeof sendEmailInput.Type,
@@ -377,23 +342,18 @@ const buildEmailPayload = Effect.fn(function* (
 
   // Resend's own field names, which are snake_case on the wire. The SDK-derived
   // type checks them before one pass drops absent values.
-  const payload: JsonObject = {
-    ...omitBy(
-      {
-        from: senderEmail,
-        to: recipients.to,
-        subject: input.emailSubject,
-        cc: recipients.cc,
-        bcc: recipients.bcc,
-        reply_to: input.emailReplyTo,
-        scheduled_at: input.emailScheduledAt,
-        topic_id: input.emailTopicId,
-        tags,
-        ...content,
-      } satisfies ResendEmailPayload,
-      isNil
-    ),
-  };
+  const payload = omitAbsentEmailFields({
+    from: senderEmail,
+    to: recipients.to,
+    subject: input.emailSubject,
+    cc: recipients.cc,
+    bcc: recipients.bcc,
+    reply_to: input.emailReplyTo,
+    scheduled_at: input.emailScheduledAt,
+    topic_id: input.emailTopicId,
+    tags,
+    ...content,
+  });
 
   return payload;
 });
