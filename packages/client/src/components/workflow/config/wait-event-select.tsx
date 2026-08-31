@@ -199,8 +199,8 @@ function WaitSubscriptionRow({
   );
 
   const fields = useMemo(
-    () => getEventConditionFields(catalog, subscription.event),
-    [catalog, subscription.event]
+    () => getEventConditionFields(catalog, subscription.event, nodes),
+    [catalog, subscription.event, nodes]
   );
 
   const handleChange = useCallback(

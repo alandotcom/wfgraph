@@ -158,6 +158,83 @@ describe("the send-email action", () => {
     })
   );
 
+  // Resend takes a list on the way out and answers a record on its webhooks. The
+  // step reports the record, so `tags.campaign` names the same thing on this
+  // node's output as on a `resend/email.delivered` payload.
+  it.effect("answers the tags it sent, keyed by name", () =>
+    Effect.gen(function* () {
+      const { credentials } = credentialsRead();
+
+      const result = actionData(
+        yield* runAction(underTest, "send-email", {
+          input: {
+            emailTo: "user@example.com",
+            emailSubject: "Subject",
+            emailBody: "Body",
+            emailTags: JSON.stringify([
+              { name: "campaign", value: "spring" },
+              { name: "order_id", value: "ord_7" },
+            ]),
+          },
+          credentials,
+        })
+      );
+
+      expect(result).toEqual({
+        id: "email_123",
+        tags: { campaign: "spring", order_id: "ord_7" },
+      });
+    })
+  );
+
+  // A test run is where somebody checks what their references resolved to, and
+  // it spends no send, so the tags have to come back without one.
+  it.effect("answers the tags a test run would have sent", () =>
+    Effect.gen(function* () {
+      const { credentials } = credentialsRead();
+
+      const result = actionData(
+        yield* runAction(underTest, "send-email", {
+          input: {
+            emailTo: "user@example.com",
+            emailSubject: "Subject",
+            emailBody: "Body",
+            emailTags: JSON.stringify([{ name: "order_id", value: "ord_7" }]),
+          },
+          credentials,
+          runMode: "test",
+        })
+      );
+
+      expect(result).toEqual({
+        id: "resend:test-log-only:no_execution",
+        reasonCode: "test_mode_log_only",
+        tags: { order_id: "ord_7" },
+      });
+      expect(mocks.sendEmail).toHaveBeenCalledTimes(0);
+    })
+  );
+
+  it.effect("leaves the key off a send that carried no tags", () =>
+    Effect.gen(function* () {
+      const { credentials } = credentialsRead();
+
+      const result = actionData(
+        yield* runAction(underTest, "send-email", {
+          input: {
+            emailTo: "user@example.com",
+            emailSubject: "Subject",
+            emailBody: "Body",
+            emailTags: "[]",
+          },
+          credentials,
+        })
+      );
+
+      expect(result).toEqual({ id: "email_123" });
+    })
+  );
+
   // The run's id is the idempotency key, which is what keeps an Inngest retry
   // from sending a second copy of the same email.
   it.effect("sends the execution id as the idempotency key", () =>

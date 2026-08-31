@@ -120,7 +120,7 @@ function runAction(ctx: NodeWorkContext) {
       configWithoutCondition,
       traversal.outputs,
       new Set(resolutionRules?.literalConfigKeys ?? []),
-      new Set(resolutionRules?.templateObjectConfigKeys ?? [])
+      new Map(resolutionRules?.templateJsonConfigShapes ?? [])
     );
 
     if (originalCondition !== undefined) {

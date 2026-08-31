@@ -246,6 +246,46 @@ describe("getNodeMissingRequiredFields", () => {
     ]);
   });
 
+  // A record's key is an operand like any other: unnamed, the match compares the
+  // whole record, which no arrival equals.
+  it("refuses an event wait whose match names no key under a record", () => {
+    const model = createDefaultConditionModel({
+      path: "data.tags",
+      label: "data.tags",
+      type: "string",
+    });
+    model.groups[0].conditions[0] = {
+      ...model.groups[0].conditions[0],
+      field: "data.tags",
+      recordKey: "",
+      fieldType: "string",
+      operator: "equals",
+      value: "alan",
+    };
+
+    const result = getNodeMissingRequiredFields({
+      node: createActionNode({
+        actionType: "Wait",
+        waitMode: "event",
+        waitFor: [
+          {
+            event: "resend/email.delivered",
+            match: serializeConditionModel(model),
+          },
+        ],
+        waitTimeout: "7d",
+      }),
+      resolveActionByType,
+    });
+
+    expect(result?.missingFields).toEqual([
+      {
+        fieldKey: "waitFor",
+        fieldLabel: 'Match value for "resend/email.delivered"',
+      },
+    ]);
+  });
+
   it("accepts an event wait whose match compares against a value", () => {
     const model = createDefaultConditionModel({
       path: "appointment.id",

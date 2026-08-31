@@ -1,6 +1,6 @@
 import { Plus, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { Button } from "#src/components/ui/button";
 import { Input } from "#src/components/ui/input";
 import {
@@ -503,14 +503,13 @@ export function ConditionBuilderRow({
   // starts where `defaultEditing` says, whatever the last one was left in.
   const [editing, setEditing] = useState(defaultEditing);
 
-  const fieldByPath = useMemo(
-    () => new Map(availableFields.map((field) => [field.path, field])),
-    [availableFields]
-  );
-
   const modelValue = storedValue.trim();
   const modelParseResult = parseConditionModel(modelValue);
   const storedModel = modelParseResult.valid ? modelParseResult.model : null;
+
+  const fieldByPath = new Map(
+    availableFields.map((field) => [field.path, field])
+  );
 
   const persistModel = useCallback(
     (model: ConditionModel) => {
@@ -733,6 +732,18 @@ export function ConditionBuilderRow({
               <div className="mt-1 ml-2.5 space-y-2 border-l pl-3">
                 {group.conditions.map((condition, conditionIndex) => {
                   const selectedFieldDef = fieldByPath.get(condition.field);
+                  // The picker deals in whole paths; the rule stores the record
+                  // and its key apart. This is the one conversion between them,
+                  // so a rule reached by typing a key reads back as the row that
+                  // names it.
+                  const namedPath = condition.recordKey
+                    ? `${condition.field}.${condition.recordKey}`
+                    : condition.field;
+                  // A key the graph names has a row of its own; one nobody names
+                  // leaves the record itself selected, with the key beside it.
+                  const pickedPath = fieldByPath.has(namedPath)
+                    ? namedPath
+                    : condition.field;
                   const operatorOptions = getOperatorOptionsByFieldType(
                     condition.fieldType,
                     selectedFieldDef?.nullable
@@ -746,22 +757,67 @@ export function ConditionBuilderRow({
                           disabled={disabled || availableFields.length === 0}
                           fields={availableFields}
                           onValueChange={(nextField) => {
-                            if (nextField.path === condition.field) {
+                            if (nextField.path === pickedPath) {
                               return;
                             }
+
+                            // A row for a key the graph names is a shortcut for
+                            // the record plus that key, and it carries the split
+                            // so the rule it writes is the one typing the key
+                            // would have written.
+                            const chosen: ConditionFieldDefinition =
+                              nextField.recordPath
+                                ? {
+                                    ...nextField,
+                                    path: nextField.recordPath,
+                                    openRecord: true,
+                                  }
+                                : nextField;
 
                             updateCondition(
                               group.id,
                               condition.id,
-                              (existing) =>
-                                createDefaultConditionRule(
-                                  nextField,
+                              (existing) => {
+                                const seeded = createDefaultConditionRule(
+                                  chosen,
                                   existing.id
-                                )
+                                );
+                                return nextField.recordKey
+                                  ? {
+                                      ...seeded,
+                                      recordKey: nextField.recordKey,
+                                    }
+                                  : seeded;
+                              }
                             );
                           }}
-                          valuePath={condition.field}
+                          valuePath={pickedPath}
                         />
+
+                        {condition.recordKey !== undefined && (
+                          <Input
+                            aria-label="Key"
+                            className="w-36"
+                            disabled={disabled}
+                            onChange={(event) =>
+                              updateCondition(
+                                group.id,
+                                condition.id,
+                                (existing) => ({
+                                  ...existing,
+                                  // The key alone: every key of a record carries
+                                  // the record's value type, so the operator and
+                                  // the value the builder already chose still
+                                  // stand. Rebuilding the rule here would throw
+                                  // them away on every keystroke.
+                                  recordKey: event.target.value,
+                                })
+                              )
+                            }
+                            placeholder="key"
+                            value={condition.recordKey}
+                          />
+                        )}
 
                         <Select
                           disabled={disabled}

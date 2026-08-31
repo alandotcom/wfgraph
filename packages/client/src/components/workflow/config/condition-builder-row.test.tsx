@@ -37,6 +37,36 @@ const APPOINTMENT_FIELDS: ConditionSelectableField[] = [
   field("appointment.id", "Created"),
 ];
 
+/** Resend's email tags: a payload key nobody can list ahead of the run. */
+const TAG_FIELDS: ConditionSelectableField[] = [
+  field("data.email_id", "Delivered"),
+  field("data.tags", "Delivered", { openRecord: true }),
+];
+
+/** A stored rule reaching into the tags record, its key named or not. */
+function recordModel(recordKey: string): string {
+  return serializeConditionModel({
+    version: 2,
+    groupLogic: "and",
+    groups: [
+      {
+        id: "g",
+        logic: "and",
+        conditions: [
+          {
+            id: "r",
+            field: "data.tags",
+            recordKey,
+            fieldType: "string",
+            operator: "equals",
+            value: "",
+          },
+        ],
+      },
+    ],
+  });
+}
+
 function storedModel(fieldPath: string): string {
   return serializeConditionModel({
     version: 2,
@@ -130,6 +160,15 @@ function chooseField(view: RenderResult, query: string) {
   fireEvent.click(option);
 }
 
+/** The rule the last write put in the model. */
+function writtenRule(onChange: ReturnType<typeof vi.fn>) {
+  const written = onChange.mock.calls.at(-1)?.[0] as
+    | { model: string }
+    | undefined;
+  const parsed = parseConditionModel(written?.model ?? "");
+  return parsed.valid ? parsed.model.groups[0]?.conditions[0] : undefined;
+}
+
 function openFieldPicker(view: RenderResult) {
   const input = view.getByLabelText("Select field");
   fireEvent.keyDown(input, { key: "ArrowDown" });
@@ -221,6 +260,107 @@ describe("ConditionBuilderRow field picker", () => {
     if (parsed.valid) {
       expect(parsed.model.groups[0]?.conditions[0]?.field).toBe("firstName");
     }
+  });
+
+  // The record is an ordinary row now. It says what it is rather than telling
+  // somebody to type a dotted path into a field search.
+  it("offers an open record as an ordinary row", () => {
+    const view = renderRow(TAG_FIELDS, storedModel("data.email_id"));
+    enterEdit(view);
+    const input = openFieldPicker(view);
+
+    fireEvent.change(input, { target: { value: "data.tags" } });
+
+    const option = view.getAllByRole("option").at(0);
+    expect(option?.textContent).toContain("One key of this record");
+    expect(option?.getAttribute("data-disabled")).toBeNull();
+  });
+
+  // The Key box is the whole point: an Event carries whatever tags its sender
+  // attached, so a name nothing in this graph sets has to be writable.
+  it("takes a key no node in the graph names", () => {
+    const onChange = vi.fn();
+    const view = renderRow(TAG_FIELDS, storedModel("data.email_id"), onChange);
+
+    enterEdit(view);
+    chooseField(view, "data.tags");
+    fireEvent.change(view.getByLabelText("Key"), {
+      target: { value: "order_id" },
+    });
+
+    expect(writtenRule(onChange)).toMatchObject({
+      field: "data.tags",
+      recordKey: "order_id",
+    });
+  });
+
+  it("leaves the rule unfinished until the key is named", () => {
+    const onChange = vi.fn();
+    const view = renderRow(TAG_FIELDS, storedModel("data.email_id"), onChange);
+
+    enterEdit(view);
+    chooseField(view, "data.tags");
+
+    // Comparing the record itself is an object no arrival equals, so the rule
+    // has to refuse rather than compile.
+    expect(writtenRule(onChange)).toMatchObject({
+      field: "data.tags",
+      recordKey: "",
+    });
+    expect(view.getByLabelText("Key")).toHaveProperty("value", "");
+    const written = onChange.mock.calls.at(-1)?.[0] as
+      | { expression: string }
+      | undefined;
+    expect(written?.expression).toBe("");
+  });
+
+  it("keeps the operator and the value while the key is edited", () => {
+    const onChange = vi.fn();
+    const view = renderRow(TAG_FIELDS, recordModel("order_id"), onChange);
+
+    enterEdit(view);
+    fireEvent.change(view.getByLabelText("Key"), {
+      target: { value: "campaign" },
+    });
+
+    expect(writtenRule(onChange)).toMatchObject({
+      field: "data.tags",
+      recordKey: "campaign",
+      operator: "equals",
+      fieldType: "string",
+    });
+  });
+
+  // Reached either way, the rule is the same, and the Key box is the one place
+  // the key is read back.
+  it("fills the Key box from a stored rule", () => {
+    const view = renderRow(TAG_FIELDS, recordModel("order_id"));
+
+    enterEdit(view);
+    expect(view.getByLabelText("Key")).toHaveProperty("value", "order_id");
+    expect(view.queryByText(/Unavailable/)).toBeNull();
+  });
+
+  // The key is its own field rather than a segment of the path, so a name the
+  // path grammar could not carry as one segment is still writable.
+  it("takes a key holding a dot", () => {
+    const onChange = vi.fn();
+    const view = renderRow(TAG_FIELDS, recordModel("order_id"), onChange);
+
+    enterEdit(view);
+    fireEvent.change(view.getByLabelText("Key"), {
+      target: { value: "order.id" },
+    });
+
+    expect(writtenRule(onChange)).toMatchObject({ recordKey: "order.id" });
+    expect(view.getByLabelText("Key")).toHaveProperty("value", "order.id");
+  });
+
+  it("draws no Key box for an ordinary field", () => {
+    const view = renderRow(TAG_FIELDS, storedModel("data.email_id"));
+
+    enterEdit(view);
+    expect(view.queryByLabelText("Key")).toBeNull();
   });
 
   it("keeps a stored path the graph no longer offers", () => {

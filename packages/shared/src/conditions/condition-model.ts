@@ -63,12 +63,28 @@ export type ConditionFieldDefinition = {
   path: string;
   label: string;
   type: ConditionFieldType;
+  /**
+   * Set where `path` names an open record, such as Resend's email tags: an
+   * object accepting keys no schema lists. `type` then describes what one of
+   * those keys carries rather than the record, and a rule built on it names its
+   * key in `recordKey`.
+   */
+  openRecord?: true;
 };
 
 type ConditionRuleBase = {
   id: string;
   field: string;
   fieldType: ConditionFieldType;
+  /**
+   * The key this rule reads under `field`, where `field` names an open record.
+   *
+   * Present and empty is a rule nobody has finished: the compiler refuses it as
+   * `incomplete` rather than comparing the record itself, which is an object no
+   * arrival can equal. Absent means `field` is the whole path, which is every
+   * other rule.
+   */
+  recordKey?: string;
 };
 
 export type TimestampRelativeConditionRule = ConditionRuleBase & {
@@ -215,10 +231,19 @@ export function createDefaultConditionRule(
   field: ConditionFieldDefinition,
   id = "rule"
 ): ConditionRule {
+  // An open record starts with its key unwritten, which is what makes the rule
+  // unfinished until somebody names one. Seeded here rather than at the call
+  // site because `reconcileModelWithFields` rebuilds through this function too,
+  // and a rebuild that dropped the key would leave a rule comparing the record.
+  const base = {
+    id,
+    field: field.path,
+    ...(field.openRecord ? { recordKey: "" } : {}),
+  };
+
   if (field.type === "timestamp") {
     return {
-      id,
-      field: field.path,
+      ...base,
       fieldType: "timestamp",
       operator: "within_next",
       amount: 1,
@@ -227,31 +252,14 @@ export function createDefaultConditionRule(
   }
 
   if (field.type === "number") {
-    return {
-      id,
-      field: field.path,
-      fieldType: "number",
-      operator: "equals",
-      value: 0,
-    };
+    return { ...base, fieldType: "number", operator: "equals", value: 0 };
   }
 
   if (field.type === "boolean") {
-    return {
-      id,
-      field: field.path,
-      fieldType: "boolean",
-      operator: "is_true",
-    };
+    return { ...base, fieldType: "boolean", operator: "is_true" };
   }
 
-  return {
-    id,
-    field: field.path,
-    fieldType: "string",
-    operator: "equals",
-    value: "",
-  };
+  return { ...base, fieldType: "string", operator: "equals", value: "" };
 }
 
 /**

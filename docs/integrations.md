@@ -225,6 +225,12 @@ Order follows your entries, and Workflow Graph draws each key you left out after
 order. A group takes its position from your list, because its placement is a decision you
 make.
 
+A `key-value` field stores its rows as one JSON string, and each row's value carries
+`{{@nodeId:Label.path}}` references. The engine resolves them one row at a time and
+re-serialises, so a resolved value holding a quotation mark reaches your handler escaped
+rather than leaving the string unparseable. A row's name is left as authored, because it is
+the key of whatever you build from it.
+
 ### Fields the connection fills in
 
 A field whose choices live in the operator's own account names a provider instead of a
@@ -341,6 +347,21 @@ the keys the schema declares, so a step that hands back a whole object from a sy
 describe each field it means to pass on. `Schema.StructWithRest` over a `Schema.Record`
 rest is the other spelling, for a shape that is genuinely open. A foreign library follows
 its own object policy for the same question (`z.looseObject` in Zod, for example).
+
+**An open record is addressable by key.** A `Schema.Record` names no properties, so the
+editor lists the record itself and asks for the key beside it: choosing `tags` on a
+condition draws a Key box, and the run reads `tags.order_id` off the payload. Resend's email
+tags are the case this is for. Declare the value type, because that is what a condition
+compares against; a record of strings makes `tags.order_id` a text rule. A rule whose key is
+still unnamed is refused rather than compared against the whole record.
+
+Where a `key-value` config field is what fills the record, name the record paths on it with
+`fillsRecords` and the editor offers the keys instead of asking for them. Resend's Tags field
+declares `["tags", "data.tags"]`: the first is the Send Email step's own output, the second is
+what every `resend/email.*` Event carries, so tagging a send with `order_id` makes
+`data.tags.order_id` a path a Wait match can be built on. Paths are matched inside one
+integration. Treat it as a suggestion: a key nothing in the workflow names still resolves when
+it is typed.
 
 **Each side takes its own optional spelling.** The codec rewrites `optional(X)` to
 `optionalKey(NullOr(X))`.

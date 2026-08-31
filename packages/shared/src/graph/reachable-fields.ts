@@ -12,7 +12,10 @@
 import { compact, uniq } from "es-toolkit/array";
 import type { EventMetadata } from "#src/extensions/catalog";
 import type { ReferenceField } from "#src/graph/node-references";
-import type { WorkflowSchemaFieldType } from "#src/graph/schema-codec";
+import type {
+  WorkflowSchemaFieldType,
+  WorkflowSchemaItemType,
+} from "#src/graph/schema-codec";
 
 /**
  * One path, reconciled across the Events that can reach the node.
@@ -82,6 +85,24 @@ function reconcileEnumValues(
 }
 
 /**
+ * The type an open record's keys carry, kept only where every Event declaring
+ * the path opens it onto the same one.
+ *
+ * An Event declaring the path as a closed object contributes no value type, and
+ * that disagreement closes the reconciled path: a key one Event carries and
+ * another does not is not a key a rule may be built on.
+ */
+function reconcileValueType(
+  declarations: Declaration[]
+): WorkflowSchemaItemType | undefined {
+  const distinct = uniq(
+    declarations.map((declaration) => declaration.field.valueType)
+  );
+
+  return distinct.length === 1 ? distinct[0] : undefined;
+}
+
+/**
  * The Events among these that leave the path out of their payload, by name.
  *
  * Part of the reconciliation contract rather than a caller's own arithmetic: it
@@ -126,11 +147,13 @@ export function reachableEventFields(
       const { type, typeClash } = reconcileType(declarations);
       const description = reconcileDescription(declarations);
       const enumValues = reconcileEnumValues(declarations);
+      const valueType = reconcileValueType(declarations);
 
       return {
         path,
         ...(description ? { description } : {}),
         ...(type ? { type } : {}),
+        ...(valueType ? { valueType } : {}),
         ...(enumValues ? { enumValues } : {}),
         ...(typeClash ? { typeClash } : {}),
         ...(declarations.length < events.length ||

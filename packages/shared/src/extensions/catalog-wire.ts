@@ -96,6 +96,9 @@ const actionConfigFieldBaseSchema = Schema.Struct({
   required: Schema.optionalKey(Schema.Boolean),
   literal: Schema.optionalKey(Schema.Literal(true)),
   showWhen: Schema.optionalKey(showWhenWireSchema),
+  fillsRecords: Schema.optionalKey(
+    Schema.mutable(Schema.Array(safeRecordPath))
+  ),
 });
 
 const actionConfigFieldGroupSchema = Schema.Struct({
@@ -127,6 +130,16 @@ const referenceFieldWireSchema: Schema.Codec<ReferenceField> = Schema.Struct({
       "timestamp",
       "duration",
       "array",
+      "object",
+    ])
+  ),
+  valueType: Schema.optionalKey(
+    Schema.Literals([
+      "string",
+      "number",
+      "boolean",
+      "timestamp",
+      "duration",
       "object",
     ])
   ),

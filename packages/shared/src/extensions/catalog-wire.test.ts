@@ -49,6 +49,18 @@ describe("readExtensionCatalog", () => {
     );
   });
 
+  // Without this the editor cannot tell an open record from an empty object, and
+  // a builder loses every path under it.
+  it("carries an open record's value type across the wire", () => {
+    const payloadFields: ReferenceField[] = [
+      { path: "data.tags", type: "object", valueType: "string" },
+    ];
+
+    expect(readExtensionCatalog(aCatalog(payloadFields))).toEqual(
+      aCatalog(payloadFields)
+    );
+  });
+
   it("carries showWhen on a reference field across the wire", () => {
     const payloadFields: ReferenceField[] = [
       {

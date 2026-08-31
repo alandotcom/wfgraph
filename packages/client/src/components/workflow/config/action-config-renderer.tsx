@@ -17,6 +17,10 @@ import {
   type ActionConfigFieldBase,
   isFieldGroup,
 } from "@wfgraph/shared/plugins/action-fields";
+import {
+  type KeyValueRow,
+  readKeyValueRows,
+} from "@wfgraph/shared/plugins/key-value-rows";
 import { matchesShowWhen } from "@wfgraph/shared/types/show-when";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import { ProviderFieldsField } from "./provider-fields-field";
@@ -138,39 +142,30 @@ function SelectField({ field, value, onChange, disabled }: FieldProps) {
   );
 }
 
-type KeyValueEntry = { name: string; value: string };
-type KeyValueEntryWithId = KeyValueEntry & { _id: string };
+type KeyValueEntryWithId = KeyValueRow & { _id: string };
 
 let kvIdCounter = 0;
 function nextKvId(): string {
   return `kv-${++kvIdCounter}`;
 }
 
-function isKeyValueEntry(e: unknown): e is KeyValueEntry {
-  if (typeof e !== "object" || e === null) {
-    return false;
-  }
-  if (!("name" in e && "value" in e)) {
-    return false;
-  }
-  return typeof e.name === "string" && typeof e.value === "string";
-}
-
-function parseKeyValueJson(raw: unknown): KeyValueEntry[] {
+function parseKeyValueJson(raw: unknown): KeyValueRow[] {
   if (typeof raw !== "string" || !raw) {
     return [];
   }
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return parsed.filter(isKeyValueEntry);
-    }
-  } catch {
-    // invalid JSON, return empty
-  }
-  return [];
+  return readKeyValueRows(raw) ?? [];
 }
 
+/**
+ * The rows a `key-value` field stores, with a template control on each value.
+ *
+ * The name column stays plain text: it is the key of whatever the step builds,
+ * and the systems that take one hold it to a short constrained alphabet, so a
+ * reference resolved into it would name a key nobody could match. A value is
+ * ordinary text, and the engine resolves each row's own before the step reads
+ * them (`templateJsonFieldShapes`), so a reference here reaches the wire escaped
+ * rather than breaking the JSON around it.
+ */
 function KeyValueField({ value, onChange, disabled }: FieldProps) {
   const [rows, setRows] = useState<KeyValueEntryWithId[]>(() =>
     parseKeyValueJson(value).map((e) => ({ ...e, _id: nextKvId() }))
@@ -211,11 +206,14 @@ function KeyValueField({ value, onChange, disabled }: FieldProps) {
             placeholder="Name"
             value={entry.name}
           />
-          <Input
-            aria-label="Value"
-            className="flex-1"
+          <TemplateBadgeInput
+            ariaLabel="Value"
+            // Sized against the Name box beside it: the shared Input is h-7 with
+            // px-2 py-0.5 at text-sm, and a template control left at its own
+            // min-h-9 made the two cells read as different kinds of control.
+            className="min-h-7 flex-1 bg-input/20 px-2 py-0.5 text-sm md:text-xs/relaxed dark:bg-input/30"
             disabled={disabled}
-            onChange={(e) => updateEntry(entry._id, "value", e.target.value)}
+            onChange={(next) => updateEntry(entry._id, "value", next)}
             placeholder="Value"
             value={entry.value}
           />

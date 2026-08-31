@@ -461,6 +461,116 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
       { name: "id", type: "string", description: undefined },
     ]);
   });
+
+  // Resend's email tags are the case: a payload key nobody can list ahead of
+  // time, which only `additionalProperties` says is there at all.
+  it("reads an open record's value type off additionalProperties", () => {
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: {
+        tags: {
+          type: "object",
+          additionalProperties: { type: "string" },
+          description: "Email tags",
+        },
+      },
+    });
+
+    expect(schema).toEqual([
+      {
+        name: "tags",
+        type: "object",
+        fields: [],
+        description: "Email tags",
+        valueType: "string",
+      },
+    ]);
+  });
+
+  it("keeps a closed struct closed", () => {
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: {
+        click: {
+          type: "object",
+          properties: { link: { type: "string" } },
+          additionalProperties: false,
+        },
+      },
+    });
+
+    expect(schema).toEqual([
+      {
+        name: "click",
+        type: "object",
+        fields: [{ name: "link", type: "string", description: undefined }],
+        description: undefined,
+      },
+    ]);
+  });
+
+  // A library that never writes the keyword has said nothing about extra keys,
+  // and reading that silence as openness would offer a path off every object.
+  it("reads a missing additionalProperties as closed", () => {
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: { click: { type: "object", properties: {} } },
+    });
+
+    expect(schema).toEqual([
+      { name: "click", type: "object", fields: [], description: undefined },
+    ]);
+  });
+
+  // The value type is what a condition compares against, so guessing text for a
+  // record of numbers would compile a string comparison against a number.
+  it("offers no value type for an opening that declares none", () => {
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: { headers: { type: "object", additionalProperties: true } },
+    });
+
+    expect(schema?.[0]?.valueType).toBeUndefined();
+  });
+
+  it("reads the value format, so a record of timestamps types as one", () => {
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: {
+        seenAt: {
+          type: "object",
+          additionalProperties: { type: "string", format: "date-time" },
+        },
+      },
+    });
+
+    expect(schema?.[0]?.valueType).toBe("timestamp");
+  });
+
+  // `Schema.StructWithRest` is the spelling for an output that names some keys
+  // and accepts others, so both halves have to survive the read.
+  it("keeps named properties beside an opening", () => {
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: {
+        result: {
+          type: "object",
+          properties: { id: { type: "string" } },
+          additionalProperties: { type: "number" },
+        },
+      },
+    });
+
+    expect(schema).toEqual([
+      {
+        name: "result",
+        type: "object",
+        fields: [{ name: "id", type: "string", description: undefined }],
+        description: undefined,
+        valueType: "number",
+      },
+    ]);
+  });
 });
 
 describe("workflowSchemaFieldsToJsonSchemaDocument", () => {

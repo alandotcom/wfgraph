@@ -81,6 +81,16 @@ describe("the resend integration", () => {
         type: "string",
         nullable: true,
       },
+      // An open record, so the editor lists the record and offers a key under it
+      // by name. That is the same entry a `resend/email.*` payload carries, and
+      // the two agreeing is what lets one workflow tag a send and the next read
+      // the tag off the webhook.
+      {
+        path: "tags",
+        description: "Email tags",
+        type: "object",
+        valueType: "string",
+      },
     ]);
   });
 });

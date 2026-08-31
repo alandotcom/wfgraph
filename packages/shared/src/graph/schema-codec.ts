@@ -46,6 +46,12 @@ export type WorkflowSchemaField = {
   name: string;
   type: WorkflowSchemaFieldType;
   itemType?: WorkflowSchemaItemType;
+  /**
+   * The type every value under an open record carries, the mirror of `itemType`
+   * for an array. Present only on an object that accepts keys its schema does
+   * not name, which is what makes an unlisted key addressable downstream.
+   */
+  valueType?: WorkflowSchemaItemType;
   fields?: WorkflowSchemaField[];
   description?: string;
   nullable?: boolean;
@@ -73,6 +79,14 @@ interface JsonSchemaNode {
   minimum?: number;
   minItems?: number;
   properties?: JsonSchemaProperties;
+  /**
+   * Present only when the document wrote the keyword. `false` closes the object;
+   * `true` or a node opens it. An absent keyword is read as closed even though
+   * JSON Schema defaults it to open, because a library that leaves it out has
+   * said nothing about extra keys and offering `user.anything` off that silence
+   * would fill the picker with paths no payload holds.
+   */
+  additionalProperties?: JsonSchemaNode | boolean;
   items?: JsonSchemaNode;
   anyOf?: (JsonSchemaNode | undefined)[];
   oneOf?: (JsonSchemaNode | undefined)[];
@@ -153,6 +167,17 @@ function readJsonSchemaProperties(
 }
 
 /**
+ * An `additionalProperties` keyword: the boolean the document wrote, or the node
+ * it wrote, or `undefined` when it wrote something this reader cannot use.
+ */
+function readAdditionalProperties(
+  value: unknown,
+  seen: WeakSet<object>
+): JsonSchemaNode | boolean | undefined {
+  return typeof value === "boolean" ? value : readJsonSchemaNode(value, seen);
+}
+
+/**
  * A JSON Schema node, or `undefined` when the value is not an object or when
  * this walk has already seen it.
  *
@@ -195,6 +220,14 @@ function readJsonSchemaNode(
     minimum: readNumber(node.minimum),
     minItems: readNumber(node.minItems),
     properties: readJsonSchemaProperties(node.properties, seen),
+    ...(Object.hasOwn(node, "additionalProperties")
+      ? {
+          additionalProperties: readAdditionalProperties(
+            node.additionalProperties,
+            seen
+          ),
+        }
+      : {}),
     items: readJsonSchemaNode(node.items, seen),
     anyOf: readNodeBranches(node.anyOf, seen),
     oneOf: readNodeBranches(node.oneOf, seen),
@@ -686,6 +719,40 @@ function resolveJsonSchemaUnion(
   return null;
 }
 
+/**
+ * The type an open record's values carry, or null when the object is closed.
+ *
+ * `Schema.Record(Schema.String, Schema.String)` describes itself as
+ * `{ type: "object", additionalProperties: { type: "string" } }` and names no
+ * properties, so this keyword is the only evidence that a key the schema never
+ * listed is still a real path.
+ *
+ * An opening that declares no type answers nothing rather than guessing text.
+ * The type is what a condition compares against, so guessing it wrong offers a
+ * record of numbers as a text rule and compiles a string comparison against a
+ * number. An array's untyped item defaults to text instead, which is safe there
+ * because nothing compares an array element directly.
+ */
+function openRecordValueType(
+  additional: JsonSchemaNode | boolean | undefined
+): WorkflowSchemaItemType | null {
+  if (additional === undefined || typeof additional === "boolean") {
+    return null;
+  }
+
+  const declared =
+    normalizeJsonSchemaType(additional.type) ||
+    (additional.properties ? "object" : null);
+  if (!declared) {
+    return null;
+  }
+
+  const valueType =
+    declared === "string" ? (stringSubtype(additional) ?? declared) : declared;
+
+  return isWorkflowSchemaItemType(valueType) ? valueType : null;
+}
+
 function parseNonNullableJsonSchemaProperty(
   name: string,
   value: JsonSchemaNode
@@ -722,11 +789,13 @@ function parseNonNullableJsonSchemaProperty(
   }
 
   if (normalizedType === "object") {
+    const valueType = openRecordValueType(value.additionalProperties);
     return {
       name,
       type: "object",
       fields: parseJsonSchemaProperties(value.properties),
       description,
+      ...(valueType ? { valueType } : {}),
     };
   }
 

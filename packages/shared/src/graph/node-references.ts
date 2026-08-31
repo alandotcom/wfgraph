@@ -19,6 +19,7 @@ import { matchesShowWhen, type ShowWhen } from "#src/types/show-when";
 import type {
   WorkflowSchemaField,
   WorkflowSchemaFieldType,
+  WorkflowSchemaItemType,
 } from "./schema-codec";
 
 /**
@@ -35,12 +36,18 @@ import type {
  * `showWhen` belongs to action output fields: offer the path only when another
  * config key holds a given value. Absent means always offered. Event payload
  * fields do not use it.
+ *
+ * `valueType` marks an open record: an object accepting keys its schema never
+ * named, such as Resend's email tags. The entry addresses the whole record, and
+ * the type it carries is what a key under it holds, which is how
+ * a key under it is addressable even though this list cannot enumerate one.
  */
 export type ReferenceField = {
   path: string;
   /** The author's own words for the field, absent when they wrote none. */
   description?: string;
   type?: WorkflowSchemaFieldType;
+  valueType?: WorkflowSchemaItemType;
   nullable?: boolean;
   enumValues?: string[];
   showWhen?: ShowWhen;
@@ -58,15 +65,6 @@ export function fieldsVisibleForConfig(
   return fields.filter((field) => matchesShowWhen(config, field.showWhen));
 }
 
-/**
- * A reference field together with the node that produces it. This is what a
- * config form shows when it lists what is available from upstream.
- */
-export type UpstreamField = ReferenceField & {
-  sourceNodeId: string;
-  sourceNodeName: string;
-};
-
 /** Turn one schema-tree node into the flat reference field that addresses it. */
 function schemaFieldToReferenceField(
   field: WorkflowSchemaField,
@@ -79,6 +77,7 @@ function schemaFieldToReferenceField(
     path,
     ...(description ? { description } : {}),
     type: field.type,
+    ...(field.valueType ? { valueType: field.valueType } : {}),
     ...(nullable ? { nullable: true } : {}),
     ...(field.enumValues ? { enumValues: field.enumValues } : {}),
   };
@@ -107,9 +106,10 @@ const MAX_REFERENCE_FIELD_DEPTH = 3;
  * Container fields are emitted alongside their children, so a caller sees both
  * the whole object and every leaf inside it. Arrays of objects contribute
  * `name[0].child` paths; arrays of primitives contribute only the array itself,
- * because there is no child to name. An object with no named properties -- an
- * open record, or one whose properties the reader could not use -- has no
- * children to emit and stays a single entry.
+ * because there is no child to name. An object with no named properties stays a
+ * single entry, having no children to emit. An open record is that case with a
+ * `valueType` on it, saying a key nobody could list is still addressable. Which
+ * keys exist is a question for whoever holds the graph, not for this walk.
  *
  * A derived path is reachable only when every ancestor on it is present, so its
  * nullability is the OR of its own and its ancestors'. Array `[0]` children are

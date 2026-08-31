@@ -151,17 +151,33 @@ only what the schema cannot and merges into the derived field of the same key. W
 none and the schema's own list is the form. `docs/integrations.md` ("The config form")
 owns the rule.
 
-| Type                | Description                                | Templates |
-| ------------------- | ------------------------------------------ | --------- |
-| `template-input`    | Single line, with `{{@nodeId:Label.path}}` | Yes       |
-| `template-textarea` | Multi-line, same grammar                   | Yes       |
-| `text`              | Plain text input                           | No        |
-| `number`            | Numeric input                              | No        |
-| `select`            | Dropdown over `options`                    | No        |
-| `key-value`         | Dynamic key-value list                     | No        |
-| `provider-select`   | Dropdown over what the connection lists    | Yes       |
-| `provider-fields`   | One input per value the selection declares | Yes       |
-| `group`             | Collapsible section holding `fields`       | N/A       |
+| Type                | Description                                | Templates     |
+| ------------------- | ------------------------------------------ | ------------- |
+| `template-input`    | Single line, with `{{@nodeId:Label.path}}` | Yes           |
+| `template-textarea` | Multi-line, same grammar                   | Yes           |
+| `text`              | Plain text input                           | No            |
+| `number`            | Numeric input                              | No            |
+| `select`            | Dropdown over `options`                    | No            |
+| `key-value`         | Dynamic key-value list                     | On each value |
+| `provider-select`   | Dropdown over what the connection lists    | Yes           |
+| `provider-fields`   | One input per value the selection declares | Yes           |
+| `group`             | Collapsible section holding `fields`       | N/A           |
+
+`key-value` and `provider-fields` both store one JSON string, and the engine resolves each
+authored value inside it separately rather than substituting into the string
+(`templateJsonFieldShapes`, and `resolveKeyValueRows` in `engine/templates.ts`). That
+is what escapes a resolved quotation mark or newline; substituting into the string left the
+JSON unparseable and cost the step every value in it. A `key-value` row's name is left as
+authored, being the key of whatever the step builds.
+
+`fillsRecords` on a `key-value` field names the open records its row names are the keys of,
+by path. Resend's Tags field declares `["tags", "data.tags"]`, which is its own step's output
+and the payload of every `resend/email.*` Event, since Resend echoes the same tags back. The
+editor reads the names off the graph and offers `tags.name` rather than asking for it to be
+typed (`packages/client/src/lib/open-record-keys.ts`). The collection is scoped to one
+integration, so PostHog's property names never turn up as Resend's tag keys, and it is only a
+suggestion: an email tagged outside this workflow carries keys no node here names, and one
+typed by hand resolves whether it was offered or not.
 
 The two provider-backed types take an `optionsSource` naming one entry of the integration's
 `configOptions`, and `checkIntegration` refuses a field wired to a provider that answers the

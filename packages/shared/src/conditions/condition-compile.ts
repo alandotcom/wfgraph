@@ -332,9 +332,24 @@ export function compileConditionRule(
     return compileEventNameRule(rule);
   }
 
+  // A rule reaching into an open record names its key beside the path rather
+  // than inside it. Unnamed, there is nothing to compare: the record itself is
+  // an object no arrival can equal, so a rule left here would publish clean and
+  // silently never match. `incomplete` is what tells a save this is a half-built
+  // rule rather than a broken one.
+  if (rule.recordKey !== undefined && !rule.recordKey.trim()) {
+    return {
+      valid: false,
+      error: "Name the key this rule compares",
+      incomplete: true,
+    };
+  }
+
   // A rule stores the path as the field picker offered it, relative to the node
   // output. The root belongs to the expression, not the model.
-  const compiledPath = compilePayloadPath(path);
+  const compiledPath = compilePayloadPath(
+    rule.recordKey === undefined ? path : `${path}.${rule.recordKey.trim()}`
+  );
   if (!compiledPath) {
     return { valid: false, error: "Condition field path is invalid" };
   }

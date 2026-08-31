@@ -202,13 +202,30 @@ describe("flattenSchemaToReferenceFields", () => {
   });
 
   it("leaves an object with no named properties as a single entry", () => {
-    // An open record, and also what a property the reader could not use leaves
-    // behind. Either way there is no child to name.
+    // A property the reader could not use leaves this behind, and there is no
+    // child to name.
     const fields = flattenSchemaToReferenceFields([
       { name: "metadata", type: "object", fields: [] },
     ]);
 
     expect(fields).toEqual([{ path: "metadata", type: "object" }]);
+  });
+
+  it("carries an open record's value type onto its one entry", () => {
+    const fields = flattenSchemaToReferenceFields([
+      {
+        name: "data",
+        type: "object",
+        fields: [
+          { name: "tags", type: "object", fields: [], valueType: "string" },
+        ],
+      },
+    ]);
+
+    expect(fields).toEqual([
+      { path: "data", type: "object" },
+      { path: "data.tags", type: "object", valueType: "string" },
+    ]);
   });
 
   it("stops descending three segments down", () => {

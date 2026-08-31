@@ -163,6 +163,8 @@ describe("the resolution rules an action contributes", () => {
     ).metadataFor("example/send");
 
     expect(actions?.literalConfigKeys).toEqual(["testTo"]);
-    expect(actions?.templateObjectConfigKeys).toEqual(["variables"]);
+    expect(actions?.templateJsonConfigShapes).toEqual([
+      ["variables", "provider-fields"],
+    ]);
   });
 });

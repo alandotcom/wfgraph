@@ -35,6 +35,28 @@ describe("Resend webhook Events", () => {
     }
   );
 
+  // The tags a Send Email node set come back on every email Event, and a builder
+  // reads one by name. An open record is how the editor is told that a key it
+  // could never list is still a path, so this is what makes `data.tags.order_id`
+  // selectable in a Wait match or a Lifecycle Rule.
+  it("offers each email Event's tags as an open record of text", () => {
+    const emailEvents = resendEvents.filter((event) =>
+      event.name.startsWith("resend/email.")
+    );
+    expect(emailEvents.length).toBeGreaterThan(0);
+
+    for (const event of emailEvents) {
+      expect(
+        event.payloadFields.find((field) => field.path === "data.tags")
+      ).toEqual({
+        path: "data.tags",
+        description: "Email tags",
+        type: "object",
+        valueType: "string",
+      });
+    }
+  });
+
   it("lets an extra envelope key through the intake gate", async () => {
     const delivered = resendEvents.find(
       (event) => event.name === "resend/email.delivered"

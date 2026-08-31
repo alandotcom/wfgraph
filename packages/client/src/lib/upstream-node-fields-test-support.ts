@@ -86,11 +86,13 @@ export function createEdge(input: {
 export function anEvent(input: {
   name: string;
   label?: string;
+  integration?: string;
   schema: Parameters<typeof requireOutputFieldsFromSchema>[1];
 }): EventMetadata {
   return {
     name: input.name,
     label: input.label ?? input.name,
+    ...(input.integration ? { integration: input.integration } : {}),
     payloadFields: requireOutputFieldsFromSchema(
       `Event "${input.name}"`,
       input.schema

@@ -104,6 +104,18 @@ const sendEmailOutput = Schema.Struct({
       Schema.String.annotate({ description: "Why a test run did not send" })
     )
   ),
+  /**
+   * The tags this send carried, in the shape Resend's own webhooks echo them:
+   * a key per tag name. The wire body sends the list Resend's send API takes,
+   * so the boundary translates and `tags.order_id` then means the same thing
+   * here and on a `resend/email.delivered` payload. A repeated tag name folds
+   * to one key, which is what the webhook does with it too.
+   */
+  tags: Schema.optionalKey(
+    Schema.Record(Schema.String, Schema.String).annotate({
+      description: "Email tags",
+    })
+  ),
 });
 
 function resolveResendTestBehavior(
@@ -121,6 +133,10 @@ function isValidTestEmailAddress(value: string): boolean {
 // not describe what Resend accepts is logged and dropped, leaving the email to
 // send without it. Both decodes ask for every issue rather than the first, so one
 // log line accounts for the whole string the author typed.
+//
+// The engine resolves each tag value on its own and re-serialises the list
+// (`templateJsonFieldShapes`), so a reference resolving to text with a quotation
+// mark in it arrives here escaped rather than as text no parser accepts.
 const emailTagsSchema = Schema.mutable(
   Schema.Array(Schema.Struct({ name: Schema.String, value: Schema.String }))
 );
@@ -162,6 +178,21 @@ function parseTags(tagsJson: string): typeof emailTagsSchema.Type | undefined {
   return result.success;
 }
 
+/**
+ * The tags a send carried, keyed by name, or nothing where it carried none.
+ *
+ * Resend takes a list on the way out and answers a record on its webhooks, so
+ * this is the fold between them. A repeated name keeps the last row, matching
+ * what Resend does with one.
+ */
+function tagsByName(
+  tags: typeof emailTagsSchema.Type | undefined
+): Record<string, string> | undefined {
+  return tags?.length
+    ? Object.fromEntries(tags.map((tag) => [tag.name, tag.value]))
+    : undefined;
+}
+
 function parseTemplateVariables(
   templateVariables: string | undefined
 ): typeof templateVariablesSchema.Type | undefined {
@@ -201,7 +232,8 @@ function parseTemplateVariables(
 function buildEmailPayload(
   input: typeof sendEmailInput.Type,
   senderEmail: string,
-  recipients: { to: string; cc?: string; bcc?: string }
+  recipients: { to: string; cc?: string; bcc?: string },
+  tags: typeof emailTagsSchema.Type | undefined
 ): Effect.Effect<JsonObject, StepFailure> {
   // Resend's own field names, which are snake_case on the wire.
   const basePayload: JsonObject = {
@@ -215,7 +247,7 @@ function buildEmailPayload(
         reply_to: input.emailReplyTo,
         scheduled_at: input.emailScheduledAt,
         topic_id: input.emailTopicId,
-        tags: input.emailTags ? parseTags(input.emailTags) : undefined,
+        tags,
       },
       isNil
     ),
@@ -463,6 +495,11 @@ export const resend = defineIntegration({
               key: "emailTags",
               label: "",
               type: "key-value",
+              // A tag name typed here is a key of this step's own `tags` output
+              // and of `data.tags` on every `resend/email.*` Event, which is
+              // Resend echoing the same tags back. Naming both is what lets the
+              // editor offer `tags.name` rather than asking for it to be typed.
+              fillsRecords: ["tags", "data.tags"],
             },
           ],
         },
@@ -477,12 +514,20 @@ export const resend = defineIntegration({
         const syntheticIdSuffix = idempotencyKey ?? "no_execution";
         const testBehavior = resolveResendTestBehavior(input.testBehavior);
 
+        // Parsed once, up here, because both the wire body and this step's own
+        // answer are built from it. A test run that sends nothing still reports
+        // the tags it would have carried, which is how the resolved templates
+        // are read back without spending a send.
+        const tags = input.emailTags ? parseTags(input.emailTags) : undefined;
+        const tagOutput = omitBy({ tags: tagsByName(tags) }, isNil);
+
         // A test run either sends nothing at all or sends to one address the
         // user nominated. Both answers are a success carrying the reason, so
         // the run shows what happened rather than an error the user has to
         // interpret.
         if (bag.runMode === "test" && testBehavior === "log_only") {
           return {
+            ...tagOutput,
             id: `resend:test-log-only:${syntheticIdSuffix}`,
             reasonCode: "test_mode_log_only",
           };
@@ -494,6 +539,7 @@ export const resend = defineIntegration({
 
         if (routeToTestRecipient && testRecipient.length === 0) {
           return {
+            ...tagOutput,
             id: `resend:test-log-fallback:${syntheticIdSuffix}`,
             reasonCode: "test_mode_log_fallback_missing_test_email",
           };
@@ -501,6 +547,7 @@ export const resend = defineIntegration({
 
         if (routeToTestRecipient && !isValidTestEmailAddress(testRecipient)) {
           return {
+            ...tagOutput,
             id: `resend:test-log-fallback:${syntheticIdSuffix}`,
             reasonCode: "test_mode_log_fallback_invalid_test_email",
           };
@@ -534,7 +581,8 @@ export const resend = defineIntegration({
           senderEmail,
           routeToTestRecipient
             ? { to: testRecipient }
-            : { to: input.emailTo, cc: input.emailCc, bcc: input.emailBcc }
+            : { to: input.emailTo, cc: input.emailCc, bcc: input.emailBcc },
+          tags
         );
 
         const sent = yield* bag.step.run(
@@ -549,7 +597,7 @@ export const resend = defineIntegration({
           )
         );
 
-        return { id: sent.id };
+        return { ...tagOutput, id: sent.id };
       }),
     },
   },
