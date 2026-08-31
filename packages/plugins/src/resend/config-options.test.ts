@@ -171,7 +171,7 @@ describe("the Resend template variables", () => {
         variables: [
           { key: "FIRST_NAME", type: "string" },
           { key: "CITY", type: "string", fallback_value: "Burbank" },
-          { key: "RETRIES", type: "number" },
+          { key: "RETRIES", type: "number", fallback_value: 3 },
           { key: "NULLED", type: "string", fallback_value: null },
           { key: "BLANK", type: "string", fallback_value: "" },
         ],
@@ -189,7 +189,12 @@ describe("the Resend template variables", () => {
         // the whole of what required means here.
         { key: "FIRST_NAME", label: "FIRST_NAME", required: true },
         { key: "CITY", label: "CITY", defaultValue: "Burbank" },
-        { key: "RETRIES", label: "RETRIES", type: "number", required: true },
+        {
+          key: "RETRIES",
+          label: "RETRIES",
+          type: "number",
+          defaultValue: "3",
+        },
         { key: "NULLED", label: "NULLED", required: true },
         // An empty string is a fallback Resend applies, so it is not required.
         { key: "BLANK", label: "BLANK", defaultValue: "" },

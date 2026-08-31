@@ -60,11 +60,15 @@ calls answer an `Effect` a step yields directly. Twilio's client is the one to c
 retry policy is stated once, above `RETRY_ATTEMPTS`, and Inngest's function-level retry is
 the outer policy beyond it.
 
-An SDK earns its place only where it carries protocol logic worth borrowing, which is why
-`@clerk/backend` (JWT verification), `@linear/sdk` (a typed GraphQL client) and `svix`
-(Resend webhook signatures) stayed while `twilio`, `resend`, `@slack/web-api` and
+A runtime SDK earns its place only where it carries protocol logic worth borrowing, which
+is why `@clerk/backend` (JWT verification), `@linear/sdk` (a typed GraphQL client) and
+`svix` (Resend webhook signatures) stayed while `twilio`, `resend`, `@slack/web-api` and
 `posthog-node` did not. Those keep their own transport and error handling and do not go
-through `callExternal`.
+through `callExternal`. An SDK may still be a type-only dev dependency when its public
+types describe the raw wire contract: Resend is the worked case, with its request names
+converted to snake case at the type level and its success types projected onto Effect
+Schema codecs. Never use a recursive case converter at runtime on a body containing
+user-authored record keys.
 
 ## OAuth adapters
 

@@ -14,12 +14,13 @@ import {
   type CredentialsOf,
   defineIntegration,
   isoTimestampString,
-  type JsonObject,
   StepFailure,
 } from "@wfgraph/core/plugin";
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
+import type { ToSnakeCaseKeys } from "es-toolkit/types";
 import { Effect, Result, Schema } from "effect";
+import type { CreateEmailOptions } from "resend";
 import {
   describeResendFailure,
   getResendEmail,
@@ -263,18 +264,49 @@ function tagsByName(
     : undefined;
 }
 
+type WithoutReact<T> = T extends { react: unknown } ? never : T;
+
+type SupportedEmailOption =
+  | "bcc"
+  | "cc"
+  | "from"
+  | "html"
+  | "replyTo"
+  | "scheduledAt"
+  | "subject"
+  | "tags"
+  | "template"
+  | "text"
+  | "to"
+  | "topicId";
+
+type PickSupportedEmailOptions<T> = T extends unknown
+  ? Pick<T, Extract<keyof T, SupportedEmailOption>>
+  : never;
+
+type RemoveNeverProperties<T> = T extends unknown
+  ? {
+      [K in keyof T as Exclude<T[K], undefined> extends never
+        ? never
+        : K]: T[K];
+    }
+  : never;
+
 /**
- * The body fields one content mode contributes.
+ * The JSON subset of Resend's SDK request, named as the REST API receives it.
  *
- * Named as a type so all three modes answer one shape. Left to inference, each
- * mode answers a shape of its own, and a key another mode sets gets the type
- * `undefined`, which a `JsonObject` value rejects.
+ * The type conversion is recursive, but the runtime object is built explicitly:
+ * converting at runtime would also rename keys authored inside template variables.
  */
-type EmailContent = {
-  text?: string;
-  html?: string;
-  template?: { id?: string; variables?: typeof templateVariablesSchema.Type };
-};
+type ResendEmailPayload = RemoveNeverProperties<
+  ToSnakeCaseKeys<PickSupportedEmailOptions<WithoutReact<CreateEmailOptions>>>
+>;
+
+type PickEmailContent<T> = T extends unknown
+  ? Pick<T, Extract<keyof T, "html" | "template" | "text">>
+  : never;
+
+type EmailContent = PickEmailContent<ResendEmailPayload>;
 
 /**
  * The body fields the chosen content mode contributes, or the failure naming the
@@ -300,7 +332,10 @@ function emailContent(
           : undefined;
 
         return {
-          template: omitBy({ id: input.emailTemplateId, variables }, isNil),
+          template: {
+            id: input.emailTemplateId,
+            ...(variables === undefined ? {} : { variables }),
+          },
         };
       }
 
@@ -340,25 +375,26 @@ const buildEmailPayload = Effect.fn(function* (
   const content = yield* emailContent(input);
 
   // Resend's own field names, which are snake_case on the wire. Every optional
-  // field is written out and the blank ones dropped in one pass, because Resend
-  // reads an absent field and an empty one differently.
-  const payload: JsonObject = {
-    ...omitBy(
-      {
-        from: senderEmail,
-        to: recipients.to,
-        subject: input.emailSubject,
-        cc: recipients.cc,
-        bcc: recipients.bcc,
-        reply_to: input.emailReplyTo,
-        scheduled_at: input.emailScheduledAt,
-        topic_id: input.emailTopicId,
-        tags,
-        ...content,
-      },
-      isNil
-    ),
-  };
+  // field is added only when present, because Resend reads an absent field and
+  // an empty one differently.
+  const payload = {
+    from: senderEmail,
+    to: recipients.to,
+    subject: input.emailSubject,
+    ...(recipients.cc === undefined ? {} : { cc: recipients.cc }),
+    ...(recipients.bcc === undefined ? {} : { bcc: recipients.bcc }),
+    ...(input.emailReplyTo === undefined
+      ? {}
+      : { reply_to: input.emailReplyTo }),
+    ...(input.emailScheduledAt === undefined
+      ? {}
+      : { scheduled_at: input.emailScheduledAt }),
+    ...(input.emailTopicId === undefined
+      ? {}
+      : { topic_id: input.emailTopicId }),
+    ...(tags === undefined ? {} : { tags }),
+    ...content,
+  } satisfies ResendEmailPayload;
 
   return payload;
 });

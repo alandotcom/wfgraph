@@ -1,10 +1,11 @@
 /**
  * Resend's email API over fetch.
  *
- * The `resend` SDK is a thin wrapper over the endpoints this plugin needs, so
- * the calls are written out here. Everything after the request is described in
- * `external-http.ts`; this module owns the bearer token, endpoint paths, wire
- * schemas, and how Resend's error body reads.
+ * The `resend` SDK is a thin runtime wrapper over the endpoints this plugin
+ * needs, so the calls are written out here. Its public types still pin the
+ * success side of these wire schemas at compile time. Everything after the
+ * request is described in `external-http.ts`; this module owns the bearer
+ * token, endpoint paths, wire schemas, and how Resend's error body reads.
  *
  * The request body uses Resend's own field names, which are snake_case on the
  * wire (`reply_to`, `scheduled_at`, `topic_id`) where the SDK spelled them
@@ -13,8 +14,15 @@
  */
 
 import type { JsonObject, JsonValue } from "@wfgraph/core/plugin";
+import type { DeepReadonly } from "es-toolkit/types";
 import { Effect, Schema } from "effect";
 import type { HttpClient } from "effect/unstable/http";
+import type {
+  CreateEmailResponseSuccess,
+  GetEmailResponseSuccess,
+  GetTemplateResponseSuccess,
+  ListTemplatesResponseSuccess,
+} from "resend";
 import {
   callExternal,
   parsePayload,
@@ -23,6 +31,24 @@ import {
 
 const RESEND_API_BASE = "https://api.resend.com";
 
+type SameWireShape<Actual, Expected> = [Actual] extends [DeepReadonly<Expected>]
+  ? [DeepReadonly<Expected>] extends [Actual]
+    ? unknown
+    : never
+  : never;
+
+/**
+ * Keep a runtime codec's encoded side equal to a projection of Resend's types.
+ *
+ * Returning the codec unchanged preserves its inferred decoded side, including
+ * conversions such as an API timestamp string becoming a Date.
+ */
+function resendResponseSchema<Wire>() {
+  return <S extends Schema.Codec<unknown, unknown>>(
+    schema: S & SameWireShape<S["Encoded"], Wire>
+  ): S => schema;
+}
+
 /** Resend's error body. `name` is the machine-readable slug. */
 const resendErrorSchema = Schema.Struct({
   statusCode: Schema.optionalKey(Schema.Finite),
@@ -30,27 +56,64 @@ const resendErrorSchema = Schema.Struct({
   message: Schema.optionalKey(Schema.String),
 });
 
-const sentEmailSchema = Schema.Struct({ id: Schema.String });
+type SentEmailWire = Pick<CreateEmailResponseSuccess, "id">;
+
+const sentEmailSchema = resendResponseSchema<SentEmailWire>()(
+  Schema.Struct({ id: Schema.String })
+);
 
 /** The fields the Find Email action reads from Resend's retrieve response. */
-const resendEmailSchema = Schema.Struct({
-  id: Schema.String,
-  message_id: Schema.String,
-  from: Schema.String,
-  to: Schema.Array(Schema.String),
-  cc: Schema.NullOr(Schema.Array(Schema.String)),
-  bcc: Schema.NullOr(Schema.Array(Schema.String)),
-  reply_to: Schema.NullOr(Schema.Array(Schema.String)),
-  subject: Schema.String,
-  html: Schema.NullOr(Schema.String),
-  text: Schema.NullOr(Schema.String),
-  created_at: Schema.DateFromString,
-  last_event: Schema.String,
-  scheduled_at: Schema.NullOr(Schema.DateFromString),
-  tags: Schema.optionalKey(
-    Schema.Array(Schema.Struct({ name: Schema.String, value: Schema.String }))
-  ),
-});
+type ResendEmailWire = Pick<
+  GetEmailResponseSuccess,
+  | "bcc"
+  | "cc"
+  | "created_at"
+  | "from"
+  | "html"
+  | "id"
+  | "last_event"
+  | "message_id"
+  | "reply_to"
+  | "scheduled_at"
+  | "subject"
+  | "tags"
+  | "text"
+  | "to"
+>;
+
+const resendEmailSchema = resendResponseSchema<ResendEmailWire>()(
+  Schema.Struct({
+    id: Schema.String,
+    message_id: Schema.String,
+    from: Schema.String,
+    to: Schema.Array(Schema.String),
+    cc: Schema.NullOr(Schema.Array(Schema.String)),
+    bcc: Schema.NullOr(Schema.Array(Schema.String)),
+    reply_to: Schema.NullOr(Schema.Array(Schema.String)),
+    subject: Schema.String,
+    html: Schema.NullOr(Schema.String),
+    text: Schema.NullOr(Schema.String),
+    created_at: Schema.DateFromString,
+    last_event: Schema.Literals([
+      "bounced",
+      "canceled",
+      "clicked",
+      "complained",
+      "delivered",
+      "delivery_delayed",
+      "failed",
+      "opened",
+      "queued",
+      "scheduled",
+      "sent",
+      "suppressed",
+    ]),
+    scheduled_at: Schema.NullOr(Schema.DateFromString),
+    tags: Schema.optionalKey(
+      Schema.Array(Schema.Struct({ name: Schema.String, value: Schema.String }))
+    ),
+  })
+);
 
 type ResendEmail = typeof resendEmailSchema.Type;
 
@@ -167,32 +230,75 @@ function requestResend<S extends Schema.ConstraintDecoder<unknown>>(
  * SDK types them. Only what a caller reads is required; the rest is tolerant,
  * because a field this plugin ignores must not fail the decode.
  */
-const resendTemplateSummarySchema = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-  status: Schema.optionalKey(Schema.NullOr(Schema.String)),
-});
+type ResendTemplateListItem = ListTemplatesResponseSuccess["data"][number];
 
-const resendTemplateListSchema = Schema.Struct({
-  data: Schema.Array(resendTemplateSummarySchema),
-  has_more: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
-});
+type ResendTemplateSummaryWire = Pick<ResendTemplateListItem, "id" | "name"> & {
+  status?: ResendTemplateListItem["status"] | null;
+};
 
-const resendTemplateVariableSchema = Schema.Struct({
-  key: Schema.String,
-  type: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  fallback_value: Schema.optionalKey(Schema.NullOr(Schema.String)),
-});
+const resendTemplateSummarySchema =
+  resendResponseSchema<ResendTemplateSummaryWire>()(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.String,
+      status: Schema.optionalKey(
+        Schema.NullOr(Schema.Literals(["draft", "published"]))
+      ),
+    })
+  );
+
+type ResendTemplateListWire = {
+  data: ResendTemplateSummaryWire[];
+  has_more?: ListTemplatesResponseSuccess["has_more"] | null;
+};
+
+const resendTemplateListSchema = resendResponseSchema<ResendTemplateListWire>()(
+  Schema.Struct({
+    data: Schema.Array(resendTemplateSummarySchema),
+    has_more: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
+  })
+);
+
+type SdkTemplateVariable = NonNullable<
+  GetTemplateResponseSuccess["variables"]
+>[number];
+
+type ResendTemplateVariableWire = Pick<SdkTemplateVariable, "key"> & {
+  type?: SdkTemplateVariable["type"] | null;
+  fallback_value?: SdkTemplateVariable["fallback_value"];
+};
+
+const resendTemplateVariableSchema =
+  resendResponseSchema<ResendTemplateVariableWire>()(
+    Schema.Struct({
+      key: Schema.String,
+      type: Schema.optionalKey(
+        Schema.NullOr(Schema.Literals(["string", "number"]))
+      ),
+      fallback_value: Schema.optionalKey(
+        Schema.NullOr(Schema.Union([Schema.String, Schema.Finite]))
+      ),
+    })
+  );
 
 /** Only the retrieve endpoint carries `variables`; the list endpoint does not. */
-const resendTemplateSchema = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-  status: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  variables: Schema.optionalKey(
-    Schema.NullOr(Schema.Array(resendTemplateVariableSchema))
-  ),
-});
+type ResendTemplateWire = Pick<GetTemplateResponseSuccess, "id" | "name"> & {
+  status?: GetTemplateResponseSuccess["status"] | null;
+  variables?: ResendTemplateVariableWire[] | null;
+};
+
+const resendTemplateSchema = resendResponseSchema<ResendTemplateWire>()(
+  Schema.Struct({
+    id: Schema.String,
+    name: Schema.String,
+    status: Schema.optionalKey(
+      Schema.NullOr(Schema.Literals(["draft", "published"]))
+    ),
+    variables: Schema.optionalKey(
+      Schema.NullOr(Schema.Array(resendTemplateVariableSchema))
+    ),
+  })
+);
 
 export type ResendTemplateSummary = typeof resendTemplateSummarySchema.Type;
 type ResendTemplate = typeof resendTemplateSchema.Type;
