@@ -325,7 +325,56 @@ describe("the send-email action", () => {
         })
       );
 
-      expect(error.message).toBe("HTML mode requires emailHtml.");
+      expect(error.message).toBe(
+        "Content Mode is HTML, so HTML Body must be filled in."
+      );
+      expect(mocks.sendEmail).toHaveBeenCalledTimes(0);
+    })
+  );
+
+  // Tags are an output other nodes reference by key, so a box that does not parse
+  // has to stop the run. Sending an untagged email and reporting success leaves
+  // every downstream `tags.order_id` reading nothing, with no sign of why.
+  it.effect("fails on a tags box that is not valid JSON", () =>
+    Effect.gen(function* () {
+      const { credentials } = credentialsRead();
+
+      const error = actionError(
+        yield* runAction(underTest, "send-email", {
+          input: {
+            emailTo: "user@example.com",
+            emailSubject: "Subject",
+            emailBody: "Body",
+            emailTags: "{not json",
+          },
+          credentials,
+        })
+      );
+
+      expect(error.message).toBe("Tags is not valid JSON.");
+      expect(mocks.sendEmail).toHaveBeenCalledTimes(0);
+    })
+  );
+
+  it.effect("fails on tags JSON that is not name and value rows", () =>
+    Effect.gen(function* () {
+      const { credentials } = credentialsRead();
+
+      const error = actionError(
+        yield* runAction(underTest, "send-email", {
+          input: {
+            emailTo: "user@example.com",
+            emailSubject: "Subject",
+            emailBody: "Body",
+            emailTags: JSON.stringify({ campaign: "spring" }),
+          },
+          credentials,
+        })
+      );
+
+      expect(error.message).toBe(
+        "Tags must be a list of name and value entries."
+      );
       expect(mocks.sendEmail).toHaveBeenCalledTimes(0);
     })
   );
