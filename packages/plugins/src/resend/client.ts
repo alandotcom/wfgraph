@@ -51,21 +51,29 @@ type ResendEmailBase = Omit<
 export type ResendEmailContent =
   | {
       html: NonNullable<EmailApiOptions["html"]>;
-      template?: never;
       text?: EmailApiOptions["text"];
     }
   | {
       html?: EmailApiOptions["html"];
-      template?: never;
       text: NonNullable<EmailApiOptions["text"]>;
     }
   | {
-      html?: never;
       template: NonNullable<EmailApiOptions["template"]>;
-      text?: never;
     };
 
-export type ResendEmailPayload = ResendEmailBase & ResendEmailContent;
+export type ResendEmailPayload = JsonObject &
+  ResendEmailBase &
+  ResendEmailContent;
+
+type ExclusiveResendEmailContent<Payload> = Payload extends {
+  template: unknown;
+}
+  ? Payload extends { html: unknown } | { text: unknown }
+    ? never
+    : Payload
+  : Payload extends { html: unknown } | { text: unknown }
+    ? Payload
+    : never;
 
 type SameWireShape<Actual, Expected> = [Actual] extends [DeepReadonly<Expected>]
   ? [DeepReadonly<Expected>] extends [Actual]
@@ -427,14 +435,9 @@ export function getResendTemplate(
   );
 }
 
-export function sendResendEmail(
+export function sendResendEmail<const Payload extends ResendEmailPayload>(
   apiKey: string,
-  payload: ResendEmailPayload,
-  idempotencyKey?: string
-): Effect.Effect<{ id: string }, ExternalError, HttpClient.HttpClient>;
-export function sendResendEmail(
-  apiKey: string,
-  payload: JsonObject,
+  payload: Payload & ExclusiveResendEmailContent<Payload>,
   idempotencyKey?: string
 ): Effect.Effect<{ id: string }, ExternalError, HttpClient.HttpClient> {
   return requestResend(apiKey, "/emails", sentEmailSchema, {
