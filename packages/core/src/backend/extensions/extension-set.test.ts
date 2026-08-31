@@ -430,6 +430,54 @@ describe("assembleExtensions checks", () => {
     ).not.toThrow();
   });
 
+  it("refuses two Events on one source with duplicate filters", () => {
+    expect(() =>
+      assembleExtensions({
+        events: [
+          anEvent("appointment.created", {
+            event: "app/appointment.updated",
+            when: { path: "kind", equals: "created" },
+          }),
+          anEvent("appointment.created.again", {
+            event: "app/appointment.updated",
+            when: { path: "kind", equals: "created" },
+          }),
+        ],
+      })
+    ).toThrow(/same source filter/u);
+  });
+
+  it("refuses two Events on one source with filters on different paths", () => {
+    expect(() =>
+      assembleExtensions({
+        events: [
+          anEvent("appointment.created", {
+            event: "app/appointment.updated",
+            when: { path: "kind", equals: "created" },
+          }),
+          anEvent("appointment.canceled", {
+            event: "app/appointment.updated",
+            when: { path: "otherKind" as "kind", equals: "canceled" },
+          }),
+        ],
+      })
+    ).toThrow(/different source filter paths/u);
+  });
+
+  it("refuses an unfiltered Event alongside a filtered Event on one source", () => {
+    expect(() =>
+      assembleExtensions({
+        events: [
+          anEvent("appointment.created", { event: "app/appointment.updated" }),
+          anEvent("appointment.canceled", {
+            event: "app/appointment.updated",
+            when: { path: "kind", equals: "canceled" },
+          }),
+        ],
+      })
+    ).toThrow(/unfiltered Event overlaps every filtered Event/u);
+  });
+
   // The listener id is the Event name slugged, so two names differing only in
   // punctuation are one function to Inngest: it would sync one and drop the other.
   it("refuses two Events whose names slug to one listener id", () => {

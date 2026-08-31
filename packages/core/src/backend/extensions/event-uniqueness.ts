@@ -1,6 +1,6 @@
 /**
- * Intra- and cross-definition uniqueness for Events: one unfiltered source
- * name, one Inngest listener id.
+ * Intra- and cross-definition uniqueness for Events: mutually exclusive filters
+ * on a shared source, one Inngest listener id.
  *
  * `checkIntegration` runs these on one plugin; `assembleExtensions` runs them
  * on the whole surface. The sentences are the same because the collision is.
@@ -15,30 +15,67 @@ export type NamedEventSource = {
 };
 
 /**
- * Two Events on one source have to be told apart by their payloads.
+ * Two Events on one source have to be told apart by mutually exclusive filters.
  *
- * `source.when` is what tells them apart, and an Event declaring none matches
- * every payload on that source. Two such Events would both be delivered every
- * time, which is one arrival counted twice: two runs where the builder configured
- * one, and the same wait woken twice.
+ * The current filter model has one string equality, so multiple Events are
+ * distinguishable only when every filter uses the same path and a unique value.
+ * Different paths may overlap because one payload can satisfy both predicates.
  */
 export function assertSourcesAreDistinguishable(
   events: readonly NamedEventSource[]
 ): void {
-  const unfilteredBySource = new Map<string, string>();
+  const bySource = new Map<string, NamedEventSource[]>();
 
   for (const event of events) {
-    if (event.source.when) {
+    const sourceEvents = bySource.get(event.source.event);
+    if (sourceEvents) {
+      sourceEvents.push(event);
+    } else {
+      bySource.set(event.source.event, [event]);
+    }
+  }
+
+  for (const [source, sourceEvents] of bySource) {
+    if (sourceEvents.length < 2) {
       continue;
     }
 
-    const existing = unfilteredBySource.get(event.source.event);
-    if (existing) {
+    const unfiltered = sourceEvents.find((event) => !event.source.when);
+    if (unfiltered) {
+      const other = sourceEvents.find((event) => event !== unfiltered);
+      if (sourceEvents.every((event) => !event.source.when)) {
+        throw new Error(
+          `Events "${unfiltered.name}" and "${other?.name}" both arrive as "${source}" and neither narrows it with source.when, so every payload would be delivered as both. Give one of them a filter, or a source name of its own.`
+        );
+      }
+
       throw new Error(
-        `Events "${existing}" and "${event.name}" both arrive as "${event.source.event}" and neither narrows it with source.when, so every payload would be delivered as both. Give one of them a filter, or a source name of its own.`
+        `Events "${unfiltered.name}" and "${other?.name}" share source "${source}", but the unfiltered Event overlaps every filtered Event. Add source.when to every Event on the source, or give one a source name of its own.`
       );
     }
-    unfilteredBySource.set(event.source.event, event.name);
+
+    const paths = new Set(sourceEvents.map((event) => event.source.when?.path));
+    if (paths.size > 1) {
+      throw new Error(
+        `Events on source "${source}" use different source filter paths, so their predicates may overlap. Use one source.when path for every Event on the source.`
+      );
+    }
+
+    const filteredByValue = new Map<string, string>();
+    for (const event of sourceEvents) {
+      const when = event.source.when;
+      if (!when) {
+        continue;
+      }
+
+      const existing = filteredByValue.get(when.equals);
+      if (existing) {
+        throw new Error(
+          `Events "${existing}" and "${event.name}" share source "${source}" and the same source filter value "${when.equals}". Use a unique equals value for every Event on the source.`
+        );
+      }
+      filteredByValue.set(when.equals, event.name);
+    }
   }
 }
 
