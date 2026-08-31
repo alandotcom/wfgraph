@@ -31,6 +31,8 @@ export type ProviderFieldProps = {
   field: ActionConfigFieldBase;
   value: unknown;
   config: Record<string, unknown>;
+  /** Resolved by `renderField`; see `FieldProps` in the renderer. */
+  placeholder: string | undefined;
   onChange: (value: unknown) => void;
   disabled?: boolean;
 };
@@ -39,6 +41,7 @@ export function ProviderSelectField({
   field,
   value,
   config,
+  placeholder,
   onChange,
   disabled,
 }: ProviderFieldProps) {
@@ -53,7 +56,7 @@ export function ProviderSelectField({
       id={field.key}
       labelledBy={field.label ? `${field.key}-label` : undefined}
       onChange={onChange}
-      placeholder={field.placeholder}
+      placeholder={placeholder}
       required={field.required}
       value={stored}
     />
@@ -119,7 +122,7 @@ export function ProviderSelectField({
         value={stored}
       >
         <SelectTrigger className="w-full" id={field.key}>
-          <SelectValue placeholder={field.placeholder ?? "Choose one"} />
+          <SelectValue placeholder={placeholder ?? "Choose one"} />
         </SelectTrigger>
         <SelectContent>
           {items.map((option) => (

@@ -271,6 +271,39 @@ already a `{{...}}` reference still types the value themselves. `checkIntegratio
 field naming a provider that does not exist or answers the wrong kind, so the wiring fails in
 your own suite rather than in someone's panel.
 
+### Fields that fall back to the connection
+
+An optional field whose handler reads a connection value when it is blank says so with
+`connectionDefaultKey`, and the editor draws that stored value as the field's placeholder.
+A builder then sees the address the send will actually go out as, instead of a generic
+example.
+
+```ts
+credentials: {
+  MY_SERVICE_FROM: { label: "Default Sender", type: "text" },
+},
+// ...on the action:
+configFields: [
+  {
+    key: "from",
+    label: "From",
+    type: "template-input",
+    placeholder: "Your Name <noreply@example.com>",
+    connectionDefaultKey: "MY_SERVICE_FROM",
+  },
+],
+// ...in the handler:
+const sender = input.from || credentials.MY_SERVICE_FROM;
+```
+
+The key names one of the fields your `credentials` record declares, and never a `password`
+one: the browser is served a mask in place of a secret, so there would be no value to draw.
+`checkIntegration` refuses both mistakes. The declaration is also what decides which stored
+values reach the editor at all -- a connection value no field names stays on the server.
+
+The fallback itself is the handler's, and the placeholder only reports it. Nothing fills the
+field in, so a blank field is still stored blank and the run reads the connection.
+
 ## Testing an integration
 
 `@wfgraph/core/testing` runs one action the way a workflow runs it, through the config decode,

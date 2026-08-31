@@ -36,18 +36,30 @@ type FieldProps = {
    * own keys.
    */
   config: Record<string, unknown>;
+  /**
+   * What to show while the field is empty. Resolved by `renderField` rather
+   * than read off `field`, because a field that falls back to a Connection
+   * value shows that value instead of the catalog's example.
+   */
+  placeholder: string | undefined;
   onChange: (value: unknown) => void;
   disabled?: boolean;
 };
 
-function TemplateInputField({ field, value, onChange, disabled }: FieldProps) {
+function TemplateInputField({
+  field,
+  value,
+  onChange,
+  disabled,
+  placeholder,
+}: FieldProps) {
   return (
     <TemplateBadgeInput
       disabled={disabled}
       id={field.key}
       labelledBy={field.label ? `${field.key}-label` : undefined}
       onChange={onChange}
-      placeholder={field.placeholder}
+      placeholder={placeholder}
       required={field.required}
       value={typeof value === "string" ? value : ""}
     />
@@ -59,6 +71,7 @@ function TemplateTextareaField({
   value,
   onChange,
   disabled,
+  placeholder,
 }: FieldProps) {
   return (
     <TemplateBadgeTextarea
@@ -66,7 +79,7 @@ function TemplateTextareaField({
       id={field.key}
       labelledBy={field.label ? `${field.key}-label` : undefined}
       onChange={onChange}
-      placeholder={field.placeholder}
+      placeholder={placeholder}
       required={field.required}
       rows={field.rows || 4}
       value={typeof value === "string" ? value : ""}
@@ -74,19 +87,31 @@ function TemplateTextareaField({
   );
 }
 
-function TextInputField({ field, value, onChange, disabled }: FieldProps) {
+function TextInputField({
+  field,
+  value,
+  onChange,
+  disabled,
+  placeholder,
+}: FieldProps) {
   return (
     <Input
       disabled={disabled}
       id={field.key}
       onChange={(e) => onChange(e.target.value)}
-      placeholder={field.placeholder}
+      placeholder={placeholder}
       value={typeof value === "string" ? value : ""}
     />
   );
 }
 
-function NumberInputField({ field, value, onChange, disabled }: FieldProps) {
+function NumberInputField({
+  field,
+  value,
+  onChange,
+  disabled,
+  placeholder,
+}: FieldProps) {
   const displayValue =
     typeof value === "number" || typeof value === "string" ? `${value}` : "";
 
@@ -109,14 +134,20 @@ function NumberInputField({ field, value, onChange, disabled }: FieldProps) {
 
         onChange(parsed);
       }}
-      placeholder={field.placeholder}
+      placeholder={placeholder}
       type="number"
       value={displayValue}
     />
   );
 }
 
-function SelectField({ field, value, onChange, disabled }: FieldProps) {
+function SelectField({
+  field,
+  value,
+  onChange,
+  disabled,
+  placeholder,
+}: FieldProps) {
   if (!field.options) {
     return null;
   }
@@ -129,7 +160,7 @@ function SelectField({ field, value, onChange, disabled }: FieldProps) {
       value={typeof value === "string" ? value : ""}
     >
       <SelectTrigger className="w-full" id={field.key}>
-        <SelectValue placeholder={field.placeholder} />
+        <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
         {field.options.map((option) => (
@@ -265,6 +296,7 @@ function renderField(
   field: ActionConfigFieldBase,
   config: Record<string, unknown>,
   onUpdateConfig: UpdateNodeConfig,
+  connectionDefaults: Record<string, string>,
   disabled?: boolean
 ) {
   // Check conditional rendering
@@ -274,6 +306,12 @@ function renderField(
 
   const rawValue = config[field.key];
   const value = rawValue ?? field.defaultValue ?? "";
+  // A field that falls back to a Connection value shows that value while it is
+  // empty, so a builder reads what the run would actually send rather than a
+  // generic example. Nothing is stored: this is the hint alone.
+  const placeholder = field.connectionDefaultKey
+    ? connectionDefaults[field.connectionDefaultKey] || field.placeholder
+    : field.placeholder;
   const FieldRenderer = FIELD_RENDERERS[field.type];
 
   return (
@@ -296,6 +334,7 @@ function renderField(
         disabled={disabled}
         field={field}
         onChange={(val) => onUpdateConfig({ [field.key]: val })}
+        placeholder={placeholder}
         value={value}
       />
     </div>
@@ -310,6 +349,7 @@ function FieldGroup({
   fields,
   config,
   onUpdateConfig,
+  connectionDefaults,
   disabled,
   defaultExpanded = false,
 }: {
@@ -317,6 +357,7 @@ function FieldGroup({
   fields: readonly ActionConfigFieldBase[];
   config: Record<string, unknown>;
   onUpdateConfig: UpdateNodeConfig;
+  connectionDefaults: Record<string, string>;
   disabled?: boolean;
   defaultExpanded?: boolean;
 }) {
@@ -339,7 +380,13 @@ function FieldGroup({
       {isExpanded && (
         <div className="ml-1 space-y-4 border-primary/50 border-l-2 py-2 pl-3">
           {fields.map((field) =>
-            renderField(field, config, onUpdateConfig, disabled)
+            renderField(
+              field,
+              config,
+              onUpdateConfig,
+              connectionDefaults,
+              disabled
+            )
           )}
         </div>
       )}
@@ -347,10 +394,19 @@ function FieldGroup({
   );
 }
 
+/** Stable, so a panel passing nothing does not re-render every field. */
+const NO_CONNECTION_DEFAULTS: Record<string, string> = {};
+
 type ActionConfigRendererProps = {
   fields: readonly ActionConfigField[];
   config: Record<string, unknown>;
   onUpdateConfig: UpdateNodeConfig;
+  /**
+   * What the Connection this node names holds for each key a field declared as
+   * its `connectionDefaultKey`. The panel above resolves it, because it already
+   * reads the connection list to draw the picker.
+   */
+  connectionDefaults?: Record<string, string>;
   disabled?: boolean;
 };
 
@@ -362,6 +418,7 @@ export function ActionConfigRenderer({
   fields,
   config,
   onUpdateConfig,
+  connectionDefaults = NO_CONNECTION_DEFAULTS,
   disabled,
 }: ActionConfigRendererProps) {
   return (
@@ -371,6 +428,7 @@ export function ActionConfigRenderer({
           return (
             <FieldGroup
               config={config}
+              connectionDefaults={connectionDefaults}
               defaultExpanded={field.defaultExpanded}
               disabled={disabled}
               fields={field.fields}
@@ -381,7 +439,13 @@ export function ActionConfigRenderer({
           );
         }
 
-        return renderField(field, config, onUpdateConfig, disabled);
+        return renderField(
+          field,
+          config,
+          onUpdateConfig,
+          connectionDefaults,
+          disabled
+        );
       })}
     </>
   );

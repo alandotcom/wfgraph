@@ -361,6 +361,7 @@ export const resend = defineIntegration({
           label: "From (Sender)",
           type: "template-input",
           placeholder: "Your Name <noreply@example.com>",
+          connectionDefaultKey: "RESEND_FROM_EMAIL",
           example: "Support <support@example.com>",
         },
         {

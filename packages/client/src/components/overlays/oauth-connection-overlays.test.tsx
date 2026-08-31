@@ -51,6 +51,7 @@ function connection(
     createdAt: "2026-08-24T10:00:00.000Z",
     updatedAt: "2026-08-24T10:00:00.000Z",
     configuredKeys,
+    connectionDefaults: {},
     oauth: oauth && { credentialKeys: [], ...oauth },
   };
 }

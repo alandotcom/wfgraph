@@ -185,6 +185,33 @@ describe("readExtensionCatalog", () => {
     expect(readExtensionCatalog(catalog)).toEqual(catalog);
   });
 
+  it("carries a field's connectionDefaultKey across the wire", () => {
+    const catalog: ExtensionCatalog = {
+      events: [],
+      actions: [
+        {
+          id: "resend/send-email",
+          label: "Send Email",
+          description: "Sends an email",
+          category: "Resend",
+          integration: "resend",
+          configFields: [
+            {
+              key: "emailFrom",
+              label: "From (Sender)",
+              type: "template-input",
+              connectionDefaultKey: "RESEND_FROM_EMAIL",
+            },
+          ],
+          outputFields: [],
+        },
+      ],
+      integrations: [],
+    };
+
+    expect(readExtensionCatalog(catalog)).toEqual(catalog);
+  });
+
   it("refuses a reserved config field key on the wire", () => {
     const catalog: ExtensionCatalog = {
       events: [],

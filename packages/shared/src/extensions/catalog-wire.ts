@@ -88,6 +88,7 @@ const actionConfigFieldBaseSchema = Schema.Struct({
   ]),
   placeholder: Schema.optionalKey(Schema.String),
   defaultValue: Schema.optionalKey(Schema.String),
+  connectionDefaultKey: Schema.optionalKey(safeRecordKey),
   example: Schema.optionalKey(Schema.String),
   options: Schema.optionalKey(Schema.mutable(Schema.Array(selectOptionSchema))),
   optionsSource: Schema.optionalKey(fieldOptionsSourceSchema),

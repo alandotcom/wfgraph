@@ -141,6 +141,16 @@ const integrationFields = {
   createdAt: Schema.String,
   updatedAt: Schema.String,
   configuredKeys: Schema.Array(Schema.String),
+  /**
+   * The stored values a config field named with `connectionDefaultKey`, keyed by
+   * that key, for the editor to draw as the field's placeholder. Only the values
+   * some field asked for, and never a secret: the server decides both.
+   */
+  connectionDefaults: Schema.Record(Schema.String, Schema.String).check(
+    Schema.makeFilter(hasOnlySafeRecordKeys, {
+      expected: "connection default keys not reserved by JavaScript objects",
+    })
+  ),
   oauth: Schema.optionalKey(
     Schema.Struct({
       status: Schema.Literals(["connected", "reauthorization_required"]),

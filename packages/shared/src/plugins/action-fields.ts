@@ -76,6 +76,15 @@ export type ActionConfigFieldBase = {
   // Default value
   defaultValue?: string;
 
+  /**
+   * The Connection value this field falls back to when it is left blank, so the
+   * editor can draw it as the field's placeholder. Names one of the fields the
+   * owning integration declares, and never a `password` one: a masked secret
+   * would draw as `********`. The handler is what applies the fallback; this
+   * only says where to read the hint.
+   */
+  connectionDefaultKey?: string;
+
   // Example value for AI prompt generation
   example?: string;
 

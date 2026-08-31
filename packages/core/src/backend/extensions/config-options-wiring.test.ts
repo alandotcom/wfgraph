@@ -34,8 +34,10 @@ type ExampleInput = {
   readonly variables?: string;
 };
 
+// `never` for the connection-default key, because this harness declares no
+// credentials and a field may only name one the integration has.
 function integrationWith(input: {
-  configFields: readonly ActionConfigFieldFor<ExampleInput>[];
+  configFields: readonly ActionConfigFieldFor<ExampleInput, never>[];
   configOptions?: Record<string, ConfigOptionsProvider>;
 }) {
   return defineIntegration({
@@ -62,12 +64,14 @@ function integrationWith(input: {
   });
 }
 
-function unsafeFieldKey(key: string): ActionConfigFieldFor<ExampleInput> {
+function unsafeFieldKey(
+  key: string
+): ActionConfigFieldFor<ExampleInput, never> {
   return {
     key,
     label: "Unsafe",
     type: "text",
-  } as unknown as ActionConfigFieldFor<ExampleInput>;
+  } as unknown as ActionConfigFieldFor<ExampleInput, never>;
 }
 
 function unsafeParameterKey(key: string): (keyof ExampleInput)[] {

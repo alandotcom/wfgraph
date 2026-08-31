@@ -134,6 +134,7 @@ function providerState(
         createdAt: "2026-08-23T15:00:00.000Z",
         updatedAt: "2026-08-23T15:00:00.000Z",
         configuredKeys: [],
+        connectionDefaults: {},
       },
     ],
   };

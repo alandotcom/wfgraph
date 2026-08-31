@@ -73,6 +73,7 @@ export function ProviderFieldsField({
   config,
   onChange,
   disabled,
+  placeholder,
 }: ProviderFieldProps) {
   const state = useConfigOptions({ source: field.optionsSource, config });
   const stored = readStoredObject(value);
@@ -83,7 +84,7 @@ export function ProviderFieldsField({
       id={field.key}
       labelledBy={field.label ? `${field.key}-label` : undefined}
       onChange={onChange}
-      placeholder={field.placeholder}
+      placeholder={placeholder}
       required={field.required}
       rows={field.rows || 4}
       value={typeof value === "string" ? value : ""}

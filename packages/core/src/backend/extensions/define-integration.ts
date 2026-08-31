@@ -123,7 +123,10 @@ type ActionInputSide<TCredentials, TInput, TOutput> = {
   /** When true, the editor's action picker omits this action. */
   readonly hidden?: boolean;
   readonly input: InputSchema<TInput>;
-  readonly configFields?: readonly ActionConfigFieldFor<TInput>[];
+  readonly configFields?: readonly ActionConfigFieldFor<
+    TInput,
+    keyof TCredentials & string
+  >[];
   readonly handler: (
     bag: StepBag<NoInfer<TInput>, TCredentials>
   ) => HandlerAnswer<TOutput>;
@@ -372,6 +375,7 @@ export function checkIntegration(
     );
 
     checkProviderBackedFields(id, integration, step);
+    checkConnectionDefaultKeys(id, integration, step);
 
     return { id, step, outputFields };
   });
@@ -538,6 +542,43 @@ function checkProviderBackedFields(
           `${where} names the parameter "${parameter}", which is not a config field of this action.`
         );
       }
+    }
+  }
+}
+
+/**
+ * Hold a field's `connectionDefaultKey` to a Connection value the editor can
+ * actually draw.
+ *
+ * An undeclared key would leave the placeholder silently falling back to the
+ * static example, and a password key would draw the mask the browser is served
+ * in place of a secret, so both are caught where the definition is written.
+ */
+function checkConnectionDefaultKeys(
+  actionId: string,
+  integration: IntegrationDefinition,
+  step: ActionStep
+): void {
+  for (const field of flattenConfigFields(step.configFields)) {
+    const key = field.connectionDefaultKey;
+    if (!key) {
+      continue;
+    }
+
+    const where = `Action "${actionId}" field "${field.key}"`;
+    const declared = Object.hasOwn(integration.credentials, key)
+      ? integration.credentials[key]
+      : undefined;
+
+    if (!declared) {
+      throw new Error(
+        `${where} names the connection default "${key}", which integration "${integration.type}" does not declare.`
+      );
+    }
+    if (declared.type === "password") {
+      throw new Error(
+        `${where} names the connection default "${key}", which is a password field. The browser is served a mask in place of a secret, so it has no value to draw.`
+      );
     }
   }
 }

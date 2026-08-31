@@ -13,7 +13,11 @@
  * the server and the browser run one implementation over the same document.
  */
 
-import type { ActionConfigField } from "#src/plugins/action-fields";
+import {
+  type ActionConfigField,
+  type ActionConfigFieldBase,
+  flattenConfigFields,
+} from "#src/plugins/action-fields";
 import type { ReferenceField } from "#src/graph/node-references";
 
 /**
@@ -186,6 +190,22 @@ export function findIntegration(
   type: string
 ): IntegrationMetadata | undefined {
   return catalog.integrations.find((integration) => integration.type === type);
+}
+
+/**
+ * Every config field of every action one integration owns, groups flattened.
+ *
+ * Two server-side allowlists are read off these declarations -- which provider
+ * parameters a browser may send, and which Connection values it may be shown --
+ * so both ask the question here rather than each walking the catalog itself.
+ */
+export function fieldsForIntegration(
+  catalog: ExtensionCatalog,
+  type: string
+): readonly ActionConfigFieldBase[] {
+  return catalog.actions
+    .filter((action) => action.integration === type)
+    .flatMap((action) => flattenConfigFields(action.configFields));
 }
 
 /**
