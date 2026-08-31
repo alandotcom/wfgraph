@@ -14,6 +14,7 @@ import {
   type CredentialsOf,
   defineIntegration,
   isoTimestampString,
+  type JsonObject,
   StepFailure,
 } from "@wfgraph/core/plugin";
 import { omitBy } from "es-toolkit/object";
@@ -374,27 +375,25 @@ const buildEmailPayload = Effect.fn(function* (
 ) {
   const content = yield* emailContent(input);
 
-  // Resend's own field names, which are snake_case on the wire. Every optional
-  // field is added only when present, because Resend reads an absent field and
-  // an empty one differently.
-  const payload = {
-    from: senderEmail,
-    to: recipients.to,
-    subject: input.emailSubject,
-    ...(recipients.cc === undefined ? {} : { cc: recipients.cc }),
-    ...(recipients.bcc === undefined ? {} : { bcc: recipients.bcc }),
-    ...(input.emailReplyTo === undefined
-      ? {}
-      : { reply_to: input.emailReplyTo }),
-    ...(input.emailScheduledAt === undefined
-      ? {}
-      : { scheduled_at: input.emailScheduledAt }),
-    ...(input.emailTopicId === undefined
-      ? {}
-      : { topic_id: input.emailTopicId }),
-    ...(tags === undefined ? {} : { tags }),
-    ...content,
-  } satisfies ResendEmailPayload;
+  // Resend's own field names, which are snake_case on the wire. The SDK-derived
+  // type checks them before one pass drops absent values.
+  const payload: JsonObject = {
+    ...omitBy(
+      {
+        from: senderEmail,
+        to: recipients.to,
+        subject: input.emailSubject,
+        cc: recipients.cc,
+        bcc: recipients.bcc,
+        reply_to: input.emailReplyTo,
+        scheduled_at: input.emailScheduledAt,
+        topic_id: input.emailTopicId,
+        tags,
+        ...content,
+      } satisfies ResendEmailPayload,
+      isNil
+    ),
+  };
 
   return payload;
 });
