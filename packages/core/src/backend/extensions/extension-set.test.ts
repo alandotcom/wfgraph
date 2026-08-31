@@ -610,7 +610,7 @@ describe("assembleExtensions and an integration definition", () => {
     const webhook = {
       source: "resend/webhook",
       helpText: "Paste this URL into Resend.",
-      secret: "RESEND_WEBHOOK_SECRET",
+      secret: "RESEND_WEBHOOK_SECRET" as const,
       verify: () => Effect.void,
       receive: () => undefined,
     };

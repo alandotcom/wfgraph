@@ -6,7 +6,6 @@ import {
   type CredentialsOf,
   defineIntegration,
 } from "#src/backend/extensions/define-integration";
-import type { IntegrationWebhook } from "#src/backend/extensions/integration-webhook";
 import type { CredentialFields } from "@wfgraph/shared/extensions/catalog";
 
 const twilioCredentialFields = {
@@ -88,7 +87,7 @@ describe("defineIntegration", () => {
         when: { path: "type", equals: "message.sent" },
       },
     });
-    const webhook: IntegrationWebhook = {
+    const webhook = {
       source: "twilio/webhook",
       verify: () => Effect.void,
       receive: () => undefined,
@@ -245,7 +244,9 @@ describe("checkIntegration Events", () => {
           ],
           webhook: {
             source: "x/webhook",
-            secret: "MISSING_SECRET",
+            // Deliberately not a declared credential: the type forbids this,
+            // and checkIntegration is what still catches a bypass.
+            secret: "MISSING_SECRET" as never,
             verify: () => Effect.void,
             receive: () => undefined,
           },
