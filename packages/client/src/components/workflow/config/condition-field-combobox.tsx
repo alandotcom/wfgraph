@@ -14,22 +14,13 @@ import {
   conditionFieldForPath,
   type ConditionSelectableField,
 } from "#src/lib/upstream-node-fields";
+import { unavailableFieldLabel } from "./condition-field-label";
 
 /** One section in the picker: the node (or Event) the fields belong under. */
 type ConditionFieldGroup = {
   value: string;
   items: ConditionSelectableField[];
 };
-
-/**
- * How a stored path the current graph no longer offers is named, wherever it is
- * shown. Exported so the read-only summary marks it the same way this picker
- * does: a path marked here and bare there is two surfaces disagreeing about
- * whether a rule still points at anything.
- */
-export function unavailableFieldLabel(path: string): string {
-  return `${path} (Unavailable)`;
-}
 
 /**
  * A stored path the current graph no longer offers, shown so the input is not

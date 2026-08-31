@@ -14,7 +14,7 @@ import {
   type ExtensionCatalog,
   findEvent,
 } from "@wfgraph/shared/extensions/catalog";
-import { catalogEventChoices } from "./event-combobox";
+import { catalogEventChoices } from "./event-choices";
 import {
   type CorrelationPathRequest,
   correlationPathRequestFor,

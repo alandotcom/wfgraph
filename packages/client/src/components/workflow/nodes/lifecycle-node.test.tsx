@@ -2,10 +2,8 @@ import { render } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { describe, expect, it } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
-import {
-  getStartSummary,
-  LifecycleNode,
-} from "#src/components/workflow/nodes/lifecycle-node";
+import { LifecycleNode } from "#src/components/workflow/nodes/lifecycle-node";
+import { getStartSummary } from "#src/components/workflow/nodes/lifecycle-node-summary";
 import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,

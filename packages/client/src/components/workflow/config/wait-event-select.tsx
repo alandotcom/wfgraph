@@ -30,7 +30,8 @@ import {
   readWaitSubscriptions,
 } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { ConditionBuilderRow } from "./condition-builder-row";
-import { EventMultiCombobox, catalogEventChoices } from "./event-combobox";
+import { catalogEventChoices } from "./event-choices";
+import { EventMultiCombobox } from "./event-combobox";
 import { IntegrationEventConnectionEditor } from "./integration-event-connection";
 import type { UpdateNodeConfig } from "./node-config-patch";
 

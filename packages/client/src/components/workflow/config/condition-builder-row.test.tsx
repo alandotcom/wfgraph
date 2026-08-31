@@ -4,9 +4,9 @@ import { describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import {
   applyOperatorValueToCondition,
-  ConditionBuilderRow,
   getOperatorOptionsByFieldType,
-} from "#src/components/workflow/config/condition-builder-row";
+} from "#src/components/workflow/config/condition-builder-row-logic";
+import { ConditionBuilderRow } from "#src/components/workflow/config/condition-builder-row";
 import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
 import {
   parseConditionModel,
