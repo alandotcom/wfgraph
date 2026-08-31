@@ -19,7 +19,7 @@ import {
   TIMESTAMP_OPERATOR_OPTIONS,
 } from "@wfgraph/shared/conditions/conditions";
 import { displayTemplateText } from "@wfgraph/shared/graph/node-references";
-import { unavailableFieldLabel } from "./condition-field-combobox";
+import { unavailableFieldLabel } from "./condition-field-label";
 
 /**
  * A condition model read as sentences rather than filled in as controls.
