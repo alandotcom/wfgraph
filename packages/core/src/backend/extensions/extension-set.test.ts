@@ -671,6 +671,11 @@ describe("assembleExtensions and an integration definition", () => {
           credentials: {},
           actions: {},
           events: [event],
+          webhook: {
+            source: "resend/webhook",
+            verify: () => Effect.void,
+            receive: () => undefined,
+          },
         }),
       ],
     });

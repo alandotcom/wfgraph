@@ -399,6 +399,12 @@ function checkIntegrationEvents(integration: IntegrationDefinition): void {
     );
   }
 
+  if (events.length > 0 && !webhook) {
+    throw new Error(
+      `Integration "${integration.type}" declares Events but no webhook, so those Events have no intake.`
+    );
+  }
+
   if (webhook && webhook.source.trim().length === 0) {
     throw new Error(
       `Integration "${integration.type}" declares a webhook without a source name.`

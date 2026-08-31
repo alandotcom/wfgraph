@@ -177,6 +177,32 @@ describe("defineIntegration", () => {
 });
 
 describe("checkIntegration Events", () => {
+  it("refuses Events when the integration declares no webhook", () => {
+    expect(() =>
+      checkIntegration(
+        defineIntegration({
+          type: "x",
+          label: "X",
+          description: "Events without intake",
+          credentials: {},
+          actions: {},
+          events: [
+            defineEvent({
+              name: "x/happened",
+              schema: Schema.Struct({ id: Schema.String }),
+            }),
+          ],
+        })
+      )
+    ).toThrow(/declares Events but no webhook/u);
+  });
+
+  it("accepts an integration that only sends without a webhook", () => {
+    expect(checkIntegration(aTwilio())).toEqual([
+      expect.objectContaining({ id: "twilio/send-sms" }),
+    ]);
+  });
+
   it("refuses a webhook with no Events", () => {
     expect(() =>
       checkIntegration(

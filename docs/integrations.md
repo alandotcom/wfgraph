@@ -111,7 +111,8 @@ takes the same field.
 
 **`events` are `defineEvent` values this integration owns.** Assembly folds them into
 the one catalog and stamps `EventMetadata.integration`, so the editor can offer a
-Connection picker. Identity stays the Event name; a webhook is how they arrive.
+Connection picker. Identity stays the Event name. An integration declaring Events
+must declare a webhook; an integration that only sends omits `webhook`.
 Export `defineEvent` from `@wfgraph/core/plugin`. An integration-owned Start, Cancel,
 or Wait Event must name a Connection at Publish.
 
