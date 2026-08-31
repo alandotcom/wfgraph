@@ -27,7 +27,7 @@ export const UserMenu = () => {
         Settings
         <ChevronDown className="size-3 opacity-50" data-icon="inline-end" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenuContent align="start" className="w-56">
         <DropdownMenuItem onClick={() => openOverlay(IntegrationsOverlay)}>
           <Plug className="size-4" />
           <span>Connections</span>

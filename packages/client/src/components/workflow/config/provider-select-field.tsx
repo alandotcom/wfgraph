@@ -47,8 +47,18 @@ export function ProviderSelectField({
 }: ProviderFieldProps) {
   const stored = typeof value === "string" ? value : "";
   const state = useConfigOptions({ source: field.optionsSource, config });
-  const [writingTemplate, setWritingTemplate] = useState(false);
-  const asTemplate = writingTemplate || findTemplateTokens(stored).length > 0;
+  const inferredMode =
+    findTemplateTokens(stored).length > 0 ? "template" : "picker";
+  const [modeState, setModeState] = useState({
+    stored,
+    mode: inferredMode,
+  });
+  if (modeState.stored !== stored) {
+    setModeState({ stored, mode: inferredMode });
+  }
+  const mode = modeState.stored === stored ? modeState.mode : inferredMode;
+  const asTemplate = mode === "template";
+  const fieldName = field.label || field.key;
 
   const templateInput = (
     <TemplateBadgeInput
@@ -66,12 +76,17 @@ export function ProviderSelectField({
     <Button
       className="size-7 shrink-0 p-0"
       disabled={disabled}
-      onClick={() => {
-        // Switching clears the value, because neither control can hold what the
-        // other one wrote: a picked id is not a reference and vice versa.
-        setWritingTemplate(!asTemplate);
-        onChange("");
-      }}
+      onClick={() =>
+        setModeState({
+          stored,
+          mode: asTemplate ? "picker" : "template",
+        })
+      }
+      aria-label={
+        asTemplate
+          ? `Choose from the connection for ${fieldName}`
+          : `Use an upstream value for ${fieldName}`
+      }
       size="sm"
       title={
         asTemplate ? "Choose from the connection" : "Use an upstream value"
@@ -88,10 +103,11 @@ export function ProviderSelectField({
   );
 
   const row = (control: React.ReactNode) => (
-    // `min-h-9` is the taller of the two controls, which the template editor
-    // sets. Without it the row is 8px shorter in the picker mode and the whole
-    // panel below jumps every time the toggle is pressed.
-    <div className="flex min-h-9 items-start gap-1">
+    // `min-h-7` is what both controls measure, so the row keeps its height
+    // whichever mode the toggle is in. Without a floor the row collapses to
+    // whatever the shorter control happens to be and the panel jumps on every
+    // press.
+    <div className="flex min-h-7 items-start gap-1">
       <div className="min-w-0 flex-1">{control}</div>
       {modeToggle}
     </div>
@@ -141,7 +157,7 @@ export function ProviderSelectField({
     return row(
       <div
         aria-busy="true"
-        className="h-9 w-full animate-pulse rounded-md bg-muted motion-reduce:animate-none"
+        className="h-7 w-full animate-pulse rounded-md bg-muted motion-reduce:animate-none"
       />
     );
   }

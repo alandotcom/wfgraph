@@ -66,9 +66,10 @@ export function TemplateBadgeTextarea({
     <>
       <div
         className={cn(
-          // Matches the shared Textarea: shadow-xs at rest, and on focus a
-          // border shift plus the 3px ring-ring/50 halo.
-          "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs transition-colors focus-within:border-ring focus-within:outline-none focus-within:ring-[3px] focus-within:ring-ring/50 lg:text-sm",
+          // Matches the shared Textarea: same fill, padding and type size, and
+          // on focus a border shift plus the 2px ring-ring/30 halo every other
+          // control in the panel draws.
+          "flex w-full rounded-md border border-input bg-input/20 px-2 py-2 text-base transition-colors focus-within:border-ring focus-within:outline-none focus-within:ring-2 focus-within:ring-ring/30 md:text-xs/relaxed dark:bg-input/30",
           invalid &&
             "border-destructive focus-within:border-destructive focus-within:ring-destructive/20",
           disabled && "cursor-not-allowed opacity-50",

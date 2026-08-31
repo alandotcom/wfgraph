@@ -3,6 +3,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
+import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
+import { OverlayContainer } from "#src/components/overlays/overlay-container";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { IntegrationSelector } from "#src/components/ui/integration-selector";
 import type { Integration } from "#src/lib/rpc-client";
@@ -24,13 +26,10 @@ const testCatalog: ExtensionCatalog = {
   ],
 };
 
-/**
- * What the selector claims about the node it was handed.
- *
- * The claim is the whole of it: the pre-run check reads `integrationId` off the
- * node, so a selector reporting a connection the node does not name is a green
- * check over a workflow that refuses to run.
- */
+/** The one control the selector renders, named for the integration it serves. */
+function trigger(): HTMLElement {
+  return screen.getByRole("combobox", { name: "Linear connection" });
+}
 
 function connection(id: string, name: string): Integration {
   return {
@@ -47,6 +46,7 @@ function connection(id: string, name: string): Integration {
 function renderSelector(options: {
   value?: string;
   connections: Integration[];
+  disabled?: boolean;
 }) {
   const onChange = vi.fn<(integrationId: string) => void>();
 
@@ -66,13 +66,17 @@ function renderSelector(options: {
     <ExtensionCatalogProvider value={testCatalog}>
       <QueryClientProvider client={queryClient}>
         <JotaiProvider store={createStore()}>
-          <OverlayProvider>
-            <IntegrationSelector
-              integrationType="linear"
-              onChange={onChange}
-              value={options.value}
-            />
-          </OverlayProvider>
+          <IntegrationUiProvider value={{}}>
+            <OverlayProvider>
+              <IntegrationSelector
+                disabled={options.disabled}
+                integrationType="linear"
+                onChange={onChange}
+                value={options.value}
+              />
+              <OverlayContainer />
+            </OverlayProvider>
+          </IntegrationUiProvider>
         </JotaiProvider>
       </QueryClientProvider>
     </ExtensionCatalogProvider>
@@ -82,61 +86,91 @@ function renderSelector(options: {
 }
 
 describe("IntegrationSelector", () => {
-  it("reports the sole connection as chosen only when the node names it", () => {
+  it("names no connection until the node names one", () => {
     renderSelector({
       value: undefined,
       connections: [connection("int_linear", "Linear Testing")],
     });
 
-    expect(
-      screen
-        .getByRole("radio", { name: "Linear Testing" })
-        .getAttribute("aria-checked")
-    ).toBe("false");
+    // The claim is the whole of it: the pre-run check reads `integrationId` off
+    // the node, so a trigger reading back a connection the node does not name
+    // is a bound-looking step over a workflow that refuses to run.
+    expect(trigger().textContent).toContain("Choose a connection");
   });
 
-  it("binds the node to the sole connection when it is clicked", () => {
-    const { onChange } = renderSelector({
-      value: undefined,
-      connections: [connection("int_linear", "Linear Testing")],
-    });
-
-    fireEvent.click(screen.getByRole("radio", { name: "Linear Testing" }));
-
-    expect(onChange).toHaveBeenCalledWith("int_linear");
-  });
-
-  it("reports the connection the node names", () => {
+  it("reads back the connection the node names", () => {
     renderSelector({
       value: "int_linear",
       connections: [connection("int_linear", "Linear Testing")],
     });
 
-    expect(
-      screen
-        .getByRole("radio", { name: "Linear Testing" })
-        .getAttribute("aria-checked")
-    ).toBe("true");
+    expect(trigger().textContent).toContain("Linear Testing");
   });
 
-  it("marks only the chosen one of several connections", () => {
-    renderSelector({
-      value: "int_second",
+  it("binds the node to the connection that was picked", () => {
+    const { onChange } = renderSelector({
+      value: undefined,
       connections: [
         connection("int_first", "First Linear"),
         connection("int_second", "Second Linear"),
       ],
     });
 
+    fireEvent.click(trigger());
+    const choice = screen.getByRole("option", { name: "Second Linear" });
+    fireEvent.pointerDown(choice);
+    fireEvent.click(choice);
+
+    expect(onChange).toHaveBeenCalledWith("int_second");
+  });
+
+  it("offers every connection of the integration", () => {
+    renderSelector({
+      value: "int_first",
+      connections: [
+        connection("int_first", "First Linear"),
+        connection("int_second", "Second Linear"),
+      ],
+    });
+
+    fireEvent.click(trigger());
+
     expect(
-      screen
-        .getByRole("radio", { name: "First Linear" })
-        .getAttribute("aria-checked")
-    ).toBe("false");
+      screen.getAllByRole("option").map((option) => option.textContent)
+    ).toEqual(["First Linear", "Second Linear"]);
+  });
+
+  it("offers a direct action to open Connections when the integration has no connection", () => {
+    renderSelector({ value: undefined, connections: [] });
+
+    expect(trigger().textContent).toContain("No connection");
     expect(
-      screen
-        .getByRole("radio", { name: "Second Linear" })
-        .getAttribute("aria-checked")
-    ).toBe("true");
+      screen.getByText(/No Linear connections are configured\./)
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Open Connections" })
+    ).toBeTruthy();
+  });
+
+  it("opens the existing Connections overlay from the empty state", () => {
+    renderSelector({ value: undefined, connections: [] });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Connections" }));
+
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Connections" })).toBeTruthy();
+  });
+
+  it("disables the action that opens Connections when the selector is disabled", () => {
+    renderSelector({ value: undefined, connections: [], disabled: true });
+
+    const openConnections = screen.getByRole("button", {
+      name: "Open Connections",
+    });
+    expect((openConnections as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(openConnections);
+
+    expect(screen.queryByRole("heading", { name: "Connections" })).toBeNull();
   });
 });

@@ -65,26 +65,26 @@ components:
     backgroundColor: "{colors.graphite-ink}"
     textColor: "{colors.paper}"
     rounded: "{rounded.md}"
-    height: "36px"
-    padding: "8px 16px"
+    height: "28px"
+    padding: "0 8px"
   button-outline:
     backgroundColor: "{colors.paper}"
     textColor: "{colors.graphite-ink}"
     rounded: "{rounded.md}"
-    height: "36px"
-    padding: "8px 16px"
+    height: "28px"
+    padding: "0 8px"
   button-ghost:
     backgroundColor: "transparent"
     textColor: "{colors.graphite-ink}"
     rounded: "{rounded.md}"
-    height: "36px"
-    padding: "8px 16px"
+    height: "28px"
+    padding: "0 8px"
   input:
-    backgroundColor: "transparent"
+    backgroundColor: "{colors.graphite-wash}"
     textColor: "{colors.graphite-ink}"
     rounded: "{rounded.md}"
-    height: "36px"
-    padding: "4px 12px"
+    height: "28px"
+    padding: "2px 8px"
   card:
     backgroundColor: "{colors.paper}"
     textColor: "{colors.graphite-ink}"
@@ -106,7 +106,7 @@ components:
 
 Workflow Graph's editor is a cockpit for automation. The chrome recedes into graphite so the workflow graph owns the screen, and every light that comes on means something: a green border is a successful run, a red border is a failure, an animated border is work in progress. The user should feel they are reading gauges, never decoration.
 
-The system is built from shadcn/ui (new-york style) on Base UI primitives, styled with Tailwind v4 tokens declared in OKLCH. It is deliberately conventional where convention earns trust: standard buttons, standard dialogs, standard form controls, in the vocabulary a Linear or Vercel user already speaks. The strategic anti-references from PRODUCT.md hold here: this must never resemble the colorful n8n/Zapier canvas where every node shouts its brand, and it must never drift into SaaS-generic gradients and cream tints.
+The system is built from shadcn/ui (base-mira style) on Base UI primitives, styled with Tailwind v4 tokens declared in OKLCH. It is deliberately conventional where convention earns trust: standard buttons, standard dialogs, standard form controls, in the vocabulary a Linear or Vercel user already speaks. The strategic anti-references from PRODUCT.md hold here: this must never resemble the colorful n8n/Zapier canvas where every node shouts its brand, and it must never drift into SaaS-generic gradients and cream tints.
 
 **Key Characteristics:**
 
@@ -221,7 +221,7 @@ The editor shell is inset 12px from the viewport on all four sides at `md` and a
 
 ### Shadow Vocabulary
 
-- **shadow-xs** (`0 1px 2px 0 rgb(0 0 0 / 0.05)`): Form controls and outline buttons at rest.
+- **shadow-xs** (`0 1px 2px 0 rgb(0 0 0 / 0.05)`): Outline buttons at rest. A form control carries a fill and a border instead.
 - **shadow-sm** (`0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)`): Cards and workflow nodes.
 - **shadow-lg** (`0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)`): Dialogs, dropdown menus, popovers: true overlays only.
 
@@ -231,16 +231,16 @@ The editor shell is inset 12px from the viewport on all four sides at `md` and a
 
 ## 5. Components
 
-All primitives are shadcn/ui new-york on Base UI, refined and restrained: quiet at rest, precise on interaction. Focus is always the 3px `ring-ring/50` halo with a border-color shift; hover is always a fill change, never movement.
+All primitives are shadcn/ui on Base UI, refined and restrained: quiet at rest, precise on interaction. Focus is always the 2px `ring-ring/30` halo with a border-color shift; hover is always a fill change, never movement.
 
 ### Buttons
 
-- **Shape:** Gently rounded (8px), 36px tall at default size.
+- **Shape:** Gently rounded (8px), 28px tall at default size.
 - **Primary:** Graphite Ink fill with Paper text, hover dims to 90% opacity.
 - **Outline:** Paper fill, hairline border, shadow-xs; hover fills with Graphite Wash.
 - **Ghost:** Transparent until hovered, then Graphite Wash.
 - **Destructive:** Signal Red fill; the only chromatic button.
-- **Focus:** 3px ring at 50% ring color plus a border shift, visible in both themes. `--ring` is oklch(0.6 0 0) in light so the border shift clears the 3:1 that WCAG 1.4.11 asks of a focus indicator.
+- **Focus:** 2px ring at 30% ring color plus a border shift, visible in both themes. `--ring` is oklch(0.6 0 0) in light so the border shift clears the 3:1 that WCAG 1.4.11 asks of a focus indicator.
 
 ### Cards / Containers
 
@@ -251,8 +251,8 @@ All primitives are shadcn/ui new-york on Base UI, refined and restrained: quiet 
 
 ### Inputs / Fields
 
-- **Style:** Transparent background, hairline border, 8px radius, 36px height, shadow-xs.
-- **Focus:** Border shifts to ring color plus the 3px halo.
+- **Style:** A `--input` tint, hairline border, 8px radius, 28px height, no shadow at rest.
+- **Focus:** Border shifts to ring color plus the 2px halo.
 - **Error:** `aria-invalid` drives a Signal Red border and red-tinted ring; error state is attribute-driven, never a bespoke class.
 - **Disabled:** 50% opacity with pointer events off.
 

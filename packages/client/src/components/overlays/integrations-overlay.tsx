@@ -2,6 +2,7 @@ import { Search } from "lucide-react";
 import { useCallback, useState } from "react";
 import { IntegrationsManager } from "#src/components/settings/integrations-manager";
 import { Input } from "#src/components/ui/input";
+import { useConnectionRepair } from "#src/hooks/use-connection-repair";
 import { AddConnectionOverlay } from "./add-connection-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
@@ -12,10 +13,15 @@ type IntegrationsOverlayProps = {
 
 export function IntegrationsOverlay({ overlayId }: IntegrationsOverlayProps) {
   const { push, closeAll } = useOverlay();
+  const repairAgainstConnectionList = useConnectionRepair();
   const [filter, setFilter] = useState("");
 
+  // A new connection can be the one a node was already asking for, so the
+  // repair runs here for the same reason it runs on an edit or a delete.
   const handleAddConnection = () => {
-    push(AddConnectionOverlay, {});
+    push(AddConnectionOverlay, {
+      onSuccess: () => void repairAgainstConnectionList(),
+    });
   };
 
   const handleClose = useCallback(() => closeAll(), [closeAll]);

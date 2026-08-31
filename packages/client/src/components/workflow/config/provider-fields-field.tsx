@@ -191,8 +191,8 @@ function ProviderSubField({
   const missing = entry.required === true && value.trim().length === 0;
 
   return (
-    <div className="flex flex-col gap-1">
-      <Label className="ml-1 text-xs" htmlFor={id} id={`${id}-label`}>
+    <div className="flex flex-col gap-2">
+      <Label className="ml-1" htmlFor={id} id={`${id}-label`}>
         {entry.label}
         {entry.required && (
           <span aria-hidden="true" className="text-destructive">

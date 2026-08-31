@@ -81,7 +81,7 @@ function ResizeGrip({
   return (
     <button
       aria-label="Resize the agent panel"
-      className="-top-1 -right-1 absolute size-3 cursor-nesw-resize rounded-full focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      className="-top-1 -right-1 absolute size-3 cursor-nesw-resize rounded-full focus-visible:ring-2 focus-visible:ring-ring/30"
       onKeyDown={onKeyDown}
       onPointerDown={(event) => {
         origin.current = { x: event.clientX, y: event.clientY };

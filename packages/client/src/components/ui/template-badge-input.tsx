@@ -65,11 +65,12 @@ export function TemplateBadgeInput({
     <>
       <div
         className={cn(
-          // Matches the shared Input: shadow-xs at rest, and on focus a border
-          // shift plus the 3px ring-ring/50 halo. This wrapper used to draw a
-          // 1px opaque ring with no border change, so the one field type that
-          // needed the most attention had the least visible focus.
-          "flex min-h-9 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs transition-colors focus-within:border-ring focus-within:outline-none focus-within:ring-[3px] focus-within:ring-ring/50 lg:text-sm",
+          // Built to match ComboboxChips, the other container in the system
+          // that holds badges: same 28px floor, same padding, same type size,
+          // and the same border-plus-ring treatment on focus. Anything that
+          // grows this box beyond a plain Input makes a template field read as
+          // a different kind of control from the text field beside it.
+          "flex min-h-7 w-full rounded-md border border-input bg-input/20 px-2 py-0.5 text-base transition-colors focus-within:border-ring focus-within:outline-none focus-within:ring-2 focus-within:ring-ring/30 md:text-xs/relaxed dark:bg-input/30",
           invalid &&
             "border-destructive focus-within:border-destructive focus-within:ring-destructive/20",
           disabled && "cursor-not-allowed opacity-50",

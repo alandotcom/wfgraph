@@ -1,10 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
-import { HelpCircle, Plus, Settings, Zap } from "lucide-react";
+import { HelpCircle, Settings, Zap } from "lucide-react";
 import { type ReactNode, useCallback, useMemo } from "react";
-import { ConfigureConnectionOverlay } from "#src/components/overlays/add-connection-overlay";
-import { useOverlay } from "#src/components/overlays/overlay-provider";
-import { Button } from "#src/components/ui/button";
 import { Input } from "#src/components/ui/input";
 import { IntegrationIcon } from "#src/components/ui/integration-icon";
 import { IntegrationSelector } from "#src/components/ui/integration-selector";
@@ -680,7 +677,6 @@ export function ActionConfig({
   const connectionDefaults = globalIntegrations.find(
     (entry) => entry.id === settledProviderParameter(config.integrationId)
   )?.connectionDefaults;
-  const { push } = useOverlay();
 
   const handleCategoryChange = (newCategory: string) => {
     const firstAction = categories[newCategory]?.[0];
@@ -700,25 +696,6 @@ export function ActionConfig({
   // Which connection this action needs, which the catalog answers for every
   // action alike.
   const integrationType = catalogAction?.integration;
-
-  const hasExistingConnections = globalIntegrations.some(
-    (integration) => integration.type === integrationType
-  );
-
-  const openConnectionOverlay = () => {
-    if (integrationType) {
-      push(ConfigureConnectionOverlay, {
-        type: integrationType,
-        // The write refreshes the connection list before this runs, and
-        // updateConfig reads that list from the cache rather than from the
-        // render this callback was captured in. Both halves are needed, or the
-        // repair rebinds the node to the connection it had before.
-        onSuccess: (integrationId: string) => {
-          onUpdateConfig({ integrationId });
-        },
-      });
-    }
-  };
 
   return (
     <>
@@ -853,18 +830,6 @@ export function ActionConfig({
                 </Tooltip>
               </TooltipProvider>
             </div>
-            {hasExistingConnections && (
-              <Button
-                aria-label="Add connection"
-                className="size-6"
-                disabled={disabled}
-                onClick={openConnectionOverlay}
-                size="icon"
-                variant="ghost"
-              >
-                <Plus className="size-4" />
-              </Button>
-            )}
           </div>
           <IntegrationSelector
             disabled={disabled}

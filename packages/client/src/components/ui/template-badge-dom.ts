@@ -87,10 +87,14 @@ const PLACEHOLDER_ATTRIBUTE = "data-placeholder";
 /** Marks the line an empty field shows its caret on. Not the user's text. */
 const FILLER_ATTRIBUTE = "data-filler";
 
-const LIVE_BADGE_CLASS =
-  "inline-flex items-center gap-1 rounded bg-info/10 px-1.5 py-0.5 text-info font-mono text-xs border border-info/20 mx-0.5";
-const BROKEN_BADGE_CLASS =
-  "inline-flex items-center gap-1 rounded bg-destructive/10 px-1.5 py-0.5 text-destructive font-mono text-xs border border-destructive/20 mx-0.5";
+// Height is fixed to ComboboxChip's, which is what lets a badge sit inside the
+// 28px field without stretching it. Vertical padding cannot do that job here:
+// the field is 28px minus its own border and padding, and a padded chip at this
+// type size measures taller than the space that leaves.
+const BADGE_BASE_CLASS =
+  "inline-flex h-[calc(--spacing(4.75))] items-center gap-1 rounded px-1.5 font-mono text-xs border mx-0.5";
+const LIVE_BADGE_CLASS = `${BADGE_BASE_CLASS} bg-info/10 text-info border-info/20`;
+const BROKEN_BADGE_CLASS = `${BADGE_BASE_CLASS} bg-destructive/10 text-destructive border-destructive/20`;
 
 /**
  * Badge text for a token. The label baked into the token can be stale, so the

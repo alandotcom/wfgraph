@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { describe, expect, it } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
@@ -73,9 +73,9 @@ const resendConnection: Integration = {
 };
 
 function renderPanel(input: {
-  editing: boolean;
   rules?: LifecycleRules;
   connections?: Integration[];
+  disabled?: boolean;
 }) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -94,7 +94,7 @@ function renderPanel(input: {
           <OverlayProvider>
             <LifecyclePanel
               config={{ lifecycleRules: input.rules ?? startRules }}
-              disabled={false}
+              disabled={input.disabled ?? false}
               onUpdateConfig={() => undefined}
             />
           </OverlayProvider>
@@ -103,30 +103,27 @@ function renderPanel(input: {
     </ExtensionCatalogProvider>
   );
 
-  if (input.editing) {
-    fireEvent.click(view.getByRole("button", { name: "Edit Lifecycle Rules" }));
-  }
-
   return view;
 }
 
 describe("LifecyclePanel Connection picker", () => {
   it("offers a Connection only for an integration-owned Event", () => {
-    const view = renderPanel({ editing: true });
+    const view = renderPanel({});
 
     expect(view.getByText("Appointment created")).toBeTruthy();
     expect(view.getByText("Email delivered")).toBeTruthy();
     expect(
-      view.getByRole("button", { name: "Add Resend connection" })
+      view.getByRole("combobox", { name: "Resend connection" })
     ).toBeTruthy();
     expect(
-      view.queryByRole("button", { name: "Add Appointment created connection" })
+      view.queryByRole("combobox", {
+        name: "Appointment created connection",
+      })
     ).toBeNull();
   });
 
   it("offers one Connection for every Event of the same integration", () => {
     const view = renderPanel({
-      editing: true,
       rules: {
         startEvents: ["resend/email.sent", "resend/email.delivered"],
         cancelEvents: [],
@@ -137,13 +134,12 @@ describe("LifecyclePanel Connection picker", () => {
     expect(view.getByText("Email sent")).toBeTruthy();
     expect(view.getByText("Email delivered")).toBeTruthy();
     expect(
-      view.getAllByRole("button", { name: "Add Resend connection" })
+      view.getAllByRole("combobox", { name: "Resend connection" })
     ).toHaveLength(1);
   });
 
   it("offers one Connection when Start and Cancel name the same integration", () => {
     const view = renderPanel({
-      editing: true,
       rules: {
         startEvents: ["resend/email.sent"],
         cancelEvents: ["resend/email.bounced"],
@@ -154,13 +150,12 @@ describe("LifecyclePanel Connection picker", () => {
     expect(view.getByText("Email sent")).toBeTruthy();
     expect(view.getByText("Email bounced")).toBeTruthy();
     expect(
-      view.getAllByRole("button", { name: "Add Resend connection" })
+      view.getAllByRole("combobox", { name: "Resend connection" })
     ).toHaveLength(1);
   });
 
   it("shows the webhook URL next to that Connection", () => {
     const view = renderPanel({
-      editing: true,
       connections: [resendConnection],
     });
 
@@ -172,7 +167,6 @@ describe("LifecyclePanel Connection picker", () => {
 
   it("does not ask for a signing secret the Connection already holds", () => {
     const view = renderPanel({
-      editing: false,
       connections: [
         {
           ...resendConnection,
@@ -187,9 +181,35 @@ describe("LifecyclePanel Connection picker", () => {
     ).toBeNull();
   });
 
-  it("shows the stored Connection in view mode", () => {
+  it("disables Add signing secret when the editor is disabled", () => {
     const view = renderPanel({
-      editing: false,
+      connections: [resendConnection],
+      disabled: true,
+    });
+
+    expect(
+      view.getByRole("button", { name: "Add signing secret" })
+    ).toHaveProperty("disabled", true);
+  });
+
+  it("disables Edit connection when the editor is disabled", () => {
+    const view = renderPanel({
+      connections: [
+        {
+          ...resendConnection,
+          configuredKeys: ["RESEND_WEBHOOK_SECRET"],
+        },
+      ],
+      disabled: true,
+    });
+
+    expect(
+      view.getByRole("button", { name: "Edit connection" })
+    ).toHaveProperty("disabled", true);
+  });
+
+  it("shows the stored Connection", () => {
+    const view = renderPanel({
       connections: [resendConnection],
     });
 

@@ -239,10 +239,7 @@ function KeyValueField({ value, onChange, disabled }: FieldProps) {
           />
           <TemplateBadgeInput
             ariaLabel="Value"
-            // Sized against the Name box beside it: the shared Input is h-7 with
-            // px-2 py-0.5 at text-sm, and a template control left at its own
-            // min-h-9 made the two cells read as different kinds of control.
-            className="min-h-7 flex-1 bg-input/20 px-2 py-0.5 text-sm md:text-xs/relaxed dark:bg-input/30"
+            className="flex-1"
             disabled={disabled}
             onChange={(next) => updateEntry(entry._id, "value", next)}
             placeholder="Value"
@@ -261,7 +258,6 @@ function KeyValueField({ value, onChange, disabled }: FieldProps) {
         </div>
       ))}
       <Button
-        className="h-8"
         disabled={disabled}
         onClick={addEntry}
         size="sm"

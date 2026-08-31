@@ -405,9 +405,11 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
           <LifecyclePanel
             config={selectedNode.data.config || {}}
             disabled={isGenerating || !isOwner}
-            // Keyed to the node, which is what scopes the view/edit mode each
-            // section holds to the workflow being configured: opening another
-            // workflow brings its own entry node, and this starts on view.
+            // Keyed to the node, so the pickers inside start clean for the
+            // entry node being configured. The panel itself holds no state,
+            // but its comboboxes hold a search term, and opening another
+            // workflow puts its entry node in this same slot: unkeyed, the
+            // second node arrives with the first one's filter still typed in.
             key={selectedNode.id}
             onUpdateConfig={handleUpdateConfig}
           />

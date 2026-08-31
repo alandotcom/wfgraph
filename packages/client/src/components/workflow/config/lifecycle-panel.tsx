@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { WarningCallout } from "#src/components/ui/callout";
 import {
@@ -17,11 +17,8 @@ import {
   readLifecycleRules,
   setConnectionForIntegration,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
-import { ConfigSection } from "./config-section";
-import {
-  IntegrationEventConnectionEditor,
-  IntegrationEventConnectionSummary,
-} from "./integration-event-connection";
+import { ConfigHeading } from "./config-section";
+import { IntegrationEventConnectionEditor } from "./integration-event-connection";
 import { LifecycleConcurrencyGroup } from "./lifecycle-concurrency-group";
 import { LifecycleEventGroup } from "./lifecycle-event-group";
 import type { UpdateNodeConfig } from "./node-config-patch";
@@ -53,7 +50,6 @@ export function LifecyclePanel({
   const manualStartId = useId();
   const catalog = useExtensionCatalog();
   const rules = readLifecycleRules(config) ?? initialLifecycleRules;
-  const [editing, setEditing] = useState(false);
   const check = checkLifecycleRules({ rules, catalog });
 
   const write = (next: LifecycleRules) => {
@@ -115,29 +111,18 @@ export function LifecyclePanel({
 
   return (
     <div className="space-y-4">
-      <ConfigSection
-        editable={!disabled}
-        editing={editing}
-        help={LIFECYCLE_RULES_HELP.map((sentence) => (
-          <p key={sentence}>{sentence}</p>
-        ))}
-        label="Lifecycle Rules"
-        onEditingChange={setEditing}
-        stickyHeader
-        view={
-          <LifecycleGroups
-            editing={false}
-            onConnectionChange={setConnectionId}
-            {...groupProps}
-          />
-        }
-      >
-        <LifecycleGroups
-          editing
-          onConnectionChange={setConnectionId}
-          {...groupProps}
+      {/* One mode. Every control writes straight through `onUpdateConfig`, so a
+          view that read the same settings back as text moved the whole column
+          on each press of a button that saved nothing. */}
+      <section className="space-y-2">
+        <ConfigHeading
+          help={LIFECYCLE_RULES_HELP.map((sentence) => (
+            <p key={sentence}>{sentence}</p>
+          ))}
+          label="Lifecycle Rules"
         />
-      </ConfigSection>
+        <LifecycleGroups onConnectionChange={setConnectionId} {...groupProps} />
+      </section>
 
       {check.valid ? null : (
         <WarningCallout title="This will not save">
@@ -149,7 +134,6 @@ export function LifecyclePanel({
 }
 
 function LifecycleGroups({
-  editing,
   rules,
   catalog,
   disabled,
@@ -163,7 +147,6 @@ function LifecycleGroups({
   onCorrelationPathChange,
   onConnectionChange,
 }: {
-  editing: boolean;
   rules: LifecycleRules;
   catalog: ExtensionCatalog;
   disabled: boolean;
@@ -182,7 +165,6 @@ function LifecycleGroups({
       <LifecycleEventGroup
         catalog={catalog}
         disabled={disabled}
-        editing={editing}
         inputId={startEventId}
         onCorrelationPathChange={onCorrelationPathChange}
         onEventNamesChange={onStartEventsChange}
@@ -191,7 +173,6 @@ function LifecycleGroups({
       />
       <LifecycleConcurrencyGroup
         disabled={disabled}
-        editing={editing}
         manualStartId={manualStartId}
         onConcurrencyChange={onConcurrencyChange}
         onManualStartChange={onManualStartChange}
@@ -200,7 +181,6 @@ function LifecycleGroups({
       <LifecycleEventGroup
         catalog={catalog}
         disabled={disabled}
-        editing={editing}
         inputId={cancelEventsId}
         onCorrelationPathChange={onCorrelationPathChange}
         onEventNamesChange={onCancelEventsChange}
@@ -210,35 +190,18 @@ function LifecycleGroups({
       {uniqueIntegrationsOfEvents(catalog, [
         ...rules.startEvents,
         ...rules.cancelEvents,
-      ]).map((integration) =>
-        editing ? (
-          <IntegrationEventConnectionEditor
-            catalog={catalog}
-            connectionId={connectionIdForIntegration(
-              rules,
-              catalog,
-              integration
-            )}
-            disabled={disabled}
-            integrationType={integration}
-            key={integration}
-            onChange={(connectionId) =>
-              onConnectionChange(integration, connectionId)
-            }
-          />
-        ) : (
-          <IntegrationEventConnectionSummary
-            catalog={catalog}
-            connectionId={connectionIdForIntegration(
-              rules,
-              catalog,
-              integration
-            )}
-            integrationType={integration}
-            key={integration}
-          />
-        )
-      )}
+      ]).map((integration) => (
+        <IntegrationEventConnectionEditor
+          catalog={catalog}
+          connectionId={connectionIdForIntegration(rules, catalog, integration)}
+          disabled={disabled}
+          integrationType={integration}
+          key={integration}
+          onChange={(connectionId) =>
+            onConnectionChange(integration, connectionId)
+          }
+        />
+      ))}
     </div>
   );
 }

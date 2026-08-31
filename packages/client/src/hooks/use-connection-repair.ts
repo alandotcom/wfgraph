@@ -6,12 +6,12 @@ import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { repairIntegrationsAtom } from "#src/lib/workflow-graph-store";
 
 /**
- * Point every node in the open graph at a connection that exists, after a write
- * that changed the connection list.
+ * Keep every Action, Lifecycle, and Wait binding in the open graph pointed at a
+ * connection that exists after a write changes the connection list.
  *
  * Every place that creates or deletes a connection while a graph is on screen
  * calls this. Refreshing the list on its own leaves each node's stored
- * `integrationId` as it was, and that id is what the pre-run check reads.
+ * connection id as it was, and that id is what validation and delivery read.
  *
  * `fetchQuery` and not `ensureQueryData`: the write has just invalidated that
  * entry, and `ensureQueryData` answers from the cache without consulting
