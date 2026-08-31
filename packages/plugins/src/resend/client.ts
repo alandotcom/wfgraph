@@ -65,9 +65,7 @@ export type ResendEmailContent =
       text?: never;
     };
 
-export type ResendEmailPayload = JsonObject &
-  ResendEmailBase &
-  ResendEmailContent;
+export type ResendEmailPayload = ResendEmailBase & ResendEmailContent;
 
 type SameWireShape<Actual, Expected> = [Actual] extends [DeepReadonly<Expected>]
   ? [DeepReadonly<Expected>] extends [Actual]
@@ -432,6 +430,11 @@ export function getResendTemplate(
 export function sendResendEmail(
   apiKey: string,
   payload: ResendEmailPayload,
+  idempotencyKey?: string
+): Effect.Effect<{ id: string }, ExternalError, HttpClient.HttpClient>;
+export function sendResendEmail(
+  apiKey: string,
+  payload: JsonObject,
   idempotencyKey?: string
 ): Effect.Effect<{ id: string }, ExternalError, HttpClient.HttpClient> {
   return requestResend(apiKey, "/emails", sentEmailSchema, {
