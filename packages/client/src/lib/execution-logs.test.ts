@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyExecutionStatusToLogs,
   isRunInProgress,
   toPinnedRunSummary,
   toWorkflowExecutionFromSummary,
@@ -188,5 +189,32 @@ describe("toPinnedRunSummary", () => {
     expect(summary.versionKind).toBe("draft_snapshot");
     expect(summary.versionNumber).toBeNull();
     expect(summary.runMode).toBe("test");
+  });
+});
+
+describe("applyExecutionStatusToLogs", () => {
+  const runningLog = {
+    id: "log_wait",
+    nodeId: "wait_1",
+    nodeName: "Wait",
+    nodeType: "action",
+    status: "running" as const,
+    startedAt: new Date("2026-03-01T10:00:00.000Z"),
+    completedAt: null,
+    duration: null,
+    error: null,
+  };
+
+  it("leaves in-flight logs alone while the run is still going", () => {
+    expect(applyExecutionStatusToLogs([runningLog], "waiting")).toEqual([
+      runningLog,
+    ]);
+  });
+
+  it("reads unfinished steps as cancelled once the run has stopped", () => {
+    const [cancelled] = applyExecutionStatusToLogs([runningLog], "canceled");
+
+    expect(cancelled?.status).toBe("cancelled");
+    expect(cancelled?.error).toBe("Run cancelled before step completion");
   });
 });

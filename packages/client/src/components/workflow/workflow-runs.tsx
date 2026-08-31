@@ -155,6 +155,9 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
   // query's own payload would give the events poll no way to know it had
   // finished, because the events endpoint does not report a status. A run that
   // has left the list reports no status, which is what stops the polling.
+  // Cancel therefore has to invalidate logs and events in `refreshRunHistory`:
+  // once this interval is false, a list-only refresh would otherwise leave the
+  // journey on its last in-flight snapshot.
   const detailPollInterval = isRunInProgress(listedRun?.status)
     ? RUN_POLL_MS
     : false;

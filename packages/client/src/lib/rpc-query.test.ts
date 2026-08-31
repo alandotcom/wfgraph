@@ -47,6 +47,15 @@ const runHistoryKey = (statuses?: ["failed"]) =>
 const workflowRunsKey = (workflowId: string) =>
   orpcQuery.workflow.getExecutions.queryKey({ input: { workflowId } });
 
+const executionLogsKey = (executionId: string) =>
+  orpcQuery.workflow.getExecutionLogs.queryKey({ input: { executionId } });
+
+const executionEventsKey = (executionId: string) =>
+  orpcQuery.workflow.getExecutionEvents.queryKey({ input: { executionId } });
+
+const executionStatusKey = (executionId: string) =>
+  orpcQuery.workflow.getExecutionStatus.queryKey({ input: { executionId } });
+
 const workflowKey = (workflowId: string) =>
   orpcQuery.workflow.getById.queryKey({ input: { workflowId } });
 
@@ -71,6 +80,16 @@ beforeEach(() => {
     items: [],
     supersededCount: 0,
     refusedStarts: [],
+  });
+  queryClient.setQueryData(executionLogsKey("exec_a"), {
+    execution: { id: "exec_a" },
+    logs: [],
+    waits: [],
+  });
+  queryClient.setQueryData(executionEventsKey("exec_a"), { events: [] });
+  queryClient.setQueryData(executionStatusKey("exec_a"), {
+    status: "waiting",
+    nodeStatuses: [],
   });
   queryClient.setQueryData(workflowVersionHistoryKey("a"), {
     pages: [{ items: [], nextCursor: null }],
@@ -128,6 +147,14 @@ describe("refreshRunHistory", () => {
     await refreshRunHistory(queryClient);
 
     expect(isInvalidated(workflowRunsKey("a"))).toBe(true);
+  });
+
+  it("marks the open run's logs, events, and status stale", async () => {
+    await refreshRunHistory(queryClient);
+
+    expect(isInvalidated(executionLogsKey("exec_a"))).toBe(true);
+    expect(isInvalidated(executionEventsKey("exec_a"))).toBe(true);
+    expect(isInvalidated(executionStatusKey("exec_a"))).toBe(true);
   });
 
   it("leaves the workflow itself alone", async () => {

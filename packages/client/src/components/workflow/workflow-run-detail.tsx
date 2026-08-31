@@ -4,6 +4,7 @@ import { getRelativeTime } from "@wfgraph/shared/utils/time";
 import { Button } from "#src/components/ui/button";
 import { useAfterCommit } from "#src/hooks/effects";
 import {
+  applyExecutionStatusToLogs,
   type ExecutionEvent,
   type ExecutionLog,
   type ExecutionWait,
@@ -63,9 +64,16 @@ export function WorkflowRunDetail({
   const selectedNodeId = useAtomValue(selectedNodeAtom);
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
   const [returnFocusLogId, setReturnFocusLogId] = useState<string | null>(null);
-  const sortedLogs = logs.toSorted(
+  // The list row is what cancel paints first. Logs and waits can still be the
+  // last in-flight snapshot until their query refetches, so the journey follows
+  // the run status the header already shows.
+  const sortedLogs = applyExecutionStatusToLogs(
+    logs,
+    execution.status
+  ).toSorted(
     (a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime()
   );
+  const activeWaits = execution.status === "waiting" ? waits : [];
   useAfterCommit(selectedNodeId, () => {
     const selectedLog = selectedLogId
       ? sortedLogs.find((log) => log.id === selectedLogId)
@@ -102,7 +110,7 @@ export function WorkflowRunDetail({
   }
 
   const failedLog = sortedLogs.findLast((log) => log.status === "error");
-  const primaryWait = waits[0];
+  const primaryWait = activeWaits[0];
   const outcome =
     execution.status === "waiting" && primaryWait
       ? `Waiting at ${primaryWait.nodeName}`
@@ -129,9 +137,9 @@ export function WorkflowRunDetail({
             </p>
           ) : null}
 
-          {waits.length > 0 ? (
+          {activeWaits.length > 0 ? (
             <section className="space-y-3 rounded-md border border-warning/30 bg-warning/10 p-3">
-              {waits.map((wait) => (
+              {activeWaits.map((wait) => (
                 <div className="space-y-1.5" key={wait.id}>
                   <h3 className="font-medium text-warning text-xs">
                     Waiting at {wait.nodeName}
