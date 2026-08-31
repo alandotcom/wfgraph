@@ -85,11 +85,14 @@ describe("the resend integration", () => {
       // by name. That is the same entry a `resend/email.*` payload carries, and
       // the two agreeing is what lets one workflow tag a send and the next read
       // the tag off the webhook.
+      // Nullable because a send that carried no tags omits the key entirely,
+      // which is what offers a downstream rule `is set` on the record.
       {
         path: "tags",
         description: "Email tags",
         type: "object",
         valueType: "string",
+        nullable: true,
       },
     ]);
   });

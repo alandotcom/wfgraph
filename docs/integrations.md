@@ -358,7 +358,7 @@ still unnamed is refused rather than compared against the whole record.
 Where a `key-value` config field is what fills the record, name the record paths on it with
 `fillsRecords` and the editor offers the keys instead of asking for them. Resend's Tags field
 declares `["tags", "data.tags"]`: the first is the Send Email step's own output, the second is
-what every `resend/email.*` Event carries, so tagging a send with `order_id` makes
+what every outbound `resend/email.*` Event carries, so tagging a send with `order_id` makes
 `data.tags.order_id` a path a Wait match can be built on. Paths are matched inside one
 integration. Treat it as a suggestion: a key nothing in the workflow names still resolves when
 it is typed.
@@ -374,6 +374,11 @@ Schema.optionalKey(Schema.String);
 // system omitted and a null it sent.
 Schema.optionalKey(Schema.NullOr(Schema.String));
 ```
+
+Either spelling reaches the editor as a nullable field. The condition picker badges
+such a path and offers `is set` and `is not set` on it, which is how a rule asks
+whether the value arrived at all, so leave a key optional only where the system
+really can omit it.
 
 ## Three rules
 

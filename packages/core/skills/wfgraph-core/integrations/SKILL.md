@@ -37,7 +37,9 @@ The host passes it in `extensions.integrations`. Build against
 - Effect Schema crosses the canonical JSON codec both ways. Optional input uses
   `Schema.optionalKey`; a vendor null uses
   `Schema.optionalKey(Schema.NullOr(...))`. Annotate output fields with
-  `description`.
+  `description`. An optional output or payload key reaches the editor as a
+  nullable field, which is what offers a condition `is set`, so keep a key
+  required where the system always sends it.
 - `category` defaults to the integration `label`. `sideEffect: true` marks an
   external write; the editor keeps those out of a Group.
 - `events` are `defineEvent` values. Assembly stamps `EventMetadata.integration`.

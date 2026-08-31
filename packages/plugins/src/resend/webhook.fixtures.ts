@@ -97,6 +97,9 @@ export const resendWebhookFixtures = {
         "The recipient's email address is on the suppression list because it has a recent history of producing hard bounces.",
       subType: "Suppressed",
       type: "Permanent",
+      diagnosticCode: [
+        "smtp; 550 5.5.0 Requested action not taken: mailbox unavailable",
+      ],
     },
   }),
   "email.complained": emailEnvelope("email.complained"),
@@ -114,7 +117,12 @@ export const resendWebhookFixtures = {
     failed: { reason: "reached_daily_quota" },
   }),
   "email.scheduled": emailEnvelope("email.scheduled"),
-  "email.suppressed": emailEnvelope("email.suppressed"),
+  "email.suppressed": emailEnvelope("email.suppressed", {
+    suppressed: {
+      message: "The recipient's email address is on the suppression list.",
+      type: "OnAccountSuppressionList",
+    },
+  }),
   "email.received": {
     type: "email.received",
     created_at: EMAIL_CREATED_AT,

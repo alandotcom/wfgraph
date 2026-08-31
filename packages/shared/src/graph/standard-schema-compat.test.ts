@@ -492,6 +492,7 @@ describe("the field derivation over Effect schemas", () => {
     expect(
       parseWorkflowSchemaFieldsOrJsonSchema({
         type: "object",
+        required: ["createdAt"],
         properties: {
           createdAt: {
             type: "string",
@@ -614,6 +615,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema with date formats", () => {
   it("recognizes format: date-time as timestamp", () => {
     const fields = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["createdAt"],
       properties: {
         createdAt: { type: "string", format: "date-time" },
       },
@@ -627,6 +629,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema with date formats", () => {
   it("keeps a calendar date as text", () => {
     const fields = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["birthday"],
       properties: {
         birthday: { type: "string", format: "date" },
       },
@@ -648,6 +651,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema and the format keyword", () => {
     // by its opening characters, and an author had no way to ask for the type.
     const fields = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["nextEligibleDate"],
       properties: {
         nextEligibleDate: { type: "string", pattern: ISO_DATE_PATTERN },
       },

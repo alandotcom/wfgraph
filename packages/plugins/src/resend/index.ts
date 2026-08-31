@@ -518,9 +518,10 @@ export const resend = defineIntegration({
               label: "",
               type: "key-value",
               // A tag name typed here is a key of this step's own `tags` output
-              // and of `data.tags` on every `resend/email.*` Event, which is
-              // Resend echoing the same tags back. Naming both is what lets the
-              // editor offer `tags.name` rather than asking for it to be typed.
+              // and of `data.tags` on every outbound `resend/email.*` Event,
+              // which is Resend echoing the same tags back. Naming both is what
+              // lets the editor offer `tags.name` rather than asking for it to
+              // be typed. An inbound `email.received` carries no tags.
               fillsRecords: ["tags", "data.tags"],
             },
           ],

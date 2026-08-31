@@ -172,7 +172,8 @@ authored, being the key of whatever the step builds.
 
 `fillsRecords` on a `key-value` field names the open records its row names are the keys of,
 by path. Resend's Tags field declares `["tags", "data.tags"]`, which is its own step's output
-and the payload of every `resend/email.*` Event, since Resend echoes the same tags back. The
+and the payload of every outbound `resend/email.*` Event, since Resend echoes the same tags
+back. The
 editor reads the names off the graph and offers `tags.name` rather than asking for it to be
 typed (`packages/client/src/lib/open-record-keys.ts`). The collection is scoped to one
 integration, so PostHog's property names never turn up as Resend's tag keys, and it is only a

@@ -3,6 +3,7 @@ import {
   configFieldsFromJsonSchema,
   parseWorkflowSchemaField,
   parseWorkflowSchemaFieldsOrJsonSchema,
+  type WorkflowSchemaField,
   workflowSchemaFieldsToJsonSchemaDocument,
 } from "./schema-codec";
 
@@ -71,6 +72,7 @@ describe("parseWorkflowSchemaField", () => {
           description: "How long before the appointment",
         },
       },
+      required: ["reminderLeadTime"],
     });
   });
 
@@ -147,6 +149,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
   it("parses JSON schema properties including array object items", () => {
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["id", "success", "events"],
       properties: {
         id: { type: "string" },
         success: { type: ["null", "boolean"] },
@@ -154,6 +157,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
           type: "array",
           items: {
             type: "object",
+            required: ["happenedAt"],
             properties: {
               happenedAt: {
                 type: "string",
@@ -195,12 +199,14 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
   it("reads minItems off an array property", () => {
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["attendees"],
       properties: {
         attendees: {
           type: "array",
           minItems: 1,
           items: {
             type: "object",
+            required: ["name"],
             properties: { name: { type: "string" } },
           },
         },
@@ -225,6 +231,130 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
     ]);
   });
 
+  // `Schema.optionalKey` renders as a property whose name is missing from
+  // `required`, with no null branch anywhere in it. Reading the keyword is the
+  // only way that fact reaches the picker, where it decides both the nullable
+  // badge and whether `is set` is offered on the path.
+  it("marks a property the required list leaves out as nullable", () => {
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      required: ["emailId"],
+      properties: {
+        emailId: { type: "string" },
+        templateId: { type: "string" },
+      },
+    });
+
+    expect(schema).toEqual([
+      { name: "emailId", type: "string", description: undefined },
+      {
+        name: "templateId",
+        type: "string",
+        description: undefined,
+        nullable: true,
+      },
+    ]);
+  });
+
+  // JSON Schema defines an absent `required` as requiring nothing, which is the
+  // same reading `configFieldsFromJsonSchema` takes of the keyword.
+  it("marks every property nullable when the document lists none as required", () => {
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: { emailId: { type: "string" } },
+    });
+
+    expect(schema).toEqual([
+      {
+        name: "emailId",
+        type: "string",
+        description: undefined,
+        nullable: true,
+      },
+    ]);
+  });
+
+  it("reads the required list of a nested object and of array items", () => {
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      required: ["click", "records"],
+      properties: {
+        click: {
+          type: "object",
+          required: ["link"],
+          properties: {
+            link: { type: "string" },
+            userAgent: { type: "string" },
+          },
+        },
+        records: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["name"],
+            properties: {
+              name: { type: "string" },
+              ttl: { type: "string" },
+            },
+          },
+        },
+      },
+    });
+
+    expect(schema).toEqual([
+      {
+        name: "click",
+        type: "object",
+        description: undefined,
+        fields: [
+          { name: "link", type: "string", description: undefined },
+          {
+            name: "userAgent",
+            type: "string",
+            description: undefined,
+            nullable: true,
+          },
+        ],
+      },
+      {
+        name: "records",
+        type: "array",
+        itemType: "object",
+        description: undefined,
+        fields: [
+          { name: "name", type: "string", description: undefined },
+          {
+            name: "ttl",
+            type: "string",
+            description: undefined,
+            nullable: true,
+          },
+        ],
+      },
+    ]);
+  });
+
+  // A null branch and a missing name are two separate ways for the value to go
+  // missing, and either one on its own is enough.
+  it("keeps a nullable optional key nullable once", () => {
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      required: [],
+      properties: {
+        sourceId: { anyOf: [{ type: "string" }, { type: "null" }] },
+      },
+    });
+
+    expect(schema).toEqual([
+      {
+        name: "sourceId",
+        type: "string",
+        description: undefined,
+        nullable: true,
+      },
+    ]);
+  });
+
   it("returns null for unsupported non-object schema roots", () => {
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "array",
@@ -239,6 +369,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
     // whole schema panel empties over a single bad field.
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["id", "notANode", "mistypedDescription"],
       properties: {
         id: { type: "string" },
         notANode: "nope",
@@ -257,6 +388,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
     // neither says what the field holds and neither field is offered.
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["id", "brokenObject", "brokenArray"],
       properties: {
         id: { type: "string" },
         brokenObject: { properties: "nope" },
@@ -274,6 +406,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
     // the instance type. arktype renders every string-literal union this way.
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["status"],
       properties: {
         status: { enum: ["X", "Y"] },
       },
@@ -292,6 +425,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
   it("reads a single const with no type as a one-value string set", () => {
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["status"],
       properties: {
         status: { const: "X" },
       },
@@ -310,6 +444,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
   it("reads an all-const anyOf without a null branch as a non-nullable closed set", () => {
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["status"],
       properties: {
         status: {
           anyOf: [{ const: "X" }, { const: "Y" }],
@@ -332,6 +467,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
     // both `type` and `const`. The set is still closed and not nullable.
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["status"],
       properties: {
         status: {
           anyOf: [
@@ -356,6 +492,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
     // Effect's `Schema.Enum`: one `{ type, enum: [member] }` branch per value.
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["status"],
       properties: {
         status: {
           anyOf: [
@@ -412,6 +549,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
     // fail the pattern. The consts are extra values of an open type.
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["a"],
       properties: {
         a: {
           anyOf: [
@@ -444,6 +582,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
     // and NaN. The editor has no type for that union, so the field is omitted.
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["id", "attendeeCount"],
       properties: {
         id: { type: "string" },
         attendeeCount: {
@@ -467,6 +606,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
   it("reads an open record's value type off additionalProperties", () => {
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["tags"],
       properties: {
         tags: {
           type: "object",
@@ -490,9 +630,11 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
   it("keeps a closed struct closed", () => {
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["click"],
       properties: {
         click: {
           type: "object",
+          required: ["link"],
           properties: { link: { type: "string" } },
           additionalProperties: false,
         },
@@ -514,6 +656,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
   it("reads a missing additionalProperties as closed", () => {
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["click"],
       properties: { click: { type: "object", properties: {} } },
     });
 
@@ -552,9 +695,11 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
   it("keeps named properties beside an opening", () => {
     const schema = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
+      required: ["result"],
       properties: {
         result: {
           type: "object",
+          required: ["id"],
           properties: { id: { type: "string" } },
           additionalProperties: { type: "number" },
         },
@@ -574,6 +719,30 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
 });
 
 describe("workflowSchemaFieldsToJsonSchemaDocument", () => {
+  // The reader concludes nullable from a name the writer left out of `required`,
+  // so the two halves have to agree on the keyword or a field survives one trip
+  // through the pair as something a payload can arrive without.
+  it("round-trips which fields a payload is guaranteed to carry", () => {
+    const fields: WorkflowSchemaField[] = [
+      { name: "emailId", type: "string" },
+      { name: "templateId", type: "string", nullable: true },
+    ];
+
+    expect(
+      parseWorkflowSchemaFieldsOrJsonSchema(
+        workflowSchemaFieldsToJsonSchemaDocument(fields)
+      )
+    ).toEqual([
+      { name: "emailId", type: "string", description: undefined },
+      {
+        name: "templateId",
+        type: "string",
+        description: undefined,
+        nullable: true,
+      },
+    ]);
+  });
+
   it("serializes workflow schema fields into JSON schema format", () => {
     const document = workflowSchemaFieldsToJsonSchemaDocument([
       {
@@ -611,9 +780,11 @@ describe("workflowSchemaFieldsToJsonSchemaDocument", () => {
                 type: "string",
               },
             },
+            required: ["name"],
           },
         },
       },
+      required: ["createdAt", "items"],
     });
   });
 
@@ -623,6 +794,7 @@ describe("workflowSchemaFieldsToJsonSchemaDocument", () => {
   it("returns a bounded read for a cyclic in-memory JSON Schema document", () => {
     const document: Record<string, unknown> = {
       type: "object",
+      required: ["id", "self"],
       properties: {
         id: { type: "string" },
       },
@@ -645,6 +817,7 @@ describe("workflowSchemaFieldsToJsonSchemaDocument", () => {
     items.items = items;
     const document = {
       type: "object",
+      required: ["nested"],
       properties: {
         nested: {
           type: "array",

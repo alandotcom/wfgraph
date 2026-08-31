@@ -41,6 +41,12 @@ import type {
  * named, such as Resend's email tags. The entry addresses the whole record, and
  * the type it carries is what a key under it holds, which is how
  * a key under it is addressable even though this list cannot enumerate one.
+ *
+ * `nullable` says a run can reach this node with no value at this path, whether
+ * the schema declares the value as null or leaves its key optional. The picker
+ * badges such a field and offers `is_set` and `is_not_set` on it alone, so a
+ * field wrongly left unmarked costs a builder the only two operators that can
+ * ask whether the value arrived.
  */
 export type ReferenceField = {
   path: string;
