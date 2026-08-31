@@ -1,8 +1,11 @@
-import { findAction } from "@wfgraph/shared/extensions/catalog";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import { parseTemplate, type TemplateToken } from "@wfgraph/shared/graph/node-references";
+import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
+import {
+  parseTemplate,
+  templateTokenDisplayText,
+  type TemplateToken,
+} from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-import { readConfigString } from "@wfgraph/shared/graph/node-config";
 
 /**
  * The contentEditable behind the template fields, as plain DOM.
@@ -89,39 +92,24 @@ const LIVE_BADGE_CLASS =
 const BROKEN_BADGE_CLASS =
   "inline-flex items-center gap-1 rounded bg-destructive/10 px-1.5 py-0.5 text-destructive font-mono text-xs border border-destructive/20 mx-0.5";
 
-
 /**
  * Badge text for a token. The label baked into the token can be stale, so the
- * node's current label wins whenever the node is still around.
+ * node's current display name wins whenever the node is still around.
  */
 function getDisplayTextForToken(
   token: TemplateToken,
   nodes: WorkflowNode[],
   catalog: ExtensionCatalog
 ): string {
-  const storedText = token.fieldPath
-    ? `${token.nodeLabel}.${token.fieldPath}`
-    : token.nodeLabel;
-
   const node = nodes.find((candidate) => candidate.id === token.nodeId);
   if (!node) {
-    return storedText;
+    return templateTokenDisplayText(token);
   }
 
-  // Display label: custom label > human-readable action label > stored label
-  let displayLabel: string | undefined = node.data.label;
-  if (!displayLabel && node.data.type === "action") {
-    const actionType = readConfigString(node.data.config, "actionType");
-    if (actionType) {
-      displayLabel = findAction(catalog, actionType)?.label;
-    }
-  }
-
-  if (!displayLabel) {
-    return storedText;
-  }
-
-  return token.fieldPath ? `${displayLabel}.${token.fieldPath}` : displayLabel;
+  return templateTokenDisplayText({
+    nodeLabel: getNodeDisplayName(catalog, node),
+    fieldPath: token.fieldPath,
+  });
 }
 
 /** The raw token a badge stands for, or null for anything that is not a badge. */

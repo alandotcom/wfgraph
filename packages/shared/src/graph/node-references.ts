@@ -281,6 +281,35 @@ export function formatTemplateToken(input: {
 }
 
 /**
+ * What a builder reads for one token: the label and path, never the node id
+ * the engine resolves by. A token is `{{@id:Label.path}}`; the id is wiring.
+ */
+export function templateTokenDisplayText(
+  token: Pick<TemplateToken, "nodeLabel" | "fieldPath">
+): string {
+  return token.fieldPath
+    ? `${token.nodeLabel}.${token.fieldPath}`
+    : token.nodeLabel;
+}
+
+/**
+ * The authored string with every token collapsed to the label a builder sees.
+ *
+ * A condition summary and the compiled-CEL line both read this so a Wait match
+ * against `{{@n1:Lifecycle.data.email_id}}` does not print the node id. A string
+ * with no tokens is returned unchanged.
+ */
+export function displayTemplateText(value: string): string {
+  return parseTemplate(value)
+    .map((segment) =>
+      segment.kind === "literal"
+        ? segment.text
+        : templateTokenDisplayText(segment.token)
+    )
+    .join("");
+}
+
+/**
  * Rewrite every template token inside a config or JSON value. Returning
  * `undefined` leaves that token as it was. The same reference comes back when
  * nothing changed, so a rename can tell a dirty config from an untouched one.

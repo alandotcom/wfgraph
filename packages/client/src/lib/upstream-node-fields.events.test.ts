@@ -359,12 +359,14 @@ describe("upstream-node-fields events", () => {
     surface.events = [
       anEvent({
         name: "app/appointment.canceled",
+        label: "Appointment canceled",
         schema: Schema.Struct({
           reason: Schema.String.annotate({ description: "Why" }),
         }),
       }),
       anEvent({
         name: "app/appointment.rescheduled",
+        label: "Appointment rescheduled",
         schema: Schema.Struct({
           rescheduledBy: Schema.String.annotate({
             description: "Who moved it",
@@ -408,6 +410,10 @@ describe("upstream-node-fields events", () => {
       label: "Event name",
       type: "string",
       enumValues: ["app/appointment.canceled", "app/appointment.rescheduled"],
+      enumLabels: {
+        "app/appointment.canceled": "Appointment canceled",
+        "app/appointment.rescheduled": "Appointment rescheduled",
+      },
     });
   });
 

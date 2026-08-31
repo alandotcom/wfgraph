@@ -9,6 +9,7 @@ import {
   serializeConditionModel,
 } from "@wfgraph/shared/conditions/conditions";
 import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { formatTemplateToken } from "@wfgraph/shared/graph/node-references";
 
 function field(
   path: string,
@@ -380,6 +381,37 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
     expect(view.getByText(/ada@example.com/)).toBeTruthy();
   });
 
+  it("reads a template token as the node's label, not its id", () => {
+    const token = formatTemplateToken({
+      nodeId: "V1StGXR8_Z5jdHi6B-myT",
+      nodeLabel: "Lifecycle",
+      fieldPath: "data.email_id",
+    });
+    const view = renderRow(DONOR_FIELDS, stringRule("email", token));
+
+    expect(view.getByText(/Lifecycle.data.email_id/)).toBeTruthy();
+    expect(view.queryByText(/V1StGXR8_Z5jdHi6B-myT/)).toBeNull();
+    expect(view.queryByText(/\{\{@/)).toBeNull();
+  });
+
+  it("keeps the node id out of Compiled CEL while editing a template value", () => {
+    const token = formatTemplateToken({
+      nodeId: "V1StGXR8_Z5jdHi6B-myT",
+      nodeLabel: "Lifecycle",
+      fieldPath: "data.email_id",
+    });
+    const view = renderRow(DONOR_FIELDS, stringRule("email", token));
+
+    fireEvent.click(view.getByRole("button", { name: "Edit condition" }));
+
+    expect(view.getByText(/Compiled CEL/).textContent).toContain(
+      "Lifecycle.data.email_id"
+    );
+    expect(view.getByText(/Compiled CEL/).textContent).not.toContain(
+      "V1StGXR8_Z5jdHi6B-myT"
+    );
+  });
+
   // The picker deliberately selects nothing when the stored value is no longer
   // one the field names, so the summary saying "equals cancelled" and Edit
   // showing an empty box were two surfaces disagreeing about the same rule.
@@ -407,5 +439,50 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
     const view = renderRow(DONOR_FIELDS, stringRule("gone.path", "x"));
 
     expect(view.getByText("gone.path (Unavailable)")).toBeTruthy();
+  });
+
+  it("reads a template value as the node label, not the node id", () => {
+    const token = "{{@V1StGXR8_Z5jdHi6B-myT:Lifecycle.data.email_id}}";
+    const view = renderRow(
+      APPOINTMENT_FIELDS,
+      stringRule("appointment.id", token)
+    );
+
+    expect(view.getByText(/Lifecycle\.data\.email_id/)).toBeTruthy();
+    expect(view.queryByText(/V1StGXR8_Z5jdHi6B-myT/)).toBeNull();
+  });
+
+  it("reads an Event name by its catalog label", () => {
+    const eventNameFields: ConditionSelectableField[] = [
+      field("$event.name", "Carried by every Event", {
+        label: "Event name",
+        enumValues: ["resend/email.sent", "resend/email.delivered"],
+        enumLabels: {
+          "resend/email.sent": "Email sent",
+          "resend/email.delivered": "Email delivered",
+        },
+      }),
+    ];
+    const view = renderRow(
+      eventNameFields,
+      stringRule("$event.name", "resend/email.sent")
+    );
+
+    expect(view.getByText("Email sent")).toBeTruthy();
+    expect(view.queryByText("resend/email.sent")).toBeNull();
+  });
+
+  it("does not print a node id in the compiled CEL preview", () => {
+    const token = "{{@V1StGXR8_Z5jdHi6B-myT:Lifecycle.data.email_id}}";
+    const view = renderRow(
+      APPOINTMENT_FIELDS,
+      stringRule("appointment.id", token)
+    );
+
+    enterEdit(view);
+
+    const compiled = view.getByText(/Compiled CEL/);
+    expect(compiled.textContent).toContain("Lifecycle.data.email_id");
+    expect(compiled.textContent).not.toContain("V1StGXR8_Z5jdHi6B-myT");
   });
 });

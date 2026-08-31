@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  displayTemplateText,
   fieldsVisibleForConfig,
   findTemplateTokens,
   flattenSchemaToReferenceFields,
@@ -458,6 +459,29 @@ describe("formatTemplateToken", () => {
     expect(formatTemplateToken({ nodeId: "n1", nodeLabel: "Fetch User" })).toBe(
       "{{@n1:Fetch User}}"
     );
+  });
+});
+
+describe("displayTemplateText", () => {
+  it("drops the node id from a token so a person reads the label and path", () => {
+    expect(
+      displayTemplateText(
+        formatTemplateToken({
+          nodeId: "V1StGXR8_Z5jdHi6B-myT",
+          nodeLabel: "Lifecycle",
+          fieldPath: "data.email_id",
+        })
+      )
+    ).toBe("Lifecycle.data.email_id");
+  });
+
+  it("leaves surrounding prose and a token without a path", () => {
+    const token = formatTemplateToken({
+      nodeId: "n1",
+      nodeLabel: "Send Email",
+    });
+
+    expect(displayTemplateText(`id is ${token}`)).toBe("id is Send Email");
   });
 });
 

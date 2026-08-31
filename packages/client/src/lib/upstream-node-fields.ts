@@ -33,6 +33,8 @@ export type ConditionSelectableField = ConditionFieldDefinition & {
   sourceNodeLabels: string[];
   nullable?: boolean;
   enumValues?: string[];
+  /** Human labels for `enumValues`, keyed by the stored comparison value. */
+  enumLabels?: Readonly<Record<string, string>>;
 };
 
 /**
@@ -312,6 +314,9 @@ function eventNameConditionField(input: {
       sourceNodeLabel: SHARED_EVENT_FIELDS_LABEL,
       sourceNodeLabels: [SHARED_EVENT_FIELDS_LABEL],
       enumValues: events.map((event) => event.name),
+      enumLabels: Object.fromEntries(
+        events.map((event) => [event.name, event.label])
+      ),
     });
   }
   return fields;

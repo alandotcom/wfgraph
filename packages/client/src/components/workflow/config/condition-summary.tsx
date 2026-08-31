@@ -15,6 +15,7 @@ import {
   TIME_UNIT_OPTIONS,
   TIMESTAMP_OPERATOR_OPTIONS,
 } from "@wfgraph/shared/conditions/conditions";
+import { displayTemplateText } from "@wfgraph/shared/graph/node-references";
 import { unavailableFieldLabel } from "./condition-field-combobox";
 
 /**
@@ -98,7 +99,7 @@ function RuleLine({
         <span className="mx-1.5 text-muted-foreground">
           {operatorLabel(condition)}
         </span>
-        {valueLabel(condition)}
+        {valueLabel(condition, field)}
       </p>
       {refusal ? (
         <WarningCallout variant="text">{refusal}</WarningCallout>
@@ -195,7 +196,10 @@ function operatorTable(
  * A value the builder has not filled in renders as nothing, and the line under
  * it is what names the gap.
  */
-function valueLabel(rule: ConditionRule): string {
+function valueLabel(
+  rule: ConditionRule,
+  field: ConditionSelectableField | undefined
+): string {
   if (isNullCheckConditionRule(rule)) {
     return "";
   }
@@ -219,7 +223,7 @@ function valueLabel(rule: ConditionRule): string {
   }
 
   if (rule.fieldType === "string") {
-    return rule.value;
+    return displayTemplateText(field?.enumLabels?.[rule.value] ?? rule.value);
   }
 
   if (rule.fieldType === "number") {

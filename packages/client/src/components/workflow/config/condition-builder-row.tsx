@@ -41,6 +41,7 @@ import {
   type TimestampRelativeOperator,
   type TimeUnit,
 } from "@wfgraph/shared/conditions/conditions";
+import { displayTemplateText } from "@wfgraph/shared/graph/node-references";
 
 /**
  * What the row is written against, rather than where it is stored.
@@ -317,15 +318,23 @@ function LogicToggle({
   );
 }
 
+function enumOptionLabel(
+  field: ConditionSelectableField | undefined,
+  value: string
+): string {
+  return field?.enumLabels?.[value] ?? value;
+}
+
 function ConditionValueInput(input: {
   condition: ConditionRule;
   disabled: boolean;
   currentNodeId?: string;
-  enumValues?: string[];
+  field?: ConditionSelectableField;
   onConditionChange: (condition: ConditionRule) => void;
 }) {
-  const { condition, disabled, currentNodeId, enumValues, onConditionChange } =
+  const { condition, disabled, currentNodeId, field, onConditionChange } =
     input;
+  const enumValues = field?.enumValues;
 
   // Null-check operators need no value input
   if (isNullCheckConditionRule(condition)) {
@@ -411,7 +420,10 @@ function ConditionValueInput(input: {
       return (
         <Select
           disabled={disabled}
-          items={enumValues.map((value) => ({ label: value, value }))}
+          items={enumValues.map((value) => ({
+            label: enumOptionLabel(field, value),
+            value,
+          }))}
           onValueChange={whenChosen((value) => {
             onConditionChange({ ...condition, value });
           })}
@@ -427,7 +439,7 @@ function ConditionValueInput(input: {
           <SelectContent>
             {enumValues.map((opt) => (
               <SelectItem key={opt} value={opt}>
-                {opt}
+                {enumOptionLabel(field, opt)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -790,7 +802,7 @@ export function ConditionBuilderRow({
                           condition={condition}
                           currentNodeId={currentNodeId}
                           disabled={disabled}
-                          enumValues={selectedFieldDef?.enumValues}
+                          field={selectedFieldDef}
                           onConditionChange={(nextCondition) => {
                             updateCondition(
                               group.id,
@@ -863,7 +875,7 @@ export function ConditionBuilderRow({
           )}
           {compiled?.valid && (
             <p className="text-muted-foreground text-xs">
-              Compiled CEL: {compiled.expression}
+              Compiled CEL: {displayTemplateText(compiled.expression)}
             </p>
           )}
         </>
