@@ -392,12 +392,66 @@ function mapTemplateString(
   return changed ? next : value;
 }
 
-const BRACKET_INDEX_PATTERN = /\[(\d+)\]/g;
-const PATH_PART_PATTERN = /^([^[]*)((?:\[\d+\])*)$/;
+const SIMPLE_PATH_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const BRACKET_INDEX_PATTERN = /^\[(\d+)\]/;
 
 export type OutputPathStep =
   | { kind: "key"; key: string }
   | { kind: "index"; index: number };
+
+/** Append one record key while preserving punctuation as part of that key. */
+export function appendOutputPathKey(path: string, key: string): string {
+  if (SIMPLE_PATH_KEY_PATTERN.test(key) && isSafeRecordKey(key)) {
+    return path ? `${path}.${key}` : key;
+  }
+
+  // Template tokens use braces as their outer delimiter. JSON's Unicode escape
+  // keeps a brace in the key while leaving the token parser an unambiguous end.
+  const encoded = JSON.stringify(key)
+    .replaceAll("{", "\\u007b")
+    .replaceAll("}", "\\u007d");
+  return `${path}[${encoded}]`;
+}
+
+function readQuotedPathKey(
+  path: string,
+  start: number
+): { key: string; end: number } | null {
+  if (path[start] !== "[" || path[start + 1] !== '"') {
+    return null;
+  }
+
+  const quoteStart = start + 1;
+  let escaped = false;
+  for (let index = quoteStart + 1; index < path.length; index += 1) {
+    const character = path[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (character === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (character !== '"') {
+      continue;
+    }
+    if (path[index + 1] !== "]") {
+      return null;
+    }
+
+    try {
+      const key = JSON.parse(path.slice(quoteStart, index + 1)) as unknown;
+      return typeof key === "string" && isSafeRecordKey(key)
+        ? { key, end: index + 2 }
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
 
 /**
  * Plugin steps return `{ success, data }`. A user writing `{{@n1:Step.id}}`
@@ -432,32 +486,54 @@ export function unwrapStepOutput(output: JsonValue): JsonValue {
 
 export function parseOutputPath(path: string): OutputPathStep[] | null {
   const steps: OutputPathStep[] = [];
+  let cursor = 0;
 
-  for (const part of path.split(".")) {
-    const trimmed = part.trim();
-    if (!trimmed) {
+  while (cursor < path.length) {
+    if (path[cursor] === ".") {
       return null;
     }
 
-    const parsed = PATH_PART_PATTERN.exec(trimmed);
-    if (!parsed) {
-      return null;
-    }
-
-    const key = parsed[1];
-    if (key.includes("]") || (key && !isSafeRecordKey(key))) {
-      return null;
-    }
-    if (key) {
+    if (path[cursor] !== "[") {
+      let end = cursor;
+      while (end < path.length && path[end] !== "." && path[end] !== "[") {
+        end += 1;
+      }
+      const key = path.slice(cursor, end).trim();
+      if (!key || key.includes("]") || !isSafeRecordKey(key)) {
+        return null;
+      }
       steps.push({ kind: "key", key });
+      cursor = end;
     }
 
-    for (const match of trimmed.matchAll(BRACKET_INDEX_PATTERN)) {
-      const index = Number(match[1]);
+    while (path[cursor] === "[") {
+      const quoted = readQuotedPathKey(path, cursor);
+      if (quoted) {
+        steps.push({ kind: "key", key: quoted.key });
+        cursor = quoted.end;
+        continue;
+      }
+
+      const indexed = BRACKET_INDEX_PATTERN.exec(path.slice(cursor));
+      if (!indexed) {
+        return null;
+      }
+      const index = Number(indexed[1]);
       if (!Number.isSafeInteger(index)) {
         return null;
       }
       steps.push({ kind: "index", index });
+      cursor += indexed[0].length;
+    }
+
+    if (cursor < path.length) {
+      if (path[cursor] !== ".") {
+        return null;
+      }
+      cursor += 1;
+      if (cursor >= path.length || path[cursor] === "." || path[cursor] === "[") {
+        return null;
+      }
     }
   }
 

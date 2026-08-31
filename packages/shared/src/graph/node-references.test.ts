@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  appendOutputPathKey,
   displayTemplateText,
   fieldsVisibleForConfig,
   findTemplateTokens,
@@ -477,6 +478,18 @@ describe("formatTemplateToken", () => {
       "{{@n1:Fetch User}}"
     );
   });
+
+  it("round-trips a literal record key inside a field path", () => {
+    const fieldPath = appendOutputPathKey("data.tags", "campaign.name");
+    const raw = formatTemplateToken({
+      nodeId: "n1",
+      nodeLabel: "Send Email",
+      fieldPath,
+    });
+
+    expect(fieldPath).toBe('data.tags["campaign.name"]');
+    expect(matchTemplateToken(raw)?.fieldPath).toBe(fieldPath);
+  });
 });
 
 describe("displayTemplateText", () => {
@@ -596,6 +609,38 @@ describe("resolveOutputPath", () => {
     const output = { grid: [[10, 20], [30]] };
 
     expect(resolveOutputPath(output, "grid[0][1]")).toBe(20);
+  });
+
+  it("reads a quoted bracket segment as one literal record key", () => {
+    const path = appendOutputPathKey("data.tags", 'campaign.name[0] "primary"');
+
+    expect(
+      resolveOutputPath(
+        {
+          data: {
+            tags: { 'campaign.name[0] "primary"': "spring" },
+          },
+        },
+        path
+      )
+    ).toBe("spring");
+  });
+
+  it("keeps braces escaped so a literal key fits inside a template token", () => {
+    const fieldPath = appendOutputPathKey("data.tags", "campaign{primary}");
+    const raw = formatTemplateToken({
+      nodeId: "n1",
+      nodeLabel: "Send Email",
+      fieldPath,
+    });
+
+    expect(findTemplateTokens(raw)).toHaveLength(1);
+    expect(
+      resolveOutputPath(
+        { data: { tags: { "campaign{primary}": "spring" } } },
+        fieldPath
+      )
+    ).toBe("spring");
   });
 
   it("indexes a top-level array output", () => {
