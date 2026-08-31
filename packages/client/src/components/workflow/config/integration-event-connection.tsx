@@ -5,6 +5,7 @@ import { IntegrationSelector } from "#src/components/ui/integration-selector";
 import { WebhookUrlField } from "#src/components/ui/webhook-url-field";
 import { EditConnectionOverlay } from "#src/components/overlays/edit-connection-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
+import { useConnectionRepair } from "#src/hooks/use-connection-repair";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import {
@@ -55,6 +56,7 @@ export function IntegrationEventConnectionEditor({
         <WebhookConnectionDetails
           connection={connection}
           connectionId={connectionId}
+          disabled={disabled}
           helpText={entry.webhookHelpText}
           secretKey={entry.webhookSecretKey}
           type={integrationType}
@@ -77,14 +79,17 @@ function WebhookConnectionDetails({
   helpText,
   secretKey,
   connection,
+  disabled,
 }: {
   connectionId: string;
   type: string;
   helpText?: string;
   secretKey?: string;
   connection: Integration | undefined;
+  disabled?: boolean;
 }) {
   const { push } = useOverlay();
+  const repairAgainstConnectionList = useConnectionRepair();
   const hasSecret =
     secretKey !== undefined &&
     Boolean(connection?.configuredKeys.includes(secretKey));
@@ -103,8 +108,13 @@ function WebhookConnectionDetails({
       {connection && secretKey ? (
         <Button
           onClick={() =>
-            push(EditConnectionOverlay, { integration: connection })
+            push(EditConnectionOverlay, {
+              integration: connection,
+              onSuccess: repairAgainstConnectionList,
+              onDelete: repairAgainstConnectionList,
+            })
           }
+          disabled={disabled}
           size="sm"
           type="button"
           variant="outline"

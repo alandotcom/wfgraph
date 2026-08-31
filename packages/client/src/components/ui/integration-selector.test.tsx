@@ -3,6 +3,9 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
+import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
+import { OverlayContainer } from "#src/components/overlays/overlay-container";
+import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { IntegrationSelector } from "#src/components/ui/integration-selector";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
@@ -43,6 +46,7 @@ function connection(id: string, name: string): Integration {
 function renderSelector(options: {
   value?: string;
   connections: Integration[];
+  disabled?: boolean;
 }) {
   const onChange = vi.fn<(integrationId: string) => void>();
 
@@ -62,11 +66,17 @@ function renderSelector(options: {
     <ExtensionCatalogProvider value={testCatalog}>
       <QueryClientProvider client={queryClient}>
         <JotaiProvider store={createStore()}>
-          <IntegrationSelector
-            integrationType="linear"
-            onChange={onChange}
-            value={options.value}
-          />
+          <IntegrationUiProvider value={{}}>
+            <OverlayProvider>
+              <IntegrationSelector
+                disabled={options.disabled}
+                integrationType="linear"
+                onChange={onChange}
+                value={options.value}
+              />
+              <OverlayContainer />
+            </OverlayProvider>
+          </IntegrationUiProvider>
         </JotaiProvider>
       </QueryClientProvider>
     </ExtensionCatalogProvider>
@@ -130,15 +140,37 @@ describe("IntegrationSelector", () => {
     ).toEqual(["First Linear", "Second Linear"]);
   });
 
-  it("sends a builder to Settings when the integration has no connection", () => {
+  it("offers a direct action to open Connections when the integration has no connection", () => {
     renderSelector({ value: undefined, connections: [] });
 
-    // Creating a connection belongs to Settings > Connections, so the empty
-    // state names that route rather than offering a second way to do it.
     expect(trigger().textContent).toContain("No connection");
     expect(
-      screen.getByText(/Add a Linear connection in Settings > Connections\./)
+      screen.getByText(/No Linear connections are configured\./)
     ).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Add/u })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Open Connections" })
+    ).toBeTruthy();
+  });
+
+  it("opens the existing Connections overlay from the empty state", () => {
+    renderSelector({ value: undefined, connections: [] });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Connections" }));
+
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Connections" })).toBeTruthy();
+  });
+
+  it("disables the action that opens Connections when the selector is disabled", () => {
+    renderSelector({ value: undefined, connections: [], disabled: true });
+
+    const openConnections = screen.getByRole("button", {
+      name: "Open Connections",
+    });
+    expect((openConnections as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(openConnections);
+
+    expect(screen.queryByRole("heading", { name: "Connections" })).toBeNull();
   });
 });

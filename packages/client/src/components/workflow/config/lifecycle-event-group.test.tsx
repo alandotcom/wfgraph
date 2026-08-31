@@ -75,6 +75,7 @@ const resendConnection: Integration = {
 function renderPanel(input: {
   rules?: LifecycleRules;
   connections?: Integration[];
+  disabled?: boolean;
 }) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -93,7 +94,7 @@ function renderPanel(input: {
           <OverlayProvider>
             <LifecyclePanel
               config={{ lifecycleRules: input.rules ?? startRules }}
-              disabled={false}
+              disabled={input.disabled ?? false}
               onUpdateConfig={() => undefined}
             />
           </OverlayProvider>
@@ -178,6 +179,33 @@ describe("LifecyclePanel Connection picker", () => {
     expect(
       view.queryByRole("button", { name: "Add signing secret" })
     ).toBeNull();
+  });
+
+  it("disables Add signing secret when the editor is disabled", () => {
+    const view = renderPanel({
+      connections: [resendConnection],
+      disabled: true,
+    });
+
+    expect(
+      view.getByRole("button", { name: "Add signing secret" })
+    ).toHaveProperty("disabled", true);
+  });
+
+  it("disables Edit connection when the editor is disabled", () => {
+    const view = renderPanel({
+      connections: [
+        {
+          ...resendConnection,
+          configuredKeys: ["RESEND_WEBHOOK_SECRET"],
+        },
+      ],
+      disabled: true,
+    });
+
+    expect(
+      view.getByRole("button", { name: "Edit connection" })
+    ).toHaveProperty("disabled", true);
   });
 
   it("shows the stored Connection", () => {

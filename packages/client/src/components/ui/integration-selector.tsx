@@ -2,6 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { partition } from "es-toolkit/array";
 import { useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
+import { IntegrationsOverlay } from "#src/components/overlays/integrations-overlay";
+import { useOverlay } from "#src/components/overlays/overlay-provider";
+import { Button } from "#src/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -36,6 +39,7 @@ export function IntegrationSelector({
   disabled,
 }: IntegrationSelectorProps) {
   const catalog = useExtensionCatalog();
+  const { open: openOverlay } = useOverlay();
   const { data: allIntegrations = [], isPending } = useQuery(
     integrationsQueryOptions()
   );
@@ -71,8 +75,17 @@ export function IntegrationSelector({
           <SelectContent />
         </Select>
         <p className="text-muted-foreground text-xs">
-          {`Add a ${integrationLabel} connection in Settings > Connections.`}
+          {`No ${integrationLabel} connections are configured.`}
         </p>
+        <Button
+          disabled={disabled}
+          onClick={() => openOverlay(IntegrationsOverlay)}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          Open Connections
+        </Button>
       </div>
     );
   }

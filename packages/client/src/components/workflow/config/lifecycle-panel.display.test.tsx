@@ -130,4 +130,13 @@ describe("LifecyclePanel display", () => {
       .map((node) => node.textContent ?? "");
     expect(described.at(0)).toContain("supersedes the ones already going");
   });
+
+  it("shows the selected concurrency and manual-run behavior beside their controls", () => {
+    const view = renderPanel();
+
+    expect(
+      view.getByText(/A new run for the same entity supersedes/)
+    ).toBeTruthy();
+    expect(view.getByText(/Allows Run draft, Run vN/)).toBeTruthy();
+  });
 });

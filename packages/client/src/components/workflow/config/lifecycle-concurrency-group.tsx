@@ -14,8 +14,6 @@ import {
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { ConfigGroup } from "./config-section";
 
-const ENTITY_HELP =
-  "The entity is the value at the Correlation Path. A run with no payload uses the workflow as its entity.";
 const MANUAL_RUNS_HELP =
   "Allows Run draft, Run vN, and the execute API. When off, only a Start Event can start a run.";
 
@@ -69,14 +67,21 @@ export function LifecycleConcurrencyGroup({
           </SelectContent>
         </Select>
 
-        <div className="flex items-center gap-2">
-          <Checkbox
-            checked={rules.allowManualStart === true}
-            disabled={disabled}
-            id={manualStartId}
-            onCheckedChange={onManualStartChange}
-          />
-          <Label htmlFor={manualStartId}>Allow manual runs</Label>
+        <p className="text-muted-foreground text-xs">
+          {concurrencyOption(rules.concurrency).description}
+        </p>
+
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              checked={rules.allowManualStart === true}
+              disabled={disabled}
+              id={manualStartId}
+              onCheckedChange={onManualStartChange}
+            />
+            <Label htmlFor={manualStartId}>Allow manual runs</Label>
+          </div>
+          <p className="text-muted-foreground text-xs">{MANUAL_RUNS_HELP}</p>
         </div>
         <ManualRunPayloadNotice rules={rules} />
       </div>
@@ -107,12 +112,14 @@ function ConcurrencyHelp({ concurrency }: { concurrency: Concurrency }) {
           {option.description}
         </p>
       ))}
-      <p>{ENTITY_HELP}</p>
-      <p>
-        <span className="font-medium text-foreground">Allow manual runs</span>{" "}
-        {MANUAL_RUNS_HELP}
-      </p>
     </>
+  );
+}
+
+function concurrencyOption(concurrency: Concurrency) {
+  return (
+    CONCURRENCY_OPTIONS.find((option) => option.value === concurrency) ??
+    CONCURRENCY_OPTIONS[0]
   );
 }
 
@@ -123,9 +130,8 @@ function ManualRunPayloadNotice({ rules }: { rules: LifecycleRules }) {
 
   return (
     <p className="text-muted-foreground text-xs">
-      A manual run's payload is described by nothing, so downstream nodes are
-      offered no fields to reference. Add a Start Event to give them its
-      payload.
+      Manual runs provide no payload fields to downstream nodes. Add a Start
+      Event to provide them.
     </p>
   );
 }

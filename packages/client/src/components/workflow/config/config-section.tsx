@@ -149,7 +149,7 @@ export function ConfigHeading({
         {/* A heading rather than a <label>: the block it names holds several
             controls, and a <label> with nothing to point at is one every
             `getByLabelText` in the suite has to step over. */}
-        <h3 className="truncate font-medium text-xs/relaxed">{label}</h3>
+        <h3 className="truncate font-medium text-sm">{label}</h3>
         {help ? <HelpPopover label={label}>{help}</HelpPopover> : null}
       </div>
       <div className="flex shrink-0 items-center gap-1">{trailing}</div>
@@ -158,15 +158,10 @@ export function ConfigHeading({
 }
 
 /**
- * One labelled block inside a section, sharing the section's single edit mode.
+ * One labelled block inside a configuration section.
  *
- * A node's configuration has one Edit button, on the section header, and it
- * switches every group under it at once. So a group carries a label and nothing
- * that changes mode. It keeps its own help, because the three explanations a
- * Lifecycle node holds answer three different questions.
- *
- * The label renders identically in both modes, which is what keeps it still
- * while the controls below it appear.
+ * A group carries a subordinate heading and its own help because each group
+ * answers a separate configuration question.
  */
 export function ConfigGroup({
   label,

@@ -376,7 +376,7 @@ describe("LifecyclePanel", () => {
       />
     );
 
-    expect(view.queryByText(/described by nothing/)).toBeNull();
+    expect(view.queryByText(/provide no payload fields/)).toBeNull();
 
     fireEvent.click(
       view.getByRole("button", { name: "Remove app/appointment.created" })
@@ -386,7 +386,7 @@ describe("LifecyclePanel", () => {
     // control, so it stays in the column rather than moving into the help
     // popover the Concurrency heading offers.
     await waitFor(() => {
-      expect(view.getByText(/described by nothing/)).toBeTruthy();
+      expect(view.getByText(/provide no payload fields/)).toBeTruthy();
     });
   });
 });

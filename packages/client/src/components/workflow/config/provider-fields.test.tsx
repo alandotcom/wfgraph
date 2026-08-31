@@ -65,19 +65,25 @@ function renderFields(options: {
     );
   }
 
-  const { unmount } = render(
+  const tree = (config: Record<string, unknown>) => (
     <ExtensionCatalogProvider value={emptyExtensionCatalog}>
       <QueryClientProvider client={queryClient}>
         <ActionConfigRenderer
-          config={options.config}
+          config={config}
           fields={options.fields}
           onUpdateConfig={onUpdateConfig}
         />
       </QueryClientProvider>
     </ExtensionCatalogProvider>
   );
+  const view = render(tree(options.config));
 
-  return { onUpdateConfig, unmount };
+  return {
+    ...view,
+    onUpdateConfig,
+    rerenderConfig: (config: Record<string, unknown>) =>
+      view.rerender(tree(config)),
+  };
 }
 
 describe("a provider-backed picker", () => {
@@ -88,6 +94,9 @@ describe("a provider-backed picker", () => {
     // dropdown that could never be filled.
     expect(screen.getByLabelText("Template")).toBeTruthy();
     expect(screen.queryByRole("combobox")).toBeNull();
+    expect(
+      screen.getByLabelText("Template").parentElement?.className
+    ).toContain("text-base");
   });
 
   it("lists what the connection answered", () => {
@@ -199,12 +208,89 @@ describe("a provider-backed picker", () => {
     // Deriving the mode from the value alone cannot represent "about to type a
     // reference", so this direction did nothing until it became state.
     expect(screen.queryByRole("combobox")).toBeNull();
-    expect(onUpdateConfig).toHaveBeenCalledWith({ emailTemplateId: "" });
+    expect(onUpdateConfig).not.toHaveBeenCalled();
 
     fireEvent.click(
       screen.getByRole("button", { name: /Choose from the connection/u })
     );
     expect(screen.getByRole("combobox")).toBeTruthy();
+    expect(onUpdateConfig).not.toHaveBeenCalled();
+  });
+
+  it("switches a stored template back to the connection picker without clearing it", () => {
+    const stored = "{{@n1:Lead.templateId}}";
+    const { onUpdateConfig } = renderFields({
+      config: { integrationId: "int_1", emailTemplateId: stored },
+      fields: [templateField],
+      seed: [
+        {
+          provider: "templates",
+          answer: {
+            status: "options",
+            options: [{ value: "tpl_1", label: "Welcome" }],
+          },
+        },
+      ],
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Choose from the connection for Template",
+      })
+    );
+
+    expect(screen.getByRole("combobox").textContent).toContain(stored);
+    expect(onUpdateConfig).not.toHaveBeenCalled();
+  });
+
+  it("follows an externally restored value after a mode switch", () => {
+    const stored = "{{@n1:Lead.templateId}}";
+    const { rerenderConfig } = renderFields({
+      config: { integrationId: "int_1", emailTemplateId: stored },
+      fields: [templateField],
+      seed: [
+        {
+          provider: "templates",
+          answer: {
+            status: "options",
+            options: [{ value: "tpl_1", label: "Welcome" }],
+          },
+        },
+      ],
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Choose from the connection for Template",
+      })
+    );
+    rerenderConfig({ integrationId: "int_1", emailTemplateId: "tpl_1" });
+    expect(screen.getByRole("combobox")).toBeTruthy();
+    rerenderConfig({ integrationId: "int_1", emailTemplateId: stored });
+
+    expect(screen.getByRole("textbox", { name: "Template" })).toBeTruthy();
+  });
+
+  it("gives the mode toggle an accessible name that includes its field", () => {
+    renderFields({
+      config: { integrationId: "int_1" },
+      fields: [templateField],
+      seed: [
+        {
+          provider: "templates",
+          answer: {
+            status: "options",
+            options: [{ value: "tpl_1", label: "Welcome" }],
+          },
+        },
+      ],
+    });
+
+    expect(
+      screen.getByRole("button", {
+        name: "Use an upstream value for Template",
+      })
+    ).toBeTruthy();
   });
 
   it("shows the integration's own sentence when access is the problem", () => {

@@ -1,6 +1,7 @@
 import { Plus, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
 import { Input } from "#src/components/ui/input";
 import {
@@ -363,6 +364,9 @@ export function ConditionBuilderRow({
    */
   const clearModel = useCallback(() => {
     onChange({ model: "", expression: "" });
+    toast("Condition cleared", {
+      description: "Use Actions > Undo to restore it.",
+    });
   }, [onChange]);
 
   const addConditionModel = useCallback(() => {
@@ -439,6 +443,9 @@ export function ConditionBuilderRow({
     }
 
     persistModel({ ...parsedModel, groups: kept });
+    toast("Condition group removed", {
+      description: "Use Actions > Undo to restore it.",
+    });
   };
 
   /**
@@ -465,6 +472,9 @@ export function ConditionBuilderRow({
           (condition) => condition.id !== conditionId
         ),
       }));
+      toast("Condition removed", {
+        description: "Use Actions > Undo to restore it.",
+      });
       return;
     }
 

@@ -47,8 +47,18 @@ export function ProviderSelectField({
 }: ProviderFieldProps) {
   const stored = typeof value === "string" ? value : "";
   const state = useConfigOptions({ source: field.optionsSource, config });
-  const [writingTemplate, setWritingTemplate] = useState(false);
-  const asTemplate = writingTemplate || findTemplateTokens(stored).length > 0;
+  const inferredMode =
+    findTemplateTokens(stored).length > 0 ? "template" : "picker";
+  const [modeState, setModeState] = useState({
+    stored,
+    mode: inferredMode,
+  });
+  if (modeState.stored !== stored) {
+    setModeState({ stored, mode: inferredMode });
+  }
+  const mode = modeState.stored === stored ? modeState.mode : inferredMode;
+  const asTemplate = mode === "template";
+  const fieldName = field.label || field.key;
 
   const templateInput = (
     <TemplateBadgeInput
@@ -66,12 +76,17 @@ export function ProviderSelectField({
     <Button
       className="size-7 shrink-0 p-0"
       disabled={disabled}
-      onClick={() => {
-        // Switching clears the value, because neither control can hold what the
-        // other one wrote: a picked id is not a reference and vice versa.
-        setWritingTemplate(!asTemplate);
-        onChange("");
-      }}
+      onClick={() =>
+        setModeState({
+          stored,
+          mode: asTemplate ? "picker" : "template",
+        })
+      }
+      aria-label={
+        asTemplate
+          ? `Choose from the connection for ${fieldName}`
+          : `Use an upstream value for ${fieldName}`
+      }
       size="sm"
       title={
         asTemplate ? "Choose from the connection" : "Use an upstream value"

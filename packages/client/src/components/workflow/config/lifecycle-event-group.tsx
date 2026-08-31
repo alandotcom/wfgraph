@@ -1,6 +1,7 @@
 import { compact, uniq } from "es-toolkit";
 import { X } from "lucide-react";
 import { type ReactNode, useId } from "react";
+import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
 import { Label } from "#src/components/ui/label";
 import {
@@ -161,7 +162,12 @@ function ChosenEvent({
           aria-label={`Remove ${eventName}`}
           className="shrink-0"
           disabled={disabled}
-          onClick={onRemove}
+          onClick={() => {
+            onRemove();
+            toast("Event removed", {
+              description: "Use Actions > Undo to restore it.",
+            });
+          }}
           size="icon-sm"
           type="button"
           variant="ghost"

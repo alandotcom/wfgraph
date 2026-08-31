@@ -70,7 +70,7 @@ export function TemplateBadgeInput({
           // and the same border-plus-ring treatment on focus. Anything that
           // grows this box beyond a plain Input makes a template field read as
           // a different kind of control from the text field beside it.
-          "flex min-h-7 w-full rounded-md border border-input bg-input/20 px-2 py-0.5 text-xs/relaxed transition-colors focus-within:border-ring focus-within:outline-none focus-within:ring-2 focus-within:ring-ring/30 dark:bg-input/30",
+          "flex min-h-7 w-full rounded-md border border-input bg-input/20 px-2 py-0.5 text-base transition-colors focus-within:border-ring focus-within:outline-none focus-within:ring-2 focus-within:ring-ring/30 md:text-xs/relaxed dark:bg-input/30",
           invalid &&
             "border-destructive focus-within:border-destructive focus-within:ring-destructive/20",
           disabled && "cursor-not-allowed opacity-50",
