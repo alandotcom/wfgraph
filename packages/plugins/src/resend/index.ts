@@ -321,16 +321,6 @@ function emailContent(
   });
 }
 
-/**
- * Remove only optional absent fields. The request contract keeps every required
- * field non-nullish, so `omitBy` cannot erase one while satisfying this type.
- */
-function omitAbsentEmailFields(
-  payload: ResendEmailPayload
-): ResendEmailPayload {
-  return omitBy(payload, isNil) as ResendEmailPayload;
-}
-
 /** The body Resend is sent. */
 const buildEmailPayload = Effect.fn(function* (
   input: typeof sendEmailInput.Type,
@@ -340,20 +330,25 @@ const buildEmailPayload = Effect.fn(function* (
 ) {
   const content = yield* emailContent(input);
 
-  // Resend's own field names, which are snake_case on the wire. The SDK-derived
-  // type checks them before one pass drops absent values.
-  const payload = omitAbsentEmailFields({
+  // Required fields and content stay visible to inference. Only optional
+  // metadata passes through omitBy before the SDK-derived wire check.
+  const payload = {
     from: senderEmail,
     to: recipients.to,
     subject: input.emailSubject,
-    cc: recipients.cc,
-    bcc: recipients.bcc,
-    reply_to: input.emailReplyTo,
-    scheduled_at: input.emailScheduledAt,
-    topic_id: input.emailTopicId,
-    tags,
     ...content,
-  });
+    ...omitBy(
+      {
+        cc: recipients.cc,
+        bcc: recipients.bcc,
+        reply_to: input.emailReplyTo,
+        scheduled_at: input.emailScheduledAt,
+        topic_id: input.emailTopicId,
+        tags,
+      },
+      isNil
+    ),
+  } satisfies ResendEmailPayload;
 
   return payload;
 });
