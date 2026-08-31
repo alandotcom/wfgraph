@@ -324,6 +324,9 @@ function readIntegration(
     ...(integration.webhook?.helpText
       ? { webhookHelpText: integration.webhook.helpText }
       : {}),
+    ...(integration.webhook?.secret
+      ? { webhookSecretKey: integration.webhook.secret }
+      : {}),
     ...(integration.oauth ? { oauth: { label: integration.oauth.label } } : {}),
   };
 }

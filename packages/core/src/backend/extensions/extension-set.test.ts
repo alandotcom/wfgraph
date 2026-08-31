@@ -610,6 +610,7 @@ describe("assembleExtensions and an integration definition", () => {
     const webhook = {
       source: "resend/webhook",
       helpText: "Paste this URL into Resend.",
+      secret: "RESEND_WEBHOOK_SECRET",
       verify: () => Effect.void,
       receive: () => undefined,
     };
@@ -619,7 +620,12 @@ describe("assembleExtensions and an integration definition", () => {
           type: "resend",
           label: "Resend",
           description: "Sends email",
-          credentials: {},
+          credentials: {
+            RESEND_WEBHOOK_SECRET: {
+              label: "Webhook Signing Secret",
+              type: "password",
+            },
+          },
           actions: {},
           events: [delivered],
           webhook,
@@ -638,6 +644,9 @@ describe("assembleExtensions and an integration definition", () => {
     expect(findIntegration(set.catalog, "resend")?.hasWebhook).toBe(true);
     expect(findIntegration(set.catalog, "resend")?.webhookHelpText).toBe(
       "Paste this URL into Resend."
+    );
+    expect(findIntegration(set.catalog, "resend")?.webhookSecretKey).toBe(
+      "RESEND_WEBHOOK_SECRET"
     );
     expect(set.webhookFor("resend")).toBe(webhook);
     expect(set.eventByName("resend/email.delivered")).toBe(delivered);

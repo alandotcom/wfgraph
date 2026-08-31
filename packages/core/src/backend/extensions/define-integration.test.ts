@@ -224,6 +224,35 @@ describe("checkIntegration Events", () => {
       )
     ).toThrow(/not this webhook's source/u);
   });
+
+  it("refuses a webhook secret that is not a credential", () => {
+    expect(() =>
+      checkIntegration(
+        defineIntegration({
+          type: "x",
+          label: "X",
+          description: "Webhook secret is not a credential",
+          credentials: {},
+          actions: {},
+          events: [
+            defineEvent({
+              name: "x/happened",
+              schema: Schema.Struct({
+                id: Schema.String.annotate({ description: "Id" }),
+              }),
+              source: { event: "x/webhook" },
+            }),
+          ],
+          webhook: {
+            source: "x/webhook",
+            secret: "MISSING_SECRET",
+            verify: () => Effect.void,
+            receive: () => undefined,
+          },
+        })
+      )
+    ).toThrow(/webhook secret "MISSING_SECRET" is not a credential/u);
+  });
 });
 
 describe("CredentialsOf", () => {

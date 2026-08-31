@@ -42,6 +42,9 @@ The host passes it in `extensions.integrations`. Build against
   external write; the editor keeps those out of a Group.
 - `events` are `defineEvent` values. Assembly stamps `EventMetadata.integration`.
   Optional `webhook`: `verify` on the raw body, `receive` on parsed JSON.
+  `secret` names the Connection credential that verifies a POST. `helpText`
+  is the paste-URL sentence; the editor asks for the secret only when that
+  Connection does not yet hold it.
   `SignatureRejected` is 401. Ignored payload is `undefined` (200, no send).
   Export `defineEvent` and webhook types from `@wfgraph/core/plugin`.
 

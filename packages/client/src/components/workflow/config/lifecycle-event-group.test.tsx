@@ -49,8 +49,8 @@ const resendCatalog: ExtensionCatalog = {
       credentialFields: {},
       hasTest: true,
       hasWebhook: true,
-      webhookHelpText:
-        "Create a webhook in Resend with all event types selected.",
+      webhookHelpText: "Paste this URL into Resend.",
+      webhookSecretKey: "RESEND_WEBHOOK_SECRET",
     },
   ],
 };
@@ -167,6 +167,23 @@ describe("LifecyclePanel Connection picker", () => {
     expect(
       view.getByRole("button", { name: "Add signing secret" })
     ).toBeTruthy();
+  });
+
+  it("does not ask for a signing secret the Connection already holds", () => {
+    const view = renderPanel({
+      editing: false,
+      connections: [
+        {
+          ...resendConnection,
+          configuredKeys: ["RESEND_WEBHOOK_SECRET"],
+        },
+      ],
+    });
+
+    expect(view.getByRole("button", { name: "Edit connection" })).toBeTruthy();
+    expect(
+      view.queryByRole("button", { name: "Add signing secret" })
+    ).toBeNull();
   });
 
   it("shows the stored Connection in view mode", () => {

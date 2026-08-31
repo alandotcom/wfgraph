@@ -104,6 +104,11 @@ export type IntegrationMetadata = {
    * supply one; the field then uses a generic sentence.
    */
   readonly webhookHelpText?: string;
+  /**
+   * The Connection credential that verifies a webhook POST. Absent when the
+   * integration declared no webhook, or a webhook with no Connection secret.
+   */
+  readonly webhookSecretKey?: string;
   /** Sanitized OAuth capability metadata. Provider behavior stays server-side. */
   readonly oauth?: { readonly label: string };
 };

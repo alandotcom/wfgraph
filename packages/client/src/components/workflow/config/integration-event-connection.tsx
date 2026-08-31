@@ -56,6 +56,7 @@ export function IntegrationEventConnectionEditor({
           connection={connection}
           connectionId={connectionId}
           helpText={entry.webhookHelpText}
+          secretKey={entry.webhookSecretKey}
           type={integrationType}
         />
       ) : null}
@@ -92,6 +93,7 @@ export function IntegrationEventConnectionSummary({
           connection={connection}
           connectionId={connectionId}
           helpText={entry.webhookHelpText}
+          secretKey={entry.webhookSecretKey}
           type={integrationType}
         />
       ) : null}
@@ -110,23 +112,32 @@ function WebhookConnectionDetails({
   connectionId,
   type,
   helpText,
+  secretKey,
   connection,
 }: {
   connectionId: string;
   type: string;
   helpText?: string;
+  secretKey?: string;
   connection: Integration | undefined;
 }) {
   const { push } = useOverlay();
+  const hasSecret =
+    secretKey !== undefined &&
+    Boolean(connection?.configuredKeys.includes(secretKey));
+  const urlHelpText =
+    !hasSecret && secretKey && helpText
+      ? `${helpText} Then add the signing secret from that page.`
+      : helpText;
 
   return (
     <>
       <WebhookUrlField
         connectionId={connectionId}
-        helpText={helpText}
+        helpText={urlHelpText}
         type={type}
       />
-      {connection ? (
+      {connection && secretKey ? (
         <Button
           onClick={() =>
             push(EditConnectionOverlay, { integration: connection })
@@ -135,7 +146,7 @@ function WebhookConnectionDetails({
           type="button"
           variant="outline"
         >
-          Add signing secret
+          {hasSecret ? "Edit connection" : "Add signing secret"}
         </Button>
       ) : null}
     </>

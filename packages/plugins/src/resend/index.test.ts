@@ -24,6 +24,7 @@ describe("the resend integration", () => {
       "resend/email.delivered"
     );
     expect(integration.webhook).toBeDefined();
+    expect(integration.webhook?.secret).toBe("RESEND_WEBHOOK_SECRET");
     expect(Object.keys(integration.actions)).toEqual(["send-email"]);
   });
 

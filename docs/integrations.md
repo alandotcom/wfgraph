@@ -126,7 +126,8 @@ persist `event.user`) and stripped before decode, so the payload the graph sees
 is the vendor envelope. Matching is the stored Connection on Lifecycle Rules and
 Wait Subscriptions, not a CEL field.
 `helpText` is shown under the copyable URL on the Lifecycle Node, Wait node, and
-Connection dialog.
+Connection dialog. `secret` names the Connection credential `verify` reads; the
+editor uses it to tell a filled secret from a send-only Connection.
 
 **A handler takes one bag**, holding `input` (the decoded config), the credential reads,
 `step`, and the run's identity: `runMode`, `executionId`, `nodeId`, `nodeName`,

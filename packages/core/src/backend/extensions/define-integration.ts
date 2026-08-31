@@ -382,8 +382,8 @@ export function checkIntegration(
  *
  * Cross-integration uniqueness stays in `assembleExtensions`. What belongs here
  * is everything true of this definition on its own: a webhook with no Events, a
- * source name no Event listens on, two Events that cannot be told apart, two
- * names that slug to one listener.
+ * source name no Event listens on, a webhook secret that is not a credential,
+ * two Events that cannot be told apart, two names that slug to one listener.
  */
 function checkIntegrationEvents(integration: IntegrationDefinition): void {
   const events = integration.events ?? [];
@@ -398,6 +398,15 @@ function checkIntegrationEvents(integration: IntegrationDefinition): void {
   if (webhook && webhook.source.trim().length === 0) {
     throw new Error(
       `Integration "${integration.type}" declares a webhook without a source name.`
+    );
+  }
+
+  if (
+    webhook?.secret !== undefined &&
+    !(webhook.secret in integration.credentials)
+  ) {
+    throw new Error(
+      `Integration "${integration.type}" webhook secret "${webhook.secret}" is not a credential this integration declares.`
     );
   }
 

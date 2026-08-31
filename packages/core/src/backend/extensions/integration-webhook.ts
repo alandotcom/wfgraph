@@ -59,9 +59,16 @@ export type IntegrationWebhook<
   readonly source: string;
   /**
    * Shown under the copyable webhook URL. Absent, the field uses a generic
-   * sentence.
+   * sentence. The editor adds the signing-secret instruction only when this
+   * Connection does not yet hold `secret`.
    */
   readonly helpText?: string;
+  /**
+   * The Connection credential `verify` reads. The editor uses this to tell a
+   * filled secret from a send-only Connection, instead of guessing from the
+   * credential name.
+   */
+  readonly secret?: Extract<keyof TCredentials, string>;
   readonly verify: (input: {
     readonly rawBody: string;
     readonly headers: Headers;
