@@ -82,7 +82,24 @@ beforeEach(() => {
     refusedStarts: [],
   });
   queryClient.setQueryData(executionLogsKey("exec_a"), {
-    execution: { id: "exec_a" },
+    execution: {
+      id: "exec_a",
+      workflowId: "a",
+      workflowVersionId: "ver_a",
+      versionKind: "published",
+      versionNumber: 1,
+      status: "waiting",
+      startSource: "manual",
+      runMode: "test",
+      startEventName: null,
+      entityValue: null,
+      input: {},
+      output: {},
+      error: null,
+      startedAt: "2026-03-01T10:00:00.000Z",
+      completedAt: null,
+      duration: null,
+    },
     logs: [],
     waits: [],
   });
