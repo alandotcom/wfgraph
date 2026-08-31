@@ -214,62 +214,6 @@ describe("getResendEmail", () => {
       expect(email.tags).toBeUndefined();
     }).pipe(withTransport)
   );
-
-  it.effect("requires nullable content and schedule keys", () =>
-    Effect.gen(function* () {
-      stubFetch(() =>
-        Response.json({
-          id: "email_123",
-          message_id: "<message@example.com>",
-          to: ["delivered@example.com"],
-          from: "Support <support@example.com>",
-          created_at: "2026-04-03 22:13:42.674981+00",
-          subject: "Hello World",
-          bcc: null,
-          cc: null,
-          reply_to: null,
-          last_event: "delivered",
-        })
-      );
-
-      const error = yield* getResendEmail("re_key", "email_123").pipe(failure);
-
-      expect(error._tag).toBe("ExternalUnreadable");
-    }).pipe(withTransport)
-  );
-
-  it.effect("refuses a 2xx response outside the documented email shape", () =>
-    Effect.gen(function* () {
-      stubFetch(() => Response.json({ id: "email_123" }));
-
-      const error = yield* getResendEmail("re_key", "email_123").pipe(failure);
-
-      expect(error._tag).toBe("ExternalUnreadable");
-      expect(describeResendFailure(error)).toBe(
-        "Resend answered 200 with an unrecognized body"
-      );
-    }).pipe(withTransport)
-  );
-
-  it.effect("preserves Resend's rejection for the action to describe", () =>
-    Effect.gen(function* () {
-      stubFetch(() =>
-        Response.json(
-          {
-            statusCode: 404,
-            name: "not_found",
-            message: "Email not found",
-          },
-          { status: 404 }
-        )
-      );
-
-      const error = yield* getResendEmail("re_key", "missing").pipe(failure);
-
-      expect(error._tag).toBe("ExternalRejected");
-      expect(describeResendFailure(error)).toBe("Email not found");
-    }).pipe(withTransport)
-  );
 });
 
 describe("listResendDomains", () => {

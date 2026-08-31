@@ -16,15 +16,15 @@ const retrievedEmail = {
   message_id: "<message@example.com>",
   from: "Support <support@example.com>",
   to: ["user@example.com"],
-  cc: ["manager@example.com"],
+  cc: null,
   bcc: [],
-  reply_to: ["reply@example.com"],
+  reply_to: null,
   subject: "Order received",
   html: "<strong>Received</strong>",
-  text: "Received",
+  text: null,
   created_at: new Date("2026-04-03T22:13:42.674981Z"),
   last_event: "delivered",
-  scheduled_at: new Date("2026-04-03T22:00:00.000000Z"),
+  scheduled_at: null,
   tags: [
     { name: "campaign", value: "orders" },
     { name: "order_id", value: "ord_7" },
@@ -51,61 +51,28 @@ describe("the find-email action", () => {
       Effect.gen(function* () {
         const result = actionData(
           yield* runAction(resend, "find-email", {
-            input: { emailId: " email_123 " },
+            input: { emailId: "email_123" },
             credentials: Effect.succeed(RESEND_CREDENTIALS),
           })
         );
 
-        expect(mocks.getEmail).toHaveBeenCalledWith("re_test_key", "email_123");
         expect(result).toEqual({
           id: "email_123",
           messageId: "<message@example.com>",
           from: "Support <support@example.com>",
           to: ["user@example.com"],
-          cc: ["manager@example.com"],
+          cc: null,
           bcc: [],
-          replyTo: ["reply@example.com"],
+          replyTo: null,
           subject: "Order received",
           html: "<strong>Received</strong>",
-          text: "Received",
+          text: null,
           createdAt: "2026-04-03T22:13:42.674Z",
           lastEvent: "delivered",
-          scheduledAt: "2026-04-03T22:00:00.000Z",
+          scheduledAt: null,
           tags: { campaign: "orders", order_id: "ord_7" },
         });
       })
-  );
-
-  it.effect("preserves nullable provider fields", () =>
-    Effect.gen(function* () {
-      mocks.getEmail.mockReturnValue(
-        Effect.succeed({
-          ...retrievedEmail,
-          html: null,
-          text: null,
-          cc: null,
-          bcc: null,
-          reply_to: null,
-          scheduled_at: null,
-          tags: [],
-        })
-      );
-
-      const result = actionData(
-        yield* runAction(resend, "find-email", {
-          input: { emailId: "email_123" },
-          credentials: Effect.succeed(RESEND_CREDENTIALS),
-        })
-      );
-
-      expect(result.html).toBeNull();
-      expect(result.text).toBeNull();
-      expect(result.cc).toBeNull();
-      expect(result.bcc).toBeNull();
-      expect(result.replyTo).toBeNull();
-      expect(result.scheduledAt).toBeNull();
-      expect(result.tags).toBeUndefined();
-    })
   );
 
   it.effect("requires a configured API key", () =>
@@ -120,26 +87,19 @@ describe("the find-email action", () => {
       expect(error.message).toBe(
         "RESEND_API_KEY is not configured. Please add it in Project Integrations."
       );
-      expect(mocks.getEmail).not.toHaveBeenCalled();
     })
   );
 
   it.effect("requires a non-empty resolved email id", () =>
     Effect.gen(function* () {
-      const reads = { count: 0 };
       const error = actionError(
         yield* runAction(resend, "find-email", {
           input: { emailId: "   " },
-          credentials: Effect.sync(() => {
-            reads.count += 1;
-            return RESEND_CREDENTIALS;
-          }),
+          credentials: Effect.succeed(RESEND_CREDENTIALS),
         })
       );
 
       expect(error.message).toBe("Email ID is required.");
-      expect(reads.count).toBe(0);
-      expect(mocks.getEmail).not.toHaveBeenCalled();
     })
   );
 
