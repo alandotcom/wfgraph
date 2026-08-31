@@ -18,6 +18,7 @@ import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
 import { cn } from "@wfgraph/shared/utils";
 import type { WorkflowSchemaItemType } from "@wfgraph/shared/graph/schema-codec";
 import {
+  appendOutputPathKey,
   formatTemplateToken,
   type ReferenceField,
 } from "@wfgraph/shared/graph/node-references";
@@ -97,6 +98,8 @@ type TemplateOption = {
   unusable?: string;
   /** The Events reaching this node that leave the path out. */
   absentOn?: string[];
+  /** Internal record metadata used to complete a key typed under an open record. */
+  recordOnly?: boolean;
   /**
    * Set on an open record, such as Resend's email tags: the type a key under
    * `field` carries. `keyUnderOpenRecordOption` is what turns it into a row.
@@ -109,47 +112,47 @@ type TemplateOption = {
  *
  * A record's keys are invented by the payload, so the menu cannot list them all.
  * What it can do is recognise one the moment it is written: typing
- * `data.tags.order_id` finds the `data.tags` row above it and offers the full
- * path, which `resolveOutputPath` walks at run time the same way. The query is
- * matched against a row's own path, so it is the path alone rather than the node
+ * `data.tags.order_id` finds every `data.tags` record and offers the full path,
+ * which `resolveOutputPath` walks at run time the same way. The query is matched
+ * against each record's own path, so it is the path alone rather than the node
  * name and the path together.
  */
-function keyUnderOpenRecordOption(
+function keyUnderOpenRecordOptions(
   options: readonly TemplateOption[],
   query: string,
   targetType: ValueTargetType | undefined
-): TemplateOption | null {
-  const separator = query.lastIndexOf(".");
-  if (separator <= 0) {
-    return null;
-  }
+): TemplateOption[] {
+  return options.flatMap((record) => {
+    if (
+      !record.valueType ||
+      !record.field ||
+      !query.startsWith(`${record.field}.`) ||
+      !offeredFor({ type: record.valueType }, targetType)
+    ) {
+      return [];
+    }
 
-  const key = query.slice(separator + 1);
-  const recordPath = query.slice(0, separator);
-  const record = options.find(
-    (option) => option.valueType && option.field === recordPath
-  );
+    const key = query.slice(record.field.length + 1);
+    if (!key) {
+      return [];
+    }
 
-  if (
-    !(key && record?.valueType) ||
-    !offeredFor({ type: record.valueType }, targetType)
-  ) {
-    return null;
-  }
-
-  const fieldPath = `${recordPath}.${key}`;
-  return {
-    type: "field",
-    rank: fieldRank({ type: record.valueType }, targetType, undefined),
-    nodeId: record.nodeId,
-    nodeName: record.nodeName,
-    field: fieldPath,
-    template: formatTemplateToken({
-      nodeId: record.nodeId,
-      nodeLabel: record.nodeName,
-      fieldPath,
-    }),
-  };
+    const fieldPath = appendOutputPathKey(record.field, key);
+    return [
+      {
+        type: "field",
+        rank: fieldRank({ type: record.valueType }, targetType, undefined),
+        nodeId: record.nodeId,
+        nodeName: record.nodeName,
+        field: fieldPath,
+        template: formatTemplateToken({
+          nodeId: record.nodeId,
+          nodeLabel: record.nodeName,
+          fieldPath,
+        }),
+      },
+    ];
+  });
 }
 
 export function TemplateAutocomplete({
@@ -247,6 +250,24 @@ export function TemplateAutocomplete({
           continue;
         }
 
+        // The record itself is not a selectable value for a typed target, but it
+        // remains in the option set as metadata so a key typed under this record
+        // can produce one option for every upstream node that owns the record.
+        nextOptions.push({
+          type: "field",
+          rank: fieldRank({ type: valueType }, fieldType, undefined),
+          nodeId: node.id,
+          nodeName,
+          field: field.path,
+          template: formatTemplateToken({
+            nodeId: node.id,
+            nodeLabel: nodeName,
+            fieldPath: field.path,
+          }),
+          recordOnly: true,
+          valueType,
+        });
+
         // The keys this graph fills the record with, listed beside it. A Send
         // Email node tagged `name` is why `tags.name` is a row rather than
         // something a builder has to know to type.
@@ -255,7 +276,7 @@ export function TemplateAutocomplete({
           field.integration,
           field.path
         )) {
-          const fieldPath = `${field.path}.${key}`;
+          const fieldPath = appendOutputPathKey(field.path, key);
           nextOptions.push({
             type: "field",
             rank: fieldRank({ type: valueType }, fieldType, undefined),
@@ -278,12 +299,13 @@ export function TemplateAutocomplete({
   }, [upstreamNodes, fieldType, currentNodeId, nodes, edges, catalog]);
 
   const filteredOptions = useMemo(() => {
+    const visibleOptions = options.filter((option) => !option.recordOnly);
     const trimmedFilter = filter.trim().toLowerCase();
     if (!trimmedFilter) {
-      return options;
+      return visibleOptions;
     }
 
-    const matched = options.filter(
+    const matched = visibleOptions.filter(
       (opt) =>
         opt.nodeName.toLowerCase().includes(trimmedFilter) ||
         (opt.field && opt.field.toLowerCase().includes(trimmedFilter))
@@ -293,10 +315,18 @@ export function TemplateAutocomplete({
     // tag named `orderId` is a different key from `orderid`. A key the graph
     // already named is in `matched`, and offering it twice would render two rows
     // under one React key.
-    const typedKey = keyUnderOpenRecordOption(options, filter.trim(), fieldType);
-    return typedKey && !matched.some((row) => row.field === typedKey.field)
-      ? [typedKey, ...matched]
-      : matched;
+    const typedKeys = keyUnderOpenRecordOptions(
+      options,
+      filter.trim(),
+      fieldType
+    ).filter(
+      (typedKey) =>
+        !matched.some(
+          (row) =>
+            row.nodeId === typedKey.nodeId && row.field === typedKey.field
+        )
+    );
+    return [...typedKeys, ...matched];
   }, [filter, options, fieldType]);
 
   const selectedOptionIndex =
