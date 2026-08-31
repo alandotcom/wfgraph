@@ -788,6 +788,93 @@ describe("workflowSchemaFieldsToJsonSchemaDocument", () => {
     });
   });
 
+  it("serializes open object value types through additionalProperties", () => {
+    const document = workflowSchemaFieldsToJsonSchemaDocument([
+      {
+        name: "labels",
+        type: "object",
+        valueType: "string",
+        fields: [
+          { name: "source", type: "string" },
+          { name: "note", type: "string", nullable: true },
+        ],
+      },
+      {
+        name: "countsById",
+        type: "object",
+        valueType: "number",
+      },
+      {
+        name: "flagsById",
+        type: "object",
+        valueType: "boolean",
+      },
+      {
+        name: "seenAtById",
+        type: "object",
+        valueType: "timestamp",
+      },
+      {
+        name: "ttlById",
+        type: "object",
+        valueType: "duration",
+      },
+      {
+        name: "metadataById",
+        type: "object",
+        valueType: "object",
+      },
+    ]);
+
+    expect(document).toEqual({
+      type: "object",
+      properties: {
+        labels: {
+          type: "object",
+          properties: {
+            source: { type: "string" },
+            note: { type: "string" },
+          },
+          required: ["source"],
+          additionalProperties: { type: "string" },
+        },
+        countsById: {
+          type: "object",
+          properties: {},
+          additionalProperties: { type: "number" },
+        },
+        flagsById: {
+          type: "object",
+          properties: {},
+          additionalProperties: { type: "boolean" },
+        },
+        seenAtById: {
+          type: "object",
+          properties: {},
+          additionalProperties: { type: "string", format: "date-time" },
+        },
+        ttlById: {
+          type: "object",
+          properties: {},
+          additionalProperties: { type: "string", format: "duration" },
+        },
+        metadataById: {
+          type: "object",
+          properties: {},
+          additionalProperties: { type: "object" },
+        },
+      },
+      required: [
+        "labels",
+        "countsById",
+        "flagsById",
+        "seenAtById",
+        "ttlById",
+        "metadataById",
+      ],
+    });
+  });
+
   // A cyclic in-memory document overflows the stack inside readJsonSchemaNode
   // before any later walk can depth-cap it. None of the schema libraries emit
   // one, but a hand-built document must return a bounded read rather than throw.

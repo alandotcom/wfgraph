@@ -461,6 +461,16 @@ function stringFormatFor(
   return type === "duration" ? "duration" : undefined;
 }
 
+function workflowSchemaItemTypeToJsonSchemaNode(
+  type: WorkflowSchemaItemType
+): Record<string, unknown> {
+  const format = stringFormatFor(type);
+  return {
+    type: format ? "string" : type,
+    ...(format ? { format } : {}),
+  };
+}
+
 function workflowSchemaFieldsFromRecords(
   records: WorkflowFieldRecords | undefined
 ): WorkflowSchemaField[] {
@@ -950,6 +960,13 @@ function workflowSchemaFieldToJsonSchemaNode(
         field.fields ?? []
       ),
       ...requiredNamesOf(field.fields ?? []),
+      ...(field.valueType
+        ? {
+            additionalProperties: workflowSchemaItemTypeToJsonSchemaNode(
+              field.valueType
+            ),
+          }
+        : {}),
     };
   }
 
