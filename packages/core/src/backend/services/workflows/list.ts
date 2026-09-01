@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo/index";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { toWorkflowSummaryPayload } from "#src/backend/services/workflows/mappers";
 
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */

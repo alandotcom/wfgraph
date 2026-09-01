@@ -16,7 +16,7 @@ import {
   getWorkflowVersionUsage,
   restoreWorkflowVersion,
 } from "#src/backend/services/workflows/versions";
-import type { WorkflowRepo } from "#src/backend/services/workflows/repo/index";
+import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { catalogFingerprint } from "#src/backend/services/workflows/version-digest";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";

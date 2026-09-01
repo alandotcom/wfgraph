@@ -41,7 +41,7 @@ import {
 import type { WfGraphRuntime } from "#src/backend/runtime";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { ExecutionSummary } from "#src/backend/services/executions/repo/contracts";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo/index";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 
 /** The engine entry the run function calls; tests inject a stand-in. */
 type ExecuteWorkflow = typeof defaultExecuteWorkflow;

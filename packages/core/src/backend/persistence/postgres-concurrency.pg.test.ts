@@ -9,7 +9,7 @@
 import { expect, it, vi } from "vitest";
 import { Effect } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo/index";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
   ExecutionRepo,
   UNSENT_RUN_GRACE_MS,

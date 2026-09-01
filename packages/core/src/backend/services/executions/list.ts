@@ -7,7 +7,7 @@ import {
   ExecutionRepo,
   type WorkflowExecutionListRow,
 } from "#src/backend/services/executions/repo";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo/index";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type {
   WorkflowExecutionStartSource,
   WorkflowExecutionStatus,

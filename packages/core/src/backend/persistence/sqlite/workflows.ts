@@ -12,7 +12,7 @@ import {
   type WorkflowEventSubscriptionRow,
   type WorkflowVersionHistoryRow,
   type WorkflowVersionUsageRow,
-} from "#src/backend/services/workflows/repo/index";
+} from "#src/backend/services/workflows/repo";
 import { workflowVersionUsageRow } from "#src/backend/services/workflows/repo/version-row";
 import type { SqliteDatabase } from "#src/backend/persistence/sqlite/database";
 import {

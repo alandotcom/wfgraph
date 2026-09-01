@@ -26,7 +26,7 @@ import {
 import { ApiKeyRepo } from "#src/backend/services/api-keys/repo";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo/index";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type { WfGraphServices } from "#src/backend/runtime";
 import {
   makeAppContextLayer,

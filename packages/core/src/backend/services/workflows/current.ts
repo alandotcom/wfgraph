@@ -9,7 +9,7 @@ import {
   toWorkflowApiPayload,
   withDefaultLifecycleNode,
 } from "#src/backend/services/workflows/mappers";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo/index";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { resolvePublishedVersion } from "#src/backend/services/workflows/workflow";
 import { generateId } from "@wfgraph/shared/utils/id";
 

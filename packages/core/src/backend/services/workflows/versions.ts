@@ -25,7 +25,7 @@ import {
   asPublishedVersion,
   WorkflowRepo,
   type WorkflowVersionUsageRow,
-} from "#src/backend/services/workflows/repo/index";
+} from "#src/backend/services/workflows/repo";
 import { resolvePublishedVersion } from "#src/backend/services/workflows/workflow";
 import {
   WORKFLOW_VERSION_HISTORY_DEFAULT_LIMIT,

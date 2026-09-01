@@ -17,7 +17,7 @@ import { toWorkflowApiPayload } from "#src/backend/services/workflows/mappers";
 import type { WorkflowPublishPayload } from "@wfgraph/shared/graph/api-contracts";
 import type { WorkflowPublishInput } from "@wfgraph/shared/graph/publication-contracts";
 import { checkPublishReadiness } from "#src/backend/services/workflows/publish-checks";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo/index";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
   catalogFingerprint,
   graphDigest,

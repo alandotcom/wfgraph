@@ -4,7 +4,7 @@ import { stubDatabase } from "#src/backend/lib/effect/test-layers";
 import {
   WorkflowRepo,
   WorkflowRepoLayer,
-} from "#src/backend/services/workflows/repo/index";
+} from "#src/backend/services/workflows/repo";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 
 describe("findByIdWithPublishedVersionForRun", () => {

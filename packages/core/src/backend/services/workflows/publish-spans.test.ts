@@ -30,7 +30,7 @@ import {
   getWorkflowVersionHistory,
   restoreWorkflowVersion,
 } from "#src/backend/services/workflows/versions";
-import type { WorkflowRepo } from "#src/backend/services/workflows/repo/index";
+import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { PUBLICATION_CONFLICT_CODES } from "@wfgraph/shared/rpc/error-codes";
 

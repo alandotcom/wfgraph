@@ -8,7 +8,7 @@
  * as the graph itself.
  */
 
-import type { WorkflowEventSubscriptionRow } from "#src/backend/services/workflows/repo/index";
+import type { WorkflowEventSubscriptionRow } from "#src/backend/services/workflows/repo";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";

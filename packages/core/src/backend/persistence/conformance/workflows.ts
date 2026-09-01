@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo/index";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { PersistenceTestRegistry } from "#src/backend/persistence/conformance/support";
 import {
