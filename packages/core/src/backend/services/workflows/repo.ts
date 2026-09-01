@@ -1,4 +1,4 @@
-import { and, arrayContains, desc, eq, isNull, lt, ne, sql } from "drizzle-orm";
+import { and, arrayContains, desc, eq, isNull, ne, sql } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
 import {
   type PublishedWorkflowVersion,
@@ -19,7 +19,11 @@ import type {
 import { Database, type DatabaseError } from "#src/backend/lib/effect/database";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
 import type { WorkflowUpdateData } from "#src/backend/services/workflows/mappers";
+import { makeWorkflowVersionQueries } from "#src/backend/services/workflows/repo/version-queries";
+import type { WorkflowVersionUsageRow } from "#src/backend/services/workflows/repo/version-row";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
+
+export { type WorkflowVersionUsageRow } from "#src/backend/services/workflows/repo/version-row";
 
 /** One row of `workflow_event_subscriptions`: one workflow, one Event, one role. */
 export type WorkflowEventSubscriptionRow =
@@ -71,21 +75,6 @@ export function asPublishedVersion(
   version: WorkflowVersion | null | undefined
 ): PublishedWorkflowVersion | null {
   return version && isPublishedVersion(version) ? version : null;
-}
-
-/**
- * The version number of a row that a query already restricted to published
- * versions.
- *
- * Only a draft snapshot leaves the column null, so a null here means the query
- * failed to exclude the snapshots. The throw reports that bug instead of
- * passing a bad number on.
- */
-function publishedVersionNumber(value: number | null): number {
-  if (value === null) {
-    throw new Error("A published workflow version carries no version number");
-  }
-  return value;
 }
 
 /**
@@ -263,6 +252,13 @@ export class WorkflowRepo extends Context.Service<
       cursor?: { version: number };
     }) => Effect.Effect<WorkflowVersionHistoryRow[], DatabaseError>;
     /**
+     * Current publication first, followed by active published versions newest
+     * first, then active draft snapshots newest first.
+     */
+    readonly listVersionUsage: (
+      workflowId: string
+    ) => Effect.Effect<WorkflowVersionUsageRow[], DatabaseError>;
+    /**
      * One version by id, of either kind, or null when it is gone. The engine and
      * the run panel read a run's pinned version through this, so it must also
      * return the draft snapshots that the other version reads exclude.
@@ -425,6 +421,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
     WorkflowRepo,
     Effect.gen(function* () {
       const database = yield* Database;
+      const versionQueries = makeWorkflowVersionQueries(database);
 
       const findCurrent = database.query(async (db) => {
         const [currentWorkflow] = await db
@@ -694,59 +691,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
             return saved.at(0) ?? null;
           }),
 
-        findLatestVersion: (workflowId) =>
-          database.query(async (db) => {
-            const [row] = await db
-              .select({ version: workflowVersions.version })
-              .from(workflowVersions)
-              .where(
-                and(
-                  eq(workflowVersions.workflowId, workflowId),
-                  eq(workflowVersions.kind, "published")
-                )
-              )
-              .orderBy(desc(workflowVersions.version))
-              .limit(1);
-
-            return row
-              ? { version: publishedVersionNumber(row.version) }
-              : null;
-          }),
-
-        listVersionHistoryPage: (input) =>
-          database.query(async (db) => {
-            const rows = await db
-              .select({
-                id: workflowVersions.id,
-                version: workflowVersions.version,
-                publishedAt: workflowVersions.publishedAt,
-                isCurrent: sql<boolean>`${workflows.id} is not null`,
-              })
-              .from(workflowVersions)
-              .leftJoin(
-                workflows,
-                and(
-                  eq(workflows.id, input.workflowId),
-                  eq(workflows.publishedVersionId, workflowVersions.id)
-                )
-              )
-              .where(
-                and(
-                  eq(workflowVersions.workflowId, input.workflowId),
-                  eq(workflowVersions.kind, "published"),
-                  input.cursor
-                    ? lt(workflowVersions.version, input.cursor.version)
-                    : undefined
-                )
-              )
-              .orderBy(desc(workflowVersions.version))
-              .limit(input.limit + 1);
-
-            return rows.map((row) => ({
-              ...row,
-              version: publishedVersionNumber(row.version),
-            }));
-          }),
+        ...versionQueries,
 
         findVersionById: (versionId) =>
           database.query(async (db) => {

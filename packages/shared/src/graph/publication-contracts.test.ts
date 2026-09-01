@@ -5,6 +5,7 @@ import {
   workflowComparisonPayloadSchema,
   workflowPublishInputSchema,
   workflowVersionHistoryInputSchema,
+  workflowVersionUsageItemSchema,
 } from "#src/graph/publication-contracts";
 import { createSerializedWorkflowGraph } from "#src/graph/graph";
 import { rejectUnknownKeys } from "#src/types/schema";
@@ -29,6 +30,38 @@ describe("workflow publication contracts", () => {
     ).toBe(true);
     expect(
       Result.isFailure(decode({ workflowId: "workflow_1", limit: 101 }))
+    ).toBe(true);
+  });
+
+  it("keeps version numbers consistent with the version kind", () => {
+    const decode = Schema.decodeUnknownResult(
+      workflowVersionUsageItemSchema,
+      rejectUnknownKeys
+    );
+    const item = {
+      id: "version_1",
+      publishedAt: "2026-08-23T12:00:00.000Z",
+      isCurrent: true,
+      activeRunCount: 0,
+      oldestActiveRunAt: null,
+      actionIds: [],
+      missingActionIds: [],
+      catalogMatches: true,
+    };
+
+    expect(
+      Result.isSuccess(decode({ ...item, kind: "published", version: 1 }))
+    ).toBe(true);
+    expect(
+      Result.isSuccess(
+        decode({ ...item, kind: "draft_snapshot", version: null })
+      )
+    ).toBe(true);
+    expect(
+      Result.isFailure(decode({ ...item, kind: "published", version: null }))
+    ).toBe(true);
+    expect(
+      Result.isFailure(decode({ ...item, kind: "draft_snapshot", version: 1 }))
     ).toBe(true);
   });
 

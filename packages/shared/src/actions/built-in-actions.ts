@@ -11,3 +11,11 @@ export const BUILT_IN_ACTION_IDS = {
   wait: "Wait",
   eventSplit: "Event Split",
 } as const;
+
+const builtInActionIds: ReadonlySet<string> = new Set(
+  Object.values(BUILT_IN_ACTION_IDS)
+);
+
+export function isBuiltInActionId(actionId: string): boolean {
+  return builtInActionIds.has(actionId);
+}

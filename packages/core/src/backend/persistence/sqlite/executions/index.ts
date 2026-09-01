@@ -16,6 +16,7 @@ import {
   placeholders,
   requiredNumber,
   requiredString,
+  SQLITE_IN_FLIGHT_EXECUTION_STATUSES,
 } from "#src/backend/persistence/sqlite/database";
 import {
   makeSqliteRunsMethods,
@@ -25,8 +26,6 @@ import { makeSqliteNodeLogsMethods } from "#src/backend/persistence/sqlite/execu
 import { makeSqliteWaitsMethods } from "#src/backend/persistence/sqlite/executions/waits";
 import { makeSqliteAuditMethods } from "#src/backend/persistence/sqlite/executions/audit";
 import { sqliteExecution } from "#src/backend/persistence/sqlite/executions/rows";
-
-const IN_FLIGHT = "'pending', 'running', 'waiting'";
 
 function findByDelivery(
   database: DatabaseSync,
@@ -50,7 +49,7 @@ function endInFlightExecutions(
   const eligible = database
     .prepare(
       `SELECT id FROM workflow_executions
-       WHERE id IN (${placeholders(ids.length)}) AND status IN (${IN_FLIGHT})`
+       WHERE id IN (${placeholders(ids.length)}) AND status IN (${SQLITE_IN_FLIGHT_EXECUTION_STATUSES})`
     )
     .all(...ids)
     .map((row) => requiredString(row, "id"));
@@ -59,7 +58,7 @@ function endInFlightExecutions(
     .prepare(
       `UPDATE workflow_executions SET status = ?, waiting_at = NULL,
               completed_at = ?, error = ?
-       WHERE id IN (${placeholders(eligible.length)}) AND status IN (${IN_FLIGHT})`
+       WHERE id IN (${placeholders(eligible.length)}) AND status IN (${SQLITE_IN_FLIGHT_EXECUTION_STATUSES})`
     )
     .run(update.status, Date.now(), update.error, ...eligible);
   return eligible;
@@ -93,7 +92,7 @@ function startForEntity(
     .prepare(
       `SELECT id, enqueued_at, started_at FROM workflow_executions
        WHERE workflow_id = ? AND entity_value = ? AND run_mode = ?
-         AND status IN (${IN_FLIGHT})`
+          AND status IN (${SQLITE_IN_FLIGHT_EXECUTION_STATUSES})`
     )
     .all(execution.workflowId, execution.entityValue, execution.runMode);
 

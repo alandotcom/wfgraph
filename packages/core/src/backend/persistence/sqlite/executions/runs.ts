@@ -19,6 +19,7 @@ import {
   requiredBoolean,
   requiredString,
   requiredVersionKind,
+  SQLITE_IN_FLIGHT_EXECUTION_STATUSES,
 } from "#src/backend/persistence/sqlite/database";
 import {
   sqliteExecution,
@@ -26,7 +27,6 @@ import {
   sqliteExecutionStatus,
 } from "#src/backend/persistence/sqlite/executions/rows";
 
-const IN_FLIGHT = "'pending', 'running', 'waiting'";
 const WORKFLOW_EXECUTIONS_LIMIT = 50;
 
 /**
@@ -229,7 +229,7 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
             .prepare(
               `UPDATE workflow_executions SET status = 'failed', error = ?,
                     completed_at = ?, waiting_at = NULL
-             WHERE id = ? AND status IN (${IN_FLIGHT})`
+             WHERE id = ? AND status IN (${SQLITE_IN_FLIGHT_EXECUTION_STATUSES})`
             )
             .run(error, Date.now(), executionId).changes > 0
       ),
@@ -250,7 +250,7 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
             .prepare(
               `UPDATE workflow_executions SET status = ?, waiting_at = NULL,
                       cancelled_at = ?, completed_at = ?, error = ?
-               WHERE id = ? AND status IN (${IN_FLIGHT})`
+               WHERE id = ? AND status IN (${SQLITE_IN_FLIGHT_EXECUTION_STATUSES})`
             )
             .run(
               input.status,
@@ -267,7 +267,7 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
           .prepare(
             `SELECT id FROM workflow_executions
              WHERE workflow_id = ? AND entity_value = ? AND run_mode = ?
-               AND status IN (${IN_FLIGHT}) AND cancel_requested_at IS NULL`
+                AND status IN (${SQLITE_IN_FLIGHT_EXECUTION_STATUSES}) AND cancel_requested_at IS NULL`
           )
           .all(input.workflowId, input.entityValue, input.runMode);
         database
@@ -275,7 +275,7 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
             `UPDATE workflow_executions SET cancel_requested_at = ?,
                     cancel_event_name = ?, cancel_payload = ?
              WHERE workflow_id = ? AND entity_value = ? AND run_mode = ?
-               AND status IN (${IN_FLIGHT}) AND cancel_requested_at IS NULL`
+                AND status IN (${SQLITE_IN_FLIGHT_EXECUTION_STATUSES}) AND cancel_requested_at IS NULL`
           )
           .run(
             Date.now(),
@@ -314,7 +314,7 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
             .prepare(
               `UPDATE workflow_executions SET status = ?, output = ?, error = ?,
                       waiting_at = NULL, completed_at = ?, duration = ?
-               WHERE id = ? AND status IN (${IN_FLIGHT})`
+                WHERE id = ? AND status IN (${SQLITE_IN_FLIGHT_EXECUTION_STATUSES})`
             )
             .run(
               input.status,

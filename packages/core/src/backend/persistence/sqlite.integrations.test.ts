@@ -58,6 +58,13 @@ describe("native SQLite integration persistence", () => {
         published_at INTEGER NOT NULL,
         UNIQUE (workflow_id, version)
       ) STRICT;
+      CREATE TABLE workflow_executions (
+        id TEXT PRIMARY KEY,
+        workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+        workflow_version_id TEXT NOT NULL REFERENCES workflow_versions(id) ON DELETE CASCADE,
+        status TEXT NOT NULL,
+        started_at INTEGER NOT NULL
+      ) STRICT;
       CREATE TABLE oauth_authorization_attempts (
         state_hash TEXT PRIMARY KEY,
         integration_id TEXT NOT NULL REFERENCES integrations(id) ON DELETE CASCADE,
@@ -117,7 +124,7 @@ describe("native SQLite integration persistence", () => {
         updated_at: 0,
       });
       expect(inspection.prepare("PRAGMA user_version").get()).toEqual({
-        user_version: 6,
+        user_version: 7,
       });
     } finally {
       inspection.close();
@@ -235,6 +242,13 @@ describe("native SQLite integration persistence", () => {
       graph_digest TEXT NOT NULL,
       published_at INTEGER NOT NULL,
       UNIQUE (workflow_id, version)
+    ) STRICT;
+    CREATE TABLE workflow_executions (
+      id TEXT PRIMARY KEY,
+      workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+      workflow_version_id TEXT NOT NULL REFERENCES workflow_versions(id) ON DELETE CASCADE,
+      status TEXT NOT NULL,
+      started_at INTEGER NOT NULL
     ) STRICT;
     PRAGMA user_version = 1;
   `);

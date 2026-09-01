@@ -36,6 +36,7 @@ export function readConfigTrimmedString(
 export type NodeConfigSource = {
   data: {
     type: string;
+    enabled?: boolean;
     config?: Record<string, unknown>;
   };
 };
@@ -47,6 +48,12 @@ export function actionTypeOf(
     return undefined;
   }
   return readConfigString(node.data.config, "actionType");
+}
+
+export function enabledActionTypeOf(
+  node: NodeConfigSource | undefined
+): string | undefined {
+  return node?.data.enabled === false ? undefined : actionTypeOf(node);
 }
 
 export function isWaitActionType(value: unknown): boolean {

@@ -228,7 +228,7 @@ The following table maps every operation ID to its permission:
 
 | Permission         | Operation IDs                                                                                                                                                                                                 |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `workflow.read`    | `workflow.getAll`, `workflow.getById`, `workflow.getVersionHistory`, `workflow.compareVersion`, `workflow.getCurrent`, `workflow.getVersionGraph`                                                             |
+| `workflow.read`    | `workflow.getAll`, `workflow.getById`, `workflow.getVersionHistory`, `workflow.getVersionUsage`, `workflow.compareVersion`, `workflow.getCurrent`, `workflow.getVersionGraph`                                 |
 | `workflow.write`   | `workflow.create`, `workflow.update`, `workflow.delete`, `workflow.duplicate`, `workflow.publish`, `workflow.restoreVersion`, `workflow.saveCurrent`, `workflow.bulkLifecycle`                                |
 | `run.read`         | `workflow.getExecutions`, `workflow.getExecutionsGlobal`, `workflow.getExecutionLogs`, `workflow.getExecutionEvents`, `workflow.getExecutionStatus`                                                           |
 | `run.manage`       | `workflow.execute`, `workflow.deleteExecutions`, `workflow.resumeWait`, `workflow.cancelExecution`                                                                                                            |

@@ -11,10 +11,13 @@ import {
   type EventSubscriber,
   type WorkflowEventSubscriptionRow,
   type WorkflowVersionHistoryRow,
+  type WorkflowVersionUsageRow,
 } from "#src/backend/services/workflows/repo";
+import { workflowVersionUsageRow } from "#src/backend/services/workflows/repo/version-row";
 import type { SqliteDatabase } from "#src/backend/persistence/sqlite/database";
 import {
   encodeGraph,
+  optionalDate,
   optionalNumber,
   optionalString,
   requiredBoolean,
@@ -23,6 +26,7 @@ import {
   requiredNumber,
   requiredString,
   requiredVersionKind,
+  SQLITE_IN_FLIGHT_EXECUTION_STATUSES,
 } from "#src/backend/persistence/sqlite/database";
 
 function workflowMode(value: string): Workflow["mode"] {
@@ -392,6 +396,46 @@ export function makeSqliteWorkflowRepo(
             publishedAt: requiredDate(row, "published_at"),
             isCurrent: requiredBoolean(row, "is_current"),
           }))
+      ),
+    listVersionUsage: (workflowId) =>
+      store.read((database) =>
+        database
+          .prepare(
+            `SELECT v.*, coalesce(v.id = w.published_version_id, 0) AS is_current,
+                    coalesce(a.active_run_count, 0) AS active_run_count,
+                    a.oldest_active_run_at
+             FROM workflow_versions v
+             JOIN workflows w ON w.id = v.workflow_id
+             LEFT JOIN (
+               SELECT workflow_version_id, count(*) AS active_run_count,
+                      min(started_at) AS oldest_active_run_at
+               FROM workflow_executions
+               WHERE workflow_id = ?
+                 AND status IN (${SQLITE_IN_FLIGHT_EXECUTION_STATUSES})
+               GROUP BY workflow_version_id
+             ) a ON a.workflow_version_id = v.id
+             WHERE v.workflow_id = ?
+               AND (v.id = w.published_version_id OR a.workflow_version_id IS NOT NULL)
+             ORDER BY is_current DESC,
+                       CASE WHEN v.kind = 'published' THEN v.version END DESC,
+                       CASE WHEN v.kind = 'draft_snapshot' THEN v.published_at END DESC,
+                       CASE WHEN v.kind = 'draft_snapshot' THEN v.id END DESC`
+          )
+          .all(workflowId, workflowId)
+          .map((row): WorkflowVersionUsageRow => {
+            const version = sqliteWorkflowVersion(row);
+            return workflowVersionUsageRow({
+              id: version.id,
+              kind: version.kind,
+              version: version.version,
+              graph: version.graph,
+              catalogFingerprint: version.catalogFingerprint,
+              publishedAt: version.publishedAt,
+              isCurrent: requiredBoolean(row, "is_current"),
+              activeRunCount: requiredNumber(row, "active_run_count"),
+              oldestActiveRunAt: optionalDate(row, "oldest_active_run_at"),
+            });
+          })
       ),
     findVersionById: (versionId) =>
       store.read((database) => {
