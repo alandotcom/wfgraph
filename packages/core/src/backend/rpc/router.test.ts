@@ -26,7 +26,11 @@ import type { WfGraphRuntime } from "#src/backend/runtime";
 import { rpcEffectHandler } from "#src/backend/rpc/router";
 import { makeAppContextLayer } from "#src/backend/lib/effect/app-context";
 import { createApiApp } from "#src/backend/api-app";
-import { resolveAuth } from "#src/backend/lib/http/authorize";
+import {
+  defineWfGraphAuth,
+  resolveAuth,
+  WfGraphAccess,
+} from "#src/backend/lib/http/authorize";
 import { rpcContract } from "@wfgraph/shared/rpc/contracts";
 
 /**
@@ -66,8 +70,7 @@ function createContext(runtime: WfGraphRuntime) {
   return {
     context: {
       auth: {
-        principal: { id: "operator_1" },
-        authorize: () => Promise.resolve(true),
+        allows: () => Promise.resolve(true),
       },
       headers: new Headers(),
       runtime,
@@ -177,8 +180,7 @@ describe("rpcEffectHandler", () => {
       const handlerArgs = {
         context: {
           auth: {
-            principal: { id: "operator_1" },
-            authorize: () => Promise.resolve(true),
+            allows: () => Promise.resolve(true),
           },
           headers: new Headers(),
           runtime,
@@ -214,7 +216,7 @@ describe("integration OAuth RPC", () => {
     });
     const app = createApiApp({
       basePath: "/api",
-      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
+      auth: resolveAuth(defineWfGraphAuth(() => WfGraphAccess.all)),
       runtime,
     });
 
@@ -253,7 +255,7 @@ describe("operation authorization", () => {
     Reflect.deleteProperty(metadata, "wfgraph.operation");
     const app = createApiApp({
       basePath: "/api",
-      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
+      auth: resolveAuth(defineWfGraphAuth(() => WfGraphAccess.all)),
       runtime,
     });
 
@@ -279,13 +281,12 @@ describe("operation authorization", () => {
     let authentications = 0;
     const app = createApiApp({
       basePath: "/api",
-      auth: resolveAuth({
-        authenticate: () => {
+      auth: resolveAuth(
+        defineWfGraphAuth(() => {
           authentications += 1;
-          return { id: "operator_1" };
-        },
-        authorize: () => false,
-      }),
+          return { allows: () => false };
+        })
+      ),
       runtime,
     });
 
@@ -304,6 +305,48 @@ describe("operation authorization", () => {
       expect(rpcResponse.status).toBe(403);
       expect(restResponse.status).toBe(403);
       expect(authentications).toBe(2);
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
+  it.each([
+    {
+      name: "authentication callback",
+      auth: defineWfGraphAuth(() => {
+        throw new Error("private session-store detail");
+      }),
+    },
+    {
+      name: "access policy",
+      auth: defineWfGraphAuth(() => ({
+        allows: () => {
+          throw new Error("private policy-store detail");
+        },
+      })),
+    },
+  ])("returns a sanitized 500 when the $name fails", async ({ auth }) => {
+    const runtime = createStubRuntime();
+    const app = createApiApp({
+      basePath: "/api",
+      auth: resolveAuth(auth),
+      runtime,
+    });
+
+    try {
+      const response = await app.fetch(
+        new Request("http://localhost/api/rpc/workflow/getAll", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ json: {} }),
+        })
+      );
+      const body = await response.text();
+
+      expect(response.status).toBe(500);
+      expect(body).not.toContain("private");
+      expect(body).not.toContain("session-store");
+      expect(body).not.toContain("policy-store");
     } finally {
       await runtime.dispose();
     }

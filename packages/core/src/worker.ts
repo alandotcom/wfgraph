@@ -6,15 +6,17 @@ export {
   type WfGraphWorkerOptions,
   type WfGraphWorkerRequestConfig,
 } from "#src/backend/worker";
-export type {
-  WfGraphAuth,
-  WfGraphPrincipal,
+export {
+  defineWfGraphAuth,
+  trustWfGraphUpstream,
+  WfGraphAccess,
+  WfGraphRoles,
+  type WfGraphAuth,
 } from "#src/backend/lib/http/authorize";
 export {
   WfGraphOperationIds,
   WfGraphOperations,
   WfGraphPermissions,
-  WfGraphRolePresets,
 } from "@wfgraph/shared/authorization/operations";
 export type {
   WfGraphOperation,

@@ -6,7 +6,7 @@ export type WfGraphHonoEnv = {
   Variables: {
     wfgraphMachineRoute?: true;
     wfgraphPublicRoute?: true;
-    /** The principal and policy callback resolved once for this operator request. */
+    /** The access policy resolved once for this operator request. */
     wfgraphAuth?: AuthContext;
     /** The record this request will write, shared with the oRPC handler. */
     wfgraphRequestEvent: RequestEvent;

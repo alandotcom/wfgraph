@@ -29,8 +29,11 @@ export {
   type EncryptionRuntimeConfig,
   type WfGraphApp,
   type WfGraphAppOptions,
+  defineWfGraphAuth,
+  trustWfGraphUpstream,
+  WfGraphAccess,
   type WfGraphAuth,
-  type WfGraphPrincipal,
+  WfGraphRoles,
   type WfGraphClientBundle,
   type WfGraphExtensions,
   type WfGraphInngestConfig,
@@ -41,7 +44,6 @@ export {
   WfGraphOperationIds,
   WfGraphOperations,
   WfGraphPermissions,
-  WfGraphRolePresets,
 } from "@wfgraph/shared/authorization/operations";
 export type {
   WfGraphOperation,

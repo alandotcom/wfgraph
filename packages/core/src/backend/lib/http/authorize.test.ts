@@ -1,129 +1,169 @@
-import { describe, expect, it } from "vitest";
-import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import {
+  WfGraphOperations,
+  WfGraphPermissions,
+} from "@wfgraph/shared/authorization/operations";
+import {
+  defineWfGraphAuth,
   FORBIDDEN_BODY,
   resolveAuth,
+  trustWfGraphUpstream,
   UNAUTHORIZED_BODY,
+  WfGraphAccess,
+  WfGraphRoles,
   type WfGraphAuth,
 } from "#src/backend/lib/http/authorize";
 
 const request = new Request("http://localhost/api/extensions");
 
-describe("resolveAuth", () => {
-  it("preserves a host principal type for the authorization callback", () => {
-    type HostPrincipal = { id: string; organizationId: string };
-    const auth: WfGraphAuth<HostPrincipal> = {
-      authenticate: () => ({ id: "operator_1", organizationId: "org_1" }),
-      authorize: (principal) => principal.organizationId === "org_1",
-    };
-
+describe("Workflow Graph access policies", () => {
+  it("provides directly usable immutable viewer, editor, and admin roles", async () => {
     expect(
-      auth.authorize?.(
-        { id: "operator_1", organizationId: "org_1" },
-        WfGraphOperations.workflowGetAll
+      await WfGraphRoles.viewer.allows(WfGraphOperations.workflowGetAll)
+    ).toBe(true);
+    expect(
+      await WfGraphRoles.viewer.allows(WfGraphOperations.workflowCreate)
+    ).toBe(false);
+    expect(
+      await WfGraphRoles.editor.allows(WfGraphOperations.workflowCreate)
+    ).toBe(true);
+    expect(
+      await WfGraphRoles.editor.allows(WfGraphOperations.apiKeyCreate)
+    ).toBe(false);
+    expect(
+      Object.values(WfGraphOperations).every((operation) =>
+        WfGraphRoles.admin.allows(operation)
       )
     ).toBe(true);
+    expect(Object.isFrozen(WfGraphRoles)).toBe(true);
+    expect(Object.isFrozen(WfGraphRoles.viewer)).toBe(true);
   });
 
-  it("lets an upstream-authenticated host through", async () => {
-    const context = await resolveAuth("external").authenticate(request);
+  it("builds local policies from permissions and exact operation IDs", () => {
+    const byPermission = WfGraphAccess.fromPermissions([
+      WfGraphPermissions.workflowRead,
+    ]);
+    const byOperation = WfGraphAccess.fromOperationIds([
+      WfGraphOperations.workflowGetById.id,
+    ]);
 
-    expect(context?.principal).toEqual({ id: "external" });
-    expect(await context?.authorize(WfGraphOperations.workflowGetAll)).toBe(
-      true
-    );
+    expect(byPermission.allows(WfGraphOperations.workflowGetAll)).toBe(true);
+    expect(byPermission.allows(WfGraphOperations.workflowCreate)).toBe(false);
+    expect(byOperation.allows(WfGraphOperations.workflowGetById)).toBe(true);
+    expect(byOperation.allows(WfGraphOperations.workflowGetAll)).toBe(false);
+    expect(WfGraphAccess.all.allows(WfGraphOperations.apiKeyDelete)).toBe(true);
+    expect(Object.isFrozen(byPermission)).toBe(true);
+    expect(Object.isFrozen(byOperation)).toBe(true);
+    expect(Object.isFrozen(WfGraphAccess.all)).toBe(true);
   });
+});
 
-  it("retains the authenticated principal for the host authorization callback", async () => {
-    const principal = { id: "operator_1", organizationId: "org_1" };
-    const seen: unknown[] = [];
-    const auth = resolveAuth({
-      authenticate: (incoming) => {
-        expect(incoming).toBe(request);
-        return principal;
-      },
-      authorize: (incoming, operation) => {
-        seen.push(incoming, operation);
-        return true;
-      },
-    });
-
-    const context = await auth.authenticate(request);
-
-    expect(context?.principal).toEqual({
-      id: "operator_1",
-      organizationId: "org_1",
-    });
-    expect(await context?.authorize(WfGraphOperations.workflowGetAll)).toBe(
-      true
-    );
-    expect(seen).toEqual([principal, WfGraphOperations.workflowGetAll]);
-  });
-
-  it("permits an authenticated principal when the host omits authorize", async () => {
-    const context = await resolveAuth({
-      authenticate: () => ({ id: "operator_1" }),
-    }).authenticate(request);
-
-    expect(await context?.authorize(WfGraphOperations.workflowGetAll)).toBe(
-      true
-    );
-  });
-
-  it("fails closed for malformed JavaScript principals", async () => {
-    const throwingPrincipal = new Proxy(
-      {},
-      {
-        get: () => {
-          throw new Error("host principal getter failed");
+describe("resolveAuth", () => {
+  it("gives extracted authentication callbacks contextual request and access types", async () => {
+    const grants = new Set<string>([WfGraphOperations.workflowGetAll.id]);
+    const auth = defineWfGraphAuth(async (incoming) => {
+      expectTypeOf(incoming).toEqualTypeOf<Request>();
+      return {
+        allows(operation) {
+          expectTypeOf(operation).toEqualTypeOf<
+            (typeof WfGraphOperations)[keyof typeof WfGraphOperations]
+          >();
+          return grants.has(operation.id);
         },
-      }
-    );
-    for (const principal of [
-      undefined,
-      null,
-      "operator_1",
-      {},
-      { id: 1 },
-      [],
-      throwingPrincipal,
-    ]) {
-      const auth = resolveAuth({
-        authenticate: (() => principal) as () => { id: string } | null,
-      });
+      };
+    });
+    expectTypeOf(auth).toEqualTypeOf<WfGraphAuth>();
 
-      expect(await auth.authenticate(request)).toBeNull();
-    }
+    const access = await resolveAuth(auth).authenticate(request);
+
+    expect(await access?.allows(WfGraphOperations.workflowGetAll)).toBe(true);
+    expect(await access?.allows(WfGraphOperations.workflowCreate)).toBe(false);
   });
 
-  it("fails closed when either host callback throws or returns a non-boolean grant", async () => {
-    const authenticateThrower = resolveAuth({
-      authenticate: () => {
-        throw new Error("session store is down");
-      },
+  it("passes a clone so host body reads do not drain the downstream request", async () => {
+    const original = new Request("http://localhost/api/rpc/workflow/create", {
+      method: "POST",
+      body: "request body",
     });
-    const authorizeThrower = resolveAuth({
-      authenticate: () => ({ id: "operator_1" }),
-      authorize: () => {
-        throw new Error("policy store is down");
-      },
-    });
-    const authorizeWrongType = resolveAuth({
-      authenticate: () => ({ id: "operator_1" }),
-      authorize: (() => "yes") as unknown as () => boolean,
+    const auth = defineWfGraphAuth(async (incoming) => {
+      expect(incoming).not.toBe(original);
+      expect(await incoming.text()).toBe("request body");
+      return WfGraphAccess.all;
     });
 
-    expect(await authenticateThrower.authenticate(request)).toBeNull();
-    expect(
-      await (
-        await authorizeThrower.authenticate(request)
-      )?.authorize(WfGraphOperations.workflowGetAll)
-    ).toBe(false);
-    expect(
-      await (
-        await authorizeWrongType.authenticate(request)
-      )?.authorize(WfGraphOperations.workflowGetAll)
-    ).toBe(false);
+    await expect(
+      resolveAuth(auth).authenticate(original)
+    ).resolves.toBeDefined();
+    await expect(original.text()).resolves.toBe("request body");
+  });
+
+  it("returns null only when the host explicitly returns null", async () => {
+    const access = await resolveAuth(
+      defineWfGraphAuth(() => null)
+    ).authenticate(request);
+
+    expect(access).toBeNull();
+  });
+
+  it("makes unrestricted upstream trust explicit without a principal", async () => {
+    const access = await resolveAuth(trustWfGraphUpstream()).authenticate(
+      request
+    );
+
+    expect(access).toBeDefined();
+    expect(await access?.allows(WfGraphOperations.workflowGetAll)).toBe(true);
+    expect(Object.keys(access ?? {})).toEqual(["allows"]);
+  });
+
+  it("treats authentication exceptions and malformed access as system failures", async () => {
+    const report = vi.fn();
+    const authenticateThrower = resolveAuth(
+      defineWfGraphAuth(() => {
+        throw new Error("session store is down");
+      })
+    );
+    const malformed = resolveAuth(
+      defineWfGraphAuth(
+        (() => undefined) as unknown as WfGraphAuth["authenticate"]
+      )
+    );
+
+    await expect(
+      authenticateThrower.authenticate(request, report)
+    ).rejects.toThrow("Host authentication failed");
+    await expect(malformed.authenticate(request, report)).rejects.toThrow(
+      "Host authentication failed"
+    );
+    expect(report).toHaveBeenCalledTimes(2);
+  });
+
+  it("treats policy exceptions and malformed decisions as one reported system failure", async () => {
+    const report = vi.fn();
+    const access = await resolveAuth(
+      defineWfGraphAuth(() => ({
+        allows: (() => {
+          throw new Error("policy store is down");
+        }) as () => boolean,
+      }))
+    ).authenticate(request, report);
+
+    await expect(
+      Promise.all(
+        Object.values(WfGraphOperations).map((operation) =>
+          access?.allows(operation)
+        )
+      )
+    ).rejects.toThrow("Host access policy failed");
+    expect(report).toHaveBeenCalledTimes(1);
+
+    const wrongType = await resolveAuth(
+      defineWfGraphAuth(() => ({
+        allows: (() => "yes") as unknown as () => boolean,
+      }))
+    ).authenticate(request);
+    await expect(
+      wrongType?.allows(WfGraphOperations.workflowGetAll)
+    ).rejects.toThrow("Host access policy failed");
   });
 });
 

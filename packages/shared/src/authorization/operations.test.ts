@@ -2,7 +2,6 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   WfGraphOperationIds,
   WfGraphOperations,
-  WfGraphRolePresets,
   WfGraphPermissions,
 } from "#src/authorization/operations";
 import type {
@@ -76,25 +75,6 @@ describe("Workflow Graph authorization operations", () => {
       settingsWrite: "settings.write",
       agentUse: "agent.use",
     });
-  });
-
-  it("defines immutable coherent role presets", () => {
-    expect(WfGraphRolePresets.read).toEqual([
-      "workflow.read",
-      "run.read",
-      "connection.read",
-    ]);
-    expect(WfGraphRolePresets.readWrite).toEqual([
-      "workflow.read",
-      "run.read",
-      "connection.read",
-      "workflow.write",
-      "run.manage",
-      "agent.use",
-    ]);
-    expect(WfGraphRolePresets.admin).toEqual(Object.values(WfGraphPermissions));
-    expect(Object.isFrozen(WfGraphRolePresets)).toBe(true);
-    expect(Object.isFrozen(WfGraphRolePresets.admin)).toBe(true);
   });
 
   it("gives every protected operation a stable unique id", () => {

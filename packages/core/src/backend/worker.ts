@@ -9,11 +9,7 @@ import {
   createIntegrationCipher,
   type EncryptionRuntimeConfig,
 } from "#src/backend/services/integrations/cipher";
-import {
-  resolveAuth,
-  type WfGraphAuth,
-  type WfGraphPrincipal,
-} from "#src/backend/lib/http/authorize";
+import { resolveAuth, type WfGraphAuth } from "#src/backend/lib/http/authorize";
 import { normalizeBasePath } from "#src/backend/lib/http/mount-path";
 import {
   createInngestSurface,
@@ -35,10 +31,8 @@ import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 import { runWithClose } from "#src/backend/lib/close-in-order";
 import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
 
-export type WfGraphWorkerRequestConfig<
-  P extends WfGraphPrincipal = WfGraphPrincipal,
-> = {
-  auth: WfGraphAuth<P>;
+export type WfGraphWorkerRequestConfig = {
+  auth: WfGraphAuth;
   persistence: WfGraphPersistence;
   encryption: EncryptionRuntimeConfig;
   inngest: WfGraphInngestConfig;
@@ -50,17 +44,14 @@ export type WfGraphWorkerRequestConfig<
   agent?: WfGraphAgentConfig;
 };
 
-export type WfGraphWorkerOptions<
-  Env,
-  P extends WfGraphPrincipal = WfGraphPrincipal,
-> = {
+export type WfGraphWorkerOptions<Env> = {
   basePath?: string;
   /** Public origin used in provider callback URLs and client metadata. */
   publicUrl?: string;
   logger?: WfGraphLogger;
   extensions?: WfGraphExtensions | ((env: Env) => WfGraphExtensions);
   /** Resolve bindings and secrets for this request's Worker environment. */
-  request: (env: Env) => WfGraphWorkerRequestConfig<P>;
+  request: (env: Env) => WfGraphWorkerRequestConfig;
 };
 
 export type WfGraphWorker<Env> = {
@@ -77,8 +68,8 @@ const refuseConnect: InngestSurfaceDeps["connect"] = () => {
  * This entry serves Workflow Graph's API and Inngest callback. Static assets stay
  * with the Worker's Assets binding or the host's own router.
  */
-export function wfWorker<Env, P extends WfGraphPrincipal = WfGraphPrincipal>(
-  options: WfGraphWorkerOptions<Env, P>
+export function wfWorker<Env>(
+  options: WfGraphWorkerOptions<Env>
 ): WfGraphWorker<Env> {
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const publicUrl = resolvePublicUrl(options.publicUrl);

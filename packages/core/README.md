@@ -14,16 +14,15 @@ import { createServer } from "node:http";
 import {
   createRequestListener,
   createWfGraphApp,
-  type WfGraphAuth,
+  defineWfGraphAuth,
+  WfGraphRoles,
 } from "@wfgraph/core";
 import { wfPostgres } from "@wfgraph/core/postgres";
 
-const auth = {
-  authenticate: async (request) => {
-    const session = await readSession(request);
-    return session ? { id: session.userId } : null;
-  },
-} satisfies WfGraphAuth;
+const auth = defineWfGraphAuth(async (request) => {
+  const session = await readSession(request);
+  return session ? WfGraphRoles[session.role] : null;
+});
 
 const wfgraph = await createWfGraphApp({
   persistence: wfPostgres({

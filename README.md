@@ -81,12 +81,10 @@ import { clientBundle } from "@wfgraph/client";
 import {
   createRequestListener,
   createWfGraphApp,
+  defineWfGraphAuth,
   defineAction,
   defineEvent,
-  type WfGraphAuth,
-  type WfGraphPermission,
-  type WfGraphPrincipal,
-  WfGraphRolePresets,
+  WfGraphRoles,
 } from "@wfgraph/core";
 import { wfPostgres } from "@wfgraph/core/postgres";
 import { builtInIntegrations } from "@wfgraph/plugins";
@@ -120,22 +118,10 @@ const cancelAppointment = defineAction({
   },
 });
 
-type Principal = WfGraphPrincipal & { role: "admin" | "editor" };
-const rolePermissions: Record<
-  Principal["role"],
-  ReadonlySet<WfGraphPermission>
-> = {
-  admin: new Set(WfGraphRolePresets.admin),
-  editor: new Set(WfGraphRolePresets.readWrite),
-};
-const auth = {
-  authenticate: async (request) => {
-    const session = await readSession(request);
-    return session ? { id: session.userId, role: session.role } : null;
-  },
-  authorize: (principal, operation) =>
-    rolePermissions[principal.role].has(operation.permission),
-} satisfies WfGraphAuth<Principal>;
+const auth = defineWfGraphAuth(async (request) => {
+  const session = await readSession(request);
+  return session ? WfGraphRoles[session.role] : null;
+});
 
 const wfgraph = await createWfGraphApp({
   persistence: wfPostgres({
@@ -156,6 +142,9 @@ const wfgraph = await createWfGraphApp({
 
 createServer(createRequestListener(wfgraph)).listen(3000);
 ```
+
+See [Authentication and authorization](docs/embedding.md#authentication-and-authorization)
+for role semantics, custom grants, and trusted upstream authentication.
 
 `examples/app.ts` is the canonical host. If this README disagrees with it, the example wins.
 

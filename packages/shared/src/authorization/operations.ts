@@ -190,20 +190,3 @@ export type WfGraphOperationId = WfGraphOperation["id"];
 export const WfGraphOperationIds = Object.freeze(
   Object.values(WfGraphOperations).map((entry) => entry.id)
 );
-
-export const WfGraphRolePresets = Object.freeze({
-  read: Object.freeze([
-    WfGraphPermissions.workflowRead,
-    WfGraphPermissions.runRead,
-    WfGraphPermissions.connectionRead,
-  ]),
-  readWrite: Object.freeze([
-    WfGraphPermissions.workflowRead,
-    WfGraphPermissions.runRead,
-    WfGraphPermissions.connectionRead,
-    WfGraphPermissions.workflowWrite,
-    WfGraphPermissions.runManage,
-    WfGraphPermissions.agentUse,
-  ]),
-  admin: Object.freeze([...permissionValues]),
-} as const);

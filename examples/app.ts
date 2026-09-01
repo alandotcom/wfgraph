@@ -182,8 +182,8 @@ const wfgraph = await createWfGraphApp({
   client: isProduction
     ? (await import("@wfgraph/client")).clientBundle
     : undefined,
-  // This demonstration authenticates the in-memory principal from the session
-  // cookie, then authorizes each operation against its selected role preset.
+  // This demonstration resolves the in-memory session from the cookie and
+  // returns its viewer, editor, or admin access policy.
   auth: demoAuth.auth,
   // SQLite creates its schema the first time the app opens the file, so there
   // is no migration step and no separate service. The name carries no

@@ -41,25 +41,17 @@ the editor.
 | Write a vendor integration               | wfgraph-core/integrations |
 | Turn on Clerk/Linear/Resend/Slack/Twilio | wfgraph-plugins           |
 
-## Embed
+## Embedding pitfalls
 
 - `createWfGraphApp` returns `{ fetch, basePath, dispose }`. `fetch` is
   `(request: Request) => Promise<Response>`.
-- `auth` is required. Pass `{ authenticate, authorize? }`. `authenticate`
-  returns a principal with a string `id`, or `null`. `authorize` receives the
-  same principal and a `WfGraphOperation`; omit it to grant every operation to
-  authenticated principals. The principal's extra host fields remain opaque to
-  Workflow Graph and are not persisted by this authorization contract.
-- Authorize against `operation.id` for individual actions or
-  `operation.permission` for role grants. Import the static
-  `WfGraphOperations`, `WfGraphOperationIds`, `WfGraphPermissions`, and `WfGraphRolePresets`
-  exports, and the `WfGraphOperationId` type, from `@wfgraph/core`.
-- `auth: "external"` means an upstream component has authenticated and
-  authorized every operator request. It grants every Workflow Graph operation.
-- Authenticated `GET /api/extensions` evaluates every canonical operation and
-  returns the granted IDs in `authorization.operationIds`. The editor requires
-  this boot snapshot before its first render. Account and policy changes require
-  a page reload. Every server operation still calls `authorize` when it runs.
+- `auth` is required and returns an access policy or `null`. Use
+  `WfGraphRoles`, `WfGraphAccess`, and `defineWfGraphAuth`; use
+  `trustWfGraphUpstream()` only behind a trusted upstream boundary. The full
+  contract and canonical example live in `docs/embedding.md`.
+- Load remote grants during authentication. A custom policy's `allows` method
+  is called concurrently for the editor snapshot and again for each real
+  operation, so a database lookup there creates avoidable fanout.
 - `INTEGRATION_ENCRYPTION_KEY` is 64-character hex (`openssl rand -hex 32`).
 - Mount `createRequestListener(wfgraph)` **before** any body parser, at the
   same path as `basePath`. Express strips the matched path; the adapter reads
@@ -91,12 +83,14 @@ the editor.
 
 ## Common mistakes
 
-### CRITICAL Omit auth
+### CRITICAL Missing authorization boundary
 
 Wrong: `createWfGraphApp({ persistence, encryption, inngest })` with no `auth`.
 
-Correct: `auth: { authenticate: (request) => principalForSession(request) }`
-(or `"external"` when an upstream component enforces authorization too).
+Correct: `auth: defineWfGraphAuth((request) => accessForSession(request))`
+(or `trustWfGraphUpstream()` when an upstream component enforces authorization
+too). Return `WfGraphAccess.all` when unrestricted authenticated access is
+intentional.
 
 Workflow Graph refuses to start without it. The failure to avoid is an editor
 the internet can open that decrypts integration secrets.

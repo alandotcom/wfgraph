@@ -14,7 +14,10 @@ import { join } from "node:path";
 import { Effect, Schema } from "effect";
 import {
   defineAction,
+  defineWfGraphAuth,
   defineEvent,
+  trustWfGraphUpstream,
+  WfGraphAccess,
   WfGraphOperationIds,
   WfGraphOperations,
 } from "#src/index";
@@ -43,7 +46,7 @@ import { wfPostgres } from "#src/backend/persistence/postgres";
 // migrations only run when asked. Every route exercised below answers from
 // process memory, so these tests need no Postgres and no Inngest.
 const BASE_OPTIONS = {
-  auth: "external",
+  auth: trustWfGraphUpstream(),
   persistence: wfPostgres({
     url: "postgresql://wfgraph:wfgraph@127.0.0.1:1/wfgraph_test",
   }),
@@ -118,14 +121,13 @@ describe("createWfGraphApp mounted at the root", () => {
     const checkedOperationIds: string[] = [];
     const app = await createWfGraphApp({
       ...BASE_OPTIONS,
-      auth: {
-        authenticate: () => ({ id: "operator_1" }),
-        authorize: async (_principal, operation) => {
+      auth: defineWfGraphAuth(() => ({
+        allows: async (operation) => {
           checkedOperationIds.push(operation.id);
           await Promise.resolve();
           return operation.permission === "workflow.read";
         },
-      },
+      })),
     });
 
     try {
@@ -141,6 +143,26 @@ describe("createWfGraphApp mounted at the root", () => {
           .filter((operation) => operation.permission === "workflow.read")
           .map((operation) => operation.id)
       );
+    } finally {
+      await app.dispose();
+    }
+  });
+
+  it("fails bootstrap with a sanitized 500 when the access policy fails", async () => {
+    const app = await createWfGraphApp({
+      ...BASE_OPTIONS,
+      auth: defineWfGraphAuth(() => ({
+        allows: () => {
+          throw new Error("private policy-store detail");
+        },
+      })),
+    });
+
+    try {
+      const response = await get(app, "/api/extensions");
+
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({ error: "Internal Server Error" });
     } finally {
       await app.dispose();
     }
@@ -364,7 +386,7 @@ describe("createWfGraphApp mounted under a sub-path", () => {
   });
 });
 
-describe("createWfGraphApp with an auth predicate", () => {
+describe("createWfGraphApp with host authentication", () => {
   async function createGuardedApp(
     allow: boolean,
     client?: { dir: string }
@@ -373,7 +395,7 @@ describe("createWfGraphApp with an auth predicate", () => {
       ...BASE_OPTIONS,
       basePath: "/wfgraph",
       client,
-      auth: { authenticate: () => (allow ? { id: "operator_1" } : null) },
+      auth: defineWfGraphAuth(() => (allow ? WfGraphAccess.all : null)),
     });
   }
 
@@ -406,7 +428,7 @@ describe("createWfGraphApp with an auth predicate", () => {
     try {
       const app = createApiApp({
         basePath: "/wfgraph/api",
-        auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
+        auth: resolveAuth(trustWfGraphUpstream()),
         runtime,
         inngestHandler: inngest.serve(
           await buildInngestFunctions(inngest.client, runtime)

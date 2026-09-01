@@ -261,10 +261,10 @@ export function createApiApp(options: CreateApiAppOptions) {
       await next();
     } catch (error) {
       const elapsedMs = Date.now() - startTime;
-      event.set({
-        http: { method, path: logPath, ms: elapsedMs },
-        error: { message: getErrorMessage(error) },
-      });
+      event.set({ http: { method, path: logPath, ms: elapsedMs } });
+      if (event.fields().error === undefined) {
+        event.set({ error: { message: getErrorMessage(error) } });
+      }
       httpLogger.error(
         `${method} ${logPath} threw after ${elapsedMs}ms`,
         event.fields()
@@ -338,7 +338,18 @@ export function createApiApp(options: CreateApiAppOptions) {
       return undefined;
     }
 
-    const authContext = await auth.authenticate(c.req.raw);
+    const authContext = await auth.authenticate(c.req.raw, (failure) => {
+      c.get("wfgraphRequestEvent").set({
+        error: {
+          kind: "internal",
+          message:
+            failure.stage === "authenticate"
+              ? "Host authentication failed"
+              : "Host access policy failed",
+          cause: failure.error,
+        },
+      });
+    });
     if (authContext) {
       c.set("wfgraphAuth", authContext);
       await next();
@@ -348,15 +359,9 @@ export function createApiApp(options: CreateApiAppOptions) {
     return c.json(UNAUTHORIZED_BODY, 401);
   });
 
-  app.onError((error, c) => {
-    httpLogger.error(`Unhandled API error: ${getErrorMessage(error)}`, {
-      method: c.req.method.toUpperCase(),
-      path: c.req.path,
-      error,
-    });
-
-    return c.json({ error: "Internal Server Error" }, 500);
-  });
+  // The outer request middleware logs thrown failures with the request's full
+  // event. This handler only converts the failure to a sanitized wire response.
+  app.onError((_error, c) => c.json({ error: "Internal Server Error" }, 500));
 
   // oRPC needs to know the absolute path its handlers are mounted at so it can
   // strip that prefix before matching a procedure.
@@ -456,9 +461,7 @@ export function createApiApp(options: CreateApiAppOptions) {
           ),
           Promise.all(
             Object.values(WfGraphOperations).map(async (operation) =>
-              (await authContext.authorize(operation))
-                ? operation.id
-                : undefined
+              (await authContext.allows(operation)) ? operation.id : undefined
             )
           ),
         ]);

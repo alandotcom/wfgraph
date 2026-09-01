@@ -123,7 +123,7 @@ function requireOperation(
 ): MiddlewareHandler<WfGraphHonoEnv> {
   return async (c, next) => {
     const auth = c.get("wfgraphAuth");
-    if (!auth || !(await auth.authorize(operation))) {
+    if (!auth || !(await auth.allows(operation))) {
       return c.json(FORBIDDEN_BODY, 403);
     }
 

@@ -247,7 +247,7 @@ async function authorizeRpcProcedure({
     throw new ORPCError("INTERNAL_SERVER_ERROR");
   }
 
-  if (!(await context.auth.authorize(operation))) {
+  if (!(await context.auth.allows(operation))) {
     throw new ORPCError("FORBIDDEN", { data: FORBIDDEN_BODY });
   }
 }

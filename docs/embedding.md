@@ -20,11 +20,8 @@ import {
   createWfGraphApp,
   defineAction,
   defineEvent,
-  type WfGraphAuth,
-  type WfGraphPermission,
-  type WfGraphPrincipal,
-  WfGraphRolePresets,
 } from "@wfgraph/core";
+import { auth } from "./wfgraph-auth";
 import { wfPostgres } from "@wfgraph/core/postgres";
 import { builtInIntegrations } from "@wfgraph/plugins";
 
@@ -69,20 +66,6 @@ const cancelAppointment = defineAction({
     };
   },
 });
-
-type Principal = WfGraphPrincipal & { role: "admin" | "editor" };
-const rolePermissions: Record<string, ReadonlySet<WfGraphPermission>> = {
-  admin: new Set(WfGraphRolePresets.admin),
-  editor: new Set(WfGraphRolePresets.readWrite),
-};
-const auth = {
-  authenticate: async (request) => {
-    const session = await readSession(request);
-    return session ? { id: session.userId, role: session.role } : null;
-  },
-  authorize: (principal, operation) =>
-    rolePermissions[principal.role].has(operation.permission),
-} satisfies WfGraphAuth<Principal>;
 
 const wfgraph = await createWfGraphApp({
   publicUrl: "https://workflows.example.com",
@@ -170,64 +153,45 @@ const wfgraph = await createWfGraphApp({ client: clientBundle, ... });
 
 ## Authentication and authorization
 
-The host owns operator identity and policy. Pass an `auth` object with these callbacks:
+The host owns operator sessions and policy. Authentication returns a request-scoped access
+policy or `null`; Workflow Graph neither receives nor stores a principal. Keep host identity,
+organization, and grant state in the callback's closure.
 
-- `authenticate(request)` reads the host session and returns a principal or `null`. The
-  callback can return a promise. Read the request URL and headers, including cookies, but
-  don't consume the request body.
-- `authorize(principal, operation)` decides whether the authenticated principal can perform
-  one operation. The callback can return a promise. Omit `authorize` to allow every operation
-  for every authenticated principal.
-
-`WfGraphPrincipal` requires `{ id: string }`. Extend the type with opaque host fields such as
-an organization ID or role. Workflow Graph passes the same principal object to `authorize`
-and does not interpret the extra fields. Workflow Graph does not persist the principal or its
-fields as part of this authorization change.
+This is application capability authorization for the Workflow Graph surface. It is not
+row-level ownership or tenant isolation: a granted operation can act on every Workflow Graph
+record that operation addresses.
 
 ```ts
-import {
-  type WfGraphAuth,
-  type WfGraphOperationId,
-  type WfGraphPermission,
-  type WfGraphPrincipal,
-  WfGraphRolePresets,
-} from "@wfgraph/core";
+import { defineWfGraphAuth, WfGraphRoles } from "@wfgraph/core";
 
-type Role = keyof typeof WfGraphRolePresets;
-type Principal = WfGraphPrincipal & {
-  organizationId: string;
-  role: Role;
-};
-
-const permissionsByRole: Record<Role, ReadonlySet<WfGraphPermission>> = {
-  read: new Set(WfGraphRolePresets.read),
-  readWrite: new Set(WfGraphRolePresets.readWrite),
-  admin: new Set(WfGraphRolePresets.admin),
-};
-
-const auth = {
-  authenticate: async (request) => {
-    const session = await readSession(request);
-    if (!session) return null;
-
-    return {
-      id: session.userId,
-      organizationId: session.organizationId,
-      role: session.wfgraphRole,
-    };
-  },
-  authorize: (principal, operation) =>
-    permissionsByRole[principal.role].has(operation.permission),
-} satisfies WfGraphAuth<Principal>;
+export const auth = defineWfGraphAuth(async (request) => {
+  const session = await readSession(request);
+  return session ? WfGraphRoles[session.role] : null;
+});
 ```
 
-For action-specific grants, store operation IDs in `ReadonlySet<WfGraphOperationId>` and
-check `operation.id`. `WfGraphOperationId` is a closed union of the supported operation IDs,
-so a switch over an operation ID can be exhaustive.
-
 The `readSession` function represents your host's session adapter. A provider such as Clerk
-can supply the user ID, organization ID, and role through that adapter. Workflow Graph does
-not depend on a provider-specific session API.
+can supply the user ID, organization ID, and role through that adapter. Load any remote grant
+state once in this callback, then return `WfGraphAccess.fromPermissions(grants)` or
+`WfGraphAccess.fromOperationIds(operationIds)`. Both constructors copy the collection into a
+local immutable policy. Do not put a policy-store query inside `allows`.
+
+`WfGraphRoles.viewer`, `.editor`, and `.admin` are directly usable immutable policies. The
+viewer can read workflows, runs, and connections. The editor adds workflow changes, run
+management, and the build agent. The admin allows every operation, including connection and
+API-key administration. Return `WfGraphAccess.all` when every authenticated session should
+have unrestricted access; there is no implicit allow-all mode.
+
+An access policy exposes `allows(operation)` and may return a boolean or `Promise<boolean>`.
+Use the common role policies first, permission collections for custom roles, and exact
+operation-ID collections only for advanced action-specific policy. An operation is one
+protected server action such as `workflow.publish`; its permission is the broader capability such as
+`workflow.write` that commonly grants several operations.
+
+Workflow Graph passes a clone to authentication, so reading its body cannot drain the request
+handled downstream. Authentication should normally use only session headers and cookies.
+The `defineWfGraphAuth` helper supplies contextual types when the callback lives outside the
+application options.
 
 An operation is a frozen `WfGraphOperation` value with two fields:
 
@@ -237,15 +201,16 @@ An operation is a frozen `WfGraphOperation` value with two fields:
 
 Use the following static exports from `@wfgraph/core` or `@wfgraph/core/worker`:
 
-| Export                | Purpose                                                                   |
-| --------------------- | ------------------------------------------------------------------------- |
-| `WfGraphPermissions`  | Named constants for every `WfGraphPermission` value                       |
-| `WfGraphOperations`   | Named operation descriptors that contain an ID and permission             |
-| `WfGraphOperationId`  | Union of every supported operation ID                                     |
-| `WfGraphOperationIds` | Array of every supported operation ID                                     |
-| `WfGraphRolePresets`  | Frozen permission arrays for the `read`, `readWrite`, and `admin` presets |
+| Export                | Purpose                                                              |
+| --------------------- | -------------------------------------------------------------------- |
+| `WfGraphPermissions`  | Named constants for every `WfGraphPermission` value                  |
+| `WfGraphOperations`   | Named operation descriptors that contain an ID and permission        |
+| `WfGraphOperationId`  | Union of every supported operation ID                                |
+| `WfGraphOperationIds` | Array of every supported operation ID                                |
+| `WfGraphAccess`       | `all`, `fromPermissions`, and `fromOperationIds` access constructors |
+| `WfGraphRoles`        | Directly usable immutable `viewer`, `editor`, and `admin` policies   |
 
-The permission vocabulary is fixed:
+Workflow Graph's built-in permission vocabulary is fixed:
 
 | Permission         | Covers                                                            |
 | ------------------ | ----------------------------------------------------------------- |
@@ -273,33 +238,32 @@ The following table maps every operation ID to its permission:
 | `settings.write`   | `apiKey.create`, `apiKey.delete`                                                                                                                                                                              |
 | `agent.use`        | `agent.chat`                                                                                                                                                                                                  |
 
-The role presets contain these permissions:
+The role policies contain these permissions:
 
-| Preset      | Permissions                                                                   |
-| ----------- | ----------------------------------------------------------------------------- |
-| `read`      | `workflow.read`, `run.read`, `connection.read`                                |
-| `readWrite` | Every `read` permission, plus `workflow.write`, `run.manage`, and `agent.use` |
-| `admin`     | Every exported permission, including connection and settings writes           |
+| Role     | Permissions                                                                   |
+| -------- | ----------------------------------------------------------------------------- |
+| `viewer` | `workflow.read`, `run.read`, `connection.read`                                |
+| `editor` | Every viewer permission, plus `workflow.write`, `run.manage`, and `agent.use` |
+| `admin`  | Every exported permission, including connection and settings writes           |
 
 Each RPC and REST operation carries one descriptor from `WfGraphOperations`. The OpenAPI
 operation ID matches `WfGraphOperation.id`, and the `x-wfgraph-permission` extension contains
-`WfGraphOperation.permission`. Workflow Graph calls `authorize` for protected RPC and REST
-operations and for the OAuth start, status, and callback routes.
+`WfGraphOperation.permission`.
 
 Authentication and authorization failures have distinct status codes. If `authenticate`
-returns `null`, returns a malformed principal, or throws, Workflow Graph returns an HTTP
-`401 Unauthorized` status code. If `authorize` returns false, returns a value other than true,
-or throws, Workflow Graph returns an HTTP `403 Forbidden` status code for the operation.
+returns `null`, Workflow Graph returns `401 Unauthorized`. If `allows` returns `false`, the
+operation returns `403 Forbidden`. A thrown or rejected callback, malformed access policy, or
+non-boolean `allows` result is a host-system failure: Workflow Graph logs its details server-side
+and returns a sanitized `500 Internal Server Error`.
 
-Pass `auth: "external"` only when an upstream component authenticates operators and authorizes
-all operator requests before they reach Workflow Graph. The `external` value allows every
-operator operation and does not call host callbacks. Workflow Graph cannot apply per-operation
-policy in this mode.
+Pass `auth: trustWfGraphUpstream()` only when an upstream component authenticates operators
+and authorizes every operator request before it reaches Workflow Graph. This explicit policy
+allows every Workflow Graph operation and does not create synthetic identity state.
 
 Three route classes have different authorization behavior:
 
 - Operator routes authenticate through the host. Protected RPC, REST, and OAuth operations
-  also call `authorize`.
+  call the returned policy's `allows` method.
 - Machine routes bypass host authentication because they carry a resume token, vendor
   signature, or Inngest credential. These routes are the wait-resume endpoint, connection
   webhook intake, and the Inngest HTTP callback when HTTP serve is enabled.
@@ -308,7 +272,8 @@ Three route classes have different authorization behavior:
 
 The authenticated, boot-blocking `GET /api/extensions` response contains an
 `authorization.operationIds` snapshot beside `catalog` and `agent`. Workflow Graph evaluates
-every canonical `WfGraphOperation` through `authorize` to build the snapshot. The editor
+every canonical `WfGraphOperation` through `allows` concurrently to build the snapshot. A
+policy failure makes bootstrap fail with a 500; it never becomes an empty grant set. The editor
 decodes the snapshot before its first render, then uses the granted IDs synchronously to hide
 or disable controls and to skip queries for unavailable features. A response that omits the
 authorization envelope or contains an unknown operation ID fails editor startup as a contract
@@ -316,7 +281,9 @@ mismatch.
 
 The grant snapshot lasts for the page lifetime. Reload the page after an account or policy
 change. The snapshot controls the editor experience only. Every protected RPC, REST, and OAuth
-operation calls the server-side `authorize` callback again when the operation runs.
+operation calls `allows` once again when the operation runs. A custom asynchronous policy must
+therefore tolerate concurrent bootstrap calls. The built-in roles and collection policies are
+local and perform no asynchronous fanout.
 
 ## Built-in integrations
 
@@ -464,7 +431,7 @@ type Env = {
   SLACK_CLIENT_SECRET: string;
 };
 
-export default wfWorker<Env, Principal>({
+export default wfWorker<Env>({
   publicUrl: "https://workflows.example.com",
   request: (env) => ({
     auth,
@@ -490,8 +457,8 @@ export default wfWorker<Env, Principal>({
 });
 ```
 
-`wfWorker<Env>` uses `WfGraphPrincipal`. Pass a second type argument when `auth` uses a
-principal with host-specific fields, as in `wfWorker<Env, Principal>`.
+`wfWorker` has one type parameter for the Worker environment. Host session state stays inside
+the authentication callback and its returned access-policy closure.
 
 The Worker opens and closes the PostgreSQL client inside each request. Configure
 the Hyperdrive binding with query caching disabled: Hyperdrive does not
@@ -550,7 +517,7 @@ different migration tool puts the tables in `public`. This repository's
 | `@wfgraph/core/migrate`  | `migrateWfGraphDatabase`, for migrations without an application                                                                                      |
 | `@wfgraph/core/logging`  | `configureWfGraphLogging`, the console setup a host installs                                                                                         |
 | `@wfgraph/client`        | `clientBundle`, the built editor, passed to `createWfGraphApp` as `client`                                                                           |
-| `@wfgraph/plugins`       | Five built-in integration values, the configurable `slack(options?)` factory, and `builtInIntegrations(options?)`                                    |
+| `@wfgraph/plugins`       | Five static integration values, the configurable `slack(options?)` factory, and `builtInIntegrations(options?)`                                      |
 | `@wfgraph/plugins/ui`    | Their icons and output renderers as one record, imported by the browser alone                                                                        |
 
 Workflow Graph cannot serialize a React component, so that last record is the one part of the catalog
@@ -568,7 +535,7 @@ application's router serves static files.
 | ------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `basePath`                | No       | Path the host mounts Workflow Graph at (default `/`)                                                                                                           |
 | `publicUrl`               | No       | External HTTPS origin. Required for OAuth callback and client metadata URLs, and to copy a Connection webhook URL. Loopback development can use HTTP           |
-| `auth`                    | Yes      | Authentication and optional per-operation authorization callbacks, or `"external"`                                                                             |
+| `auth`                    | Yes      | Authentication callback returning a request-scoped access policy or `null`                                                                                     |
 | `persistence`             | Yes      | A backend from `@wfgraph/core/postgres` or `@wfgraph/core/sqlite`                                                                                              |
 | `encryption.key`          | Yes      | 64-character hex string. It encrypts the integration secrets                                                                                                   |
 | `inngest.id`              | Yes      | Inngest application ID                                                                                                                                         |
@@ -585,9 +552,9 @@ application's router serves static files.
 Read these once:
 
 - **`auth` protects operator routes**, and Workflow Graph refuses to start without it. Pass
-  `authenticate` to resolve the session that your application already uses. Pass `authorize`
-  to enforce per-operation policy, or omit it to grant every operation to authenticated
-  principals. Pass `"external"` when an upstream component enforces both checks. For the full
+  an authentication callback that resolves the session your application already uses and
+  returns an access policy. Return `WfGraphAccess.all` for explicit unrestricted access, or
+  pass `trustWfGraphUpstream()` when an upstream component enforces both checks. For the full
   contract, see [Authentication and authorization](#authentication-and-authorization).
 - **Three route classes define exposure.** Operator routes use `auth`. The wait
   resume path, the Connection-addressed webhook intake

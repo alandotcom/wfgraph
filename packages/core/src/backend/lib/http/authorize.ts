@@ -1,39 +1,40 @@
 /**
- * Authenticates an operator request and delegates operation decisions to the host.
- * Machine routes remain outside this boundary because their own credentials prove
- * their sender.
+ * Resolves host authentication into one request-scoped access policy. Machine
+ * routes remain outside this boundary because their own credentials prove their
+ * sender.
  */
 
-import { getAppLogger } from "#src/backend/lib/logger";
-import type { WfGraphOperation } from "@wfgraph/shared/authorization/operations";
-import { getErrorMessage } from "@wfgraph/shared/utils";
+import {
+  WfGraphPermissions,
+  type WfGraphOperation,
+  type WfGraphOperationId,
+  type WfGraphPermission,
+} from "@wfgraph/shared/authorization/operations";
 
-const authLogger = getAppLogger("http", "auth");
+export type WfGraphAccess = Readonly<{
+  allows: (operation: WfGraphOperation) => boolean | Promise<boolean>;
+}>;
 
-export type WfGraphPrincipal = { id: string };
+export type WfGraphAuth = Readonly<{
+  authenticate: (
+    request: Request
+  ) => WfGraphAccess | null | Promise<WfGraphAccess | null>;
+}>;
 
-export type WfGraphAuth<P extends WfGraphPrincipal = WfGraphPrincipal> =
-  | {
-      /**
-       * Read headers and the URL, not the body: this receives the live `Request`,
-       * so consuming it here leaves every POST arriving empty downstream.
-       */
-      authenticate: (request: Request) => P | null | Promise<P | null>;
-      authorize?: (
-        principal: P,
-        operation: WfGraphOperation
-      ) => boolean | Promise<boolean>;
-    }
-  /** Something in front of Workflow Graph already authenticates and authorizes. */
-  | "external";
+type AuthFailureReporter = (failure: {
+  stage: "authenticate" | "allows";
+  error: unknown;
+}) => void;
 
-export type AuthContext = {
-  principal: WfGraphPrincipal;
-  authorize: (operation: WfGraphOperation) => Promise<boolean>;
-};
+export type AuthContext = Readonly<{
+  allows: (operation: WfGraphOperation) => Promise<boolean>;
+}>;
 
 export type ResolvedAuth = {
-  authenticate: (request: Request) => Promise<AuthContext | null>;
+  authenticate: (
+    request: Request,
+    reportFailure?: AuthFailureReporter
+  ) => Promise<AuthContext | null>;
 };
 
 /** The one 401 body, so both gates answer the same shape. */
@@ -41,72 +42,151 @@ export const UNAUTHORIZED_BODY = { error: "Unauthorized" };
 /** The one 403 body for an authenticated caller lacking an operation grant. */
 export const FORBIDDEN_BODY = { error: "Forbidden" };
 
-function isWfGraphPrincipal(value: unknown): value is WfGraphPrincipal {
-  try {
-    return (
-      typeof value === "object" &&
-      value !== null &&
-      !Array.isArray(value) &&
-      typeof Reflect.get(value, "id") === "string"
-    );
-  } catch {
-    return false;
+function accessFromPermissions(
+  permissions: Iterable<WfGraphPermission>
+): WfGraphAccess {
+  const granted = new Set(permissions);
+  return Object.freeze({
+    allows: (operation: WfGraphOperation) => granted.has(operation.permission),
+  });
+}
+
+function accessFromOperationIds(
+  operationIds: Iterable<WfGraphOperationId>
+): WfGraphAccess {
+  const granted = new Set(operationIds);
+  return Object.freeze({
+    allows: (operation: WfGraphOperation) => granted.has(operation.id),
+  });
+}
+
+const allAccess: WfGraphAccess = Object.freeze({ allows: () => true });
+
+export const WfGraphAccess = Object.freeze({
+  /** Explicit unrestricted access for an authenticated request. */
+  all: allAccess,
+  fromPermissions: accessFromPermissions,
+  fromOperationIds: accessFromOperationIds,
+});
+
+const viewerPermissions = [
+  WfGraphPermissions.workflowRead,
+  WfGraphPermissions.runRead,
+  WfGraphPermissions.connectionRead,
+] as const;
+
+const editorPermissions = [
+  ...viewerPermissions,
+  WfGraphPermissions.workflowWrite,
+  WfGraphPermissions.runManage,
+  WfGraphPermissions.agentUse,
+] as const;
+
+export const WfGraphRoles = Object.freeze({
+  viewer: accessFromPermissions(viewerPermissions),
+  editor: accessFromPermissions(editorPermissions),
+  admin: allAccess,
+});
+
+/**
+ * Gives an extracted authentication callback contextual request and return
+ * types, then packages it for `createWfGraphApp` or `wfWorker`.
+ */
+export function defineWfGraphAuth(
+  authenticate: WfGraphAuth["authenticate"]
+): WfGraphAuth {
+  return Object.freeze({ authenticate });
+}
+
+/** Trust an upstream boundary to authenticate and authorize every request. */
+export function trustWfGraphUpstream(): WfGraphAuth {
+  return trustedUpstreamAuth;
+}
+
+const trustedUpstreamAuth = defineWfGraphAuth(() => allAccess);
+
+class HostAuthFailure extends Error {
+  constructor(message: string, cause: unknown) {
+    super(message, { cause });
+    this.name = "HostAuthFailure";
   }
 }
 
-const externalPrincipal: WfGraphPrincipal = Object.freeze({ id: "external" });
+type UnknownAllows = (operation: WfGraphOperation) => unknown;
 
-export function resolveAuth<P extends WfGraphPrincipal>(
-  auth: WfGraphAuth<P>
-): ResolvedAuth {
-  if (auth === "external") {
-    return {
-      authenticate: () =>
-        Promise.resolve({
-          principal: externalPrincipal,
-          authorize: () => Promise.resolve(true),
-        }),
-    };
-  }
+type ReadAllowsResult =
+  | { ok: true; allows: UnknownAllows }
+  | { ok: false; error: unknown };
 
-  return {
-    authenticate: async (request) => {
-      let principal: P | null;
-      try {
-        principal = await auth.authenticate(request);
-      } catch (error) {
-        authLogger.error(
-          `The host's authenticate callback threw, so the request is denied: ${getErrorMessage(error)}`,
-          { error }
-        );
-        return null;
-      }
-
-      if (!isWfGraphPrincipal(principal)) {
-        return null;
-      }
-
+function readAllows(access: unknown): ReadAllowsResult {
+  try {
+    if (
+      (typeof access !== "object" && typeof access !== "function") ||
+      access === null
+    ) {
       return {
-        principal,
-        authorize: async (operation) => {
-          if (!auth.authorize) {
-            return true;
-          }
+        ok: false,
+        error: new TypeError(
+          "The host authenticate callback must return an access policy or null"
+        ),
+      };
+    }
+    const allows: unknown = Reflect.get(access, "allows");
+    return typeof allows === "function"
+      ? {
+          ok: true,
+          allows: (operation) => Reflect.apply(allows, access, [operation]),
+        }
+      : {
+          ok: false,
+          error: new TypeError(
+            "The host authenticate callback must return an access policy or null"
+          ),
+        };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
 
+export function resolveAuth(auth: WfGraphAuth): ResolvedAuth {
+  return {
+    authenticate: async (request, reportFailure = () => undefined) => {
+      let access: unknown;
+      try {
+        access = await auth.authenticate(request.clone());
+      } catch (error) {
+        reportFailure({ stage: "authenticate", error });
+        throw new HostAuthFailure("Host authentication failed", error);
+      }
+
+      if (access === null) return null;
+
+      const policy = readAllows(access);
+      if (!policy.ok) {
+        reportFailure({ stage: "authenticate", error: policy.error });
+        throw new HostAuthFailure("Host authentication failed", policy.error);
+      }
+
+      let reportedPolicyFailure = false;
+      return Object.freeze({
+        allows: async (operation: WfGraphOperation) => {
           try {
-            // Typed hosts answer a boolean, but an untyped JavaScript callback
-            // can answer anything. Exactly true is the only grant.
-            const allowed: unknown = await auth.authorize(principal, operation);
-            return allowed === true;
+            const allowed: unknown = await policy.allows(operation);
+            if (typeof allowed !== "boolean") {
+              throw new TypeError(
+                "The host access policy must return a boolean or Promise<boolean>"
+              );
+            }
+            return allowed;
           } catch (error) {
-            authLogger.error(
-              `The host's authorize callback threw, so the operation is denied: ${getErrorMessage(error)}`,
-              { error }
-            );
-            return false;
+            if (!reportedPolicyFailure) {
+              reportedPolicyFailure = true;
+              reportFailure({ stage: "allows", error });
+            }
+            throw new HostAuthFailure("Host access policy failed", error);
           }
         },
-      };
+      });
     },
   };
 }

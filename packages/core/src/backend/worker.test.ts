@@ -4,13 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer } from "effect";
 import { wfSqlite } from "#src/backend/persistence/sqlite";
-import { wfWorker } from "#src/backend/worker";
-import type { WfGraphWorker } from "#src/backend/worker";
+import {
+  defineWfGraphAuth,
+  trustWfGraphUpstream,
+  WfGraphAccess,
+  wfWorker,
+  type WfGraphWorker,
+} from "#src/worker";
 import type { WfGraphPersistence } from "#src/backend/persistence/types";
-import type {
-  WfGraphAuth,
-  WfGraphPrincipal,
-} from "#src/backend/lib/http/authorize";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
 import {
   stubApiKeyRepo,
@@ -29,20 +30,22 @@ afterEach(async () => {
 });
 
 describe("wfWorker", () => {
-  it("supports inferred and explicit environment and principal types", () => {
+  it("supports one environment type while auth closes over arbitrary session state", () => {
     type WorkerEnv = { INTEGRATION_ENCRYPTION_KEY: string };
-    type HostPrincipal = WfGraphPrincipal & { organizationId: string };
+    type HostSession = { organizationId: string; grants: ReadonlySet<string> };
 
-    const auth = {
-      authenticate: () =>
-        Promise.resolve({ id: "operator", organizationId: "org-1" }),
-      authorize: (principal: HostPrincipal) =>
-        principal.organizationId === "org-1",
-    } satisfies WfGraphAuth<HostPrincipal>;
-    const baseAuth = {
-      authenticate: () => ({ id: "operator" }),
-      authorize: (principal: WfGraphPrincipal) => principal.id === "operator",
-    } satisfies WfGraphAuth;
+    const session: HostSession = {
+      organizationId: "org-1",
+      grants: new Set(["workflow.read"]),
+    };
+    const auth = defineWfGraphAuth(async () => {
+      await Promise.resolve();
+      return {
+        allows: (operation) =>
+          session.organizationId === "org-1" &&
+          session.grants.has(operation.permission),
+      };
+    });
     const persistence = undefined as unknown as WfGraphPersistence;
     const request = (env: WorkerEnv) => ({
       auth,
@@ -52,18 +55,7 @@ describe("wfWorker", () => {
     });
 
     const inferredWorker = wfWorker({ request });
-    // An explicit environment uses the base principal unless the host supplies P too.
-    // @ts-expect-error A custom principal requires the second type argument.
-    wfWorker<WorkerEnv>({ request });
     const explicitEnvironmentWorker = wfWorker<WorkerEnv>({
-      request: () => ({
-        auth: baseAuth,
-        persistence,
-        encryption: { key: "d".repeat(64) },
-        inngest: { id: "wfgraph-worker-test", isDev: true },
-      }),
-    });
-    const explicitPrincipalWorker = wfWorker<WorkerEnv, HostPrincipal>({
       request,
     });
 
@@ -71,9 +63,7 @@ describe("wfWorker", () => {
     expectTypeOf(explicitEnvironmentWorker).toEqualTypeOf<
       WfGraphWorker<WorkerEnv>
     >();
-    expectTypeOf(explicitPrincipalWorker).toEqualTypeOf<
-      WfGraphWorker<WorkerEnv>
-    >();
+    expect(WfGraphAccess.all.allows).toBeTypeOf("function");
   });
 
   it("resolves request-scoped extensions from the Worker environment", async () => {
@@ -107,7 +97,7 @@ describe("wfWorker", () => {
         };
       },
       request: () => ({
-        auth: "external",
+        auth: trustWfGraphUpstream(),
         persistence,
         encryption: { key: "d".repeat(64) },
         inngest: { id: "wfgraph-worker-test", isDev: true },
@@ -160,7 +150,7 @@ describe("wfWorker", () => {
     };
     const worker = wfWorker({
       request: () => ({
-        auth: "external",
+        auth: trustWfGraphUpstream(),
         persistence,
         encryption: { key: "d".repeat(64) },
         inngest: { id: "wfgraph-worker-test", isDev: true },
@@ -205,7 +195,7 @@ describe("wfWorker", () => {
     };
     const worker = wfWorker({
       request: () => ({
-        auth: "external",
+        auth: trustWfGraphUpstream(),
         persistence,
         encryption: { key: "d".repeat(64) },
         inngest: { id: "wfgraph-worker-test", isDev: true },

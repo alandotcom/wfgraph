@@ -11,31 +11,23 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, setCookie } from "hono/cookie";
 import {
-  type WfGraphAuth,
-  type WfGraphOperation,
-  type WfGraphPermission,
-  type WfGraphPrincipal,
-  WfGraphRolePresets,
+  defineWfGraphAuth,
+  type WfGraphAccess,
+  WfGraphRoles,
 } from "@wfgraph/core";
 import { DemoLoginPage } from "./demo-login-page";
 
 const SESSION_COOKIE = "wfgraph_session";
 const MAX_LOGIN_BODY_BYTES = 4 * 1024;
 
-type DemoRole = keyof typeof WfGraphRolePresets;
-export type DemoPrincipal = WfGraphPrincipal & { role: DemoRole };
+type DemoRole = keyof typeof WfGraphRoles;
 type DemoUser = { password: string; role: DemoRole };
+type DemoSession = { username: string; access: WfGraphAccess };
 
 const demoUsers: Record<string, DemoUser> = {
   admin: { password: "password", role: "admin" },
-  editor: { password: "password", role: "readWrite" },
-  readonly: { password: "password", role: "read" },
-};
-
-const rolePermissions: Record<DemoRole, ReadonlySet<WfGraphPermission>> = {
-  admin: new Set(WfGraphRolePresets.admin),
-  read: new Set(WfGraphRolePresets.read),
-  readWrite: new Set(WfGraphRolePresets.readWrite),
+  editor: { password: "password", role: "editor" },
+  readonly: { password: "password", role: "viewer" },
 };
 
 function noStore(c: Context): void {
@@ -88,18 +80,11 @@ function sessionToken(request: Request): string | undefined {
   return values[0];
 }
 
-function authorizeDemoOperation(
-  principal: DemoPrincipal,
-  operation: WfGraphOperation
-): boolean {
-  return rolePermissions[principal.role].has(operation.permission);
-}
-
 export function createDemoAuth(options: DemoAuthOptions) {
-  const sessions = new Map<string, DemoPrincipal>();
+  const sessions = new Map<string, DemoSession>();
   const app = new Hono();
 
-  const principalForRequest = (request: Request): DemoPrincipal | null => {
+  const sessionForRequest = (request: Request): DemoSession | null => {
     const token = sessionToken(request);
     return token ? (sessions.get(token) ?? null) : null;
   };
@@ -108,16 +93,14 @@ export function createDemoAuth(options: DemoAuthOptions) {
     noStore(c);
     return c.html(
       DemoLoginPage({
-        username: principalForRequest(c.req.raw)?.id ?? undefined,
+        username: sessionForRequest(c.req.raw)?.username,
       })
     );
   });
 
   app.get("/login/session", (c) => {
     noStore(c);
-    return principalForRequest(c.req.raw)
-      ? c.body(null, 204)
-      : c.body(null, 401);
+    return sessionForRequest(c.req.raw) ? c.body(null, 204) : c.body(null, 401);
   });
 
   app.post(
@@ -161,7 +144,10 @@ export function createDemoAuth(options: DemoAuthOptions) {
         token = randomBytes(32).toString("base64url");
       } while (sessions.has(token));
 
-      sessions.set(token, Object.freeze({ id: username, role: user.role }));
+      sessions.set(
+        token,
+        Object.freeze({ username, access: WfGraphRoles[user.role] })
+      );
       setCookie(c, SESSION_COOKIE, token, {
         httpOnly: true,
         path: "/",
@@ -184,10 +170,9 @@ export function createDemoAuth(options: DemoAuthOptions) {
     return c.redirect("/login", 303);
   });
 
-  const auth = {
-    authenticate: principalForRequest,
-    authorize: authorizeDemoOperation,
-  } satisfies WfGraphAuth<DemoPrincipal>;
+  const auth = defineWfGraphAuth(
+    (request) => sessionForRequest(request)?.access ?? null
+  );
 
   const createFetch =
     (wfgraphFetch: (request: Request) => Promise<Response>) =>

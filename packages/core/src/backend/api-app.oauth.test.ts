@@ -1,7 +1,11 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import { createApiApp, requestLogPath } from "#src/backend/api-app";
-import { resolveAuth } from "#src/backend/lib/http/authorize";
+import {
+  defineWfGraphAuth,
+  resolveAuth,
+  trustWfGraphUpstream,
+} from "#src/backend/lib/http/authorize";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import type { IntegrationOAuth } from "#src/backend/extensions/oauth";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
@@ -119,7 +123,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
+      auth: resolveAuth(trustWfGraphUpstream()),
       runtime,
     });
 
@@ -176,7 +180,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
+      auth: resolveAuth(trustWfGraphUpstream()),
       runtime,
     });
 
@@ -252,7 +256,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
+      auth: resolveAuth(trustWfGraphUpstream()),
       runtime,
     });
 
@@ -306,7 +310,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
+      auth: resolveAuth(trustWfGraphUpstream()),
       runtime,
     });
 
@@ -332,7 +336,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      auth: resolveAuth({ authenticate: () => null }),
+      auth: resolveAuth(defineWfGraphAuth(() => null)),
       runtime,
     });
 
@@ -397,13 +401,14 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      auth: resolveAuth({
-        authenticate: () => ({ id: "operator_1" }),
-        authorize: (_principal, operation) => {
-          seen.push(operation.id);
-          return false;
-        },
-      }),
+      auth: resolveAuth(
+        defineWfGraphAuth(() => ({
+          allows: (operation) => {
+            seen.push(operation.id);
+            return false;
+          },
+        }))
+      ),
       runtime,
     });
 
@@ -497,7 +502,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
+      auth: resolveAuth(trustWfGraphUpstream()),
       runtime,
     });
 
@@ -531,7 +536,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
+      auth: resolveAuth(trustWfGraphUpstream()),
       runtime,
     });
 
@@ -589,7 +594,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
+      auth: resolveAuth(trustWfGraphUpstream()),
       runtime,
     });
 
@@ -695,7 +700,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
+      auth: resolveAuth(trustWfGraphUpstream()),
       runtime,
     });
 
@@ -761,7 +766,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
+      auth: resolveAuth(trustWfGraphUpstream()),
       runtime,
     });
 
@@ -805,7 +810,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
+      auth: resolveAuth(trustWfGraphUpstream()),
       runtime,
     });
 
