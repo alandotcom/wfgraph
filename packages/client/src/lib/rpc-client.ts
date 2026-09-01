@@ -53,7 +53,6 @@ export type SavedWorkflow = WorkflowData & {
   visibility: WorkflowVisibility;
   createdAt: string;
   updatedAt: string;
-  isOwner?: boolean;
   /** Absent until the first publish. */
   publishedVersionId?: string;
   publishedVersion?: number;

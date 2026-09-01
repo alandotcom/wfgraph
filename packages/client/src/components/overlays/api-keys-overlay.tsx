@@ -7,6 +7,8 @@ import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
 import { Spinner } from "#src/components/ui/spinner";
 import { orpcQuery } from "#src/lib/rpc-query";
+import { can } from "#src/lib/authorization";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
@@ -47,6 +49,7 @@ function CreateApiKeyOverlay({
   const { pop } = useOverlay();
   const queryClient = useQueryClient();
   const [keyName, setKeyName] = useState("");
+  const canCreate = can(WfGraphOperations.apiKeyCreate.id);
 
   const createKey = useMutation(
     orpcQuery.apiKey.create.mutationOptions({
@@ -61,13 +64,19 @@ function CreateApiKeyOverlay({
       meta: { errorMessage: "Failed to create API key" },
     })
   );
+  const create = () => {
+    if (canCreate) {
+      createKey.mutate({ name: keyName || null });
+    }
+  };
 
   return (
     <Overlay
       actions={[
         {
           label: "Create",
-          onClick: () => createKey.mutate({ name: keyName || null }),
+          onClick: create,
+          disabled: !canCreate,
           loading: createKey.isPending,
         },
       ]}
@@ -96,8 +105,16 @@ function CreateApiKeyOverlay({
 export function ApiKeysOverlay({ overlayId }: ApiKeysOverlayProps) {
   const { push, closeAll } = useOverlay();
   const queryClient = useQueryClient();
-  const { data: apiKeys = [], isPending } = useQuery({
+  const canRead = can(WfGraphOperations.apiKeyGetAll.id);
+  const canCreate = can(WfGraphOperations.apiKeyCreate.id);
+  const canDelete = can(WfGraphOperations.apiKeyDelete.id);
+  const {
+    data: apiKeys = [],
+    isPending,
+    isError,
+  } = useQuery({
     ...orpcQuery.apiKey.getAll.queryOptions({ input: {} }),
+    enabled: canRead,
     meta: { errorMessage: "Failed to load API keys" },
   });
 
@@ -122,6 +139,9 @@ export function ApiKeysOverlay({ overlayId }: ApiKeysOverlayProps) {
     : undefined;
 
   const openDeleteConfirm = (keyId: string) => {
+    if (!canDelete) {
+      return;
+    }
     push(ConfirmOverlay, {
       title: "Delete API Key",
       message:
@@ -129,19 +149,30 @@ export function ApiKeysOverlay({ overlayId }: ApiKeysOverlayProps) {
       confirmLabel: "Delete",
       confirmVariant: "destructive" as const,
       destructive: true,
-      onConfirm: () => deleteKey.mutate({ keyId }),
+      onConfirm: () => {
+        if (canDelete) {
+          deleteKey.mutate({ keyId });
+        }
+      },
     });
   };
 
   return (
     <Overlay
       actions={[
-        {
-          label: "New API Key",
-          variant: "outline",
-          onClick: () =>
-            push(CreateApiKeyOverlay, { onCreated: setNewlyCreatedKey }),
-        },
+        ...(canCreate
+          ? [
+              {
+                label: "New API Key",
+                variant: "outline" as const,
+                onClick: () => {
+                  void push(CreateApiKeyOverlay, {
+                    onCreated: setNewlyCreatedKey,
+                  });
+                },
+              },
+            ]
+          : []),
         { label: "Done", onClick: closeAll },
       ]}
       overlayId={overlayId}
@@ -151,7 +182,11 @@ export function ApiKeysOverlay({ overlayId }: ApiKeysOverlayProps) {
         Manage API keys for webhook authentication
       </p>
 
-      {isPending ? (
+      {isError ? (
+        <p className="py-8 text-center text-muted-foreground text-sm">
+          Unable to load API keys.
+        </p>
+      ) : isPending ? (
         <div className="flex items-center justify-center py-8">
           <Spinner />
         </div>
@@ -217,18 +252,20 @@ export function ApiKeysOverlay({ overlayId }: ApiKeysOverlayProps) {
                         ` · Last used ${formatDate(apiKey.lastUsedAt)}`}
                     </p>
                   </div>
-                  <Button
-                    disabled={deletingId === apiKey.id}
-                    onClick={() => openDeleteConfirm(apiKey.id)}
-                    size="sm"
-                    variant="ghost"
-                  >
-                    {deletingId === apiKey.id ? (
-                      <Spinner className="size-4" />
-                    ) : (
-                      <Trash2 className="size-4 text-destructive" />
-                    )}
-                  </Button>
+                  {canDelete ? (
+                    <Button
+                      disabled={deletingId === apiKey.id}
+                      onClick={() => openDeleteConfirm(apiKey.id)}
+                      size="sm"
+                      variant="ghost"
+                    >
+                      {deletingId === apiKey.id ? (
+                        <Spinner className="size-4" />
+                      ) : (
+                        <Trash2 className="size-4 text-destructive" />
+                      )}
+                    </Button>
+                  ) : null}
                 </div>
               ))}
             </div>

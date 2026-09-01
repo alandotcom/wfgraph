@@ -9,6 +9,10 @@ import type { IntegrationWebhook } from "#src/backend/extensions/integration-web
 import { SignatureRejected } from "#src/backend/extensions/integration-webhook";
 import type { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import { MAX_REQUEST_BODY_BYTES } from "#src/backend/lib/http/capped-body";
+import {
+  defineWfGraphAuth,
+  resolveAuth,
+} from "#src/backend/lib/http/authorize";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import type { DecryptedIntegration } from "#src/backend/services/integrations/repo";
 import { receiveWebhook } from "#src/backend/services/integrations/webhook-intake";
@@ -244,7 +248,7 @@ describe("webhook HTTP route", () => {
     const { runtime, sendCatalogEvent } = runtimeFor();
     const app = createApiApp({
       basePath: "/api",
-      authorize: () => Promise.resolve(false),
+      auth: resolveAuth(defineWfGraphAuth(() => null)),
       runtime,
     });
 
@@ -273,7 +277,7 @@ describe("webhook HTTP route", () => {
     });
     const app = createApiApp({
       basePath: "/api",
-      authorize: () => Promise.resolve(false),
+      auth: resolveAuth(defineWfGraphAuth(() => null)),
       runtime,
     });
 
@@ -296,7 +300,7 @@ describe("webhook HTTP route", () => {
     const sendCatalogEvent = vi.fn<
       InngestClient["Service"]["sendCatalogEvent"]
     >(() => Effect.void);
-    const runtime = stubWfGraphRuntime({
+    await using runtime = stubWfGraphRuntime({
       extensions: {
         catalog: { ...emptyExtensionCatalog, integrations: [resendMeta] },
         webhookFor: (type) => (type === "resend" ? webhook() : undefined),
@@ -312,33 +316,29 @@ describe("webhook HTTP route", () => {
     });
     const app = createApiApp({
       basePath: "/api",
-      authorize: () => Promise.resolve(false),
+      auth: resolveAuth(defineWfGraphAuth(() => null)),
       runtime,
     });
 
-    try {
-      const response = await app.fetch(
-        new Request("http://localhost/api/webhooks/resend/conn_1", {
-          method: "POST",
-          body: "x".repeat(MAX_REQUEST_BODY_BYTES + 1),
-        })
-      );
-      expect(response.status).toBe(413);
-      expect(await response.json()).toEqual({
-        error: "Request body is too large",
-      });
-      expect(lookups).toBe(0);
-      expect(sendCatalogEvent).not.toHaveBeenCalled();
-    } finally {
-      await runtime.dispose();
-    }
+    const response = await app.fetch(
+      new Request("http://localhost/api/webhooks/resend/conn_1", {
+        method: "POST",
+        body: "x".repeat(MAX_REQUEST_BODY_BYTES + 1),
+      })
+    );
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({
+      error: "Request body is too large",
+    });
+    expect(lookups).toBe(0);
+    expect(sendCatalogEvent).not.toHaveBeenCalled();
   });
 
   it("answers 404 for an unknown Connection", async () => {
     const { runtime } = runtimeFor();
     const app = createApiApp({
       basePath: "/api",
-      authorize: () => Promise.resolve(false),
+      auth: resolveAuth(defineWfGraphAuth(() => null)),
       runtime,
     });
 

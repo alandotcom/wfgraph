@@ -13,6 +13,8 @@ import { useAfterCommit } from "#src/hooks/effects";
 import { isAgentEnabled } from "#src/lib/extensions";
 import { isRunInProgress } from "#src/lib/execution-logs";
 import { orpcQuery } from "#src/lib/rpc-query";
+import { can } from "#src/lib/authorization";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import {
   isExecutionOverlayActiveAtom,
   nodesAtom,
@@ -42,6 +44,7 @@ const WorkflowEditor = () => {
   const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
   const workflowNotFound = useAtomValue(workflowNotFoundAtom);
   const workflowLoadError = useAtomValue(workflowLoadErrorAtom);
+  const canUpdate = can(WfGraphOperations.workflowUpdate.id);
 
   // A debounced autosave has no caller waiting on it, so a failure would
   // otherwise reach only the console while the editor looked saved.
@@ -64,7 +67,9 @@ const WorkflowEditor = () => {
     ...orpcQuery.workflow.getExecutionStatus.queryOptions({
       input: { executionId: selectedExecutionId ?? "" },
     }),
-    enabled: selectedExecutionId !== null,
+    enabled:
+      selectedExecutionId !== null &&
+      can(WfGraphOperations.workflowGetExecutionStatus.id),
     staleTime: 0,
     refetchIntervalInBackground: false,
     refetchInterval: (query) =>
@@ -213,7 +218,7 @@ const WorkflowEditor = () => {
                 better failure than handing React Flow a parent of zero
                 height. */}
               <div className="relative min-h-[min(20rem,40dvh)] flex-1">
-                <WorkflowCanvas />
+                <WorkflowCanvas canEdit={canUpdate} />
                 {/* The agent belongs to the canvas rather than the editor shell.
                   This keeps its card above the status strip and out of the
                   properties rail while the graph remains visible behind it. */}

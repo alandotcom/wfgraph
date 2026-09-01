@@ -25,12 +25,7 @@ import { toast } from "sonner";
 import { Edge } from "#src/components/flow-elements/edge";
 import { Panel } from "#src/components/flow-elements/panel";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
-import {
-  useAfterDelay,
-  useAfterPaint,
-  useBeforePaint,
-  useDomEvent,
-} from "#src/hooks/effects";
+import { useAfterDelay, useAfterPaint, useDomEvent } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { isTextEntry } from "#src/lib/is-text-entry";
 import {
@@ -89,7 +84,15 @@ import {
   connectionHandleTypesMatch,
   connectionRefusalReason,
 } from "./connection-validation";
-import { workflowEdgeAriaLabel } from "#src/components/flow-elements/edge-label";
+import { accessibleGraphElements } from "./workflow-canvas-accessibility";
+import {
+  canvasSynchronizationKey,
+  fitInitialWorkflowViewport,
+  keyboardFitViewOptions,
+  lifecycleAnchorViewport,
+  synchronizeCanvasGraph,
+  useSynchronizedCanvas,
+} from "./workflow-canvas-synchronization";
 
 const edgeTypes = {
   [WORKFLOW_EDGE_TYPE]: Edge.Animated,
@@ -130,316 +133,7 @@ export function canvasInteractionState({
   };
 }
 
-export function canvasFitViewKey({
-  workflowId,
-  lifecycleNode,
-}: {
-  workflowId: string | null;
-  lifecycleNode: Pick<WorkflowNode, "id" | "position"> | null;
-}): string | null {
-  if (!workflowId || !lifecycleNode) {
-    return null;
-  }
-  return `${workflowId}:${lifecycleNode.id}:${lifecycleNode.position.x}:${lifecycleNode.position.y}`;
-}
-
-export const keyboardFitViewOptions = { padding: 0.2, duration: 0 } as const;
-
-type InternalLifecycleAnchor = {
-  userNode: WorkflowNode;
-  position: { x: number; y: number };
-  width: number | undefined;
-};
-
-export function synchronizedLifecycleAnchor(
-  lifecycleNode: WorkflowNode | null,
-  internalNode: InternalLifecycleAnchor | null
-): { id: string; position: { x: number; y: number }; width: number } | null {
-  if (
-    !lifecycleNode ||
-    !internalNode?.width ||
-    internalNode.userNode !== lifecycleNode
-  ) {
-    return null;
-  }
-  return {
-    id: lifecycleNode.id,
-    position: internalNode.position,
-    width: internalNode.width,
-  };
-}
-
-export function lifecycleAnchorViewport({
-  canvasWidth,
-  nodePosition,
-  nodeWidth,
-  top,
-  zoom,
-}: {
-  canvasWidth: number;
-  nodePosition: { x: number; y: number };
-  nodeWidth: number;
-  top: number;
-  zoom: number;
-}): { x: number; y: number; zoom: number } {
-  return {
-    x: canvasWidth / 2 - (nodePosition.x + nodeWidth / 2) * zoom,
-    y: top - nodePosition.y * zoom,
-    zoom,
-  };
-}
-
-export function useSynchronizedCanvas({
-  presentation,
-  synchronizePresentation,
-  currentWorkflowId,
-  lifecycleNode,
-  internalNode,
-  fitGenerationRef,
-}: {
-  presentation: unknown;
-  synchronizePresentation: () => void;
-  currentWorkflowId: string | null;
-  lifecycleNode: WorkflowNode | null;
-  internalNode: InternalLifecycleAnchor | null;
-  fitGenerationRef: { current: number };
-}): {
-  lifecycleAnchor: ReturnType<typeof synchronizedLifecycleAnchor>;
-  fitViewKey: string | null;
-} {
-  useBeforePaint(presentation, synchronizePresentation);
-
-  const lifecycleAnchor = synchronizedLifecycleAnchor(
-    lifecycleNode,
-    internalNode
-  );
-  const fitViewKey = canvasFitViewKey({
-    workflowId: currentWorkflowId,
-    lifecycleNode: lifecycleAnchor,
-  });
-
-  // Controlled props reach React Flow's internal store after this component
-  // renders. Wait for its node identity so initial fitting never reads the
-  // outgoing graph. Presentation replacements own their viewport separately.
-  useBeforePaint(fitViewKey, () => {
-    fitGenerationRef.current += 1;
-  });
-
-  return { lifecycleAnchor, fitViewKey };
-}
-
-export async function fitInitialWorkflowViewport({
-  fitView,
-  isCurrent,
-  readAnchor,
-  setViewport,
-  reveal,
-}: {
-  fitView: () => Promise<boolean>;
-  isCurrent: () => boolean;
-  readAnchor: () => {
-    canvasWidth: number;
-    nodePosition: { x: number; y: number };
-    nodeWidth: number;
-    zoom: number;
-  } | null;
-  setViewport: (viewport: {
-    x: number;
-    y: number;
-    zoom: number;
-  }) => Promise<boolean>;
-  reveal: () => void;
-}): Promise<void> {
-  try {
-    if (!isCurrent()) {
-      return;
-    }
-    await fitView();
-    if (!isCurrent()) {
-      return;
-    }
-
-    const anchor = readAnchor();
-    if (!anchor) {
-      return;
-    }
-    await setViewport(lifecycleAnchorViewport({ ...anchor, top: 48 }));
-  } finally {
-    if (isCurrent()) {
-      reveal();
-    }
-  }
-}
-
-const accessibleNodeCache = new WeakMap<
-  WorkflowNode,
-  { label: string; node: WorkflowNode }
->();
-const dimensionedNodeCache = new WeakMap<WorkflowNode, WorkflowNode>();
-const accessibleEdgeCache = new WeakMap<
-  WorkflowEdge,
-  { label: string; edge: WorkflowEdge }
->();
-type AccessibleNodeArray = {
-  catalog: ReturnType<typeof useExtensionCatalog>;
-  labels: ReadonlyMap<string, string>;
-  nodes: WorkflowNode[];
-};
-const accessibleNodeArrayCache = new WeakMap<
-  WorkflowNode[],
-  AccessibleNodeArray
->();
-const accessibleEdgeArrayCache = new WeakMap<
-  WorkflowEdge[],
-  { nodeArray: AccessibleNodeArray; edges: WorkflowEdge[] }
->();
-const EMPTY_RUN_PRESENTATION = {};
-const EMPTY_CHANGES_PRESENTATION = {};
-
-export function canvasSynchronizationKey({
-  workspaceView,
-  executionOverlay,
-  comparison,
-  draftEdges,
-}: {
-  workspaceView: "draft" | "runs" | "changes";
-  executionOverlay: unknown;
-  comparison: unknown;
-  draftEdges: WorkflowEdge[];
-}): unknown {
-  if (workspaceView === "runs") {
-    return executionOverlay ?? EMPTY_RUN_PRESENTATION;
-  }
-  if (workspaceView === "changes") {
-    return comparison ?? EMPTY_CHANGES_PRESENTATION;
-  }
-  return draftEdges;
-}
-
-export function canvasNodeWithInitialDimensions(
-  node: WorkflowNode
-): WorkflowNode {
-  const initialWidth =
-    node.initialWidth ??
-    node.measured?.width ??
-    node.width ??
-    WORKFLOW_NODE_WIDTH;
-  const initialHeight =
-    node.initialHeight ??
-    node.measured?.height ??
-    node.height ??
-    WORKFLOW_NODE_HEIGHT;
-  if (
-    node.initialWidth === initialWidth &&
-    node.initialHeight === initialHeight
-  ) {
-    return node;
-  }
-  const cached = dimensionedNodeCache.get(node);
-  if (cached) {
-    return cached;
-  }
-  const dimensioned = { ...node, initialWidth, initialHeight };
-  dimensionedNodeCache.set(node, dimensioned);
-  return dimensioned;
-}
-
-function withNodeAriaLabel(node: WorkflowNode, label: string): WorkflowNode {
-  const dimensionedNode = canvasNodeWithInitialDimensions(node);
-  if (dimensionedNode.ariaLabel === label) {
-    return dimensionedNode;
-  }
-  const cached = accessibleNodeCache.get(node);
-  if (cached?.label === label) {
-    return cached.node;
-  }
-  const accessible = { ...dimensionedNode, ariaLabel: label };
-  accessibleNodeCache.set(node, { label, node: accessible });
-  return accessible;
-}
-
-export function synchronizeCanvasGraph({
-  nodes,
-  edges,
-  currentNodes,
-  currentEdges,
-  setNodes,
-  setEdges,
-}: {
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
-  currentNodes: WorkflowNode[];
-  currentEdges: WorkflowEdge[];
-  setNodes: (nodes: WorkflowNode[]) => void;
-  setEdges: (edges: WorkflowEdge[]) => void;
-}): void {
-  if (currentNodes !== nodes) {
-    setNodes(nodes);
-  }
-  if (currentEdges !== edges) {
-    setEdges(edges);
-  }
-}
-
-function withEdgeAriaLabel(edge: WorkflowEdge, label: string): WorkflowEdge {
-  if (edge.ariaLabel === label) {
-    return edge;
-  }
-  const cached = accessibleEdgeCache.get(edge);
-  if (cached?.label === label) {
-    return cached.edge;
-  }
-  const accessible = { ...edge, ariaLabel: label };
-  accessibleEdgeCache.set(edge, { label, edge: accessible });
-  return accessible;
-}
-
-function accessibleGraphElements(
-  nodes: WorkflowNode[],
-  edges: WorkflowEdge[],
-  catalog: ReturnType<typeof useExtensionCatalog>
-): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
-  const cachedNodes = accessibleNodeArrayCache.get(nodes);
-  let nodeArray = cachedNodes;
-  if (nodeArray?.catalog !== catalog) {
-    const labels = new Map(
-      nodes.map(
-        (node) => [node.id, workflowNodeAriaLabel(node.data, catalog)] as const
-      )
-    );
-    nodeArray = {
-      catalog,
-      labels,
-      nodes: nodes.map((node) =>
-        withNodeAriaLabel(node, labels.get(node.id) ?? "Unknown step")
-      ),
-    };
-    accessibleNodeArrayCache.set(nodes, nodeArray);
-  }
-
-  const cachedEdges = accessibleEdgeArrayCache.get(edges);
-  const accessibleEdges =
-    cachedEdges?.nodeArray === nodeArray
-      ? cachedEdges.edges
-      : edges.map((edge) =>
-          withEdgeAriaLabel(
-            edge,
-            workflowEdgeAriaLabel({
-              sourceLabel: nodeArray.labels.get(edge.source) ?? "Unknown step",
-              targetLabel: nodeArray.labels.get(edge.target) ?? "Unknown step",
-              sourceHandleId: edge.sourceHandle,
-              data: edge.data,
-            })
-          )
-        );
-  if (cachedEdges?.nodeArray !== nodeArray) {
-    accessibleEdgeArrayCache.set(edges, { nodeArray, edges: accessibleEdges });
-  }
-
-  return { nodes: nodeArray.nodes, edges: accessibleEdges };
-}
-
-export function WorkflowCanvas() {
+export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const catalog = useExtensionCatalog();
   const nodes = useAtomValue(displayNodesAtom);
   const edges = useAtomValue(displayEdgesAtom);
@@ -534,8 +228,9 @@ export function WorkflowCanvas() {
       );
     }
   };
+  const graphEditingLocked = editingLocked || !canEdit;
   const interaction = canvasInteractionState({
-    editingLocked,
+    editingLocked: graphEditingLocked,
     comparisonActive,
     overlayActive,
   });
@@ -588,7 +283,7 @@ export function WorkflowCanvas() {
         nodes.filter((node) => node.selected).map((node) => node.id)
       );
     },
-    { capture: true, enabled: !editingLocked }
+    { capture: true, enabled: !graphEditingLocked }
   );
   const selectedIdsAtRightClick = useCallback(
     () => rightClickSelectionRef.current,
@@ -676,7 +371,7 @@ export function WorkflowCanvas() {
       }
 
       // Matches the toolbar buttons, which are disabled while generating.
-      if (editingLocked) {
+      if (graphEditingLocked) {
         return;
       }
 
@@ -687,11 +382,11 @@ export function WorkflowCanvas() {
         undo();
       }
     },
-    [undo, redo, editingLocked]
+    [undo, redo, graphEditingLocked]
   );
 
   useDomEvent(window, "keydown", handleUndoRedoShortcut);
-  useCanvasCopyPaste(!editingLocked);
+  useCanvasCopyPaste(!graphEditingLocked);
   // Mounted once, here, because the node badges and the toolbar count both read
   // what it writes and neither should run the pass itself.
   useCollectWorkflowIssues();
@@ -710,6 +405,7 @@ export function WorkflowCanvas() {
 
   const isValidConnection = useCallback(
     (connection: XYFlowConnection | XYFlowEdge) =>
+      !graphEditingLocked &&
       connectionRefusalReason({
         connection,
         nodes,
@@ -717,7 +413,7 @@ export function WorkflowCanvas() {
         storeEdges,
         catalog,
       }) === null,
-    [catalog, edges, nodes, storeEdges]
+    [catalog, edges, graphEditingLocked, nodes, storeEdges]
   );
 
   const normalizeSourceHandleForConnection = useCallback(
@@ -734,6 +430,9 @@ export function WorkflowCanvas() {
 
   const onConnect: OnConnect = useCallback(
     (connection: XYFlowConnection) => {
+      if (graphEditingLocked) {
+        return;
+      }
       if (!(connection.source && connection.target)) {
         return;
       }
@@ -768,6 +467,7 @@ export function WorkflowCanvas() {
       edges,
       storeEdges,
       catalog,
+      graphEditingLocked,
     ]
   );
 
@@ -787,6 +487,9 @@ export function WorkflowCanvas() {
       nodes: WorkflowNode[];
       edges: XYFlowEdge[];
     }) => {
+      if (graphEditingLocked) {
+        return Promise.resolve(false);
+      }
       // The Lifecycle Node cannot be deleted, so a selection holding only it
       // deletes nothing. Cancelling keeps its edges and skips the undo step.
       const deletesAnything =
@@ -806,7 +509,7 @@ export function WorkflowCanvas() {
       snapshotHistory();
       return Promise.resolve(true);
     },
-    [snapshotHistory]
+    [graphEditingLocked, snapshotHistory]
   );
 
   const onNodeClick: NodeMouseHandler = useCallback(
@@ -849,13 +552,36 @@ export function WorkflowCanvas() {
     [currentWorkflowId, moveComparisonNodes]
   );
 
+  const handleNodesChange = useCallback(
+    (changes: Parameters<typeof onNodesChange>[0]) => {
+      if (graphEditingLocked) {
+        return;
+      }
+      onNodesChange(changes);
+    },
+    [graphEditingLocked, onNodesChange]
+  );
+
+  const handleEdgesChange = useCallback(
+    (changes: Parameters<typeof onEdgesChange>[0]) => {
+      if (graphEditingLocked) {
+        return;
+      }
+      onEdgesChange(changes);
+    },
+    [graphEditingLocked, onEdgesChange]
+  );
+
   const onConnectStart = useCallback(
     (_event: MouseEvent | TouchEvent, params: OnConnectStartParams) => {
+      if (graphEditingLocked) {
+        return;
+      }
       connectingNodeId.current = params.nodeId;
       connectingHandleType.current = params.handleType;
       connectingHandleId.current = params.handleId ?? null;
     },
-    []
+    [graphEditingLocked]
   );
 
   const getClientPosition = useCallback((event: MouseEvent | TouchEvent) => {
@@ -897,6 +623,9 @@ export function WorkflowCanvas() {
 
   const handleConnectionToNewNode = useCallback(
     (clientX: number, clientY: number) => {
+      if (graphEditingLocked) {
+        return;
+      }
       const sourceNodeId = connectingNodeId.current;
       if (!sourceNodeId) {
         return;
@@ -987,11 +716,15 @@ export function WorkflowCanvas() {
       normalizeSourceHandleForConnection,
       onConnect,
       isValidConnection,
+      graphEditingLocked,
     ]
   );
 
   const onConnectEnd: OnConnectEnd = useCallback(
     (event, connectionState) => {
+      if (graphEditingLocked) {
+        return;
+      }
       if (!connectingNodeId.current) {
         return;
       }
@@ -1065,6 +798,7 @@ export function WorkflowCanvas() {
       getClientPosition,
       handleConnectionToExistingNode,
       handleConnectionToNewNode,
+      graphEditingLocked,
     ]
   );
 
@@ -1120,7 +854,7 @@ export function WorkflowCanvas() {
         elementsSelectable={interaction.elementsSelectable}
         isValidConnection={isValidConnection}
         nodes={accessibleGraph.nodes}
-        nodesConnectable={!editingLocked && !interaction.comparisonVisible}
+        nodesConnectable={!graphEditingLocked && !interaction.comparisonVisible}
         nodesDraggable={interaction.nodesDraggable}
         nodeTypes={nodeTypes}
         onBeforeDelete={
@@ -1128,22 +862,22 @@ export function WorkflowCanvas() {
             ? () => Promise.resolve(false)
             : onBeforeDelete
         }
-        onConnect={editingLocked ? undefined : onConnect}
-        onConnectEnd={editingLocked ? undefined : onConnectEnd}
-        onConnectStart={editingLocked ? undefined : onConnectStart}
-        onEdgeContextMenu={editingLocked ? undefined : onEdgeContextMenu}
-        onEdgesChange={editingLocked ? undefined : onEdgesChange}
+        onConnect={graphEditingLocked ? undefined : onConnect}
+        onConnectEnd={graphEditingLocked ? undefined : onConnectEnd}
+        onConnectStart={graphEditingLocked ? undefined : onConnectStart}
+        onEdgeContextMenu={graphEditingLocked ? undefined : onEdgeContextMenu}
+        onEdgesChange={graphEditingLocked ? undefined : handleEdgesChange}
         onNodeClick={isGenerating ? undefined : onNodeClick}
-        onNodeContextMenu={editingLocked ? undefined : onNodeContextMenu}
+        onNodeContextMenu={graphEditingLocked ? undefined : onNodeContextMenu}
         onNodesChange={
           interaction.comparisonVisible
             ? onComparisonNodesChange
-            : editingLocked
+            : graphEditingLocked
               ? undefined
-              : onNodesChange
+              : handleNodesChange
         }
         onPaneClick={onPaneClick}
-        onPaneContextMenu={editingLocked ? undefined : onPaneContextMenu}
+        onPaneContextMenu={graphEditingLocked ? undefined : onPaneContextMenu}
         onSelectionChange={
           interaction.elementsSelectable ? onSelectionChange : undefined
         }
@@ -1152,7 +886,10 @@ export function WorkflowCanvas() {
           className="border-none bg-transparent p-0"
           position="bottom-left"
         >
-          <Controls canReflow={canReflow} onReflow={reflow} />
+          <Controls
+            canReflow={!graphEditingLocked && canReflow}
+            onReflow={graphEditingLocked ? undefined : reflow}
+          />
         </Panel>
         {showMinimap && (
           // maskColor and nodeColor default to hardcoded light-mode values that
@@ -1171,6 +908,7 @@ export function WorkflowCanvas() {
 
       {/* Context Menu */}
       <WorkflowContextMenu
+        canEdit={canEdit}
         menuState={contextMenuState}
         onClose={closeContextMenu}
       />

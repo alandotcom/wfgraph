@@ -5,7 +5,7 @@ import {
   WorkflowMenuComponent,
 } from "#src/components/workflow/workflow-toolbar-chrome";
 import { WorkflowToolbarChrome } from "#src/components/workflow/workflow-toolbar";
-import type { WorkflowToolbarState } from "#src/components/workflow/workflow-toolbar-handlers";
+import type { WorkflowToolbarState } from "#src/components/workflow/workflow-toolbar-state";
 import {
   MANY_REAL_NODES,
   REAL_NODES,
@@ -13,6 +13,16 @@ import {
 } from "#src/components/workflow/workflow-toolbar-chrome.test-support";
 import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
+import { can } from "#src/lib/authorization";
+import {
+  installAuthorizationGrantsForTests,
+  resetAuthorizationGrantsForTests,
+} from "#src/lib/authorization-test-support";
+import {
+  WfGraphOperationIds,
+  WfGraphOperations,
+} from "@wfgraph/shared/authorization/operations";
+import type { WorkflowToolbarActions } from "#src/components/workflow/workflow-toolbar-handlers";
 
 /**
  * Publish and ownership behavior is exercised directly against
@@ -125,18 +135,54 @@ describe("mobile editing actions", () => {
   });
 });
 
-describe("ToolbarActions ownership", () => {
-  it("offers a non-owner nothing to do to someone else's workflow", async () => {
-    const { findByTestId } = renderChrome(ToolbarActions, {
-      state: { isOwner: false },
+describe("ToolbarActions authorization", () => {
+  it("keeps the action group available when editing is denied", async () => {
+    const { findByRole } = renderChrome(ToolbarActions, {
+      state: { canUpdate: false },
     });
 
-    const host = await findByTestId("toolbar-actions-host");
-    expect(host.innerHTML).toBe("");
+    expect(await findByRole("button", { name: "Actions" })).toBeTruthy();
   });
 });
 
 describe("WorkflowToolbarChrome", () => {
+  it("renders admin controls from the bootstrap grants on its first render", async () => {
+    installAuthorizationGrantsForTests(WfGraphOperationIds);
+
+    function BootstrappedToolbar({
+      actions,
+      state,
+      workflowId,
+    }: {
+      actions: WorkflowToolbarActions;
+      state: WorkflowToolbarState;
+      workflowId?: string;
+    }) {
+      return (
+        <WorkflowToolbarChrome
+          actions={actions}
+          state={{
+            ...state,
+            canUpdate: can(WfGraphOperations.workflowUpdate.id),
+          }}
+          workflowId={workflowId}
+        />
+      );
+    }
+
+    try {
+      const { findByRole, queryByText } = renderChrome(BootstrappedToolbar);
+
+      expect(await findByRole("button", { name: "Publish" })).toBeTruthy();
+      expect(queryByText("Read-only")).toBeNull();
+      expect(
+        document.querySelector("button[title='Duplicate to your workflows']")
+      ).toBeNull();
+    } finally {
+      resetAuthorizationGrantsForTests();
+    }
+  });
+
   it("coordinates the top-level workflow menus as a menubar", async () => {
     const { findByRole } = renderChrome(WorkflowToolbarChrome);
 
@@ -319,7 +365,14 @@ describe("WorkflowToolbarChrome", () => {
 
   it("keeps Settings available to a non-owner", async () => {
     const { findByRole, queryByRole } = renderChrome(WorkflowToolbarChrome, {
-      state: { isOwner: false },
+      state: {
+        canUpdate: false,
+        canExecute: false,
+        canPublish: false,
+        canReadRuns: false,
+        canReadVersionHistory: false,
+        canCompare: false,
+      },
     });
 
     expect(await findByRole("menuitem", { name: "Settings" })).toBeTruthy();
@@ -467,7 +520,14 @@ describe("WorkflowToolbarChrome", () => {
       const { findByTestId, queryByRole } = renderChrome(
         WorkflowToolbarChrome,
         {
-          state: { isOwner: false },
+          state: {
+            canUpdate: false,
+            canExecute: false,
+            canPublish: false,
+            canReadRuns: false,
+            canReadVersionHistory: false,
+            canCompare: false,
+          },
         }
       );
 
@@ -555,6 +615,113 @@ describe("ToolbarActions menu under a pinned run", () => {
         getByRole("menuitem", { name: label }).getAttribute("data-disabled")
       ).not.toBeNull();
     }
+  });
+});
+
+describe("WorkflowToolbarChrome operation grants", () => {
+  it("offers each toolbar command from its own operation grant", async () => {
+    const executeOnly = renderChrome(WorkflowToolbarChrome, {
+      state: {
+        canUpdate: false,
+        canExecute: true,
+        canPublish: false,
+        publication: {
+          isPublished: true,
+          hasUnpublishedChanges: false,
+          publishedVersionId: "version_1",
+          publishedVersion: 1,
+          publishedAt: "2026-08-23T16:00:00.000Z",
+        },
+      },
+    });
+    expect(
+      await executeOnly.findByRole("button", { name: "Run draft" })
+    ).toBeTruthy();
+    expect(
+      (
+        await executeOnly.findByRole("button", { name: "Run draft" })
+      ).hasAttribute("disabled")
+    ).toBe(true);
+    const runMenu = await executeOnly.findByRole("button", {
+      name: "More ways to run",
+    });
+    fireEvent.keyDown(runMenu, { key: "ArrowDown" });
+    fireEvent.keyUp(runMenu, { key: "ArrowDown" });
+    expect(
+      executeOnly
+        .getByRole("menuitem", { name: "Run v1 · Live" })
+        .getAttribute("data-disabled")
+    ).toBeNull();
+    expect(executeOnly.queryByRole("button", { name: "Publish" })).toBeNull();
+    executeOnly.unmount();
+
+    const publishOnly = renderChrome(WorkflowToolbarChrome, {
+      state: { canUpdate: false, canExecute: false, canPublish: true },
+    });
+    expect(
+      await publishOnly.findByRole("button", { name: "Publish" })
+    ).toBeTruthy();
+    expect(publishOnly.queryByRole("button", { name: "Run draft" })).toBeNull();
+    publishOnly.unmount();
+
+    const createOnly = renderChrome(WorkflowMenuComponent, {
+      state: {
+        canUpdate: false,
+        canCreate: true,
+        canDuplicate: false,
+        canDelete: false,
+      },
+    });
+    await openWorkflowMenu(createOnly.findByRole);
+    expect(
+      createOnly.getByRole("menuitem", { name: "New workflow" })
+    ).toBeTruthy();
+    expect(
+      createOnly.queryByRole("menuitem", { name: "Duplicate workflow" })
+    ).toBeNull();
+    expect(
+      createOnly.queryByRole("menuitem", { name: "Delete workflow" })
+    ).toBeNull();
+    createOnly.unmount();
+
+    const duplicateOnly = renderChrome(WorkflowMenuComponent, {
+      state: {
+        canUpdate: false,
+        canCreate: false,
+        canDuplicate: true,
+        canDelete: false,
+      },
+    });
+    await openWorkflowMenu(duplicateOnly.findByRole);
+    expect(
+      duplicateOnly.getByRole("menuitem", { name: "Duplicate workflow" })
+    ).toBeTruthy();
+    expect(
+      duplicateOnly.queryByRole("menuitem", { name: "New workflow" })
+    ).toBeNull();
+    expect(
+      duplicateOnly.queryByRole("menuitem", { name: "Delete workflow" })
+    ).toBeNull();
+    duplicateOnly.unmount();
+
+    const deleteOnly = renderChrome(WorkflowMenuComponent, {
+      state: {
+        canUpdate: false,
+        canCreate: false,
+        canDuplicate: false,
+        canDelete: true,
+      },
+    });
+    await openWorkflowMenu(deleteOnly.findByRole);
+    expect(
+      deleteOnly.getByRole("menuitem", { name: "Delete workflow" })
+    ).toBeTruthy();
+    expect(
+      deleteOnly.queryByRole("menuitem", { name: "New workflow" })
+    ).toBeNull();
+    expect(
+      deleteOnly.queryByRole("menuitem", { name: "Duplicate workflow" })
+    ).toBeNull();
   });
 });
 

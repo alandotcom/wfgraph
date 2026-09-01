@@ -1,4 +1,4 @@
-import { implement } from "@orpc/server";
+import { implement, ORPCError } from "@orpc/server";
 import { Effect, Schema, Stream } from "effect";
 import type { ServiceFailure } from "#src/backend/lib/effect/failures";
 import { getAppLogger } from "#src/backend/lib/logger";
@@ -51,7 +51,11 @@ import {
   getWorkflowsCurrent,
   postWorkflowsCurrent,
 } from "#src/backend/services/workflows/current";
-import { rpcContract } from "@wfgraph/shared/rpc/contracts";
+import {
+  getWfGraphOperation,
+  rpcContract,
+} from "@wfgraph/shared/rpc/contracts";
+import { FORBIDDEN_BODY } from "#src/backend/lib/http/authorize";
 import { readAs } from "@wfgraph/shared/types/schema";
 import { getErrorMessage } from "@wfgraph/shared/utils";
 import type { RpcContext } from "#src/backend/rpc/context";
@@ -224,6 +228,30 @@ export function rpcStreamHandler<
   };
 }
 
+type RpcAuthorizationInput = {
+  context: RpcContext;
+  procedure: Parameters<typeof getWfGraphOperation>[0];
+};
+
+/**
+ * Requires an operation declaration before a procedure can reach a business
+ * handler. A procedure omitted from the contract authorization map is a server
+ * configuration error, so it receives a 500 instead of an implicit grant.
+ */
+async function authorizeRpcProcedure({
+  context,
+  procedure,
+}: RpcAuthorizationInput): Promise<void> {
+  const operation = getWfGraphOperation(procedure);
+  if (!operation) {
+    throw new ORPCError("INTERNAL_SERVER_ERROR");
+  }
+
+  if (!(await context.auth.allows(operation))) {
+    throw new ORPCError("FORBIDDEN", { data: FORBIDDEN_BODY });
+  }
+}
+
 // Output schemas exist so the client infers a return type and so the OpenAPI
 // document has response bodies to describe. Every handler already returns a value
 // the schema was written from, so re-validating it on the way out only costs a
@@ -233,7 +261,11 @@ export function rpcStreamHandler<
 // object; a timestamp codec in an output schema would silently not encode.
 const rpc = implement(rpcContract)
   .$context<RpcContext>()
-  .$config({ disableOutputValidation: true });
+  .$config({ disableOutputValidation: true })
+  .use(async ({ context, procedure, next }) => {
+    await authorizeRpcProcedure({ context, procedure });
+    return await next();
+  });
 
 export const rpcRouter = rpc.router({
   agent: {

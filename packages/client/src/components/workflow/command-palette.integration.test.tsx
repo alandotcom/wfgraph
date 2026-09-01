@@ -223,15 +223,20 @@ describe("the command palette", () => {
     expect(await findByRole("option", { name: /^Wait/ })).toBeTruthy();
   });
 
-  it("shows a non-owner no way into it", async () => {
-    const { findByTestId } = renderChrome(ToolbarActions, {
-      state: { isOwner: false },
+  it("keeps the palette available and disables edit commands when editing is denied", async () => {
+    const { findByRole, findByTestId } = renderChrome(ToolbarActions, {
+      state: { canUpdate: false },
     });
     await findByTestId("toolbar-actions-host");
 
     pressCommandK();
 
-    expect(paletteInput()).toBeNull();
+    expect(paletteInput()).not.toBeNull();
+    expect(
+      (await findByRole("option", { name: /^Add step/ })).getAttribute(
+        "data-disabled"
+      )
+    ).not.toBeNull();
   });
 
   // A held palette belongs to the workflow it was opened over. Opening another

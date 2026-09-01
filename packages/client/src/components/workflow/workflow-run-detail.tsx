@@ -31,8 +31,8 @@ type WorkflowRunDetailProps = {
   isCanceling: boolean;
   isResuming: boolean;
   onBack: () => void;
-  onCancel: (executionId: string) => void;
-  onResume: (token: string) => void;
+  onCancel?: (executionId: string) => void;
+  onResume?: (token: string) => void;
 };
 
 function waitingSummary(wait: ExecutionWait): string {
@@ -145,7 +145,7 @@ export function WorkflowRunDetail({
                     Waiting at {wait.nodeName}
                   </h3>
                   <p className="break-words text-xs">{waitingSummary(wait)}</p>
-                  {wait.resumeToken ? (
+                  {wait.resumeToken && onResume ? (
                     <Button
                       disabled={isResuming}
                       onClick={() => onResume(wait.resumeToken ?? "")}

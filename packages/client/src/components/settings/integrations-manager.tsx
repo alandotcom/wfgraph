@@ -13,6 +13,8 @@ import { Spinner } from "#src/components/ui/spinner";
 import { announceTestResult } from "#src/lib/connection-credentials";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions, orpcQuery } from "#src/lib/rpc-query";
+import { can } from "#src/lib/authorization";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { findIntegration } from "@wfgraph/shared/extensions/catalog";
 
@@ -24,8 +26,17 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
   const catalog = useExtensionCatalog();
   const { push } = useOverlay();
   const repairAgainstConnectionList = useConnectionRepair();
-  const { data: integrations = [], isPending } = useQuery({
+  const canRead = can(WfGraphOperations.integrationGetAll.id);
+  const canUpdate = can(WfGraphOperations.integrationUpdate.id);
+  const canDelete = can(WfGraphOperations.integrationDelete.id);
+  const canTest = can(WfGraphOperations.integrationTestConnection.id);
+  const {
+    data: integrations = [],
+    isPending,
+    isError,
+  } = useQuery({
     ...integrationsQueryOptions(),
+    enabled: canRead,
     meta: { errorMessage: "Failed to load integrations" },
   });
 
@@ -77,6 +88,9 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
   // job: a node stores a connection id, and a connection edited or deleted here
   // leaves that id naming something the run cannot reach.
   const handleEdit = (integration: Integration) => {
+    if (!canUpdate) {
+      return;
+    }
     push(EditConnectionOverlay, {
       integration,
       onSuccess: repairAgainstConnectionList,
@@ -85,6 +99,9 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
   };
 
   const handleDelete = (integration: Integration) => {
+    if (!canDelete) {
+      return;
+    }
     push(DeleteConnectionOverlay, {
       integration,
       onSuccess: repairAgainstConnectionList,
@@ -96,6 +113,14 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
   const testingId = testConnection.isPending
     ? testConnection.variables?.integrationId
     : undefined;
+
+  if (isError) {
+    return (
+      <p className="py-8 text-center text-muted-foreground text-sm">
+        Unable to load connections.
+      </p>
+    );
+  }
 
   if (isPending) {
     return (
@@ -149,13 +174,15 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
               )}
             </div>
             <div className="flex items-center gap-1">
-              {integration.hasTest && (
+              {integration.hasTest && canTest && (
                 <Button
                   className="h-7 px-2"
                   disabled={testingId === integration.id}
-                  onClick={() =>
-                    testConnection.mutate({ integrationId: integration.id })
-                  }
+                  onClick={() => {
+                    if (canTest) {
+                      testConnection.mutate({ integrationId: integration.id });
+                    }
+                  }}
                   size="sm"
                   variant="outline"
                 >
@@ -169,24 +196,28 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
               {/* Named for the connection each one acts on. A list of icon
                   buttons all called "Edit" leaves a screen reader with no way
                   to tell which connection is about to change. */}
-              <Button
-                aria-label={`Edit ${integration.name}`}
-                className="size-7"
-                onClick={() => handleEdit(integration)}
-                size="icon"
-                variant="outline"
-              >
-                <Pencil className="size-3" />
-              </Button>
-              <Button
-                aria-label={`Delete ${integration.name}`}
-                className="size-7"
-                onClick={() => handleDelete(integration)}
-                size="icon"
-                variant="outline"
-              >
-                <Trash2 className="size-3" />
-              </Button>
+              {canUpdate ? (
+                <Button
+                  aria-label={`Edit ${integration.name}`}
+                  className="size-7"
+                  onClick={() => handleEdit(integration)}
+                  size="icon"
+                  variant="outline"
+                >
+                  <Pencil className="size-3" />
+                </Button>
+              ) : null}
+              {canDelete ? (
+                <Button
+                  aria-label={`Delete ${integration.name}`}
+                  className="size-7"
+                  onClick={() => handleDelete(integration)}
+                  size="icon"
+                  variant="outline"
+                >
+                  <Trash2 className="size-3" />
+                </Button>
+              ) : null}
             </div>
           </div>
         ))}

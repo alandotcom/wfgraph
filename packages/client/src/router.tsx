@@ -19,6 +19,8 @@ import { getExtensionCatalog } from "#src/lib/extensions";
 import { queryClient } from "#src/lib/query-client";
 import { toSavedWorkflow } from "#src/lib/rpc-client";
 import { integrationsQueryOptions, orpcQuery } from "#src/lib/rpc-query";
+import { can, canInspectWorkflowRuns } from "#src/lib/authorization";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { hydrateWorkflowAtom } from "#src/lib/workflow-graph-store";
 import {
   successfulSaveGenerationAtom,
@@ -27,10 +29,10 @@ import {
 } from "#src/lib/workflow-save-store";
 import {
   classifyWorkflowLoadFailure,
+  authorizedWorkflowSearch,
   executionIdFromWorkflowSearch,
   publishWorkflowAfterCompletedSaves,
   WORKFLOW_LOAD_ERROR_MESSAGE,
-  workflowWorkspaceView,
 } from "#src/lib/workflow-route-state";
 import { enterRunsWorkspaceAtom } from "#src/lib/workflow-workspace-navigation";
 import WorkflowEditorPage from "#src/routes/workflows/[workflowId]/page";
@@ -44,7 +46,11 @@ export type WorkflowRouteSearch = {
 function validateWorkflowSearch(
   search: WorkflowRouteSearch & SearchSchemaInput
 ): WorkflowRouteSearch {
-  return { executionId: executionIdFromWorkflowSearch(search) };
+  return authorizedWorkflowSearch(search, canOpenDeepLinkedRun());
+}
+
+function canOpenDeepLinkedRun(): boolean {
+  return can(WfGraphOperations.workflowGetById.id) && canInspectWorkflowRuns();
 }
 
 /**
@@ -106,19 +112,6 @@ const workflowRoute = createRoute({
   path: "/workflows/$workflowId",
   validateSearch: validateWorkflowSearch,
   /**
-   * Open the Runs workspace on a deep-linked run so the panel is what the builder
-   * sees. Selection and overlay are the editor shell's
-   * `ExecutionOverlaySync`, not this panel — hydrate clears those, and the
-   * shell rewrites them after mount. Safe on every search change: selecting a
-   * run must not re-hydrate.
-   */
-  beforeLoad: ({ search }) => {
-    const view = workflowWorkspaceView(search.executionId);
-    if (view !== null) {
-      appStore.set(enterRunsWorkspaceAtom);
-    }
-  },
-  /**
    * Put the workflow on screen before the editor renders.
    *
    * A loader avoids fetching from an effect after mounting, which would render
@@ -158,10 +151,23 @@ const workflowRoute = createRoute({
     appStore.set(workflowNotFoundAtom, false);
     appStore.set(workflowLoadErrorAtom, null);
 
+    if (!can(WfGraphOperations.workflowGetById.id)) {
+      const error = new Error(
+        "You do not have permission to view this workflow."
+      );
+      appStore.set(workflowLoadErrorAtom, error.message);
+      throw error;
+    }
+
     const [workflowResult, integrationsResult] = await Promise.allSettled([
       queryClient.fetchQuery(workflowQueryOptions),
-      queryClient.fetchQuery(integrationsQueryOptions()),
+      can(WfGraphOperations.integrationGetAll.id)
+        ? queryClient.fetchQuery(integrationsQueryOptions())
+        : Promise.resolve([]),
     ]);
+    const hasDeepLinkRunAccess =
+      executionIdFromWorkflowSearch(location.search) !== undefined &&
+      canOpenDeepLinkedRun();
 
     // Query cancellation and route cancellation are separate concerns. The
     // checks keep a loader that no longer owns the navigation from publishing
@@ -201,7 +207,7 @@ const workflowRoute = createRoute({
               integrationsResult.value
             ),
           });
-          if (executionIdFromWorkflowSearch(location.search)) {
+          if (hasDeepLinkRunAccess) {
             appStore.set(enterRunsWorkspaceAtom);
           }
         },

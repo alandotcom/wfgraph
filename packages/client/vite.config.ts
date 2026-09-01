@@ -5,6 +5,7 @@ import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 // Keep the `.ts`: Vite's coming native config loader is node's own, which
 // guesses no extension.
+import { exampleAuthGuard } from "../../scripts/example-vite-auth.ts";
 import { workspaceSourceAliases } from "../../scripts/plugins/workspace-source-aliases.ts";
 
 /**
@@ -50,6 +51,7 @@ export default defineConfig({
   // from serving an unrelated directory in development.
   publicDir: false,
   plugins: [
+    exampleAuthGuard(APP_ORIGIN),
     react(),
     // The React Compiler memoizes components and hooks, which is why almost
     // nothing in the client reaches for useMemo or useCallback by hand.
@@ -77,6 +79,11 @@ export default defineConfig({
     // the browser router's own paths need nothing declared here.
     proxy: {
       "/api": APP_ORIGIN,
+      // The example app owns the login pages. Proxy them so forms submit from
+      // the browser-visible Vite origin and the session cookie is stored for
+      // that origin before the browser calls `/api`.
+      "/login": APP_ORIGIN,
+      "/logout": APP_ORIGIN,
     },
     fs: {
       // Sources from three workspace packages reach the browser, so the dev

@@ -35,7 +35,6 @@ import {
   autosaveDelayAtom,
   currentWorkflowIdAtom,
   hasUnsavedChangesAtom,
-  isWorkflowOwnerAtom,
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
@@ -82,7 +81,6 @@ function installComparison(
     selectedHistoryVersionId?: string | null;
   }
 ) {
-  store.set(isWorkflowOwnerAtom, true);
   store.set(workflowWorkspaceViewAtom, "changes");
   const epoch = store.set(beginWorkflowComparisonRequestAtom, input.workflowId);
   store.set(installWorkflowComparisonAtom, { ...input, epoch });
@@ -432,7 +430,6 @@ describe("comparison session store", () => {
   it("shows only the active workspace graph and keeps comparison free of run or validation paint", () => {
     const store = createStore();
     store.set(currentWorkflowIdAtom, "workflow_1");
-    store.set(isWorkflowOwnerAtom, true);
     store.set(loadWorkflowGraphAtom, {
       nodes: [
         {
@@ -539,7 +536,6 @@ describe("comparison session store", () => {
       ],
       edges: [],
     });
-    store.set(isWorkflowOwnerAtom, true);
     store.set(workflowWorkspaceViewAtom, "changes");
     store.set(beginWorkflowComparisonRequestAtom, "workflow_1");
 

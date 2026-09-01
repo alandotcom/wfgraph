@@ -10,10 +10,7 @@ import {
   executionOverlayGraphAtom,
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
-import {
-  currentWorkflowIdAtom,
-  isWorkflowOwnerAtom,
-} from "#src/lib/workflow-save-store";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   selectedExecutionIdAtom,
   workflowWorkspaceViewAtom,
@@ -37,7 +34,6 @@ const comparison = {
 function storeWithComparison() {
   const store = createStore();
   store.set(currentWorkflowIdAtom, "workflow_1");
-  store.set(isWorkflowOwnerAtom, true);
   store.set(workflowWorkspaceViewAtom, "changes");
   const epoch = store.set(beginWorkflowComparisonRequestAtom, "workflow_1");
   store.set(installWorkflowComparisonAtom, {
@@ -75,7 +71,6 @@ describe("workspace transitions", () => {
 
   it("enters Changes by clearing the selected run and its graph", () => {
     const store = createStore();
-    store.set(isWorkflowOwnerAtom, true);
     store.set(workflowWorkspaceViewAtom, "runs");
     store.set(selectedExecutionIdAtom, "run_1");
     store.set(executionOverlayGraphAtom, { nodes: [], edges: [] });

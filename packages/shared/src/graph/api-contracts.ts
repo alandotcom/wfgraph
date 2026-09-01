@@ -17,8 +17,6 @@ export type WorkflowSummaryPayload = {
   visibility: WorkflowVisibility;
   createdAt: string;
   updatedAt: string;
-  /** Absent on a payload the viewer did not author. */
-  isOwner?: boolean;
   /** Absent until the first publish. */
   publishedVersionId?: string;
 };

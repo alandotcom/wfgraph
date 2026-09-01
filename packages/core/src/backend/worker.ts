@@ -9,10 +9,7 @@ import {
   createIntegrationCipher,
   type EncryptionRuntimeConfig,
 } from "#src/backend/services/integrations/cipher";
-import {
-  resolveAuthorize,
-  type WfGraphAuth,
-} from "#src/backend/lib/http/authorize";
+import { resolveAuth, type WfGraphAuth } from "#src/backend/lib/http/authorize";
 import { normalizeBasePath } from "#src/backend/lib/http/mount-path";
 import {
   createInngestSurface,
@@ -101,7 +98,7 @@ export function wfWorker<Env>(
       const extensions =
         staticExtensions ?? assembleExtensions(extensionResolver?.(env) ?? {});
 
-      const authorize = resolveAuthorize(config.auth);
+      const auth = resolveAuth(config.auth);
       const cipher = createIntegrationCipher(config.encryption);
       const persistence = await config.persistence.open(cipher);
       let runtime: ReturnType<typeof createWfGraphRuntime> | undefined;
@@ -126,7 +123,7 @@ export function wfWorker<Env>(
           "/",
           createApiApp({
             basePath: `${basePath}/api`,
-            authorize,
+            auth,
             runtime,
             inngestHandler: inngest.serve(functions),
           })

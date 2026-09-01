@@ -28,6 +28,7 @@ import {
   isSafeRecordPath,
 } from "#src/types/record-key";
 import type { ReferenceField } from "#src/graph/node-references";
+import { WfGraphOperationIds } from "#src/authorization/operations";
 
 const safeRecordKey = Schema.String.check(
   Schema.makeFilter(isSafeRecordKey, {
@@ -234,6 +235,14 @@ export const readExtensionsResponse = readAs(
      * control the user cannot enable is worse than no control.
      */
     agent: Schema.optionalKey(Schema.Struct({ enabled: Schema.Boolean })),
+    /**
+     * Operations granted to the authenticated operator for this page lifetime.
+     * Required because the editor cannot safely infer grants from an older
+     * server response.
+     */
+    authorization: Schema.Struct({
+      operationIds: Schema.Array(Schema.Literals(WfGraphOperationIds)),
+    }),
     /**
      * The origin a vendor POSTs webhooks to. Absent when the host did not set
      * `publicUrl`, which is also what leaves OAuth off: the editor cannot copy

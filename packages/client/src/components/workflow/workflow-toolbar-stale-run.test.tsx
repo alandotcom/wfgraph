@@ -12,10 +12,8 @@ import { toast } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import type { RunRequest } from "#src/components/overlays/run-overlay";
-import {
-  useWorkflowActions,
-  type WorkflowToolbarState,
-} from "#src/components/workflow/workflow-toolbar-handlers";
+import { useWorkflowActions } from "#src/components/workflow/workflow-toolbar-handlers";
+import type { WorkflowToolbarState } from "#src/components/workflow/workflow-toolbar-state";
 import {
   expectedSnapshot,
   graph,

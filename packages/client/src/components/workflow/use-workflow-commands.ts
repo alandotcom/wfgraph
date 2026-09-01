@@ -4,10 +4,8 @@ import { useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useReflowLayout } from "#src/components/workflow/use-reflow-layout";
 import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
-import type {
-  WorkflowToolbarActions,
-  WorkflowToolbarState,
-} from "#src/components/workflow/workflow-toolbar-handlers";
+import type { WorkflowToolbarActions } from "#src/components/workflow/workflow-toolbar-handlers";
+import type { WorkflowToolbarState } from "#src/components/workflow/workflow-toolbar-state";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import { viewportAnimationDuration } from "#src/lib/motion";
 import {
@@ -84,25 +82,34 @@ export function useWorkflowCommands({
       canUndo: state.canUndo,
       canRedo: state.canRedo,
       canReflow,
-      canSave: Boolean(state.currentWorkflowId) && !state.isGenerating,
-      canViewRuns: Boolean(state.currentWorkflowId) && state.isOwner,
+      canEdit: state.canUpdate,
+      canSave:
+        Boolean(state.currentWorkflowId) &&
+        !state.isGenerating &&
+        state.canUpdate,
+      canRunDraft: state.canExecute && state.canUpdate,
+      canRunPublished: state.canExecute && state.canReadVersionGraph,
+      canViewRuns: Boolean(state.currentWorkflowId) && state.canReadRuns,
       canViewChanges:
         Boolean(state.currentWorkflowId) &&
-        state.isOwner &&
+        state.canReadVersionHistory &&
         Boolean(state.publication?.isPublished),
-      canPublish: !isWorkflowPublishDisabled({
-        editingLocked,
-        isSaving: state.isSaving,
-        isComparing: actions.isComparing,
-        isPublishing: actions.isPublishing,
-        isPreflighting: actions.isPreflighting,
-        hasNodes,
-        hasUnsavedChanges: state.hasUnsavedChanges,
-        publication: state.publication,
-      }),
-      canCopySelection: hasCopyableSelection && !editingLocked,
-      canPaste: hasCopiedSelection && !editingLocked,
-      canGroupSelection: grouping.ok && !editingLocked,
+      canPublish:
+        state.canPublish &&
+        !isWorkflowPublishDisabled({
+          editingLocked,
+          isSaving: state.isSaving,
+          isComparing: actions.isComparing,
+          isPublishing: actions.isPublishing,
+          isPreflighting: actions.isPreflighting,
+          hasNodes,
+          hasUnsavedChanges: state.hasUnsavedChanges,
+          publication: state.publication,
+        }),
+      canCopySelection:
+        state.canUpdate && hasCopyableSelection && !editingLocked,
+      canPaste: state.canUpdate && hasCopiedSelection && !editingLocked,
+      canGroupSelection: state.canUpdate && grouping.ok && !editingLocked,
       editingLocked,
     },
     shortcuts,

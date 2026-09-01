@@ -7,7 +7,11 @@ import { join } from "node:path";
 import middie from "@fastify/middie";
 import express from "express";
 import Fastify, { type FastifyInstance } from "fastify";
-import { createWfGraphApp, type WfGraphApp } from "#src/app";
+import {
+  createWfGraphApp,
+  trustWfGraphUpstream,
+  type WfGraphApp,
+} from "#src/app";
 import { createRequestListener } from "#src/node";
 import { wfPostgres } from "#src/backend/persistence/postgres";
 
@@ -113,7 +117,7 @@ beforeAll(async () => {
 
   wfgraph = await createWfGraphApp({
     client: { dir: clientDir },
-    auth: "external",
+    auth: trustWfGraphUpstream(),
     basePath: MOUNT,
     // Deliberately a different identity from app.test.ts, so a reader can tell
     // the two app-owned surfaces apart in a log.

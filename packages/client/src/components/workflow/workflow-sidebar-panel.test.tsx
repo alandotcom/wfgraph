@@ -20,7 +20,6 @@ import {
   canvasEditingLockedAtom,
   executionOverlayGraphAtom,
 } from "#src/lib/workflow-graph-store";
-import { isWorkflowOwnerAtom } from "#src/lib/workflow-save-store";
 import { workflowWorkspaceView } from "#src/lib/workflow-route-state";
 import {
   isSidebarCollapsedAtom,
@@ -79,7 +78,6 @@ function stubRunQueries(): void {
 
 function renderPanel() {
   const store = createStore();
-  store.set(isWorkflowOwnerAtom, true);
   store.set(workflowWorkspaceViewAtom, "runs");
   store.set(isSidebarCollapsedAtom, false);
   store.set(executionOverlayGraphAtom, {

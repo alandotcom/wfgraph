@@ -12,6 +12,7 @@ import {
   hasProvidedConfigValues,
 } from "#src/lib/connection-credentials";
 import { WebhookUrlField } from "#src/components/ui/webhook-url-field";
+import { can } from "#src/lib/authorization";
 import type { Integration } from "#src/lib/rpc-client";
 import {
   integrationsQueryOptions,
@@ -24,6 +25,7 @@ import {
   type CredentialFieldMetadata,
   type IntegrationMetadata,
 } from "@wfgraph/shared/extensions/catalog";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
@@ -84,18 +86,22 @@ function OAuthStatusPanel({
 function OAuthConnectPrompt({
   providerLabel,
   pending,
+  canConnect,
   onConnect,
 }: {
   providerLabel: string;
   pending: boolean;
+  canConnect: boolean;
   onConnect: () => void;
 }) {
   return (
     <OAuthStatusPanel
       actions={
-        <Button disabled={pending} onClick={onConnect} type="button">
-          Connect
-        </Button>
+        canConnect ? (
+          <Button disabled={pending} onClick={onConnect} type="button">
+            Connect
+          </Button>
+        ) : null
       }
       icon={<Link aria-hidden="true" className="mt-0.5 size-4" />}
       pending={pending}
@@ -113,12 +119,16 @@ function OAuthConnectionStatus({
   oauth,
   providerLabel,
   pending,
+  canConnect,
+  canDisconnect,
   onConnect,
   onDisconnect,
 }: {
   oauth: NonNullable<Integration["oauth"]>;
   providerLabel: string;
   pending: boolean;
+  canConnect: boolean;
+  canDisconnect: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
 }) {
@@ -127,23 +137,27 @@ function OAuthConnectionStatus({
       <OAuthStatusPanel
         actions={
           <>
-            <Button
-              disabled={pending}
-              onClick={onConnect}
-              title={`Reconnect to change what ${providerLabel} allows`}
-              type="button"
-              variant="outline"
-            >
-              Reconnect
-            </Button>
-            <Button
-              disabled={pending}
-              onClick={onDisconnect}
-              type="button"
-              variant="outline"
-            >
-              Disconnect
-            </Button>
+            {canConnect ? (
+              <Button
+                disabled={pending}
+                onClick={onConnect}
+                title={`Reconnect to change what ${providerLabel} allows`}
+                type="button"
+                variant="outline"
+              >
+                Reconnect
+              </Button>
+            ) : null}
+            {canDisconnect ? (
+              <Button
+                disabled={pending}
+                onClick={onDisconnect}
+                type="button"
+                variant="outline"
+              >
+                Disconnect
+              </Button>
+            ) : null}
           </>
         }
         icon={
@@ -176,9 +190,11 @@ function OAuthConnectionStatus({
   return (
     <OAuthStatusPanel
       actions={
-        <Button disabled={pending} onClick={onConnect} type="button">
-          Reconnect
-        </Button>
+        canConnect ? (
+          <Button disabled={pending} onClick={onConnect} type="button">
+            Reconnect
+          </Button>
+        ) : null
       }
       icon={
         <TriangleAlert
@@ -333,9 +349,17 @@ export function EditConnectionOverlay({
 }: EditConnectionOverlayProps) {
   const { push, closeAll } = useOverlay();
   const queryClient = useQueryClient();
+  const canRead = can(WfGraphOperations.integrationGetAll.id);
+  const canUpdate = can(WfGraphOperations.integrationUpdate.id);
+  const canDelete = can(WfGraphOperations.integrationDelete.id);
+  const canTest = can(WfGraphOperations.integrationTestConnection.id);
+  const canDisconnect = can(WfGraphOperations.integrationDisconnectOAuth.id);
   const [name, setName] = useState(integration.name);
   const [config, setConfig] = useState<Record<string, string>>({});
-  const { data: integrations } = useQuery(integrationsQueryOptions());
+  const { data: integrations } = useQuery({
+    ...integrationsQueryOptions(),
+    enabled: canRead,
+  });
   const oauth =
     integrations === undefined
       ? integration.oauth
@@ -412,6 +436,9 @@ export function EditConnectionOverlay({
   const controlsDisabled = saving || testing || oauthBusy;
 
   const saveConnection = () => {
+    if (!canUpdate) {
+      return;
+    }
     update.mutate({
       integrationId: integration.id,
       name: name.trim(),
@@ -431,11 +458,14 @@ export function EditConnectionOverlay({
   };
 
   const handleSave = async () => {
+    if (!canUpdate) {
+      return;
+    }
     const hasNewConfig = hasProvidedConfigValues(config);
 
     // Nothing new to test: either the credentials were left alone, in which case
     // only the label is being saved, or the integration declares no test.
-    if (!(hasNewConfig && hasTest)) {
+    if (!(hasNewConfig && hasTest && canTest)) {
       saveConnection();
       return;
     }
@@ -462,6 +492,9 @@ export function EditConnectionOverlay({
   };
 
   const handleTest = () => {
+    if (!canTest) {
+      return;
+    }
     testStoredCredentials.mutate({
       integrationId: integration.id,
       config: hasProvidedConfigValues(config) ? config : undefined,
@@ -469,6 +502,9 @@ export function EditConnectionOverlay({
   };
 
   const handleDelete = () => {
+    if (!canDelete) {
+      return;
+    }
     push(DeleteConnectionOverlay, {
       integration,
       // This overlay is the connection just deleted, so it goes with the
@@ -479,6 +515,9 @@ export function EditConnectionOverlay({
   };
 
   const handleOAuthConnect = async () => {
+    if (!oauthConnection.canStart) {
+      return;
+    }
     await oauthConnection.startExisting(integration.id);
   };
 
@@ -490,6 +529,9 @@ export function EditConnectionOverlay({
    * typed themselves would survive.
    */
   const handleOAuthDisconnect = () => {
+    if (!canDisconnect) {
+      return;
+    }
     const grantIsWholeConnection = configuredKeys.size === 0;
     const providerLabel = catalogEntry?.oauth?.label ?? integration.type;
 
@@ -508,8 +550,11 @@ export function EditConnectionOverlay({
         : `Disconnect ${providerLabel}`,
       confirmVariant: "destructive" as const,
       destructive: true,
-      onConfirm: () =>
-        disconnectOAuth.mutate({ integrationId: integration.id }),
+      onConfirm: () => {
+        if (canDisconnect) {
+          disconnectOAuth.mutate({ integrationId: integration.id });
+        }
+      },
     });
   };
 
@@ -584,13 +629,17 @@ export function EditConnectionOverlay({
   return (
     <Overlay
       actions={[
-        {
-          label: "Delete",
-          variant: "ghost",
-          onClick: handleDelete,
-          disabled: controlsDisabled,
-        },
-        ...(hasTest
+        ...(canDelete
+          ? [
+              {
+                label: "Delete",
+                variant: "ghost" as const,
+                onClick: handleDelete,
+                disabled: controlsDisabled,
+              },
+            ]
+          : []),
+        ...(hasTest && canTest
           ? [
               {
                 label: "Test",
@@ -601,12 +650,16 @@ export function EditConnectionOverlay({
               },
             ]
           : []),
-        {
-          label: "Update",
-          onClick: handleSave,
-          loading: saving,
-          disabled: testing || oauthBusy,
-        },
+        ...(canUpdate
+          ? [
+              {
+                label: "Update",
+                onClick: handleSave,
+                loading: saving,
+                disabled: testing || oauthBusy,
+              },
+            ]
+          : []),
       ]}
       overlayId={overlayId}
       title={`Edit ${integrationLabel(catalogEntry, integration.type)}`}
@@ -620,6 +673,8 @@ export function EditConnectionOverlay({
           (oauth ? (
             <OAuthConnectionStatus
               oauth={oauth}
+              canConnect={oauthConnection.canStart}
+              canDisconnect={canDisconnect}
               onConnect={handleOAuthConnect}
               onDisconnect={handleOAuthDisconnect}
               pending={oauthBusy}
@@ -627,6 +682,7 @@ export function EditConnectionOverlay({
             />
           ) : (
             <OAuthConnectPrompt
+              canConnect={oauthConnection.canStart}
               onConnect={handleOAuthConnect}
               pending={oauthBusy}
               providerLabel={catalogEntry.oauth.label}
@@ -635,7 +691,7 @@ export function EditConnectionOverlay({
         <fieldset
           aria-busy={oauthBusy}
           className="m-0 min-w-0 space-y-4 border-0 p-0"
-          disabled={oauthBusy}
+          disabled={oauthBusy || !canUpdate}
         >
           {catalogEntry?.hasWebhook ? (
             <WebhookUrlField
@@ -687,6 +743,7 @@ export function DeleteConnectionOverlay({
   const { pop } = useOverlay();
   const dismiss = onDismiss ?? pop;
   const queryClient = useQueryClient();
+  const canDelete = can(WfGraphOperations.integrationDelete.id);
 
   const deleteIntegration = useMutation(
     orpcQuery.integration.delete.mutationOptions({
@@ -713,8 +770,12 @@ export function DeleteConnectionOverlay({
         {
           label: "Delete",
           variant: "destructive",
-          onClick: () =>
-            deleteIntegration.mutate({ integrationId: integration.id }),
+          onClick: () => {
+            if (canDelete) {
+              deleteIntegration.mutate({ integrationId: integration.id });
+            }
+          },
+          disabled: !canDelete,
           loading: deleteIntegration.isPending,
         },
       ]}

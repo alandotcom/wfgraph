@@ -2,8 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
 import { toExecutionLogsByNodeId } from "#src/lib/execution-logs";
 import { orpcQuery } from "#src/lib/rpc-query";
+import { can } from "#src/lib/authorization";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
 import type { ExecutionLogEntry } from "@wfgraph/shared/graph/types";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 const NO_LOGS: Record<string, ExecutionLogEntry> = {};
 
@@ -21,13 +23,14 @@ const NO_LOGS: Record<string, ExecutionLogEntry> = {};
  */
 export function useExecutionLogsByNode(): Record<string, ExecutionLogEntry> {
   const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
-
   const { data } = useQuery({
     ...orpcQuery.workflow.getExecutionLogs.queryOptions({
       input: { executionId: selectedExecutionId ?? "" },
       select: toExecutionLogsByNodeId,
     }),
-    enabled: selectedExecutionId !== null,
+    enabled:
+      selectedExecutionId !== null &&
+      can(WfGraphOperations.workflowGetExecutionLogs.id),
   });
 
   return data ?? NO_LOGS;

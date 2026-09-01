@@ -3,6 +3,8 @@ import { useSetAtom } from "jotai";
 import { useCallback } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
+import { can } from "#src/lib/authorization";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { repairIntegrationsAtom } from "#src/lib/workflow-graph-store";
 
 /**
@@ -23,6 +25,9 @@ export function useConnectionRepair() {
   const repairIntegrations = useSetAtom(repairIntegrationsAtom);
 
   return useCallback(async () => {
+    if (!can(WfGraphOperations.integrationGetAll.id)) {
+      return;
+    }
     repairIntegrations({
       integrations: await queryClient.fetchQuery(integrationsQueryOptions()),
       catalog,

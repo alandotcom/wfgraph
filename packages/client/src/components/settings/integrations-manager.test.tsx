@@ -21,6 +21,11 @@ import {
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import {
+  installAuthorizationGrantsForTests,
+  resetAuthorizationGrantsForTests,
+} from "#src/lib/authorization-test-support";
+import { WfGraphOperationIds } from "@wfgraph/shared/authorization/operations";
 
 const ACTION = "linear/find-issues";
 
@@ -72,6 +77,7 @@ const boundNode: WorkflowNode = {
 };
 
 afterEach(() => {
+  resetAuthorizationGrantsForTests();
   vi.unstubAllGlobals();
 });
 
@@ -87,6 +93,7 @@ describe("IntegrationsManager", () => {
       defaultOptions: { queries: { retry: false } },
     });
     queryClient.setQueryData(integrationsQueryOptions().queryKey, [connection]);
+    installAuthorizationGrantsForTests(WfGraphOperationIds);
 
     // The delete lands, and every read of the list after it comes back empty.
     vi.stubGlobal(
@@ -124,6 +131,7 @@ describe("IntegrationsManager", () => {
     );
 
     const confirm = await screen.findByRole("button", { name: /^Delete/ });
+    await waitFor(() => expect(confirm.hasAttribute("disabled")).toBe(false));
     await act(async () => {
       fireEvent.click(confirm);
     });

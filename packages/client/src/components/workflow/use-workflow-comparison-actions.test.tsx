@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import {
@@ -14,7 +14,6 @@ import {
 } from "#src/lib/workflow-comparison-store";
 import {
   currentWorkflowIdAtom,
-  isWorkflowOwnerAtom,
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
 import {
@@ -30,6 +29,10 @@ import {
 } from "#src/lib/rpc-fetch-test-support";
 import { savedWorkflow } from "#src/lib/workflow-save-test-support";
 import { useWorkflowComparisonActions } from "./use-workflow-comparison-actions";
+import {
+  installAuthorizationGrantsForTests,
+  resetAuthorizationGrantsForTests,
+} from "#src/lib/authorization-test-support";
 
 const comparison: WorkflowComparisonPayload = {
   baseVersion: null,
@@ -41,8 +44,19 @@ const comparison: WorkflowComparisonPayload = {
   edgeChanges: [],
 };
 
+const comparisonOperationIds = [
+  "workflow.compareVersion",
+  "workflow.restoreVersion",
+  "workflow.update",
+] as const;
+
 describe("useWorkflowComparisonActions", () => {
+  beforeEach(() => {
+    installAuthorizationGrantsForTests(comparisonOperationIds);
+  });
+
   afterEach(() => {
+    resetAuthorizationGrantsForTests();
     vi.unstubAllGlobals();
   });
 
@@ -66,6 +80,7 @@ describe("useWorkflowComparisonActions", () => {
     const { result } = renderHook(() => useWorkflowComparisonActions(), {
       wrapper: Wrapper,
     });
+    await waitFor(() => expect(result.current.canCompare).toBe(true));
 
     await act(async () =>
       expect(result.current.openComparison()).resolves.toBeUndefined()
@@ -97,6 +112,7 @@ describe("useWorkflowComparisonActions", () => {
     const observer = renderHook(() => useWorkflowComparisonActions(), {
       wrapper: Wrapper,
     });
+    await waitFor(() => expect(owner.result.current.canCompare).toBe(true));
 
     await act(async () => owner.result.current.openComparison());
 
@@ -149,7 +165,6 @@ describe("useWorkflowComparisonActions", () => {
     );
     const store = createStore();
     store.set(currentWorkflowIdAtom, "workflow_1");
-    store.set(isWorkflowOwnerAtom, true);
     store.set(workflowWorkspaceViewAtom, "changes");
     const epoch = store.set(beginWorkflowComparisonRequestAtom, "workflow_1");
     store.set(installWorkflowComparisonAtom, {
@@ -175,6 +190,7 @@ describe("useWorkflowComparisonActions", () => {
     const { result } = renderHook(() => useWorkflowComparisonActions(), {
       wrapper: Wrapper,
     });
+    await waitFor(() => expect(result.current.canCompare).toBe(true));
 
     await act(async () =>
       expect(
@@ -219,6 +235,7 @@ describe("useWorkflowComparisonActions", () => {
     const { result } = renderHook(() => useWorkflowComparisonActions(), {
       wrapper: Wrapper,
     });
+    await waitFor(() => expect(result.current.canRestore).toBe(true));
 
     act(() =>
       result.current.restore.mutate({
@@ -231,11 +248,19 @@ describe("useWorkflowComparisonActions", () => {
     );
     expect(fetch).not.toHaveBeenCalled();
     await act(async () => resolveSave());
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(
+        fetch.mock.calls.some(([url]) =>
+          String(url).includes("/api/rpc/workflow/restoreVersion")
+        )
+      ).toBe(true)
+    );
   });
 
   it("suppresses restore when the immediate draft save fails", async () => {
-    const fetch = vi.fn();
+    const fetch = vi.fn(async () => {
+      throw new Error("restore should not reach the server");
+    });
     vi.stubGlobal("fetch", fetch);
     const store = createStore();
     store.set(currentWorkflowIdAtom, "workflow_1");
@@ -257,6 +282,7 @@ describe("useWorkflowComparisonActions", () => {
     const { result } = renderHook(() => useWorkflowComparisonActions(), {
       wrapper: Wrapper,
     });
+    await waitFor(() => expect(result.current.canRestore).toBe(true));
 
     act(() =>
       result.current.restore.mutate({
@@ -266,6 +292,28 @@ describe("useWorkflowComparisonActions", () => {
     );
     await waitFor(() => expect(result.current.restore.isError).toBe(true));
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("requires both restore and update grants before restoring a version", () => {
+    installAuthorizationGrantsForTests([
+      "workflow.restoreVersion",
+      "workflow.compareVersion",
+    ]);
+    const store = createStore();
+    const queryClient = new QueryClient();
+    function Wrapper({ children }: { children: ReactNode }) {
+      return (
+        <QueryClientProvider client={queryClient}>
+          <JotaiProvider store={store}>{children}</JotaiProvider>
+        </QueryClientProvider>
+      );
+    }
+
+    const { result } = renderHook(() => useWorkflowComparisonActions(), {
+      wrapper: Wrapper,
+    });
+
+    expect(result.current.canRestore).toBe(false);
   });
 
   it("caches a late A restore while leaving the active B graph and panel unchanged", async () => {
@@ -295,6 +343,7 @@ describe("useWorkflowComparisonActions", () => {
     const { result } = renderHook(() => useWorkflowComparisonActions(), {
       wrapper: Wrapper,
     });
+    await waitFor(() => expect(result.current.canRestore).toBe(true));
 
     act(() =>
       result.current.restore.mutate({

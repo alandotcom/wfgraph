@@ -10,7 +10,7 @@ import {
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { useMemo, useState } from "react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import {
@@ -25,12 +25,16 @@ import {
 import {
   currentWorkflowIdAtom,
   currentWorkflowNameAtom,
-  isWorkflowOwnerAtom,
 } from "#src/lib/workflow-save-store";
+import {
+  installAuthorizationGrantsForTests,
+  resetAuthorizationGrantsForTests,
+} from "#src/lib/authorization-test-support";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { orpcQuery } from "#src/lib/rpc-query";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 const catalog: ExtensionCatalog = {
   events: [
@@ -44,6 +48,8 @@ const catalog: ExtensionCatalog = {
   actions: [],
   integrations: [],
 };
+
+afterEach(resetAuthorizationGrantsForTests);
 
 function lifecycleNode(id = "lifecycle_1"): WorkflowNode {
   return {
@@ -84,22 +90,24 @@ function renderPanel({
   nodes = [lifecycleNode(), groupNode()],
 
   selected = null,
-  isOwner = true,
   hasPublishedVersion = false,
+  workspaceView = "draft",
 }: {
   nodes?: WorkflowNode[];
   selected?: string | null;
-  isOwner?: boolean;
   hasPublishedVersion?: boolean;
+  workspaceView?: "draft" | "runs" | "changes";
 } = {}) {
   const store = createStore();
   store.set(loadWorkflowGraphAtom, { nodes, edges: [] });
   store.set(selectedNodeAtom, selected);
   store.set(currentWorkflowIdAtom, "wf_1");
   store.set(currentWorkflowNameAtom, "Appointment reminders");
-  store.set(isWorkflowOwnerAtom, isOwner);
+  store.set(workflowWorkspaceViewAtom, workspaceView);
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: {
+      queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+    },
   });
   queryClient.setQueryData(
     orpcQuery.workflow.getById.queryKey({ input: { workflowId: "wf_1" } }),
@@ -109,6 +117,12 @@ function renderPanel({
       publishedVersion: hasPublishedVersion ? 1 : undefined,
       hasUnpublishedChanges: false,
     } as never
+  );
+  queryClient.setQueryData(
+    orpcQuery.workflow.getExecutions.queryKey({
+      input: { workflowId: "wf_1", includeSuperseded: false },
+    }),
+    { items: [], supersededCount: 0, refusedStarts: [] }
   );
 
   const confirmed: ConfirmRequest[] = [];
@@ -188,16 +202,6 @@ describe("NodeConfigPanel with nothing selected", () => {
     expect(view.queryByRole("button", { name: /Delete/ })).toBeNull();
     expect(confirmed).toEqual([]);
   });
-
-  // A non-owner reached this branch for the read-only notice, and the branch it
-  // reached it through is gone. The notice is not.
-  it("keeps the read-only notice for a non-owner", async () => {
-    const { view } = renderPanel({ isOwner: false });
-
-    await waitFor(() => {
-      expect(view.getByText(/You are viewing a public workflow/)).toBeTruthy();
-    });
-  });
 });
 
 describe("NodeConfigPanel config scoping", () => {
@@ -248,5 +252,29 @@ describe("NodeConfigPanel workspace inspector", () => {
         "Open a comparison of this draft and its published version."
       )
     ).toBeTruthy();
+  });
+});
+
+describe("NodeConfigPanel authorization", () => {
+  it("does not offer Clear All to a run reader", async () => {
+    installAuthorizationGrantsForTests([
+      WfGraphOperations.workflowGetExecutions.id,
+    ]);
+    const { view } = renderPanel({ workspaceView: "runs" });
+
+    await view.findByText("No runs yet");
+    expect(view.queryByRole("button", { name: "Clear All" })).toBeNull();
+  });
+
+  it("does not add a read-only access badge when workflow updates are denied", async () => {
+    resetAuthorizationGrantsForTests();
+    const { view } = renderPanel({ selected: "lifecycle_1" });
+
+    await view.findByLabelText("Start Events");
+    expect(
+      view.queryByText(
+        "You are viewing a public workflow. Duplicate it to make changes."
+      )
+    ).toBeNull();
   });
 });

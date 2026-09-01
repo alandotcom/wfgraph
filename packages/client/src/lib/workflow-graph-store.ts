@@ -21,7 +21,6 @@ import {
   currentWorkflowVisibilityAtom,
   hasUnsavedChangesAtom,
   isSavingAtom,
-  isWorkflowOwnerAtom,
   successfulSaveGenerationAtom,
   workflowNotFoundAtom,
   workflowLoadErrorAtom,
@@ -242,7 +241,6 @@ export const hydrateWorkflowAtom = atom(
     set(lastSavedAtAtom, null);
     set(currentWorkflowVisibilityAtom, workflow.visibility ?? "private");
     set(currentWorkflowModeAtom, workflow.mode ?? "live");
-    set(isWorkflowOwnerAtom, workflow.isOwner !== false);
     set(workflowNotFoundAtom, false);
     set(workflowLoadErrorAtom, null);
   }

@@ -7,14 +7,12 @@ import { responseFromServiceFailure } from "#src/backend/lib/http/failure-respon
 import { readCappedText } from "#src/backend/lib/http/capped-body";
 import type { InngestServeHandler } from "#src/backend/lib/inngest/client";
 import { getAppLogger } from "#src/backend/lib/logger";
+import { createRequestEvent } from "#src/backend/lib/http/request-event";
 import {
-  createRequestEvent,
-  type RequestEvent,
-} from "#src/backend/lib/http/request-event";
-import {
-  type Authorize,
+  type ResolvedAuth,
   UNAUTHORIZED_BODY,
 } from "#src/backend/lib/http/authorize";
+import type { WfGraphHonoEnv } from "#src/backend/lib/http/hono-env";
 import type { RpcContext } from "#src/backend/rpc/context";
 import type { WfGraphRuntime } from "#src/backend/runtime";
 import {
@@ -38,6 +36,10 @@ import {
   rejectUnknownKeys,
 } from "@wfgraph/shared/types/schema";
 import { getErrorMessage } from "@wfgraph/shared/utils";
+import {
+  WfGraphOperations,
+  type WfGraphOperationId,
+} from "@wfgraph/shared/authorization/operations";
 
 // A path segment is whatever the sender typed, so the refusal names the field
 // and the rule rather than echoing the value back into the response body.
@@ -139,8 +141,8 @@ export type CreateApiAppOptions = {
    * so nothing here has to deduce it from the request.
    */
   basePath: `/${string}`;
-  /** Every route answers to this except those in `machineRoutes`. */
-  authorize: Authorize;
+  /** Authenticates every operator route except `machineRoutes` and `publicRoutes`. */
+  auth: ResolvedAuth;
   /**
    * The Effect runtime the app instance owns, put on every request context so a
    * procedure whose service has been migrated can run its Effect on it.
@@ -195,15 +197,6 @@ export function publicRoutes(): readonly string[] {
   return [OAUTH_CLIENT_METADATA_ROUTE];
 }
 
-type ApiEnv = {
-  Variables: {
-    wfgraphMachineRoute?: true;
-    wfgraphPublicRoute?: true;
-    /** The record this request will write, shared with the oRPC handler. */
-    wfgraphRequestEvent: RequestEvent;
-  };
-};
-
 /** How much of a refusal's own wording reaches the log line. */
 const ERROR_MESSAGE_LIMIT = 200;
 
@@ -239,8 +232,8 @@ export function requestLogPath(path: string): string {
 }
 
 export function createApiApp(options: CreateApiAppOptions) {
-  const { basePath, authorize, runtime, inngestHandler } = options;
-  const app = new Hono<ApiEnv>().basePath(basePath);
+  const { basePath, auth, runtime, inngestHandler } = options;
+  const app = new Hono<WfGraphHonoEnv>().basePath(basePath);
   const rpcHandler = new RPCHandler<RpcContext>(rpcRouter);
   const ungatedRoutes = machineRoutes({
     serveInngest: inngestHandler !== undefined,
@@ -268,10 +261,10 @@ export function createApiApp(options: CreateApiAppOptions) {
       await next();
     } catch (error) {
       const elapsedMs = Date.now() - startTime;
-      event.set({
-        http: { method, path: logPath, ms: elapsedMs },
-        error: { message: getErrorMessage(error) },
-      });
+      event.set({ http: { method, path: logPath, ms: elapsedMs } });
+      if (event.fields().error === undefined) {
+        event.set({ error: { message: getErrorMessage(error) } });
+      }
       httpLogger.error(
         `${method} ${logPath} threw after ${elapsedMs}ms`,
         event.fields()
@@ -340,11 +333,25 @@ export function createApiApp(options: CreateApiAppOptions) {
   }
 
   app.use("*", async (c, next) => {
-    if (
-      c.get("wfgraphMachineRoute") ||
-      c.get("wfgraphPublicRoute") ||
-      (await authorize(c.req.raw))
-    ) {
+    if (c.get("wfgraphMachineRoute") || c.get("wfgraphPublicRoute")) {
+      await next();
+      return undefined;
+    }
+
+    const authContext = await auth.authenticate(c.req.raw, (failure) => {
+      c.get("wfgraphRequestEvent").set({
+        error: {
+          kind: "internal",
+          message:
+            failure.stage === "authenticate"
+              ? "Host authentication failed"
+              : "Host access policy failed",
+          cause: failure.error,
+        },
+      });
+    });
+    if (authContext) {
+      c.set("wfgraphAuth", authContext);
       await next();
       return undefined;
     }
@@ -352,15 +359,9 @@ export function createApiApp(options: CreateApiAppOptions) {
     return c.json(UNAUTHORIZED_BODY, 401);
   });
 
-  app.onError((error, c) => {
-    httpLogger.error(`Unhandled API error: ${getErrorMessage(error)}`, {
-      method: c.req.method.toUpperCase(),
-      path: c.req.path,
-      error,
-    });
-
-    return c.json({ error: "Internal Server Error" }, 500);
-  });
+  // The outer request middleware logs thrown failures with the request's full
+  // event. This handler only converts the failure to a sanitized wire response.
+  app.onError((_error, c) => c.json({ error: "Internal Server Error" }, 500));
 
   // oRPC needs to know the absolute path its handlers are mounted at so it can
   // strip that prefix before matching a procedure.
@@ -378,6 +379,7 @@ export function createApiApp(options: CreateApiAppOptions) {
         prefix: resolvePrefix("/rpc"),
         context: {
           headers: c.req.raw.headers,
+          auth: c.get("wfgraphAuth")!,
           runtime,
           requestEvent: c.get("wfgraphRequestEvent"),
         },
@@ -393,7 +395,11 @@ export function createApiApp(options: CreateApiAppOptions) {
     .use("/rest/*", async (c, next) => {
       const { matched, response } = await openApiRestHandler.handle(c.req.raw, {
         prefix: resolvePrefix("/rest"),
-        context: { headers: c.req.raw.headers, runtime },
+        context: {
+          headers: c.req.raw.headers,
+          auth: c.get("wfgraphAuth")!,
+          runtime,
+        },
       });
 
       if (matched) {
@@ -407,7 +413,14 @@ export function createApiApp(options: CreateApiAppOptions) {
       const prefix = resolvePrefix("");
       const { matched, response } = await openApiReferenceHandler.handle(
         c.req.raw,
-        { prefix, context: { headers: c.req.raw.headers, runtime } }
+        {
+          prefix,
+          context: {
+            headers: c.req.raw.headers,
+            auth: c.get("wfgraphAuth")!,
+            runtime,
+          },
+        }
       );
 
       if (!matched) {
@@ -420,7 +433,14 @@ export function createApiApp(options: CreateApiAppOptions) {
       const prefix = resolvePrefix("");
       const { matched, response } = await openApiReferenceHandler.handle(
         c.req.raw,
-        { prefix, context: { headers: c.req.raw.headers, runtime } }
+        {
+          prefix,
+          context: {
+            headers: c.req.raw.headers,
+            auth: c.get("wfgraphAuth")!,
+            runtime,
+          },
+        }
       );
 
       if (!matched) {
@@ -433,12 +453,26 @@ export function createApiApp(options: CreateApiAppOptions) {
     // editor learns it through: an Event, an action and an integration all reach it
     // here, the built-in Condition and Wait and a host's own actions included.
     .get("/extensions", async (c) => {
-      const [extensions, agent, appContext] = await runtime.runPromise(
-        Effect.all([Extensions, AgentConfig, WfGraphAppContext])
+      const authContext = c.get("wfgraphAuth")!;
+      const [[extensions, agent, appContext], authorizedOperationIds] =
+        await Promise.all([
+          runtime.runPromise(
+            Effect.all([Extensions, AgentConfig, WfGraphAppContext])
+          ),
+          Promise.all(
+            Object.values(WfGraphOperations).map(async (operation) =>
+              (await authContext.allows(operation)) ? operation.id : undefined
+            )
+          ),
+        ]);
+      const operationIds = authorizedOperationIds.filter(
+        (operationId): operationId is WfGraphOperationId =>
+          operationId !== undefined
       );
       return c.json({
         catalog: extensions.catalog,
         agent: { enabled: agent.enabled },
+        authorization: { operationIds },
         ...(appContext.publicUrl
           ? {
               webhookIntake: {
@@ -449,7 +483,13 @@ export function createApiApp(options: CreateApiAppOptions) {
           : {}),
       });
     })
-    .route("/", createOAuthRoutes({ basePath, runtime }))
+    .route(
+      "/",
+      createOAuthRoutes({
+        basePath,
+        runtime,
+      })
+    )
     .all("/auth", (c) => c.json({ error: "Not found" }, 404))
     .all("/auth/*", (c) => c.json({ error: "Not found" }, 404))
     .all("/og", (c) => c.json({ error: "Not found" }, 404))

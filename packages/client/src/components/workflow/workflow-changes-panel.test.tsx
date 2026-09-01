@@ -23,10 +23,7 @@ import {
   comparisonSessionAtom,
   installWorkflowComparisonAtom,
 } from "#src/lib/workflow-comparison-store";
-import {
-  currentWorkflowIdAtom,
-  isWorkflowOwnerAtom,
-} from "#src/lib/workflow-save-store";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 
 const catalog: ExtensionCatalog = {
@@ -281,7 +278,6 @@ describe("WorkflowChangesPanel", () => {
   it("keeps the review header mounted during the initial comparison request", () => {
     const store = createStore();
     store.set(currentWorkflowIdAtom, "workflow_1");
-    store.set(isWorkflowOwnerAtom, true);
     store.set(workflowWorkspaceViewAtom, "changes");
     const actions = {
       isPending: true,
@@ -307,7 +303,6 @@ describe("WorkflowChangesPanel", () => {
   it("announces refresh progress inside the existing header slot", () => {
     const store = createStore();
     store.set(currentWorkflowIdAtom, "workflow_1");
-    store.set(isWorkflowOwnerAtom, true);
     store.set(workflowWorkspaceViewAtom, "changes");
     const epoch = store.set(beginWorkflowComparisonRequestAtom, "workflow_1");
     store.set(installWorkflowComparisonAtom, {
@@ -331,7 +326,6 @@ describe("WorkflowChangesPanel", () => {
   it("uses pressed state for the selected change row", () => {
     const store = createStore();
     store.set(currentWorkflowIdAtom, "workflow_1");
-    store.set(isWorkflowOwnerAtom, true);
     store.set(workflowWorkspaceViewAtom, "changes");
     const epoch = store.set(beginWorkflowComparisonRequestAtom, "workflow_1");
     store.set(installWorkflowComparisonAtom, {

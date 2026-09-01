@@ -1,5 +1,5 @@
 import { Effect, Result, Schema } from "effect";
-import { Hono } from "hono";
+import { Hono, type MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { WfGraphAppContext } from "#src/backend/lib/effect/app-context";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
@@ -18,6 +18,12 @@ import {
 import { formatSchemaFailure } from "@wfgraph/shared/types/schema-message";
 import { hasOnlySafeRecordKeys } from "@wfgraph/shared/types/record-key";
 import { OAUTH_GRANT_CONFIG_KEY } from "#src/backend/services/integrations/oauth-grant";
+import { FORBIDDEN_BODY } from "#src/backend/lib/http/authorize";
+import type { WfGraphHonoEnv } from "#src/backend/lib/http/hono-env";
+import {
+  WfGraphOperations,
+  type WfGraphOperation,
+} from "@wfgraph/shared/authorization/operations";
 
 export const OAUTH_CLIENT_METADATA_ROUTE =
   "/integrations/oauth/clients/:integrationType";
@@ -106,6 +112,25 @@ async function runService<A, E>(
   );
 }
 
+/**
+ * Requires the operation assigned to one OAuth route. The parent API app puts
+ * the authenticated request context on Hono before any protected OAuth route
+ * runs; a missing context still receives a refusal if the router is mounted
+ * independently.
+ */
+function requireOperation(
+  operation: WfGraphOperation
+): MiddlewareHandler<WfGraphHonoEnv> {
+  return async (c, next) => {
+    const auth = c.get("wfgraphAuth");
+    if (!auth || !(await auth.allows(operation))) {
+      return c.json(FORBIDDEN_BODY, 403);
+    }
+
+    return await next();
+  };
+}
+
 /** Browser-facing OAuth adapters. The parent API app owns auth and logging. */
 export function createOAuthRoutes(options: {
   basePath: `/${string}`;
@@ -113,101 +138,120 @@ export function createOAuthRoutes(options: {
 }) {
   const { basePath, runtime } = options;
 
-  return new Hono()
-    .post("/integrations/oauth/start", async (c) => {
-      let raw: unknown;
-      try {
-        raw = await c.req.raw.json();
-      } catch {
-        return c.json({ error: "Request body must be valid JSON" }, 400);
-      }
-      const body = decodeStartOAuthInput(raw);
-      if (Result.isFailure(body)) {
-        return c.json({ error: formatSchemaFailure(body.failure.issue) }, 400);
-      }
+  return new Hono<WfGraphHonoEnv>()
+    .post(
+      "/integrations/oauth/start",
+      requireOperation(WfGraphOperations.oauthStart),
+      async (c) => {
+        let raw: unknown;
+        try {
+          raw = await c.req.raw.json();
+        } catch {
+          return c.json({ error: "Request body must be valid JSON" }, 400);
+        }
+        const body = decodeStartOAuthInput(raw);
+        if (Result.isFailure(body)) {
+          return c.json(
+            { error: formatSchemaFailure(body.failure.issue) },
+            400
+          );
+        }
 
-      const result = await runService(
-        runtime,
-        startIntegrationOAuth(body.success)
-      );
-      if (!result.ok) {
-        const response = responseFromServiceFailure(result.failure);
-        applyOAuthHeaders(response.headers);
-        return response;
-      }
+        const result = await runService(
+          runtime,
+          startIntegrationOAuth(body.success)
+        );
+        if (!result.ok) {
+          const response = responseFromServiceFailure(result.failure);
+          applyOAuthHeaders(response.headers);
+          return response;
+        }
 
-      const context = await runtime.runPromise(WfGraphAppContext);
-      if (!context.oauth) {
-        return c.json({ error: "OAuth requires a public URL" }, 400);
-      }
-      setCookie(c, result.value.cookieName, result.value.browserBinding, {
-        httpOnly: true,
-        sameSite: "Lax",
-        maxAge: result.value.maxAge,
-        path: context.oauth.cookiePath,
-        secure: context.oauth.secureCookies,
-      });
-      applyOAuthHeaders(c.res.headers);
-      return c.json({
-        attemptId: result.value.attemptId,
-        authorizeUrl: result.value.authorizeUrl,
-      });
-    })
-    .get("/integrations/oauth/attempts/:attemptId", async (c) => {
-      const attemptId = c.req.param("attemptId");
-      const cookieName = oauthBindingCookieName(attemptId);
-      const browserBinding = cookieName ? getCookie(c, cookieName) : undefined;
-      if (!cookieName || !browserBinding) {
-        applyOAuthHeaders(c.res.headers);
-        return c.json({ error: "OAuth attempt not found" }, 404);
-      }
-      const result = await runService(
-        runtime,
-        readIntegrationOAuthAttemptStatus({ attemptId, browserBinding })
-      );
-      if (!result.ok) {
-        const response = responseFromServiceFailure(result.failure);
-        applyOAuthHeaders(response.headers);
-        return response;
-      }
-
-      if (result.value.status !== "pending") {
         const context = await runtime.runPromise(WfGraphAppContext);
-        deleteCookie(c, cookieName, {
-          path: context.oauth?.cookiePath ?? `${basePath}/integrations/oauth`,
-          secure: context.oauth?.secureCookies ?? false,
+        if (!context.oauth) {
+          return c.json({ error: "OAuth requires a public URL" }, 400);
+        }
+        setCookie(c, result.value.cookieName, result.value.browserBinding, {
+          httpOnly: true,
+          sameSite: "Lax",
+          maxAge: result.value.maxAge,
+          path: context.oauth.cookiePath,
+          secure: context.oauth.secureCookies,
+        });
+        applyOAuthHeaders(c.res.headers);
+        return c.json({
+          attemptId: result.value.attemptId,
+          authorizeUrl: result.value.authorizeUrl,
         });
       }
-      applyOAuthHeaders(c.res.headers);
-      return c.json(result.value);
-    })
-    .get(OAUTH_CALLBACK_ROUTE, async (c) => {
-      // State identifies only which binding-cookie name to read. Its value and
-      // every provider query member stay in the service call and never in a log.
-      const state = c.req.query("state");
-      const cookieName = state
-        ? (oauthBindingCookieName(state) ?? undefined)
-        : undefined;
-      const browserBinding = cookieName ? getCookie(c, cookieName) : undefined;
-      const result = await runService(
-        runtime,
-        completeIntegrationOAuth({
-          state,
-          browserBinding,
-          code: c.req.query("code"),
-          providerError: c.req.query("error"),
-        })
-      );
-      applyOAuthHeaders(c.res.headers);
-      if (result.ok) {
-        return c.html(OAUTH_COMPLETE_PAGE);
+    )
+    .get(
+      "/integrations/oauth/attempts/:attemptId",
+      requireOperation(WfGraphOperations.oauthStatus),
+      async (c) => {
+        const attemptId = c.req.param("attemptId");
+        const cookieName = oauthBindingCookieName(attemptId);
+        const browserBinding = cookieName
+          ? getCookie(c, cookieName)
+          : undefined;
+        if (!cookieName || !browserBinding) {
+          applyOAuthHeaders(c.res.headers);
+          return c.json({ error: "OAuth attempt not found" }, 404);
+        }
+        const result = await runService(
+          runtime,
+          readIntegrationOAuthAttemptStatus({ attemptId, browserBinding })
+        );
+        if (!result.ok) {
+          const response = responseFromServiceFailure(result.failure);
+          applyOAuthHeaders(response.headers);
+          return response;
+        }
+
+        if (result.value.status !== "pending") {
+          const context = await runtime.runPromise(WfGraphAppContext);
+          deleteCookie(c, cookieName, {
+            path: context.oauth?.cookiePath ?? `${basePath}/integrations/oauth`,
+            secure: context.oauth?.secureCookies ?? false,
+          });
+        }
+        applyOAuthHeaders(c.res.headers);
+        return c.json(result.value);
       }
-      const response = new Response(OAUTH_FAILED_PAGE, {
-        status: responseFromServiceFailure(result.failure).status,
-      });
-      applyOAuthHeaders(response.headers);
-      return response;
-    })
+    )
+    .get(
+      OAUTH_CALLBACK_ROUTE,
+      requireOperation(WfGraphOperations.oauthCallback),
+      async (c) => {
+        // State identifies only which binding-cookie name to read. Its value and
+        // every provider query member stay in the service call and never in a log.
+        const state = c.req.query("state");
+        const cookieName = state
+          ? (oauthBindingCookieName(state) ?? undefined)
+          : undefined;
+        const browserBinding = cookieName
+          ? getCookie(c, cookieName)
+          : undefined;
+        const result = await runService(
+          runtime,
+          completeIntegrationOAuth({
+            state,
+            browserBinding,
+            code: c.req.query("code"),
+            providerError: c.req.query("error"),
+          })
+        );
+        applyOAuthHeaders(c.res.headers);
+        if (result.ok) {
+          return c.html(OAUTH_COMPLETE_PAGE);
+        }
+        const response = new Response(OAUTH_FAILED_PAGE, {
+          status: responseFromServiceFailure(result.failure).status,
+        });
+        applyOAuthHeaders(response.headers);
+        return response;
+      }
+    )
     .get(OAUTH_CLIENT_METADATA_ROUTE, async (c) => {
       const result = await runService(
         runtime,

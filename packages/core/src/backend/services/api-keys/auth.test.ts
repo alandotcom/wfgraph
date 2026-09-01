@@ -129,7 +129,7 @@ describe("api key auth", () => {
       const keyHash = await hash(key, 10);
       const touched: string[] = [];
 
-      const runtime = ManagedRuntime.make(
+      await using runtime = ManagedRuntime.make(
         Layer.mergeAll(
           SilentAppLoggerLayer,
           stubApiKeyRepo({
@@ -149,8 +149,6 @@ describe("api key auth", () => {
 
       assert.deepStrictEqual(result, { keyId: "k1" });
       assert.deepStrictEqual(touched, ["k1"]);
-
-      await runtime.dispose();
     });
   });
 });

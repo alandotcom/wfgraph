@@ -6,7 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { ConfigureConnectionOverlay } from "#src/components/overlays/add-connection-overlay";
 import { EditConnectionOverlay } from "#src/components/overlays/edit-connection-overlay";
@@ -15,6 +15,14 @@ import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import {
+  WfGraphOperations,
+  type WfGraphOperationId,
+} from "@wfgraph/shared/authorization/operations";
+import {
+  installAuthorizationGrantsForTests,
+  resetAuthorizationGrantsForTests,
+} from "#src/lib/authorization-test-support";
 
 const catalog: ExtensionCatalog = {
   events: [],
@@ -72,7 +80,7 @@ function integrationListResponse(
  * button is named for which of those is about to happen.
  */
 async function confirmDisconnect(confirmLabel: string): Promise<void> {
-  fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Disconnect" }));
   const confirm = await screen.findByRole("button", { name: confirmLabel });
   // The confirm click starts the disconnect mutation, and the answer pops this
   // overlay off the stack. Settling that here keeps the update inside act, and
@@ -143,6 +151,8 @@ function renderEditOverlay(
 }
 
 afterEach(() => {
+  resetAuthorizationGrantsForTests();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -161,8 +171,37 @@ function stubOAuthPopup() {
   return popup;
 }
 
+const oauthOperationIds = [
+  WfGraphOperations.oauthStart.id,
+  WfGraphOperations.oauthStatus.id,
+  WfGraphOperations.oauthCallback.id,
+] as const;
+
+const connectionOperationIds = [
+  ...oauthOperationIds,
+  WfGraphOperations.integrationGetAll.id,
+  WfGraphOperations.integrationCreate.id,
+  WfGraphOperations.integrationUpdate.id,
+  WfGraphOperations.integrationDelete.id,
+  WfGraphOperations.integrationTestConnection.id,
+  WfGraphOperations.integrationTestCredentials.id,
+  WfGraphOperations.integrationDisconnectOAuth.id,
+] as const;
+
+beforeEach(() => {
+  installAuthorizationGrantsForTests(connectionOperationIds);
+});
+
+function stubFetch(
+  handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+  operationIds: readonly WfGraphOperationId[] = connectionOperationIds
+) {
+  installAuthorizationGrantsForTests(operationIds);
+  return vi.spyOn(globalThis, "fetch").mockImplementation(handler);
+}
+
 function stubOAuthStart() {
-  return vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+  return stubFetch(async (input) =>
     String(input).endsWith("/api/integrations/oauth/start")
       ? new Response(
           JSON.stringify({
@@ -184,6 +223,15 @@ function startRequestBody(
     String(input).endsWith("/api/integrations/oauth/start")
   );
   return JSON.parse(String(call?.[1]?.body)) as Record<string, unknown>;
+}
+
+function requestForPath(
+  fetch: ReturnType<typeof stubFetch>,
+  path: string
+): [RequestInfo | URL, RequestInit | undefined] {
+  const call = fetch.mock.calls.find(([input]) => String(input).includes(path));
+  expect(call).toBeDefined();
+  return call as [RequestInfo | URL, RequestInit | undefined];
 }
 
 describe("OAuth granted access", () => {
@@ -218,7 +266,7 @@ describe("OAuth granted access", () => {
       grantedAccessLabel: "Sending access",
     });
     renderEditOverlay(integration);
-    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Reconnect" }));
 
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     expect(startRequestBody(fetch)).toEqual({
@@ -229,6 +277,129 @@ describe("OAuth granted access", () => {
 });
 
 describe("OAuth connection overlays", () => {
+  it("tests new credentials before creating when both grants are present", async () => {
+    const fetch = stubFetch(async (input) => {
+      const path = String(input);
+      if (path.includes("/api/rpc/integration/testCredentials")) {
+        return new Response(
+          JSON.stringify({
+            json: { status: "success", message: "Connected" },
+          }),
+          { headers: { "content-type": "application/json" } }
+        );
+      }
+      if (path.includes("/api/rpc/integration/create")) {
+        return new Response(JSON.stringify({ json: connection() }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (path.includes("/api/rpc/integration/getAll")) {
+        return integrationListResponse([connection()]);
+      }
+      throw new Error(`unexpected request: ${path}`);
+    });
+
+    renderOverlay(
+      <ConfigureConnectionOverlay overlayId="add_resend" type="resend" />
+    );
+    fireEvent.change(screen.getByLabelText("API key"), {
+      target: { value: "api-key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create manually" }));
+
+    await waitFor(() =>
+      requestForPath(fetch, "/api/rpc/integration/testCredentials")
+    );
+    await waitFor(() => requestForPath(fetch, "/api/rpc/integration/create"));
+    const procedures = fetch.mock.calls.map(([input]) => String(input));
+    expect(
+      procedures.findIndex((url) =>
+        url.includes("/api/rpc/integration/testCredentials")
+      )
+    ).toBeLessThan(
+      procedures.findIndex((url) => url.includes("/api/rpc/integration/create"))
+    );
+  });
+
+  it("creates directly when credential testing is denied", async () => {
+    const fetch = stubFetch(
+      async (input) => {
+        const path = String(input);
+        if (path.includes("/api/rpc/integration/create")) {
+          return new Response(JSON.stringify({ json: connection() }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        throw new Error(`unexpected request: ${path}`);
+      },
+      [WfGraphOperations.integrationCreate.id]
+    );
+
+    renderOverlay(
+      <ConfigureConnectionOverlay overlayId="add_resend" type="resend" />
+    );
+    fireEvent.change(screen.getByLabelText("API key"), {
+      target: { value: "api-key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create manually" }));
+
+    await waitFor(() => requestForPath(fetch, "/api/rpc/integration/create"));
+    expect(screen.queryByRole("button", { name: "Test" })).toBeNull();
+    expect(
+      fetch.mock.calls.some(([input]) =>
+        String(input).includes("/api/rpc/integration/testCredentials")
+      )
+    ).toBe(false);
+  });
+
+  it("does not render the create control when OAuth status access is missing", async () => {
+    const fetch = stubFetch(async () => {
+      throw new Error("OAuth start must stay unreachable");
+    }, [WfGraphOperations.oauthStart.id]);
+
+    renderOverlay(
+      <ConfigureConnectionOverlay overlayId="add_resend" type="resend" />
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Connect with Resend" })
+    ).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not render the create control when OAuth callback access is missing", async () => {
+    const fetch = stubFetch(async () => {
+      throw new Error("OAuth start must stay unreachable");
+    }, [WfGraphOperations.oauthStart.id, WfGraphOperations.oauthStatus.id]);
+
+    renderOverlay(
+      <ConfigureConnectionOverlay overlayId="add_resend" type="resend" />
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Connect with Resend" })
+    ).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not render the disconnect control when disconnect access is missing", async () => {
+    stubFetch(async () => {
+      throw new Error("OAuth requests must stay unreachable");
+    }, oauthOperationIds);
+
+    renderEditOverlay(
+      connection({
+        status: "connected",
+        connectedAt: "2026-08-24T10:00:00.000Z",
+      })
+    );
+
+    expect(
+      await screen.findByRole("button", { name: "Reconnect" })
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Disconnect" })).toBeNull();
+  });
+
   it("sends every entered password setting when creating an OAuth connection", async () => {
     const reservedPopup = {
       closed: false,
@@ -242,27 +413,25 @@ describe("OAuth connection overlays", () => {
     reservedPopup.location.assign.mockImplementation(() => {
       reservedPopup.closed = true;
     });
-    const fetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation(async (_input) => {
-        if (String(_input).endsWith("/api/integrations/oauth/start")) {
-          return new Response(
-            JSON.stringify({
-              attemptId: "attempt_1",
-              authorizeUrl: "https://provider.example/authorize",
-            }),
-            { headers: { "content-type": "application/json" } }
-          );
-        }
-
+    const fetch = stubFetch(async (input) => {
+      if (String(input).endsWith("/api/integrations/oauth/start")) {
         return new Response(
           JSON.stringify({
-            status: "succeeded",
-            integrationId: "connection_1",
+            attemptId: "attempt_1",
+            authorizeUrl: "https://provider.example/authorize",
           }),
           { headers: { "content-type": "application/json" } }
         );
-      });
+      }
+
+      return new Response(
+        JSON.stringify({
+          status: "succeeded",
+          integrationId: "connection_1",
+        }),
+        { headers: { "content-type": "application/json" } }
+      );
+    });
 
     renderOverlay(
       <ConfigureConnectionOverlay overlayId="add_resend" type="resend" />
@@ -274,7 +443,7 @@ describe("OAuth connection overlays", () => {
       target: { value: "account-secret" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: "Connect with Resend" })
+      await screen.findByRole("button", { name: "Connect with Resend" })
     );
 
     await waitFor(() => expect(fetch).toHaveBeenCalled());
@@ -317,7 +486,7 @@ describe("OAuth connection overlays", () => {
     vi.spyOn(window, "open").mockReturnValue(
       reservedPopup as unknown as Window
     );
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input) => {
+    stubFetch(async (_input) => {
       if (String(_input).endsWith("/api/integrations/oauth/start")) {
         return new Response(
           JSON.stringify({
@@ -337,7 +506,7 @@ describe("OAuth connection overlays", () => {
       <ConfigureConnectionOverlay overlayId="add_resend" type="resend" />
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Connect with Resend" })
+      await screen.findByRole("button", { name: "Connect with Resend" })
     );
     await waitFor(() =>
       expect(reservedPopup.location.assign).toHaveBeenCalledOnce()
@@ -371,7 +540,10 @@ describe("OAuth connection overlays", () => {
     ).toBeTruthy();
   });
 
-  it("renders connected OAuth state with text, account, date, and disconnect control", () => {
+  it("renders connected OAuth state with text, account, date, and disconnect control", async () => {
+    stubFetch(async () => {
+      throw new Error("OAuth requests must stay unreachable");
+    });
     const integration = connection({
       status: "connected",
       connectedAt: "2026-08-24T10:00:00.000Z",
@@ -382,7 +554,9 @@ describe("OAuth connection overlays", () => {
     expect(screen.getByText("Connected")).toBeTruthy();
     expect(screen.getByText("Account: alerts@example.com")).toBeTruthy();
     expect(screen.getByText("Connected on 2026-08-24")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy();
+    expect(
+      await screen.findByRole("button", { name: "Disconnect" })
+    ).toBeTruthy();
   });
 
   it("keeps OAuth-managed credentials read-only while leaving other settings editable", () => {
@@ -401,14 +575,15 @@ describe("OAuth connection overlays", () => {
   });
 
   it("tests edited settings through the saved connection with proposed config", async () => {
-    const fetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(
+    const fetch = stubFetch(
+      async () =>
         new Response(
           JSON.stringify({ status: "success", message: "Connected" }),
-          { headers: { "content-type": "application/json" } }
+          {
+            headers: { "content-type": "application/json" },
+          }
         )
-      );
+    );
 
     const integration = connection({
       status: "connected",
@@ -419,13 +594,15 @@ describe("OAuth connection overlays", () => {
     fireEvent.change(screen.getByLabelText("From email"), {
       target: { value: "alerts@example.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Test" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Test" }));
 
-    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
-    expect(fetch.mock.calls[0]?.[0]).toEqual(
+    const testRequest = await waitFor(() =>
+      requestForPath(fetch, "/api/rpc/integration/testConnection")
+    );
+    expect(testRequest[0]).toEqual(
       expect.stringMatching(/\/api\/rpc\/integration\/testConnection$/)
     );
-    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+    expect(JSON.parse(String(testRequest[1]?.body))).toEqual({
       json: {
         integrationId: "connection_1",
         config: { RESEND_FROM_EMAIL: "alerts@example.com" },
@@ -434,13 +611,14 @@ describe("OAuth connection overlays", () => {
   });
 
   it("runs the pre-save test through the saved connection with proposed config", async () => {
-    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({ status: "error", message: "Unavailable" }),
-        {
-          headers: { "content-type": "application/json" },
-        }
-      )
+    const fetch = stubFetch(
+      async () =>
+        new Response(
+          JSON.stringify({ status: "error", message: "Unavailable" }),
+          {
+            headers: { "content-type": "application/json" },
+          }
+        )
     );
 
     const integration = connection({
@@ -452,13 +630,15 @@ describe("OAuth connection overlays", () => {
     fireEvent.change(screen.getByLabelText("From email"), {
       target: { value: "alerts@example.com" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Update" }));
 
-    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
-    expect(fetch.mock.calls[0]?.[0]).toEqual(
+    const testRequest = await waitFor(() =>
+      requestForPath(fetch, "/api/rpc/integration/testConnection")
+    );
+    expect(testRequest[0]).toEqual(
       expect.stringMatching(/\/api\/rpc\/integration\/testConnection$/)
     );
-    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+    expect(JSON.parse(String(testRequest[1]?.body))).toEqual({
       json: {
         integrationId: "connection_1",
         config: { RESEND_FROM_EMAIL: "alerts@example.com" },
@@ -468,16 +648,16 @@ describe("OAuth connection overlays", () => {
 
   it("disconnects OAuth through the typed integration mutation", async () => {
     const disconnected = connection();
-    const fetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation(async (input) =>
-        String(input).includes("/api/rpc/integration/getAll")
-          ? integrationListResponse([disconnected])
-          : new Response(
-              JSON.stringify({ json: { success: true, removed: false } }),
-              { headers: { "content-type": "application/json" } }
-            )
-      );
+    const fetch = stubFetch(async (input) =>
+      String(input).includes("/api/rpc/integration/getAll")
+        ? integrationListResponse([disconnected])
+        : new Response(
+            JSON.stringify({ json: { success: true, removed: false } }),
+            {
+              headers: { "content-type": "application/json" },
+            }
+          )
+    );
 
     const integration = connection({
       status: "connected",
@@ -510,7 +690,7 @@ describe("OAuth connection overlays", () => {
     );
     // Disconnecting is reversible: this is the only offer of the OAuth flow a
     // saved connection has, so losing it would strand the connection.
-    expect(screen.getByRole("button", { name: "Connect" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Connect" })).toBeTruthy();
   });
 
   // The server keeps a manual value the grant was shadowing, so the field it
@@ -520,7 +700,7 @@ describe("OAuth connection overlays", () => {
       "RESEND_API_KEY",
       "RESEND_ACCOUNT_SECRET",
     ]);
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+    stubFetch(async (input) =>
       String(input).includes("/api/rpc/integration/getAll")
         ? integrationListResponse([disconnected])
         : new Response(
@@ -550,14 +730,15 @@ describe("OAuth connection overlays", () => {
   // Disconnect revokes at the provider, which nothing here can undo, so the
   // click alone must not reach the server.
   it("asks before disconnecting, and sends nothing until it is confirmed", async () => {
-    const fetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(
+    const fetch = stubFetch(
+      async () =>
         new Response(
           JSON.stringify({ json: { success: true, removed: false } }),
-          { headers: { "content-type": "application/json" } }
+          {
+            headers: { "content-type": "application/json" },
+          }
         )
-      );
+    );
 
     const integration = connection({
       status: "connected",
@@ -566,17 +747,24 @@ describe("OAuth connection overlays", () => {
     });
     renderEditOverlay(integration);
 
-    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Disconnect" }));
 
     expect(
       await screen.findByRole("button", { name: "Disconnect Resend" })
     ).toBeTruthy();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(
+      fetch.mock.calls.some(([input]) =>
+        String(input).includes("/api/rpc/integration/disconnectOAuth")
+      )
+    ).toBe(false);
   });
 
   // The two outcomes differ, and which one is about to happen is the server's
   // answer in `configuredKeys` rather than anything this dialog guesses.
   it("names removal when the grant is the connection's only credential", async () => {
+    stubFetch(async () => {
+      throw new Error("OAuth requests must stay unreachable");
+    });
     const integration = connection(
       {
         status: "connected",
@@ -587,7 +775,7 @@ describe("OAuth connection overlays", () => {
     );
     renderEditOverlay(integration);
 
-    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Disconnect" }));
 
     expect(
       await screen.findByRole("button", { name: "Remove connection" })
@@ -600,10 +788,13 @@ describe("OAuth connection overlays", () => {
   // A grant that supplied the whole connection leaves nothing behind, so the
   // server removes the row and the editor has no connection left to edit.
   it("closes and repairs when disconnecting removed the connection", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ json: { success: true, removed: true } }), {
-        headers: { "content-type": "application/json" },
-      })
+    stubFetch(async (input) =>
+      String(input).includes("/api/rpc/integration/getAll")
+        ? integrationListResponse([])
+        : new Response(
+            JSON.stringify({ json: { success: true, removed: true } }),
+            { headers: { "content-type": "application/json" } }
+          )
     );
     const onDelete = vi.fn();
 
@@ -626,17 +817,23 @@ describe("OAuth connection overlays", () => {
     await waitFor(() => expect(onDelete).toHaveBeenCalledOnce());
   });
 
-  it("offers the OAuth flow on a connection that has never used it", () => {
+  it("offers the OAuth flow on a connection that has never used it", async () => {
+    stubFetch(async () => {
+      throw new Error("OAuth requests must stay unreachable");
+    });
     renderEditOverlay(connection(undefined, []));
 
     expect((screen.getByLabelText("API key") as HTMLInputElement).value).toBe(
       ""
     );
     expect(screen.getByText("Disconnected")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Connect" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Connect" })).toBeTruthy();
   });
 
-  it("renders reauthorization as a textual state with reconnect control", () => {
+  it("renders reauthorization as a textual state with reconnect control", async () => {
+    stubFetch(async () => {
+      throw new Error("OAuth requests must stay unreachable");
+    });
     renderEditOverlay(
       connection({
         status: "reauthorization_required",
@@ -646,7 +843,9 @@ describe("OAuth connection overlays", () => {
     );
 
     expect(screen.getByText("Reauthorization required")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Reconnect" })).toBeTruthy();
+    expect(
+      await screen.findByRole("button", { name: "Reconnect" })
+    ).toBeTruthy();
     expect(screen.getByText("Managed by Resend OAuth")).toBeTruthy();
     expect(screen.queryByLabelText("API key")).toBeNull();
   });
@@ -661,34 +860,32 @@ describe("OAuth connection overlays", () => {
     vi.spyOn(window, "open").mockReturnValue(
       reservedPopup as unknown as Window
     );
-    const fetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation(async (input) => {
-        const url = String(input);
-        if (url.endsWith("/api/integrations/oauth/start")) {
-          return new Response(
-            JSON.stringify({
-              attemptId: "attempt_1",
-              authorizeUrl: "https://provider.example/authorize",
-            }),
-            { headers: { "content-type": "application/json" } }
-          );
-        }
-        if (url.includes("/api/integrations/oauth/attempts/attempt_1")) {
-          return new Response(JSON.stringify({ status: "failed" }), {
-            headers: { "content-type": "application/json" },
-          });
-        }
-        if (url.includes("/api/rpc/integration/getAll")) {
-          return integrationListResponse([
-            connection({
-              status: "reauthorization_required",
-              connectedAt: "2026-08-24T10:00:00.000Z",
-            }),
-          ]);
-        }
-        throw new Error(`unexpected request: ${url}`);
-      });
+    const fetch = stubFetch(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/api/integrations/oauth/start")) {
+        return new Response(
+          JSON.stringify({
+            attemptId: "attempt_1",
+            authorizeUrl: "https://provider.example/authorize",
+          }),
+          { headers: { "content-type": "application/json" } }
+        );
+      }
+      if (url.includes("/api/integrations/oauth/attempts/attempt_1")) {
+        return new Response(JSON.stringify({ status: "failed" }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("/api/rpc/integration/getAll")) {
+        return integrationListResponse([
+          connection({
+            status: "reauthorization_required",
+            connectedAt: "2026-08-24T10:00:00.000Z",
+          }),
+        ]);
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
 
     renderEditOverlay(
       connection({
@@ -696,7 +893,7 @@ describe("OAuth connection overlays", () => {
         connectedAt: "2026-08-24T10:00:00.000Z",
       })
     );
-    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Reconnect" }));
 
     const startRequest = await waitFor(() => {
       const request = fetch.mock.calls.find(([input]) =>
@@ -735,46 +932,44 @@ describe("OAuth connection overlays", () => {
       close: vi.fn(),
       location: { assign: vi.fn() },
     } as unknown as Window);
-    const fetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation(async (input) => {
-        const url = String(input);
-        if (url.endsWith("/api/integrations/oauth/start")) {
-          return new Response(
-            JSON.stringify({
-              attemptId: "attempt_1",
-              authorizeUrl: "https://provider.example/authorize",
-            }),
-            { headers: { "content-type": "application/json" } }
-          );
-        }
-        if (url.includes("/api/integrations/oauth/attempts/attempt_1")) {
-          return new Response(JSON.stringify({ status: "failed" }), {
-            headers: { "content-type": "application/json" },
-          });
-        }
-        if (url.includes("/api/rpc/integration/getAll")) {
-          return new Response(
-            JSON.stringify({
-              json: [
-                connection({
-                  status: "reauthorization_required",
-                  connectedAt: "2026-08-24T10:00:00.000Z",
-                }),
-              ],
-            }),
-            { headers: { "content-type": "application/json" } }
-          );
-        }
-        throw new Error(`unexpected request: ${url}`);
-      });
+    const fetch = stubFetch(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/api/integrations/oauth/start")) {
+        return new Response(
+          JSON.stringify({
+            attemptId: "attempt_1",
+            authorizeUrl: "https://provider.example/authorize",
+          }),
+          { headers: { "content-type": "application/json" } }
+        );
+      }
+      if (url.includes("/api/integrations/oauth/attempts/attempt_1")) {
+        return new Response(JSON.stringify({ status: "failed" }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("/api/rpc/integration/getAll")) {
+        return new Response(
+          JSON.stringify({
+            json: [
+              connection({
+                status: "reauthorization_required",
+                connectedAt: "2026-08-24T10:00:00.000Z",
+              }),
+            ],
+          }),
+          { headers: { "content-type": "application/json" } }
+        );
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
 
     const integration = connection({
       status: "connected",
       connectedAt: "2026-08-24T10:00:00.000Z",
     });
     renderEditOverlay(integration, { queryClient });
-    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Reconnect" }));
 
     await waitFor(() =>
       expect(screen.getByText("Reauthorization required")).toBeTruthy()

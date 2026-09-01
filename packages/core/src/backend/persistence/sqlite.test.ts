@@ -42,8 +42,8 @@ async function open(filename: string) {
 describe("native SQLite persistence", () => {
   it("uses an in-memory database when no filename is provided", async () => {
     const instance = await wfSqlite().open(cipher);
-    const runtime = ManagedRuntime.make(instance.repositories);
     try {
+      await using runtime = ManagedRuntime.make(instance.repositories);
       const workflow = await runtime.runPromise(
         Effect.gen(function* () {
           const workflows = yield* WorkflowRepo;
@@ -63,7 +63,6 @@ describe("native SQLite persistence", () => {
       });
       expect(workflow?.name).toBe("Ephemeral");
     } finally {
-      await runtime.dispose();
       await instance.close();
     }
   });

@@ -1,8 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { orpcQuery } from "#src/lib/rpc-query";
 import { useOAuthConnection } from "./use-oauth-connection";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+import {
+  installAuthorizationGrantsForTests,
+  resetAuthorizationGrantsForTests,
+} from "#src/lib/authorization-test-support";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -18,6 +23,18 @@ function jsonResponse(body: unknown): Response {
   });
 }
 
+const oauthOperationIds = [
+  WfGraphOperations.oauthStart.id,
+  WfGraphOperations.oauthStatus.id,
+  WfGraphOperations.oauthCallback.id,
+] as const;
+
+function stubOAuthFetch(
+  handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+) {
+  return vi.spyOn(globalThis, "fetch").mockImplementation(handler);
+}
+
 function popup() {
   return {
     closed: false,
@@ -27,7 +44,12 @@ function popup() {
   };
 }
 
+beforeEach(() => {
+  installAuthorizationGrantsForTests(oauthOperationIds);
+});
+
 afterEach(() => {
+  resetAuthorizationGrantsForTests();
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
@@ -39,7 +61,7 @@ describe("useOAuthConnection", () => {
     vi.spyOn(window, "open").mockReturnValue(
       reservedPopup as unknown as Window
     );
-    vi.spyOn(globalThis, "fetch").mockReturnValue(start.promise);
+    stubOAuthFetch(() => start.promise);
     const queryClient = new QueryClient();
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -48,6 +70,7 @@ describe("useOAuthConnection", () => {
     const owner = renderHook(() => useOAuthConnection({ onConnected }), {
       wrapper,
     });
+    expect(owner.result.current.canStart).toBe(true);
 
     let attempt!: Promise<void>;
     act(() => {
@@ -73,24 +96,90 @@ describe("useOAuthConnection", () => {
     expect(onConnected).not.toHaveBeenCalled();
   });
 
+  it("does not reserve a popup or send a start request when status access is missing", async () => {
+    const reservedPopup = popup();
+    installAuthorizationGrantsForTests([WfGraphOperations.oauthStart.id]);
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        attemptId: "attempt_1",
+        authorizeUrl: "https://provider.example/authorize",
+      })
+    );
+    vi.spyOn(window, "open").mockReturnValue(
+      reservedPopup as unknown as Window
+    );
+    const queryClient = new QueryClient();
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => useOAuthConnection({ onConnected: vi.fn() }),
+      { wrapper }
+    );
+
+    await act(() => result.current.startExisting("connection_1"));
+
+    expect(result.current.canStart).toBe(false);
+    expect(window.open).not.toHaveBeenCalled();
+    expect(
+      fetch.mock.calls.some(([input]) =>
+        String(input).endsWith("/api/integrations/oauth/start")
+      )
+    ).toBe(false);
+  });
+
+  it("does not reserve a popup or send a start request when callback access is missing", async () => {
+    const reservedPopup = popup();
+    installAuthorizationGrantsForTests([
+      WfGraphOperations.oauthStart.id,
+      WfGraphOperations.oauthStatus.id,
+    ]);
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        attemptId: "attempt_1",
+        authorizeUrl: "https://provider.example/authorize",
+      })
+    );
+    vi.spyOn(window, "open").mockReturnValue(
+      reservedPopup as unknown as Window
+    );
+    const queryClient = new QueryClient();
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => useOAuthConnection({ onConnected: vi.fn() }),
+      { wrapper }
+    );
+
+    await act(() => result.current.startExisting("connection_1"));
+
+    expect(result.current.canStart).toBe(false);
+    expect(window.open).not.toHaveBeenCalled();
+    expect(
+      fetch.mock.calls.some(([input]) =>
+        String(input).endsWith("/api/integrations/oauth/start")
+      )
+    ).toBe(false);
+  });
+
   it("does not notify after cancellation during the terminal cache refresh", async () => {
     const reservedPopup = popup();
     vi.spyOn(window, "open").mockReturnValue(
       reservedPopup as unknown as Window
     );
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        jsonResponse({
+    stubOAuthFetch(async (input) => {
+      if (String(input).endsWith("/api/integrations/oauth/start")) {
+        return jsonResponse({
           attemptId: "attempt_1",
           authorizeUrl: "https://provider.example/authorize",
-        })
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          status: "succeeded",
-          integrationId: "connection_1",
-        })
-      );
+        });
+      }
+      return jsonResponse({
+        status: "succeeded",
+        integrationId: "connection_1",
+      });
+    });
     const refresh = deferred<void>();
     const queryClient = new QueryClient();
     const invalidateQueries = vi
@@ -103,6 +192,7 @@ describe("useOAuthConnection", () => {
     const owner = renderHook(() => useOAuthConnection({ onConnected }), {
       wrapper,
     });
+    expect(owner.result.current.canStart).toBe(true);
 
     let attempt!: Promise<void>;
     act(() => {
@@ -124,13 +214,12 @@ describe("useOAuthConnection", () => {
   });
 
   it("keeps waiting after the provider popup reports closed until the grant lands", async () => {
-    vi.useFakeTimers();
     const reservedPopup = popup();
     vi.spyOn(window, "open").mockReturnValue(
       reservedPopup as unknown as Window
     );
     let statusReads = 0;
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    stubOAuthFetch(async (input) => {
       if (String(input).endsWith("/api/integrations/oauth/start")) {
         return jsonResponse({
           attemptId: "attempt_1",
@@ -157,6 +246,8 @@ describe("useOAuthConnection", () => {
     const { result } = renderHook(() => useOAuthConnection({ onConnected }), {
       wrapper,
     });
+    expect(result.current.canStart).toBe(true);
+    vi.useFakeTimers();
 
     let attempt!: Promise<void>;
     act(() => {
@@ -185,20 +276,24 @@ describe("useOAuthConnection", () => {
       .mockReturnValueOnce(firstPopup as unknown as Window)
       .mockReturnValueOnce(secondPopup as unknown as Window);
     const firstStart = deferred<Response>();
-    vi.spyOn(globalThis, "fetch")
-      .mockReturnValueOnce(firstStart.promise)
-      .mockResolvedValueOnce(
-        jsonResponse({
+    stubOAuthFetch(async (input, init) => {
+      if (String(input).endsWith("/api/integrations/oauth/start")) {
+        const request = JSON.parse(String(init?.body)) as {
+          integrationId?: string;
+        };
+        if (request.integrationId === "connection_1") {
+          return firstStart.promise;
+        }
+        return jsonResponse({
           attemptId: "attempt_2",
           authorizeUrl: "https://provider.example/authorize",
-        })
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          status: "succeeded",
-          integrationId: "connection_2",
-        })
-      );
+        });
+      }
+      return jsonResponse({
+        status: "succeeded",
+        integrationId: "connection_2",
+      });
+    });
     const queryClient = new QueryClient();
     const invalidateQueries = vi
       .spyOn(queryClient, "invalidateQueries")
@@ -210,6 +305,7 @@ describe("useOAuthConnection", () => {
     const { result } = renderHook(() => useOAuthConnection({ onConnected }), {
       wrapper,
     });
+    expect(result.current.canStart).toBe(true);
 
     let first!: Promise<void>;
     let second!: Promise<void>;
@@ -248,14 +344,15 @@ describe("useOAuthConnection", () => {
     vi.spyOn(window, "open").mockReturnValue(
       reservedPopup as unknown as Window
     );
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        jsonResponse({
+    stubOAuthFetch(async (input) => {
+      if (String(input).endsWith("/api/integrations/oauth/start")) {
+        return jsonResponse({
           attemptId: "attempt_1",
           authorizeUrl: "https://provider.example/authorize",
-        })
-      )
-      .mockResolvedValueOnce(jsonResponse({ status: "failed" }));
+        });
+      }
+      return jsonResponse({ status: "failed" });
+    });
     const queryClient = new QueryClient();
     const invalidateQueries = vi
       .spyOn(queryClient, "invalidateQueries")
@@ -267,6 +364,7 @@ describe("useOAuthConnection", () => {
       () => useOAuthConnection({ onConnected: vi.fn() }),
       { wrapper }
     );
+    expect(result.current.canStart).toBe(true);
 
     await act(() => result.current.startExisting("connection_1"));
 

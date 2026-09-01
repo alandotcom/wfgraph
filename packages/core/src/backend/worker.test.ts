@@ -1,10 +1,16 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, expectTypeOf, it } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer } from "effect";
 import { wfSqlite } from "#src/backend/persistence/sqlite";
-import { wfWorker } from "#src/backend/worker";
+import {
+  defineWfGraphAuth,
+  trustWfGraphUpstream,
+  WfGraphAccess,
+  wfWorker,
+  type WfGraphWorker,
+} from "#src/worker";
 import type { WfGraphPersistence } from "#src/backend/persistence/types";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
 import {
@@ -24,6 +30,42 @@ afterEach(async () => {
 });
 
 describe("wfWorker", () => {
+  it("supports one environment type while auth closes over arbitrary session state", () => {
+    type WorkerEnv = { INTEGRATION_ENCRYPTION_KEY: string };
+    type HostSession = { organizationId: string; grants: ReadonlySet<string> };
+
+    const session: HostSession = {
+      organizationId: "org-1",
+      grants: new Set(["workflow.read"]),
+    };
+    const auth = defineWfGraphAuth(async () => {
+      await Promise.resolve();
+      return {
+        allows: (operation) =>
+          session.organizationId === "org-1" &&
+          session.grants.has(operation.permission),
+      };
+    });
+    const persistence = undefined as unknown as WfGraphPersistence;
+    const request = (env: WorkerEnv) => ({
+      auth,
+      persistence,
+      encryption: { key: env.INTEGRATION_ENCRYPTION_KEY },
+      inngest: { id: "wfgraph-worker-test", isDev: true },
+    });
+
+    const inferredWorker = wfWorker({ request });
+    const explicitEnvironmentWorker = wfWorker<WorkerEnv>({
+      request,
+    });
+
+    expectTypeOf(inferredWorker).toEqualTypeOf<WfGraphWorker<WorkerEnv>>();
+    expectTypeOf(explicitEnvironmentWorker).toEqualTypeOf<
+      WfGraphWorker<WorkerEnv>
+    >();
+    expect(WfGraphAccess.all.allows).toBeTypeOf("function");
+  });
+
   it("resolves request-scoped extensions from the Worker environment", async () => {
     const repositories = Layer.mergeAll(
       stubApiKeyRepo(),
@@ -55,7 +97,7 @@ describe("wfWorker", () => {
         };
       },
       request: () => ({
-        auth: "external",
+        auth: trustWfGraphUpstream(),
         persistence,
         encryption: { key: "d".repeat(64) },
         inngest: { id: "wfgraph-worker-test", isDev: true },
@@ -108,7 +150,7 @@ describe("wfWorker", () => {
     };
     const worker = wfWorker({
       request: () => ({
-        auth: "external",
+        auth: trustWfGraphUpstream(),
         persistence,
         encryption: { key: "d".repeat(64) },
         inngest: { id: "wfgraph-worker-test", isDev: true },
@@ -153,7 +195,7 @@ describe("wfWorker", () => {
     };
     const worker = wfWorker({
       request: () => ({
-        auth: "external",
+        auth: trustWfGraphUpstream(),
         persistence,
         encryption: { key: "d".repeat(64) },
         inngest: { id: "wfgraph-worker-test", isDev: true },

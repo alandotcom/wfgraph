@@ -15,17 +15,14 @@ import { Menubar } from "@base-ui/react/menubar";
 import { UserMenu } from "#src/components/workflows/user-menu";
 import {
   DashboardLink,
-  DuplicateButton,
   CommandPaletteTrigger,
   RunPublishMenuItems,
   ToolbarActions,
   ToolbarPublishControls,
   WorkflowMenuComponent,
 } from "#src/components/workflow/workflow-toolbar-chrome";
-import {
-  useWorkflowActions,
-  useWorkflowState,
-} from "#src/components/workflow/workflow-toolbar-handlers";
+import { useWorkflowActions } from "#src/components/workflow/workflow-toolbar-handlers";
+import { useWorkflowToolbarState } from "#src/components/workflow/workflow-toolbar-state";
 import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import {
@@ -57,11 +54,15 @@ function isWorkspaceView(value: unknown): value is WorkflowWorkspaceView {
  */
 function useWorkspaceViews({
   hasWorkflow,
-  isOwner,
+  canReadRuns,
+  canCompare,
+  canReadVersionHistory,
   isPublished,
 }: {
   hasWorkflow: boolean;
-  isOwner: boolean;
+  canReadRuns: boolean;
+  canCompare: boolean;
+  canReadVersionHistory: boolean;
   isPublished: boolean;
 }) {
   const view = useAtomValue(workflowWorkspaceViewAtom);
@@ -72,8 +73,10 @@ function useWorkspaceViews({
   const views: WorkflowWorkspaceView[] = hasWorkflow
     ? [
         "draft",
-        ...(isOwner ? (["runs"] as const) : []),
-        ...(isOwner && isPublished ? (["changes"] as const) : []),
+        ...(canReadRuns ? (["runs"] as const) : []),
+        ...(canReadVersionHistory && canCompare && isPublished
+          ? (["changes"] as const)
+          : []),
       ]
     : [];
   const selectView = (nextView: WorkflowWorkspaceView) => {
@@ -129,7 +132,7 @@ function WorkflowActionsMenu({
   selectView,
 }: ReturnType<typeof useWorkspaceViews> & {
   actions: ReturnType<typeof useWorkflowActions>;
-  state: ReturnType<typeof useWorkflowState>;
+  state: ReturnType<typeof useWorkflowToolbarState>;
 }) {
   return (
     <DropdownMenu>
@@ -167,10 +170,12 @@ function WorkflowActionsMenu({
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
-            {state.isOwner ? <DropdownMenuSeparator /> : null}
+            {state.canExecute || state.canPublish ? (
+              <DropdownMenuSeparator />
+            ) : null}
           </>
         ) : null}
-        {state.isOwner ? (
+        {state.canExecute || state.canPublish ? (
           <RunPublishMenuItems actions={actions} state={state} />
         ) : null}
       </DropdownMenuContent>
@@ -191,17 +196,20 @@ function WorkflowTrailingControls({
   workflowId,
 }: WorkflowToolbarProps & {
   actions: ReturnType<typeof useWorkflowActions>;
-  state: ReturnType<typeof useWorkflowState>;
+  state: ReturnType<typeof useWorkflowToolbarState>;
 }) {
   const workspace = useWorkspaceViews({
     hasWorkflow: Boolean(workflowId),
-    isOwner: state.isOwner,
+    canReadRuns: state.canReadRuns,
+    canCompare: state.canCompare,
+    canReadVersionHistory: state.canReadVersionHistory,
     isPublished: Boolean(state.publication?.isPublished),
   });
   // Below `md` the whole group is one button. A viewer who does not own the
   // workflow can neither run nor publish, and their only view is already on
   // screen, so the button would open an empty menu. Hide it instead.
-  const hasOverflowRows = state.isOwner || workspace.views.length > 1;
+  const hasOverflowRows =
+    state.canExecute || state.canPublish || workspace.views.length > 1;
 
   return (
     <>
@@ -223,7 +231,7 @@ export function WorkflowToolbarChrome({
   workflowId,
 }: WorkflowToolbarProps & {
   actions: ReturnType<typeof useWorkflowActions>;
-  state: ReturnType<typeof useWorkflowState>;
+  state: ReturnType<typeof useWorkflowToolbarState>;
 }) {
   return (
     <div className="relative h-11 shrink-0 border-b bg-background">
@@ -245,23 +253,8 @@ export function WorkflowToolbarChrome({
             state={state}
             workflowId={workflowId}
           />
-          <ToolbarActions
-            actions={actions}
-            state={state}
-            workflowId={workflowId}
-          />
+          <ToolbarActions actions={actions} state={state} />
           <UserMenu />
-          {workflowId && !state.isOwner && (
-            <>
-              <span className="shrink-0 whitespace-nowrap text-muted-foreground text-xs">
-                Read-only
-              </span>
-              <DuplicateButton
-                isDuplicating={actions.isDuplicating}
-                onDuplicate={actions.handleDuplicate}
-              />
-            </>
-          )}
         </Menubar>
         {/* Centred by its own absolute box, and written here rather than after
             the trailing group so Tab reaches it where the eye finds it: between
@@ -291,7 +284,7 @@ export function WorkflowToolbarChrome({
 }
 
 export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
-  const state = useWorkflowState();
+  const state = useWorkflowToolbarState();
   const actions = useWorkflowActions(state);
 
   return (

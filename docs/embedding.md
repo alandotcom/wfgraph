@@ -21,6 +21,7 @@ import {
   defineAction,
   defineEvent,
 } from "@wfgraph/core";
+import { auth } from "./wfgraph-auth";
 import { wfPostgres } from "@wfgraph/core/postgres";
 import { builtInIntegrations } from "@wfgraph/plugins";
 
@@ -75,7 +76,7 @@ const wfgraph = await createWfGraphApp({
     migrations: { runOnStartup: true },
   }),
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
-  auth: (request) => hasValidSession(request),
+  auth,
   client: clientBundle,
   inngest: {
     id: "my-wfgraph-app",
@@ -149,6 +150,140 @@ const wfgraph = await createWfGraphApp({ client: clientBundle, ... });
 - The option takes a directory that holds an `index.html`, so a custom build of the editor
   is the same call with a different bundle.
 - Each of the two packages is independent of the other.
+
+## Authentication and authorization
+
+The host owns operator sessions and policy. Authentication returns a request-scoped access
+policy or `null`; Workflow Graph neither receives nor stores a principal. Keep host identity,
+organization, and grant state in the callback's closure.
+
+This is application capability authorization for the Workflow Graph surface. It is not
+row-level ownership or tenant isolation: a granted operation can act on every Workflow Graph
+record that operation addresses.
+
+```ts
+import { defineWfGraphAuth, WfGraphRoles } from "@wfgraph/core";
+
+export const auth = defineWfGraphAuth(async (request) => {
+  const session = await readSession(request);
+  return session ? WfGraphRoles[session.role] : null;
+});
+```
+
+The `readSession` function represents your host's session adapter. A provider such as Clerk
+can supply the user ID, organization ID, and role through that adapter. Load any remote grant
+state once in this callback, then return `WfGraphAccess.fromPermissions(grants)` or
+`WfGraphAccess.fromOperationIds(operationIds)`. Both constructors copy the collection into a
+local immutable policy. Do not put a policy-store query inside `allows`.
+
+`WfGraphRoles.viewer`, `.editor`, and `.admin` are directly usable immutable policies. The
+viewer can read workflows, runs, and connections. The editor adds workflow changes, run
+management, and the build agent. The admin allows every operation, including connection and
+API-key administration. Return `WfGraphAccess.all` when every authenticated session should
+have unrestricted access; there is no implicit allow-all mode.
+
+An access policy exposes `allows(operation)` and may return a boolean or `Promise<boolean>`.
+Use the common role policies first, permission collections for custom roles, and exact
+operation-ID collections only for advanced action-specific policy. An operation is one
+protected server action such as `workflow.publish`; its permission is the broader capability such as
+`workflow.write` that commonly grants several operations.
+
+Workflow Graph passes a clone to authentication, so reading its body cannot drain the request
+handled downstream. Authentication should normally use only session headers and cookies.
+The `defineWfGraphAuth` helper supplies contextual types when the callback lives outside the
+application options.
+
+An operation is a frozen `WfGraphOperation` value with two fields:
+
+- `id` is the stable business-action ID, such as `workflow.publish` or `oauth.start`.
+- `permission` is the broader grant that commonly covers the operation, such as
+  `workflow.write` or `connection.write`.
+
+Use the following static exports from `@wfgraph/core` or `@wfgraph/core/worker`:
+
+| Export                | Purpose                                                              |
+| --------------------- | -------------------------------------------------------------------- |
+| `WfGraphPermissions`  | Named constants for every `WfGraphPermission` value                  |
+| `WfGraphOperations`   | Named operation descriptors that contain an ID and permission        |
+| `WfGraphOperationId`  | Union of every supported operation ID                                |
+| `WfGraphOperationIds` | Array of every supported operation ID                                |
+| `WfGraphAccess`       | `all`, `fromPermissions`, and `fromOperationIds` access constructors |
+| `WfGraphRoles`        | Directly usable immutable `viewer`, `editor`, and `admin` policies   |
+
+Workflow Graph's built-in permission vocabulary is fixed:
+
+| Permission         | Covers                                                            |
+| ------------------ | ----------------------------------------------------------------- |
+| `workflow.read`    | Reading workflows and version history                             |
+| `workflow.write`   | Creating, editing, publishing, restoring, and deleting workflows  |
+| `run.read`         | Reading runs, logs, events, and status                            |
+| `run.manage`       | Starting, canceling, deleting, and resuming runs                  |
+| `connection.read`  | Reading connections and connection configuration options          |
+| `connection.write` | Creating, editing, testing, deleting, and authorizing connections |
+| `settings.read`    | Reading API keys                                                  |
+| `settings.write`   | Creating and deleting API keys                                    |
+| `agent.use`        | Using the build agent                                             |
+
+The following table maps every operation ID to its permission:
+
+| Permission         | Operation IDs                                                                                                                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workflow.read`    | `workflow.getAll`, `workflow.getById`, `workflow.getVersionHistory`, `workflow.compareVersion`, `workflow.getCurrent`, `workflow.getVersionGraph`                                                             |
+| `workflow.write`   | `workflow.create`, `workflow.update`, `workflow.delete`, `workflow.duplicate`, `workflow.publish`, `workflow.restoreVersion`, `workflow.saveCurrent`, `workflow.bulkLifecycle`                                |
+| `run.read`         | `workflow.getExecutions`, `workflow.getExecutionsGlobal`, `workflow.getExecutionLogs`, `workflow.getExecutionEvents`, `workflow.getExecutionStatus`                                                           |
+| `run.manage`       | `workflow.execute`, `workflow.deleteExecutions`, `workflow.resumeWait`, `workflow.cancelExecution`                                                                                                            |
+| `connection.read`  | `integration.getAll`, `integration.get`, `integration.configOptions`                                                                                                                                          |
+| `connection.write` | `integration.create`, `integration.update`, `integration.delete`, `integration.disconnectOAuth`, `integration.testConnection`, `integration.testCredentials`, `oauth.start`, `oauth.status`, `oauth.callback` |
+| `settings.read`    | `apiKey.getAll`                                                                                                                                                                                               |
+| `settings.write`   | `apiKey.create`, `apiKey.delete`                                                                                                                                                                              |
+| `agent.use`        | `agent.chat`                                                                                                                                                                                                  |
+
+The role policies contain these permissions:
+
+| Role     | Permissions                                                                   |
+| -------- | ----------------------------------------------------------------------------- |
+| `viewer` | `workflow.read`, `run.read`, `connection.read`                                |
+| `editor` | Every viewer permission, plus `workflow.write`, `run.manage`, and `agent.use` |
+| `admin`  | Every exported permission, including connection and settings writes           |
+
+Each RPC and REST operation carries one descriptor from `WfGraphOperations`. The OpenAPI
+operation ID matches `WfGraphOperation.id`, and the `x-wfgraph-permission` extension contains
+`WfGraphOperation.permission`.
+
+Authentication and authorization failures have distinct status codes. If `authenticate`
+returns `null`, Workflow Graph returns `401 Unauthorized`. If `allows` returns `false`, the
+operation returns `403 Forbidden`. A thrown or rejected callback, malformed access policy, or
+non-boolean `allows` result is a host-system failure: Workflow Graph logs its details server-side
+and returns a sanitized `500 Internal Server Error`.
+
+Pass `auth: trustWfGraphUpstream()` only when an upstream component authenticates operators
+and authorizes every operator request before it reaches Workflow Graph. This explicit policy
+allows every Workflow Graph operation and does not create synthetic identity state.
+
+Three route classes have different authorization behavior:
+
+- Operator routes authenticate through the host. Protected RPC, REST, and OAuth operations
+  call the returned policy's `allows` method.
+- Machine routes bypass host authentication because they carry a resume token, vendor
+  signature, or Inngest credential. These routes are the wait-resume endpoint, connection
+  webhook intake, and the Inngest HTTP callback when HTTP serve is enabled.
+- The OAuth client metadata endpoint is public provider-discovery data and bypasses host
+  authentication.
+
+The authenticated, boot-blocking `GET /api/extensions` response contains an
+`authorization.operationIds` snapshot beside `catalog` and `agent`. Workflow Graph evaluates
+every canonical `WfGraphOperation` through `allows` concurrently to build the snapshot. A
+policy failure makes bootstrap fail with a 500; it never becomes an empty grant set. The editor
+decodes the snapshot before its first render, then uses the granted IDs synchronously to hide
+or disable controls and to skip queries for unavailable features. A response that omits the
+authorization envelope or contains an unknown operation ID fails editor startup as a contract
+mismatch.
+
+The grant snapshot lasts for the page lifetime. Reload the page after an account or policy
+change. The snapshot controls the editor experience only. Every protected RPC, REST, and OAuth
+operation calls `allows` once again when the operation runs. A custom asynchronous policy must
+therefore tolerate concurrent bootstrap calls. The built-in roles and collection policies are
+local and perform no asynchronous fanout.
 
 ## Built-in integrations
 
@@ -299,7 +434,7 @@ type Env = {
 export default wfWorker<Env>({
   publicUrl: "https://workflows.example.com",
   request: (env) => ({
-    auth: (request) => hasValidSession(request),
+    auth,
     persistence: wfHyperdrive(env.HYPERDRIVE),
     encryption: { key: env.INTEGRATION_ENCRYPTION_KEY },
     inngest: {
@@ -321,6 +456,9 @@ export default wfWorker<Env>({
   }),
 });
 ```
+
+`wfWorker` has one type parameter for the Worker environment. Host session state stays inside
+the authentication callback and its returned access-policy closure.
 
 The Worker opens and closes the PostgreSQL client inside each request. Configure
 the Hyperdrive binding with query caching disabled: Hyperdrive does not
@@ -368,19 +506,19 @@ different migration tool puts the tables in `public`. This repository's
 
 ## Package exports
 
-| Entry                    | What it is                                                                                                                                                                                                                                                       |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@wfgraph/core`          | The one host-facing entry. `defineEvent` and `defineAction` author the vocabulary. `createWfGraphApp` builds the application, with `WfGraphAppOptions`, `WfGraphApp` and the config types. `createRequestListener` mounts it on Express, Fastify or `node:http`. |
-| `@wfgraph/core/postgres` | `wfPostgres` for a Node PostgreSQL pool                                                                                                                                                                                                                          |
-| `@wfgraph/core/sqlite`   | `wfSqlite` for native Node SQLite                                                                                                                                                                                                                                |
-| `@wfgraph/core/worker`   | `wfWorker`, `wfHyperdrive`, and request-scoped PostgreSQL through Hyperdrive                                                                                                                                                                                     |
-| `@wfgraph/core/plugin`   | What an integration package builds against                                                                                                                                                                                                                       |
-| `@wfgraph/core/testing`  | `runAction`, `actionData` and `actionError`, for that package's own suite                                                                                                                                                                                        |
-| `@wfgraph/core/migrate`  | `migrateWfGraphDatabase`, for migrations without an application                                                                                                                                                                                                  |
-| `@wfgraph/core/logging`  | `configureWfGraphLogging`, the console setup a host installs                                                                                                                                                                                                     |
-| `@wfgraph/client`        | `clientBundle`, the built editor, passed to `createWfGraphApp` as `client`                                                                                                                                                                                       |
-| `@wfgraph/plugins`       | Five built-in integration values, the configurable `slack(options?)` factory, and `builtInIntegrations(options?)`                                                                                                                                                |
-| `@wfgraph/plugins/ui`    | Their icons and output renderers as one record, imported by the browser alone                                                                                                                                                                                    |
+| Entry                    | What it is                                                                                                                                           |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@wfgraph/core`          | The host-facing entry. It exports the authoring vocabulary, application and authorization contracts, `createWfGraphApp`, and `createRequestListener` |
+| `@wfgraph/core/postgres` | `wfPostgres` for a Node PostgreSQL pool                                                                                                              |
+| `@wfgraph/core/sqlite`   | `wfSqlite` for native Node SQLite                                                                                                                    |
+| `@wfgraph/core/worker`   | `wfWorker`, `wfHyperdrive`, and request-scoped PostgreSQL through Hyperdrive                                                                         |
+| `@wfgraph/core/plugin`   | What an integration package builds against                                                                                                           |
+| `@wfgraph/core/testing`  | `runAction`, `actionData` and `actionError`, for that package's own suite                                                                            |
+| `@wfgraph/core/migrate`  | `migrateWfGraphDatabase`, for migrations without an application                                                                                      |
+| `@wfgraph/core/logging`  | `configureWfGraphLogging`, the console setup a host installs                                                                                         |
+| `@wfgraph/client`        | `clientBundle`, the built editor, passed to `createWfGraphApp` as `client`                                                                           |
+| `@wfgraph/plugins`       | Five static integration values, the configurable `slack(options?)` factory, and `builtInIntegrations(options?)`                                      |
+| `@wfgraph/plugins/ui`    | Their icons and output renderers as one record, imported by the browser alone                                                                        |
 
 Workflow Graph cannot serialize a React component, so that last record is the one part of the catalog
 that stays off `/api/extensions`. `@wfgraph/shared` stays private, and the build inlines it
@@ -397,7 +535,7 @@ application's router serves static files.
 | ------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `basePath`                | No       | Path the host mounts Workflow Graph at (default `/`)                                                                                                           |
 | `publicUrl`               | No       | External HTTPS origin. Required for OAuth callback and client metadata URLs, and to copy a Connection webhook URL. Loopback development can use HTTP           |
-| `auth`                    | Yes      | Predicate that decides who reaches the editor, or `"external"`                                                                                                 |
+| `auth`                    | Yes      | Authentication callback returning a request-scoped access policy or `null`                                                                                     |
 | `persistence`             | Yes      | A backend from `@wfgraph/core/postgres` or `@wfgraph/core/sqlite`                                                                                              |
 | `encryption.key`          | Yes      | 64-character hex string. It encrypts the integration secrets                                                                                                   |
 | `inngest.id`              | Yes      | Inngest application ID                                                                                                                                         |
@@ -413,12 +551,11 @@ application's router serves static files.
 
 Read these once:
 
-- **`auth` decides who reaches the editor**, and Workflow Graph refuses to start without it. It
-  prevents the quiet failure: an editor the internet reaches, running actions with
-  credentials decrypted out of the `integrations` table. Pass a predicate
-  `(request: Request) => boolean | Promise<boolean>` that reads the session your application
-  already uses, or `"external"` when something in front of Workflow Graph already gates it. It covers
-  the RPC, REST, OpenAPI, extensions, and SPA routes.
+- **`auth` protects operator routes**, and Workflow Graph refuses to start without it. Pass
+  an authentication callback that resolves the session your application already uses and
+  returns an access policy. Return `WfGraphAccess.all` for explicit unrestricted access, or
+  pass `trustWfGraphUpstream()` when an upstream component enforces both checks. For the full
+  contract, see [Authentication and authorization](#authentication-and-authorization).
 - **Three route classes define exposure.** Operator routes use `auth`. The wait
   resume path, the Connection-addressed webhook intake
   (`POST /api/webhooks/{type}/{connectionId}`), and the Inngest HTTP callback are
@@ -451,8 +588,8 @@ Read these once:
   durable-execution runtime in the process, even when the application drives Inngest
   functions of its own. Workflow Graph still builds its own Inngest client out of the
   `inngest` option below, and still builds its own Hono app inside; `createWfGraphApp`
-  answers with `fetch`, `basePath` and `dispose` alone, so neither library appears in what
-  it hands back.
+  answers with `fetch`, `basePath`, `dispose`, and `[Symbol.asyncDispose]` alone, so neither
+  library appears in what it hands back.
 - **Running Inngest is the job of the consumer**, self-hosted or cloud. `pnpm run dev` here
   starts it as a separate process. Long-running hosts set `inngest.connect: true` so
   executions arrive over a Connect WebSocket and `/api/inngest` is not mounted.
@@ -466,9 +603,11 @@ Read these once:
   back, so an unreachable gateway would otherwise hang boot with nothing
   logged. Workflow Graph races it against `inngest.connectTimeoutMs` (default 30
   seconds) and fails boot with an error naming the gateway once that elapses.
-- `createWfGraphApp` answers `{ fetch, basePath, dispose }`. `await dispose()` drains an
-  open Connect worker, then returns when the layers of the Effect runtime finalize. One
-  Workflow Graph per process remains the supported arrangement; each app owns its
+- `createWfGraphApp` answers `{ fetch, basePath, dispose, [Symbol.asyncDispose] }`. For a
+  lexical lifetime, declare the app with `await using`. For a long-running host, call
+  `await dispose()` from its shutdown handler. Both forms run the same idempotent shutdown:
+  they drain an open Connect worker, finalize the Effect runtime, and close persistence.
+  One Workflow Graph per process remains the supported arrangement; each app owns its
   persistence instance, Inngest client, encryption key, and assembled surface.
 
 ## Logging
