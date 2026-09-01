@@ -173,3 +173,24 @@ The payoff is bounded and known. Five source files import postgres.js:
 wrapper in `packages/core/src/backend/lib/effect/database.ts`, the boilerplate this ADR's
 Consequences named. The repository contracts and the Drizzle schema are unaffected either
 way.
+
+## Amendment: Effect-owned SQLite connections
+
+_Amended 2026-09-01._
+
+The SQLite backend moved from direct `node:sqlite` calls to
+`@effect/sql-sqlite-node` and `drizzle-orm/effect-sqlite-node`. Unlike the
+PostgreSQL constraints above, this adapter preserves the existing driver and
+lets Effect own the scoped connection, serialization, and `BEGIN IMMEDIATE`
+transactions while Drizzle owns SQL composition and the generated migration
+manifest. Workflow Graph executes pending SQLite statements with foreign keys
+disabled outside the migration transaction, checks referential integrity before
+commit, and restores enforcement afterward; SQLite ignores attempts to change
+`foreign_keys` from inside the transaction Drizzle's stock runner opens.
+
+SQLite now has a dialect-specific schema and migration directory. Existing
+schema versions 6 and 7 are adopted only when their physical schema matches a
+frozen fingerprint; adoption writes the Drizzle baseline journal without
+rebuilding application tables. Journal rows must be an exact prefix of the
+shipped manifest, and the resulting physical schema must match the current
+fingerprint, so a newer or altered database is refused rather than guessed at.

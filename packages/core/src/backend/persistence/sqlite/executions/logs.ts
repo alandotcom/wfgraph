@@ -1,4 +1,6 @@
 import { generateId } from "@wfgraph/shared/utils/id";
+import { Effect } from "effect";
+import { sql } from "drizzle-orm";
 import type { JsonValue } from "@wfgraph/shared/types/json";
 import type { NodeLogsRepoMethods } from "#src/backend/services/executions/repo/node-logs";
 import type { SqliteDatabase } from "#src/backend/persistence/sqlite/database";
@@ -16,98 +18,89 @@ export function makeSqliteNodeLogsMethods(
       store.write((database) => {
         const id = generateId();
         const now = Date.now();
-        database
-          .prepare(
-            `INSERT INTO workflow_execution_logs (
-               id, execution_id, node_id, node_name, node_type, status,
-               input, started_at, timestamp
-             ) VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?)`
-          )
-          .run(
-            id,
-            input.executionId,
-            input.nodeId,
-            input.nodeName,
-            input.nodeType,
-            encodeJson(input.input),
-            now,
-            now
-          );
-        return id;
+        return database
+          .run(sql`
+            insert into workflow_execution_logs (
+              id, execution_id, node_id, node_name, node_type, status,
+              input, started_at, timestamp
+            ) values (
+              ${id}, ${input.executionId}, ${input.nodeId}, ${input.nodeName},
+              ${input.nodeType}, 'running', ${encodeJson(input.input)}, ${now}, ${now}
+            )
+          `)
+          .pipe(Effect.as(id));
       }),
     closeNodeLog: (input) =>
-      store.write((database) => {
-        database
-          .prepare(
-            `UPDATE workflow_execution_logs SET status = ?, output = ?,
-                    error = ?, completed_at = ?, duration = ? WHERE id = ?`
-          )
-          .run(
-            input.status,
-            encodeJson(input.output),
-            input.error ?? null,
-            Date.now(),
-            String(input.durationMs),
-            input.logId
-          );
-      }),
+      store.write((database) =>
+        database.run(sql`
+          update workflow_execution_logs set
+            status = ${input.status}, output = ${encodeJson(input.output)},
+            error = ${input.error ?? null}, completed_at = ${Date.now()},
+            duration = ${String(input.durationMs)}
+          where id = ${input.logId}
+        `)
+      ),
     cancelOpenNodeLogs: (executionId) =>
       store.write((database) => {
         const now = Date.now();
-        database
-          .prepare(
-            `UPDATE workflow_execution_logs
-             SET status = 'cancelled', completed_at = ?,
-                 duration = CAST(? - started_at AS TEXT)
-             WHERE execution_id = ? AND status IN ('pending', 'running')`
-          )
-          .run(now, now, executionId);
+        return database.run(sql`
+          update workflow_execution_logs
+          set status = 'cancelled', completed_at = ${now},
+              duration = cast(${now} - started_at as text)
+          where execution_id = ${executionId} and status in ('pending', 'running')
+        `);
       }),
     readNodeOutputs: (executionId) =>
-      store.read((database) => {
-        const outputs: Record<string, JsonValue> = {};
-        for (const row of database
-          .prepare(
-            `SELECT * FROM workflow_execution_logs
-             WHERE execution_id = ? AND status = 'success'
-             ORDER BY timestamp ASC`
+      store.read((database) =>
+        database
+          .all<Record<string, unknown>>(sql`
+            select * from workflow_execution_logs
+            where execution_id = ${executionId} and status = 'success'
+            order by timestamp asc
+          `)
+          .pipe(
+            Effect.map((rows) => {
+              const outputs: Record<string, JsonValue> = {};
+              for (const row of rows) {
+                const log = sqliteExecutionLog(row);
+                outputs[log.nodeId] = log.output ?? null;
+              }
+              return outputs;
+            })
           )
-          .all(executionId)) {
-          const log = sqliteExecutionLog(row);
-          outputs[log.nodeId] = log.output ?? null;
-        }
-        return outputs;
-      }),
+      ),
     listLogs: (executionId) =>
       store.read((database) =>
         database
-          .prepare(
-            "SELECT * FROM workflow_execution_logs WHERE execution_id = ? ORDER BY timestamp DESC"
+          .all<Record<string, unknown>>(
+            sql`select * from workflow_execution_logs where execution_id = ${executionId} order by timestamp desc`
           )
-          .all(executionId)
-          .map(sqliteExecutionLog)
+          .pipe(Effect.map((rows) => rows.map(sqliteExecutionLog)))
       ),
     listNodeStatuses: (executionId) =>
       store.read((database) =>
         database
-          .prepare(
-            "SELECT node_id, status FROM workflow_execution_logs WHERE execution_id = ?"
+          .all<Record<string, unknown>>(
+            sql`select node_id, status from workflow_execution_logs where execution_id = ${executionId}`
           )
-          .all(executionId)
-          .map((row) => {
-            const nodeId = requiredString(row, "node_id");
-            const status = requiredString(row, "status");
-            if (
-              status !== "pending" &&
-              status !== "running" &&
-              status !== "success" &&
-              status !== "error" &&
-              status !== "cancelled"
-            ) {
-              throw new Error("Invalid SQLite node log status");
-            }
-            return { nodeId, status };
-          })
+          .pipe(
+            Effect.map((rows) =>
+              rows.map((row) => {
+                const nodeId = requiredString(row, "node_id");
+                const status = requiredString(row, "status");
+                if (
+                  status !== "pending" &&
+                  status !== "running" &&
+                  status !== "success" &&
+                  status !== "error" &&
+                  status !== "cancelled"
+                ) {
+                  throw new Error("Invalid SQLite node log status");
+                }
+                return { nodeId, status };
+              })
+            )
+          )
       ),
   };
 }

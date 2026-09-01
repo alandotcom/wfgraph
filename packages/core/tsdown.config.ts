@@ -31,6 +31,13 @@ export default defineConfig({
   fixedExtension: false,
   sourcemap: false,
   dts: true,
+  deps: {
+    // Drizzle's Effect adapter needs the compatibility patch applied by this
+    // workspace. Bundle that adapter so an installed @wfgraph/core does not
+    // depend on the consumer's package manager reproducing the patch.
+    alwaysBundle: [/^drizzle-orm\/effect-sqlite-node(?:\/.*)?$/],
+    onlyBundle: ["drizzle-orm"],
+  },
   // Module and path resolution for the bundle and the .d.ts pass. This lives at
   // the repo root on purpose; see the comment at the top of that file for why the
   // declaration emitter needs a root that spans all three workspace packages.

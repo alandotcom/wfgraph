@@ -73,7 +73,12 @@ const config: KnipConfig = {
       // drizzle-kit is a root dev dependency, so knip looks for the Drizzle
       // config beside the root manifest. This repo keeps it with the schema it
       // points at.
-      drizzle: { config: ["packages/core/drizzle.config.ts"] },
+      drizzle: {
+        config: [
+          "packages/core/drizzle.config.ts",
+          "packages/core/drizzle-sqlite.config.ts",
+        ],
+      },
     },
 
     examples: {
@@ -125,7 +130,11 @@ const config: KnipConfig = {
       // tsdown.config.ts, so this list cannot drift from what the build emits.
       // Whether the "exports" map names those same files is a separate question,
       // and the comment in tsdown.config.ts is where it is answered.
-      entry: [],
+      //
+      // The SQLite schema is an input to drizzle-kit rather than runtime code.
+      // Its config is registered above, but knip's Drizzle plugin does not carry
+      // a schema reached from a second config across workspace boundaries.
+      entry: ["src/backend/persistence/sqlite/schema.ts"],
       project: ["src/**/*.{ts,tsx}"],
 
       ignoreDependencies: [
