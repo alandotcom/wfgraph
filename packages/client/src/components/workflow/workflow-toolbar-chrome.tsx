@@ -74,10 +74,8 @@ import {
   runCommandLabel,
   type WorkflowRunGraph,
 } from "#src/lib/workflow-run-labels";
-import type {
-  WorkflowToolbarActions,
-  WorkflowToolbarState,
-} from "#src/components/workflow/workflow-toolbar-handlers";
+import type { WorkflowToolbarActions } from "#src/components/workflow/workflow-toolbar-handlers";
+import type { WorkflowToolbarState } from "#src/components/workflow/workflow-toolbar-state";
 import {
   commandPaletteRefusalAtom,
   openCommandPaletteAtom,
@@ -229,6 +227,8 @@ function runEligibility(
     isGenerating: state.isGenerating,
     hasNodes: state.nodes.some((node) => node.type !== "add"),
     publishedVersion: state.publication?.publishedVersion,
+    canRunDraft: state.canExecute && state.canUpdate,
+    canRunPublished: state.canExecute && state.canReadVersionGraph,
   };
 }
 
@@ -265,7 +265,7 @@ function runCommands(
       id: "draft",
       label: runCommandLabel({ graph: "draft" }),
       Icon: Play,
-      disabled: isDraftRunDisabled(eligibility),
+      disabled: !eligibility.canRunDraft || isDraftRunDisabled(eligibility),
       run: () => void actions.handleExecute("draft"),
     },
     {
@@ -275,7 +275,8 @@ function runCommands(
         publishedVersion: eligibility.publishedVersion,
       }),
       Icon: CirclePlay,
-      disabled: isPublishedRunDisabled(eligibility),
+      disabled:
+        !eligibility.canRunPublished || isPublishedRunDisabled(eligibility),
       run: () => void actions.handleExecute("published"),
     },
   ];
@@ -305,16 +306,18 @@ function usePublishGate(
   const proposedVersion = publishedVersion ? publishedVersion + 1 : undefined;
 
   return {
-    disabled: isWorkflowPublishDisabled({
-      editingLocked,
-      isSaving: state.isSaving,
-      isComparing: actions.isComparing,
-      isPublishing: actions.isPublishing,
-      isPreflighting: actions.isPreflighting,
-      hasNodes: state.nodes.some((node) => node.type !== "add"),
-      hasUnsavedChanges: state.hasUnsavedChanges,
-      publication: state.publication,
-    }),
+    disabled:
+      !state.canPublish ||
+      isWorkflowPublishDisabled({
+        editingLocked,
+        isSaving: state.isSaving,
+        isComparing: actions.isComparing,
+        isPublishing: actions.isPublishing,
+        isPreflighting: actions.isPreflighting,
+        hasNodes: state.nodes.some((node) => node.type !== "add"),
+        hasUnsavedChanges: state.hasUnsavedChanges,
+        publication: state.publication,
+      }),
     // Include the version number whenever there is one, so the control states
     // exactly which version a press creates.
     label: actions.isPublishing
@@ -412,34 +415,6 @@ export function RunPublishMenuItems({
   );
 }
 
-export function DuplicateButton({
-  isDuplicating,
-  onDuplicate,
-}: {
-  isDuplicating: boolean;
-  onDuplicate: () => void;
-}) {
-  return (
-    <Button
-      disabled={isDuplicating}
-      onClick={onDuplicate}
-      size={BAR_CONTROL_SIZE}
-      title="Duplicate to your workflows"
-      variant="outline"
-    >
-      {isDuplicating ? (
-        <Loader2
-          className="size-3.5 animate-spin motion-reduce:animate-none"
-          data-icon="inline-start"
-        />
-      ) : (
-        <Copy className="size-3.5" data-icon="inline-start" />
-      )}
-      Duplicate
-    </Button>
-  );
-}
-
 /**
  * What the builder can do to the open workflow, as one menu.
  *
@@ -525,19 +500,12 @@ function ActionsMenu({ commands }: { commands: readonly WorkflowCommand[] }) {
 }
 
 export function ToolbarActions({
-  workflowId,
   state,
   actions,
 }: {
-  workflowId?: string;
   state: WorkflowToolbarState;
   actions: WorkflowToolbarActions;
 }) {
-  // For non-owners viewing public workflows, don't show toolbar actions.
-  if (workflowId && !state.isOwner) {
-    return null;
-  }
-
   return <OwnerToolbarActions actions={actions} state={state} />;
 }
 
@@ -615,27 +583,27 @@ export function ToolbarPublishControls({
 
   return (
     <>
-      {state.isOwner ? (
-        <>
-          {/* Below `md` these two move into the overflow menu the toolbar
-              renders beside this group, so the trailing group fits a 390px
-              screen without scrolling. */}
-          <div className="hidden shrink-0 items-center gap-2 md:flex">
-            {/* The switcher only changes the view. Every control after this
-                separator writes. */}
-            <Separator
-              className="data-vertical:h-4 data-vertical:self-center"
-              orientation="vertical"
-            />
+      {state.canExecute || state.canPublish ? (
+        <div className="hidden shrink-0 items-center gap-2 md:flex">
+          <Separator
+            className="data-vertical:h-4 data-vertical:self-center"
+            orientation="vertical"
+          />
+          {state.canExecute ? (
             <RunSplitButton actions={actions} state={state} />
+          ) : null}
+          {state.canPublish ? (
             <PublishButton
               disabled={publish.disabled}
               handlePublish={actions.handlePublish}
               isPublishing={actions.isPublishing}
               label={publish.label}
             />
-          </div>
-
+          ) : null}
+        </div>
+      ) : null}
+      {state.canUpdate ? (
+        <>
           {/* Config and Delete, shown only while the properties rail is absent.
           Gated on the same test the rail uses, not on the toolbar's container
           width: those two disagreed, so a narrow canvas on a wide window showed
@@ -667,17 +635,17 @@ export function ToolbarPublishControls({
               </Button>
             )}
           </ButtonGroup>
-          {actions.publishReview ? (
-            <PublishReviewDialog
-              isPublishing={actions.isPublishing}
-              mode={state.workflowMode}
-              onConfirm={actions.confirmPublish}
-              onOpenChange={actions.setPublishReviewOpen}
-              open
-              review={actions.publishReview.review}
-            />
-          ) : null}
         </>
+      ) : null}
+      {actions.publishReview ? (
+        <PublishReviewDialog
+          isPublishing={actions.isPublishing}
+          mode={state.workflowMode}
+          onConfirm={actions.confirmPublish}
+          onOpenChange={actions.setPublishReviewOpen}
+          open
+          review={actions.publishReview.review}
+        />
       ) : null}
     </>
   );
@@ -709,9 +677,11 @@ export function WorkflowMenuComponent({
   const [createDialogSession, setCreateDialogSession] = useState(0);
   const [renameDialogSession, setRenameDialogSession] = useState(0);
 
-  // A workflow nobody has saved yet has nothing to rename, duplicate or delete,
-  // and a workflow someone else owns is not this user's to change.
-  const canEditWorkflow = Boolean(workflowId) && state.isOwner;
+  // Each operation keeps its own authorization check. Rename updates the current
+  // draft, while Duplicate and Delete only need the saved workflow id.
+  const canRename = Boolean(workflowId) && state.canUpdate;
+  const canDuplicate = Boolean(workflowId) && state.canDuplicate;
+  const canDelete = Boolean(workflowId) && state.canDelete;
   const currentWorkflowId = state.currentWorkflowId;
   // The names the server would refuse, which is every workflow's but this one's.
   const otherWorkflowNames = state.allWorkflows
@@ -741,31 +711,35 @@ export function WorkflowMenuComponent({
           <ChevronDown className="size-3 opacity-50" data-icon="inline-end" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-64">
-          {canEditWorkflow && (
+          {canRename || canDuplicate ? (
             <>
-              <DropdownMenuItem
-                onClick={() => {
-                  setRenameDialogSession((session) => session + 1);
-                  setIsRenameDialogOpen(true);
-                }}
-              >
-                <Pencil />
-                Rename
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={actions.isDuplicating}
-                onClick={actions.handleDuplicate}
-              >
-                {actions.isDuplicating ? (
-                  <Loader2 className="animate-spin motion-reduce:animate-none" />
-                ) : (
-                  <Copy />
-                )}
-                Duplicate workflow
-              </DropdownMenuItem>
+              {canRename ? (
+                <DropdownMenuItem
+                  onClick={() => {
+                    setRenameDialogSession((session) => session + 1);
+                    setIsRenameDialogOpen(true);
+                  }}
+                >
+                  <Pencil />
+                  Rename
+                </DropdownMenuItem>
+              ) : null}
+              {canDuplicate ? (
+                <DropdownMenuItem
+                  disabled={actions.isDuplicating}
+                  onClick={actions.handleDuplicate}
+                >
+                  {actions.isDuplicating ? (
+                    <Loader2 className="animate-spin motion-reduce:animate-none" />
+                  ) : (
+                    <Copy />
+                  )}
+                  Duplicate workflow
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuSeparator />
             </>
-          )}
+          ) : null}
 
           {/* The label belongs to a group: Base UI reads its context to name the
               group, and a loose one throws. */}
@@ -794,15 +768,17 @@ export function WorkflowMenuComponent({
                   </DropdownMenuItem>
                 ))
             )}
-            <DropdownMenuItem
-              onClick={() => {
-                setCreateDialogSession((session) => session + 1);
-                setIsCreateDialogOpen(true);
-              }}
-            >
-              <Plus />
-              New workflow
-            </DropdownMenuItem>
+            {state.canCreate ? (
+              <DropdownMenuItem
+                onClick={() => {
+                  setCreateDialogSession((session) => session + 1);
+                  setIsCreateDialogOpen(true);
+                }}
+              >
+                <Plus />
+                New workflow
+              </DropdownMenuItem>
+            ) : null}
           </DropdownMenuGroup>
 
           {/* Clear empties the graph and keeps the workflow; Delete takes the
@@ -817,7 +793,7 @@ export function WorkflowMenuComponent({
               in the Actions menu does, because `clearWorkflowAtom` returns
               early under a pinned run and a menu item that only looks enabled
               spends a destructive confirmation on nothing. */}
-          {state.isOwner && (
+          {state.canUpdate && (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -830,7 +806,7 @@ export function WorkflowMenuComponent({
             </>
           )}
 
-          {canEditWorkflow && (
+          {canDelete ? (
             <DropdownMenuItem
               onClick={actions.handleDeleteWorkflow}
               variant="destructive"
@@ -838,7 +814,7 @@ export function WorkflowMenuComponent({
               <Trash2 />
               Delete workflow
             </DropdownMenuItem>
-          )}
+          ) : null}
 
           {currentWorkflowId && (
             <>

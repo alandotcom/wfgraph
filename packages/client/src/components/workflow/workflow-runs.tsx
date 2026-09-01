@@ -17,6 +17,8 @@ import {
 import { useExitRun } from "#src/hooks/use-exit-run";
 import { useAfterCommit } from "#src/hooks/effects";
 import { orpcQuery, refreshRunHistory } from "#src/lib/rpc-query";
+import { can } from "#src/lib/authorization";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
@@ -90,6 +92,11 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
   const { executionId } = workflowRouteApi.useSearch();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const exitRun = useExitRun();
+  const canReadList = can(WfGraphOperations.workflowGetExecutions.id);
+  const canReadLogs = can(WfGraphOperations.workflowGetExecutionLogs.id);
+  const canReadEvents = can(WfGraphOperations.workflowGetExecutionEvents.id);
+  const canCancel = can(WfGraphOperations.workflowCancelExecution.id);
+  const canResume = can(WfGraphOperations.workflowResumeWait.id);
   const [selectedInitialRunForWorkflowId, setSelectedInitialRunForWorkflowId] =
     useState<string | null>(null);
   useAfterCommit(executionId, () => {
@@ -115,7 +122,7 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
       },
       select: toWorkflowExecutions,
     }),
-    enabled: currentWorkflowId !== null,
+    enabled: currentWorkflowId !== null && canReadList,
     staleTime: 0,
     refetchInterval: RUN_POLL_MS,
     // Toggling the superseded rows changes the query key, and without this the
@@ -172,7 +179,7 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
       input: { executionId: executionId ?? "" },
       select: toExecutionDetail,
     }),
-    enabled: executionId !== undefined,
+    enabled: executionId !== undefined && canReadLogs,
     staleTime: 0,
     refetchInterval: detailPollInterval,
   });
@@ -182,7 +189,7 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
       input: { executionId: executionId ?? "" },
       select: toExecutionEvents,
     }),
-    enabled: executionId !== undefined,
+    enabled: executionId !== undefined && canReadEvents,
     staleTime: 0,
     refetchInterval: detailPollInterval,
   });
@@ -319,8 +326,14 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
         logs={detailQuery.data?.logs ?? []}
         notice={listedRun ? undefined : LEFT_THE_LIST_NOTICE}
         onBack={exitRun}
-        onCancel={(id) => cancelExecution.mutate({ executionId: id })}
-        onResume={(token) => resumeWait.mutate({ token })}
+        onCancel={
+          canCancel
+            ? (id) => cancelExecution.mutate({ executionId: id })
+            : undefined
+        }
+        onResume={
+          canResume ? (token) => resumeWait.mutate({ token }) : undefined
+        }
         runNumber={runNumber}
         waits={detailQuery.data?.waits ?? []}
       />

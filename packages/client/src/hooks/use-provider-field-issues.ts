@@ -19,6 +19,7 @@
 import { useQueries } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { configOptionsQueryOptions } from "#src/lib/rpc-query";
+import { can } from "#src/lib/authorization";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { MissingRequiredFieldIssue } from "@wfgraph/shared/graph/workflow-issues";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
@@ -26,6 +27,7 @@ import {
   providerFieldIssuesFor,
   providerFieldQuestions,
 } from "#src/lib/provider-field-issues";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 export function useProviderFieldIssues(
   nodes: readonly WorkflowNode[],
@@ -37,13 +39,14 @@ export function useProviderFieldIssues(
   );
 
   const answers = useQueries({
-    queries: questions.map((question) =>
-      configOptionsQueryOptions({
+    queries: questions.map((question) => ({
+      ...configOptionsQueryOptions({
         integrationId: question.integrationId,
         provider: question.provider,
         parameters: question.parameters,
-      })
-    ),
+      }),
+      enabled: can(WfGraphOperations.integrationConfigOptions.id),
+    })),
   });
 
   // `useQueries` answers a new array every render, so the memo below is keyed on

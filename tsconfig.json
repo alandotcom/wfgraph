@@ -52,6 +52,7 @@
     "vitest.evals.config.ts",
     "test-setup.ts",
     "examples/**/*.ts",
+    "examples/**/*.tsx",
     "scripts/**/*.ts",
     "packages/agent/src/**/*.ts",
     "packages/shared/src/**/*.ts",

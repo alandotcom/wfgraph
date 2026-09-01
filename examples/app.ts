@@ -14,8 +14,9 @@
  *
  * Development hands over no editor. `pnpm run dev` runs Vite's dev server in
  * packages/client, which compiles the SPA and proxies `/api` here, so there is
- * no built bundle to pass. Production has one, and passing it is what turns the
- * editor on.
+ * no built bundle to pass. Vite owns development page navigation, so this
+ * harness gates the API requests Vite proxies; production document navigation
+ * remains owned by the host handler below.
  */
 
 import { createServer } from "node:http";
@@ -32,6 +33,7 @@ import { wfSqlite } from "@wfgraph/core/sqlite";
 // dropping it is what turns them off.
 import { builtInIntegrations } from "@wfgraph/plugins";
 import { z } from "zod";
+import { createDemoAuth } from "./demo-auth";
 
 // Workflow Graph asks LogTape for a logger and configures nothing, so where its
 // records go is this app's decision. One call installs the console setup it
@@ -49,6 +51,11 @@ const publicUrl =
   (isProduction
     ? undefined
     : `http://localhost:${process.env.PORT ?? DEFAULT_PORT}`);
+
+const demoAuth = createDemoAuth({
+  isProduction,
+  ...(publicUrl ? { publicUrl } : {}),
+});
 
 // Workflow Graph reads a schema through Standard Schema and asks nothing else of it. The
 // editor labels a path from its key ("Patient Name" from `patientName`), and
@@ -175,11 +182,9 @@ const wfgraph = await createWfGraphApp({
   client: isProduction
     ? (await import("@wfgraph/client")).clientBundle
     : undefined,
-  // "external" admits every request, so the interface this app binds to is the
-  // only thing standing between the editor and whoever else is on the network.
-  // See the listen call below. A deployment puts a session check here and a
-  // gateway in front.
-  auth: "external",
+  // This demonstration resolves the in-memory session from the cookie and
+  // returns its viewer, editor, or admin access policy.
+  auth: demoAuth.auth,
   // SQLite creates its schema the first time the app opens the file, so there
   // is no migration step and no separate service. The name carries no
   // directory, which puts the file beside this one and keeps the app from
@@ -239,20 +244,30 @@ const wfgraph = await createWfGraphApp({
   },
 });
 
-// The whole mount is one fetch handler. Bun, Deno and Workers take `wfgraph.fetch`
-// as it is; node:http speaks IncomingMessage/ServerResponse, so
-// createRequestListener does the one translation step. An Express or Fastify
-// host passes the same listener to its own mount call.
-const server = createServer(createRequestListener(wfgraph));
+// The host routes login and logout before handing every other request to the
+// Workflow Graph fetch handler. createRequestListener performs the node:http
+// IncomingMessage/ServerResponse translation for this combined Web handler.
+const server = createServer(
+  createRequestListener({
+    ...wfgraph,
+    fetch: demoAuth.createFetch(wfgraph.fetch),
+  })
+);
 
 const port = Number(process.env.PORT ?? DEFAULT_PORT);
 
-// An unset HOST binds every interface, which is what a container platform
-// expects to reach. A platform that wants one interface sets HOST, and this
-// repo's dev script sets it to 127.0.0.1, because the app above admits every
-// request that arrives.
-server.listen(port, process.env.HOST, () => {
-  console.log(`Workflow Graph listening on http://localhost:${port}/`);
+// The example binds loopback by default in every mode. Set HOST explicitly when
+// a deployment needs to accept connections from another interface.
+const host = process.env.HOST?.trim() || "127.0.0.1";
+const hostForUrl =
+  host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+server.listen(port, host, () => {
+  console.log(`Workflow Graph listening on http://${hostForUrl}:${port}/`);
+  if (!isProduction) {
+    console.log(
+      "Dev login: open http://localhost:5173/login in the Vite browser tab (use Vite's printed port if 5173 is busy)"
+    );
+  }
 });
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

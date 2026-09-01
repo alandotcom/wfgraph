@@ -66,6 +66,7 @@ describe("WorkflowVersionHistory", () => {
       pageParams: [undefined],
     });
     const actions = {
+      canRestore: false,
       isPending: false,
       restore: { isPending: false },
     } as never;
@@ -80,5 +81,8 @@ describe("WorkflowVersionHistory", () => {
     const row = view.getByRole("button", { name: /Version 1/ });
     expect(row.getAttribute("aria-pressed")).toBe("true");
     expect(row.textContent).toContain("Current");
+    expect(
+      view.queryByRole("button", { name: /Restore version 1 as draft/ })
+    ).toBeNull();
   });
 });

@@ -14,8 +14,10 @@ import {
 } from "#src/components/ui/select";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
+import { can } from "#src/lib/authorization";
 import { whenChosen } from "#src/lib/select-choice";
 import { findIntegration } from "@wfgraph/shared/extensions/catalog";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 type IntegrationSelectorProps = {
   integrationType: string;
@@ -40,9 +42,11 @@ export function IntegrationSelector({
 }: IntegrationSelectorProps) {
   const catalog = useExtensionCatalog();
   const { open: openOverlay } = useOverlay();
-  const { data: allIntegrations = [], isPending } = useQuery(
-    integrationsQueryOptions()
-  );
+  const canReadIntegrations = can(WfGraphOperations.integrationGetAll.id);
+  const { data: allIntegrations = [], isPending } = useQuery({
+    ...integrationsQueryOptions(),
+    enabled: canReadIntegrations,
+  });
 
   const integrations = useMemo(
     () => allIntegrations.filter((i) => i.type === integrationType),
@@ -78,7 +82,7 @@ export function IntegrationSelector({
           {`No ${integrationLabel} connections are configured.`}
         </p>
         <Button
-          disabled={disabled}
+          disabled={disabled || !canReadIntegrations}
           onClick={() => openOverlay(IntegrationsOverlay)}
           size="sm"
           type="button"

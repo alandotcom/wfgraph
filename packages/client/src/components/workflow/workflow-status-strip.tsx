@@ -20,6 +20,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
+import { can } from "#src/lib/authorization";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { ArrowLeft, ChevronDown, Circle, Clock3 } from "lucide-react";
 import { Button } from "#src/components/ui/button";
 import {
@@ -54,10 +56,7 @@ import {
   runGraphRecipientsLabel,
   type WorkflowRunGraphIdentity,
 } from "#src/lib/workflow-run-labels";
-import {
-  currentWorkflowModeAtom,
-  isWorkflowOwnerAtom,
-} from "#src/lib/workflow-save-store";
+import { currentWorkflowModeAtom } from "#src/lib/workflow-save-store";
 import {
   comparisonSessionAtom,
   isComparisonPendingAtom,
@@ -171,7 +170,7 @@ function PublishedModeControl({
   publishedVersion?: number;
 }) {
   const workflowMode = useAtomValue(currentWorkflowModeAtom);
-  const isOwner = useAtomValue(isWorkflowOwnerAtom);
+  const canUpdate = can(WfGraphOperations.workflowUpdate.id);
   const setPublishedMode = useSetPublishedMode();
   const isTest = workflowMode === "test";
   const label = publishedModeWord(workflowMode);
@@ -189,7 +188,7 @@ function PublishedModeControl({
     />
   );
 
-  if (!isOwner) {
+  if (!canUpdate) {
     return (
       <TooltipProvider>
         <Tooltip>
@@ -216,7 +215,7 @@ function PublishedModeControl({
               face reads "Live" or "Test" alone, so the sentence names the
               setting the two words belong to. */}
           <TooltipContent>
-            Only the workflow's owner can change Published mode.
+            You do not have permission to update this workflow.
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -327,6 +326,7 @@ function DraftStatus({ workflowId }: { workflowId?: string }) {
 function PinnedRunStatus() {
   const executionId = useAtomValue(selectedExecutionIdAtom);
   const { showDraft } = useWorkflowWorkspaceNavigation();
+  const canReadLogs = can(WfGraphOperations.workflowGetExecutionLogs.id);
 
   // Reads the logs entry `ExecutionOverlaySync` fills to pin the graph in the
   // first place, so a run that is on the canvas has already been fetched:
@@ -336,7 +336,7 @@ function PinnedRunStatus() {
       input: { executionId: executionId ?? "" },
       select: toPinnedRunSummary,
     }),
-    enabled: executionId !== null,
+    enabled: executionId !== null && canReadLogs,
     staleTime: Number.POSITIVE_INFINITY,
   });
 

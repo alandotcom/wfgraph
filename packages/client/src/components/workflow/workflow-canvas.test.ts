@@ -1,9 +1,8 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { canvasNodeWithInitialDimensions } from "#src/components/workflow/workflow-canvas-accessibility";
 import {
-  canvasNodeWithInitialDimensions,
   canvasFitViewKey,
-  canvasInteractionState,
   canvasSynchronizationKey,
   fitInitialWorkflowViewport,
   keyboardFitViewOptions,
@@ -11,7 +10,8 @@ import {
   synchronizeCanvasGraph,
   synchronizedLifecycleAnchor,
   useSynchronizedCanvas,
-} from "#src/components/workflow/workflow-canvas";
+} from "#src/components/workflow/workflow-canvas-synchronization";
+import { canvasInteractionState } from "#src/components/workflow/workflow-canvas";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 function lifecycleNode(x: number): WorkflowNode {

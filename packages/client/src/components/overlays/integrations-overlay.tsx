@@ -3,6 +3,8 @@ import { useCallback, useState } from "react";
 import { IntegrationsManager } from "#src/components/settings/integrations-manager";
 import { Input } from "#src/components/ui/input";
 import { useConnectionRepair } from "#src/hooks/use-connection-repair";
+import { can } from "#src/lib/authorization";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { AddConnectionOverlay } from "./add-connection-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
@@ -29,11 +31,15 @@ export function IntegrationsOverlay({ overlayId }: IntegrationsOverlayProps) {
   return (
     <Overlay
       actions={[
-        {
-          label: "Add Connection",
-          variant: "outline",
-          onClick: handleAddConnection,
-        },
+        ...(can(WfGraphOperations.integrationCreate.id)
+          ? [
+              {
+                label: "Add Connection",
+                variant: "outline" as const,
+                onClick: handleAddConnection,
+              },
+            ]
+          : []),
         { label: "Done", onClick: handleClose },
       ]}
       overlayId={overlayId}

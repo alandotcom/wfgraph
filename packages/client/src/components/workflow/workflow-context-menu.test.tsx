@@ -42,7 +42,11 @@ function renderNodeMenu(node: WorkflowNode) {
     <JotaiProvider store={store}>
       <ExtensionCatalogProvider value={catalog}>
         <OverlayProvider>
-          <WorkflowContextMenu menuState={menuState} onClose={() => {}} />
+          <WorkflowContextMenu
+            canEdit
+            menuState={menuState}
+            onClose={() => {}}
+          />
         </OverlayProvider>
       </ExtensionCatalogProvider>
     </JotaiProvider>

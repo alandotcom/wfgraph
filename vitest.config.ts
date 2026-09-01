@@ -18,6 +18,7 @@ import { workspaceSourceAliases } from "./scripts/plugins/workspace-source-alias
 const PACKAGE_TESTS = "packages/*/src/**/*.test.{ts,tsx}";
 const CLIENT_TESTS = "packages/client/src/**/*.test.{ts,tsx}";
 const EVAL_SUPPORT_TESTS = "packages/evals/src/**/*.test.ts";
+const DEVELOPMENT_HARNESS_TESTS = "scripts/**/*.test.ts";
 // The suite that wants a live PostgreSQL. A `.pg.test.ts` also ends in
 // `.test.ts`, so it matches `PACKAGE_TESTS` and `CLIENT_TESTS`. The node and
 // client projects both exclude it by name. Without that, one file would run
@@ -40,7 +41,11 @@ export default defineConfig({
         test: {
           name: "node",
           environment: "node",
-          include: [PACKAGE_TESTS, EVAL_SUPPORT_TESTS],
+          include: [
+            PACKAGE_TESTS,
+            EVAL_SUPPORT_TESTS,
+            DEVELOPMENT_HARNESS_TESTS,
+          ],
           exclude: [...ALWAYS_EXCLUDED, CLIENT_TESTS, POSTGRES_TESTS],
         },
       },

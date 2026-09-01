@@ -8,8 +8,8 @@ import {
   type EncryptionRuntimeConfig,
 } from "#src/backend/services/integrations/cipher";
 import {
-  type Authorize,
-  resolveAuthorize,
+  type ResolvedAuth,
+  resolveAuth,
   type WfGraphAuth,
   UNAUTHORIZED_BODY,
 } from "#src/backend/lib/http/authorize";
@@ -53,7 +53,13 @@ import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
 
 export type { EncryptionRuntimeConfig } from "#src/backend/services/integrations/cipher";
 export type { WfGraphInngestConfig } from "#src/backend/lib/inngest/client";
-export type { WfGraphAuth } from "#src/backend/lib/http/authorize";
+export {
+  defineWfGraphAuth,
+  trustWfGraphUpstream,
+  WfGraphAccess,
+  WfGraphRoles,
+  type WfGraphAuth,
+} from "#src/backend/lib/http/authorize";
 export type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 export type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
 export type { WfGraphPersistence } from "#src/backend/persistence/types";
@@ -69,14 +75,16 @@ export type WfGraphAppOptions = {
   /** Public origin used in provider callback URLs and client metadata. */
   publicUrl?: string;
   /**
-   * Who may reach the editor: a predicate over the request, or "external" when
-   * something in front of Workflow Graph already gates it.
+   * Authenticates operators and returns their request-scoped access policy.
+   * Use `trustWfGraphUpstream()` only when an upstream boundary authenticates
+   * and authorizes every operator request.
    *
    * Required everywhere rather than only in production, because the check that
    * would tell the two apart reads an environment variable that says
    * "production" and misses "prod" and an unset one. Covers everything Workflow
-   * Graph serves except machine routes (the wait resume path, and `/inngest`
-   * when HTTP serve is mounted).
+   * Graph serves except machine routes (the wait resume path, `/webhooks/:type/:connectionId`,
+   * and `/inngest` when HTTP serve is mounted) and public OAuth client metadata at
+   * `/integrations/oauth/clients/:integrationType`.
    */
   auth: WfGraphAuth;
   /**
@@ -159,7 +167,7 @@ export async function createWfGraphApp(
 ): Promise<WfGraphApp> {
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const publicUrl = resolvePublicUrl(options.publicUrl);
-  const authorize = resolveAuthorize(options.auth);
+  const auth = resolveAuth(options.auth);
 
   if (!options.inngest.id?.trim()) {
     throw new Error("createWfGraphApp requires inngest.id");
@@ -170,7 +178,7 @@ export async function createWfGraphApp(
   return await buildWfGraphApp(options, {
     basePath,
     publicUrl,
-    authorize,
+    auth,
   });
 }
 
@@ -197,10 +205,10 @@ async function buildWfGraphApp(
   startup: {
     basePath: "" | `/${string}`;
     publicUrl?: string;
-    authorize: Authorize;
+    auth: ResolvedAuth;
   }
 ): Promise<WfGraphApp> {
-  const { basePath, publicUrl, authorize } = startup;
+  const { basePath, publicUrl, auth } = startup;
 
   if (options.logger) {
     configureLoggingWithBridge(options.logger);
@@ -253,7 +261,7 @@ async function buildWfGraphApp(
 
     return await assembleWfGraphApp(options, {
       basePath,
-      authorize,
+      auth,
       runtime,
       inngest,
       persistence,
@@ -271,13 +279,13 @@ async function assembleWfGraphApp(
   options: WfGraphAppOptions,
   startup: {
     basePath: "" | `/${string}`;
-    authorize: Authorize;
+    auth: ResolvedAuth;
     runtime: WfGraphRuntime;
     inngest: InngestSurface;
     persistence: WfGraphPersistenceInstance;
   }
 ): Promise<WfGraphApp> {
-  const { basePath, authorize, runtime, inngest, persistence } = startup;
+  const { basePath, auth, runtime, inngest, persistence } = startup;
 
   // Built once: Connect and HTTP serve are alternatives, and whichever path
   // this app takes registers that same list. A broken extension surface fails
@@ -286,7 +294,7 @@ async function assembleWfGraphApp(
   const useConnect = options.inngest.connect === true;
   const apiApp = createApiApp({
     basePath: `${basePath}/api`,
-    authorize,
+    auth,
     runtime,
     // Connect dials out; mounting `/inngest` would advertise a callback Inngest
     // cannot reach on a private network and is not how Connect syncs.
@@ -308,9 +316,20 @@ async function assembleWfGraphApp(
 
       // A host wanting a login redirect instead of a 401 puts it in front of
       // the mount.
-      if (!(await authorize(c.req.raw))) {
-        return c.json(UNAUTHORIZED_BODY, 401);
+      let authContext;
+      try {
+        authContext = await auth.authenticate(c.req.raw, (failure) => {
+          getAppLogger("http", "auth").error(
+            failure.stage === "authenticate"
+              ? "Host authentication failed"
+              : "Host access policy failed",
+            { error: failure.error }
+          );
+        });
+      } catch {
+        return c.json({ error: "Internal Server Error" }, 500);
       }
+      if (!authContext) return c.json(UNAUTHORIZED_BODY, 401);
 
       return await serveClientAsset({ clientDir, basePath, pathname });
     });

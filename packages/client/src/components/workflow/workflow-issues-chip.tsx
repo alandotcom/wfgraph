@@ -13,7 +13,8 @@ import {
   hasBlockingWorkflowIssuesAtom,
   workflowIssuesAtom,
 } from "#src/lib/workflow-issues-store";
-import { isWorkflowOwnerAtom } from "#src/lib/workflow-save-store";
+import { can } from "#src/lib/authorization";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { cn } from "@wfgraph/shared/utils";
 
 /** The count as it reads, extracted so the strip's wording needs no DOM to test. */
@@ -24,12 +25,10 @@ export function workflowIssuesLabel(count: number): string {
 export function WorkflowIssuesChip() {
   const issues = useAtomValue(workflowIssuesAtom);
   const hasBlocking = useAtomValue(hasBlockingWorkflowIssuesAtom);
-  // Owner-only, checked here rather than by the caller: the list this opens
-  // offers Fix and Add, which a viewer cannot do anything with.
-  const isOwner = useAtomValue(isWorkflowOwnerAtom);
+  const canUpdate = can(WfGraphOperations.workflowUpdate.id);
   const showIssues = useShowWorkflowIssues();
 
-  if (!isOwner || issues.length === 0) {
+  if (!canUpdate || issues.length === 0) {
     return null;
   }
 

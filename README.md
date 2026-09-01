@@ -39,7 +39,8 @@ pnpm run dev
 ```
 
 Open the editor at [http://localhost:5173](http://localhost:5173). The example host app lives
-in `examples/app.ts`.
+in `examples/app.ts`. Sign in at `/login` as `admin`, `editor`, or `readonly`. Each local
+demo account uses the password `password`.
 
 It stores its data in SQLite, at `examples/wfgraph.sqlite`, which is gitignored and created
 on first boot. There is no migration step and no separate service. Point `SQLITE_PATH`
@@ -80,8 +81,10 @@ import { clientBundle } from "@wfgraph/client";
 import {
   createRequestListener,
   createWfGraphApp,
+  defineWfGraphAuth,
   defineAction,
   defineEvent,
+  WfGraphRoles,
 } from "@wfgraph/core";
 import { wfPostgres } from "@wfgraph/core/postgres";
 import { builtInIntegrations } from "@wfgraph/plugins";
@@ -115,6 +118,11 @@ const cancelAppointment = defineAction({
   },
 });
 
+const auth = defineWfGraphAuth(async (request) => {
+  const session = await readSession(request);
+  return session ? WfGraphRoles[session.role] : null;
+});
+
 const wfgraph = await createWfGraphApp({
   persistence: wfPostgres({
     url: process.env.DATABASE_URL!,
@@ -122,7 +130,7 @@ const wfgraph = await createWfGraphApp({
   }),
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
   agent: { apiKey: process.env.OPENAI_API_KEY },
-  auth: (request) => hasValidSession(request),
+  auth,
   client: clientBundle,
   inngest: { id: "my-wfgraph-app", connect: true },
   extensions: {
@@ -134,6 +142,9 @@ const wfgraph = await createWfGraphApp({
 
 createServer(createRequestListener(wfgraph)).listen(3000);
 ```
+
+See [Authentication and authorization](docs/embedding.md#authentication-and-authorization)
+for role semantics, custom grants, and trusted upstream authentication.
 
 `examples/app.ts` is the canonical host. If this README disagrees with it, the example wins.
 

@@ -53,7 +53,6 @@ export function toWorkflowSummaryPayload(
     isPaused: workflow.isPaused,
     mode: workflow.mode,
     visibility: workflow.visibility,
-    isOwner: true,
     createdAt: workflow.createdAt.toISOString(),
     updatedAt: workflow.updatedAt.toISOString(),
     ...(workflow.publishedVersionId

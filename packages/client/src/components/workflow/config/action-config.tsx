@@ -48,17 +48,19 @@ import { ConditionBuilderRow } from "./condition-builder-row";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import { WaitEventSelect } from "./wait-event-select";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
+import { can } from "#src/lib/authorization";
 import { settledProviderParameter } from "#src/lib/provider-parameters";
 import {
   readConfigString,
   readConfigStringOr,
 } from "@wfgraph/shared/graph/node-config";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 type ActionConfigProps = {
   config: Record<string, unknown>;
   onUpdateConfig: UpdateNodeConfig;
   disabled: boolean;
-  isOwner?: boolean;
+  canUpdate?: boolean;
 };
 
 type CategoryActionOption = {
@@ -643,7 +645,7 @@ export function ActionConfig({
   config,
   onUpdateConfig,
   disabled,
-  isOwner = true,
+  canUpdate = true,
 }: ActionConfigProps) {
   const catalog = useExtensionCatalog();
   const actionType = readConfigString(config, "actionType");
@@ -668,9 +670,10 @@ export function ActionConfig({
     value: action.id,
     label: action.label,
   }));
-  const { data: globalIntegrations = [] } = useQuery(
-    integrationsQueryOptions()
-  );
+  const { data: globalIntegrations = [] } = useQuery({
+    ...integrationsQueryOptions(),
+    enabled: can(WfGraphOperations.integrationGetAll.id),
+  });
   // What the Connection this node names holds for the keys its fields fall back
   // to. Read here rather than in the renderer, because the list is already in
   // hand for the picker below.
@@ -808,7 +811,7 @@ export function ActionConfig({
         </div>
       </div>
 
-      {integrationType && isOwner && (
+      {integrationType && canUpdate && (
         <div className="space-y-2">
           <div className="ml-1 flex items-center justify-between">
             <div className="flex items-center gap-1">

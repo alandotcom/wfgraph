@@ -1,13 +1,11 @@
 import { atom } from "jotai";
-import { isWorkflowOwnerAtom } from "#src/lib/workflow-save-store";
 
 /**
  * Editor chrome: which panel is open, how wide it is, which run is on screen.
  *
  * None of this belongs to the graph, so this module does not import
- * `workflow-graph-store`. It does read `isWorkflowOwnerAtom` from
- * `workflow-save-store` so the Runs workspace and the canvas overlay agree on
- * whether that owner-only view is up; that module does not import this one.
+ * `workflow-graph-store`. Authorization is server state and each UI surface
+ * reads it through its own bounded authorization query.
  *
  * Two of these preferences survive a reload, in cookies. Both are read once as
  * the atom's initial value and written from the atom's own setter, so there is
@@ -51,12 +49,10 @@ export type WorkflowWorkspaceView = "draft" | "runs" | "changes";
 const workflowWorkspaceViewStateAtom = atom<WorkflowWorkspaceView>("draft");
 
 /**
- * The editor-wide surface that owns the canvas and inspector. Owner-only views
- * normalize to Draft as soon as the open workflow is no longer editable.
+ * The editor-wide surface that owns the canvas and inspector.
  */
 export const workflowWorkspaceViewAtom = atom(
-  (get) =>
-    get(isWorkflowOwnerAtom) ? get(workflowWorkspaceViewStateAtom) : "draft",
+  (get) => get(workflowWorkspaceViewStateAtom),
   (_get, set, view: WorkflowWorkspaceView) => {
     set(workflowWorkspaceViewStateAtom, view);
   }

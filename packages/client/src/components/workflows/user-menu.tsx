@@ -4,6 +4,8 @@ import { ApiKeysOverlay } from "#src/components/overlays/api-keys-overlay";
 import { IntegrationsOverlay } from "#src/components/overlays/integrations-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { Button } from "#src/components/ui/button";
+import { can } from "#src/lib/authorization";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,14 +30,18 @@ export const UserMenu = () => {
         <ChevronDown className="size-3 opacity-50" data-icon="inline-end" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">
-        <DropdownMenuItem onClick={() => openOverlay(IntegrationsOverlay)}>
-          <Plug className="size-4" />
-          <span>Connections</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => openOverlay(ApiKeysOverlay)}>
-          <Key className="size-4" />
-          <span>API Keys</span>
-        </DropdownMenuItem>
+        {can(WfGraphOperations.integrationGetAll.id) ? (
+          <DropdownMenuItem onClick={() => openOverlay(IntegrationsOverlay)}>
+            <Plug className="size-4" />
+            <span>Connections</span>
+          </DropdownMenuItem>
+        ) : null}
+        {can(WfGraphOperations.apiKeyGetAll.id) ? (
+          <DropdownMenuItem onClick={() => openOverlay(ApiKeysOverlay)}>
+            <Key className="size-4" />
+            <span>API Keys</span>
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuSub>
           <DropdownMenuSubTrigger>

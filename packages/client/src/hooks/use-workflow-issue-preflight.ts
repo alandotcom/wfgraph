@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useUnmountCleanup } from "#src/hooks/effects";
 import { fetchProviderFieldIssues } from "#src/lib/provider-field-issues";
+import { can } from "#src/lib/authorization";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { collectAllWorkflowIssues } from "#src/lib/workflow-issues-store";
 import {
@@ -12,6 +13,7 @@ import {
   type WorkflowNode,
 } from "#src/lib/workflow-graph-types";
 import type { WorkflowIssue } from "@wfgraph/shared/graph/workflow-issues";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 export type WorkflowIssuePreflightResult =
   | { readonly status: "ready"; readonly issues: WorkflowIssue[] }
@@ -89,11 +91,11 @@ export function useWorkflowIssuePreflight(
         // Each provider question answers for itself: a connection that refuses
         // comes back as a warning naming its node rather than as a rejection,
         // so the graph half of the list is collected either way.
-        const providerIssues = await fetchProviderFieldIssues(
-          queryClient,
-          nodeSnapshot,
-          catalog
-        );
+        const providerIssues = can(
+          WfGraphOperations.integrationConfigOptions.id
+        )
+          ? await fetchProviderFieldIssues(queryClient, nodeSnapshot, catalog)
+          : [];
         if (
           active.current?.generation !== check.generation ||
           store.get(currentWorkflowIdAtom) !== workflowId

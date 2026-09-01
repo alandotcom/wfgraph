@@ -1,0 +1,130 @@
+/**
+ * The toolbar's page-lifetime capabilities and server reads.
+ *
+ * Authorization arrives in the bootstrap document before React mounts. This hook
+ * turns that fixed snapshot into named toolbar capabilities and enables only the
+ * reads their operations authorize.
+ */
+
+import { useQuery } from "@tanstack/react-query";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { can, canInspectWorkflowRuns } from "#src/lib/authorization";
+import {
+  integrationsQueryOptions,
+  workflowListQueryOptions,
+  workflowPublicationQueryOptions,
+} from "#src/lib/rpc-query";
+import {
+  clearWorkflowAtom,
+  edgesAtom,
+  nodesAtom,
+  selectedNodeAtom,
+  updateNodeDataAtom,
+  canRedoAtom,
+  canUndoAtom,
+  redoAtom,
+  undoAtom,
+} from "#src/lib/workflow-graph-store";
+import {
+  currentWorkflowIdAtom,
+  currentWorkflowModeAtom,
+  currentWorkflowNameAtom,
+  hasUnsavedChangesAtom,
+  isSavingAtom,
+} from "#src/lib/workflow-save-store";
+import { isExecutingAtom, isGeneratingAtom } from "#src/lib/workflow-ui-store";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+
+/** The operations that directly determine a workflow toolbar control. */
+export type WorkflowToolbarCapabilities = Readonly<{
+  canUpdate: boolean;
+  canExecute: boolean;
+  canReadRuns: boolean;
+  canReadVersionHistory: boolean;
+  canCompare: boolean;
+  canCreate: boolean;
+  canDuplicate: boolean;
+  canDelete: boolean;
+  canPublish: boolean;
+  canReadVersionGraph: boolean;
+}>;
+
+export function readWorkflowToolbarCapabilities(): WorkflowToolbarCapabilities {
+  return {
+    canUpdate: can(WfGraphOperations.workflowUpdate.id),
+    canExecute: can(WfGraphOperations.workflowExecute.id),
+    canReadRuns: canInspectWorkflowRuns(),
+    canReadVersionHistory: can(WfGraphOperations.workflowGetVersionHistory.id),
+    canCompare: can(WfGraphOperations.workflowCompareVersion.id),
+    canCreate: can(WfGraphOperations.workflowCreate.id),
+    canDuplicate: can(WfGraphOperations.workflowDuplicate.id),
+    canDelete: can(WfGraphOperations.workflowDelete.id),
+    // Publish compares the draft before opening its review. The same capability
+    // therefore covers the button and its comparison request.
+    canPublish:
+      can(WfGraphOperations.workflowPublish.id) &&
+      can(WfGraphOperations.workflowCompareVersion.id),
+    canReadVersionGraph: can(WfGraphOperations.workflowGetVersionGraph.id),
+  };
+}
+
+export function useWorkflowToolbarState() {
+  const nodes = useAtomValue(nodesAtom);
+  const edges = useAtomValue(edgesAtom);
+  const [isExecuting, setIsExecuting] = useAtom(isExecutingAtom);
+  const [isGenerating] = useAtom(isGeneratingAtom);
+  const clearWorkflow = useSetAtom(clearWorkflowAtom);
+  const updateNodeData = useSetAtom(updateNodeDataAtom);
+  const [currentWorkflowId] = useAtom(currentWorkflowIdAtom);
+  const workflowName = useAtomValue(currentWorkflowNameAtom);
+  const [workflowMode, setCurrentWorkflowMode] = useAtom(
+    currentWorkflowModeAtom
+  );
+  const capabilities = readWorkflowToolbarCapabilities();
+  const isSaving = useAtomValue(isSavingAtom);
+  const hasUnsavedChanges = useAtomValue(hasUnsavedChangesAtom);
+  const undo = useSetAtom(undoAtom);
+  const redo = useSetAtom(redoAtom);
+  const [canUndo] = useAtom(canUndoAtom);
+  const [canRedo] = useAtom(canRedoAtom);
+  const setSelectedNodeId = useSetAtom(selectedNodeAtom);
+  const { data: userIntegrations = [] } = useQuery({
+    ...integrationsQueryOptions(),
+    enabled: can(WfGraphOperations.integrationGetAll.id),
+  });
+  const { data: allWorkflows = [] } = useQuery({
+    ...workflowListQueryOptions(),
+    enabled: can(WfGraphOperations.workflowGetAll.id),
+  });
+  const { data: publication } = useQuery({
+    ...workflowPublicationQueryOptions(currentWorkflowId ?? ""),
+    enabled: Boolean(currentWorkflowId),
+  });
+
+  return {
+    nodes,
+    edges,
+    isExecuting,
+    setIsExecuting,
+    isGenerating,
+    clearWorkflow,
+    updateNodeData,
+    currentWorkflowId,
+    workflowName,
+    workflowMode,
+    setCurrentWorkflowMode,
+    ...capabilities,
+    isSaving,
+    hasUnsavedChanges,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    allWorkflows,
+    setSelectedNodeId,
+    userIntegrations,
+    publication,
+  };
+}
+
+export type WorkflowToolbarState = ReturnType<typeof useWorkflowToolbarState>;

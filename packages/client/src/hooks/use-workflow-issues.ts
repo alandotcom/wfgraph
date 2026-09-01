@@ -23,6 +23,7 @@ import {
   useAfterCommit,
 } from "#src/hooks/effects";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
+import { can } from "#src/lib/authorization";
 import { nodesAtom, selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import { toPersistedNodes } from "#src/lib/workflow-graph-types";
 import {
@@ -34,6 +35,7 @@ import {
 import { useProviderFieldIssues } from "#src/hooks/use-provider-field-issues";
 import { enterDraftWorkspaceAtom } from "#src/lib/workflow-workspace-navigation";
 import { groupWorkflowIssuesForOverlay } from "@wfgraph/shared/graph/workflow-issues";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 /** How long the canvas must sit still before it is validated again. */
 const SETTLE_MS = 300;
@@ -41,7 +43,10 @@ const SETTLE_MS = 300;
 export function useCollectWorkflowIssues(): void {
   const nodes = useAtomValue(nodesAtom);
   const catalog = useExtensionCatalog();
-  const { data: integrations } = useQuery(integrationsQueryOptions());
+  const { data: integrations } = useQuery({
+    ...integrationsQueryOptions(),
+    enabled: can(WfGraphOperations.integrationGetAll.id),
+  });
   const setIssues = useSetAtom(workflowIssuesAtom);
 
   const settledNodes = useDebouncedValue(nodes, SETTLE_MS);

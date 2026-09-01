@@ -9,31 +9,37 @@
  * never satisfy.
  */
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   WorkflowSaveStatus,
   WorkflowUnloadGuard,
 } from "#src/components/workflow/workflow-save-status";
+import { hasUnsavedChangesAtom } from "#src/lib/workflow-save-store";
 import {
-  hasUnsavedChangesAtom,
-  isWorkflowOwnerAtom,
-} from "#src/lib/workflow-save-store";
+  installAuthorizationGrantsForTests,
+  resetAuthorizationGrantsForTests,
+} from "#src/lib/authorization-test-support";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 function renderDirty(
   component: React.ReactNode,
-  options: { isOwner: boolean }
+  _options: { canUpdate: boolean }
 ) {
   const store = createStore();
-  store.set(isWorkflowOwnerAtom, options.isOwner);
   store.set(hasUnsavedChangesAtom, true);
 
   const addEventListener = vi.spyOn(window, "addEventListener");
 
+  installAuthorizationGrantsForTests(
+    _options.canUpdate ? [WfGraphOperations.workflowUpdate.id] : []
+  );
+
   render(<Provider store={store}>{component}</Provider>);
 
   return {
+    addEventListener,
     armedUnloadGuard: addEventListener.mock.calls.some(
       ([type]) => type === "beforeunload"
     ),
@@ -41,47 +47,55 @@ function renderDirty(
 }
 
 afterEach(() => {
+  resetAuthorizationGrantsForTests();
   vi.restoreAllMocks();
 });
 
 describe("WorkflowSaveStatus", () => {
-  it("reports the pending edit for an owner", () => {
-    renderDirty(<WorkflowSaveStatus />, { isOwner: true });
+  it("reports the pending edit for an owner", async () => {
+    renderDirty(<WorkflowSaveStatus />, { canUpdate: true });
 
-    expect(screen.getByText("Unsaved changes")).toBeTruthy();
+    expect(await screen.findByText("Unsaved changes")).toBeTruthy();
   });
 
-  it("says nothing for a read-only viewer", () => {
-    renderDirty(<WorkflowSaveStatus />, { isOwner: false });
+  it("says nothing for a read-only viewer", async () => {
+    renderDirty(<WorkflowSaveStatus />, { canUpdate: false });
 
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.queryByText("Unsaved changes")).toBeNull();
   });
 
-  it("arms no guard of its own, which is the strip's to mount", () => {
+  it("arms no guard of its own, which is the strip's to mount", async () => {
     // The guard used to live here, which meant pinning a run to the canvas
     // unmounted this label and disarmed the guard with it.
     const { armedUnloadGuard } = renderDirty(<WorkflowSaveStatus />, {
-      isOwner: true,
+      canUpdate: true,
     });
 
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(armedUnloadGuard).toBe(false);
   });
 });
 
 describe("WorkflowUnloadGuard", () => {
-  it("arms the reload prompt for an owner with an edit still queued", () => {
-    const { armedUnloadGuard } = renderDirty(<WorkflowUnloadGuard />, {
-      isOwner: true,
+  it("arms the reload prompt for an owner with an edit still queued", async () => {
+    const { addEventListener } = renderDirty(<WorkflowUnloadGuard />, {
+      canUpdate: true,
     });
 
-    expect(armedUnloadGuard).toBe(true);
+    await waitFor(() =>
+      expect(
+        addEventListener.mock.calls.some(([type]) => type === "beforeunload")
+      ).toBe(true)
+    );
   });
 
-  it("arms no prompt a read-only viewer could never satisfy", () => {
+  it("arms no prompt a read-only viewer could never satisfy", async () => {
     const { armedUnloadGuard } = renderDirty(<WorkflowUnloadGuard />, {
-      isOwner: false,
+      canUpdate: false,
     });
 
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(armedUnloadGuard).toBe(false);
   });
 });

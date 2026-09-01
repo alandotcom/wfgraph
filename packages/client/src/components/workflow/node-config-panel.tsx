@@ -29,10 +29,9 @@ import {
   disabledGroupIds,
   isGroupNode,
 } from "@wfgraph/shared/graph/node-group";
-import {
-  currentWorkflowIdAtom,
-  isWorkflowOwnerAtom,
-} from "#src/lib/workflow-save-store";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import { can } from "#src/lib/authorization";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import {
   isGeneratingAtom,
   workflowWorkspaceViewAtom,
@@ -111,6 +110,9 @@ export function RunsPanelActions({
 }) {
   const { refreshRuns, deleteRuns } = useNodeConfigWriter();
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
+  const canDeleteExecutions = can(
+    WfGraphOperations.workflowDeleteExecutions.id
+  );
 
   return (
     <div className="flex shrink-0 items-center">
@@ -123,27 +125,29 @@ export function RunsPanelActions({
       >
         <RefreshCw />
       </Button>
-      <Button
-        aria-label="Clear All"
-        onClick={() => {
-          confirm({
-            title: "Delete All Runs",
-            message:
-              "Are you sure you want to delete all workflow runs? This action cannot be undone.",
-            confirmLabel: "Delete",
-            onConfirm: () => {
-              if (currentWorkflowId) {
-                deleteRuns.mutate({ workflowId: currentWorkflowId });
-              }
-            },
-          });
-        }}
-        size="icon"
-        type="button"
-        variant="ghost"
-      >
-        <Eraser />
-      </Button>
+      {canDeleteExecutions ? (
+        <Button
+          aria-label="Clear All"
+          onClick={() => {
+            confirm({
+              title: "Delete All Runs",
+              message:
+                "Are you sure you want to delete all workflow runs? This action cannot be undone.",
+              confirmLabel: "Delete",
+              onConfirm: () => {
+                if (currentWorkflowId && canDeleteExecutions) {
+                  deleteRuns.mutate({ workflowId: currentWorkflowId });
+                }
+              },
+            });
+          }}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <Eraser />
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -156,7 +160,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
   const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
   const isGenerating = useAtomValue(isGeneratingAtom);
-  const isOwner = useAtomValue(isWorkflowOwnerAtom);
+  const canUpdate = can(WfGraphOperations.workflowUpdate.id);
   const comparisonActions = useWorkflowComparisonActions();
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const deleteNode = useSetAtom(deleteNodeAtom);
@@ -284,15 +288,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
   const showActionGrid =
     selectedNode?.data.type === "action" &&
     !selectedNode.data.config?.actionType &&
-    isOwner;
-
-  const publicWorkflowNotice = (
-    <div className="rounded-lg border border-muted bg-muted/30 p-3">
-      <p className="text-muted-foreground text-sm">
-        You are viewing a public workflow. Duplicate it to make changes.
-      </p>
-    </div>
-  );
+    canUpdate;
 
   const renderPropertiesContent = () => {
     if (hasMultipleSelections) {
@@ -304,7 +300,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
               {selectionText} selected
             </p>
           </div>
-          {isOwner ? (
+          {canUpdate ? (
             <div className="flex items-center gap-2 pt-4">
               <Button
                 onClick={confirmDeleteSelection}
@@ -336,7 +332,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
             <Input disabled id="edge-target" value={selectedEdge.target} />
           </div>
 
-          {isOwner ? (
+          {canUpdate ? (
             <div className="flex items-center gap-2 pt-4">
               <Button onClick={confirmDeleteEdge} size="sm" variant="outline">
                 <Trash2 className="mr-2 size-4 text-destructive" />
@@ -362,7 +358,6 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
           <p className="text-muted-foreground text-xs">
             This workflow's own settings are in the menu beside its name.
           </p>
-          {isOwner ? null : publicWorkflowNotice}
         </div>
       );
     }
@@ -404,7 +399,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
              rules name, and the editor derives the fields it offers from them. */
           <LifecyclePanel
             config={selectedNode.data.config || {}}
-            disabled={isGenerating || !isOwner}
+            disabled={isGenerating || !canUpdate}
             // Keyed to the node, so the pickers inside start clean for the
             // entry node being configured. The panel itself holds no state,
             // but its comboboxes hold a search term, and opening another
@@ -428,8 +423,8 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
         selectedNode.data.config?.actionType ? (
           <ActionConfig
             config={selectedNode.data.config || {}}
-            disabled={isGenerating || !isOwner}
-            isOwner={isOwner}
+            disabled={isGenerating || !canUpdate}
+            canUpdate={canUpdate}
             key={selectedNode.id}
             onUpdateConfig={handleUpdateConfig}
           />
@@ -453,7 +448,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
             <div className="space-y-2">
               <Label htmlFor="label">Label</Label>
               <Input
-                disabled={isGenerating || !isOwner}
+                disabled={isGenerating || !canUpdate}
                 id="label"
                 onChange={(e) => handleUpdateLabel(e.target.value)}
                 value={selectedNode.data.label}
@@ -463,7 +458,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
               <Input
-                disabled={isGenerating || !isOwner}
+                disabled={isGenerating || !canUpdate}
                 id="description"
                 onChange={(e) => handleUpdateDescription(e.target.value)}
                 placeholder="Optional description"
@@ -473,15 +468,13 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
           </div>
         ) : null}
 
-        {isOwner ? null : publicWorkflowNotice}
-
-        {isOwner && selectedNode.parentId ? (
+        {canUpdate && selectedNode.parentId ? (
           <p className="pt-4 text-muted-foreground text-xs">
             This step runs with its Group. Select the frame to switch it off.
           </p>
         ) : null}
 
-        {isOwner ? (
+        {canUpdate ? (
           <div className="flex items-center gap-2 pt-4">
             {showDisabledToggle ? (
               <Button onClick={handleToggleEnabled} size="sm" variant="outline">

@@ -9,6 +9,9 @@ import { Circle, MoreHorizontalIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { getClientLogger } from "#src/lib/logger";
+import { can } from "#src/lib/authorization";
+import { readDashboardCapabilities } from "#src/routes/workflows/dashboard-capabilities";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -123,14 +126,20 @@ export default function WorkflowsPage() {
   const [confirmDelete, setConfirmDelete] = useState<ConfirmDeleteState | null>(
     null
   );
+  const canReadWorkflows = can(WfGraphOperations.workflowGetAll.id);
+  const canCreate = can(WfGraphOperations.workflowCreate.id);
+  const canUpdate = can(WfGraphOperations.workflowUpdate.id);
+  const canBulkLifecycle = can(WfGraphOperations.workflowBulkLifecycle.id);
+  const { canOpenWorkflow, canOpenGlobalRuns } = readDashboardCapabilities();
 
-  const { data: workflows = [], isPending: isLoadingWorkflows } = useQuery(
-    orpcQuery.workflow.getAll.queryOptions({
+  const { data: workflows = [], isPending: isLoadingWorkflows } = useQuery({
+    ...orpcQuery.workflow.getAll.queryOptions({
       input: {},
       select: toSortedWorkflows,
       meta: { errorMessage: "Failed to load workflows" },
-    })
-  );
+    }),
+    enabled: canReadWorkflows,
+  });
 
   const workflowRows = useMemo(
     () => workflows.filter((workflow) => workflow.name !== "__current__"),
@@ -143,13 +152,8 @@ export default function WorkflowsPage() {
   );
 
   const selectedActionableIds = useMemo(
-    () =>
-      selectedIds.filter((workflowId) =>
-        workflowRows.some(
-          (workflow) => workflow.id === workflowId && workflow.isOwner !== false
-        )
-      ),
-    [selectedIds, workflowRows]
+    () => (canBulkLifecycle ? selectedIds : []),
+    [canBulkLifecycle, selectedIds]
   );
 
   // Selection is pruned against the rows on screen rather than against the
@@ -178,14 +182,15 @@ export default function WorkflowsPage() {
 
   // The filters are part of the key, so changing one refetches by itself. That
   // is the whole job of the effect this replaced.
-  const runsQuery = useInfiniteQuery(
-    orpcQuery.workflow.getExecutionsGlobal.infiniteOptions({
+  const runsQuery = useInfiniteQuery({
+    ...orpcQuery.workflow.getExecutionsGlobal.infiniteOptions({
       input: (cursor: RunsCursor | undefined) => ({ ...runsFilter, cursor }),
       initialPageParam: undefined as RunsCursor | undefined,
       getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
       meta: { errorMessage: "Failed to load workflow runs" },
-    })
-  );
+    }),
+    enabled: canOpenGlobalRuns,
+  });
 
   const runs: GlobalExecutionItem[] = useMemo(
     () => runsQuery.data?.pages.flatMap((page) => page.items) ?? [],
@@ -244,13 +249,13 @@ export default function WorkflowsPage() {
   // value it now holds.
   const changePublishedMode = useCallback(
     (workflow: WorkflowSummaryPayload, mode: WorkflowMode) => {
-      if (workflow.mode === mode) {
+      if (!(canUpdate && workflow.mode !== mode)) {
         return;
       }
 
       writePublishedMode({ workflowId: workflow.id, mode });
     },
-    [writePublishedMode]
+    [canUpdate, writePublishedMode]
   );
 
   const toggleSelectAll = (checked: boolean) => {
@@ -278,13 +283,15 @@ export default function WorkflowsPage() {
 
   const openRun = useCallback(
     (item: GlobalExecutionItem) => {
-      void navigate({
-        to: "/workflows/$workflowId",
-        params: { workflowId: item.workflowId },
-        search: { executionId: item.id },
-      });
+      if (canOpenGlobalRuns) {
+        void navigate({
+          to: "/workflows/$workflowId",
+          params: { workflowId: item.workflowId },
+          search: { executionId: item.id },
+        });
+      }
     },
-    [navigate]
+    [canOpenGlobalRuns, navigate]
   );
 
   const lifecycle = useMutation(
@@ -348,17 +355,17 @@ export default function WorkflowsPage() {
   const runLifecycle = lifecycle.mutate;
   const runLifecycleAction = useCallback(
     (action: "pause" | "resume" | "delete", workflowIds: string[]) => {
-      if (workflowIds.length === 0) {
+      if (!(canBulkLifecycle && workflowIds.length > 0)) {
         return;
       }
       runLifecycle({ workflowIds, action });
     },
-    [runLifecycle]
+    [canBulkLifecycle, runLifecycle]
   );
 
   const openDeleteConfirmation = useCallback(
     (workflowIds: string[]) => {
-      if (workflowIds.length === 0) {
+      if (!(canBulkLifecycle && workflowIds.length > 0)) {
         return;
       }
 
@@ -383,7 +390,7 @@ export default function WorkflowsPage() {
         description,
       });
     },
-    [workflows]
+    [canBulkLifecycle, workflows]
   );
 
   const renderWorkflowContent = () => {
@@ -407,15 +414,17 @@ export default function WorkflowsPage() {
       <table className="w-full text-left text-sm">
         <thead className="sticky top-0 bg-card font-medium text-muted-foreground text-xs">
           <tr className="border-b">
-            <th className="w-10 px-4 py-2 font-medium">
-              <Checkbox
-                aria-label="Select all workflows"
-                checked={allSelected}
-                onCheckedChange={(checked) => {
-                  toggleSelectAll(checked);
-                }}
-              />
-            </th>
+            {canBulkLifecycle ? (
+              <th className="w-10 px-4 py-2 font-medium">
+                <Checkbox
+                  aria-label="Select all workflows"
+                  checked={allSelected}
+                  onCheckedChange={(checked) => {
+                    toggleSelectAll(checked);
+                  }}
+                />
+              </th>
+            ) : null}
             <th className="px-2 py-2 font-medium">Name</th>
             <th className="px-2 py-2 font-medium">State</th>
             <th className="px-2 py-2 font-medium">Published mode</th>
@@ -426,7 +435,7 @@ export default function WorkflowsPage() {
         <tbody>
           {workflowRows.map((workflow) => {
             const isSelected = selectedWorkflowIds.has(workflow.id);
-            const canMutate = workflow.isOwner !== false;
+            const canMutate = canUpdate || canBulkLifecycle;
             // Paused or Active is a neutral fact, marked by a green dot when
             // the workflow is active. Amber belongs to the Published mode cell
             // beside it, so the row's two dots never share a color.
@@ -449,28 +458,36 @@ export default function WorkflowsPage() {
 
             return (
               <tr className="border-b last:border-b-0" key={workflow.id}>
-                <td className="px-4 py-3">
-                  <Checkbox
-                    aria-label={`Select ${workflow.name}`}
-                    checked={isSelected}
-                    onCheckedChange={(checked) => {
-                      toggleSelectOne(workflow.id, checked);
-                    }}
-                  />
-                </td>
+                {canBulkLifecycle ? (
+                  <td className="px-4 py-3">
+                    <Checkbox
+                      aria-label={`Select ${workflow.name}`}
+                      checked={isSelected}
+                      onCheckedChange={(checked) => {
+                        toggleSelectOne(workflow.id, checked);
+                      }}
+                    />
+                  </td>
+                ) : null}
                 <td className="px-2 py-3">
-                  <button
-                    className="text-left font-medium text-foreground hover:underline"
-                    onClick={() => {
-                      void navigate({
-                        to: "/workflows/$workflowId",
-                        params: { workflowId: workflow.id },
-                      });
-                    }}
-                    type="button"
-                  >
-                    {workflow.name}
-                  </button>
+                  {canOpenWorkflow ? (
+                    <button
+                      className="text-left font-medium text-foreground hover:underline"
+                      onClick={() => {
+                        void navigate({
+                          to: "/workflows/$workflowId",
+                          params: { workflowId: workflow.id },
+                        });
+                      }}
+                      type="button"
+                    >
+                      {workflow.name}
+                    </button>
+                  ) : (
+                    <span className="font-medium text-foreground">
+                      {workflow.name}
+                    </span>
+                  )}
                   <div className="font-mono text-muted-foreground text-xs">
                     {workflow.id}
                   </div>
@@ -507,35 +524,43 @@ export default function WorkflowsPage() {
                       <MoreHorizontalIcon className="size-4" />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        disabled={setPublishedMode.isPending}
-                        onClick={() => {
-                          changePublishedMode(
-                            workflow,
-                            isTestMode ? "live" : "test"
-                          );
-                        }}
-                      >
-                        {isTestMode
-                          ? "Set Published mode to Live"
-                          : "Set Published mode to Test"}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => {
-                          runLifecycleAction(toggleAction, [workflow.id]);
-                        }}
-                      >
-                        {toggleActionLabel}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => {
-                          openDeleteConfirmation([workflow.id]);
-                        }}
-                        variant="destructive"
-                      >
-                        Delete
-                      </DropdownMenuItem>
+                      {canUpdate ? (
+                        <DropdownMenuItem
+                          disabled={setPublishedMode.isPending}
+                          onClick={() => {
+                            changePublishedMode(
+                              workflow,
+                              isTestMode ? "live" : "test"
+                            );
+                          }}
+                        >
+                          {isTestMode
+                            ? "Set Published mode to Live"
+                            : "Set Published mode to Test"}
+                        </DropdownMenuItem>
+                      ) : null}
+                      {canBulkLifecycle ? (
+                        <DropdownMenuItem
+                          onClick={() => {
+                            runLifecycleAction(toggleAction, [workflow.id]);
+                          }}
+                        >
+                          {toggleActionLabel}
+                        </DropdownMenuItem>
+                      ) : null}
+                      {canUpdate && canBulkLifecycle ? (
+                        <DropdownMenuSeparator />
+                      ) : null}
+                      {canBulkLifecycle ? (
+                        <DropdownMenuItem
+                          onClick={() => {
+                            openDeleteConfirmation([workflow.id]);
+                          }}
+                          variant="destructive"
+                        >
+                          Delete
+                        </DropdownMenuItem>
+                      ) : null}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </td>
@@ -553,158 +578,168 @@ export default function WorkflowsPage() {
     <div className="h-dvh overflow-auto bg-background">
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 p-6">
         <div className="flex flex-wrap items-center justify-end gap-3">
-          <Button
-            onClick={() => {
-              setCreateDialogSession((session) => session + 1);
-              setIsCreateDialogOpen(true);
-            }}
-            type="button"
-          >
-            New Workflow
-          </Button>
+          {canCreate ? (
+            <Button
+              onClick={() => {
+                setCreateDialogSession((session) => session + 1);
+                setIsCreateDialogOpen(true);
+              }}
+              type="button"
+            >
+              New Workflow
+            </Button>
+          ) : null}
         </div>
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1.5fr]">
-          <section className="rounded-xl border bg-card">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-              <div>
-                <h2 className="font-medium text-foreground text-sm">
-                  Workflows
-                </h2>
-                <p className="text-muted-foreground text-xs">
-                  Select one or more workflows to run bulk actions.
-                </p>
-              </div>
-              <Button
-                disabled={isLoadingWorkflows || lifecycleAction !== null}
-                onClick={refreshWorkflows}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                Refresh
-              </Button>
-            </div>
-
-            <div className="border-b px-4 py-2">
-              <div className="flex flex-wrap items-center gap-2">
+          {canReadWorkflows ? (
+            <section className="rounded-xl border bg-card">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
+                <div>
+                  <h2 className="font-medium text-foreground text-sm">
+                    Workflows
+                  </h2>
+                  <p className="text-muted-foreground text-xs">
+                    Select one or more workflows to run bulk actions.
+                  </p>
+                </div>
                 <Button
-                  disabled={
-                    selectedActionableIds.length === 0 ||
-                    lifecycleAction !== null
-                  }
+                  disabled={isLoadingWorkflows || lifecycleAction !== null}
+                  onClick={refreshWorkflows}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Refresh
+                </Button>
+              </div>
+
+              {canBulkLifecycle ? (
+                <div className="border-b px-4 py-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      disabled={
+                        selectedActionableIds.length === 0 ||
+                        lifecycleAction !== null
+                      }
+                      onClick={() => {
+                        runLifecycleAction("pause", selectedActionableIds);
+                      }}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      Pause Selected
+                    </Button>
+                    <Button
+                      disabled={
+                        selectedActionableIds.length === 0 ||
+                        lifecycleAction !== null
+                      }
+                      onClick={() => {
+                        runLifecycleAction("resume", selectedActionableIds);
+                      }}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      Resume Selected
+                    </Button>
+                    <Button
+                      disabled={
+                        selectedActionableIds.length === 0 ||
+                        lifecycleAction !== null
+                      }
+                      onClick={() => {
+                        openDeleteConfirmation(selectedActionableIds);
+                      }}
+                      size="sm"
+                      type="button"
+                      variant="destructive"
+                    >
+                      Delete Selected
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="max-h-[65vh] overflow-auto">
+                {renderWorkflowContent()}
+              </div>
+            </section>
+          ) : null}
+
+          {canOpenGlobalRuns ? (
+            <section className="rounded-xl border bg-card">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
+                <div>
+                  <h2 className="font-medium text-foreground text-sm">
+                    All Runs
+                  </h2>
+                  <p className="text-muted-foreground text-xs">
+                    Combined run history across workflows.
+                  </p>
+                </div>
+                <Button
+                  disabled={isLoadingRuns || isLoadingMoreRuns}
                   onClick={() => {
-                    runLifecycleAction("pause", selectedActionableIds);
+                    void refreshRuns();
                   }}
                   size="sm"
                   type="button"
                   variant="outline"
                 >
-                  Pause Selected
-                </Button>
-                <Button
-                  disabled={
-                    selectedActionableIds.length === 0 ||
-                    lifecycleAction !== null
-                  }
-                  onClick={() => {
-                    runLifecycleAction("resume", selectedActionableIds);
-                  }}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  Resume Selected
-                </Button>
-                <Button
-                  disabled={
-                    selectedActionableIds.length === 0 ||
-                    lifecycleAction !== null
-                  }
-                  onClick={() => {
-                    openDeleteConfirmation(selectedActionableIds);
-                  }}
-                  size="sm"
-                  type="button"
-                  variant="destructive"
-                >
-                  Delete Selected
+                  Refresh
                 </Button>
               </div>
-            </div>
 
-            <div className="max-h-[65vh] overflow-auto">
-              {renderWorkflowContent()}
-            </div>
-          </section>
-
-          <section className="rounded-xl border bg-card">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-              <div>
-                <h2 className="font-medium text-foreground text-sm">
-                  All Runs
-                </h2>
-                <p className="text-muted-foreground text-xs">
-                  Combined run history across workflows.
-                </p>
+              <div className="relative z-20 flex flex-col gap-2 border-b px-4 py-2">
+                <RunHistorySearch
+                  entitySuggestions={entitySuggestions}
+                  eventSuggestions={eventSuggestions}
+                  filters={runFilters}
+                  loadedCount={runs.length}
+                  onFiltersChange={setRunFilters}
+                  onQueryChange={setRunQuery}
+                  query={runQuery}
+                  resultCount={visibleRuns.length}
+                  workflows={workflowRows.map((workflow) => ({
+                    id: workflow.id,
+                    name: workflow.name,
+                  }))}
+                />
+                {canBulkLifecycle ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      disabled={selectedActionableIds.length === 0}
+                      onClick={() => {
+                        setShowSelectedRunsOnly((prev) => !prev);
+                      }}
+                      size="sm"
+                      type="button"
+                      variant={showSelectedRunsOnly ? "secondary" : "outline"}
+                    >
+                      {showSelectedRunsOnly
+                        ? "Showing selected workflows"
+                        : "Show selected workflows only"}
+                    </Button>
+                  </div>
+                ) : null}
               </div>
-              <Button
-                disabled={isLoadingRuns || isLoadingMoreRuns}
-                onClick={() => {
-                  void refreshRuns();
+
+              <RunHistoryTable
+                hasNextPage={runsQuery.hasNextPage}
+                isLoading={isLoadingRuns}
+                isLoadingMore={isLoadingMoreRuns}
+                key={runHistoryTableKey}
+                onLoadMore={() => {
+                  void runsQuery.fetchNextPage();
                 }}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                Refresh
-              </Button>
-            </div>
-
-            <div className="relative z-20 flex flex-col gap-2 border-b px-4 py-2">
-              <RunHistorySearch
-                entitySuggestions={entitySuggestions}
-                eventSuggestions={eventSuggestions}
-                filters={runFilters}
-                loadedCount={runs.length}
-                onFiltersChange={setRunFilters}
-                onQueryChange={setRunQuery}
-                query={runQuery}
-                resultCount={visibleRuns.length}
-                workflows={workflowRows.map((workflow) => ({
-                  id: workflow.id,
-                  name: workflow.name,
-                }))}
+                onOpenRun={openRun}
+                runs={visibleRuns}
               />
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  disabled={selectedActionableIds.length === 0}
-                  onClick={() => {
-                    setShowSelectedRunsOnly((prev) => !prev);
-                  }}
-                  size="sm"
-                  type="button"
-                  variant={showSelectedRunsOnly ? "secondary" : "outline"}
-                >
-                  {showSelectedRunsOnly
-                    ? "Showing selected workflows"
-                    : "Show selected workflows only"}
-                </Button>
-              </div>
-            </div>
-
-            <RunHistoryTable
-              hasNextPage={runsQuery.hasNextPage}
-              isLoading={isLoadingRuns}
-              isLoadingMore={isLoadingMoreRuns}
-              key={runHistoryTableKey}
-              onLoadMore={() => {
-                void runsQuery.fetchNextPage();
-              }}
-              onOpenRun={openRun}
-              runs={visibleRuns}
-            />
-          </section>
+            </section>
+          ) : null}
         </div>
       </div>
 
@@ -776,15 +811,17 @@ export default function WorkflowsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <CreateWorkflowDialog
-        key={createDialogSession}
-        existingWorkflowNames={workflows.map((workflow) => workflow.name)}
-        onCreated={(workflowId) =>
-          navigate({ to: "/workflows/$workflowId", params: { workflowId } })
-        }
-        onOpenChange={setIsCreateDialogOpen}
-        open={isCreateDialogOpen}
-      />
+      {canCreate ? (
+        <CreateWorkflowDialog
+          key={createDialogSession}
+          existingWorkflowNames={workflows.map((workflow) => workflow.name)}
+          onCreated={(workflowId) =>
+            navigate({ to: "/workflows/$workflowId", params: { workflowId } })
+          }
+          onOpenChange={setIsCreateDialogOpen}
+          open={isCreateDialogOpen}
+        />
+      ) : null}
     </div>
   );
 }

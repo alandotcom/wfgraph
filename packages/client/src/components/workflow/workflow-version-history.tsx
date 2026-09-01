@@ -18,8 +18,10 @@ import {
 } from "#src/lib/workflow-comparison-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { orpcQuery } from "#src/lib/rpc-query";
+import { can } from "#src/lib/authorization";
 import type { WorkflowVersionCursor } from "@wfgraph/shared/graph/publication-contracts";
 import { cn } from "@wfgraph/shared/utils";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import type { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
 
 type WorkflowComparisonActions = ReturnType<
@@ -35,19 +37,22 @@ export function WorkflowVersionHistory({
   const session = useAtomValue(comparisonSessionAtom);
   const setSubview = useSetAtom(setComparisonSubviewAtom);
   const [restoreOpen, setRestoreOpen] = useState(false);
+  const canReadHistory = can(WfGraphOperations.workflowGetVersionHistory.id);
 
-  const history = useInfiniteQuery(
-    orpcQuery.workflow.getVersionHistory.infiniteOptions({
+  const history = useInfiniteQuery({
+    ...orpcQuery.workflow.getVersionHistory.infiniteOptions({
       input: (cursor: WorkflowVersionCursor | undefined) => ({
         workflowId: workflowId ?? "",
         cursor,
       }),
       initialPageParam: undefined as WorkflowVersionCursor | undefined,
       getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-      enabled: Boolean(workflowId && session?.subview === "history"),
+      enabled: Boolean(
+        workflowId && session?.subview === "history" && canReadHistory
+      ),
       meta: { errorMessage: "Unable to load version history" },
-    })
-  );
+    }),
+  });
   const historyItems = useMemo(
     () => history.data?.pages.flatMap((page) => page.items) ?? [],
     [history.data]
@@ -125,27 +130,30 @@ export function WorkflowVersionHistory({
           ) : null}
         </div>
       ) : null}
-      <div className="border-t p-3">
-        <Button
-          className="w-full"
-          disabled={!selectedHistory || actions.restore.isPending}
-          onClick={() => setRestoreOpen(true)}
-          type="button"
-          variant="outline"
-        >
-          <RotateCcw data-icon="inline-start" />
-          Restore{" "}
-          {selectedHistory
-            ? `version ${selectedHistory.version}`
-            : "version"}{" "}
-          as draft
-        </Button>
-      </div>
-      {selectedHistory ? (
+      {actions.canRestore ? (
+        <div className="border-t p-3">
+          <Button
+            className="w-full"
+            disabled={!selectedHistory || actions.restore.isPending}
+            onClick={() => setRestoreOpen(true)}
+            type="button"
+            variant="outline"
+          >
+            <RotateCcw data-icon="inline-start" />
+            Restore{" "}
+            {selectedHistory
+              ? `version ${selectedHistory.version}`
+              : "version"}{" "}
+            as draft
+          </Button>
+        </div>
+      ) : null}
+      {actions.canRestore && selectedHistory ? (
         <RestoreDialog
           isPending={actions.restore.isPending}
           onOpenChange={setRestoreOpen}
           onRestore={() =>
+            actions.canRestore &&
             workflowId &&
             actions.restore.mutate({
               workflowId,

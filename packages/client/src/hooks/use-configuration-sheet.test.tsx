@@ -17,7 +17,6 @@ import {
   canvasEditingLockedAtom,
   executionOverlayGraphAtom,
 } from "#src/lib/workflow-graph-store";
-import { isWorkflowOwnerAtom } from "#src/lib/workflow-save-store";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { workflowWorkspaceView } from "#src/lib/workflow-route-state";
 
@@ -92,7 +91,6 @@ function Host() {
 
 async function renderSheetHost() {
   const store = createStore();
-  store.set(isWorkflowOwnerAtom, true);
   store.set(workflowWorkspaceViewAtom, "runs");
   pinRun(store);
 

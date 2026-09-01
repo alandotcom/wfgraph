@@ -11,10 +11,7 @@ import { createStore, Provider as JotaiProvider, useSetAtom } from "jotai";
 import { describe, expect, it, vi } from "vitest";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
-import {
-  currentWorkflowIdAtom,
-  isWorkflowOwnerAtom,
-} from "#src/lib/workflow-save-store";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { enterRunsWorkspaceAtom } from "#src/lib/workflow-workspace-navigation";
 
@@ -55,7 +52,6 @@ function NavigationHost() {
 async function renderNavigationHost() {
   const store = createStore();
   store.set(currentWorkflowIdAtom, "workflow_1");
-  store.set(isWorkflowOwnerAtom, true);
   store.set(workflowWorkspaceViewAtom, "runs");
   const navigation = deferred();
   const rootRoute = createRootRoute({ component: () => <Outlet /> });
