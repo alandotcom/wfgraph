@@ -41,6 +41,7 @@ import { normalizeDatabaseConfig } from "#src/backend/lib/db/config";
 import * as dbModule from "#src/backend/lib/db/index";
 import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
 import { wfPostgres } from "#src/backend/persistence/postgres";
+import { wfSqlite } from "#src/backend/persistence/sqlite";
 
 // createWfGraphApp opens no connections: the database client is lazy and
 // migrations only run when asked. Every route exercised below answers from
@@ -85,41 +86,37 @@ describe("createWfGraphApp mounted at the root", () => {
   });
 
   it("serves the API off /api", async () => {
-    const app = await createTestApp();
-    try {
-      const response = await get(app, "/api/extensions");
-      const payload = await response.json();
+    await using app = await createTestApp();
+    const response = await get(app, "/api/extensions");
+    const payload = await response.json();
 
-      expect(response.status).toBe(200);
-      expect(payload).toMatchObject({
-        // The catalog is the one channel the editor learns the surface through,
-        // so an app that starts serves all three of its lists.
-        catalog: {
-          events: expect.any(Array),
-          actions: expect.any(Array),
-          integrations: expect.any(Array),
-        },
-      });
-      // The build agent is off, because these options name no model key.
-      expect(payload).toMatchObject({ agent: { enabled: false } });
-      expect(payload).toMatchObject({
-        authorization: { operationIds: WfGraphOperationIds },
-      });
-      // And those are the whole envelope when the host set no publicUrl.
-      // webhookIntake is present only then, so the editor can copy a URL.
-      expect(Object.keys(payload as object)).toEqual([
-        "catalog",
-        "agent",
-        "authorization",
-      ]);
-    } finally {
-      await app.dispose();
-    }
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      // The catalog is the one channel the editor learns the surface through,
+      // so an app that starts serves all three of its lists.
+      catalog: {
+        events: expect.any(Array),
+        actions: expect.any(Array),
+        integrations: expect.any(Array),
+      },
+    });
+    // The build agent is off, because these options name no model key.
+    expect(payload).toMatchObject({ agent: { enabled: false } });
+    expect(payload).toMatchObject({
+      authorization: { operationIds: WfGraphOperationIds },
+    });
+    // And those are the whole envelope when the host set no publicUrl.
+    // webhookIntake is present only then, so the editor can copy a URL.
+    expect(Object.keys(payload as object)).toEqual([
+      "catalog",
+      "agent",
+      "authorization",
+    ]);
   });
 
   it("evaluates every operation for the boot snapshot and preserves canonical order", async () => {
     const checkedOperationIds: string[] = [];
-    const app = await createWfGraphApp({
+    await using app = await createWfGraphApp({
       ...BASE_OPTIONS,
       auth: defineWfGraphAuth(() => ({
         allows: async (operation) => {
@@ -130,26 +127,22 @@ describe("createWfGraphApp mounted at the root", () => {
       })),
     });
 
-    try {
-      const response = await get(app, "/api/extensions");
-      const payload = (await response.json()) as {
-        authorization: { operationIds: string[] };
-      };
+    const response = await get(app, "/api/extensions");
+    const payload = (await response.json()) as {
+      authorization: { operationIds: string[] };
+    };
 
-      expect(response.status).toBe(200);
-      expect(checkedOperationIds).toEqual(WfGraphOperationIds);
-      expect(payload.authorization.operationIds).toEqual(
-        Object.values(WfGraphOperations)
-          .filter((operation) => operation.permission === "workflow.read")
-          .map((operation) => operation.id)
-      );
-    } finally {
-      await app.dispose();
-    }
+    expect(response.status).toBe(200);
+    expect(checkedOperationIds).toEqual(WfGraphOperationIds);
+    expect(payload.authorization.operationIds).toEqual(
+      Object.values(WfGraphOperations)
+        .filter((operation) => operation.permission === "workflow.read")
+        .map((operation) => operation.id)
+    );
   });
 
   it("fails bootstrap with a sanitized 500 when the access policy fails", async () => {
-    const app = await createWfGraphApp({
+    await using app = await createWfGraphApp({
       ...BASE_OPTIONS,
       auth: defineWfGraphAuth(() => ({
         allows: () => {
@@ -158,37 +151,29 @@ describe("createWfGraphApp mounted at the root", () => {
       })),
     });
 
-    try {
-      const response = await get(app, "/api/extensions");
+    const response = await get(app, "/api/extensions");
 
-      expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({ error: "Internal Server Error" });
-    } finally {
-      await app.dispose();
-    }
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "Internal Server Error" });
   });
 
   it("includes webhook intake on the catalog envelope when publicUrl is set", async () => {
-    const app = await createWfGraphApp({
+    await using app = await createWfGraphApp({
       ...BASE_OPTIONS,
       publicUrl: "https://workflows.example.com",
     });
-    try {
-      const payload = (await (await get(app, "/api/extensions")).json()) as {
-        webhookIntake?: { publicUrl: string; apiBasePath: string };
-      };
+    const payload = (await (await get(app, "/api/extensions")).json()) as {
+      webhookIntake?: { publicUrl: string; apiBasePath: string };
+    };
 
-      expect(payload.webhookIntake).toEqual({
-        publicUrl: "https://workflows.example.com",
-        apiBasePath: "/api",
-      });
-    } finally {
-      await app.dispose();
-    }
+    expect(payload.webhookIntake).toEqual({
+      publicUrl: "https://workflows.example.com",
+      apiBasePath: "/api",
+    });
   });
 
   it("serves the integrations the host passed, actions and all", async () => {
-    const app = await createWfGraphApp({
+    await using app = await createWfGraphApp({
       ...BASE_OPTIONS,
       extensions: {
         integrations: [
@@ -225,39 +210,33 @@ describe("createWfGraphApp mounted at the root", () => {
       },
     });
 
-    try {
-      const payload = (await (await get(app, "/api/extensions")).json()) as {
-        catalog: {
-          actions: Array<{ id: string; outputFields: unknown }>;
-          integrations: Array<{ type: string; hasTest: boolean }>;
-        };
+    const payload = (await (await get(app, "/api/extensions")).json()) as {
+      catalog: {
+        actions: Array<{ id: string; outputFields: unknown }>;
+        integrations: Array<{ type: string; hasTest: boolean }>;
       };
+    };
 
-      // The engine ships no integration of its own, so the catalog holds exactly
-      // what this host passed under extensions.integrations.
-      expect(payload.catalog.integrations).toEqual([
-        expect.objectContaining({ type: "twilio", hasTest: false }),
-      ]);
-      // The id is computed from the type and the record key, and the field list
-      // is derived from the output schema, so neither is written by the host.
-      expect(
-        payload.catalog.actions.find(
-          (action) => action.id === "twilio/send-sms"
-        )
-      ).toEqual(
-        expect.objectContaining({
-          outputFields: [
-            { path: "sid", description: "Message SID", type: "string" },
-          ],
-        })
-      );
-    } finally {
-      await app.dispose();
-    }
+    // The engine ships no integration of its own, so the catalog holds exactly
+    // what this host passed under extensions.integrations.
+    expect(payload.catalog.integrations).toEqual([
+      expect.objectContaining({ type: "twilio", hasTest: false }),
+    ]);
+    // The id is computed from the type and the record key, and the field list
+    // is derived from the output schema, so neither is written by the host.
+    expect(
+      payload.catalog.actions.find((action) => action.id === "twilio/send-sms")
+    ).toEqual(
+      expect.objectContaining({
+        outputFields: [
+          { path: "sid", description: "Message SID", type: "string" },
+        ],
+      })
+    );
   });
 
   it("serves the Events the host defined", async () => {
-    const app = await createWfGraphApp({
+    await using app = await createWfGraphApp({
       ...BASE_OPTIONS,
       extensions: {
         events: [
@@ -275,108 +254,80 @@ describe("createWfGraphApp mounted at the root", () => {
       },
     });
 
-    try {
-      const payload = (await (await get(app, "/api/extensions")).json()) as {
-        catalog: { events: Array<{ name: string }> };
-      };
+    const payload = (await (await get(app, "/api/extensions")).json()) as {
+      catalog: { events: Array<{ name: string }> };
+    };
 
-      expect(payload.catalog.events.map((event) => event.name)).toEqual([
-        "app/appointment.created",
-      ]);
-    } finally {
-      await app.dispose();
-    }
+    expect(payload.catalog.events.map((event) => event.name)).toEqual([
+      "app/appointment.created",
+    ]);
   });
 });
 
 describe("createWfGraphApp mounted under a sub-path", () => {
   it("serves the API off the mount point", async () => {
-    const app = await createTestApp("/wfgraph");
-    try {
-      expect((await get(app, "/wfgraph/api/extensions")).status).toBe(200);
-    } finally {
-      await app.dispose();
-    }
+    await using app = await createTestApp("/wfgraph");
+    expect((await get(app, "/wfgraph/api/extensions")).status).toBe(200);
   });
 
   it("does not answer on the unmounted path", async () => {
-    const app = await createTestApp("/wfgraph");
-    try {
-      expect((await get(app, "/api/extensions")).status).toBe(404);
-    } finally {
-      await app.dispose();
-    }
+    await using app = await createTestApp("/wfgraph");
+    expect((await get(app, "/api/extensions")).status).toBe(404);
   });
 
   it("matches oRPC procedures under the mounted prefix", async () => {
-    const app = await createTestApp("/wfgraph");
-    try {
-      // An empty body fails the procedure's input validation. Reaching that
-      // validation at all is the signal: an unmatched prefix would fall through
-      // to the app's own 404 instead.
-      const response = await app.fetch(
-        new Request("http://localhost/wfgraph/api/rpc/workflow/getById", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ json: {} }),
-        })
-      );
+    await using app = await createTestApp("/wfgraph");
+    // An empty body fails the procedure's input validation. Reaching that
+    // validation at all is the signal: an unmatched prefix would fall through
+    // to the app's own 404 instead.
+    const response = await app.fetch(
+      new Request("http://localhost/wfgraph/api/rpc/workflow/getById", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ json: {} }),
+      })
+    );
 
-      expect(response.status).toBe(400);
-      expect(await response.text()).toContain("Input validation failed");
-    } finally {
-      await app.dispose();
-    }
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain("Input validation failed");
   });
 
   it("advertises the mounted REST path in the OpenAPI document", async () => {
-    const app = await createTestApp("/wfgraph");
-    try {
-      const response = await get(app, "/wfgraph/api/openapi.json");
+    await using app = await createTestApp("/wfgraph");
+    const response = await get(app, "/wfgraph/api/openapi.json");
 
-      expect(response.status).toBe(200);
-      // What the docs panel's "Try it" button and every generated client aim
-      // at. A hardcoded "/api/rest" here 404s under a sub-path mount.
-      expect(await response.json()).toMatchObject({
-        servers: [{ url: "/wfgraph/api/rest" }],
-        paths: {
-          "/workflows": {
-            get: {
-              operationId: "workflow.getAll",
-              "x-wfgraph-permission": "workflow.read",
-            },
+    expect(response.status).toBe(200);
+    // What the docs panel's "Try it" button and every generated client aim
+    // at. A hardcoded "/api/rest" here 404s under a sub-path mount.
+    expect(await response.json()).toMatchObject({
+      servers: [{ url: "/wfgraph/api/rest" }],
+      paths: {
+        "/workflows": {
+          get: {
+            operationId: "workflow.getAll",
+            "x-wfgraph-permission": "workflow.read",
           },
         },
-      });
-    } finally {
-      await app.dispose();
-    }
+      },
+    });
   });
 
   it("serves the editor a host handed it, under the mount", async () => {
-    const app = await createWfGraphApp({
+    await using app = await createWfGraphApp({
       ...BASE_OPTIONS,
       basePath: "/wfgraph",
       client: { dir: clientDir },
     });
-    try {
-      const index = await get(app, "/wfgraph/workflows/abc");
-      expect(index.status).toBe(200);
-      expect(await index.text()).toContain('<base href="/wfgraph/" />');
-      expect((await get(app, "/elsewhere/workflows/abc")).status).toBe(404);
-    } finally {
-      await app.dispose();
-    }
+    const index = await get(app, "/wfgraph/workflows/abc");
+    expect(index.status).toBe(200);
+    expect(await index.text()).toContain('<base href="/wfgraph/" />');
+    expect((await get(app, "/elsewhere/workflows/abc")).status).toBe(404);
   });
 
   // No bundle passed, no editor: the option is the switch.
   it("serves no editor when the host hands it none", async () => {
-    const app = await createTestApp("/wfgraph");
-    try {
-      expect((await get(app, "/wfgraph/")).status).toBe(404);
-    } finally {
-      await app.dispose();
-    }
+    await using app = await createTestApp("/wfgraph");
+    expect((await get(app, "/wfgraph/")).status).toBe(404);
   });
 
   it("refuses a basePath that could escape the mount", async () => {
@@ -465,102 +416,76 @@ describe("createWfGraphApp with host authentication", () => {
     // Read the route table before opening the guarded app; this helper owns and
     // disposes a complete runtime even though no route executes against it.
     const paths = await listGatedPaths();
-    const app = await createGuardedApp(false);
+    await using app = await createGuardedApp(false);
 
-    try {
-      expect(paths.length).toBeGreaterThan(8);
+    expect(paths.length).toBeGreaterThan(8);
 
-      for (const path of paths) {
-        for (const method of ["GET", "POST"]) {
-          const response = await app.fetch(
-            new Request(`http://localhost${toRequestPath(path)}`, {
-              method,
-              headers: { "content-type": "application/json" },
-              body: method === "GET" ? undefined : "{}",
-            })
-          );
-
-          expect({ path, method, status: response.status }).toEqual({
-            path,
+    for (const path of paths) {
+      for (const method of ["GET", "POST"]) {
+        const response = await app.fetch(
+          new Request(`http://localhost${toRequestPath(path)}`, {
             method,
-            status: 401,
-          });
-        }
+            headers: { "content-type": "application/json" },
+            body: method === "GET" ? undefined : "{}",
+          })
+        );
+
+        expect({ path, method, status: response.status }).toEqual({
+          path,
+          method,
+          status: 401,
+        });
       }
-    } finally {
-      await app.dispose();
     }
   });
 
   it("leaves the machine routes on their own credentials", async () => {
-    const app = await createGuardedApp(false);
-    try {
-      const resume = await app.fetch(
-        new Request(
-          "http://localhost/wfgraph/api/workflows/waits/tok_1/resume",
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(["wrong", "shape"]),
-          }
-        )
-      );
-      // 400 from the route's own body validation, so the request got past the
-      // gate rather than being turned away at it.
-      expect(resume.status).toBe(400);
+    await using app = await createGuardedApp(false);
+    const resume = await app.fetch(
+      new Request("http://localhost/wfgraph/api/workflows/waits/tok_1/resume", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(["wrong", "shape"]),
+      })
+    );
+    // 400 from the route's own body validation, so the request got past the
+    // gate rather than being turned away at it.
+    expect(resume.status).toBe(400);
 
-      // Inngest cannot carry a browser session, so a gate here would break every
-      // callback and with it every workflow run.
-      const inngest = await get(app, "/wfgraph/api/inngest");
-      expect(inngest.status).not.toBe(401);
-    } finally {
-      await app.dispose();
-    }
+    // Inngest cannot carry a browser session, so a gate here would break every
+    // callback and with it every workflow run.
+    const inngest = await get(app, "/wfgraph/api/inngest");
+    expect(inngest.status).not.toBe(401);
   });
 
   it("bounds the body on the resume route, which host auth does not guard", async () => {
-    const app = await createGuardedApp(false);
-    try {
-      const response = await app.fetch(
-        new Request(
-          "http://localhost/wfgraph/api/workflows/waits/tok_1/resume",
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: "x".repeat(MAX_REQUEST_BODY_BYTES + 1),
-          }
-        )
-      );
+    await using app = await createGuardedApp(false);
+    const response = await app.fetch(
+      new Request("http://localhost/wfgraph/api/workflows/waits/tok_1/resume", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "x".repeat(MAX_REQUEST_BODY_BYTES + 1),
+      })
+    );
 
-      expect(response.status).toBe(413);
-      expect(await response.json()).toEqual({
-        error: "Request body is too large",
-      });
-    } finally {
-      await app.dispose();
-    }
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({
+      error: "Request body is too large",
+    });
   });
 
   it("refuses the editor itself, not only its data", async () => {
-    const app = await createGuardedApp(false, { dir: clientDir });
-    try {
-      for (const path of ["/wfgraph/", "/wfgraph/workflows/abc"]) {
-        expect((await get(app, path)).status).toBe(401);
-      }
-    } finally {
-      await app.dispose();
+    await using app = await createGuardedApp(false, { dir: clientDir });
+    for (const path of ["/wfgraph/", "/wfgraph/workflows/abc"]) {
+      expect((await get(app, path)).status).toBe(401);
     }
   });
 
   it("lets everything through when the host says yes", async () => {
-    const app = await createGuardedApp(true, { dir: clientDir });
-    try {
-      expect((await get(app, "/wfgraph/api/extensions")).status).toBe(200);
-      expect((await get(app, "/wfgraph/api/openapi.json")).status).toBe(200);
-      expect((await get(app, "/wfgraph/")).status).toBe(200);
-    } finally {
-      await app.dispose();
-    }
+    await using app = await createGuardedApp(true, { dir: clientDir });
+    expect((await get(app, "/wfgraph/api/extensions")).status).toBe(200);
+    expect((await get(app, "/wfgraph/api/openapi.json")).status).toBe(200);
+    expect((await get(app, "/wfgraph/")).status).toBe(200);
   });
 });
 
@@ -604,8 +529,19 @@ describe("createWfGraphApp configuration", () => {
         migrations: { migrationsDir: "no-such-folder" },
       }),
     });
-
     await app.dispose();
+  });
+
+  it("shares one shutdown across explicit and asynchronous disposal", async () => {
+    const app = await createWfGraphApp({
+      ...BASE_OPTIONS,
+      persistence: wfSqlite(),
+    });
+
+    const disposal = app.dispose();
+    expect(app[Symbol.asyncDispose]()).toBe(disposal);
+    await disposal;
+    await expect(app.dispose()).resolves.toBeUndefined();
   });
 
   it("refuses an encryption key of the wrong length", async () => {
@@ -671,19 +607,15 @@ describe("createWfGraphApp configuration", () => {
     });
     await first.dispose();
 
-    const second = await createWfGraphApp({
+    await using second = await createWfGraphApp({
       ...BASE_OPTIONS,
       extensions: { actions: [action] },
     });
-    try {
-      const { catalog } = (await (
-        await get(second, "/api/extensions")
-      ).json()) as { catalog: { actions: Array<{ id: string }> } };
+    const { catalog } = (await (
+      await get(second, "/api/extensions")
+    ).json()) as { catalog: { actions: Array<{ id: string }> } };
 
-      expect(catalog.actions.map((entry) => entry.id)).toContain("host/probe");
-    } finally {
-      await second.dispose();
-    }
+    expect(catalog.actions.map((entry) => entry.id)).toContain("host/probe");
   });
 });
 
@@ -712,32 +644,26 @@ describe("createWfGraphApp with inngest.connect", () => {
   });
 
   it("opens Connect at boot and drains it on dispose", async () => {
-    const app = await createWfGraphApp({
-      ...BASE_OPTIONS,
-      inngest: { ...BASE_OPTIONS.inngest, connect: true },
-    });
-    try {
+    {
+      await using app = await createWfGraphApp({
+        ...BASE_OPTIONS,
+        inngest: { ...BASE_OPTIONS.inngest, connect: true },
+      });
       expect(connect).toHaveBeenCalledTimes(1);
       expect(connect.mock.calls[0]?.[0]).toMatchObject({
         handleShutdownSignals: [],
       });
       // Connect dials out; the HTTP callback must not be advertised.
       expect((await get(app, "/api/inngest")).status).toBe(404);
-    } finally {
-      await app.dispose();
     }
 
     expect(close).toHaveBeenCalledTimes(1);
   });
 
   it("leaves Connect alone when the host does not opt in", async () => {
-    const app = await createTestApp();
-    try {
-      expect(connect).not.toHaveBeenCalled();
-      expect((await get(app, "/api/inngest")).status).not.toBe(404);
-    } finally {
-      await app.dispose();
-    }
+    await using app = await createTestApp();
+    expect(connect).not.toHaveBeenCalled();
+    expect((await get(app, "/api/inngest")).status).not.toBe(404);
   });
 
   it("logs a warning when Connect close fails during dispose", async () => {
@@ -748,7 +674,6 @@ describe("createWfGraphApp with inngest.connect", () => {
       inngest: { ...BASE_OPTIONS.inngest, connect: true },
       logger: { info: () => {}, warn, error: () => {} },
     });
-
     await app.dispose();
 
     expect(warn).toHaveBeenCalledWith(
