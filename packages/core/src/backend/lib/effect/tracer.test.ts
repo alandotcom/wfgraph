@@ -29,14 +29,14 @@ describe("TracerBridgeLayer", () => {
 
     // Merged beside another layer the way `runtime.ts` merges it, because what
     // this contributes is a reference rather than a service of its own.
-    const runtime = ManagedRuntime.make(
-      Layer.mergeAll(TracerBridgeLayer, SilentAppLoggerLayer)
-    );
+    {
+      await using runtime = ManagedRuntime.make(
+        Layer.mergeAll(TracerBridgeLayer, SilentAppLoggerLayer)
+      );
 
-    const result = await runtime.runPromise(tracedWork());
-    await runtime.dispose();
-
-    expect(result).toBe("ok");
+      const result = await runtime.runPromise(tracedWork());
+      expect(result).toBe("ok");
+    }
 
     const span = await spans.named("traced.work");
     expect(span).toBeDefined();
@@ -71,10 +71,8 @@ describe("TracerBridgeLayer", () => {
   });
 
   test("runs with no provider registered", async () => {
-    const runtime = ManagedRuntime.make(TracerBridgeLayer);
+    await using runtime = ManagedRuntime.make(TracerBridgeLayer);
 
     await expect(runtime.runPromise(tracedWork())).resolves.toBe("ok");
-
-    await runtime.dispose();
   });
 });

@@ -115,49 +115,41 @@ describe("rpcEffectHandler", () => {
    * every procedure's error response, and this is what would catch it.
    */
   it("rejects with the oRPC error a domain failure maps to", async () => {
-    const runtime = createStubRuntime();
-    try {
-      const handler = rpcEffectHandler(() =>
-        Effect.fail(new NotFound({ error: "Workflow not found" }))
-      );
+    await using runtime = createStubRuntime();
+    const handler = rpcEffectHandler(() =>
+      Effect.fail(new NotFound({ error: "Workflow not found" }))
+    );
 
-      const rejection = await handler(createContext(runtime)).then(
-        () => undefined,
-        (error: unknown) => error
-      );
+    const rejection = await handler(createContext(runtime)).then(
+      () => undefined,
+      (error: unknown) => error
+    );
 
-      assert.instanceOf(rejection, ORPCError);
-      assert.strictEqual(rejection.code, "NOT_FOUND");
-      assert.deepStrictEqual(rejection.data, {
-        error: "Workflow not found",
-      });
-    } finally {
-      await runtime.dispose();
-    }
+    assert.instanceOf(rejection, ORPCError);
+    assert.strictEqual(rejection.code, "NOT_FOUND");
+    assert.deepStrictEqual(rejection.data, {
+      error: "Workflow not found",
+    });
   });
 
   // A defect reaches oRPC's own bodyless 500, so the line naming it is the only
   // thing that tells whoever has to find the bug where it was.
   it("logs a defect once and still rejects", async () => {
-    const runtime = createStubRuntime();
-    try {
-      const handler = rpcEffectHandler(() =>
-        Effect.die(new Error("a bug inside a service"))
-      );
+    await using runtime = createStubRuntime();
+    const handler = rpcEffectHandler(() =>
+      Effect.die(new Error("a bug inside a service"))
+    );
 
-      const rejection = await handler(createContext(runtime)).then(
-        () => undefined,
-        (error: unknown) => error
-      );
+    const rejection = await handler(createContext(runtime)).then(
+      () => undefined,
+      (error: unknown) => error
+    );
 
-      assert.isDefined(rejection);
-      assert.deepStrictEqual(
-        logLines.filter((line) => line.includes("RPC handler died")),
-        ["[wfgraph.rpc] RPC handler died: a bug inside a service"]
-      );
-    } finally {
-      await runtime.dispose();
-    }
+    assert.isDefined(rejection);
+    assert.deepStrictEqual(
+      logLines.filter((line) => line.includes("RPC handler died")),
+      ["[wfgraph.rpc] RPC handler died: a bug inside a service"]
+    );
   });
 
   /**
@@ -167,47 +159,43 @@ describe("rpcEffectHandler", () => {
    * stop.
    */
   it("puts a failure on the request event instead of logging its own line", async () => {
-    const runtime = createStubRuntime();
-    try {
-      const requestEvent = createRequestEvent();
-      const handler = rpcEffectHandler(() =>
-        Effect.fail(new NotFound({ error: "Workflow not found" }))
-      );
+    await using runtime = createStubRuntime();
+    const requestEvent = createRequestEvent();
+    const handler = rpcEffectHandler(() =>
+      Effect.fail(new NotFound({ error: "Workflow not found" }))
+    );
 
-      // oRPC hands the handler its input beside the context, and the failure
-      // summary reads it off there. Declared rather than written inline,
-      // because `rpcEffectHandler` types only the context member.
-      const handlerArgs = {
-        context: {
-          auth: {
-            allows: () => Promise.resolve(true),
-          },
-          headers: new Headers(),
-          runtime,
-          requestEvent,
+    // oRPC hands the handler its input beside the context, and the failure
+    // summary reads it off there. Declared rather than written inline,
+    // because `rpcEffectHandler` types only the context member.
+    const handlerArgs = {
+      context: {
+        auth: {
+          allows: () => Promise.resolve(true),
         },
+        headers: new Headers(),
+        runtime,
+        requestEvent,
+      },
+      input: { workflowId: "workflow_1" },
+    };
+
+    await handler(handlerArgs).catch(() => undefined);
+
+    assert.deepStrictEqual(requestEvent.fields(), {
+      error: {
+        kind: "not_found",
+        message: "Workflow not found",
         input: { workflowId: "workflow_1" },
-      };
-
-      await handler(handlerArgs).catch(() => undefined);
-
-      assert.deepStrictEqual(requestEvent.fields(), {
-        error: {
-          kind: "not_found",
-          message: "Workflow not found",
-          input: { workflowId: "workflow_1" },
-        },
-      });
-      assert.deepStrictEqual(logLines, []);
-    } finally {
-      await runtime.dispose();
-    }
+      },
+    });
+    assert.deepStrictEqual(logLines, []);
   });
 });
 
 describe("integration OAuth RPC", () => {
   it("routes disconnectOAuth through the integration service", async () => {
-    const runtime = createStubRuntime({
+    await using runtime = createStubRuntime({
       appContext: {
         apiBasePath: "/api",
         publicUrl: "https://workflows.example.com",
@@ -220,19 +208,15 @@ describe("integration OAuth RPC", () => {
       runtime,
     });
 
-    try {
-      const response = await app.fetch(
-        new Request("http://localhost/api/rpc/integration/disconnectOAuth", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ json: { integrationId: "int_1" } }),
-        })
-      );
+    const response = await app.fetch(
+      new Request("http://localhost/api/rpc/integration/disconnectOAuth", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ json: { integrationId: "int_1" } }),
+      })
+    );
 
-      assert.strictEqual(response.status, 404);
-    } finally {
-      await runtime.dispose();
-    }
+    assert.strictEqual(response.status, 404);
   });
 });
 
@@ -277,7 +261,7 @@ describe("operation authorization", () => {
   });
 
   it("refuses protected RPC and REST operations after authentication", async () => {
-    const runtime = createStubRuntime();
+    await using runtime = createStubRuntime();
     let authentications = 0;
     const app = createApiApp({
       basePath: "/api",
@@ -290,24 +274,20 @@ describe("operation authorization", () => {
       runtime,
     });
 
-    try {
-      const rpcResponse = await app.fetch(
-        new Request("http://localhost/api/rpc/workflow/getAll", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ json: {} }),
-        })
-      );
-      const restResponse = await app.fetch(
-        new Request("http://localhost/api/rest/workflows")
-      );
+    const rpcResponse = await app.fetch(
+      new Request("http://localhost/api/rpc/workflow/getAll", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ json: {} }),
+      })
+    );
+    const restResponse = await app.fetch(
+      new Request("http://localhost/api/rest/workflows")
+    );
 
-      expect(rpcResponse.status).toBe(403);
-      expect(restResponse.status).toBe(403);
-      expect(authentications).toBe(2);
-    } finally {
-      await runtime.dispose();
-    }
+    expect(rpcResponse.status).toBe(403);
+    expect(restResponse.status).toBe(403);
+    expect(authentications).toBe(2);
   });
 
   it.each([
@@ -326,29 +306,25 @@ describe("operation authorization", () => {
       })),
     },
   ])("returns a sanitized 500 when the $name fails", async ({ auth }) => {
-    const runtime = createStubRuntime();
+    await using runtime = createStubRuntime();
     const app = createApiApp({
       basePath: "/api",
       auth: resolveAuth(auth),
       runtime,
     });
 
-    try {
-      const response = await app.fetch(
-        new Request("http://localhost/api/rpc/workflow/getAll", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ json: {} }),
-        })
-      );
-      const body = await response.text();
+    const response = await app.fetch(
+      new Request("http://localhost/api/rpc/workflow/getAll", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ json: {} }),
+      })
+    );
+    const body = await response.text();
 
-      expect(response.status).toBe(500);
-      expect(body).not.toContain("private");
-      expect(body).not.toContain("session-store");
-      expect(body).not.toContain("policy-store");
-    } finally {
-      await runtime.dispose();
-    }
+    expect(response.status).toBe(500);
+    expect(body).not.toContain("private");
+    expect(body).not.toContain("session-store");
+    expect(body).not.toContain("policy-store");
   });
 });

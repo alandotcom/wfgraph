@@ -152,6 +152,8 @@ export type WfGraphApp = {
    * Connect worker is drained first.
    */
   dispose: () => Promise<void>;
+  /** Dispose the app automatically when an `await using` scope exits. */
+  [Symbol.asyncDispose]: () => Promise<void>;
 };
 
 /**
@@ -344,7 +346,7 @@ async function assembleWfGraphApp(
     );
   }
 
-  const dispose = async (): Promise<void> => {
+  const disposeOnce = async (): Promise<void> => {
     // Drain Connect before the runtime goes away: in-flight steps still need
     // the Layer graph, and a closed WebSocket is what stops Inngest from
     // dispatching more work to this process.
@@ -365,10 +367,13 @@ async function assembleWfGraphApp(
       persistence.close,
     ]);
   };
+  let disposal: Promise<void> | undefined;
+  const dispose = (): Promise<void> => (disposal ??= disposeOnce());
 
   return {
     fetch: async (request) => await fullApp.fetch(request),
     basePath,
     dispose,
+    [Symbol.asyncDispose]: dispose,
   };
 }

@@ -43,8 +43,9 @@ the editor.
 
 ## Embedding pitfalls
 
-- `createWfGraphApp` returns `{ fetch, basePath, dispose }`. `fetch` is
-  `(request: Request) => Promise<Response>`.
+- `createWfGraphApp` returns `{ fetch, basePath, dispose, [Symbol.asyncDispose] }`. `fetch`
+  is `(request: Request) => Promise<Response>`. Use `await using` for a lexical lifetime;
+  call `dispose()` from a long-running host's shutdown handler.
 - `auth` is required and returns an access policy or `null`. Use
   `WfGraphRoles`, `WfGraphAccess`, and `defineWfGraphAuth`; use
   `trustWfGraphUpstream()` only behind a trusted upstream boundary. The full

@@ -300,7 +300,7 @@ describe("webhook HTTP route", () => {
     const sendCatalogEvent = vi.fn<
       InngestClient["Service"]["sendCatalogEvent"]
     >(() => Effect.void);
-    const runtime = stubWfGraphRuntime({
+    await using runtime = stubWfGraphRuntime({
       extensions: {
         catalog: { ...emptyExtensionCatalog, integrations: [resendMeta] },
         webhookFor: (type) => (type === "resend" ? webhook() : undefined),
@@ -320,22 +320,18 @@ describe("webhook HTTP route", () => {
       runtime,
     });
 
-    try {
-      const response = await app.fetch(
-        new Request("http://localhost/api/webhooks/resend/conn_1", {
-          method: "POST",
-          body: "x".repeat(MAX_REQUEST_BODY_BYTES + 1),
-        })
-      );
-      expect(response.status).toBe(413);
-      expect(await response.json()).toEqual({
-        error: "Request body is too large",
-      });
-      expect(lookups).toBe(0);
-      expect(sendCatalogEvent).not.toHaveBeenCalled();
-    } finally {
-      await runtime.dispose();
-    }
+    const response = await app.fetch(
+      new Request("http://localhost/api/webhooks/resend/conn_1", {
+        method: "POST",
+        body: "x".repeat(MAX_REQUEST_BODY_BYTES + 1),
+      })
+    );
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({
+      error: "Request body is too large",
+    });
+    expect(lookups).toBe(0);
+    expect(sendCatalogEvent).not.toHaveBeenCalled();
   });
 
   it("answers 404 for an unknown Connection", async () => {

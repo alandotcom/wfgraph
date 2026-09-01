@@ -588,8 +588,8 @@ Read these once:
   durable-execution runtime in the process, even when the application drives Inngest
   functions of its own. Workflow Graph still builds its own Inngest client out of the
   `inngest` option below, and still builds its own Hono app inside; `createWfGraphApp`
-  answers with `fetch`, `basePath` and `dispose` alone, so neither library appears in what
-  it hands back.
+  answers with `fetch`, `basePath`, `dispose`, and `[Symbol.asyncDispose]` alone, so neither
+  library appears in what it hands back.
 - **Running Inngest is the job of the consumer**, self-hosted or cloud. `pnpm run dev` here
   starts it as a separate process. Long-running hosts set `inngest.connect: true` so
   executions arrive over a Connect WebSocket and `/api/inngest` is not mounted.
@@ -603,9 +603,11 @@ Read these once:
   back, so an unreachable gateway would otherwise hang boot with nothing
   logged. Workflow Graph races it against `inngest.connectTimeoutMs` (default 30
   seconds) and fails boot with an error naming the gateway once that elapses.
-- `createWfGraphApp` answers `{ fetch, basePath, dispose }`. `await dispose()` drains an
-  open Connect worker, then returns when the layers of the Effect runtime finalize. One
-  Workflow Graph per process remains the supported arrangement; each app owns its
+- `createWfGraphApp` answers `{ fetch, basePath, dispose, [Symbol.asyncDispose] }`. For a
+  lexical lifetime, declare the app with `await using`. For a long-running host, call
+  `await dispose()` from its shutdown handler. Both forms run the same idempotent shutdown:
+  they drain an open Connect worker, finalize the Effect runtime, and close persistence.
+  One Workflow Graph per process remains the supported arrangement; each app owns its
   persistence instance, Inngest client, encryption key, and assembled surface.
 
 ## Logging
