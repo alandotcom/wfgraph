@@ -15,7 +15,7 @@ import {
   type JsonValue,
 } from "@wfgraph/shared/types/json";
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 /** Safe SQL literals from the closed execution-status vocabulary in shared. */
 export const SQLITE_IN_FLIGHT_EXECUTION_STATUSES =
@@ -298,6 +298,12 @@ const MIGRATION_6 = `
   ALTER TABLE workflow_event_subscriptions ADD COLUMN connection_id TEXT;
 `;
 
+const MIGRATION_7 = `
+  CREATE INDEX executions_workflow_in_flight_version_started_idx
+    ON workflow_executions(workflow_id, workflow_version_id, started_at)
+    WHERE status IN ('pending', 'running', 'waiting');
+`;
+
 export type SqliteDatabase = {
   readonly read: <A>(
     run: (database: DatabaseSync) => A
@@ -372,6 +378,12 @@ function migrate(database: DatabaseSync): void {
     inImmediateTransaction(database, () => {
       database.exec(MIGRATION_6);
       database.exec("PRAGMA user_version = 6");
+    });
+  }
+  if (version <= 6) {
+    inImmediateTransaction(database, () => {
+      database.exec(MIGRATION_7);
+      database.exec("PRAGMA user_version = 7");
     });
   }
 }

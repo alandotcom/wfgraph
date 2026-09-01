@@ -103,15 +103,18 @@ describe("native SQLite persistence", () => {
       CREATE TABLE workflow_executions (
         id TEXT PRIMARY KEY,
         workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
-        workflow_version_id TEXT NOT NULL REFERENCES workflow_versions(id) ON DELETE CASCADE
+        workflow_version_id TEXT NOT NULL REFERENCES workflow_versions(id) ON DELETE CASCADE,
+        status TEXT NOT NULL,
+        started_at INTEGER NOT NULL
       ) STRICT;
       INSERT INTO workflows (id, name, graph, created_at, updated_at)
       VALUES ('wf_1', 'Appointments', '{}', 0, 0);
       INSERT INTO workflow_versions
         (id, workflow_id, version, graph, catalog_fingerprint, graph_digest, published_at)
       VALUES ('ver_1', 'wf_1', 1, '{}', 'catalog', 'digest', 0);
-      INSERT INTO workflow_executions (id, workflow_id, workflow_version_id)
-      VALUES ('exec_1', 'wf_1', 'ver_1');
+      INSERT INTO workflow_executions
+        (id, workflow_id, workflow_version_id, status, started_at)
+      VALUES ('exec_1', 'wf_1', 'ver_1', 'completed', 0);
       UPDATE workflows SET published_version_id = 'ver_1' WHERE id = 'wf_1';
       PRAGMA user_version = 4;
     `);
@@ -149,7 +152,7 @@ describe("native SQLite persistence", () => {
           .all()
       ).toEqual([{ id: "wf_1", published_version_id: "ver_1" }]);
       expect(inspection.prepare("PRAGMA user_version").get()).toEqual({
-        user_version: 6,
+        user_version: 7,
       });
     } finally {
       inspection.close();
