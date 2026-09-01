@@ -10,7 +10,9 @@ import {
   reserveOAuthPopup,
   startOAuthConnection,
 } from "#src/lib/oauth-connection";
+import { can } from "#src/lib/authorization";
 import { refreshIntegrations } from "#src/lib/rpc-query";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 type ActiveAttempt = {
   controller: AbortController;
@@ -30,6 +32,7 @@ export function useOAuthConnection({
   onConnected,
 }: OAuthConnectionControllerOptions): {
   pending: boolean;
+  canStart: boolean;
   startCreated: (input: NewOAuthConnectionInput) => Promise<void>;
   startExisting: (integrationId: string) => Promise<void>;
 } {
@@ -55,6 +58,13 @@ export function useOAuthConnection({
   useUnmountCleanup(() => cancel(false));
 
   const run = async (input: OAuthStartInput) => {
+    if (
+      !can(WfGraphOperations.oauthStart.id) ||
+      !can(WfGraphOperations.oauthStatus.id) ||
+      !can(WfGraphOperations.oauthCallback.id)
+    ) {
+      return;
+    }
     cancel(false);
     const popup = reserveOAuthPopup();
     if (!popup) {
@@ -137,6 +147,10 @@ export function useOAuthConnection({
 
   return {
     pending,
+    canStart:
+      can(WfGraphOperations.oauthStart.id) &&
+      can(WfGraphOperations.oauthStatus.id) &&
+      can(WfGraphOperations.oauthCallback.id),
     startCreated: (input) => run({ mode: "create", ...input }),
     startExisting: (integrationId) => run({ mode: "reconnect", integrationId }),
   };

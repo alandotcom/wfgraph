@@ -10,13 +10,11 @@ import { act, fireEvent, waitFor } from "@testing-library/react";
 import { useSetAtom } from "jotai";
 import { useState } from "react";
 import { toast } from "sonner";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import type { RunRequest } from "#src/components/overlays/run-overlay";
-import {
-  useWorkflowActions,
-  type WorkflowToolbarState,
-} from "#src/components/workflow/workflow-toolbar-handlers";
+import { useWorkflowActions } from "#src/components/workflow/workflow-toolbar-handlers";
+import type { WorkflowToolbarState } from "#src/components/workflow/workflow-toolbar-state";
 import {
   deferred,
   expectedSnapshot,
@@ -44,6 +42,15 @@ import {
   toWorkflowGraphData,
 } from "@wfgraph/shared/graph/graph";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import {
+  installAuthorizationGrantsForTests,
+  resetAuthorizationGrantsForTests,
+} from "#src/lib/authorization-test-support";
+import { WfGraphOperationIds } from "@wfgraph/shared/authorization/operations";
+
+beforeEach(() => {
+  installAuthorizationGrantsForTests(WfGraphOperationIds);
+});
 
 const providerCatalog: ExtensionCatalog = {
   actions: [
@@ -187,6 +194,7 @@ function UnmountPublishProbe() {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  resetAuthorizationGrantsForTests();
 });
 
 /**
@@ -557,7 +565,7 @@ describe("useWorkflowActions Run graph selection", () => {
   it("ignores Cmd+Enter for a viewer who does not own the workflow", async () => {
     const requests = serveRunRequests({});
 
-    const viewer = { ...state(), isOwner: false };
+    const viewer = { ...state(), canUpdate: false };
     const view = renderProbe({
       probe: <RunGraphProbe workflowState={viewer} />,
     });

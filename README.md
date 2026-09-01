@@ -39,7 +39,8 @@ pnpm run dev
 ```
 
 Open the editor at [http://localhost:5173](http://localhost:5173). The example host app lives
-in `examples/app.ts`.
+in `examples/app.ts`. Sign in at `/login` as `admin`, `editor`, or `readonly`. Each local
+demo account uses the password `password`.
 
 It stores its data in SQLite, at `examples/wfgraph.sqlite`, which is gitignored and created
 on first boot. There is no migration step and no separate service. Point `SQLITE_PATH`
@@ -82,6 +83,10 @@ import {
   createWfGraphApp,
   defineAction,
   defineEvent,
+  type WfGraphAuth,
+  type WfGraphPermission,
+  type WfGraphPrincipal,
+  WfGraphRolePresets,
 } from "@wfgraph/core";
 import { wfPostgres } from "@wfgraph/core/postgres";
 import { builtInIntegrations } from "@wfgraph/plugins";
@@ -115,6 +120,23 @@ const cancelAppointment = defineAction({
   },
 });
 
+type Principal = WfGraphPrincipal & { role: "admin" | "editor" };
+const rolePermissions: Record<
+  Principal["role"],
+  ReadonlySet<WfGraphPermission>
+> = {
+  admin: new Set(WfGraphRolePresets.admin),
+  editor: new Set(WfGraphRolePresets.readWrite),
+};
+const auth = {
+  authenticate: async (request) => {
+    const session = await readSession(request);
+    return session ? { id: session.userId, role: session.role } : null;
+  },
+  authorize: (principal, operation) =>
+    rolePermissions[principal.role].has(operation.permission),
+} satisfies WfGraphAuth<Principal>;
+
 const wfgraph = await createWfGraphApp({
   persistence: wfPostgres({
     url: process.env.DATABASE_URL!,
@@ -122,7 +144,7 @@ const wfgraph = await createWfGraphApp({
   }),
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
   agent: { apiKey: process.env.OPENAI_API_KEY },
-  auth: (request) => hasValidSession(request),
+  auth,
   client: clientBundle,
   inngest: { id: "my-wfgraph-app", connect: true },
   extensions: {

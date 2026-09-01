@@ -10,11 +10,13 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ConfigOptionsAnswer } from "#src/lib/rpc-client";
 import { configOptionsQueryOptions } from "#src/lib/rpc-query";
+import { can } from "#src/lib/authorization";
 import {
   readProviderParameters,
   settledProviderParameter,
 } from "#src/lib/provider-parameters";
 import type { FieldOptionsSource } from "@wfgraph/shared/plugins/action-fields";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 export type ConfigOptionsState =
   /** Nothing to ask yet: no connection, or a parameter still to fill in. */
@@ -46,7 +48,10 @@ export function useConfigOptions(input: {
   const { parameters, missing } = readProviderParameters(source, config);
 
   const enabled =
-    source !== undefined && integrationId !== undefined && missing.length === 0;
+    source !== undefined &&
+    integrationId !== undefined &&
+    missing.length === 0 &&
+    can(WfGraphOperations.integrationConfigOptions.id);
 
   const query = useQuery({
     ...configOptionsQueryOptions({

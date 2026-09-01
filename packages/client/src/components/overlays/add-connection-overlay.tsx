@@ -13,10 +13,12 @@ import {
 } from "#src/lib/connection-credentials";
 import { orpcQuery, refreshIntegrations } from "#src/lib/rpc-query";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
+import { can } from "#src/lib/authorization";
 import {
   findIntegration,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
@@ -188,6 +190,11 @@ export function ConfigureConnectionOverlay({
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [config, setConfig] = useState<Record<string, string>>({});
+  const canCreate = can(WfGraphOperations.integrationCreate.id);
+  const canReadIntegrations = can(WfGraphOperations.integrationGetAll.id);
+  const canTestCredentials = can(
+    WfGraphOperations.integrationTestCredentials.id
+  );
 
   const updateConfig = (key: string, value: string) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
@@ -229,6 +236,9 @@ export function ConfigureConnectionOverlay({
   const saving = create.isPending || testForSave.isPending || oauthPending;
 
   const saveConnection = async () => {
+    if (!canCreate) {
+      return;
+    }
     try {
       const newIntegration = await create.mutateAsync({
         name: name.trim(),
@@ -238,7 +248,9 @@ export function ConfigureConnectionOverlay({
       toast.success("Connection created");
       // Before the caller hears about it: every consumer of the new id reads the
       // connection list to resolve it.
-      await refreshIntegrations(queryClient, newIntegration.id);
+      if (canReadIntegrations) {
+        await refreshIntegrations(queryClient, newIntegration.id);
+      }
       onSuccess?.(newIntegration.id);
       closeAll();
     } catch {
@@ -272,7 +284,7 @@ export function ConfigureConnectionOverlay({
       return;
     }
 
-    if (!hasTest) {
+    if (!(hasTest && canTestCredentials)) {
       await saveConnection();
       return;
     }
@@ -296,6 +308,9 @@ export function ConfigureConnectionOverlay({
   };
 
   const handleTest = () => {
+    if (!canTestCredentials) {
+      return;
+    }
     const hasConfig = hasProvidedConfigValues(config);
     if (!hasConfig) {
       toast.error("Please enter credentials first");
@@ -360,7 +375,7 @@ export function ConfigureConnectionOverlay({
   return (
     <Overlay
       actions={[
-        ...(hasTest
+        ...(hasTest && canTestCredentials
           ? [
               {
                 label: "Test",
@@ -373,21 +388,31 @@ export function ConfigureConnectionOverlay({
           : []),
         ...(catalogEntry?.oauth
           ? [
-              {
-                label: "Create manually",
-                variant: "outline" as const,
-                onClick: handleSave,
-                loading: create.isPending && !oauthPending,
-                disabled: saving,
-              },
-              {
-                label: `Connect with ${catalogEntry.oauth.label}`,
-                onClick: handleOAuthCreate,
-                loading: oauthPending,
-                disabled: saving && !oauthPending,
-              },
+              ...(canCreate
+                ? [
+                    {
+                      label: "Create manually",
+                      variant: "outline" as const,
+                      onClick: handleSave,
+                      loading: create.isPending && !oauthPending,
+                      disabled: saving,
+                    },
+                  ]
+                : []),
+              ...(oauthConnection.canStart
+                ? [
+                    {
+                      label: `Connect with ${catalogEntry.oauth.label}`,
+                      onClick: handleOAuthCreate,
+                      loading: oauthPending,
+                      disabled: saving && !oauthPending,
+                    },
+                  ]
+                : []),
             ]
-          : [{ label: "Create", onClick: handleSave, loading: saving }]),
+          : canCreate
+            ? [{ label: "Create", onClick: handleSave, loading: saving }]
+            : []),
       ]}
       overlayId={overlayId}
       title={`Add ${getLabel(catalog, type)}`}

@@ -13,12 +13,13 @@
  */
 
 import { useAtomValue } from "jotai";
+import { can } from "#src/lib/authorization";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { Loader2 } from "lucide-react";
 import { useDomEvent } from "#src/hooks/effects";
 import {
   hasUnsavedChangesAtom,
   isSavingAtom,
-  isWorkflowOwnerAtom,
   lastSaveErrorAtom,
   lastSavedAtAtom,
 } from "#src/lib/workflow-save-store";
@@ -102,7 +103,7 @@ const TONES: Record<SaveState, string> = {
 export function WorkflowUnloadGuard() {
   const isSaving = useAtomValue(isSavingAtom);
   const hasUnsavedChanges = useAtomValue(hasUnsavedChangesAtom);
-  const isOwner = useAtomValue(isWorkflowOwnerAtom);
+  const canUpdate = can(WfGraphOperations.workflowUpdate.id);
 
   useDomEvent(
     window,
@@ -110,7 +111,7 @@ export function WorkflowUnloadGuard() {
     (event) => {
       event.preventDefault();
     },
-    { enabled: isOwner && (hasUnsavedChanges || isSaving) }
+    { enabled: canUpdate && (hasUnsavedChanges || isSaving) }
   );
 
   return null;
@@ -121,11 +122,11 @@ export function WorkflowSaveStatus() {
   const hasUnsavedChanges = useAtomValue(hasUnsavedChangesAtom);
   const lastSaveError = useAtomValue(lastSaveErrorAtom);
   const lastSavedAt = useAtomValue(lastSavedAtAtom);
-  const isOwner = useAtomValue(isWorkflowOwnerAtom);
+  const canUpdate = can(WfGraphOperations.workflowUpdate.id);
 
   const state = readSaveState({ isSaving, hasUnsavedChanges, lastSaveError });
 
-  if (!isOwner) {
+  if (!canUpdate) {
     return null;
   }
 

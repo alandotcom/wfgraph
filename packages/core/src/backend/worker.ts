@@ -10,8 +10,9 @@ import {
   type EncryptionRuntimeConfig,
 } from "#src/backend/services/integrations/cipher";
 import {
-  resolveAuthorize,
+  resolveAuth,
   type WfGraphAuth,
+  type WfGraphPrincipal,
 } from "#src/backend/lib/http/authorize";
 import { normalizeBasePath } from "#src/backend/lib/http/mount-path";
 import {
@@ -34,8 +35,10 @@ import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 import { runWithClose } from "#src/backend/lib/close-in-order";
 import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
 
-export type WfGraphWorkerRequestConfig = {
-  auth: WfGraphAuth;
+export type WfGraphWorkerRequestConfig<
+  P extends WfGraphPrincipal = WfGraphPrincipal,
+> = {
+  auth: WfGraphAuth<P>;
   persistence: WfGraphPersistence;
   encryption: EncryptionRuntimeConfig;
   inngest: WfGraphInngestConfig;
@@ -47,14 +50,17 @@ export type WfGraphWorkerRequestConfig = {
   agent?: WfGraphAgentConfig;
 };
 
-export type WfGraphWorkerOptions<Env> = {
+export type WfGraphWorkerOptions<
+  Env,
+  P extends WfGraphPrincipal = WfGraphPrincipal,
+> = {
   basePath?: string;
   /** Public origin used in provider callback URLs and client metadata. */
   publicUrl?: string;
   logger?: WfGraphLogger;
   extensions?: WfGraphExtensions | ((env: Env) => WfGraphExtensions);
   /** Resolve bindings and secrets for this request's Worker environment. */
-  request: (env: Env) => WfGraphWorkerRequestConfig;
+  request: (env: Env) => WfGraphWorkerRequestConfig<P>;
 };
 
 export type WfGraphWorker<Env> = {
@@ -71,8 +77,8 @@ const refuseConnect: InngestSurfaceDeps["connect"] = () => {
  * This entry serves Workflow Graph's API and Inngest callback. Static assets stay
  * with the Worker's Assets binding or the host's own router.
  */
-export function wfWorker<Env>(
-  options: WfGraphWorkerOptions<Env>
+export function wfWorker<Env, P extends WfGraphPrincipal = WfGraphPrincipal>(
+  options: WfGraphWorkerOptions<Env, P>
 ): WfGraphWorker<Env> {
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const publicUrl = resolvePublicUrl(options.publicUrl);
@@ -101,7 +107,7 @@ export function wfWorker<Env>(
       const extensions =
         staticExtensions ?? assembleExtensions(extensionResolver?.(env) ?? {});
 
-      const authorize = resolveAuthorize(config.auth);
+      const auth = resolveAuth(config.auth);
       const cipher = createIntegrationCipher(config.encryption);
       const persistence = await config.persistence.open(cipher);
       let runtime: ReturnType<typeof createWfGraphRuntime> | undefined;
@@ -126,7 +132,7 @@ export function wfWorker<Env>(
           "/",
           createApiApp({
             basePath: `${basePath}/api`,
-            authorize,
+            auth,
             runtime,
             inngestHandler: inngest.serve(functions),
           })

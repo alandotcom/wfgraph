@@ -18,6 +18,8 @@ import { AgentThread } from "#src/components/agent/agent-thread";
 import { useAgentRuntime } from "#src/components/agent/use-agent-runtime";
 import { Button } from "#src/components/ui/button";
 import { useIsMobile } from "#src/hooks/use-mobile";
+import { can } from "#src/lib/authorization";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import {
   type AgentPanelSize,
   agentPanelSizeAtom,
@@ -196,5 +198,13 @@ function WorkflowAgentPanel({ workflowId }: { workflowId: string }) {
 }
 
 export function AgentPanel({ workflowId }: { workflowId: string }) {
+  const canUseAgent =
+    can(WfGraphOperations.agentChat.id) &&
+    can(WfGraphOperations.workflowUpdate.id);
+
+  if (!canUseAgent) {
+    return null;
+  }
+
   return <WorkflowAgentPanel key={workflowId} workflowId={workflowId} />;
 }

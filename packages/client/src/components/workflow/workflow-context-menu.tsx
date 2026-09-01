@@ -73,11 +73,13 @@ export type ContextMenuState = {
 } | null;
 
 type WorkflowContextMenuProps = {
+  canEdit: boolean;
   menuState: ContextMenuState;
   onClose: () => void;
 };
 
 export function WorkflowContextMenu({
+  canEdit,
   menuState,
   onClose,
 }: WorkflowContextMenuProps) {
@@ -116,7 +118,7 @@ export function WorkflowContextMenu({
   );
 
   const handleDeleteNode = useCallback(() => {
-    if (menuState?.nodeId) {
+    if (canEdit && menuState?.nodeId) {
       const nodeId = menuState.nodeId;
       onClose();
       openOverlay(ConfirmOverlay, {
@@ -126,11 +128,13 @@ export function WorkflowContextMenu({
         confirmLabel: "Delete",
         confirmVariant: "destructive" as const,
         onConfirm: () => {
-          deleteNode(nodeId);
+          if (canEdit) {
+            deleteNode(nodeId);
+          }
         },
       });
     }
-  }, [menuState, deleteNode, onClose, openOverlay]);
+  }, [canEdit, menuState, deleteNode, onClose, openOverlay]);
 
   const handleEditNode = useCallback(() => {
     if (menuState?.nodeId) {
@@ -146,7 +150,7 @@ export function WorkflowContextMenu({
   }, [menuState, onClose, setSelectedNode, isMobile, openSheet]);
 
   const handleToggleEnabled = useCallback(() => {
-    if (!clicked) {
+    if (!(canEdit && clicked)) {
       return;
     }
     if (isGroupNode(clicked)) {
@@ -155,10 +159,10 @@ export function WorkflowContextMenu({
       updateNodeData({ id: clicked.id, data: { enabled: isDisabled } });
     }
     onClose();
-  }, [clicked, isDisabled, onClose, setGroupEnabled, updateNodeData]);
+  }, [canEdit, clicked, isDisabled, onClose, setGroupEnabled, updateNodeData]);
 
   const handleDeleteEdge = useCallback(() => {
-    if (menuState?.edgeId) {
+    if (canEdit && menuState?.edgeId) {
       const edgeId = menuState.edgeId;
       onClose();
       openOverlay(ConfirmOverlay, {
@@ -168,17 +172,19 @@ export function WorkflowContextMenu({
         confirmLabel: "Delete",
         confirmVariant: "destructive" as const,
         onConfirm: () => {
-          deleteEdge(edgeId);
+          if (canEdit) {
+            deleteEdge(edgeId);
+          }
         },
       });
     }
-  }, [menuState, deleteEdge, onClose, openOverlay]);
+  }, [canEdit, menuState, deleteEdge, onClose, openOverlay]);
 
   // Straight to the node types, carrying the spot the user right-clicked:
   // someone who opened this menu on the graph has already said where the step
   // goes, so the palette's root page has nothing left to ask.
   const handleAddStep = useCallback(() => {
-    if (menuState?.flowPosition) {
+    if (canEdit && menuState?.flowPosition) {
       openPalette({
         id: "add-step",
         at: {
@@ -188,7 +194,7 @@ export function WorkflowContextMenu({
       });
     }
     onClose();
-  }, [menuState, openPalette, onClose]);
+  }, [canEdit, menuState, openPalette, onClose]);
 
   const handleCopyNode = useCallback(() => {
     if (menuState?.nodeId) {
@@ -198,32 +204,34 @@ export function WorkflowContextMenu({
   }, [menuState, copySelection, onClose]);
 
   const handleDuplicateNode = useCallback(() => {
-    if (menuState?.nodeId) {
+    if (canEdit && menuState?.nodeId) {
       duplicateSelection(menuState.nodeId);
     }
     onClose();
-  }, [menuState, duplicateSelection, onClose]);
+  }, [canEdit, menuState, duplicateSelection, onClose]);
 
   const handleGroup = useCallback(() => {
-    if (menuState?.type !== "node") {
+    if (!canEdit || menuState?.type !== "node") {
       onClose();
       return;
     }
     groupSelected({ catalog, selectedIds: menuState.selectedIds ?? new Set() });
     onClose();
-  }, [menuState, groupSelected, catalog, onClose]);
+  }, [canEdit, menuState, groupSelected, catalog, onClose]);
 
   const handleUngroup = useCallback(() => {
-    if (menuState?.nodeId) {
+    if (canEdit && menuState?.nodeId) {
       ungroupSelected(menuState.nodeId);
     }
     onClose();
-  }, [menuState, ungroupSelected, onClose]);
+  }, [canEdit, menuState, ungroupSelected, onClose]);
 
   const handlePaste = useCallback(() => {
-    pasteSelection(menuState?.flowPosition);
+    if (canEdit) {
+      pasteSelection(menuState?.flowPosition);
+    }
     onClose();
-  }, [menuState, pasteSelection, onClose]);
+  }, [canEdit, menuState, pasteSelection, onClose]);
 
   const handleClickOutside = useCallback(
     (event: MouseEvent) => {
@@ -261,7 +269,7 @@ export function WorkflowContextMenu({
   // breakpoint change that swaps the canvas layout.
   useDomEvent(window, "resize", onClose, { enabled: isMenuOpen });
 
-  if (!menuState) {
+  if (!(canEdit && menuState)) {
     return null;
   }
 

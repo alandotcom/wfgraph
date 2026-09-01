@@ -8,6 +8,8 @@ import {
   getWebhookIntake,
   hydrateExtensionsFromApi,
 } from "#src/lib/extensions";
+import { can } from "#src/lib/authorization";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 const served: ExtensionCatalog = {
   events: [
@@ -74,10 +76,16 @@ beforeEach(async () => {
     "fetch",
     vi.fn(() =>
       Promise.resolve(
-        new Response(JSON.stringify({ catalog: emptyExtensionCatalog }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
+        new Response(
+          JSON.stringify({
+            catalog: emptyExtensionCatalog,
+            authorization: { operationIds: [] },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }
+        )
       )
     )
   );
@@ -94,7 +102,7 @@ describe("hydrateExtensionsFromApi", () => {
   });
 
   it("decodes the catalog the server assembled", async () => {
-    respondWith({ catalog: served });
+    respondWith({ catalog: served, authorization: { operationIds: [] } });
 
     await expect(hydrateExtensionsFromApi()).resolves.toEqual({ ok: true });
 
@@ -102,7 +110,7 @@ describe("hydrateExtensionsFromApi", () => {
   });
 
   it("asks the API path under the mount prefix", async () => {
-    respondWith({ catalog: served });
+    respondWith({ catalog: served, authorization: { operationIds: [] } });
 
     await hydrateExtensionsFromApi();
 
@@ -113,7 +121,7 @@ describe("hydrateExtensionsFromApi", () => {
   });
 
   it("reads the surface in one request", async () => {
-    respondWith({ catalog: served });
+    respondWith({ catalog: served, authorization: { operationIds: [] } });
 
     await hydrateExtensionsFromApi();
 
@@ -125,6 +133,7 @@ describe("hydrateExtensionsFromApi", () => {
     respondWith({
       catalog: served,
       agent: { enabled: false },
+      authorization: { operationIds: [] },
       webhookIntake: {
         publicUrl: "https://workflows.example.com",
         apiBasePath: "/api",
@@ -136,6 +145,29 @@ describe("hydrateExtensionsFromApi", () => {
     expect(getWebhookIntake()).toEqual({
       publicUrl: "https://workflows.example.com",
       apiBasePath: "/api",
+    });
+  });
+
+  it("installs authorization grants before returning", async () => {
+    respondWith({
+      catalog: served,
+      authorization: {
+        operationIds: [WfGraphOperations.workflowUpdate.id],
+      },
+    });
+
+    await expect(hydrateExtensionsFromApi()).resolves.toEqual({ ok: true });
+
+    expect(can(WfGraphOperations.workflowUpdate.id)).toBe(true);
+    expect(can(WfGraphOperations.workflowDelete.id)).toBe(false);
+  });
+
+  it("rejects a response that omits the authorization snapshot", async () => {
+    respondWith({ catalog: served });
+
+    await expect(hydrateExtensionsFromApi()).resolves.toEqual({
+      ok: false,
+      reason: "mismatch",
     });
   });
 
@@ -168,7 +200,7 @@ describe("hydrateExtensionsFromApi", () => {
   // Each failure below leaves whatever was decoded last in place, which for a
   // single hydration before render means the editor draws with the surface it has.
   it("keeps the last good catalog when the endpoint refuses", async () => {
-    respondWith({ catalog: served });
+    respondWith({ catalog: served, authorization: { operationIds: [] } });
     await hydrateExtensionsFromApi();
 
     respondWith({ error: "Not found" }, 404);
@@ -178,7 +210,7 @@ describe("hydrateExtensionsFromApi", () => {
   });
 
   it("keeps the last good catalog when the document does not fit", async () => {
-    respondWith({ catalog: served });
+    respondWith({ catalog: served, authorization: { operationIds: [] } });
     await hydrateExtensionsFromApi();
 
     respondWith({ catalog: { events: [], actions: [] } });
@@ -188,7 +220,7 @@ describe("hydrateExtensionsFromApi", () => {
   });
 
   it("keeps the last good catalog when the answer carries no catalog", async () => {
-    respondWith({ catalog: served });
+    respondWith({ catalog: served, authorization: { operationIds: [] } });
     await hydrateExtensionsFromApi();
 
     respondWith({ nothing: true });

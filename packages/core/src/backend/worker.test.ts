@@ -1,11 +1,16 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, expectTypeOf, it } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer } from "effect";
 import { wfSqlite } from "#src/backend/persistence/sqlite";
 import { wfWorker } from "#src/backend/worker";
+import type { WfGraphWorker } from "#src/backend/worker";
 import type { WfGraphPersistence } from "#src/backend/persistence/types";
+import type {
+  WfGraphAuth,
+  WfGraphPrincipal,
+} from "#src/backend/lib/http/authorize";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
 import {
   stubApiKeyRepo,
@@ -24,6 +29,53 @@ afterEach(async () => {
 });
 
 describe("wfWorker", () => {
+  it("supports inferred and explicit environment and principal types", () => {
+    type WorkerEnv = { INTEGRATION_ENCRYPTION_KEY: string };
+    type HostPrincipal = WfGraphPrincipal & { organizationId: string };
+
+    const auth = {
+      authenticate: () =>
+        Promise.resolve({ id: "operator", organizationId: "org-1" }),
+      authorize: (principal: HostPrincipal) =>
+        principal.organizationId === "org-1",
+    } satisfies WfGraphAuth<HostPrincipal>;
+    const baseAuth = {
+      authenticate: () => ({ id: "operator" }),
+      authorize: (principal: WfGraphPrincipal) => principal.id === "operator",
+    } satisfies WfGraphAuth;
+    const persistence = undefined as unknown as WfGraphPersistence;
+    const request = (env: WorkerEnv) => ({
+      auth,
+      persistence,
+      encryption: { key: env.INTEGRATION_ENCRYPTION_KEY },
+      inngest: { id: "wfgraph-worker-test", isDev: true },
+    });
+
+    const inferredWorker = wfWorker({ request });
+    // An explicit environment uses the base principal unless the host supplies P too.
+    // @ts-expect-error A custom principal requires the second type argument.
+    wfWorker<WorkerEnv>({ request });
+    const explicitEnvironmentWorker = wfWorker<WorkerEnv>({
+      request: () => ({
+        auth: baseAuth,
+        persistence,
+        encryption: { key: "d".repeat(64) },
+        inngest: { id: "wfgraph-worker-test", isDev: true },
+      }),
+    });
+    const explicitPrincipalWorker = wfWorker<WorkerEnv, HostPrincipal>({
+      request,
+    });
+
+    expectTypeOf(inferredWorker).toEqualTypeOf<WfGraphWorker<WorkerEnv>>();
+    expectTypeOf(explicitEnvironmentWorker).toEqualTypeOf<
+      WfGraphWorker<WorkerEnv>
+    >();
+    expectTypeOf(explicitPrincipalWorker).toEqualTypeOf<
+      WfGraphWorker<WorkerEnv>
+    >();
+  });
+
   it("resolves request-scoped extensions from the Worker environment", async () => {
     const repositories = Layer.mergeAll(
       stubApiKeyRepo(),

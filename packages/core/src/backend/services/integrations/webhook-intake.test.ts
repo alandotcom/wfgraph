@@ -9,6 +9,7 @@ import type { IntegrationWebhook } from "#src/backend/extensions/integration-web
 import { SignatureRejected } from "#src/backend/extensions/integration-webhook";
 import type { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import { MAX_REQUEST_BODY_BYTES } from "#src/backend/lib/http/capped-body";
+import { resolveAuth } from "#src/backend/lib/http/authorize";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import type { DecryptedIntegration } from "#src/backend/services/integrations/repo";
 import { receiveWebhook } from "#src/backend/services/integrations/webhook-intake";
@@ -244,7 +245,7 @@ describe("webhook HTTP route", () => {
     const { runtime, sendCatalogEvent } = runtimeFor();
     const app = createApiApp({
       basePath: "/api",
-      authorize: () => Promise.resolve(false),
+      auth: resolveAuth({ authenticate: () => null }),
       runtime,
     });
 
@@ -273,7 +274,7 @@ describe("webhook HTTP route", () => {
     });
     const app = createApiApp({
       basePath: "/api",
-      authorize: () => Promise.resolve(false),
+      auth: resolveAuth({ authenticate: () => null }),
       runtime,
     });
 
@@ -312,7 +313,7 @@ describe("webhook HTTP route", () => {
     });
     const app = createApiApp({
       basePath: "/api",
-      authorize: () => Promise.resolve(false),
+      auth: resolveAuth({ authenticate: () => null }),
       runtime,
     });
 
@@ -338,7 +339,7 @@ describe("webhook HTTP route", () => {
     const { runtime } = runtimeFor();
     const app = createApiApp({
       basePath: "/api",
-      authorize: () => Promise.resolve(false),
+      auth: resolveAuth({ authenticate: () => null }),
       runtime,
     });
 

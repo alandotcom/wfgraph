@@ -19,6 +19,11 @@ import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import {
+  installAuthorizationGrantsForTests,
+  resetAuthorizationGrantsForTests,
+} from "#src/lib/authorization-test-support";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 const catalog: ExtensionCatalog = {
   events: [],
@@ -109,6 +114,18 @@ describe("useCollectWorkflowIssues", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    resetAuthorizationGrantsForTests();
+  });
+
+  it("does not request connections for a workflow-only grant", async () => {
+    installAuthorizationGrantsForTests([WfGraphOperations.workflowGetById.id]);
+    const fetch = vi.fn(() => new Promise(() => undefined));
+    vi.stubGlobal("fetch", fetch);
+
+    renderHarness();
+
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("accuses nothing while the connection list is still in flight", async () => {

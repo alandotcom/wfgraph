@@ -21,12 +21,28 @@ import {
   readExtensionCatalog,
   readExtensionsResponse,
 } from "@wfgraph/shared/extensions/catalog-wire";
+import type { WfGraphOperationId } from "@wfgraph/shared/authorization/operations";
 
 const logger = getClientLogger("extensions");
 
 let catalog: ExtensionCatalog = emptyExtensionCatalog;
 let agentEnabled = false;
 let webhookIntake: { publicUrl: string; apiBasePath: string } | undefined;
+let authorizationGrants: ReadonlySet<WfGraphOperationId> = new Set();
+
+/** Replaces the page-lifetime authorization snapshot as one immutable value. */
+export function installAuthorizationGrants(
+  operationIds: readonly WfGraphOperationId[]
+): void {
+  authorizationGrants = new Set(operationIds);
+}
+
+/** Reads one operation from the authorization snapshot installed at boot. */
+export function hasAuthorizationGrant(
+  operationId: WfGraphOperationId
+): boolean {
+  return authorizationGrants.has(operationId);
+}
 
 /**
  * Whether this server has a build agent configured.
@@ -103,19 +119,20 @@ export async function hydrateExtensionsFromApi(): Promise<CatalogLoadResult> {
 
   const envelope = readExtensionsResponse(payload);
 
-  const decoded = readExtensionCatalog(envelope?.catalog);
-  if (!decoded) {
+  const decodedCatalog = readExtensionCatalog(envelope?.catalog);
+  if (!envelope || !decodedCatalog) {
     logger.warn(
-      "The extension catalog from /api/extensions did not fit the wire schema in @wfgraph/shared/extensions/catalog-wire, so the editor is drawing from the catalog it had. The server serving it is most likely a different build of Workflow Graph."
+      "The bootstrap response from /api/extensions did not fit the wire schema in @wfgraph/shared/extensions/catalog-wire, so the editor is drawing from the catalog and authorization snapshot it had. The server serving it is most likely a different build of Workflow Graph."
     );
     return { ok: false, reason: "mismatch" };
   }
 
-  catalog = decoded;
+  catalog = decodedCatalog;
+  installAuthorizationGrants(envelope.authorization.operationIds);
   // Absent from an older server's answer, which reads as off: an editor that
   // shows no agent against a server that has one is a missing feature, where the
   // reverse is a control that refuses every click.
-  agentEnabled = envelope?.agent?.enabled === true;
-  webhookIntake = envelope?.webhookIntake;
+  agentEnabled = envelope.agent?.enabled === true;
+  webhookIntake = envelope.webhookIntake;
   return { ok: true };
 }

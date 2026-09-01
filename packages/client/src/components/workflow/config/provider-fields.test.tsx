@@ -8,16 +8,28 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ActionConfigRenderer } from "#src/components/workflow/config/action-config-renderer";
 import type { ConfigOptionsAnswer } from "#src/lib/rpc-client";
 import { configOptionsQueryOptions } from "#src/lib/rpc-query";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { ActionConfigField } from "@wfgraph/shared/plugins/action-fields";
+import {
+  installAuthorizationGrantsForTests,
+  resetAuthorizationGrantsForTests,
+} from "#src/lib/authorization-test-support";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+
+beforeEach(() => {
+  installAuthorizationGrantsForTests([
+    WfGraphOperations.integrationConfigOptions.id,
+  ]);
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
+  resetAuthorizationGrantsForTests();
 });
 
 const templateField: ActionConfigField = {

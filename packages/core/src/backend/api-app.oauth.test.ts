@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import { createApiApp, requestLogPath } from "#src/backend/api-app";
+import { resolveAuth } from "#src/backend/lib/http/authorize";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import type { IntegrationOAuth } from "#src/backend/extensions/oauth";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
@@ -118,7 +119,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      authorize: () => Promise.resolve(true),
+      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
       runtime,
     });
 
@@ -175,7 +176,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      authorize: () => Promise.resolve(true),
+      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
       runtime,
     });
 
@@ -251,7 +252,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      authorize: () => Promise.resolve(true),
+      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
       runtime,
     });
 
@@ -305,7 +306,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      authorize: () => Promise.resolve(true),
+      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
       runtime,
     });
 
@@ -331,7 +332,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      authorize: () => Promise.resolve(false),
+      auth: resolveAuth({ authenticate: () => null }),
       runtime,
     });
 
@@ -383,6 +384,50 @@ describe("OAuth API routes", () => {
       );
       expect(callback.status).toBe(401);
       expect(callback.headers.get("referrer-policy")).toBe("no-referrer");
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
+  it("applies connection-write authorization to OAuth start, status, and callback", async () => {
+    const seen: string[] = [];
+    const runtime = stubWfGraphRuntime({
+      appContext: oauthAppContext,
+      extensions: extensions(provider()),
+    });
+    const app = createApiApp({
+      basePath,
+      auth: resolveAuth({
+        authenticate: () => ({ id: "operator_1" }),
+        authorize: (_principal, operation) => {
+          seen.push(operation.id);
+          return false;
+        },
+      }),
+      runtime,
+    });
+
+    try {
+      const start = await app.fetch(
+        new Request(`http://localhost${basePath}/integrations/oauth/start`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ mode: "reconnect", integrationId: "int_1" }),
+        })
+      );
+      const status = await app.fetch(
+        new Request(
+          `http://localhost${basePath}/integrations/oauth/attempts/attempt_1`
+        )
+      );
+      const callback = await app.fetch(
+        new Request(`http://localhost${basePath}/integrations/oauth/callback`)
+      );
+
+      expect([start.status, status.status, callback.status]).toEqual([
+        403, 403, 403,
+      ]);
+      expect(seen).toEqual(["oauth.start", "oauth.status", "oauth.callback"]);
     } finally {
       await runtime.dispose();
     }
@@ -452,7 +497,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      authorize: () => Promise.resolve(true),
+      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
       runtime,
     });
 
@@ -486,7 +531,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      authorize: () => Promise.resolve(true),
+      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
       runtime,
     });
 
@@ -544,7 +589,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      authorize: () => Promise.resolve(true),
+      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
       runtime,
     });
 
@@ -650,7 +695,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      authorize: () => Promise.resolve(true),
+      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
       runtime,
     });
 
@@ -716,7 +761,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      authorize: () => Promise.resolve(true),
+      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
       runtime,
     });
 
@@ -760,7 +805,7 @@ describe("OAuth API routes", () => {
     });
     const app = createApiApp({
       basePath,
-      authorize: () => Promise.resolve(true),
+      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
       runtime,
     });
 

@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayContainer } from "#src/components/overlays/overlay-container";
@@ -10,6 +10,19 @@ import { IntegrationSelector } from "#src/components/ui/integration-selector";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import {
+  installAuthorizationGrantsForTests,
+  resetAuthorizationGrantsForTests,
+} from "#src/lib/authorization-test-support";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+
+beforeEach(() => {
+  installAuthorizationGrantsForTests([
+    WfGraphOperations.integrationGetAll.id,
+  ]);
+});
+
+afterEach(resetAuthorizationGrantsForTests);
 
 const testCatalog: ExtensionCatalog = {
   events: [],

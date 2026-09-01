@@ -24,6 +24,16 @@ export function executionIdFromWorkflowSearch(
     : undefined;
 }
 
+/** Removes a run selection when the current authorization cannot open it. */
+export function authorizedWorkflowSearch(
+  search: unknown,
+  canOpenRun: boolean
+): { executionId?: string } {
+  return canOpenRun
+    ? { executionId: executionIdFromWorkflowSearch(search) }
+    : {};
+}
+
 export function classifyWorkflowLoadFailure(
   error: unknown
 ): WorkflowLoadFailure {

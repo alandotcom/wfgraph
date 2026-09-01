@@ -16,10 +16,8 @@ import {
   ToolbarPublishControls,
   CommandPaletteTrigger,
 } from "#src/components/workflow/workflow-toolbar-chrome";
-import type {
-  WorkflowToolbarActions,
-  WorkflowToolbarState,
-} from "#src/components/workflow/workflow-toolbar-handlers";
+import type { WorkflowToolbarActions } from "#src/components/workflow/workflow-toolbar-handlers";
+import type { WorkflowToolbarState } from "#src/components/workflow/workflow-toolbar-state";
 import {
   executionOverlayGraphAtom,
   loadWorkflowGraphAtom,
@@ -28,10 +26,7 @@ import {
   isGeneratingAtom,
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
-import {
-  currentWorkflowIdAtom,
-  isWorkflowOwnerAtom,
-} from "#src/lib/workflow-save-store";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { toEditorNode } from "#src/lib/workflow-graph-types";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
@@ -98,7 +93,16 @@ function baseState(): WorkflowToolbarState {
     workflowName: "Workflow",
     workflowMode: "live",
     setCurrentWorkflowMode: vi.fn(),
-    isOwner: true,
+    canUpdate: true,
+    canExecute: true,
+    canReadRuns: true,
+    canReadVersionHistory: true,
+    canCompare: true,
+    canCreate: true,
+    canDuplicate: true,
+    canDelete: true,
+    canPublish: true,
+    canReadVersionGraph: true,
     isSaving: false,
     hasUnsavedChanges: false,
     undo: vi.fn(),
@@ -179,13 +183,13 @@ export function renderChrome(
     currentWorkflowIdAtom,
     ("workflowId" in lock ? lock.workflowId : "workflow_1") ?? null
   );
-  store.set(isWorkflowOwnerAtom, lock.state?.isOwner ?? true);
 
   // Built once rather than inside the route component, so a case can assert on
   // the spy the chrome was actually handed: re-created per render, every click
   // would land on an object the test never saw.
   const actions = baseActions();
   const workflowId = "workflowId" in lock ? lock.workflowId : "workflow_1";
+  const state = { ...baseState(), ...lock.state };
 
   // The toolbar calls `useNavigate` for the workflow switcher, so it needs a
   // router above it. One root route carries the whole tree, because no case
@@ -207,14 +211,14 @@ export function renderChrome(
                 <div data-testid="toolbar-actions-host">
                   <Chrome
                     actions={actions}
-                    state={{ ...baseState(), ...lock.state }}
+                    state={state}
                     workflowId={workflowId}
                   />
                 </div>
                 {/* The production toolbar places these in separate left, centre,
                     and right groups. This harness keeps the existing focused
                     Actions tests while mounting the controls they coordinate. */}
-                {Chrome === ToolbarActions && (lock.state?.isOwner ?? true) ? (
+                {Chrome === ToolbarActions ? (
                   <>
                     <CommandPaletteTrigger />
                     <ToolbarPublishControls

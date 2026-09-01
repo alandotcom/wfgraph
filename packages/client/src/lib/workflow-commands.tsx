@@ -73,7 +73,10 @@ type WorkflowCommandState = {
   readonly canUndo: boolean;
   readonly canRedo: boolean;
   readonly canReflow: boolean;
+  readonly canEdit: boolean;
   readonly canSave: boolean;
+  readonly canRunDraft: boolean;
+  readonly canRunPublished: boolean;
   readonly canViewRuns: boolean;
   readonly canViewChanges: boolean;
   readonly canPublish: boolean;
@@ -204,7 +207,7 @@ export function workflowCommands({
       group: "steps",
       label: "Add step",
       keywords: "Add step node action new create insert",
-      disabled: state.editingLocked,
+      disabled: !state.canEdit || state.editingLocked,
       execute: callbacks.addStep,
     },
     {
@@ -228,7 +231,7 @@ export function workflowCommands({
       // The toolbar's run control offers this already; the palette is the
       // second way to reach it rather than a second copy in the same menu.
       paletteOnly: true,
-      disabled: isDraftRunDisabled(state),
+      disabled: !state.canRunDraft || isDraftRunDisabled(state),
       execute: callbacks.runDraft,
     },
     {
@@ -251,7 +254,7 @@ export function workflowCommands({
         ? publishedModeChoice(state.workflowMode).description
         : NOTHING_PUBLISHED_LABEL,
       keywords: "Run published version live test execute start trigger",
-      disabled: isPublishedRunDisabled(state),
+      disabled: !state.canRunPublished || isPublishedRunDisabled(state),
       paletteOnly: true,
       // A live run is the only one that reaches real recipients, so the palette
       // requires an arrow key on this row before Return takes it.
@@ -288,7 +291,7 @@ export function workflowCommands({
       label: "Undo",
       keywords: "Undo revert back",
       hint: shortcuts.undo,
-      disabled: !state.canUndo || state.editingLocked,
+      disabled: !state.canEdit || !state.canUndo || state.editingLocked,
       execute: callbacks.undo,
     },
     {
@@ -297,7 +300,7 @@ export function workflowCommands({
       label: "Redo",
       keywords: "Redo forward again",
       hint: shortcuts.redo,
-      disabled: !state.canRedo || state.editingLocked,
+      disabled: !state.canEdit || !state.canRedo || state.editingLocked,
       execute: callbacks.redo,
     },
     {
@@ -305,7 +308,7 @@ export function workflowCommands({
       group: "workflow",
       label: "Tidy layout",
       keywords: "Tidy layout arrange align auto layout clean up",
-      disabled: !state.canReflow,
+      disabled: !state.canEdit || !state.canReflow,
       execute: callbacks.reflow,
     },
     {

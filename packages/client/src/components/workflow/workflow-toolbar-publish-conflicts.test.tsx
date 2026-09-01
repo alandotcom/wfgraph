@@ -11,11 +11,9 @@ import type { QueryClient } from "@tanstack/react-query";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  useWorkflowActions,
-  useWorkflowState,
-} from "#src/components/workflow/workflow-toolbar-handlers";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useWorkflowActions } from "#src/components/workflow/workflow-toolbar-handlers";
+import { useWorkflowToolbarState } from "#src/components/workflow/workflow-toolbar-state";
 import {
   deferred,
   expectedSnapshot,
@@ -42,6 +40,11 @@ import {
 import type { WorkflowApiPayload } from "@wfgraph/shared/graph/api-contracts";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { PUBLICATION_CONFLICT_CODES } from "@wfgraph/shared/rpc/error-codes";
+import {
+  installAuthorizationGrantsForTests,
+  resetAuthorizationGrantsForTests,
+} from "#src/lib/authorization-test-support";
+import { WfGraphOperationIds } from "@wfgraph/shared/authorization/operations";
 
 const STALE_PUBLISH_MESSAGE =
   "This workflow was published elsewhere. Refresh and try again.";
@@ -135,7 +138,7 @@ function stubPublishFlow(publishAnswer: () => Response | Promise<Response>) {
  * render the real read.
  */
 function LivePublishProbe() {
-  const workflowState = useWorkflowState();
+  const workflowState = useWorkflowToolbarState();
   const actions = useWorkflowActions(workflowState);
   return (
     <>
@@ -163,7 +166,12 @@ function LeavablePublishProbe() {
   );
 }
 
+beforeEach(() => {
+  installAuthorizationGrantsForTests(WfGraphOperationIds);
+});
+
 afterEach(() => {
+  resetAuthorizationGrantsForTests();
   vi.restoreAllMocks();
 });
 

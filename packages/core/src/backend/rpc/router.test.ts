@@ -1,5 +1,12 @@
 import { ORPCError } from "@orpc/server";
-import { afterAll, assert, beforeEach, describe, it } from "@effect/vitest";
+import {
+  afterAll,
+  assert,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "@effect/vitest";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { makeAgentConfigLayer } from "#src/backend/agent/config";
 import { NotFound } from "#src/backend/lib/effect/failures";
@@ -19,6 +26,8 @@ import type { WfGraphRuntime } from "#src/backend/runtime";
 import { rpcEffectHandler } from "#src/backend/rpc/router";
 import { makeAppContextLayer } from "#src/backend/lib/effect/app-context";
 import { createApiApp } from "#src/backend/api-app";
+import { resolveAuth } from "#src/backend/lib/http/authorize";
+import { rpcContract } from "@wfgraph/shared/rpc/contracts";
 
 /**
  * A runtime satisfying every service a procedure may ask for, all of them
@@ -32,9 +41,11 @@ import { createApiApp } from "#src/backend/api-app";
 function createStubRuntime({
   appContext = { apiBasePath: "/api" },
   integrationRepo,
+  workflowRepo,
 }: {
   appContext?: Parameters<typeof makeAppContextLayer>[0];
   integrationRepo?: Parameters<typeof stubIntegrationRepo>[0];
+  workflowRepo?: Parameters<typeof stubWorkflowRepo>[0];
 } = {}): WfGraphRuntime {
   return ManagedRuntime.make(
     Layer.mergeAll(
@@ -43,7 +54,7 @@ function createStubRuntime({
       stubExtensions(),
       stubApiKeyRepo(),
       stubIntegrationRepo(integrationRepo),
-      stubWorkflowRepo(),
+      stubWorkflowRepo(workflowRepo),
       stubExecutionRepo(),
       makeAgentConfigLayer({ enabled: false }),
       stubInngestClient()
@@ -52,7 +63,16 @@ function createStubRuntime({
 }
 
 function createContext(runtime: WfGraphRuntime) {
-  return { context: { headers: new Headers(), runtime } };
+  return {
+    context: {
+      auth: {
+        principal: { id: "operator_1" },
+        authorize: () => Promise.resolve(true),
+      },
+      headers: new Headers(),
+      runtime,
+    },
+  };
 }
 
 /**
@@ -155,7 +175,15 @@ describe("rpcEffectHandler", () => {
       // summary reads it off there. Declared rather than written inline,
       // because `rpcEffectHandler` types only the context member.
       const handlerArgs = {
-        context: { headers: new Headers(), runtime, requestEvent },
+        context: {
+          auth: {
+            principal: { id: "operator_1" },
+            authorize: () => Promise.resolve(true),
+          },
+          headers: new Headers(),
+          runtime,
+          requestEvent,
+        },
         input: { workflowId: "workflow_1" },
       };
 
@@ -186,7 +214,7 @@ describe("integration OAuth RPC", () => {
     });
     const app = createApiApp({
       basePath: "/api",
-      authorize: () => Promise.resolve(true),
+      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
       runtime,
     });
 
@@ -200,6 +228,82 @@ describe("integration OAuth RPC", () => {
       );
 
       assert.strictEqual(response.status, 404);
+    } finally {
+      await runtime.dispose();
+    }
+  });
+});
+
+describe("operation authorization", () => {
+  it("fails closed before a handler runs when a procedure has no operation metadata", async () => {
+    let handlerRan = false;
+    const runtime = createStubRuntime({
+      workflowRepo: {
+        listSummariesNewestFirst: Effect.sync(() => {
+          handlerRan = true;
+          return [];
+        }),
+      },
+    });
+    const procedure = rpcContract.workflow.getAll as unknown as {
+      "~orpc": { meta: Record<string, unknown> };
+    };
+    const metadata = procedure["~orpc"].meta;
+    const operation = metadata["wfgraph.operation"];
+    Reflect.deleteProperty(metadata, "wfgraph.operation");
+    const app = createApiApp({
+      basePath: "/api",
+      auth: resolveAuth({ authenticate: () => ({ id: "operator_1" }) }),
+      runtime,
+    });
+
+    try {
+      const response = await app.fetch(
+        new Request("http://localhost/api/rpc/workflow/getAll", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ json: {} }),
+        })
+      );
+
+      assert.strictEqual(response.status, 500);
+      assert.isFalse(handlerRan);
+    } finally {
+      metadata["wfgraph.operation"] = operation;
+      await runtime.dispose();
+    }
+  });
+
+  it("refuses protected RPC and REST operations after authentication", async () => {
+    const runtime = createStubRuntime();
+    let authentications = 0;
+    const app = createApiApp({
+      basePath: "/api",
+      auth: resolveAuth({
+        authenticate: () => {
+          authentications += 1;
+          return { id: "operator_1" };
+        },
+        authorize: () => false,
+      }),
+      runtime,
+    });
+
+    try {
+      const rpcResponse = await app.fetch(
+        new Request("http://localhost/api/rpc/workflow/getAll", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ json: {} }),
+        })
+      );
+      const restResponse = await app.fetch(
+        new Request("http://localhost/api/rest/workflows")
+      );
+
+      expect(rpcResponse.status).toBe(403);
+      expect(restResponse.status).toBe(403);
+      expect(authentications).toBe(2);
     } finally {
       await runtime.dispose();
     }

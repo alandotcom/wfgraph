@@ -30,12 +30,24 @@ export {
   type WfGraphApp,
   type WfGraphAppOptions,
   type WfGraphAuth,
+  type WfGraphPrincipal,
   type WfGraphClientBundle,
   type WfGraphExtensions,
   type WfGraphInngestConfig,
   type WfGraphLogger,
   type WfGraphPersistence,
 } from "#src/app";
+export {
+  WfGraphOperationIds,
+  WfGraphOperations,
+  WfGraphPermissions,
+  WfGraphRolePresets,
+} from "@wfgraph/shared/authorization/operations";
+export type {
+  WfGraphOperation,
+  WfGraphOperationId,
+  WfGraphPermission,
+} from "@wfgraph/shared/authorization/operations";
 
 export {
   createRequestListener,

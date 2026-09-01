@@ -4,9 +4,9 @@
  * payload memory live in `workflow-run-actions`.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
@@ -27,28 +27,16 @@ import {
 import { isTextEntry } from "#src/lib/is-text-entry";
 import {
   cacheWorkflowPublication,
-  integrationsQueryOptions,
   orpcQuery,
   refreshRunHistory,
   refreshWorkflowList,
   refreshWorkflowPublication,
   refreshWorkflowVersionHistory,
-  workflowListQueryOptions,
-  workflowPublicationQueryOptions,
 } from "#src/lib/rpc-query";
 import {
   clearGraphSelectionAtom,
-  clearWorkflowAtom,
-  edgesAtom,
   executionOverlayGraphAtom,
-  nodesAtom,
-  selectedNodeAtom,
   setNodeStatusesAtom,
-  updateNodeDataAtom,
-  canRedoAtom,
-  canUndoAtom,
-  redoAtom,
-  undoAtom,
 } from "#src/lib/workflow-graph-store";
 import {
   toEditorEdge,
@@ -71,12 +59,7 @@ import {
   type WorkflowRunTarget,
 } from "#src/lib/workflow-run-labels";
 import {
-  currentWorkflowIdAtom,
   currentWorkflowModeAtom,
-  currentWorkflowNameAtom,
-  hasUnsavedChangesAtom,
-  isSavingAtom,
-  isWorkflowOwnerAtom,
   saveWorkflowAtom,
   type SaveOutcome,
   type WorkflowPatch,
@@ -97,7 +80,6 @@ import {
   publicationReviewAtom,
   settlePublicationReviewAtom,
 } from "#src/lib/workflow-publication-review-store";
-import { isExecutingAtom, isGeneratingAtom } from "#src/lib/workflow-ui-store";
 import { enterRunsWorkspaceAtom } from "#src/lib/workflow-workspace-navigation";
 import {
   readEntryLifecycleRules,
@@ -116,6 +98,7 @@ import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import type { TestPayloads } from "@wfgraph/shared/lifecycle/test-payloads";
+import type { WorkflowToolbarState } from "#src/components/workflow/workflow-toolbar-state";
 
 /**
  * Which publication conflict a refused publish is, read off the failure's code.
@@ -181,6 +164,9 @@ type WorkflowHandlerParams = {
   publishedVersionId: string | undefined;
   hasUnsavedChanges: boolean;
   saveWorkflow: SaveWorkflow;
+  canExecute: boolean;
+  canUpdate: boolean;
+  canReadVersionGraph: boolean;
 };
 
 /**
@@ -233,6 +219,9 @@ function useWorkflowHandlers({
   publishedVersionId,
   hasUnsavedChanges,
   saveWorkflow,
+  canExecute,
+  canUpdate,
+  canReadVersionGraph,
 }: WorkflowHandlerParams) {
   // The same implementation the status strip's issue count reaches for, so
   // "Fix" means one thing wherever the list was opened from. The hook is
@@ -297,6 +286,9 @@ function useWorkflowHandlers({
     target: WorkflowRunTarget,
     request: RunRequest
   ) => {
+    if (!canExecute || (target.graph === "draft" && !canUpdate)) {
+      return;
+    }
     if (!currentWorkflowId) {
       toast.error("Please save the workflow before executing");
       return;
@@ -424,6 +416,9 @@ function useWorkflowHandlers({
   };
 
   const handleExecute = async (graph: WorkflowRunGraph) => {
+    if (!canExecute || (graph === "draft" && !canUpdate)) {
+      return;
+    }
     // Guard against concurrent executions
     if (isExecuting) {
       return;
@@ -448,7 +443,7 @@ function useWorkflowHandlers({
     // issues before a graph becomes a version, so a published run is not held
     // back by problems introduced on the canvas since.
     if (target.graph === "published") {
-      if (!publishedVersionId) {
+      if (!(canReadVersionGraph && publishedVersionId)) {
         // A version number with no id. There is no graph to read the run's
         // Events from, so there is nothing to open.
         return;
@@ -503,62 +498,6 @@ function useWorkflowHandlers({
   };
 }
 
-export function useWorkflowState() {
-  const nodes = useAtomValue(nodesAtom);
-  const edges = useAtomValue(edgesAtom);
-  const [isExecuting, setIsExecuting] = useAtom(isExecutingAtom);
-  const [isGenerating] = useAtom(isGeneratingAtom);
-  const clearWorkflow = useSetAtom(clearWorkflowAtom);
-  const updateNodeData = useSetAtom(updateNodeDataAtom);
-  const [currentWorkflowId] = useAtom(currentWorkflowIdAtom);
-  const workflowName = useAtomValue(currentWorkflowNameAtom);
-  const [workflowMode, setCurrentWorkflowMode] = useAtom(
-    currentWorkflowModeAtom
-  );
-  const isOwner = useAtomValue(isWorkflowOwnerAtom);
-  const isSaving = useAtomValue(isSavingAtom);
-  const hasUnsavedChanges = useAtomValue(hasUnsavedChangesAtom);
-  const undo = useSetAtom(undoAtom);
-  const redo = useSetAtom(redoAtom);
-  const [canUndo] = useAtom(canUndoAtom);
-  const [canRedo] = useAtom(canRedoAtom);
-  const setSelectedNodeId = useSetAtom(selectedNodeAtom);
-  const { data: userIntegrations = [] } = useQuery(integrationsQueryOptions());
-
-  const { data: allWorkflows = [] } = useQuery(workflowListQueryOptions());
-  const { data: publication } = useQuery({
-    ...workflowPublicationQueryOptions(currentWorkflowId ?? ""),
-    enabled: Boolean(currentWorkflowId),
-  });
-
-  return {
-    nodes,
-    edges,
-    isExecuting,
-    setIsExecuting,
-    isGenerating,
-    clearWorkflow,
-    updateNodeData,
-    currentWorkflowId,
-    workflowName,
-    workflowMode,
-    setCurrentWorkflowMode,
-    isOwner,
-    isSaving,
-    hasUnsavedChanges,
-    undo,
-    redo,
-    canUndo,
-    canRedo,
-    allWorkflows,
-    setSelectedNodeId,
-    userIntegrations,
-    publication,
-  };
-}
-
-export type WorkflowToolbarState = ReturnType<typeof useWorkflowState>;
-
 export function useWorkflowActions(state: WorkflowToolbarState) {
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
@@ -588,7 +527,12 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     userIntegrations,
     publication,
     hasUnsavedChanges,
-    isOwner,
+    canUpdate,
+    canExecute,
+    canDelete,
+    canDuplicate,
+    canPublish,
+    canReadVersionGraph,
   } = state;
   const { checkWorkflowIssues, isPreflighting } =
     useWorkflowIssuePreflight(userIntegrations);
@@ -606,17 +550,20 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     publishedVersionId: publication?.publishedVersionId,
     hasUnsavedChanges,
     saveWorkflow,
+    canExecute,
+    canUpdate,
+    canReadVersionGraph,
   });
 
   const handleSave = useCallback(async () => {
-    if (!currentWorkflowId || isGenerating) {
+    if (!currentWorkflowId || isGenerating || !canUpdate) {
       return;
     }
     const outcome = await saveWorkflow({ nodes, edges }, { immediate: true });
     if (outcome && !outcome.ok) {
       toast.error(outcome.error.message || "Failed to save workflow");
     }
-  }, [currentWorkflowId, edges, isGenerating, nodes, saveWorkflow]);
+  }, [canUpdate, currentWorkflowId, edges, isGenerating, nodes, saveWorkflow]);
 
   // Cmd+S shares the command palette's save path, so an explicit save and the
   // shortcut cannot race the autosave queue differently.
@@ -649,19 +596,22 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
       if (!((event.metaKey || event.ctrlKey) && event.key === "Enter")) {
         return;
       }
-      if (!isOwner || isTextEntry(event.target)) {
+      if (!canExecute || !canUpdate || isTextEntry(event.target)) {
         return;
       }
       event.preventDefault();
       event.stopPropagation();
       void handleExecute("draft");
     },
-    [handleExecute, isOwner]
+    [canExecute, canUpdate, handleExecute]
   );
 
   useDomEvent(document, "keydown", handleRunShortcut, { capture: true });
 
   const handleClearWorkflow = () => {
+    if (!canUpdate) {
+      return;
+    }
     openOverlay(ConfirmOverlay, {
       title: "Clear Workflow",
       message:
@@ -676,6 +626,9 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
   };
 
   const handleDeleteWorkflow = () => {
+    if (!canDelete) {
+      return;
+    }
     openOverlay(ConfirmOverlay, {
       title: "Delete Workflow",
       message: `Are you sure you want to delete "${workflowName}"? This will permanently delete the workflow. This cannot be undone.`,
@@ -744,14 +697,14 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
   };
 
   const handleDuplicate = () => {
-    if (!currentWorkflowId) {
+    if (!currentWorkflowId || !canDuplicate) {
       return;
     }
     duplicateWorkflow.mutate({ workflowId: currentWorkflowId });
   };
 
   const handlePublish = async () => {
-    if (!currentWorkflowId || publicationReviewActive) {
+    if (!currentWorkflowId || publicationReviewActive || !canPublish) {
       return;
     }
 
@@ -834,7 +787,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
   };
 
   const confirmPublish = () => {
-    if (!publishReview || publicationReviewPending) {
+    if (!publishReview || publicationReviewPending || !canPublish) {
       return;
     }
     if (

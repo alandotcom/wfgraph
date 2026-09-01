@@ -321,16 +321,17 @@ rows it left open, and routes the Execution. A runtime offering no `startBranch`
 Wait in place. `driveWithReplay` (`engine/testing/replay-runtime.ts`) is how a test sees any of this:
 it owns a set of runs and keeps the measured wake policy per run.
 
-**happy-dom belongs to the client project alone.** `vitest.config.ts` declares two projects:
+**happy-dom belongs to the client project alone.** `vitest.config.ts` declares three projects:
 `client` covers `packages/client`, runs in happy-dom, and is the only one loading
-`test-setup.ts`; `node` takes every other `packages/*/src` test and runs bare. That boundary
+`test-setup.ts`; `node` takes every other `packages/*/src` test and `scripts/**/*.test.ts`
+development-harness tests and runs them in bare Node. That boundary
 is load-bearing. happy-dom ships its own `TransformStream` whose `writable` is a boolean,
 and Inngest's execution engine builds a `TransformStream` on every run, so a backend test
 inheriting happy-dom's globals would throw `getWriter is not a function` the moment it
 touched a function. The node project's include is the whole of `packages/*/src` with the
 client carved out, rather than a list of package names, because a test file outside every
-project's globs is skipped without a word. A test file outside `packages/` still runs
-nowhere.
+project's globs is skipped without a word. A test file outside `packages/` and `scripts/`
+still runs nowhere.
 
 **There are two Vite configs and neither extends the other.**
 `packages/client/vite.config.ts` is the SPA's dev server and build; the root

@@ -11,8 +11,19 @@ npm install @wfgraph/core
 
 ```ts
 import { createServer } from "node:http";
-import { createRequestListener, createWfGraphApp } from "@wfgraph/core";
+import {
+  createRequestListener,
+  createWfGraphApp,
+  type WfGraphAuth,
+} from "@wfgraph/core";
 import { wfPostgres } from "@wfgraph/core/postgres";
+
+const auth = {
+  authenticate: async (request) => {
+    const session = await readSession(request);
+    return session ? { id: session.userId } : null;
+  },
+} satisfies WfGraphAuth;
 
 const wfgraph = await createWfGraphApp({
   persistence: wfPostgres({
@@ -20,7 +31,7 @@ const wfgraph = await createWfGraphApp({
     migrations: { runOnStartup: true },
   }),
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
-  auth: (request) => hasValidSession(request),
+  auth,
   inngest: { id: "my-wfgraph-app", connect: true },
   extensions: { events: [], actions: [], integrations: [] },
 });

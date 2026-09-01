@@ -1,67 +1,135 @@
 import { describe, expect, it } from "vitest";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import {
-  resolveAuthorize,
+  FORBIDDEN_BODY,
+  resolveAuth,
   UNAUTHORIZED_BODY,
+  type WfGraphAuth,
 } from "#src/backend/lib/http/authorize";
 
 const request = new Request("http://localhost/api/extensions");
 
-describe("resolveAuthorize", () => {
-  it("lets everything through when the host gates upstream", async () => {
-    expect(await resolveAuthorize("external")(request)).toBe(true);
+describe("resolveAuth", () => {
+  it("preserves a host principal type for the authorization callback", () => {
+    type HostPrincipal = { id: string; organizationId: string };
+    const auth: WfGraphAuth<HostPrincipal> = {
+      authenticate: () => ({ id: "operator_1", organizationId: "org_1" }),
+      authorize: (principal) => principal.organizationId === "org_1",
+    };
+
+    expect(
+      auth.authorize?.(
+        { id: "operator_1", organizationId: "org_1" },
+        WfGraphOperations.workflowGetAll
+      )
+    ).toBe(true);
   });
 
-  it("asks the host's predicate, sync or async", async () => {
-    expect(await resolveAuthorize(() => false)(request)).toBe(false);
-    expect(await resolveAuthorize(() => true)(request)).toBe(true);
-    expect(await resolveAuthorize(() => Promise.resolve(true))(request)).toBe(
+  it("lets an upstream-authenticated host through", async () => {
+    const context = await resolveAuth("external").authenticate(request);
+
+    expect(context?.principal).toEqual({ id: "external" });
+    expect(await context?.authorize(WfGraphOperations.workflowGetAll)).toBe(
       true
     );
   });
 
-  it("hands the predicate the request itself", async () => {
-    const seen: Request[] = [];
-    await resolveAuthorize((incoming) => {
-      seen.push(incoming);
-      return true;
-    })(request);
+  it("retains the authenticated principal for the host authorization callback", async () => {
+    const principal = { id: "operator_1", organizationId: "org_1" };
+    const seen: unknown[] = [];
+    const auth = resolveAuth({
+      authenticate: (incoming) => {
+        expect(incoming).toBe(request);
+        return principal;
+      },
+      authorize: (incoming, operation) => {
+        seen.push(incoming, operation);
+        return true;
+      },
+    });
 
-    expect(seen[0]?.url).toBe("http://localhost/api/extensions");
+    const context = await auth.authenticate(request);
+
+    expect(context?.principal).toEqual({
+      id: "operator_1",
+      organizationId: "org_1",
+    });
+    expect(await context?.authorize(WfGraphOperations.workflowGetAll)).toBe(
+      true
+    );
+    expect(seen).toEqual([principal, WfGraphOperations.workflowGetAll]);
   });
 
-  // A predicate is typed to answer a boolean, but a JavaScript host or a loosely
-  // typed wrapper can answer anything. At this boundary the safe reading of a
-  // value that is not `true` is "no": a returned session object is a mistake,
-  // and truthiness would turn that mistake into allow-all.
-  it("treats anything that is not exactly true as a refusal", async () => {
-    const notTrue = [undefined, null, 0, "", "false", "true", {}, []];
+  it("permits an authenticated principal when the host omits authorize", async () => {
+    const context = await resolveAuth({
+      authenticate: () => ({ id: "operator_1" }),
+    }).authenticate(request);
 
-    for (const value of notTrue) {
-      const authorize = resolveAuthorize(
-        // eslint-disable-next-line typescript/no-unsafe-type-assertion -- deliberately wrong on purpose
-        (() => value) as unknown as () => boolean
-      );
-      expect(await authorize(request)).toBe(false);
+    expect(await context?.authorize(WfGraphOperations.workflowGetAll)).toBe(
+      true
+    );
+  });
+
+  it("fails closed for malformed JavaScript principals", async () => {
+    const throwingPrincipal = new Proxy(
+      {},
+      {
+        get: () => {
+          throw new Error("host principal getter failed");
+        },
+      }
+    );
+    for (const principal of [
+      undefined,
+      null,
+      "operator_1",
+      {},
+      { id: 1 },
+      [],
+      throwingPrincipal,
+    ]) {
+      const auth = resolveAuth({
+        authenticate: (() => principal) as () => { id: string } | null,
+      });
+
+      expect(await auth.authenticate(request)).toBeNull();
     }
   });
 
-  it("denies when the predicate throws or rejects", async () => {
-    const thrower = resolveAuthorize(() => {
-      throw new Error("session store is down");
+  it("fails closed when either host callback throws or returns a non-boolean grant", async () => {
+    const authenticateThrower = resolveAuth({
+      authenticate: () => {
+        throw new Error("session store is down");
+      },
     });
-    const rejecter = resolveAuthorize(() =>
-      Promise.reject(new Error("session store is down"))
-    );
+    const authorizeThrower = resolveAuth({
+      authenticate: () => ({ id: "operator_1" }),
+      authorize: () => {
+        throw new Error("policy store is down");
+      },
+    });
+    const authorizeWrongType = resolveAuth({
+      authenticate: () => ({ id: "operator_1" }),
+      authorize: (() => "yes") as unknown as () => boolean,
+    });
 
-    expect(await thrower(request)).toBe(false);
-    expect(await rejecter(request)).toBe(false);
+    expect(await authenticateThrower.authenticate(request)).toBeNull();
+    expect(
+      await (
+        await authorizeThrower.authenticate(request)
+      )?.authorize(WfGraphOperations.workflowGetAll)
+    ).toBe(false);
+    expect(
+      await (
+        await authorizeWrongType.authenticate(request)
+      )?.authorize(WfGraphOperations.workflowGetAll)
+    ).toBe(false);
   });
 });
 
-describe("UNAUTHORIZED_BODY", () => {
-  // Both gates answer this, and the client parses it as an oRPC error, so the
-  // SPA can tell an expired session from a broken route.
-  it("is the one shape a refusal takes", () => {
+describe("auth refusal bodies", () => {
+  it("uses fixed bodies for authentication and authorization refusals", () => {
     expect(UNAUTHORIZED_BODY).toEqual({ error: "Unauthorized" });
+    expect(FORBIDDEN_BODY).toEqual({ error: "Forbidden" });
   });
 });

@@ -15,7 +15,6 @@ import { savedWorkflow } from "./workflow-save-test-support";
 import {
   autosaveDelayAtom,
   currentWorkflowIdAtom,
-  isWorkflowOwnerAtom,
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
 import {
@@ -142,7 +141,6 @@ describe("applyAgentGraphAtom", () => {
     const store = createGraphStore([actionNode("a")]);
     // The overlay only owns the canvas while the owner has Runs open,
     // so both have to be true for the refusal to be the one under test.
-    store.set(isWorkflowOwnerAtom, true);
     store.set(workflowWorkspaceViewAtom, "runs");
     store.set(executionOverlayGraphAtom, {
       nodes: [actionNode("a")],

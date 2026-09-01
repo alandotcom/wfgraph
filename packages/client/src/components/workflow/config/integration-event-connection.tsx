@@ -8,10 +8,12 @@ import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useConnectionRepair } from "#src/hooks/use-connection-repair";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
+import { can } from "#src/lib/authorization";
 import {
   type ExtensionCatalog,
   findIntegration,
 } from "@wfgraph/shared/extensions/catalog";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 /**
  * One Connection for every Event of this integration on the node, plus the
@@ -69,7 +71,10 @@ export function IntegrationEventConnectionEditor({
 function useConnection(
   connectionId: string | undefined
 ): Integration | undefined {
-  const { data: connections = [] } = useQuery(integrationsQueryOptions());
+  const { data: connections = [] } = useQuery({
+    ...integrationsQueryOptions(),
+    enabled: can(WfGraphOperations.integrationGetAll.id),
+  });
   return connections.find((entry) => entry.id === connectionId);
 }
 

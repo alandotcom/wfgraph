@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { readExtensionCatalog } from "#src/extensions/catalog-wire";
+import {
+  readExtensionCatalog,
+  readExtensionsResponse,
+} from "#src/extensions/catalog-wire";
+import { WfGraphOperations } from "#src/authorization/operations";
 import type { ExtensionCatalog } from "#src/extensions/catalog";
 import type { ReferenceField } from "#src/graph/node-references";
 import type { WorkflowSchemaFieldType } from "#src/graph/schema-codec";
@@ -266,6 +270,40 @@ describe("readExtensionCatalog", () => {
   it("answers nothing for a field type the vocabulary has no word for", () => {
     expect(
       readExtensionCatalog(aCatalog([{ path: "x", type: "money" } as never]))
+    ).toBeUndefined();
+  });
+});
+
+describe("readExtensionsResponse", () => {
+  const envelope = {
+    catalog: { events: [], actions: [], integrations: [] },
+    agent: { enabled: false },
+    authorization: {
+      operationIds: [
+        WfGraphOperations.workflowGetAll.id,
+        WfGraphOperations.workflowCreate.id,
+      ],
+    },
+  };
+
+  it("requires the boot authorization snapshot", () => {
+    const { authorization: _authorization, ...missingAuthorization } = envelope;
+
+    expect(readExtensionsResponse(missingAuthorization)).toBeUndefined();
+  });
+
+  it("accepts canonical operation IDs in their supplied order", () => {
+    expect(
+      readExtensionsResponse(envelope)?.authorization.operationIds
+    ).toEqual(envelope.authorization.operationIds);
+  });
+
+  it("refuses an unknown operation ID", () => {
+    expect(
+      readExtensionsResponse({
+        ...envelope,
+        authorization: { operationIds: ["workflow.unknown"] },
+      })
     ).toBeUndefined();
   });
 });

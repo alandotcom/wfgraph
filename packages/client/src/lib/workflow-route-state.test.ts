@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "#src/lib/rpc-client";
 import {
   classifyWorkflowLoadFailure,
+  authorizedWorkflowSearch,
   executionIdFromWorkflowSearch,
   publishWorkflowAfterCompletedSaves,
   WORKFLOW_LOAD_ERROR_MESSAGE,
@@ -38,6 +39,15 @@ describe("workflow route state", () => {
     expect(executionIdFromWorkflowSearch({ executionId: "" })).toBeUndefined();
     expect(executionIdFromWorkflowSearch({ executionId: 1 })).toBeUndefined();
     expect(executionIdFromWorkflowSearch(null)).toBeUndefined();
+  });
+
+  it("removes a latent run selection when run detail access is denied", () => {
+    expect(authorizedWorkflowSearch({ executionId: "exec_1" }, false)).toEqual(
+      {}
+    );
+    expect(authorizedWorkflowSearch({ executionId: "exec_1" }, true)).toEqual({
+      executionId: "exec_1",
+    });
   });
 
   it("refetches until no save completes during a workflow load", async () => {

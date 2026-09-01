@@ -26,7 +26,10 @@ import {
   saveWorkflowAtom,
 } from "#src/lib/workflow-save-store";
 import { enterDraftWorkspaceAtom } from "#src/lib/workflow-workspace-navigation";
+import { can } from "#src/lib/authorization";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+
 export function useWorkflowComparisonActions() {
   const queryClient = useQueryClient();
   const store = useStore();
@@ -42,6 +45,11 @@ export function useWorkflowComparisonActions() {
   const settleRequest = useSetAtom(settleWorkflowComparisonRequestAtom);
   const isPending = useAtomValue(isComparisonPendingAtom);
   const isError = useAtomValue(isComparisonErrorAtom);
+  const canCompare = can(WfGraphOperations.workflowCompareVersion.id);
+  // Restore saves the existing draft before restoring a version.
+  const canRestore =
+    can(WfGraphOperations.workflowRestoreVersion.id) &&
+    can(WfGraphOperations.workflowUpdate.id);
 
   const compare = useMutation(
     orpcQuery.workflow.compareVersion.mutationOptions({
@@ -55,6 +63,7 @@ export function useWorkflowComparisonActions() {
     fresh?: boolean;
   }) => {
     if (
+      !canCompare ||
       !workflowId ||
       (session && !options?.force && !options?.fresh && !options?.baseVersionId)
     ) {
@@ -110,6 +119,9 @@ export function useWorkflowComparisonActions() {
   const restore = useMutation({
     ...restoreVersionOptions,
     mutationFn: async (input, context) => {
+      if (!canRestore) {
+        throw new Error("You do not have permission to restore this version.");
+      }
       const graph = {
         nodes: store.get(nodesAtom),
         edges: store.get(edgesAtom),
@@ -137,5 +149,13 @@ export function useWorkflowComparisonActions() {
     meta: { errorMessage: "Unable to restore this version as a draft" },
   });
 
-  return { compare, isError, isPending, openComparison, restore };
+  return {
+    canCompare,
+    canRestore,
+    compare,
+    isError,
+    isPending,
+    openComparison,
+    restore,
+  };
 }

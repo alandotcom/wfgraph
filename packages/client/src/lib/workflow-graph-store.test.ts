@@ -45,7 +45,6 @@ import {
   currentWorkflowIdAtom,
   hasUnsavedChangesAtom,
   isSavingAtom,
-  isWorkflowOwnerAtom,
   successfulSaveGenerationAtom,
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
@@ -504,7 +503,6 @@ describe("clearWorkflowAtom", () => {
 describe("hydrateWorkflowAtom", () => {
   it("returns a different workflow to Draft", () => {
     const store = createGraphStore(...standardGraph());
-    store.set(isWorkflowOwnerAtom, true);
     store.set(workflowWorkspaceViewAtom, "changes");
 
     store.set(hydrateWorkflowAtom, savedWorkflow("workflow_2"));
@@ -514,7 +512,6 @@ describe("hydrateWorkflowAtom", () => {
 
   it("clears the watched run so the previous workflow's overlay cannot repaint", () => {
     const store = createStore();
-    store.set(isWorkflowOwnerAtom, true);
     store.set(workflowWorkspaceViewAtom, "runs");
     store.set(selectedExecutionIdAtom, "exec_previous");
     expect(store.get(selectedExecutionIdAtom)).toBe("exec_previous");
@@ -550,7 +547,6 @@ describe("hydrateWorkflowAtom", () => {
 
   it("keeps the open run when the same workflow is hydrated again", () => {
     const store = createGraphStore(...standardGraph());
-    store.set(isWorkflowOwnerAtom, true);
     store.set(workflowWorkspaceViewAtom, "runs");
     store.set(selectedExecutionIdAtom, "exec_1");
     store.set(executionOverlayGraphAtom, {
@@ -789,7 +785,6 @@ describe("displayNodesAtom memoization", () => {
 
   it("lets only the active workspace view choose the displayed graph", () => {
     const store = createGraphStore([actionNode("draft")]);
-    store.set(isWorkflowOwnerAtom, true);
     store.set(workflowWorkspaceViewAtom, "changes");
     openComparison(store);
     store.set(executionOverlayGraphAtom, {
@@ -815,7 +810,6 @@ describe("displayNodesAtom memoization", () => {
 describe("canvasEditingLockedAtom", () => {
   it("locks Runs and Changes even before their display graph loads", () => {
     const store = createGraphStore(...standardGraph());
-    store.set(isWorkflowOwnerAtom, true);
 
     store.set(workflowWorkspaceViewAtom, "runs");
     expect(store.get(canvasEditingLockedAtom)).toBe(true);

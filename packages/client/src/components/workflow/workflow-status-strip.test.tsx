@@ -35,12 +35,19 @@ import {
   currentWorkflowIdAtom,
   currentWorkflowModeAtom,
   hasUnsavedChangesAtom,
-  isWorkflowOwnerAtom,
 } from "#src/lib/workflow-save-store";
 import { workflowWorkspaceView } from "#src/lib/workflow-route-state";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import {
+  installAuthorizationGrantsForTests,
+  resetAuthorizationGrantsForTests,
+} from "#src/lib/authorization-test-support";
+import {
+  WfGraphOperationIds,
+  WfGraphOperations,
+} from "@wfgraph/shared/authorization/operations";
 
 const emptyCatalog: ExtensionCatalog = {
   events: [],
@@ -91,7 +98,6 @@ function workflowPayload(overrides: {
     visibility: "private",
     createdAt: "2026-03-01T09:00:00.000Z",
     updatedAt: "2026-03-01T09:30:00.000Z",
-    isOwner: true,
     graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
     hasUnpublishedChanges: overrides.hasUnpublishedChanges,
     // A published workflow carries both the id the version is read by and the
@@ -111,7 +117,6 @@ function stubRpc(payload: ReturnType<typeof workflowPayload>): void {
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const procedurePath = extractRpcProcedurePath(rpcUrl(input));
       const requestInput = await parseRpcRequestInput(init);
-
       if (procedurePath === "workflow/getById") {
         return rpcJsonResponse(payload);
       }
@@ -130,13 +135,12 @@ async function renderStrip(
   options: {
     executionId?: string;
     hasUnsavedChanges?: boolean;
-    isOwner?: boolean;
+    canUpdate?: boolean;
     mode?: "live" | "test";
     published?: boolean;
   } = {}
 ) {
   const store = createStore();
-  store.set(isWorkflowOwnerAtom, options.isOwner ?? true);
   store.set(currentWorkflowIdAtom, WORKFLOW_ID);
   store.set(hasUnsavedChangesAtom, options.hasUnsavedChanges ?? false);
   // The route loader's hydrate writes the id and the mode together, so the
@@ -144,6 +148,13 @@ async function renderStrip(
   // signal that a workflow has been loaded into it. The fixture pairs them the
   // same way.
   store.set(currentWorkflowModeAtom, options.mode ?? "live");
+  installAuthorizationGrantsForTests(
+    (options.canUpdate ?? true)
+      ? WfGraphOperationIds
+      : WfGraphOperationIds.filter(
+          (operationId) => operationId !== WfGraphOperations.workflowUpdate.id
+        )
+  );
 
   stubRpc(
     workflowPayload({
@@ -224,6 +235,7 @@ async function renderStrip(
 }
 
 afterEach(() => {
+  resetAuthorizationGrantsForTests();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -291,6 +303,7 @@ describe("WorkflowStatusStrip", () => {
     const mode = await view.findByRole("button", {
       name: "Published mode: Live",
     });
+    await waitFor(() => expect(mode.hasAttribute("disabled")).toBe(false));
     fireEvent.keyDown(mode, { key: "ArrowDown" });
     fireEvent.keyUp(mode, { key: "ArrowDown" });
 
@@ -319,7 +332,7 @@ describe("WorkflowStatusStrip", () => {
   });
 
   it("disables the mode for a viewer and gives the reason", async () => {
-    const { view } = await renderStrip({ isOwner: false, published: true });
+    const { view } = await renderStrip({ canUpdate: false, published: true });
 
     const mode = await view.findByRole("button", {
       name: "Published mode: Live",
@@ -336,7 +349,7 @@ describe("WorkflowStatusStrip", () => {
 
     expect(
       await view.findByText(
-        "Only the workflow's owner can change Published mode."
+        "You do not have permission to update this workflow."
       )
     ).toBeTruthy();
   });

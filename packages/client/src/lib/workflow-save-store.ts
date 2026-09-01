@@ -33,7 +33,6 @@ export const currentWorkflowNameAtom = atom<string>("");
 export const currentWorkflowVisibilityAtom =
   atom<WorkflowVisibility>("private");
 export const currentWorkflowModeAtom = atom<WorkflowMode>("live");
-export const isWorkflowOwnerAtom = atom<boolean>(true);
 export const workflowNotFoundAtom = atom(false);
 export const workflowLoadErrorAtom = atom<string | null>(null);
 

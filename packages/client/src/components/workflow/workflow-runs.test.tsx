@@ -12,6 +12,10 @@ import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  installAuthorizationGrantsForTests,
+  resetAuthorizationGrantsForTests,
+} from "#src/lib/authorization-test-support";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { ConfigurationOverlay } from "#src/components/overlays/configuration-overlay";
@@ -33,16 +37,14 @@ import {
   rpcUrl,
   type WorkflowRunRpcFixture,
 } from "#src/lib/rpc-fetch-test-support";
-import {
-  currentWorkflowIdAtom,
-  isWorkflowOwnerAtom,
-} from "#src/lib/workflow-save-store";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { savedWorkflow } from "#src/lib/workflow-save-test-support";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
+import { WfGraphOperationIds } from "@wfgraph/shared/authorization/operations";
 
 type RawExecution = {
   id: string;
@@ -192,7 +194,6 @@ function renderRuns(options?: {
   });
   const store = createStore();
   store.set(currentWorkflowIdAtom, "wf_1");
-  store.set(isWorkflowOwnerAtom, true);
   store.set(workflowWorkspaceViewAtom, "runs");
 
   const showPanel = options?.panel !== false;
@@ -250,6 +251,7 @@ function renderRuns(options?: {
 }
 
 function resetServed(): void {
+  installAuthorizationGrantsForTests(WfGraphOperationIds);
   served.items = [];
   served.supersededCount = 0;
   served.graphs = {};
@@ -265,6 +267,7 @@ describe("WorkflowRuns", () => {
   beforeEach(resetServed);
 
   afterEach(() => {
+    resetAuthorizationGrantsForTests();
     vi.unstubAllGlobals();
   });
 
@@ -590,6 +593,7 @@ describe("ExecutionOverlaySync", () => {
   beforeEach(resetServed);
 
   afterEach(() => {
+    resetAuthorizationGrantsForTests();
     vi.unstubAllGlobals();
   });
 
@@ -867,9 +871,11 @@ describe("ExecutionOverlaySync", () => {
       store.set(workflowWorkspaceViewAtom, "runs");
     });
 
-    expect(store.get(displayNodesAtom).map((node) => node.id)).toEqual([
-      "v1_lifecycle",
-    ]);
+    await waitFor(() =>
+      expect(store.get(displayNodesAtom).map((node) => node.id)).toEqual([
+        "v1_lifecycle",
+      ])
+    );
   });
 
   // A logs poll advances dataUpdatedAt; the overlay key must not, or every

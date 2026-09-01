@@ -6,6 +6,21 @@ export {
   type WfGraphWorkerOptions,
   type WfGraphWorkerRequestConfig,
 } from "#src/backend/worker";
+export type {
+  WfGraphAuth,
+  WfGraphPrincipal,
+} from "#src/backend/lib/http/authorize";
+export {
+  WfGraphOperationIds,
+  WfGraphOperations,
+  WfGraphPermissions,
+  WfGraphRolePresets,
+} from "@wfgraph/shared/authorization/operations";
+export type {
+  WfGraphOperation,
+  WfGraphOperationId,
+  WfGraphPermission,
+} from "@wfgraph/shared/authorization/operations";
 export {
   wfHyperdrive,
   type HyperdriveBinding,

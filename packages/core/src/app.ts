@@ -8,9 +8,10 @@ import {
   type EncryptionRuntimeConfig,
 } from "#src/backend/services/integrations/cipher";
 import {
-  type Authorize,
-  resolveAuthorize,
+  type ResolvedAuth,
+  resolveAuth,
   type WfGraphAuth,
+  type WfGraphPrincipal,
   UNAUTHORIZED_BODY,
 } from "#src/backend/lib/http/authorize";
 import { serveClientAsset } from "#src/backend/lib/http/client-assets";
@@ -54,11 +55,12 @@ import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
 export type { EncryptionRuntimeConfig } from "#src/backend/services/integrations/cipher";
 export type { WfGraphInngestConfig } from "#src/backend/lib/inngest/client";
 export type { WfGraphAuth } from "#src/backend/lib/http/authorize";
+export type { WfGraphPrincipal } from "#src/backend/lib/http/authorize";
 export type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 export type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
 export type { WfGraphPersistence } from "#src/backend/persistence/types";
 
-export type WfGraphAppOptions = {
+export type WfGraphAppOptions<P extends WfGraphPrincipal = WfGraphPrincipal> = {
   /**
    * Absolute path the host mounted Workflow Graph at, for example "/workflows". Defaults
    * to "/". Workflow Graph builds its API prefix, its asset URLs, and the SPA's
@@ -69,16 +71,18 @@ export type WfGraphAppOptions = {
   /** Public origin used in provider callback URLs and client metadata. */
   publicUrl?: string;
   /**
-   * Who may reach the editor: a predicate over the request, or "external" when
-   * something in front of Workflow Graph already gates it.
+   * Authenticates operators and optionally authorizes each Workflow Graph operation.
+   * Pass "external" when something in front of Workflow Graph authenticates and
+   * authorizes every operator request.
    *
    * Required everywhere rather than only in production, because the check that
    * would tell the two apart reads an environment variable that says
    * "production" and misses "prod" and an unset one. Covers everything Workflow
-   * Graph serves except machine routes (the wait resume path, and `/inngest`
-   * when HTTP serve is mounted).
+   * Graph serves except machine routes (the wait resume path, `/webhooks/:type/:connectionId`,
+   * and `/inngest` when HTTP serve is mounted) and public OAuth client metadata at
+   * `/integrations/oauth/clients/:integrationType`.
    */
-  auth: WfGraphAuth;
+  auth: WfGraphAuth<P>;
   /**
    * Where Workflow Graph's own log lines go. Absent, Workflow Graph configures a console sink of
    * its own; present, every line is handed to this instead.
@@ -154,12 +158,12 @@ export type WfGraphApp = {
  * where the pool is claimed, and the parts of Workflow Graph that a host reaches through
  * the module graph have never been written for two.
  */
-export async function createWfGraphApp(
-  options: WfGraphAppOptions
+export async function createWfGraphApp<P extends WfGraphPrincipal>(
+  options: WfGraphAppOptions<P>
 ): Promise<WfGraphApp> {
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const publicUrl = resolvePublicUrl(options.publicUrl);
-  const authorize = resolveAuthorize(options.auth);
+  const auth = resolveAuth(options.auth);
 
   if (!options.inngest.id?.trim()) {
     throw new Error("createWfGraphApp requires inngest.id");
@@ -167,10 +171,10 @@ export async function createWfGraphApp(
 
   assertValidEncryptionKey(options.encryption.key);
 
-  return await buildWfGraphApp(options, {
+  return await buildWfGraphApp<P>(options, {
     basePath,
     publicUrl,
-    authorize,
+    auth,
   });
 }
 
@@ -192,15 +196,15 @@ async function assertClientBundle(clientDir: string): Promise<void> {
   }
 }
 
-async function buildWfGraphApp(
-  options: WfGraphAppOptions,
+async function buildWfGraphApp<P extends WfGraphPrincipal>(
+  options: WfGraphAppOptions<P>,
   startup: {
     basePath: "" | `/${string}`;
     publicUrl?: string;
-    authorize: Authorize;
+    auth: ResolvedAuth;
   }
 ): Promise<WfGraphApp> {
-  const { basePath, publicUrl, authorize } = startup;
+  const { basePath, publicUrl, auth } = startup;
 
   if (options.logger) {
     configureLoggingWithBridge(options.logger);
@@ -253,7 +257,7 @@ async function buildWfGraphApp(
 
     return await assembleWfGraphApp(options, {
       basePath,
-      authorize,
+      auth,
       runtime,
       inngest,
       persistence,
@@ -267,17 +271,17 @@ async function buildWfGraphApp(
 }
 
 /** Everything after the runtime exists: the routes, the editor, and dispose. */
-async function assembleWfGraphApp(
-  options: WfGraphAppOptions,
+async function assembleWfGraphApp<P extends WfGraphPrincipal>(
+  options: WfGraphAppOptions<P>,
   startup: {
     basePath: "" | `/${string}`;
-    authorize: Authorize;
+    auth: ResolvedAuth;
     runtime: WfGraphRuntime;
     inngest: InngestSurface;
     persistence: WfGraphPersistenceInstance;
   }
 ): Promise<WfGraphApp> {
-  const { basePath, authorize, runtime, inngest, persistence } = startup;
+  const { basePath, auth, runtime, inngest, persistence } = startup;
 
   // Built once: Connect and HTTP serve are alternatives, and whichever path
   // this app takes registers that same list. A broken extension surface fails
@@ -286,7 +290,7 @@ async function assembleWfGraphApp(
   const useConnect = options.inngest.connect === true;
   const apiApp = createApiApp({
     basePath: `${basePath}/api`,
-    authorize,
+    auth,
     runtime,
     // Connect dials out; mounting `/inngest` would advertise a callback Inngest
     // cannot reach on a private network and is not how Connect syncs.
@@ -308,7 +312,7 @@ async function assembleWfGraphApp(
 
       // A host wanting a login redirect instead of a 401 puts it in front of
       // the mount.
-      if (!(await authorize(c.req.raw))) {
+      if (!(await auth.authenticate(c.req.raw))) {
         return c.json(UNAUTHORIZED_BODY, 401);
       }
 

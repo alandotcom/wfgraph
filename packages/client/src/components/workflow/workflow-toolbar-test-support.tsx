@@ -31,10 +31,8 @@ import {
   OverlayProvider,
   useOverlay,
 } from "#src/components/overlays/overlay-provider";
-import {
-  useWorkflowActions,
-  type WorkflowToolbarState,
-} from "#src/components/workflow/workflow-toolbar-handlers";
+import { useWorkflowActions } from "#src/components/workflow/workflow-toolbar-handlers";
+import type { WorkflowToolbarState } from "#src/components/workflow/workflow-toolbar-state";
 import { mutationErrorToast } from "#src/lib/query-client";
 import { toSerializedGraph } from "#src/lib/rpc-client";
 import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
@@ -90,7 +88,16 @@ export function state(): WorkflowToolbarState {
     workflowName: "Workflow",
     workflowMode: "test",
     setCurrentWorkflowMode: vi.fn(),
-    isOwner: true,
+    canUpdate: true,
+    canExecute: true,
+    canReadRuns: true,
+    canReadVersionHistory: true,
+    canCompare: true,
+    canCreate: true,
+    canDuplicate: true,
+    canDelete: true,
+    canPublish: true,
+    canReadVersionGraph: true,
     isSaving: false,
     hasUnsavedChanges: true,
     undo: vi.fn(),

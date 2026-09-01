@@ -4,6 +4,7 @@ import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useAfterCommit } from "#src/hooks/effects";
 import { toExecutionOverlaySource } from "#src/lib/execution-logs";
 import { orpcQuery } from "#src/lib/rpc-query";
+import { can } from "#src/lib/authorization";
 import {
   executionOverlayGraphAtom,
   resetNodeStatusesAtom,
@@ -12,6 +13,7 @@ import { toEditorEdge, toEditorNode } from "#src/lib/workflow-graph-types";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 const workflowRouteApi = getRouteApi("/workflows/$workflowId");
 
@@ -29,6 +31,8 @@ function useExecutionOverlaySync(): void {
   const setExecutionOverlay = useSetAtom(executionOverlayGraphAtom);
   const resetNodeStatuses = useSetAtom(resetNodeStatusesAtom);
   const { executionId } = workflowRouteApi.useSearch();
+  const canReadLogs = can(WfGraphOperations.workflowGetExecutionLogs.id);
+  const canReadVersionGraph = can(WfGraphOperations.workflowGetVersionGraph.id);
 
   // Identity fields for the overlay. The panel's observer of this key owns
   // polling for logs/waits; this one only needs stable workflowId/versionId,
@@ -38,7 +42,7 @@ function useExecutionOverlaySync(): void {
       input: { executionId: executionId ?? "" },
       select: toExecutionOverlaySource,
     }),
-    enabled: executionId !== undefined,
+    enabled: executionId !== undefined && canReadLogs,
     staleTime: 0,
   });
 
@@ -52,7 +56,7 @@ function useExecutionOverlaySync(): void {
       input: { versionId: versionId ?? "" },
       select: (payload) => payload.graph,
     }),
-    enabled: versionId !== undefined,
+    enabled: versionId !== undefined && canReadVersionGraph,
     staleTime: Number.POSITIVE_INFINITY,
   });
 
