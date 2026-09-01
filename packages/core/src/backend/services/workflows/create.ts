@@ -7,7 +7,7 @@ import {
   toWorkflowApiPayload,
   withDefaultLifecycleNode,
 } from "#src/backend/services/workflows/mappers";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo/index";
 import { generateId } from "@wfgraph/shared/utils/id";
 
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */

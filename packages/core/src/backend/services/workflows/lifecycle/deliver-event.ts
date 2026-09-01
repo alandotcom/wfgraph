@@ -24,7 +24,7 @@ import { runWorkflowExecutionPreflight } from "#src/backend/services/executions/
 import {
   type EventSubscriber,
   WorkflowRepo,
-} from "#src/backend/services/workflows/repo";
+} from "#src/backend/services/workflows/repo/index";
 import { toWorkflowRunTarget } from "#src/backend/services/executions/run-rows";
 import { connectionMatches } from "@wfgraph/shared/lifecycle/event-connections";
 import { emptyLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";

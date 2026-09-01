@@ -15,7 +15,7 @@ import {
 import { tables } from "#src/backend/lib/db/schema";
 import { migrateWfGraphDatabase } from "#src/migrate";
 import { wfPostgres } from "#src/backend/persistence/postgres";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo/index";
 import {
   conformanceCipher,
   connect,

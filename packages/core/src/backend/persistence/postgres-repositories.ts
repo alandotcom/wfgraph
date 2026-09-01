@@ -5,7 +5,7 @@ import { ApiKeyRepoLayer } from "#src/backend/services/api-keys/repo";
 import type { IntegrationCipher } from "#src/backend/services/integrations/cipher";
 import { makeIntegrationRepoLayer } from "#src/backend/services/integrations/repo";
 import { ExecutionRepoLayer } from "#src/backend/services/executions/repo";
-import { WorkflowRepoLayer } from "#src/backend/services/workflows/repo";
+import { WorkflowRepoLayer } from "#src/backend/services/workflows/repo/index";
 import type { WfGraphRepositories } from "#src/backend/runtime";
 
 /** The PostgreSQL implementation of every repository contract. */

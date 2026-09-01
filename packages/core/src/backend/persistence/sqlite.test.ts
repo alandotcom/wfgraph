@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { Effect, ManagedRuntime } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo/index";
 import { wfSqlite } from "#src/backend/persistence/sqlite";
 
 const emptyGraph = createSerializedWorkflowGraph({ nodes: [], edges: [] });

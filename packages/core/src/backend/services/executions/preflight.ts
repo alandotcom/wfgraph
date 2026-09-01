@@ -15,7 +15,7 @@ import { annotateServiceSpan } from "#src/backend/lib/telemetry";
 import {
   WorkflowRepo,
   type WorkflowRunRow,
-} from "#src/backend/services/workflows/repo";
+} from "#src/backend/services/workflows/repo/index";
 import type { DatabaseError } from "#src/backend/lib/effect/database";
 import type { PinnedRunVersion } from "#src/backend/services/executions/run-rows";
 import {

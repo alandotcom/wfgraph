@@ -13,7 +13,7 @@ import {
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import type { ExecutionRepo } from "#src/backend/services/executions/repo";
-import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import type { WorkflowRepo } from "#src/backend/services/workflows/repo/index";
 import type { WorkflowExecution } from "#src/backend/services/executions/repo/contracts";
 import { postWorkflowExecute } from "#src/backend/services/workflows/lifecycle/manual-start";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";

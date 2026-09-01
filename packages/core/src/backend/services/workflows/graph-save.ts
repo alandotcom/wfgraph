@@ -21,7 +21,7 @@ import { InvalidInput } from "#src/backend/lib/effect/failures";
 import { validateWorkflowConditionConfigs } from "#src/backend/services/workflows/validation/workflow-conditions-validation";
 import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
 import { deriveEventSubscriptions } from "#src/backend/services/workflows/lifecycle/subscriptions";
-import type { WorkflowEventSubscriptionRow } from "#src/backend/services/workflows/repo";
+import type { WorkflowEventSubscriptionRow } from "#src/backend/services/workflows/repo/index";
 import type {
   SerializedWorkflowGraph,
   WorkflowEdge,

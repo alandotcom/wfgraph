@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
 import { ApiKeyRepo } from "#src/backend/services/api-keys/repo";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo/index";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type {
   ConformanceConnection,

@@ -7,6 +7,7 @@ import {
   WORKFLOW_VERSION_KINDS,
   type WorkflowVersionKind,
 } from "@wfgraph/shared/graph/version-kinds";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
   readJsonObject,
   readJsonValue,
@@ -15,6 +16,10 @@ import {
 } from "@wfgraph/shared/types/json";
 
 const SCHEMA_VERSION = 6;
+
+/** Safe SQL literals from the closed execution-status vocabulary in shared. */
+export const SQLITE_IN_FLIGHT_EXECUTION_STATUSES =
+  IN_FLIGHT_EXECUTION_STATUSES.map((status) => `'${status}'`).join(", ");
 
 const MIGRATION_1 = `
   CREATE TABLE workflows (

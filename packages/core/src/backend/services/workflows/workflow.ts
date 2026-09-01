@@ -13,7 +13,7 @@ import {
   asPublishedVersion,
   type WorkflowEventSubscriptionRow,
   WorkflowRepo,
-} from "#src/backend/services/workflows/repo";
+} from "#src/backend/services/workflows/repo/index";
 import {
   buildWorkflowUpdateData,
   toWorkflowApiPayload,

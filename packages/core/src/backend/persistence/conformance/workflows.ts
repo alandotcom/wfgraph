@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo/index";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { PersistenceTestRegistry } from "#src/backend/persistence/conformance/support";
 import {
@@ -18,6 +18,251 @@ export function describeWorkflowConformance({
   openConnection,
 }: PersistenceTestRegistry): void {
   describe("workflows", () => {
+    it("lists the current and active versions without terminal or foreign runs", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const usage = await database.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          const executions = yield* ExecutionRepo;
+          yield* workflows.insertPublishedVersion({
+            workflowId: "wf_1",
+            versionId: "ver_2",
+            version: 2,
+            expectedPublishedVersionId: "ver_1",
+            graph: emptyGraph,
+            draftGraph: emptyGraph,
+            catalogFingerprint: "catalog",
+            graphDigest: "digest-2",
+            eventSubscriptions: [],
+          });
+          yield* workflows.insertPublishedVersion({
+            workflowId: "wf_1",
+            versionId: "ver_3",
+            version: 3,
+            expectedPublishedVersionId: "ver_2",
+            graph: emptyGraph,
+            draftGraph: emptyGraph,
+            catalogFingerprint: "catalog",
+            graphDigest: "digest-3",
+            eventSubscriptions: [],
+          });
+          const snapshot = yield* workflows.freezeDraftSnapshot({
+            workflowId: "wf_1",
+            versionId: "ver_snapshot",
+            graph: emptyGraph,
+            catalogFingerprint: "catalog",
+            graphDigest: "draft-digest",
+          });
+
+          for (const deliveryId of ["delivery_1", "delivery_2"]) {
+            yield* executions.startForEntity({
+              execution: {
+                workflowId: "wf_1",
+                workflowVersionId: "ver_1",
+                startSource: "event",
+                runMode: "live",
+                entityValue: deliveryId,
+                deliveryId,
+                input: {},
+              },
+              concurrency: "unlimited",
+              supersededReason: "newer start",
+            });
+          }
+          yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_2",
+              startSource: "manual",
+              runMode: "test",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: snapshot.id,
+              startSource: "manual",
+              runMode: "test",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+
+          // All three terminal outcomes are pinned to the current version. They
+          // must not cause that current row to look actively used.
+          for (const status of ["completed", "canceled"] as const) {
+            yield* executions.insertTerminal({
+              workflowId: "wf_1",
+              workflowVersionId: "ver_3",
+              startSource: "manual",
+              runMode: "test",
+              input: {},
+              status,
+            });
+          }
+          const superseded = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_3",
+              startSource: "manual",
+              runMode: "test",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+          if (superseded.status !== "started") {
+            throw new Error("Start was refused");
+          }
+          yield* executions.endInFlight({
+            executionId: superseded.execution.id,
+            status: "superseded",
+          });
+
+          yield* workflows.insert({
+            id: "wf_other",
+            name: "Other workflow",
+            graph: emptyGraph,
+            eventSubscriptions: [],
+          });
+          yield* workflows.insertPublishedVersion({
+            workflowId: "wf_other",
+            versionId: "ver_other",
+            version: 1,
+            expectedPublishedVersionId: null,
+            graph: emptyGraph,
+            draftGraph: emptyGraph,
+            catalogFingerprint: "catalog",
+            graphDigest: "other-digest",
+            eventSubscriptions: [],
+          });
+          yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_other",
+              workflowVersionId: "ver_other",
+              startSource: "manual",
+              runMode: "test",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+          });
+
+          return yield* workflows.listVersionUsage("wf_1");
+        })
+      );
+
+      expect(usage.map((item) => item.id)).toEqual([
+        "ver_3",
+        "ver_2",
+        "ver_1",
+        "ver_snapshot",
+      ]);
+      expect(usage.map((item) => item.activeRunCount)).toEqual([0, 1, 2, 1]);
+      expect(usage[0]).toMatchObject({ isCurrent: true, version: 3 });
+      expect(usage[0]?.oldestActiveRunAt).toBeNull();
+      expect(usage[3]).toMatchObject({
+        isCurrent: false,
+        kind: "draft_snapshot",
+        version: null,
+      });
+      expect(usage[3]?.oldestActiveRunAt).toBeInstanceOf(Date);
+      expect(usage[2]).toMatchObject({ isCurrent: false, version: 1 });
+    });
+
+    it("lists active snapshots of a never-published workflow as non-current", async () => {
+      const database = await openConnection();
+      const usage = await database.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          const executions = yield* ExecutionRepo;
+          yield* workflows.insert({
+            id: "wf_draft",
+            name: "Draft only",
+            graph: emptyGraph,
+            eventSubscriptions: [],
+          });
+          const first = yield* workflows.freezeDraftSnapshot({
+            workflowId: "wf_draft",
+            versionId: "snapshot_a",
+            graph: createSerializedWorkflowGraph({
+              nodes: [],
+              edges: [],
+              attributes: { snapshot: "a" },
+            }),
+            catalogFingerprint: "catalog",
+            graphDigest: "draft-a",
+          });
+          const second = yield* workflows.freezeDraftSnapshot({
+            workflowId: "wf_draft",
+            versionId: "snapshot_z",
+            graph: createSerializedWorkflowGraph({
+              nodes: [],
+              edges: [],
+              attributes: { snapshot: "z" },
+            }),
+            catalogFingerprint: "catalog",
+            graphDigest: "draft-z",
+          });
+          for (const snapshot of [first, second]) {
+            yield* executions.startForEntity({
+              execution: {
+                workflowId: "wf_draft",
+                workflowVersionId: snapshot.id,
+                startSource: "manual",
+                runMode: "test",
+                input: {},
+              },
+              concurrency: "unlimited",
+              supersededReason: "newer start",
+            });
+          }
+
+          return {
+            first,
+            second,
+            usage: yield* workflows.listVersionUsage("wf_draft"),
+          };
+        })
+      );
+
+      expect(usage.usage).toHaveLength(2);
+      expect(usage.usage).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "snapshot_a",
+            kind: "draft_snapshot",
+            version: null,
+            isCurrent: false,
+            activeRunCount: 1,
+          }),
+          expect.objectContaining({
+            id: "snapshot_z",
+            kind: "draft_snapshot",
+            version: null,
+            isCurrent: false,
+            activeRunCount: 1,
+          }),
+        ])
+      );
+      const expected = [usage.first, usage.second].toSorted((left, right) => {
+        const byPublishedAt =
+          right.publishedAt.getTime() - left.publishedAt.getTime();
+        return byPublishedAt === 0
+          ? right.id.localeCompare(left.id)
+          : byPublishedAt;
+      });
+      expect(usage.usage.map((item) => item.id)).toEqual(
+        expected.map((snapshot) => snapshot.id)
+      );
+    });
+
     it("keeps a draft snapshot out of the published history", async () => {
       const database = await openConnection();
       await seedPublishedWorkflow(database);

@@ -2,7 +2,7 @@ import { Layer } from "effect";
 import { ApiKeyRepo } from "#src/backend/services/api-keys/repo";
 import type { IntegrationCipher } from "#src/backend/services/integrations/cipher";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo/index";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { WfGraphPersistence } from "#src/backend/persistence/types";
 import { openSqliteDatabase } from "#src/backend/persistence/sqlite/database";

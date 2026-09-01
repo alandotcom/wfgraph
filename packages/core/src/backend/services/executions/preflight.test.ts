@@ -16,7 +16,7 @@ import {
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import { loadDraftForRun } from "#src/backend/services/executions/preflight";
-import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import type { WorkflowRepo } from "#src/backend/services/workflows/repo/index";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 
 type SnapshotInput = Parameters<

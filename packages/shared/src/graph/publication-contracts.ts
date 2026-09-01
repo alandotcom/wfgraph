@@ -8,6 +8,11 @@ const positiveInteger = Schema.Finite.check(
   Schema.isGreaterThan(0)
 );
 
+const nonNegativeInteger = Schema.Finite.check(
+  Schema.isInt(),
+  Schema.isGreaterThanOrEqualTo(0)
+);
+
 export const WORKFLOW_VERSION_HISTORY_DEFAULT_LIMIT = 25;
 export const WORKFLOW_VERSION_HISTORY_MAX_LIMIT = 100;
 
@@ -40,6 +45,45 @@ export const workflowVersionHistoryPayloadSchema = Schema.Struct({
   items: listOf(workflowVersionSummarySchema),
   nextCursor: Schema.NullOr(workflowVersionCursorSchema),
 });
+
+export const workflowVersionUsageInputSchema = Schema.Struct({
+  workflowId: NonEmptyTrimmedString,
+});
+
+const workflowVersionUsageFields = {
+  id: NonEmptyTrimmedString,
+  publishedAt: isoTimestampString(),
+  isCurrent: Schema.Boolean,
+  activeRunCount: nonNegativeInteger,
+  oldestActiveRunAt: Schema.NullOr(isoTimestampString()),
+  actionIds: listOf(NonEmptyTrimmedString),
+  missingActionIds: listOf(NonEmptyTrimmedString),
+  catalogMatches: Schema.Boolean,
+};
+
+export const workflowVersionUsageItemSchema = Schema.Union([
+  Schema.Struct({
+    ...workflowVersionUsageFields,
+    kind: Schema.Literal("published"),
+    version: positiveInteger,
+  }),
+  Schema.Struct({
+    ...workflowVersionUsageFields,
+    kind: Schema.Literal("draft_snapshot"),
+    version: Schema.Null,
+  }),
+]);
+
+export const workflowVersionUsagePayloadSchema = Schema.Struct({
+  items: listOf(workflowVersionUsageItemSchema),
+});
+
+export type WorkflowVersionUsageInput =
+  typeof workflowVersionUsageInputSchema.Type;
+export type WorkflowVersionUsageItem =
+  typeof workflowVersionUsageItemSchema.Type;
+export type WorkflowVersionUsagePayload =
+  typeof workflowVersionUsagePayloadSchema.Type;
 
 export const workflowComparisonInputSchema = Schema.Struct({
   workflowId: NonEmptyTrimmedString,

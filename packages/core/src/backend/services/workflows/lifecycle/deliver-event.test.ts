@@ -26,7 +26,7 @@ import type {
   WorkflowExecution,
   WorkflowWaitState,
 } from "#src/backend/services/executions/repo";
-import type { EventSubscriber } from "#src/backend/services/workflows/repo";
+import type { EventSubscriber } from "#src/backend/services/workflows/repo/index";
 import {
   applyLifecycleRules,
   deliverToWaits,

@@ -37,6 +37,7 @@ import { getVersionGraph } from "#src/backend/services/workflows/version-graph";
 import {
   compareWorkflowVersion,
   getWorkflowVersionHistory,
+  getWorkflowVersionUsage,
   restoreWorkflowVersion,
 } from "#src/backend/services/workflows/versions";
 import {
@@ -388,6 +389,9 @@ export const rpcRouter = rpc.router({
     ),
     getVersionHistory: rpc.workflow.getVersionHistory.handler(
       rpcEffectHandler(({ input }) => getWorkflowVersionHistory(input))
+    ),
+    getVersionUsage: rpc.workflow.getVersionUsage.handler(
+      rpcEffectHandler(({ input }) => getWorkflowVersionUsage(input))
     ),
     compareVersion: rpc.workflow.compareVersion.handler(
       rpcEffectHandler(({ input }) => compareWorkflowVersion(input))

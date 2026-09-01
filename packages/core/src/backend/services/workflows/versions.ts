@@ -1,10 +1,13 @@
 /**
- * Reads immutable publication versions and restores one into the editable draft.
- * A restore never changes the workflow's published pointer or its event index.
+ * Reads immutable publication versions, reports versions still in use, and
+ * restores a publication into the editable draft. A restore never changes the
+ * workflow's published pointer or its event index.
  */
 
 import { Effect } from "effect";
+import { uniq } from "es-toolkit";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { Extensions } from "#src/backend/lib/effect/extensions";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
 import { annotateServiceSpan } from "#src/backend/lib/telemetry";
@@ -21,7 +24,8 @@ import {
 import {
   asPublishedVersion,
   WorkflowRepo,
-} from "#src/backend/services/workflows/repo";
+  type WorkflowVersionUsageRow,
+} from "#src/backend/services/workflows/repo/index";
 import { resolvePublishedVersion } from "#src/backend/services/workflows/workflow";
 import {
   WORKFLOW_VERSION_HISTORY_DEFAULT_LIMIT,
@@ -33,9 +37,18 @@ import {
   type WorkflowVersionHistoryPayload,
   type WorkflowVersionCursor,
   type WorkflowVersionSummary,
+  type WorkflowVersionUsageInput,
+  type WorkflowVersionUsageItem,
+  type WorkflowVersionUsagePayload,
 } from "@wfgraph/shared/graph/publication-contracts";
-import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import {
+  createSerializedWorkflowGraph,
+  toWorkflowGraphData,
+} from "@wfgraph/shared/graph/graph";
+import { enabledActionTypeOf } from "@wfgraph/shared/graph/node-config";
+import { isBuiltInActionId } from "@wfgraph/shared/actions/built-in-actions";
 import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
+import { catalogFingerprint } from "#src/backend/services/workflows/version-digest";
 
 const loggerFor = (workflowId: string) =>
   Effect.map(AppLogger, (appLogger) =>
@@ -152,6 +165,73 @@ export const getWorkflowVersionHistory = Effect.fn(
         internalFailureFromCause(
           loggerFor(input.workflowId),
           "Failed to get workflow version history"
+        )
+      )
+    )
+);
+
+function versionUsageItem(
+  row: WorkflowVersionUsageRow,
+  availableActionIds: ReadonlySet<string>,
+  liveCatalogFingerprint: string
+): WorkflowVersionUsageItem {
+  const actionIds = uniq(
+    toWorkflowGraphData(row.graph).nodes.flatMap((node) => {
+      const actionId = enabledActionTypeOf(node);
+      return !actionId || isBuiltInActionId(actionId) ? [] : [actionId];
+    })
+  ).toSorted();
+
+  const usage = {
+    id: row.id,
+    publishedAt: row.publishedAt.toISOString(),
+    isCurrent: row.isCurrent,
+    activeRunCount: row.activeRunCount,
+    oldestActiveRunAt: row.oldestActiveRunAt?.toISOString() ?? null,
+    actionIds,
+    missingActionIds: actionIds.filter((id) => !availableActionIds.has(id)),
+    catalogMatches: row.catalogFingerprint === liveCatalogFingerprint,
+  };
+
+  const versionIdentity =
+    row.kind === "published"
+      ? { kind: row.kind, version: row.version }
+      : { kind: row.kind, version: row.version };
+  return { ...usage, ...versionIdentity };
+}
+
+/** Reports the current publication and versions still pinned by active runs. */
+export const getWorkflowVersionUsage = Effect.fn(
+  "wfgraph.workflow.version.usage"
+)(
+  function* (input: WorkflowVersionUsageInput) {
+    yield* annotateServiceSpan({ workflowId: input.workflowId });
+    const repo = yield* WorkflowRepo;
+    const extensions = yield* Extensions;
+    const exists = yield* repo.existsById(input.workflowId);
+    if (!exists) {
+      return yield* new NotFound({ error: "Workflow not found" });
+    }
+
+    const availableActionIds = new Set(
+      extensions.catalog.actions.map((action) => action.id)
+    );
+    const liveCatalogFingerprint = catalogFingerprint(extensions.catalog);
+    const rows = yield* repo.listVersionUsage(input.workflowId);
+    const payload: WorkflowVersionUsagePayload = {
+      items: rows.map((row) =>
+        versionUsageItem(row, availableActionIds, liveCatalogFingerprint)
+      ),
+    };
+    return payload;
+  },
+  (effect, input) =>
+    effect.pipe(
+      Effect.catchTag(
+        "DatabaseError",
+        internalFailureFromCause(
+          loggerFor(input.workflowId),
+          "Failed to get workflow version usage"
         )
       )
     )

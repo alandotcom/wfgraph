@@ -3,7 +3,7 @@ import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
 import { redactWorkflowGraph } from "#src/backend/lib/utils/redact";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo/index";
 
 /** This module's logger, as the Effect that produces it (see `services/workflows/workflow.ts`). */
 const loggerFor = (versionId: string) =>

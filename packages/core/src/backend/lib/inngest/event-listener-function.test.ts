@@ -13,7 +13,7 @@ import {
   runEventListener,
 } from "#src/backend/lib/inngest/event-listener-function";
 import type { WfGraphRuntime } from "#src/backend/runtime";
-import type { EventSubscriber } from "#src/backend/services/workflows/repo";
+import type { EventSubscriber } from "#src/backend/services/workflows/repo/index";
 
 const appointmentCreated = defineEvent({
   name: "app/appointment.created",

@@ -10,12 +10,11 @@ import type { SqliteDatabase } from "#src/backend/persistence/sqlite/database";
 import {
   encodeJson,
   placeholders,
+  SQLITE_IN_FLIGHT_EXECUTION_STATUSES,
 } from "#src/backend/persistence/sqlite/database";
 import { sqliteWaitState } from "#src/backend/persistence/sqlite/executions/rows";
 
 const WAIT_RESUME_CLAIM_LEASE_MS = 5 * 60 * 1000;
-const IN_FLIGHT = "'pending', 'running', 'waiting'";
-
 function claimWait(
   database: DatabaseSync,
   column: "id" | "resume_token",
@@ -31,7 +30,7 @@ function claimWait(
        WHERE ws.${column} = ?
          AND (ws.status = 'waiting' OR
               (ws.status = 'resuming' AND ws.resumed_at <= ?))
-          AND e.status IN (${IN_FLIGHT})`
+           AND e.status IN (${SQLITE_IN_FLIGHT_EXECUTION_STATUSES})`
     )
     .get(value, staleBefore);
   if (!candidate || typeof candidate.id !== "string") return null;
@@ -62,7 +61,7 @@ export function makeSqliteWaitsMethods(
         const parked = database
           .prepare(
             `UPDATE workflow_executions SET status = 'waiting', waiting_at = ?
-             WHERE id = ? AND status IN (${IN_FLIGHT})`
+              WHERE id = ? AND status IN (${SQLITE_IN_FLIGHT_EXECUTION_STATUSES})`
           )
           .run(now, input.executionId).changes;
         if (parked === 0) return undefined;
@@ -147,7 +146,7 @@ export function makeSqliteWaitsMethods(
         const filters = [
           "ws.workflow_id = ?",
           "ws.status = 'waiting'",
-          `e.status IN (${IN_FLIGHT})`,
+          `e.status IN (${SQLITE_IN_FLIGHT_EXECUTION_STATUSES})`,
           "EXISTS (SELECT 1 FROM json_each(ws.subscribed_events) j WHERE j.value = ?)",
         ];
         const values: SQLInputValue[] = [input.workflowId, input.eventName];

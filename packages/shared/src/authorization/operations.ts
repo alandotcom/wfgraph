@@ -93,6 +93,10 @@ const operationDefinitions = {
     "workflow.getVersionHistory",
     WfGraphPermissions.workflowRead
   ),
+  workflowGetVersionUsage: operation(
+    "workflow.getVersionUsage",
+    WfGraphPermissions.workflowRead
+  ),
   workflowCompareVersion: operation(
     "workflow.compareVersion",
     WfGraphPermissions.workflowRead

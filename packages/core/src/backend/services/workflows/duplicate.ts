@@ -10,7 +10,7 @@ import {
 } from "#src/backend/lib/effect/failures";
 import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo/index";
 import { toWorkflowApiPayload } from "#src/backend/services/workflows/mappers";
 import { generateId } from "@wfgraph/shared/utils/id";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
