@@ -36,6 +36,7 @@ import {
   rejectUnknownKeys,
 } from "@wfgraph/shared/types/schema";
 import { getErrorMessage } from "@wfgraph/shared/utils";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   WfGraphOperations,
   type WfGraphOperationId,
@@ -254,7 +255,7 @@ export function createApiApp(options: CreateApiAppOptions) {
     c.set("wfgraphRequestEvent", event);
     event.set({
       http: { method, path: logPath },
-      ...(procedure === null ? {} : { rpc: { procedure } }),
+      rpc: procedure === null ? undefined : { procedure },
     });
 
     try {
@@ -473,14 +474,14 @@ export function createApiApp(options: CreateApiAppOptions) {
         catalog: extensions.catalog,
         agent: { enabled: agent.enabled },
         authorization: { operationIds },
-        ...(appContext.publicUrl
-          ? {
-              webhookIntake: {
+        ...omitUndefined({
+          webhookIntake: appContext.publicUrl
+            ? {
                 publicUrl: appContext.publicUrl,
                 apiBasePath: appContext.apiBasePath,
-              },
-            }
-          : {}),
+              }
+            : undefined,
+        }),
       });
     })
     .route(

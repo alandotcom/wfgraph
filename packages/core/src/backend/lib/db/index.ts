@@ -60,8 +60,8 @@ function createSqlClient(
     database: config.database,
     // An `ssl: undefined` is not the same as no ssl key at all: postgres.js tests
     // for the option with `in`, so an explicit undefined would outrank an
-    // `sslmode` the URL carries.
-    ...(config.ssl === undefined ? {} : { ssl: config.ssl }),
+    // `sslmode` the URL carries. `omitUndefined` above drops the key outright.
+    ssl: config.ssl,
     max: pool.max,
     connection: {
       search_path: config.schema,

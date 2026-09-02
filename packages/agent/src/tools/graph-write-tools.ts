@@ -26,6 +26,7 @@ import {
   isEventSplitNode,
 } from "@wfgraph/shared/lifecycle/event-split";
 import { isLifecycleOutlet } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 /**
  * A config bag as the model fills it in: a list of entries, not a record.
  *
@@ -306,9 +307,7 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
           data: {
             label: input.label,
             type: "action",
-            ...(input.description === undefined
-              ? {}
-              : { description: input.description }),
+            description: input.description,
             config: {
               actionType: input.actionId,
               ...toConfigRecord(input.config ?? []),
@@ -368,11 +367,11 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
           ...node,
           data: canonicalizeNodeEnabled({
             ...node.data,
-            ...(input.label === undefined ? {} : { label: input.label }),
-            ...(input.description === undefined
-              ? {}
-              : { description: input.description }),
-            ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
+            ...omitUndefined({
+              label: input.label,
+              description: input.description,
+              enabled: input.enabled,
+            }),
             config: mergedConfig({
               current: node.data.config,
               patch: input.config,
@@ -471,9 +470,7 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
           id: nanoid(),
           source: input.source,
           target: input.target,
-          ...(input.sourceHandle === undefined
-            ? {}
-            : { sourceHandle: input.sourceHandle }),
+          sourceHandle: input.sourceHandle,
         };
 
         return Effect.as(

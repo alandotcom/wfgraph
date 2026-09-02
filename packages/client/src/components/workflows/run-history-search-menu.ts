@@ -39,7 +39,7 @@ export type RunHistoryMenuAction =
       field: RunFilterField;
       operator: RunFilterOperator;
       value: string;
-      valueLabel?: string;
+      valueLabel?: string | undefined;
     }
   | { type: "search" };
 
@@ -163,7 +163,7 @@ export function buildRunHistoryMenuItems(input: {
               field,
               operator: "is",
               value: option.value,
-              ...(valueLabel === undefined ? {} : { valueLabel }),
+              valueLabel,
             },
           });
         }
@@ -234,7 +234,7 @@ export function buildRunHistoryMenuItems(input: {
         field: draft.field,
         operator: draft.operator,
         value: option.value,
-        ...(valueLabel === undefined ? {} : { valueLabel }),
+        valueLabel,
       },
     };
   });

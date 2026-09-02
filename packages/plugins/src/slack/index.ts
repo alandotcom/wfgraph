@@ -105,9 +105,10 @@ export const slack = (options?: SlackOptions) => {
     label: "Slack",
     description: "Send messages to Slack channels",
     credentials: slackCredentialFields,
-    ...(clientId && clientSecret
-      ? { oauth: createSlackOAuth(clientId, clientSecret) }
-      : {}),
+    oauth:
+      clientId && clientSecret
+        ? createSlackOAuth(clientId, clientSecret)
+        : undefined,
 
     // The connection test reaches Slack, so it stays behind a dynamic import until
     // someone presses "Test connection".

@@ -42,14 +42,12 @@ function storedGrant(
     credentials: { ACCESS_TOKEN: accessToken },
     tokens: {
       accessToken,
-      ...(input.refreshToken ? { refreshToken: input.refreshToken } : {}),
-      ...(input.expiresAt ? { expiresAt: input.expiresAt } : {}),
+      refreshToken: input.refreshToken,
+      expiresAt: input.expiresAt,
     },
     connectedAt,
-    ...(input.accountLabel ? { accountLabel: input.accountLabel } : {}),
-    ...(input.grantedAccessLabel
-      ? { grantedAccessLabel: input.grantedAccessLabel }
-      : {}),
+    accountLabel: input.accountLabel,
+    grantedAccessLabel: input.grantedAccessLabel,
   });
 }
 

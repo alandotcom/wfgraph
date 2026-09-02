@@ -1,5 +1,6 @@
 import type { Inngest } from "inngest";
 import type { JsonObject } from "@wfgraph/shared/types/json";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { withCatalogConnection } from "#src/backend/lib/inngest/catalog-connection";
 import {
   workflowBranchKillRequested,
@@ -120,12 +121,13 @@ export async function sendCatalogEvent(
     id?: string | undefined;
   }
 ) {
-  const event = {
+  const event = omitUndefined({
     name: input.name,
     data: withCatalogConnection(input.data, input.connectionId),
-    ...(input.id === undefined
-      ? {}
-      : { id: `${input.name}-${input.connectionId}-${input.id}` }),
-  };
+    id:
+      input.id === undefined
+        ? undefined
+        : `${input.name}-${input.connectionId}-${input.id}`,
+  });
   return await client.send(event);
 }

@@ -232,9 +232,9 @@ export function TemplateAutocomplete({
               nodeLabel: nodeName,
               fieldPath: field.path,
             }),
-            ...(unusable ? { unusable } : {}),
-            ...(field.absentOn?.length ? { absentOn: field.absentOn } : {}),
-            ...(field.valueType ? { valueType: field.valueType } : {}),
+            unusable,
+            absentOn: field.absentOn?.length ? field.absentOn : undefined,
+            valueType: field.valueType,
           });
         }
 

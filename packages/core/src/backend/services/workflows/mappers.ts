@@ -1,5 +1,6 @@
 import { isNotNil } from "es-toolkit/predicate";
 import { nanoid } from "nanoid";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import type {
   PublishedWorkflowVersion,
   Workflow,
@@ -47,23 +48,22 @@ export type WorkflowUpdateData = Pick<Workflow, "updatedAt"> &
 export function toWorkflowSummaryPayload(
   workflow: Omit<WorkflowPayloadSource, "graph">
 ): WorkflowSummaryPayload {
-  return {
+  return omitUndefined({
     id: workflow.id,
     name: workflow.name,
-    // `description` is declared with `optionalKey` on the wire, so a workflow
-    // with none leaves the key out rather than sending it as null.
-    ...(isNotNil(workflow.description)
-      ? { description: workflow.description }
-      : {}),
+    // `description` and `publishedVersionId` are declared with `optionalKey` on
+    // the wire, so a workflow with neither leaves the keys out rather than
+    // sending them as null or undefined.
+    description: isNotNil(workflow.description)
+      ? workflow.description
+      : undefined,
     isPaused: workflow.isPaused,
     mode: workflow.mode,
     visibility: workflow.visibility,
     createdAt: workflow.createdAt.toISOString(),
     updatedAt: workflow.updatedAt.toISOString(),
-    ...(workflow.publishedVersionId
-      ? { publishedVersionId: workflow.publishedVersionId }
-      : {}),
-  };
+    publishedVersionId: workflow.publishedVersionId ?? undefined,
+  });
 }
 
 /**
@@ -78,20 +78,16 @@ export function toWorkflowApiPayload(
     "id" | "version" | "publishedAt" | "graph" | "graphDigest"
   > | null
 ): WorkflowApiPayload {
-  return {
+  return omitUndefined({
     ...toWorkflowSummaryPayload(workflow),
-    ...(published
-      ? {
-          publishedVersion: published.version,
-          publishedAt: published.publishedAt.toISOString(),
-        }
-      : {}),
+    publishedVersion: published?.version,
+    publishedAt: published?.publishedAt.toISOString(),
     graph: workflow.graph,
     hasUnpublishedChanges: draftDiffersFromPublished(
       workflow.graph,
       published?.graph ?? null
     ),
-  };
+  });
 }
 
 /**

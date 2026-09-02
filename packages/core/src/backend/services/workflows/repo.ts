@@ -22,6 +22,7 @@ import type { WorkflowUpdateData } from "#src/backend/services/workflows/mappers
 import { makeWorkflowVersionQueries } from "#src/backend/services/workflows/repo/version-queries";
 import type { WorkflowVersionUsageRow } from "#src/backend/services/workflows/repo/version-row";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 export { type WorkflowVersionUsageRow } from "#src/backend/services/workflows/repo/version-row";
 
@@ -402,11 +403,13 @@ async function findWorkflowWithPublishedVersion(
   workflowId: string,
   columns?: typeof RUN_WORKFLOW_COLUMNS
 ) {
-  const row = await db.query.workflows.findFirst({
-    where: { id: workflowId },
-    ...(columns ? { columns } : {}),
-    with: { publishedVersion: true },
-  });
+  const row = await db.query.workflows.findFirst(
+    omitUndefined({
+      where: { id: workflowId },
+      columns,
+      with: { publishedVersion: true },
+    })
+  );
 
   if (!row) {
     return null;

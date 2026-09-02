@@ -35,7 +35,7 @@ function actionNode(id: string, enabled = true): WorkflowNode {
       label: id,
       type: "action",
       config: { actionType: "Wait" },
-      ...(enabled ? {} : { enabled: false }),
+      enabled: enabled ? undefined : false,
     },
   };
 }

@@ -45,6 +45,7 @@ import {
 } from "@wfgraph/shared/types/record-key";
 import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
 import { CONNECTION_STAMP_KEY } from "#src/backend/lib/inngest/catalog-connection";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 /**
  * An Event as the set holds it, which is what `eventByName` answers with.
@@ -254,16 +255,14 @@ function toEventMetadata(
   event: RegisteredEvent,
   integration?: string
 ): EventMetadata {
-  return {
+  return omitUndefined({
     name: event.name,
     label: event.label,
-    ...(event.description ? { description: event.description } : {}),
-    ...(event.correlationPath
-      ? { correlationPath: event.correlationPath }
-      : {}),
-    ...(integration ? { integration } : {}),
+    description: event.description,
+    correlationPath: event.correlationPath,
+    integration,
     payloadFields: event.payloadFields,
-  };
+  });
 }
 
 /**
@@ -294,17 +293,19 @@ function readIntegration(
   into: Assembly
 ): IntegrationMetadata {
   for (const { id, step, outputFields } of checkIntegration(integration)) {
-    into.actions.push({
-      id,
-      label: step.label,
-      description: step.description,
-      category: step.category,
-      integration: integration.type,
-      sideEffect: step.sideEffect,
-      ...(step.hidden ? { hidden: true } : {}),
-      configFields: step.configFields,
-      outputFields,
-    });
+    into.actions.push(
+      omitUndefined({
+        id,
+        label: step.label,
+        description: step.description,
+        category: step.category,
+        integration: integration.type,
+        sideEffect: step.sideEffect,
+        hidden: step.hidden,
+        configFields: step.configFields,
+        outputFields,
+      })
+    );
     into.steps.set(id, step.implement(id));
   }
 
@@ -336,21 +337,17 @@ function readIntegration(
     into.webhooks.set(integration.type, integration.webhook);
   }
 
-  return {
+  return omitUndefined({
     type: integration.type,
     label: integration.label,
     description: integration.description,
     credentialFields: integration.credentials,
     hasTest: integration.test !== undefined,
     hasWebhook: integration.webhook !== undefined,
-    ...(integration.webhook?.helpText
-      ? { webhookHelpText: integration.webhook.helpText }
-      : {}),
-    ...(integration.webhook?.secret
-      ? { webhookSecretKey: integration.webhook.secret }
-      : {}),
-    ...(integration.oauth ? { oauth: { label: integration.oauth.label } } : {}),
-  };
+    webhookHelpText: integration.webhook?.helpText,
+    webhookSecretKey: integration.webhook?.secret,
+    oauth: integration.oauth ? { label: integration.oauth.label } : undefined,
+  });
 }
 
 /**
@@ -386,17 +383,19 @@ function assertProviderFieldsBelongToAnIntegration(
  * one kind of thing to find.
  */
 function readHostAction(action: ActionDefinition, into: Assembly): void {
-  into.actions.push({
-    id: action.id,
-    label: action.label,
-    description: action.description,
-    category: action.category,
-    ...(action.logoUrl ? { logoUrl: action.logoUrl } : {}),
-    sideEffect: action.sideEffect,
-    ...(action.hidden ? { hidden: true } : {}),
-    configFields: action.configFields ?? [],
-    outputFields: action.outputFields ?? [],
-  });
+  into.actions.push(
+    omitUndefined({
+      id: action.id,
+      label: action.label,
+      description: action.description,
+      category: action.category,
+      logoUrl: action.logoUrl,
+      sideEffect: action.sideEffect,
+      hidden: action.hidden,
+      configFields: action.configFields ?? [],
+      outputFields: action.outputFields ?? [],
+    })
+  );
   into.steps.set(action.id, action.implement);
 }
 

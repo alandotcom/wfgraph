@@ -4,6 +4,7 @@
  */
 
 import { atom } from "jotai";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { inactiveBranch } from "#src/lib/inactive-branch";
 import {
   EMPTY_ISSUES,
@@ -134,12 +135,12 @@ export const displayNodesAtom = atom((get) => {
 
     const withStatus: WorkflowNode = {
       ...node,
-      data: {
+      data: omitUndefined({
         ...node.data,
-        ...(status ? { status } : {}),
-        ...(disabledFrame ? { enabled: false } : {}),
-        ...(issues ? { issues } : {}),
-      },
+        status,
+        enabled: disabledFrame ? false : undefined,
+        issues,
+      }),
     };
     const paintedNode = muted
       ? {
@@ -193,13 +194,13 @@ export const displayEdgesAtom = atom((get) => {
     }
     return {
       ...edge,
-      data: {
+      data: omitUndefined({
         ...edge.data,
         inactive: true,
-        ...(outletEdgeIds.has(edge.id)
-          ? { displayLabel: "No Cancel Event" }
-          : {}),
-      },
+        displayLabel: outletEdgeIds.has(edge.id)
+          ? "No Cancel Event"
+          : undefined,
+      }),
     };
   });
 });

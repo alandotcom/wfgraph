@@ -41,6 +41,6 @@ export function makeAppContextLayer(
 
   return Layer.succeed(WfGraphAppContext, {
     ...value,
-    ...(oauth ? { oauth } : {}),
+    oauth,
   });
 }

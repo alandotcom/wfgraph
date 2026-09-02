@@ -53,9 +53,7 @@ function fieldsTree(input: {
     <ExtensionCatalogProvider value={emptyExtensionCatalog}>
       <ActionConfigRenderer
         config={input.config ?? {}}
-        {...(input.connectionDefaults
-          ? { connectionDefaults: input.connectionDefaults }
-          : {})}
+        connectionDefaults={input.connectionDefaults}
         fields={input.fields}
         onUpdateConfig={() => undefined}
       />
@@ -72,9 +70,7 @@ function renderFields(input: {
     <ExtensionCatalogProvider value={emptyExtensionCatalog}>
       <ActionConfigRenderer
         config={input.config ?? {}}
-        {...(input.connectionDefaults
-          ? { connectionDefaults: input.connectionDefaults }
-          : {})}
+        connectionDefaults={input.connectionDefaults}
         fields={input.fields}
         onUpdateConfig={() => undefined}
       />

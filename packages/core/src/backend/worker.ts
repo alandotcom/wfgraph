@@ -114,7 +114,7 @@ export function wfWorker<Env>(
           inngest,
           extensions,
           appContext: {
-            ...(publicUrl ? { publicUrl } : {}),
+            publicUrl,
             apiBasePath: `${basePath}/api`,
           },
           agent: readAgentSettings(config.agent),

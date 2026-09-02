@@ -12,6 +12,7 @@ import type {
   WorkflowNode,
 } from "@wfgraph/shared/graph/types";
 import type { JsonObject } from "@wfgraph/shared/types/json";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { Cause, Effect } from "effect";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import type { BranchRunResult } from "#src/backend/engine/branch";
@@ -221,14 +222,12 @@ function runIdentity(
 function workflowSpanAttributes(
   input: WorkflowExecutionInput | WorkflowBranchInput
 ): Record<string, string> {
-  return {
+  return omitUndefined({
     "wfgraph.workflow.id": input.workflowId,
     "wfgraph.execution.id": input.executionId,
-    ...(input.workflowName === undefined
-      ? {}
-      : { "wfgraph.workflow.name": input.workflowName }),
+    "wfgraph.workflow.name": input.workflowName,
     "wfgraph.execution.run_mode": input.runMode ?? "live",
-  };
+  });
 }
 
 /**

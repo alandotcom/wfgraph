@@ -47,7 +47,7 @@ import type { OverlayComponentProps } from "./types";
 const NO_EVENT = "";
 
 export type RunRequest = {
-  eventName?: string;
+  eventName?: string | undefined;
   input: JsonObject;
 };
 
@@ -293,12 +293,12 @@ export function RunOverlay({
         return;
       }
 
-      onRun({ ...(eventName ? { eventName } : {}), input: parsed.payload });
+      onRun({ eventName, input: parsed.payload });
       closeAll();
       return;
     }
 
-    onRun({ ...(eventName ? { eventName } : {}), input: currentPayload() });
+    onRun({ eventName, input: currentPayload() });
     closeAll();
   };
 

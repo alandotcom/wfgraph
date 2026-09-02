@@ -171,16 +171,11 @@ function tokenSet(
     credentials: { SLACK_API_KEY: response.access_token },
     tokens: {
       accessToken: response.access_token,
-      ...(response.refresh_token === undefined
-        ? {}
-        : { refreshToken: response.refresh_token }),
-      ...(response.expires_in === undefined
-        ? {}
-        : {
-            expiresAt: new Date(
-              Date.now() + response.expires_in * 1000
-            ).toISOString(),
-          }),
+      refreshToken: response.refresh_token,
+      expiresAt:
+        response.expires_in === undefined
+          ? undefined
+          : new Date(Date.now() + response.expires_in * 1000).toISOString(),
     },
   };
 }
@@ -212,7 +207,7 @@ function createSlackOAuth(clientId: string, clientSecret: string) {
       const grant = tokenSet(response, false);
       return {
         ...grant,
-        ...(response.team?.name ? { accountLabel: response.team.name } : {}),
+        accountLabel: response.team?.name,
       };
     },
 

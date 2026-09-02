@@ -37,6 +37,7 @@ import {
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   DEFAULT_WAIT_TIMEOUT,
   readWaitDelayTiming,
@@ -514,14 +515,17 @@ function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
       waitValueKeysNotIn(next).map((key) => [key, ""])
     );
 
-    onUpdateConfig({
-      ...cleared,
-      waitMode: value,
-      ...(value === "event" &&
-      !(readConfigString(config, "waitTimeout") ?? "").trim()
-        ? { waitTimeout: DEFAULT_WAIT_TIMEOUT }
-        : {}),
-    });
+    onUpdateConfig(
+      omitUndefined({
+        ...cleared,
+        waitMode: value,
+        waitTimeout:
+          value === "event" &&
+          !(readConfigString(config, "waitTimeout") ?? "").trim()
+            ? DEFAULT_WAIT_TIMEOUT
+            : undefined,
+      })
+    );
   };
 
   return (

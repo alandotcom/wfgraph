@@ -176,9 +176,10 @@ const Animated = memo(function Animated({
           strokeWidth: comparisonStyle.strokeWidth ?? 2,
           strokeDasharray:
             comparisonStyle.strokeDasharray ?? (inactive ? "4, 8" : "5"),
-          ...(inactive || comparison
-            ? {}
-            : { animation: "dashdraw 0.5s linear infinite" }),
+          animation:
+            inactive || comparison
+              ? undefined
+              : "dashdraw 0.5s linear infinite",
         }}
       />
       {edgeLabel && (
@@ -187,7 +188,7 @@ const Animated = memo(function Animated({
             className="pointer-events-none absolute rounded-sm border bg-background px-1.5 py-0.5 font-medium text-xs text-muted-foreground leading-none"
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-              ...(inactive ? { opacity: 0.7 } : {}),
+              opacity: inactive ? 0.7 : undefined,
             }}
           >
             {edgeLabel}

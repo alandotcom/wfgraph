@@ -86,7 +86,7 @@ const served: WorkflowRunRpcFixture = {
 
 /** The one workflow the strip's publication badge reads. */
 function workflowPayload(overrides: {
-  publishedVersionId?: string;
+  publishedVersionId?: string | undefined;
   hasUnpublishedChanges: boolean;
   mode: "live" | "test";
 }) {
@@ -102,12 +102,8 @@ function workflowPayload(overrides: {
     hasUnpublishedChanges: overrides.hasUnpublishedChanges,
     // A published workflow carries both the id the version is read by and the
     // number every surface displays.
-    ...(overrides.publishedVersionId
-      ? {
-          publishedVersionId: overrides.publishedVersionId,
-          publishedVersion: 1,
-        }
-      : {}),
+    publishedVersionId: overrides.publishedVersionId,
+    publishedVersion: overrides.publishedVersionId ? 1 : undefined,
   };
 }
 
@@ -160,7 +156,7 @@ async function renderStrip(
     workflowPayload({
       hasUnpublishedChanges: true,
       mode: options.mode ?? "live",
-      ...(options.published ? { publishedVersionId: "ver_1" } : {}),
+      publishedVersionId: options.published ? "ver_1" : undefined,
     })
   );
 

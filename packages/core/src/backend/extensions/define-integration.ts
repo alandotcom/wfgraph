@@ -210,9 +210,11 @@ export function defineIntegration<
   readonly test?:
     | IntegrationTestLoader<CredentialsOf<TCredentials>>
     | undefined;
-  readonly configOptions?: Readonly<
-    Record<string, ConfigOptionsProvider<CredentialsOf<TCredentials>>>
-  >;
+  readonly configOptions?:
+    | Readonly<
+        Record<string, ConfigOptionsProvider<CredentialsOf<TCredentials>>>
+      >
+    | undefined;
   readonly actions: IntegrationActions<
     CredentialsOf<TCredentials>,
     TInputs,
@@ -283,12 +285,12 @@ export function defineIntegration(input: {
     label: input.label,
     description: input.description,
     credentials: input.credentials,
-    ...(input.oauth ? { oauth: input.oauth } : {}),
+    oauth: input.oauth,
     test: input.test,
-    ...(input.configOptions ? { configOptions: input.configOptions } : {}),
+    configOptions: input.configOptions,
     actions: Object.fromEntries(actions),
-    ...(input.events ? { events: input.events } : {}),
-    ...(input.webhook ? { webhook: input.webhook } : {}),
+    events: input.events,
+    webhook: input.webhook,
   };
 }
 

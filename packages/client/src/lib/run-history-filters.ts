@@ -48,7 +48,7 @@ export type RunFilter = {
   operator: RunFilterOperator;
   value: string;
   /** Shown in the pill when it differs from `value`, e.g. a workflow name. */
-  valueLabel?: string;
+  valueLabel?: string | undefined;
 };
 
 /** The columns the dashboard search can read; extra fields on a row are ignored. */
@@ -145,7 +145,7 @@ export function createRunFilter(input: {
     field: input.field,
     operator: input.operator,
     value: input.value,
-    ...(input.valueLabel !== undefined ? { valueLabel: input.valueLabel } : {}),
+    valueLabel: input.valueLabel,
   };
 }
 
@@ -307,7 +307,7 @@ export function filterRuns<T extends RunHistorySearchRow>(
 }
 
 export type RunHistoryServerQuery = {
-  workflowIds?: string[];
+  workflowIds?: string[] | undefined;
   statuses: WorkflowExecutionStatus[];
   limit: number;
 };
@@ -373,9 +373,10 @@ export function toExecutionsQueryInput(input: {
   return {
     statuses: uniqueSorted(statuses),
     limit: input.limit,
-    ...(workflowIds !== undefined && workflowIds.length > 0
-      ? { workflowIds }
-      : {}),
+    workflowIds:
+      workflowIds !== undefined && workflowIds.length > 0
+        ? workflowIds
+        : undefined,
   };
 }
 

@@ -16,6 +16,7 @@
 import type { JsonObject, JsonValue } from "#src/types/json";
 import { isSafeRecordKey } from "#src/types/record-key";
 import { matchesShowWhen, type ShowWhen } from "#src/types/show-when";
+import { omitUndefined } from "#src/utils/omit-undefined";
 import type {
   WorkflowSchemaField,
   WorkflowSchemaFieldType,
@@ -79,14 +80,14 @@ function schemaFieldToReferenceField(
 ): ReferenceField {
   const description = field.description?.trim();
 
-  return {
+  return omitUndefined({
     path,
-    ...(description ? { description } : {}),
+    description,
     type: field.type,
-    ...(field.valueType ? { valueType: field.valueType } : {}),
-    ...(nullable ? { nullable: true } : {}),
-    ...(field.enumValues ? { enumValues: field.enumValues } : {}),
-  };
+    valueType: field.valueType,
+    nullable: nullable ? true : undefined,
+    enumValues: field.enumValues,
+  });
 }
 
 /**

@@ -23,6 +23,7 @@ import type {
   IntegrationRefreshState,
 } from "@wfgraph/shared/types/integration";
 import { getErrorMessage } from "@wfgraph/shared/utils";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { ENCRYPTION_KEY_MISMATCH_MESSAGE } from "#src/backend/services/integrations/cipher";
 import {
   connectionDefaultsForBrowser,
@@ -62,6 +63,7 @@ type IntegrationSummary = {
     connectedAt: string;
     accountLabel?: string;
     credentialKeys: readonly string[];
+    grantedAccessLabel?: string;
   };
 };
 
@@ -158,7 +160,7 @@ function toIntegrationSummary(
     findIntegration(catalog, input.type),
     input.config
   );
-  return {
+  return omitUndefined({
     id: input.id,
     name: input.name,
     type: input.type,
@@ -171,23 +173,19 @@ function toIntegrationSummary(
       input.type,
       input.config
     ),
-    ...(grant
-      ? {
-          oauth: {
-            status:
-              input.refreshState === "reauthorization_required"
-                ? ("reauthorization_required" as const)
-                : ("connected" as const),
-            connectedAt: grant.connectedAt,
-            ...(grant.accountLabel ? { accountLabel: grant.accountLabel } : {}),
-            credentialKeys: Object.keys(grant.credentials).toSorted(),
-            ...(grant.grantedAccessLabel
-              ? { grantedAccessLabel: grant.grantedAccessLabel }
-              : {}),
-          },
-        }
-      : {}),
-  };
+    oauth: grant
+      ? omitUndefined({
+          status:
+            input.refreshState === "reauthorization_required"
+              ? ("reauthorization_required" as const)
+              : ("connected" as const),
+          connectedAt: grant.connectedAt,
+          accountLabel: grant.accountLabel,
+          credentialKeys: Object.keys(grant.credentials).toSorted(),
+          grantedAccessLabel: grant.grantedAccessLabel,
+        })
+      : undefined,
+  });
 }
 
 function toIntegrationWithConfig(
@@ -392,11 +390,11 @@ export const putIntegration = Effect.fn("putIntegration")(function* (
   const updatePayload =
     mergedConfig === undefined
       ? omitBy({ name: body.name }, isNil)
-      : {
-          ...(body.name === undefined ? {} : { name: body.name }),
+      : omitUndefined({
+          name: body.name,
           config: mergedConfig,
           expectedRevision: existingIntegration.configRevision,
-        };
+        });
 
   const outcome = yield* repo
     .update(integrationId, updatePayload)

@@ -467,7 +467,7 @@ function workflowSchemaItemTypeToJsonSchemaNode(
   const format = stringFormatFor(type);
   return {
     type: format ? "string" : type,
-    ...(format ? { format } : {}),
+    format,
   };
 }
 
@@ -565,7 +565,7 @@ function workflowSchemaFieldFromRecord(
       format: record.format,
     }),
     description,
-    ...(enumValues ? { enumValues } : {}),
+    enumValues,
   };
 }
 
@@ -794,7 +794,7 @@ function parseNonNullableJsonSchemaProperty(
           ? (stringSubtype(value) ?? normalizedType)
           : normalizedType,
       description,
-      ...(enumValues ? { enumValues } : {}),
+      enumValues,
     };
   }
 
@@ -805,7 +805,7 @@ function parseNonNullableJsonSchemaProperty(
       type: "object",
       fields: parseJsonSchemaProperties(value.properties, value.required),
       description,
-      ...(valueType ? { valueType } : {}),
+      valueType: valueType ?? undefined,
     };
   }
 
@@ -838,7 +838,7 @@ function parseNonNullableJsonSchemaProperty(
         ? parseJsonSchemaProperties(items?.properties, items?.required)
         : undefined,
     description,
-    ...(minItems !== undefined ? { minItems } : {}),
+    minItems,
   };
 }
 
@@ -948,7 +948,7 @@ function workflowSchemaFieldToJsonSchemaNode(
     return {
       ...base,
       type: format ? "string" : field.type,
-      ...(format ? { format } : {}),
+      format,
     };
   }
 
@@ -960,13 +960,9 @@ function workflowSchemaFieldToJsonSchemaNode(
         field.fields ?? []
       ),
       ...requiredNamesOf(field.fields ?? []),
-      ...(field.valueType
-        ? {
-            additionalProperties: workflowSchemaItemTypeToJsonSchemaNode(
-              field.valueType
-            ),
-          }
-        : {}),
+      additionalProperties: field.valueType
+        ? workflowSchemaItemTypeToJsonSchemaNode(field.valueType)
+        : undefined,
     };
   }
 
@@ -990,7 +986,7 @@ function workflowSchemaFieldToJsonSchemaNode(
     type: "array",
     items: {
       type: itemFormat ? "string" : (field.itemType ?? "string"),
-      ...(itemFormat ? { format: itemFormat } : {}),
+      format: itemFormat,
     },
   };
 }

@@ -13,6 +13,7 @@
 import { Schema } from "effect";
 import { getAppLogger } from "#src/backend/lib/logger";
 import { readAs } from "@wfgraph/shared/types/schema";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   collectTimestampFieldPaths,
   compileConditionModel,
@@ -161,12 +162,10 @@ export function compileWaitSubscriptions(input: {
   const subscriptions: CompiledWaitSubscription[] = [];
 
   for (const subscription of input.subscriptions) {
-    const base: CompiledWaitSubscription = {
+    const base: CompiledWaitSubscription = omitUndefined({
       event: subscription.event,
-      ...(subscription.connectionId
-        ? { connectionId: subscription.connectionId }
-        : {}),
-    };
+      connectionId: subscription.connectionId,
+    });
 
     if (subscription.match === undefined || subscription.match.trim() === "") {
       subscriptions.push(base);

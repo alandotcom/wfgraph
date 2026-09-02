@@ -59,8 +59,10 @@ export function useNodeConfigWriter() {
       const newConfig: Record<string, unknown> = {
         ...latestNode.data.config,
         ...patch,
-        ...(shouldClearIntegration ? { integrationId: undefined } : {}),
       };
+      if (shouldClearIntegration) {
+        newConfig.integrationId = undefined;
+      }
 
       // A Condition node has to arrive with a model, because the engine rejects
       // one without it. The action being chosen is the moment that gap opens.

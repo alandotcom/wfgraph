@@ -29,6 +29,7 @@ import { reachableEventFields } from "@wfgraph/shared/graph/reachable-fields";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import { readConfigString } from "@wfgraph/shared/graph/node-config";
 import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { type AgentDocument, WorkflowDraft } from "#src/document";
 
 const referenceSchema = Schema.Struct({
@@ -147,7 +148,7 @@ export function referencesForNode(input: {
         catalog: input.catalog,
       }).map((field) => {
         const conditionFieldType = conditionFieldTypeOf(field);
-        return {
+        return omitUndefined({
           token: formatTemplateToken({
             nodeId: node.id,
             nodeLabel: sourceNodeLabel,
@@ -156,16 +157,12 @@ export function referencesForNode(input: {
           sourceNodeId: node.id,
           sourceNodeLabel,
           path: field.path,
-          ...(field.type === undefined ? {} : { type: field.type }),
-          ...(field.description === undefined
-            ? {}
-            : { description: field.description }),
-          ...(field.nullable === undefined ? {} : { nullable: field.nullable }),
-          ...(field.enumValues === undefined
-            ? {}
-            : { enumValues: field.enumValues }),
-          ...(conditionFieldType === null ? {} : { conditionFieldType }),
-        };
+          type: field.type,
+          description: field.description,
+          nullable: field.nullable,
+          enumValues: field.enumValues,
+          conditionFieldType: conditionFieldType ?? undefined,
+        });
       });
     });
 }

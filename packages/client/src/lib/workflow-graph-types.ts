@@ -69,7 +69,7 @@ export type EditorEdgeData = Record<string, unknown> & {
   displayLabel?: string | undefined;
   /** Set on an edge landing on a node the run can never reach. */
   inactive?: boolean | undefined;
-  [COMPARISON_EDGE_ANNOTATION]?: ComparisonEdgeAnnotation;
+  [COMPARISON_EDGE_ANNOTATION]?: ComparisonEdgeAnnotation | undefined;
 };
 
 export type WorkflowNodeData = EditorNodeData;

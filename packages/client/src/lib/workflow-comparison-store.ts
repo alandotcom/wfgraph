@@ -146,7 +146,7 @@ export const installWorkflowComparisonAtom = atom(
       epoch: number;
       payload: WorkflowComparisonPayload;
       preserveSession?: boolean;
-      selectedHistoryVersionId?: string | null;
+      selectedHistoryVersionId?: string | null | undefined;
     }
   ) => {
     if (

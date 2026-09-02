@@ -592,7 +592,7 @@ export function defineStep<TInput, TOutput>(
     description: definition.description,
     category: definition.category,
     sideEffect: definition.sideEffect ?? false,
-    ...(definition.hidden ? { hidden: true } : {}),
+    hidden: definition.hidden,
     configFields: buildConfigForm(
       configFieldsFromInputSchema(asStandardSchema(definition.input)),
       definition.configFields ?? []

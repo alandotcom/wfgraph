@@ -44,10 +44,10 @@ export type TestPayloadControl =
 
 export type TestPayloadField = {
   path: string;
-  description?: string;
+  description?: string | undefined;
   control: TestPayloadControl;
   /** The values a select offers, present only for `control: "select"`. */
-  options?: string[];
+  options?: string[] | undefined;
   optional: boolean;
 };
 
@@ -99,9 +99,9 @@ export function testPayloadFields(
 
   return event.payloadFields.filter(isFormAddressable).map((field) => ({
     path: field.path,
-    ...(field.description ? { description: field.description } : {}),
+    description: field.description,
     control: controlFor(field),
-    ...(field.enumValues ? { options: [...field.enumValues] } : {}),
+    options: field.enumValues ? [...field.enumValues] : undefined,
     optional: field.nullable === true,
   }));
 }
@@ -251,7 +251,7 @@ export function readEntryTestPayloads(
  */
 export function nextTestPayloads(
   current: TestPayloads,
-  request: { eventName?: string; input: JsonObject }
+  request: { eventName?: string | undefined; input: JsonObject }
 ): TestPayloads {
   if (!request.eventName) {
     return { ...current, manual: request.input };

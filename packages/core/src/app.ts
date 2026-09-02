@@ -254,7 +254,7 @@ async function buildWfGraphApp(
       inngest,
       extensions,
       appContext: {
-        ...(publicUrl ? { publicUrl } : {}),
+        publicUrl,
         apiBasePath: `${basePath}/api`,
       },
       agent: readAgentSettings(options.agent),

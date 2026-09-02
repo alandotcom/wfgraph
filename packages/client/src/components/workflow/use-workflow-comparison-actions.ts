@@ -29,6 +29,7 @@ import { enterDraftWorkspaceAtom } from "#src/lib/workflow-workspace-navigation"
 import { can } from "#src/lib/authorization";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 export function useWorkflowComparisonActions() {
   const queryClient = useQueryClient();
@@ -81,17 +82,19 @@ export function useWorkflowComparisonActions() {
         nodes: store.get(nodesAtom),
         edges: store.get(edgesAtom),
       };
-      const payload = await compare.mutateAsync({
-        workflowId,
-        ...(baseVersionId ? { baseVersionId } : {}),
-        draftGraph: toSerializedGraph(graph),
-      });
+      const payload = await compare.mutateAsync(
+        omitUndefined({
+          workflowId,
+          baseVersionId,
+          draftGraph: toSerializedGraph(graph),
+        })
+      );
       const installed = install({
         workflowId,
         epoch,
         payload,
         preserveSession: options?.fresh ? false : Boolean(session),
-        ...(baseVersionId ? { selectedHistoryVersionId: baseVersionId } : {}),
+        selectedHistoryVersionId: baseVersionId,
       });
       if (
         installed &&

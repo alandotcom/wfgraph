@@ -16,6 +16,7 @@ import type {
   WorkflowSchemaFieldType,
   WorkflowSchemaItemType,
 } from "#src/graph/schema-codec";
+import { omitUndefined } from "#src/utils/omit-undefined";
 
 /**
  * One path, reconciled across the Events that can reach the node.
@@ -149,19 +150,20 @@ export function reachableEventFields(
       const enumValues = reconcileEnumValues(declarations);
       const valueType = reconcileValueType(declarations);
 
-      return {
+      const nullable =
+        declarations.length < events.length ||
+        declarations.some((declaration) => declaration.field.nullable);
+
+      return omitUndefined({
         path,
-        ...(description ? { description } : {}),
-        ...(type ? { type } : {}),
-        ...(valueType ? { valueType } : {}),
-        ...(enumValues ? { enumValues } : {}),
-        ...(typeClash ? { typeClash } : {}),
-        ...(declarations.length < events.length ||
-        declarations.some((declaration) => declaration.field.nullable)
-          ? { nullable: true }
-          : {}),
+        description,
+        type,
+        valueType,
+        enumValues,
+        typeClash,
+        nullable: nullable ? true : undefined,
         declaredBy: declarations.map((declaration) => declaration.event.name),
-      };
+      });
     }
   );
 }

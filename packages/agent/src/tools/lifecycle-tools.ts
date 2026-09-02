@@ -35,6 +35,7 @@ import {
   readLifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { pruneStartFilters } from "@wfgraph/shared/lifecycle/start-filters";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { WorkflowDraft } from "#src/document";
 import { referencesForNode } from "#src/tools/reference-tools";
 
@@ -396,30 +397,22 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
         const rules: LifecycleRules = pruneStartFilters(
           pruneConnectionIds({
             ...emptyLifecycleRules,
-            ...(stored?.startFilters
-              ? { startFilters: stored.startFilters }
-              : {}),
-            ...(stored?.connectionIds
-              ? { connectionIds: stored.connectionIds }
-              : {}),
-            startEvents: [...input.startEvents],
-            cancelEvents: [...(input.cancelEvents ?? [])],
-            ...(input.concurrency === undefined
-              ? {}
-              : { concurrency: input.concurrency }),
-            ...(input.allowManualStart === undefined
-              ? {}
-              : { allowManualStart: input.allowManualStart }),
-            ...(input.correlationPaths === undefined
-              ? {}
-              : {
-                  correlationPaths: Object.fromEntries(
+            ...omitUndefined({
+              startFilters: stored?.startFilters,
+              connectionIds: stored?.connectionIds,
+              concurrency: input.concurrency,
+              allowManualStart: input.allowManualStart,
+              correlationPaths: input.correlationPaths
+                ? Object.fromEntries(
                     input.correlationPaths.map((supplied) => [
                       supplied.event,
                       supplied.path,
                     ])
-                  ),
-                }),
+                  )
+                : undefined,
+            }),
+            startEvents: [...input.startEvents],
+            cancelEvents: [...(input.cancelEvents ?? [])],
           })
         );
 

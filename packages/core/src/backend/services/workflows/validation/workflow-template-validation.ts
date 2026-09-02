@@ -81,7 +81,7 @@ function valueTargets(
   for (const field of flattenConfigFields(action?.configFields ?? [])) {
     targets.set(field.key, {
       required: field.required === true,
-      ...(field.literal ? { literal: field.literal } : {}),
+      literal: field.literal,
     });
   }
 

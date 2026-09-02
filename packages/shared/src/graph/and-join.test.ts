@@ -47,7 +47,7 @@ function edge(
   target: string,
   sourceHandle?: string
 ): WorkflowEdge {
-  return { id, source, target, ...(sourceHandle ? { sourceHandle } : {}) };
+  return { id, source, target, sourceHandle };
 }
 
 describe("andJoinRefusalReason", () => {

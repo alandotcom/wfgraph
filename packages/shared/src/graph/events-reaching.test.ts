@@ -99,9 +99,10 @@ function waitNode(
       config: {
         actionType: BUILT_IN_ACTION_IDS.wait,
         waitMode,
-        ...(waitMode === "event"
-          ? { waitFor: waitFor.map((event) => ({ event })) }
-          : {}),
+        waitFor:
+          waitMode === "event"
+            ? waitFor.map((event) => ({ event }))
+            : undefined,
       },
     },
   };
@@ -126,7 +127,7 @@ function conditionNode(id: string, conditions: ConditionRule[]): WorkflowNode {
       type: "action",
       config: {
         actionType: "Condition",
-        ...(compiled.valid ? { condition: compiled.expression } : {}),
+        condition: compiled.valid ? compiled.expression : undefined,
         conditionModel: serializeConditionModel(model),
       },
     },
@@ -139,7 +140,7 @@ function edge(
   target: string,
   sourceHandle?: string
 ): WorkflowEdge {
-  return { id, source, target, ...(sourceHandle ? { sourceHandle } : {}) };
+  return { id, source, target, sourceHandle };
 }
 
 function eventNameRule(

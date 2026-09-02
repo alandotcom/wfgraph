@@ -45,7 +45,7 @@ function integrationWith(input: {
     label: "Example",
     description: "Test integration",
     credentials: {},
-    ...(input.configOptions ? { configOptions: input.configOptions } : {}),
+    configOptions: input.configOptions,
     actions: {
       send: {
         label: "Send",

@@ -115,7 +115,7 @@ export function groupSelection(input: {
       config: {
         entryNodeIds: analysis.entryIds,
         exitNodeIds: analysis.exitIds,
-        ...(conditionExit ? { outletHandle: "true" as const } : {}),
+        outletHandle: conditionExit ? ("true" as const) : undefined,
       },
     },
   };

@@ -363,15 +363,13 @@ export function pruneCorrelationPaths(rules: LifecycleRules): LifecycleRules {
 function namedEventConnections(rules: LifecycleRules) {
   return [...rules.startEvents, ...rules.cancelEvents].map((event) => ({
     event,
-    ...(rules.connectionIds?.[event]
-      ? { connectionId: rules.connectionIds[event] }
-      : {}),
+    connectionId: rules.connectionIds?.[event],
   }));
 }
 
 function writeEventConnections(
   rules: LifecycleRules,
-  bindings: readonly { event: string; connectionId?: string }[]
+  bindings: readonly { event: string; connectionId?: string | undefined }[]
 ): LifecycleRules {
   const next = Object.fromEntries(
     bindings.flatMap((binding) =>

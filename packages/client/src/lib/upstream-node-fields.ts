@@ -18,6 +18,7 @@ import {
   appendOutputPathKey,
   fieldsVisibleForConfig,
 } from "@wfgraph/shared/graph/node-references";
+import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
 import {
   type ReachableField,
   reachableEventFields,
@@ -119,15 +120,15 @@ export function conditionFieldForPath(
  * rather than beside the paths all of them carry.
  */
 export type SourcedField = Omit<ReachableField, "declaredBy"> & {
-  sourceLabel?: string;
+  sourceLabel?: string | undefined;
   /** The Events reaching the node that leave this path out, by label. */
-  absentOn?: string[];
+  absentOn?: string[] | undefined;
   /**
    * Whose vocabulary this path belongs to, where an integration owns it. Read
    * only for an open record, to scope the keys the graph fills it with
    * (`open-record-keys.ts`), so one integration's rows never name another's.
    */
-  integration?: string;
+  integration?: string | undefined;
 };
 
 /** One upstream field, under the node that produced it. */
@@ -163,20 +164,17 @@ function entryPayloadFields(events: readonly EventMetadata[]): SourcedField[] {
 
     return {
       ...field,
-      ...(owners.length === 1 ? { integration: owners[0] } : {}),
-      ...(absent.length > 0
-        ? { absentOn: absent.map((event) => event.label) }
-        : {}),
+      integration: owners.length === 1 ? owners[0] : undefined,
+      absentOn:
+        absent.length > 0 ? absent.map((event) => event.label) : undefined,
       // One Event reaching the node leaves one section, which is the node's own
       // name and needs no label of its own.
-      ...(events.length < 2
-        ? {}
-        : {
-            sourceLabel:
-              absent.length === 0
-                ? SHARED_EVENT_FIELDS_LABEL
-                : declaring.map((event) => event.label).join(", "),
-          }),
+      sourceLabel:
+        events.length < 2
+          ? undefined
+          : absent.length === 0
+            ? SHARED_EVENT_FIELDS_LABEL
+            : declaring.map((event) => event.label).join(", "),
     };
   });
 }
@@ -202,7 +200,7 @@ function getPluginActionOutputFields(
 
   return action.outputFields.map((field) => ({
     ...field,
-    ...(action.integration ? { integration: action.integration } : {}),
+    integration: action.integration,
   }));
 }
 
@@ -322,6 +320,22 @@ function keyFieldsUnderRecord(
 }
 
 /**
+ * The three optional flags a schema field carries onto a picker row: whether it
+ * is an open record, whether a run can arrive without it, and its closed set of
+ * values. Each is left off rather than written `false` or `undefined`, so two
+ * rows agree only when the same flags are truly present.
+ */
+function schemaFieldFlags(
+  field: Pick<ReferenceField, "valueType" | "nullable" | "enumValues">
+): Pick<ConditionSelectableField, "openRecord" | "nullable" | "enumValues"> {
+  return {
+    ...(field.valueType ? { openRecord: true as const } : {}),
+    ...(field.nullable ? { nullable: true } : {}),
+    ...(field.enumValues ? { enumValues: field.enumValues } : {}),
+  };
+}
+
+/**
  * The typed vocabulary a Wait node's match editor builds rules from: the fields
  * of the Event being waited on, as the catalog declares them.
  *
@@ -362,9 +376,7 @@ export function getEventConditionFields(
         sourceNodeId: eventName,
         sourceNodeLabel: event.label,
         sourceNodeLabels: [event.label],
-        ...(field.valueType ? { openRecord: true as const } : {}),
-        ...(field.nullable ? { nullable: true } : {}),
-        ...(field.enumValues ? { enumValues: field.enumValues } : {}),
+        ...schemaFieldFlags(field),
       };
 
       return field.valueType
@@ -605,9 +617,7 @@ export function getUpstreamConditionFields(input: {
       sourceNodeId: field.sourceNodeId,
       sourceNodeLabel: field.sourceNodeName,
       sourceNodeLabels: [field.sourceNodeName],
-      ...(field.valueType ? { openRecord: true as const } : {}),
-      ...(field.nullable ? { nullable: true } : {}),
-      ...(field.enumValues ? { enumValues: field.enumValues } : {}),
+      ...schemaFieldFlags(field),
     };
     fieldsByPath.set(path, entry);
 

@@ -75,7 +75,7 @@ function tokenSet(response: ResendOAuthTokenResponse): OAuthTokenSet {
     credentials: { RESEND_API_KEY: response.access_token },
     // Both `exchange` and `refresh` build their answer here, so a refresh that
     // narrows the grant updates the stored access label with no further work.
-    ...(accessLabel ? { grantedAccessLabel: accessLabel } : {}),
+    grantedAccessLabel: accessLabel,
     tokens: {
       accessToken: response.access_token,
       refreshToken: response.refresh_token,

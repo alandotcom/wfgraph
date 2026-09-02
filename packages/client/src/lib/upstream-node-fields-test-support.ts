@@ -6,6 +6,7 @@ import {
 import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { requireOutputFieldsFromSchema } from "@wfgraph/shared/graph/output-fields";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 // What a node offers downstream comes off the catalog the editor fetches once
@@ -74,12 +75,12 @@ export function createEdge(input: {
   target: string;
   sourceHandle?: string;
 }): WorkflowEdge {
-  return {
+  return omitUndefined({
     id: input.id,
     source: input.source,
     target: input.target,
-    ...(input.sourceHandle ? { sourceHandle: input.sourceHandle } : {}),
-  };
+    sourceHandle: input.sourceHandle,
+  });
 }
 
 /** One Event, its payload fields derived the way `defineEvent` derives them. */
@@ -89,15 +90,15 @@ export function anEvent(input: {
   integration?: string;
   schema: Parameters<typeof requireOutputFieldsFromSchema>[1];
 }): EventMetadata {
-  return {
+  return omitUndefined({
     name: input.name,
     label: input.label ?? input.name,
-    ...(input.integration ? { integration: input.integration } : {}),
+    integration: input.integration,
     payloadFields: requireOutputFieldsFromSchema(
       `Event "${input.name}"`,
       input.schema
     ),
-  };
+  });
 }
 
 /** The edge a run leaves the Started outlet by, drawn to one node. */

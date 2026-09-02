@@ -24,6 +24,7 @@ import {
 } from "@wfgraph/shared/extensions/catalog";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { asNonEmptyString } from "@wfgraph/shared/types/string";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { getValueByPath } from "@wfgraph/shared/utils/object-path";
 import type {
   WorkflowExecuteResponse,
@@ -356,20 +357,23 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
       return response;
     }
 
-    const response: WorkflowExecuteResponse = {
+    // The response is decoded against a contract that declares each of these
+    // with `optionalKey`, so an ordinary start leaves the keys out rather than
+    // sending them as `undefined` or a zero count.
+    const response: WorkflowExecuteResponse = omitUndefined({
       status: "running",
       executionId: started.executionId,
-      // The response is decoded against a contract that declares `runId` with
-      // `optionalKey`, so a run Inngest has not named yet leaves the key out.
-      ...(started.runId === undefined ? {} : { runId: started.runId }),
+      runId: started.runId,
       runMode,
-      ...(started.supersededExecutionIds.length > 0
-        ? { supersededExecutions: started.supersededExecutionIds.length }
-        : {}),
-      ...(started.failedToSupersede.length > 0
-        ? { failedToSupersede: started.failedToSupersede }
-        : {}),
-    };
+      supersededExecutions:
+        started.supersededExecutionIds.length > 0
+          ? started.supersededExecutionIds.length
+          : undefined,
+      failedToSupersede:
+        started.failedToSupersede.length > 0
+          ? started.failedToSupersede
+          : undefined,
+    });
     return response;
   },
   // The start span's own verdict: how the request ended, and the run it opened

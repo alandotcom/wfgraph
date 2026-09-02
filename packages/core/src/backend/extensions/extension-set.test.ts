@@ -28,7 +28,7 @@ function anEvent(
     name,
     schema: appointmentPayload,
     correlationPath: "appointment.id",
-    ...(source ? { source } : {}),
+    source,
   });
 }
 

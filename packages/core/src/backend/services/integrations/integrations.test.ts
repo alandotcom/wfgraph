@@ -69,7 +69,7 @@ function slackDefinition(test?: IntegrationTestLoader) {
     label: "Slack",
     description: "test double",
     credentials: slackLike.credentialFields,
-    ...(test ? { test } : {}),
+    test,
     actions: {},
   });
 }

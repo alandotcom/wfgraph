@@ -248,13 +248,15 @@ export type DefineEventInput<TPayload extends JsonObject> = {
    *
    * Defaults to `{ event: name }`.
    */
-  readonly source?: {
-    readonly event: string;
-    readonly when?: {
-      readonly path: StringPath<TPayload>;
-      readonly equals: string;
-    };
-  };
+  readonly source?:
+    | {
+        readonly event: string;
+        readonly when?: {
+          readonly path: StringPath<TPayload>;
+          readonly equals: string;
+        };
+      }
+    | undefined;
   readonly inngest?: InngestEventOptions<TPayload> | undefined;
 };
 

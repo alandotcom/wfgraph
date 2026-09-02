@@ -50,7 +50,7 @@ function group(
       config: {
         entryNodeIds,
         exitNodeIds,
-        ...(outletHandle ? { outletHandle } : {}),
+        outletHandle,
       },
     },
   };

@@ -25,6 +25,7 @@ import {
   useWorkflowIssuePreflight,
 } from "#src/hooks/use-workflow-issue-preflight";
 import { isTextEntry } from "#src/lib/is-text-entry";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   cacheWorkflowPublication,
   orpcQuery,
@@ -329,25 +330,23 @@ function useWorkflowHandlers({
     setIsExecuting(true);
     await executeWorkflowRun({
       runWorkflow: () =>
-        runWorkflow.mutateAsync({
-          workflowId: currentWorkflowId,
-          input: request.input,
-          ...(request.eventName ? { eventName: request.eventName } : {}),
-          // An absent field means the published graph, on the wire and in the UI.
-          ...(target.graph === "draft" ? { graph: "draft" as const } : {}),
-          // What the run dialog displayed. The server refuses the run when the
-          // published version or the Published mode has moved since, so a
-          // dialog left open across a publish or a mode change cannot start a
-          // run for a graph or a set of recipients nobody saw.
-          ...(target.graph === "published" && publishedVersionId
-            ? {
-                expected: {
-                  versionId: publishedVersionId,
-                  mode: target.workflowMode,
-                },
-              }
-            : {}),
-        }),
+        runWorkflow.mutateAsync(
+          omitUndefined({
+            workflowId: currentWorkflowId,
+            input: request.input,
+            eventName: request.eventName,
+            // An absent field means the published graph, on the wire and in the UI.
+            graph: target.graph === "draft" ? ("draft" as const) : undefined,
+            // What the run dialog displayed. The server refuses the run when the
+            // published version or the Published mode has moved since, so a
+            // dialog left open across a publish or a mode change cannot start a
+            // run for a graph or a set of recipients nobody saw.
+            expected:
+              target.graph === "published" && publishedVersionId
+                ? { versionId: publishedVersionId, mode: target.workflowMode }
+                : undefined,
+          })
+        ),
       nodes,
       setNodeStatuses,
       setIsExecuting,
@@ -735,13 +734,11 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     }
 
     const graph = toSerializedGraph({ nodes, edges });
-    const input = {
+    const input = omitUndefined({
       workflowId: currentWorkflowId,
-      ...(publication?.publishedVersionId
-        ? { baseVersionId: publication.publishedVersionId }
-        : {}),
+      baseVersionId: publication?.publishedVersionId,
       draftGraph: graph,
-    };
+    });
     const epoch = beginPublicationReview(currentWorkflowId);
     if (epoch === null) {
       return;

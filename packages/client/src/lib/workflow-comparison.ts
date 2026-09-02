@@ -150,7 +150,7 @@ export function buildComparisonDisplayGraph(
         deletable: false,
         data: {
           ...node.data,
-          ...(comparison ? { [COMPARISON_NODE_ANNOTATION]: comparison } : {}),
+          [COMPARISON_NODE_ANNOTATION]: comparison,
         },
       };
     }),
@@ -175,7 +175,7 @@ export function buildComparisonDisplayGraph(
           deletable: false,
           data: {
             ...node.data,
-            ...(comparison ? { [COMPARISON_NODE_ANNOTATION]: comparison } : {}),
+            [COMPARISON_NODE_ANNOTATION]: comparison,
           },
         };
         // A deleted frame remains the coordinate system for its deleted
@@ -221,7 +221,7 @@ export function buildComparisonDisplayGraph(
       deletable: false,
       data: {
         ...edge.data,
-        ...(comparison ? { [COMPARISON_EDGE_ANNOTATION]: comparison } : {}),
+        [COMPARISON_EDGE_ANNOTATION]: comparison,
       },
     };
   });

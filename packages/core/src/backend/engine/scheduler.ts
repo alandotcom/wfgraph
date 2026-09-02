@@ -16,6 +16,7 @@ import {
   readConfigString,
 } from "@wfgraph/shared/graph/node-config";
 import { type JsonObject, readJsonValue } from "@wfgraph/shared/types/json";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { Cause, Effect } from "effect";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import type { CancelBoundary } from "#src/backend/engine/cancel-boundary";
@@ -224,14 +225,15 @@ export class NodeScheduler {
           nodeName
         ).pipe(
           Effect.withSpan("wfgraph.workflow.node.execute", {
-            attributes: {
+            // A span attribute holding literal `undefined` is recorded as the
+            // string `"undefined"` rather than left out, so an unconfigured
+            // node's missing action type must be an absent key.
+            attributes: omitUndefined({
               "wfgraph.node.id": nodeId,
               "wfgraph.node.name": nodeName,
               "wfgraph.node.type": node.data.type,
-              ...(actionType === undefined
-                ? {}
-                : { "wfgraph.action.type": actionType }),
-            },
+              "wfgraph.action.type": actionType,
+            }),
           })
         );
         yield* traversal.withNodeInProgress(nodeId, () => nodeExecution);
@@ -455,7 +457,7 @@ export class NodeScheduler {
             id: nodeId,
             name: nodeName,
             type: node.data.type,
-            ...(actionType === undefined ? {} : { action: actionType }),
+            action: actionType,
             status,
             ms: elapsedMs,
             ...extra,
@@ -504,11 +506,14 @@ export class NodeScheduler {
 
         const failure = executionError(result);
         yield* logNode(startedAt, result.success ? "success" : "failed", {
+          // `haltBranch` is always a boolean; the field is left out entirely
+          // rather than logged as `halt: false` on every ordinary node.
           ...(outcome.haltBranch === true ? { halt: true } : {}),
+          // Only a Condition node has a branch to report.
           ...(isConditionNode(node)
             ? { condition: outcome.conditionValue ?? null }
             : {}),
-          ...(failure === undefined ? {} : { error: failure }),
+          error: failure,
         });
 
         // A claimed run takes the Canceled outlet instead of whatever came next,

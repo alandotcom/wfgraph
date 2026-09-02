@@ -1,4 +1,5 @@
 import { appendOutputPathKey } from "#src/graph/node-references";
+import { omitUndefined } from "#src/utils/omit-undefined";
 
 /**
  * The single CEL root every condition field hangs off.
@@ -273,11 +274,11 @@ export function createDefaultConditionRule(
   // unfinished until somebody names one. Seeded here rather than at the call
   // site because `reconcileModelWithFields` rebuilds through this function too,
   // and a rebuild that dropped the key would leave a rule comparing the record.
-  const base = {
+  const base = omitUndefined({
     id,
     field: field.path,
-    ...(field.openRecord ? { recordKey: "" } : {}),
-  };
+    recordKey: field.openRecord ? "" : undefined,
+  });
 
   if (field.type === "timestamp") {
     return {

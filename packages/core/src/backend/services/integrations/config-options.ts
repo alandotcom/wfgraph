@@ -118,6 +118,8 @@ export const postIntegrationConfigOptions = Effect.fn(
   // the answer's size is here and its contents are not.
   yield* logger.info("Read integration config options", {
     request: { parameterKeys: Object.keys(accepted) },
+    // Each answer status has one field of its own; the other two are left off
+    // rather than logged as `undefined` on every line.
     outcome: {
       status: answer.status,
       ...(answer.status === "options"

@@ -400,38 +400,36 @@ async function driveWithReplayInstalled<T>(
           return pending<unknown>();
         }),
 
-      ...(branch
-        ? {
-            startBranch: (
-              { id: stepId }: DurableStepRef,
-              input: {
-                entryNodeId: string;
-                releasedNodeIds: readonly string[];
+      startBranch: branch
+        ? (
+            { id: stepId }: DurableStepRef,
+            input: {
+              entryNodeId: string;
+              releasedNodeIds: readonly string[];
+            }
+          ) =>
+            withActivity(() => {
+              const ended = run.branchEndings.get(stepId);
+              if (ended) {
+                return "error" in ended
+                  ? Promise.reject(ended.error)
+                  : Promise.resolve(ended.handoff);
               }
-            ) =>
-              withActivity(() => {
-                const ended = run.branchEndings.get(stepId);
-                if (ended) {
-                  return "error" in ended
-                    ? Promise.reject(ended.error)
-                    : Promise.resolve(ended.handoff);
-                }
-                if (!run.branchRuns.has(stepId)) {
-                  run.branchRuns.add(stepId);
-                  startRun(
+              if (!run.branchRuns.has(stepId)) {
+                run.branchRuns.add(stepId);
+                startRun(
+                  stepId,
+                  (childRuntime) => branch(childRuntime, input),
+                  {
+                    run,
                     stepId,
-                    (childRuntime) => branch(childRuntime, input),
-                    {
-                      run,
-                      stepId,
-                    }
-                  );
-                }
-                pass.pauses.add(stepId);
-                return pending<BranchHandoff>();
-              }),
-          }
-        : {}),
+                  }
+                );
+              }
+              pass.pauses.add(stepId);
+              return pending<BranchHandoff>();
+            })
+        : undefined,
     };
 
     let settlement: Settlement | undefined;

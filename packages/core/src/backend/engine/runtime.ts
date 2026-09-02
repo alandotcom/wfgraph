@@ -65,10 +65,12 @@ export type WorkflowExecutionRuntime = {
    * A runtime that starts no durable runs leaves this out, and the engine then
    * enters the Wait where it stands.
    */
-  startBranch?: (
-    step: DurableStepRef,
-    input: { entryNodeId: string; releasedNodeIds: readonly string[] }
-  ) => Promise<BranchHandoff>;
+  startBranch?:
+    | ((
+        step: DurableStepRef,
+        input: { entryNodeId: string; releasedNodeIds: readonly string[] }
+      ) => Promise<BranchHandoff>)
+    | undefined;
   /**
    * Zero-indexed retry counter for the current attempt, which holds across every
    * replay within that attempt and rises when the runtime retries the body. A

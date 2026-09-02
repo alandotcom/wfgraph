@@ -80,9 +80,7 @@ function waitNode(
         waitMode: "event",
         waitFor: eventNames.map((event) => ({
           event,
-          ...(connectionIds[event]
-            ? { connectionId: connectionIds[event] }
-            : {}),
+          connectionId: connectionIds[event],
         })),
       },
     },

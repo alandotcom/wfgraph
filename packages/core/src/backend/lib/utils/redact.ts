@@ -332,9 +332,10 @@ export function redactWorkflowGraph(
 ): SerializedWorkflowGraph {
   return {
     ...graph,
-    ...(graph.attributes === undefined
-      ? {}
-      : { attributes: redactJsonShaped(graph.attributes) }),
+    attributes:
+      graph.attributes === undefined
+        ? undefined
+        : redactJsonShaped(graph.attributes),
     nodes: graph.nodes.map((node) => ({
       ...node,
       attributes: redactOpenAttributes(node.attributes, NODE_STRUCTURAL_KEYS),

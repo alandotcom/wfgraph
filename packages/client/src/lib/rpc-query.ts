@@ -1,5 +1,6 @@
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";
 import type { QueryClient } from "@tanstack/react-query";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { rpc } from "#src/lib/rpc-client";
 import type { WorkflowApiPayload } from "@wfgraph/shared/graph/api-contracts";
 
@@ -169,15 +170,11 @@ export function cacheWorkflowPublication(
         ...current,
         hasUnpublishedChanges: workflow.hasUnpublishedChanges,
         updatedAt: workflow.updatedAt ?? current.updatedAt,
-        ...(workflow.publishedVersionId !== undefined
-          ? { publishedVersionId: workflow.publishedVersionId }
-          : {}),
-        ...(workflow.publishedVersion !== undefined
-          ? { publishedVersion: workflow.publishedVersion }
-          : {}),
-        ...(workflow.publishedAt !== undefined
-          ? { publishedAt: workflow.publishedAt }
-          : {}),
+        ...omitUndefined({
+          publishedVersionId: workflow.publishedVersionId,
+          publishedVersion: workflow.publishedVersion,
+          publishedAt: workflow.publishedAt,
+        }),
       };
     }
   );

@@ -4,6 +4,7 @@
 
 import { randomUUID } from "node:crypto";
 import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
 import { resolveWaitUntil } from "@wfgraph/shared/utils/wait-time";
 import { celStringLiteral } from "@wfgraph/shared/conditions/cel-string-literal";
@@ -301,14 +302,15 @@ export function executeEventWait(
           ? { ...base, skipped: true, skippedReason: "timeout_skip" }
           : {
               ...base,
-              ...(carriesPayload
-                ? {
-                    ...(resumeEventName === null
-                      ? {}
-                      : { event: resumeEventName }),
-                    payload: readJsonObject(signal?.payload) ?? {},
-                  }
-                : {}),
+              ...omitUndefined({
+                event:
+                  carriesPayload && resumeEventName !== null
+                    ? resumeEventName
+                    : undefined,
+                payload: carriesPayload
+                  ? (readJsonObject(signal?.payload) ?? {})
+                  : undefined,
+              }),
             };
 
         yield* closeStepLog(store, startLog, { status: "success", output });

@@ -109,17 +109,14 @@ export function runAction(
     ...run.input,
     // A step reads its credentials by integration id, so an action given none
     // never fetches, which is what an action against a public API does.
-    ...(run.credentials === undefined
-      ? {}
-      : { integrationId: TEST_INTEGRATION_ID }),
+    integrationId:
+      run.credentials === undefined ? undefined : TEST_INTEGRATION_ID,
     _context: {
       runMode: run.runMode ?? "live",
       nodeId: run.node?.nodeId ?? "node_1",
       nodeName: run.node?.nodeName ?? integration.label,
       nodeType: run.node?.nodeType ?? "action",
-      ...(run.node?.executionId === undefined
-        ? {}
-        : { executionId: run.node.executionId }),
+      executionId: run.node?.executionId,
     },
   });
 }

@@ -18,6 +18,7 @@ import {
   jsonObjectSchema,
   readJsonObject,
 } from "@wfgraph/shared/types/json";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { WorkflowDraft } from "#src/document";
 
 const graphNodeSchema = Schema.Struct({
@@ -109,26 +110,24 @@ export const graphReadToolHandlers = Effect.gen(function* () {
         nodes: document.nodes.map((node) => {
           const actionType = actionTypeOf(node);
           const enabled = persistedNodeEnabled(node.data.enabled);
-          return {
+          return omitUndefined({
             id: node.id,
             label: node.data.label,
             type: node.data.type,
-            ...(actionType === undefined ? {} : { actionType }),
-            ...(node.data.description === undefined
-              ? {}
-              : { description: node.data.description }),
-            ...(enabled === undefined ? {} : { enabled }),
+            actionType,
+            description: node.data.description,
+            enabled,
             config: readableConfig(node),
-          };
+          });
         }),
-        edges: document.edges.map((edge) => ({
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          ...(edge.sourceHandle === undefined || edge.sourceHandle === null
-            ? {}
-            : { sourceHandle: edge.sourceHandle }),
-        })),
+        edges: document.edges.map((edge) =>
+          omitUndefined({
+            id: edge.id,
+            source: edge.source,
+            target: edge.target,
+            sourceHandle: edge.sourceHandle ?? undefined,
+          })
+        ),
       })),
 
     validate_workflow: () =>

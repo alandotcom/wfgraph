@@ -149,7 +149,7 @@ export function readOAuthAuthorizationAttemptPayload(
       kind: "reconnect",
       redirectUri,
       configRevision,
-      ...(codeVerifier ? { codeVerifier } : {}),
+      codeVerifier,
     };
   }
   if (payload.kind !== "create") return null;
@@ -180,7 +180,7 @@ export function readOAuthAuthorizationAttemptPayload(
     type,
     config,
     redirectUri,
-    ...(codeVerifier ? { codeVerifier } : {}),
+    codeVerifier,
   };
 }
 

@@ -48,6 +48,7 @@ import {
 import { enabledActionTypeOf } from "@wfgraph/shared/graph/node-config";
 import { isBuiltInActionId } from "@wfgraph/shared/actions/built-in-actions";
 import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { catalogFingerprint } from "#src/backend/services/workflows/version-digest";
 
 const loggerFor = (workflowId: string) =>
@@ -114,15 +115,17 @@ function redactFieldValue(path: string[], value: JsonValue): JsonValue {
 }
 
 function redactFieldChange(change: WorkflowFieldChange): WorkflowFieldChange {
-  return {
+  return omitUndefined({
     ...change,
-    ...(change.before === undefined
-      ? {}
-      : { before: redactFieldValue(change.path, change.before) }),
-    ...(change.after === undefined
-      ? {}
-      : { after: redactFieldValue(change.path, change.after) }),
-  };
+    before:
+      change.before === undefined
+        ? undefined
+        : redactFieldValue(change.path, change.before),
+    after:
+      change.after === undefined
+        ? undefined
+        : redactFieldValue(change.path, change.after),
+  });
 }
 
 function versionNotFound(): NotFound {
