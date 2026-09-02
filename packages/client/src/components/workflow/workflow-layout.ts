@@ -195,10 +195,11 @@ const CONDITION_OUTLETS: readonly string[] = ["true", "false"];
 const UNRANKED_HANDLE = Number.MAX_SAFE_INTEGER;
 
 /** Every node but an Event Split and a Group draws at the one card size. */
-function standardCard(
-  outletHandles: readonly string[],
-  holdsOutletsOpen: boolean
-): NodeShape {
+function standardCard(options: {
+  outletHandles: readonly string[];
+  holdsOutletsOpen: boolean;
+}): NodeShape {
+  const { outletHandles, holdsOutletsOpen } = options;
   return {
     width: WORKFLOW_NODE_WIDTH,
     height: WORKFLOW_NODE_HEIGHT,
@@ -246,15 +247,21 @@ function readNodeShape(input: {
   }
 
   if (isLifecycleNode(input.node)) {
-    return standardCard(LIFECYCLE_OUTLETS, true);
+    return standardCard({
+      outletHandles: LIFECYCLE_OUTLETS,
+      holdsOutletsOpen: true,
+    });
   }
 
   if (isConditionNode(input.node)) {
-    return standardCard(CONDITION_OUTLETS, true);
+    return standardCard({
+      outletHandles: CONDITION_OUTLETS,
+      holdsOutletsOpen: true,
+    });
   }
 
   if (!isEventSplitNode(input.node)) {
-    return standardCard([], false);
+    return standardCard({ outletHandles: [], holdsOutletsOpen: false });
   }
 
   const outlets = eventsReachingTarget({

@@ -146,12 +146,12 @@ async function requestSlackOAuth<S extends Schema.ConstraintDecoder<unknown>>(
 
 function tokenSet(
   response: SlackOAuthResponse,
-  requireRefreshToken: boolean
+  options: { requireRefreshToken: boolean }
 ): OAuthTokenSet {
   const hasExpiry = response.expires_in !== undefined;
   const hasRefreshToken = response.refresh_token !== undefined;
 
-  if (requireRefreshToken && !hasRefreshToken) {
+  if (options.requireRefreshToken && !hasRefreshToken) {
     throw new Error(
       "Slack OAuth refresh response must include a replacement refresh_token."
     );
@@ -204,7 +204,7 @@ function createSlackOAuth(clientId: string, clientSecret: string) {
         new URLSearchParams({ code, redirect_uri: redirectUri }),
         slackOAuthResponseSchema
       );
-      const grant = tokenSet(response, false);
+      const grant = tokenSet(response, { requireRefreshToken: false });
       return {
         ...grant,
         accountLabel: response.team?.name,
@@ -228,7 +228,7 @@ function createSlackOAuth(clientId: string, clientSecret: string) {
         }),
         slackOAuthResponseSchema
       );
-      return tokenSet(response, true);
+      return tokenSet(response, { requireRefreshToken: true });
     },
 
     revoke: async ({ grant }: OAuthRevokeInput) => {
