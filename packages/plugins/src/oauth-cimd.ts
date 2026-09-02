@@ -6,6 +6,7 @@
  * to credentials stays in each adapter.
  */
 
+import { compact } from "es-toolkit/array";
 import type { JsonValue, OAuthGrant } from "@wfgraph/core/plugin";
 import {
   callExternal,
@@ -61,9 +62,7 @@ function safeOAuthError(
     ? sanitize(description, secrets).slice(0, 500)
     : undefined;
 
-  return (
-    [safeCode, safeDescription].filter(Boolean).join(": ") || "unknown error"
-  );
+  return compact([safeCode, safeDescription]).join(": ") || "unknown error";
 }
 
 function describeOAuthFailure(

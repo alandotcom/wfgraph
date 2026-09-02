@@ -22,6 +22,7 @@ import type {
   ConfigOptionsAnswer,
   ConfigOptionsRequest,
 } from "@wfgraph/core/plugin";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 /** Resend's own maximum, so a template can declare no more inputs than it has. */
 const MAX_TEMPLATE_VARIABLES = 50;
@@ -157,17 +158,19 @@ export async function resendTemplateVariableFields(
     status: "fields",
     fields: variables
       .slice(0, MAX_TEMPLATE_VARIABLES)
-      .map((variable): ConfigOptionField => ({
-        key: variable.key,
-        // Resend has no display name for a variable, so its key is its label.
-        label: variable.key,
-        // A variable with no fallback has to be supplied or the send fails,
-        // which is the whole of what required means here. An empty string is a
-        // fallback, so this asks whether one is present rather than truthy.
-        ...(variable.fallback_value == null
-          ? { required: true as const }
-          : { defaultValue: variable.fallback_value }),
-        ...(variable.type === "number" ? { type: "number" as const } : {}),
-      })),
+      .map((variable): ConfigOptionField =>
+        omitUndefined({
+          key: variable.key,
+          // Resend has no display name for a variable, so its key is its label.
+          label: variable.key,
+          // A variable with no fallback has to be supplied or the send fails,
+          // which is the whole of what required means here. An empty string is
+          // a fallback, so this asks whether one is present rather than truthy.
+          required:
+            variable.fallback_value == null ? (true as const) : undefined,
+          defaultValue: variable.fallback_value ?? undefined,
+          type: variable.type === "number" ? ("number" as const) : undefined,
+        })
+      ),
   };
 }

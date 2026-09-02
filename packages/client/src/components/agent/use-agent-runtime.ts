@@ -19,6 +19,7 @@ import { useSetAtom } from "jotai";
 import { useMemo } from "react";
 import type { AgentMessage } from "@wfgraph/shared/rpc/agent-stream";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
+import { isBlank } from "@wfgraph/shared/types/string";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { appStore } from "#src/lib/app-store";
 import { rpc, toSerializedGraph } from "#src/lib/rpc-client";
@@ -53,7 +54,7 @@ function toAgentMessages(messages: readonly ThreadMessage[]): AgentMessage[] {
       .map((part) => part.text)
       .join("");
 
-    if (content.trim().length > 0) {
+    if (!isBlank(content)) {
       sent.push({ role: message.role, content });
     }
   }

@@ -23,14 +23,14 @@ import {
 type WorkflowRunSummaryRowProps = {
   execution: WorkflowExecution;
   runNumber: number;
-  variant?: "list" | "header";
-  outcome?: string;
-  onClick?: () => void;
-  selected?: boolean;
-  onBack?: () => void;
-  onCancel?: (executionId: string) => void;
-  isCanceling?: boolean;
-  focusOnMount?: boolean;
+  variant?: "list" | "header" | undefined;
+  outcome?: string | undefined;
+  onClick?: (() => void) | undefined;
+  selected?: boolean | undefined;
+  onBack?: (() => void) | undefined;
+  onCancel?: ((executionId: string) => void) | undefined;
+  isCanceling?: boolean | undefined;
+  focusOnMount?: boolean | undefined;
 };
 
 export function getRunIdentity(
@@ -181,11 +181,11 @@ function HeaderSummary({
 }: {
   execution: WorkflowExecution;
   runNumber: number;
-  outcome?: string;
-  onBack?: () => void;
-  onCancel?: (executionId: string) => void;
-  isCanceling?: boolean;
-  focusOnMount?: boolean;
+  outcome?: string | undefined;
+  onBack?: (() => void) | undefined;
+  onCancel?: ((executionId: string) => void) | undefined;
+  isCanceling?: boolean | undefined;
+  focusOnMount?: boolean | undefined;
 }) {
   const identity = getRunIdentity(execution, runNumber);
   const headingRef = useRef<HTMLHeadingElement>(null);

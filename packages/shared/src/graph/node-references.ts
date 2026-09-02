@@ -13,9 +13,12 @@
  * `WorkflowSchemaField`. This module reads that tree and flattens it.
  */
 
-import type { JsonObject, JsonValue } from "#src/types/json";
+import { isPlainObject } from "es-toolkit/predicate";
+import { isJsonObject, type JsonObject, type JsonValue } from "#src/types/json";
 import { isSafeRecordKey } from "#src/types/record-key";
 import { matchesShowWhen, type ShowWhen } from "#src/types/show-when";
+import { mapOrSame, mapValuesOrSame } from "#src/utils/map-or-same";
+import { omitUndefined } from "#src/utils/omit-undefined";
 import type {
   WorkflowSchemaField,
   WorkflowSchemaFieldType,
@@ -51,12 +54,12 @@ import type {
 export type ReferenceField = {
   path: string;
   /** The author's own words for the field, absent when they wrote none. */
-  description?: string;
-  type?: WorkflowSchemaFieldType;
-  valueType?: WorkflowSchemaItemType;
-  nullable?: boolean;
-  enumValues?: string[];
-  showWhen?: ShowWhen;
+  description?: string | undefined;
+  type?: WorkflowSchemaFieldType | undefined;
+  valueType?: WorkflowSchemaItemType | undefined;
+  nullable?: boolean | undefined;
+  enumValues?: string[] | undefined;
+  showWhen?: ShowWhen | undefined;
 };
 
 /**
@@ -79,14 +82,16 @@ function schemaFieldToReferenceField(
 ): ReferenceField {
   const description = field.description?.trim();
 
-  return {
+  return omitUndefined({
     path,
-    ...(description ? { description } : {}),
+    // A description of nothing but whitespace says no more than a missing one,
+    // so the key is dropped rather than emitted as an empty string.
+    description: description || undefined,
     type: field.type,
-    ...(field.valueType ? { valueType: field.valueType } : {}),
-    ...(nullable ? { nullable: true } : {}),
-    ...(field.enumValues ? { enumValues: field.enumValues } : {}),
-  };
+    valueType: field.valueType,
+    nullable: nullable ? true : undefined,
+    enumValues: field.enumValues,
+  });
 }
 
 /**
@@ -341,28 +346,13 @@ export function mapTemplateTokens(
   }
 
   if (Array.isArray(value)) {
-    let changed = false;
-    const next = value.map((item) => {
-      const mapped = mapTemplateTokens(item, rewrite);
-      if (mapped !== item) {
-        changed = true;
-      }
-      return mapped;
-    });
-    return changed ? next : value;
+    return mapOrSame(value, (item) => mapTemplateTokens(item, rewrite));
   }
 
-  if (typeof value === "object" && value !== null) {
-    let changed = false;
-    const remapped: Array<[string, unknown]> = [];
-    for (const [key, nested] of Object.entries(value)) {
-      const mapped = mapTemplateTokens(nested, rewrite);
-      if (mapped !== nested) {
-        changed = true;
-      }
-      remapped.push([key, mapped]);
-    }
-    return changed ? Object.fromEntries(remapped) : value;
+  if (isPlainObject(value)) {
+    return mapValuesOrSame(value, (nested) =>
+      mapTemplateTokens(nested, rewrite)
+    );
   }
 
   return value;
@@ -372,24 +362,17 @@ function mapTemplateString(
   value: string,
   rewrite: (token: TemplateToken) => string | undefined
 ): string {
-  let changed = false;
-  const next = parseTemplate(value)
-    .map((segment) => {
-      if (segment.kind === "literal") {
-        return segment.text;
-      }
-
-      const replacement = rewrite(segment.token);
-      if (replacement === undefined || replacement === segment.token.raw) {
-        return segment.token.raw;
-      }
-
-      changed = true;
-      return replacement;
-    })
+  // A literal segment keeps its source text and a declined token keeps its raw
+  // text, so joining the segments of a string no rewrite changed produces the
+  // same characters. Strings compare by value, so a caller checking for a
+  // changed value still sees none.
+  return parseTemplate(value)
+    .map((segment) =>
+      segment.kind === "literal"
+        ? segment.text
+        : (rewrite(segment.token) ?? segment.token.raw)
+    )
     .join("");
-
-  return changed ? next : value;
 }
 
 const SIMPLE_PATH_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -464,9 +447,7 @@ function isStepWrapper(
   value: JsonValue
 ): value is JsonObject & { success: boolean; data: JsonValue } {
   return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
+    isJsonObject(value) &&
     Object.hasOwn(value, "success") &&
     typeof value.success === "boolean" &&
     Object.hasOwn(value, "data")
@@ -553,10 +534,8 @@ function readKey(
   value: JsonValue | undefined,
   key: string
 ): JsonValue | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? Object.hasOwn(value, key)
-      ? value[key]
-      : undefined
+  return isJsonObject(value) && Object.hasOwn(value, key)
+    ? value[key]
     : undefined;
 }
 

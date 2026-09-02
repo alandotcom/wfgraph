@@ -61,7 +61,7 @@ export function rpcErrorResponse(failure: {
         inferable: false,
         code: failure.code,
         message: failure.message,
-        ...(failure.data === undefined ? {} : { data: failure.data }),
+        data: failure.data,
       },
     }),
     {

@@ -56,10 +56,10 @@ const decodeEdgeAttributes = Schema.decodeUnknownSync(
  */
 function toPersistedNodeData(data: {
   label: string;
-  description?: string;
+  description?: string | undefined;
   type: WorkflowNodeType;
   config?: unknown;
-  enabled?: boolean;
+  enabled?: boolean | undefined;
   status?: unknown;
 }): PersistedNodeData {
   const persisted: PersistedNodeData = {
@@ -89,19 +89,21 @@ export type WorkflowGraphNodeInput = {
   position: { x: number; y: number };
   data: {
     label: string;
-    description?: string;
+    description?: string | undefined;
     type: WorkflowNodeType;
     config?: unknown;
-    enabled?: boolean;
+    enabled?: boolean | undefined;
     status?: unknown;
   };
-  type?: string;
-  selected?: boolean;
-  dragging?: boolean;
-  width?: number;
-  height?: number;
-  measured?: { width?: number; height?: number };
-  parentId?: string;
+  type?: string | undefined;
+  selected?: boolean | undefined;
+  dragging?: boolean | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+  measured?:
+    | { width?: number | undefined; height?: number | undefined }
+    | undefined;
+  parentId?: string | undefined;
 };
 
 function parseNodeAttributes(attributes: unknown): WorkflowNode {
@@ -180,7 +182,7 @@ function toEdgeFromSerialized(
 export function createSerializedWorkflowGraph(input: {
   nodes: WorkflowGraphNodeInput[];
   edges: WorkflowEdge[];
-  attributes?: Record<string, unknown>;
+  attributes?: Record<string, unknown> | undefined;
 }): SerializedWorkflowGraph {
   const graph = new DirectedGraph({
     allowSelfLoops: WORKFLOW_GRAPH_OPTIONS.allowSelfLoops,

@@ -42,14 +42,14 @@ export function resolveStrategy(node: WorkflowNode): NodeStrategy {
 
 const unknownNodeStrategy: NodeStrategy = {
   id: "unknown",
-  run: (ctx) =>
+  run: (context) =>
     Effect.gen(function* () {
       yield* Effect.logError("Unknown node type");
       return {
         result: failedExecution(
           engineFailure(
             "failure",
-            `Unknown node type "${ctx.node.data.type}" in node "${ctx.node.data.label || ctx.node.id}". Expected "lifecycle" or "action".`
+            `Unknown node type "${context.node.data.type}" in node "${context.node.data.label || context.node.id}". Expected "lifecycle" or "action".`
           )
         ),
       };

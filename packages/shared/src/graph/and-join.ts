@@ -7,6 +7,7 @@
  * than refused: the canvas mutes the join and everything past it.
  */
 
+import { countBy } from "es-toolkit/array";
 import {
   isConditionActionNode,
   normalizeConditionBranch,
@@ -20,7 +21,7 @@ import { isEventSplitNode } from "#src/lifecycle/event-split";
 export type JoinGraphEdge = {
   source: string;
   target: string;
-  sourceHandle?: string | null;
+  sourceHandle?: string | null | undefined;
 };
 
 function nodeLabel(node: WorkflowNode | undefined, fallbackId: string): string {
@@ -168,12 +169,9 @@ export function andJoinRefusalReason(input: {
   nodes: readonly WorkflowNode[];
   edges: readonly JoinGraphEdge[];
 }): string | null {
-  const incomingCount = new Map<string, number>();
-  for (const edge of input.edges) {
-    incomingCount.set(edge.target, (incomingCount.get(edge.target) ?? 0) + 1);
-  }
+  const incomingCount = countBy(input.edges, (edge) => edge.target);
 
-  for (const [targetId, count] of incomingCount) {
+  for (const [targetId, count] of Object.entries(incomingCount)) {
     if (count <= 1) {
       continue;
     }

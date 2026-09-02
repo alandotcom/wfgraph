@@ -3,22 +3,22 @@ import { TemplateAutocomplete } from "./template-autocomplete";
 import { useTemplateBadgeField } from "./use-template-badge-field";
 
 export interface TemplateBadgeTextareaProps {
-  value?: string;
-  onChange?: (value: string) => void;
-  placeholder?: string;
-  disabled?: boolean;
-  className?: string;
-  id?: string;
-  rows?: number;
-  fieldType?: "duration" | "timestamp";
+  value?: string | undefined;
+  onChange?: ((value: string) => void) | undefined;
+  placeholder?: string | undefined;
+  disabled?: boolean | undefined;
+  className?: string | undefined;
+  id?: string | undefined;
+  rows?: number | undefined;
+  fieldType?: "duration" | "timestamp" | undefined;
   /**
    * Id of the element naming this field. Required in practice: the editor is a
    * `contenteditable` div, and `<label for>` cannot name one, so without this
    * the field reaches the accessibility tree as an unnamed textbox.
    */
-  labelledBy?: string;
-  required?: boolean;
-  invalid?: boolean;
+  labelledBy?: string | undefined;
+  required?: boolean | undefined;
+  invalid?: boolean | undefined;
 }
 
 /**

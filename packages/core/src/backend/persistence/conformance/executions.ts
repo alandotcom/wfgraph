@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { isNotNil } from "es-toolkit/predicate";
 import { Effect } from "effect";
 import { ApiKeyRepo } from "#src/backend/services/api-keys/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
@@ -172,7 +173,7 @@ export function describeExecutionConformance({
         claim(database),
         claim(otherConnection),
       ]);
-      const successfulClaims = claims.filter((value) => value !== null);
+      const successfulClaims = claims.filter(isNotNil);
       expect(successfulClaims).toHaveLength(1);
 
       const firstClaim = successfulClaims[0];

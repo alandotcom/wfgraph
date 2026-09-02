@@ -1,9 +1,10 @@
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { drizzle } from "drizzle-orm/postgres-js";
-import postgres, { type Sql } from "postgres";
+import postgres, { type Notice, type Sql } from "postgres";
 import type { NormalizedDatabaseConfig } from "#src/backend/lib/db/config";
 import { relations } from "#src/backend/lib/db/schema";
 import { getAppLogger } from "#src/backend/lib/logger";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 /**
  * The Drizzle handle, with this app's relational config attached. The `Database`
@@ -45,7 +46,12 @@ function createSqlClient(
   config: NormalizedDatabaseConfig,
   pool: { max: number; applicationName: string }
 ): Sql {
-  return postgres(config.url ?? "", {
+  // postgres.js tests for each option with `in`, so a key present and holding
+  // undefined counts as a value: a `host: undefined` would outrank the host the
+  // URL carries. `omitUndefined` drops the keys the config left out. The result
+  // goes in a variable because written inline the library's own parameter type
+  // drives the inference and those keys survive.
+  const options = omitUndefined({
     host: config.host,
     port: config.port,
     user: config.user,
@@ -54,7 +60,7 @@ function createSqlClient(
     // An `ssl: undefined` is not the same as no ssl key at all: postgres.js tests
     // for the option with `in`, so an explicit undefined would outrank an
     // `sslmode` the URL carries.
-    ...(config.ssl === undefined ? {} : { ssl: config.ssl }),
+    ssl: config.ssl,
     max: pool.max,
     connection: {
       search_path: config.schema,
@@ -65,7 +71,7 @@ function createSqlClient(
     // this library writing to a host's stdout in a shape nothing configured,
     // which ADR-0013 exists to avoid. They are the server's own notices, so
     // this logs them at debug.
-    onnotice: (notice) => {
+    onnotice: (notice: Notice) => {
       logger.debug("PostgreSQL notice", {
         postgres: {
           code: notice.code,
@@ -75,6 +81,8 @@ function createSqlClient(
       });
     },
   });
+
+  return postgres(config.url ?? "", options);
 }
 
 /** The one connection a migration run holds its advisory lock on. */

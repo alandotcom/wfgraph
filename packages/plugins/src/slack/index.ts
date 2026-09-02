@@ -34,10 +34,12 @@ const slackCredentialFields = {
 export type SlackCredentials = CredentialsOf<typeof slackCredentialFields>;
 
 export type SlackOptions = {
-  oauthClient?: {
-    clientId: string | undefined;
-    clientSecret: string | undefined;
-  };
+  oauthClient?:
+    | {
+        clientId: string | undefined;
+        clientSecret: string | undefined;
+      }
+    | undefined;
 };
 
 type SlackTestBehavior = "log_only" | "send_message";
@@ -105,9 +107,10 @@ export const slack = (options?: SlackOptions) => {
     label: "Slack",
     description: "Send messages to Slack channels",
     credentials: slackCredentialFields,
-    ...(clientId && clientSecret
-      ? { oauth: createSlackOAuth(clientId, clientSecret) }
-      : {}),
+    oauth:
+      clientId && clientSecret
+        ? createSlackOAuth(clientId, clientSecret)
+        : undefined,
 
     // The connection test reaches Slack, so it stays behind a dynamic import until
     // someone presses "Test connection".

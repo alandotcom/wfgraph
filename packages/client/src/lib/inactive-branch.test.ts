@@ -5,6 +5,7 @@ import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
 } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 function lifecycleNode(id: string, cancelEvents: string[] = []): WorkflowNode {
   return {
@@ -34,7 +35,7 @@ function actionNode(id: string, enabled = true): WorkflowNode {
       label: id,
       type: "action",
       config: { actionType: "Wait" },
-      ...(enabled ? {} : { enabled: false }),
+      enabled: enabled ? undefined : false,
     },
   };
 }
@@ -45,7 +46,7 @@ function edge(
   target: string,
   sourceHandle?: string
 ): WorkflowEdge {
-  return { id, source, target, sourceHandle };
+  return omitUndefined({ id, source, target, sourceHandle });
 }
 
 describe("inactiveBranch", () => {

@@ -14,6 +14,7 @@
  */
 
 import { SchemaAST, SchemaIssue } from "effect";
+import { uniq } from "es-toolkit/array";
 
 /** The most issues one summary spells out before it starts counting. */
 const MAX_LISTED_ISSUES = 3;
@@ -109,10 +110,8 @@ function expectedTypeName(ast: SchemaAST.AST): string {
       return annotated;
     }
 
-    return Array.from(
-      new Set(
-        ast.types.map((type) => expectedTypeName(SchemaAST.toEncoded(type)))
-      )
+    return uniq(
+      ast.types.map((type) => expectedTypeName(SchemaAST.toEncoded(type)))
     ).join(" | ");
   }
 

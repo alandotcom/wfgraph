@@ -7,7 +7,7 @@
  */
 
 import type { LogLevel, LogRecord, TextFormatter } from "@logtape/logtape";
-import { isPlainObject } from "es-toolkit";
+import { isEmptyObject, isPlainObject } from "es-toolkit/predicate";
 import { inspect } from "node:util";
 import { renderLogMessage } from "#src/backend/lib/log-config";
 
@@ -111,22 +111,16 @@ function formatValue(value: unknown, depth: number): string {
 }
 
 /**
- * Whether a value is a group: a record's own subject grouping (`http`, `run`,
- * `error`), which the layout opens rather than inspecting whole. An empty
- * object carries nothing to open, so it stays a value.
- */
-function isGroup(value: unknown): value is Record<string, unknown> {
-  return isPlainObject(value) && Object.keys(value).length > 0;
-}
-
-/**
  * A group on one line, as the `key=value` pairs evlog prints.
  *
  * A member that is itself an object is inspected rather than flattened again.
  * A second round of `key=value` inside the first would read as `input=id=abc`,
  * where the two levels of nesting are no longer told apart.
  */
-function inlineGroup(group: Record<string, unknown>, depth: number): string {
+function inlineGroup(
+  group: Record<PropertyKey, unknown>,
+  depth: number
+): string {
   return Object.entries(group)
     .map(([key, value]) => `${key}=${formatValue(value, depth)}`)
     .join(" ");
@@ -135,10 +129,10 @@ function inlineGroup(group: Record<string, unknown>, depth: number): string {
 /**
  * A value in a position that has a whole line to itself. A group flattens into
  * its pairs there, because the line's own key already names what they belong
- * to.
+ * to. An empty object carries nothing to open, so it stays a value.
  */
 function openValue(value: unknown, depth: number): string {
-  return isGroup(value)
+  return isPlainObject(value) && !isEmptyObject(value)
     ? inlineGroup(value, Math.max(0, depth - 1))
     : formatValue(value, depth);
 }
@@ -160,7 +154,7 @@ function fieldLines(
   // whatever sits deeper than that is inspect's to walk.
   const memberDepth = Math.max(0, options.depth - 2);
 
-  if (!isGroup(value)) {
+  if (!isPlainObject(value) || isEmptyObject(value)) {
     return [`${head} ${formatValue(value, options.depth - 1)}`];
   }
 

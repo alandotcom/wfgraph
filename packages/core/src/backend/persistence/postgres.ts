@@ -14,7 +14,7 @@ import type { WfGraphPersistence } from "#src/backend/persistence/types";
 import { makePostgresRepositories } from "#src/backend/persistence/postgres-repositories";
 
 export type PostgresPersistenceOptions = DatabaseRuntimeConfig & {
-  migrations?: MigrationsOptions;
+  migrations?: MigrationsOptions | undefined;
 };
 
 /** Configure PostgreSQL as Workflow Graph's persistence backend. */

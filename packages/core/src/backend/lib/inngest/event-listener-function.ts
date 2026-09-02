@@ -30,6 +30,7 @@ import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
 import { compileEventDataEquals } from "@wfgraph/shared/lifecycle/inngest-event-data";
 import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
 import { splitCatalogEventData } from "#src/backend/lib/inngest/catalog-connection";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 const logger = getAppLogger("events");
 
@@ -108,7 +109,7 @@ export async function runEventListener(input: {
   /**
    * The Connection this arrival came through. Absent for a host Event.
    */
-  connectionId?: string;
+  connectionId?: string | undefined;
   runtime: WfGraphRuntime;
   step: EventListenerSteps;
   deliver: EventListenerDeliverPorts;
@@ -117,7 +118,7 @@ export async function runEventListener(input: {
   const deliveredEvent = {
     name: event.name,
     correlationPath: event.correlationPath,
-    ...(input.connectionId ? { connectionId: input.connectionId } : {}),
+    connectionId: input.connectionId,
   };
   const arrivalLogger = logger.with({
     eventName: event.name,
@@ -257,12 +258,12 @@ export function createInngestEventListenerFunction(input: {
       id: toListenerFunctionId(event.name),
       name: `Event listener: ${event.name}`,
       triggers: [
-        {
+        omitUndefined({
           event: event.source.event,
           // An umbrella source pays no invocations for the subtypes this Event is
           // not, because Inngest evaluates the filter before calling us.
-          ...(when ? { if: compileEventDataEquals(when) } : {}),
-        },
+          if: when ? compileEventDataEquals(when) : undefined,
+        }),
       ],
     },
     async ({ event: delivered, step, runId }) => {

@@ -12,6 +12,7 @@ import {
   type TimestampAbsoluteOperator,
   type TimestampRelativeOperator,
 } from "@wfgraph/shared/conditions/conditions";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 function isTimestampRelativeOperatorValue(
   value: string
@@ -94,9 +95,7 @@ function buildTimestampOperatorRule(input: {
       field: condition.field,
       fieldType: "timestamp",
       operator: operatorValue,
-      ...(condition.recordKey !== undefined
-        ? { recordKey: condition.recordKey }
-        : {}),
+      ...omitUndefined({ recordKey: condition.recordKey }),
       amount: isTimestampRelativeConditionRule(condition)
         ? condition.amount
         : 1,
@@ -112,9 +111,7 @@ function buildTimestampOperatorRule(input: {
       field: condition.field,
       fieldType: "timestamp",
       operator: operatorValue,
-      ...(condition.recordKey !== undefined
-        ? { recordKey: condition.recordKey }
-        : {}),
+      ...omitUndefined({ recordKey: condition.recordKey }),
       dateTime: isTimestampAbsoluteConditionRule(condition)
         ? condition.dateTime
         : new Date().toISOString(),
@@ -137,9 +134,7 @@ export function applyOperatorValueToCondition(
   const base = {
     id: condition.id,
     field: condition.field,
-    ...(condition.recordKey !== undefined
-      ? { recordKey: condition.recordKey }
-      : {}),
+    ...omitUndefined({ recordKey: condition.recordKey }),
   };
 
   if (isNullCheckOperatorValue(operatorValue)) {

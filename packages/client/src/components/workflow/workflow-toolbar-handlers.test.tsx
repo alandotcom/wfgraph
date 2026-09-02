@@ -47,6 +47,7 @@ import {
   resetAuthorizationGrantsForTests,
 } from "#src/lib/authorization-test-support";
 import { WfGraphOperationIds } from "@wfgraph/shared/authorization/operations";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 beforeEach(() => {
   installAuthorizationGrantsForTests(WfGraphOperationIds);
@@ -903,7 +904,7 @@ describe("useWorkflowActions publication preflight", () => {
     const requests: Array<{ path: string; input: unknown }> = [];
     const queryClient = testQueryClient();
     const versionHistoryKey = orpcQuery.workflow.getVersionHistory.infiniteKey({
-      input: (cursor: undefined) => ({ workflowId, cursor }),
+      input: (cursor: undefined) => omitUndefined({ workflowId, cursor }),
       initialPageParam: undefined,
     });
     queryClient.setQueryData(versionHistoryKey, {

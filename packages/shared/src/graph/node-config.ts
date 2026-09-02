@@ -36,8 +36,8 @@ export function readConfigTrimmedString(
 export type NodeConfigSource = {
   data: {
     type: string;
-    enabled?: boolean;
-    config?: Record<string, unknown>;
+    enabled?: boolean | undefined;
+    config?: Record<string, unknown> | undefined;
   };
 };
 

@@ -15,7 +15,7 @@
 import { Autocomplete } from "@base-ui/react/autocomplete";
 import type { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import type { BaseUIEvent } from "@base-ui/react/types";
-import { partition } from "es-toolkit";
+import { partition } from "es-toolkit/array";
 import { useAtomValue, useSetAtom } from "jotai";
 import { ChevronLeft, Search } from "lucide-react";
 import {
@@ -68,9 +68,9 @@ type PaletteItem = {
   readonly id: string;
   readonly label: string;
   /** The rest of the row, when the item has something worth adding. */
-  readonly detail?: string;
+  readonly detail?: string | undefined;
   /** A shortcut or a keyboard hint, printed at the end of the row. */
-  readonly hint?: string;
+  readonly hint?: string | undefined;
   /** Everything the item can be found by, which is what the filter matches. */
   readonly keywords: string;
   readonly disabled: boolean;

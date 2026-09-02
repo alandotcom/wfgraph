@@ -1,4 +1,5 @@
-import { compact, isEqual, uniq } from "es-toolkit";
+import { compact, uniq } from "es-toolkit/array";
+import { isEqual } from "es-toolkit/predicate";
 import { useAtomValue } from "jotai";
 import { X } from "lucide-react";
 import { type ReactNode, useCallback, useId, useMemo, useState } from "react";

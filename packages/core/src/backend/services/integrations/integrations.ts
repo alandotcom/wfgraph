@@ -1,6 +1,5 @@
 import { Effect, Result } from "effect";
 import { mapValues, omitBy } from "es-toolkit/object";
-import { isNil } from "es-toolkit/predicate";
 import {
   AppLogger,
   type EffectLogger,
@@ -22,7 +21,9 @@ import type {
   IntegrationConfig,
   IntegrationRefreshState,
 } from "@wfgraph/shared/types/integration";
+import { isBlank } from "@wfgraph/shared/types/string";
 import { getErrorMessage } from "@wfgraph/shared/utils";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { ENCRYPTION_KEY_MISMATCH_MESSAGE } from "#src/backend/services/integrations/cipher";
 import {
   connectionDefaultsForBrowser,
@@ -62,6 +63,7 @@ type IntegrationSummary = {
     connectedAt: string;
     accountLabel?: string;
     credentialKeys: readonly string[];
+    grantedAccessLabel?: string;
   };
 };
 
@@ -107,7 +109,7 @@ function mergeIntegrationConfig(
       (typeof key === "string" &&
         isSecretKey(key) &&
         (value === SECRET_MASK ||
-          (typeof value === "string" && value.trim().length === 0)))
+          (typeof value === "string" && isBlank(value))))
   );
 
   return {
@@ -146,7 +148,7 @@ function toIntegrationSummary(
     id: string;
     name: string;
     type: string;
-    isManaged?: boolean | null;
+    isManaged?: boolean | null | undefined;
     config: IntegrationConfig;
     refreshState: IntegrationRefreshState;
     createdAt: Date;
@@ -158,7 +160,7 @@ function toIntegrationSummary(
     findIntegration(catalog, input.type),
     input.config
   );
-  return {
+  return omitUndefined({
     id: input.id,
     name: input.name,
     type: input.type,
@@ -171,23 +173,19 @@ function toIntegrationSummary(
       input.type,
       input.config
     ),
-    ...(grant
-      ? {
-          oauth: {
-            status:
-              input.refreshState === "reauthorization_required"
-                ? ("reauthorization_required" as const)
-                : ("connected" as const),
-            connectedAt: grant.connectedAt,
-            ...(grant.accountLabel ? { accountLabel: grant.accountLabel } : {}),
-            credentialKeys: Object.keys(grant.credentials).toSorted(),
-            ...(grant.grantedAccessLabel
-              ? { grantedAccessLabel: grant.grantedAccessLabel }
-              : {}),
-          },
-        }
-      : {}),
-  };
+    oauth: grant
+      ? omitUndefined({
+          status:
+            input.refreshState === "reauthorization_required"
+              ? ("reauthorization_required" as const)
+              : ("connected" as const),
+          connectedAt: grant.connectedAt,
+          accountLabel: grant.accountLabel,
+          credentialKeys: Object.keys(grant.credentials).toSorted(),
+          grantedAccessLabel: grant.grantedAccessLabel,
+        })
+      : undefined,
+  });
 }
 
 function toIntegrationWithConfig(
@@ -197,7 +195,7 @@ function toIntegrationWithConfig(
     name: string;
     type: string;
     config: IntegrationConfig;
-    isManaged?: boolean | null;
+    isManaged?: boolean | null | undefined;
     refreshState: IntegrationRefreshState;
     createdAt: Date;
     updatedAt: Date;
@@ -209,6 +207,7 @@ function toIntegrationWithConfig(
     config: maskIntegrationConfig(
       catalog,
       input.type,
+      // oxlint-disable-next-line wfgraph/no-entries-round-trip -- a stored integration config is JSON a host wrote, so it can carry an own __proto__ key. omitBy assigns result[key] = value, which would reach the prototype setter and lose the key.
       Object.fromEntries(
         Object.entries(input.config).filter(
           ([key]) => key !== OAUTH_GRANT_CONFIG_KEY && !managedKeys.has(key)
@@ -350,8 +349,8 @@ export const getIntegration = Effect.fn("getIntegration")(function* (
 export const putIntegration = Effect.fn("putIntegration")(function* (
   integrationId: string,
   body: {
-    name?: string;
-    config?: IntegrationConfig;
+    name?: string | undefined;
+    config?: IntegrationConfig | undefined;
   }
 ) {
   if (hasReservedOAuthGrant(body.config)) {
@@ -391,12 +390,12 @@ export const putIntegration = Effect.fn("putIntegration")(function* (
 
   const updatePayload =
     mergedConfig === undefined
-      ? omitBy({ name: body.name }, isNil)
-      : {
-          ...(body.name === undefined ? {} : { name: body.name }),
+      ? omitUndefined({ name: body.name })
+      : omitUndefined({
+          name: body.name,
           config: mergedConfig,
           expectedRevision: existingIntegration.configRevision,
-        };
+        });
 
   const outcome = yield* repo
     .update(integrationId, updatePayload)
@@ -564,7 +563,7 @@ export const postIntegrationTest = Effect.fn("postIntegrationTest")(function* (
 });
 
 export const postIntegrations = Effect.fn("postIntegrations")(function* (body: {
-  name?: string;
+  name?: string | undefined;
   type: string;
   config: IntegrationConfig;
 }) {

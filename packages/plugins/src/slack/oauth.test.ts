@@ -71,7 +71,7 @@ describe("Slack OAuth definition", () => {
     { clientId: undefined, clientSecret: undefined },
     { clientId: "", clientSecret: " " },
   ])("stays manual-only for a blank OAuth client", (client) => {
-    expect(slack({ oauthClient: client })).not.toHaveProperty("oauth");
+    expect(slack({ oauthClient: client }).oauth).toBeUndefined();
   });
 
   it("registers a confidential client without putting secrets in the definition", () => {

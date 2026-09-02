@@ -13,6 +13,8 @@
 import { Schema } from "effect";
 import { getAppLogger } from "#src/backend/lib/logger";
 import { readAs } from "@wfgraph/shared/types/schema";
+import { isBlank } from "@wfgraph/shared/types/string";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   collectTimestampFieldPaths,
   compileConditionModel,
@@ -42,8 +44,11 @@ const logger = getAppLogger("waits");
  */
 const compiledWaitSubscriptionSchema = Schema.Struct({
   event: Schema.String,
-  connectionId: Schema.optional(Schema.String),
-  match: Schema.optional(
+  // The row this decodes is a stored JSONB document, where an unset key is
+  // absent. `optionalKey` declares that absence, and it keeps a compiled
+  // subscription writable back out as a JSON value.
+  connectionId: Schema.optionalKey(Schema.String),
+  match: Schema.optionalKey(
     Schema.Struct({
       expression: Schema.String,
       timestampPaths: Schema.mutable(Schema.Array(Schema.String)),
@@ -158,14 +163,15 @@ export function compileWaitSubscriptions(input: {
   const subscriptions: CompiledWaitSubscription[] = [];
 
   for (const subscription of input.subscriptions) {
-    const base: CompiledWaitSubscription = {
+    // A blank Connection is one nobody picked, and it is stored as no key at
+    // all: `connectionMatches` reads a stored blank as a Connection of its own,
+    // and the wait would then wake on no arrival.
+    const base: CompiledWaitSubscription = omitUndefined({
       event: subscription.event,
-      ...(subscription.connectionId
-        ? { connectionId: subscription.connectionId }
-        : {}),
-    };
+      connectionId: subscription.connectionId || undefined,
+    });
 
-    if (subscription.match === undefined || subscription.match.trim() === "") {
+    if (subscription.match === undefined || isBlank(subscription.match)) {
       subscriptions.push(base);
       continue;
     }

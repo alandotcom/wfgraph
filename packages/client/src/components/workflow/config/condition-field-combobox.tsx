@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { compareText } from "@wfgraph/shared/types/string";
 import {
   Combobox,
   ComboboxCollection,
@@ -40,22 +41,16 @@ function unavailableField(path: string): ConditionSelectableField {
 function groupsBySource(
   fields: readonly ConditionSelectableField[]
 ): ConditionFieldGroup[] {
-  const grouped = new Map<string, ConditionSelectableField[]>();
+  // A Map rather than a groupBy record: `sourceNodeLabel` is the name a builder
+  // typed on the step, and a plain object files a step named `__proto__` onto
+  // the prototype, where its fields never reach the list.
+  const grouped = Map.groupBy(fields, (field) => field.sourceNodeLabel);
 
-  for (const field of fields) {
-    const group = grouped.get(field.sourceNodeLabel);
-    if (group) {
-      group.push(field);
-    } else {
-      grouped.set(field.sourceNodeLabel, [field]);
-    }
-  }
-
-  return Array.from(grouped.entries())
-    .toSorted(([a], [b]) => a.localeCompare(b))
+  return [...grouped]
+    .toSorted(([a], [b]) => compareText(a, b))
     .map(([value, items]) => ({
       value,
-      items: items.toSorted((a, b) => a.path.localeCompare(b.path)),
+      items: items.toSorted((a, b) => compareText(a.path, b.path)),
     }));
 }
 

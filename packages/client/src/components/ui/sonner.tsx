@@ -22,7 +22,9 @@ const toasterStyle: ToasterStyle = {
 }
 
 /** next-themes reports any stored string; three of them mean something here. */
-const resolveToasterTheme = (value: unknown): ToasterProps["theme"] => {
+const resolveToasterTheme = (
+  value: unknown
+): NonNullable<ToasterProps["theme"]> => {
   if (value === "light" || value === "dark" || value === "system") {
     return value
   }

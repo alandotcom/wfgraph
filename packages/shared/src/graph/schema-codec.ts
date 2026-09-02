@@ -3,6 +3,7 @@ import { compact, uniq } from "es-toolkit/array";
 import { startCase } from "es-toolkit/string";
 import type { ActionConfigFieldBase } from "#src/plugins/action-fields";
 import { readAs } from "#src/types/schema";
+import { omitUndefined } from "#src/utils/omit-undefined";
 
 /**
  * Library-specific options passed through StandardSchema's `libraryOptions`.
@@ -11,17 +12,17 @@ import { readAs } from "#src/types/schema";
  */
 export const jsonSchemaLibraryOptions: Record<string, unknown> = {
   fallback: {
-    date: (ctx: { base: Record<string, unknown> }) => ({
-      ...ctx.base,
+    date: (context: { base: Record<string, unknown> }) => ({
+      ...context.base,
       type: "string",
       format: "date-time",
     }),
-    morph: (ctx: {
+    morph: (context: {
       base: Record<string, unknown>;
       out: Record<string, unknown> | null;
-    }) => ctx.out ?? ctx.base,
-    predicate: (ctx: { base: Record<string, unknown> }) => ctx.base,
-    default: (ctx: { base: Record<string, unknown> }) => ctx.base,
+    }) => context.out ?? context.base,
+    predicate: (context: { base: Record<string, unknown> }) => context.base,
+    default: (context: { base: Record<string, unknown> }) => context.base,
   },
 };
 
@@ -45,18 +46,18 @@ export type WorkflowSchemaItemType =
 export type WorkflowSchemaField = {
   name: string;
   type: WorkflowSchemaFieldType;
-  itemType?: WorkflowSchemaItemType;
+  itemType?: WorkflowSchemaItemType | undefined;
   /**
    * The type every value under an open record carries, the mirror of `itemType`
    * for an array. Present only on an object that accepts keys its schema does
    * not name, which is what makes an unlisted key addressable downstream.
    */
-  valueType?: WorkflowSchemaItemType;
-  fields?: WorkflowSchemaField[];
-  description?: string;
-  nullable?: boolean;
-  enumValues?: string[];
-  minItems?: number;
+  valueType?: WorkflowSchemaItemType | undefined;
+  fields?: WorkflowSchemaField[] | undefined;
+  description?: string | undefined;
+  nullable?: boolean | undefined;
+  enumValues?: string[] | undefined;
+  minItems?: number | undefined;
 };
 
 type JsonSchemaType = WorkflowSchemaFieldType | WorkflowSchemaItemType;
@@ -68,17 +69,17 @@ type JsonSchemaType = WorkflowSchemaFieldType | WorkflowSchemaItemType;
  * document had it in a shape this module cannot use.
  */
 interface JsonSchemaNode {
-  type?: string | string[];
-  format?: string;
-  description?: string;
-  enum?: unknown[];
+  type?: string | string[] | undefined;
+  format?: string | undefined;
+  description?: string | undefined;
+  enum?: unknown[] | undefined;
   const?: unknown;
-  required?: string[];
+  required?: string[] | undefined;
   default?: unknown;
-  examples?: unknown[];
-  minimum?: number;
-  minItems?: number;
-  properties?: JsonSchemaProperties;
+  examples?: unknown[] | undefined;
+  minimum?: number | undefined;
+  minItems?: number | undefined;
+  properties?: JsonSchemaProperties | undefined;
   /**
    * Present only when the document wrote the keyword. `false` closes the object;
    * `true` or a node opens it. An absent keyword is read as closed even though
@@ -86,11 +87,11 @@ interface JsonSchemaNode {
    * said nothing about extra keys and offering `user.anything` off that silence
    * would fill the picker with paths no payload holds.
    */
-  additionalProperties?: JsonSchemaNode | boolean;
-  items?: JsonSchemaNode;
-  anyOf?: (JsonSchemaNode | undefined)[];
-  oneOf?: (JsonSchemaNode | undefined)[];
-  allOf?: (JsonSchemaNode | undefined)[];
+  additionalProperties?: JsonSchemaNode | boolean | undefined;
+  items?: JsonSchemaNode | undefined;
+  anyOf?: (JsonSchemaNode | undefined)[] | undefined;
+  oneOf?: (JsonSchemaNode | undefined)[] | undefined;
+  allOf?: (JsonSchemaNode | undefined)[] | undefined;
 }
 
 /** A `properties` map, whose members drop out individually when malformed. */
@@ -101,13 +102,13 @@ type JsonSchemaProperties = Record<string, JsonSchemaNode | undefined>;
  * named fields, which the schema builder in the editor writes and reads.
  */
 interface WorkflowFieldRecord {
-  name?: string;
-  type?: string | string[];
-  itemType?: string | string[];
-  format?: string;
-  description?: string;
-  enumValues?: unknown[];
-  fields?: WorkflowFieldRecords;
+  name?: string | undefined;
+  type?: string | string[] | undefined;
+  itemType?: string | string[] | undefined;
+  format?: string | undefined;
+  description?: string | undefined;
+  enumValues?: unknown[] | undefined;
+  fields?: WorkflowFieldRecords | undefined;
 }
 
 /** A `fields` array, whose entries drop out individually when malformed. */
@@ -209,10 +210,7 @@ function readJsonSchemaNode(
     format: readString(node.format),
     description: readString(node.description),
     enum: readUnknownArray(node.enum),
-    // `const` is the one keyword whose presence matters apart from its value:
-    // a closed-set collapse asks whether a branch declared one at all, and
-    // `{ const: null }` is a legal branch. So the key is carried over only when
-    // the document had it, rather than always written as possibly-undefined.
+    // oxlint-disable-next-line wfgraph/no-conditional-spread -- a closed-set collapse asks whether a branch declared `const` at all, and `{ const: null }` is a legal branch, so the key is carried over only when the document had it.
     ...(Object.hasOwn(node, "const") ? { const: node.const } : {}),
     required: readStringArray(node.required),
     default: node.default,
@@ -220,6 +218,7 @@ function readJsonSchemaNode(
     minimum: readNumber(node.minimum),
     minItems: readNumber(node.minItems),
     properties: readJsonSchemaProperties(node.properties, seen),
+    // oxlint-disable-next-line wfgraph/no-conditional-spread -- `additionalProperties` can legitimately be `false`, so the key is carried over only when the document had it.
     ...(Object.hasOwn(node, "additionalProperties")
       ? {
           additionalProperties: readAdditionalProperties(
@@ -465,10 +464,10 @@ function workflowSchemaItemTypeToJsonSchemaNode(
   type: WorkflowSchemaItemType
 ): Record<string, unknown> {
   const format = stringFormatFor(type);
-  return {
+  return omitUndefined({
     type: format ? "string" : type,
-    ...(format ? { format } : {}),
-  };
+    format,
+  });
 }
 
 function workflowSchemaFieldsFromRecords(
@@ -499,7 +498,7 @@ function resolvePrimitiveWorkflowSchemaType(input: {
 function arrayWorkflowSchemaFieldFromRecord(input: {
   name: string;
   record: WorkflowFieldRecord;
-  description?: string;
+  description?: string | undefined;
 }): WorkflowSchemaField {
   const { name, record, description } = input;
   const normalizedItemType = normalizeJsonSchemaType(record.itemType);
@@ -565,7 +564,7 @@ function workflowSchemaFieldFromRecord(
       format: record.format,
     }),
     description,
-    ...(enumValues ? { enumValues } : {}),
+    enumValues,
   };
 }
 
@@ -745,22 +744,22 @@ function resolveJsonSchemaUnion(
  */
 function openRecordValueType(
   additional: JsonSchemaNode | boolean | undefined
-): WorkflowSchemaItemType | null {
+): WorkflowSchemaItemType | undefined {
   if (additional === undefined || typeof additional === "boolean") {
-    return null;
+    return undefined;
   }
 
   const declared =
     normalizeJsonSchemaType(additional.type) ||
     (additional.properties ? "object" : null);
   if (!declared) {
-    return null;
+    return undefined;
   }
 
   const valueType =
     declared === "string" ? (stringSubtype(additional) ?? declared) : declared;
 
-  return isWorkflowSchemaItemType(valueType) ? valueType : null;
+  return isWorkflowSchemaItemType(valueType) ? valueType : undefined;
 }
 
 function parseNonNullableJsonSchemaProperty(
@@ -794,18 +793,17 @@ function parseNonNullableJsonSchemaProperty(
           ? (stringSubtype(value) ?? normalizedType)
           : normalizedType,
       description,
-      ...(enumValues ? { enumValues } : {}),
+      enumValues,
     };
   }
 
   if (normalizedType === "object") {
-    const valueType = openRecordValueType(value.additionalProperties);
     return {
       name,
       type: "object",
       fields: parseJsonSchemaProperties(value.properties, value.required),
       description,
-      ...(valueType ? { valueType } : {}),
+      valueType: openRecordValueType(value.additionalProperties),
     };
   }
 
@@ -838,7 +836,7 @@ function parseNonNullableJsonSchemaProperty(
         ? parseJsonSchemaProperties(items?.properties, items?.required)
         : undefined,
     description,
-    ...(minItems !== undefined ? { minItems } : {}),
+    minItems,
   };
 }
 
@@ -928,6 +926,13 @@ export function parseWorkflowSchemaFieldsOrJsonSchema(
   return parseJsonSchemaProperties(document.properties, document.required);
 }
 
+/**
+ * Write one field back out as a JSON Schema node.
+ *
+ * Every emitted node goes through `omitUndefined`, because the reader answers
+ * `format` and `additionalProperties` from whether the key is there at all: a
+ * key present and holding `undefined` would read as a declared one.
+ */
 function workflowSchemaFieldToJsonSchemaNode(
   field: WorkflowSchemaField
 ): Record<string, unknown> {
@@ -945,33 +950,29 @@ function workflowSchemaFieldToJsonSchemaNode(
     field.type === "duration"
   ) {
     const format = stringFormatFor(field.type);
-    return {
+    return omitUndefined({
       ...base,
       type: format ? "string" : field.type,
-      ...(format ? { format } : {}),
-    };
+      format,
+    });
   }
 
   if (field.type === "object") {
-    return {
+    return omitUndefined({
       ...base,
       type: "object",
       properties: workflowSchemaFieldsToJsonSchemaProperties(
         field.fields ?? []
       ),
       ...requiredNamesOf(field.fields ?? []),
-      ...(field.valueType
-        ? {
-            additionalProperties: workflowSchemaItemTypeToJsonSchemaNode(
-              field.valueType
-            ),
-          }
-        : {}),
-    };
+      additionalProperties: field.valueType
+        ? workflowSchemaItemTypeToJsonSchemaNode(field.valueType)
+        : undefined,
+    });
   }
 
   if (field.itemType === "object") {
-    return {
+    return omitUndefined({
       ...base,
       type: "array",
       items: {
@@ -981,18 +982,18 @@ function workflowSchemaFieldToJsonSchemaNode(
         ),
         ...requiredNamesOf(field.fields ?? []),
       },
-    };
+    });
   }
 
   const itemFormat = stringFormatFor(field.itemType);
-  return {
+  return omitUndefined({
     ...base,
     type: "array",
-    items: {
+    items: omitUndefined({
       type: itemFormat ? "string" : (field.itemType ?? "string"),
-      ...(itemFormat ? { format: itemFormat } : {}),
-    },
-  };
+      format: itemFormat,
+    }),
+  });
 }
 
 /**
@@ -1079,7 +1080,7 @@ export function labelFromKey(key: string, description?: string): string {
 
 function deriveSelectOptions(
   property: JsonSchemaNode
-): ActionConfigFieldBase["options"] {
+): NonNullable<ActionConfigFieldBase["options"]> {
   if (property.enum) {
     return property.enum.map((v: unknown) => ({
       value: String(v),

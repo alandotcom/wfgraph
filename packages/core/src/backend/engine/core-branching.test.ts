@@ -140,9 +140,9 @@ function createTimestampConditionNode(input: {
       config: {
         actionType: "Condition",
         condition: compiled.expression,
-        ...(input.includeModel
-          ? { conditionModel: serializeConditionModel(model) }
-          : {}),
+        conditionModel: input.includeModel
+          ? serializeConditionModel(model)
+          : undefined,
       },
     },
   };

@@ -174,9 +174,9 @@ function lifecycleGraph(rules?: LifecycleRules): Workflow["graph"] {
 }
 
 function createWorkflow(input: {
-  rules?: LifecycleRules;
-  isPaused?: boolean;
-  graph?: Workflow["graph"];
+  rules?: LifecycleRules | undefined;
+  isPaused?: boolean | undefined;
+  graph?: Workflow["graph"] | undefined;
 }): Workflow {
   return {
     id: "wf_1",

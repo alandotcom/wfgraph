@@ -35,9 +35,9 @@ import {
 
 export type AddStepRequest = {
   /** The action the step runs. Absent leaves the node asking for one. */
-  actionType?: string;
+  actionType?: string | undefined;
   /** Where the user pointed. Absent puts the step in the middle of the canvas. */
-  at?: CanvasPosition;
+  at?: CanvasPosition | undefined;
 };
 
 /**

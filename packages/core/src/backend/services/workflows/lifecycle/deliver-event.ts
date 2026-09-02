@@ -57,13 +57,13 @@ import { getValueByPath } from "@wfgraph/shared/utils/object-path";
  */
 export type DeliveredEvent = {
   readonly name: string;
-  readonly correlationPath?: string;
+  readonly correlationPath?: string | undefined;
   /**
    * The Connection this arrival came through. Absent for a host Event, which
    * never names one. A stored rule that names a Connection matches only when
    * these agree.
    */
-  readonly connectionId?: string;
+  readonly connectionId?: string | undefined;
 };
 
 /** What the Lifecycle Rules did to one workflow, as the listener records it. */
@@ -182,7 +182,7 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
      * The arrival this delivery belongs to, which lands on the audit row so one
      * arrival can be traced across every workflow it reached.
      */
-    deliveryId?: string;
+    deliveryId?: string | undefined;
   }) {
     const repo = yield* WorkflowRepo;
     const logger = (yield* AppLogger)
@@ -465,8 +465,8 @@ const refuseFilteredStart = Effect.fn("refuseFilteredStart")(function* (input: {
   workflow: { id: string; mode: WorkflowMode };
   event: DeliveredEvent;
   payload: JsonObject;
-  entityValue?: string;
-  deliveryId?: string;
+  entityValue?: string | undefined;
+  deliveryId?: string | undefined;
   logger: EffectLogger;
 }) {
   const model = readStartFilter(input.rules, input.event.name);

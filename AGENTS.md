@@ -6,8 +6,8 @@ beside `@wfgraph/example-app` (`examples/`), the host app `pnpm run dev` runs.
 - `@wfgraph/shared` (`packages/shared`) runtime-agnostic types, workflow contracts, utilities
 - `@wfgraph/agent` (`packages/agent`) the build agent's tools, toolkit and system prompt.
   Private and unbuilt like `@wfgraph/shared`, and inlined into core. It depends on
-  `@wfgraph/shared` and `effect` alone, so a tool is testable with no model, no HTTP
-  and no database
+  `@wfgraph/shared`, `effect` and `nanoid` alone, so a tool is testable with no model,
+  no HTTP and no database
 - `@wfgraph/evals` (`packages/evals`) the private Vitest Evals harness, judges and
   scenarios for the build agent. `pnpm run evals` runs it manually against a live model;
   it is neither built nor published
@@ -135,7 +135,9 @@ id and set `hidden: true` on the old one so the picker drops it while runs keep 
 
 **JSON has a type; use it.** `packages/shared/src/types/json.ts` holds `JsonValue` and
 `JsonObject`. Anything walking a value that arrived as JSON takes one of them, and narrowing
-is then plain language checks rather than a `value is Record<string, unknown>` predicate.
+is then plain language checks, or `isJsonObject` from that same module where the check would
+otherwise be written a second time. Never a fresh `value is Record<string, unknown>`
+predicate, and never es-toolkit's `isPlainObject`; that module's header says why.
 
 **Effect Schema is the only schema library** inside `packages/`, and
 `packages/shared/src/types/schema.ts` holds the three names most of the repo needs:
@@ -359,9 +361,60 @@ is the one home of the seven core entry points.
 ## Code cleanliness
 
 - Remove unused imports, variables, and functions. knip reports them.
-- Prefer `es-toolkit` helpers to ad-hoc chains: `omitBy(..., isNil)` to shape a payload,
-  `compact(...)` over `filter(Boolean)`, `uniq(...)` and `partition(...)` over manual
-  `Set` juggling. If a call needs an unsafe cast, write a small typed helper instead.
+- es-toolkit is the standard library for shaping plain data. Import it by subpath, never
+  bare and never from `es-toolkit/compat` (the plugin's `es-toolkit-subpath` rule enforces
+  this): `es-toolkit/array`, `/object`, `/predicate`, `/string`, `/function`, `/promise`,
+  `/math`, `/fp`. Exemplar: `packages/client/src/lib/workflow-run-labels.ts`.
+- `pipe` from `es-toolkit/fp` at three or more array steps, or whenever a call reads
+  inside-out; two steps stay direct calls, and `flow` is for a step reused in more than one
+  pipe. A non-curried helper inside a pipe is written as an arrow.
+- `pipe` and `flow` are never imported from `effect`; the plugin's `no-effect-pipe-import`
+  rule enforces this. An Effect is composed with `Effect.gen` and the `.pipe(...)` method,
+  so the two bare names always mean es-toolkit.
+- An es-toolkit pipeline takes plain data only: arrays and records. An `Effect`, `Stream`,
+  `Option` or `Schema` value never passes through es-toolkit's `pipe`, and Effect's own
+  operators stay namespaced (`Effect.map`, `Option.map`), so a file using both reads
+  unambiguously.
+- `exactOptionalPropertyTypes` is on in `tsconfig.json`, so a target declared `k?: T`
+  refuses a `k` holding `undefined` (ADR-0017). An internal type writes
+  `k?: T | undefined`, and so does every type an adopter passes a value into.
+  Dropping keys: `omitUndefined`
+  (`packages/shared/src/utils/omit-undefined.ts`) when the key
+  must be absent and the required keys must stay required; `omitBy(..., isNil)` when `null`
+  must go too, which is what an outbound HTTP payload needs. A conditional spread
+  `...(x === undefined ? {} : { k: x })` is not written here.
+- `groupBy`, `keyBy`, `countBy` and `partition` over pushing into a `Map` or into parallel
+  arrays. Two exceptions stay a `Map`. The first is state a traversal mutates while it
+  runs, such as in-degree counts and adjacency in a topological pass. The second is a
+  grouping keyed by text a person or the build agent chose: a node id, parent id, label,
+  or field key. es-toolkit's `groupBy`, `countBy` and `keyBy` write `result[key]`, which
+  loses a key named `__proto__` and answers a prototype member for `constructor`. That
+  grouping uses `Map.groupBy` or a `Map`. A developer-declared key, such as an enum member
+  or an integration type from the catalog, uses the es-toolkit helpers.
+  `packages/shared/src/graph/node-group.ts`,
+  `packages/client/src/lib/workflow-issues-store.ts` and
+  `packages/core/src/backend/services/workflows/validation/workflow-template-validation.ts`
+  hold this shape.
+- `sortBy` and `orderBy` for numeric and identifier keys; `compareText`
+  (`packages/shared/src/types/string.ts`) for text a person reads.
+- `compact` and `isNotNil` over `filter(Boolean)` and `filter((x) => x !== undefined)`.
+  Write `compact(rules.map(...))` where a rule returns `undefined` for the cases it does
+  not report.
+- `isBlank` (`packages/shared/src/types/string.ts`) over `.trim().length === 0`.
+- No `let changed` flag beside a `map`: reach for `mapOrSame` or `mapValuesOrSame`
+  (`packages/shared/src/utils/map-or-same.ts`), so a caller can compare references.
+- The first object parameter is `input`, a trailing optional object is `options`, and a
+  context is `context`. `ctx`, `args`, `params` and `opts` are not parameter names here.
+  A rest parameter stays `...args`.
+- A hook or factory returning more than five fields declares its return type. Exemplar:
+  `packages/core/src/backend/services/executions/repo/audit.ts`.
+- A loop that pushes into two or more arrays is `partition` or `groupBy`; a loop that pushes
+  into one is `map`, `flatMap` or `compact(map)`. A `for` loop stays for early exit and for
+  traversal state.
+- If a call needs an unsafe cast, write a small typed helper instead.
+- `scripts/lint/conventions-plugin.ts` holds ten rules that check the rest of this section.
+  Each rule names the helper to write instead of the shape it reports, and
+  `.oxlintrc.json` turns a rule on in the commit that clears its last violation.
 - Jotai by intent: `useAtom` read/write, `useAtomValue` read, `useSetAtom` write. Jotai
   holds UI state only; anything the server owns lives in the query cache.
 - Server-side barrel files are allowed.

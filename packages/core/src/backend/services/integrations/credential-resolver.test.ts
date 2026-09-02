@@ -30,11 +30,11 @@ const connectedAt = "2026-08-01T00:00:00.000Z";
 
 function storedGrant(
   input: {
-    accessToken?: string;
-    refreshToken?: string;
-    expiresAt?: string;
-    accountLabel?: string;
-    grantedAccessLabel?: string;
+    accessToken?: string | undefined;
+    refreshToken?: string | undefined;
+    expiresAt?: string | undefined;
+    accountLabel?: string | undefined;
+    grantedAccessLabel?: string | undefined;
   } = {}
 ): string {
   const accessToken = input.accessToken ?? "old-access";
@@ -42,14 +42,12 @@ function storedGrant(
     credentials: { ACCESS_TOKEN: accessToken },
     tokens: {
       accessToken,
-      ...(input.refreshToken ? { refreshToken: input.refreshToken } : {}),
-      ...(input.expiresAt ? { expiresAt: input.expiresAt } : {}),
+      refreshToken: input.refreshToken,
+      expiresAt: input.expiresAt,
     },
     connectedAt,
-    ...(input.accountLabel ? { accountLabel: input.accountLabel } : {}),
-    ...(input.grantedAccessLabel
-      ? { grantedAccessLabel: input.grantedAccessLabel }
-      : {}),
+    accountLabel: input.accountLabel,
+    grantedAccessLabel: input.grantedAccessLabel,
   });
 }
 

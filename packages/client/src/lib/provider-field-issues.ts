@@ -11,6 +11,7 @@ import {
 } from "@wfgraph/shared/extensions/catalog";
 import { readConfigTrimmedString } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import { isBlank } from "@wfgraph/shared/types/string";
 import {
   type MissingRequiredFieldIssue,
   type UnverifiedProviderFieldIssue,
@@ -90,7 +91,7 @@ export function providerFieldQuestions(
 
 /** The values this node already holds for that field, or nothing if unreadable. */
 function storedValues(text: string): ProviderFieldValues | null {
-  if (text.trim().length === 0) {
+  if (isBlank(text)) {
     return {};
   }
   return readProviderFieldValues(text);

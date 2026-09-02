@@ -15,6 +15,7 @@ import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   WfGraphOperations,
   type WfGraphOperationId,
@@ -52,7 +53,7 @@ function connection(
   },
   configuredKeys: readonly string[] = ["RESEND_ACCOUNT_SECRET"]
 ): Integration {
-  return {
+  return omitUndefined({
     id: "connection_1",
     name: "Production",
     type: "resend",
@@ -61,7 +62,7 @@ function connection(
     configuredKeys,
     connectionDefaults: {},
     oauth: oauth && { credentialKeys: [], ...oauth },
-  };
+  });
 }
 
 function integrationListResponse(
@@ -91,8 +92,8 @@ async function confirmDisconnect(confirmLabel: string): Promise<void> {
 }
 
 type RenderOverlayOptions = {
-  integration?: Integration;
-  queryClient?: QueryClient;
+  integration?: Integration | undefined;
+  queryClient?: QueryClient | undefined;
 };
 
 function renderOverlay(

@@ -43,7 +43,7 @@ type FieldProps = {
    */
   placeholder: string | undefined;
   onChange: (value: unknown) => void;
-  disabled?: boolean;
+  disabled?: boolean | undefined;
 };
 
 function TemplateInputField({
@@ -354,8 +354,8 @@ function FieldGroup({
   config: Record<string, unknown>;
   onUpdateConfig: UpdateNodeConfig;
   connectionDefaults: Record<string, string>;
-  disabled?: boolean;
-  defaultExpanded?: boolean;
+  disabled?: boolean | undefined;
+  defaultExpanded?: boolean | undefined;
 }) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
@@ -402,8 +402,8 @@ type ActionConfigRendererProps = {
    * its `connectionDefaultKey`. The panel above resolves it, because it already
    * reads the connection list to draw the picker.
    */
-  connectionDefaults?: Record<string, string>;
-  disabled?: boolean;
+  connectionDefaults?: Record<string, string> | undefined;
+  disabled?: boolean | undefined;
 };
 
 /**

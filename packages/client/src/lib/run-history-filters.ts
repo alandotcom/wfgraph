@@ -1,3 +1,8 @@
+import { groupBy, uniq } from "es-toolkit/array";
+// The curried step, aliased because `uniq` above is the direct call this file
+// also makes.
+import { compact, map, pipe, uniq as uniqStep } from "es-toolkit/fp";
+import { compareText, isBlank } from "@wfgraph/shared/types/string";
 import {
   WORKFLOW_EXECUTION_START_SOURCES,
   WORKFLOW_EXECUTION_STATUSES,
@@ -48,7 +53,7 @@ export type RunFilter = {
   operator: RunFilterOperator;
   value: string;
   /** Shown in the pill when it differs from `value`, e.g. a workflow name. */
-  valueLabel?: string;
+  valueLabel?: string | undefined;
 };
 
 /** The columns the dashboard search can read; extra fields on a row are ignored. */
@@ -138,14 +143,14 @@ export function createRunFilter(input: {
   field: RunFilterField;
   operator: RunFilterOperator;
   value: string;
-  valueLabel?: string;
+  valueLabel?: string | undefined;
 }): RunFilter {
   return {
     id: crypto.randomUUID(),
     field: input.field,
     operator: input.operator,
     value: input.value,
-    ...(input.valueLabel !== undefined ? { valueLabel: input.valueLabel } : {}),
+    valueLabel: input.valueLabel,
   };
 }
 
@@ -217,7 +222,7 @@ function equalsField(run: RunHistorySearchRow, filter: RunFilter): boolean {
 
 function containsField(run: RunHistorySearchRow, filter: RunFilter): boolean {
   const actual = fieldValue(run, filter.field);
-  if (actual === null || filter.value.trim() === "") {
+  if (actual === null || isBlank(filter.value)) {
     return false;
   }
   return normalize(actual).includes(normalize(filter.value));
@@ -286,18 +291,13 @@ export function filterRuns<T extends RunHistorySearchRow>(
   input: { query: string; filters: readonly RunFilter[] }
 ): T[] {
   const query = input.query.trim().toLowerCase();
-  const grouped = new Map<RunFilterField, RunFilter[]>();
-  for (const filter of input.filters) {
-    const group = grouped.get(filter.field) ?? [];
-    group.push(filter);
-    grouped.set(filter.field, group);
-  }
+  const grouped = groupBy(input.filters, (filter) => filter.field);
 
   return runs.filter((run) => {
     if (query !== "" && !runSearchText(run).includes(query)) {
       return false;
     }
-    for (const group of grouped.values()) {
+    for (const group of Object.values(grouped)) {
       if (!matchesFieldGroup(run, group)) {
         return false;
       }
@@ -307,13 +307,13 @@ export function filterRuns<T extends RunHistorySearchRow>(
 }
 
 export type RunHistoryServerQuery = {
-  workflowIds?: string[];
+  workflowIds?: string[] | undefined;
   statuses: WorkflowExecutionStatus[];
   limit: number;
 };
 
 function uniqueSorted<T extends string>(values: readonly T[]): T[] {
-  return [...new Set(values)].toSorted();
+  return uniq(values).toSorted();
 }
 
 const EXECUTION_STATUS_SET: ReadonlySet<string> = new Set(
@@ -373,9 +373,10 @@ export function toExecutionsQueryInput(input: {
   return {
     statuses: uniqueSorted(statuses),
     limit: input.limit,
-    ...(workflowIds !== undefined && workflowIds.length > 0
-      ? { workflowIds }
-      : {}),
+    workflowIds:
+      workflowIds !== undefined && workflowIds.length > 0
+        ? workflowIds
+        : undefined,
   };
 }
 
@@ -403,18 +404,13 @@ export function autofillRemainder(query: string, label: string): string {
 export function uniqueNonEmpty(
   values: readonly (string | null | undefined)[]
 ): string[] {
-  const seen = new Set<string>();
-  const unique: string[] = [];
-  for (const value of values) {
-    if (value === null || value === undefined) {
-      continue;
-    }
-    const trimmed = value.trim();
-    if (trimmed === "" || seen.has(trimmed)) {
-      continue;
-    }
-    seen.add(trimmed);
-    unique.push(trimmed);
-  }
-  return unique.toSorted((a, b) => a.localeCompare(b));
+  return pipe(
+    values,
+    map((value: string | null | undefined) => value?.trim()),
+    // `compact` drops the empty string as well as null and undefined, so a
+    // value of nothing but spaces goes with them.
+    compact(),
+    uniqStep(),
+    (unique) => unique.toSorted(compareText)
+  );
 }

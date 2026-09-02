@@ -146,12 +146,12 @@ async function requestSlackOAuth<S extends Schema.ConstraintDecoder<unknown>>(
 
 function tokenSet(
   response: SlackOAuthResponse,
-  requireRefreshToken: boolean
+  options: { requireRefreshToken: boolean }
 ): OAuthTokenSet {
   const hasExpiry = response.expires_in !== undefined;
   const hasRefreshToken = response.refresh_token !== undefined;
 
-  if (requireRefreshToken && !hasRefreshToken) {
+  if (options.requireRefreshToken && !hasRefreshToken) {
     throw new Error(
       "Slack OAuth refresh response must include a replacement refresh_token."
     );
@@ -171,16 +171,11 @@ function tokenSet(
     credentials: { SLACK_API_KEY: response.access_token },
     tokens: {
       accessToken: response.access_token,
-      ...(response.refresh_token === undefined
-        ? {}
-        : { refreshToken: response.refresh_token }),
-      ...(response.expires_in === undefined
-        ? {}
-        : {
-            expiresAt: new Date(
-              Date.now() + response.expires_in * 1000
-            ).toISOString(),
-          }),
+      refreshToken: response.refresh_token,
+      expiresAt:
+        response.expires_in === undefined
+          ? undefined
+          : new Date(Date.now() + response.expires_in * 1000).toISOString(),
     },
   };
 }
@@ -209,10 +204,10 @@ function createSlackOAuth(clientId: string, clientSecret: string) {
         new URLSearchParams({ code, redirect_uri: redirectUri }),
         slackOAuthResponseSchema
       );
-      const grant = tokenSet(response, false);
+      const grant = tokenSet(response, { requireRefreshToken: false });
       return {
         ...grant,
-        ...(response.team?.name ? { accountLabel: response.team.name } : {}),
+        accountLabel: response.team?.name,
       };
     },
 
@@ -233,7 +228,7 @@ function createSlackOAuth(clientId: string, clientSecret: string) {
         }),
         slackOAuthResponseSchema
       );
-      return tokenSet(response, true);
+      return tokenSet(response, { requireRefreshToken: true });
     },
 
     revoke: async ({ grant }: OAuthRevokeInput) => {

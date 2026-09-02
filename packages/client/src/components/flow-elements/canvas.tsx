@@ -5,6 +5,7 @@ import {
   useStore,
 } from "@xyflow/react";
 import type { ReactNode } from "react";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { useAfterCommit } from "#src/hooks/effects";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import "@xyflow/react/dist/style.css";
@@ -12,7 +13,17 @@ import "@xyflow/react/dist/style.css";
 // Every node on this canvas is a workflow node, so React Flow's node generic
 // is pinned here. Callbacks such as onNodesChange then hand their consumers a
 // WorkflowNode directly.
-type CanvasProps = ReactFlowProps<WorkflowNode> & {
+//
+// Every React Flow prop is restated as accepting `undefined`, because the
+// editor withholds a handler by passing `undefined` when the canvas is locked.
+// `Canvas` drops those keys before React Flow sees them. The mapped type also
+// marks every prop optional, which loses nothing: `ReactFlowProps` declares no
+// required member today, so the two spellings describe the same set of props.
+type CanvasProps = {
+  [Key in keyof ReactFlowProps<WorkflowNode>]?:
+    | ReactFlowProps<WorkflowNode>[Key]
+    | undefined;
+} & {
   children?: ReactNode;
 };
 
@@ -45,7 +56,7 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
       selectionOnDrag={false}
       zoomOnDoubleClick={false}
       zoomOnPinch
-      {...props}
+      {...omitUndefined(props)}
     >
       <ZoomPublisher />
       <Background

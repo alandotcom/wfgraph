@@ -6,6 +6,7 @@
  * on the whole surface. The sentences are the same because the collision is.
  */
 
+import { groupBy } from "es-toolkit/array";
 import type { EventSource } from "#src/backend/extensions/define-event";
 import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
 
@@ -24,18 +25,9 @@ export type NamedEventSource = {
 export function assertSourcesAreDistinguishable(
   events: readonly NamedEventSource[]
 ): void {
-  const bySource = new Map<string, NamedEventSource[]>();
+  const bySource = groupBy(events, (event) => event.source.event);
 
-  for (const event of events) {
-    const sourceEvents = bySource.get(event.source.event);
-    if (sourceEvents) {
-      sourceEvents.push(event);
-    } else {
-      bySource.set(event.source.event, [event]);
-    }
-  }
-
-  for (const [source, sourceEvents] of bySource) {
+  for (const [source, sourceEvents] of Object.entries(bySource)) {
     if (sourceEvents.length < 2) {
       continue;
     }

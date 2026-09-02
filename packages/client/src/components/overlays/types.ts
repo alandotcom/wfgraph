@@ -17,9 +17,9 @@ export type OverlayActionVariant =
 export type OverlayAction = {
   label: string;
   onClick: () => void;
-  variant?: OverlayActionVariant;
-  disabled?: boolean;
-  loading?: boolean;
+  variant?: OverlayActionVariant | undefined;
+  disabled?: boolean | undefined;
+  loading?: boolean | undefined;
 };
 
 /**
@@ -27,17 +27,17 @@ export type OverlayAction = {
  */
 export type OverlayOptions = {
   /** Title displayed in the header */
-  title?: string;
+  title?: string | undefined;
   /** Description displayed below the title */
-  description?: string;
+  description?: string | undefined;
   /** Action buttons for the footer */
-  actions?: OverlayAction[];
+  actions?: OverlayAction[] | undefined;
   /** Whether clicking the backdrop closes the overlay (default: true) */
-  closeOnBackdropClick?: boolean;
+  closeOnBackdropClick?: boolean | undefined;
   /** Whether pressing Escape closes the overlay (default: true) */
-  closeOnEscape?: boolean;
+  closeOnEscape?: boolean | undefined;
   /** Callback when overlay is closed */
-  onClose?: () => void;
+  onClose?: (() => void) | undefined;
 };
 
 /**
@@ -103,15 +103,15 @@ export type OverlayContextValue = {
  */
 export type OverlayProps = {
   /** Title displayed in the header */
-  title?: string;
+  title?: string | undefined;
   /** Description displayed below the title */
-  description?: string;
+  description?: string | undefined;
   /** Action buttons for the footer */
-  actions?: OverlayAction[];
+  actions?: OverlayAction[] | undefined;
   /** Content to render inside the overlay */
   children?: ReactNode;
   /** Additional class name for the content container */
-  className?: string;
+  className?: string | undefined;
 };
 
 /**
@@ -119,21 +119,21 @@ export type OverlayProps = {
  */
 export type OverlayHeaderProps = {
   /** Title text */
-  title?: string;
+  title?: string | undefined;
   /** Description text */
-  description?: string;
+  description?: string | undefined;
   /** Whether to show the back button */
-  showBackButton?: boolean;
+  showBackButton?: boolean | undefined;
   /** Whether to show the close button */
-  showCloseButton?: boolean;
+  showCloseButton?: boolean | undefined;
   /** Custom back button handler (defaults to pop) */
-  onBack?: () => void;
+  onBack?: (() => void) | undefined;
   /** Custom close button handler (defaults to closeAll) */
-  onClose?: () => void;
+  onClose?: (() => void) | undefined;
   /** Extra controls, such as Runs Refresh / Clear All, trailing the title. */
   trailing?: ReactNode;
   /** Additional class name */
-  className?: string;
+  className?: string | undefined;
 };
 
 /**
@@ -141,9 +141,9 @@ export type OverlayHeaderProps = {
  */
 export type OverlayFooterProps = {
   /** Action buttons to render */
-  actions?: OverlayAction[];
+  actions?: OverlayAction[] | undefined;
   /** Additional class name */
-  className?: string;
+  className?: string | undefined;
   /** Children to render (alternative to actions) */
   children?: ReactNode;
 };

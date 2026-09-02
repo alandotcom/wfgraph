@@ -106,7 +106,9 @@ function ControlledRow({
 }: {
   fields: ConditionSelectableField[];
   initialValue: string;
-  onChange?: (next: { model: string; expression: string }) => void;
+  onChange?:
+    | ((next: { model: string; expression: string }) => void)
+    | undefined;
 }) {
   const [value, setValue] = useState(initialValue);
 
@@ -209,6 +211,24 @@ describe("ConditionBuilderRow field picker", () => {
       "emailnullable",
       "firstName",
     ]);
+  });
+
+  // A step's label is whatever the builder typed, so it reaches the picker as a
+  // group key. Grouping into a plain object files "__proto__" onto the
+  // prototype, and the section it names never reaches the list.
+  it("offers the fields of a step named __proto__", () => {
+    const view = renderRow(
+      [...APPOINTMENT_FIELDS, field("payload.id", "__proto__")],
+      storedModel("appointment.id")
+    );
+
+    enterEdit(view);
+    openFieldPicker(view);
+
+    expect(view.getByText("__proto__")).toBeTruthy();
+    expect(
+      view.getAllByRole("option").map((option) => option.textContent)
+    ).toEqual(["payload.id", "appointment.id"]);
   });
 
   it("filters the list as the builder types", () => {

@@ -15,3 +15,24 @@ export function asNonEmptyString(value: unknown): string | undefined {
   const trimmed = value.trim();
   return trimmed || undefined;
 }
+
+/**
+ * Orders two strings a person reads: a label in a menu, an integration name, a
+ * node title. This is the one place `localeCompare` is written, so a sort over
+ * text puts "apple" before "Zebra". Code-unit order puts every capital letter
+ * ahead of every lowercase one, which sorts "Zebra" first.
+ *
+ * Sorting identifiers, ids and enum values stays on code-unit order, because
+ * those are compared for a stable result rather than read down a list.
+ */
+export function compareText(left: string, right: string): number {
+  return left.localeCompare(right);
+}
+
+/**
+ * Whether a string carries nothing a reader would see. Whitespace is blank, so
+ * a field holding only spaces counts as unfilled.
+ */
+export function isBlank(value: string): boolean {
+  return value.trim().length === 0;
+}

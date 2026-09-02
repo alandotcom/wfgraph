@@ -138,7 +138,7 @@ function baseActions(): WorkflowToolbarActions {
 type ChromeProps = {
   actions: WorkflowToolbarActions;
   state: WorkflowToolbarState;
-  workflowId?: string;
+  workflowId?: string | undefined;
 };
 
 export function renderChrome(

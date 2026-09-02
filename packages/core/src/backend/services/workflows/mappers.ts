@@ -1,4 +1,5 @@
 import { nanoid } from "nanoid";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import type {
   PublishedWorkflowVersion,
   Workflow,
@@ -29,10 +30,10 @@ type WorkflowPayloadSource = Pick<
 >;
 
 type WorkflowUpdateInput = {
-  name?: string;
-  description?: string;
-  graph?: SerializedWorkflowGraph;
-  mode?: "live" | "test";
+  name?: string | undefined;
+  description?: string | undefined;
+  graph?: SerializedWorkflowGraph | undefined;
+  mode?: "live" | "test" | undefined;
 };
 
 /**
@@ -46,19 +47,20 @@ export type WorkflowUpdateData = Pick<Workflow, "updatedAt"> &
 export function toWorkflowSummaryPayload(
   workflow: Omit<WorkflowPayloadSource, "graph">
 ): WorkflowSummaryPayload {
-  return {
+  return omitUndefined({
     id: workflow.id,
     name: workflow.name,
+    // The wire contract declares `description` and `publishedVersionId` with
+    // `optionalKey`, so a workflow holding neither leaves both keys out. The
+    // column is nullable, and `omitUndefined` drops only undefined.
     description: workflow.description ?? undefined,
     isPaused: workflow.isPaused,
     mode: workflow.mode,
     visibility: workflow.visibility,
     createdAt: workflow.createdAt.toISOString(),
     updatedAt: workflow.updatedAt.toISOString(),
-    ...(workflow.publishedVersionId
-      ? { publishedVersionId: workflow.publishedVersionId }
-      : {}),
-  };
+    publishedVersionId: workflow.publishedVersionId ?? undefined,
+  });
 }
 
 /**
@@ -73,20 +75,16 @@ export function toWorkflowApiPayload(
     "id" | "version" | "publishedAt" | "graph" | "graphDigest"
   > | null
 ): WorkflowApiPayload {
-  return {
+  return omitUndefined({
     ...toWorkflowSummaryPayload(workflow),
-    ...(published
-      ? {
-          publishedVersion: published.version,
-          publishedAt: published.publishedAt.toISOString(),
-        }
-      : {}),
+    publishedVersion: published?.version,
+    publishedAt: published?.publishedAt.toISOString(),
     graph: workflow.graph,
     hasUnpublishedChanges: draftDiffersFromPublished(
       workflow.graph,
       published?.graph ?? null
     ),
-  };
+  });
 }
 
 /**

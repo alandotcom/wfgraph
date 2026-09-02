@@ -1,4 +1,5 @@
 import type { TranscriptEvent } from "vitest-evals";
+import { isBlank } from "@wfgraph/shared/types/string";
 import type { DeterministicAssessment } from "#src/agent/judges/graph";
 
 const WRITE_TOOLS = new Set([
@@ -37,7 +38,7 @@ export function assessConfusion(input: {
           JSON.stringify(earlier.arguments) === JSON.stringify(call.arguments)
       )
   );
-  const endedWithoutAnswer = input.finalText.trim().length === 0;
+  const endedWithoutAnswer = isBlank(input.finalText);
   if (
     input.errors.length === 0 &&
     unfinished.length === 0 &&

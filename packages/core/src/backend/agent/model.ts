@@ -30,7 +30,7 @@ export function agentModelLayer(
 ): Layer.Layer<LanguageModel.LanguageModel> {
   const client = OpenAiClient.layer({
     apiKey: Redacted.make(settings.apiKey),
-    ...(settings.baseUrl === undefined ? {} : { apiUrl: settings.baseUrl }),
+    apiUrl: settings.baseUrl,
   }).pipe(Layer.provide(FetchHttpClient.layer));
 
   return OpenAiLanguageModel.model(settings.model, {

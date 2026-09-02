@@ -13,9 +13,9 @@ import { makeSqliteExecutionRepo } from "#src/backend/persistence/sqlite/executi
 
 export type SqlitePersistenceOptions = {
   /** A filesystem path. Omit for an in-memory database. */
-  filename?: string;
+  filename?: string | undefined;
   /** How long a writer waits for another process's transaction. Defaults to 5s. */
-  busyTimeoutMs?: number;
+  busyTimeoutMs?: number | undefined;
 };
 
 export function wfSqlite(

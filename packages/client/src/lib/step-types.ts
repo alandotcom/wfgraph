@@ -7,9 +7,10 @@
  * Wait in one of them and nothing in the other.
  */
 
-import { compact } from "es-toolkit";
+import { compact, groupBy } from "es-toolkit/array";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import type { ActionMetadata } from "@wfgraph/shared/extensions/catalog";
+import { compareText } from "@wfgraph/shared/types/string";
 
 /**
  * Words a node type answers to besides its own name.
@@ -81,17 +82,11 @@ export function stepMatchesQuery(
 export function stepGroups(
   actions: readonly ActionMetadata[]
 ): { category: string; actions: ActionMetadata[] }[] {
-  const byCategory = new Map<string, ActionMetadata[]>();
-  for (const action of actions) {
-    const group = byCategory.get(action.category);
-    if (group) {
-      group.push(action);
-    } else {
-      byCategory.set(action.category, [action]);
-    }
-  }
+  // Category names are never numeric, so the record's key order is the order
+  // the categories first appear in `actions`, which the stable sort keeps.
+  const byCategory = groupBy(actions, (action) => action.category);
 
-  return [...byCategory.keys()]
+  return Object.keys(byCategory)
     .toSorted((a, b) => {
       if (a === "System") {
         return -1;
@@ -99,10 +94,10 @@ export function stepGroups(
       if (b === "System") {
         return 1;
       }
-      return a.localeCompare(b);
+      return compareText(a, b);
     })
     .map((category) => ({
       category,
-      actions: byCategory.get(category) ?? [],
+      actions: byCategory[category] ?? [],
     }));
 }

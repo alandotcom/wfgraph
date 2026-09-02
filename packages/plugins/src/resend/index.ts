@@ -17,9 +17,8 @@ import {
   type JsonObject,
   StepFailure,
 } from "@wfgraph/core/plugin";
-import { omitBy } from "es-toolkit/object";
-import { isNil } from "es-toolkit/predicate";
 import { Effect, Result, Schema } from "effect";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   describeResendFailure,
   getResendEmail,
@@ -300,7 +299,7 @@ function emailContent(
           : undefined;
 
         return {
-          template: omitBy({ id: input.emailTemplateId, variables }, isNil),
+          template: omitUndefined({ id: input.emailTemplateId, variables }),
         };
       }
 
@@ -311,7 +310,7 @@ function emailContent(
           });
         }
 
-        return { html: input.emailHtml, text: input.emailBody };
+        return omitUndefined({ html: input.emailHtml, text: input.emailBody });
       }
 
       // Text, the mode `emailContentMode` defaults to. It carries the `default`
@@ -324,7 +323,7 @@ function emailContent(
           });
         }
 
-        return { text: input.emailBody, html: input.emailHtml };
+        return omitUndefined({ text: input.emailBody, html: input.emailHtml });
       }
     }
   });
@@ -334,7 +333,7 @@ function emailContent(
 const buildEmailPayload = Effect.fn(function* (
   input: typeof sendEmailInput.Type,
   senderEmail: string,
-  recipients: { to: string; cc?: string; bcc?: string },
+  recipients: { to: string; cc?: string | undefined; bcc?: string | undefined },
   tags: typeof emailTagsSchema.Type | undefined
 ) {
   const content = yield* emailContent(input);
@@ -342,23 +341,18 @@ const buildEmailPayload = Effect.fn(function* (
   // Resend's own field names, which are snake_case on the wire. Every optional
   // field is written out and the blank ones dropped in one pass, because Resend
   // reads an absent field and an empty one differently.
-  const payload: JsonObject = {
-    ...omitBy(
-      {
-        from: senderEmail,
-        to: recipients.to,
-        subject: input.emailSubject,
-        cc: recipients.cc,
-        bcc: recipients.bcc,
-        reply_to: input.emailReplyTo,
-        scheduled_at: input.emailScheduledAt,
-        topic_id: input.emailTopicId,
-        tags,
-        ...content,
-      },
-      isNil
-    ),
-  };
+  const payload: JsonObject = omitUndefined({
+    from: senderEmail,
+    to: recipients.to,
+    subject: input.emailSubject,
+    cc: recipients.cc,
+    bcc: recipients.bcc,
+    reply_to: input.emailReplyTo,
+    scheduled_at: input.emailScheduledAt,
+    topic_id: input.emailTopicId,
+    tags,
+    ...content,
+  });
 
   return payload;
 });
@@ -587,7 +581,7 @@ export const resend = defineIntegration({
         const tags = input.emailTags
           ? yield* readTags(input.emailTags)
           : undefined;
-        const tagOutput = omitBy({ tags: tagsByName(tags) }, isNil);
+        const tagOutput = omitUndefined({ tags: tagsByName(tags) });
 
         // A test run either sends nothing at all or sends to one address the
         // user nominated. Both answers are a success carrying the reason, so
@@ -717,7 +711,7 @@ export const resend = defineIntegration({
               createdAt: email.created_at.toISOString(),
               lastEvent: email.last_event,
               scheduledAt: email.scheduled_at?.toISOString() ?? null,
-              ...omitBy({ tags: tagsByName(email.tags) }, isNil),
+              ...omitUndefined({ tags: tagsByName(email.tags) }),
             })),
             Effect.mapError(
               (error) =>

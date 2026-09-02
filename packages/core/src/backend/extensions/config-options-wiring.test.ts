@@ -30,22 +30,22 @@ const templateVariables: ConfigOptionsProvider = {
 
 /** The one action every case below declares, so its config keys are fixed. */
 type ExampleInput = {
-  readonly templateId?: string;
-  readonly variables?: string;
+  readonly templateId?: string | undefined;
+  readonly variables?: string | undefined;
 };
 
 // `never` for the connection-default key, because this harness declares no
 // credentials and a field may only name one the integration has.
 function integrationWith(input: {
   configFields: readonly ActionConfigFieldFor<ExampleInput, never>[];
-  configOptions?: Record<string, ConfigOptionsProvider>;
+  configOptions?: Record<string, ConfigOptionsProvider> | undefined;
 }) {
   return defineIntegration({
     type: "example",
     label: "Example",
     description: "Test integration",
     credentials: {},
-    ...(input.configOptions ? { configOptions: input.configOptions } : {}),
+    configOptions: input.configOptions,
     actions: {
       send: {
         label: "Send",

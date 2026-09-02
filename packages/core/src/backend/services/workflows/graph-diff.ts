@@ -8,12 +8,18 @@ import type {
   WorkflowFieldChange,
   WorkflowNodeChange,
 } from "@wfgraph/shared/graph/publication-contracts";
-import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
+import {
+  isJsonObject,
+  type JsonObject,
+  type JsonValue,
+} from "@wfgraph/shared/types/json";
 import type {
   SerializedWorkflowEdge,
   SerializedWorkflowGraph,
   SerializedWorkflowNode,
 } from "@wfgraph/shared/graph/types";
+import { groupBy, union } from "es-toolkit/array";
+import { mapValues } from "es-toolkit/object";
 import {
   normalizeSemanticValue,
   projectSemanticWorkflowEdge,
@@ -31,12 +37,13 @@ export type WorkflowGraphDiff = {
   edgeChanges: WorkflowEdgeChange[];
 };
 
+/**
+ * Orders two strings by UTF-16 code unit. The diff is persisted and compared
+ * across machines, so this must stay code-unit order. Do not replace it with
+ * `compareText` or `localeCompare`, whose result depends on the locale.
+ */
 function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
-}
-
-function isJsonObject(value: JsonValue): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function comparable(value: unknown): ComparableValue {
@@ -149,9 +156,7 @@ function collectObjectFieldChanges(
       : Array.isArray(after)
         ? after.map((_, index) => String(index))
         : Object.keys(after);
-  const keys = [...new Set([...beforeKeys, ...afterKeys])].toSorted(
-    compareStrings
-  );
+  const keys = union(beforeKeys, afterKeys).toSorted(compareStrings);
 
   if (keys.length === 0) {
     if (before === MISSING) {
@@ -201,20 +206,17 @@ function edgeSemanticKey(edge: SerializedWorkflowEdge): string {
   return semanticValueKey(projectSemanticWorkflowEdge(edge));
 }
 
+/**
+ * Each group is sorted so that duplicate edges sharing one semantic key are
+ * matched in the same order on every run. A semantic key is a JSON string, so
+ * the result is only ever read by key and never iterated for its own order.
+ */
 function edgeIdsBySemanticKey(
   edges: SerializedWorkflowEdge[]
-): Map<string, string[]> {
-  const idsByKey = new Map<string, string[]>();
-  for (const edge of edges) {
-    const key = edgeSemanticKey(edge);
-    const ids = idsByKey.get(key) ?? [];
-    ids.push(edge.key);
-    idsByKey.set(key, ids);
-  }
-  for (const ids of idsByKey.values()) {
-    ids.sort(compareStrings);
-  }
-  return idsByKey;
+): Record<string, string[] | undefined> {
+  return mapValues(groupBy(edges, edgeSemanticKey), (group) =>
+    group.map((edge) => edge.key).toSorted(compareStrings)
+  );
 }
 
 function unmatchedEdgeIds(
@@ -251,9 +253,9 @@ export function diffWorkflowGraphs(
 ): WorkflowGraphDiff {
   const baseNodes = new Map(baseGraph.nodes.map((node) => [node.key, node]));
   const draftNodes = new Map(draftGraph.nodes.map((node) => [node.key, node]));
-  const nodeIds = [
-    ...new Set([...baseNodes.keys(), ...draftNodes.keys()]),
-  ].toSorted(compareStrings);
+  const nodeIds = union([...baseNodes.keys()], [...draftNodes.keys()]).toSorted(
+    compareStrings
+  );
   const nodeChanges: WorkflowNodeChange[] = [];
 
   for (const nodeId of nodeIds) {
@@ -274,15 +276,16 @@ export function diffWorkflowGraphs(
 
   const baseEdges = edgeIdsBySemanticKey(baseGraph.edges);
   const draftEdges = edgeIdsBySemanticKey(draftGraph.edges);
-  const semanticEdgeKeys = [
-    ...new Set([...baseEdges.keys(), ...draftEdges.keys()]),
-  ].toSorted(compareStrings);
+  const semanticEdgeKeys = union(
+    Object.keys(baseEdges),
+    Object.keys(draftEdges)
+  ).toSorted(compareStrings);
   const edgeChanges: WorkflowEdgeChange[] = [];
 
   for (const semanticKey of semanticEdgeKeys) {
     const { removed, added } = unmatchedEdgeIds(
-      baseEdges.get(semanticKey) ?? [],
-      draftEdges.get(semanticKey) ?? []
+      baseEdges[semanticKey] ?? [],
+      draftEdges[semanticKey] ?? []
     );
     for (const edgeId of removed) {
       edgeChanges.push({ edgeId, kind: "removed" });

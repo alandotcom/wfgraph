@@ -24,6 +24,7 @@ import type { WorkflowVersionCursor } from "@wfgraph/shared/graph/publication-co
 import { cn } from "@wfgraph/shared/utils";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import type { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 type WorkflowComparisonActions = ReturnType<
   typeof useWorkflowComparisonActions
@@ -43,10 +44,13 @@ export function WorkflowVersionHistory({
 
   const history = useInfiniteQuery({
     ...orpcQuery.workflow.getVersionHistory.infiniteOptions({
-      input: (cursor: WorkflowVersionCursor | undefined) => ({
-        workflowId: workflowId ?? "",
-        cursor,
-      }),
+      // The contract declares `cursor` as an optional key, so the first page
+      // omits it instead of sending `undefined`.
+      input: (cursor: WorkflowVersionCursor | undefined) =>
+        omitUndefined({
+          workflowId: workflowId ?? "",
+          cursor,
+        }),
       initialPageParam: undefined as WorkflowVersionCursor | undefined,
       getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
       enabled: Boolean(

@@ -46,7 +46,7 @@ function waitStateMatches(input: {
   waitState: CandidateWaitState;
   eventType: string;
   payload: JsonObject;
-  connectionId?: string;
+  connectionId?: string | undefined;
 }): WaitMatchResult {
   const subscriptions = readCompiledWaitSubscriptions(
     input.waitState.metadata
@@ -86,10 +86,10 @@ function waitStateMatches(input: {
 export const resumeWaitsMatchingEvent = Effect.fn("resumeWaitsMatchingEvent")(
   function* (input: {
     workflowId: string;
-    eventType?: string;
+    eventType?: string | undefined;
     payload: JsonObject;
     waitStates: CandidateWaitState[];
-    connectionId?: string;
+    connectionId?: string | undefined;
   }) {
     const { eventType } = input;
     if (!eventType) {
@@ -128,7 +128,7 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
   eventType: string;
   payload: JsonObject;
   waitState: CandidateWaitState;
-  connectionId?: string;
+  connectionId?: string | undefined;
 }) {
   const { waitState, eventType } = input;
   const logger = (yield* AppLogger).get("wait-resume");

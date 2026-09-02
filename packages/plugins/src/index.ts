@@ -26,7 +26,7 @@ import { slack, type SlackOptions } from "#src/slack/index";
 import { twilio } from "#src/twilio/index";
 
 export type BuiltInIntegrationsOptions = {
-  slack?: SlackOptions;
+  slack?: SlackOptions | undefined;
 };
 
 export const builtInIntegrations = (options?: BuiltInIntegrationsOptions) => [

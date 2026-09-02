@@ -6,6 +6,7 @@
  */
 
 import type { Edge, Node } from "@xyflow/react";
+import { isEmptyObject } from "es-toolkit/predicate";
 import type {
   NodeRunStatus,
   PersistedNodeData,
@@ -16,6 +17,7 @@ import {
   findAction,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 export type { NodeRunStatus, PersistedNodeData };
 export type {
@@ -58,17 +60,17 @@ export const COMPARISON_EDGE_ANNOTATION: unique symbol = Symbol(
 export type EditorNodeData = PersistedNodeData & {
   /** Open persisted node data can legitimately use this string key. */
   comparison?: unknown;
-  status?: NodeRunStatus;
-  issues?: NodeIssueSummary;
-  [COMPARISON_NODE_ANNOTATION]?: ComparisonNodeAnnotation;
+  status?: NodeRunStatus | undefined;
+  issues?: NodeIssueSummary | undefined;
+  [COMPARISON_NODE_ANNOTATION]?: ComparisonNodeAnnotation | undefined;
 };
 
 /** Display-only fields painted onto edges; never part of the draft save path. */
 export type EditorEdgeData = Record<string, unknown> & {
-  displayLabel?: string;
+  displayLabel?: string | undefined;
   /** Set on an edge landing on a node the run can never reach. */
-  inactive?: boolean;
-  [COMPARISON_EDGE_ANNOTATION]?: ComparisonEdgeAnnotation;
+  inactive?: boolean | undefined;
+  [COMPARISON_EDGE_ANNOTATION]?: ComparisonEdgeAnnotation | undefined;
 };
 
 export type WorkflowNodeData = EditorNodeData;
@@ -220,24 +222,30 @@ export function toPersistedEdge(edge: WorkflowEdge): PersistedWorkflowEdge {
     target: edge.target,
     sourceHandle: edge.sourceHandle,
     targetHandle: edge.targetHandle,
-    data: Object.keys(rest).length > 0 ? rest : undefined,
+    data: isEmptyObject(rest) ? undefined : rest,
   };
 }
 
 export function toEditorNode(node: PersistedWorkflowNode): WorkflowNode {
-  const editor: WorkflowNode = {
+  // React Flow declares `type`, `width` and `height` as optional keys, so a
+  // persisted node that sets none of them leaves them out here.
+  const editor: WorkflowNode = omitUndefined({
     id: node.id,
     position: node.position,
     type: node.type,
     width: node.width,
     height: node.height,
-    measured: node.measured,
     ariaLabel: workflowNodeAriaLabel(node.data),
     // No status: a freshly converted node carries no run of its own. The
     // graph store merges a run's status onto whichever graph is on screen at
     // display time, so this node's `data` never needs one baked in.
     data: { ...node.data },
-  };
+  });
+  // React Flow declares `measured` and the two sizes inside it as optional
+  // keys, so an unmeasured node leaves them out here.
+  if (node.measured) {
+    editor.measured = omitUndefined(node.measured);
+  }
   if (node.parentId) {
     editor.parentId = node.parentId;
     editor.extent = "parent";
@@ -251,12 +259,14 @@ export function toEditorNode(node: PersistedWorkflowNode): WorkflowNode {
 // canvas's decision, through `defaultEdgeOptions`, and what is selected belongs
 // to the session looking at it.
 export function toEditorEdge(edge: PersistedWorkflowEdge): WorkflowEdge {
-  return {
+  // React Flow declares the handle keys and `data` as optional, so a handle
+  // the persisted edge does not name is omitted.
+  return omitUndefined({
     id: edge.id,
     source: edge.source,
     target: edge.target,
     sourceHandle: edge.sourceHandle ?? undefined,
     targetHandle: edge.targetHandle ?? undefined,
     data: edge.data,
-  };
+  });
 }

@@ -12,7 +12,7 @@
  * branches, Started↔Canceled).
  */
 
-import { omit } from "es-toolkit";
+import { omit } from "es-toolkit/object";
 import { Effect } from "effect";
 import { normalizeConditionBranch } from "@wfgraph/shared/conditions/condition-branch";
 import { isLifecycleNode } from "@wfgraph/shared/graph/node-config";
@@ -336,10 +336,12 @@ export class Traversal {
    * two runs of one graph answer alike whatever order the nodes finished in.
    */
   deterministicTerminalOutput(): unknown {
+    // Node ids are nanoids, so code-unit order is enough for a deterministic
+    // result. `compareText` is for text a person reads.
     const terminalNodeIds = this.nodes
       .filter((node) => (this.edgesBySource.get(node.id)?.length ?? 0) === 0)
       .map((node) => node.id)
-      .toSorted((a, b) => a.localeCompare(b));
+      .toSorted();
 
     for (const nodeId of terminalNodeIds) {
       const output = executionData(this.results[nodeId]);
@@ -348,9 +350,7 @@ export class Traversal {
       }
     }
 
-    const resultKeys = Object.keys(this.results).toSorted((a, b) =>
-      a.localeCompare(b)
-    );
+    const resultKeys = Object.keys(this.results).toSorted();
     for (const nodeId of resultKeys) {
       const output = executionData(this.results[nodeId]);
       if (output !== undefined) {

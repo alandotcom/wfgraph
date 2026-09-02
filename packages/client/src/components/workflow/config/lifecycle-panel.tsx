@@ -1,4 +1,5 @@
 import { useId, useMemo } from "react";
+import { isEmptyObject } from "es-toolkit/predicate";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { WarningCallout } from "#src/components/ui/callout";
 import {
@@ -122,7 +123,7 @@ export function LifecyclePanel({
 
     write({
       ...rules,
-      correlationPaths: Object.keys(next).length > 0 ? next : undefined,
+      correlationPaths: isEmptyObject(next) ? undefined : next,
     });
   };
 

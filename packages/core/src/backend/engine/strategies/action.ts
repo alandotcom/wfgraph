@@ -77,8 +77,8 @@ function executeActionStep(
   );
 }
 
-function runAction(ctx: NodeWorkContext) {
-  const config = ctx.node.data.config || {};
+function runAction(context: NodeWorkContext) {
+  const config = context.node.data.config || {};
   const actionType = readConfigString(config, "actionType");
 
   return Effect.gen(function* () {
@@ -92,7 +92,7 @@ function runAction(ctx: NodeWorkContext) {
       workflowId,
       workflowRunId,
       runMode,
-    } = ctx;
+    } = context;
 
     if (!actionType) {
       yield* Effect.logError("Action node missing action type");
@@ -136,8 +136,8 @@ function runAction(ctx: NodeWorkContext) {
     };
 
     if (actionType === BUILT_IN_ACTION_IDS.wait) {
-      if (!ctx.entersInPlace) {
-        return yield* ctx.handOffBranch();
+      if (!context.entersInPlace) {
+        return yield* context.handOffBranch();
       }
 
       const waitOutcome = yield* executeWaitAction({
@@ -178,8 +178,8 @@ function runAction(ctx: NodeWorkContext) {
       runtime,
       store,
       actions,
-      eventName: ctx.eventName,
-      catalogFingerprint: ctx.catalogFingerprint,
+      eventName: context.eventName,
+      catalogFingerprint: context.catalogFingerprint,
     });
 
     const stepResult = actionOutcome.result;

@@ -25,7 +25,7 @@ function actionNode(enabled?: boolean): WorkflowNode {
       label: "Send email",
       type: "action",
       config: { actionType: "email/send" },
-      ...(enabled === undefined ? {} : { enabled }),
+      enabled,
     },
   };
 }

@@ -81,7 +81,10 @@ export const SilentAppLoggerLayer: Layer.Layer<AppLogger> = Layer.succeed(
 );
 
 /** One line a recording logger kept, as the logger's callers wrote it. */
-type RecordedLine = { message: string; properties?: LogProperties };
+type RecordedLine = {
+  message: string;
+  properties?: LogProperties | undefined;
+};
 
 /**
  * A logger keeping the lines one test produced.
@@ -219,15 +222,15 @@ export type StubbedDatabase = {
  */
 export function stubDatabase(
   answer: (statement: CapturedStatement) => StatementRows = () => [],
-  options: { transactionFailures?: readonly unknown[] } = {}
+  options: { transactionFailures?: readonly unknown[] | undefined } = {}
 ): StubbedDatabase {
   const statements: CapturedStatement[] = [];
   const transactions: Parameters<WfGraphDatabase["transaction"]>[1][] = [];
   const transactionFailures = [...(options.transactionFailures ?? [])];
 
   const base = drizzle(
-    async (query, params) => {
-      const statement = { query, params };
+    async (query, queryParams) => {
+      const statement = { query, params: queryParams };
       statements.push(statement);
       return { rows: answer(statement) };
     },
@@ -434,16 +437,16 @@ export function stubInngestClient(
  */
 export function stubWfGraphRuntime(
   overrides: {
-    extensions?: Partial<ExtensionSet>;
-    workflowRepo?: Partial<WorkflowRepo["Service"]>;
-    executionRepo?: Partial<ExecutionRepo["Service"]>;
-    integrationRepo?: Partial<IntegrationRepo["Service"]>;
-    apiKeyRepo?: Partial<ApiKeyRepo["Service"]>;
-    inngestClient?: Partial<InngestClient["Service"]>;
+    extensions?: Partial<ExtensionSet> | undefined;
+    workflowRepo?: Partial<WorkflowRepo["Service"]> | undefined;
+    executionRepo?: Partial<ExecutionRepo["Service"]> | undefined;
+    integrationRepo?: Partial<IntegrationRepo["Service"]> | undefined;
+    apiKeyRepo?: Partial<ApiKeyRepo["Service"]> | undefined;
+    inngestClient?: Partial<InngestClient["Service"]> | undefined;
     /** The build agent is off unless a test turns it on. */
-    agent?: AgentSettings;
+    agent?: AgentSettings | undefined;
     /** Stable host URLs. OAuth is off in a test unless it supplies a public URL. */
-    appContext?: WfGraphAppContextValue;
+    appContext?: WfGraphAppContextValue | undefined;
   } = {}
 ): ManagedRuntime.ManagedRuntime<WfGraphServices, never> {
   return ManagedRuntime.make(

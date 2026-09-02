@@ -1,5 +1,6 @@
 import type { Inngest } from "inngest";
 import type { JsonObject } from "@wfgraph/shared/types/json";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { withCatalogConnection } from "#src/backend/lib/inngest/catalog-connection";
 import {
   workflowBranchKillRequested,
@@ -41,8 +42,8 @@ export async function sendWorkflowCancelRequested(
     workflowId: string;
     reason: string;
     requestedBy: string;
-    eventType?: string;
-    entityValue?: string;
+    eventType?: string | undefined;
+    entityValue?: string | undefined;
   }
 ) {
   return await client.send(
@@ -79,11 +80,11 @@ export async function sendWorkflowWaitSignal(
   input: {
     executionId: string;
     nodeId: string;
-    token?: string | null;
-    eventType?: string;
-    entityValue?: string;
+    token?: string | null | undefined;
+    eventType?: string | undefined;
+    entityValue?: string | undefined;
     // JSON is what survives the send, so the caller supplies JSON.
-    payload?: JsonObject;
+    payload?: JsonObject | undefined;
     /** Why the run is being woken; the wait's `if` expression admits both. */
     signalType: "wait-resume" | "lifecycle-cancel";
   }
@@ -117,15 +118,16 @@ export async function sendCatalogEvent(
     name: string;
     data: JsonObject;
     connectionId: string;
-    id?: string;
+    id?: string | undefined;
   }
 ) {
-  const event = {
+  const event = omitUndefined({
     name: input.name,
     data: withCatalogConnection(input.data, input.connectionId),
-    ...(input.id === undefined
-      ? {}
-      : { id: `${input.name}-${input.connectionId}-${input.id}` }),
-  };
+    id:
+      input.id === undefined
+        ? undefined
+        : `${input.name}-${input.connectionId}-${input.id}`,
+  });
   return await client.send(event);
 }

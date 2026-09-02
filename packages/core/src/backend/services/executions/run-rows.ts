@@ -69,14 +69,14 @@ export function toWorkflowRunTarget(input: {
  */
 export type WorkflowRunStart = {
   source: WorkflowExecutionStartSource;
-  eventName?: string;
-  entityValue?: string;
+  eventName?: string | undefined;
+  entityValue?: string | undefined;
   /**
    * The arrival this start answers, which for an Event is the id the bus carried
    * it under. It goes on the audit row so one arrival can be traced across every
    * workflow it started or was refused by.
    */
-  deliveryId?: string;
+  deliveryId?: string | undefined;
 };
 
 export type EnqueueStartedRunInput = {
@@ -96,12 +96,12 @@ export type EnqueueStartedRunInput = {
    * the raw shape. Entrypoints that never substitute a mock payload leave this
    * out and get the payload itself.
    */
-  requestPayload?: JsonObject;
+  requestPayload?: JsonObject | undefined;
 };
 
 export type StartedWorkflowRun = {
   executionId: string;
-  runId?: string;
+  runId?: string | undefined;
   runMode: WorkflowMode;
 };
 
@@ -113,8 +113,8 @@ export type RecordTerminalWorkflowRunInput = {
   runMode: WorkflowMode;
   payload: JsonObject;
   status: "completed" | "failed" | "canceled";
-  error?: string;
-  output?: JsonObject;
+  error?: string | undefined;
+  output?: JsonObject | undefined;
   audit: {
     // Run-scoped only: this path always inserts the terminal Execution the row
     // hangs off, and a refusal opens no run to hang one off at all.
@@ -123,7 +123,7 @@ export type RecordTerminalWorkflowRunInput = {
       "run_cancelled" | "run_ignored" | "run_completed"
     >;
     message: string;
-    metadata?: JsonObjectDraft;
+    metadata?: JsonObjectDraft | undefined;
   };
 };
 
@@ -180,9 +180,9 @@ function runRecipientsPhrase(runMode: WorkflowMode): string {
 export function buildRunStartedAuditMessage(input: {
   startSource: WorkflowExecutionStartSource;
   runMode: WorkflowMode;
-  eventName?: string;
+  eventName?: string | undefined;
   /** The version this run pinned, which names the graph that ran. */
-  version?: PinnedRunVersion;
+  version?: PinnedRunVersion | undefined;
 }): string {
   const subject = runStartedSubject(input.startSource, input.version);
   const event = input.eventName ? ` for ${input.eventName}` : "";
@@ -197,7 +197,7 @@ export function buildRunStartedAuditMessage(input: {
 export function buildIgnoredRunAuditMessage(input: {
   startSource: WorkflowExecutionStartSource;
   reason: WorkflowExecutionIgnoredReason;
-  eventName?: string;
+  eventName?: string | undefined;
 }): string {
   const subject = IGNORED_SUBJECTS[input.startSource];
 
@@ -252,10 +252,10 @@ export const recordStartRefusal = Effect.fn("recordStartRefusal")(
     reason: WorkflowExecutionIgnoredReason;
     runMode: WorkflowMode;
     logger: EffectLogger;
-    eventName?: string;
-    entityValue?: string;
-    deliveryId?: string;
-    extra?: JsonObject;
+    eventName?: string | undefined;
+    entityValue?: string | undefined;
+    deliveryId?: string | undefined;
+    extra?: JsonObject | undefined;
   }) {
     const repo = yield* ExecutionRepo;
 

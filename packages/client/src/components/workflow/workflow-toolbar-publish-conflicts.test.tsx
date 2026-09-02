@@ -45,6 +45,7 @@ import {
   resetAuthorizationGrantsForTests,
 } from "#src/lib/authorization-test-support";
 import { WfGraphOperationIds } from "@wfgraph/shared/authorization/operations";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 const STALE_PUBLISH_MESSAGE =
   "This workflow was published elsewhere. Refresh and try again.";
@@ -54,7 +55,7 @@ const workflowEntryKey = orpcQuery.workflow.getById.queryKey({
   input: { workflowId },
 });
 const versionHistoryKey = orpcQuery.workflow.getVersionHistory.infiniteKey({
-  input: (cursor: undefined) => ({ workflowId, cursor }),
+  input: (cursor: undefined) => omitUndefined({ workflowId, cursor }),
   initialPageParam: undefined,
 });
 

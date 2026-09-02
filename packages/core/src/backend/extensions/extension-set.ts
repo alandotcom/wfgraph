@@ -12,6 +12,7 @@
  * slug is a record key the definition never spells out twice.
  */
 
+import { isBlank } from "@wfgraph/shared/types/string";
 import type {
   ActionMetadata,
   EventMetadata,
@@ -45,6 +46,7 @@ import {
 } from "@wfgraph/shared/types/record-key";
 import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
 import { CONNECTION_STAMP_KEY } from "#src/backend/lib/inngest/catalog-connection";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 /**
  * An Event as the set holds it, which is what `eventByName` answers with.
@@ -63,9 +65,9 @@ export type RegisteredEvent = AnyEventDefinition;
  * test; a host's own action, from `defineAction`, brings its handler.
  */
 export type WfGraphExtensions = {
-  readonly events?: readonly AnyEventDefinition[];
-  readonly integrations?: readonly IntegrationDefinition[];
-  readonly actions?: readonly ActionDefinition[];
+  readonly events?: readonly AnyEventDefinition[] | undefined;
+  readonly integrations?: readonly IntegrationDefinition[] | undefined;
+  readonly actions?: readonly ActionDefinition[] | undefined;
 };
 
 export type ExtensionSet = {
@@ -129,6 +131,30 @@ function indexEvents(
 }
 
 /**
+ * The first key two of these items share, or undefined when every key is its own.
+ *
+ * A Set rather than a counted record: the key is an action id or an integration
+ * type an adopter wrote, so it can be `constructor` or `__proto__`, which a
+ * plain object answers with a prototype member.
+ */
+function firstDuplicate<T>(
+  items: readonly T[],
+  keyOf: (item: T) => string
+): string | undefined {
+  const seen = new Set<string>();
+
+  for (const item of items) {
+    const key = keyOf(item);
+    if (seen.has(key)) {
+      return key;
+    }
+    seen.add(key);
+  }
+
+  return undefined;
+}
+
+/**
  * Two actions may not share an id.
  *
  * The whole surface goes through this in one list, so a host action colliding with
@@ -137,15 +163,12 @@ function indexEvents(
  * implementation.
  */
 function assertDistinctActionIds(actions: readonly ActionMetadata[]): void {
-  const seen = new Set<string>();
+  const duplicate = firstDuplicate(actions, (action) => action.id);
 
-  for (const action of actions) {
-    if (seen.has(action.id)) {
-      throw new Error(
-        `Two actions are defined with the id "${action.id}". An action id is "<integration>/<slug>" for an integration's action and whatever the host wrote for its own, and the engine dispatches on it, so it names one implementation.`
-      );
-    }
-    seen.add(action.id);
+  if (duplicate !== undefined) {
+    throw new Error(
+      `Two actions are defined with the id "${duplicate}". An action id is "<integration>/<slug>" for an integration's action and whatever the host wrote for its own, and the engine dispatches on it, so it names one implementation.`
+    );
   }
 }
 
@@ -233,15 +256,15 @@ function assertNoConnectionStampField(
 function assertDistinctIntegrationTypes(
   integrations: readonly IntegrationMetadata[]
 ): void {
-  const seen = new Set<string>();
+  const duplicate = firstDuplicate(
+    integrations,
+    (integration) => integration.type
+  );
 
-  for (const integration of integrations) {
-    if (seen.has(integration.type)) {
-      throw new Error(
-        `Two integrations are defined with the type "${integration.type}". The type keys an integration's stored credentials, so two of them would read each other's.`
-      );
-    }
-    seen.add(integration.type);
+  if (duplicate !== undefined) {
+    throw new Error(
+      `Two integrations are defined with the type "${duplicate}". The type keys an integration's stored credentials, so two of them would read each other's.`
+    );
   }
 }
 
@@ -254,16 +277,16 @@ function toEventMetadata(
   event: RegisteredEvent,
   integration?: string
 ): EventMetadata {
-  return {
+  // `|| undefined` rather than the value itself: a blank string is a member the
+  // author left empty, and the wire schema takes an absent key for it.
+  return omitUndefined({
     name: event.name,
     label: event.label,
-    ...(event.description ? { description: event.description } : {}),
-    ...(event.correlationPath
-      ? { correlationPath: event.correlationPath }
-      : {}),
-    ...(integration ? { integration } : {}),
+    description: event.description || undefined,
+    correlationPath: event.correlationPath || undefined,
+    integration: integration || undefined,
     payloadFields: event.payloadFields,
-  };
+  });
 }
 
 /**
@@ -294,17 +317,20 @@ function readIntegration(
   into: Assembly
 ): IntegrationMetadata {
   for (const { id, step, outputFields } of checkIntegration(integration)) {
-    into.actions.push({
-      id,
-      label: step.label,
-      description: step.description,
-      category: step.category,
-      integration: integration.type,
-      sideEffect: step.sideEffect,
-      ...(step.hidden ? { hidden: true } : {}),
-      configFields: step.configFields,
-      outputFields,
-    });
+    into.actions.push(
+      omitUndefined({
+        id,
+        label: step.label,
+        description: step.description,
+        category: step.category,
+        integration: integration.type,
+        sideEffect: step.sideEffect,
+        // An action the picker shows carries no `hidden` key at all.
+        hidden: step.hidden || undefined,
+        configFields: step.configFields,
+        outputFields,
+      })
+    );
     into.steps.set(id, step.implement(id));
   }
 
@@ -324,7 +350,7 @@ function readIntegration(
   }
 
   if (integration.oauth) {
-    if (integration.oauth.label.trim().length === 0) {
+    if (isBlank(integration.oauth.label)) {
       throw new Error(
         `Integration "${integration.type}" declares OAuth without a label.`
       );
@@ -336,21 +362,17 @@ function readIntegration(
     into.webhooks.set(integration.type, integration.webhook);
   }
 
-  return {
+  return omitUndefined({
     type: integration.type,
     label: integration.label,
     description: integration.description,
     credentialFields: integration.credentials,
     hasTest: integration.test !== undefined,
     hasWebhook: integration.webhook !== undefined,
-    ...(integration.webhook?.helpText
-      ? { webhookHelpText: integration.webhook.helpText }
-      : {}),
-    ...(integration.webhook?.secret
-      ? { webhookSecretKey: integration.webhook.secret }
-      : {}),
-    ...(integration.oauth ? { oauth: { label: integration.oauth.label } } : {}),
-  };
+    webhookHelpText: integration.webhook?.helpText || undefined,
+    webhookSecretKey: integration.webhook?.secret || undefined,
+    oauth: integration.oauth ? { label: integration.oauth.label } : undefined,
+  });
 }
 
 /**
@@ -386,17 +408,20 @@ function assertProviderFieldsBelongToAnIntegration(
  * one kind of thing to find.
  */
 function readHostAction(action: ActionDefinition, into: Assembly): void {
-  into.actions.push({
-    id: action.id,
-    label: action.label,
-    description: action.description,
-    category: action.category,
-    ...(action.logoUrl ? { logoUrl: action.logoUrl } : {}),
-    sideEffect: action.sideEffect,
-    ...(action.hidden ? { hidden: true } : {}),
-    configFields: action.configFields ?? [],
-    outputFields: action.outputFields ?? [],
-  });
+  into.actions.push(
+    omitUndefined({
+      id: action.id,
+      label: action.label,
+      description: action.description,
+      category: action.category,
+      logoUrl: action.logoUrl || undefined,
+      sideEffect: action.sideEffect,
+      // An action the picker shows carries no `hidden` key at all.
+      hidden: action.hidden || undefined,
+      configFields: action.configFields ?? [],
+      outputFields: action.outputFields ?? [],
+    })
+  );
   into.steps.set(action.id, action.implement);
 }
 

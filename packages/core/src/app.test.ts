@@ -12,6 +12,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Schema } from "effect";
+import { uniq } from "es-toolkit/array";
 import {
   defineAction,
   defineWfGraphAuth,
@@ -394,13 +395,11 @@ describe("createWfGraphApp with host authentication", () => {
         publicRoutes().map((route) => `/wfgraph/api${route}`)
       );
 
-      return [
-        ...new Set(
-          app.routes
-            .map((route) => route.path)
-            .filter((path) => !machinePaths.has(path) && !publicPaths.has(path))
-        ),
-      ];
+      return uniq(
+        app.routes
+          .map((route) => route.path)
+          .filter((path) => !machinePaths.has(path) && !publicPaths.has(path))
+      );
     } finally {
       await runtime.dispose();
       await database.close();
@@ -426,7 +425,8 @@ describe("createWfGraphApp with host authentication", () => {
           new Request(`http://localhost${toRequestPath(path)}`, {
             method,
             headers: { "content-type": "application/json" },
-            body: method === "GET" ? undefined : "{}",
+            // `RequestInit.body` is typed `BodyInit | null`, so a GET passes null.
+            body: method === "GET" ? null : "{}",
           })
         );
 

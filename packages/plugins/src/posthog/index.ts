@@ -18,6 +18,7 @@ import {
   defineIntegration,
   StepFailure,
 } from "@wfgraph/core/plugin";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { Effect, Schema } from "effect";
 import {
   captureOrFail,
@@ -262,13 +263,17 @@ export const posthog = defineIntegration({
 
         yield* bag.step.run(
           "capture",
-          captureOrFail("Failed to capture event", connection, {
-            event: eventName,
-            distinct_id: distinctId,
-            uuid: identity.uuid,
-            timestamp,
-            ...(properties ? { properties } : {}),
-          })
+          captureOrFail(
+            "Failed to capture event",
+            connection,
+            omitUndefined({
+              event: eventName,
+              distinct_id: distinctId,
+              uuid: identity.uuid,
+              timestamp,
+              properties,
+            })
+          )
         );
 
         return {
@@ -375,14 +380,18 @@ export const posthog = defineIntegration({
 
         yield* bag.step.run(
           "identify",
-          captureOrFail("Failed to identify person", connection, {
-            event: "$identify",
-            distinct_id: distinctId,
-            uuid: identity.uuid,
-            timestamp: identity.timestamp,
-            ...(set ? { $set: set } : {}),
-            ...(setOnce ? { $set_once: setOnce } : {}),
-          })
+          captureOrFail(
+            "Failed to identify person",
+            connection,
+            omitUndefined({
+              event: "$identify",
+              distinct_id: distinctId,
+              uuid: identity.uuid,
+              timestamp: identity.timestamp,
+              $set: set,
+              $set_once: setOnce,
+            })
+          )
         );
 
         return {

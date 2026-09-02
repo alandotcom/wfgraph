@@ -9,6 +9,7 @@
  * printed by `console.log`.
  */
 
+import { isEmptyObject, isPlainObject } from "es-toolkit/predicate";
 import { getAppLogger } from "#src/backend/lib/logger";
 
 type SdkLogger = {
@@ -18,22 +19,13 @@ type SdkLogger = {
   debug: (...args: unknown[]) => void;
 };
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    !(value instanceof Error)
-  );
-}
-
 /**
  * The first string is the message and every object is a field bag. Anything
  * else (a number, an Error, an array) is kept under a numbered key rather than
  * dropped, because the SDK is free to pass it and losing it silently is worse
  * than an odd key name.
  */
-function splitSdkArgs(args: unknown[]): {
+function splitSdkArgs(input: unknown[]): {
   message: string;
   properties: Record<string, unknown> | undefined;
 } {
@@ -41,7 +33,7 @@ function splitSdkArgs(args: unknown[]): {
   let message: string | undefined;
   let extras = 0;
 
-  for (const arg of args) {
+  for (const arg of input) {
     if (message === undefined && typeof arg === "string") {
       message = arg;
     } else if (isPlainObject(arg)) {
@@ -54,7 +46,7 @@ function splitSdkArgs(args: unknown[]): {
 
   return {
     message: message ?? "Inngest SDK message",
-    properties: Object.keys(properties).length > 0 ? properties : undefined,
+    properties: isEmptyObject(properties) ? undefined : properties,
   };
 }
 

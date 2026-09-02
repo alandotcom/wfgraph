@@ -1,6 +1,7 @@
 /**
- * A node is on unless `enabled` is `false`. `true` and a missing key are the
- * same state, so persist, the publication diff, and editor writes drop `true`.
+ * A node is on unless `enabled` is `false`. A `true`, a present `undefined` and
+ * a missing key are all the same state, so persist, the publication diff, and
+ * editor writes drop the key in every one of them.
  */
 
 export function persistedNodeEnabled(
@@ -9,10 +10,10 @@ export function persistedNodeEnabled(
   return enabled === false ? false : undefined;
 }
 
-export function canonicalizeNodeEnabled<T extends { enabled?: boolean }>(
-  data: T
-): T {
-  if (data.enabled !== true) {
+export function canonicalizeNodeEnabled<
+  T extends { enabled?: boolean | undefined },
+>(data: T): T {
+  if (data.enabled === false || !Object.hasOwn(data, "enabled")) {
     return data;
   }
   const copy = { ...data };

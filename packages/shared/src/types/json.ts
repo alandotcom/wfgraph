@@ -4,13 +4,15 @@
  * `JSON.parse`.
  *
  * Code that walks such a value should take `JsonValue` for its parameter.
- * TypeScript then narrows the union with plain language checks, so a
+ * TypeScript narrows that union with plain language checks, so a
  * `typeof value === "object" && value !== null && !Array.isArray(value)` test
- * yields `JsonObject` on its own and no shape predicate is needed.
+ * yields `JsonObject` on its own. `isJsonObject` gives that test a name, for
+ * the modules that would otherwise repeat it.
  */
 
 import { Schema } from "effect";
 import { readAs } from "#src/types/schema";
+import { omitUndefined } from "#src/utils/omit-undefined";
 
 export type JsonValue =
   | string
@@ -96,19 +98,7 @@ export type JsonObjectDraft = { [key: string]: JsonValue | undefined };
 export function toJsonObject(
   draft: JsonObjectDraft | undefined
 ): JsonObject | undefined {
-  if (draft === undefined) {
-    return undefined;
-  }
-
-  const entries: Array<[string, JsonValue]> = [];
-
-  for (const [key, value] of Object.entries(draft)) {
-    if (value !== undefined) {
-      entries.push([key, value]);
-    }
-  }
-
-  return Object.fromEntries(entries);
+  return draft === undefined ? undefined : omitUndefined(draft);
 }
 
 /**
@@ -133,6 +123,22 @@ export function readJsonValue(value: unknown): JsonValue | null {
 }
 
 /**
+ * Whether a `JsonValue` is the plain object arm of the union.
+ *
+ * es-toolkit's `isPlainObject` cannot do this job: it is typed
+ * `value is Record<PropertyKey, any>`, and a JSON array is assignable to that,
+ * so it narrows a `JsonValue` to a type that still admits an array.
+ *
+ * `undefined` is accepted and answers false, because a walk over a JSON tree
+ * reaches a missing key before it reaches a value.
+ */
+export function isJsonObject(
+  value: JsonValue | undefined
+): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
  * The same read, narrowed to the plain object a payload root must be.
  *
  * Use this at a boundary where the value came from outside the program: a
@@ -142,15 +148,12 @@ export function readJsonValue(value: unknown): JsonValue | null {
  *
  * The narrowing is the language's, working on the union `readJsonValue` already
  * proved: once a value is a `JsonValue`, ruling out `null` and the array arm
- * leaves `JsonObject` and nothing else. This is the case the header describes,
- * where a shape predicate would only restate what the compiler already knows.
+ * leaves `JsonObject` and nothing else. `isJsonObject` names that check.
  */
 export function readJsonObject(value: unknown): JsonObject | null {
   const json = readJsonValue(value);
 
-  return json !== null && typeof json === "object" && !Array.isArray(json)
-    ? json
-    : null;
+  return json !== null && isJsonObject(json) ? json : null;
 }
 
 /**

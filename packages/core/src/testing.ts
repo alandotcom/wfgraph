@@ -40,10 +40,10 @@ type SuppliedCredentials =
 
 /** The node a case is standing in for, where it cares which node that is. */
 type NodeUnderTest = {
-  readonly nodeId?: string;
-  readonly nodeName?: string;
-  readonly nodeType?: string;
-  readonly executionId?: string;
+  readonly nodeId?: string | undefined;
+  readonly nodeName?: string | undefined;
+  readonly nodeType?: string | undefined;
+  readonly executionId?: string | undefined;
 };
 
 const TEST_INTEGRATION_ID = "int_test";
@@ -74,9 +74,9 @@ export function runAction<
   slug: TSlug,
   run: {
     readonly input: Readonly<Record<string, unknown>>;
-    readonly credentials?: SuppliedCredentials;
-    readonly runMode?: "live" | "test";
-    readonly node?: NodeUnderTest;
+    readonly credentials?: SuppliedCredentials | undefined;
+    readonly runMode?: "live" | "test" | undefined;
+    readonly node?: NodeUnderTest | undefined;
   }
 ): Effect.Effect<
   StepResult<OutputOf<TIntegration["actions"][TSlug]>>,
@@ -92,9 +92,9 @@ export function runAction(
   slug: string,
   run: {
     readonly input: Readonly<Record<string, unknown>>;
-    readonly credentials?: SuppliedCredentials;
-    readonly runMode?: "live" | "test";
-    readonly node?: NodeUnderTest;
+    readonly credentials?: SuppliedCredentials | undefined;
+    readonly runMode?: "live" | "test" | undefined;
+    readonly node?: NodeUnderTest | undefined;
   }
 ): Effect.Effect<StepResult, CredentialsUnavailable> {
   const step = integration.actions[slug].implement(
@@ -109,17 +109,14 @@ export function runAction(
     ...run.input,
     // A step reads its credentials by integration id, so an action given none
     // never fetches, which is what an action against a public API does.
-    ...(run.credentials === undefined
-      ? {}
-      : { integrationId: TEST_INTEGRATION_ID }),
+    integrationId:
+      run.credentials === undefined ? undefined : TEST_INTEGRATION_ID,
     _context: {
       runMode: run.runMode ?? "live",
       nodeId: run.node?.nodeId ?? "node_1",
       nodeName: run.node?.nodeName ?? integration.label,
       nodeType: run.node?.nodeType ?? "action",
-      ...(run.node?.executionId === undefined
-        ? {}
-        : { executionId: run.node.executionId }),
+      executionId: run.node?.executionId,
     },
   });
 }

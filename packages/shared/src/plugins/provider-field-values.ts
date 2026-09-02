@@ -20,6 +20,7 @@
  */
 
 import { isSafeRecordKey } from "#src/types/record-key";
+import { isBlank } from "#src/types/string";
 
 /** One provider-backed field's values, keyed by the variable each fills. */
 export type ProviderFieldValues = Record<string, string | number>;
@@ -67,5 +68,5 @@ export function hasProviderFieldValue(
   if (typeof value === "number") {
     return true;
   }
-  return typeof value === "string" && value.trim().length > 0;
+  return typeof value === "string" && !isBlank(value);
 }

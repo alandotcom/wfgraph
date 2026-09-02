@@ -4,7 +4,7 @@ import { cn } from "@wfgraph/shared/utils";
 
 interface IntegrationIconProps {
   integration: string;
-  className?: string;
+  className?: string | undefined;
 }
 
 const SPECIAL_ICONS: Record<

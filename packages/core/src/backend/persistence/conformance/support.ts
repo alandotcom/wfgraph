@@ -45,7 +45,7 @@ export type ConformanceDatabase = {
    * without its old value is reproduced.
    */
   readonly open: (options?: {
-    cipher?: IntegrationCipher;
+    cipher?: IntegrationCipher | undefined;
   }) => Promise<ConformanceConnection>;
   readonly drop: () => Promise<void>;
 };
@@ -130,9 +130,9 @@ export function usePersistenceRegistry(
 export function seedPublishedWorkflow(
   connection: ConformanceConnection,
   options: {
-    workflowId?: string;
-    name?: string;
-    versionId?: string;
+    workflowId?: string | undefined;
+    name?: string | undefined;
+    versionId?: string | undefined;
     eventSubscriptions?: Parameters<
       WorkflowRepo["Service"]["insertPublishedVersion"]
     >[0]["eventSubscriptions"];
@@ -167,11 +167,11 @@ export function seedPublishedWorkflow(
 
 export type StartOptions = {
   deliveryId: string;
-  entityValue?: string;
-  runMode?: "live" | "test";
-  concurrency?: Concurrency;
-  workflowId?: string;
-  versionId?: string;
+  entityValue?: string | undefined;
+  runMode?: "live" | "test" | undefined;
+  concurrency?: Concurrency | undefined;
+  workflowId?: string | undefined;
+  versionId?: string | undefined;
 };
 
 /**

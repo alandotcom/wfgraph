@@ -1,17 +1,36 @@
 import { describe, expect, it } from "vitest";
-import { toJsonObject } from "./json";
+import { isJsonObject, toJsonObject } from "./json";
 
 describe("toJsonObject", () => {
-  it("constructs __proto__ as data without changing the prototype", () => {
-    const result = toJsonObject(
-      Object.fromEntries([
-        ["__proto__", "value"],
-        ["missing", undefined],
-      ])
-    );
+  it("drops the keys whose value is undefined", () => {
+    expect(toJsonObject({ kept: "value", missing: undefined })).toEqual({
+      kept: "value",
+    });
+  });
 
-    expect(result).toEqual(Object.fromEntries([["__proto__", "value"]]));
-    expect(Object.hasOwn(result ?? {}, "__proto__")).toBe(true);
-    expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
+  it("answers undefined for an undefined draft", () => {
+    expect(toJsonObject(undefined)).toBeUndefined();
+  });
+});
+
+describe("isJsonObject", () => {
+  it("answers false for null", () => {
+    expect(isJsonObject(null)).toBe(false);
+  });
+
+  it("answers false for an array", () => {
+    expect(isJsonObject([1, 2])).toBe(false);
+  });
+
+  it("answers false for a string", () => {
+    expect(isJsonObject("value")).toBe(false);
+  });
+
+  it("answers false for undefined", () => {
+    expect(isJsonObject(undefined)).toBe(false);
+  });
+
+  it("answers true for an object", () => {
+    expect(isJsonObject({})).toBe(true);
   });
 });

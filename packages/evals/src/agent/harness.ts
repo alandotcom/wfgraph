@@ -35,6 +35,7 @@ export function readEvalModelSettings(modelOverride?: string) {
     enabled: true as const,
     apiKey,
     model,
+    // oxlint-disable-next-line wfgraph/no-conditional-spread -- an empty `baseUrl` means none, so the key is left off instead of sent as an empty string.
     ...(baseUrl ? { baseUrl } : {}),
   };
 }

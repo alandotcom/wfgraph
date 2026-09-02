@@ -18,6 +18,7 @@ import {
   type LogRecord,
   resetSync,
 } from "@logtape/logtape";
+import { isEmptyObject } from "es-toolkit/predicate";
 import { WFGRAPH_LOG_ROOT } from "#src/backend/lib/logger";
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 
@@ -89,8 +90,9 @@ export function configureLoggingWithBridge(
   const bridgeSink = (record: LogRecord): void => {
     const category = record.category.join(".");
     const message = `[${category}] ${renderLogMessage(record.message)}`;
-    const properties =
-      Object.keys(record.properties).length > 0 ? record.properties : undefined;
+    const properties = isEmptyObject(record.properties)
+      ? undefined
+      : record.properties;
 
     switch (record.level) {
       case "trace":

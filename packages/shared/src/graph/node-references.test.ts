@@ -27,6 +27,16 @@ describe("flattenSchemaToReferenceFields", () => {
     ]);
   });
 
+  it("leaves a field described in whitespace alone carrying no description", () => {
+    const fields = flattenSchemaToReferenceFields([
+      { name: "email", type: "string", description: "   " },
+    ]);
+
+    // toStrictEqual, because an empty-string description reads as a written one
+    // to a renderer that only checks whether the key is there.
+    expect(fields).toStrictEqual([{ path: "email", type: "string" }]);
+  });
+
   it("leaves an undescribed field carrying no description", () => {
     // A host writes their schema for validation, so most keys arrive without a
     // description. The picker shows the path and stays silent below it; a
@@ -414,6 +424,27 @@ describe("mapTemplateTokens", () => {
     };
 
     expect(mapTemplateTokens(config, () => undefined)).toBe(config);
+  });
+
+  it("keeps the reference of a nested object no rewrite reached", () => {
+    const token = formatTemplateToken({ nodeId: "a", nodeLabel: "Fetch" });
+    const config = { untouched: { plain: "text" }, rewritten: { body: token } };
+
+    const result = mapTemplateTokens(config, () => "changed");
+
+    expect(result).not.toBe(config);
+    expect(result.untouched).toBe(config.untouched);
+    expect(result.rewritten).toEqual({ body: "changed" });
+  });
+
+  it("keeps the reference of an array whose items no rewrite reached", () => {
+    const token = formatTemplateToken({ nodeId: "a", nodeLabel: "Fetch" });
+    const config = { untouched: ["plain"], rewritten: [token] };
+
+    const result = mapTemplateTokens(config, () => "changed");
+
+    expect(result.untouched).toBe(config.untouched);
+    expect(result.rewritten).toEqual(["changed"]);
   });
 
   it("rewrites tokens in a config that still holds undefined optional keys", () => {

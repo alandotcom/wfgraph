@@ -29,9 +29,9 @@ export function publicationReviewFromComparison(
   comparison: WorkflowComparisonPayload
 ): PublicationReview {
   return {
-    ...(comparison.baseVersion
-      ? { baseVersion: comparison.baseVersion.version }
-      : {}),
+    baseVersion: comparison.baseVersion
+      ? comparison.baseVersion.version
+      : undefined,
     proposedVersion: comparison.proposedVersion,
     nodeChanges: comparison.nodeChanges,
     edgeChanges: comparison.edgeChanges,

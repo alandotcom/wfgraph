@@ -34,7 +34,7 @@ export type ProviderFieldProps = {
   /** Resolved by `renderField`; see `FieldProps` in the renderer. */
   placeholder: string | undefined;
   onChange: (value: unknown) => void;
-  disabled?: boolean;
+  disabled?: boolean | undefined;
 };
 
 export function ProviderSelectField({

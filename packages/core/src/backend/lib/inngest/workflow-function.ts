@@ -28,6 +28,7 @@ import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/executio
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { readJsonObject } from "@wfgraph/shared/types/json";
 import { rejectUnknownKeys } from "@wfgraph/shared/types/schema";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { formatSchemaFailure } from "@wfgraph/shared/types/schema-message";
 import {
   INNGEST_META_KEY,
@@ -161,14 +162,19 @@ function createDurableRuntime(input: {
       await step.sleep(durableStep, durationMs);
     },
     waitForEvent: async (durableStep, options) =>
-      await step.waitForEvent(durableStep, {
-        event: options.event,
-        if: options.ifExpression,
-        timeout:
-          options.timeoutMs === undefined
-            ? "365d"
-            : toDurationString(options.timeoutMs),
-      }),
+      await step.waitForEvent(
+        durableStep,
+        // Inngest declares `if` as an optional string, so a wait that matches
+        // any occurrence of the event leaves the key out.
+        omitUndefined({
+          event: options.event,
+          if: options.ifExpression,
+          timeout:
+            options.timeoutMs === undefined
+              ? "365d"
+              : toDurationString(options.timeoutMs),
+        })
+      ),
     // Memoization boundary: Inngest stores the result under the step's id, so
     // work already done in an earlier attempt is replayed instead of repeated.
     run: (durableStep, fn) => step.run(durableStep, fn),
@@ -229,18 +235,20 @@ async function writeRunMetadata(input: {
 
   await step.run({ id: "run-metadata", name: workflow }, async () => {
     try {
-      await write({
-        workflow,
-        workflowId: data.workflowId,
-        executionId: data.executionId,
-        runMode: data.runMode ?? "live",
-        triggerEvent: data.startEventName ?? null,
-        versionId: data.workflowVersionId,
-        nodes: data.graph.nodes.length,
-        // A branch run walks part of a graph, so the node it entered at is the
-        // one fact that tells two branches of the same run apart.
-        ...("entryNodeId" in data ? { entryNode: data.entryNodeId } : {}),
-      });
+      await write(
+        omitUndefined({
+          workflow,
+          workflowId: data.workflowId,
+          executionId: data.executionId,
+          runMode: data.runMode ?? "live",
+          triggerEvent: data.startEventName ?? null,
+          versionId: data.workflowVersionId,
+          nodes: data.graph.nodes.length,
+          // A branch run walks part of a graph, so the node it entered at is
+          // the one fact that tells two branches of the same run apart.
+          entryNode: "entryNodeId" in data ? data.entryNodeId : undefined,
+        })
+      );
     } catch (error) {
       getAppLogger("inngest").warn(
         "Could not attach this run's metadata to Inngest",
@@ -312,9 +320,7 @@ async function loadPersistedRunInput(
     catalogFingerprint: version.catalogFingerprint,
     startPayload: execution.input ?? {},
     requestPayload: execution.input ?? {},
-    ...(execution.startEventName
-      ? { startEventName: execution.startEventName }
-      : {}),
+    startEventName: execution.startEventName ?? undefined,
     executionId: execution.id,
     workflowId: execution.workflowId,
     workflowName: workflow.name,

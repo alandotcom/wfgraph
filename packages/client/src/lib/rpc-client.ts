@@ -5,12 +5,11 @@ import {
 } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterContractClient } from "@orpc/contract";
-import { isNil } from "es-toolkit/predicate";
-import { omitBy } from "es-toolkit/object";
 import { getBasePath } from "#src/lib/base-path";
 import type { RpcContract } from "@wfgraph/shared/rpc/contracts";
 import { getRpcErrorMessage } from "@wfgraph/shared/rpc/error-message";
 import { readJsonObject } from "@wfgraph/shared/types/json";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { asNonEmptyString } from "@wfgraph/shared/types/string";
 import type { WorkflowApiPayload } from "@wfgraph/shared/graph/api-contracts";
 import {
@@ -35,14 +34,14 @@ export type { WorkflowVisibility } from "#src/lib/workflow-graph-types";
 
 export type WorkflowData = {
   id?: string;
-  name?: string;
-  description?: string;
+  name?: string | undefined;
+  description?: string | undefined;
   graph: SerializedWorkflowGraph;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
-  isPaused?: boolean;
-  mode?: WorkflowMode;
-  visibility?: WorkflowVisibility;
+  isPaused?: boolean | undefined;
+  mode?: WorkflowMode | undefined;
+  visibility?: WorkflowVisibility | undefined;
 };
 
 export type SavedWorkflow = WorkflowData & {
@@ -54,9 +53,9 @@ export type SavedWorkflow = WorkflowData & {
   createdAt: string;
   updatedAt: string;
   /** Absent until the first publish. */
-  publishedVersionId?: string;
-  publishedVersion?: number;
-  publishedAt?: string;
+  publishedVersionId?: string | undefined;
+  publishedVersion?: number | undefined;
+  publishedAt?: string | undefined;
   /** Whether the draft graph differs from the published version. */
   hasUnpublishedChanges: boolean;
 };
@@ -79,7 +78,7 @@ export class ApiError extends Error {
    * there. A call site branches on this rather than on the message, which is
    * written for a person and may be reworded at any time.
    */
-  code?: string;
+  code?: string | undefined;
 
   constructor(status: number, message: string, code?: string) {
     super(message);
@@ -248,9 +247,9 @@ export function toSavedWorkflow(payload: WorkflowApiPayload): SavedWorkflow {
 }
 
 function toGraphPayload(input: {
-  graph?: SerializedWorkflowGraph;
-  nodes?: WorkflowNode[];
-  edges?: WorkflowEdge[];
+  graph?: SerializedWorkflowGraph | undefined;
+  nodes?: WorkflowNode[] | undefined;
+  edges?: WorkflowEdge[] | undefined;
 }): SerializedWorkflowGraph {
   if (input.graph) {
     return input.graph;
@@ -303,22 +302,18 @@ export const workflowApi = {
       : undefined;
 
     // A patch says what changed by leaving the rest out. The contract's
-    // optional fields are `Schema.optionalKey`, which is an absent key and not
-    // a key holding `undefined`, so the payload is built by dropping the
-    // absent ones rather than by naming them all and hoping the serialiser
-    // strips what it does not need.
+    // optional fields are declared with `Schema.optionalKey`, which accepts an
+    // absent key but not a key holding `undefined`, so the payload drops the
+    // keys this patch does not set.
     return rpc.workflow
       .update({
         workflowId: id,
-        ...omitBy(
-          {
-            name: workflow.name,
-            description: workflow.description,
-            graph,
-            mode: workflow.mode,
-          },
-          isNil
-        ),
+        ...omitUndefined({
+          name: workflow.name,
+          description: workflow.description,
+          graph,
+          mode: workflow.mode,
+        }),
       })
       .then(toSavedWorkflow);
   },

@@ -62,7 +62,7 @@ function scalarFormValue(value: string | File | (string | File)[] | undefined) {
 
 type DemoAuthOptions = {
   isProduction: boolean;
-  publicUrl?: string;
+  publicUrl?: string | undefined;
 };
 
 function sessionToken(request: Request): string | undefined {

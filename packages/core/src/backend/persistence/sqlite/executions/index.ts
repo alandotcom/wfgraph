@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { and, eq, inArray } from "drizzle-orm";
-import { partition } from "es-toolkit";
+import { partition } from "es-toolkit/array";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type {

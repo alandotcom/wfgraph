@@ -19,7 +19,9 @@ import type {
   ActionMetadata,
   ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
+import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
 import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { WorkflowDraft } from "#src/document";
 
 const actionSummarySchema = Schema.Struct({
@@ -84,18 +86,28 @@ const BUILT_IN_AUTHORING = new Map<
 ]);
 
 function toActionSummary(action: ActionMetadata) {
-  return {
+  return omitUndefined({
     id: action.id,
     label: action.label,
     category: action.category,
     description: action.description,
-    ...(action.integration === undefined
-      ? {}
-      : { integration: action.integration }),
-    ...(action.sideEffect === undefined
-      ? {}
-      : { sideEffect: action.sideEffect }),
-  };
+    integration: action.integration,
+    sideEffect: action.sideEffect,
+  });
+}
+
+/**
+ * One output or Event payload field, in the shape `describe_action` and
+ * `list_events` both return.
+ */
+function toReferenceField(field: ReferenceField) {
+  return omitUndefined({
+    path: field.path,
+    type: field.type,
+    description: field.description,
+    nullable: field.nullable,
+    enumValues: field.enumValues,
+  });
 }
 
 /** Case-insensitive substring match over the text a person would search by. */
@@ -234,79 +246,48 @@ export const catalogToolHandlers = Effect.gen(function* () {
         });
       }
 
-      return Effect.succeed({
-        action: action
-          ? toActionSummary(action)
-          : {
-              id: input.actionId,
-              label: input.actionId,
-              category: "System",
-              description: builtIn?.description ?? input.actionId,
-            },
-        configFields: flattenConfigFields(action?.configFields ?? []).map(
-          (field) => ({
-            key: field.key,
-            label: field.label,
-            type: field.type,
-            ...(field.required === undefined
-              ? {}
-              : { required: field.required }),
-            ...(field.placeholder === undefined
-              ? {}
-              : { placeholder: field.placeholder }),
-            ...(field.example === undefined ? {} : { example: field.example }),
-            ...(field.defaultValue === undefined
-              ? {}
-              : { defaultValue: field.defaultValue }),
-            ...(field.options === undefined
-              ? {}
-              : { options: field.options.map((option) => option.value) }),
-            ...(field.literal === undefined ? {} : { literal: field.literal }),
-          })
-        ),
-        outputFields: (action?.outputFields ?? []).map((field) => ({
-          path: field.path,
-          ...(field.type === undefined ? {} : { type: field.type }),
-          ...(field.description === undefined
-            ? {}
-            : { description: field.description }),
-          ...(field.nullable === undefined ? {} : { nullable: field.nullable }),
-          ...(field.enumValues === undefined
-            ? {}
-            : { enumValues: field.enumValues }),
-        })),
-        needsIntegration: action?.integration !== undefined,
-        ...(builtIn === undefined
-          ? {}
-          : { authoringInstructions: builtIn.instructions }),
-      });
+      return Effect.succeed(
+        omitUndefined({
+          action: action
+            ? toActionSummary(action)
+            : {
+                id: input.actionId,
+                label: input.actionId,
+                category: "System",
+                description: builtIn?.description ?? input.actionId,
+              },
+          configFields: flattenConfigFields(action?.configFields ?? []).map(
+            (field) =>
+              omitUndefined({
+                key: field.key,
+                label: field.label,
+                type: field.type,
+                required: field.required,
+                placeholder: field.placeholder,
+                example: field.example,
+                defaultValue: field.defaultValue,
+                options: field.options?.map((option) => option.value),
+                literal: field.literal,
+              })
+          ),
+          outputFields: (action?.outputFields ?? []).map(toReferenceField),
+          needsIntegration: action?.integration !== undefined,
+          authoringInstructions: builtIn?.instructions,
+        })
+      );
     },
 
     list_events: () =>
       Effect.succeed({
-        events: catalog.events.map((event) => ({
-          name: event.name,
-          label: event.label,
-          ...(event.description === undefined
-            ? {}
-            : { description: event.description }),
-          ...(event.correlationPath === undefined
-            ? {}
-            : { correlationPath: event.correlationPath }),
-          payloadFields: event.payloadFields.map((field) => ({
-            path: field.path,
-            ...(field.type === undefined ? {} : { type: field.type }),
-            ...(field.description === undefined
-              ? {}
-              : { description: field.description }),
-            ...(field.nullable === undefined
-              ? {}
-              : { nullable: field.nullable }),
-            ...(field.enumValues === undefined
-              ? {}
-              : { enumValues: field.enumValues }),
-          })),
-        })),
+        events: catalog.events.map((event) =>
+          omitUndefined({
+            name: event.name,
+            label: event.label,
+            description: event.description,
+            correlationPath: event.correlationPath,
+            payloadFields: event.payloadFields.map(toReferenceField),
+          })
+        ),
       }),
 
     list_integrations: () =>

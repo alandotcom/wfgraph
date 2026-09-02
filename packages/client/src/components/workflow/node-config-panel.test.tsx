@@ -20,6 +20,7 @@ import {
 } from "#src/components/workflow/node-config-panel";
 import {
   loadWorkflowGraphAtom,
+  nodesAtom,
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import {
@@ -33,8 +34,9 @@ import {
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { orpcQuery } from "#src/lib/rpc-query";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 
 const catalog: ExtensionCatalog = {
   events: [
@@ -71,6 +73,20 @@ function lifecycleNode(id = "lifecycle_1"): WorkflowNode {
   };
 }
 
+/** A Wait step, whose fields the action config renders from its actionType. */
+function waitNode(config: Record<string, unknown>): WorkflowNode {
+  return {
+    id: "wait_1",
+    type: "action",
+    position: { x: 0, y: 100 },
+    data: {
+      label: "Wait",
+      type: "action",
+      config: { actionType: BUILT_IN_ACTION_IDS.wait, ...config },
+    },
+  };
+}
+
 function groupNode(): WorkflowNode {
   return {
     id: "group_1",
@@ -88,18 +104,19 @@ function groupNode(): WorkflowNode {
  */
 function renderPanel({
   nodes = [lifecycleNode(), groupNode()],
-
+  edges = [],
   selected = null,
   hasPublishedVersion = false,
   workspaceView = "draft",
 }: {
   nodes?: WorkflowNode[];
+  edges?: WorkflowEdge[];
   selected?: string | null;
   hasPublishedVersion?: boolean;
   workspaceView?: "draft" | "runs" | "changes";
 } = {}) {
   const store = createStore();
-  store.set(loadWorkflowGraphAtom, { nodes, edges: [] });
+  store.set(loadWorkflowGraphAtom, { nodes, edges });
   store.set(selectedNodeAtom, selected);
   store.set(currentWorkflowIdAtom, "wf_1");
   store.set(currentWorkflowNameAtom, "Appointment reminders");
@@ -232,6 +249,30 @@ describe("NodeConfigPanel config scoping", () => {
   });
 });
 
+describe("NodeConfigPanel multiple selection", () => {
+  it("counts steps and connections together in the selection summary", async () => {
+    const first = lifecycleNode("lifecycle_1");
+    first.selected = true;
+    const second = lifecycleNode("lifecycle_2");
+    second.selected = true;
+    const connection: WorkflowEdge = {
+      id: "edge_1",
+      source: "lifecycle_1",
+      target: "lifecycle_2",
+      selected: true,
+    };
+
+    const { view } = renderPanel({
+      nodes: [first, second],
+      edges: [connection],
+    });
+
+    expect(
+      await view.findByText("2 steps and 1 connection selected")
+    ).toBeTruthy();
+  });
+});
+
 describe("NodeConfigPanel workspace inspector", () => {
   it("contains no workspace mode tabs", async () => {
     const { view } = renderPanel({ hasPublishedVersion: true });
@@ -276,5 +317,34 @@ describe("NodeConfigPanel authorization", () => {
         "You are viewing a public workflow. Duplicate it to make changes."
       )
     ).toBeNull();
+  });
+});
+
+/**
+ * Leaving a Wait shape drops the value keys that shape owned, so a run never
+ * reads a duration or a timeout the node is no longer in the shape for.
+ */
+describe("NodeConfigPanel Wait mode", () => {
+  it("clears the timeout when the step leaves event mode", async () => {
+    installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
+    const { view, store } = renderPanel({
+      nodes: [
+        lifecycleNode(),
+        waitNode({ waitMode: "event", waitTimeout: "1h" }),
+      ],
+      selected: "wait_1",
+    });
+
+    const picker = await view.findByRole("combobox", {
+      name: "How should this step wait?",
+    });
+    fireEvent.click(picker);
+    const choice = view.getByRole("option", { name: "Wait for time" });
+    fireEvent.pointerDown(choice);
+    fireEvent.click(choice);
+
+    const stored = store.get(nodesAtom).find((node) => node.id === "wait_1");
+    expect(stored?.data.config?.waitMode).toBe("delay");
+    expect(stored?.data.config?.waitTimeout).toBe("");
   });
 });

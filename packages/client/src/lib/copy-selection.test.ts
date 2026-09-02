@@ -32,7 +32,7 @@ function actionNode(
     data: {
       label: id,
       type: "action",
-      ...(config ? { config } : {}),
+      config,
     },
   };
 }
@@ -313,7 +313,7 @@ describe("copying a Group", () => {
       data: {
         label: id,
         type: "action",
-        ...(config ? { config } : {}),
+        config,
       },
     };
   }

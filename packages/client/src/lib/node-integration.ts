@@ -1,3 +1,4 @@
+import { isEmptyObject } from "es-toolkit/predicate";
 import { findAction } from "@wfgraph/shared/extensions/catalog";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -12,6 +13,7 @@ import {
   type EventConnection,
 } from "@wfgraph/shared/lifecycle/event-connections";
 import { readWaitSubscriptions } from "@wfgraph/shared/lifecycle/wait-subscription";
+import { mapOrSame } from "@wfgraph/shared/utils/map-or-same";
 
 /**
  * Keeping node connection references pointing at connections that still exist.
@@ -138,10 +140,9 @@ function repairLifecycleConnections<T extends WorkflowNode>(
         ...node.data.config,
         lifecycleRules: {
           ...rules,
-          connectionIds:
-            Object.keys(nextConnectionIds).length > 0
-              ? nextConnectionIds
-              : undefined,
+          connectionIds: isEmptyObject(nextConnectionIds)
+            ? undefined
+            : nextConnectionIds,
         },
       },
     },
@@ -198,25 +199,18 @@ export function repairNodeIntegrations<T extends WorkflowNode>(
   nodes: T[],
   integrations: readonly IntegrationLike[]
 ): T[] {
-  let changed = false;
-  const repaired = nodes.map((node) => {
+  return mapOrSame(nodes, (node) => {
     const isEventWait =
       node.data.type === "action" &&
       readConfigString(node.data.config, "actionType") ===
         BUILT_IN_ACTION_IDS.wait &&
       readConfigString(node.data.config, "waitMode") === "event";
-    const next = isLifecycleNode(node)
+    return isLifecycleNode(node)
       ? repairLifecycleConnections(catalog, node, integrations)
       : isEventWait
         ? repairWaitConnections(catalog, node, integrations)
         : repairNodeIntegration(catalog, node, integrations);
-    if (next !== node) {
-      changed = true;
-    }
-    return next;
   });
-
-  return changed ? repaired : nodes;
 }
 
 function withIntegrationId<T extends WorkflowNode>(

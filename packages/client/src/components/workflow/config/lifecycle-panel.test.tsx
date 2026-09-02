@@ -942,7 +942,7 @@ describe("LifecyclePanel start filters", () => {
         startEvents,
         cancelEvents: [],
         concurrency: "unlimited",
-        ...(startFilters ? { startFilters } : {}),
+        startFilters,
       },
     } satisfies Record<string, unknown>;
   }

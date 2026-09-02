@@ -34,13 +34,13 @@ export type PersistenceConformanceHarness = {
   /** A migrated database the calling case owns, empty of any other case's rows. */
   readonly createDatabase: () => Promise<ConformanceDatabase>;
   /** Called once every case is done, for a harness holding something shared. */
-  readonly teardown?: () => Promise<void>;
+  readonly teardown?: (() => Promise<void>) | undefined;
   /**
    * Set to skip the run and say why. It reaches the suite title because a
    * reporter prints that whether the suite ran or not. A console line from a
    * skipped file may go unseen.
    */
-  readonly skip?: string;
+  readonly skip?: string | undefined;
 };
 
 export function describePersistenceConformance(

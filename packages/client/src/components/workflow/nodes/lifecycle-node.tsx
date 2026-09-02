@@ -73,7 +73,7 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
               left: CANCELED_HANDLE_LEFT,
               width: 12,
               height: 12,
-              ...(canceledInactive ? { opacity: 0.45 } : {}),
+              opacity: canceledInactive ? 0.45 : undefined,
             },
           },
         ],

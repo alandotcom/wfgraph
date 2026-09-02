@@ -22,27 +22,27 @@ import type { EngineFailure } from "#src/backend/engine/engine-failure";
 export type NodeWorkOutcome = {
   result: ExecutionResult;
   /** Action node without an actionType: recorded as failed, no output stored. */
-  unconfigured?: boolean;
+  unconfigured?: boolean | undefined;
   /**
    * The branch a Condition node picked. Absent on every other node, and absent
    * on a disabled Condition node, which evaluated nothing and halts its branch
    * where it stands.
    */
-  conditionValue?: boolean;
+  conditionValue?: boolean | undefined;
   /**
    * Whether the run stops below this node. A Wait that was skipped or woken by
    * a cancel says so, a disabled routing node says so, and a branch that was
    * handed to a durable run of its own says so because that run already walked
    * everything underneath.
    */
-  haltBranch?: boolean;
+  haltBranch?: boolean | undefined;
   /**
    * How this node changes the Arriving Event. Absent means leave it. `null`
    * means the run names none below this node (a timeout that continues past
    * an event-mode Wait). A named Event replaces the one the run was on, and
    * its payload overwrites the entry node's output the way a Cancel Event does.
    */
-  arrivingEvent?: { eventName: string; payload: JsonObject } | null;
+  arrivingEvent?: { eventName: string; payload: JsonObject } | null | undefined;
 };
 
 export type NodeWorkContext = {
@@ -73,7 +73,9 @@ export type NodeWorkContext = {
 export type NodeStrategy = {
   /** Stable id for spans and logs. */
   readonly id: string;
-  run: (ctx: NodeWorkContext) => Effect.Effect<NodeWorkOutcome, EngineFailure>;
+  run: (
+    context: NodeWorkContext
+  ) => Effect.Effect<NodeWorkOutcome, EngineFailure>;
 };
 
 export type ActionStepInput = {

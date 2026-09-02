@@ -10,7 +10,7 @@ import { type ExtensionCatalog, findEvent } from "#src/extensions/catalog";
 /** One Event's stored Connection, before any other subscription fields. */
 export type EventConnection = {
   readonly event: string;
-  readonly connectionId?: string;
+  readonly connectionId?: string | undefined;
 };
 
 export type ConnectionReference = {
@@ -26,7 +26,7 @@ export type ConnectionReference = {
  * id is removed when zero or several Connections could replace it.
  */
 export function repairConnectionId(input: {
-  stored?: string;
+  stored?: string | undefined;
   integration: string | undefined;
   connections: readonly ConnectionReference[];
 }): string | undefined {
@@ -190,16 +190,11 @@ export function inheritConnections<T extends EventConnection>(
     }
   }
 
-  let changed = false;
-  const next = bindings.map((binding) => {
+  return bindings.map((binding) => {
     const integration = findEvent(catalog, binding.event)?.integration;
     const inherited = integration ? byIntegration.get(integration) : undefined;
-    if (!integration || binding.connectionId || !inherited) {
-      return binding;
-    }
-    changed = true;
-    return { ...binding, connectionId: inherited };
+    return !integration || binding.connectionId || !inherited
+      ? binding
+      : { ...binding, connectionId: inherited };
   });
-
-  return changed ? next : [...bindings];
 }

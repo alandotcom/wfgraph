@@ -12,6 +12,7 @@
  */
 
 import { parse as parseCel } from "@marcbachmann/cel-js";
+import { compact, orderBy } from "es-toolkit/array";
 import { celStringLiteral } from "#src/conditions/cel-string-literal";
 
 function prefixEventDataPath(path: string): string {
@@ -23,10 +24,7 @@ const PLAIN_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** A source filter's path, as segments, refusing one that names no field. */
 function sourceFilterSegments(path: string): string[] {
-  const segments = path
-    .split(".")
-    .map((segment) => segment.trim())
-    .filter(Boolean);
+  const segments = compact(path.split(".").map((segment) => segment.trim()));
 
   if (segments.length === 0) {
     throw new Error("A source filter needs a payload path to compare");
@@ -76,7 +74,9 @@ export function compileEventDataEquals(when: {
 }
 
 /** One flow-control option with its partition key moved under `event.data`. */
-export function prefixKeyField<T extends { key?: string }>(obj: T): T {
+export function prefixKeyField<T extends { key?: string | undefined }>(
+  obj: T
+): T {
   if (!obj.key) {
     return obj;
   }
@@ -215,7 +215,11 @@ export function rewriteCelExpression(
   }
 
   // Rightmost first, so an earlier insertion cannot move a later position.
-  const sorted = identifiers.toSorted((a, b) => b.pos - a.pos);
+  const sorted = orderBy(
+    identifiers,
+    [(identifier) => identifier.pos],
+    ["desc"]
+  );
 
   let result = expression;
   for (const { pos } of sorted) {

@@ -119,8 +119,11 @@ describe("buildComparisonDisplayGraph", () => {
       })
     );
 
-    expect(graph.nodes.find((item) => item.id === "removed")).toMatchObject({
-      parentId: undefined,
+    const removed = graph.nodes.find((item) => item.id === "removed");
+    // A flattened node has no `parentId` key, which is how React Flow
+    // represents a top-level node.
+    expect(removed).not.toHaveProperty("parentId");
+    expect(removed).toMatchObject({
       position: { x: 120, y: 230 },
       draggable: true,
       focusable: true,

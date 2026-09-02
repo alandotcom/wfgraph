@@ -38,7 +38,7 @@ export type StartWithConcurrencyInput = {
   start: WorkflowRunStart;
   runMode: WorkflowMode;
   payload: JsonObject;
-  requestPayload?: JsonObject;
+  requestPayload?: JsonObject | undefined;
   logger: EffectLogger;
 };
 
@@ -66,7 +66,7 @@ export type StartOutcome =
   | {
       status: "started";
       executionId: string;
-      runId?: string;
+      runId?: string | undefined;
       supersededExecutionIds: string[];
       failedToSupersede: string[];
     }

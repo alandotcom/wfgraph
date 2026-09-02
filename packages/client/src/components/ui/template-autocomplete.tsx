@@ -1,3 +1,4 @@
+import { sortBy } from "es-toolkit/array";
 import { useAtom } from "jotai";
 import { Check } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -36,9 +37,9 @@ type TemplateAutocompleteProps = {
   anchor: TemplateAutocompleteAnchor;
   onSelect: (template: string) => void;
   onClose: () => void;
-  currentNodeId?: string;
-  filter?: string;
-  fieldType?: ValueTargetType;
+  currentNodeId?: string | undefined;
+  filter?: string | undefined;
+  fieldType?: ValueTargetType | undefined;
 };
 
 /** What the menu offers a typed target: the save's rule, without the numbers. */
@@ -91,21 +92,43 @@ type TemplateOption = {
   rank: number;
   nodeId: string;
   nodeName: string;
-  field?: string;
-  description?: string;
+  field?: string | undefined;
+  description?: string | undefined;
   template: string;
   /** Why this row cannot be chosen, absent where it can. */
-  unusable?: string;
+  unusable?: string | undefined;
   /** The Events reaching this node that leave the path out. */
-  absentOn?: string[];
+  absentOn?: string[] | undefined;
   /** Internal record metadata used to complete a key typed under an open record. */
-  recordOnly?: boolean;
+  recordOnly?: boolean | undefined;
   /**
    * Set on an open record, such as Resend's email tags: the type a key under
    * `field` carries. `keyUnderOpenRecordOptions` turns it into a row.
    */
-  valueType?: WorkflowSchemaItemType;
+  valueType?: WorkflowSchemaItemType | undefined;
 };
+
+/**
+ * Whether `query` names a key under this record's own path, and whether that
+ * key is offered for `targetType`. Narrows `field` and `valueType` to defined
+ * so the caller can read them without checking again.
+ */
+function namesKeyUnderOpenRecord(
+  record: TemplateOption,
+  query: string,
+  targetType: ValueTargetType | undefined
+): record is TemplateOption & {
+  field: string;
+  valueType: WorkflowSchemaItemType;
+} {
+  return (
+    record.valueType !== undefined &&
+    record.field !== undefined &&
+    query.startsWith(`${record.field}.`) &&
+    offeredFor({ type: record.valueType }, targetType) &&
+    query.slice(record.field.length + 1).length > 0
+  );
+}
 
 /**
  * The row for a key somebody typed under an open record, or nothing.
@@ -122,24 +145,12 @@ function keyUnderOpenRecordOptions(
   query: string,
   targetType: ValueTargetType | undefined
 ): TemplateOption[] {
-  return options.flatMap((record) => {
-    if (
-      !record.valueType ||
-      !record.field ||
-      !query.startsWith(`${record.field}.`) ||
-      !offeredFor({ type: record.valueType }, targetType)
-    ) {
-      return [];
-    }
-
-    const key = query.slice(record.field.length + 1);
-    if (!key) {
-      return [];
-    }
-
-    const fieldPath = appendOutputPathKey(record.field, key);
-    return [
-      {
+  return options
+    .filter((record) => namesKeyUnderOpenRecord(record, query, targetType))
+    .map((record) => {
+      const key = query.slice(record.field.length + 1);
+      const fieldPath = appendOutputPathKey(record.field, key);
+      return {
         type: "field",
         rank: fieldRank({ type: record.valueType }, targetType, undefined),
         nodeId: record.nodeId,
@@ -150,9 +161,8 @@ function keyUnderOpenRecordOptions(
           nodeLabel: record.nodeName,
           fieldPath,
         }),
-      },
-    ];
-  });
+      };
+    });
 }
 
 export function TemplateAutocomplete({
@@ -232,9 +242,9 @@ export function TemplateAutocomplete({
               nodeLabel: nodeName,
               fieldPath: field.path,
             }),
-            ...(unusable ? { unusable } : {}),
-            ...(field.absentOn?.length ? { absentOn: field.absentOn } : {}),
-            ...(field.valueType ? { valueType: field.valueType } : {}),
+            unusable,
+            absentOn: field.absentOn?.length ? field.absentOn : undefined,
+            valueType: field.valueType,
           });
         }
 
@@ -295,7 +305,7 @@ export function TemplateAutocomplete({
 
     // A stable sort, so the fields a typed target actually wants come first while
     // each node's own fields stay in schema order behind them.
-    return nextOptions.toSorted((a, b) => a.rank - b.rank);
+    return sortBy(nextOptions, [(option) => option.rank]);
   }, [upstreamNodes, fieldType, currentNodeId, nodes, edges, catalog]);
 
   const filteredOptions = useMemo(() => {

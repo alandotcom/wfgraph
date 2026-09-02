@@ -61,7 +61,7 @@ function createConditionNode(
       config: {
         actionType: "Condition",
         condition,
-        ...(conditionModel === undefined ? {} : { conditionModel }),
+        conditionModel,
       },
     },
   };

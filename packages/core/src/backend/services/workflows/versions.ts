@@ -5,7 +5,7 @@
  */
 
 import { Effect } from "effect";
-import { uniq } from "es-toolkit";
+import { uniq } from "es-toolkit/array";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
@@ -47,17 +47,15 @@ import {
 } from "@wfgraph/shared/graph/graph";
 import { enabledActionTypeOf } from "@wfgraph/shared/graph/node-config";
 import { isBuiltInActionId } from "@wfgraph/shared/actions/built-in-actions";
-import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
+import { isJsonObject } from "@wfgraph/shared/types/json";
+import type { JsonValue } from "@wfgraph/shared/types/json";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { catalogFingerprint } from "#src/backend/services/workflows/version-digest";
 
 const loggerFor = (workflowId: string) =>
   Effect.map(AppLogger, (appLogger) =>
     appLogger.get("workflow-versions").with({ workflowId })
   );
-
-function isJsonObject(value: JsonValue | undefined): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function versionSummary(input: {
   id: string;
@@ -114,15 +112,17 @@ function redactFieldValue(path: string[], value: JsonValue): JsonValue {
 }
 
 function redactFieldChange(change: WorkflowFieldChange): WorkflowFieldChange {
-  return {
+  return omitUndefined({
     ...change,
-    ...(change.before === undefined
-      ? {}
-      : { before: redactFieldValue(change.path, change.before) }),
-    ...(change.after === undefined
-      ? {}
-      : { after: redactFieldValue(change.path, change.after) }),
-  };
+    before:
+      change.before === undefined
+        ? undefined
+        : redactFieldValue(change.path, change.before),
+    after:
+      change.after === undefined
+        ? undefined
+        : redactFieldValue(change.path, change.after),
+  });
 }
 
 function versionNotFound(): NotFound {

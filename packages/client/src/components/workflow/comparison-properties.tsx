@@ -11,6 +11,7 @@ import type {
   WorkflowNodeChange,
 } from "@wfgraph/shared/graph/publication-contracts";
 import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
+import { compareText } from "@wfgraph/shared/types/string";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { PanelState } from "#src/components/workflow/workflow-changes-panel-state";
 import { comparisonSessionAtom } from "#src/lib/workflow-comparison-store";
@@ -210,7 +211,7 @@ function snapshotFields(
     ...fields,
     ...Object.entries(config)
       .filter(([key]) => key !== "actionType")
-      .toSorted(([left], [right]) => left.localeCompare(right))
+      .toSorted(([left], [right]) => compareText(left, right))
       .map(([key, value]) => ({
         key: `snapshot:config:${key}`,
         label: configFieldLabel(catalog, actionType, key),

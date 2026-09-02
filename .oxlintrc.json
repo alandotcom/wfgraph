@@ -8,7 +8,11 @@
     {
       "name": "no-effect",
       "specifier": "eslint-plugin-react-you-might-not-need-an-effect"
-    }
+    },
+    // This repository's own structural rules. Each one names the helper to
+    // write instead of the shape it reports, and each is given a state in the
+    // `wfgraph/` block of `rules`.
+    { "name": "wfgraph", "specifier": "./scripts/lint/conventions-plugin.ts" }
   ],
   "categories": {
     "correctness": "error",
@@ -51,8 +55,18 @@
     // `return undefined;`, so a function that returns a value on one path states
     // what it returns on all of them.
     "typescript/consistent-return": "error",
+    // oxlint ships its own port of the React Compiler rules. This repository
+    // runs the upstream eslint-plugin-react-hooks through the react-hooks-js JS
+    // plugin instead, and the per-file overrides are written against those rule
+    // names. Each `react/` name turned off here has a `react-hooks-js/` counterpart
+    // turned on, so leaving both on reports every site twice.
     "react/rules-of-hooks": "off",
     "react/exhaustive-deps": "off",
+    "react/exhaustive-effect-dependencies": "off",
+    "react/set-state-in-effect": "off",
+    "react/memo-dependencies": "off",
+    "react/incompatible-library": "off",
+    "react/globals": "off",
     "react-hooks-js/config": "error",
     "react-hooks-js/gating": "error",
     "react-hooks-js/rules-of-hooks": "error",
@@ -86,6 +100,25 @@
     "no-effect/no-pass-data-to-parent": "error",
     "no-effect/no-external-store-subscription": "error",
     "no-effect/no-initialize-state": "error",
+    // This repository's own structural rules, from
+    // scripts/lint/conventions-plugin.ts.
+    //
+    // es-toolkit-subpath and no-effect-pipe-import were no-restricted-imports
+    // paths entries. An override replaces that rule's options wholesale rather
+    // than merging them, so the same three entries had to be repeated in the
+    // client, shared and core overrides, and the effects.ts override, which
+    // turns no-restricted-imports off, dropped them. A plugin rule is set once
+    // here and every override keeps it.
+    "wfgraph/no-filter-boolean": "error",
+    "wfgraph/no-set-spread-uniq": "error",
+    "wfgraph/no-entries-round-trip": "error",
+    "wfgraph/no-conditional-spread": "error",
+    "wfgraph/no-locale-compare": "error",
+    "wfgraph/no-hand-rolled-object-guard": "error",
+    "wfgraph/no-changed-flag": "error",
+    "wfgraph/parameter-names": "error",
+    "wfgraph/es-toolkit-subpath": "error",
+    "wfgraph/no-effect-pipe-import": "error",
     "typescript/no-deprecated": "error",
     "typescript/no-floating-promises": [
       "error",
@@ -225,6 +258,26 @@
             ]
           }
         ]
+      }
+    },
+    {
+      // This file is where isJsonObject is defined, so the rule that points
+      // everyone else at it is off here.
+      "files": ["packages/shared/src/types/json.ts"],
+      "rules": {
+        "wfgraph/no-hand-rolled-object-guard": "off"
+      }
+    },
+    {
+      // string.ts is where compareText is defined, and its own test pins
+      // compareText's behavior against localeCompare directly, so the rule
+      // that points everyone else at compareText is off for both.
+      "files": [
+        "packages/shared/src/types/string.ts",
+        "packages/shared/src/types/string.test.ts"
+      ],
+      "rules": {
+        "wfgraph/no-locale-compare": "off"
       }
     },
     {

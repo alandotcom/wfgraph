@@ -65,10 +65,9 @@ export const resendWebhook: IntegrationWebhook<{
       return undefined;
     }
 
-    const svixId = headers.get("svix-id");
     return {
       data: body,
-      ...(svixId ? { id: svixId } : {}),
+      id: headers.get("svix-id") || undefined,
     };
   },
 };

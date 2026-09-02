@@ -30,7 +30,7 @@ import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 export type BadgeEditorOptions = {
   catalog: ExtensionCatalog;
   /** Render newlines as `<br>` and allow inserting them. */
-  multiline?: boolean;
+  multiline?: boolean | undefined;
 };
 
 export type RenderOptions = {
@@ -42,13 +42,13 @@ export type RenderOptions = {
   nodes: WorkflowNode[];
   /** A focused field shows a caret rather than placeholder text. */
   focused: boolean;
-  placeholder?: string;
+  placeholder?: string | undefined;
   /**
    * Where to leave the caret afterwards, counted in the same units `readText`
    * produces: a badge is as long as the raw token it stands for. Omitted means
    * "wherever it is now", which is what an ordinary redraw wants.
    */
-  caretOffset?: number;
+  caretOffset?: number | undefined;
 };
 
 /** Half-open range of one badge, in the units `readText` produces. */

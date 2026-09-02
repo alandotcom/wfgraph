@@ -110,9 +110,10 @@ function filteredRules(
     startEvents: ["app/appointment.created"],
     cancelEvents: [],
     concurrency,
-    ...(concurrency === "unlimited"
-      ? {}
-      : { correlationPaths: { "app/appointment.created": "appointment.id" } }),
+    correlationPaths:
+      concurrency === "unlimited"
+        ? undefined
+        : { "app/appointment.created": "appointment.id" },
     startFilters: { "app/appointment.created": filter },
   };
 }

@@ -14,6 +14,7 @@ import {
   type RunFilterValueOption,
 } from "#src/lib/run-history-filters";
 import { WORKFLOW_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
+import { compareText, isBlank } from "@wfgraph/shared/types/string";
 
 export type RunHistoryDraft =
   | { step: "field" }
@@ -39,7 +40,7 @@ export type RunHistoryMenuAction =
       field: RunFilterField;
       operator: RunFilterOperator;
       value: string;
-      valueLabel?: string;
+      valueLabel?: string | undefined;
     }
   | { type: "search" };
 
@@ -105,7 +106,7 @@ function filterValueOptions(input: {
 }
 
 function matchesQuery(label: string, query: string): boolean {
-  if (query.trim() === "") {
+  if (isBlank(query)) {
     return true;
   }
   return label.toLowerCase().includes(query.trim().toLowerCase());
@@ -121,7 +122,7 @@ function sortByPrefixFirst(
     if (leftPrefix !== rightPrefix) {
       return leftPrefix - rightPrefix;
     }
-    return left.label.localeCompare(right.label);
+    return compareText(left.label, right.label);
   });
 }
 
@@ -163,7 +164,7 @@ export function buildRunHistoryMenuItems(input: {
               field,
               operator: "is",
               value: option.value,
-              ...(valueLabel === undefined ? {} : { valueLabel }),
+              valueLabel,
             },
           });
         }
@@ -234,7 +235,7 @@ export function buildRunHistoryMenuItems(input: {
         field: draft.field,
         operator: draft.operator,
         value: option.value,
-        ...(valueLabel === undefined ? {} : { valueLabel }),
+        valueLabel,
       },
     };
   });

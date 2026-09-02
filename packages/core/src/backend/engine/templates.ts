@@ -8,6 +8,7 @@ import {
   resolveOutputPath,
   type TemplateToken,
 } from "@wfgraph/shared/graph/node-references";
+import { mapValues } from "es-toolkit/object";
 import type { TemplateJsonShape } from "@wfgraph/shared/plugins/action-fields";
 import { readKeyValueRows } from "@wfgraph/shared/plugins/key-value-rows";
 import { readProviderFieldValues } from "@wfgraph/shared/plugins/provider-field-values";
@@ -169,15 +170,11 @@ function resolveProviderFields(value: string, outputs: NodeOutputs): string {
     return resolveTemplateString(value, outputs);
   }
 
-  const resolved: Array<[string, string | number]> = [];
-  for (const [key, entry] of Object.entries(entries)) {
-    resolved.push([
-      key,
-      typeof entry === "string" ? resolveTemplateString(entry, outputs) : entry,
-    ]);
-  }
+  const resolved = mapValues(entries, (entry) =>
+    typeof entry === "string" ? resolveTemplateString(entry, outputs) : entry
+  );
 
-  return JSON.stringify(Object.fromEntries(resolved));
+  return JSON.stringify(resolved);
 }
 
 /** One authored string with its references replaced. */

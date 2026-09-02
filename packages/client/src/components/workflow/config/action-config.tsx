@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
 import { HelpCircle, Settings, Zap } from "lucide-react";
 import { type ReactNode, useCallback, useMemo } from "react";
+import { mapValues } from "es-toolkit/object";
+import { isBlank } from "@wfgraph/shared/types/string";
 import { Input } from "#src/components/ui/input";
 import { IntegrationIcon } from "#src/components/ui/integration-icon";
 import { IntegrationSelector } from "#src/components/ui/integration-selector";
@@ -37,6 +39,7 @@ import {
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   DEFAULT_WAIT_TIMEOUT,
   readWaitDelayTiming,
@@ -66,8 +69,8 @@ type ActionConfigProps = {
 type CategoryActionOption = {
   id: string;
   label: string;
-  logoUrl?: string;
-  integration?: string;
+  logoUrl?: string | undefined;
+  integration?: string | undefined;
 };
 
 const WAIT_DELAY_TIMING_OPTIONS = [
@@ -96,7 +99,7 @@ function OptionLogo({
   label,
   fallback,
 }: {
-  logoUrl?: string;
+  logoUrl?: string | undefined;
   label: string;
   fallback: ReactNode;
 }) {
@@ -514,13 +517,19 @@ function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
       waitValueKeysNotIn(next).map((key) => [key, ""])
     );
 
+    // The default timeout is spread over `cleared` rather than merged into the
+    // same literal: `omitUndefined` would otherwise delete the `waitTimeout: ""`
+    // that `cleared` carries whenever the node is leaving event mode.
     onUpdateConfig({
       ...cleared,
       waitMode: value,
-      ...(value === "event" &&
-      !(readConfigString(config, "waitTimeout") ?? "").trim()
-        ? { waitTimeout: DEFAULT_WAIT_TIMEOUT }
-        : {}),
+      ...omitUndefined({
+        waitTimeout:
+          value === "event" &&
+          isBlank(readConfigString(config, "waitTimeout") ?? "")
+            ? DEFAULT_WAIT_TIMEOUT
+            : undefined,
+      }),
     });
   };
 
@@ -620,16 +629,13 @@ function useCategoryData(
   return useMemo(() => {
     const grouped = actionsForPickerByCategory(catalog, pinnedActionId);
 
-    return Object.fromEntries(
-      Object.entries(grouped).map(([category, actions]) => [
-        category,
-        actions.map((action) => ({
-          id: action.id,
-          label: action.label,
-          logoUrl: action.logoUrl,
-          integration: action.integration,
-        })),
-      ])
+    return mapValues(grouped, (actions) =>
+      actions.map((action) => ({
+        id: action.id,
+        label: action.label,
+        logoUrl: action.logoUrl,
+        integration: action.integration,
+      }))
     );
   }, [catalog, pinnedActionId]);
 }
@@ -733,8 +739,7 @@ export function ActionConfig({
                 const categoryLogoUrl = actionsInCategory
                   ?.map((action) => action.logoUrl)
                   .find(
-                    (value) =>
-                      typeof value === "string" && value.trim().length > 0
+                    (value) => typeof value === "string" && !isBlank(value)
                   );
 
                 const fallbackIcon = categoryIntegration ? (

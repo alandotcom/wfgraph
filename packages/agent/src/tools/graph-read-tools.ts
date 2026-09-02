@@ -18,6 +18,7 @@ import {
   jsonObjectSchema,
   readJsonObject,
 } from "@wfgraph/shared/types/json";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { WorkflowDraft } from "#src/document";
 
 const graphNodeSchema = Schema.Struct({
@@ -41,10 +42,16 @@ const graphEdgeSchema = Schema.Struct({
   sourceHandle: Schema.optionalKey(Schema.String),
 });
 
+/**
+ * The host's own `AgentValidationIssue` passes through this Tool's success
+ * schema unchanged, so `nodeId` and `nodeLabel` are `Schema.optional`: the
+ * host builds that value in process and may set either key to `undefined`
+ * explicitly rather than omitting it.
+ */
 const issueSchema = Schema.Struct({
   kind: Schema.String,
-  nodeId: Schema.optionalKey(Schema.String),
-  nodeLabel: Schema.optionalKey(Schema.String),
+  nodeId: Schema.optional(Schema.String),
+  nodeLabel: Schema.optional(Schema.String),
   message: Schema.String,
 });
 
@@ -58,10 +65,7 @@ const issueSchema = Schema.Struct({
  */
 function readableConfig(node: WorkflowNode): JsonObject {
   const config = node.data.config ?? {};
-  const present = Object.fromEntries(
-    Object.entries(config).filter(([, value]) => value !== undefined)
-  );
-  return readJsonObject(present) ?? {};
+  return readJsonObject(omitUndefined(config)) ?? {};
 }
 
 export const ReadWorkflow = Tool.make("read_workflow", {
@@ -103,26 +107,24 @@ export const graphReadToolHandlers = Effect.gen(function* () {
         nodes: document.nodes.map((node) => {
           const actionType = actionTypeOf(node);
           const enabled = persistedNodeEnabled(node.data.enabled);
-          return {
+          return omitUndefined({
             id: node.id,
             label: node.data.label,
             type: node.data.type,
-            ...(actionType === undefined ? {} : { actionType }),
-            ...(node.data.description === undefined
-              ? {}
-              : { description: node.data.description }),
-            ...(enabled === undefined ? {} : { enabled }),
+            actionType,
+            description: node.data.description,
+            enabled,
             config: readableConfig(node),
-          };
+          });
         }),
-        edges: document.edges.map((edge) => ({
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          ...(edge.sourceHandle === undefined || edge.sourceHandle === null
-            ? {}
-            : { sourceHandle: edge.sourceHandle }),
-        })),
+        edges: document.edges.map((edge) =>
+          omitUndefined({
+            id: edge.id,
+            source: edge.source,
+            target: edge.target,
+            sourceHandle: edge.sourceHandle ?? undefined,
+          })
+        ),
       })),
 
     validate_workflow: () =>

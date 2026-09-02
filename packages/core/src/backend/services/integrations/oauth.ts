@@ -93,7 +93,7 @@ function missingPublicUrl() {
 const providerStep = <A>(input: {
   logger: EffectLogger;
   operation: string;
-  integrationId?: string;
+  integrationId?: string | undefined;
   integrationType: string;
   run: () => A | Promise<A>;
 }): Effect.Effect<A, InternalFailure> =>
@@ -106,7 +106,7 @@ const providerStep = <A>(input: {
       input.logger.error(`OAuth provider ${input.operation} failed`, {
         operation: input.operation,
         provider: input.integrationType,
-        ...(input.integrationId ? { integrationId: input.integrationId } : {}),
+        integrationId: input.integrationId,
       })
     )
   );
@@ -314,7 +314,7 @@ export const startIntegrationOAuth = Effect.fn("startIntegrationOAuth")(
     const attempt = { stateHash, expiresAt, browserBindingHash };
     const attemptPayload = {
       ...payload,
-      ...(codeVerifier ? { codeVerifier } : {}),
+      codeVerifier,
     };
     yield* repo
       .createOAuthAuthorizationAttempt(

@@ -743,6 +743,36 @@ describe("workflowSchemaFieldsToJsonSchemaDocument", () => {
     ]);
   });
 
+  // The reader answers `format` and `additionalProperties` from whether the
+  // document wrote the key at all, and `configFieldsFromJsonSchema` reads this
+  // record back in process, so a key present and holding undefined would read
+  // as a keyword the field had declared.
+  it("writes no format or additionalProperties key for a field that declares neither", () => {
+    const document = workflowSchemaFieldsToJsonSchemaDocument([
+      { name: "subject", type: "string" },
+      {
+        name: "meta",
+        type: "object",
+        fields: [{ name: "id", type: "string" }],
+      },
+      { name: "labels", type: "array", itemType: "string" },
+    ]);
+
+    expect(document).toStrictEqual({
+      type: "object",
+      properties: {
+        subject: { type: "string" },
+        meta: {
+          type: "object",
+          properties: { id: { type: "string" } },
+          required: ["id"],
+        },
+        labels: { type: "array", items: { type: "string" } },
+      },
+      required: ["subject", "meta", "labels"],
+    });
+  });
+
   it("serializes workflow schema fields into JSON schema format", () => {
     const document = workflowSchemaFieldsToJsonSchemaDocument([
       {

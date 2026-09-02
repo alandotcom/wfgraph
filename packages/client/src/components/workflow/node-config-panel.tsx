@@ -1,3 +1,4 @@
+import { compact } from "es-toolkit/array";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   Eraser,
@@ -179,20 +180,17 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
   const selectedEdges = edges.filter((edge) => edge.selected);
   const hasMultipleSelections = selectedNodes.length + selectedEdges.length > 1;
 
-  const selectionText = (() => {
-    const parts: string[] = [];
-    if (selectedNodes.length > 0) {
-      parts.push(
-        `${selectedNodes.length} ${selectedNodes.length === 1 ? "step" : "steps"}`
-      );
-    }
-    if (selectedEdges.length > 0) {
-      parts.push(
-        `${selectedEdges.length} ${selectedEdges.length === 1 ? "connection" : "connections"}`
-      );
-    }
-    return parts.join(" and ");
-  })();
+  const selectedNodesPart =
+    selectedNodes.length > 0
+      ? `${selectedNodes.length} ${selectedNodes.length === 1 ? "step" : "steps"}`
+      : undefined;
+  const selectedEdgesPart =
+    selectedEdges.length > 0
+      ? `${selectedEdges.length} ${selectedEdges.length === 1 ? "connection" : "connections"}`
+      : undefined;
+  const selectionText = compact([selectedNodesPart, selectedEdgesPart]).join(
+    " and "
+  );
 
   const handleUpdateLabel = (label: string) => {
     if (selectedNode) {

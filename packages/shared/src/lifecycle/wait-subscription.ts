@@ -9,6 +9,7 @@
  */
 
 import { Result, Schema } from "effect";
+import { pickBy } from "es-toolkit/object";
 import type { ValueTargetType } from "#src/graph/value-targets";
 import { NonEmptyTrimmedString, readAs } from "#src/types/schema";
 import { formatSchemaFailure } from "#src/types/schema-message";
@@ -186,9 +187,8 @@ export function waitValueTargetsFor(
 ): Partial<
   Record<WaitValueTargetKey, (typeof WAIT_VALUE_TARGETS)[WaitValueTargetKey]>
 > {
-  return Object.fromEntries(
-    waitValueKeysIn(config).map((key) => [key, WAIT_VALUE_TARGETS[key]])
-  );
+  const keys = new Set(waitValueKeysIn(config));
+  return pickBy(WAIT_VALUE_TARGETS, (_, key) => keys.has(key));
 }
 
 /** The keys a node leaving this shape should stop carrying. */

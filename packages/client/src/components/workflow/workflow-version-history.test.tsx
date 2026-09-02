@@ -20,6 +20,7 @@ import type {
   WorkflowVersionSummary,
   WorkflowVersionUsageItem,
 } from "@wfgraph/shared/graph/publication-contracts";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 function renderHistory(
   historyItems: WorkflowVersionSummary[],
@@ -56,7 +57,7 @@ function renderHistory(
     },
   });
   const historyOptions = orpcQuery.workflow.getVersionHistory.infiniteOptions({
-    input: () => ({ workflowId: "workflow_1", cursor: undefined }),
+    input: () => omitUndefined({ workflowId: "workflow_1", cursor: undefined }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
   });

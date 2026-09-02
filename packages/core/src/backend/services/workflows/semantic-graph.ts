@@ -4,17 +4,19 @@
  * outside this projection.
  */
 
-import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
+import { sortBy } from "es-toolkit/array";
+import { isEmptyObject } from "es-toolkit/predicate";
+import {
+  isJsonObject,
+  type JsonObject,
+  type JsonValue,
+} from "@wfgraph/shared/types/json";
 import { persistedNodeEnabled } from "@wfgraph/shared/graph/node-enabled";
 import type {
   SerializedWorkflowEdge,
   SerializedWorkflowGraph,
   SerializedWorkflowNode,
 } from "@wfgraph/shared/graph/types";
-
-function compareStrings(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
 
 /** Converts an in-process value to stable JSON with recursively sorted keys. */
 export function normalizeSemanticValue(
@@ -59,10 +61,12 @@ export function normalizeSemanticValue(
     return normalized.map((item) => item ?? null);
   }
 
+  // Keys are sorted so two objects written in different key orders normalize
+  // alike. A key is an identifier, so code-unit order is enough.
   const object: JsonObject = {};
-  for (const [key, rawItem] of Object.entries(value).toSorted(
-    ([left], [right]) => compareStrings(left, right)
-  )) {
+  for (const [key, rawItem] of sortBy(Object.entries(value), [
+    ([entryKey]) => entryKey,
+  ])) {
     const item = normalizeSemanticValue(rawItem, false, seen);
     if (item !== undefined) {
       object[key] = item;
@@ -74,11 +78,7 @@ export function normalizeSemanticValue(
 
 function normalizedObject(value: Record<string, unknown>): JsonObject {
   const normalized = normalizeSemanticValue(value);
-  if (
-    typeof normalized !== "object" ||
-    normalized === null ||
-    Array.isArray(normalized)
-  ) {
+  if (!isJsonObject(normalized)) {
     throw new Error("Expected semantic projection to produce an object");
   }
   return normalized;
@@ -107,13 +107,7 @@ export function projectSemanticWorkflowEdge(
   edge: SerializedWorkflowEdge
 ): JsonObject {
   const data = normalizeSemanticValue(edge.attributes.data);
-  const normalizedData =
-    typeof data === "object" &&
-    data !== null &&
-    !Array.isArray(data) &&
-    Object.keys(data).length === 0
-      ? undefined
-      : data;
+  const normalizedData = isEmptyObject(data) ? undefined : data;
 
   return normalizedObject({
     source: edge.source,
@@ -132,21 +126,21 @@ export function semanticValueKey(value: JsonValue): string {
 export function projectSemanticWorkflowGraph(
   graph: SerializedWorkflowGraph
 ): JsonObject {
-  const nodes = graph.nodes
-    .map((node) =>
+  // Nodes and edges are sorted on their own JSON key so two graphs with the
+  // same meaning hash alike whatever order the editor held them in. The key is
+  // generated JSON, so code-unit order is enough.
+  const nodes = sortBy(
+    graph.nodes.map((node) =>
       normalizedObject({
         id: node.key,
         ...projectSemanticWorkflowNodeFields(node),
       })
-    )
-    .toSorted((left, right) =>
-      compareStrings(semanticValueKey(left), semanticValueKey(right))
-    );
-  const edges = graph.edges
-    .map(projectSemanticWorkflowEdge)
-    .toSorted((left, right) =>
-      compareStrings(semanticValueKey(left), semanticValueKey(right))
-    );
+    ),
+    [(node) => semanticValueKey(node)]
+  );
+  const edges = sortBy(graph.edges.map(projectSemanticWorkflowEdge), [
+    (edge) => semanticValueKey(edge),
+  ]);
 
   return normalizedObject({ nodes, edges });
 }

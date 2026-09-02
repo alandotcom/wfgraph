@@ -275,7 +275,7 @@ function tokenSet(
   return {
     credentials,
     grantedAccessLabel: GRANTED_ACCESS_LABEL,
-    ...(accountLabel ? { accountLabel } : {}),
+    accountLabel,
     tokens: {
       accessToken: response.access_token,
       refreshToken: response.refresh_token,

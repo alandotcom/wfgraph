@@ -6,6 +6,7 @@ import {
 } from "@wfgraph/shared/extensions/catalog";
 import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
 import { getErrorMessage } from "@wfgraph/shared/utils";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { WfGraphAppContext } from "#src/backend/lib/effect/app-context";
 import { Extensions } from "#src/backend/lib/effect/extensions";
@@ -235,7 +236,7 @@ const resolveClaimedRefresh = Effect.fn("resolveClaimedOAuthRefresh")(
     const replacement = normalizeOAuthGrant(
       {
         ...providerResult.success,
-        ...(grant.accountLabel ? { accountLabel: grant.accountLabel } : {}),
+        ...omitUndefined({ accountLabel: grant.accountLabel }),
       },
       grant.connectedAt
     );

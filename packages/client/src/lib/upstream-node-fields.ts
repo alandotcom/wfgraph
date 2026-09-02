@@ -18,6 +18,7 @@ import {
   appendOutputPathKey,
   fieldsVisibleForConfig,
 } from "@wfgraph/shared/graph/node-references";
+import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
 import {
   type ReachableField,
   reachableEventFields,
@@ -31,6 +32,7 @@ import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
 import { readConfigString } from "@wfgraph/shared/graph/node-config";
 import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
 import { conditionTypeOf } from "@wfgraph/shared/conditions/condition-field-type";
+import { compareText } from "@wfgraph/shared/types/string";
 
 export { getNodeDisplayName };
 
@@ -75,7 +77,10 @@ export function seedConditionModelForField(
     : field;
 
   const model = createDefaultConditionModel(named, ids);
-  if (!field.recordKey) {
+  // Read into a local: TypeScript does not carry the narrowing of an optional
+  // property into the callbacks that build the rules.
+  const recordKey = field.recordKey;
+  if (!recordKey) {
     return model;
   }
 
@@ -85,7 +90,7 @@ export function seedConditionModelForField(
       ...group,
       conditions: group.conditions.map((rule) => ({
         ...rule,
-        recordKey: field.recordKey,
+        recordKey,
       })),
     })),
   };
@@ -116,15 +121,15 @@ export function conditionFieldForPath(
  * rather than beside the paths all of them carry.
  */
 export type SourcedField = Omit<ReachableField, "declaredBy"> & {
-  sourceLabel?: string;
+  sourceLabel?: string | undefined;
   /** The Events reaching the node that leave this path out, by label. */
-  absentOn?: string[];
+  absentOn?: string[] | undefined;
   /**
    * Whose vocabulary this path belongs to, where an integration owns it. Read
    * only for an open record, to scope the keys the graph fills it with
    * (`open-record-keys.ts`), so one integration's rows never name another's.
    */
-  integration?: string;
+  integration?: string | undefined;
 };
 
 /** One upstream field, under the node that produced it. */
@@ -160,20 +165,17 @@ function entryPayloadFields(events: readonly EventMetadata[]): SourcedField[] {
 
     return {
       ...field,
-      ...(owners.length === 1 ? { integration: owners[0] } : {}),
-      ...(absent.length > 0
-        ? { absentOn: absent.map((event) => event.label) }
-        : {}),
+      integration: owners.length === 1 ? owners[0] : undefined,
+      absentOn:
+        absent.length > 0 ? absent.map((event) => event.label) : undefined,
       // One Event reaching the node leaves one section, which is the node's own
       // name and needs no label of its own.
-      ...(events.length < 2
-        ? {}
-        : {
-            sourceLabel:
-              absent.length === 0
-                ? SHARED_EVENT_FIELDS_LABEL
-                : declaring.map((event) => event.label).join(", "),
-          }),
+      sourceLabel:
+        events.length < 2
+          ? undefined
+          : absent.length === 0
+            ? SHARED_EVENT_FIELDS_LABEL
+            : declaring.map((event) => event.label).join(", "),
     };
   });
 }
@@ -199,7 +201,7 @@ function getPluginActionOutputFields(
 
   return action.outputFields.map((field) => ({
     ...field,
-    ...(action.integration ? { integration: action.integration } : {}),
+    integration: action.integration,
   }));
 }
 
@@ -249,7 +251,7 @@ export function getNodeOutputFields(
 
 /** The nodes a run passed through before this one, in canvas order. */
 export function getUpstreamNodes(input: {
-  currentNodeId?: string;
+  currentNodeId?: string | undefined;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
 }): WorkflowNode[] {
@@ -263,7 +265,7 @@ export function getUpstreamNodes(input: {
 }
 
 export function getUpstreamFields(input: {
-  currentNodeId?: string;
+  currentNodeId?: string | undefined;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   catalog: ExtensionCatalog;
@@ -319,6 +321,24 @@ function keyFieldsUnderRecord(
 }
 
 /**
+ * The optional flags a schema field puts on a picker row: `openRecord` for a
+ * record whose keys the payload invents, `nullable` for a field a run can
+ * arrive without, and `enumValues` for a closed set of values.
+ */
+function schemaFieldFlags(
+  field: Pick<ReferenceField, "valueType" | "nullable" | "enumValues">
+): Pick<ConditionSelectableField, "openRecord" | "nullable" | "enumValues"> {
+  return {
+    // oxlint-disable-next-line wfgraph/no-conditional-spread -- an unset flag leaves the key absent, so two rows compare equal only when both carry the same flags.
+    ...(field.valueType ? { openRecord: true as const } : {}),
+    // oxlint-disable-next-line wfgraph/no-conditional-spread -- an unset flag leaves the key absent, so two rows compare equal only when both carry the same flags.
+    ...(field.nullable ? { nullable: true } : {}),
+    // oxlint-disable-next-line wfgraph/no-conditional-spread -- an unset flag leaves the key absent, so two rows compare equal only when both carry the same flags.
+    ...(field.enumValues ? { enumValues: field.enumValues } : {}),
+  };
+}
+
+/**
  * The typed vocabulary a Wait node's match editor builds rules from: the fields
  * of the Event being waited on, as the catalog declares them.
  *
@@ -359,9 +379,7 @@ export function getEventConditionFields(
         sourceNodeId: eventName,
         sourceNodeLabel: event.label,
         sourceNodeLabels: [event.label],
-        ...(field.valueType ? { openRecord: true as const } : {}),
-        ...(field.nullable ? { nullable: true } : {}),
-        ...(field.enumValues ? { enumValues: field.enumValues } : {}),
+        ...schemaFieldFlags(field),
       };
 
       return field.valueType
@@ -374,7 +392,7 @@ export function getEventConditionFields(
           ]
         : [entry];
     })
-  ).toSorted((a, b) => a.path.localeCompare(b.path));
+  ).toSorted((a, b) => compareText(a.path, b.path));
 }
 
 /**
@@ -388,7 +406,7 @@ export function getEventConditionFields(
  * anything the entry node hands on.
  */
 function eventNameConditionField(input: {
-  currentNodeId?: string;
+  currentNodeId?: string | undefined;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   catalog: ExtensionCatalog;
@@ -563,7 +581,7 @@ function sharedEnumValues(
 }
 
 export function getUpstreamConditionFields(input: {
-  currentNodeId?: string;
+  currentNodeId?: string | undefined;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   catalog: ExtensionCatalog;
@@ -590,7 +608,7 @@ export function getUpstreamConditionFields(input: {
     if (existing) {
       if (!existing.sourceNodeLabels.includes(field.sourceNodeName)) {
         existing.sourceNodeLabels.push(field.sourceNodeName);
-        existing.sourceNodeLabels.sort((a, b) => a.localeCompare(b));
+        existing.sourceNodeLabels.sort(compareText);
       }
       continue;
     }
@@ -602,9 +620,7 @@ export function getUpstreamConditionFields(input: {
       sourceNodeId: field.sourceNodeId,
       sourceNodeLabel: field.sourceNodeName,
       sourceNodeLabels: [field.sourceNodeName],
-      ...(field.valueType ? { openRecord: true as const } : {}),
-      ...(field.nullable ? { nullable: true } : {}),
-      ...(field.enumValues ? { enumValues: field.enumValues } : {}),
+      ...schemaFieldFlags(field),
     };
     fieldsByPath.set(path, entry);
 
@@ -626,6 +642,6 @@ export function getUpstreamConditionFields(input: {
   }
 
   return Array.from(fieldsByPath.values()).toSorted((a, b) =>
-    a.path.localeCompare(b.path)
+    compareText(a.path, b.path)
   );
 }

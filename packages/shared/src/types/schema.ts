@@ -12,6 +12,7 @@ import type {
   StandardSchemaV1,
 } from "@standard-schema/spec";
 import { Option, Schema, type SchemaAST, SchemaTransformation } from "effect";
+import { isPlainObject } from "es-toolkit/predicate";
 
 /**
  * A string that carries something once its surrounding whitespace is gone.
@@ -217,9 +218,7 @@ export function extractSchemaKeys(schema: unknown): string[] | undefined {
 
 /** The keys of a field container, or `undefined` if it is not one. */
 function fieldNamesOf(declared: unknown): string[] | undefined {
-  return typeof declared === "object" && declared !== null
-    ? Object.keys(declared)
-    : undefined;
+  return isPlainObject(declared) ? Object.keys(declared) : undefined;
 }
 
 /**

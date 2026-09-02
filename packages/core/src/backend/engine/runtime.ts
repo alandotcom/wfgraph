@@ -15,8 +15,8 @@ import type { BranchHandoff } from "#src/backend/engine/branch";
 
 export type WaitForEventOptions = {
   event: string;
-  timeoutMs?: number;
-  ifExpression?: string;
+  timeoutMs?: number | undefined;
+  ifExpression?: string | undefined;
 };
 
 /**
@@ -65,10 +65,12 @@ export type WorkflowExecutionRuntime = {
    * A runtime that starts no durable runs leaves this out, and the engine then
    * enters the Wait where it stands.
    */
-  startBranch?: (
-    step: DurableStepRef,
-    input: { entryNodeId: string; releasedNodeIds: readonly string[] }
-  ) => Promise<BranchHandoff>;
+  startBranch?:
+    | ((
+        step: DurableStepRef,
+        input: { entryNodeId: string; releasedNodeIds: readonly string[] }
+      ) => Promise<BranchHandoff>)
+    | undefined;
   /**
    * Zero-indexed retry counter for the current attempt, which holds across every
    * replay within that attempt and rises when the runtime retries the body. A
@@ -76,7 +78,7 @@ export type WorkflowExecutionRuntime = {
    * what an earlier one wrote.
    */
   attempt: number;
-  runId?: string;
+  runId?: string | undefined;
 };
 
 export type InMemoryRuntimeOptions = {
@@ -85,13 +87,13 @@ export type InMemoryRuntimeOptions = {
    * replay: the second pass reads stored results instead of repeating the work.
    * Left out, each runtime gets a fresh map and memoizes within one run only.
    */
-  memo?: Map<string, unknown>;
+  memo?: Map<string, unknown> | undefined;
   /** What `waitForEvent` resolves to. `null` models a timeout. */
   resumeEvent?: unknown;
   /** Resolve sleeps immediately instead of sitting through a real timer. */
-  skipSleep?: boolean;
+  skipSleep?: boolean | undefined;
   /** The attempt this runtime reports. See `WorkflowExecutionRuntime.attempt`. */
-  attempt?: number;
+  attempt?: number | undefined;
 };
 
 export type InMemoryWorkflowRuntime = WorkflowExecutionRuntime & {

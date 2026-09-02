@@ -132,6 +132,45 @@ describe("assessScenarioSemantics", () => {
     });
   });
 
+  it("walks a graph whose node id names a prototype member", () => {
+    const document = completedDocument();
+    document.nodes.push({
+      id: "constructor",
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Notify",
+        type: "action",
+        config: { actionType: "crm/notify" },
+      },
+    });
+    document.edges.push({
+      id: "score-constructor",
+      source: "score",
+      target: "constructor",
+    });
+
+    const pathInput: AgentEvalInput = {
+      ...input,
+      expected: {
+        requiredPaths: [
+          {
+            source: { kind: "lifecycle" },
+            target: { kind: "action", actionId: "crm/notify" },
+          },
+        ],
+      },
+    };
+
+    // A node id arrives from the agent, so it is arbitrary text. Keyed in a
+    // plain object, "constructor" answers with a prototype member and the walk
+    // over it fails.
+    expect(assessScenarioSemantics(pathInput, document)).toEqual({
+      score: 1,
+      rationale: "The graph satisfies the scenario constraints.",
+    });
+  });
+
   it("reports a missing required path", () => {
     const pathInput: AgentEvalInput = {
       ...input,

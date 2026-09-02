@@ -1,4 +1,4 @@
-import { omitBy } from "es-toolkit/object";
+import { isBlank } from "@wfgraph/shared/types/string";
 import { toast } from "sonner";
 
 /**
@@ -19,10 +19,7 @@ import { toast } from "sonner";
 export function hasProvidedConfigValues(
   config: Record<string, string>
 ): boolean {
-  return (
-    Object.keys(omitBy(config, (value) => !value || value.length === 0))
-      .length > 0
-  );
+  return Object.values(config).some((value) => !isBlank(value));
 }
 
 /**

@@ -28,7 +28,7 @@ export function executionIdFromWorkflowSearch(
 export function authorizedWorkflowSearch(
   search: unknown,
   canOpenRun: boolean
-): { executionId?: string } {
+): { executionId?: string | undefined } {
   return canOpenRun
     ? { executionId: executionIdFromWorkflowSearch(search) }
     : {};

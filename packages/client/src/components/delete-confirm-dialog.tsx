@@ -13,10 +13,10 @@ interface DeleteConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
-  title?: string;
-  description?: string;
+  title?: string | undefined;
+  description?: string | undefined;
   /** Wording on the button that goes through with it. */
-  confirmLabel?: string;
+  confirmLabel?: string | undefined;
 }
 
 export function DeleteConfirmDialog({

@@ -53,10 +53,10 @@ type GlobalExecutionItem = {
 };
 
 type WorkflowExecutionsGlobalInput = {
-  workflowIds?: string[];
-  statuses?: WorkflowExecutionStatus[];
-  limit?: number;
-  cursor?: ExecutionCursorPayload;
+  workflowIds?: string[] | undefined;
+  statuses?: WorkflowExecutionStatus[] | undefined;
+  limit?: number | undefined;
+  cursor?: ExecutionCursorPayload | undefined;
 };
 
 function toIso(value: Date | null): string | null {

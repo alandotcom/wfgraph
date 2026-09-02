@@ -24,7 +24,7 @@ export type AuthoredGroup = {
   label: string;
   type: "group";
   fields: AuthoredField[];
-  defaultExpanded?: boolean;
+  defaultExpanded?: boolean | undefined;
 };
 
 export type AuthoredEntry = AuthoredField | AuthoredGroup;
@@ -99,6 +99,9 @@ export function buildConfigForm(
   derived: readonly ActionConfigFieldBase[],
   authored: readonly AuthoredEntry[]
 ): ActionConfigField[] {
+  // A Map rather than a keyBy record: a field key is arbitrary text from an
+  // integration author, and a plain object would answer a key named
+  // `constructor` with a prototype member instead of undefined.
   const derivedByKey = new Map(derived.map((field) => [field.key, field]));
   const claimed = claimedKeys(authored);
 

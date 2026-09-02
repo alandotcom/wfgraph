@@ -1,4 +1,5 @@
 import { RPCHandler } from "@orpc/server/fetch";
+import { isNotNil } from "es-toolkit/predicate";
 import { Effect, Result, Schema, type SchemaAST } from "effect";
 import { Hono } from "hono";
 import { AgentConfig } from "#src/backend/agent/config";
@@ -36,10 +37,8 @@ import {
   rejectUnknownKeys,
 } from "@wfgraph/shared/types/schema";
 import { getErrorMessage } from "@wfgraph/shared/utils";
-import {
-  WfGraphOperations,
-  type WfGraphOperationId,
-} from "@wfgraph/shared/authorization/operations";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 // A path segment is whatever the sender typed, so the refusal names the field
 // and the rule rather than echoing the value back into the response body.
@@ -153,7 +152,7 @@ export type CreateApiAppOptions = {
    * that mode dials out over a WebSocket and must not expose a callback route
    * that Inngest cannot reach on a private network.
    */
-  inngestHandler?: InngestServeHandler;
+  inngestHandler?: InngestServeHandler | undefined;
 };
 
 /**
@@ -252,10 +251,15 @@ export function createApiApp(options: CreateApiAppOptions) {
     const procedure = rpcProcedureOf(path);
     const event = createRequestEvent();
     c.set("wfgraphRequestEvent", event);
-    event.set({
-      http: { method, path: logPath },
-      ...(procedure === null ? {} : { rpc: { procedure } }),
-    });
+    // A request addressing no procedure carries no `rpc` group at all: the
+    // record's fields are printed one line per key, so a key holding
+    // `undefined` would put a bare `rpc: undefined` line on every page view.
+    event.set(
+      omitUndefined({
+        http: { method, path: logPath },
+        rpc: procedure === null ? undefined : { procedure },
+      })
+    );
 
     try {
       await next();
@@ -465,22 +469,19 @@ export function createApiApp(options: CreateApiAppOptions) {
             )
           ),
         ]);
-      const operationIds = authorizedOperationIds.filter(
-        (operationId): operationId is WfGraphOperationId =>
-          operationId !== undefined
-      );
+      const operationIds = authorizedOperationIds.filter(isNotNil);
       return c.json({
         catalog: extensions.catalog,
         agent: { enabled: agent.enabled },
         authorization: { operationIds },
-        ...(appContext.publicUrl
-          ? {
-              webhookIntake: {
+        ...omitUndefined({
+          webhookIntake: appContext.publicUrl
+            ? {
                 publicUrl: appContext.publicUrl,
                 apiBasePath: appContext.apiBasePath,
-              },
-            }
-          : {}),
+              }
+            : undefined,
+        }),
       });
     })
     .route(

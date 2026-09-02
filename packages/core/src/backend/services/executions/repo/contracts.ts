@@ -41,15 +41,15 @@ export type NewExecution = {
   workflowVersionId: string;
   startSource: NonNullable<WorkflowExecution["startSource"]>;
   runMode: WorkflowExecution["runMode"];
-  startEventName?: string;
-  entityValue?: string;
+  startEventName?: string | undefined;
+  entityValue?: string | undefined;
   input: JsonObject;
   /**
    * The arrival this run answers, which is what makes opening it idempotent. A
    * start with none is one no retry loop replays, and gets a fresh row every
    * time it is asked for.
    */
-  deliveryId?: string;
+  deliveryId?: string | undefined;
 };
 
 /**
@@ -65,8 +65,8 @@ export type NewTerminalExecution = NewExecution & {
     WorkflowExecution["status"],
     "completed" | "failed" | "canceled"
   >;
-  output?: JsonObject;
-  error?: string;
+  output?: JsonObject | undefined;
+  error?: string | undefined;
 };
 
 /**
@@ -193,7 +193,7 @@ export type PendingCancel = {
 export type NewAuditEvent = {
   workflowId: string;
   message: string;
-  metadata?: JsonObjectDraft;
+  metadata?: JsonObjectDraft | undefined;
 } & (
   | { eventType: RunScopedAuditEventType; executionId: string }
   | { eventType: WorkflowScopedAuditEventType; executionId?: undefined }
@@ -210,8 +210,8 @@ export type ExecutionCursor = {
 
 /** How the runs list narrows what it asks for. */
 export type ExecutionPageQuery = {
-  workflowIds?: string[];
-  statuses?: WorkflowExecution["status"][];
-  cursor?: ExecutionCursor;
+  workflowIds?: string[] | undefined;
+  statuses?: WorkflowExecution["status"][] | undefined;
+  cursor?: ExecutionCursor | undefined;
   limit: number;
 };

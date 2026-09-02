@@ -21,13 +21,13 @@ import { createPrettyFormatter } from "#src/backend/lib/pretty-formatter";
 
 export type WfGraphLoggingOptions = {
   /** Lowest level the `wfgraph` category records. `LOG_LEVEL`, else `info`. */
-  level?: LogLevel;
+  level?: LogLevel | undefined;
   /**
    * `pretty` for the colourised layout a person reads, `json` for one JSON
    * object per line. `LOG_FORMAT` decides when this is unset, and the terminal
    * decides when that is unset too.
    */
-  format?: "pretty" | "json";
+  format?: "pretty" | "json" | undefined;
 };
 
 /**

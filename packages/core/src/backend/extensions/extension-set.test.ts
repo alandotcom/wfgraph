@@ -28,7 +28,7 @@ function anEvent(
     name,
     schema: appointmentPayload,
     correlationPath: "appointment.id",
-    ...(source ? { source } : {}),
+    source,
   });
 }
 
@@ -311,6 +311,64 @@ describe("assembleExtensions", () => {
     });
 
     expect(catalog.events[0]).not.toHaveProperty("description");
+  });
+
+  it("leaves a blank description and Correlation Path out of an Event", () => {
+    const { catalog } = assembleExtensions({
+      events: [
+        defineEvent({
+          name: "app/blank",
+          schema: appointmentPayload,
+          description: "",
+        }),
+      ],
+    });
+
+    expect(catalog.events[0]).not.toHaveProperty("description");
+    expect(catalog.events[0]).not.toHaveProperty("correlationPath");
+  });
+
+  it("leaves hidden off an action the picker shows", () => {
+    const { catalog } = assembleExtensions({
+      actions: [
+        defineAction({
+          id: "appointments/cancel",
+          label: "Cancel",
+          description: "Cancels an appointment",
+          category: "Appointments",
+          hidden: false,
+          input: Schema.Struct({ appointmentId: Schema.String }),
+          handler: ({ input }) => ({ echoed: input }),
+        }),
+      ],
+      integrations: [
+        defineIntegration({
+          type: "twilio",
+          label: "Twilio",
+          description: "Sends messages",
+          credentials: {},
+          actions: {
+            "send-sms": {
+              label: "Send SMS",
+              description: "Sends one message",
+              hidden: false,
+              input: Schema.Struct({ to: Schema.String }),
+              output: Schema.Struct({
+                sid: Schema.String.annotate({ description: "Message SID" }),
+              }),
+              handler: sendSmsHandler,
+            },
+          },
+        }),
+      ],
+    });
+
+    // The catalog is served as JSON and decoded against a wire schema whose
+    // `hidden` is an absent-or-true key, so a visible action carries no
+    // `hidden: false`.
+    for (const action of catalog.actions) {
+      expect(action).not.toHaveProperty("hidden");
+    }
   });
 
   it("answers an Event by name, and undefined for one it does not hold", () => {

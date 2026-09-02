@@ -1,5 +1,6 @@
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";
 import type { QueryClient } from "@tanstack/react-query";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { rpc } from "#src/lib/rpc-client";
 import type { WorkflowApiPayload } from "@wfgraph/shared/graph/api-contracts";
 
@@ -55,9 +56,9 @@ export const workflowListQueryOptions = () =>
 export function selectPublicationState(payload: WorkflowApiPayload): {
   isPublished: boolean;
   hasUnpublishedChanges: boolean;
-  publishedVersionId?: string;
-  publishedVersion?: number;
-  publishedAt?: string;
+  publishedVersionId?: string | undefined;
+  publishedVersion?: number | undefined;
+  publishedAt?: string | undefined;
 } {
   return {
     isPublished: Boolean(payload.publishedVersionId),
@@ -148,13 +149,14 @@ export function refreshWorkflowVersionHistory(queryClient: QueryClient) {
  */
 export function cacheWorkflowPublication(
   queryClient: QueryClient,
-  workflow: Pick<WorkflowApiPayload, "id" | "hasUnpublishedChanges"> &
-    Partial<
-      Pick<
-        WorkflowApiPayload,
-        "publishedVersionId" | "publishedVersion" | "publishedAt" | "updatedAt"
-      >
-    >
+  // Each version field may be absent or set to undefined. A publish returns
+  // all four; a refused publish returns `hasUnpublishedChanges` alone.
+  workflow: Pick<WorkflowApiPayload, "id" | "hasUnpublishedChanges"> & {
+    publishedVersionId?: string | undefined;
+    publishedVersion?: number | undefined;
+    publishedAt?: string | undefined;
+    updatedAt?: string | undefined;
+  }
 ) {
   queryClient.setQueryData(
     orpcQuery.workflow.getById.queryKey({
@@ -168,15 +170,11 @@ export function cacheWorkflowPublication(
         ...current,
         hasUnpublishedChanges: workflow.hasUnpublishedChanges,
         updatedAt: workflow.updatedAt ?? current.updatedAt,
-        ...(workflow.publishedVersionId !== undefined
-          ? { publishedVersionId: workflow.publishedVersionId }
-          : {}),
-        ...(workflow.publishedVersion !== undefined
-          ? { publishedVersion: workflow.publishedVersion }
-          : {}),
-        ...(workflow.publishedAt !== undefined
-          ? { publishedAt: workflow.publishedAt }
-          : {}),
+        ...omitUndefined({
+          publishedVersionId: workflow.publishedVersionId,
+          publishedVersion: workflow.publishedVersion,
+          publishedAt: workflow.publishedAt,
+        }),
       };
     }
   );

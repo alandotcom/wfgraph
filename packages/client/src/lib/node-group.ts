@@ -3,7 +3,9 @@
  * size, and React Flow parent constraints. Analysis lives in shared.
  */
 
+import { countBy, uniqBy } from "es-toolkit/array";
 import { nanoid } from "nanoid";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { toast } from "sonner";
 import type { EdgeChange } from "@xyflow/react";
 import { isConditionNode } from "@wfgraph/shared/graph/node-config";
@@ -114,7 +116,7 @@ export function groupSelection(input: {
       config: {
         entryNodeIds: analysis.entryIds,
         exitNodeIds: analysis.exitIds,
-        ...(conditionExit ? { outletHandle: "true" as const } : {}),
+        outletHandle: conditionExit ? ("true" as const) : undefined,
       },
     },
   };
@@ -161,15 +163,13 @@ export function ungroupNode(
   // Sorted for the same reason `groupSelection` is: the freed members stay
   // where the frame stood, which puts them ahead of any frame that remains.
   return orderGroupParentsFirst(
-    nodes.flatMap((node) => {
-      if (node.id === groupId) {
-        return [];
-      }
-      if (node.parentId !== groupId) {
-        return [node];
-      }
-      return [unnestFromGroup(node, freedPosition(group, node))];
-    })
+    nodes
+      .filter((node) => node.id !== groupId)
+      .map((node) =>
+        node.parentId === groupId
+          ? unnestFromGroup(node, freedPosition(group, node))
+          : node
+      )
   );
 }
 
@@ -177,15 +177,14 @@ export function layoutGroupChildren(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[]
 ): WorkflowNode[] {
-  const byParent = new Map<string, WorkflowNode[]>();
-  for (const node of nodes) {
-    if (!node.parentId) {
-      continue;
-    }
-    const current = byParent.get(node.parentId) ?? [];
-    current.push(node);
-    byParent.set(node.parentId, current);
-  }
+  const nested = nodes.filter(
+    (node): node is WorkflowNode & { parentId: string } =>
+      node.parentId !== undefined && node.parentId !== ""
+  );
+  // A Map rather than a groupBy record: `parentId` comes from the persisted
+  // graph, and a plain object files a frame named `__proto__` onto the
+  // prototype, where its children are never laid out.
+  const byParent = Map.groupBy(nested, (node) => node.parentId);
 
   if (byParent.size === 0) {
     return nodes;
@@ -394,16 +393,7 @@ function alignEntryIncoming(input: {
   const { edges, entryIds, createEdgeId } = input;
   const entrySet = new Set(entryIds);
   const incoming = edges.filter((edge) => entrySet.has(edge.target));
-  const templates: WorkflowEdge[] = [];
-  const seen = new Set<string>();
-  for (const edge of incoming) {
-    const key = predecessorKey(edge);
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    templates.push(edge);
-  }
+  const templates = uniqBy(incoming, predecessorKey);
   if (templates.length !== 1) {
     return edges;
   }
@@ -426,13 +416,17 @@ function alignEntryIncoming(input: {
     // No `type`: the canvas names the edge component for every edge through
     // `defaultEdgeOptions`, and React Flow merges that under the edge, so an
     // explicit `type: undefined` here would shadow it back to the bezier.
-    extra.push({
-      id: createEdgeId(),
-      source: template.source,
-      target: entryId,
-      sourceHandle: template.sourceHandle,
-      targetHandle: template.targetHandle,
-    });
+    // React Flow declares both handle keys as optional, so a handle the
+    // template does not name is omitted.
+    extra.push(
+      omitUndefined({
+        id: createEdgeId(),
+        source: template.source,
+        target: entryId,
+        sourceHandle: template.sourceHandle,
+        targetHandle: template.targetHandle,
+      })
+    );
   }
   return extra.length === 0 ? edges : [...edges, ...extra];
 }
@@ -446,14 +440,11 @@ function childPositions(
   slots: readonly GroupMemberSlot[],
   columns: number
 ): Map<string, { x: number; y: number }> {
-  const widthOfRow = new Map<number, number>();
-  for (const slot of slots) {
-    widthOfRow.set(slot.row, (widthOfRow.get(slot.row) ?? 0) + 1);
-  }
+  const widthOfRow = countBy(slots, (slot) => slot.row);
 
   const positions = new Map<string, { x: number; y: number }>();
   for (const slot of slots) {
-    const spare = columns - (widthOfRow.get(slot.row) ?? 1);
+    const spare = columns - (widthOfRow[slot.row] ?? 1);
     const indent = (spare * (GROUP_CHILD_WIDTH + GROUP_COLUMN_GAP)) / 2;
     positions.set(slot.id, {
       x:

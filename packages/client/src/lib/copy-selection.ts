@@ -6,6 +6,7 @@
  */
 
 import { nanoid } from "nanoid";
+import { omit } from "es-toolkit/object";
 import {
   formatTemplateToken,
   mapTemplateTokens,
@@ -65,7 +66,7 @@ export function nodeIdsForContextCopy(
 export function extractCopyableSelection(input: {
   nodes: readonly WorkflowNode[];
   edges: readonly WorkflowEdge[];
-  nodeIds?: ReadonlySet<string>;
+  nodeIds?: ReadonlySet<string> | undefined;
 }): CopiedSelection | null {
   const requested = input.nodes.filter((node) => {
     if (!isCopyableNode(node)) {
@@ -118,10 +119,11 @@ export function cloneSelection(
     const parentCopied =
       typeof parentId === "string" && copiedIds.has(parentId);
     const nextParentId = parentCopied ? mappedId(idMap, parentId) : undefined;
-    return {
-      ...node,
+    // A member whose frame was left behind becomes a top-level node, which
+    // React Flow represents as a node with no `parentId` key.
+    const copied: WorkflowNode = {
+      ...omit(node, ["parentId"]),
       id: mappedId(idMap, node.id),
-      parentId: nextParentId,
       position: parentCopied
         ? node.position
         : {
@@ -139,6 +141,10 @@ export function cloneSelection(
         ),
       },
     };
+    if (nextParentId !== undefined) {
+      copied.parentId = nextParentId;
+    }
+    return copied;
   });
 
   const edges = selection.edges.map((edge) => ({

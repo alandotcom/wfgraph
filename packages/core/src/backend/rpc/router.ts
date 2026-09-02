@@ -67,8 +67,9 @@ const rpcLogger = getAppLogger("rpc");
 /**
  * The handler options object oRPC passes as the first argument, narrowed to the
  * one member the failure log needs. `rpcEffectHandler` is generic over every
- * route, so its `args` are `unknown` and the route's own input type is out of
- * reach here; every contract input is an object, and a read recovers that much.
+ * route, so its handler arguments are `unknown` and the route's own input type
+ * is out of reach here; every contract input is an object, and a read recovers
+ * that much.
  *
  * One leaf at a time, because this runs on the failure path: a handler options
  * object shaped differently than expected should cost the log line its input
@@ -76,13 +77,15 @@ const rpcLogger = getAppLogger("rpc");
  */
 const readAnyObject = readAs(Schema.Record(Schema.String, Schema.Unknown));
 
-function summarizeRpcInput(args: unknown[]): unknown {
-  if (args.length === 0) {
+function summarizeRpcInput(handlerArgs: unknown[]): unknown {
+  if (handlerArgs.length === 0) {
     return undefined;
   }
 
-  const handlerArgs = readAnyObject(args[0]);
-  const input = handlerArgs ? readAnyObject(handlerArgs.input) : undefined;
+  const handlerOptions = readAnyObject(handlerArgs[0]);
+  const input = handlerOptions
+    ? readAnyObject(handlerOptions.input)
+    : undefined;
   if (!input) {
     return undefined;
   }

@@ -16,6 +16,7 @@ import {
 import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 /**
  * These cases are about the geometry a frame lays its members out in, so no
@@ -52,7 +53,7 @@ function edge(
   target: string,
   sourceHandle?: string
 ): WorkflowEdge {
-  return { id, source, target, sourceHandle };
+  return omitUndefined({ id, source, target, sourceHandle });
 }
 
 /**

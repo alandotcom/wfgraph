@@ -19,6 +19,7 @@ import {
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+import { compareText } from "@wfgraph/shared/types/string";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
@@ -29,9 +30,7 @@ import { useOverlay } from "./overlay-provider";
  * second source and no ordering rule of its own.
  */
 function connectableIntegrations(catalog: ExtensionCatalog) {
-  return catalog.integrations.toSorted((a, b) =>
-    a.label.localeCompare(b.label)
-  );
+  return catalog.integrations.toSorted((a, b) => compareText(a.label, b.label));
 }
 
 const getLabel = (catalog: ExtensionCatalog, type: string): string =>
@@ -39,7 +38,7 @@ const getLabel = (catalog: ExtensionCatalog, type: string): string =>
 
 type AddConnectionOverlayProps = {
   overlayId: string;
-  onSuccess?: (integrationId: string) => void;
+  onSuccess?: ((integrationId: string) => void) | undefined;
 };
 
 /**
@@ -122,7 +121,7 @@ export function AddConnectionOverlay({
 type ConfigureConnectionOverlayProps = {
   overlayId: string;
   type: string;
-  onSuccess?: (integrationId: string) => void;
+  onSuccess?: ((integrationId: string) => void) | undefined;
 };
 
 /**
@@ -141,9 +140,9 @@ function SecretField({
   fieldId: string;
   label: string;
   configKey: string;
-  placeholder?: string;
-  helpText?: string;
-  helpLink?: { url: string; text: string };
+  placeholder?: string | undefined;
+  helpText?: string | undefined;
+  helpLink?: { url: string; text: string } | undefined;
   value: string;
   onChange: (key: string, value: string) => void;
 }) {

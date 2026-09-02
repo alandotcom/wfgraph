@@ -14,9 +14,9 @@ export type OAuthRegistrationContext = {
 /** The client identity an integration supplies to its OAuth provider. */
 export type OAuthClientRegistration = {
   readonly clientId: string;
-  readonly clientSecret?: string;
+  readonly clientSecret?: string | undefined;
   /** Present for providers that discover clients through a metadata document. */
-  readonly metadataDocument?: PublicOAuthClientMetadata;
+  readonly metadataDocument?: PublicOAuthClientMetadata | undefined;
 };
 
 /** The deliberately small, public-only client metadata surface core can serve. */
@@ -64,9 +64,9 @@ export type OAuthPkceExchangeInput = OAuthExchangeInput & {
 /** Tokens that must be replaced together after an exchange or refresh. */
 export type OAuthTokens = {
   readonly accessToken: string;
-  readonly refreshToken?: string;
+  readonly refreshToken?: string | undefined;
   /** An ISO 8601 timestamp. Absent means the access token has no known expiry. */
-  readonly expiresAt?: string;
+  readonly expiresAt?: string | undefined;
 };
 
 /**
@@ -85,11 +85,11 @@ export type OAuthTokenSet = {
    * because `refresh` answers a token set: a provider that narrows a grant on
    * refresh is then recorded rather than left claiming the old access.
    */
-  readonly grantedAccessLabel?: string;
+  readonly grantedAccessLabel?: string | undefined;
 };
 
 export type OAuthGrant = OAuthTokenSet & {
-  readonly accountLabel?: string;
+  readonly accountLabel?: string | undefined;
 };
 
 export type OAuthRefreshInput = {

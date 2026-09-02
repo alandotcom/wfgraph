@@ -8,7 +8,7 @@ export type EventChoice = {
   name: string;
   label: string;
   /** Integration label, absent for a host Event. */
-  group?: string;
+  group?: string | undefined;
 };
 
 export function catalogEventChoices(catalog: ExtensionCatalog): EventChoice[] {

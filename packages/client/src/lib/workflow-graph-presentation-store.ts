@@ -4,6 +4,7 @@
  */
 
 import { atom } from "jotai";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { inactiveBranch } from "#src/lib/inactive-branch";
 import {
   EMPTY_ISSUES,
@@ -132,13 +133,20 @@ export const displayNodesAtom = atom((get) => {
       return cached.painted;
     }
 
+    // The paint is spread over the stored data rather than merged into the
+    // same literal: `omitUndefined` drops the keys this paint has nothing to
+    // say about, so the node keeps its own `enabled`, `status` and `issues`,
+    // and it reads only string keys, so a symbol such as the comparison
+    // annotation survives outside it.
     const withStatus: WorkflowNode = {
       ...node,
       data: {
         ...node.data,
-        ...(status ? { status } : {}),
-        ...(disabledFrame ? { enabled: false } : {}),
-        ...(issues ? { issues } : {}),
+        ...omitUndefined({
+          status,
+          enabled: disabledFrame ? false : undefined,
+          issues,
+        }),
       },
     };
     const paintedNode = muted
@@ -193,13 +201,13 @@ export const displayEdgesAtom = atom((get) => {
     }
     return {
       ...edge,
-      data: {
+      data: omitUndefined({
         ...edge.data,
         inactive: true,
-        ...(outletEdgeIds.has(edge.id)
-          ? { displayLabel: "No Cancel Event" }
-          : {}),
-      },
+        displayLabel: outletEdgeIds.has(edge.id)
+          ? "No Cancel Event"
+          : undefined,
+      }),
     };
   });
 });

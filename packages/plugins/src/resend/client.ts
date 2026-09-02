@@ -140,12 +140,12 @@ function requestResend<S extends Schema.ConstraintDecoder<unknown>>(
   schema: S,
   init: {
     method: "GET" | "POST";
-    jsonBody?: JsonObject;
+    jsonBody?: JsonObject | undefined;
     /**
      * Resend replays the original response for a repeated key rather than
      * sending a second email, which is what makes a retried step safe.
      */
-    idempotencyKey?: string;
+    idempotencyKey?: string | undefined;
   }
 ): Effect.Effect<S["Type"], ExternalError, HttpClient.HttpClient> {
   return callExternal({

@@ -1,4 +1,4 @@
-import { asNonEmptyString } from "#src/types/string";
+import { asNonEmptyString, isBlank } from "#src/types/string";
 import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
 import { compileSerializedConditionModel } from "#src/conditions/conditions";
 import {
@@ -23,9 +23,9 @@ export type MissingRequiredFieldInfo = {
 type ActionConfigFieldBaseLike = {
   key: string;
   label: string;
-  required?: boolean;
-  showWhen?: ShowWhen;
-  type?: string;
+  required?: boolean | undefined;
+  showWhen?: ShowWhen | undefined;
+  type?: string | undefined;
 };
 
 type ActionConfigFieldGroupLike = {
@@ -38,8 +38,8 @@ type ActionConfigFieldLike =
   | ActionConfigFieldGroupLike;
 
 type ResolvedAction = {
-  label?: string;
-  configFields?: readonly ActionConfigFieldLike[];
+  label?: string | undefined;
+  configFields?: readonly ActionConfigFieldLike[] | undefined;
 };
 
 export type ResolveActionByType = (
@@ -60,7 +60,7 @@ function isFieldEmpty(value: unknown): boolean {
   }
 
   if (typeof value === "string") {
-    return value.trim().length === 0;
+    return isBlank(value);
   }
 
   return false;
@@ -227,8 +227,8 @@ function getSystemMissingRequiredFields(input: {
 
 function getNodeLabel(input: {
   node: WorkflowNode;
-  actionType?: string;
-  actionLabel?: string;
+  actionType?: string | undefined;
+  actionLabel?: string | undefined;
 }): string {
   const { node, actionType, actionLabel } = input;
 

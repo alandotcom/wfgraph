@@ -13,7 +13,7 @@ import type {
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 
 export type PublicationReview = {
-  baseVersion?: number;
+  baseVersion?: number | undefined;
   proposedVersion: number;
   nodeChanges: WorkflowNodeChange[];
   edgeChanges: WorkflowEdgeChange[];

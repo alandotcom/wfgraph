@@ -47,9 +47,9 @@ function createStubRuntime({
   integrationRepo,
   workflowRepo,
 }: {
-  appContext?: Parameters<typeof makeAppContextLayer>[0];
-  integrationRepo?: Parameters<typeof stubIntegrationRepo>[0];
-  workflowRepo?: Parameters<typeof stubWorkflowRepo>[0];
+  appContext?: Parameters<typeof makeAppContextLayer>[0] | undefined;
+  integrationRepo?: Parameters<typeof stubIntegrationRepo>[0] | undefined;
+  workflowRepo?: Parameters<typeof stubWorkflowRepo>[0] | undefined;
 } = {}): WfGraphRuntime {
   return ManagedRuntime.make(
     Layer.mergeAll(

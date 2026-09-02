@@ -31,12 +31,10 @@ describe("the schema declarations", () => {
   // exported from this module but missing from that bag is invisible to every
   // repository that reaches for `db.query.<name>`.
   it("registers every declared table on the relational surface", () => {
-    const declaredNames = new Set(
-      Object.keys(schema.tables).toSorted((a, b) => a.localeCompare(b))
-    );
-    const relationNames = new Set(
-      Object.keys(schema.relations).toSorted((a, b) => a.localeCompare(b))
-    );
+    // Table names are identifiers, so code-unit order is enough here.
+    // `compareText` is for text a person reads.
+    const declaredNames = new Set(Object.keys(schema.tables).toSorted());
+    const relationNames = new Set(Object.keys(schema.relations).toSorted());
 
     expect([...declaredNames]).toEqual([...relationNames]);
     expect(declaredNames.size).toBe(declaredTables.length);

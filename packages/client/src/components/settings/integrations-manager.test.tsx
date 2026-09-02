@@ -142,4 +142,63 @@ describe("IntegrationsManager", () => {
       ).toBeUndefined();
     });
   });
+
+  it("orders two connections that share a label by connection name", async () => {
+    // Both connections resolve to the catalog's one "Linear" label, so only
+    // the connection name can order them.
+    const store = createStore();
+    store.set(loadWorkflowGraphAtom, { nodes: [], edges: [] });
+
+    const zConnection: Integration = {
+      id: "int_linear_z",
+      name: "Z Connection",
+      type: "linear",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      configuredKeys: [],
+      connectionDefaults: {},
+    };
+    const aConnection: Integration = {
+      id: "int_linear_a",
+      name: "A Connection",
+      type: "linear",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      configuredKeys: [],
+      connectionDefaults: {},
+    };
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    // Seeded in reverse of the expected order, so the assertion fails if the
+    // component echoes the fetch order instead of sorting.
+    queryClient.setQueryData(integrationsQueryOptions().queryKey, [
+      zConnection,
+      aConnection,
+    ]);
+    installAuthorizationGrantsForTests(WfGraphOperationIds);
+
+    render(
+      <ExtensionCatalogProvider value={catalog}>
+        <QueryClientProvider client={queryClient}>
+          <JotaiProvider store={store}>
+            <IntegrationUiProvider value={{}}>
+              <OverlayProvider>
+                <IntegrationsManager />
+                <OverlayContainer />
+              </OverlayProvider>
+            </IntegrationUiProvider>
+          </JotaiProvider>
+        </QueryClientProvider>
+      </ExtensionCatalogProvider>
+    );
+
+    const a = await screen.findByText("A Connection");
+    const z = await screen.findByText("Z Connection");
+
+    expect(
+      a.compareDocumentPosition(z) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
 });

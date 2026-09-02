@@ -192,6 +192,24 @@ describe("collectWorkflowIssues", () => {
       "Old"
     );
   });
+
+  it("keeps the group of a node whose id names a prototype member", () => {
+    // A node id is text a saved graph or the build agent chose, and a
+    // plain-object grouping writes `result.__proto__ = []`, which replaces the
+    // prototype and leaves the node with no group at all.
+    const issues = collectWorkflowIssues({
+      nodes: [
+        actionNode("__proto__", { actionType: "custom/send" }, "Prototype"),
+      ],
+      catalog,
+      integrations: [],
+    });
+
+    const grouped = groupWorkflowIssuesForOverlay(issues);
+    expect(grouped.missingRequiredFields).toEqual([
+      expect.objectContaining({ nodeId: "__proto__", nodeLabel: "Prototype" }),
+    ]);
+  });
 });
 
 describe("findUnconfiguredIntegrationNodes", () => {

@@ -34,7 +34,7 @@ export class SignatureRejected extends Schema.TaggedError<SignatureRejected>()(
 export type WebhookAccepted = {
   readonly data: JsonObject;
   /** Inngest idempotency key. Resend sets this from `svix-id`. */
-  readonly id?: string;
+  readonly id?: string | undefined;
 };
 
 export type WebhookReceiveResult = WebhookAccepted | undefined;
@@ -62,13 +62,13 @@ export type IntegrationWebhook<
    * sentence. The editor adds the signing-secret instruction only when this
    * Connection does not yet hold `secret`.
    */
-  readonly helpText?: string;
+  readonly helpText?: string | undefined;
   /**
    * The Connection credential `verify` reads. The editor uses this to tell a
    * filled secret from a send-only Connection, instead of guessing from the
    * credential name.
    */
-  readonly secret?: Extract<keyof TCredentials, string>;
+  readonly secret?: Extract<keyof TCredentials, string> | undefined;
   readonly verify: (input: {
     readonly rawBody: string;
     readonly headers: Headers;

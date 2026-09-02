@@ -53,6 +53,18 @@ describe("workflowIssuesByNodeIdAtom", () => {
     expect(byNode.has("c")).toBe(false);
   });
 
+  // A node id arrives from the API or from the build agent, so it can be any
+  // string. Gathering into a plain object files "__proto__" onto the prototype
+  // and that node draws no badge at all.
+  it("keeps the badge of a node whose id is __proto__", () => {
+    const store = createStore();
+    store.set(workflowIssuesAtom, [missingField("__proto__", "channel")]);
+
+    const byNode = store.get(workflowIssuesByNodeIdAtom);
+
+    expect(byNode.get("__proto__")?.messages).toHaveLength(1);
+  });
+
   /**
    * The summary is what `displayNodesAtom` folds onto a node, so it has to be
    * the same object between collection passes. Rebuilt per read, a flagged card

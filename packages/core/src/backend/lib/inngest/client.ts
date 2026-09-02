@@ -5,6 +5,7 @@ import {
   type WorkerConnection,
 } from "inngest/connect";
 import { metadataMiddleware } from "inngest/experimental";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { serve as serveInngest } from "inngest/hono";
 import { getAppLogger } from "#src/backend/lib/logger";
 import { createInngestSdkLogger } from "#src/backend/lib/inngest/sdk-logger";
@@ -110,44 +111,44 @@ function getInngestBaseUrl() {
  */
 export type WfGraphInngestConfig = {
   id: string;
-  isDev?: boolean;
-  baseUrl?: string;
-  eventKey?: string;
-  env?: string;
-  signingKey?: string;
-  signingKeyFallback?: string;
+  isDev?: boolean | undefined;
+  baseUrl?: string | undefined;
+  eventKey?: string | undefined;
+  env?: string | undefined;
+  signingKey?: string | undefined;
+  signingKeyFallback?: string | undefined;
   /** Public origin Inngest should call back on, for example "https://app.example.com". */
-  serveOrigin?: string;
-  servePath?: string;
+  serveOrigin?: string | undefined;
+  servePath?: string | undefined;
   /**
    * Open a Connect WebSocket at boot so Inngest can push executions to this
    * process. Long-running hosts set this; the app dials out and mounts no
    * `/api/inngest` callback. Serverless hosts leave it unset and keep HTTP
    * serve, which Inngest must be able to reach.
    */
-  connect?: boolean;
+  connect?: boolean | undefined;
   /**
    * Stable id for this Connect worker. Defaults to the machine hostname when
    * absent. Used only when `connect` is true.
    */
-  instanceId?: string;
+  instanceId?: string | undefined;
   /**
    * WebSocket gateway URL for Connect, for example
    * `ws://localhost:8390/v0/connect`. The SDK also reads
    * `INNGEST_CONNECT_GATEWAY_URL`. Used only when `connect` is true.
    */
-  gatewayUrl?: string;
+  gatewayUrl?: string | undefined;
   /**
    * Cap on concurrent step executions on this Connect worker. Used only when
    * `connect` is true.
    */
-  maxWorkerConcurrency?: number;
+  maxWorkerConcurrency?: number | undefined;
   /**
    * Milliseconds `createWfGraphApp` waits for the Connect handshake to reach an
    * active connection before failing boot. Defaults to 30 seconds. Used only
    * when `connect` is true.
    */
-  connectTimeoutMs?: number;
+  connectTimeoutMs?: number | undefined;
 };
 
 /**
@@ -169,31 +170,37 @@ function createInngestClient(
     throw new Error("Inngest configuration requires a non-empty id.");
   }
 
-  return new Inngest({
-    id,
-    // Cloud mode is what makes the SDK verify a callback signature at all, so a
-    // host opts into the unsigned dev loop by hand and nothing infers it for
-    // them. Passing the option through undefined leaves the SDK's own
-    // `INNGEST_DEV` fallback reachable, which is the only other way in.
-    isDev: config.isDev,
-    baseUrl: config.baseUrl ?? getInngestBaseUrl(),
-    eventKey: config.eventKey ?? process.env.INNGEST_EVENT_KEY,
-    env: config.env ?? process.env.INNGEST_ENV,
-    signingKey,
-    signingKeyFallback:
-      config.signingKeyFallback ?? process.env.INNGEST_SIGNING_KEY_FALLBACK,
-    // Registration, request parsing and the Connect handshake write here. Left
-    // unset they go to the SDK's own console logger, which prints the handshake
-    // as four unformatted lines and a bare object in the middle of the stream.
-    internalLogger: createInngestSdkLogger(),
-    // What makes `client.metadata` reachable at all: the getter throws without
-    // it. A run writes its own identity there, because every workflow executes
-    // on the one function and Inngest labels them all "Workflow run". The
-    // feature is experimental, and its GA removes this middleware and makes the
-    // metadata surface unconditional, so this line is deleted rather than
-    // rewritten then.
-    middleware: [metadataMiddleware()],
-  });
+  // The SDK reads its options with `in`, so a key present and holding undefined
+  // counts as a value and shadows the SDK's own environment fallbacks.
+  // `omitUndefined` drops the options the host left out, here and at every other
+  // SDK call in this file.
+  return new Inngest(
+    omitUndefined({
+      id,
+      // Cloud mode is what makes the SDK verify a callback signature at all, so a
+      // host opts into the unsigned dev loop by hand and nothing infers it for
+      // them. Passing the option through undefined leaves the SDK's own
+      // `INNGEST_DEV` fallback reachable, which is the only other way in.
+      isDev: config.isDev,
+      baseUrl: config.baseUrl ?? getInngestBaseUrl(),
+      eventKey: config.eventKey ?? process.env.INNGEST_EVENT_KEY,
+      env: config.env ?? process.env.INNGEST_ENV,
+      signingKey,
+      signingKeyFallback:
+        config.signingKeyFallback ?? process.env.INNGEST_SIGNING_KEY_FALLBACK,
+      // Registration, request parsing and the Connect handshake write here. Left
+      // unset they go to the SDK's own console logger, which prints the handshake
+      // as four unformatted lines and a bare object in the middle of the stream.
+      internalLogger: createInngestSdkLogger(),
+      // What makes `client.metadata` reachable at all: the getter throws without
+      // it. A run writes its own identity there, because every workflow executes
+      // on the one function and Inngest labels them all "Workflow run". The
+      // feature is experimental, and its GA removes this middleware and makes the
+      // metadata surface unconditional, so this line is deleted rather than
+      // rewritten then.
+      middleware: [metadataMiddleware()],
+    })
+  );
 }
 
 /**
@@ -298,25 +305,29 @@ export function createInngestSurface(
   return {
     client,
     serve: (functions) =>
-      serveInngest({
-        client,
-        functions,
-        // As of v4 the signing keys and base URL live on the client, so what
-        // is left for `serve()` is where Inngest should call back.
-        serveOrigin: config.serveOrigin,
-        servePath: config.servePath,
-      }),
+      serveInngest(
+        omitUndefined({
+          client,
+          functions,
+          // As of v4 the signing keys and base URL live on the client, so what
+          // is left for `serve()` is where Inngest should call back.
+          serveOrigin: config.serveOrigin,
+          servePath: config.servePath,
+        })
+      ),
     connect: (functions) =>
       withConnectTimeout(
-        connectImpl({
-          apps: [{ client, functions }],
-          instanceId: config.instanceId,
-          gatewayUrl: config.gatewayUrl,
-          maxWorkerConcurrency: config.maxWorkerConcurrency,
-          // The host owns SIGINT/SIGTERM (and `dispose`); leaving the SDK's
-          // default handlers in place races a second close against that path.
-          handleShutdownSignals: [],
-        }),
+        connectImpl(
+          omitUndefined({
+            apps: [{ client, functions }],
+            instanceId: config.instanceId,
+            gatewayUrl: config.gatewayUrl,
+            maxWorkerConcurrency: config.maxWorkerConcurrency,
+            // The host owns SIGINT/SIGTERM (and `dispose`); leaving the SDK's
+            // default handlers in place races a second close against that path.
+            handleShutdownSignals: [],
+          })
+        ),
         config.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS,
         // An explicit gatewayUrl, ours or the SDK's own INNGEST_CONNECT_GATEWAY_URL
         // fallback, is what actually gets dialed. Absent both, the SDK asks the

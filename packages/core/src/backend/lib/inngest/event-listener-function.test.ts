@@ -344,7 +344,7 @@ describe("createInngestEventListenerFunction", () => {
   type BuiltOptions = {
     opts: {
       triggers: { event: string; if?: string }[];
-      throttle?: { key?: string };
+      throttle?: { key?: string } | undefined;
     };
   };
 

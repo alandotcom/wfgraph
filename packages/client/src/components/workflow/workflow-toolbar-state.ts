@@ -9,8 +9,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { can, canInspectWorkflowRuns } from "#src/lib/authorization";
+import type { rpc } from "#src/lib/rpc-client";
 import {
   integrationsQueryOptions,
+  selectPublicationState,
   workflowListQueryOptions,
   workflowPublicationQueryOptions,
 } from "#src/lib/rpc-query";
@@ -18,6 +20,7 @@ import {
   clearWorkflowAtom,
   edgesAtom,
   nodesAtom,
+  type NodeDataUpdate,
   selectedNodeAtom,
   updateNodeDataAtom,
   canRedoAtom,
@@ -25,6 +28,11 @@ import {
   redoAtom,
   undoAtom,
 } from "#src/lib/workflow-graph-store";
+import type {
+  WorkflowEdge,
+  WorkflowMode,
+  WorkflowNode,
+} from "#src/lib/workflow-graph-types";
 import {
   currentWorkflowIdAtom,
   currentWorkflowModeAtom,
@@ -68,7 +76,54 @@ export function readWorkflowToolbarCapabilities(): WorkflowToolbarCapabilities {
   };
 }
 
-export function useWorkflowToolbarState() {
+/** Every workflow the switcher lists, as `workflow.getAll` returns it. */
+type WorkflowSummaries = Awaited<ReturnType<typeof rpc.workflow.getAll>>;
+
+/** Every connection the operator has, as `integration.getAll` returns it. */
+type UserIntegrations = Awaited<ReturnType<typeof rpc.integration.getAll>>;
+
+/**
+ * What the toolbar, its command palette, and its handlers read for one
+ * workflow.
+ *
+ * The capability flags come from `WorkflowToolbarCapabilities`, which
+ * `readWorkflowToolbarCapabilities` fills in. The fields declared here are the
+ * canvas, the workflow's identity and mode, the publication badge's server
+ * read, and the writers behind each control.
+ */
+export type WorkflowToolbarState = WorkflowToolbarCapabilities & {
+  /** The saved workflow's id, null until a draft has been saved once. */
+  currentWorkflowId: string | null;
+  workflowName: string;
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  allWorkflows: WorkflowSummaries;
+  userIntegrations: UserIntegrations;
+
+  workflowMode: WorkflowMode;
+  setCurrentWorkflowMode: (mode: WorkflowMode) => void;
+
+  // Work already in flight, which every write control is disabled on.
+  isExecuting: boolean;
+  isGenerating: boolean;
+  isSaving: boolean;
+  hasUnsavedChanges: boolean;
+
+  /** The publication badge's fields, undefined until the query resolves. */
+  publication: ReturnType<typeof selectPublicationState> | undefined;
+
+  // The writers behind the toolbar's controls.
+  setIsExecuting: (value: boolean) => void;
+  clearWorkflow: () => void;
+  updateNodeData: (update: NodeDataUpdate) => void;
+  setSelectedNodeId: (id: string | null) => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+};
+
+export function useWorkflowToolbarState(): WorkflowToolbarState {
   const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
   const [isExecuting, setIsExecuting] = useAtom(isExecutingAtom);
@@ -126,5 +181,3 @@ export function useWorkflowToolbarState() {
     publication,
   };
 }
-
-export type WorkflowToolbarState = ReturnType<typeof useWorkflowToolbarState>;

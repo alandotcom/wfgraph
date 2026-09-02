@@ -43,7 +43,7 @@ export function readIntegrationId(value: unknown): string | undefined {
 
 /** Base input every step's record carries, whatever else the node configured. */
 export type StepInput = {
-  _context?: StepContext;
+  _context?: StepContext | undefined;
 };
 
 type StepInputWithInternalFields = StepInput & {

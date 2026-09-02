@@ -88,10 +88,10 @@ function WebhookConnectionDetails({
 }: {
   connectionId: string;
   type: string;
-  helpText?: string;
-  secretKey?: string;
+  helpText?: string | undefined;
+  secretKey?: string | undefined;
   connection: Integration | undefined;
-  disabled?: boolean;
+  disabled?: boolean | undefined;
 }) {
   const { push } = useOverlay();
   const repairAgainstConnectionList = useConnectionRepair();

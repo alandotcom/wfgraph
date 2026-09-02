@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   MAX_REQUEST_BODY_BYTES,
   readCappedText,
 } from "#src/backend/lib/http/capped-body";
 
 function post(body: BodyInit | null, headers?: HeadersInit): Request {
-  return new Request("http://localhost/hook", {
-    method: "POST",
-    body,
-    ...(headers ? { headers } : {}),
-  });
+  return new Request(
+    "http://localhost/hook",
+    omitUndefined({
+      method: "POST",
+      body,
+      headers,
+    })
+  );
 }
 
 /** A body arriving in pieces with no `content-length`, the way a chunked send does. */

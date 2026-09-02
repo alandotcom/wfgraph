@@ -40,7 +40,7 @@ import WorkflowsPage from "#src/routes/workflows/page";
 
 /** Which run the Runs panel has open, when any. */
 export type WorkflowRouteSearch = {
-  executionId?: string;
+  executionId?: string | undefined;
 };
 
 function validateWorkflowSearch(

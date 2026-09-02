@@ -41,9 +41,9 @@ export type WorkflowTemplateValidationResult =
  * ever sees it.
  */
 type ValueTarget = {
-  type?: ValueTargetType;
+  type?: ValueTargetType | undefined;
   required: boolean;
-  literal?: true;
+  literal?: true | undefined;
 };
 
 /**
@@ -81,7 +81,7 @@ function valueTargets(
   for (const field of flattenConfigFields(action?.configFields ?? [])) {
     targets.set(field.key, {
       required: field.required === true,
-      ...(field.literal ? { literal: field.literal } : {}),
+      literal: field.literal,
     });
   }
 
@@ -101,6 +101,9 @@ export function validateWorkflowTemplates(input: {
   catalog: ExtensionCatalog;
 }): WorkflowTemplateValidationResult {
   const { nodes, edges, catalog } = input;
+  // A Map rather than a keyBy record: both lookups below are keyed by text the
+  // operator typed inside a template token, and a plain object would answer a
+  // token named `constructor` or `toString` with a prototype member.
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
 
   for (const node of nodes) {

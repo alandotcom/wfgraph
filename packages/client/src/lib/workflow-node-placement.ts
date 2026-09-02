@@ -35,6 +35,9 @@ export function workflowNodeRectangles(
     nodeId: string
   ) => { readonly x: number; readonly y: number } | undefined = () => undefined
 ): NodeRectangle[] {
+  // A Map rather than a keyBy record: `parentId` comes from the persisted
+  // graph, and a plain object would answer a parent named `constructor` with a
+  // prototype member instead of undefined.
   const nodesById = new Map(nodes.map((node) => [node.id, node]));
 
   return nodes

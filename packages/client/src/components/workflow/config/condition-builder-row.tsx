@@ -55,9 +55,9 @@ import {
 type ConditionBuilderRowProps = {
   label: string;
   /** See `ConfigSection`: what the Edit and Done buttons name. */
-  editActionName?: string;
+  editActionName?: string | undefined;
   /** See `ConfigSection`: only a row mounted in the panel column may pin. */
-  stickyHeader?: boolean;
+  stickyHeader?: boolean | undefined;
   description: string;
   /** The fields rules may be built from, already typed. */
   fields: ConditionSelectableField[];
@@ -67,13 +67,13 @@ type ConditionBuilderRowProps = {
   value: string;
   onChange: (next: { model: string; expression: string }) => void;
   /** Excluded from a value field's template autocomplete, being its own node. */
-  currentNodeId?: string;
+  currentNodeId?: string | undefined;
   /**
    * Whether the row opens in edit mode rather than in view mode. Read once, on
    * mount, for the caller that seeds a model with its own button: without it,
    * one click would produce a summary of a rule nobody has filled in yet.
    */
-  defaultEditing?: boolean;
+  defaultEditing?: boolean | undefined;
   disabled: boolean;
 };
 
@@ -156,8 +156,8 @@ function enumOptionLabel(
 function ConditionValueInput(input: {
   condition: ConditionRule;
   disabled: boolean;
-  currentNodeId?: string;
-  field?: ConditionSelectableField;
+  currentNodeId?: string | undefined;
+  field?: ConditionSelectableField | undefined;
   onConditionChange: (condition: ConditionRule) => void;
 }) {
   const { condition, disabled, currentNodeId, field, onConditionChange } =

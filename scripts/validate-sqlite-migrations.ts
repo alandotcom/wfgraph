@@ -49,11 +49,16 @@ const descendingIndexes = new Map<string, readonly [string, number][]>([
 ]);
 
 try {
+  // A migration folder name is a timestamp-prefixed identifier, so code-unit
+  // order is the order the migrations run in. compareText orders text a person
+  // reads, and root scripts have no es-toolkit dependency for sortBy.
   const migrationDirectories = readdirSync(migrationsDir, {
     withFileTypes: true,
   })
     .filter((entry) => entry.isDirectory())
-    .toSorted((left, right) => left.name.localeCompare(right.name));
+    .toSorted((left, right) =>
+      left.name < right.name ? -1 : left.name > right.name ? 1 : 0
+    );
   const migrations = migrationDirectories.map((entry) => {
     const migrationSql = readFileSync(
       resolve(migrationsDir, entry.name, "migration.sql"),

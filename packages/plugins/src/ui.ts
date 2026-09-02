@@ -30,7 +30,9 @@ export type IntegrationUi = {
   // Custom renderers for step output in the workflow runs panel, keyed by the
   // action slug the plugin declares in its `actions` list (for example
   // "get-user", matching the "clerk/get-user" action ID).
-  outputComponents?: Record<string, ComponentType<ResultComponentProps>>;
+  outputComponents?:
+    | Record<string, ComponentType<ResultComponentProps>>
+    | undefined;
 };
 
 export const integrationUi = {

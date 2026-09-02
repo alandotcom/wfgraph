@@ -28,9 +28,9 @@ import {
  */
 export function useTemplateBadgeField(input: {
   value: string;
-  onChange?: (value: string) => void;
-  placeholder?: string;
-  multiline?: boolean;
+  onChange?: ((value: string) => void) | undefined;
+  placeholder?: string | undefined;
+  multiline?: boolean | undefined;
 }) {
   const { value, onChange, placeholder, multiline } = input;
 

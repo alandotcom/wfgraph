@@ -114,6 +114,27 @@ describe("describe_action", () => {
     })
   );
 
+  it.effect("leaves the placeholder key off a field that declares none", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({ catalog });
+      const result = yield* tools.describe_action({
+        actionId: "slack/send-message",
+      });
+
+      // toEqual reads a key holding undefined as an absent key, so this case
+      // uses toStrictEqual, which compares the key list too.
+      const channel = result.configFields.find(
+        (field) => field.key === "channel"
+      );
+      expect(channel).toStrictEqual({
+        key: "channel",
+        label: "Channel",
+        type: "template-input",
+        required: true,
+      });
+    })
+  );
+
   it.effect("carries the output fields a template token can address", () =>
     Effect.gen(function* () {
       const { tools } = yield* agentToolsFor({ catalog });

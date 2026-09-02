@@ -5,6 +5,7 @@
  * Lookup exits may share one downstream endpoint; a Condition is one True exit.
  */
 
+import { groupBy, uniqBy } from "es-toolkit/array";
 import { normalizeConditionBranch } from "#src/conditions/condition-branch";
 import { type ExtensionCatalog, findAction } from "#src/extensions/catalog";
 import {
@@ -19,12 +20,12 @@ import type { WorkflowEdge } from "#src/graph/types";
 /** Node fields grouping reads; shared and editor nodes both satisfy this. */
 export type GroupGraphNode = {
   id: string;
-  parentId?: string;
+  parentId?: string | undefined;
   data: {
     type: string;
-    label?: string;
-    config?: Record<string, unknown>;
-    enabled?: boolean;
+    label?: string | undefined;
+    config?: Record<string, unknown> | undefined;
+    enabled?: boolean | undefined;
   };
 };
 
@@ -65,7 +66,7 @@ export function groupOutletHandle(
 
 export function predecessorKey(edge: {
   source: string;
-  sourceHandle?: string | null;
+  sourceHandle?: string | null | undefined;
 }): string {
   return `${edge.source}\0${edge.sourceHandle ?? ""}`;
 }
@@ -510,29 +511,25 @@ export function orderGroupParentsFirst<T extends GroupGraphNode>(
     return nodes;
   }
 
-  const groups: T[] = [];
-  const children: T[] = [];
-  const rest: T[] = [];
-  for (const node of nodes) {
-    if (isGroupNode(node)) {
-      groups.push(node);
-    } else if (node.parentId) {
-      children.push(node);
-    } else {
-      rest.push(node);
-    }
-  }
-  return [...rest, ...groups, ...children];
+  const byKind = groupBy(nodes, nodeOrderKind);
+  return [
+    ...(byKind.rest ?? []),
+    ...(byKind.groups ?? []),
+    ...(byKind.children ?? []),
+  ];
+}
+
+/** Node kinds in the order `orderGroupParentsFirst` emits them. */
+type NodeOrderKind = "rest" | "groups" | "children";
+
+function nodeOrderKind(node: GroupGraphNode): NodeOrderKind {
+  return isGroupNode(node) ? "groups" : node.parentId ? "children" : "rest";
 }
 
 function isRestGroupsChildrenOrder(nodes: readonly GroupGraphNode[]): boolean {
-  let phase: "rest" | "groups" | "children" = "rest";
+  let phase: NodeOrderKind = "rest";
   for (const node of nodes) {
-    const kind: "rest" | "groups" | "children" = isGroupNode(node)
-      ? "groups"
-      : node.parentId
-        ? "children"
-        : "rest";
+    const kind = nodeOrderKind(node);
     if (kind === phase) {
       continue;
     }
@@ -550,16 +547,18 @@ function isRestGroupsChildrenOrder(nodes: readonly GroupGraphNode[]): boolean {
 }
 
 export function undersizedGroupIds(nodes: readonly GroupGraphNode[]): string[] {
-  const count = new Map<string, number>();
+  // A Map rather than a countBy record: `parentId` comes from the persisted
+  // graph, and a plain object would answer a group named `constructor` with a
+  // prototype member instead of undefined.
+  const childCount = new Map<string, number>();
   for (const node of nodes) {
-    if (!node.parentId) {
-      continue;
+    if (node.parentId) {
+      childCount.set(node.parentId, (childCount.get(node.parentId) ?? 0) + 1);
     }
-    count.set(node.parentId, (count.get(node.parentId) ?? 0) + 1);
   }
 
   return nodes
-    .filter((node) => isGroupNode(node) && (count.get(node.id) ?? 0) < 2)
+    .filter((node) => isGroupNode(node) && (childCount.get(node.id) ?? 0) < 2)
     .map((node) => node.id);
 }
 
@@ -729,16 +728,7 @@ function orderMembers(
 function collapseDuplicateDisplayEdges<E extends WorkflowEdge>(
   edges: E[]
 ): E[] {
-  const seen = new Set<string>();
-  const collapsed: E[] = [];
-  for (const edge of edges) {
-    const key = edgeEndpointKey(edge);
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    collapsed.push(edge);
-  }
+  const collapsed = uniqBy(edges, edgeEndpointKey);
   // The same array when nothing duplicated, so a canvas render that changed no
   // edge hands React Flow the `edges` prop it already holds.
   return collapsed.length === edges.length ? edges : collapsed;

@@ -1,4 +1,5 @@
 import { useAtomValue, useSetAtom } from "jotai";
+import { isEmptyObject } from "es-toolkit/predicate";
 import {
   ChevronLeft,
   ChevronRight,
@@ -92,7 +93,7 @@ export function WorkflowChangesPanel({
   const selectedIndex = payload.nodeChanges.findIndex(
     (change) => change.nodeId === selectedNodeId
   );
-  const layoutChanged = Object.keys(session.positionOverrides).length > 0;
+  const layoutChanged = !isEmptyObject(session.positionOverrides);
 
   const selectNodeChange = (change: WorkflowNodeChange) => {
     if (!workflowId) return;

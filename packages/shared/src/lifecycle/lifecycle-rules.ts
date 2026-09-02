@@ -10,6 +10,7 @@
 
 import { Schema } from "effect";
 import { compact } from "es-toolkit/array";
+import { isEmptyObject } from "es-toolkit/predicate";
 import {
   type ExtensionCatalog,
   findEvent,
@@ -156,7 +157,7 @@ export function configDeclaresCancelEvent(
 export function resolveCorrelationPath(input: {
   rules: LifecycleRules;
   eventName: string;
-  declaredPath?: string;
+  declaredPath?: string | undefined;
 }): string | undefined {
   return input.rules.correlationPaths?.[input.eventName] ?? input.declaredPath;
 }
@@ -216,9 +217,9 @@ export type CorrelationPathRequest = {
   eventName: string;
   role: CorrelationPathRole;
   /** The Event Author's declaration, which stands until the builder overrides it. */
-  declaredPath?: string;
+  declaredPath?: string | undefined;
   /** The builder's own path for this workflow, absent while the declaration stands. */
-  suppliedPath?: string;
+  suppliedPath?: string | undefined;
 };
 
 /**
@@ -319,10 +320,11 @@ export function retainNamedKeys(
     return undefined;
   }
 
+  // oxlint-disable-next-line wfgraph/no-entries-round-trip -- pickBy widens a filtered Record<string, string> to Partial<T>, which drops the guarantee that every value is a string. The entries round trip keeps the value type callers rely on.
   const next = Object.fromEntries(
     Object.entries(stored).filter(([eventName]) => named.has(eventName))
   );
-  return Object.keys(next).length > 0 ? next : undefined;
+  return isEmptyObject(next) ? undefined : next;
 }
 
 /**
@@ -363,15 +365,13 @@ export function pruneCorrelationPaths(rules: LifecycleRules): LifecycleRules {
 function namedEventConnections(rules: LifecycleRules) {
   return [...rules.startEvents, ...rules.cancelEvents].map((event) => ({
     event,
-    ...(rules.connectionIds?.[event]
-      ? { connectionId: rules.connectionIds[event] }
-      : {}),
+    connectionId: rules.connectionIds?.[event],
   }));
 }
 
 function writeEventConnections(
   rules: LifecycleRules,
-  bindings: readonly { event: string; connectionId?: string }[]
+  bindings: readonly { event: string; connectionId?: string | undefined }[]
 ): LifecycleRules {
   const next = Object.fromEntries(
     bindings.flatMap((binding) =>
@@ -381,7 +381,7 @@ function writeEventConnections(
 
   return {
     ...rules,
-    connectionIds: Object.keys(next).length > 0 ? next : undefined,
+    connectionIds: isEmptyObject(next) ? undefined : next,
   };
 }
 

@@ -1,5 +1,5 @@
 import { compact } from "es-toolkit/array";
-import type { JsonObject, JsonValue } from "#src/types/json";
+import { isJsonObject, type JsonObject, type JsonValue } from "#src/types/json";
 import { isSafeRecordPath } from "#src/types/record-key";
 
 /**
@@ -46,7 +46,7 @@ export function getValueByPath(
 
     // Null and arrays are handled above, so an object here is a keyed JSON
     // object and the index read narrows on its own.
-    if (typeof current === "object") {
+    if (isJsonObject(current)) {
       current = Object.hasOwn(current, segment) ? current[segment] : undefined;
       continue;
     }
@@ -94,12 +94,7 @@ export function setValueByPath(
     const existing = Object.hasOwn(current, segment)
       ? current[segment]
       : undefined;
-    const next =
-      existing !== null &&
-      typeof existing === "object" &&
-      !Array.isArray(existing)
-        ? existing
-        : {};
+    const next = isJsonObject(existing) ? existing : {};
     current[segment] = next;
     current = next;
   }

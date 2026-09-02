@@ -7,9 +7,10 @@ import type { JsonObject } from "@wfgraph/shared/types/json";
 import { Effect } from "effect";
 import { executionResultFromStepResult } from "#src/backend/engine/contracts";
 
-function runLifecycle(ctx: NodeWorkContext) {
+function runLifecycle(context: NodeWorkContext) {
   return Effect.gen(function* () {
-    const { node, nodeName, store, runtime, executionId, startPayload } = ctx;
+    const { node, nodeName, store, runtime, executionId, startPayload } =
+      context;
 
     // The entry node's output is the payload and nothing else. The Event's own
     // schema validated it at intake, which is the only gate it passes through,

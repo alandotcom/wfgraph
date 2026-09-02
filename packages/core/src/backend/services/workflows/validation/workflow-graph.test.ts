@@ -60,7 +60,7 @@ function createEdge(
     id,
     source,
     target,
-    ...(source.startsWith("lifecycle") ? { sourceHandle: "started" } : {}),
+    sourceHandle: source.startsWith("lifecycle") ? "started" : undefined,
   };
 }
 

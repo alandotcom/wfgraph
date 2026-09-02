@@ -167,7 +167,7 @@ const PUBLISHED_MODES = ["live", "test"] as const;
 function PublishedModeControl({
   publishedVersion,
 }: {
-  publishedVersion?: number;
+  publishedVersion?: number | undefined;
 }) {
   const workflowMode = useAtomValue(currentWorkflowModeAtom);
   const canUpdate = can(WfGraphOperations.workflowUpdate.id);
@@ -285,7 +285,7 @@ function PublishedModeControl({
   );
 }
 
-function DraftStatus({ workflowId }: { workflowId?: string }) {
+function DraftStatus({ workflowId }: { workflowId?: string | undefined }) {
   const { data: publication } = useQuery({
     ...workflowPublicationQueryOptions(workflowId ?? ""),
     enabled: Boolean(workflowId),
@@ -430,7 +430,11 @@ function ChangesStatus() {
   );
 }
 
-export function WorkflowStatusStrip({ workflowId }: { workflowId?: string }) {
+export function WorkflowStatusStrip({
+  workflowId,
+}: {
+  workflowId?: string | undefined;
+}) {
   const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
   const readOnly = workspaceView !== "draft";
 

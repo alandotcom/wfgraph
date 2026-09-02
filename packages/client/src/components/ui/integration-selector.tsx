@@ -21,9 +21,9 @@ import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 type IntegrationSelectorProps = {
   integrationType: string;
-  value?: string;
+  value?: string | undefined;
   onChange: (integrationId: string) => void;
-  disabled?: boolean;
+  disabled?: boolean | undefined;
 };
 
 /**
