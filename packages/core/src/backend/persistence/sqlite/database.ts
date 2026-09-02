@@ -27,7 +27,7 @@ export const SQLITE_IN_FLIGHT_EXECUTION_STATUSES =
 
 export type SqliteExecutor = Pick<
   EffectSQLiteNodeDatabase,
-  "all" | "get" | "run" | "values"
+  "all" | "delete" | "get" | "insert" | "run" | "select" | "update" | "values"
 >;
 
 export type SqliteDatabase = {
