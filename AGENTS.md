@@ -362,14 +362,15 @@ is the one home of the seven core entry points.
 
 - Remove unused imports, variables, and functions. knip reports them.
 - es-toolkit is the standard library for shaping plain data. Import it by subpath, never
-  bare and never from `es-toolkit/compat`: `es-toolkit/array`, `/object`, `/predicate`,
-  `/string`, `/function`, `/promise`, `/math`, `/fp`. Exemplar:
-  `packages/client/src/lib/workflow-run-labels.ts`.
+  bare and never from `es-toolkit/compat` (the plugin's `es-toolkit-subpath` rule enforces
+  this): `es-toolkit/array`, `/object`, `/predicate`, `/string`, `/function`, `/promise`,
+  `/math`, `/fp`. Exemplar: `packages/client/src/lib/workflow-run-labels.ts`.
 - `pipe` from `es-toolkit/fp` at three or more array steps, or whenever a call reads
   inside-out; two steps stay direct calls, and `flow` is for a step reused in more than one
   pipe. A non-curried helper inside a pipe is written as an arrow.
-- `pipe` and `flow` are never imported from `effect`. An Effect is composed with `Effect.gen`
-  and the `.pipe(...)` method, so the two bare names always mean es-toolkit.
+- `pipe` and `flow` are never imported from `effect`; the plugin's `no-effect-pipe-import`
+  rule enforces this. An Effect is composed with `Effect.gen` and the `.pipe(...)` method,
+  so the two bare names always mean es-toolkit.
 - An es-toolkit pipeline takes plain data only: arrays and records. An `Effect`, `Stream`,
   `Option` or `Schema` value never passes through es-toolkit's `pipe`, and Effect's own
   operators stay namespaced (`Effect.map`, `Option.map`), so a file using both reads
@@ -384,20 +385,16 @@ is the one home of the seven core entry points.
   `...(x === undefined ? {} : { k: x })` is not written here.
 - `groupBy`, `keyBy`, `countBy` and `partition` over pushing into a `Map` or into parallel
   arrays. Two exceptions stay a `Map`. The first is state a traversal mutates while it
-  runs, such as in-degree counts and adjacency in a topological pass. The second is any
-  grouping or lookup whose key can be text a person or an agent chose: a node id, a parent
-  id, a label, a field key, a path taken from a template token. A plain object answers
-  `constructor` with a prototype member and swallows a `__proto__` assignment, and
-  es-toolkit builds its result on a plain object, so those keys stay a `Map`. Keys a
-  developer declared, such as an enum member or an integration type from the catalog, may
-  use the es-toolkit helpers. The sites the rule protects are
-  `packages/client/src/lib/workflow-node-placement.ts`,
-  `packages/core/src/backend/extensions/steps/config-form.ts`,
-  `packages/core/src/backend/services/workflows/validation/workflow-template-validation.ts`,
-  `packages/evals/src/agent/judges/semantics.ts`,
-  `packages/client/src/components/workflow/config/condition-field-combobox.tsx`,
-  `packages/shared/src/graph/node-group.ts` and
-  `packages/shared/src/graph/workflow-issues.ts`.
+  runs, such as in-degree counts and adjacency in a topological pass. The second is a
+  grouping keyed by text a person or the build agent chose: a node id, parent id, label,
+  or field key. es-toolkit's `groupBy`, `countBy` and `keyBy` write `result[key]`, which
+  loses a key named `__proto__` and answers a prototype member for `constructor`. That
+  grouping uses `Map.groupBy` or a `Map`. A developer-declared key, such as an enum member
+  or an integration type from the catalog, uses the es-toolkit helpers.
+  `packages/shared/src/graph/node-group.ts`,
+  `packages/client/src/lib/workflow-issues-store.ts` and
+  `packages/core/src/backend/services/workflows/validation/workflow-template-validation.ts`
+  hold this shape.
 - `sortBy` and `orderBy` for numeric and identifier keys; `compareText`
   (`packages/shared/src/types/string.ts`) for text a person reads.
 - `compact` and `isNotNil` over `filter(Boolean)` and `filter((x) => x !== undefined)`.
@@ -415,8 +412,8 @@ is the one home of the seven core entry points.
   into one is `map`, `flatMap` or `compact(map)`. A `for` loop stays for early exit and for
   traversal state.
 - If a call needs an unsafe cast, write a small typed helper instead.
-- `scripts/lint/conventions-plugin.ts` holds the rules in this section that a linter can
-  check. Each rule names the helper to write instead of the shape it reports, and
+- `scripts/lint/conventions-plugin.ts` holds ten rules that check the rest of this section.
+  Each rule names the helper to write instead of the shape it reports, and
   `.oxlintrc.json` turns a rule on in the commit that clears its last violation.
 - Jotai by intent: `useAtom` read/write, `useAtomValue` read, `useSetAtom` write. Jotai
   holds UI state only; anything the server owns lives in the query cache.
