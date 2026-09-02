@@ -7,6 +7,8 @@ import {
   workflowRestoreVersionInputSchema,
   workflowVersionHistoryInputSchema,
   workflowVersionHistoryPayloadSchema,
+  workflowVersionUsageInputSchema,
+  workflowVersionUsagePayloadSchema,
 } from "#src/graph/publication-contracts";
 import { serializedWorkflowGraphSchema } from "#src/graph/schemas";
 import { WORKFLOW_VERSION_KINDS } from "#src/graph/version-kinds";
@@ -92,6 +94,12 @@ const workflowVersionHistoryInput = contractSchema(
 );
 const workflowVersionHistoryPayload = contractSchema(
   workflowVersionHistoryPayloadSchema
+);
+const workflowVersionUsageInput = contractSchema(
+  workflowVersionUsageInputSchema
+);
+const workflowVersionUsagePayload = contractSchema(
+  workflowVersionUsagePayloadSchema
 );
 const workflowComparisonInput = contractSchema(workflowComparisonInputSchema);
 const workflowComparisonPayload = contractSchema(
@@ -360,6 +368,13 @@ export const workflowContract = {
   )
     .input(workflowVersionHistoryInput)
     .output(workflowVersionHistoryPayload),
+  getVersionUsage: route(
+    "GET",
+    "/workflows/{workflowId}/versions/usage",
+    WfGraphOperations.workflowGetVersionUsage
+  )
+    .input(workflowVersionUsageInput)
+    .output(workflowVersionUsagePayload),
   compareVersion: route(
     "POST",
     "/workflows/{workflowId}/versions/compare",

@@ -126,11 +126,16 @@ export function refreshWorkflowPublication(
   });
 }
 
-/** Version history for every workflow filter, refreshed after a publication. */
+/** Version history and usage, refreshed after a publication. */
 export function refreshWorkflowVersionHistory(queryClient: QueryClient) {
-  return queryClient.invalidateQueries({
-    queryKey: orpcQuery.workflow.getVersionHistory.key(),
-  });
+  return Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: orpcQuery.workflow.getVersionHistory.key(),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: orpcQuery.workflow.getVersionUsage.key(),
+    }),
+  ]);
 }
 
 /**
@@ -191,7 +196,7 @@ export function cacheWorkflow(
 }
 
 /**
- * Both views of run history, and the open run's logs, events, and status.
+ * Both views of run history, version usage, and the open run's detail.
  *
  * Starting, cancelling, or deleting a run makes the lists wrong. Cancelling also
  * stops the open-run poll: that interval is derived from the list row, so a list
@@ -214,6 +219,9 @@ export function refreshRunHistory(queryClient: QueryClient) {
     }),
     queryClient.invalidateQueries({
       queryKey: orpcQuery.workflow.getExecutionStatus.key(),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: orpcQuery.workflow.getVersionUsage.key(),
     }),
   ]);
 }

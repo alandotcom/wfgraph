@@ -180,6 +180,12 @@ is never published. A draft save edits the workflow's own graph and creates no
 version. Published versions form durable history, and an Execution remains
 pinned to the version it started against.
 
+**Version Usage**:
+The current published version and every Workflow Version an active Execution
+pins. Usage shows active-run counts and the oldest active run, then compares a
+version's catalog fingerprint and action ids with the live catalog so a builder
+can see catalog drift or missing actions before those runs need attention.
+
 **Publish**:
 The hard gate that turns a draft into a Workflow Version, and the only place a
 graph is held to whether it can run: required fields, Events, Event Split

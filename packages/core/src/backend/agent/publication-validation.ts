@@ -13,7 +13,7 @@ import type {
 } from "@wfgraph/agent/document";
 import { findAction } from "@wfgraph/shared/extensions/catalog";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
+import { enabledActionTypeOf } from "@wfgraph/shared/graph/node-config";
 import { collectWorkflowIssues } from "@wfgraph/shared/graph/workflow-issues";
 import { checkUnreachableSubtrees } from "#src/backend/services/workflows/publish-checks";
 import { validateWorkflowConditionConfigs } from "#src/backend/services/workflows/validation/workflow-conditions-validation";
@@ -80,10 +80,7 @@ export function validateAgentPublication(input: {
   }
 
   for (const node of nodes) {
-    if (node.data.enabled === false) {
-      continue;
-    }
-    const actionId = actionTypeOf(node);
+    const actionId = enabledActionTypeOf(node);
     const integrationType = actionId
       ? findAction(input.catalog, actionId)?.integration
       : undefined;

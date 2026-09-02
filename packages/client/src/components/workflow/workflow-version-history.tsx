@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "#src/components/ui/dialog";
 import { PanelState } from "#src/components/workflow/workflow-changes-panel-state";
+import { WorkflowVersionUsage } from "#src/components/workflow/workflow-version-usage";
 import {
   comparisonSessionAtom,
   setComparisonSubviewAtom,
@@ -38,6 +39,7 @@ export function WorkflowVersionHistory({
   const setSubview = useSetAtom(setComparisonSubviewAtom);
   const [restoreOpen, setRestoreOpen] = useState(false);
   const canReadHistory = can(WfGraphOperations.workflowGetVersionHistory.id);
+  const canReadUsage = can(WfGraphOperations.workflowGetVersionUsage.id);
 
   const history = useInfiniteQuery({
     ...orpcQuery.workflow.getVersionHistory.infiniteOptions({
@@ -79,57 +81,76 @@ export function WorkflowVersionHistory({
         </Button>
         <h2 className="font-semibold text-sm">Version history</h2>
       </div>
-      {history.isPending ? (
-        <PanelState label="Loading version history" />
-      ) : null}
-      {history.isError ? (
-        <PanelState label="Unable to load version history" />
-      ) : null}
-      {!history.isPending && !history.isError ? (
-        <div className="min-h-0 flex-1 divide-y overflow-y-auto">
-          {historyItems.map((item) => (
-            <button
-              aria-pressed={item.id === session.selectedHistoryVersionId}
-              className={cn(
-                "flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-muted",
-                item.id === session.selectedHistoryVersionId && "bg-muted"
-              )}
-              key={item.id}
-              disabled={actions.isPending}
-              onClick={() => {
-                if (!workflowId) return;
-                void actions.openComparison({
-                  baseVersionId: item.id,
-                });
-              }}
-              type="button"
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {canReadUsage && workflowId ? (
+          <WorkflowVersionUsage workflowId={workflowId} />
+        ) : null}
+        <section aria-labelledby="all-versions-heading">
+          <div className="border-b bg-muted/30 px-4 py-2">
+            <h3
+              className="font-medium text-muted-foreground text-xs"
+              id="all-versions-heading"
             >
-              <span className="font-medium text-xs">
-                Version {item.version}
-              </span>
-              <span className="text-right text-muted-foreground text-xs">
-                {item.isCurrent ? "Current" : ""}
-                {item.isCurrent ? " · " : ""}
-                {new Date(item.publishedAt).toLocaleString()}
-              </span>
-            </button>
-          ))}
-          {history.hasNextPage ? (
-            <div className="p-3">
-              <Button
-                className="w-full"
-                disabled={history.isFetchingNextPage}
-                onClick={() => void history.fetchNextPage()}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                {history.isFetchingNextPage ? "Loading" : "Load more"}
-              </Button>
+              All versions
+            </h3>
+          </div>
+          {history.isPending ? (
+            <div className="min-h-28">
+              <PanelState label="Loading version history" />
             </div>
           ) : null}
-        </div>
-      ) : null}
+          {history.isError ? (
+            <div className="min-h-28">
+              <PanelState label="Unable to load version history" />
+            </div>
+          ) : null}
+          {!history.isPending && !history.isError ? (
+            <div className="divide-y">
+              {historyItems.map((item) => (
+                <button
+                  aria-pressed={item.id === session.selectedHistoryVersionId}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-muted",
+                    item.id === session.selectedHistoryVersionId && "bg-muted"
+                  )}
+                  key={item.id}
+                  disabled={actions.isPending}
+                  onClick={() => {
+                    if (!workflowId) return;
+                    void actions.openComparison({
+                      baseVersionId: item.id,
+                    });
+                  }}
+                  type="button"
+                >
+                  <span className="font-medium text-xs">
+                    Version {item.version}
+                  </span>
+                  <span className="text-right text-muted-foreground text-xs">
+                    {item.isCurrent ? "Current" : ""}
+                    {item.isCurrent ? " · " : ""}
+                    {new Date(item.publishedAt).toLocaleString()}
+                  </span>
+                </button>
+              ))}
+              {history.hasNextPage ? (
+                <div className="p-3">
+                  <Button
+                    className="w-full"
+                    disabled={history.isFetchingNextPage}
+                    onClick={() => void history.fetchNextPage()}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    {history.isFetchingNextPage ? "Loading" : "Load more"}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+      </div>
       {actions.canRestore ? (
         <div className="border-t p-3">
           <Button

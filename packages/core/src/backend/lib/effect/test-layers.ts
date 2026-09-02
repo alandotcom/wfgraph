@@ -286,6 +286,7 @@ const workflowRepoStubs: WorkflowRepo["Service"] = {
   insertCurrent: refuse("insertCurrent"),
   findLatestVersion: refuse("findLatestVersion"),
   listVersionHistoryPage: refuse("listVersionHistoryPage"),
+  listVersionUsage: refuse("listVersionUsage"),
   findVersionById: refuse("findVersionById"),
   findPublishedVersion: refuse("findPublishedVersion"),
   findByIdWithPublishedVersion: refuse("findByIdWithPublishedVersion"),

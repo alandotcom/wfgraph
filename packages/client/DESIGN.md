@@ -327,6 +327,12 @@ view opened. The inspector lists deterministic node and connection facts and
 links to paginated version history. Restore always says "Restore version N as
 draft" and requires confirmation that the published version remains unchanged.
 
+Version history starts with **In use** when the viewer can inspect version
+usage. Its count names versions, not runs: the current publication remains
+listed even with no active runs, alongside every version an active run pins.
+Each row keeps its active-run status visible, opens to its action ids, and marks
+catalog drift as a warning without implying that a draft snapshot was published.
+
 Comparison marks nodes with `A`, `M`, or `D` in addition to signal color. Added
 nodes use Signal Green, modified nodes use Signal Amber, and deleted nodes use
 Signal Red. Deleted edges use a distinct dotted treatment. Node position,

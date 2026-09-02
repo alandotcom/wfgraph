@@ -7,15 +7,20 @@ import type {
 import { NotFound } from "#src/backend/lib/effect/failures";
 import {
   SilentAppLoggerLayer,
+  stubExtensionCatalog,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import {
   compareWorkflowVersion,
   getWorkflowVersionHistory,
+  getWorkflowVersionUsage,
   restoreWorkflowVersion,
 } from "#src/backend/services/workflows/versions";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { catalogFingerprint } from "#src/backend/services/workflows/version-digest";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 
 function graph(config: Record<string, unknown> = {}) {
   return createSerializedWorkflowGraph({
@@ -47,6 +52,25 @@ function graph(config: Record<string, unknown> = {}) {
         },
       },
     ],
+    edges: [],
+  });
+}
+
+function graphWithActions(
+  ...actions: Array<string | { id: string; enabled: false }>
+) {
+  return createSerializedWorkflowGraph({
+    nodes: actions.map((action, index) => ({
+      id: `action_${index}`,
+      type: "action",
+      position: { x: index * 200, y: 0 },
+      data: {
+        label: typeof action === "string" ? action : action.id,
+        type: "action",
+        config: { actionType: typeof action === "string" ? action : action.id },
+        enabled: typeof action === "string" ? undefined : action.enabled,
+      },
+    })),
     edges: [],
   });
 }
@@ -85,6 +109,121 @@ function version(
 
 describe("workflow versions", () => {
   layer(Layer.mergeAll(SilentAppLoggerLayer))((it) => {
+    it.effect(
+      "reports active version usage against every catalog action including hidden ones",
+      () =>
+        Effect.gen(function* () {
+          const catalog: ExtensionCatalog = {
+            events: [],
+            integrations: [],
+            actions: [
+              {
+                id: "example/send",
+                label: "Send",
+                description: "Sends a message",
+                category: "Example",
+                hidden: true,
+                configFields: [],
+                outputFields: [],
+              },
+            ],
+          };
+          const currentFingerprint = catalogFingerprint(catalog);
+          const result = yield* getWorkflowVersionUsage({
+            workflowId: "wf_1",
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                stubWorkflowRepo({
+                  existsById: () => Effect.succeed(true),
+                  listVersionUsage: () =>
+                    Effect.succeed([
+                      {
+                        id: "ver_2",
+                        kind: "published",
+                        version: 2,
+                        graph: graphWithActions(
+                          "missing/action",
+                          "example/send",
+                          "missing/action",
+                          BUILT_IN_ACTION_IDS.wait,
+                          { id: "disabled/action", enabled: false }
+                        ),
+                        catalogFingerprint: currentFingerprint,
+                        publishedAt: new Date("2026-08-03T00:00:00.000Z"),
+                        isCurrent: true,
+                        activeRunCount: 0,
+                        oldestActiveRunAt: null,
+                      },
+                      {
+                        id: "snapshot_1",
+                        kind: "draft_snapshot",
+                        version: null,
+                        graph: graphWithActions("example/send"),
+                        catalogFingerprint: "previous-catalog",
+                        publishedAt: new Date("2026-08-04T00:00:00.000Z"),
+                        isCurrent: false,
+                        activeRunCount: 2,
+                        oldestActiveRunAt: new Date("2026-08-04T01:00:00.000Z"),
+                      },
+                    ]),
+                }),
+                stubExtensionCatalog(catalog)
+              )
+            )
+          );
+
+          assert.deepStrictEqual(result, {
+            items: [
+              {
+                id: "ver_2",
+                kind: "published",
+                version: 2,
+                publishedAt: "2026-08-03T00:00:00.000Z",
+                isCurrent: true,
+                activeRunCount: 0,
+                oldestActiveRunAt: null,
+                actionIds: ["example/send", "missing/action"],
+                missingActionIds: ["missing/action"],
+                catalogMatches: true,
+              },
+              {
+                id: "snapshot_1",
+                kind: "draft_snapshot",
+                version: null,
+                publishedAt: "2026-08-04T00:00:00.000Z",
+                isCurrent: false,
+                activeRunCount: 2,
+                oldestActiveRunAt: "2026-08-04T01:00:00.000Z",
+                actionIds: ["example/send"],
+                missingActionIds: [],
+                catalogMatches: false,
+              },
+            ],
+          });
+        })
+    );
+
+    it.effect("refuses version usage for an absent workflow", () =>
+      Effect.gen(function* () {
+        const failure = yield* getWorkflowVersionUsage({
+          workflowId: "wf_missing",
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              stubWorkflowRepo({
+                existsById: () => Effect.succeed(false),
+              }),
+              stubExtensionCatalog()
+            )
+          ),
+          Effect.flip
+        );
+
+        assert.instanceOf(failure, NotFound);
+      })
+    );
+
     it.effect(
       "returns a newest-first page using the default limit and an exclusive cursor",
       () =>

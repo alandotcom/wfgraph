@@ -16,7 +16,7 @@ packages:
 # each other at exact versions, so a mismatched pair does not resolve; keeping the
 # version in one place is what makes "they move together" a fact rather than a rule
 # someone has to remember. A beta line also moves under you, hence the exact pin.
-# `effect` and the three `@effect/*` packages are here for the same reason: an
+# `effect` and the four `@effect/*` packages are here for the same reason: an
 # @effect/* package names one exact core release as a peer, so the whole set moves
 # as one (ADR-0002).
 catalog:
@@ -24,6 +24,7 @@ catalog:
   # at `effect/unstable/ai`; this package is the OpenAI half alone.
   "@effect/ai-openai": 4.0.0-rc.112
   "@effect/opentelemetry": 4.0.0-rc.112
+  "@effect/sql-sqlite-node": 4.0.0-rc.112
   "@effect/vitest": 4.0.0-rc.112
   # The backend and the editor both log through logtape.
   "@logtape/logtape": ^2.3.0
@@ -141,3 +142,9 @@ minimumReleaseAgeExclude:
   - "@changesets/types@7.0.0"
   - "@changesets/write@1.0.0"
   - shadcn@4.19.0
+
+patchedDependencies:
+  # RC4 calls Effect's removed Schema.TaggedErrorClass API. Upstream replaced it
+  # with Schema.TaggedError in drizzle-team/drizzle-orm@b1b6cf1 on the unreleased
+  # rc5 branch; remove this patch after upgrading to a release containing it.
+  drizzle-orm@1.0.0-rc.4: patches/drizzle-orm@1.0.0-rc.4.patch

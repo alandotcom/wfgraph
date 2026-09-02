@@ -228,7 +228,7 @@ The following table maps every operation ID to its permission:
 
 | Permission         | Operation IDs                                                                                                                                                                                                 |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `workflow.read`    | `workflow.getAll`, `workflow.getById`, `workflow.getVersionHistory`, `workflow.compareVersion`, `workflow.getCurrent`, `workflow.getVersionGraph`                                                             |
+| `workflow.read`    | `workflow.getAll`, `workflow.getById`, `workflow.getVersionHistory`, `workflow.getVersionUsage`, `workflow.compareVersion`, `workflow.getCurrent`, `workflow.getVersionGraph`                                 |
 | `workflow.write`   | `workflow.create`, `workflow.update`, `workflow.delete`, `workflow.duplicate`, `workflow.publish`, `workflow.restoreVersion`, `workflow.saveCurrent`, `workflow.bulkLifecycle`                                |
 | `run.read`         | `workflow.getExecutions`, `workflow.getExecutionsGlobal`, `workflow.getExecutionLogs`, `workflow.getExecutionEvents`, `workflow.getExecutionStatus`                                                           |
 | `run.manage`       | `workflow.execute`, `workflow.deleteExecutions`, `workflow.resumeWait`, `workflow.cancelExecution`                                                                                                            |
@@ -415,6 +415,12 @@ SQLite creates and migrates its own normalized tables when it opens. Every write
 takes `BEGIN IMMEDIATE`, so concurrency decisions and wait claims remain atomic
 across processes sharing the file. It is the embedded option; PostgreSQL remains
 the option for horizontally scaled hosts.
+
+Workflow Graph adopts SQLite schema versions 6 and 7 into its Drizzle migration
+journal without rewriting application tables. To retain data from a version 1–5
+file, open the file with an earlier Workflow Graph release before upgrading. It
+refuses a journal from a newer release or a physical schema that does not match
+the journal instead of attempting a downgrade or repairing altered tables.
 
 ## Cloudflare Workers and Hyperdrive
 

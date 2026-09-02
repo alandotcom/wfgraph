@@ -33,6 +33,7 @@ function returnKnownOperationId(id: WfGraphOperationId): WfGraphOperationId {
     case "workflow.getAll":
     case "workflow.getById":
     case "workflow.getVersionHistory":
+    case "workflow.getVersionUsage":
     case "workflow.compareVersion":
     case "workflow.getCurrent":
     case "workflow.getVersionGraph":

@@ -70,6 +70,9 @@ const workflowVersionHistoryKey = (workflowId: string) =>
     initialPageParam: undefined,
   });
 
+const workflowVersionUsageKey = (workflowId: string) =>
+  orpcQuery.workflow.getVersionUsage.queryKey({ input: { workflowId } });
+
 let queryClient: QueryClient;
 
 beforeEach(() => {
@@ -112,6 +115,7 @@ beforeEach(() => {
     pages: [{ items: [], nextCursor: null }],
     pageParams: [undefined],
   });
+  queryClient.setQueryData(workflowVersionUsageKey("a"), { items: [] });
   queryClient.setQueryData(integrationsKey, []);
   queryClient
     .getQueryCache()
@@ -164,6 +168,7 @@ describe("refreshRunHistory", () => {
     await refreshRunHistory(queryClient);
 
     expect(isInvalidated(workflowRunsKey("a"))).toBe(true);
+    expect(isInvalidated(workflowVersionUsageKey("a"))).toBe(true);
   });
 
   it("marks the open run's logs, events, and status stale", async () => {
@@ -187,6 +192,7 @@ describe("refreshWorkflowVersionHistory", () => {
     await refreshWorkflowVersionHistory(queryClient);
 
     expect(isInvalidated(workflowVersionHistoryKey("a"))).toBe(true);
+    expect(isInvalidated(workflowVersionUsageKey("a"))).toBe(true);
     expect(isInvalidated(workflowKey("a"))).toBe(false);
     expect(isInvalidated(workflowRunsKey("a"))).toBe(false);
     expect(isInvalidated(runHistoryKey())).toBe(false);

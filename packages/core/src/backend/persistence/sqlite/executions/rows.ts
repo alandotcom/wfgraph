@@ -7,15 +7,55 @@ import type {
   WorkflowWaitState,
 } from "#src/backend/services/executions/repo";
 import {
-  optionalDate,
-  optionalJsonObject,
-  optionalJsonValue,
-  optionalNumber,
-  optionalString,
-  requiredDate,
-  requiredString,
-  requiredVersionKind,
-} from "#src/backend/persistence/sqlite/database";
+  workflowExecutionEvents,
+  workflowExecutionLogs,
+  workflowExecutions,
+  workflowWaitStates,
+} from "#src/backend/persistence/sqlite/schema";
+
+type SqliteExecutionRow = typeof workflowExecutions.$inferSelect;
+type SqliteExecutionLogRow = typeof workflowExecutionLogs.$inferSelect;
+type SqliteExecutionEventRow = typeof workflowExecutionEvents.$inferSelect;
+type SqliteWaitStateRow = typeof workflowWaitStates.$inferSelect;
+export type SqliteExecutionListRow = Pick<
+  SqliteExecutionRow,
+  | "id"
+  | "workflowId"
+  | "status"
+  | "startSource"
+  | "runMode"
+  | "startEventName"
+  | "entityValue"
+  | "workflowRunId"
+  | "error"
+  | "startedAt"
+  | "waitingAt"
+  | "cancelledAt"
+  | "completedAt"
+  | "duration"
+> & {
+  versionKind: string;
+  versionNumber: number | null;
+};
+function optionalJsonValue(
+  value: string | null,
+  key: string
+): JsonValue | null {
+  if (value === null) return null;
+  const json = readJsonValue(JSON.parse(value));
+  if (json === null && value !== "null")
+    throw new Error(`Invalid SQLite ${key}`);
+  return json;
+}
+
+function optionalJsonObject(value: string | null, key: string) {
+  if (value === null) return null;
+  const json = readJsonValue(JSON.parse(value));
+  if (json === null || typeof json !== "object" || Array.isArray(json)) {
+    throw new Error(`Invalid SQLite ${key}`);
+  }
+  return json;
+}
 
 export function sqliteExecutionStatus(
   value: string
@@ -53,56 +93,62 @@ function runMode(value: string): WorkflowExecution["runMode"] {
   return value;
 }
 
+function versionKind(value: string): WorkflowExecutionListRow["versionKind"] {
+  if (value !== "published" && value !== "draft_snapshot") {
+    throw new Error("Invalid SQLite version_kind");
+  }
+  return value;
+}
+
 /**
  * The execution's own columns that the run lists read. The version kind and
  * number come from a join, so the readers that ask for them add those two. The
  * whole-row reader has no join and so has no values for them.
  */
 function executionListColumns(
-  row: Record<string, unknown>
+  row: Omit<SqliteExecutionListRow, "versionKind" | "versionNumber">
 ): Omit<WorkflowExecutionListRow, "versionKind" | "versionNumber"> {
   return {
-    id: requiredString(row, "id"),
-    workflowId: requiredString(row, "workflow_id"),
-    status: sqliteExecutionStatus(requiredString(row, "status")),
-    startSource: startSource(optionalString(row, "start_source")),
-    runMode: runMode(requiredString(row, "run_mode")),
-    startEventName: optionalString(row, "start_event_name"),
-    entityValue: optionalString(row, "entity_value"),
-    workflowRunId: optionalString(row, "workflow_run_id"),
-    error: optionalString(row, "error"),
-    startedAt: requiredDate(row, "started_at"),
-    waitingAt: optionalDate(row, "waiting_at"),
-    cancelledAt: optionalDate(row, "cancelled_at"),
-    completedAt: optionalDate(row, "completed_at"),
-    duration: optionalString(row, "duration"),
+    id: row.id,
+    workflowId: row.workflowId,
+    status: sqliteExecutionStatus(row.status),
+    startSource: startSource(row.startSource),
+    runMode: runMode(row.runMode),
+    startEventName: row.startEventName,
+    entityValue: row.entityValue,
+    workflowRunId: row.workflowRunId,
+    error: row.error,
+    startedAt: new Date(row.startedAt),
+    waitingAt: row.waitingAt === null ? null : new Date(row.waitingAt),
+    cancelledAt: row.cancelledAt === null ? null : new Date(row.cancelledAt),
+    completedAt: row.completedAt === null ? null : new Date(row.completedAt),
+    duration: row.duration,
   };
 }
 
 /** One run-list row, from a query that joined the version it pinned. */
 export function sqliteExecutionListRow(
-  row: Record<string, unknown>
+  row: SqliteExecutionListRow
 ): WorkflowExecutionListRow {
   return {
     ...executionListColumns(row),
-    versionKind: requiredVersionKind(row, "version_kind"),
-    versionNumber: optionalNumber(row, "version_number"),
+    versionKind: versionKind(row.versionKind),
+    versionNumber: row.versionNumber,
   };
 }
 
-export function sqliteExecution(
-  row: Record<string, unknown>
-): WorkflowExecution {
+export function sqliteExecution(row: SqliteExecutionRow): WorkflowExecution {
   return {
     ...executionListColumns(row),
-    workflowVersionId: requiredString(row, "workflow_version_id"),
-    deliveryId: optionalString(row, "delivery_id"),
-    enqueuedAt: optionalDate(row, "enqueued_at"),
-    input: optionalJsonObject(row, "input"),
-    output: optionalJsonValue(row, "output"),
-    cancelRequestedAt: optionalDate(row, "cancel_requested_at"),
-    cancelEventName: optionalString(row, "cancel_event_name"),
-    cancelPayload: optionalJsonObject(row, "cancel_payload"),
+    workflowVersionId: row.workflowVersionId,
+    deliveryId: row.deliveryId,
+    enqueuedAt: row.enqueuedAt === null ? null : new Date(row.enqueuedAt),
+    input: optionalJsonObject(row.input, "input"),
+    output: optionalJsonValue(row.output, "output"),
+    cancelRequestedAt:
+      row.cancelRequestedAt === null ? null : new Date(row.cancelRequestedAt),
+    cancelEventName: row.cancelEventName,
+    cancelPayload: optionalJsonObject(row.cancelPayload, "cancel_payload"),
   };
 }
 
@@ -120,22 +166,22 @@ function logStatus(value: string): WorkflowExecutionLog["status"] {
 }
 
 export function sqliteExecutionLog(
-  row: Record<string, unknown>
+  row: SqliteExecutionLogRow
 ): WorkflowExecutionLog {
   return {
-    id: requiredString(row, "id"),
-    executionId: requiredString(row, "execution_id"),
-    nodeId: requiredString(row, "node_id"),
-    nodeName: requiredString(row, "node_name"),
-    nodeType: requiredString(row, "node_type"),
-    status: logStatus(requiredString(row, "status")),
-    input: optionalJsonValue(row, "input"),
-    output: optionalJsonValue(row, "output"),
-    error: optionalString(row, "error"),
-    startedAt: requiredDate(row, "started_at"),
-    completedAt: optionalDate(row, "completed_at"),
-    duration: optionalString(row, "duration"),
-    timestamp: requiredDate(row, "timestamp"),
+    id: row.id,
+    executionId: row.executionId,
+    nodeId: row.nodeId,
+    nodeName: row.nodeName,
+    nodeType: row.nodeType,
+    status: logStatus(row.status),
+    input: optionalJsonValue(row.input, "input"),
+    output: optionalJsonValue(row.output, "output"),
+    error: row.error,
+    startedAt: new Date(row.startedAt),
+    completedAt: row.completedAt === null ? null : new Date(row.completedAt),
+    duration: row.duration,
+    timestamp: new Date(row.timestamp),
   };
 }
 
@@ -156,8 +202,7 @@ function isString(value: JsonValue): value is string {
   return typeof value === "string";
 }
 
-function stringArray(row: Record<string, unknown>, key: string): string[] {
-  const encoded = requiredString(row, key);
+function stringArray(encoded: string, key: string): string[] {
   const value = readJsonValue(JSON.parse(encoded));
   if (!Array.isArray(value) || !value.every(isString)) {
     throw new Error(`Invalid SQLite ${key}`);
@@ -165,43 +210,40 @@ function stringArray(row: Record<string, unknown>, key: string): string[] {
   return value;
 }
 
-export function sqliteWaitState(
-  row: Record<string, unknown>
-): WorkflowWaitState {
-  const waitType = requiredString(row, "wait_type");
+export function sqliteWaitState(row: SqliteWaitStateRow): WorkflowWaitState {
+  const waitType = row.waitType;
   if (waitType !== "delay" && waitType !== "event") {
     throw new Error("Invalid SQLite wait type");
   }
   return {
-    id: requiredString(row, "id"),
-    executionId: requiredString(row, "execution_id"),
-    workflowId: requiredString(row, "workflow_id"),
-    runId: requiredString(row, "run_id"),
-    nodeId: requiredString(row, "node_id"),
-    nodeName: requiredString(row, "node_name"),
+    id: row.id,
+    executionId: row.executionId,
+    workflowId: row.workflowId,
+    runId: row.runId,
+    nodeId: row.nodeId,
+    nodeName: row.nodeName,
     waitType,
-    status: waitStatus(requiredString(row, "status")),
-    resumeToken: optionalString(row, "resume_token"),
-    waitUntil: optionalDate(row, "wait_until"),
-    subscribedEvents: stringArray(row, "subscribed_events"),
-    metadata: optionalJsonObject(row, "metadata"),
-    createdAt: requiredDate(row, "created_at"),
-    resumedAt: optionalDate(row, "resumed_at"),
-    cancelledAt: optionalDate(row, "cancelled_at"),
+    status: waitStatus(row.status),
+    resumeToken: row.resumeToken,
+    waitUntil: row.waitUntil === null ? null : new Date(row.waitUntil),
+    subscribedEvents: stringArray(row.subscribedEvents, "subscribed_events"),
+    metadata: optionalJsonObject(row.metadata, "metadata"),
+    createdAt: new Date(row.createdAt),
+    resumedAt: row.resumedAt === null ? null : new Date(row.resumedAt),
+    cancelledAt: row.cancelledAt === null ? null : new Date(row.cancelledAt),
   };
 }
 
 export function sqliteExecutionEvent(
-  row: Record<string, unknown>
+  row: SqliteExecutionEventRow
 ): WorkflowExecutionEvent {
-  const eventType = requiredString(row, "event_type");
   return {
-    id: requiredString(row, "id"),
-    workflowId: requiredString(row, "workflow_id"),
-    executionId: optionalString(row, "execution_id"),
-    eventType,
-    message: requiredString(row, "message"),
-    metadata: optionalJsonObject(row, "metadata"),
-    createdAt: requiredDate(row, "created_at"),
+    id: row.id,
+    workflowId: row.workflowId,
+    executionId: row.executionId,
+    eventType: row.eventType,
+    message: row.message,
+    metadata: optionalJsonObject(row.metadata, "metadata"),
+    createdAt: new Date(row.createdAt),
   };
 }
