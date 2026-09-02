@@ -7,7 +7,7 @@
  */
 
 import type { LogLevel, LogRecord, TextFormatter } from "@logtape/logtape";
-import { isPlainObject } from "es-toolkit";
+import { isPlainObject } from "es-toolkit/predicate";
 import { inspect } from "node:util";
 import { renderLogMessage } from "#src/backend/lib/log-config";
 

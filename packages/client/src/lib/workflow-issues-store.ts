@@ -10,7 +10,7 @@
  * answers from their exact click-time graph snapshot.
  */
 
-import { groupBy } from "es-toolkit";
+import { groupBy } from "es-toolkit/array";
 import { atom } from "jotai";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import {

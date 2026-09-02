@@ -1,6 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { Context, Duration, Effect, Layer, Schedule } from "effect";
-import { partition } from "es-toolkit";
+import { partition } from "es-toolkit/array";
 import {
   workflowExecutionEvents,
   workflowExecutions,

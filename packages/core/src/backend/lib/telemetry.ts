@@ -1,5 +1,6 @@
 import { Effect } from "effect";
-import { isNil, omitBy } from "es-toolkit";
+import { omitBy } from "es-toolkit/object";
+import { isNil } from "es-toolkit/predicate";
 
 /**
  * The instrumentation scope every Workflow Graph span arrives under: the engine's own,

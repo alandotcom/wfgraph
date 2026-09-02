@@ -5,7 +5,7 @@
  */
 
 import { Effect } from "effect";
-import { uniq } from "es-toolkit";
+import { uniq } from "es-toolkit/array";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";

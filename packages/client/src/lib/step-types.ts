@@ -7,9 +7,10 @@
  * Wait in one of them and nothing in the other.
  */
 
-import { compact } from "es-toolkit";
+import { compact } from "es-toolkit/array";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import type { ActionMetadata } from "@wfgraph/shared/extensions/catalog";
+import { compareText } from "@wfgraph/shared/types/string";
 
 /**
  * Words a node type answers to besides its own name.
@@ -99,7 +100,7 @@ export function stepGroups(
       if (b === "System") {
         return 1;
       }
-      return a.localeCompare(b);
+      return compareText(a, b);
     })
     .map((category) => ({
       category,

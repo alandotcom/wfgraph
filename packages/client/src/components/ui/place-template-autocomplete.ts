@@ -5,7 +5,7 @@
  * below the field, or above when that would overflow, and never overlaps it.
  */
 
-import { clamp } from "es-toolkit";
+import { clamp } from "es-toolkit/math";
 
 /** Matches the menu's `w-80`. */
 export const TEMPLATE_AUTOCOMPLETE_WIDTH = 320;

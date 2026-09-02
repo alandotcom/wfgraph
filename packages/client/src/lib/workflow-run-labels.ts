@@ -13,7 +13,7 @@ import {
 } from "@wfgraph/shared/extensions/catalog";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
-import { compact, uniq } from "es-toolkit";
+import { compact, uniq } from "es-toolkit/array";
 import { inactiveBranch } from "#src/lib/inactive-branch";
 import type {
   WorkflowEdge,

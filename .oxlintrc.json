@@ -8,7 +8,11 @@
     {
       "name": "no-effect",
       "specifier": "eslint-plugin-react-you-might-not-need-an-effect"
-    }
+    },
+    // This repository's own structural rules. Each one names the helper to
+    // write instead of the shape it reports, and each is given a state in the
+    // `wfgraph/` block of `rules`.
+    { "name": "wfgraph", "specifier": "./scripts/lint/conventions-plugin.ts" }
   ],
   "categories": {
     "correctness": "error",
@@ -21,6 +25,31 @@
     "no-console": "off",
     "no-var": "error",
     "prefer-const": "error",
+    // An override replaces a rule's options wholesale instead of merging them,
+    // so these three entries are repeated in every override that sets
+    // no-restricted-imports: the client and plugins block, the shared block and
+    // the core block. Changing one means changing all four.
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "es-toolkit",
+            "message": "Import from the es-toolkit subpath that holds the helper: es-toolkit/array, /object, /predicate, /string, /function, /promise, /math, or /fp."
+          },
+          {
+            "name": "es-toolkit/compat",
+            "message": "The lodash compatibility shim. Every helper has a typed home under another es-toolkit subpath."
+          },
+          {
+            "name": "effect",
+            "importNames": ["pipe", "flow"],
+            "allowTypeImports": true,
+            "message": "Compose an Effect with Effect.gen and the .pipe method. The bare names pipe and flow belong to es-toolkit/fp."
+          }
+        ]
+      }
+    ],
     // A leading underscore marks a name this codebase keeps out of ordinary use.
     // Every such name is spelled out here, so introducing another one is a visible
     // decision and an accidental `_foo` is an error.
@@ -51,8 +80,18 @@
     // `return undefined;`, so a function that returns a value on one path states
     // what it returns on all of them.
     "typescript/consistent-return": "error",
+    // oxlint ships its own port of the React Compiler rules. This repository
+    // runs the upstream eslint-plugin-react-hooks through the react-hooks-js JS
+    // plugin instead, and the per-file overrides are written against those rule
+    // names. Each `react/` name turned off here has a `react-hooks-js/` twin
+    // turned on, so leaving both on reports every site twice.
     "react/rules-of-hooks": "off",
     "react/exhaustive-deps": "off",
+    "react/exhaustive-effect-dependencies": "off",
+    "react/set-state-in-effect": "off",
+    "react/memo-dependencies": "off",
+    "react/incompatible-library": "off",
+    "react/globals": "off",
     "react-hooks-js/config": "error",
     "react-hooks-js/gating": "error",
     "react-hooks-js/rules-of-hooks": "error",
@@ -86,6 +125,20 @@
     "no-effect/no-pass-data-to-parent": "error",
     "no-effect/no-external-store-subscription": "error",
     "no-effect/no-initialize-state": "error",
+    // scripts/lint/conventions-plugin.ts, this repository's own structural rules.
+    // Every one of them still has violations in the tree, so each is turned on by
+    // the commit that clears its last one; lint is a required check and oxlint
+    // has no level here that reports a site without failing the build. The site
+    // count on each line is what that rule reported when the plugin landed, so a
+    // sweep can check its own arithmetic.
+    "wfgraph/no-filter-boolean": "off", // 3 sites
+    "wfgraph/no-set-spread-uniq": "off", // 7 sites
+    "wfgraph/no-entries-round-trip": "off", // 7 sites
+    "wfgraph/no-conditional-spread": "off", // 210 sites
+    "wfgraph/no-locale-compare": "off", // 20 sites
+    "wfgraph/no-hand-rolled-object-guard": "off", // 6 sites
+    "wfgraph/no-changed-flag": "off", // 7 sites
+    "wfgraph/parameter-names": "off", // 42 sites
     "typescript/no-deprecated": "error",
     "typescript/no-floating-promises": [
       "error",
@@ -161,6 +214,24 @@
                 // back to a type import is part of taking a component.
                 "allowTypeImports": true,
                 "message": "Use a named hook from #src/hooks/effects. If none of them fits, the work probably belongs in an event handler, in render, or in a query."
+              },
+              // Repeated from the root `rules` block because an override replaces
+              // a rule's options wholesale rather than merging them: without these
+              // three entries the es-toolkit and effect restrictions would be off
+              // for every file this override matches.
+              {
+                "name": "es-toolkit",
+                "message": "Import from the es-toolkit subpath that holds the helper: es-toolkit/array, /object, /predicate, /string, /function, /promise, /math, or /fp."
+              },
+              {
+                "name": "es-toolkit/compat",
+                "message": "The lodash compatibility shim. Every helper has a typed home under another es-toolkit subpath."
+              },
+              {
+                "name": "effect",
+                "importNames": ["pipe", "flow"],
+                "allowTypeImports": true,
+                "message": "Compose an Effect with Effect.gen and the .pipe method. The bare names pipe and flow belong to es-toolkit/fp."
               }
             ]
           }
@@ -222,6 +293,26 @@
                 ],
                 "message": "@wfgraph/shared cannot import @wfgraph/core or @wfgraph/plugins source. Shared is the bottom of the dependency graph: move the shared piece into packages/shared, or invert the call so core passes it in."
               }
+            ],
+            // Repeated from the root `rules` block because an override replaces
+            // a rule's options wholesale rather than merging them: without these
+            // three entries the es-toolkit and effect restrictions would be off
+            // for every file this override matches.
+            "paths": [
+              {
+                "name": "es-toolkit",
+                "message": "Import from the es-toolkit subpath that holds the helper: es-toolkit/array, /object, /predicate, /string, /function, /promise, /math, or /fp."
+              },
+              {
+                "name": "es-toolkit/compat",
+                "message": "The lodash compatibility shim. Every helper has a typed home under another es-toolkit subpath."
+              },
+              {
+                "name": "effect",
+                "importNames": ["pipe", "flow"],
+                "allowTypeImports": true,
+                "message": "Compose an Effect with Effect.gen and the .pipe method. The bare names pipe and flow belong to es-toolkit/fp."
+              }
             ]
           }
         ]
@@ -242,6 +333,26 @@
               {
                 "group": ["./*", "./**", "../*", "../**"],
                 "message": "Name the module with #src/, which resolves against packages/core's own manifest from any depth."
+              }
+            ],
+            // Repeated from the root `rules` block because an override replaces
+            // a rule's options wholesale rather than merging them: without these
+            // three entries the es-toolkit and effect restrictions would be off
+            // for every file this override matches.
+            "paths": [
+              {
+                "name": "es-toolkit",
+                "message": "Import from the es-toolkit subpath that holds the helper: es-toolkit/array, /object, /predicate, /string, /function, /promise, /math, or /fp."
+              },
+              {
+                "name": "es-toolkit/compat",
+                "message": "The lodash compatibility shim. Every helper has a typed home under another es-toolkit subpath."
+              },
+              {
+                "name": "effect",
+                "importNames": ["pipe", "flow"],
+                "allowTypeImports": true,
+                "message": "Compose an Effect with Effect.gen and the .pipe method. The bare names pipe and flow belong to es-toolkit/fp."
               }
             ]
           }

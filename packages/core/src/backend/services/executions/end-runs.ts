@@ -13,7 +13,7 @@
  */
 
 import { Effect } from "effect";
-import { partition, uniq } from "es-toolkit";
+import { partition, uniq } from "es-toolkit/array";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";

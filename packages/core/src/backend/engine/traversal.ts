@@ -12,7 +12,7 @@
  * branches, Started↔Canceled).
  */
 
-import { omit } from "es-toolkit";
+import { omit } from "es-toolkit/object";
 import { Effect } from "effect";
 import { normalizeConditionBranch } from "@wfgraph/shared/conditions/condition-branch";
 import { isLifecycleNode } from "@wfgraph/shared/graph/node-config";
