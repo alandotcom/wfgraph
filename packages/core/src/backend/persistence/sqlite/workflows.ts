@@ -1,5 +1,16 @@
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import { Effect } from "effect";
-import { sql, type SQL } from "drizzle-orm";
 import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
 import {
@@ -14,22 +25,23 @@ import { workflowVersionUsageRow } from "#src/backend/services/workflows/repo/ve
 import type {
   SqliteDatabase,
   SqliteExecutor,
+  SqliteReadExecutor,
 } from "#src/backend/persistence/sqlite/database";
+import { encodeGraph } from "#src/backend/persistence/sqlite/database";
 import {
-  encodeGraph,
-  optionalDate,
-  optionalNumber,
-  optionalString,
-  requiredBoolean,
-  requiredDate,
-  requiredGraph,
-  requiredNumber,
-  requiredString,
-  requiredVersionKind,
-  SQLITE_IN_FLIGHT_EXECUTION_STATUSES,
-} from "#src/backend/persistence/sqlite/database";
-
-type Row = Record<string, unknown>;
+  workflowEventSubscriptions,
+  workflowExecutions,
+  workflowVersions,
+  workflowWaitStates,
+  workflows,
+} from "#src/backend/persistence/sqlite/schema";
+import { isSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
+import {
+  WORKFLOW_VERSION_KINDS,
+  type WorkflowVersionKind,
+} from "@wfgraph/shared/graph/version-kinds";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 
 function workflowMode(value: string): Workflow["mode"] {
   if (value !== "live" && value !== "test") {
@@ -45,31 +57,57 @@ function workflowVisibility(value: string): Workflow["visibility"] {
   return value;
 }
 
-export function sqliteWorkflow(row: Row): Workflow {
+function workflowGraph(
+  value: string,
+  field = "graph"
+): SerializedWorkflowGraph {
+  const graph = JSON.parse(value);
+  if (!isSerializedWorkflowGraph(graph)) {
+    throw new Error(`Invalid SQLite ${field}`);
+  }
+  return graph;
+}
+
+function workflowIsPaused(value: number): boolean {
+  if (value !== 0 && value !== 1) {
+    throw new Error("Invalid SQLite is_paused");
+  }
+  return value === 1;
+}
+
+function workflowVersionKind(value: string): WorkflowVersionKind {
+  const kind = WORKFLOW_VERSION_KINDS.find((candidate) => candidate === value);
+  if (kind === undefined) throw new Error("Invalid SQLite kind");
+  return kind;
+}
+
+export function sqliteWorkflow(row: typeof workflows.$inferSelect): Workflow {
   return {
-    id: requiredString(row, "id"),
-    name: requiredString(row, "name"),
-    description: optionalString(row, "description"),
-    graph: requiredGraph(row),
-    isPaused: requiredBoolean(row, "is_paused"),
-    mode: workflowMode(requiredString(row, "mode")),
-    visibility: workflowVisibility(requiredString(row, "visibility")),
-    publishedVersionId: optionalString(row, "published_version_id"),
-    createdAt: requiredDate(row, "created_at"),
-    updatedAt: requiredDate(row, "updated_at"),
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    graph: workflowGraph(row.graph),
+    isPaused: workflowIsPaused(row.isPaused),
+    mode: workflowMode(row.mode),
+    visibility: workflowVisibility(row.visibility),
+    publishedVersionId: row.publishedVersionId,
+    createdAt: new Date(row.createdAt),
+    updatedAt: new Date(row.updatedAt),
   };
 }
 
-export function sqliteWorkflowVersion(row: Row, prefix = ""): WorkflowVersion {
+export function sqliteWorkflowVersion(
+  row: typeof workflowVersions.$inferSelect
+): WorkflowVersion {
   return {
-    id: requiredString(row, `${prefix}id`),
-    workflowId: requiredString(row, `${prefix}workflow_id`),
-    version: optionalNumber(row, `${prefix}version`),
-    kind: requiredVersionKind(row, `${prefix}kind`),
-    graph: requiredGraph(row, `${prefix}graph`),
-    catalogFingerprint: requiredString(row, `${prefix}catalog_fingerprint`),
-    graphDigest: requiredString(row, `${prefix}graph_digest`),
-    publishedAt: requiredDate(row, `${prefix}published_at`),
+    id: row.id,
+    workflowId: row.workflowId,
+    version: row.version,
+    kind: workflowVersionKind(row.kind),
+    graph: workflowGraph(row.graph),
+    catalogFingerprint: row.catalogFingerprint,
+    graphDigest: row.graphDigest,
+    publishedAt: new Date(row.publishedAt),
   };
 }
 
@@ -79,49 +117,42 @@ function replaceSubscriptions(
   rows: WorkflowEventSubscriptionRow[]
 ) {
   return Effect.gen(function* () {
-    yield* database.run(
-      sql`delete from workflow_event_subscriptions where workflow_id = ${workflowId}`
-    );
+    yield* database
+      .delete(workflowEventSubscriptions)
+      .where(eq(workflowEventSubscriptions.workflowId, workflowId));
     for (const row of rows) {
-      yield* database.run(sql`
-        insert into workflow_event_subscriptions
-          (workflow_id, event_name, role, correlation_path, connection_id)
-        values (${row.workflowId}, ${row.eventName}, ${row.role},
-          ${row.correlationPath}, ${row.connectionId})
-      `);
+      yield* database.insert(workflowEventSubscriptions).values(row);
     }
   });
 }
 
-function findWorkflow(database: SqliteExecutor, workflowId: string) {
+function findWorkflow(database: SqliteReadExecutor, workflowId: string) {
   return database
-    .get<Row>(sql`select * from workflows where id = ${workflowId}`)
+    .select()
+    .from(workflows)
+    .where(eq(workflows.id, workflowId))
+    .get()
     .pipe(Effect.map((row) => (row ? sqliteWorkflow(row) : null)));
 }
 
-function publishedPair(database: SqliteExecutor, workflowId: string) {
+function publishedPair(database: SqliteReadExecutor, workflowId: string) {
   return database
-    .get<Row>(sql`
-      select w.*,
-        v.id as version_id, v.workflow_id as version_workflow_id,
-        v.version as version_version, v.kind as version_kind,
-        v.graph as version_graph,
-        v.catalog_fingerprint as version_catalog_fingerprint,
-        v.graph_digest as version_graph_digest,
-        v.published_at as version_published_at
-      from workflows w
-      left join workflow_versions v on v.id = w.published_version_id
-      where w.id = ${workflowId}
-    `)
+    .select({ workflow: workflows, version: workflowVersions })
+    .from(workflows)
+    .leftJoin(
+      workflowVersions,
+      eq(workflowVersions.id, workflows.publishedVersionId)
+    )
+    .where(eq(workflows.id, workflowId))
+    .get()
     .pipe(
       Effect.map((row) => {
         if (!row) return null;
         return {
-          workflow: sqliteWorkflow(row),
-          publishedVersion:
-            row.version_id === null
-              ? null
-              : asPublishedVersion(sqliteWorkflowVersion(row, "version_")),
+          workflow: sqliteWorkflow(row.workflow),
+          publishedVersion: asPublishedVersion(
+            row.version ? sqliteWorkflowVersion(row.version) : null
+          ),
         };
       })
     );
@@ -133,23 +164,26 @@ function stalePublication(): { stale: true } {
 
 function addEventSubscriber(
   subscribers: Map<string, EventSubscriber>,
-  row: Row
+  row: {
+    id: string;
+    role: string;
+    correlationPath: string | null;
+    connectionId: string | null;
+  }
 ): void {
-  const id = requiredString(row, "id");
-  const role = requiredString(row, "role");
-  if (role !== "start" && role !== "cancel" && role !== "wait") {
+  if (row.role !== "start" && row.role !== "cancel" && row.role !== "wait") {
     throw new Error("Invalid SQLite subscription role");
   }
-  const existing = subscribers.get(id);
+  const existing = subscribers.get(row.id);
   if (existing) {
-    if (!existing.roles.includes(role)) existing.roles.push(role);
+    if (!existing.roles.includes(row.role)) existing.roles.push(row.role);
     return;
   }
-  subscribers.set(id, {
-    id,
-    roles: [role],
-    correlationPath: optionalString(row, "correlation_path"),
-    connectionId: optionalString(row, "connection_id"),
+  subscribers.set(row.id, {
+    id: row.id,
+    roles: [row.role],
+    correlationPath: row.correlationPath,
+    connectionId: row.connectionId,
   });
 }
 
@@ -159,23 +193,31 @@ export function makeSqliteWorkflowRepo(
   return {
     listSummariesNewestFirst: store.read((database) =>
       database
-        .all<Row>(sql`
-          select id, name, description, is_paused, mode, visibility,
-            published_version_id, created_at, updated_at
-          from workflows order by updated_at desc
-        `)
+        .select({
+          id: workflows.id,
+          name: workflows.name,
+          description: workflows.description,
+          isPaused: workflows.isPaused,
+          mode: workflows.mode,
+          visibility: workflows.visibility,
+          publishedVersionId: workflows.publishedVersionId,
+          createdAt: workflows.createdAt,
+          updatedAt: workflows.updatedAt,
+        })
+        .from(workflows)
+        .orderBy(desc(workflows.updatedAt))
         .pipe(
           Effect.map((rows) =>
             rows.map((row) => ({
-              id: requiredString(row, "id"),
-              name: requiredString(row, "name"),
-              description: optionalString(row, "description"),
-              isPaused: requiredBoolean(row, "is_paused"),
-              mode: workflowMode(requiredString(row, "mode")),
-              visibility: workflowVisibility(requiredString(row, "visibility")),
-              publishedVersionId: optionalString(row, "published_version_id"),
-              createdAt: requiredDate(row, "created_at"),
-              updatedAt: requiredDate(row, "updated_at"),
+              id: row.id,
+              name: row.name,
+              description: row.description,
+              isPaused: workflowIsPaused(row.isPaused),
+              mode: workflowMode(row.mode),
+              visibility: workflowVisibility(row.visibility),
+              publishedVersionId: row.publishedVersionId,
+              createdAt: new Date(row.createdAt),
+              updatedAt: new Date(row.updatedAt),
             }))
           )
         )
@@ -185,54 +227,92 @@ export function makeSqliteWorkflowRepo(
     existsById: (workflowId) =>
       store.read((database) =>
         database
-          .get<Row>(
-            sql`select 1 as present from workflows where id = ${workflowId}`
-          )
+          .select({ id: workflows.id })
+          .from(workflows)
+          .where(eq(workflows.id, workflowId))
+          .limit(1)
+          .get()
           .pipe(Effect.map(Boolean))
       ),
     hasWithName: (name) =>
       store.read((database) =>
         database
-          .get<Row>(
-            sql`select 1 as present from workflows where name = ${name}`
-          )
+          .select({ id: workflows.id })
+          .from(workflows)
+          .where(eq(workflows.name, name))
+          .limit(1)
+          .get()
           .pipe(Effect.map(Boolean))
       ),
     hasOtherWithName: ({ name, excludingWorkflowId }) =>
       store.read((database) =>
         database
-          .get<Row>(sql`
-            select 1 as present from workflows
-            where name = ${name} and id <> ${excludingWorkflowId}
-          `)
+          .select({ id: workflows.id })
+          .from(workflows)
+          .where(
+            and(eq(workflows.name, name), ne(workflows.id, excludingWorkflowId))
+          )
+          .limit(1)
+          .get()
           .pipe(Effect.map(Boolean))
       ),
     listEventSubscribers: (eventName) =>
       store.read((database) =>
         Effect.gen(function* () {
           const subscribers = new Map<string, EventSubscriber>();
-          const direct = yield* database.all<Row>(sql`
-            select w.id, s.role, s.correlation_path, s.connection_id
-            from workflow_event_subscriptions s
-            join workflows w on w.id = s.workflow_id
-            where s.event_name = ${eventName} and s.role <> 'wait'
-              and w.is_paused = 0
-          `);
-          for (const row of direct) addEventSubscriber(subscribers, row);
-          const waits = yield* database.all<Row>(sql`
-            select distinct w.id, 'wait' as role,
-              s.correlation_path, s.connection_id
-            from workflow_wait_states ws
-            join workflows w on w.id = ws.workflow_id
-            left join workflow_event_subscriptions s
-              on s.workflow_id = ws.workflow_id
-              and s.event_name = ${eventName} and s.role = 'wait'
-            where ws.status = 'waiting' and w.is_paused = 0
-              and exists (
-                select 1 from json_each(ws.subscribed_events) e
-                where e.value = ${eventName}
+          const direct = yield* database
+            .select({
+              id: workflows.id,
+              role: workflowEventSubscriptions.role,
+              correlationPath: workflowEventSubscriptions.correlationPath,
+              connectionId: workflowEventSubscriptions.connectionId,
+            })
+            .from(workflowEventSubscriptions)
+            .innerJoin(
+              workflows,
+              eq(workflowEventSubscriptions.workflowId, workflows.id)
+            )
+            .where(
+              and(
+                eq(workflowEventSubscriptions.eventName, eventName),
+                ne(workflowEventSubscriptions.role, "wait"),
+                eq(workflows.isPaused, 0)
               )
-          `);
+            );
+          for (const row of direct) addEventSubscriber(subscribers, row);
+          const waits = yield* database
+            .selectDistinct({
+              id: workflows.id,
+              role: sql<string>`'wait'`.as("role"),
+              correlationPath: workflowEventSubscriptions.correlationPath,
+              connectionId: workflowEventSubscriptions.connectionId,
+            })
+            .from(workflowWaitStates)
+            .innerJoin(
+              workflows,
+              eq(workflowWaitStates.workflowId, workflows.id)
+            )
+            .leftJoin(
+              workflowEventSubscriptions,
+              and(
+                eq(
+                  workflowEventSubscriptions.workflowId,
+                  workflowWaitStates.workflowId
+                ),
+                eq(workflowEventSubscriptions.eventName, eventName),
+                eq(workflowEventSubscriptions.role, "wait")
+              )
+            )
+            .where(
+              and(
+                eq(workflowWaitStates.status, "waiting"),
+                eq(workflows.isPaused, 0),
+                sql`exists (
+                  select 1 from json_each(${workflowWaitStates.subscribedEvents}) e
+                  where e.value = ${eventName}
+                )`
+              )
+            );
           for (const row of waits) addEventSubscriber(subscribers, row);
           return [...subscribers.values()];
         })
@@ -241,17 +321,18 @@ export function makeSqliteWorkflowRepo(
       store.write((database) =>
         Effect.gen(function* () {
           const now = Date.now();
-          yield* database.run(sql`
-            insert into workflows (
-              id, name, description, graph, is_paused, mode, visibility,
-              published_version_id, created_at, updated_at
-            ) values (
-              ${input.id}, ${input.name}, ${input.description ?? null},
-              ${encodeGraph(input.graph)}, ${input.isPaused === true ? 1 : 0},
-              ${input.mode ?? "live"}, ${input.visibility ?? "private"}, null,
-              ${now}, ${now}
-            )
-          `);
+          yield* database.insert(workflows).values({
+            id: input.id,
+            name: input.name,
+            description: input.description ?? null,
+            graph: encodeGraph(input.graph),
+            isPaused: input.isPaused === true ? 1 : 0,
+            mode: input.mode ?? "live",
+            visibility: input.visibility ?? "private",
+            publishedVersionId: null,
+            createdAt: now,
+            updatedAt: now,
+          });
           yield* replaceSubscriptions(
             database,
             input.id,
@@ -265,47 +346,45 @@ export function makeSqliteWorkflowRepo(
     findPausedById: (workflowId) =>
       store.read((database) =>
         database
-          .get<Row>(
-            sql`select id, is_paused from workflows where id = ${workflowId}`
-          )
+          .select({ id: workflows.id, isPaused: workflows.isPaused })
+          .from(workflows)
+          .where(eq(workflows.id, workflowId))
+          .get()
           .pipe(
             Effect.map((row) =>
               row
-                ? {
-                    id: requiredString(row, "id"),
-                    isPaused: requiredBoolean(row, "is_paused"),
-                  }
+                ? { id: row.id, isPaused: workflowIsPaused(row.isPaused) }
                 : null
             )
           )
       ),
     setPaused: ({ workflowId, isPaused }) =>
       store.write((database) =>
-        database.run(sql`
-          update workflows set is_paused = ${isPaused ? 1 : 0},
-            updated_at = ${Date.now()} where id = ${workflowId}
-        `)
+        database
+          .update(workflows)
+          .set({ isPaused: isPaused ? 1 : 0, updatedAt: Date.now() })
+          .where(eq(workflows.id, workflowId))
       ),
     update: ({ workflowId, updates, eventSubscriptions }) =>
       store.write((database) =>
         Effect.gen(function* () {
-          const assignments: SQL[] = [
-            sql`updated_at = ${updates.updatedAt.getTime()}`,
-          ];
-          if (updates.name !== undefined)
-            assignments.push(sql`name = ${updates.name}`);
+          const changes: Partial<typeof workflows.$inferInsert> = {
+            updatedAt: updates.updatedAt.getTime(),
+          };
+          if (updates.name !== undefined) changes.name = updates.name;
           if (updates.description !== undefined) {
-            assignments.push(sql`description = ${updates.description}`);
+            changes.description = updates.description;
           }
           if (updates.graph !== undefined) {
-            assignments.push(sql`graph = ${encodeGraph(updates.graph)}`);
+            changes.graph = encodeGraph(updates.graph);
           }
-          if (updates.mode !== undefined)
-            assignments.push(sql`mode = ${updates.mode}`);
-          const changed = yield* database.get<Row>(sql`
-            update workflows set ${sql.join(assignments, sql`, `)}
-            where id = ${workflowId} returning id
-          `);
+          if (updates.mode !== undefined) changes.mode = updates.mode;
+          const changed = yield* database
+            .update(workflows)
+            .set(changes)
+            .where(eq(workflows.id, workflowId))
+            .returning({ id: workflows.id })
+            .get();
           if (!changed) return null;
           if (eventSubscriptions !== "unchanged") {
             yield* replaceSubscriptions(
@@ -319,94 +398,157 @@ export function makeSqliteWorkflowRepo(
       ),
     deleteById: (workflowId) =>
       store.write((database) =>
-        database.run(sql`delete from workflows where id = ${workflowId}`)
+        database.delete(workflows).where(eq(workflows.id, workflowId))
       ),
     findCurrent: store.read((database) =>
       database
-        .get<Row>(sql`
-          select * from workflows where name = ${CURRENT_WORKFLOW_NAME}
-          order by updated_at desc limit 1
-        `)
+        .select()
+        .from(workflows)
+        .where(eq(workflows.name, CURRENT_WORKFLOW_NAME))
+        .orderBy(desc(workflows.updatedAt))
+        .limit(1)
+        .get()
         .pipe(Effect.map((row) => (row ? sqliteWorkflow(row) : null)))
     ),
     insertCurrent: ({ id, graph }) =>
       store.write((database) =>
         Effect.gen(function* () {
           const now = Date.now();
-          yield* database.run(sql`
-            insert into workflows (
-              id, name, description, graph, is_paused, mode, visibility,
-              published_version_id, created_at, updated_at
-            ) values (
-              ${id}, ${CURRENT_WORKFLOW_NAME}, 'Auto-saved current workflow',
-              ${encodeGraph(graph)}, 0, 'live', 'private', null, ${now}, ${now}
-            )
-          `);
+          yield* database.insert(workflows).values({
+            id,
+            name: CURRENT_WORKFLOW_NAME,
+            description: "Auto-saved current workflow",
+            graph: encodeGraph(graph),
+            isPaused: 0,
+            mode: "live",
+            visibility: "private",
+            publishedVersionId: null,
+            createdAt: now,
+            updatedAt: now,
+          });
           return yield* findWorkflow(database, id);
         })
       ),
     findLatestVersion: (workflowId) =>
       store.read((database) =>
         database
-          .get<Row>(sql`
-            select version from workflow_versions
-            where workflow_id = ${workflowId} and kind = 'published'
-            order by version desc limit 1
-          `)
+          .select({ version: workflowVersions.version })
+          .from(workflowVersions)
+          .where(
+            and(
+              eq(workflowVersions.workflowId, workflowId),
+              eq(workflowVersions.kind, "published")
+            )
+          )
+          .orderBy(desc(workflowVersions.version))
+          .limit(1)
+          .get()
           .pipe(
             Effect.map((row) =>
-              row ? { version: requiredNumber(row, "version") } : null
+              row?.version === null || row === undefined
+                ? null
+                : { version: row.version }
             )
           )
       ),
     listVersionHistoryPage: ({ workflowId, limit, cursor }) =>
-      store.read((database) =>
-        database
-          .all<Row>(sql`
-            select v.id, v.version, v.published_at,
-              v.id = w.published_version_id as is_current
-            from workflow_versions v join workflows w on w.id = v.workflow_id
-            where v.workflow_id = ${workflowId} and v.kind = 'published'
-              and (${cursor?.version ?? null} is null or v.version < ${cursor?.version ?? null})
-            order by v.version desc limit ${limit + 1}
-          `)
-          .pipe(
-            Effect.map((rows) =>
-              rows.map((row): WorkflowVersionHistoryRow => ({
-                id: requiredString(row, "id"),
-                version: requiredNumber(row, "version"),
-                publishedAt: requiredDate(row, "published_at"),
-                isCurrent: requiredBoolean(row, "is_current"),
-              }))
+      store.read((database) => {
+        const isCurrent = sql<number>`coalesce(${workflowVersions.id} = ${workflows.publishedVersionId}, 0)`;
+        return database
+          .select({
+            id: workflowVersions.id,
+            version: workflowVersions.version,
+            publishedAt: workflowVersions.publishedAt,
+            isCurrent,
+          })
+          .from(workflowVersions)
+          .innerJoin(workflows, eq(workflows.id, workflowVersions.workflowId))
+          .where(
+            and(
+              eq(workflowVersions.workflowId, workflowId),
+              eq(workflowVersions.kind, "published"),
+              cursor ? lt(workflowVersions.version, cursor.version) : undefined
             )
           )
-      ),
+          .orderBy(desc(workflowVersions.version))
+          .limit(limit + 1)
+          .pipe(
+            Effect.map((rows) =>
+              rows.map((row): WorkflowVersionHistoryRow => {
+                if (row.version === null) {
+                  throw new Error("Invalid SQLite published version");
+                }
+                return {
+                  id: row.id,
+                  version: row.version,
+                  publishedAt: new Date(row.publishedAt),
+                  isCurrent: row.isCurrent === 1,
+                };
+              })
+            )
+          );
+      }),
     listVersionUsage: (workflowId) =>
-      store.read((database) =>
-        database
-          .all<Row>(sql`
-            select v.*, coalesce(v.id = w.published_version_id, 0) as is_current,
-              coalesce(a.active_run_count, 0) as active_run_count,
-              a.oldest_active_run_at
-            from workflow_versions v join workflows w on w.id = v.workflow_id
-            left join (
-              select workflow_version_id, count(*) as active_run_count,
-                min(started_at) as oldest_active_run_at
-              from workflow_executions where workflow_id = ${workflowId}
-                and status in (${sql.raw(SQLITE_IN_FLIGHT_EXECUTION_STATUSES)})
-              group by workflow_version_id
-            ) a on a.workflow_version_id = v.id
-            where v.workflow_id = ${workflowId}
-              and (v.id = w.published_version_id or a.workflow_version_id is not null)
-            order by is_current desc,
-              case when v.kind = 'published' then v.version end desc,
-              case when v.kind = 'draft_snapshot' then v.published_at end desc,
-              case when v.kind = 'draft_snapshot' then v.id end desc
-          `)
+      store.read((database) => {
+        const activeRuns = database
+          .select({
+            workflowVersionId: workflowExecutions.workflowVersionId,
+            activeRunCount: sql<number>`count(*)`.as("active_run_count"),
+            oldestActiveRunAt: sql<
+              number | null
+            >`min(${workflowExecutions.startedAt})`.as("oldest_active_run_at"),
+          })
+          .from(workflowExecutions)
+          .where(
+            and(
+              eq(workflowExecutions.workflowId, workflowId),
+              inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+            )
+          )
+          .groupBy(workflowExecutions.workflowVersionId)
+          .as("active_runs");
+        const isCurrent = sql<number>`coalesce(${workflowVersions.id} = ${workflows.publishedVersionId}, 0)`;
+        const publishedVersion = sql<
+          number | null
+        >`case when ${workflowVersions.kind} = 'published' then ${workflowVersions.version} end`;
+        const draftPublishedAt = sql<
+          number | null
+        >`case when ${workflowVersions.kind} = 'draft_snapshot' then ${workflowVersions.publishedAt} end`;
+        const draftId = sql<
+          string | null
+        >`case when ${workflowVersions.kind} = 'draft_snapshot' then ${workflowVersions.id} end`;
+        return database
+          .select({
+            version: workflowVersions,
+            isCurrent,
+            activeRunCount: sql<number>`coalesce(${activeRuns.activeRunCount}, 0)`,
+            oldestActiveRunAt: activeRuns.oldestActiveRunAt,
+          })
+          .from(workflowVersions)
+          .innerJoin(workflows, eq(workflows.id, workflowVersions.workflowId))
+          .leftJoin(
+            activeRuns,
+            eq(activeRuns.workflowVersionId, workflowVersions.id)
+          )
+          .where(
+            and(
+              eq(workflowVersions.workflowId, workflowId),
+              or(
+                eq(workflowVersions.id, workflows.publishedVersionId),
+                isNotNull(activeRuns.workflowVersionId)
+              )
+            )
+          )
+          .orderBy(
+            desc(isCurrent),
+            desc(publishedVersion),
+            desc(draftPublishedAt),
+            desc(draftId)
+          )
           .pipe(
             Effect.map((rows) =>
               rows.map((row): WorkflowVersionUsageRow => {
-                const version = sqliteWorkflowVersion(row);
+                const version = sqliteWorkflowVersion(row.version);
                 return workflowVersionUsageRow({
                   id: version.id,
                   kind: version.kind,
@@ -414,20 +556,24 @@ export function makeSqliteWorkflowRepo(
                   graph: version.graph,
                   catalogFingerprint: version.catalogFingerprint,
                   publishedAt: version.publishedAt,
-                  isCurrent: requiredBoolean(row, "is_current"),
-                  activeRunCount: requiredNumber(row, "active_run_count"),
-                  oldestActiveRunAt: optionalDate(row, "oldest_active_run_at"),
+                  isCurrent: row.isCurrent === 1,
+                  activeRunCount: row.activeRunCount,
+                  oldestActiveRunAt:
+                    row.oldestActiveRunAt === null
+                      ? null
+                      : new Date(row.oldestActiveRunAt),
                 });
               })
             )
-          )
-      ),
+          );
+      }),
     findVersionById: (versionId) =>
       store.read((database) =>
         database
-          .get<Row>(
-            sql`select * from workflow_versions where id = ${versionId}`
-          )
+          .select()
+          .from(workflowVersions)
+          .where(eq(workflowVersions.id, versionId))
+          .get()
           .pipe(Effect.map((row) => (row ? sqliteWorkflowVersion(row) : null)))
       ),
     findPublishedVersion: (workflowId) =>
@@ -468,29 +614,46 @@ export function makeSqliteWorkflowRepo(
       store.write((database) =>
         Effect.gen(function* () {
           if (!(yield* findWorkflow(database, input.workflowId))) return null;
-          const publishedAt = new Date();
-          const inserted = yield* database.get<Row>(sql`
-            insert into workflow_versions (
-              id, workflow_id, version, kind, graph, catalog_fingerprint,
-              graph_digest, published_at
-            ) values (
-              ${input.versionId}, ${input.workflowId}, ${input.version}, 'published',
-              ${encodeGraph(input.graph)}, ${input.catalogFingerprint},
-              ${input.graphDigest}, ${publishedAt.getTime()}
-            ) on conflict (workflow_id, version) do nothing returning id
-          `);
+          const publishedAt = Date.now();
+          const inserted = yield* database
+            .insert(workflowVersions)
+            .values({
+              id: input.versionId,
+              workflowId: input.workflowId,
+              version: input.version,
+              kind: "published",
+              graph: encodeGraph(input.graph),
+              catalogFingerprint: input.catalogFingerprint,
+              graphDigest: input.graphDigest,
+              publishedAt,
+            })
+            .onConflictDoNothing({
+              target: [workflowVersions.workflowId, workflowVersions.version],
+            })
+            .returning({ id: workflowVersions.id })
+            .get();
           if (!inserted) return stalePublication();
-          const changed = yield* database.get<Row>(sql`
-            update workflows set published_version_id = ${input.versionId},
-              graph = ${encodeGraph(input.draftGraph)}, updated_at = ${Date.now()}
-            where id = ${input.workflowId}
-              and published_version_id is ${input.expectedPublishedVersionId}
-            returning id
-          `);
+          const expectedPublication =
+            input.expectedPublishedVersionId === null
+              ? isNull(workflows.publishedVersionId)
+              : eq(
+                  workflows.publishedVersionId,
+                  input.expectedPublishedVersionId
+                );
+          const changed = yield* database
+            .update(workflows)
+            .set({
+              publishedVersionId: input.versionId,
+              graph: encodeGraph(input.draftGraph),
+              updatedAt: Date.now(),
+            })
+            .where(and(eq(workflows.id, input.workflowId), expectedPublication))
+            .returning({ id: workflows.id })
+            .get();
           if (!changed) {
-            yield* database.run(
-              sql`delete from workflow_versions where id = ${input.versionId}`
-            );
+            yield* database
+              .delete(workflowVersions)
+              .where(eq(workflowVersions.id, input.versionId));
             return (yield* findWorkflow(database, input.workflowId))
               ? stalePublication()
               : null;
@@ -501,9 +664,11 @@ export function makeSqliteWorkflowRepo(
             input.eventSubscriptions
           );
           const workflow = yield* findWorkflow(database, input.workflowId);
-          const versionRow = yield* database.get<Row>(
-            sql`select * from workflow_versions where id = ${input.versionId}`
-          );
+          const versionRow = yield* database
+            .select()
+            .from(workflowVersions)
+            .where(eq(workflowVersions.id, input.versionId))
+            .get();
           const version = asPublishedVersion(
             versionRow ? sqliteWorkflowVersion(versionRow) : null
           );
@@ -520,29 +685,43 @@ export function makeSqliteWorkflowRepo(
           // Execution already references: an unreferenced snapshot is private
           // to another start that may still delete it after a refused gate.
           const graph = encodeGraph(input.graph);
-          const existing = yield* database.get<Row>(sql`
-            select * from workflow_versions
-            where workflow_id = ${input.workflowId} and kind = 'draft_snapshot'
-              and catalog_fingerprint = ${input.catalogFingerprint} and graph = ${graph}
-              and exists (
-                select 1 from workflow_executions
-                where workflow_version_id = workflow_versions.id
+          const existing = yield* database
+            .select()
+            .from(workflowVersions)
+            .where(
+              and(
+                eq(workflowVersions.workflowId, input.workflowId),
+                eq(workflowVersions.kind, "draft_snapshot"),
+                eq(
+                  workflowVersions.catalogFingerprint,
+                  input.catalogFingerprint
+                ),
+                eq(workflowVersions.graph, graph),
+                sql`exists (
+                  select 1 from ${workflowExecutions}
+                  where ${workflowExecutions.workflowVersionId} = ${workflowVersions.id}
+                )`
               )
-            order by published_at desc limit 1
-          `);
-          if (existing) return sqliteWorkflowVersion(existing);
-          yield* database.run(sql`
-            insert into workflow_versions (
-              id, workflow_id, version, kind, graph, catalog_fingerprint,
-              graph_digest, published_at
-            ) values (
-              ${input.versionId}, ${input.workflowId}, null, 'draft_snapshot',
-              ${graph}, ${input.catalogFingerprint}, ${input.graphDigest}, ${Date.now()}
             )
-          `);
-          const row = yield* database.get<Row>(
-            sql`select * from workflow_versions where id = ${input.versionId}`
-          );
+            .orderBy(desc(workflowVersions.publishedAt))
+            .limit(1)
+            .get();
+          if (existing) return sqliteWorkflowVersion(existing);
+          yield* database.insert(workflowVersions).values({
+            id: input.versionId,
+            workflowId: input.workflowId,
+            version: null,
+            kind: "draft_snapshot",
+            graph,
+            catalogFingerprint: input.catalogFingerprint,
+            graphDigest: input.graphDigest,
+            publishedAt: Date.now(),
+          });
+          const row = yield* database
+            .select()
+            .from(workflowVersions)
+            .where(eq(workflowVersions.id, input.versionId))
+            .get();
           if (!row) throw new Error("The draft snapshot was not written");
           return sqliteWorkflowVersion(row);
         })
@@ -550,15 +729,19 @@ export function makeSqliteWorkflowRepo(
     deleteUnreferencedDraftSnapshot: (versionId) =>
       store.write((database) =>
         database
-          .get<Row>(sql`
-            delete from workflow_versions
-            where id = ${versionId} and kind = 'draft_snapshot'
-              and not exists (
-                select 1 from workflow_executions
-                where workflow_version_id = workflow_versions.id
-              )
-            returning id
-          `)
+          .delete(workflowVersions)
+          .where(
+            and(
+              eq(workflowVersions.id, versionId),
+              eq(workflowVersions.kind, "draft_snapshot"),
+              sql`not exists (
+                select 1 from ${workflowExecutions}
+                where ${workflowExecutions.workflowVersionId} = ${workflowVersions.id}
+              )`
+            )
+          )
+          .returning({ id: workflowVersions.id })
+          .get()
           .pipe(Effect.map(Boolean))
       ),
   };

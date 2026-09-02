@@ -1,14 +1,9 @@
 import { Effect } from "effect";
-import { sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lte, or } from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
 import { ApiKeyRepo } from "#src/backend/services/api-keys/repo";
 import type { SqliteDatabase } from "#src/backend/persistence/sqlite/database";
-import {
-  optionalDate,
-  optionalString,
-  requiredDate,
-  requiredString,
-} from "#src/backend/persistence/sqlite/database";
+import { apiKeys } from "#src/backend/persistence/sqlite/schema";
 
 export function makeSqliteApiKeyRepo(
   store: SqliteDatabase
@@ -16,18 +11,22 @@ export function makeSqliteApiKeyRepo(
   return {
     listNewestFirst: store.read((database) =>
       database
-        .all<Record<string, unknown>>(sql`
-          select id, name, key_prefix, created_at, last_used_at
-          from api_keys order by created_at desc
-        `)
+        .select({
+          id: apiKeys.id,
+          name: apiKeys.name,
+          keyPrefix: apiKeys.keyPrefix,
+          createdAt: apiKeys.createdAt,
+          lastUsedAt: apiKeys.lastUsedAt,
+        })
+        .from(apiKeys)
+        .orderBy(desc(apiKeys.createdAt))
         .pipe(
           Effect.map((rows) =>
             rows.map((row) => ({
-              id: requiredString(row, "id"),
-              name: optionalString(row, "name"),
-              keyPrefix: requiredString(row, "key_prefix"),
-              createdAt: requiredDate(row, "created_at"),
-              lastUsedAt: optionalDate(row, "last_used_at"),
+              ...row,
+              createdAt: new Date(row.createdAt),
+              lastUsedAt:
+                row.lastUsedAt === null ? null : new Date(row.lastUsedAt),
             }))
           )
         )
@@ -37,14 +36,15 @@ export function makeSqliteApiKeyRepo(
         const id = generateId();
         const createdAt = new Date();
         return database
-          .run(sql`
-            insert into api_keys
-              (id, name, key_hash, key_prefix, created_at, last_used_at)
-            values (
-              ${id}, ${input.name}, ${input.keyHash}, ${input.keyPrefix},
-              ${createdAt.getTime()}, null
-            )
-          `)
+          .insert(apiKeys)
+          .values({
+            id,
+            name: input.name,
+            keyHash: input.keyHash,
+            keyPrefix: input.keyPrefix,
+            createdAt: createdAt.getTime(),
+            lastUsedAt: null,
+          })
           .pipe(
             Effect.as({
               id,
@@ -58,36 +58,33 @@ export function makeSqliteApiKeyRepo(
     deleteById: (keyId) =>
       store.write((database) =>
         database
-          .all<Record<string, unknown>>(
-            sql`delete from api_keys where id = ${keyId} returning id`
-          )
-          .pipe(
-            Effect.map((rows) => rows.map((row) => requiredString(row, "id")))
-          )
+          .delete(apiKeys)
+          .where(eq(apiKeys.id, keyId))
+          .returning({ id: apiKeys.id })
+          .pipe(Effect.map((rows) => rows.map((row) => row.id)))
       ),
     findByPrefix: (keyPrefix) =>
       store.read((database) =>
         database
-          .all<Record<string, unknown>>(
-            sql`select id, key_hash from api_keys where key_prefix = ${keyPrefix}`
-          )
-          .pipe(
-            Effect.map((rows) =>
-              rows.map((row) => ({
-                id: requiredString(row, "id"),
-                keyHash: requiredString(row, "key_hash"),
-              }))
-            )
-          )
+          .select({ id: apiKeys.id, keyHash: apiKeys.keyHash })
+          .from(apiKeys)
+          .where(eq(apiKeys.keyPrefix, keyPrefix))
       ),
     touchLastUsed: (keyId) =>
       store.write((database) => {
         const now = Date.now();
-        return database.run(sql`
-          update api_keys set last_used_at = ${now}
-          where id = ${keyId}
-            and (last_used_at is null or last_used_at <= ${now - 60_000})
-        `);
+        return database
+          .update(apiKeys)
+          .set({ lastUsedAt: now })
+          .where(
+            and(
+              eq(apiKeys.id, keyId),
+              or(
+                isNull(apiKeys.lastUsedAt),
+                lte(apiKeys.lastUsedAt, now - 60_000)
+              )
+            )
+          );
       }),
   };
 }

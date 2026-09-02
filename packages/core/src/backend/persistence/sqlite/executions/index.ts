@@ -1,6 +1,7 @@
 import { Effect } from "effect";
-import { sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { partition } from "es-toolkit";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type {
   EntityStartOutcome,
@@ -16,11 +17,10 @@ import type {
   SqliteExecutor,
 } from "#src/backend/persistence/sqlite/database";
 import {
-  placeholders,
-  requiredNumber,
-  requiredString,
-  SQLITE_IN_FLIGHT_EXECUTION_STATUSES,
-} from "#src/backend/persistence/sqlite/database";
+  workflowExecutionEvents,
+  workflowExecutions,
+  workflowWaitStates,
+} from "#src/backend/persistence/sqlite/schema";
 import {
   makeSqliteRunsMethods,
   insertExecution,
@@ -30,17 +30,18 @@ import { makeSqliteWaitsMethods } from "#src/backend/persistence/sqlite/executio
 import { makeSqliteAuditMethods } from "#src/backend/persistence/sqlite/executions/audit";
 import { sqliteExecution } from "#src/backend/persistence/sqlite/executions/rows";
 
-const IN_FLIGHT = sql.raw(SQLITE_IN_FLIGHT_EXECUTION_STATUSES);
-type Row = Record<string, unknown>;
-
 function findByDelivery(database: SqliteExecutor, execution: NewExecution) {
   if (!execution.deliveryId) return Effect.succeed(null);
   return database
-    .get<Row>(sql`
-      select * from workflow_executions
-      where workflow_id = ${execution.workflowId}
-        and delivery_id = ${execution.deliveryId}
-    `)
+    .select()
+    .from(workflowExecutions)
+    .where(
+      and(
+        eq(workflowExecutions.workflowId, execution.workflowId),
+        eq(workflowExecutions.deliveryId, execution.deliveryId)
+      )
+    )
+    .get()
     .pipe(Effect.map((row) => (row ? sqliteExecution(row) : null)));
 }
 
@@ -50,18 +51,31 @@ function endInFlightExecutions(
   update: { status: "failed" | "superseded"; error: string }
 ) {
   if (ids.length === 0) return Effect.succeed<string[]>([]);
+  const inFlight = and(
+    inArray(workflowExecutions.id, ids),
+    inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+  );
   return Effect.gen(function* () {
-    const rows = yield* database.all<Row>(sql`
-      select id from workflow_executions
-      where id in (${placeholders(ids)}) and status in (${IN_FLIGHT})
-    `);
-    const eligible = rows.map((row) => requiredString(row, "id"));
+    const rows = yield* database
+      .select({ id: workflowExecutions.id })
+      .from(workflowExecutions)
+      .where(inFlight);
+    const eligible = rows.map((row) => row.id);
     if (eligible.length === 0) return [];
-    yield* database.run(sql`
-      update workflow_executions set status = ${update.status}, waiting_at = null,
-        completed_at = ${Date.now()}, error = ${update.error}
-      where id in (${placeholders(eligible)}) and status in (${IN_FLIGHT})
-    `);
+    yield* database
+      .update(workflowExecutions)
+      .set({
+        status: update.status,
+        waitingAt: null,
+        completedAt: Date.now(),
+        error: update.error,
+      })
+      .where(
+        and(
+          inArray(workflowExecutions.id, eligible),
+          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+        )
+      );
     return eligible;
   });
 }
@@ -91,24 +105,27 @@ function startForEntity(
       };
     }
 
-    const inFlight = yield* database.all<Row>(sql`
-      select id, enqueued_at, started_at from workflow_executions
-      where workflow_id = ${execution.workflowId}
-        and entity_value = ${execution.entityValue}
-        and run_mode = ${execution.runMode}
-        and status in (${IN_FLIGHT})
-    `);
+    const inFlight = yield* database
+      .select({
+        id: workflowExecutions.id,
+        enqueuedAt: workflowExecutions.enqueuedAt,
+        startedAt: workflowExecutions.startedAt,
+      })
+      .from(workflowExecutions)
+      .where(
+        and(
+          eq(workflowExecutions.workflowId, execution.workflowId),
+          eq(workflowExecutions.entityValue, execution.entityValue),
+          eq(workflowExecutions.runMode, execution.runMode),
+          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+        )
+      );
 
     let reclaimedExecutionIds: string[] = [];
     if (inFlight.length > 0 && concurrency === "first-wins") {
       const staleBefore = Date.now() - UNSENT_RUN_GRACE_MS;
-      const candidates = inFlight.map((row) => ({
-        id: requiredString(row, "id"),
-        enqueuedAt: row.enqueued_at,
-        startedAt: requiredNumber(row, "started_at"),
-      }));
       const [stuck, live] = partition(
-        candidates,
+        inFlight,
         (candidate) =>
           candidate.enqueuedAt === null && candidate.startedAt < staleBefore
       );
@@ -129,16 +146,19 @@ function startForEntity(
     if (inFlight.length > 0 && concurrency !== "first-wins") {
       supersededExecutionIds = yield* endInFlightExecutions(
         database,
-        inFlight.map((row) => requiredString(row, "id")),
+        inFlight.map((row) => row.id),
         { status: "superseded", error: supersededReason }
       );
       if (supersededExecutionIds.length > 0) {
-        yield* database.run(sql`
-          update workflow_wait_states set status = 'cancelled',
-            cancelled_at = ${Date.now()}
-          where execution_id in (${placeholders(supersededExecutionIds)})
-            and status = 'waiting'
-        `);
+        yield* database
+          .update(workflowWaitStates)
+          .set({ status: "cancelled", cancelledAt: Date.now() })
+          .where(
+            and(
+              inArray(workflowWaitStates.executionId, supersededExecutionIds),
+              eq(workflowWaitStates.status, "waiting")
+            )
+          );
       }
     }
 
@@ -166,13 +186,13 @@ export function makeSqliteExecutionRepo(
     deleteAllForWorkflow: (workflowId) =>
       store.write((database) =>
         Effect.gen(function* () {
-          yield* database.run(sql`
-            delete from workflow_execution_events where workflow_id = ${workflowId}
-          `);
-          const rows = yield* database.all<Row>(sql`
-            delete from workflow_executions where workflow_id = ${workflowId}
-            returning id
-          `);
+          yield* database
+            .delete(workflowExecutionEvents)
+            .where(eq(workflowExecutionEvents.workflowId, workflowId));
+          const rows = yield* database
+            .delete(workflowExecutions)
+            .where(eq(workflowExecutions.workflowId, workflowId))
+            .returning({ id: workflowExecutions.id });
           return rows.length;
         })
       ),

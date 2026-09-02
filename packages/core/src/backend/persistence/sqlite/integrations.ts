@@ -1,6 +1,7 @@
 import { Effect } from "effect";
-import { sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lte, ne, sql } from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
+import { isIntegrationRefreshState } from "@wfgraph/shared/types/integration";
 import type {
   EncryptionKeyMismatch,
   IntegrationCipher,
@@ -15,47 +16,63 @@ import type {
   SqliteDatabase,
   SqliteExecutor,
 } from "#src/backend/persistence/sqlite/database";
-import { isIntegrationRefreshState } from "@wfgraph/shared/types/integration";
 import {
-  optionalBoolean,
-  optionalDate,
-  optionalString,
-  placeholders,
-  requiredDate,
-  requiredNumber,
-  requiredString,
-} from "#src/backend/persistence/sqlite/database";
+  integrations,
+  oauthAuthorizationAttempts,
+} from "#src/backend/persistence/sqlite/schema";
 
-const INTEGRATION_COLUMNS = sql.raw(
-  "id, name, type, config, config_revision, is_managed, refresh_state, refresh_claim_id, refresh_claimed_at, created_at, updated_at"
-);
-type Row = Record<string, unknown>;
 type StoredIntegration = Omit<DecryptedIntegration, "config"> & {
   config: string;
 };
 
-function refreshState(row: Row): StoredIntegration["refreshState"] {
-  const value = requiredString(row, "refresh_state");
+function optionalManagedState(value: number | null): boolean | null {
+  if (value === null) return null;
+  if (value !== 0 && value !== 1) {
+    throw new Error("Invalid SQLite is_managed");
+  }
+  return value === 1;
+}
+
+function refreshState(value: string): StoredIntegration["refreshState"] {
   if (!isIntegrationRefreshState(value)) {
     throw new Error("Invalid SQLite refresh_state");
   }
   return value;
 }
 
-function storedIntegration(row: Row): StoredIntegration {
+function storedIntegration(
+  row: typeof integrations.$inferSelect
+): StoredIntegration {
   return {
-    id: requiredString(row, "id"),
-    name: requiredString(row, "name"),
-    type: requiredString(row, "type"),
-    config: requiredString(row, "config"),
-    configRevision: requiredNumber(row, "config_revision"),
-    isManaged: optionalBoolean(row, "is_managed"),
-    refreshState: refreshState(row),
-    refreshClaimId: optionalString(row, "refresh_claim_id"),
-    refreshClaimedAt: optionalDate(row, "refresh_claimed_at"),
-    createdAt: requiredDate(row, "created_at"),
-    updatedAt: requiredDate(row, "updated_at"),
+    id: row.id,
+    name: row.name,
+    type: row.type,
+    config: row.config,
+    configRevision: row.configRevision,
+    isManaged: optionalManagedState(row.isManaged),
+    refreshState: refreshState(row.refreshState),
+    refreshClaimId: row.refreshClaimId,
+    refreshClaimedAt:
+      row.refreshClaimedAt === null ? null : new Date(row.refreshClaimedAt),
+    createdAt: new Date(row.createdAt),
+    updatedAt: new Date(row.updatedAt),
   };
+}
+
+function oauthAuthorizationAttemptStatus(
+  status: string,
+  resultIntegrationId: string | null
+) {
+  if (status === "pending" || status === "processing" || status === "failed") {
+    return { status } as const;
+  }
+  if (status === "succeeded") {
+    if (resultIntegrationId === null) {
+      throw new Error("Invalid SQLite result_integration_id");
+    }
+    return { status, integrationId: resultIntegrationId } as const;
+  }
+  throw new Error("Invalid SQLite OAuth authorization attempt status");
 }
 
 export function makeSqliteIntegrationRepo(
@@ -87,11 +104,10 @@ export function makeSqliteIntegrationRepo(
       store
         .read((database) =>
           database
-            .all<Row>(sql`
-              select ${INTEGRATION_COLUMNS} from integrations
-              ${type ? sql`where type = ${type}` : sql.empty()}
-              order by created_at desc
-            `)
+            .select()
+            .from(integrations)
+            .where(type ? eq(integrations.type, type) : undefined)
+            .orderBy(desc(integrations.createdAt))
             .pipe(Effect.map((rows) => rows.map(storedIntegration)))
         )
         .pipe(Effect.flatMap((rows) => Effect.forEach(rows, decrypt))),
@@ -99,11 +115,14 @@ export function makeSqliteIntegrationRepo(
       store
         .read((database) =>
           database
-            .get<Row>(sql`
-              select ${INTEGRATION_COLUMNS} from integrations
-              where id = ${integrationId}
-            `)
-            .pipe(Effect.map((row) => (row ? storedIntegration(row) : null)))
+            .select()
+            .from(integrations)
+            .where(eq(integrations.id, integrationId))
+            .pipe(
+              Effect.map((rows) =>
+                rows[0] === undefined ? null : storedIntegration(rows[0])
+              )
+            )
         )
         .pipe(Effect.flatMap(decryptOptional)),
     typesByIds: (integrationIds) =>
@@ -111,18 +130,12 @@ export function makeSqliteIntegrationRepo(
         ? Effect.succeed({})
         : store.read((database) =>
             database
-              .all<Row>(sql`
-                select id, type from integrations
-                where id in (${placeholders(integrationIds)})
-              `)
+              .select({ id: integrations.id, type: integrations.type })
+              .from(integrations)
+              .where(inArray(integrations.id, integrationIds))
               .pipe(
                 Effect.map((rows) =>
-                  Object.fromEntries(
-                    rows.map((row) => [
-                      requiredString(row, "id"),
-                      requiredString(row, "type"),
-                    ])
-                  )
+                  Object.fromEntries(rows.map((row) => [row.id, row.type]))
                 )
               )
           ),
@@ -136,81 +149,116 @@ export function makeSqliteIntegrationRepo(
       store
         .write((database) =>
           Effect.gen(function* () {
-            const current = yield* database.get<Row>(sql`
-              select ${INTEGRATION_COLUMNS} from integrations where id = ${integrationId}
-            `);
-            if (!current) return { status: "not_found" as const };
-            const row = storedIntegration(current);
+            const current = yield* database
+              .select()
+              .from(integrations)
+              .where(eq(integrations.id, integrationId));
+            const currentRow = current[0];
+            if (currentRow === undefined)
+              return { status: "not_found" as const };
+
+            const row = storedIntegration(currentRow);
             const updatedAt = Date.now();
             const updated = yield* updates.config === undefined
-              ? database.get<Row>(sql`
-                  update integrations set name = ${updates.name ?? row.name},
-                    updated_at = ${updatedAt}
-                  where id = ${integrationId} returning ${INTEGRATION_COLUMNS}
-                `)
-              : database.get<Row>(sql`
-                  update integrations set name = ${updates.name ?? row.name},
-                    config = ${cipher.seal(updates.config)},
-                    config_revision = config_revision + 1, updated_at = ${updatedAt}
-                  where id = ${integrationId}
-                    and config_revision = ${updates.expectedRevision}
-                    and refresh_state <> 'refreshing'
-                  returning ${INTEGRATION_COLUMNS}
-                `);
-            return updated
-              ? ({
+              ? database
+                  .update(integrations)
+                  .set({ name: updates.name ?? row.name, updatedAt })
+                  .where(eq(integrations.id, integrationId))
+                  .returning()
+              : database
+                  .update(integrations)
+                  .set({
+                    name: updates.name ?? row.name,
+                    config: cipher.seal(updates.config),
+                    configRevision: sql`${integrations.configRevision} + 1`,
+                    updatedAt,
+                  })
+                  .where(
+                    and(
+                      eq(integrations.id, integrationId),
+                      eq(integrations.configRevision, updates.expectedRevision),
+                      ne(integrations.refreshState, "refreshing")
+                    )
+                  )
+                  .returning();
+            const updatedRow = updated[0];
+            return updatedRow === undefined
+              ? ({ status: "conflict" } as const)
+              : ({
                   status: "updated",
-                  integration: storedIntegration(updated),
-                } as const)
-              : ({ status: "conflict" } as const);
+                  integration: storedIntegration(updatedRow),
+                } as const);
           })
         )
         .pipe(Effect.flatMap(decryptWriteOutcome)),
     deleteOwnedRefreshClaim: (input) =>
       store.write((database) =>
         Effect.gen(function* () {
-          const removed = yield* database.get<Row>(sql`
-            delete from integrations where id = ${input.integrationId}
-              and refresh_state = 'refreshing'
-              and refresh_claim_id = ${input.claimId}
-              and config_revision = ${input.expectedRevision}
-            returning id
-          `);
-          if (removed) return { status: "deleted" as const };
-          const existing = yield* database.get<Row>(
-            sql`select id from integrations where id = ${input.integrationId}`
-          );
-          return existing
-            ? { status: "no_longer_owned" as const }
-            : { status: "not_found" as const };
+          const removed = yield* database
+            .delete(integrations)
+            .where(
+              and(
+                eq(integrations.id, input.integrationId),
+                eq(integrations.refreshState, "refreshing"),
+                eq(integrations.refreshClaimId, input.claimId),
+                eq(integrations.configRevision, input.expectedRevision)
+              )
+            )
+            .returning({ id: integrations.id });
+          if (removed[0] !== undefined) return { status: "deleted" as const };
+          const existing = yield* database
+            .select({ id: integrations.id })
+            .from(integrations)
+            .where(eq(integrations.id, input.integrationId));
+          return existing[0] === undefined
+            ? { status: "not_found" as const }
+            : { status: "no_longer_owned" as const };
         })
       ),
     createOAuthAuthorizationAttempt: (input) =>
       store.write((database) =>
         Effect.gen(function* () {
           const now = Date.now();
-          yield* database.run(sql`
-            update integrations set refresh_state = 'reauthorization_required',
-              refresh_claim_id = null, refresh_claimed_at = null, updated_at = ${now}
-            where refresh_state = 'refreshing' and refresh_claim_id in (
-              select state_hash from oauth_authorization_attempts
-              where mode = 'reconnect' and status = 'processing' and expires_at <= ${now}
-            )
-          `);
-          yield* database.run(
-            sql`delete from oauth_authorization_attempts where expires_at <= ${now}`
-          );
-          yield* database.run(sql`
-            insert into oauth_authorization_attempts (
-              state_hash, integration_id, expires_at, browser_binding_hash,
-              encrypted_payload, mode, status, created_at, updated_at
-            ) values (
-              ${input.stateHash}, ${input.integrationId}, ${input.expiresAt.getTime()},
-              ${input.browserBindingHash},
-              ${cipher.seal({ payload: JSON.stringify(input.payload) })},
-              ${input.payload.kind}, 'pending', ${now}, ${now}
-            )
-          `);
+          const expiredReconnects = database
+            .select({ stateHash: oauthAuthorizationAttempts.stateHash })
+            .from(oauthAuthorizationAttempts)
+            .where(
+              and(
+                eq(oauthAuthorizationAttempts.mode, "reconnect"),
+                eq(oauthAuthorizationAttempts.status, "processing"),
+                lte(oauthAuthorizationAttempts.expiresAt, now)
+              )
+            );
+          yield* database
+            .update(integrations)
+            .set({
+              refreshState: "reauthorization_required",
+              refreshClaimId: null,
+              refreshClaimedAt: null,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(integrations.refreshState, "refreshing"),
+                inArray(integrations.refreshClaimId, expiredReconnects)
+              )
+            );
+          yield* database
+            .delete(oauthAuthorizationAttempts)
+            .where(lte(oauthAuthorizationAttempts.expiresAt, now));
+          yield* database.insert(oauthAuthorizationAttempts).values({
+            stateHash: input.stateHash,
+            integrationId: input.integrationId,
+            expiresAt: input.expiresAt.getTime(),
+            browserBindingHash: input.browserBindingHash,
+            encryptedPayload: cipher.seal({
+              payload: JSON.stringify(input.payload),
+            }),
+            mode: input.payload.kind,
+            status: "pending",
+            createdAt: now,
+            updatedAt: now,
+          });
         })
       ),
     claimOAuthAuthorizationAttempt: (input) =>
@@ -218,25 +266,37 @@ export function makeSqliteIntegrationRepo(
         .write((database) =>
           Effect.gen(function* () {
             const now = Date.now();
-            const row = yield* database.get<Row>(sql`
-              update oauth_authorization_attempts
-              set status = case when browser_binding_hash = ${input.browserBindingHash}
-                    then 'processing' else 'failed' end,
-                  expires_at = ${input.expiresAt.getTime()}, updated_at = ${now}
-              where state_hash = ${input.stateHash} and status = 'pending'
-                and expires_at > ${now}
-              returning integration_id, browser_binding_hash, encrypted_payload
-            `);
+            const claimed = yield* database
+              .update(oauthAuthorizationAttempts)
+              .set({
+                status: sql`case when ${oauthAuthorizationAttempts.browserBindingHash} = ${input.browserBindingHash}
+                  then 'processing' else 'failed' end`,
+                expiresAt: input.expiresAt.getTime(),
+                updatedAt: now,
+              })
+              .where(
+                and(
+                  eq(oauthAuthorizationAttempts.stateHash, input.stateHash),
+                  eq(oauthAuthorizationAttempts.status, "pending"),
+                  gt(oauthAuthorizationAttempts.expiresAt, now)
+                )
+              )
+              .returning({
+                integrationId: oauthAuthorizationAttempts.integrationId,
+                browserBindingHash:
+                  oauthAuthorizationAttempts.browserBindingHash,
+                encryptedPayload: oauthAuthorizationAttempts.encryptedPayload,
+              });
+            const attempt = claimed[0];
             if (
-              !row ||
-              requiredString(row, "browser_binding_hash") !==
-                input.browserBindingHash
+              attempt === undefined ||
+              attempt.browserBindingHash !== input.browserBindingHash
             ) {
               return null;
             }
             return {
-              integrationId: optionalString(row, "integration_id"),
-              encryptedPayload: requiredString(row, "encrypted_payload"),
+              integrationId: attempt.integrationId,
+              encryptedPayload: attempt.encryptedPayload,
             };
           })
         )
@@ -262,156 +322,228 @@ export function makeSqliteIntegrationRepo(
     readOAuthAuthorizationAttemptStatus: (input) =>
       store.read((database) =>
         database
-          .get<Row>(sql`
-            select status, result_integration_id from oauth_authorization_attempts
-            where state_hash = ${input.stateHash}
-              and browser_binding_hash = ${input.browserBindingHash}
-              and expires_at > ${Date.now()}
-          `)
+          .select({
+            status: oauthAuthorizationAttempts.status,
+            resultIntegrationId: oauthAuthorizationAttempts.resultIntegrationId,
+          })
+          .from(oauthAuthorizationAttempts)
+          .where(
+            and(
+              eq(oauthAuthorizationAttempts.stateHash, input.stateHash),
+              eq(
+                oauthAuthorizationAttempts.browserBindingHash,
+                input.browserBindingHash
+              ),
+              gt(oauthAuthorizationAttempts.expiresAt, Date.now())
+            )
+          )
           .pipe(
-            Effect.map((row) => {
-              if (!row) return null;
-              const status = requiredString(row, "status");
-              if (status === "pending" || status === "processing") {
-                return { status } as const;
-              }
-              if (status === "failed") return { status } as const;
-              if (status === "succeeded") {
-                return {
-                  status,
-                  integrationId: requiredString(row, "result_integration_id"),
-                } as const;
-              }
-              throw new Error(
-                "Invalid SQLite OAuth authorization attempt status"
-              );
+            Effect.map((rows) => {
+              const attempt = rows[0];
+              return attempt === undefined
+                ? null
+                : oauthAuthorizationAttemptStatus(
+                    attempt.status,
+                    attempt.resultIntegrationId
+                  );
             })
           )
       ),
     failOAuthAuthorizationAttempt: (input) =>
       store.write((database) =>
         database
-          .get<Row>(sql`
-            update oauth_authorization_attempts set status = 'failed',
-              expires_at = ${input.expiresAt.getTime()}, updated_at = ${Date.now()}
-            where state_hash = ${input.stateHash} and status = 'processing'
-            returning state_hash
-          `)
-          .pipe(Effect.map(Boolean))
+          .update(oauthAuthorizationAttempts)
+          .set({
+            status: "failed",
+            expiresAt: input.expiresAt.getTime(),
+            updatedAt: Date.now(),
+          })
+          .where(
+            and(
+              eq(oauthAuthorizationAttempts.stateHash, input.stateHash),
+              eq(oauthAuthorizationAttempts.status, "processing")
+            )
+          )
+          .returning({ stateHash: oauthAuthorizationAttempts.stateHash })
+          .pipe(Effect.map((rows) => rows[0] !== undefined))
       ),
     completeOAuthCreateAttempt: (input) =>
       store.write((database) =>
         Effect.gen(function* () {
-          const claim = yield* database.get<Row>(sql`
-            select state_hash from oauth_authorization_attempts
-            where state_hash = ${input.stateHash} and mode = 'create'
-              and status = 'processing'
-          `);
-          if (!claim) return false;
+          const claim = yield* database
+            .select({ stateHash: oauthAuthorizationAttempts.stateHash })
+            .from(oauthAuthorizationAttempts)
+            .where(
+              and(
+                eq(oauthAuthorizationAttempts.stateHash, input.stateHash),
+                eq(oauthAuthorizationAttempts.mode, "create"),
+                eq(oauthAuthorizationAttempts.status, "processing")
+              )
+            );
+          if (claim[0] === undefined) return false;
           const now = Date.now();
-          yield* database.run(sql`
-            insert into integrations
-              (id, name, type, config, is_managed, created_at, updated_at)
-            values (${input.integrationId}, ${input.name}, ${input.type},
-              ${cipher.seal(input.config)}, 0, ${now}, ${now})
-          `);
-          yield* database.run(sql`
-            update oauth_authorization_attempts set status = 'succeeded',
-              result_integration_id = ${input.integrationId},
-              expires_at = ${input.expiresAt.getTime()}, updated_at = ${now}
-            where state_hash = ${input.stateHash} and mode = 'create'
-              and status = 'processing'
-          `);
+          yield* database.insert(integrations).values({
+            id: input.integrationId,
+            name: input.name,
+            type: input.type,
+            config: cipher.seal(input.config),
+            isManaged: 0,
+            createdAt: now,
+            updatedAt: now,
+          });
+          yield* database
+            .update(oauthAuthorizationAttempts)
+            .set({
+              status: "succeeded",
+              resultIntegrationId: input.integrationId,
+              expiresAt: input.expiresAt.getTime(),
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(oauthAuthorizationAttempts.stateHash, input.stateHash),
+                eq(oauthAuthorizationAttempts.mode, "create"),
+                eq(oauthAuthorizationAttempts.status, "processing")
+              )
+            );
           return true;
         })
       ),
     completeOAuthReconnectAttempt: (input) =>
       store.write((database) =>
         Effect.gen(function* () {
-          const attempt = yield* database.get<Row>(sql`
-            select state_hash from oauth_authorization_attempts
-            where state_hash = ${input.stateHash}
-              and integration_id = ${input.integrationId}
-              and mode = 'reconnect' and status = 'processing'
-          `);
-          if (!attempt) return false;
+          const attempt = yield* database
+            .select({ stateHash: oauthAuthorizationAttempts.stateHash })
+            .from(oauthAuthorizationAttempts)
+            .where(
+              and(
+                eq(oauthAuthorizationAttempts.stateHash, input.stateHash),
+                eq(
+                  oauthAuthorizationAttempts.integrationId,
+                  input.integrationId
+                ),
+                eq(oauthAuthorizationAttempts.mode, "reconnect"),
+                eq(oauthAuthorizationAttempts.status, "processing")
+              )
+            );
+          if (attempt[0] === undefined) return false;
           const now = Date.now();
-          const integration = yield* database.get<Row>(sql`
-            update integrations set config = ${cipher.seal(input.config)},
-              refresh_state = 'idle', refresh_claim_id = null,
-              refresh_claimed_at = null, config_revision = config_revision + 1,
-              updated_at = ${now}
-            where id = ${input.integrationId} and refresh_state = 'refreshing'
-              and refresh_claim_id = ${input.stateHash}
-              and config_revision = ${input.expectedRevision}
-            returning id
-          `);
-          if (!integration) return false;
-          yield* database.run(sql`
-            update oauth_authorization_attempts set status = 'succeeded',
-              result_integration_id = ${input.integrationId},
-              expires_at = ${input.expiresAt.getTime()}, updated_at = ${now}
-            where state_hash = ${input.stateHash}
-              and integration_id = ${input.integrationId}
-              and mode = 'reconnect' and status = 'processing'
-          `);
+          const integration = yield* database
+            .update(integrations)
+            .set({
+              config: cipher.seal(input.config),
+              refreshState: "idle",
+              refreshClaimId: null,
+              refreshClaimedAt: null,
+              configRevision: sql`${integrations.configRevision} + 1`,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(integrations.id, input.integrationId),
+                eq(integrations.refreshState, "refreshing"),
+                eq(integrations.refreshClaimId, input.stateHash),
+                eq(integrations.configRevision, input.expectedRevision)
+              )
+            )
+            .returning({ id: integrations.id });
+          if (integration[0] === undefined) return false;
+          yield* database
+            .update(oauthAuthorizationAttempts)
+            .set({
+              status: "succeeded",
+              resultIntegrationId: input.integrationId,
+              expiresAt: input.expiresAt.getTime(),
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(oauthAuthorizationAttempts.stateHash, input.stateHash),
+                eq(
+                  oauthAuthorizationAttempts.integrationId,
+                  input.integrationId
+                ),
+                eq(oauthAuthorizationAttempts.mode, "reconnect"),
+                eq(oauthAuthorizationAttempts.status, "processing")
+              )
+            );
           return true;
         })
       ),
     claimRefresh: (input) =>
       store.write((database) =>
         Effect.gen(function* () {
-          const claimed = yield* database.get<Row>(sql`
-            update integrations set refresh_state = 'refreshing',
-              refresh_claim_id = ${input.claimId}, refresh_claimed_at = ${Date.now()}
-            where id = ${input.integrationId} and refresh_state <> 'refreshing'
-              and config_revision = ${input.expectedRevision}
-            returning id
-          `);
-          if (claimed) return { status: "acquired" as const };
-          const existing = yield* database.get<Row>(
-            sql`select id from integrations where id = ${input.integrationId}`
-          );
-          return existing
-            ? { status: "lost" as const }
-            : { status: "not_found" as const };
+          const claimed = yield* database
+            .update(integrations)
+            .set({
+              refreshState: "refreshing",
+              refreshClaimId: input.claimId,
+              refreshClaimedAt: Date.now(),
+            })
+            .where(
+              and(
+                eq(integrations.id, input.integrationId),
+                ne(integrations.refreshState, "refreshing"),
+                eq(integrations.configRevision, input.expectedRevision)
+              )
+            )
+            .returning({ id: integrations.id });
+          if (claimed[0] !== undefined) return { status: "acquired" as const };
+          const existing = yield* database
+            .select({ id: integrations.id })
+            .from(integrations)
+            .where(eq(integrations.id, input.integrationId));
+          return existing[0] === undefined
+            ? { status: "not_found" as const }
+            : { status: "lost" as const };
         })
       ),
     completeRefresh: (input) =>
-      ownedRefreshUpdate(
-        store,
-        input,
-        () => sql`
-          config = ${cipher.seal(input.config)}, refresh_state = 'idle',
-          refresh_claim_id = null, refresh_claimed_at = null,
-          config_revision = config_revision + 1, updated_at = ${Date.now()}
-        `
+      store.write((database) =>
+        database
+          .update(integrations)
+          .set({
+            config: cipher.seal(input.config),
+            refreshState: "idle",
+            refreshClaimId: null,
+            refreshClaimedAt: null,
+            configRevision: sql`${integrations.configRevision} + 1`,
+            updatedAt: Date.now(),
+          })
+          .where(ownedRefreshCondition(input))
+          .returning({ id: integrations.id })
+          .pipe(Effect.map((rows) => rows[0] !== undefined))
       ),
     releaseRefreshClaim: (input) =>
-      ownedRefreshUpdate(
-        store,
-        input,
-        () => sql`
-          refresh_state = 'idle', refresh_claim_id = null, refresh_claimed_at = null
-        `
+      store.write((database) =>
+        database
+          .update(integrations)
+          .set({
+            refreshState: "idle",
+            refreshClaimId: null,
+            refreshClaimedAt: null,
+          })
+          .where(ownedRefreshCondition(input))
+          .returning({ id: integrations.id })
+          .pipe(Effect.map((rows) => rows[0] !== undefined))
       ),
     markReauthorizationRequired: (input) =>
       store.write((database) =>
         database
-          .get<Row>(sql`
-            update integrations set refresh_state = 'reauthorization_required',
-              refresh_claim_id = null, refresh_claimed_at = null,
-              updated_at = ${Date.now()}
-            where id = ${input.integrationId} and refresh_state = 'refreshing'
-              and refresh_claim_id = ${input.claimId}
-              and config_revision = ${input.expectedRevision}
-            returning id
-          `)
+          .update(integrations)
+          .set({
+            refreshState: "reauthorization_required",
+            refreshClaimId: null,
+            refreshClaimedAt: null,
+            updatedAt: Date.now(),
+          })
+          .where(ownedRefreshCondition(input))
+          .returning({ id: integrations.id })
           .pipe(
-            Effect.map((row) =>
-              row
-                ? ({ status: "transitioned" } as const)
-                : ({ status: "no_longer_owned" } as const)
+            Effect.map((rows) =>
+              rows[0] === undefined
+                ? ({ status: "no_longer_owned" } as const)
+                : ({ status: "transitioned" } as const)
             )
           )
       ),
@@ -430,12 +562,16 @@ function insertIntegration(
 ) {
   const now = new Date();
   return database
-    .run(sql`
-      insert into integrations
-        (id, name, type, config, is_managed, created_at, updated_at)
-      values (${input.id}, ${input.name}, ${input.type},
-        ${cipher.seal(input.config)}, 0, ${now.getTime()}, ${now.getTime()})
-    `)
+    .insert(integrations)
+    .values({
+      id: input.id,
+      name: input.name,
+      type: input.type,
+      config: cipher.seal(input.config),
+      isManaged: 0,
+      createdAt: now.getTime(),
+      updatedAt: now.getTime(),
+    })
     .pipe(
       Effect.as({
         ...input,
@@ -450,24 +586,15 @@ function insertIntegration(
     );
 }
 
-function ownedRefreshUpdate(
-  store: SqliteDatabase,
-  input: {
-    integrationId: string;
-    claimId: string;
-    expectedRevision: number;
-  },
-  assignments: () => ReturnType<typeof sql>
-) {
-  return store.write((database) =>
-    database
-      .get<Row>(sql`
-        update integrations set ${assignments()}
-        where id = ${input.integrationId} and refresh_state = 'refreshing'
-          and refresh_claim_id = ${input.claimId}
-          and config_revision = ${input.expectedRevision}
-        returning id
-      `)
-      .pipe(Effect.map(Boolean))
+function ownedRefreshCondition(input: {
+  integrationId: string;
+  claimId: string;
+  expectedRevision: number;
+}) {
+  return and(
+    eq(integrations.id, input.integrationId),
+    eq(integrations.refreshState, "refreshing"),
+    eq(integrations.refreshClaimId, input.claimId),
+    eq(integrations.configRevision, input.expectedRevision)
   );
 }

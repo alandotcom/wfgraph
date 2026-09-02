@@ -10,10 +10,7 @@ import { makeWithDefaults } from "drizzle-orm/effect-sqlite-node";
 import { readMigrationFiles, type MigrationMeta } from "drizzle-orm/migrator";
 import { openSqliteDatabase } from "#src/backend/persistence/sqlite/database";
 import { sqliteMigrations } from "#src/backend/persistence/sqlite/generated-migrations";
-import {
-  initializeSqlite,
-  runSqliteMigrations,
-} from "#src/backend/persistence/sqlite/migrations";
+import { runSqliteMigrations } from "#src/backend/persistence/sqlite/migrations";
 
 const directories: string[] = [];
 const migrationsDir = resolve(import.meta.dirname, "../../../drizzle-sqlite");

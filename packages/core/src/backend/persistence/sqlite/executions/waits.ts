@@ -1,7 +1,19 @@
 import { Effect } from "effect";
-import { sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  gt,
+  inArray,
+  lte,
+  notInArray,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
 import { toJsonObject } from "@wfgraph/shared/types/json";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type {
   WaitResumeClaim,
   WaitsRepoMethods,
@@ -11,17 +23,32 @@ import type {
   SqliteDatabase,
   SqliteExecutor,
 } from "#src/backend/persistence/sqlite/database";
+import { encodeJson } from "#src/backend/persistence/sqlite/database";
 import {
-  encodeJson,
-  placeholders,
-  requiredString,
-  SQLITE_IN_FLIGHT_EXECUTION_STATUSES,
-} from "#src/backend/persistence/sqlite/database";
+  workflowExecutions,
+  workflowWaitStates,
+} from "#src/backend/persistence/sqlite/schema";
 import { sqliteWaitState } from "#src/backend/persistence/sqlite/executions/rows";
 
 const WAIT_RESUME_CLAIM_LEASE_MS = 5 * 60 * 1000;
-const IN_FLIGHT = sql.raw(SQLITE_IN_FLIGHT_EXECUTION_STATUSES);
-type Row = Record<string, unknown>;
+
+const waitStateSelection = {
+  id: workflowWaitStates.id,
+  executionId: workflowWaitStates.executionId,
+  workflowId: workflowWaitStates.workflowId,
+  runId: workflowWaitStates.runId,
+  nodeId: workflowWaitStates.nodeId,
+  nodeName: workflowWaitStates.nodeName,
+  waitType: workflowWaitStates.waitType,
+  status: workflowWaitStates.status,
+  resumeToken: workflowWaitStates.resumeToken,
+  waitUntil: workflowWaitStates.waitUntil,
+  subscribedEvents: workflowWaitStates.subscribedEvents,
+  metadata: workflowWaitStates.metadata,
+  createdAt: workflowWaitStates.createdAt,
+  resumedAt: workflowWaitStates.resumedAt,
+  cancelledAt: workflowWaitStates.cancelledAt,
+};
 
 function claimWait(
   database: SqliteExecutor,
@@ -32,29 +59,40 @@ function claimWait(
     const claimedAt = new Date();
     const claimedAtMs = claimedAt.getTime();
     const staleBefore = claimedAtMs - WAIT_RESUME_CLAIM_LEASE_MS;
-    const candidate = yield* database.get<Row>(sql`
-      select ws.id from workflow_wait_states ws
-      join workflow_executions e on e.id = ws.execution_id
-      where ws.${sql.identifier(column)} = ${value}
-        and (ws.status = 'waiting'
-          or (ws.status = 'resuming' and ws.resumed_at <= ${staleBefore}))
-        and e.status in (${IN_FLIGHT})
-    `);
+    const identity =
+      column === "id"
+        ? eq(workflowWaitStates.id, value)
+        : eq(workflowWaitStates.resumeToken, value);
+    const claimable = or(
+      eq(workflowWaitStates.status, "waiting"),
+      and(
+        eq(workflowWaitStates.status, "resuming"),
+        lte(workflowWaitStates.resumedAt, staleBefore)
+      )
+    );
+    const candidate = yield* database
+      .select({ id: workflowWaitStates.id })
+      .from(workflowWaitStates)
+      .innerJoin(
+        workflowExecutions,
+        eq(workflowExecutions.id, workflowWaitStates.executionId)
+      )
+      .where(
+        and(
+          identity,
+          claimable,
+          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+        )
+      )
+      .get();
     if (!candidate) return null;
-    const candidateId = requiredString(candidate, "id");
-    const claimed = yield* database.get<Row>(sql`
-      update workflow_wait_states set status = 'resuming', resumed_at = ${claimedAtMs}
-      where id = ${candidateId}
-        and (status = 'waiting'
-          or (status = 'resuming' and resumed_at <= ${staleBefore}))
-      returning id
-    `);
+    const [claimed] = yield* database
+      .update(workflowWaitStates)
+      .set({ status: "resuming", resumedAt: claimedAtMs })
+      .where(and(eq(workflowWaitStates.id, candidate.id), claimable))
+      .returning();
     if (!claimed) return null;
-    const row = yield* database.get<Row>(sql`
-      select * from workflow_wait_states where id = ${candidateId}
-    `);
-    if (!row) throw new Error("SQLite did not return the claimed wait");
-    return { waitState: sqliteWaitState(row), claimedAt };
+    return { waitState: sqliteWaitState(claimed), claimedAt };
   });
 }
 
@@ -66,26 +104,33 @@ export function makeSqliteWaitsMethods(
       store.write((database) =>
         Effect.gen(function* () {
           const now = Date.now();
-          const parked = yield* database.get<Row>(sql`
-            update workflow_executions set status = 'waiting', waiting_at = ${now}
-            where id = ${input.executionId} and status in (${IN_FLIGHT})
-            returning id
-          `);
+          const [parked] = yield* database
+            .update(workflowExecutions)
+            .set({ status: "waiting", waitingAt: now })
+            .where(
+              and(
+                eq(workflowExecutions.id, input.executionId),
+                inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+              )
+            )
+            .returning({ id: workflowExecutions.id });
           if (!parked) return undefined;
           const id = generateId();
-          yield* database.run(sql`
-            insert into workflow_wait_states (
-              id, execution_id, workflow_id, run_id, node_id, node_name,
-              wait_type, status, resume_token, wait_until,
-              subscribed_events, metadata, created_at
-            ) values (
-              ${id}, ${input.executionId}, ${input.workflowId}, ${input.runId},
-              ${input.nodeId}, ${input.nodeName}, ${input.waitType}, 'waiting',
-              ${input.resumeToken ?? null}, ${input.waitUntil?.getTime() ?? null},
-              ${JSON.stringify(input.subscribedEvents ?? [])},
-              ${encodeJson(toJsonObject(input.metadata))}, ${now}
-            )
-          `);
+          yield* database.insert(workflowWaitStates).values({
+            id,
+            executionId: input.executionId,
+            workflowId: input.workflowId,
+            runId: input.runId,
+            nodeId: input.nodeId,
+            nodeName: input.nodeName,
+            waitType: input.waitType,
+            status: "waiting",
+            resumeToken: input.resumeToken ?? null,
+            waitUntil: input.waitUntil?.getTime() ?? null,
+            subscribedEvents: JSON.stringify(input.subscribedEvents ?? []),
+            metadata: encodeJson(toJsonObject(input.metadata)),
+            createdAt: now,
+          });
           return { waitStateId: id };
         })
       ),
@@ -93,70 +138,83 @@ export function makeSqliteWaitsMethods(
       store.write((database) => {
         const allowed =
           input.status === "resumed"
-            ? sql`status = 'waiting'`
-            : sql`status in ('waiting', 'resuming')`;
+            ? eq(workflowWaitStates.status, "waiting")
+            : inArray(workflowWaitStates.status, ["waiting", "resuming"]);
         const now = Date.now();
         return database
-          .get<Row>(sql`
-            update workflow_wait_states set status = ${input.status},
-              resumed_at = ${input.status === "cancelled" ? null : now},
-              cancelled_at = ${input.status === "cancelled" ? now : null}
-            where id = ${input.waitStateId} and ${allowed}
-            returning id
-          `)
-          .pipe(Effect.map(Boolean));
+          .update(workflowWaitStates)
+          .set({
+            status: input.status,
+            resumedAt: input.status === "cancelled" ? null : now,
+            cancelledAt: input.status === "cancelled" ? now : null,
+          })
+          .where(and(eq(workflowWaitStates.id, input.waitStateId), allowed))
+          .returning({ id: workflowWaitStates.id })
+          .pipe(Effect.map((rows) => rows.length > 0));
       }),
     cancelWaits: (waitStateIds) =>
       store.write((database) => {
         if (waitStateIds.length === 0) return Effect.succeed<string[]>([]);
+        const cancellable = and(
+          inArray(workflowWaitStates.id, waitStateIds),
+          inArray(workflowWaitStates.status, ["waiting", "resuming"])
+        );
         return Effect.gen(function* () {
-          const rows = yield* database.all<Row>(sql`
-            select id from workflow_wait_states
-            where id in (${placeholders(waitStateIds)})
-              and status in ('waiting', 'resuming')
-          `);
-          yield* database.run(sql`
-            update workflow_wait_states set status = 'cancelled',
-              cancelled_at = ${Date.now()}
-            where id in (${placeholders(waitStateIds)})
-              and status in ('waiting', 'resuming')
-          `);
-          return rows.map((row) => requiredString(row, "id"));
+          const rows = yield* database
+            .select({ id: workflowWaitStates.id })
+            .from(workflowWaitStates)
+            .where(cancellable);
+          yield* database
+            .update(workflowWaitStates)
+            .set({ status: "cancelled", cancelledAt: Date.now() })
+            .where(cancellable);
+          return rows.map((row) => row.id);
         });
       }),
     cancelWaitsForExecution: (executionId) =>
       store.write((database) =>
-        database.run(sql`
-          update workflow_wait_states set status = 'cancelled',
-            cancelled_at = ${Date.now()}
-          where execution_id = ${executionId}
-            and status in ('waiting', 'resuming')
-        `)
+        database
+          .update(workflowWaitStates)
+          .set({ status: "cancelled", cancelledAt: Date.now() })
+          .where(
+            and(
+              eq(workflowWaitStates.executionId, executionId),
+              inArray(workflowWaitStates.status, ["waiting", "resuming"])
+            )
+          )
       ),
     listWaitsForEvent: (input) =>
       store.read((database) => {
         const filters: SQL[] = [
-          sql`ws.workflow_id = ${input.workflowId}`,
-          sql`ws.status = 'waiting'`,
-          sql`e.status in (${IN_FLIGHT})`,
+          eq(workflowWaitStates.workflowId, input.workflowId),
+          eq(workflowWaitStates.status, "waiting"),
+          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
           sql`exists (
-            select 1 from json_each(ws.subscribed_events) j
+            select 1 from json_each(${workflowWaitStates.subscribedEvents}) j
             where j.value = ${input.eventName}
           )`,
         ];
-        if (input.afterId) filters.push(sql`ws.id > ${input.afterId}`);
+        if (input.afterId) {
+          filters.push(gt(workflowWaitStates.id, input.afterId));
+        }
         if (input.excludingExecutionIds?.length) {
-          filters.push(sql`
-            ws.execution_id not in (${placeholders(input.excludingExecutionIds)})
-          `);
+          filters.push(
+            notInArray(
+              workflowWaitStates.executionId,
+              input.excludingExecutionIds
+            )
+          );
         }
         return database
-          .all<Row>(sql`
-            select ws.* from workflow_wait_states ws
-            join workflow_executions e on e.id = ws.execution_id
-            where ${sql.join(filters, sql` and `)}
-            order by ws.id asc limit ${input.limit}
-          `)
+          .select(waitStateSelection)
+          .from(workflowWaitStates)
+          .innerJoin(
+            workflowExecutions,
+            eq(workflowExecutions.id, workflowWaitStates.executionId)
+          )
+          .where(and(...filters))
+          .orderBy(asc(workflowWaitStates.id))
+          .limit(input.limit)
           .pipe(Effect.map((rows) => rows.map(sqliteWaitState)));
       }),
     claimWaitingStateByToken: (resumeToken) =>
@@ -168,33 +226,44 @@ export function makeSqliteWaitsMethods(
     settleWaitingStateClaim: (input) =>
       store.write((database) =>
         database
-          .get<Row>(sql`
-            update workflow_wait_states set status = 'resumed',
-              resumed_at = ${Date.now()}
-            where id = ${input.waitStateId} and status = 'resuming'
-              and resumed_at = ${input.claimedAt.getTime()}
-            returning id
-          `)
-          .pipe(Effect.map(Boolean))
+          .update(workflowWaitStates)
+          .set({ status: "resumed", resumedAt: Date.now() })
+          .where(
+            and(
+              eq(workflowWaitStates.id, input.waitStateId),
+              eq(workflowWaitStates.status, "resuming"),
+              eq(workflowWaitStates.resumedAt, input.claimedAt.getTime())
+            )
+          )
+          .returning({ id: workflowWaitStates.id })
+          .pipe(Effect.map((rows) => rows.length > 0))
       ),
     releaseWaitingStateClaim: (input) =>
       store.write((database) =>
         database
-          .get<Row>(sql`
-            update workflow_wait_states set status = 'waiting', resumed_at = null
-            where id = ${input.waitStateId} and status = 'resuming'
-              and resumed_at = ${input.claimedAt.getTime()}
-            returning id
-          `)
-          .pipe(Effect.map(Boolean))
+          .update(workflowWaitStates)
+          .set({ status: "waiting", resumedAt: null })
+          .where(
+            and(
+              eq(workflowWaitStates.id, input.waitStateId),
+              eq(workflowWaitStates.status, "resuming"),
+              eq(workflowWaitStates.resumedAt, input.claimedAt.getTime())
+            )
+          )
+          .returning({ id: workflowWaitStates.id })
+          .pipe(Effect.map((rows) => rows.length > 0))
       ),
     listWaitingStates: (executionId) =>
       store.read((database) =>
         database
-          .all<Row>(sql`
-            select * from workflow_wait_states
-            where execution_id = ${executionId} and status = 'waiting'
-          `)
+          .select()
+          .from(workflowWaitStates)
+          .where(
+            and(
+              eq(workflowWaitStates.executionId, executionId),
+              eq(workflowWaitStates.status, "waiting")
+            )
+          )
           .pipe(Effect.map((rows) => rows.map(sqliteWaitState)))
       ),
     listWaitingStatesForExecutions: (executionIds) =>
@@ -203,11 +272,14 @@ export function makeSqliteWaitsMethods(
           return Effect.succeed(new Map<string, WorkflowWaitState[]>());
         }
         return database
-          .all<Row>(sql`
-            select * from workflow_wait_states
-            where execution_id in (${placeholders(executionIds)})
-              and status = 'waiting'
-          `)
+          .select()
+          .from(workflowWaitStates)
+          .where(
+            and(
+              inArray(workflowWaitStates.executionId, executionIds),
+              eq(workflowWaitStates.status, "waiting")
+            )
+          )
           .pipe(
             Effect.map((rows) => {
               const grouped = new Map<string, WorkflowWaitState[]>();

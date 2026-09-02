@@ -1,7 +1,19 @@
 import { Effect } from "effect";
-import { sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  lt,
+  ne,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
-import type { JsonValue } from "@wfgraph/shared/types/json";
+import { readJsonObject, type JsonValue } from "@wfgraph/shared/types/json";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { RunsRepoMethods } from "#src/backend/services/executions/repo/runs";
 import type {
   ExecutionSummary,
@@ -13,44 +25,47 @@ import type {
   SqliteDatabase,
   SqliteExecutor,
 } from "#src/backend/persistence/sqlite/database";
+import { encodeJson } from "#src/backend/persistence/sqlite/database";
 import {
-  encodeJson,
-  optionalDate,
-  optionalJsonObject,
-  optionalNumber,
-  optionalString,
-  placeholders,
-  requiredBoolean,
-  requiredNumber,
-  requiredString,
-  requiredVersionKind,
-  SQLITE_IN_FLIGHT_EXECUTION_STATUSES,
-} from "#src/backend/persistence/sqlite/database";
+  workflowExecutions,
+  workflows,
+  workflowVersions,
+} from "#src/backend/persistence/sqlite/schema";
 import {
   sqliteExecution,
   sqliteExecutionListRow,
   sqliteExecutionStatus,
+  type SqliteExecutionListRow,
 } from "#src/backend/persistence/sqlite/executions/rows";
 
 const WORKFLOW_EXECUTIONS_LIMIT = 50;
 
-/**
- * The columns both run-list queries select, plus the two they join for. Payloads
- * and routing columns the lists never paint stay off this list, so a poll does
- * not pull blobs the panel would discard. The version fields label the graph
- * the run pinned.
- */
-const EXECUTION_LIST_SELECT =
-  sql.raw(`e.id, e.workflow_id, e.status, e.start_source,
-  e.run_mode, e.start_event_name, e.entity_value, e.workflow_run_id,
-  e.error, e.started_at, e.waiting_at, e.cancelled_at, e.completed_at,
-  e.duration, v.kind AS version_kind, v.version AS version_number`);
-/** Every run pins exactly one version, so both list reads join it. */
-const PINNED_VERSION_JOIN = sql.raw(
-  "join workflow_versions v on v.id = e.workflow_version_id"
-);
-const IN_FLIGHT = sql.raw(SQLITE_IN_FLIGHT_EXECUTION_STATUSES);
-type Row = Record<string, unknown>;
+/** The payload-free fields painted by the two polling run lists. */
+const executionListSelection = {
+  id: workflowExecutions.id,
+  workflowId: workflowExecutions.workflowId,
+  status: workflowExecutions.status,
+  startSource: workflowExecutions.startSource,
+  runMode: workflowExecutions.runMode,
+  startEventName: workflowExecutions.startEventName,
+  entityValue: workflowExecutions.entityValue,
+  workflowRunId: workflowExecutions.workflowRunId,
+  error: workflowExecutions.error,
+  startedAt: workflowExecutions.startedAt,
+  waitingAt: workflowExecutions.waitingAt,
+  cancelledAt: workflowExecutions.cancelledAt,
+  completedAt: workflowExecutions.completedAt,
+  duration: workflowExecutions.duration,
+  versionKind: workflowVersions.kind,
+  versionNumber: workflowVersions.version,
+};
+
+function optionalJsonObject(value: string | null) {
+  if (value === null) return null;
+  const json = readJsonObject(JSON.parse(value));
+  if (json === null) throw new Error("Invalid SQLite cancel_payload");
+  return json;
+}
 
 export function insertExecution(
   database: SqliteExecutor,
@@ -63,36 +78,45 @@ export function insertExecution(
     const now = Date.now();
     const isTerminal =
       status === "completed" || status === "failed" || status === "canceled";
-    yield* database.run(sql`
-      insert into workflow_executions (
-        id, workflow_id, workflow_version_id, status, start_source,
-        delivery_id, run_mode, start_event_name, entity_value, input,
-        output, error, started_at, cancelled_at, completed_at
-      ) values (
-        ${id}, ${input.workflowId}, ${input.workflowVersionId}, ${status},
-        ${input.startSource}, ${input.deliveryId ?? null}, ${input.runMode},
-        ${input.startEventName ?? null}, ${input.entityValue ?? null},
-        ${encodeJson(input.input)}, ${encodeJson(terminal?.output)},
-        ${terminal?.error ?? null}, ${now},
-        ${status === "canceled" ? now : null}, ${isTerminal ? now : null}
-      )
-    `);
-    const row = yield* database.get<Row>(
-      sql`select * from workflow_executions where id = ${id}`
-    );
+    const [row] = yield* database
+      .insert(workflowExecutions)
+      .values({
+        id,
+        workflowId: input.workflowId,
+        workflowVersionId: input.workflowVersionId,
+        status,
+        startSource: input.startSource,
+        deliveryId: input.deliveryId ?? null,
+        runMode: input.runMode,
+        startEventName: input.startEventName ?? null,
+        entityValue: input.entityValue ?? null,
+        input: encodeJson(input.input),
+        output: encodeJson(terminal?.output),
+        error: terminal?.error ?? null,
+        startedAt: now,
+        cancelledAt: status === "canceled" ? now : null,
+        completedAt: isTerminal ? now : null,
+      })
+      .returning();
     if (!row) throw new Error("SQLite did not return the inserted execution");
     return sqliteExecution(row);
   });
 }
 
-function executionSummary(row: Row): ExecutionSummary {
+function executionSummary(
+  row: typeof workflowExecutions.$inferSelect & {
+    versionKind: string;
+    versionNumber: number | null;
+  }
+): ExecutionSummary {
   const execution = sqliteExecution(row);
+  const version = sqliteExecutionListRow(row);
   return {
     id: execution.id,
     workflowId: execution.workflowId,
     workflowVersionId: execution.workflowVersionId,
-    versionKind: requiredVersionKind(row, "version_kind"),
-    versionNumber: optionalNumber(row, "version_number"),
+    versionKind: version.versionKind,
+    versionNumber: version.versionNumber,
     status: execution.status,
     startSource: execution.startSource,
     runMode: execution.runMode,
@@ -107,11 +131,19 @@ function executionSummary(row: Row): ExecutionSummary {
   };
 }
 
-function globalExecution(row: Row): GlobalExecutionRow {
+function globalExecution(
+  row: SqliteExecutionListRow & {
+    workflowName: string;
+    workflowIsPaused: number;
+  }
+): GlobalExecutionRow {
+  if (row.workflowIsPaused !== 0 && row.workflowIsPaused !== 1) {
+    throw new Error("Invalid SQLite workflow_is_paused");
+  }
   return {
     ...sqliteExecutionListRow(row),
-    workflowName: requiredString(row, "workflow_name"),
-    workflowIsPaused: requiredBoolean(row, "workflow_is_paused"),
+    workflowName: row.workflowName,
+    workflowIsPaused: row.workflowIsPaused === 1,
   };
 }
 
@@ -120,26 +152,43 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
     listByWorkflow: ({ workflowId, includeSuperseded }) =>
       store.read((database) =>
         database
-          .all<Row>(sql`
-            select ${EXECUTION_LIST_SELECT}
-            from workflow_executions e ${PINNED_VERSION_JOIN}
-            where e.workflow_id = ${workflowId}
-              ${includeSuperseded ? sql.empty() : sql`and e.status <> 'superseded'`}
-            order by e.started_at desc, e.id desc limit ${WORKFLOW_EXECUTIONS_LIMIT}
-          `)
+          .select(executionListSelection)
+          .from(workflowExecutions)
+          .innerJoin(
+            workflowVersions,
+            eq(workflowVersions.id, workflowExecutions.workflowVersionId)
+          )
+          .where(
+            includeSuperseded
+              ? eq(workflowExecutions.workflowId, workflowId)
+              : and(
+                  eq(workflowExecutions.workflowId, workflowId),
+                  ne(workflowExecutions.status, "superseded")
+                )
+          )
+          .orderBy(
+            desc(workflowExecutions.startedAt),
+            desc(workflowExecutions.id)
+          )
+          .limit(WORKFLOW_EXECUTIONS_LIMIT)
           .pipe(Effect.map((rows) => rows.map(sqliteExecutionListRow)))
       ),
     countSuperseded: (workflowId) =>
       store.read((database) =>
         database
-          .get<Row>(sql`
-            select count(*) as total from workflow_executions
-            where workflow_id = ${workflowId} and status = 'superseded'
-          `)
+          .select({ total: sql<number>`count(*)` })
+          .from(workflowExecutions)
+          .where(
+            and(
+              eq(workflowExecutions.workflowId, workflowId),
+              eq(workflowExecutions.status, "superseded")
+            )
+          )
+          .get()
           .pipe(
             Effect.map((row) => {
               if (!row) throw new Error("Invalid SQLite count");
-              return requiredNumber(row, "total");
+              return row.total;
             })
           )
       ),
@@ -148,55 +197,88 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
         const filters: SQL[] = [];
         if (query.workflowIds?.length) {
           filters.push(
-            sql`e.workflow_id in (${placeholders(query.workflowIds)})`
+            inArray(workflowExecutions.workflowId, query.workflowIds)
           );
         }
         if (query.statuses?.length) {
-          filters.push(sql`e.status in (${placeholders(query.statuses)})`);
+          const statusFilter = inArray(
+            workflowExecutions.status,
+            query.statuses
+          );
+          if (statusFilter) filters.push(statusFilter);
         }
         if (query.cursor) {
           const startedAt = query.cursor.startedAt.getTime();
-          filters.push(sql`(
-            e.started_at < ${startedAt}
-            or (e.started_at = ${startedAt} and e.id < ${query.cursor.id})
-          )`);
+          const cursorFilter = or(
+            lt(workflowExecutions.startedAt, startedAt),
+            and(
+              eq(workflowExecutions.startedAt, startedAt),
+              lt(workflowExecutions.id, query.cursor.id)
+            )
+          );
+          if (cursorFilter) filters.push(cursorFilter);
         }
         return database
-          .all<Row>(sql`
-            select ${EXECUTION_LIST_SELECT}, w.name as workflow_name,
-              w.is_paused as workflow_is_paused
-            from workflow_executions e join workflows w on w.id = e.workflow_id
-            ${PINNED_VERSION_JOIN}
-            ${filters.length ? sql`where ${sql.join(filters, sql` and `)}` : sql.empty()}
-            order by e.started_at desc, e.id desc limit ${query.limit}
-          `)
+          .select({
+            ...executionListSelection,
+            workflowName: workflows.name,
+            workflowIsPaused: workflows.isPaused,
+          })
+          .from(workflowExecutions)
+          .innerJoin(workflows, eq(workflows.id, workflowExecutions.workflowId))
+          .innerJoin(
+            workflowVersions,
+            eq(workflowVersions.id, workflowExecutions.workflowVersionId)
+          )
+          .where(filters.length === 0 ? undefined : and(...filters))
+          .orderBy(
+            desc(workflowExecutions.startedAt),
+            desc(workflowExecutions.id)
+          )
+          .limit(query.limit)
           .pipe(Effect.map((rows) => rows.map(globalExecution)));
       }),
     findSummaryById: (executionId) =>
       store.read((database) =>
         database
-          .get<Row>(sql`
-            select e.*, v.kind as version_kind, v.version as version_number
-            from workflow_executions e ${PINNED_VERSION_JOIN}
-            where e.id = ${executionId}
-          `)
-          .pipe(Effect.map((row) => (row ? executionSummary(row) : null)))
+          .select({
+            execution: workflowExecutions,
+            versionKind: workflowVersions.kind,
+            versionNumber: workflowVersions.version,
+          })
+          .from(workflowExecutions)
+          .innerJoin(
+            workflowVersions,
+            eq(workflowVersions.id, workflowExecutions.workflowVersionId)
+          )
+          .where(eq(workflowExecutions.id, executionId))
+          .get()
+          .pipe(
+            Effect.map((row) =>
+              row
+                ? executionSummary({
+                    ...row.execution,
+                    versionKind: row.versionKind,
+                    versionNumber: row.versionNumber,
+                  })
+                : null
+            )
+          )
       ),
     findStatusById: (executionId) =>
       store.read((database) =>
         database
-          .get<Row>(sql`
-            select id, status from workflow_executions where id = ${executionId}
-          `)
+          .select({
+            id: workflowExecutions.id,
+            status: workflowExecutions.status,
+          })
+          .from(workflowExecutions)
+          .where(eq(workflowExecutions.id, executionId))
+          .get()
           .pipe(
             Effect.map((row) =>
               row
-                ? {
-                    id: requiredString(row, "id"),
-                    status: sqliteExecutionStatus(
-                      requiredString(row, "status")
-                    ),
-                  }
+                ? { id: row.id, status: sqliteExecutionStatus(row.status) }
                 : null
             )
           )
@@ -204,22 +286,21 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
     existsById: (executionId) =>
       store.read((database) =>
         database
-          .get<Row>(
-            sql`select 1 from workflow_executions where id = ${executionId}`
-          )
+          .select({ id: workflowExecutions.id })
+          .from(workflowExecutions)
+          .where(eq(workflowExecutions.id, executionId))
+          .limit(1)
+          .get()
           .pipe(Effect.map(Boolean))
       ),
     findWorkflowIdById: (executionId) =>
       store.read((database) =>
         database
-          .get<Row>(sql`
-            select workflow_id from workflow_executions where id = ${executionId}
-          `)
-          .pipe(
-            Effect.map((row) =>
-              row ? requiredString(row, "workflow_id") : null
-            )
-          )
+          .select({ workflowId: workflowExecutions.workflowId })
+          .from(workflowExecutions)
+          .where(eq(workflowExecutions.id, executionId))
+          .get()
+          .pipe(Effect.map((row) => row?.workflowId ?? null))
       ),
     insertTerminal: (input) =>
       store.write((database) =>
@@ -227,79 +308,107 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
       ),
     markEnqueued: ({ executionId, runId }) =>
       store.write((database) =>
-        database.run(sql`
-          update workflow_executions set workflow_run_id = ${runId},
-            enqueued_at = ${Date.now()} where id = ${executionId}
-        `)
+        database
+          .update(workflowExecutions)
+          .set({ workflowRunId: runId, enqueuedAt: Date.now() })
+          .where(eq(workflowExecutions.id, executionId))
       ),
     markEnqueueFailed: ({ executionId, error }) =>
       store.write((database) =>
         database
-          .get<Row>(sql`
-            update workflow_executions set status = 'failed', error = ${error},
-              completed_at = ${Date.now()}, waiting_at = null
-            where id = ${executionId} and status in (${IN_FLIGHT}) returning id
-          `)
-          .pipe(Effect.map(Boolean))
+          .update(workflowExecutions)
+          .set({
+            status: "failed",
+            error,
+            completedAt: Date.now(),
+            waitingAt: null,
+          })
+          .where(
+            and(
+              eq(workflowExecutions.id, executionId),
+              inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+            )
+          )
+          .returning({ id: workflowExecutions.id })
+          .pipe(Effect.map((rows) => rows.length > 0))
       ),
     markRunning: (executionId) =>
       store.write((database) =>
         database
-          .get<Row>(sql`
-            update workflow_executions set status = 'running', waiting_at = null
-            where id = ${executionId} and status = 'waiting' returning id
-          `)
-          .pipe(Effect.map(Boolean))
+          .update(workflowExecutions)
+          .set({ status: "running", waitingAt: null })
+          .where(
+            and(
+              eq(workflowExecutions.id, executionId),
+              eq(workflowExecutions.status, "waiting")
+            )
+          )
+          .returning({ id: workflowExecutions.id })
+          .pipe(Effect.map((rows) => rows.length > 0))
       ),
     endInFlight: (input) =>
       store.write((database) => {
         const now = Date.now();
         return database
-          .get<Row>(sql`
-            update workflow_executions set status = ${input.status},
-              waiting_at = null,
-              cancelled_at = ${input.status === "canceled" ? now : null},
-              completed_at = ${now}, error = ${input.error ?? null}
-            where id = ${input.executionId} and status in (${IN_FLIGHT})
-            returning id
-          `)
-          .pipe(Effect.map(Boolean));
+          .update(workflowExecutions)
+          .set({
+            status: input.status,
+            waitingAt: null,
+            cancelledAt: input.status === "canceled" ? now : null,
+            completedAt: now,
+            error: input.error ?? null,
+          })
+          .where(
+            and(
+              eq(workflowExecutions.id, input.executionId),
+              inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+            )
+          )
+          .returning({ id: workflowExecutions.id })
+          .pipe(Effect.map((rows) => rows.length > 0));
       }),
     requestCancelForEntity: (input) =>
       store.write((database) =>
         Effect.gen(function* () {
-          const rows = yield* database.all<Row>(sql`
-            select id from workflow_executions
-            where workflow_id = ${input.workflowId}
-              and entity_value = ${input.entityValue} and run_mode = ${input.runMode}
-              and status in (${IN_FLIGHT}) and cancel_requested_at is null
-          `);
-          yield* database.run(sql`
-            update workflow_executions set cancel_requested_at = ${Date.now()},
-              cancel_event_name = ${input.eventName},
-              cancel_payload = ${encodeJson(input.payload)}
-            where workflow_id = ${input.workflowId}
-              and entity_value = ${input.entityValue} and run_mode = ${input.runMode}
-              and status in (${IN_FLIGHT}) and cancel_requested_at is null
-          `);
-          return rows.map((row) => requiredString(row, "id"));
+          const where = and(
+            eq(workflowExecutions.workflowId, input.workflowId),
+            eq(workflowExecutions.entityValue, input.entityValue),
+            eq(workflowExecutions.runMode, input.runMode),
+            inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
+            isNull(workflowExecutions.cancelRequestedAt)
+          );
+          const rows = yield* database
+            .select({ id: workflowExecutions.id })
+            .from(workflowExecutions)
+            .where(where);
+          yield* database
+            .update(workflowExecutions)
+            .set({
+              cancelRequestedAt: Date.now(),
+              cancelEventName: input.eventName,
+              cancelPayload: encodeJson(input.payload),
+            })
+            .where(where);
+          return rows.map((row) => row.id);
         })
       ),
     findPendingCancel: (executionId) =>
       store.read((database) =>
         database
-          .get<Row>(sql`
-            select cancel_requested_at, cancel_event_name, cancel_payload
-            from workflow_executions where id = ${executionId}
-          `)
+          .select({
+            cancelRequestedAt: workflowExecutions.cancelRequestedAt,
+            cancelEventName: workflowExecutions.cancelEventName,
+            cancelPayload: workflowExecutions.cancelPayload,
+          })
+          .from(workflowExecutions)
+          .where(eq(workflowExecutions.id, executionId))
+          .get()
           .pipe(
             Effect.map((row) => {
-              if (!row || optionalDate(row, "cancel_requested_at") === null) {
-                return null;
-              }
+              if (!row || row.cancelRequestedAt === null) return null;
               return {
-                eventName: optionalString(row, "cancel_event_name"),
-                payload: optionalJsonObject(row, "cancel_payload"),
+                eventName: row.cancelEventName,
+                payload: optionalJsonObject(row.cancelPayload),
               };
             })
           )
@@ -307,21 +416,31 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
     finishRun: (input) =>
       store.write((database) =>
         Effect.gen(function* () {
-          const row = yield* database.get<Row>(sql`
-            select started_at from workflow_executions where id = ${input.executionId}
-          `);
+          const row = yield* database
+            .select({ startedAt: workflowExecutions.startedAt })
+            .from(workflowExecutions)
+            .where(eq(workflowExecutions.id, input.executionId))
+            .get();
           if (!row) return false;
-          const startedAt = requiredNumber(row, "started_at");
           const now = Date.now();
-          const updated = yield* database.get<Row>(sql`
-            update workflow_executions set status = ${input.status},
-              output = ${encodeJson(input.output)}, error = ${input.error ?? null},
-              waiting_at = null, completed_at = ${now},
-              duration = ${String(now - startedAt)}
-            where id = ${input.executionId} and status in (${IN_FLIGHT})
-            returning id
-          `);
-          return Boolean(updated);
+          const updated = yield* database
+            .update(workflowExecutions)
+            .set({
+              status: input.status,
+              output: encodeJson(input.output),
+              error: input.error ?? null,
+              waitingAt: null,
+              completedAt: now,
+              duration: String(now - row.startedAt),
+            })
+            .where(
+              and(
+                eq(workflowExecutions.id, input.executionId),
+                inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+              )
+            )
+            .returning({ id: workflowExecutions.id });
+          return updated.length > 0;
         })
       ),
   };
