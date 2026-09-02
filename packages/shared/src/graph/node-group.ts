@@ -5,7 +5,7 @@
  * Lookup exits may share one downstream endpoint; a Condition is one True exit.
  */
 
-import { uniqBy } from "es-toolkit/array";
+import { groupBy, uniqBy } from "es-toolkit/array";
 import { compact, countBy, map, pipe } from "es-toolkit/fp";
 import { normalizeConditionBranch } from "#src/conditions/condition-branch";
 import { type ExtensionCatalog, findAction } from "#src/extensions/catalog";
@@ -512,29 +512,25 @@ export function orderGroupParentsFirst<T extends GroupGraphNode>(
     return nodes;
   }
 
-  const groups: T[] = [];
-  const children: T[] = [];
-  const rest: T[] = [];
-  for (const node of nodes) {
-    if (isGroupNode(node)) {
-      groups.push(node);
-    } else if (node.parentId) {
-      children.push(node);
-    } else {
-      rest.push(node);
-    }
-  }
-  return [...rest, ...groups, ...children];
+  const byKind = groupBy(nodes, nodeOrderKind);
+  return [
+    ...(byKind.rest ?? []),
+    ...(byKind.groups ?? []),
+    ...(byKind.children ?? []),
+  ];
+}
+
+/** The three runs `orderGroupParentsFirst` lays out, in the order it lays them. */
+type NodeOrderKind = "rest" | "groups" | "children";
+
+function nodeOrderKind(node: GroupGraphNode): NodeOrderKind {
+  return isGroupNode(node) ? "groups" : node.parentId ? "children" : "rest";
 }
 
 function isRestGroupsChildrenOrder(nodes: readonly GroupGraphNode[]): boolean {
-  let phase: "rest" | "groups" | "children" = "rest";
+  let phase: NodeOrderKind = "rest";
   for (const node of nodes) {
-    const kind: "rest" | "groups" | "children" = isGroupNode(node)
-      ? "groups"
-      : node.parentId
-        ? "children"
-        : "rest";
+    const kind = nodeOrderKind(node);
     if (kind === phase) {
       continue;
     }

@@ -388,6 +388,9 @@ is the one home of the seven core entry points.
 - `compact` and `isNotNil` over `filter(Boolean)` and `filter((x) => x !== undefined)`.
   `compact(rules.map(...))` is the shape of a checklist whose steps answer `undefined`.
 - `isBlank` (`packages/shared/src/types/string.ts`) over `.trim().length === 0`.
+- No `let changed` flag beside a `map`: `mapOrSame` and `mapValuesOrSame`
+  (`packages/shared/src/utils/map-or-same.ts`) return the input itself when nothing
+  changed, which is the identity a render-time reconcile reads.
 - The first object parameter is `input`, a trailing optional object is `options`, and a
   context is `context`. `ctx`, `args`, `params` and `opts` are not parameter names here.
 - A hook or factory returning more than five fields declares its return type. Exemplar:

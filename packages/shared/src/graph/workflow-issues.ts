@@ -9,6 +9,7 @@
  * wrapping every server refusal into this model is deferred.
  */
 
+import { groupBy, uniq } from "es-toolkit/array";
 import { isPlainObject } from "es-toolkit/predicate";
 import {
   getMissingRequiredFieldsForNodes,
@@ -417,103 +418,79 @@ export function hasBlockingWorkflowIssues(issues: WorkflowIssue[]): boolean {
   return issues.some((issue) => issue.severity === "blocking");
 }
 
+/** The issues of one kind, each narrowed to that kind's own fields. */
+function issuesOfKind<Kind extends WorkflowIssue["kind"]>(
+  issues: readonly WorkflowIssue[],
+  kind: Kind
+): Array<Extract<WorkflowIssue, { kind: Kind }>> {
+  return issues.filter(
+    (issue): issue is Extract<WorkflowIssue, { kind: Kind }> =>
+      issue.kind === kind
+  );
+}
+
+/**
+ * One list per node, ordered by where the issue list first names each node.
+ * Every issue of a node repeats that node's label, so the first issue of a list
+ * names the group the rest of it fills.
+ */
+function issuesByNode<Issue extends { nodeId: string }>(
+  issues: readonly Issue[]
+): Issue[][] {
+  return Object.values(groupBy(issues, (issue) => issue.nodeId));
+}
+
 /** Group a flat issue list into the shape the issues overlay renders. */
 export function groupWorkflowIssuesForOverlay(
   issues: WorkflowIssue[]
 ): WorkflowIssuesOverlayModel {
-  const missingRequiredByNode = new Map<string, MissingRequiredFieldGroup>();
-  const brokenByNode = new Map<string, BrokenReferenceGroup>();
-  const missingByType = new Map<string, MissingIntegrationGroup>();
-  const unverifiedByNode = new Map<string, UnverifiedProviderFieldGroup>();
-
-  for (const issue of issues) {
-    switch (issue.kind) {
-      case "missing_required_field": {
-        const existing = missingRequiredByNode.get(issue.nodeId);
-        if (existing) {
-          existing.missingFields.push({
-            fieldKey: issue.fieldKey,
-            fieldLabel: issue.fieldLabel,
-          });
-          break;
-        }
-        missingRequiredByNode.set(issue.nodeId, {
-          nodeId: issue.nodeId,
-          nodeLabel: issue.nodeLabel,
-          missingFields: [
-            { fieldKey: issue.fieldKey, fieldLabel: issue.fieldLabel },
-          ],
-        });
-        break;
-      }
-      case "broken_reference": {
-        const existing = brokenByNode.get(issue.nodeId);
-        if (existing) {
-          existing.brokenReferences.push({
-            fieldKey: issue.fieldKey,
-            fieldLabel: issue.fieldLabel,
-            referencedNodeId: issue.referencedNodeId,
-            displayText: issue.displayText,
-          });
-          break;
-        }
-        brokenByNode.set(issue.nodeId, {
-          nodeId: issue.nodeId,
-          nodeLabel: issue.nodeLabel,
-          brokenReferences: [
-            {
-              fieldKey: issue.fieldKey,
-              fieldLabel: issue.fieldLabel,
-              referencedNodeId: issue.referencedNodeId,
-              displayText: issue.displayText,
-            },
-          ],
-        });
-        break;
-      }
-      case "missing_integration": {
-        const existing = missingByType.get(issue.integrationType);
-        if (existing) {
-          if (!existing.nodeNames.includes(issue.nodeLabel)) {
-            existing.nodeNames.push(issue.nodeLabel);
-          }
-          break;
-        }
-        missingByType.set(issue.integrationType, {
-          integrationType: issue.integrationType,
-          integrationLabel: issue.integrationLabel,
-          nodeNames: [issue.nodeLabel],
-        });
-        break;
-      }
-      case "unverified_provider_field": {
-        const existing = unverifiedByNode.get(issue.nodeId);
-        if (existing) {
-          existing.fields.push({
-            fieldKey: issue.fieldKey,
-            fieldLabel: issue.fieldLabel,
-          });
-          break;
-        }
-        unverifiedByNode.set(issue.nodeId, {
-          nodeId: issue.nodeId,
-          nodeLabel: issue.nodeLabel,
-          fields: [{ fieldKey: issue.fieldKey, fieldLabel: issue.fieldLabel }],
-        });
-        break;
-      }
-      default: {
-        issue satisfies never;
-        throw new Error("Unhandled workflow issue");
-      }
-    }
-  }
+  const missingIntegrationsByType = Object.values(
+    groupBy(
+      issuesOfKind(issues, "missing_integration"),
+      (issue) => issue.integrationType
+    )
+  );
 
   return {
     totalIssues: issues.length,
-    missingRequiredFields: Array.from(missingRequiredByNode.values()),
-    missingIntegrations: Array.from(missingByType.values()),
-    brokenReferences: Array.from(brokenByNode.values()),
-    unverifiedProviderFields: Array.from(unverifiedByNode.values()),
+    missingRequiredFields: issuesByNode(
+      issuesOfKind(issues, "missing_required_field")
+    ).map((nodeIssues) => ({
+      nodeId: nodeIssues[0].nodeId,
+      nodeLabel: nodeIssues[0].nodeLabel,
+      missingFields: nodeIssues.map((issue) => ({
+        fieldKey: issue.fieldKey,
+        fieldLabel: issue.fieldLabel,
+      })),
+    })),
+    missingIntegrations: missingIntegrationsByType.map((typeIssues) => ({
+      integrationType: typeIssues[0].integrationType,
+      integrationLabel: typeIssues[0].integrationLabel,
+      // Two nodes can want the same missing connection, and the overlay names
+      // each node once.
+      nodeNames: uniq(typeIssues.map((issue) => issue.nodeLabel)),
+    })),
+    brokenReferences: issuesByNode(
+      issuesOfKind(issues, "broken_reference")
+    ).map((nodeIssues) => ({
+      nodeId: nodeIssues[0].nodeId,
+      nodeLabel: nodeIssues[0].nodeLabel,
+      brokenReferences: nodeIssues.map((issue) => ({
+        fieldKey: issue.fieldKey,
+        fieldLabel: issue.fieldLabel,
+        referencedNodeId: issue.referencedNodeId,
+        displayText: issue.displayText,
+      })),
+    })),
+    unverifiedProviderFields: issuesByNode(
+      issuesOfKind(issues, "unverified_provider_field")
+    ).map((nodeIssues) => ({
+      nodeId: nodeIssues[0].nodeId,
+      nodeLabel: nodeIssues[0].nodeLabel,
+      fields: nodeIssues.map((issue) => ({
+        fieldKey: issue.fieldKey,
+        fieldLabel: issue.fieldLabel,
+      })),
+    })),
   };
 }

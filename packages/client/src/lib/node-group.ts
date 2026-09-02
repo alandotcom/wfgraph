@@ -164,15 +164,13 @@ export function ungroupNode(
   // Sorted for the same reason `groupSelection` is: the freed members stay
   // where the frame stood, which puts them ahead of any frame that remains.
   return orderGroupParentsFirst(
-    nodes.flatMap((node) => {
-      if (node.id === groupId) {
-        return [];
-      }
-      if (node.parentId !== groupId) {
-        return [node];
-      }
-      return [unnestFromGroup(node, freedPosition(group, node))];
-    })
+    nodes
+      .filter((node) => node.id !== groupId)
+      .map((node) =>
+        node.parentId === groupId
+          ? unnestFromGroup(node, freedPosition(group, node))
+          : node
+      )
   );
 }
 

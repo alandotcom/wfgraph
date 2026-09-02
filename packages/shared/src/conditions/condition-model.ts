@@ -1,4 +1,5 @@
 import { appendOutputPathKey } from "#src/graph/node-references";
+import { mapOrSame } from "#src/utils/map-or-same";
 import { omitUndefined } from "#src/utils/omit-undefined";
 
 /**
@@ -317,22 +318,18 @@ export function reconcileModelWithFields(
   model: ConditionModel,
   fieldsByPath: ReadonlyMap<string, ConditionFieldDefinition>
 ): ConditionModel {
-  let changed = false;
-
-  const groups = model.groups.map((group) => ({
-    ...group,
-    conditions: group.conditions.map((condition) => {
+  const groups = mapOrSame(model.groups, (group) => {
+    const conditions = mapOrSame(group.conditions, (condition) => {
       const field = fieldsByPath.get(condition.field);
-      if (!field || field.type === condition.fieldType) {
-        return condition;
-      }
+      return !field || field.type === condition.fieldType
+        ? condition
+        : createDefaultConditionRule(field, condition.id);
+    });
 
-      changed = true;
-      return createDefaultConditionRule(field, condition.id);
-    }),
-  }));
+    return conditions === group.conditions ? group : { ...group, conditions };
+  });
 
-  return changed ? { ...model, groups } : model;
+  return groups === model.groups ? model : { ...model, groups };
 }
 
 export function createDefaultConditionModel(

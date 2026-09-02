@@ -137,7 +137,7 @@
     "wfgraph/no-conditional-spread": "error",
     "wfgraph/no-locale-compare": "error",
     "wfgraph/no-hand-rolled-object-guard": "error",
-    "wfgraph/no-changed-flag": "off", // 7 sites
+    "wfgraph/no-changed-flag": "error",
     "wfgraph/parameter-names": "off", // 42 sites
     "typescript/no-deprecated": "error",
     "typescript/no-floating-promises": [

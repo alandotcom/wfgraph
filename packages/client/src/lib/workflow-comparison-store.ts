@@ -5,6 +5,7 @@
  */
 
 import type { NodeChange } from "@xyflow/react";
+import { compact } from "es-toolkit/array";
 import { atom } from "jotai";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
@@ -239,32 +240,37 @@ export const moveComparisonNodesAtom = atom(
       if (!session) {
         return sessions;
       }
-      const nextPositions = { ...session.positionOverrides };
       const deletedNodeIds = new Set(
         session.payload.nodeChanges
           .filter((change) => change.kind === "removed")
           .map((change) => change.nodeId)
       );
-      let changed = false;
-      for (const change of input.changes) {
-        if (
+      // A change carrying no position is React Flow reporting a drag that
+      // moved nothing, and a change naming a node the publication kept is the
+      // draft's own layout, which this session does not own.
+      const moves = compact(
+        input.changes.map((change) =>
           change.type === "position" &&
           change.position &&
           deletedNodeIds.has(change.id)
-        ) {
-          nextPositions[change.id] = change.position;
-          changed = true;
-        }
+            ? ([change.id, change.position] as const)
+            : undefined
+        )
+      );
+      if (moves.length === 0) {
+        return sessions;
       }
-      return changed
-        ? {
-            ...sessions,
-            [input.workflowId]: {
-              ...session,
-              positionOverrides: nextPositions,
-            },
-          }
-        : sessions;
+
+      return {
+        ...sessions,
+        [input.workflowId]: {
+          ...session,
+          positionOverrides: {
+            ...session.positionOverrides,
+            ...Object.fromEntries(moves),
+          },
+        },
+      };
     });
   }
 );

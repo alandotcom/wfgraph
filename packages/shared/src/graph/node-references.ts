@@ -17,6 +17,7 @@ import { isPlainObject } from "es-toolkit/predicate";
 import { isJsonObject, type JsonObject, type JsonValue } from "#src/types/json";
 import { isSafeRecordKey } from "#src/types/record-key";
 import { matchesShowWhen, type ShowWhen } from "#src/types/show-when";
+import { mapOrSame, mapValuesOrSame } from "#src/utils/map-or-same";
 import { omitUndefined } from "#src/utils/omit-undefined";
 import type {
   WorkflowSchemaField,
@@ -343,28 +344,13 @@ export function mapTemplateTokens(
   }
 
   if (Array.isArray(value)) {
-    let changed = false;
-    const next = value.map((item) => {
-      const mapped = mapTemplateTokens(item, rewrite);
-      if (mapped !== item) {
-        changed = true;
-      }
-      return mapped;
-    });
-    return changed ? next : value;
+    return mapOrSame(value, (item) => mapTemplateTokens(item, rewrite));
   }
 
   if (isPlainObject(value)) {
-    let changed = false;
-    const remapped: Array<[string, unknown]> = [];
-    for (const [key, nested] of Object.entries(value)) {
-      const mapped = mapTemplateTokens(nested, rewrite);
-      if (mapped !== nested) {
-        changed = true;
-      }
-      remapped.push([key, mapped]);
-    }
-    return changed ? Object.fromEntries(remapped) : value;
+    return mapValuesOrSame(value, (nested) =>
+      mapTemplateTokens(nested, rewrite)
+    );
   }
 
   return value;
@@ -374,24 +360,16 @@ function mapTemplateString(
   value: string,
   rewrite: (token: TemplateToken) => string | undefined
 ): string {
-  let changed = false;
-  const next = parseTemplate(value)
-    .map((segment) => {
-      if (segment.kind === "literal") {
-        return segment.text;
-      }
-
-      const replacement = rewrite(segment.token);
-      if (replacement === undefined || replacement === segment.token.raw) {
-        return segment.token.raw;
-      }
-
-      changed = true;
-      return replacement;
-    })
+  // Concatenating every segment's source text reproduces the input, so a string
+  // whose tokens the rewrite all declined rebuilds itself character for
+  // character and compares equal to the string that came in.
+  return parseTemplate(value)
+    .map((segment) =>
+      segment.kind === "literal"
+        ? segment.text
+        : (rewrite(segment.token) ?? segment.token.raw)
+    )
     .join("");
-
-  return changed ? next : value;
 }
 
 const SIMPLE_PATH_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;

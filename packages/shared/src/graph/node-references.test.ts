@@ -416,6 +416,27 @@ describe("mapTemplateTokens", () => {
     expect(mapTemplateTokens(config, () => undefined)).toBe(config);
   });
 
+  it("keeps the reference of a nested object no rewrite reached", () => {
+    const token = formatTemplateToken({ nodeId: "a", nodeLabel: "Fetch" });
+    const config = { untouched: { plain: "text" }, rewritten: { body: token } };
+
+    const result = mapTemplateTokens(config, () => "changed");
+
+    expect(result).not.toBe(config);
+    expect(result.untouched).toBe(config.untouched);
+    expect(result.rewritten).toEqual({ body: "changed" });
+  });
+
+  it("keeps the reference of an array whose items no rewrite reached", () => {
+    const token = formatTemplateToken({ nodeId: "a", nodeLabel: "Fetch" });
+    const config = { untouched: ["plain"], rewritten: [token] };
+
+    const result = mapTemplateTokens(config, () => "changed");
+
+    expect(result.untouched).toBe(config.untouched);
+    expect(result.rewritten).toEqual(["changed"]);
+  });
+
   it("rewrites tokens in a config that still holds undefined optional keys", () => {
     const token = formatTemplateToken({
       nodeId: "a",
