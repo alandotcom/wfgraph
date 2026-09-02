@@ -6,7 +6,10 @@ import { Button } from "#src/components/ui/button";
 import { WarningCallout } from "#src/components/ui/callout";
 import { Label } from "#src/components/ui/label";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
-import { getEventConditionFields } from "#src/lib/upstream-node-fields";
+import {
+  getEventConditionFields,
+  seedConditionModelForField,
+} from "#src/lib/upstream-node-fields";
 import { nodesAtom, selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import {
   findEvent,
@@ -17,10 +20,7 @@ import {
   inheritConnections,
   stampConnection,
 } from "@wfgraph/shared/lifecycle/event-connections";
-import {
-  createDefaultConditionModel,
-  serializeConditionModel,
-} from "@wfgraph/shared/conditions/conditions";
+import { serializeConditionModel } from "@wfgraph/shared/conditions/conditions";
 import {
   readLifecycleRules,
   resolveCorrelationPath,
@@ -246,7 +246,7 @@ function WaitSubscriptionRow({
     onMatchChange(
       subscription.event,
       serializeConditionModel(
-        createDefaultConditionModel(seedField, {
+        seedConditionModelForField(seedField, {
           groupId: `${subscription.event}-group`,
           conditionId: `${subscription.event}-rule`,
         })

@@ -31,7 +31,10 @@ import {
   checkLifecycleRules,
   emptyLifecycleRules,
   type LifecycleRules,
+  pruneConnectionIds,
+  readLifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import { pruneStartFilters } from "@wfgraph/shared/lifecycle/start-filters";
 import { WorkflowDraft } from "#src/document";
 import { referencesForNode } from "#src/tools/reference-tools";
 
@@ -377,34 +380,54 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
           });
         }
 
-        const rules: LifecycleRules = {
-          ...emptyLifecycleRules,
-          startEvents: [...input.startEvents],
-          cancelEvents: [...(input.cancelEvents ?? [])],
-          ...(input.concurrency === undefined
-            ? {}
-            : { concurrency: input.concurrency }),
-          ...(input.allowManualStart === undefined
-            ? {}
-            : { allowManualStart: input.allowManualStart }),
-          ...(input.correlationPaths === undefined
-            ? {}
-            : {
-                correlationPaths: Object.fromEntries(
-                  input.correlationPaths.map((entry) => [
-                    entry.event,
-                    entry.path,
-                  ])
-                ),
-              }),
-        };
+        const entry = entryNodeOf(document.nodes);
+
+        // The per-Event records already on the node, carried across an edit that
+        // cannot write them. This tool replaces the whole rules object, so
+        // without this an agent asked to add a Cancel Event would also delete the
+        // builder's Start Filters and Connections: the workflow would quietly
+        // start on every arrival, and an integration Event would lose the
+        // Connection `checkLifecycleRules` requires. An Event this edit drops
+        // loses both, which the two prunes below are what do; an Event this edit
+        // adds gets neither, because inheriting what the agent cannot see would
+        // hide the same decision in the other direction.
+        const stored = readLifecycleRules(entry.data.config);
+
+        const rules: LifecycleRules = pruneStartFilters(
+          pruneConnectionIds({
+            ...emptyLifecycleRules,
+            ...(stored?.startFilters
+              ? { startFilters: stored.startFilters }
+              : {}),
+            ...(stored?.connectionIds
+              ? { connectionIds: stored.connectionIds }
+              : {}),
+            startEvents: [...input.startEvents],
+            cancelEvents: [...(input.cancelEvents ?? [])],
+            ...(input.concurrency === undefined
+              ? {}
+              : { concurrency: input.concurrency }),
+            ...(input.allowManualStart === undefined
+              ? {}
+              : { allowManualStart: input.allowManualStart }),
+            ...(input.correlationPaths === undefined
+              ? {}
+              : {
+                  correlationPaths: Object.fromEntries(
+                    input.correlationPaths.map((supplied) => [
+                      supplied.event,
+                      supplied.path,
+                    ])
+                  ),
+                }),
+          })
+        );
 
         const check = checkLifecycleRules({ rules, catalog: draft.catalog });
         if (!check.valid) {
           return Effect.fail({ reason: check.error });
         }
 
-        const entry = entryNodeOf(document.nodes);
         const created = !document.nodes.some((node) => node.id === entry.id);
         const updated: WorkflowNode = {
           ...entry,

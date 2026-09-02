@@ -30,6 +30,7 @@ const testCatalog: ExtensionCatalog = {
         { path: "appointment.duration", type: "number" },
         { path: "appointment.attendees", type: "array" },
         { path: "patient.id", type: "string" },
+        { path: "tenantId", type: "string" },
       ],
     },
     {
@@ -38,7 +39,15 @@ const testCatalog: ExtensionCatalog = {
       payloadFields: [
         { path: "sweep.id", type: "string" },
         { path: "sweep.count", type: "number" },
+        // The one path both Events declare, which is what a filter standing for
+        // the two of them has to be written in.
+        { path: "tenantId", type: "string" },
       ],
+    },
+    {
+      name: "ops/no.overlap",
+      label: "No overlap",
+      payloadFields: [{ path: "other.id", type: "string" }],
     },
   ],
   actions: [],
@@ -688,6 +697,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       "appointment.id",
       "appointment.duration",
       "patient.id",
+      "tenantId",
     ]);
   });
 
@@ -891,5 +901,247 @@ describe("LifecyclePanel refusals", () => {
     expect(
       view.getByText(/^No Event named "app\/appointment\.moved" is defined/)
     ).toBeTruthy();
+  });
+});
+
+/**
+ * Start Filters: the condition an arrival must satisfy before a run opens.
+ *
+ * The layout is what these cases are about. One control stands for every Start
+ * Event while they agree, because that is what a builder writing "only video
+ * appointments" means, and it splits into one control per Event the moment they
+ * need to say different things.
+ */
+describe("LifecyclePanel start filters", () => {
+  /** A finished one-rule filter over a path both fixture Events declare. */
+  function filterOnTenant(path = "tenantId"): string {
+    return JSON.stringify({
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group",
+          logic: "and",
+          conditions: [
+            {
+              id: "rule",
+              field: path,
+              fieldType: "string",
+              operator: "equals",
+              value: "t_1",
+            },
+          ],
+        },
+      ],
+    });
+  }
+
+  function withStartEvents(startEvents: string[], startFilters?: unknown) {
+    return {
+      lifecycleRules: {
+        startEvents,
+        cancelEvents: [],
+        concurrency: "unlimited",
+        ...(startFilters ? { startFilters } : {}),
+      },
+    } satisfies Record<string, unknown>;
+  }
+
+  it("offers one filter for a single Start Event", () => {
+    const view = renderWithCatalog(
+      <ControlledPanel
+        initialConfig={withStartEvents(["app/appointment.created"])}
+      />
+    );
+
+    expect(view.getAllByRole("button", { name: "Add a filter" })).toHaveLength(
+      1
+    );
+    expect(
+      view.queryByRole("button", { name: "Filter each Event separately" })
+    ).toBeNull();
+  });
+
+  it("writes one filter to every Start Event while they agree", async () => {
+    let latest: Record<string, unknown> = withStartEvents([
+      "app/appointment.created",
+      "ops/nightly.swept",
+    ]);
+    const view = renderWithCatalog(
+      <ControlledPanel
+        initialConfig={latest}
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+
+    // Two Start Events agreeing on no filter is still agreement, so one control
+    // stands for both.
+    expect(view.getAllByRole("button", { name: "Add a filter" })).toHaveLength(
+      1
+    );
+    fireEvent.click(view.getByRole("button", { name: "Add a filter" }));
+
+    await waitFor(() => {
+      const filters = rulesOf(latest).startFilters ?? {};
+      expect(Object.keys(filters)).toEqual([
+        "app/appointment.created",
+        "ops/nightly.swept",
+      ]);
+      expect(filters["app/appointment.created"]).toBe(
+        filters["ops/nightly.swept"]
+      );
+    });
+  });
+
+  it("splits into one filter per Start Event when asked", async () => {
+    const view = renderWithCatalog(
+      <ControlledPanel
+        initialConfig={withStartEvents([
+          "app/appointment.created",
+          "ops/nightly.swept",
+        ])}
+      />
+    );
+
+    fireEvent.click(
+      view.getByRole("button", { name: "Filter each Event separately" })
+    );
+
+    await waitFor(() => {
+      expect(
+        view.getAllByRole("button", { name: "Add a filter" })
+      ).toHaveLength(2);
+    });
+    expect(
+      view.getByRole("button", { name: "Use one filter for every Event" })
+    ).toBeTruthy();
+  });
+
+  it("writes a split filter to the one Event whose row wrote it", async () => {
+    let latest: Record<string, unknown> = withStartEvents([
+      "app/appointment.created",
+      "ops/nightly.swept",
+    ]);
+    const view = renderWithCatalog(
+      <ControlledPanel
+        initialConfig={latest}
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+
+    fireEvent.click(
+      view.getByRole("button", { name: "Filter each Event separately" })
+    );
+    fireEvent.click(
+      view.getAllByRole("button", { name: "Add a filter" })[0] as HTMLElement
+    );
+
+    await waitFor(() => {
+      expect(Object.keys(rulesOf(latest).startFilters ?? {})).toEqual([
+        "app/appointment.created",
+      ]);
+    });
+  });
+
+  it("carries a shared filter onto a Start Event added next to it", async () => {
+    const shared = filterOnTenant();
+    let latest: Record<string, unknown> = withStartEvents(
+      ["app/appointment.created"],
+      { "app/appointment.created": shared }
+    );
+    const view = renderWithCatalog(
+      <ControlledPanel
+        initialConfig={latest}
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+
+    chooseEvent(view, "Start Events", "Nightly sweep");
+
+    await waitFor(() => {
+      expect(rulesOf(latest).startFilters).toEqual({
+        "app/appointment.created": shared,
+        "ops/nightly.swept": shared,
+      });
+    });
+  });
+
+  // Stamping here would write a rule that reads false on every arrival of the
+  // Event that was added, because the compiler guards each field for presence.
+  it("leaves an added Event unfiltered when it lacks the filter's field", async () => {
+    const onlyOnAppointments = filterOnTenant("patient.id");
+    let latest: Record<string, unknown> = withStartEvents(
+      ["app/appointment.created"],
+      { "app/appointment.created": onlyOnAppointments }
+    );
+    const view = renderWithCatalog(
+      <ControlledPanel
+        initialConfig={latest}
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+
+    chooseEvent(view, "Start Events", "Nightly sweep");
+
+    await waitFor(() => {
+      expect(rulesOf(latest).startEvents).toHaveLength(2);
+    });
+    expect(rulesOf(latest).startFilters).toEqual({
+      "app/appointment.created": onlyOnAppointments,
+    });
+  });
+
+  // With nothing in common there is no vocabulary one control could be written
+  // in, and the group says so rather than offering an empty picker.
+  it("offers no shared filter when the Start Events declare no common field", () => {
+    const view = renderWithCatalog(
+      <ControlledPanel
+        initialConfig={withStartEvents([
+          "app/appointment.created",
+          "ops/no.overlap",
+        ])}
+      />
+    );
+
+    expect(
+      view
+        .getByRole("button", { name: "Add a filter" })
+        .hasAttribute("disabled")
+    ).toBe(true);
+  });
+
+  it("drops the filter of a Start Event that was removed", async () => {
+    let latest: Record<string, unknown> = withStartEvents([
+      "app/appointment.created",
+    ]);
+    const view = renderWithCatalog(
+      <ControlledPanel
+        initialConfig={latest}
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Add a filter" }));
+    await waitFor(() => {
+      expect(rulesOf(latest).startFilters).toBeTruthy();
+    });
+
+    fireEvent.click(
+      view.getByRole("button", { name: "Remove app/appointment.created" })
+    );
+
+    await waitFor(() => {
+      expect(rulesOf(latest).startFilters).toBeUndefined();
+    });
   });
 });

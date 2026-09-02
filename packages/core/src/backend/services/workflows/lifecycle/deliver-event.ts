@@ -2,8 +2,10 @@
  * One Event, delivered to one workflow, in the two halves Precedence names.
  *
  * The Lifecycle Rules apply first, then the Event reaches the Wait Subscriptions
- * of the runs that survived them (ADR-0007). There is no other ordering rule: a
- * start always starts, and Concurrency resolves multiplicity.
+ * of the runs that survived them (ADR-0007). Inside the first half the order is
+ * the Start Event's own filter, then Concurrency (ADR-0016). There is no other
+ * ordering rule: an admitted start always starts, and Concurrency resolves
+ * multiplicity.
  *
  * The two halves are separate entry points because the listener runs each in its
  * own durable step: a wait delivery that fails then retries without replaying the
@@ -15,7 +17,11 @@
  */
 
 import { Effect } from "effect";
-import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import {
+  AppLogger,
+  type EffectLogger,
+} from "#src/backend/lib/effect/app-logger";
+import { evaluateSerializedCondition } from "#src/backend/lib/cel/condition-payload";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { requestCanceledOutlet } from "#src/backend/services/workflows/lifecycle/cancel";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
@@ -25,9 +31,17 @@ import {
   type EventSubscriber,
   WorkflowRepo,
 } from "#src/backend/services/workflows/repo";
-import { toWorkflowRunTarget } from "#src/backend/services/executions/run-rows";
+import {
+  recordStartRefusal,
+  toWorkflowRunTarget,
+} from "#src/backend/services/executions/run-rows";
 import { connectionMatches } from "@wfgraph/shared/lifecycle/event-connections";
-import { emptyLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import {
+  emptyLifecycleRules,
+  type LifecycleRules,
+} from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import { readStartFilter } from "@wfgraph/shared/lifecycle/start-filters";
+import type { WorkflowMode } from "@wfgraph/shared/graph/types";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { asNonEmptyString } from "@wfgraph/shared/types/string";
 import { getValueByPath } from "@wfgraph/shared/utils/object-path";
@@ -64,7 +78,13 @@ export type LifecycleDeliveryOutcome =
   | {
       kind: "refused";
       workflowId: string;
-      reason: "concurrency_first_wins" | "entity_value_missing";
+      reason:
+        | "concurrency_first_wins"
+        | "entity_value_missing"
+        /** The arrival did not satisfy this Start Event's Start Filter. */
+        | "start_filter_not_met"
+        /** The Start Filter could not be read against this payload at all. */
+        | "start_filter_unevaluable";
     }
   /**
    * This Event holds the cancel role here; the ids are the runs it claimed. A
@@ -295,6 +315,23 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       return { kind: "waits_only" as const, workflowId: workflow.id };
     }
 
+    // The Start Filter is read before Concurrency, which is the whole of why it
+    // exists: a Condition node behind the Started outlet reads the same payload,
+    // but by then `startWithConcurrency` has run, so under newest-wins an arrival
+    // the builder meant to discard has already ended the run that was in flight.
+    const filterRefusal = yield* refuseFilteredStart({
+      rules,
+      workflow,
+      event: input.event,
+      payload: input.payload,
+      entityValue,
+      deliveryId: input.deliveryId,
+      logger,
+    });
+    if (filterRefusal) {
+      return filterRefusal;
+    }
+
     const started = yield* startWithConcurrency({
       workflow: toWorkflowRunTarget({
         workflow,
@@ -406,4 +443,80 @@ function skipped(
   reason: "workflow_gone" | "graph_unrunnable" | "not_published"
 ): LifecycleDeliveryOutcome {
   return { kind: "skipped", workflowId, reason };
+}
+
+/**
+ * The refusal this workflow's Start Filter produces for this arrival, or
+ * `undefined` where the arrival may start a run.
+ *
+ * `undefined` covers both passes: the Start Event carries no filter, or it
+ * carries one the payload satisfies. Anything else is a refusal, recorded before
+ * it is returned.
+ *
+ * A filter that will not evaluate refuses the start rather than waving it
+ * through, on the same reasoning a Wait match uses (`resume-waits.ts`): the
+ * payload came from outside and may carry anything, so a field of the wrong type
+ * is a payload that does not satisfy the filter. Unlike the Wait's, this refusal
+ * writes the row the Refused Starts panel reads, so a builder whose filter cannot
+ * be answered finds out from the workflow rather than from a server log.
+ */
+const refuseFilteredStart = Effect.fn("refuseFilteredStart")(function* (input: {
+  rules: LifecycleRules;
+  workflow: { id: string; mode: WorkflowMode };
+  event: DeliveredEvent;
+  payload: JsonObject;
+  entityValue?: string;
+  deliveryId?: string;
+  logger: EffectLogger;
+}) {
+  const model = readStartFilter(input.rules, input.event.name);
+  if (!model) {
+    return undefined;
+  }
+
+  const evaluation = evaluateSerializedCondition({
+    model,
+    payload: input.payload,
+    eventName: input.event.name,
+  });
+
+  if (evaluation.ok && evaluation.value) {
+    return undefined;
+  }
+
+  // The reason and what it knows more than the others, decided together: a
+  // filter that read false says nothing else, and one that could not be read
+  // carries the CEL library's own words for what it could not compare. Those
+  // name types rather than values, and their first line is the sentence; the
+  // rest is a caret diagram over the expression, and a record holds one line
+  // per field.
+  const refusal = evaluation.ok
+    ? { reason: "start_filter_not_met" as const }
+    : {
+        reason: "start_filter_unevaluable" as const,
+        extra: { error: firstLineOf(evaluation.error) },
+      };
+
+  yield* recordStartRefusal({
+    workflowId: input.workflow.id,
+    startSource: "event",
+    runMode: input.workflow.mode,
+    logger: input.logger,
+    eventName: input.event.name,
+    entityValue: input.entityValue,
+    deliveryId: input.deliveryId,
+    ...refusal,
+  });
+
+  const outcome: LifecycleDeliveryOutcome = {
+    kind: "refused",
+    workflowId: input.workflow.id,
+    reason: refusal.reason,
+  };
+  return outcome;
+});
+
+/** The first line of a multi-line message, so one record stays one line. */
+function firstLineOf(message: string): string {
+  return message.split("\n")[0]?.trim() ?? message;
 }

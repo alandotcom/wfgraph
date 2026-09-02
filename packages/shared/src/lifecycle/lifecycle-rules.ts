@@ -78,6 +78,19 @@ export const lifecycleRulesSchema = Schema.Struct({
    * catalog entry carries `integration`.
    */
   connectionIds: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+
+  /**
+   * The Start Filter of each Start Event: the condition an arrival must satisfy
+   * before a run opens, keyed by Event name. A Start Event with no entry here
+   * starts a run on every arrival, which is what a workflow without filters is.
+   *
+   * The value is a serialized `ConditionModel`, the same string a Wait
+   * Subscription's `match` holds, and no compiled CEL is stored beside it. A
+   * Condition node stores both because half of what it compares is known when the
+   * graph is saved; nothing a Start Filter compares is known before the arrival,
+   * so the model is the only honest copy of the rule.
+   */
+  startFilters: Schema.optional(Schema.Record(Schema.String, Schema.String)),
 });
 
 export type LifecycleRules = typeof lifecycleRulesSchema.Type;
@@ -169,9 +182,14 @@ export type LifecycleRulesCheck =
   | { valid: true }
   | { valid: false; error: string };
 
-const valid: LifecycleRulesCheck = { valid: true };
+/**
+ * The two answers a rules check gives, built here so every module that returns
+ * one builds it the same way. `start-filters.ts` returns the same verdict about
+ * the same rules and reads them from here rather than declaring its own pair.
+ */
+export const lifecycleRulesValid: LifecycleRulesCheck = { valid: true };
 
-const refuse = (error: string): LifecycleRulesCheck => ({
+export const refuseLifecycleRules = (error: string): LifecycleRulesCheck => ({
   valid: false,
   error,
 });
@@ -285,6 +303,29 @@ export function eventsNeedingCorrelationPath(input: {
 }
 
 /**
+ * One of the rules' Event-keyed records, holding only the Events named here.
+ *
+ * The three records on these rules -- Correlation Paths, Connections and Start
+ * Filters -- are each keyed by Event name and each meaningless for an Event that
+ * lost its role, so the pruning is one operation over a different key and a
+ * different set of names. An emptied record becomes absent rather than `{}`,
+ * which is what keeps a rules object comparable and a save diff readable.
+ */
+export function retainNamedKeys(
+  stored: Record<string, string> | undefined,
+  named: ReadonlySet<string>
+): Record<string, string> | undefined {
+  if (!stored) {
+    return undefined;
+  }
+
+  const next = Object.fromEntries(
+    Object.entries(stored).filter(([eventName]) => named.has(eventName))
+  );
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+/**
  * `rules.correlationPaths`, holding only the Events `eventsNeedingCorrelationPath`
  * currently lists.
  *
@@ -309,15 +350,9 @@ export function pruneCorrelationPaths(rules: LifecycleRules): LifecycleRules {
     }
   }
 
-  const next = Object.fromEntries(
-    Object.entries(rules.correlationPaths).filter(([eventName]) =>
-      needed.has(eventName)
-    )
-  );
-
   return {
     ...rules,
-    correlationPaths: Object.keys(next).length > 0 ? next : undefined,
+    correlationPaths: retainNamedKeys(rules.correlationPaths, needed),
   };
 }
 
@@ -416,16 +451,12 @@ export function pruneConnectionIds(rules: LifecycleRules): LifecycleRules {
     return rules;
   }
 
-  const named = new Set([...rules.startEvents, ...rules.cancelEvents]);
-  const next = Object.fromEntries(
-    Object.entries(rules.connectionIds).filter(([eventName]) =>
-      named.has(eventName)
-    )
-  );
-
   return {
     ...rules,
-    connectionIds: Object.keys(next).length > 0 ? next : undefined,
+    connectionIds: retainNamedKeys(
+      rules.connectionIds,
+      new Set([...rules.startEvents, ...rules.cancelEvents])
+    ),
   };
 }
 
@@ -448,7 +479,7 @@ export function checkLifecycleRules(input: {
     rules.cancelEvents.includes(eventName)
   );
   if (bothRoles) {
-    return refuse(
+    return refuseLifecycleRules(
       `Event "${bothRoles}" cannot both start and cancel runs of this workflow. Give it one role, or start on one Event and cancel on another.`
     );
   }
@@ -457,13 +488,13 @@ export function checkLifecycleRules(input: {
   for (const name of named) {
     const event = findEvent(catalog, name);
     if (!event) {
-      return refuse(unknownEventMessage(name));
+      return refuseLifecycleRules(unknownEventMessage(name));
     }
     if (!event.integration && rules.connectionIds?.[name]) {
-      return refuse(hostEventConnectionMessage(name));
+      return refuseLifecycleRules(hostEventConnectionMessage(name));
     }
     if (event.integration && !rules.connectionIds?.[name]) {
-      return refuse(
+      return refuseLifecycleRules(
         missingConnectionMessage(name, event.integration, catalog, "start")
       );
     }
@@ -481,16 +512,33 @@ export function checkLifecycleRules(input: {
       })
   );
   if (owed) {
-    return refuse(missingCorrelationPathMessage(owed.eventName));
+    return refuseLifecycleRules(missingCorrelationPathMessage(owed.eventName));
+  }
+
+  // Structural only. Whether a filter is a rule a run could be held to is
+  // `checkStartFilters`, and whether it is readable at all is
+  // `checkStartFilterModels`, which the save battery runs. Both of those parse,
+  // and this function does not, because the Lifecycle panel calls it on every
+  // render.
+  const strayFilter = Object.keys(rules.startFilters ?? {}).find(
+    (eventName) => !rules.startEvents.includes(eventName)
+  );
+  if (strayFilter) {
+    return refuseLifecycleRules(strayFilterMessage(strayFilter));
   }
 
   if (!hasStartSource(rules)) {
-    return refuse(
+    return refuseLifecycleRules(
       "Nothing can start this workflow. Add a Start Event, or allow manual starts."
     );
   }
 
-  return valid;
+  return lifecycleRulesValid;
+}
+
+/** The sentence a save is refused with when a filter names no Start Event. */
+function strayFilterMessage(eventName: string): string {
+  return `A start filter names Event "${eventName}", which does not start this workflow. Add it as a Start Event, or remove the filter.`;
 }
 
 /**

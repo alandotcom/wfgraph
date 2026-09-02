@@ -23,6 +23,7 @@ export {
   isNullCheckConditionRule,
   isTimestampAbsoluteConditionRule,
   isTimestampRelativeConditionRule,
+  readConditionRuleOperand,
   reconcileModelWithFields,
 } from "#src/conditions/condition-model";
 export {

@@ -1,19 +1,26 @@
 /**
  * Evaluating a compiled condition against one payload.
  *
- * Two callers reach the same question from different directions. A Condition node
- * asks it of the merged outputs of the nodes above it; a Wait Subscription asks it
- * of the Event payload that just arrived. Both hold a CEL string compiled from a
- * `ConditionModel` and a list of the paths that model treats as timestamps, and
- * both need the same preparation before CEL sees the value.
+ * Three callers reach the same question from different directions. A Condition
+ * node asks it of the merged outputs of the nodes above it; a Wait Subscription
+ * asks it of the Event payload that just arrived; a Start Filter asks it of an
+ * arriving payload before any run exists. All three need the same preparation
+ * before CEL sees the value: a CEL string compiled from a `ConditionModel`, and
+ * the list of paths that model treats as timestamps.
  */
 
-import { evaluateCelBooleanExpression } from "#src/backend/lib/cel/environment";
+import {
+  type CelEvaluationResult,
+  evaluateCelBooleanExpression,
+} from "#src/backend/lib/cel/environment";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { decodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
 import {
+  collectTimestampFieldPaths,
+  compileConditionModel,
   CONDITION_CONTEXT_ROOT,
   EVENT_CONTEXT_ROOT,
+  parseConditionModel,
 } from "@wfgraph/shared/conditions/conditions";
 import { parseOutputPath } from "@wfgraph/shared/graph/node-references";
 
@@ -138,5 +145,38 @@ export function evaluateCompiledCondition(input: {
       },
       [CONDITION_CONTEXT_ROOT]: payload,
     },
+  });
+}
+
+/**
+ * Whether one stored condition model holds for one payload.
+ *
+ * The third caller of the evaluator above, and the only one compiling as it goes.
+ * A Condition node keeps the CEL it compiled to and a Wait Subscription compiles
+ * at park time, because each has run-side values to fold in first. A Start Filter
+ * has none: it is read before any run exists, so the stored model is complete on
+ * its own and compiling it costs one pass of string building per arrival.
+ */
+export function evaluateSerializedCondition(input: {
+  /** Serialized `ConditionModel`, as the Lifecycle Rules store it. */
+  model: string;
+  payload: JsonObject;
+  eventName: string;
+}): CelEvaluationResult {
+  const parsed = parseConditionModel(input.model);
+  if (!parsed.valid) {
+    return { ok: false, error: parsed.error };
+  }
+
+  const compiled = compileConditionModel(parsed.model);
+  if (!compiled.valid) {
+    return { ok: false, error: compiled.error };
+  }
+
+  return evaluateCompiledCondition({
+    expression: compiled.expression,
+    timestampPaths: collectTimestampFieldPaths(parsed.model),
+    payload: input.payload,
+    eventName: input.eventName,
   });
 }

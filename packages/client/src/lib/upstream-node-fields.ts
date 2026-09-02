@@ -1,4 +1,5 @@
-import { compact, partition, uniq } from "es-toolkit/array";
+import { compact, groupBy, partition, uniq } from "es-toolkit/array";
+import { isEqual } from "es-toolkit/predicate";
 import { omit } from "es-toolkit/object";
 import {
   type EventMetadata,
@@ -8,7 +9,8 @@ import {
 } from "@wfgraph/shared/extensions/catalog";
 import {
   type ConditionFieldDefinition,
-  type ConditionFieldType,
+  type ConditionModel,
+  createDefaultConditionModel,
   EVENT_NAME_FIELD_PATH,
 } from "@wfgraph/shared/conditions/conditions";
 import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
@@ -28,10 +30,7 @@ import {
 import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
 import { readConfigString } from "@wfgraph/shared/graph/node-config";
 import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
-import type {
-  WorkflowSchemaFieldType,
-  WorkflowSchemaItemType,
-} from "@wfgraph/shared/graph/schema-codec";
+import { conditionTypeOf } from "@wfgraph/shared/conditions/condition-field-type";
 
 export { getNodeDisplayName };
 
@@ -53,6 +52,44 @@ export type ConditionSelectableField = ConditionFieldDefinition & {
   recordPath?: string;
   recordKey?: string;
 };
+
+/**
+ * The model a picked field seeds, with an open record's key kept beside its path.
+ *
+ * A row like `tags.order` is a shortcut for a record plus a key the graph happens
+ * to name, and a rule stores those two apart: `field` holds the record, and
+ * `recordKey` holds the key. Seeding from the row as it reads would write the
+ * joined path as the whole field, which is a path the Event never declared, and
+ * the key input the row promised would not appear.
+ *
+ * Every control that seeds a condition comes through here -- a Condition node
+ * given its first rule, a Wait match, a Start Filter -- so the translation is
+ * stated once rather than once per button.
+ */
+export function seedConditionModelForField(
+  field: ConditionSelectableField,
+  ids?: { groupId?: string; conditionId?: string }
+): ConditionModel {
+  const named: ConditionFieldDefinition = field.recordPath
+    ? { ...field, path: field.recordPath, openRecord: true }
+    : field;
+
+  const model = createDefaultConditionModel(named, ids);
+  if (!field.recordKey) {
+    return model;
+  }
+
+  return {
+    ...model,
+    groups: model.groups.map((group) => ({
+      ...group,
+      conditions: group.conditions.map((rule) => ({
+        ...rule,
+        recordKey: field.recordKey,
+      })),
+    })),
+  };
+}
 
 /**
  * The field a rule names.
@@ -254,52 +291,6 @@ export function getUpstreamFields(input: {
   });
 }
 
-function toConditionFieldType(field: {
-  type?: WorkflowSchemaFieldType;
-}): ConditionFieldType | null {
-  if (field.type === "timestamp") {
-    return "timestamp";
-  }
-
-  if (
-    field.type === "string" ||
-    field.type === "number" ||
-    field.type === "boolean"
-  ) {
-    return field.type;
-  }
-
-  // A duration is a string on the wire, and the condition vocabulary has no
-  // operators for a length of time, so a rule compares the written form.
-  if (field.type === "duration") {
-    return "string";
-  }
-
-  // Fields without an explicit type (common for custom action outputFields) default to string
-  if (field.type === undefined) {
-    return "string";
-  }
-
-  return null;
-}
-
-/**
- * The rule vocabulary one catalog field offers, records included.
- *
- * An open record is an object, and an object has no operators, so reading its
- * own type would drop it. What a rule actually compares is a key under it, so
- * the record answers with the type its values carry and the row asks for the
- * key. Anything else answers for itself.
- */
-function conditionTypeOf(field: {
-  type?: WorkflowSchemaFieldType;
-  valueType?: WorkflowSchemaItemType;
-}): ConditionFieldType | null {
-  return toConditionFieldType(
-    field.valueType ? { type: field.valueType } : field
-  );
-}
-
 /**
  * The rows a record's known keys become, beside the record itself.
  *
@@ -410,28 +401,165 @@ function eventNameConditionField(input: {
     return [];
   }
 
-  const events = eventsReachingTarget({
-    targetNodeId: currentNodeId,
-    nodes,
-    edges,
-    catalog,
+  return eventNameFieldFor({
+    sourceNodeId: entryNode.id,
+    events: eventsReachingTarget({
+      targetNodeId: currentNodeId,
+      nodes,
+      edges,
+      catalog,
+    }),
   });
-  const fields: ConditionSelectableField[] = [];
-  if (events.length >= 2) {
-    fields.push({
+}
+
+/**
+ * The Event-name row itself, for a caller that already knows which Events are in
+ * play.
+ *
+ * Two callers do. A node in the graph asks `eventNameConditionField`, which works
+ * out the Events by walking upstream of it. The Lifecycle panel's Start Filter
+ * knows them outright, being the control that lists them, and has no upstream to
+ * walk -- the entry node is where the walk would start.
+ */
+function eventNameFieldFor(input: {
+  events: readonly EventMetadata[];
+  /** What the row is attributed to, defaulting to the first Event's own name. */
+  sourceNodeId?: string;
+}): ConditionSelectableField[] {
+  // Destructured rather than counted, because one Event leaves nothing to select
+  // between and because the first one names the row where no node does.
+  const [first, second] = input.events;
+  if (!(first && second)) {
+    return [];
+  }
+
+  return [
+    {
       path: EVENT_NAME_FIELD_PATH,
       label: EVENT_NAME_FIELD_LABEL,
       type: "string",
-      sourceNodeId: entryNode.id,
+      sourceNodeId: input.sourceNodeId ?? first.name,
       sourceNodeLabel: SHARED_EVENT_FIELDS_LABEL,
       sourceNodeLabels: [SHARED_EVENT_FIELDS_LABEL],
-      enumValues: events.map((event) => event.name),
+      enumValues: input.events.map((event) => event.name),
       enumLabels: Object.fromEntries(
-        events.map((event) => [event.name, event.label])
+        input.events.map((event) => [event.name, event.label])
       ),
-    });
+    },
+  ];
+}
+
+/**
+ * The vocabulary one filter can be written in for several Events at once: the
+ * fields every named Event declares at the same type, plus the Event-name row.
+ *
+ * The intersection is the point. A rule on a field only some of these Events
+ * carry compiles and evaluates, and reads false on every arrival of the Events
+ * that lack it, because the compiler guards each field for presence. Offering
+ * only what they agree on is what keeps one control from writing a rule that
+ * silently stops half the workflow starting; `checkStartFilters` refuses the same
+ * thing at publish for a filter that acquired one another way.
+ *
+ * A field is kept when every Event declares its path at the same type. It comes
+ * back nullable if any Event calls it nullable, and keeps its enum values only
+ * where every Event offers the same ones -- narrowing either way would promise
+ * more than the arrivals do.
+ */
+export function getSharedEventConditionFields(
+  catalog: ExtensionCatalog,
+  eventNames: readonly string[],
+  nodes: readonly WorkflowNode[]
+): ConditionSelectableField[] {
+  const events = compact(eventNames.map((name) => findEvent(catalog, name)));
+  const declared = eventNames.flatMap((name) =>
+    getEventConditionFields(catalog, name, nodes)
+  );
+
+  // Each Event declares a path at most once, so a group holding one entry per
+  // Event is a path they all carry. A shorter group is a path only some of them
+  // declare, and a rule on it would read false on every arrival of the rest.
+  const shared = Object.values(groupBy(declared, fieldIdentity))
+    .filter((group) => group.length === eventNames.length)
+    .map((group) => mergeDeclarations(group, events.length > 1));
+
+  return [...eventNameFieldFor({ events }), ...compact(shared)];
+}
+
+/**
+ * What two Events have to agree on for a path to be the same vocabulary.
+ *
+ * The type is part of it because it decides a rule's operators. `openRecord` is,
+ * because a record offers a key row that a plain field of the same condition type
+ * has nothing to answer with. `recordPath` is, because a key row under a record
+ * and a field an Event declares outright read the same on the wire and store
+ * differently: a rule built from the key row names the record and keeps the key
+ * beside it, which is a path the Event declaring the joined form never had.
+ */
+function fieldIdentity(field: ConditionSelectableField): string {
+  return JSON.stringify([
+    field.path,
+    field.type,
+    field.openRecord === true,
+    field.recordPath ?? null,
+  ]);
+}
+
+/**
+ * One path as every Event declares it, merged into the single row the picker
+ * offers.
+ *
+ * The Events already agree on the path, the type and the record-ness, which is
+ * what grouped them. Nullability and the enum are what is left, and each widens
+ * rather than narrows: one Event able to send null is enough for a filter to
+ * have to answer for it, and an enum promises a closed set that only holds where
+ * every Event offers the same values.
+ */
+function mergeDeclarations(
+  declarations: readonly ConditionSelectableField[],
+  underSharedLabel: boolean
+): ConditionSelectableField | null {
+  const [field] = declarations;
+  if (!field) {
+    return null;
   }
-  return fields;
+
+  const merged = { ...field };
+
+  if (underSharedLabel) {
+    merged.sourceNodeLabel = SHARED_EVENT_FIELDS_LABEL;
+    merged.sourceNodeLabels = [SHARED_EVENT_FIELDS_LABEL];
+  }
+
+  if (declarations.some((entry) => entry.nullable)) {
+    merged.nullable = true;
+  }
+
+  // Both enum keys go rather than being blanked where the Events disagree: the
+  // picker reads an absent `enumValues` as "any value of this type", and a key
+  // present but empty would have to be told apart from one nothing wrote.
+  return sharedEnumValues(declarations)
+    ? merged
+    : omit(merged, ["enumValues", "enumLabels"]);
+}
+
+/** The enum values every Event offers for one field, absent where they differ. */
+function sharedEnumValues(
+  fields: readonly ConditionSelectableField[]
+): string[] | undefined {
+  const [first, ...rest] = fields;
+  if (!first?.enumValues) {
+    return undefined;
+  }
+
+  // Sorted before comparing, because the same closed set is the same promise
+  // whatever order each Event's schema happened to list it in.
+  const expected = first.enumValues.toSorted();
+  const agrees = rest.every(
+    (field) =>
+      field.enumValues && isEqual(field.enumValues.toSorted(), expected)
+  );
+
+  return agrees ? first.enumValues : undefined;
 }
 
 export function getUpstreamConditionFields(input: {

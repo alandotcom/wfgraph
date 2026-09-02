@@ -78,7 +78,11 @@ const catalogLayer = stubExtensionCatalog({
       name: "app/appointment.created",
       label: "Appointment created",
       correlationPath: "appointment.id",
-      payloadFields: [],
+      payloadFields: [
+        { path: "appointment.id", type: "string" },
+        { path: "appointment.channel", type: "string" },
+        { path: "appointment.seats", type: "number" },
+      ],
     },
     {
       name: "app/appointment.canceled",

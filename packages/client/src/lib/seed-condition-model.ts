@@ -1,7 +1,9 @@
-import { getUpstreamConditionFields } from "#src/lib/upstream-node-fields";
+import {
+  getUpstreamConditionFields,
+  seedConditionModelForField,
+} from "#src/lib/upstream-node-fields";
 import {
   compileConditionModel,
-  createDefaultConditionModel,
   serializeConditionModel,
 } from "@wfgraph/shared/conditions/conditions";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
@@ -36,7 +38,7 @@ export function seedConditionModel(input: {
     return undefined;
   }
 
-  const model = createDefaultConditionModel(firstField);
+  const model = seedConditionModelForField(firstField);
   const compiled = compileConditionModel(model);
 
   // The model and the CEL string it compiles to are one fact about the node, so

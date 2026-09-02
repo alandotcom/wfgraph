@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import type { ExtensionCatalog } from "#src/extensions/catalog";
+import { serializeConditionModel } from "#src/conditions/conditions";
 import { rejectUnknownKeys } from "#src/types/schema";
 import {
   checkLifecycleRules,
@@ -38,13 +39,19 @@ const catalog: ExtensionCatalog = {
       name: "app/appointment.created",
       label: "Appointment created",
       correlationPath: "appointment.id",
-      payloadFields: [],
+      payloadFields: [
+        { path: "appointment.id", type: "string" },
+        { path: "appointment.channel", type: "string" },
+      ],
     },
     {
       name: "app/appointment.canceled",
       label: "Appointment canceled",
       correlationPath: "appointment.id",
-      payloadFields: [],
+      payloadFields: [
+        { path: "appointment.id", type: "string" },
+        { path: "appointment.reason", type: "string" },
+      ],
     },
     {
       name: "ops/nightly.swept",
@@ -56,7 +63,12 @@ const catalog: ExtensionCatalog = {
       label: "Email sent",
       integration: "resend",
       correlationPath: "data.email_id",
-      payloadFields: [],
+      // `tags` is an open record: an object taking keys no schema lists, which
+      // is what Resend's email tags are.
+      payloadFields: [
+        { path: "data.email_id", type: "string" },
+        { path: "tags", type: "string", valueType: "string" },
+      ],
     },
     {
       name: "resend/email.delivered",
@@ -683,5 +695,62 @@ describe("hasStartSource", () => {
       hasStartSource(rules({ startEvents: [], allowManualStart: false }))
     ).toBe(false);
     expect(hasStartSource(rules({ startEvents: [] }))).toBe(false);
+  });
+});
+
+/**
+ * A finished one-rule filter over `path`, as the panel would serialize it.
+ *
+ * `ids` is what the builder's editor generates per rule, and two filters written
+ * separately never share them. The layout compares meaning rather than text for
+ * that reason, and passing them here is how a case says so.
+ */
+function filterOn(path: string, value = "video", ids = "a"): string {
+  return serializeConditionModel({
+    version: 2,
+    groupLogic: "and",
+    groups: [
+      {
+        id: `group-${ids}`,
+        logic: "and",
+        conditions: [
+          {
+            id: `rule-${ids}`,
+            field: path,
+            fieldType: "string",
+            operator: "equals",
+            value,
+          },
+        ],
+      },
+    ],
+  });
+}
+
+describe("checkLifecycleRules with start filters", () => {
+  it("refuses a filter naming an Event that does not start the workflow", () => {
+    const check = checkLifecycleRules({
+      rules: rules({
+        startFilters: { "ops/nightly.swept": filterOn("appointment.id") },
+      }),
+      catalog,
+    });
+
+    expect(refusalOf(check)).toContain("ops/nightly.swept");
+  });
+
+  // The save battery is what a builder mid-edit is held to, and an unfinished
+  // filter is the ordinary state of one being written.
+  it("accepts an unfinished filter, which publishing is what refuses", () => {
+    const check = checkLifecycleRules({
+      rules: rules({
+        startFilters: {
+          "app/appointment.created": filterOn("appointment.channel", ""),
+        },
+      }),
+      catalog,
+    });
+
+    expect(check.valid).toBe(true);
   });
 });

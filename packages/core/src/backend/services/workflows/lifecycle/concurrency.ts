@@ -23,7 +23,7 @@ import {
   UNSENT_RUN_RECLAIM_REASON,
 } from "#src/backend/services/executions/repo";
 import {
-  buildIgnoredRunAuditMessage,
+  recordStartRefusal,
   enqueueStartedRun,
   type WorkflowRunStart,
   type WorkflowRunTarget,
@@ -189,31 +189,16 @@ const refuseStart = Effect.fn("refuseStart")(function* (input: {
   reason: StartRefusalReason;
   inFlightExecutionIds: string[];
 }) {
-  const repo = yield* ExecutionRepo;
-
-  yield* repo.recordAuditEvent({
+  yield* recordStartRefusal({
     workflowId: input.workflow.id,
-    eventType: "run_refused",
-    message: buildIgnoredRunAuditMessage({
-      startSource: input.start.source,
-      reason: input.reason,
-      eventName: input.start.eventName,
-    }),
-    metadata: {
-      reason: input.reason,
-      startSource: input.start.source,
-      eventName: input.start.eventName,
-      entityValue: input.start.entityValue,
-      deliveryId: input.start.deliveryId,
-      inFlightExecutionIds: input.inFlightExecutionIds,
-      runMode: input.runMode,
-    },
-  });
-
-  yield* input.logger.info("Start refused", {
+    startSource: input.start.source,
     reason: input.reason,
+    runMode: input.runMode,
+    logger: input.logger,
+    eventName: input.start.eventName,
     entityValue: input.start.entityValue,
-    inFlightExecutionIds: input.inFlightExecutionIds,
+    deliveryId: input.start.deliveryId,
+    extra: { inFlightExecutionIds: input.inFlightExecutionIds },
   });
 
   const outcome: StartOutcome = {

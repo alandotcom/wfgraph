@@ -233,6 +233,38 @@ export function collectTimestampFieldPaths(model: ConditionModel): string[] {
   return [...paths];
 }
 
+/**
+ * The text operand a rule compares against, when it has one.
+ *
+ * Only two rule shapes carry authored text: what a string rule compares against,
+ * and the moment an absolute timestamp rule names. A count of time units and a
+ * number are already literal, and a null check has no operand at all.
+ *
+ * Callers ask this to find text that is not yet a value -- a Wait match resolving
+ * `{{@node:Label.field}}` references at park time, and a Start Filter refusing one
+ * outright, having no run to resolve it from.
+ */
+export function readConditionRuleOperand(
+  rule: ConditionRule
+): string | undefined {
+  if (isNullCheckConditionRule(rule)) {
+    return undefined;
+  }
+
+  if (rule.fieldType === "string") {
+    return rule.value;
+  }
+
+  if (
+    rule.fieldType === "timestamp" &&
+    isTimestampAbsoluteConditionRule(rule)
+  ) {
+    return rule.dateTime;
+  }
+
+  return undefined;
+}
+
 export function createDefaultConditionRule(
   field: ConditionFieldDefinition,
   id = "rule"

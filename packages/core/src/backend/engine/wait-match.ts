@@ -21,6 +21,7 @@ import {
   isNullCheckConditionRule,
   isTimestampAbsoluteConditionRule,
   parseConditionModel,
+  readConditionRuleOperand,
 } from "@wfgraph/shared/conditions/conditions";
 import type { EventSubscription } from "@wfgraph/shared/lifecycle/wait-subscription";
 
@@ -90,32 +91,6 @@ export type WaitSubscriptionCompileResult =
 /** Replaces the `{{@nodeId:Label.field}}` references in one authored string. */
 export type ResolveTemplates = (value: string) => string;
 
-/**
- * The text operand a rule compares against, when it has one.
- *
- * Only these two can carry a template reference: the text a string rule compares
- * against, and the moment an absolute timestamp rule names. A count of time units
- * and a number are already literal, and a null check has no operand at all.
- */
-function readRuleOperand(rule: ConditionRule): string | undefined {
-  if (isNullCheckConditionRule(rule)) {
-    return undefined;
-  }
-
-  if (rule.fieldType === "string") {
-    return rule.value;
-  }
-
-  if (
-    rule.fieldType === "timestamp" &&
-    isTimestampAbsoluteConditionRule(rule)
-  ) {
-    return rule.dateTime;
-  }
-
-  return undefined;
-}
-
 /** The run-side values inside one rule, as literals. */
 function resolveRuleTemplates(
   rule: ConditionRule,
@@ -158,7 +133,7 @@ function resolveModelTemplates(
 function findUnresolvedReference(model: ConditionModel): string | undefined {
   for (const group of model.groups) {
     for (const rule of group.conditions) {
-      const operand = readRuleOperand(rule);
+      const operand = readConditionRuleOperand(rule);
       if (operand?.includes("{{")) {
         return operand.trim();
       }

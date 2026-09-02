@@ -62,6 +62,15 @@ export type WorkflowExecutionStartSource =
  * - `start_event_required`: the graph holds an Event Split, which routes on the
  *   Event a run is on, and this start named none. Such a run reaches the split
  *   and stops there, so it is refused instead of started.
+ * - `start_filter_not_met`: the payload did not satisfy the Start Filter this
+ *   workflow put on that Start Event.
+ * - `start_filter_unevaluable`: the Start Filter could not be read against the
+ *   payload at all, which a payload carrying a field of the wrong type does.
+ *
+ * The last two reach no manual start, because a manual start is a person asking
+ * for this run rather than an arrival being admitted. They are listed here so the
+ * sentence every refusal is recorded with keeps one home,
+ * `buildIgnoredRunAuditMessage`.
  */
 export const WORKFLOW_EXECUTION_IGNORED_REASONS = [
   "workflow_paused",
@@ -69,6 +78,8 @@ export const WORKFLOW_EXECUTION_IGNORED_REASONS = [
   "entity_value_missing",
   "manual_start_not_allowed",
   "start_event_required",
+  "start_filter_not_met",
+  "start_filter_unevaluable",
 ] as const;
 
 export type WorkflowExecutionIgnoredReason =
