@@ -4,6 +4,7 @@
  * outside this projection.
  */
 
+import { sortBy } from "es-toolkit/array";
 import { isEmptyObject } from "es-toolkit/predicate";
 import {
   isJsonObject,
@@ -16,10 +17,6 @@ import type {
   SerializedWorkflowGraph,
   SerializedWorkflowNode,
 } from "@wfgraph/shared/graph/types";
-
-function compareStrings(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
 
 /** Converts an in-process value to stable JSON with recursively sorted keys. */
 export function normalizeSemanticValue(
@@ -64,10 +61,13 @@ export function normalizeSemanticValue(
     return normalized.map((item) => item ?? null);
   }
 
+  // Object keys sorted for the same reason the graph itself is: a stable
+  // projection needs one key order regardless of the order they were written
+  // in, and a key is not text a person reads, so code-unit order is honest.
   const object: JsonObject = {};
-  for (const [key, rawItem] of Object.entries(value).toSorted(
-    ([left], [right]) => compareStrings(left, right)
-  )) {
+  for (const [key, rawItem] of sortBy(Object.entries(value), [
+    ([entryKey]) => entryKey,
+  ])) {
     const item = normalizeSemanticValue(rawItem, false, seen);
     if (item !== undefined) {
       object[key] = item;
@@ -128,21 +128,22 @@ export function semanticValueKey(value: JsonValue): string {
 export function projectSemanticWorkflowGraph(
   graph: SerializedWorkflowGraph
 ): JsonObject {
-  const nodes = graph.nodes
-    .map((node) =>
+  // Sorted on their own JSON key so two graphs meaning the same thing hash the
+  // same regardless of the order the editor happened to hold their nodes and
+  // edges in. The key is generated JSON, not text a person reads, so
+  // code-unit order is the honest comparator.
+  const nodes = sortBy(
+    graph.nodes.map((node) =>
       normalizedObject({
         id: node.key,
         ...projectSemanticWorkflowNodeFields(node),
       })
-    )
-    .toSorted((left, right) =>
-      compareStrings(semanticValueKey(left), semanticValueKey(right))
-    );
-  const edges = graph.edges
-    .map(projectSemanticWorkflowEdge)
-    .toSorted((left, right) =>
-      compareStrings(semanticValueKey(left), semanticValueKey(right))
-    );
+    ),
+    [(node) => semanticValueKey(node)]
+  );
+  const edges = sortBy(graph.edges.map(projectSemanticWorkflowEdge), [
+    (edge) => semanticValueKey(edge),
+  ]);
 
   return normalizedObject({ nodes, edges });
 }

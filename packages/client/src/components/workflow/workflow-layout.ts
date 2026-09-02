@@ -7,6 +7,7 @@
 
 import dagre from "@dagrejs/dagre";
 import { hierarchy, tree } from "d3-hierarchy";
+import { orderBy, sortBy } from "es-toolkit/array";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { eventsReachingTarget } from "#src/lib/upstream-node-fields";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -284,7 +285,7 @@ function rankOfHandle(
  * The handle comes first, so a branch lands under the handle drawing it. Where
  * two edges leave the same handle the graph says nothing about which belongs
  * left, so the tie goes to where the targets already sit, and two at the same
- * place keep the order they were wired in, `toSorted` being stable. Nothing here
+ * place keep the order they were wired in, `orderBy` being stable. Nothing here
  * reads a node id: those are nanoids, so ordering on one decides left from right
  * at random and can flip between reflows.
  */
@@ -295,16 +296,14 @@ function sortOutEdges(input: {
 }): WorkflowEdge[] {
   const positionXOf = (nodeId: string) => input.positionXById.get(nodeId) ?? 0;
 
-  return input.edges.toSorted((a, b) => {
-    const rankDiff =
-      rankOfHandle(input.ranks, a.sourceHandle) -
-      rankOfHandle(input.ranks, b.sourceHandle);
-    if (rankDiff !== 0) {
-      return rankDiff;
-    }
-
-    return positionXOf(a.target) - positionXOf(b.target);
-  });
+  return orderBy(
+    input.edges,
+    [
+      (edge) => rankOfHandle(input.ranks, edge.sourceHandle),
+      (edge) => positionXOf(edge.target),
+    ],
+    ["asc", "asc"]
+  );
 }
 
 /**
@@ -343,7 +342,7 @@ function buildTreeChildren(input: {
 
   // A held handle carries no edge, so the two lists share no rank and the stable
   // sort leaves the wired order the caller settled.
-  return ranked.toSorted((a, b) => a.rank - b.rank).map((entry) => entry.child);
+  return sortBy(ranked, [(entry) => entry.rank]).map((entry) => entry.child);
 }
 
 function buildLayoutModel(input: {
@@ -391,7 +390,7 @@ function buildLayoutModel(input: {
   }
 
   return {
-    nodes: input.nodes.toSorted((a, b) => a.position.x - b.position.x),
+    nodes: sortBy(input.nodes, [(node) => node.position.x]),
     sizeById,
     outEdgesBySource,
     treeChildrenBySource,

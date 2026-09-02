@@ -14,6 +14,7 @@ import {
   type RunFilterValueOption,
 } from "#src/lib/run-history-filters";
 import { WORKFLOW_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
+import { compareText, isBlank } from "@wfgraph/shared/types/string";
 
 export type RunHistoryDraft =
   | { step: "field" }
@@ -105,7 +106,7 @@ function filterValueOptions(input: {
 }
 
 function matchesQuery(label: string, query: string): boolean {
-  if (query.trim() === "") {
+  if (isBlank(query)) {
     return true;
   }
   return label.toLowerCase().includes(query.trim().toLowerCase());
@@ -121,7 +122,7 @@ function sortByPrefixFirst(
     if (leftPrefix !== rightPrefix) {
       return leftPrefix - rightPrefix;
     }
-    return left.label.localeCompare(right.label);
+    return compareText(left.label, right.label);
   });
 }
 

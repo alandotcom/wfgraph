@@ -31,12 +31,11 @@ describe("the schema declarations", () => {
   // exported from this module but missing from that bag is invisible to every
   // repository that reaches for `db.query.<name>`.
   it("registers every declared table on the relational surface", () => {
-    const declaredNames = new Set(
-      Object.keys(schema.tables).toSorted((a, b) => a.localeCompare(b))
-    );
-    const relationNames = new Set(
-      Object.keys(schema.relations).toSorted((a, b) => a.localeCompare(b))
-    );
+    // Table names are identifiers, not text a person reads, and es-toolkit's
+    // sortBy takes only arrays of objects, so plain code-unit order is both the
+    // honest comparator and the one that type-checks here.
+    const declaredNames = new Set(Object.keys(schema.tables).toSorted());
+    const relationNames = new Set(Object.keys(schema.relations).toSorted());
 
     expect([...declaredNames]).toEqual([...relationNames]);
     expect(declaredNames.size).toBe(declaredTables.length);

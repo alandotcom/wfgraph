@@ -1,5 +1,6 @@
 import { groupBy } from "es-toolkit/array";
 import { useMemo } from "react";
+import { compareText } from "@wfgraph/shared/types/string";
 import {
   Combobox,
   ComboboxCollection,
@@ -44,10 +45,10 @@ function groupsBySource(
   const grouped = groupBy(fields, (field) => field.sourceNodeLabel);
 
   return Object.entries(grouped)
-    .toSorted(([a], [b]) => a.localeCompare(b))
+    .toSorted(([a], [b]) => compareText(a, b))
     .map(([value, items]) => ({
       value,
-      items: items.toSorted((a, b) => a.path.localeCompare(b.path)),
+      items: items.toSorted((a, b) => compareText(a.path, b.path)),
     }));
 }
 

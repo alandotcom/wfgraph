@@ -17,6 +17,7 @@ import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { findIntegration } from "@wfgraph/shared/extensions/catalog";
+import { compareText } from "@wfgraph/shared/types/string";
 
 type IntegrationsManagerProps = {
   filter?: string;
@@ -74,13 +75,9 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
           integration.type.toLowerCase().includes(filterLower)
         );
       })
-      .toSorted((a, b) => {
-        const labelCompare = a.label.localeCompare(b.label);
-        if (labelCompare !== 0) {
-          return labelCompare;
-        }
-        return a.name.localeCompare(b.name);
-      });
+      .toSorted(
+        (a, b) => compareText(a.label, b.label) || compareText(a.name, b.name)
+      );
   }, [integrations, filter, catalog]);
 
   // Refreshing the connection list is the write's own business, and this screen

@@ -32,6 +32,7 @@ import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
 import { readConfigString } from "@wfgraph/shared/graph/node-config";
 import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
 import { conditionTypeOf } from "@wfgraph/shared/conditions/condition-field-type";
+import { compareText } from "@wfgraph/shared/types/string";
 
 export { getNodeDisplayName };
 
@@ -389,7 +390,7 @@ export function getEventConditionFields(
           ]
         : [entry];
     })
-  ).toSorted((a, b) => a.path.localeCompare(b.path));
+  ).toSorted((a, b) => compareText(a.path, b.path));
 }
 
 /**
@@ -605,7 +606,7 @@ export function getUpstreamConditionFields(input: {
     if (existing) {
       if (!existing.sourceNodeLabels.includes(field.sourceNodeName)) {
         existing.sourceNodeLabels.push(field.sourceNodeName);
-        existing.sourceNodeLabels.sort((a, b) => a.localeCompare(b));
+        existing.sourceNodeLabels.sort(compareText);
       }
       continue;
     }
@@ -639,6 +640,6 @@ export function getUpstreamConditionFields(input: {
   }
 
   return Array.from(fieldsByPath.values()).toSorted((a, b) =>
-    a.path.localeCompare(b.path)
+    compareText(a.path, b.path)
   );
 }

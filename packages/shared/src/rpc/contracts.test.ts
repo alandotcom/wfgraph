@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { isNotNil } from "es-toolkit/predicate";
 import {
   getWfGraphOperation,
   rpcContract,
@@ -8,7 +9,6 @@ import {
   WfGraphOperationIds,
   WfGraphOperations,
 } from "#src/authorization/operations";
-import type { WfGraphOperationId } from "#src/authorization/operations";
 import { RESERVED_RECORD_KEYS } from "#src/types/record-key";
 
 type ValidationResult =
@@ -91,7 +91,7 @@ describe("authorization metadata", () => {
     );
     const operationIds = procedures
       .map((procedure) => getWfGraphOperation(procedure)?.id)
-      .filter((id): id is WfGraphOperationId => id !== undefined);
+      .filter(isNotNil);
 
     expect(operationIds.sort()).toEqual(
       WfGraphOperationIds.filter((id) => !id.startsWith("oauth.")).sort()

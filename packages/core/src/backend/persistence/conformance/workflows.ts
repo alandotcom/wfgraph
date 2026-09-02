@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { orderBy } from "es-toolkit/array";
 import { Effect } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
@@ -251,13 +252,14 @@ export function describeWorkflowConformance({
           }),
         ])
       );
-      const expected = [usage.first, usage.second].toSorted((left, right) => {
-        const byPublishedAt =
-          right.publishedAt.getTime() - left.publishedAt.getTime();
-        return byPublishedAt === 0
-          ? right.id.localeCompare(left.id)
-          : byPublishedAt;
-      });
+      const expected = orderBy(
+        [usage.first, usage.second],
+        [
+          (snapshot) => snapshot.publishedAt.getTime(),
+          (snapshot) => snapshot.id,
+        ],
+        ["desc", "desc"]
+      );
       expect(usage.usage.map((item) => item.id)).toEqual(
         expected.map((snapshot) => snapshot.id)
       );

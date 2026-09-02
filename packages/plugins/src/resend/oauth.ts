@@ -6,6 +6,7 @@
  * data so the server can apply the same rules to exchange, refresh, and revoke.
  */
 
+import { compact } from "es-toolkit/array";
 import type {
   IntegrationOAuth,
   OAuthGrant,
@@ -49,7 +50,7 @@ const RESEND_FULL_SCOPE = "full_access";
  * to reauthorize over a word.
  */
 function accessLabelFromScope(scope: string): string | undefined {
-  const granted = new Set(scope.split(/\s+/u).filter(Boolean));
+  const granted = new Set(compact(scope.split(/\s+/u)));
   if (granted.has(RESEND_FULL_SCOPE)) {
     return "Full access";
   }

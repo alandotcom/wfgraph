@@ -1,4 +1,5 @@
 import { RPCHandler } from "@orpc/server/fetch";
+import { isNotNil } from "es-toolkit/predicate";
 import { Effect, Result, Schema, type SchemaAST } from "effect";
 import { Hono } from "hono";
 import { AgentConfig } from "#src/backend/agent/config";
@@ -37,10 +38,7 @@ import {
 } from "@wfgraph/shared/types/schema";
 import { getErrorMessage } from "@wfgraph/shared/utils";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
-import {
-  WfGraphOperations,
-  type WfGraphOperationId,
-} from "@wfgraph/shared/authorization/operations";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 // A path segment is whatever the sender typed, so the refusal names the field
 // and the rule rather than echoing the value back into the response body.
@@ -466,10 +464,7 @@ export function createApiApp(options: CreateApiAppOptions) {
             )
           ),
         ]);
-      const operationIds = authorizedOperationIds.filter(
-        (operationId): operationId is WfGraphOperationId =>
-          operationId !== undefined
-      );
+      const operationIds = authorizedOperationIds.filter(isNotNil);
       return c.json({
         catalog: extensions.catalog,
         agent: { enabled: agent.enabled },

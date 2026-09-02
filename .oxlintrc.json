@@ -131,11 +131,11 @@
     // has no level here that reports a site without failing the build. The site
     // count on each line is what that rule reported when the plugin landed, so a
     // sweep can check its own arithmetic.
-    "wfgraph/no-filter-boolean": "off", // 3 sites
+    "wfgraph/no-filter-boolean": "error",
     "wfgraph/no-set-spread-uniq": "error",
     "wfgraph/no-entries-round-trip": "off", // 7 sites
     "wfgraph/no-conditional-spread": "off", // 210 sites
-    "wfgraph/no-locale-compare": "off", // 20 sites
+    "wfgraph/no-locale-compare": "error",
     "wfgraph/no-hand-rolled-object-guard": "error",
     "wfgraph/no-changed-flag": "off", // 7 sites
     "wfgraph/parameter-names": "off", // 42 sites
@@ -324,6 +324,18 @@
       "files": ["packages/shared/src/types/json.ts"],
       "rules": {
         "wfgraph/no-hand-rolled-object-guard": "off"
+      }
+    },
+    {
+      // string.ts is where compareText is defined, and its own test pins
+      // compareText's behavior against localeCompare directly, so the rule
+      // that points everyone else at compareText is off for both.
+      "files": [
+        "packages/shared/src/types/string.ts",
+        "packages/shared/src/types/string.test.ts"
+      ],
+      "rules": {
+        "wfgraph/no-locale-compare": "off"
       }
     },
     {
