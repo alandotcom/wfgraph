@@ -1,14 +1,10 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { Data, Effect } from "effect";
 import { sql } from "drizzle-orm";
 import type { EffectSQLiteNodeDatabase } from "drizzle-orm/effect-sqlite-node";
-import { readMigrationFiles, type MigrationMeta } from "drizzle-orm/migrator";
+import type { MigrationMeta } from "drizzle-orm/migrator";
+import { sqliteMigrations } from "#src/backend/persistence/sqlite/generated-migrations";
 
-const currentDir = dirname(fileURLToPath(import.meta.url));
-const OWNING_PACKAGE = "@wfgraph/core";
 const MIGRATIONS_TABLE = "__wfgraph_sqlite_migrations";
 const LEGACY_SCHEMA_FINGERPRINTS = new Map([
   [6, "04c0c74f0205f808a3822afb497e2abf5d007a8a7e0c1e4b9df364ec74bb6267"],
@@ -74,28 +70,6 @@ type SchemaInspection = {
   readonly fingerprint: string;
 };
 
-function packageRoot(startDir: string): string {
-  const manifest = resolve(startDir, "package.json");
-  if (existsSync(manifest)) {
-    const name: unknown = JSON.parse(readFileSync(manifest, "utf8")).name;
-    if (name === OWNING_PACKAGE) return startDir;
-    throw new Error(
-      `Workflow Graph's SQLite migrations must be loaded from ${OWNING_PACKAGE}, not ${String(name)}`
-    );
-  }
-  const parent = dirname(startDir);
-  if (parent === startDir) {
-    throw new Error(`Could not locate the ${OWNING_PACKAGE} package`);
-  }
-  return packageRoot(parent);
-}
-
-export function wfgraphSqliteMigrationsDir(
-  startDir: string = currentDir
-): string {
-  return resolve(packageRoot(startDir), "drizzle-sqlite");
-}
-
 const inspectSchema = Effect.fn("inspectSqliteSchema")(function* (
   database: SqliteMigrationExecutor
 ) {
@@ -138,8 +112,9 @@ const inspectSchema = Effect.fn("inspectSqliteSchema")(function* (
   return { version: versionRow.user_version, tables, fingerprint };
 });
 
-function migrationsFrom(migrationsFolder: string): MigrationMeta[] {
-  const migrations = readMigrationFiles({ migrationsFolder });
+function migrationsFrom(
+  migrations: readonly MigrationMeta[]
+): readonly MigrationMeta[] {
   if (migrations.length === 0) {
     throw new SqliteInitializationError({
       message: "Workflow Graph's SQLite baseline migration is missing",
@@ -310,10 +285,10 @@ const validateCurrentSchema = Effect.fn("validateCurrentSqliteSchema")(
 /** Runs Drizzle's generated statements while owning SQLite's FK lifecycle. */
 export const runSqliteMigrations = Effect.fn("runSqliteMigrations")(function* (
   database: SqliteMigrationDatabase,
-  migrationsFolder: string,
+  migrationInput: readonly MigrationMeta[],
   initializeWorkflowGraphSchema = false
 ) {
-  const migrations = migrationsFrom(migrationsFolder);
+  const migrations = migrationsFrom(migrationInput);
   yield* database.run(sql`pragma foreign_keys = on`);
 
   yield* Effect.acquireUseRelease(
@@ -391,10 +366,9 @@ export const runSqliteMigrations = Effect.fn("runSqliteMigrations")(function* (
 });
 
 export const initializeSqlite = Effect.fn("initializeSqlite")(function* (
-  database: EffectSQLiteNodeDatabase,
-  migrationsFolder: string
+  database: EffectSQLiteNodeDatabase
 ) {
   yield* database.run(sql`pragma foreign_keys = on`);
   yield* database.run(sql`pragma synchronous = normal`);
-  yield* runSqliteMigrations(database, migrationsFolder, true);
+  yield* runSqliteMigrations(database, sqliteMigrations, true);
 });

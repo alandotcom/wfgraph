@@ -6,14 +6,13 @@ import { DatabaseSync } from "node:sqlite";
 import { inspect } from "node:util";
 import { Effect, ManagedRuntime } from "effect";
 import { sql } from "drizzle-orm";
-import { readMigrationFiles } from "drizzle-orm/migrator";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { hasDatabaseErrorCode } from "#src/backend/lib/effect/database";
 import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { wfSqlite } from "#src/backend/persistence/sqlite";
 import { openSqliteDatabase } from "#src/backend/persistence/sqlite/database";
-import { wfgraphSqliteMigrationsDir } from "#src/backend/persistence/sqlite/migrations";
+import { sqliteMigrations } from "#src/backend/persistence/sqlite/generated-migrations";
 
 const emptyGraph = createSerializedWorkflowGraph({ nodes: [], edges: [] });
 const cipher = createIntegrationCipher({ key: "c".repeat(64) });
@@ -239,9 +238,7 @@ async function prepareLegacyDatabase(
 }
 
 function createMigrationJournal(database: DatabaseSync): void {
-  const [baseline] = readMigrationFiles({
-    migrationsFolder: wfgraphSqliteMigrationsDir(),
-  });
+  const [baseline] = sqliteMigrations;
   if (!baseline) throw new Error("SQLite baseline migration is missing");
 
   database.exec(`
@@ -316,9 +313,7 @@ describe("native SQLite persistence", () => {
     const persistence = await open(filename);
     await persistence.close();
 
-    const [baseline] = readMigrationFiles({
-      migrationsFolder: wfgraphSqliteMigrationsDir(),
-    });
+    const [baseline] = sqliteMigrations;
     expect(baseline).toBeDefined();
 
     const database = new DatabaseSync(filename, { readOnly: true });

@@ -19,6 +19,7 @@
     "packages/client/src/hooks/use-mobile.ts",
     // drizzle-kit owns these generated snapshots; reformatting them makes
     // every db:generate a permanent diff the next generation undoes.
-    "packages/core/drizzle"
+    "packages/core/drizzle",
+    "packages/core/src/backend/persistence/sqlite/generated-migrations.ts"
   ]
 }

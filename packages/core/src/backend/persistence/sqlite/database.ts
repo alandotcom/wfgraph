@@ -6,10 +6,7 @@ import {
   makeWithDefaults,
 } from "drizzle-orm/effect-sqlite-node";
 import { DatabaseError } from "#src/backend/lib/effect/database";
-import {
-  initializeSqlite,
-  wfgraphSqliteMigrationsDir,
-} from "#src/backend/persistence/sqlite/migrations";
+import { initializeSqlite } from "#src/backend/persistence/sqlite/migrations";
 import { isSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 import {
@@ -76,9 +73,7 @@ export async function openSqliteDatabase(input: {
   let closePromise: Promise<void> | undefined;
   try {
     const database = await runtime.runPromise(makeWithDefaults());
-    await runtime.runPromise(
-      initializeSqlite(database, wfgraphSqliteMigrationsDir())
-    );
+    await runtime.runPromise(initializeSqlite(database));
 
     return {
       read: (run) => asDatabaseError(Effect.suspend(() => run(database))),

@@ -1,20 +1,22 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
 import { Effect, ManagedRuntime } from "effect";
 import { sql } from "drizzle-orm";
 import { makeWithDefaults } from "drizzle-orm/effect-sqlite-node";
+import { readMigrationFiles, type MigrationMeta } from "drizzle-orm/migrator";
 import { openSqliteDatabase } from "#src/backend/persistence/sqlite/database";
+import { sqliteMigrations } from "#src/backend/persistence/sqlite/generated-migrations";
 import {
   initializeSqlite,
   runSqliteMigrations,
-  wfgraphSqliteMigrationsDir,
 } from "#src/backend/persistence/sqlite/migrations";
 
 const directories: string[] = [];
+const migrationsDir = resolve(import.meta.dirname, "../../../drizzle-sqlite");
 
 afterEach(async () => {
   await Promise.all(
@@ -59,7 +61,12 @@ async function migrate(
     SqliteClient.layer({ filename, busyTimeout: 1_000 })
   );
   const database = await runtime.runPromise(makeWithDefaults());
-  await runtime.runPromise(runSqliteMigrations(database, migrations));
+  await runtime.runPromise(
+    runSqliteMigrations(
+      database,
+      readMigrationFiles({ migrationsFolder: migrations })
+    )
+  );
   return await runtime.runPromise(
     database.get<{ foreign_keys: number }>(sql`pragma foreign_keys`)
   );
@@ -71,7 +78,10 @@ async function rejectedMigration(filename: string, migrations: string) {
   );
   const database = await runtime.runPromise(makeWithDefaults());
   const error = await runtime.runPromise(
-    runSqliteMigrations(database, migrations).pipe(Effect.flip)
+    runSqliteMigrations(
+      database,
+      readMigrationFiles({ migrationsFolder: migrations })
+    ).pipe(Effect.flip)
   );
   const pragmas = await runtime.runPromise(
     database.get<{ foreign_keys: number }>(sql`pragma foreign_keys`)
@@ -79,17 +89,26 @@ async function rejectedMigration(filename: string, migrations: string) {
   return { error, pragmas };
 }
 
-async function rejectedInitialization(filename: string, migrations: string) {
+async function rejectedInitialization(
+  filename: string,
+  migrations: readonly MigrationMeta[]
+) {
   await using runtime = ManagedRuntime.make(
     SqliteClient.layer({ filename, busyTimeout: 1_000 })
   );
   const database = await runtime.runPromise(makeWithDefaults());
   return runtime.runPromise(
-    initializeSqlite(database, migrations).pipe(Effect.flip)
+    runSqliteMigrations(database, migrations, true).pipe(Effect.flip)
   );
 }
 
 describe("SQLite migration execution", () => {
+  it("embeds the generated migration files exactly", () => {
+    expect(sqliteMigrations).toEqual(
+      readMigrationFiles({ migrationsFolder: migrationsDir })
+    );
+  });
+
   it("preserves dependent rows across a generated table rebuild", async () => {
     const fixture = await migrationFixture();
     await migrate(fixture.filename, fixture.migrations);
@@ -171,7 +190,7 @@ describe("SQLite migration execution", () => {
     directories.push(directory);
     const filename = join(directory, "migration.db");
     const migrations = join(directory, "migrations");
-    await cp(wfgraphSqliteMigrationsDir(), migrations, { recursive: true });
+    await cp(migrationsDir, migrations, { recursive: true });
 
     const database = await openSqliteDatabase({
       filename,
@@ -186,7 +205,10 @@ describe("SQLite migration execution", () => {
       "drop index executions_started_idx;"
     );
 
-    const error = await rejectedInitialization(filename, migrations);
+    const error = await rejectedInitialization(
+      filename,
+      readMigrationFiles({ migrationsFolder: migrations })
+    );
     expect(error).toMatchObject({
       message:
         "Workflow Graph's SQLite application schema does not match its migration journal",
