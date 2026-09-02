@@ -48,7 +48,10 @@ describe("Slack OAuth definition", () => {
   it("keeps the manual integration unchanged when no client is supplied", () => {
     expect(slack().oauth).toBeUndefined();
     expect(Object.keys(slack().credentials)).toEqual(["SLACK_API_KEY"]);
-    expect(Object.keys(slack().actions)).toEqual(["send-message"]);
+    expect(Object.keys(slack().actions)).toEqual([
+      "send-message",
+      "reply-to-thread",
+    ]);
   });
 
   it.each([
