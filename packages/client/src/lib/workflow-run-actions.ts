@@ -38,6 +38,13 @@ export const IGNORED_REASON_MESSAGES = {
     "This workflow does not allow manual runs. Select Allow manual runs on the Lifecycle node.",
   start_event_required:
     "This workflow has an Event Split, so the run must name an Event.",
+  // Neither reaches this map in practice: a Start Filter is read on an arriving
+  // Event, and the requests this map answers are manual runs. Written because the
+  // reason vocabulary is one list and every member of it gets a sentence.
+  start_filter_not_met:
+    "The payload does not satisfy this Start Event's filter, so no run was started.",
+  start_filter_unevaluable:
+    "This Start Event's filter could not be read against the payload, so no run was started.",
 } satisfies Record<WorkflowExecutionIgnoredReason, string>;
 
 /**

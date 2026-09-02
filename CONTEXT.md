@@ -59,9 +59,9 @@ _Avoid_: correlation key (the retired implicit wait-match model)
 
 **Lifecycle Rules**:
 The Workflow Builder's per-workflow declaration of a run's lifetime: Start
-Events, Cancel Events, and Concurrency. Lives on the Lifecycle Node. One
-Event never holds the start role and the cancel role in the same workflow;
-the editor rejects that configuration.
+Events and their Start Filters, Cancel Events, and Concurrency. Lives on the
+Lifecycle Node. One Event never holds the start role and the cancel role in the
+same workflow; the editor rejects that configuration.
 _Avoid_: Routing Policy (the retired per-event verb table), Replace, Ignore
 (retired verbs of that table)
 
@@ -71,12 +71,23 @@ outlets, Started and Canceled. Scheduled and manual runs enter as start
 sources on this node. An unconnected outlet ends the run quietly.
 
 **Start Event**:
-An Event the Lifecycle Rules name as starting a run. When one arrives,
-Concurrency applies first, then a new Execution enters through the Started
-outlet carrying the payload. A workflow may name several, which is how one
-graph answers an appointment being booked and being moved; a node behind
-Started may then be reached by any of them, and an Event Split is what tells
-them apart.
+An Event the Lifecycle Rules name as starting a run. When one arrives, its
+Start Filter decides whether the arrival counts, then Concurrency applies, then
+a new Execution enters through the Started outlet carrying the payload. A
+workflow may name several, which is how one graph answers an appointment being
+booked and being moved; a node behind Started may then be reached by any of
+them, and an Event Split is what tells them apart.
+
+**Start Filter**:
+The condition an arrival must satisfy before a run opens, written per Start
+Event. An arrival that does not satisfy it opens no Execution and is recorded
+as a Refused Start, which is what separates it from a Condition node behind
+Started: by the time that node runs, Concurrency has already displaced whatever
+was in flight (ADR-0016). It compares payload fields and the Arriving Event
+against literals, having no run to read a value from. Optional, and one filter
+covers several Start Events for as long as it reads only the paths they agree
+on. It governs arrivals alone: a manual run is a person asking for this run, and
+starts whatever the filter says.
 
 **Event Split**:
 A node whose outlets are the Events that can reach it, one each, derived
@@ -120,11 +131,11 @@ How an Execution ends when newest-wins Concurrency lets a newer start take
 its place. Quiet: no outlet fires, and run history records the status.
 
 **Refused Start**:
-A start that opened no Execution, because first-wins Concurrency found a run
-for the entity already going, the payload carried nothing at the Correlation
-Path Concurrency needs, a manual start was not allowed, or a manual start named
-no Event into a graph that splits on one. Recorded as an audit row with no
-Execution behind it.
+A start that opened no Execution, because the Start Event's Start Filter
+declined the arrival, first-wins Concurrency found a run for the entity already
+going, the payload carried nothing at the Correlation Path Concurrency needs, a
+manual start was not allowed, or a manual start named no Event into a graph that
+splits on one. Recorded as an audit row with no Execution behind it.
 
 **Canceled Branch**:
 The branch behind the Canceled outlet. Runs inside the same Execution, so it
@@ -155,8 +166,10 @@ memoized, and nothing above a Wait re-runs.
 
 **Precedence**:
 One fixed order when an Event arrives: Lifecycle Rules apply first, then the
-Event reaches the Wait Subscriptions of surviving runs. There is no other
-ordering rule; a start always starts, and Concurrency resolves multiplicity.
+Event reaches the Wait Subscriptions of surviving runs. Inside the first half the
+order is the Start Filter, then Concurrency, which is what lets a declined
+arrival leave a run in flight alone. There is no other ordering rule; an
+admitted start always starts, and Concurrency resolves multiplicity.
 
 ### Waits
 

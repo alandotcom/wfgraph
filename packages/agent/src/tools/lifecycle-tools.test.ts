@@ -93,6 +93,44 @@ const conditionEdges: WorkflowEdge[] = [
   { id: "score-condition", source: "score", target: "branch" },
 ];
 
+/** A finished one-rule filter, as the Lifecycle panel serializes it. */
+const startFilter = JSON.stringify({
+  version: 2,
+  groupLogic: "and",
+  groups: [
+    {
+      id: "group",
+      logic: "and",
+      conditions: [
+        {
+          id: "rule",
+          field: "applicantId",
+          fieldType: "string",
+          operator: "equals",
+          value: "a_1",
+        },
+      ],
+    },
+  ],
+});
+
+/** An entry node already carrying a Start Filter the agent cannot write. */
+const filteredLifecycle: WorkflowNode = {
+  ...entry,
+  data: {
+    ...entry.data,
+    config: {
+      lifecycleRules: {
+        startEvents: ["applicant.created"],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        allowManualStart: false,
+        startFilters: { "applicant.created": startFilter },
+      },
+    },
+  },
+};
+
 describe("set_lifecycle_rules", () => {
   it.effect("creates the Lifecycle Node when the workflow has none", () =>
     Effect.gen(function* () {
@@ -596,6 +634,58 @@ describe("set_condition", () => {
         tools.set_condition({ nodeId: "branch", groups: [{ rules: [] }] })
       );
       expect(noRules.reason).toContain("at least one rule");
+    })
+  );
+});
+
+/**
+ * The tool replaces the whole rules object and has no parameter for a Start
+ * Filter, so what it does with one it did not write is a decision rather than an
+ * omission. Dropping it would leave the workflow starting on every arrival with
+ * nothing on the canvas saying the rule had gone.
+ */
+describe("set_lifecycle_rules and start filters", () => {
+  it.effect("keeps a Start Filter the builder wrote", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [filteredLifecycle],
+        catalog,
+      });
+
+      yield* tools.set_lifecycle_rules({
+        startEvents: ["applicant.created"],
+        cancelEvents: ["applicant.withdrawn"],
+        correlationPaths: [
+          { event: "applicant.created", path: "applicantId" },
+          { event: "applicant.withdrawn", path: "applicantId" },
+        ],
+      });
+
+      const document = yield* draft.current;
+      expect(
+        readLifecycleRules(document.nodes[0]?.data.config)?.startFilters
+      ).toEqual({ "applicant.created": startFilter });
+    })
+  );
+
+  it.effect("drops the filter of a Start Event the edit removed", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [filteredLifecycle],
+        catalog,
+      });
+
+      yield* tools.set_lifecycle_rules({
+        startEvents: ["applicant.withdrawn"],
+        correlationPaths: [
+          { event: "applicant.withdrawn", path: "applicantId" },
+        ],
+      });
+
+      const document = yield* draft.current;
+      expect(
+        readLifecycleRules(document.nodes[0]?.data.config)?.startFilters
+      ).toBeUndefined();
     })
   );
 });

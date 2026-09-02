@@ -109,7 +109,10 @@ function lifecycleConfigFieldLabel(
       startEvents: "Start events",
       cancelEvents: "Cancel events",
       concurrency: "Concurrency",
-      correlationPath: "Correlation path",
+      allowManualStart: "Manual runs",
+      correlationPaths: "Correlation path",
+      connectionIds: "Connection",
+      startFilters: "Start filter",
     };
     return labels[path[3] ?? ""] ?? "Lifecycle rule";
   }

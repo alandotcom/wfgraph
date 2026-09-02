@@ -88,6 +88,12 @@ const invoicePaid = defineEvent({
   build of whoever wrote it.
 - Assembly refuses two Events on one source that both omit `when`.
 
+`when` decides which Event a payload is, for every workflow in the app, and it is the
+Event Author's. A Workflow Builder narrowing which arrivals of an Event start their own
+workflow writes a Start Filter on the Lifecycle Node instead. The two never compete:
+`when` settles which Event a payload is, and a Start Filter settles whether that
+Event opens a run here.
+
 ## The intake gate
 
 Send an Event with an Inngest client. The listener of that Event delivers it, so the run is

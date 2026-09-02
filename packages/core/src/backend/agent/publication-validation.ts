@@ -19,6 +19,7 @@ import { checkUnreachableSubtrees } from "#src/backend/services/workflows/publis
 import { validateWorkflowConditionConfigs } from "#src/backend/services/workflows/validation/workflow-conditions-validation";
 import {
   validateEventSplitOutlets,
+  validateStartFilters,
   validateWorkflowEvents,
 } from "#src/backend/services/workflows/validation/workflow-lifecycle-validation";
 import { validateWorkflowTemplates } from "#src/backend/services/workflows/validation/workflow-template-validation";
@@ -63,6 +64,11 @@ export function validateAgentPublication(input: {
   for (const [kind, check] of [
     ["invalid_condition", () => validateWorkflowConditionConfigs(nodes)],
     ["invalid_event", () => validateWorkflowEvents(nodes, input.catalog)],
+    // Publish refuses a Start Filter the graph cannot be run on, so the agent
+    // has to see the same refusal: without it the agent reads an empty blocker
+    // list as "ready to publish" and the person clicking Publish is the one who
+    // finds out.
+    ["invalid_start_filter", () => validateStartFilters(nodes, input.catalog)],
     [
       "invalid_event_split",
       () => validateEventSplitOutlets(nodes, edges, input.catalog),

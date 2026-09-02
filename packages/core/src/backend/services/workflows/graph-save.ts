@@ -19,6 +19,7 @@
 import { Effect } from "effect";
 import { InvalidInput } from "#src/backend/lib/effect/failures";
 import { validateWorkflowConditionConfigs } from "#src/backend/services/workflows/validation/workflow-conditions-validation";
+import { validateStartFilterModels } from "#src/backend/services/workflows/validation/workflow-lifecycle-validation";
 import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
 import { deriveEventSubscriptions } from "#src/backend/services/workflows/lifecycle/subscriptions";
 import type { WorkflowEventSubscriptionRow } from "#src/backend/services/workflows/repo";
@@ -65,6 +66,14 @@ export const prepareGraphSave = Effect.fn("prepareGraphSave")(
     const conditions = validateWorkflowConditionConfigs(nodes);
     if (!conditions.valid) {
       return yield* new InvalidInput({ error: conditions.error });
+    }
+
+    // The Lifecycle Node's own stored models, held to the same bar. Separate from
+    // the walk above because that one is about action configs, and a Start Filter
+    // is not one.
+    const startFilters = validateStartFilterModels(nodes);
+    if (!startFilters.valid) {
+      return yield* new InvalidInput({ error: startFilters.error });
     }
 
     const prepared: PreparedGraphSave = {

@@ -8,9 +8,10 @@ import { getRelativeTime } from "@wfgraph/shared/utils/time";
  *
  * A refusal writes an audit row and no execution row -- first-wins Concurrency
  * found a run for the entity already going, the payload carried nothing at the
- * Correlation Path Concurrency needs, or a manual start is not allowed here -- and
- * without this the only trace was the server log, which is the class of invisible
- * behaviour ADR-0007 exists to remove.
+ * Correlation Path Concurrency needs, a manual start is not allowed here, or the
+ * Start Event's Start Filter declined the arrival -- and without this the only
+ * trace was the server log, which is the class of invisible behaviour ADR-0007
+ * exists to remove.
  *
  * The rows arrive with the runs they belong beside, so this renders and reads
  * nothing of its own.

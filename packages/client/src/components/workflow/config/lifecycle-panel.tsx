@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { WarningCallout } from "#src/components/ui/callout";
 import {
@@ -17,6 +17,12 @@ import {
   readLifecycleRules,
   setConnectionForIntegration,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import {
+  carryStartFilterToAddedEvents,
+  pruneStartFilters,
+  setStartFilterForAll,
+  setStartFilterForEvent,
+} from "@wfgraph/shared/lifecycle/start-filters";
 import { ConfigHeading } from "./config-section";
 import { IntegrationEventConnectionEditor } from "./integration-event-connection";
 import { LifecycleConcurrencyGroup } from "./lifecycle-concurrency-group";
@@ -26,8 +32,10 @@ import type { UpdateNodeConfig } from "./node-config-patch";
 export { CONCURRENCY_OPTIONS } from "./lifecycle-concurrency-group";
 
 function prune(next: LifecycleRules, catalog: ExtensionCatalog) {
-  return pruneConnectionIds(
-    inheritConnectionIds(pruneCorrelationPaths(next), catalog)
+  return pruneStartFilters(
+    pruneConnectionIds(
+      inheritConnectionIds(pruneCorrelationPaths(next), catalog)
+    )
   );
 }
 
@@ -49,7 +57,13 @@ export function LifecyclePanel({
   const cancelEventsId = useId();
   const manualStartId = useId();
   const catalog = useExtensionCatalog();
-  const rules = readLifecycleRules(config) ?? initialLifecycleRules;
+  // Decoded once per config rather than once per render, so `rules.startEvents`
+  // keeps its identity between renders and the controls below can memoize the
+  // field derivations they hang off it.
+  const rules = useMemo(
+    () => readLifecycleRules(config) ?? initialLifecycleRules,
+    [config]
+  );
   const check = checkLifecycleRules({ rules, catalog });
 
   const write = (next: LifecycleRules) => {
@@ -57,7 +71,17 @@ export function LifecyclePanel({
   };
 
   const setStartEvents = (eventNames: string[]) => {
-    write(prune({ ...rules, startEvents: eventNames }, catalog));
+    // Adding a Start Event to a group that already shares one filter carries the
+    // filter onto it. Done here rather than inside `prune`, which runs on every
+    // write and so could not tell an Event that never had a filter from one the
+    // builder cleared on purpose.
+    write(
+      carryStartFilterToAddedEvents({
+        previous: rules,
+        next: prune({ ...rules, startEvents: eventNames }, catalog),
+        catalog,
+      })
+    );
   };
 
   const setCancelEvents = (eventNames: string[]) => {
@@ -77,6 +101,14 @@ export function LifecyclePanel({
         connectionId,
       })
     );
+  };
+
+  const setStartFilter = (eventName: string, model: string | undefined) => {
+    write(setStartFilterForEvent({ rules, eventName, model }));
+  };
+
+  const setStartFilterForEveryEvent = (model: string | undefined) => {
+    write(setStartFilterForAll(rules, model));
   };
 
   const setCorrelationPath = (eventName: string, path: string) => {
@@ -107,6 +139,8 @@ export function LifecyclePanel({
     onManualStartChange: (allowed: boolean) =>
       write({ ...rules, allowManualStart: allowed }),
     onCorrelationPathChange: setCorrelationPath,
+    onStartFilterChange: setStartFilter,
+    onStartFilterChangeForAll: setStartFilterForEveryEvent,
   };
 
   return (
@@ -145,6 +179,8 @@ function LifecycleGroups({
   onConcurrencyChange,
   onManualStartChange,
   onCorrelationPathChange,
+  onStartFilterChange,
+  onStartFilterChangeForAll,
   onConnectionChange,
 }: {
   rules: LifecycleRules;
@@ -158,6 +194,8 @@ function LifecycleGroups({
   onConcurrencyChange: (value: Concurrency) => void;
   onManualStartChange: (allowed: boolean) => void;
   onCorrelationPathChange: (eventName: string, path: string) => void;
+  onStartFilterChange: (eventName: string, model: string | undefined) => void;
+  onStartFilterChangeForAll: (model: string | undefined) => void;
   onConnectionChange: (integration: string, connectionId: string) => void;
 }) {
   return (
@@ -168,6 +206,8 @@ function LifecycleGroups({
         inputId={startEventId}
         onCorrelationPathChange={onCorrelationPathChange}
         onEventNamesChange={onStartEventsChange}
+        onStartFilterChange={onStartFilterChange}
+        onStartFilterChangeForAll={onStartFilterChangeForAll}
         role="start"
         rules={rules}
       />

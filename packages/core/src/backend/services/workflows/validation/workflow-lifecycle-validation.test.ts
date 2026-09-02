@@ -2,9 +2,15 @@ import { describe, expect, it } from "vitest";
 import { errorOf } from "#src/backend/services/workflows/validation/validation-test-support";
 import {
   validateEventSplitOutlets,
+  validateStartFilterModels,
+  validateStartFilters,
   validateWorkflowEvents,
 } from "#src/backend/services/workflows/validation/workflow-lifecycle-validation";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import {
+  createDefaultConditionModel,
+  serializeConditionModel,
+} from "@wfgraph/shared/conditions/conditions";
 import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
 import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
@@ -19,7 +25,10 @@ const catalog: ExtensionCatalog = {
       name: "app/appointment.created",
       label: "Appointment created",
       correlationPath: "appointment.id",
-      payloadFields: [],
+      payloadFields: [
+        { path: "appointment.id", type: "string" },
+        { path: "appointment.channel", type: "string" },
+      ],
     },
     {
       name: "resend/email.delivered",
@@ -354,5 +363,153 @@ describe("validateEventSplitOutlets", () => {
         waitCatalog
       )
     ).toEqual({ valid: true });
+  });
+});
+
+/** One finished string rule over `path`, as the Lifecycle panel serializes it. */
+function filterOn(path: string, value = "video"): string {
+  return serializeConditionModel({
+    version: 2,
+    groupLogic: "and",
+    groups: [
+      {
+        id: "group",
+        logic: "and",
+        conditions: [
+          {
+            id: "rule",
+            field: path,
+            fieldType: "string",
+            operator: "equals",
+            value,
+          },
+        ],
+      },
+    ],
+  });
+}
+
+function filteredRules(startFilters: Record<string, string>): LifecycleRules {
+  return {
+    startEvents: ["app/appointment.created"],
+    cancelEvents: [],
+    concurrency: "unlimited",
+    startFilters,
+  };
+}
+
+describe("validateStartFilters", () => {
+  it("accepts a filter over a field the Start Event declares", () => {
+    expect(
+      validateStartFilters(
+        [
+          lifecycleNode(
+            filteredRules({
+              "app/appointment.created": filterOn("appointment.channel"),
+            })
+          ),
+        ],
+        catalog
+      )
+    ).toEqual({ valid: true });
+  });
+
+  // Publishing is where a graph is asked whether it can run, and an unfinished
+  // filter is a rule no arrival can be measured against.
+  it("refuses an unfinished filter", () => {
+    expect(
+      errorOf(
+        validateStartFilters(
+          [
+            lifecycleNode(
+              filteredRules({
+                "app/appointment.created": filterOn("appointment.channel", ""),
+              })
+            ),
+          ],
+          catalog
+        )
+      )
+    ).toContain("unfinished");
+  });
+
+  it("refuses a filter reading a field the Start Event does not carry", () => {
+    expect(
+      errorOf(
+        validateStartFilters(
+          [
+            lifecycleNode(
+              filteredRules({
+                "app/appointment.created": filterOn("appointment.reason"),
+              })
+            ),
+          ],
+          catalog
+        )
+      )
+    ).toContain("appointment.reason");
+  });
+});
+
+/**
+ * The separation `validateStartFilters` exists for: the Event walk runs in
+ * delivery preflight, so a filter must never be able to answer that walk. A
+ * renamed payload field would otherwise stop the workflow whole, Cancel Events
+ * included, and write nothing a builder could read.
+ */
+describe("validateWorkflowEvents and start filters", () => {
+  it("leaves every start filter to the publish battery", () => {
+    expect(
+      validateWorkflowEvents(
+        [
+          lifecycleNode(
+            filteredRules({
+              "app/appointment.created": filterOn("appointment.reason"),
+            })
+          ),
+        ],
+        catalog
+      )
+    ).toEqual({ valid: true });
+  });
+});
+
+/**
+ * The save battery's half. A stored graph has to be readable; whether it can run
+ * is `validateStartFilters` above, at publish.
+ */
+describe("validateStartFilterModels", () => {
+  const seededFilter = serializeConditionModel(
+    createDefaultConditionModel({
+      path: "appointment.channel",
+      label: "appointment.channel",
+      type: "string",
+    })
+  );
+
+  it("accepts a filter whose operand the builder has not typed yet", () => {
+    expect(
+      validateStartFilterModels([
+        lifecycleNode(
+          filteredRules({ "app/appointment.created": seededFilter })
+        ),
+      ])
+    ).toEqual({ valid: true });
+  });
+
+  it("refuses a filter that is broken rather than unfinished", () => {
+    expect(
+      validateStartFilterModels([
+        lifecycleNode(
+          filteredRules({ "app/appointment.created": "{not json" })
+        ),
+      ]).valid
+    ).toBe(false);
+  });
+
+  it("accepts a Lifecycle Node carrying no rules at all", () => {
+    expect(validateStartFilterModels([lifecycleNode()])).toEqual({
+      valid: true,
+    });
   });
 });

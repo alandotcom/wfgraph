@@ -219,8 +219,74 @@ export function buildIgnoredRunAuditMessage(input: {
     return `Refused a start from ${named}: this workflow splits on the Event a run is on, and this start named none`;
   }
 
+  if (input.reason === "start_filter_not_met") {
+    return `Refused a start from ${named}: the payload does not satisfy this workflow's start filter`;
+  }
+
+  // The filter's own error is not repeated here. It is a message from the CEL
+  // library about a payload this row does not carry, and it goes to the log,
+  // which is where an operator reads it.
+  if (input.reason === "start_filter_unevaluable") {
+    return `Refused a start from ${named}: this workflow's start filter could not be read against the payload`;
+  }
+
   return `Refused a start from ${named}: this workflow does not list manual runs as a start source`;
 }
+
+/**
+ * A refusal, recorded and narrated.
+ *
+ * Without the row a refusal is invisible, which is the class of problem ADR-0007
+ * exists to remove: a builder reading run history should find the start that was
+ * declined and why, rather than an absence.
+ *
+ * Both refusing call sites come through here, so a refusal's sentence, its audit
+ * row and its log record are decided in one place whatever declined the start.
+ * `extra` is what one reason knows and the others do not: the runs first-wins
+ * found already going, or the error a Start Filter could not be read past.
+ */
+export const recordStartRefusal = Effect.fn("recordStartRefusal")(
+  function* (input: {
+    workflowId: string;
+    startSource: WorkflowExecutionStartSource;
+    reason: WorkflowExecutionIgnoredReason;
+    runMode: WorkflowMode;
+    logger: EffectLogger;
+    eventName?: string;
+    entityValue?: string;
+    deliveryId?: string;
+    extra?: JsonObject;
+  }) {
+    const repo = yield* ExecutionRepo;
+
+    yield* repo.recordAuditEvent({
+      workflowId: input.workflowId,
+      eventType: "run_refused",
+      message: buildIgnoredRunAuditMessage({
+        startSource: input.startSource,
+        reason: input.reason,
+        eventName: input.eventName,
+      }),
+      metadata: {
+        // The refusal's own keys are written last, so what one reason knows and
+        // the others do not cannot rename the row it is written on.
+        ...input.extra,
+        reason: input.reason,
+        startSource: input.startSource,
+        eventName: input.eventName,
+        entityValue: input.entityValue,
+        deliveryId: input.deliveryId,
+        runMode: input.runMode,
+      },
+    });
+
+    yield* input.logger.info("Start refused", {
+      ...input.extra,
+      reason: input.reason,
+      entityValue: input.entityValue,
+    });
+  }
+);
 
 /** This module's logger, as the Effect that produces it (see `services/workflows/workflow.ts`). */
 const loggerFor = (workflowId: string) =>

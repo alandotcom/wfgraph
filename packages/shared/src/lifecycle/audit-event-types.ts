@@ -33,7 +33,8 @@ export const RUN_SCOPED_AUDIT_EVENT_TYPES = [
  *
  * `run_refused` is first-wins Concurrency finding a run for the entity already
  * going, a payload carrying nothing at the Correlation Path Concurrency needs,
- * or a manual start a workflow's own rules do not allow. `cancel_not_delivered`
+ * a manual start a workflow's own rules do not allow, or an arrival the Start
+ * Event's Start Filter declined. `cancel_not_delivered`
  * is the mirror on the other lifecycle role, an arriving Cancel Event whose
  * payload carries no Entity Value to match runs by. A decision with no row is
  * the class of invisible behaviour ADR-0007 exists to remove, and neither of
