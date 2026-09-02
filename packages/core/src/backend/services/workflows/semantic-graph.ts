@@ -61,9 +61,8 @@ export function normalizeSemanticValue(
     return normalized.map((item) => item ?? null);
   }
 
-  // Object keys sorted for the same reason the graph itself is: a stable
-  // projection needs one key order regardless of the order they were written
-  // in, and a key is not text a person reads, so code-unit order is honest.
+  // Keys are sorted so two objects written in different key orders normalize
+  // alike. A key is an identifier, so code-unit order is enough.
   const object: JsonObject = {};
   for (const [key, rawItem] of sortBy(Object.entries(value), [
     ([entryKey]) => entryKey,
@@ -108,8 +107,7 @@ export function projectSemanticWorkflowEdge(
   edge: SerializedWorkflowEdge
 ): JsonObject {
   const data = normalizeSemanticValue(edge.attributes.data);
-  const normalizedData =
-    data !== undefined && isEmptyObject(data) ? undefined : data;
+  const normalizedData = isEmptyObject(data) ? undefined : data;
 
   return normalizedObject({
     source: edge.source,
@@ -128,10 +126,9 @@ export function semanticValueKey(value: JsonValue): string {
 export function projectSemanticWorkflowGraph(
   graph: SerializedWorkflowGraph
 ): JsonObject {
-  // Sorted on their own JSON key so two graphs meaning the same thing hash the
-  // same regardless of the order the editor happened to hold their nodes and
-  // edges in. The key is generated JSON, not text a person reads, so
-  // code-unit order is the honest comparator.
+  // Nodes and edges are sorted on their own JSON key so two graphs with the
+  // same meaning hash alike whatever order the editor held them in. The key is
+  // generated JSON, so code-unit order is enough.
   const nodes = sortBy(
     graph.nodes.map((node) =>
       normalizedObject({

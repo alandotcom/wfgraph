@@ -120,15 +120,15 @@ export const postIntegrationConfigOptions = Effect.fn(
     request: { parameterKeys: Object.keys(accepted) },
     outcome: {
       status: answer.status,
-      // oxlint-disable-next-line wfgraph/no-conditional-spread -- each answer status has one field of its own; the other two are left off rather than logged as `undefined` on every line.
+      // oxlint-disable-next-line wfgraph/no-conditional-spread -- `options` is the one status carrying a list of options to count.
       ...(answer.status === "options"
         ? { optionCount: answer.options.length }
         : {}),
-      // oxlint-disable-next-line wfgraph/no-conditional-spread -- each answer status has one field of its own; the other two are left off rather than logged as `undefined` on every line.
+      // oxlint-disable-next-line wfgraph/no-conditional-spread -- `fields` is the one status carrying a list of fields to count.
       ...(answer.status === "fields"
         ? { fieldCount: answer.fields.length }
         : {}),
-      // oxlint-disable-next-line wfgraph/no-conditional-spread -- each answer status has one field of its own; the other two are left off rather than logged as `undefined` on every line.
+      // oxlint-disable-next-line wfgraph/no-conditional-spread -- `unavailable` is the one status carrying a reason.
       ...(answer.status === "unavailable" ? { reason: answer.reason } : {}),
     },
   });

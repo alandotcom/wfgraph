@@ -414,8 +414,8 @@ function alignEntryIncoming(input: {
     // No `type`: the canvas names the edge component for every edge through
     // `defaultEdgeOptions`, and React Flow merges that under the edge, so an
     // explicit `type: undefined` here would shadow it back to the bezier.
-    // React Flow declares both handle keys as plain optional, so a handle the
-    // template does not name is left out rather than written as `undefined`.
+    // React Flow declares both handle keys as optional, so a handle the
+    // template does not name is omitted.
     extra.push(
       omitUndefined({
         id: createEdgeId(),

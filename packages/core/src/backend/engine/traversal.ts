@@ -336,9 +336,8 @@ export class Traversal {
    * two runs of one graph answer alike whatever order the nodes finished in.
    */
   deterministicTerminalOutput(): unknown {
-    // Node ids are nanoids ordered for a deterministic result, not for a person
-    // to read, so plain code-unit order is the honest comparator here (es-toolkit's
-    // sortBy takes only arrays of objects, which a bare id string is not).
+    // Node ids are nanoids, so code-unit order is enough for a deterministic
+    // result. `compareText` is for text a person reads.
     const terminalNodeIds = this.nodes
       .filter((node) => (this.edgesBySource.get(node.id)?.length ?? 0) === 0)
       .map((node) => node.id)

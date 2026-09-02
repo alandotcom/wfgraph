@@ -19,8 +19,8 @@ export function asNonEmptyString(value: unknown): string | undefined {
 /**
  * Orders two strings a person reads: a label in a menu, an integration name, a
  * node title. This is the one place `localeCompare` is written, so a sort over
- * text puts "Apple" before "banana" instead of after it, which is where
- * code-unit order puts every capital letter.
+ * text puts "apple" before "Zebra". Code-unit order puts every capital letter
+ * ahead of every lowercase one, which sorts "Zebra" first.
  *
  * Sorting identifiers, ids and enum values stays on code-unit order, because
  * those are compared for a stable result rather than read down a list.

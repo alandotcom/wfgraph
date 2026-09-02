@@ -131,7 +131,7 @@ export async function startOAuthConnection(
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
-      // `RequestInit` reads `null` as "no signal"; it declares no `undefined`.
+      // `RequestInit.signal` takes an AbortSignal or `null`, not `undefined`.
       signal: signal ?? null,
     }
   );
@@ -162,7 +162,7 @@ export async function readOAuthAttemptStatus(
 ): Promise<OAuthAttemptStatus> {
   const response = await fetch(attemptPath(attemptId), {
     credentials: "same-origin",
-    // `RequestInit` reads `null` as "no signal"; it declares no `undefined`.
+    // `RequestInit.signal` takes an AbortSignal or `null`, not `undefined`.
     signal: signal ?? null,
   });
   const body = readJsonObject(await response.json().catch(() => null));

@@ -109,19 +109,9 @@ type TemplateOption = {
 };
 
 /**
- * The row for a key somebody typed under an open record, or nothing.
- *
- * A record's keys are invented by the payload, so the menu cannot list them all.
- * What it can do is recognise one the moment it is written: typing
- * `data.tags.order_id` finds every `data.tags` record and offers the full path,
- * which `resolveOutputPath` walks at run time the same way. The query is matched
- * against each record's own path, so it is the path alone rather than the node
- * name and the path together.
- */
-/**
- * Whether `query` names a key under this record's own path, and is offered
- * for `targetType`. Narrows `field` and `valueType` to defined so the caller
- * can read them without a repeated check.
+ * Whether `query` names a key under this record's own path, and whether that
+ * key is offered for `targetType`. Narrows `field` and `valueType` to defined
+ * so the caller can read them without checking again.
  */
 function namesKeyUnderOpenRecord(
   record: TemplateOption,
@@ -140,6 +130,16 @@ function namesKeyUnderOpenRecord(
   );
 }
 
+/**
+ * The row for a key somebody typed under an open record, or nothing.
+ *
+ * A record's keys are invented by the payload, so the menu cannot list them all.
+ * What it can do is recognise one the moment it is written: typing
+ * `data.tags.order_id` finds every `data.tags` record and offers the full path,
+ * which `resolveOutputPath` walks at run time the same way. The query is matched
+ * against each record's own path, so it is the path alone rather than the node
+ * name and the path together.
+ */
 function keyUnderOpenRecordOptions(
   options: readonly TemplateOption[],
   query: string,

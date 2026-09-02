@@ -46,8 +46,6 @@ function edge(
   target: string,
   sourceHandle?: string
 ): WorkflowEdge {
-  // React Flow declares `sourceHandle` as a plain optional key, so an edge
-  // leaving a node's only handle carries no key at all.
   return omitUndefined({ id, source, target, sourceHandle });
 }
 

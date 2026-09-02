@@ -46,12 +46,11 @@ function createSqlClient(
   config: NormalizedDatabaseConfig,
   pool: { max: number; applicationName: string }
 ): Sql {
-  // postgres.js tests for each option with `in`, so a key holding undefined is
-  // not the same to it as an absent key: an `host: undefined` would outrank the
-  // host the URL carries. `omitUndefined` drops whatever the config left out.
-  // The options are named here rather than written inline, because inline the
-  // library's own parameter type would drive the inference and the keys would
-  // survive.
+  // postgres.js tests for each option with `in`, so a key present and holding
+  // undefined counts as a value: a `host: undefined` would outrank the host the
+  // URL carries. `omitUndefined` drops the keys the config left out. The result
+  // goes in a variable because written inline the library's own parameter type
+  // drives the inference and those keys survive.
   const options = omitUndefined({
     host: config.host,
     port: config.port,
@@ -60,7 +59,7 @@ function createSqlClient(
     database: config.database,
     // An `ssl: undefined` is not the same as no ssl key at all: postgres.js tests
     // for the option with `in`, so an explicit undefined would outrank an
-    // `sslmode` the URL carries. `omitUndefined` above drops the key outright.
+    // `sslmode` the URL carries.
     ssl: config.ssl,
     max: pool.max,
     connection: {

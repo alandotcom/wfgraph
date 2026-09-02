@@ -1,22 +1,29 @@
-import { afterAll, describe, expect, test } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { resetSync } from "@logtape/logtape";
 import { configureLoggingWithBridge } from "#src/backend/lib/log-config";
 import { createInngestSdkLogger } from "#src/backend/lib/inngest/sdk-logger";
 
-describe("createInngestSdkLogger", () => {
-  test("merges a nested plain object into properties and keeps an Error under a numbered key", () => {
-    const lines: { message: string; properties?: unknown }[] = [];
-    configureLoggingWithBridge(
-      {
-        debug: (message, properties) => {
-          lines.push({ message: String(message), properties });
-        },
-        info: () => undefined,
-        warn: () => undefined,
-        error: () => undefined,
+type RecordedLine = { message: string; properties?: unknown };
+
+function recordLogLines(): RecordedLine[] {
+  const lines: RecordedLine[] = [];
+  configureLoggingWithBridge(
+    {
+      debug: (message, properties) => {
+        lines.push({ message: String(message), properties });
       },
-      "debug"
-    );
+      info: () => undefined,
+      warn: () => undefined,
+      error: () => undefined,
+    },
+    "debug"
+  );
+  return lines;
+}
+
+describe("createInngestSdkLogger", () => {
+  it("merges a nested plain object into properties and keeps an Error under a numbered key", () => {
+    const lines = recordLogLines();
 
     const sdkLogger = createInngestSdkLogger();
     sdkLogger.info("Handshake failed", new Error("boom"), { attempt: 2 });
@@ -29,19 +36,8 @@ describe("createInngestSdkLogger", () => {
     expect((properties.arg0 as Error).message).toBe("boom");
   });
 
-  test("uses a placeholder message when the SDK sends no string", () => {
-    const lines: { message: string; properties?: unknown }[] = [];
-    configureLoggingWithBridge(
-      {
-        debug: (message, properties) => {
-          lines.push({ message: String(message), properties });
-        },
-        info: () => undefined,
-        warn: () => undefined,
-        error: () => undefined,
-      },
-      "debug"
-    );
+  it("uses a placeholder message when the SDK sends no string", () => {
+    const lines = recordLogLines();
 
     const sdkLogger = createInngestSdkLogger();
     sdkLogger.debug({ connectionId: "conn_1" });
@@ -55,8 +51,8 @@ describe("createInngestSdkLogger", () => {
   });
 });
 
-// Back to unconfigured, which is logtape's own default and what every other
-// file in this worker expects: the suite shares one module graph.
+// The suite shares one module graph, so this puts logtape back to the
+// unconfigured default the files running after this one expect.
 afterAll(() => {
   resetSync();
 });

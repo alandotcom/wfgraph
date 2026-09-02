@@ -99,10 +99,10 @@ export function createRequestListener(
   wfgraph: WfGraphApp,
   options: CreateRequestListenerOptions = {}
 ): WfGraphRequestListener {
-  // The adapter reads its options with `in`, so a hostname the host left out
-  // has to be an absent key rather than one holding undefined. The options are
-  // named here rather than written inline, because inline the adapter's own
-  // parameter type would drive the inference and the key would survive.
+  // The adapter reads its options with `in`, so a `hostname: undefined` counts
+  // as a value there. `omitUndefined` drops the key when the host left it out.
+  // The result goes in a variable because written inline the adapter's own
+  // parameter type drives the inference and the key survives.
   const listenerOptions = omitUndefined({
     hostname: options.hostname,
     // A library has no business swapping the host application's global Request

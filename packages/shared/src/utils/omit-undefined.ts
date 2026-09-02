@@ -17,8 +17,8 @@ type Flatten<T> = { [Key in keyof T]: T[Key] };
  * The result type: a key that could hold `undefined` becomes optional with
  * `undefined` taken out of its type, and every other key stays as it was. A
  * type with a string index signature has no separable optional keys, so its
- * values lose `undefined` in place, which is what turns a `JsonObjectDraft`
- * into a `JsonObject`.
+ * values lose `undefined` in place. That case turns a `JsonObjectDraft` into a
+ * `JsonObject`.
  */
 export type OmitUndefined<T> = string extends keyof T
   ? { [Key in keyof T]: Exclude<T[Key], undefined> }
@@ -33,6 +33,6 @@ export function omitUndefined<T extends object>(input: T): OmitUndefined<T> {
     ([, value]) => value !== undefined
   );
 
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the one cast in this module: Object.fromEntries answers an open record, and the key-by-key reasoning OmitUndefined<T> states is not something the compiler can follow through a runtime filter.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries answers an open record, and the compiler cannot follow the key-by-key reasoning OmitUndefined<T> states through a runtime filter.
   return Object.fromEntries(present) as OmitUndefined<T>;
 }

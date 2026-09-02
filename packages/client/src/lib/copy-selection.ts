@@ -119,8 +119,8 @@ export function cloneSelection(
     const parentCopied =
       typeof parentId === "string" && copiedIds.has(parentId);
     const nextParentId = parentCopied ? mappedId(idMap, parentId) : undefined;
-    // A member whose frame was left behind becomes a top-level node, and React
-    // Flow reads a top-level node as one carrying no `parentId` key at all.
+    // A member whose frame was left behind becomes a top-level node, which
+    // React Flow represents as a node with no `parentId` key.
     const copied: WorkflowNode = {
       ...omit(node, ["parentId"]),
       id: mappedId(idMap, node.id),

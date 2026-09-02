@@ -68,8 +68,6 @@ describe("what a node type is found by", () => {
   });
 
   it("leaves out the integration a host-defined action does not have", () => {
-    // The base action names no integration, which is what a host-defined
-    // action looks like.
     expect(stepSearchText(action())).toBe("Send Email Email Send a message");
   });
 });

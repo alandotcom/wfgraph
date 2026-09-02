@@ -429,10 +429,33 @@ function issuesOfKind<Kind extends WorkflowIssue["kind"]>(
   );
 }
 
+type IssuesByKind = {
+  [Kind in WorkflowIssue["kind"]]: Array<
+    Extract<WorkflowIssue, { kind: Kind }>
+  >;
+};
+
+/**
+ * One list per issue kind. The return type is keyed over the whole
+ * `WorkflowIssue["kind"]` union, so a kind added to `WorkflowIssue` fails to
+ * compile here until the overlay groups it.
+ */
+function issuesByKind(issues: readonly WorkflowIssue[]): IssuesByKind {
+  return {
+    missing_required_field: issuesOfKind(issues, "missing_required_field"),
+    missing_integration: issuesOfKind(issues, "missing_integration"),
+    broken_reference: issuesOfKind(issues, "broken_reference"),
+    unverified_provider_field: issuesOfKind(
+      issues,
+      "unverified_provider_field"
+    ),
+  };
+}
+
 /**
  * One list per node, ordered by where the issue list first names each node.
  * Every issue of a node repeats that node's label, so the first issue of a list
- * names the group the rest of it fills.
+ * carries the label for the whole group.
  */
 function issuesByNode<Issue extends { nodeId: string }>(
   issues: readonly Issue[]
@@ -444,46 +467,44 @@ function issuesByNode<Issue extends { nodeId: string }>(
 export function groupWorkflowIssuesForOverlay(
   issues: WorkflowIssue[]
 ): WorkflowIssuesOverlayModel {
+  const byKind = issuesByKind(issues);
   const missingIntegrationsByType = Object.values(
-    groupBy(
-      issuesOfKind(issues, "missing_integration"),
-      (issue) => issue.integrationType
-    )
+    groupBy(byKind.missing_integration, (issue) => issue.integrationType)
   );
 
   return {
     totalIssues: issues.length,
-    missingRequiredFields: issuesByNode(
-      issuesOfKind(issues, "missing_required_field")
-    ).map((nodeIssues) => ({
-      nodeId: nodeIssues[0].nodeId,
-      nodeLabel: nodeIssues[0].nodeLabel,
-      missingFields: nodeIssues.map((issue) => ({
-        fieldKey: issue.fieldKey,
-        fieldLabel: issue.fieldLabel,
-      })),
-    })),
+    missingRequiredFields: issuesByNode(byKind.missing_required_field).map(
+      (nodeIssues) => ({
+        nodeId: nodeIssues[0].nodeId,
+        nodeLabel: nodeIssues[0].nodeLabel,
+        missingFields: nodeIssues.map((issue) => ({
+          fieldKey: issue.fieldKey,
+          fieldLabel: issue.fieldLabel,
+        })),
+      })
+    ),
     missingIntegrations: missingIntegrationsByType.map((typeIssues) => ({
       integrationType: typeIssues[0].integrationType,
       integrationLabel: typeIssues[0].integrationLabel,
-      // Two nodes can want the same missing connection, and the overlay names
+      // Two nodes can need the same missing connection, and the overlay names
       // each node once.
       nodeNames: uniq(typeIssues.map((issue) => issue.nodeLabel)),
     })),
-    brokenReferences: issuesByNode(
-      issuesOfKind(issues, "broken_reference")
-    ).map((nodeIssues) => ({
-      nodeId: nodeIssues[0].nodeId,
-      nodeLabel: nodeIssues[0].nodeLabel,
-      brokenReferences: nodeIssues.map((issue) => ({
-        fieldKey: issue.fieldKey,
-        fieldLabel: issue.fieldLabel,
-        referencedNodeId: issue.referencedNodeId,
-        displayText: issue.displayText,
-      })),
-    })),
+    brokenReferences: issuesByNode(byKind.broken_reference).map(
+      (nodeIssues) => ({
+        nodeId: nodeIssues[0].nodeId,
+        nodeLabel: nodeIssues[0].nodeLabel,
+        brokenReferences: nodeIssues.map((issue) => ({
+          fieldKey: issue.fieldKey,
+          fieldLabel: issue.fieldLabel,
+          referencedNodeId: issue.referencedNodeId,
+          displayText: issue.displayText,
+        })),
+      })
+    ),
     unverifiedProviderFields: issuesByNode(
-      issuesOfKind(issues, "unverified_provider_field")
+      byKind.unverified_provider_field
     ).map((nodeIssues) => ({
       nodeId: nodeIssues[0].nodeId,
       nodeLabel: nodeIssues[0].nodeLabel,

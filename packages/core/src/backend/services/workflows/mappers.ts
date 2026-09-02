@@ -1,4 +1,3 @@
-import { isNotNil } from "es-toolkit/predicate";
 import { nanoid } from "nanoid";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import type {
@@ -51,12 +50,10 @@ export function toWorkflowSummaryPayload(
   return omitUndefined({
     id: workflow.id,
     name: workflow.name,
-    // `description` and `publishedVersionId` are declared with `optionalKey` on
-    // the wire, so a workflow with neither leaves the keys out rather than
-    // sending them as null or undefined.
-    description: isNotNil(workflow.description)
-      ? workflow.description
-      : undefined,
+    // The wire contract declares `description` and `publishedVersionId` with
+    // `optionalKey`, so a workflow holding neither leaves both keys out. The
+    // column is nullable, and `omitUndefined` drops only undefined.
+    description: workflow.description ?? undefined,
     isPaused: workflow.isPaused,
     mode: workflow.mode,
     visibility: workflow.visibility,

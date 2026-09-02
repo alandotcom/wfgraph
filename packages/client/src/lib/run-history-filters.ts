@@ -405,8 +405,8 @@ export function uniqueNonEmpty(
   return pipe(
     values,
     map((value: string | null | undefined) => value?.trim()),
-    // An empty string is falsey, so a value holding only spaces drops out here
-    // along with the nulls.
+    // `compact` drops the empty string as well as null and undefined, so a
+    // value of nothing but spaces goes with them.
     compact(),
     (trimmed) => uniq(trimmed).toSorted(compareText)
   );

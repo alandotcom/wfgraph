@@ -123,9 +123,9 @@ export function rewriteInngestOptions<TPayload extends JsonObject>(
 
   const result: RewrittenInngestOptions = {};
 
-  // Each of the three drops `key` when the Event named none: Inngest's own
-  // option types spell it as a plain optional string, which refuses a property
-  // that is present and holds `undefined`.
+  // Inngest declares `key` as a plain optional string, which refuses a property
+  // that is present and holds `undefined`, so each of `rateLimit`, `throttle`
+  // and `debounce` drops the key when the Event named none.
   if (inngest.rateLimit) {
     const { key, ...rest } = prefixKeyField(inngest.rateLimit);
     result.rateLimit = key === undefined ? rest : { ...rest, key };

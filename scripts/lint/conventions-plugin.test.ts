@@ -3,10 +3,10 @@ import { describe, it } from "vitest";
 import plugin from "./conventions-plugin";
 
 /**
- * One accepted and one rejected snippet per rule. The point of the suite is as
- * much the loader as the rules: oxlint's JS plugin API is alpha, so a release
- * that changes the rule shape or the AST fails here rather than by quietly
- * reporting nothing during `pnpm run lint`.
+ * Accepted and rejected snippets per rule. The suite also covers the loader:
+ * oxlint's JS plugin API is alpha, so a release that changes the rule shape or
+ * the AST fails here instead of silently reporting nothing during
+ * `pnpm run lint`.
  */
 RuleTester.describe = describe;
 RuleTester.it = it;

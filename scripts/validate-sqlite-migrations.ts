@@ -49,9 +49,9 @@ const descendingIndexes = new Map<string, readonly [string, number][]>([
 ]);
 
 try {
-  // A migration folder name is a timestamp-prefixed identifier applied in run
-  // order, not text a person reads, so plain code-unit order (root scripts have
-  // no es-toolkit dependency to reach for sortBy) is the honest comparator.
+  // A migration folder name is a timestamp-prefixed identifier, so code-unit
+  // order is the order the migrations run in. compareText orders text a person
+  // reads, and root scripts have no es-toolkit dependency for sortBy.
   const migrationDirectories = readdirSync(migrationsDir, {
     withFileTypes: true,
   })

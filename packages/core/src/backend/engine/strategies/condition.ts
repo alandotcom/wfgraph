@@ -27,7 +27,7 @@ export function runConditionStep(input: ActionStepInput) {
         runtime,
         input: {
           condition: evaluatedCondition,
-          // oxlint-disable-next-line wfgraph/no-conditional-spread -- a type guard, not an undefined check: `condition` is a builder's config value of unknown shape, and a malformed one is left out of the log rather than recorded as an "expression" that is not one.
+          // oxlint-disable-next-line wfgraph/no-conditional-spread -- `condition` is a builder's config value of unknown shape, so the type guard keeps `expression` to the values that really are one.
           ...(typeof originalExpression === "string"
             ? { expression: originalExpression }
             : {}),

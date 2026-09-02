@@ -76,20 +76,20 @@ export function readWorkflowToolbarCapabilities(): WorkflowToolbarCapabilities {
   };
 }
 
-/** Every workflow the switcher lists, as `workflow.getAll` answers it. */
+/** Every workflow the switcher lists, as `workflow.getAll` returns it. */
 type WorkflowSummaries = Awaited<ReturnType<typeof rpc.workflow.getAll>>;
 
-/** Every connection the operator has, as `integration.getAll` answers it. */
+/** Every connection the operator has, as `integration.getAll` returns it. */
 type UserIntegrations = Awaited<ReturnType<typeof rpc.integration.getAll>>;
 
 /**
  * What the toolbar, its command palette, and its handlers read for one
  * workflow.
  *
- * The ten capability flags are `WorkflowToolbarCapabilities`, which
- * `readWorkflowToolbarCapabilities` fills in; the fields declared here are the
- * canvas, the workflow's own identity and mode, the publication badge's server
- * read, and the writers each control calls.
+ * The capability flags come from `WorkflowToolbarCapabilities`, which
+ * `readWorkflowToolbarCapabilities` fills in. The fields declared here are the
+ * canvas, the workflow's identity and mode, the publication badge's server
+ * read, and the writers behind each control.
  */
 export type WorkflowToolbarState = WorkflowToolbarCapabilities & {
   /** The saved workflow's id, null until a draft has been saved once. */
@@ -109,7 +109,7 @@ export type WorkflowToolbarState = WorkflowToolbarCapabilities & {
   isSaving: boolean;
   hasUnsavedChanges: boolean;
 
-  /** The publication badge's fields, undefined until the query answers. */
+  /** The publication badge's fields, undefined until the query resolves. */
   publication: ReturnType<typeof selectPublicationState> | undefined;
 
   // The writers behind the toolbar's controls.

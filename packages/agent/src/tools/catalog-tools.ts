@@ -97,8 +97,8 @@ function toActionSummary(action: ActionMetadata) {
 }
 
 /**
- * One output or Event payload field, as `describe_action` and `list_events`
- * answer it. Both tools send the same shape, so they share this mapper.
+ * One output or Event payload field, in the shape `describe_action` and
+ * `list_events` both return.
  */
 function toReferenceField(field: ReferenceField) {
   return omitUndefined({

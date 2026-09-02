@@ -8,7 +8,6 @@
  * property, and the order they write it in is the order the form draws.
  */
 
-import { keyBy } from "es-toolkit/array";
 import { omit } from "es-toolkit/object";
 import type {
   ActionConfigField,
@@ -100,7 +99,10 @@ export function buildConfigForm(
   derived: readonly ActionConfigFieldBase[],
   authored: readonly AuthoredEntry[]
 ): ActionConfigField[] {
-  const derivedByKey = keyBy(derived, (field) => field.key);
+  // A Map rather than a keyBy record: a field key is arbitrary text from an
+  // integration author, and a plain object would answer a key named
+  // `constructor` with a prototype member instead of undefined.
+  const derivedByKey = new Map(derived.map((field) => [field.key, field]));
   const claimed = claimedKeys(authored);
 
   const spine = authored.map((entry): ActionConfigField =>
@@ -108,10 +110,10 @@ export function buildConfigForm(
       ? {
           ...entry,
           fields: entry.fields.map((field) =>
-            mergeField(derivedByKey[field.key], field)
+            mergeField(derivedByKey.get(field.key), field)
           ),
         }
-      : mergeField(derivedByKey[entry.key], entry)
+      : mergeField(derivedByKey.get(entry.key), entry)
   );
 
   return [...spine, ...derived.filter((field) => !claimed.has(field.key))];

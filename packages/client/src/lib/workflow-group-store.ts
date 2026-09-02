@@ -152,8 +152,8 @@ export const connectNodesAtom = atom(null, (get, set, edge: WorkflowEdge) => {
     targetId: edge.target,
     sourceHandle,
   }).map((item, index) =>
-    // React Flow declares `sourceHandle` as a plain optional key, so a fan-out
-    // edge leaving an unnamed handle carries no key at all.
+    // React Flow declares `sourceHandle` as optional, so a fan-out edge
+    // leaving an unnamed handle omits it.
     omitUndefined({
       ...edge,
       id: index === 0 ? edge.id : nanoid(),

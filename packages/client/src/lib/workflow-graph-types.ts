@@ -227,8 +227,8 @@ export function toPersistedEdge(edge: WorkflowEdge): PersistedWorkflowEdge {
 }
 
 export function toEditorNode(node: PersistedWorkflowNode): WorkflowNode {
-  // React Flow declares `type`, `width` and `height` as plain optional keys, so
-  // a persisted node that names none of them leaves them out here.
+  // React Flow declares `type`, `width` and `height` as optional keys, so a
+  // persisted node that sets none of them leaves them out here.
   const editor: WorkflowNode = omitUndefined({
     id: node.id,
     position: node.position,
@@ -241,9 +241,8 @@ export function toEditorNode(node: PersistedWorkflowNode): WorkflowNode {
     // display time, so this node's `data` never needs one baked in.
     data: { ...node.data },
   });
-  // React Flow declares `measured` and the two sizes inside it as plain
-  // optional keys, so a persisted node that carries the key holding nothing is
-  // written here as an absent key.
+  // React Flow declares `measured` and the two sizes inside it as optional
+  // keys, so an unmeasured node leaves them out here.
   if (node.measured) {
     editor.measured = omitUndefined(node.measured);
   }
@@ -260,9 +259,8 @@ export function toEditorNode(node: PersistedWorkflowNode): WorkflowNode {
 // canvas's decision, through `defaultEdgeOptions`, and what is selected belongs
 // to the session looking at it.
 export function toEditorEdge(edge: PersistedWorkflowEdge): WorkflowEdge {
-  // React Flow declares every optional key here as plain optional, so a handle
-  // the persisted edge does not name is left out rather than written as
-  // `undefined`.
+  // React Flow declares the handle keys and `data` as optional, so a handle
+  // the persisted edge does not name is omitted.
   return omitUndefined({
     id: edge.id,
     source: edge.source,

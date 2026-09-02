@@ -190,8 +190,6 @@ export function inheritConnections<T extends EventConnection>(
     }
   }
 
-  // A fresh array every time, which is what the callers already received: a
-  // binding that needs no connection is carried over by reference.
   return bindings.map((binding) => {
     const integration = findEvent(catalog, binding.event)?.integration;
     const inherited = integration ? byIntegration.get(integration) : undefined;

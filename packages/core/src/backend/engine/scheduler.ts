@@ -225,9 +225,9 @@ export class NodeScheduler {
           nodeName
         ).pipe(
           Effect.withSpan("wfgraph.workflow.node.execute", {
-            // A span attribute holding literal `undefined` is recorded as the
-            // string `"undefined"` rather than left out, so an unconfigured
-            // node's missing action type must be an absent key.
+            // A span attribute set to `undefined` is recorded as the string
+            // `"undefined"`, so an unconfigured node's missing action type has
+            // to be an absent key.
             attributes: omitUndefined({
               "wfgraph.node.id": nodeId,
               "wfgraph.node.name": nodeName,
@@ -506,7 +506,7 @@ export class NodeScheduler {
 
         const failure = executionError(result);
         yield* logNode(startedAt, result.success ? "success" : "failed", {
-          // oxlint-disable-next-line wfgraph/no-conditional-spread -- `haltBranch` is always a boolean; the field is left out entirely rather than logged as `halt: false` on every ordinary node.
+          // oxlint-disable-next-line wfgraph/no-conditional-spread -- `haltBranch` is a boolean, so `omitUndefined` would keep `halt: false` on every ordinary node.
           ...(outcome.haltBranch === true ? { halt: true } : {}),
           // oxlint-disable-next-line wfgraph/no-conditional-spread -- only a Condition node has a branch to report.
           ...(isConditionNode(node)

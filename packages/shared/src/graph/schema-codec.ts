@@ -10,10 +10,8 @@ import { readAs } from "#src/types/schema";
  * Handles non-JSON-representable output types (Date, morphs, predicates).
  */
 export const jsonSchemaLibraryOptions: Record<string, unknown> = {
-  // Arktype's own docs name every one of these fallback handler parameters
-  // `ctx` (https://arktype.io/docs/configuration#tojsonschema), so the four
-  // below keep that spelling rather than diverging from the library's own
-  // convention.
+  // Arktype documents these fallback handler parameters as `ctx`:
+  // https://arktype.io/docs/configuration#tojsonschema
   fallback: {
     // oxlint-disable-next-line wfgraph/parameter-names -- `ctx` is Arktype's documented parameter name for a toJsonSchema fallback handler.
     date: (ctx: { base: Record<string, unknown> }) => ({
@@ -217,7 +215,7 @@ function readJsonSchemaNode(
     format: readString(node.format),
     description: readString(node.description),
     enum: readUnknownArray(node.enum),
-    // oxlint-disable-next-line wfgraph/no-conditional-spread -- `const` is the one keyword whose presence matters apart from its value: a closed-set collapse asks whether a branch declared one at all, and `{ const: null }` is a legal branch. So the key is carried over only when the document had it, rather than always written as possibly-undefined.
+    // oxlint-disable-next-line wfgraph/no-conditional-spread -- a closed-set collapse asks whether a branch declared `const` at all, and `{ const: null }` is a legal branch, so the key is carried over only when the document had it.
     ...(Object.hasOwn(node, "const") ? { const: node.const } : {}),
     required: readStringArray(node.required),
     default: node.default,
@@ -225,7 +223,7 @@ function readJsonSchemaNode(
     minimum: readNumber(node.minimum),
     minItems: readNumber(node.minItems),
     properties: readJsonSchemaProperties(node.properties, seen),
-    // oxlint-disable-next-line wfgraph/no-conditional-spread -- `additionalProperties` can legitimately be `false`, so the key is carried over only when the document had it, the same presence rule `const` follows above.
+    // oxlint-disable-next-line wfgraph/no-conditional-spread -- `additionalProperties` can legitimately be `false`, so the key is carried over only when the document had it.
     ...(Object.hasOwn(node, "additionalProperties")
       ? {
           additionalProperties: readAdditionalProperties(
@@ -1079,8 +1077,6 @@ export function labelFromKey(key: string, description?: string): string {
   return description?.trim() ? description.trim() : startCase(key);
 }
 
-// Every branch answers with a list, so the return type drops the `undefined`
-// that the field's own declaration carries.
 function deriveSelectOptions(
   property: JsonSchemaNode
 ): NonNullable<ActionConfigFieldBase["options"]> {

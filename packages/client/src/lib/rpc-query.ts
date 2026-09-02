@@ -149,8 +149,8 @@ export function refreshWorkflowVersionHistory(queryClient: QueryClient) {
  */
 export function cacheWorkflowPublication(
   queryClient: QueryClient,
-  // Each version field may be absent or present holding nothing: a publish
-  // answers with all four, and a refused publish carries the flag alone.
+  // Each version field may be absent or set to undefined. A publish returns
+  // all four; a refused publish returns `hasUnpublishedChanges` alone.
   workflow: Pick<WorkflowApiPayload, "id" | "hasUnpublishedChanges"> & {
     publishedVersionId?: string | undefined;
     publishedVersion?: number | undefined;

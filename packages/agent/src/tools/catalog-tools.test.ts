@@ -121,10 +121,8 @@ describe("describe_action", () => {
         actionId: "slack/send-message",
       });
 
-      // The Channel field declares a label, a type and required, and nothing
-      // else. toEqual reads a key holding undefined as an absent key, so this
-      // case uses toStrictEqual, which compares the key list as well, and asks
-      // for the placeholder key by name.
+      // toEqual reads a key holding undefined as an absent key, so this case
+      // uses toStrictEqual, which compares the key list too.
       const channel = result.configFields.find(
         (field) => field.key === "channel"
       );
@@ -134,7 +132,6 @@ describe("describe_action", () => {
         type: "template-input",
         required: true,
       });
-      expect(Object.hasOwn(channel ?? {}, "placeholder")).toBe(false);
     })
   );
 

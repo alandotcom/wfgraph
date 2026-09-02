@@ -146,7 +146,6 @@ type SaveWorkflow = (
 ) => Promise<SaveOutcome | null>;
 
 type WorkflowHandlerInput = {
-  /** The toolbar's own state, read field by field in the body below. */
   state: WorkflowToolbarState;
   checkWorkflowIssues: (input: {
     workflowId: string;
@@ -490,9 +489,9 @@ function useWorkflowHandlers({
 }
 
 /**
- * What every toolbar surface calls: the chrome, the overflow menu, and the
- * command palette. Each write states whether it is already running, because the
- * control that starts it is disabled while it is.
+ * What the toolbar chrome, the overflow menu, and the command palette call.
+ * Each write reports whether it is already running, because the control that
+ * starts it is disabled while it runs.
  */
 export type WorkflowToolbarActions = {
   handleSave: () => Promise<void>;
@@ -529,8 +528,8 @@ export function useWorkflowActions(
   const clearPublicationReview = useSetAtom(clearPublicationReviewAtom);
   const settlePublicationReview = useSetAtom(settlePublicationReviewAtom);
   const publishingReviewRef = useRef<string | null>(null);
-  // Only the fields this hook's own bodies read. Everything the run and issue
-  // handlers need travels as the whole state, which they destructure themselves.
+  // Only the fields this hook's own bodies read. The run and issue handlers
+  // take the whole state and destructure it themselves.
   const {
     canDelete,
     canDuplicate,
@@ -875,13 +874,13 @@ export function useWorkflowActions(
   };
 
   /**
-   * The publish review dialog's open state. An `open` of true does nothing,
-   * because `handlePublish` is what opens a review.
+   * The publish review dialog's open state. Opening does nothing, because
+   * `handlePublish` opens a review.
    *
    * Closing ends the review by workflow and epoch, so a late answer cannot end
-   * a review the operator has opened since. A dialog closing while the review
-   * is still pending has no review to name, and the open workflow's id ends
-   * that session instead.
+   * a review the operator opened since. A dialog closing while the review is
+   * still pending has no review to name, so the open workflow's id ends that
+   * session instead.
    */
   const setPublishReviewOpen = useCallback(
     (open: boolean) => {

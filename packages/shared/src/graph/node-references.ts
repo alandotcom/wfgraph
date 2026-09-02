@@ -360,9 +360,10 @@ function mapTemplateString(
   value: string,
   rewrite: (token: TemplateToken) => string | undefined
 ): string {
-  // Concatenating every segment's source text reproduces the input, so a string
-  // whose tokens the rewrite all declined rebuilds itself character for
-  // character and compares equal to the string that came in.
+  // A literal segment keeps its source text and a declined token keeps its raw
+  // text, so joining the segments of a string no rewrite changed produces the
+  // same characters. Strings compare by value, so a caller checking for a
+  // changed value still sees none.
   return parseTemplate(value)
     .map((segment) =>
       segment.kind === "literal"

@@ -7,13 +7,12 @@
  */
 
 /**
- * A node of the syntax tree oxlint hands a visitor.
+ * A node of the syntax tree oxlint passes to a visitor.
  *
  * The types are declared here rather than imported because the `oxlint` package
  * publishes no plugin types, only the `RuleTester` under `oxlint/plugins-dev`.
- * A node is read through the `read*` helpers below rather than through a cast,
- * because `typescript/no-unsafe-type-assertion` is on for this file like every
- * other.
+ * The `read*` helpers in this file read a node's fields, because
+ * `typescript/no-unsafe-type-assertion` applies to this file and forbids a cast.
  */
 type AstNode = {
   type: string;
@@ -21,14 +20,14 @@ type AstNode = {
   range: [number, number];
 };
 
-/** What a rule is handed for the file it is looking at. */
+/** The object oxlint passes to a rule for the file being linted. */
 type RuleContext = {
   report(diagnostic: { node: AstNode; messageId: string }): void;
 };
 
 /**
- * One rule: the messages it can report, and a factory answering a visitor keyed
- * by AST node type. This is the ESLint v9 rule shape oxlint implements.
+ * A rule: the messages it can report, and a `create` function returning a
+ * visitor keyed by AST node type. oxlint implements the ESLint v9 rule shape.
  */
 type Rule = {
   meta: { messages: Record<string, string> };
@@ -52,8 +51,8 @@ function isUnknownArray(value: unknown): value is readonly unknown[] {
  * One field of a node, whatever it holds.
  *
  * `AstNode` carries no index signature, because oxlint's own node types have
- * none and a visitor handler would then not be assignable to what it hands one.
- * Reflect.get is how a field is reached without adding one.
+ * none and a visitor handler would then not be assignable to the handler type
+ * oxlint expects. `Reflect.get` reads a field without adding one.
  */
 function readField(node: AstNode, field: string): unknown {
   return Reflect.get(node, field);
@@ -77,7 +76,6 @@ function readString(node: AstNode, field: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-/** Whether a node is the identifier `name`. */
 function isIdentifierNamed(node: AstNode | undefined, name: string): boolean {
   return node?.type === "Identifier" && readString(node, "name") === name;
 }
@@ -126,7 +124,6 @@ function isNamespacedCall(
   );
 }
 
-/** Whether a node is `new Set(...)`. */
 function isNewSet(node: AstNode | undefined): boolean {
   return (
     node?.type === "NewExpression" &&
@@ -134,7 +131,6 @@ function isNewSet(node: AstNode | undefined): boolean {
   );
 }
 
-/** Whether a node is an object literal with no properties. */
 function isEmptyObjectLiteral(node: AstNode | undefined): boolean {
   return (
     node?.type === "ObjectExpression" &&
@@ -172,7 +168,7 @@ const noSetSpreadUniq: Rule = {
   },
   create(context) {
     return {
-      // `[...new Set(x)]`: an array literal holding one spread of a new Set.
+      // `[...new Set(x)]`
       ArrayExpression(node) {
         const elements = readNodes(node, "elements");
         const only = elements.length === 1 ? elements[0] : undefined;
@@ -220,8 +216,12 @@ const noEntriesRoundTrip: Rule = {
         }
 
         const callee = readNode(source, "callee");
+        if (callee === undefined) {
+          return;
+        }
+
         const method = memberPropertyName(callee);
-        if (callee === undefined || (method !== "map" && method !== "filter")) {
+        if (method !== "map" && method !== "filter") {
           return;
         }
 
@@ -237,7 +237,7 @@ const noConditionalSpread: Rule = {
   meta: {
     messages: {
       noConditionalSpread:
-        "Build the object with every key and pass it through omitUndefined (packages/shared/src/utils/omit-undefined.ts), or omitBy(_, isNil) when null must go too.",
+        "Use omitUndefined from @wfgraph/shared/utils/omit-undefined, or omitBy with isNil from es-toolkit/object when null must go too.",
     },
   },
   create(context) {
@@ -276,7 +276,7 @@ const noLocaleCompare: Rule = {
   },
 };
 
-/** The names a hand-rolled plain-object guard is written under. */
+/** The function names a hand-rolled plain-object guard is given. */
 const objectGuardNames = new Set(["isJsonObject", "isPlainObject", "isRecord"]);
 
 /** The value types a hand-rolled `Record` predicate narrows to. */
@@ -307,10 +307,7 @@ const noHandRolledObjectGuard: Rule = {
           return;
         }
 
-        const reference =
-          annotation.type === "TSTypeAnnotation"
-            ? readNode(annotation, "typeAnnotation")
-            : annotation;
+        const reference = readNode(annotation, "typeAnnotation");
         if (
           reference?.type !== "TSTypeReference" ||
           !isIdentifierNamed(readNode(reference, "typeName"), "Record")
@@ -338,7 +335,7 @@ const noHandRolledObjectGuard: Rule = {
   },
 };
 
-/** The names a map-with-a-mutable-flag loop gives its flag. */
+/** The flag names a loop uses to record that it changed something. */
 const changedFlagNames = new Set(["changed", "dirty", "mutated"]);
 
 const noChangedFlag: Rule = {
@@ -397,12 +394,11 @@ const parameterNames: Rule = {
     },
   },
   create(context) {
-    /** Reports each parameter of one function whose name is an abbreviation. */
     function checkParameters(node: AstNode): void {
       for (const param of readNodes(node, "params")) {
         // A rest parameter forwards a whole argument list rather than naming
-        // one object, and `...args` is the plain idiom for that, so it is
-        // exempt from the object-parameter names this rule otherwise holds to.
+        // one object, and `...args` is the idiom for that, so this rule
+        // exempts it.
         if (param.type === "RestElement") {
           continue;
         }
@@ -411,17 +407,12 @@ const parameterNames: Rule = {
         // the binding is read through that wrapper.
         const binding =
           param.type === "AssignmentPattern" ? readNode(param, "left") : param;
+        if (binding?.type !== "Identifier") {
+          continue;
+        }
 
-        const name =
-          binding?.type === "Identifier"
-            ? readString(binding, "name")
-            : undefined;
-
-        if (
-          binding !== undefined &&
-          name !== undefined &&
-          rejectedParameterNames.has(name)
-        ) {
+        const name = readString(binding, "name");
+        if (name !== undefined && rejectedParameterNames.has(name)) {
           context.report({ node: binding, messageId: "parameterNames" });
         }
       }

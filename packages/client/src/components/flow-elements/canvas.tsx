@@ -14,9 +14,9 @@ import "@xyflow/react/dist/style.css";
 // is pinned here. Callbacks such as onNodesChange then hand their consumers a
 // WorkflowNode directly.
 //
-// Every React Flow prop is restated as free to hold `undefined`, because the
-// editor withholds a handler by writing `undefined` where a locked canvas must
-// not react. `Canvas` drops those keys again before React Flow sees them.
+// Every React Flow prop is restated as accepting `undefined`, because the
+// editor withholds a handler by passing `undefined` when the canvas is locked.
+// `Canvas` drops those keys before React Flow sees them.
 type CanvasProps = {
   [Key in keyof ReactFlowProps<WorkflowNode>]?:
     | ReactFlowProps<WorkflowNode>[Key]

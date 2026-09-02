@@ -6,8 +6,8 @@
  * Code that walks such a value should take `JsonValue` for its parameter.
  * TypeScript narrows that union with plain language checks, so a
  * `typeof value === "object" && value !== null && !Array.isArray(value)` test
- * yields `JsonObject` on its own. `isJsonObject` below is that same test named,
- * for the places that would otherwise write it a second time.
+ * yields `JsonObject` on its own. `isJsonObject` gives that test a name, for
+ * the modules that would otherwise repeat it.
  */
 
 import { Schema } from "effect";
@@ -143,8 +143,7 @@ export function isJsonObject(value: JsonValue): value is JsonObject {
  *
  * The narrowing is the language's, working on the union `readJsonValue` already
  * proved: once a value is a `JsonValue`, ruling out `null` and the array arm
- * leaves `JsonObject` and nothing else. `isJsonObject` is that check written
- * once, for the callers that would repeat it.
+ * leaves `JsonObject` and nothing else. `isJsonObject` names that check.
  */
 export function readJsonObject(value: unknown): JsonObject | null {
   const json = readJsonValue(value);

@@ -520,7 +520,7 @@ export function orderGroupParentsFirst<T extends GroupGraphNode>(
   ];
 }
 
-/** The three runs `orderGroupParentsFirst` lays out, in the order it lays them. */
+/** Node kinds in the order `orderGroupParentsFirst` emits them. */
 type NodeOrderKind = "rest" | "groups" | "children";
 
 function nodeOrderKind(node: GroupGraphNode): NodeOrderKind {
@@ -548,8 +548,8 @@ function isRestGroupsChildrenOrder(nodes: readonly GroupGraphNode[]): boolean {
 }
 
 export function undersizedGroupIds(nodes: readonly GroupGraphNode[]): string[] {
-  // A group with no children at all is absent from the counts, so every read
-  // falls back to 0.
+  // A group with no children is absent from the counts, so each read falls
+  // back to 0.
   const childCount = pipe(
     nodes,
     map((node: GroupGraphNode) => node.parentId),

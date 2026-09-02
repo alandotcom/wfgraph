@@ -185,8 +185,8 @@ export default function WorkflowsPage() {
   // is the whole job of the effect this replaced.
   const runsQuery = useInfiniteQuery({
     ...orpcQuery.workflow.getExecutionsGlobal.infiniteOptions({
-      // The contract's `cursor` is an optional key, so the first page sends no
-      // cursor at all rather than a key holding nothing.
+      // The contract declares `cursor` as an optional key, so the first page
+      // omits it instead of sending `undefined`.
       input: (cursor: RunsCursor | undefined) =>
         omitUndefined({ ...runsFilter, cursor }),
       initialPageParam: undefined as RunsCursor | undefined,

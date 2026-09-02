@@ -170,9 +170,10 @@ function createInngestClient(
     throw new Error("Inngest configuration requires a non-empty id.");
   }
 
-  // The SDK reads these options with `in`, so a key present and holding
-  // undefined is not the same to it as an absent key. `omitUndefined` drops the
-  // ones the host left out and lets the SDK's own environment fallbacks run.
+  // The SDK reads its options with `in`, so a key present and holding undefined
+  // counts as a value and shadows the SDK's own environment fallbacks.
+  // `omitUndefined` drops the options the host left out, here and at every other
+  // SDK call in this file.
   return new Inngest(
     omitUndefined({
       id,
@@ -305,8 +306,6 @@ export function createInngestSurface(
     client,
     serve: (functions) =>
       serveInngest(
-        // `serve()` reads its options with `in`, so an absent callback origin
-        // has to be an absent key rather than one holding undefined.
         omitUndefined({
           client,
           functions,
@@ -319,9 +318,6 @@ export function createInngestSurface(
     connect: (functions) =>
       withConnectTimeout(
         connectImpl(
-          // `connect()` reads its options with `in`, so a worker identity the
-          // host left out has to be an absent key for the SDK's own defaults
-          // and INNGEST_CONNECT_GATEWAY_URL fallback to apply.
           omitUndefined({
             apps: [{ client, functions }],
             instanceId: config.instanceId,

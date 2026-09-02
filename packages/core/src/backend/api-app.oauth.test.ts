@@ -40,8 +40,8 @@ const integration: DecryptedIntegration = {
 };
 
 /**
- * What a case may replace on the fixture below. The fixture is the PKCE arm of
- * `IntegrationOAuth`, and `pkce` is left out because spreading it as an optional
+ * Fields a case may replace on the `provider` fixture, which is the PKCE arm of
+ * `IntegrationOAuth`. `pkce` is omitted because spreading it as an optional
  * property widens the literal to `"S256" | undefined`, which matches neither arm
  * of the union.
  */

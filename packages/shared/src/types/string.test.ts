@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { compareText, isBlank } from "#src/types/string";
 
 /**
- * The expectations call `localeCompare` themselves rather than naming an order,
- * because the collation an ICU build ships is what `compareText` is defined to
- * follow. Pinning a literal order here would pin the Node build instead.
+ * These expectations call `localeCompare` themselves instead of naming a
+ * literal order, because `compareText` follows the collation of the ICU data
+ * the running Node build ships.
  */
 describe("compareText", () => {
   it("orders two words the way localeCompare does", () => {
@@ -13,7 +13,7 @@ describe("compareText", () => {
     );
   });
 
-  it("ignores case the way localeCompare does", () => {
+  it("compares mixed-case text the way localeCompare does", () => {
     expect(Math.sign(compareText("Zebra", "apple"))).toBe(
       Math.sign("Zebra".localeCompare("apple"))
     );
@@ -23,7 +23,7 @@ describe("compareText", () => {
     expect(compareText("apple", "apple")).toBe(0);
   });
 
-  it("sorts a list the way a reader expects", () => {
+  it("sorts mixed-case text alphabetically", () => {
     expect(["banana", "Apple", "cherry"].toSorted(compareText)).toEqual([
       "Apple",
       "banana",

@@ -207,10 +207,9 @@ function edgeSemanticKey(edge: SerializedWorkflowEdge): string {
 }
 
 /**
- * Groups the edge ids by the semantic key of the edge they belong to. Each
- * group is sorted so that duplicate edges sharing one semantic key are matched
- * in the same order on every run. A semantic key is a JSON string, so the
- * result is only ever read by key and never iterated for its own order.
+ * Each group is sorted so that duplicate edges sharing one semantic key are
+ * matched in the same order on every run. A semantic key is a JSON string, so
+ * the result is only ever read by key and never iterated for its own order.
  */
 function edgeIdsBySemanticKey(
   edges: SerializedWorkflowEdge[]

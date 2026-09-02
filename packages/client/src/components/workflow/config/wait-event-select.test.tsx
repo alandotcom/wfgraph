@@ -538,8 +538,6 @@ describe("WaitEventSelect Connection picker", () => {
 });
 
 describe("WaitEventSelect Event grouping", () => {
-  // The picker lists this app's Events under one heading and each
-  // integration's under its own, in the order the catalog first names them.
   it("groups the Events under the app and the integrations that declare them", () => {
     const view = render(
       <ExtensionCatalogProvider value={resendWaitCatalog}>

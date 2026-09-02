@@ -245,9 +245,9 @@ export const moveComparisonNodesAtom = atom(
           .filter((change) => change.kind === "removed")
           .map((change) => change.nodeId)
       );
-      // A change carrying no position is React Flow reporting a drag that
-      // moved nothing, and a change naming a node the publication kept is the
-      // draft's own layout, which this session does not own.
+      // A position change with no position is React Flow reporting a drag that
+      // moved nothing. A change for a node the publication kept belongs to the
+      // draft's layout, which this session does not own.
       const moves = compact(
         input.changes.map((change) =>
           change.type === "position" &&

@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { isJsonObject, toJsonObject } from "./json";
 
 describe("toJsonObject", () => {
-  it("takes the valueless keys off a draft", () => {
+  it("drops the keys whose value is undefined", () => {
     expect(toJsonObject({ kept: "value", missing: undefined })).toEqual({
       kept: "value",
     });
   });
 
-  it("takes undefined through unchanged", () => {
+  it("answers undefined for an undefined draft", () => {
     expect(toJsonObject(undefined)).toBeUndefined();
   });
 });

@@ -112,8 +112,7 @@ function renderHandles(
           (handleType === "source" ? "Output handle" : "Input handle")
         }
         className={handleConfig.className}
-        // React Flow spells an unnamed handle as `null` rather than an absent
-        // key, and its `id` prop admits no `undefined`.
+        // React Flow's `id` prop takes a string or `null`, not `undefined`.
         id={handleConfig.id ?? null}
         key={handleConfig.id ?? fallbackKey}
         position={handleConfig.position}

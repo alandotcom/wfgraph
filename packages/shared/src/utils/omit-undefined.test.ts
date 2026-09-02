@@ -29,9 +29,9 @@ describe("omitUndefined", () => {
   });
 
   it("constructs __proto__ as data without changing the prototype", () => {
-    // A wire payload can carry a `__proto__` key. Assigning it with
+    // A wire payload can carry an own `__proto__` key. Assigning it with
     // `result[key] = value` would reach the prototype setter and lose the key,
-    // so this pins the Object.fromEntries construction.
+    // so this case pins the Object.fromEntries construction.
     const result = omitUndefined(
       Object.fromEntries([
         ["__proto__", "value"],

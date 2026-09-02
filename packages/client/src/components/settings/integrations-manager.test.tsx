@@ -144,8 +144,8 @@ describe("IntegrationsManager", () => {
   });
 
   it("orders two connections that share a label by connection name", async () => {
-    // Both connections resolve to the catalog's one "Linear" label, so the list
-    // has nothing but the connection name left to order them by.
+    // Both connections resolve to the catalog's one "Linear" label, so only
+    // the connection name can order them.
     const store = createStore();
     store.set(loadWorkflowGraphAtom, { nodes: [], edges: [] });
 
@@ -171,8 +171,8 @@ describe("IntegrationsManager", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    // Written in reverse of the expected order, so a passing assertion means
-    // the component sorted them rather than echoing the fetch order back.
+    // Seeded in reverse of the expected order, so the assertion fails if the
+    // component echoes the fetch order instead of sorting.
     queryClient.setQueryData(integrationsQueryOptions().queryKey, [
       zConnection,
       aConnection,

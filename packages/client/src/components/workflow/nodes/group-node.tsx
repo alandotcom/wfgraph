@@ -59,8 +59,8 @@ export const GroupNode = memo(({ data, selected, id }: GroupNodeProps) => {
       </div>
       <Handle
         aria-label="Group output"
-        // React Flow spells an unnamed handle as `null`, and a frame whose exit
-        // is not a Condition has no handle name to give.
+        // React Flow's `id` prop takes a string or `null`, not `undefined`. A
+        // frame whose exit is not a Condition has no handle name.
         id={groupOutletHandle({ data, id }) ?? null}
         position={Position.Bottom}
         role="img"

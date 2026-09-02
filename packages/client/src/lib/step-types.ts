@@ -82,8 +82,8 @@ export function stepMatchesQuery(
 export function stepGroups(
   actions: readonly ActionMetadata[]
 ): { category: string; actions: ActionMetadata[] }[] {
-  // Key order matches the order categories first appear in `actions`, the
-  // same guarantee the previous Map-based loop gave.
+  // Category names are never numeric, so the record's key order is the order
+  // the categories first appear in `actions`, which the stable sort keeps.
   const byCategory = groupBy(actions, (action) => action.category);
 
   return Object.keys(byCategory)

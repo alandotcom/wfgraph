@@ -179,8 +179,7 @@ export function buildComparisonDisplayGraph(
           },
         };
         // A deleted frame remains the coordinate system for its deleted
-        // children. A current or missing frame cannot safely own history, so
-        // the node carries neither key at all.
+        // children. A current or missing frame cannot safely own history.
         if (historicalParentDeleted && node.parentId !== undefined) {
           historical.parentId = node.parentId;
           historical.extent = "parent";

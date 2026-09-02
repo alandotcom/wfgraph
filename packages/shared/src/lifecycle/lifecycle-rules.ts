@@ -320,7 +320,7 @@ export function retainNamedKeys(
     return undefined;
   }
 
-  // oxlint-disable-next-line wfgraph/no-entries-round-trip -- a named Record<string, string> keeps its index signature strict, and pickBy widens a filtered result to Partial<T>, so the entries round trip stays here rather than losing the "every value is a string" the callers below hold this to.
+  // oxlint-disable-next-line wfgraph/no-entries-round-trip -- pickBy widens a filtered Record<string, string> to Partial<T>, which drops the guarantee that every value is a string. The entries round trip keeps the value type callers rely on.
   const next = Object.fromEntries(
     Object.entries(stored).filter(([eventName]) => named.has(eventName))
   );

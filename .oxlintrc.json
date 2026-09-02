@@ -83,7 +83,7 @@
     // oxlint ships its own port of the React Compiler rules. This repository
     // runs the upstream eslint-plugin-react-hooks through the react-hooks-js JS
     // plugin instead, and the per-file overrides are written against those rule
-    // names. Each `react/` name turned off here has a `react-hooks-js/` twin
+    // names. Each `react/` name turned off here has a `react-hooks-js/` counterpart
     // turned on, so leaving both on reports every site twice.
     "react/rules-of-hooks": "off",
     "react/exhaustive-deps": "off",
@@ -125,12 +125,10 @@
     "no-effect/no-pass-data-to-parent": "error",
     "no-effect/no-external-store-subscription": "error",
     "no-effect/no-initialize-state": "error",
-    // scripts/lint/conventions-plugin.ts, this repository's own structural rules.
-    // Every one of them still has violations in the tree, so each is turned on by
-    // the commit that clears its last one; lint is a required check and oxlint
-    // has no level here that reports a site without failing the build. The site
-    // count on each line is what that rule reported when the plugin landed, so a
-    // sweep can check its own arithmetic.
+    // This repository's own structural rules, from
+    // scripts/lint/conventions-plugin.ts. lint is a required check and oxlint
+    // has no level here that reports a site without failing the build, so each
+    // rule is turned on by the commit that clears its last violation.
     "wfgraph/no-filter-boolean": "error",
     "wfgraph/no-set-spread-uniq": "error",
     "wfgraph/no-entries-round-trip": "error",
@@ -215,10 +213,8 @@
                 "allowTypeImports": true,
                 "message": "Use a named hook from #src/hooks/effects. If none of them fits, the work probably belongs in an event handler, in render, or in a query."
               },
-              // Repeated from the root `rules` block because an override replaces
-              // a rule's options wholesale rather than merging them: without these
-              // three entries the es-toolkit and effect restrictions would be off
-              // for every file this override matches.
+              // Repeated from the root `rules` block: an override replaces a
+              // rule's options wholesale rather than merging them.
               {
                 "name": "es-toolkit",
                 "message": "Import from the es-toolkit subpath that holds the helper: es-toolkit/array, /object, /predicate, /string, /function, /promise, /math, or /fp."
@@ -294,10 +290,8 @@
                 "message": "@wfgraph/shared cannot import @wfgraph/core or @wfgraph/plugins source. Shared is the bottom of the dependency graph: move the shared piece into packages/shared, or invert the call so core passes it in."
               }
             ],
-            // Repeated from the root `rules` block because an override replaces
-            // a rule's options wholesale rather than merging them: without these
-            // three entries the es-toolkit and effect restrictions would be off
-            // for every file this override matches.
+            // Repeated from the root `rules` block: an override replaces a
+            // rule's options wholesale rather than merging them.
             "paths": [
               {
                 "name": "es-toolkit",
@@ -355,10 +349,8 @@
                 "message": "Name the module with #src/, which resolves against packages/core's own manifest from any depth."
               }
             ],
-            // Repeated from the root `rules` block because an override replaces
-            // a rule's options wholesale rather than merging them: without these
-            // three entries the es-toolkit and effect restrictions would be off
-            // for every file this override matches.
+            // Repeated from the root `rules` block: an override replaces a
+            // rule's options wholesale rather than merging them.
             "paths": [
               {
                 "name": "es-toolkit",

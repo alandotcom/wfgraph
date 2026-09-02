@@ -113,17 +113,17 @@ export type WorkflowPatch = {
 );
 
 /**
- * Fold an earlier patch under a later one, field by field, with the later
- * patch winning. `nodes` and `edges` travel together, so a graph is taken whole
- * from whichever patch carries one rather than merged key by key.
+ * Merge an earlier patch with a later one, field by field, the later patch
+ * winning. `nodes` and `edges` belong together, so the graph is taken whole
+ * from the later patch that has one instead of merged key by key.
  */
 function mergePatches(
   earlier: WorkflowPatch,
   later: WorkflowPatch
 ): WorkflowPatch {
-  // A field neither patch carries stays absent, because `toUpdatePayload` sends
-  // every key the patch holds and the contract reads an absent key as "leave
-  // this alone".
+  // A field neither patch sets stays absent rather than present holding
+  // undefined, so a rename the server refused does not reappear as a `name` key
+  // on every later save.
   const metadata = omitUndefined({
     name: later.name ?? earlier.name,
     mode: later.mode ?? earlier.mode,

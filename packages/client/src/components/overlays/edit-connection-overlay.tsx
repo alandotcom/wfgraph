@@ -475,7 +475,7 @@ export function EditConnectionOverlay({
 
     // Test before saving
     try {
-      // `hasNewConfig` is true on this path, so the credentials always travel.
+      // `hasNewConfig` is true on this path, so the config is always sent.
       const result = await testForSave.mutateAsync({
         integrationId: integration.id,
         config,

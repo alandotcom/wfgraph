@@ -82,7 +82,7 @@ export function readAgentSettings(
     enabled: true,
     apiKey,
     model: config?.model?.trim() || DEFAULT_AGENT_MODEL,
-    // oxlint-disable-next-line wfgraph/no-conditional-spread -- an empty `baseUrl` is treated the same as none: the key is left off rather than sent as `""`.
+    // oxlint-disable-next-line wfgraph/no-conditional-spread -- an empty `baseUrl` counts as none, so the key is left off for both.
     ...(config?.baseUrl ? { baseUrl: config.baseUrl } : {}),
   };
 }

@@ -77,8 +77,8 @@ export function seedConditionModelForField(
     : field;
 
   const model = createDefaultConditionModel(named, ids);
-  // Read once, so the key each rule carries is the narrowed string rather than
-  // the optional property, which the callbacks below cannot narrow.
+  // Read into a local: TypeScript does not carry the narrowing of an optional
+  // property into the callbacks that build the rules.
   const recordKey = field.recordKey;
   if (!recordKey) {
     return model;
@@ -321,19 +321,19 @@ function keyFieldsUnderRecord(
 }
 
 /**
- * The three optional flags a schema field carries onto a picker row: whether it
- * is an open record, whether a run can arrive without it, and its closed set of
- * values.
+ * The optional flags a schema field puts on a picker row: `openRecord` for a
+ * record whose keys the payload invents, `nullable` for a field a run can
+ * arrive without, and `enumValues` for a closed set of values.
  */
 function schemaFieldFlags(
   field: Pick<ReferenceField, "valueType" | "nullable" | "enumValues">
 ): Pick<ConditionSelectableField, "openRecord" | "nullable" | "enumValues"> {
   return {
-    // oxlint-disable-next-line wfgraph/no-conditional-spread -- left off rather than written false or undefined, so two rows agree only when the same flags are truly present.
+    // oxlint-disable-next-line wfgraph/no-conditional-spread -- an unset flag leaves the key absent, so two rows compare equal only when both carry the same flags.
     ...(field.valueType ? { openRecord: true as const } : {}),
-    // oxlint-disable-next-line wfgraph/no-conditional-spread -- left off rather than written false or undefined, so two rows agree only when the same flags are truly present.
+    // oxlint-disable-next-line wfgraph/no-conditional-spread -- an unset flag leaves the key absent, so two rows compare equal only when both carry the same flags.
     ...(field.nullable ? { nullable: true } : {}),
-    // oxlint-disable-next-line wfgraph/no-conditional-spread -- left off rather than written false or undefined, so two rows agree only when the same flags are truly present.
+    // oxlint-disable-next-line wfgraph/no-conditional-spread -- an unset flag leaves the key absent, so two rows compare equal only when both carry the same flags.
     ...(field.enumValues ? { enumValues: field.enumValues } : {}),
   };
 }

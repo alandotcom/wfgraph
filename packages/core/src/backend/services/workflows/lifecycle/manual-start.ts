@@ -357,9 +357,9 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
       return response;
     }
 
-    // The response is decoded against a contract that declares each of these
-    // with `optionalKey`, so an ordinary start leaves the keys out rather than
-    // sending them as `undefined` or a zero count.
+    // The response contract declares `supersededExecutions` and
+    // `failedToSupersede` with `optionalKey`, so an ordinary start leaves both
+    // keys out.
     const response: WorkflowExecuteResponse = omitUndefined({
       status: "running",
       executionId: started.executionId,

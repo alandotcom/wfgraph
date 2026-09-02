@@ -375,22 +375,28 @@ is the one home of the seven core entry points.
   `Option` or `Schema` value never passes through es-toolkit's `pipe`, and Effect's own
   operators stay namespaced (`Effect.map`, `Option.map`), so a file using both reads
   unambiguously.
-- Dropping keys: `omitUndefined` (`packages/shared/src/utils/omit-undefined.ts`) when the key
+- `exactOptionalPropertyTypes` is on in `tsconfig.json`, so a target declared `k?: T`
+  refuses a `k` holding `undefined`. Dropping keys: `omitUndefined`
+  (`packages/shared/src/utils/omit-undefined.ts`) when the key
   must be absent and the required keys must stay required; `omitBy(..., isNil)` when `null`
-  must go too, which is what an outbound HTTP payload wants. A conditional spread
+  must go too, which is what an outbound HTTP payload needs. A conditional spread
   `...(x === undefined ? {} : { k: x })` is not written here.
 - `groupBy`, `keyBy`, `countBy` and `partition` over pushing into a `Map` or into parallel
-  arrays. The exception is state a traversal mutates while it runs, such as in-degree counts
-  and adjacency in a topological pass, which stays a `Map`.
+  arrays. Two exceptions stay a `Map`: state a traversal mutates while it runs, such as
+  in-degree counts and adjacency in a topological pass; and a lookup table read with a key
+  that is arbitrary text, such as a node id or a field path taken from a template token,
+  because a plain object answers `constructor` or `toString` with a prototype member.
 - `sortBy` and `orderBy` for numeric and identifier keys; `compareText`
   (`packages/shared/src/types/string.ts`) for text a person reads, which is the one place
   `localeCompare` is written.
 - `compact` and `isNotNil` over `filter(Boolean)` and `filter((x) => x !== undefined)`.
-  `compact(rules.map(...))` is the shape of a checklist whose steps answer `undefined`.
+  Write `compact(rules.map(...))` where a rule returns `undefined` for the cases it does
+  not report.
 - `isBlank` (`packages/shared/src/types/string.ts`) over `.trim().length === 0`.
 - No `let changed` flag beside a `map`: `mapOrSame` and `mapValuesOrSame`
-  (`packages/shared/src/utils/map-or-same.ts`) return the input itself when nothing
-  changed, which is the identity a render-time reconcile reads.
+  (`packages/shared/src/utils/map-or-same.ts`) return the input itself when every element
+  mapped to itself, so a reconcile running during render compares references and writes no
+  state.
 - The first object parameter is `input`, a trailing optional object is `options`, and a
   context is `context`. `ctx`, `args`, `params` and `opts` are not parameter names here.
   A rest parameter stays `...args`.

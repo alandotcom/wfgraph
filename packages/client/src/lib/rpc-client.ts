@@ -302,10 +302,9 @@ export const workflowApi = {
       : undefined;
 
     // A patch says what changed by leaving the rest out. The contract's
-    // optional fields are `Schema.optionalKey`, which is an absent key and not
-    // a key holding `undefined`, so the payload is built by dropping the
-    // absent ones rather than by naming them all and hoping the serialiser
-    // strips what it does not need.
+    // optional fields are declared with `Schema.optionalKey`, which accepts an
+    // absent key but not a key holding `undefined`, so the payload drops the
+    // keys this patch does not set.
     return rpc.workflow
       .update({
         workflowId: id,

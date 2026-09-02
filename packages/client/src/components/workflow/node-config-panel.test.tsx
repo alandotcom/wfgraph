@@ -234,9 +234,6 @@ describe("NodeConfigPanel config scoping", () => {
 });
 
 describe("NodeConfigPanel multiple selection", () => {
-  // Selecting more than one item on the canvas switches the panel to a summary
-  // that counts steps and connections separately, so this pins the exact
-  // wording before the summary's list-building code changes.
   it("counts steps and connections together in the selection summary", async () => {
     const first = lifecycleNode("lifecycle_1");
     first.selected = true;

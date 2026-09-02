@@ -20,8 +20,8 @@ type EventChoiceGroup = {
 function groupEventChoices(
   choices: readonly EventChoice[]
 ): EventChoiceGroup[] {
-  // Group names are integration labels and the host's own heading, so the
-  // record keeps the order the choices first named them in.
+  // Group names are integration labels and the host's own heading, never
+  // numeric, so the record keeps the order the choices first used them in.
   const byGroup = groupBy(choices, (choice) => choice.group ?? "This app");
   return Object.entries(byGroup).map(([value, items]) => ({ value, items }));
 }

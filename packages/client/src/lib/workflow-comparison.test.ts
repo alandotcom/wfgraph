@@ -120,8 +120,8 @@ describe("buildComparisonDisplayGraph", () => {
     );
 
     const removed = graph.nodes.find((item) => item.id === "removed");
-    // Flattened means the node names no parent at all, which is how React Flow
-    // spells a top-level node.
+    // A flattened node has no `parentId` key, which is how React Flow
+    // represents a top-level node.
     expect(removed).not.toHaveProperty("parentId");
     expect(removed).toMatchObject({
       position: { x: 120, y: 230 },
