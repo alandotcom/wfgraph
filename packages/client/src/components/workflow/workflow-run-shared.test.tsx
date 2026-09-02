@@ -110,6 +110,28 @@ describe("JsonPropertyInspector", () => {
     expect(view.getByText("3").className).toContain("tabular-nums");
   });
 
+  it("humanizes snake_case, camelCase, a leading digit, and a bare acronym key", () => {
+    const view = render(
+      <JsonPropertyInspector
+        value={{
+          api_url: "a",
+          userID: "b",
+          v2Key: "c",
+          htmlBody: "d",
+          id: "e",
+          uri: "f",
+        }}
+      />
+    );
+
+    expect(view.getByText("API URL")).toBeTruthy();
+    expect(view.getByText("User ID")).toBeTruthy();
+    expect(view.getByText("V2 Key")).toBeTruthy();
+    expect(view.getByText("Html Body")).toBeTruthy();
+    expect(view.getByText("ID")).toBeTruthy();
+    expect(view.getByText("URI")).toBeTruthy();
+  });
+
   it("preserves line breaks and repeated whitespace in string values", () => {
     const value = "First line\n  second  line";
     const view = render(<JsonPropertyInspector value={value} />);

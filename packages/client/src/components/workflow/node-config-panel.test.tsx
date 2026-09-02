@@ -33,7 +33,7 @@ import {
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { orpcQuery } from "#src/lib/rpc-query";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 const catalog: ExtensionCatalog = {
@@ -88,18 +88,19 @@ function groupNode(): WorkflowNode {
  */
 function renderPanel({
   nodes = [lifecycleNode(), groupNode()],
-
+  edges = [],
   selected = null,
   hasPublishedVersion = false,
   workspaceView = "draft",
 }: {
   nodes?: WorkflowNode[];
+  edges?: WorkflowEdge[];
   selected?: string | null;
   hasPublishedVersion?: boolean;
   workspaceView?: "draft" | "runs" | "changes";
 } = {}) {
   const store = createStore();
-  store.set(loadWorkflowGraphAtom, { nodes, edges: [] });
+  store.set(loadWorkflowGraphAtom, { nodes, edges });
   store.set(selectedNodeAtom, selected);
   store.set(currentWorkflowIdAtom, "wf_1");
   store.set(currentWorkflowNameAtom, "Appointment reminders");
@@ -229,6 +230,33 @@ describe("NodeConfigPanel config scoping", () => {
     expect(
       (view.getByLabelText("Start Events") as HTMLInputElement).value
     ).toBe("");
+  });
+});
+
+describe("NodeConfigPanel multiple selection", () => {
+  // Selecting more than one item on the canvas switches the panel to a summary
+  // that counts steps and connections separately, so this pins the exact
+  // wording before the summary's list-building code changes.
+  it("counts steps and connections together in the selection summary", async () => {
+    const first = lifecycleNode("lifecycle_1");
+    first.selected = true;
+    const second = lifecycleNode("lifecycle_2");
+    second.selected = true;
+    const connection: WorkflowEdge = {
+      id: "edge_1",
+      source: "lifecycle_1",
+      target: "lifecycle_2",
+      selected: true,
+    };
+
+    const { view } = renderPanel({
+      nodes: [first, second],
+      edges: [connection],
+    });
+
+    expect(
+      await view.findByText("2 steps and 1 connection selected")
+    ).toBeTruthy();
   });
 });
 

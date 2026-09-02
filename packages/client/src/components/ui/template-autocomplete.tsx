@@ -118,29 +118,39 @@ type TemplateOption = {
  * against each record's own path, so it is the path alone rather than the node
  * name and the path together.
  */
+/**
+ * Whether `query` names a key under this record's own path, and is offered
+ * for `targetType`. Narrows `field` and `valueType` to defined so the caller
+ * can read them without a repeated check.
+ */
+function namesKeyUnderOpenRecord(
+  record: TemplateOption,
+  query: string,
+  targetType: ValueTargetType | undefined
+): record is TemplateOption & {
+  field: string;
+  valueType: WorkflowSchemaItemType;
+} {
+  return (
+    record.valueType !== undefined &&
+    record.field !== undefined &&
+    query.startsWith(`${record.field}.`) &&
+    offeredFor({ type: record.valueType }, targetType) &&
+    query.slice(record.field.length + 1).length > 0
+  );
+}
+
 function keyUnderOpenRecordOptions(
   options: readonly TemplateOption[],
   query: string,
   targetType: ValueTargetType | undefined
 ): TemplateOption[] {
-  return options.flatMap((record) => {
-    if (
-      !record.valueType ||
-      !record.field ||
-      !query.startsWith(`${record.field}.`) ||
-      !offeredFor({ type: record.valueType }, targetType)
-    ) {
-      return [];
-    }
-
-    const key = query.slice(record.field.length + 1);
-    if (!key) {
-      return [];
-    }
-
-    const fieldPath = appendOutputPathKey(record.field, key);
-    return [
-      {
+  return options
+    .filter((record) => namesKeyUnderOpenRecord(record, query, targetType))
+    .map((record) => {
+      const key = query.slice(record.field.length + 1);
+      const fieldPath = appendOutputPathKey(record.field, key);
+      return {
         type: "field",
         rank: fieldRank({ type: record.valueType }, targetType, undefined),
         nodeId: record.nodeId,
@@ -151,9 +161,8 @@ function keyUnderOpenRecordOptions(
           nodeLabel: record.nodeName,
           fieldPath,
         }),
-      },
-    ];
-  });
+      };
+    });
 }
 
 export function TemplateAutocomplete({
