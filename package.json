@@ -11,6 +11,7 @@
     "dev:app": "pnpm --filter @wfgraph/example-app dev",
     "dev:inngest": "sh -c 'if [ -x ./node_modules/.bin/inngest ]; then export DO_NOT_TRACK=1; exec ./node_modules/.bin/inngest dev --no-discovery -p \"${INNGEST_DEV_PORT:-8388}\" --connect-gateway-port \"${INNGEST_CONNECT_GATEWAY_PORT:-8390}\" --connect-gateway-grpc-port \"${INNGEST_CONNECT_GATEWAY_GRPC_PORT:-50062}\" --connect-executor-grpc-port \"${INNGEST_CONNECT_EXECUTOR_GRPC_PORT:-50063}\" --persist; else echo \"[inngest] inngest-cli is not installed; examples/app.ts sets inngest.connect, so dev:app will fail to boot once its Connect handshake times out\"; fi'",
     "build": "pnpm -r build",
+    "package:smoke": "tsx scripts/smoke-core-package.ts",
     "start": "pnpm --filter @wfgraph/example-app start",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -26,6 +27,7 @@
     "check": "oxfmt --check .",
     "fix": "oxfmt .",
     "db:generate": "pnpm exec drizzle-kit generate --config packages/core/drizzle.config.ts && tsx scripts/unqualify-migrations.ts",
+    "db:generate:sqlite": "pnpm exec drizzle-kit generate --config packages/core/drizzle-sqlite.config.ts && tsx scripts/validate-sqlite-migrations.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "release:version": "changeset version && pnpm install --lockfile-only",
     "release:publish": "pnpm run build && changeset publish"
@@ -47,6 +49,7 @@
     "@types/react-dom": "^19.2.4",
     "concurrently": "^9.2.4",
     "drizzle-kit": "1.0.0-rc.4",
+    "esbuild": "^0.25.4",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-you-might-not-need-an-effect": "1.0.1",
     "happy-dom": "^20.11.2",

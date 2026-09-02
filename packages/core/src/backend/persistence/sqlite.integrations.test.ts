@@ -39,98 +39,6 @@ async function open(filename: string) {
 }
 
 describe("native SQLite integration persistence", () => {
-  it("upgrades version 2 OAuth attempts to durable attempt states", async () => {
-    const filename = await databasePath();
-    const versionTwo = new DatabaseSync(filename);
-    versionTwo.exec(`
-      PRAGMA foreign_keys = ON;
-      CREATE TABLE integrations (id TEXT PRIMARY KEY) STRICT;
-      -- Migration step 5 rebuilds workflow_versions, so this fixture includes
-      -- the workflow tables a database at that version actually had.
-      CREATE TABLE workflows (id TEXT PRIMARY KEY) STRICT;
-      CREATE TABLE workflow_versions (
-        id TEXT PRIMARY KEY,
-        workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
-        version INTEGER NOT NULL,
-        graph TEXT NOT NULL,
-        catalog_fingerprint TEXT NOT NULL,
-        graph_digest TEXT NOT NULL,
-        published_at INTEGER NOT NULL,
-        UNIQUE (workflow_id, version)
-      ) STRICT;
-      CREATE TABLE workflow_executions (
-        id TEXT PRIMARY KEY,
-        workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
-        workflow_version_id TEXT NOT NULL REFERENCES workflow_versions(id) ON DELETE CASCADE,
-        status TEXT NOT NULL,
-        started_at INTEGER NOT NULL
-      ) STRICT;
-      CREATE TABLE oauth_authorization_attempts (
-        state_hash TEXT PRIMARY KEY,
-        integration_id TEXT NOT NULL REFERENCES integrations(id) ON DELETE CASCADE,
-        expires_at INTEGER NOT NULL,
-        browser_binding_hash TEXT NOT NULL,
-        encrypted_payload TEXT NOT NULL,
-        created_at INTEGER NOT NULL
-      ) STRICT;
-      CREATE INDEX oauth_attempts_integration_idx
-        ON oauth_authorization_attempts(integration_id);
-      CREATE INDEX oauth_attempts_expires_at_idx
-        ON oauth_authorization_attempts(expires_at);
-      INSERT INTO integrations (id) VALUES ('int_existing');
-      INSERT INTO oauth_authorization_attempts
-        (state_hash, integration_id, expires_at, browser_binding_hash, encrypted_payload, created_at)
-      VALUES ('state', 'int_existing', 4102444800000, 'binding', 'sealed', 0);
-      PRAGMA user_version = 2;
-    `);
-    versionTwo.close();
-
-    const database = await open(filename);
-    await database.close();
-
-    const inspection = new DatabaseSync(filename);
-    try {
-      const columns = inspection
-        .prepare("PRAGMA table_info(oauth_authorization_attempts)")
-        .all();
-      expect(
-        columns.find((column) => column.name === "integration_id")?.notnull
-      ).toBe(0);
-      expect(columns).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ name: "mode", notnull: 1 }),
-          expect.objectContaining({ name: "status", notnull: 1 }),
-          expect.objectContaining({
-            name: "result_integration_id",
-            notnull: 0,
-          }),
-          expect.objectContaining({ name: "updated_at", notnull: 1 }),
-        ])
-      );
-      expect(
-        inspection
-          .prepare(
-            `SELECT state_hash, integration_id, mode, status, result_integration_id,
-                    updated_at
-             FROM oauth_authorization_attempts`
-          )
-          .get()
-      ).toEqual({
-        state_hash: "state",
-        integration_id: "int_existing",
-        mode: "reconnect",
-        status: "pending",
-        result_integration_id: null,
-        updated_at: 0,
-      });
-      expect(inspection.prepare("PRAGMA user_version").get()).toEqual({
-        user_version: 7,
-      });
-    } finally {
-      inspection.close();
-    }
-  });
-
   it("cleans expired attempts and fences their processing reconnect refresh claims", async () => {
     const filename = await databasePath();
     const database = await open(filename);
@@ -217,79 +125,6 @@ describe("native SQLite integration persistence", () => {
     }
   });
 
-  it("migrates an existing integration row to idle refresh state", async () => {
-    const filename = await databasePath();
-    const legacy = new DatabaseSync(filename);
-    legacy.exec(`
-    CREATE TABLE integrations (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      type TEXT NOT NULL,
-      config TEXT NOT NULL,
-      is_managed INTEGER DEFAULT 0 CHECK (is_managed IS NULL OR is_managed IN (0, 1)),
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    ) STRICT;
-    -- Migration step 5 rebuilds workflow_versions, so this fixture includes
-    -- the workflow tables a database at that version actually had.
-    CREATE TABLE workflows (id TEXT PRIMARY KEY) STRICT;
-    CREATE TABLE workflow_versions (
-      id TEXT PRIMARY KEY,
-      workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
-      version INTEGER NOT NULL,
-      graph TEXT NOT NULL,
-      catalog_fingerprint TEXT NOT NULL,
-      graph_digest TEXT NOT NULL,
-      published_at INTEGER NOT NULL,
-      UNIQUE (workflow_id, version)
-    ) STRICT;
-    CREATE TABLE workflow_executions (
-      id TEXT PRIMARY KEY,
-      workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
-      workflow_version_id TEXT NOT NULL REFERENCES workflow_versions(id) ON DELETE CASCADE,
-      status TEXT NOT NULL,
-      started_at INTEGER NOT NULL
-    ) STRICT;
-    PRAGMA user_version = 1;
-  `);
-    legacy
-      .prepare(
-        `INSERT INTO integrations
-       (id, name, type, config, is_managed, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 0, ?, ?)`
-      )
-      .run(
-        "int_legacy",
-        "Legacy",
-        "linear",
-        cipher.seal({ accessToken: "kept" }),
-        Date.parse("2026-01-01T00:00:00Z"),
-        Date.parse("2026-01-01T00:00:00Z")
-      );
-    legacy.close();
-
-    const database = await open(filename);
-    try {
-      const integration = await database.run(
-        Effect.gen(function* () {
-          const integrations = yield* IntegrationRepo;
-          return yield* integrations.findById("int_legacy");
-        })
-      );
-
-      expect(integration).toMatchObject({
-        id: "int_legacy",
-        config: { accessToken: "kept" },
-        configRevision: 0,
-        refreshState: "idle",
-        refreshClaimId: null,
-        refreshClaimedAt: null,
-      });
-    } finally {
-      await database.close();
-    }
-  });
-
   it("rejects a stored refresh state outside the shared lifecycle", async () => {
     const filename = await databasePath();
     const database = await open(filename);
@@ -342,10 +177,8 @@ describe("native SQLite integration persistence", () => {
     }
   });
 
-  // The migration that added this column spells its three values out, because a
-  // database already past that version will never run it again. This is what
-  // says so: adding a fourth state to the shared list without a migration that
-  // widens the CHECK fails here rather than at a customer's write.
+  // The baseline spells these values out. Adding a state to the shared list
+  // without a migration that widens the CHECK fails here.
   it("accepts every refresh state the shared lifecycle declares", async () => {
     const filename = await databasePath();
     const database = await open(filename);

@@ -19,6 +19,7 @@
   "files": [
     "dist",
     "drizzle",
+    "drizzle-sqlite",
     "skills"
   ],
   "type": "module",
@@ -70,6 +71,7 @@
   "dependencies": {
     "@effect/ai-openai": "catalog:",
     "@effect/opentelemetry": "catalog:",
+    "@effect/sql-sqlite-node": "catalog:",
     "@hono/node-server": "^2.1.0",
     "@logtape/logtape": "catalog:",
     "@marcbachmann/cel-js": "catalog:",

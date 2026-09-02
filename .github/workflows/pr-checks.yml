@@ -63,6 +63,9 @@ jobs:
       - name: Run build
         run: pnpm run build
 
+      - name: Smoke test packed core
+        run: pnpm run package:smoke
+
   postgres:
     runs-on: ubuntu-latest
 

@@ -1,12 +1,9 @@
+import { Effect } from "effect";
+import { and, desc, eq, isNull, lte, or } from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
 import { ApiKeyRepo } from "#src/backend/services/api-keys/repo";
 import type { SqliteDatabase } from "#src/backend/persistence/sqlite/database";
-import {
-  optionalDate,
-  optionalString,
-  requiredDate,
-  requiredString,
-} from "#src/backend/persistence/sqlite/database";
+import { apiKeys } from "#src/backend/persistence/sqlite/schema";
 
 export function makeSqliteApiKeyRepo(
   store: SqliteDatabase
@@ -14,70 +11,80 @@ export function makeSqliteApiKeyRepo(
   return {
     listNewestFirst: store.read((database) =>
       database
-        .prepare(
-          `SELECT id, name, key_prefix, created_at, last_used_at
-           FROM api_keys ORDER BY created_at DESC`
+        .select({
+          id: apiKeys.id,
+          name: apiKeys.name,
+          keyPrefix: apiKeys.keyPrefix,
+          createdAt: apiKeys.createdAt,
+          lastUsedAt: apiKeys.lastUsedAt,
+        })
+        .from(apiKeys)
+        .orderBy(desc(apiKeys.createdAt))
+        .pipe(
+          Effect.map((rows) =>
+            rows.map((row) => ({
+              ...row,
+              createdAt: new Date(row.createdAt),
+              lastUsedAt:
+                row.lastUsedAt === null ? null : new Date(row.lastUsedAt),
+            }))
+          )
         )
-        .all()
-        .map((row) => ({
-          id: requiredString(row, "id"),
-          name: optionalString(row, "name"),
-          keyPrefix: requiredString(row, "key_prefix"),
-          createdAt: requiredDate(row, "created_at"),
-          lastUsedAt: optionalDate(row, "last_used_at"),
-        }))
     ),
     insert: (input) =>
       store.write((database) => {
         const id = generateId();
         const createdAt = new Date();
-        database
-          .prepare(
-            `INSERT INTO api_keys
-             (id, name, key_hash, key_prefix, created_at, last_used_at)
-             VALUES (?, ?, ?, ?, ?, NULL)`
-          )
-          .run(
+        return database
+          .insert(apiKeys)
+          .values({
             id,
-            input.name,
-            input.keyHash,
-            input.keyPrefix,
-            createdAt.getTime()
+            name: input.name,
+            keyHash: input.keyHash,
+            keyPrefix: input.keyPrefix,
+            createdAt: createdAt.getTime(),
+            lastUsedAt: null,
+          })
+          .pipe(
+            Effect.as({
+              id,
+              name: input.name,
+              keyPrefix: input.keyPrefix,
+              createdAt,
+              lastUsedAt: null,
+            })
           );
-        return {
-          id,
-          name: input.name,
-          keyPrefix: input.keyPrefix,
-          createdAt,
-          lastUsedAt: null,
-        };
       }),
     deleteById: (keyId) =>
       store.write((database) =>
         database
-          .prepare("DELETE FROM api_keys WHERE id = ? RETURNING id")
-          .all(keyId)
-          .map((row) => requiredString(row, "id"))
+          .delete(apiKeys)
+          .where(eq(apiKeys.id, keyId))
+          .returning({ id: apiKeys.id })
+          .pipe(Effect.map((rows) => rows.map((row) => row.id)))
       ),
     findByPrefix: (keyPrefix) =>
       store.read((database) =>
         database
-          .prepare("SELECT id, key_hash FROM api_keys WHERE key_prefix = ?")
-          .all(keyPrefix)
-          .map((row) => ({
-            id: requiredString(row, "id"),
-            keyHash: requiredString(row, "key_hash"),
-          }))
+          .select({ id: apiKeys.id, keyHash: apiKeys.keyHash })
+          .from(apiKeys)
+          .where(eq(apiKeys.keyPrefix, keyPrefix))
       ),
     touchLastUsed: (keyId) =>
       store.write((database) => {
         const now = Date.now();
-        database
-          .prepare(
-            `UPDATE api_keys SET last_used_at = ?
-             WHERE id = ? AND (last_used_at IS NULL OR last_used_at <= ?)`
-          )
-          .run(now, keyId, now - 60_000);
+        return database
+          .update(apiKeys)
+          .set({ lastUsedAt: now })
+          .where(
+            and(
+              eq(apiKeys.id, keyId),
+              or(
+                isNull(apiKeys.lastUsedAt),
+                lte(apiKeys.lastUsedAt, now - 60_000)
+              )
+            )
+          );
       }),
   };
 }

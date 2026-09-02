@@ -32,7 +32,7 @@ export function wfSqlite(
 
   return {
     open: async (cipher: IntegrationCipher) => {
-      const database = openSqliteDatabase({
+      const database = await openSqliteDatabase({
         filename,
         busyTimeoutMs,
       });

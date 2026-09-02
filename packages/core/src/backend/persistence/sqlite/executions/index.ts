@@ -1,23 +1,26 @@
-import type { DatabaseSync } from "node:sqlite";
+import { Effect } from "effect";
+import { and, eq, inArray } from "drizzle-orm";
 import { partition } from "es-toolkit";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type {
   EntityStartOutcome,
   NewExecution,
-  WorkflowExecution,
 } from "#src/backend/services/executions/repo";
 import {
   ExecutionRepo,
   UNSENT_RUN_GRACE_MS,
   UNSENT_RUN_RECLAIM_REASON,
 } from "#src/backend/services/executions/repo";
-import type { SqliteDatabase } from "#src/backend/persistence/sqlite/database";
-import {
-  placeholders,
-  requiredNumber,
-  requiredString,
-  SQLITE_IN_FLIGHT_EXECUTION_STATUSES,
+import type {
+  SqliteDatabase,
+  SqliteExecutor,
 } from "#src/backend/persistence/sqlite/database";
+import {
+  workflowExecutionEvents,
+  workflowExecutions,
+  workflowWaitStates,
+} from "#src/backend/persistence/sqlite/schema";
 import {
   makeSqliteRunsMethods,
   insertExecution,
@@ -27,125 +30,145 @@ import { makeSqliteWaitsMethods } from "#src/backend/persistence/sqlite/executio
 import { makeSqliteAuditMethods } from "#src/backend/persistence/sqlite/executions/audit";
 import { sqliteExecution } from "#src/backend/persistence/sqlite/executions/rows";
 
-function findByDelivery(
-  database: DatabaseSync,
-  execution: NewExecution
-): WorkflowExecution | null {
-  if (!execution.deliveryId) return null;
-  const row = database
-    .prepare(
-      "SELECT * FROM workflow_executions WHERE workflow_id = ? AND delivery_id = ?"
+function findByDelivery(database: SqliteExecutor, execution: NewExecution) {
+  if (!execution.deliveryId) return Effect.succeed(null);
+  return database
+    .select()
+    .from(workflowExecutions)
+    .where(
+      and(
+        eq(workflowExecutions.workflowId, execution.workflowId),
+        eq(workflowExecutions.deliveryId, execution.deliveryId)
+      )
     )
-    .get(execution.workflowId, execution.deliveryId);
-  return row ? sqliteExecution(row) : null;
+    .get()
+    .pipe(Effect.map((row) => (row ? sqliteExecution(row) : null)));
 }
 
 function endInFlightExecutions(
-  database: DatabaseSync,
+  database: SqliteExecutor,
   ids: string[],
   update: { status: "failed" | "superseded"; error: string }
-): string[] {
-  if (ids.length === 0) return [];
-  const eligible = database
-    .prepare(
-      `SELECT id FROM workflow_executions
-       WHERE id IN (${placeholders(ids.length)}) AND status IN (${SQLITE_IN_FLIGHT_EXECUTION_STATUSES})`
-    )
-    .all(...ids)
-    .map((row) => requiredString(row, "id"));
-  if (eligible.length === 0) return [];
-  database
-    .prepare(
-      `UPDATE workflow_executions SET status = ?, waiting_at = NULL,
-              completed_at = ?, error = ?
-       WHERE id IN (${placeholders(eligible.length)}) AND status IN (${SQLITE_IN_FLIGHT_EXECUTION_STATUSES})`
-    )
-    .run(update.status, Date.now(), update.error, ...eligible);
-  return eligible;
+) {
+  if (ids.length === 0) return Effect.succeed<string[]>([]);
+  const inFlight = and(
+    inArray(workflowExecutions.id, ids),
+    inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+  );
+  return Effect.gen(function* () {
+    const rows = yield* database
+      .select({ id: workflowExecutions.id })
+      .from(workflowExecutions)
+      .where(inFlight);
+    const eligible = rows.map((row) => row.id);
+    if (eligible.length === 0) return [];
+    yield* database
+      .update(workflowExecutions)
+      .set({
+        status: update.status,
+        waitingAt: null,
+        completedAt: Date.now(),
+        error: update.error,
+      })
+      .where(
+        and(
+          inArray(workflowExecutions.id, eligible),
+          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+        )
+      );
+    return eligible;
+  });
 }
 
 function startForEntity(
-  database: DatabaseSync,
+  database: SqliteExecutor,
   execution: NewExecution,
   concurrency: Concurrency,
   supersededReason: string
-): EntityStartOutcome {
-  const own = findByDelivery(database, execution);
-  if (own) {
-    return {
-      status: "started",
-      execution: own,
-      supersededExecutionIds: [],
-      reclaimedExecutionIds: [],
-    };
-  }
-  if (concurrency === "unlimited" || !execution.entityValue) {
-    return {
-      status: "started",
-      execution: insertExecution(database, execution, "running"),
-      supersededExecutionIds: [],
-      reclaimedExecutionIds: [],
-    };
-  }
-
-  const inFlight = database
-    .prepare(
-      `SELECT id, enqueued_at, started_at FROM workflow_executions
-       WHERE workflow_id = ? AND entity_value = ? AND run_mode = ?
-          AND status IN (${SQLITE_IN_FLIGHT_EXECUTION_STATUSES})`
-    )
-    .all(execution.workflowId, execution.entityValue, execution.runMode);
-
-  let reclaimedExecutionIds: string[] = [];
-  if (inFlight.length > 0 && concurrency === "first-wins") {
-    const staleBefore = Date.now() - UNSENT_RUN_GRACE_MS;
-    const candidates = inFlight.map((row) => ({
-      id: requiredString(row, "id"),
-      enqueuedAt: row.enqueued_at,
-      startedAt: requiredNumber(row, "started_at"),
-    }));
-    const [stuck, live] = partition(
-      candidates,
-      (candidate) =>
-        candidate.enqueuedAt === null && candidate.startedAt < staleBefore
-    );
-    if (live.length > 0) {
+): Effect.Effect<EntityStartOutcome, unknown> {
+  return Effect.gen(function* () {
+    const own = yield* findByDelivery(database, execution);
+    if (own) {
       return {
-        status: "refused",
-        inFlightExecutionIds: live.map((candidate) => candidate.id),
+        status: "started" as const,
+        execution: own,
+        supersededExecutionIds: [],
+        reclaimedExecutionIds: [],
       };
     }
-    reclaimedExecutionIds = endInFlightExecutions(
-      database,
-      stuck.map((candidate) => candidate.id),
-      { status: "failed", error: UNSENT_RUN_RECLAIM_REASON }
-    );
-  }
-
-  let supersededExecutionIds: string[] = [];
-  if (inFlight.length > 0 && concurrency !== "first-wins") {
-    supersededExecutionIds = endInFlightExecutions(
-      database,
-      inFlight.map((row) => requiredString(row, "id")),
-      { status: "superseded", error: supersededReason }
-    );
-    if (supersededExecutionIds.length > 0) {
-      database
-        .prepare(
-          `UPDATE workflow_wait_states SET status = 'cancelled', cancelled_at = ?
-           WHERE execution_id IN (${placeholders(supersededExecutionIds.length)})
-             AND status = 'waiting'`
-        )
-        .run(Date.now(), ...supersededExecutionIds);
+    if (concurrency === "unlimited" || !execution.entityValue) {
+      return {
+        status: "started" as const,
+        execution: yield* insertExecution(database, execution, "running"),
+        supersededExecutionIds: [],
+        reclaimedExecutionIds: [],
+      };
     }
-  }
 
-  return {
-    status: "started",
-    execution: insertExecution(database, execution, "running"),
-    supersededExecutionIds,
-    reclaimedExecutionIds,
-  };
+    const inFlight = yield* database
+      .select({
+        id: workflowExecutions.id,
+        enqueuedAt: workflowExecutions.enqueuedAt,
+        startedAt: workflowExecutions.startedAt,
+      })
+      .from(workflowExecutions)
+      .where(
+        and(
+          eq(workflowExecutions.workflowId, execution.workflowId),
+          eq(workflowExecutions.entityValue, execution.entityValue),
+          eq(workflowExecutions.runMode, execution.runMode),
+          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+        )
+      );
+
+    let reclaimedExecutionIds: string[] = [];
+    if (inFlight.length > 0 && concurrency === "first-wins") {
+      const staleBefore = Date.now() - UNSENT_RUN_GRACE_MS;
+      const [stuck, live] = partition(
+        inFlight,
+        (candidate) =>
+          candidate.enqueuedAt === null && candidate.startedAt < staleBefore
+      );
+      if (live.length > 0) {
+        return {
+          status: "refused" as const,
+          inFlightExecutionIds: live.map((candidate) => candidate.id),
+        };
+      }
+      reclaimedExecutionIds = yield* endInFlightExecutions(
+        database,
+        stuck.map((candidate) => candidate.id),
+        { status: "failed", error: UNSENT_RUN_RECLAIM_REASON }
+      );
+    }
+
+    let supersededExecutionIds: string[] = [];
+    if (inFlight.length > 0 && concurrency !== "first-wins") {
+      supersededExecutionIds = yield* endInFlightExecutions(
+        database,
+        inFlight.map((row) => row.id),
+        { status: "superseded", error: supersededReason }
+      );
+      if (supersededExecutionIds.length > 0) {
+        yield* database
+          .update(workflowWaitStates)
+          .set({ status: "cancelled", cancelledAt: Date.now() })
+          .where(
+            and(
+              inArray(workflowWaitStates.executionId, supersededExecutionIds),
+              eq(workflowWaitStates.status, "waiting")
+            )
+          );
+      }
+    }
+
+    return {
+      status: "started" as const,
+      execution: yield* insertExecution(database, execution, "running"),
+      supersededExecutionIds,
+      reclaimedExecutionIds,
+    };
+  });
 }
 
 export function makeSqliteExecutionRepo(
@@ -161,17 +184,17 @@ export function makeSqliteExecutionRepo(
         startForEntity(database, execution, concurrency, supersededReason)
       ),
     deleteAllForWorkflow: (workflowId) =>
-      store.write((database) => {
-        database
-          .prepare(
-            "DELETE FROM workflow_execution_events WHERE workflow_id = ?"
-          )
-          .run(workflowId);
-        return Number(
-          database
-            .prepare("DELETE FROM workflow_executions WHERE workflow_id = ?")
-            .run(workflowId).changes
-        );
-      }),
+      store.write((database) =>
+        Effect.gen(function* () {
+          yield* database
+            .delete(workflowExecutionEvents)
+            .where(eq(workflowExecutionEvents.workflowId, workflowId));
+          const rows = yield* database
+            .delete(workflowExecutions)
+            .where(eq(workflowExecutions.workflowId, workflowId))
+            .returning({ id: workflowExecutions.id });
+          return rows.length;
+        })
+      ),
   };
 }
