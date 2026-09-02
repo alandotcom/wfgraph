@@ -19,6 +19,7 @@
  * that says it was kept.
  */
 
+import { isBlank } from "@wfgraph/shared/types/string";
 import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
 import { TemplateBadgeTextarea } from "#src/components/ui/template-badge-textarea";
 import type { ConfigOptionField } from "#src/lib/rpc-client";
@@ -36,7 +37,7 @@ function readStoredObject(value: unknown): ProviderFieldValues | null {
   // A field nobody has touched holds no text, and an empty form is what draws
   // over it. The shared reader answers unreadable there, because at the step
   // boundary "nothing stored" and "an object with no members" differ.
-  if (typeof value !== "string" || value.trim().length === 0) {
+  if (typeof value !== "string" || isBlank(value)) {
     return {};
   }
 
@@ -58,7 +59,7 @@ function storedValueFor(
   if (typed === (entry.defaultValue ?? "")) {
     return undefined;
   }
-  if (entry.type === "number" && typed.trim().length > 0) {
+  if (entry.type === "number" && !isBlank(typed)) {
     const asNumber = Number(typed);
     if (Number.isFinite(asNumber)) {
       return asNumber;
@@ -188,7 +189,7 @@ function ProviderSubField({
   disabled?: boolean | undefined;
 }) {
   const id = `${parentKey}.${entry.key}`;
-  const missing = entry.required === true && value.trim().length === 0;
+  const missing = entry.required === true && isBlank(value);
 
   return (
     <div className="flex flex-col gap-2">

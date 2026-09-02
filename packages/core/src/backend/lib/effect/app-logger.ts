@@ -1,4 +1,6 @@
 import { Context, Effect, Layer, Logger, References } from "effect";
+import { omitBy } from "es-toolkit/object";
+import { isEmptyObject } from "es-toolkit/predicate";
 import { getAppLogger } from "#src/backend/lib/logger";
 
 /** Structured fields attached to one log line, the same bag logtape takes. */
@@ -81,13 +83,11 @@ const logtapeEffectLogger = Logger.make<unknown, void>(
   ({ fiber, logLevel, message }) => {
     const annotations = fiber.getRef(References.CurrentLogAnnotations);
     const category = readCategory(annotations[APP_LOG_CATEGORY_ANNOTATION]);
-    const properties = Object.fromEntries(
-      Object.entries(annotations).filter(
-        ([key]) => key !== APP_LOG_CATEGORY_ANNOTATION
-      )
+    const properties = omitBy(
+      annotations,
+      (_, key) => key === APP_LOG_CATEGORY_ANNOTATION
     );
-    const lineProperties =
-      Object.keys(properties).length === 0 ? undefined : properties;
+    const lineProperties = isEmptyObject(properties) ? undefined : properties;
     const logger = getAppLogger(...category);
     const renderedMessage = renderMessage(message);
 

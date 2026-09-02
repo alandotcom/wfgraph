@@ -44,6 +44,7 @@ import {
   requireOutputFieldsFromSchema,
 } from "@wfgraph/shared/graph/output-fields";
 import { isSafeRecordKey } from "@wfgraph/shared/types/record-key";
+import { isBlank } from "@wfgraph/shared/types/string";
 
 /**
  * The credential keys a handler of this integration may read.
@@ -415,7 +416,7 @@ function checkIntegrationEvents(integration: IntegrationDefinition): void {
     );
   }
 
-  if (webhook && webhook.source.trim().length === 0) {
+  if (webhook && isBlank(webhook.source)) {
     throw new Error(
       `Integration "${integration.type}" declares a webhook without a source name.`
     );

@@ -9,7 +9,7 @@
  * printed by `console.log`.
  */
 
-import { isPlainObject } from "es-toolkit/predicate";
+import { isEmptyObject, isPlainObject } from "es-toolkit/predicate";
 import { getAppLogger } from "#src/backend/lib/logger";
 
 type SdkLogger = {
@@ -46,7 +46,7 @@ function splitSdkArgs(args: unknown[]): {
 
   return {
     message: message ?? "Inngest SDK message",
-    properties: Object.keys(properties).length > 0 ? properties : undefined,
+    properties: isEmptyObject(properties) ? undefined : properties,
   };
 }
 

@@ -118,16 +118,17 @@ export const postIntegrationConfigOptions = Effect.fn(
   // the answer's size is here and its contents are not.
   yield* logger.info("Read integration config options", {
     request: { parameterKeys: Object.keys(accepted) },
-    // Each answer status has one field of its own; the other two are left off
-    // rather than logged as `undefined` on every line.
     outcome: {
       status: answer.status,
+      // oxlint-disable-next-line wfgraph/no-conditional-spread -- each answer status has one field of its own; the other two are left off rather than logged as `undefined` on every line.
       ...(answer.status === "options"
         ? { optionCount: answer.options.length }
         : {}),
+      // oxlint-disable-next-line wfgraph/no-conditional-spread -- each answer status has one field of its own; the other two are left off rather than logged as `undefined` on every line.
       ...(answer.status === "fields"
         ? { fieldCount: answer.fields.length }
         : {}),
+      // oxlint-disable-next-line wfgraph/no-conditional-spread -- each answer status has one field of its own; the other two are left off rather than logged as `undefined` on every line.
       ...(answer.status === "unavailable" ? { reason: answer.reason } : {}),
     },
   });

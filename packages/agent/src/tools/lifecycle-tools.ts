@@ -35,6 +35,7 @@ import {
   readLifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { pruneStartFilters } from "@wfgraph/shared/lifecycle/start-filters";
+import { isBlank } from "@wfgraph/shared/types/string";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { WorkflowDraft } from "#src/document";
 import { referencesForNode } from "#src/tools/reference-tools";
@@ -221,7 +222,7 @@ function readNumberRule(base: RuleBase, input: RuleInput): RuleReading {
   const value = Number(input.value);
   if (
     input.value === undefined ||
-    input.value.trim().length === 0 ||
+    isBlank(input.value) ||
     !Number.isFinite(value)
   ) {
     return {

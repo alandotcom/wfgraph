@@ -54,7 +54,7 @@ const publicUrl =
 
 const demoAuth = createDemoAuth({
   isProduction,
-  ...(publicUrl ? { publicUrl } : {}),
+  publicUrl,
 });
 
 // Workflow Graph reads a schema through Standard Schema and asks nothing else of it. The
@@ -176,7 +176,7 @@ const cancelAppointmentAction = defineAction({
 const wfgraph = await createWfGraphApp({
   // OAuth providers compare callback URLs exactly. Development uses the local
   // server origin; deployments set WFGRAPH_PUBLIC_URL to their external origin.
-  ...(publicUrl ? { publicUrl } : {}),
+  publicUrl,
   // Handing the editor over is what turns it on. Development has none to hand
   // over, and Workflow Graph then serves the API alone.
   client: isProduction

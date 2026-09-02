@@ -1,4 +1,5 @@
 import { atom } from "jotai";
+import { isEmptyObject } from "es-toolkit/predicate";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { getClientLogger } from "#src/lib/logger";
 import { queryClient } from "#src/lib/query-client";
@@ -433,7 +434,7 @@ function forgetRefusedName(
   }
 
   const { name: _refused, ...remaining } = parked;
-  if (Object.keys(remaining).length === 0) {
+  if (isEmptyObject(remaining)) {
     queue.failedPatches.delete(workflowId);
   } else {
     queue.failedPatches.set(workflowId, remaining);

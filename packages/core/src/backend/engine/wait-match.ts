@@ -13,6 +13,7 @@
 import { Schema } from "effect";
 import { getAppLogger } from "#src/backend/lib/logger";
 import { readAs } from "@wfgraph/shared/types/schema";
+import { isBlank } from "@wfgraph/shared/types/string";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   collectTimestampFieldPaths,
@@ -167,7 +168,7 @@ export function compileWaitSubscriptions(input: {
       connectionId: subscription.connectionId,
     });
 
-    if (subscription.match === undefined || subscription.match.trim() === "") {
+    if (subscription.match === undefined || isBlank(subscription.match)) {
       subscriptions.push(base);
       continue;
     }

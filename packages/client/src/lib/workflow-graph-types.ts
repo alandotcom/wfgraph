@@ -6,6 +6,7 @@
  */
 
 import type { Edge, Node } from "@xyflow/react";
+import { isEmptyObject } from "es-toolkit/predicate";
 import type {
   NodeRunStatus,
   PersistedNodeData,
@@ -221,7 +222,7 @@ export function toPersistedEdge(edge: WorkflowEdge): PersistedWorkflowEdge {
     target: edge.target,
     sourceHandle: edge.sourceHandle,
     targetHandle: edge.targetHandle,
-    data: Object.keys(rest).length > 0 ? rest : undefined,
+    data: isEmptyObject(rest) ? undefined : rest,
   };
 }
 

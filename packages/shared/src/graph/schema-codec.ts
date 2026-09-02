@@ -209,10 +209,7 @@ function readJsonSchemaNode(
     format: readString(node.format),
     description: readString(node.description),
     enum: readUnknownArray(node.enum),
-    // `const` is the one keyword whose presence matters apart from its value:
-    // a closed-set collapse asks whether a branch declared one at all, and
-    // `{ const: null }` is a legal branch. So the key is carried over only when
-    // the document had it, rather than always written as possibly-undefined.
+    // oxlint-disable-next-line wfgraph/no-conditional-spread -- `const` is the one keyword whose presence matters apart from its value: a closed-set collapse asks whether a branch declared one at all, and `{ const: null }` is a legal branch. So the key is carried over only when the document had it, rather than always written as possibly-undefined.
     ...(Object.hasOwn(node, "const") ? { const: node.const } : {}),
     required: readStringArray(node.required),
     default: node.default,
@@ -220,6 +217,7 @@ function readJsonSchemaNode(
     minimum: readNumber(node.minimum),
     minItems: readNumber(node.minItems),
     properties: readJsonSchemaProperties(node.properties, seen),
+    // oxlint-disable-next-line wfgraph/no-conditional-spread -- `additionalProperties` can legitimately be `false`, so the key is carried over only when the document had it, the same presence rule `const` follows above.
     ...(Object.hasOwn(node, "additionalProperties")
       ? {
           additionalProperties: readAdditionalProperties(

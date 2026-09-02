@@ -22,6 +22,7 @@ import type {
   IntegrationConfig,
   IntegrationRefreshState,
 } from "@wfgraph/shared/types/integration";
+import { isBlank } from "@wfgraph/shared/types/string";
 import { getErrorMessage } from "@wfgraph/shared/utils";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { ENCRYPTION_KEY_MISMATCH_MESSAGE } from "#src/backend/services/integrations/cipher";
@@ -109,7 +110,7 @@ function mergeIntegrationConfig(
       (typeof key === "string" &&
         isSecretKey(key) &&
         (value === SECRET_MASK ||
-          (typeof value === "string" && value.trim().length === 0)))
+          (typeof value === "string" && isBlank(value))))
   );
 
   return {
@@ -207,10 +208,9 @@ function toIntegrationWithConfig(
     config: maskIntegrationConfig(
       catalog,
       input.type,
-      Object.fromEntries(
-        Object.entries(input.config).filter(
-          ([key]) => key !== OAUTH_GRANT_CONFIG_KEY && !managedKeys.has(key)
-        )
+      omitBy(
+        input.config,
+        (_, key) => key === OAUTH_GRANT_CONFIG_KEY || managedKeys.has(key)
       )
     ),
   };

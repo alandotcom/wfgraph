@@ -92,6 +92,7 @@ const WAIT_OWNED_KEYS = new Set([
 ]);
 
 function configOutsideWait(node: WorkflowNode): Record<string, unknown> {
+  // oxlint-disable-next-line wfgraph/no-entries-round-trip -- node.data.config is stored JSON and can carry an own __proto__ key; Object.fromEntries defines it as an own property instead of reaching the prototype setter that key-by-key assignment would.
   return Object.fromEntries(
     Object.entries(node.data.config ?? {}).filter(
       ([key]) => !WAIT_OWNED_KEYS.has(key)

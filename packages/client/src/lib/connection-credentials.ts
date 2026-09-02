@@ -1,4 +1,5 @@
 import { omitBy } from "es-toolkit/object";
+import { isEmptyObject } from "es-toolkit/predicate";
 import { toast } from "sonner";
 
 /**
@@ -19,9 +20,8 @@ import { toast } from "sonner";
 export function hasProvidedConfigValues(
   config: Record<string, string>
 ): boolean {
-  return (
-    Object.keys(omitBy(config, (value) => !value || value.length === 0))
-      .length > 0
+  return !isEmptyObject(
+    omitBy(config, (value) => !value || value.length === 0)
   );
 }
 

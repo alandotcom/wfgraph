@@ -13,6 +13,7 @@
  */
 
 import { countBy } from "es-toolkit/array";
+import { isBlank } from "@wfgraph/shared/types/string";
 import type {
   ActionMetadata,
   EventMetadata,
@@ -322,7 +323,7 @@ function readIntegration(
   }
 
   if (integration.oauth) {
-    if (integration.oauth.label.trim().length === 0) {
+    if (isBlank(integration.oauth.label)) {
       throw new Error(
         `Integration "${integration.type}" declares OAuth without a label.`
       );

@@ -1,3 +1,4 @@
+import { isEmptyObject } from "es-toolkit/predicate";
 import { findAction } from "@wfgraph/shared/extensions/catalog";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -138,10 +139,9 @@ function repairLifecycleConnections<T extends WorkflowNode>(
         ...node.data.config,
         lifecycleRules: {
           ...rules,
-          connectionIds:
-            Object.keys(nextConnectionIds).length > 0
-              ? nextConnectionIds
-              : undefined,
+          connectionIds: isEmptyObject(nextConnectionIds)
+            ? undefined
+            : nextConnectionIds,
         },
       },
     },

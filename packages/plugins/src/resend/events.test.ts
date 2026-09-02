@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { omitBy } from "es-toolkit/object";
 import { describe, expect, it } from "vitest";
 import {
   RESEND_WEBHOOK_EVENT_TYPES,
@@ -138,9 +139,7 @@ describe("Resend webhook Events", () => {
     absent: readonly string[]
   ) => ({
     ...envelope,
-    data: Object.fromEntries(
-      Object.entries(envelope.data).filter(([key]) => !absent.includes(key))
-    ),
+    data: omitBy(envelope.data, (_value, key) => absent.includes(key)),
   });
 
   const decode = async (eventName: string, payload: unknown) => {

@@ -7,6 +7,7 @@ import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { readWaitSubscriptions } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { parseConditionModel } from "@wfgraph/shared/conditions/condition-schema";
+import { isBlank } from "@wfgraph/shared/types/string";
 import { parseDurationMs } from "@wfgraph/shared/utils/wait-time";
 import type { AgentEvalDocument } from "#src/agent/result";
 import type { AgentEvalInput, EvalNodeSelector } from "#src/agent/types";
@@ -287,7 +288,7 @@ export function assessScenarioSemantics(
       required.keys.every((key) => {
         const value = node.data.config?.[key];
         return typeof value === "string"
-          ? value.trim().length > 0
+          ? !isBlank(value)
           : value !== undefined && value !== null;
       });
     const satisfied = required.allMatches

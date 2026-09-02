@@ -8,6 +8,7 @@ import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
 import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
 import { workflowTopologyRefusalReason } from "@wfgraph/shared/graph/workflow-topology";
 import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
+import { isBlank } from "@wfgraph/shared/types/string";
 import { validateWorkflowActionConfigs } from "@wfgraph/core/backend/services/workflows/validation/workflow-action-validation";
 import { validateWorkflowConditionConfigs } from "@wfgraph/core/backend/services/workflows/validation/workflow-conditions-validation";
 import {
@@ -154,7 +155,7 @@ export function assessGraphGrounding(
     const integrationId = node.data.config?.integrationId;
     if (
       typeof integrationId === "string" &&
-      integrationId.trim().length > 0 &&
+      !isBlank(integrationId) &&
       !input.integrations.some(
         (integration) => integration.id === integrationId
       )

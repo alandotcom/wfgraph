@@ -21,6 +21,7 @@ import {
   StepFailure,
 } from "@wfgraph/core/plugin";
 import { Effect, Schema } from "effect";
+import { isEmptyObject } from "es-toolkit/predicate";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { describeLinearFailure } from "#src/linear/errors";
 
@@ -187,7 +188,7 @@ function buildIssueFilter(
     filter.labels = { name: { eqIgnoreCase: input.linearLabel } };
   }
 
-  return Object.keys(filter).length > 0 ? filter : undefined;
+  return isEmptyObject(filter) ? undefined : filter;
 }
 
 export function createLinear(createClient: CreateLinearClient) {

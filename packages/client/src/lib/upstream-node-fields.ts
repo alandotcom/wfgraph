@@ -323,15 +323,17 @@ function keyFieldsUnderRecord(
 /**
  * The three optional flags a schema field carries onto a picker row: whether it
  * is an open record, whether a run can arrive without it, and its closed set of
- * values. Each is left off rather than written `false` or `undefined`, so two
- * rows agree only when the same flags are truly present.
+ * values.
  */
 function schemaFieldFlags(
   field: Pick<ReferenceField, "valueType" | "nullable" | "enumValues">
 ): Pick<ConditionSelectableField, "openRecord" | "nullable" | "enumValues"> {
   return {
+    // oxlint-disable-next-line wfgraph/no-conditional-spread -- left off rather than written false or undefined, so two rows agree only when the same flags are truly present.
     ...(field.valueType ? { openRecord: true as const } : {}),
+    // oxlint-disable-next-line wfgraph/no-conditional-spread -- left off rather than written false or undefined, so two rows agree only when the same flags are truly present.
     ...(field.nullable ? { nullable: true } : {}),
+    // oxlint-disable-next-line wfgraph/no-conditional-spread -- left off rather than written false or undefined, so two rows agree only when the same flags are truly present.
     ...(field.enumValues ? { enumValues: field.enumValues } : {}),
   };
 }

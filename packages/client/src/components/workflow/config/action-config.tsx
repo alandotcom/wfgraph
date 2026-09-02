@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
 import { HelpCircle, Settings, Zap } from "lucide-react";
 import { type ReactNode, useCallback, useMemo } from "react";
+import { mapValues } from "es-toolkit/object";
+import { isBlank } from "@wfgraph/shared/types/string";
 import { Input } from "#src/components/ui/input";
 import { IntegrationIcon } from "#src/components/ui/integration-icon";
 import { IntegrationSelector } from "#src/components/ui/integration-selector";
@@ -624,16 +626,13 @@ function useCategoryData(
   return useMemo(() => {
     const grouped = actionsForPickerByCategory(catalog, pinnedActionId);
 
-    return Object.fromEntries(
-      Object.entries(grouped).map(([category, actions]) => [
-        category,
-        actions.map((action) => ({
-          id: action.id,
-          label: action.label,
-          logoUrl: action.logoUrl,
-          integration: action.integration,
-        })),
-      ])
+    return mapValues(grouped, (actions) =>
+      actions.map((action) => ({
+        id: action.id,
+        label: action.label,
+        logoUrl: action.logoUrl,
+        integration: action.integration,
+      }))
     );
   }, [catalog, pinnedActionId]);
 }
@@ -737,8 +736,7 @@ export function ActionConfig({
                 const categoryLogoUrl = actionsInCategory
                   ?.map((action) => action.logoUrl)
                   .find(
-                    (value) =>
-                      typeof value === "string" && value.trim().length > 0
+                    (value) => typeof value === "string" && !isBlank(value)
                   );
 
                 const fallbackIcon = categoryIntegration ? (

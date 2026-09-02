@@ -11,6 +11,7 @@
  * which Events start a workflow; it decides what an arrival on one has to say.
  */
 
+import { isEmptyObject } from "es-toolkit/predicate";
 import {
   compileConditionModel,
   compileSerializedConditionModel,
@@ -235,7 +236,7 @@ function writeStartFilters(
 ): LifecycleRules {
   return {
     ...rules,
-    startFilters: Object.keys(filters).length > 0 ? filters : undefined,
+    startFilters: isEmptyObject(filters) ? undefined : filters,
   };
 }
 

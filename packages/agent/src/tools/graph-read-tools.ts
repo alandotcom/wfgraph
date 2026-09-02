@@ -65,10 +65,7 @@ const issueSchema = Schema.Struct({
  */
 function readableConfig(node: WorkflowNode): JsonObject {
   const config = node.data.config ?? {};
-  const present = Object.fromEntries(
-    Object.entries(config).filter(([, value]) => value !== undefined)
-  );
-  return readJsonObject(present) ?? {};
+  return readJsonObject(omitUndefined(config)) ?? {};
 }
 
 export const ReadWorkflow = Tool.make("read_workflow", {

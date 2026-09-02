@@ -133,8 +133,8 @@
     // sweep can check its own arithmetic.
     "wfgraph/no-filter-boolean": "error",
     "wfgraph/no-set-spread-uniq": "error",
-    "wfgraph/no-entries-round-trip": "off", // 7 sites
-    "wfgraph/no-conditional-spread": "off", // 210 sites
+    "wfgraph/no-entries-round-trip": "error",
+    "wfgraph/no-conditional-spread": "error",
     "wfgraph/no-locale-compare": "error",
     "wfgraph/no-hand-rolled-object-guard": "error",
     "wfgraph/no-changed-flag": "off", // 7 sites

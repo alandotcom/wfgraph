@@ -506,10 +506,9 @@ export class NodeScheduler {
 
         const failure = executionError(result);
         yield* logNode(startedAt, result.success ? "success" : "failed", {
-          // `haltBranch` is always a boolean; the field is left out entirely
-          // rather than logged as `halt: false` on every ordinary node.
+          // oxlint-disable-next-line wfgraph/no-conditional-spread -- `haltBranch` is always a boolean; the field is left out entirely rather than logged as `halt: false` on every ordinary node.
           ...(outcome.haltBranch === true ? { halt: true } : {}),
-          // Only a Condition node has a branch to report.
+          // oxlint-disable-next-line wfgraph/no-conditional-spread -- only a Condition node has a branch to report.
           ...(isConditionNode(node)
             ? { condition: outcome.conditionValue ?? null }
             : {}),

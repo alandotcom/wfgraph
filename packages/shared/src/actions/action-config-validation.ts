@@ -1,4 +1,4 @@
-import { asNonEmptyString } from "#src/types/string";
+import { asNonEmptyString, isBlank } from "#src/types/string";
 import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
 import { compileSerializedConditionModel } from "#src/conditions/conditions";
 import {
@@ -60,7 +60,7 @@ function isFieldEmpty(value: unknown): boolean {
   }
 
   if (typeof value === "string") {
-    return value.trim().length === 0;
+    return isBlank(value);
   }
 
   return false;

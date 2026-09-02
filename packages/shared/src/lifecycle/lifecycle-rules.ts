@@ -10,6 +10,7 @@
 
 import { Schema } from "effect";
 import { compact } from "es-toolkit/array";
+import { isEmptyObject } from "es-toolkit/predicate";
 import {
   type ExtensionCatalog,
   findEvent,
@@ -319,10 +320,11 @@ export function retainNamedKeys(
     return undefined;
   }
 
+  // oxlint-disable-next-line wfgraph/no-entries-round-trip -- a named Record<string, string> keeps its index signature strict, and pickBy widens a filtered result to Partial<T>, so the entries round trip stays here rather than losing the "every value is a string" the callers below hold this to.
   const next = Object.fromEntries(
     Object.entries(stored).filter(([eventName]) => named.has(eventName))
   );
-  return Object.keys(next).length > 0 ? next : undefined;
+  return isEmptyObject(next) ? undefined : next;
 }
 
 /**
@@ -379,7 +381,7 @@ function writeEventConnections(
 
   return {
     ...rules,
-    connectionIds: Object.keys(next).length > 0 ? next : undefined,
+    connectionIds: isEmptyObject(next) ? undefined : next,
   };
 }
 

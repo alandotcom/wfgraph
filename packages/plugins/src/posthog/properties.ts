@@ -14,6 +14,7 @@ import {
   StepFailure,
 } from "@wfgraph/core/plugin";
 import { Effect, Result, Schema } from "effect";
+import { isEmptyObject } from "es-toolkit/predicate";
 
 const propertyEntriesSchema = Schema.Array(
   Schema.Struct({ name: Schema.String, value: Schema.String })
@@ -153,6 +154,6 @@ export function readProperties(
       ...asObject(fromJson),
     };
 
-    return Object.keys(merged).length > 0 ? merged : undefined;
+    return isEmptyObject(merged) ? undefined : merged;
   });
 }
