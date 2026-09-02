@@ -1,15 +1,4 @@
-import {
-  and,
-  desc,
-  eq,
-  inArray,
-  isNotNull,
-  isNull,
-  lt,
-  ne,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
@@ -42,6 +31,10 @@ import {
   type WorkflowVersionKind,
 } from "@wfgraph/shared/graph/version-kinds";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
+
+const SQLITE_IN_FLIGHT_EXECUTION_STATUSES = IN_FLIGHT_EXECUTION_STATUSES.map(
+  (status) => `'${status}'`
+).join(", ");
 
 function workflowMode(value: string): Workflow["mode"] {
   if (value !== "live" && value !== "test") {
@@ -444,11 +437,13 @@ export function makeSqliteWorkflowRepo(
           .limit(1)
           .get()
           .pipe(
-            Effect.map((row) =>
-              row?.version === null || row === undefined
-                ? null
-                : { version: row.version }
-            )
+            Effect.map((row) => {
+              if (row === undefined) return null;
+              if (row.version === null) {
+                throw new Error("Invalid SQLite published version");
+              }
+              return { version: row.version };
+            })
           )
       ),
     listVersionHistoryPage: ({ workflowId, limit, cursor }) =>
@@ -502,7 +497,9 @@ export function makeSqliteWorkflowRepo(
           .where(
             and(
               eq(workflowExecutions.workflowId, workflowId),
-              inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+              sql`${workflowExecutions.status} in (${sql.raw(
+                SQLITE_IN_FLIGHT_EXECUTION_STATUSES
+              )})`
             )
           )
           .groupBy(workflowExecutions.workflowVersionId)

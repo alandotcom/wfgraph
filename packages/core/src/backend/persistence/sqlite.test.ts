@@ -7,7 +7,10 @@ import { inspect } from "node:util";
 import { Effect, ManagedRuntime } from "effect";
 import { sql } from "drizzle-orm";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
-import { hasDatabaseErrorCode } from "#src/backend/lib/effect/database";
+import {
+  DatabaseError,
+  hasDatabaseErrorCode,
+} from "#src/backend/lib/effect/database";
 import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { wfSqlite } from "#src/backend/persistence/sqlite";
@@ -284,6 +287,48 @@ describe("native SQLite persistence", () => {
       expect(workflow?.name).toBe("Ephemeral");
     } finally {
       await instance.close();
+    }
+  });
+
+  it("rejects a published version without a version number", async () => {
+    const filename = await databasePath();
+    const initialized = await open(filename);
+    await initialized.close();
+
+    const database = new DatabaseSync(filename);
+    try {
+      database.exec(`
+        INSERT INTO workflows
+          (id, name, graph, is_paused, mode, visibility, created_at, updated_at)
+        VALUES ('wf_corrupt', 'Corrupt', '{"nodes":[],"edges":[]}', 0,
+                'live', 'private', 1, 1);
+        INSERT INTO workflow_versions
+          (id, workflow_id, version, kind, graph, catalog_fingerprint,
+           graph_digest, published_at)
+        VALUES ('ver_corrupt', 'wf_corrupt', NULL, 'published',
+                '{"nodes":[],"edges":[]}', 'catalog', 'digest', 1);
+      `);
+    } finally {
+      database.close();
+    }
+
+    const persistence = await open(filename);
+    try {
+      const error = await persistence.run(
+        Effect.flip(
+          Effect.gen(function* () {
+            const workflows = yield* WorkflowRepo;
+            return yield* workflows.findLatestVersion("wf_corrupt");
+          })
+        )
+      );
+
+      expect(error).toBeInstanceOf(DatabaseError);
+      expect(inspect(error, { depth: null })).toContain(
+        "Invalid SQLite published version"
+      );
+    } finally {
+      await persistence.close();
     }
   });
 
