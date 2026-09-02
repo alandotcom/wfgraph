@@ -65,3 +65,33 @@ describe("Traversal.setOwnOutput", () => {
       })
   );
 });
+
+describe("Traversal.deterministicTerminalOutput", () => {
+  function node(id: string): WorkflowNode {
+    return {
+      id,
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: { label: id, type: "action", config: {} },
+    };
+  }
+
+  it.effect("breaks a tie between two terminal nodes on code-unit order", () =>
+    Effect.sync(() => {
+      // Code-unit order puts every capital ahead of every lowercase letter,
+      // which is what makes the answer independent of the machine's locale.
+      const traversal = new Traversal([node("ax_1"), node("Bx_1")], []);
+      for (const id of ["ax_1", "Bx_1"]) {
+        traversal.markCompleted(
+          id,
+          { success: true, data: { from: id } },
+          { label: id, data: { from: id } }
+        );
+      }
+
+      assert.deepStrictEqual(traversal.deterministicTerminalOutput(), {
+        from: "Bx_1",
+      });
+    })
+  );
+});

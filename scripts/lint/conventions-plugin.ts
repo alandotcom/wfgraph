@@ -2,8 +2,7 @@
  * The repository's structural lint rules, loaded by oxlint as the `wfgraph` JS
  * plugin (`.oxlintrc.json`, `jsPlugins`). Each rule names the helper to write
  * instead of the hand-rolled shape it reports; AGENTS.md ("Code cleanliness")
- * holds the same list in prose. A rule is turned on in `.oxlintrc.json` by the
- * commit that clears its last violation.
+ * holds the same list in prose.
  */
 
 /**
@@ -70,6 +69,21 @@ function readNodes(node: AstNode, field: string): AstNode[] {
   return isUnknownArray(value) ? value.filter(isAstNode) : [];
 }
 
+/**
+ * The child nodes at `field`, with an array literal's hole kept as undefined.
+ * `[, ...values]` holds two elements, and a rule counting elements has to see
+ * the hole to tell that literal apart from `[...values]`.
+ */
+function readNodesWithHoles(
+  node: AstNode,
+  field: string
+): (AstNode | undefined)[] {
+  const value = readField(node, field);
+  return isUnknownArray(value)
+    ? value.map((element) => (isAstNode(element) ? element : undefined))
+    : [];
+}
+
 /** The string at `field`, or undefined when the field holds anything else. */
 function readString(node: AstNode, field: string): string | undefined {
   const value = readField(node, field);
@@ -124,10 +138,15 @@ function isNamespacedCall(
   );
 }
 
-function isNewSet(node: AstNode | undefined): boolean {
+/**
+ * Whether a node is `new Set(values)`. A `new Set()` with no argument builds an
+ * empty set for a caller to fill, which is not the dedupe `uniq` replaces.
+ */
+function isDedupeSet(node: AstNode | undefined): boolean {
   return (
     node?.type === "NewExpression" &&
-    isIdentifierNamed(readNode(node, "callee"), "Set")
+    isIdentifierNamed(readNode(node, "callee"), "Set") &&
+    readNodes(node, "arguments").length === 1
   );
 }
 
@@ -136,6 +155,28 @@ function isEmptyObjectLiteral(node: AstNode | undefined): boolean {
     node?.type === "ObjectExpression" &&
     readNodes(node, "properties").length === 0
   );
+}
+
+/** Whether a node reads `value === undefined` or `value !== undefined`. */
+function isUndefinedComparison(node: AstNode | undefined): boolean {
+  if (node?.type !== "BinaryExpression") {
+    return false;
+  }
+
+  const operator = readString(node, "operator");
+  if (operator !== "===" && operator !== "!==") {
+    return false;
+  }
+
+  return (
+    isIdentifierNamed(readNode(node, "left"), "undefined") ||
+    isIdentifierNamed(readNode(node, "right"), "undefined")
+  );
+}
+
+/** A node's source offsets, as a key a Set can hold. */
+function rangeKey(node: AstNode): string {
+  return `${node.range[0]}:${node.range[1]}`;
 }
 
 const noFilterBoolean: Rule = {
@@ -168,25 +209,27 @@ const noSetSpreadUniq: Rule = {
   },
   create(context) {
     return {
-      // `[...new Set(x)]`
+      // `[...new Set(x)]`, and nothing else in the literal.
       ArrayExpression(node) {
-        const elements = readNodes(node, "elements");
+        const elements = readNodesWithHoles(node, "elements");
         const only = elements.length === 1 ? elements[0] : undefined;
         if (
           only?.type === "SpreadElement" &&
-          isNewSet(readNode(only, "argument"))
+          isDedupeSet(readNode(only, "argument"))
         ) {
           context.report({ node, messageId: "noSetSpreadUniq" });
         }
       },
 
-      // `Array.from(new Set(x))`, with or without a mapping function.
+      // `Array.from(new Set(x))`. `Array.from(new Set(x), fn)` maps as it
+      // reads, which `uniq` does not do, so it is left alone.
       CallExpression(node) {
         if (!isNamespacedCall(node, "Array", "from")) {
           return;
         }
 
-        if (isNewSet(readNodes(node, "arguments")[0])) {
+        const args = readNodes(node, "arguments");
+        if (args.length === 1 && isDedupeSet(args[0])) {
           context.report({ node, messageId: "noSetSpreadUniq" });
         }
       },
@@ -198,7 +241,7 @@ const noEntriesRoundTrip: Rule = {
   meta: {
     messages: {
       noEntriesRoundTrip:
-        "Use mapValues, pickBy or omitBy from es-toolkit/object.",
+        "Use mapValues, pickBy or omitBy from es-toolkit/object. Those helpers assign result[key] = value, so an object that can carry an own __proto__ key, such as stored JSON or a webhook body, keeps Object.fromEntries with a disable comment.",
     },
   },
   create(context) {
@@ -237,14 +280,32 @@ const noConditionalSpread: Rule = {
   meta: {
     messages: {
       noConditionalSpread:
-        "Use omitUndefined from @wfgraph/shared/utils/omit-undefined, or omitBy with isNil from es-toolkit/object when null must go too.",
+        "Use omitUndefined from @wfgraph/shared/utils/omit-undefined, or omitBy from es-toolkit/object with isNil from es-toolkit/predicate when null must go too. Inside a literal that spreads a base object, spread omitUndefined({ ... }) after the base.",
     },
   },
   create(context) {
     return {
-      SpreadElement(node) {
-        const argument = readNode(node, "argument");
+      ObjectExpression(node) {
+        // Only the first spread in the literal is a candidate. A spread that
+        // follows another one sits on top of a base object, and wrapping the
+        // whole literal in omitUndefined would delete the base's value for the
+        // key; the fix there is omitUndefined around the added keys alone.
+        const spread = readNodes(node, "properties").find(
+          (property) => property.type === "SpreadElement"
+        );
+        if (spread === undefined) {
+          return;
+        }
+
+        const argument = readNode(spread, "argument");
         if (argument?.type !== "ConditionalExpression") {
+          return;
+        }
+
+        // The shape omitUndefined replaces: one arm is the empty object, and
+        // the test is an undefined check rather than a truthiness check. A
+        // truthy test also drops "" and 0, which omitUndefined keeps.
+        if (!isUndefinedComparison(readNode(argument, "test"))) {
           return;
         }
 
@@ -252,7 +313,7 @@ const noConditionalSpread: Rule = {
           isEmptyObjectLiteral(readNode(argument, "consequent")) ||
           isEmptyObjectLiteral(readNode(argument, "alternate"))
         ) {
-          context.report({ node, messageId: "noConditionalSpread" });
+          context.report({ node: spread, messageId: "noConditionalSpread" });
         }
       },
     };
@@ -276,8 +337,12 @@ const noLocaleCompare: Rule = {
   },
 };
 
-/** The function names a hand-rolled plain-object guard is given. */
-const objectGuardNames = new Set(["isJsonObject", "isPlainObject", "isRecord"]);
+/**
+ * The function names a hand-rolled plain-object guard is given. `isRecord` is
+ * not one of them: a record here is a database row, and a guard by that name is
+ * usually about a row rather than about a plain object.
+ */
+const objectGuardNames = new Set(["isJsonObject", "isPlainObject"]);
 
 /** The value types a hand-rolled `Record` predicate narrows to. */
 const wideValueTypes = new Set(["TSUnknownKeyword", "TSAnyKeyword"]);
@@ -335,9 +400,6 @@ const noHandRolledObjectGuard: Rule = {
   },
 };
 
-/** The flag names a loop uses to record that it changed something. */
-const changedFlagNames = new Set(["changed", "dirty", "mutated"]);
-
 const noChangedFlag: Rule = {
   meta: {
     messages: {
@@ -346,9 +408,25 @@ const noChangedFlag: Rule = {
     },
   },
   create(context) {
+    // The declarations that open a `for` loop. A loop counter is the one place
+    // this flag is not standing in for mapOrSame, and a visitor reaches the
+    // ForStatement before the declaration in its initializer, so recording the
+    // initializer's offsets here is enough to skip it.
+    const loopInitializers = new Set<string>();
+
     return {
+      ForStatement(node) {
+        const init = readNode(node, "init");
+        if (init?.type === "VariableDeclaration") {
+          loopInitializers.add(rangeKey(init));
+        }
+      },
+
       VariableDeclaration(node) {
-        if (readString(node, "kind") !== "let") {
+        if (
+          readString(node, "kind") !== "let" ||
+          loopInitializers.has(rangeKey(node))
+        ) {
           return;
         }
 
@@ -357,9 +435,11 @@ const noChangedFlag: Rule = {
           const init = readNode(declaration, "init");
           const name = id === undefined ? undefined : readString(id, "name");
 
+          // `changed` alone. `dirty` is this repository's word for an edit not
+          // yet saved, which is state a person acts on rather than a flag one
+          // traversal sets and the next reads.
           if (
-            name !== undefined &&
-            changedFlagNames.has(name) &&
+            name === "changed" &&
             init?.type === "Literal" &&
             readField(init, "value") === false
           ) {
@@ -375,16 +455,16 @@ const noChangedFlag: Rule = {
 const rejectedParameterNames = new Set(["ctx", "opts", "params", "args"]);
 
 /**
- * The node types that carry a parameter list. An arrow function, a method
- * signature and a bare function type all hold the same `params` array.
+ * The node types that carry a parameter list this rule names. A class method
+ * and an object method are both FunctionExpression, so all three entries are
+ * implementations. A parameter in a type position (TSFunctionType,
+ * TSMethodSignature, TSDeclareFunction) is left alone, because the name there
+ * mirrors the callback shape a library documents.
  */
 const functionNodeTypes = [
   "FunctionDeclaration",
   "FunctionExpression",
   "ArrowFunctionExpression",
-  "TSDeclareFunction",
-  "TSFunctionType",
-  "TSMethodSignature",
 ];
 
 const parameterNames: Rule = {
@@ -396,9 +476,6 @@ const parameterNames: Rule = {
   create(context) {
     function checkParameters(node: AstNode): void {
       for (const param of readNodes(node, "params")) {
-        // A rest parameter forwards a whole argument list rather than naming
-        // one object, and `...args` is the idiom for that, so this rule
-        // exempts it.
         if (param.type === "RestElement") {
           continue;
         }
@@ -424,6 +501,88 @@ const parameterNames: Rule = {
   },
 };
 
+/** The source of an import declaration, when it is a plain string. */
+function importSource(node: AstNode): string | undefined {
+  const source = readNode(node, "source");
+  return source === undefined ? undefined : readString(source, "value");
+}
+
+/**
+ * These two rules replace `no-restricted-imports` entries. An override replaces
+ * that rule's options wholesale rather than merging them, so each entry had to
+ * be repeated in every override that set the rule, and a file whose override
+ * turned it off lost them. A plugin rule is set once at the root and every
+ * override keeps it.
+ */
+const esToolkitSubpath: Rule = {
+  meta: {
+    messages: {
+      esToolkitBare:
+        "Import from the es-toolkit subpath that holds the helper: es-toolkit/array, /object, /predicate, /string, /function, /promise, /math, or /fp.",
+      esToolkitCompat:
+        "es-toolkit/compat is the lodash compatibility shim. Every helper has a typed home under another es-toolkit subpath.",
+    },
+  },
+  create(context) {
+    return {
+      ImportDeclaration(node) {
+        const source = importSource(node);
+        if (source === "es-toolkit") {
+          context.report({ node, messageId: "esToolkitBare" });
+        } else if (source === "es-toolkit/compat") {
+          context.report({ node, messageId: "esToolkitCompat" });
+        }
+      },
+    };
+  },
+};
+
+/** The two names Effect exports that this repository takes from es-toolkit. */
+const effectPipeNames = new Set(["pipe", "flow"]);
+
+const noEffectPipeImport: Rule = {
+  meta: {
+    messages: {
+      noEffectPipeImport:
+        "Compose an Effect with Effect.gen and the .pipe method. The bare names pipe and flow belong to es-toolkit/fp.",
+    },
+  },
+  create(context) {
+    return {
+      ImportDeclaration(node) {
+        // A type-only import calls nothing, so it is not what this rule is
+        // aimed at, whether the whole declaration or the one specifier says
+        // `type`.
+        if (
+          importSource(node) !== "effect" ||
+          readString(node, "importKind") === "type"
+        ) {
+          return;
+        }
+
+        for (const specifier of readNodes(node, "specifiers")) {
+          if (
+            specifier.type !== "ImportSpecifier" ||
+            readString(specifier, "importKind") === "type"
+          ) {
+            continue;
+          }
+
+          const imported = readNode(specifier, "imported");
+          const name =
+            imported === undefined ? undefined : readString(imported, "name");
+          if (name !== undefined && effectPipeNames.has(name)) {
+            context.report({
+              node: specifier,
+              messageId: "noEffectPipeImport",
+            });
+          }
+        }
+      },
+    };
+  },
+};
+
 const plugin = {
   meta: { name: "wfgraph" },
   rules: {
@@ -435,6 +594,8 @@ const plugin = {
     "no-hand-rolled-object-guard": noHandRolledObjectGuard,
     "no-changed-flag": noChangedFlag,
     "parameter-names": parameterNames,
+    "es-toolkit-subpath": esToolkitSubpath,
+    "no-effect-pipe-import": noEffectPipeImport,
   },
 };
 

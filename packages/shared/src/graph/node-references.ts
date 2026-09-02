@@ -54,12 +54,12 @@ import type {
 export type ReferenceField = {
   path: string;
   /** The author's own words for the field, absent when they wrote none. */
-  description?: string;
-  type?: WorkflowSchemaFieldType;
-  valueType?: WorkflowSchemaItemType;
-  nullable?: boolean;
-  enumValues?: string[];
-  showWhen?: ShowWhen;
+  description?: string | undefined;
+  type?: WorkflowSchemaFieldType | undefined;
+  valueType?: WorkflowSchemaItemType | undefined;
+  nullable?: boolean | undefined;
+  enumValues?: string[] | undefined;
+  showWhen?: ShowWhen | undefined;
 };
 
 /**
@@ -84,7 +84,9 @@ function schemaFieldToReferenceField(
 
   return omitUndefined({
     path,
-    description,
+    // A description of nothing but whitespace says no more than a missing one,
+    // so the key is dropped rather than emitted as an empty string.
+    description: description || undefined,
     type: field.type,
     valueType: field.valueType,
     nullable: nullable ? true : undefined,
@@ -532,10 +534,8 @@ function readKey(
   value: JsonValue | undefined,
   key: string
 ): JsonValue | undefined {
-  return value !== undefined && isJsonObject(value)
-    ? Object.hasOwn(value, key)
-      ? value[key]
-      : undefined
+  return isJsonObject(value) && Object.hasOwn(value, key)
+    ? value[key]
     : undefined;
 }
 

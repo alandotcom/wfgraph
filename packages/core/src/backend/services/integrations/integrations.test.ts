@@ -21,6 +21,7 @@ import {
   ENCRYPTION_KEY_MISMATCH_MESSAGE,
   EncryptionKeyMismatch,
 } from "#src/backend/services/integrations/cipher";
+import { SECRET_MASK } from "#src/backend/services/integrations/integration-config-masking";
 import {
   OAUTH_GRANT_CONFIG_KEY,
   serializeStoredOAuthGrant,
@@ -188,6 +189,32 @@ describe("integration service secret handling", () => {
         assert.strictEqual(integration.config.SLACK_API_KEY, "********");
         assert.strictEqual(integration.config.SLACK_TEAM_ID, "team-old");
         assert.notProperty(integration, "configRevision");
+      })
+    );
+
+    it.effect("keeps a stored config key named __proto__", () =>
+      Effect.gen(function* () {
+        // A stored config is JSON a host wrote, so it can carry a key that
+        // names a prototype member. Rebuilt through `result[key] = value` such
+        // a key reaches the prototype setter and the value disappears.
+        const repo = makeIntegrationRepo({
+          ...storedSlackIntegration,
+          config: Object.fromEntries([
+            ["SLACK_TEAM_ID", "team-old"],
+            ["__proto__", "kept"],
+          ]),
+        });
+
+        const integration = yield* getIntegration("int_1").pipe(
+          Effect.provide(Layer.mergeAll(repo.layer, slackCatalog))
+        );
+
+        assert.isTrue(Object.hasOwn(integration.config, "__proto__"));
+        assert.strictEqual(
+          Object.getOwnPropertyDescriptor(integration.config, "__proto__")
+            ?.value,
+          SECRET_MASK
+        );
       })
     );
 

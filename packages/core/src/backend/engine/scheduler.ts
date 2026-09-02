@@ -453,7 +453,11 @@ export class NodeScheduler {
         `${nodeName} (${kind}) ${status} ${elapsedMs}ms`
       ).pipe(
         Effect.annotateLogs({
-          node: {
+          // The pretty formatter prints a `key=value` pair for every key of the
+          // group, so a key holding `undefined` reaches the reader as
+          // `error=undefined`. An unconfigured node's missing action type and a
+          // successful node's missing failure are absent keys instead.
+          node: omitUndefined({
             id: nodeId,
             name: nodeName,
             type: node.data.type,
@@ -461,7 +465,7 @@ export class NodeScheduler {
             status,
             ms: elapsedMs,
             ...extra,
-          },
+          }),
         })
       );
     };

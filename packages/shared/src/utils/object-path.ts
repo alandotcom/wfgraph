@@ -94,8 +94,7 @@ export function setValueByPath(
     const existing = Object.hasOwn(current, segment)
       ? current[segment]
       : undefined;
-    const next =
-      existing !== undefined && isJsonObject(existing) ? existing : {};
+    const next = isJsonObject(existing) ? existing : {};
     current[segment] = next;
     current = next;
   }

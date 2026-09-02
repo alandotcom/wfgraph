@@ -79,9 +79,11 @@ export type ActionMetadata = {
 export type CredentialFieldMetadata = {
   readonly label: string;
   readonly type: "text" | "password" | "url";
-  readonly placeholder?: string;
-  readonly helpText?: string;
-  readonly helpLink?: { readonly text: string; readonly url: string };
+  readonly placeholder?: string | undefined;
+  readonly helpText?: string | undefined;
+  readonly helpLink?:
+    | { readonly text: string; readonly url: string }
+    | undefined;
 };
 
 /**

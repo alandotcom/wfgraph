@@ -34,10 +34,12 @@ const slackCredentialFields = {
 export type SlackCredentials = CredentialsOf<typeof slackCredentialFields>;
 
 export type SlackOptions = {
-  oauthClient?: {
-    clientId: string | undefined;
-    clientSecret: string | undefined;
-  };
+  oauthClient?:
+    | {
+        clientId: string | undefined;
+        clientSecret: string | undefined;
+      }
+    | undefined;
 };
 
 type SlackTestBehavior = "log_only" | "send_message";

@@ -50,9 +50,8 @@ export type ReplayRunOptions = {
   /** Invocation ceiling, which turns a non-converging graph into a failure. */
   maxInvocations?: number | undefined;
   /**
-   * The body a branch hand-off starts. Left out, the runtime offers no
-   * `startBranch` at all, which is what the engine reads as "run the Wait
-   * here".
+   * The body a branch hand-off starts. Left out, the runtime's `startBranch`
+   * holds `undefined`, which the engine reads as "run the Wait here".
    */
   branch?: (
     runtime: WorkflowExecutionRuntime,

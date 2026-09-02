@@ -251,10 +251,15 @@ export function createApiApp(options: CreateApiAppOptions) {
     const procedure = rpcProcedureOf(path);
     const event = createRequestEvent();
     c.set("wfgraphRequestEvent", event);
-    event.set({
-      http: { method, path: logPath },
-      rpc: procedure === null ? undefined : { procedure },
-    });
+    // A request addressing no procedure carries no `rpc` group at all: the
+    // record's fields are printed one line per key, so a key holding
+    // `undefined` would put a bare `rpc: undefined` line on every page view.
+    event.set(
+      omitUndefined({
+        http: { method, path: logPath },
+        rpc: procedure === null ? undefined : { procedure },
+      })
+    );
 
     try {
       await next();

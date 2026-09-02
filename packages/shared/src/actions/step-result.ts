@@ -34,7 +34,7 @@ export type StepError = { message: string };
  * the serialization boundary and every consumer needs to narrow it.
  */
 export type StepResult<TData = unknown> =
-  | { success: true; data?: TData }
+  | { success: true; data?: TData | undefined }
   | { success: false; error: StepError };
 
 /**

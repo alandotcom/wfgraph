@@ -1,6 +1,5 @@
 import { Effect, Result } from "effect";
 import { mapValues, omitBy } from "es-toolkit/object";
-import { isNil } from "es-toolkit/predicate";
 import {
   AppLogger,
   type EffectLogger,
@@ -208,9 +207,11 @@ function toIntegrationWithConfig(
     config: maskIntegrationConfig(
       catalog,
       input.type,
-      omitBy(
-        input.config,
-        (_, key) => key === OAUTH_GRANT_CONFIG_KEY || managedKeys.has(key)
+      // oxlint-disable-next-line wfgraph/no-entries-round-trip -- a stored integration config is JSON a host wrote, so it can carry an own __proto__ key. omitBy assigns result[key] = value, which would reach the prototype setter and lose the key.
+      Object.fromEntries(
+        Object.entries(input.config).filter(
+          ([key]) => key !== OAUTH_GRANT_CONFIG_KEY && !managedKeys.has(key)
+        )
       )
     ),
   };
@@ -389,7 +390,7 @@ export const putIntegration = Effect.fn("putIntegration")(function* (
 
   const updatePayload =
     mergedConfig === undefined
-      ? omitBy({ name: body.name }, isNil)
+      ? omitUndefined({ name: body.name })
       : omitUndefined({
           name: body.name,
           config: mergedConfig,

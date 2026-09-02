@@ -26,6 +26,10 @@ describe("isJsonObject", () => {
     expect(isJsonObject("value")).toBe(false);
   });
 
+  it("answers false for undefined", () => {
+    expect(isJsonObject(undefined)).toBe(false);
+  });
+
   it("answers true for an object", () => {
     expect(isJsonObject({})).toBe(true);
   });

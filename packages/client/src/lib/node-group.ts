@@ -3,8 +3,7 @@
  * size, and React Flow parent constraints. Analysis lives in shared.
  */
 
-import { countBy, groupBy, uniqBy } from "es-toolkit/array";
-import { isEmptyObject } from "es-toolkit/predicate";
+import { countBy, uniqBy } from "es-toolkit/array";
 import { nanoid } from "nanoid";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { toast } from "sonner";
@@ -182,15 +181,18 @@ export function layoutGroupChildren(
     (node): node is WorkflowNode & { parentId: string } =>
       node.parentId !== undefined && node.parentId !== ""
   );
-  const byParent = groupBy(nested, (node) => node.parentId);
+  // A Map rather than a groupBy record: `parentId` comes from the persisted
+  // graph, and a plain object files a frame named `__proto__` onto the
+  // prototype, where its children are never laid out.
+  const byParent = Map.groupBy(nested, (node) => node.parentId);
 
-  if (isEmptyObject(byParent)) {
+  if (byParent.size === 0) {
     return nodes;
   }
 
   const childById = new Map<string, WorkflowNode>();
   const sizeByGroup = new Map<string, { width: number; height: number }>();
-  for (const [groupId, children] of Object.entries(byParent)) {
+  for (const [groupId, children] of byParent) {
     const group = nodes.find((node) => node.id === groupId);
     const memberIds = children.map((child) => child.id);
     const memberSet = new Set(memberIds);

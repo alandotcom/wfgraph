@@ -20,4 +20,9 @@ describe("canonicalizeNodeEnabled", () => {
     });
     expect(canonicalizeNodeEnabled({})).toEqual({});
   });
+
+  it("drops a present enabled key holding undefined", () => {
+    const canonical = canonicalizeNodeEnabled({ enabled: undefined });
+    expect(Object.hasOwn(canonical, "enabled")).toBe(false);
+  });
 });

@@ -25,14 +25,14 @@ export type ConfigOptionChoice = {
 export type ConfigOptionField = {
   readonly key: string;
   readonly label: string;
-  readonly defaultValue?: string;
-  readonly description?: string;
-  readonly type?: "string" | "number";
+  readonly defaultValue?: string | undefined;
+  readonly description?: string | undefined;
+  readonly type?: "string" | "number" | undefined;
   /**
    * Whether the provider needs a value here. A field with a `defaultValue`
    * never is, because leaving it alone is what asks for that default.
    */
-  readonly required?: boolean;
+  readonly required?: boolean | undefined;
 };
 
 /**

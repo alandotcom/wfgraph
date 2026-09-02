@@ -78,7 +78,7 @@ export function normalizeSemanticValue(
 
 function normalizedObject(value: Record<string, unknown>): JsonObject {
   const normalized = normalizeSemanticValue(value);
-  if (normalized === undefined || !isJsonObject(normalized)) {
+  if (!isJsonObject(normalized)) {
     throw new Error("Expected semantic projection to produce an object");
   }
   return normalized;

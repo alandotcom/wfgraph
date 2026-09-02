@@ -126,10 +126,9 @@ type ActionInputSide<TCredentials, TInput, TOutput> = {
   /** When true, the editor's action picker omits this action. */
   readonly hidden?: boolean | undefined;
   readonly input: InputSchema<TInput>;
-  readonly configFields?: readonly ActionConfigFieldFor<
-    TInput,
-    keyof TCredentials & string
-  >[];
+  readonly configFields?:
+    | readonly ActionConfigFieldFor<TInput, keyof TCredentials & string>[]
+    | undefined;
   readonly handler: (
     bag: StepBag<NoInfer<TInput>, TCredentials>
   ) => HandlerAnswer<TOutput>;

@@ -54,7 +54,11 @@ import {
 } from "#src/lib/workflow-ui-store";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
+import {
+  COMPARISON_NODE_ANNOTATION,
+  type WorkflowEdge,
+  type WorkflowNode,
+} from "#src/lib/workflow-graph-types";
 import { savedWorkflow } from "./workflow-save-test-support";
 import { PASTE_OFFSET } from "#src/lib/copy-selection";
 import { formatTemplateToken } from "@wfgraph/shared/graph/node-references";
@@ -804,6 +808,54 @@ describe("displayNodesAtom memoization", () => {
     expect(store.get(displayNodesAtom).map((node) => node.id)).toEqual([
       "draft",
     ]);
+  });
+});
+
+/**
+ * A painted node is the stored node with run status, the disabled-frame flag,
+ * and the issue summary laid over it. Everything else the stored node carries
+ * has to survive that, including the keys the paint itself is named after and
+ * the symbol the comparison view stamps on.
+ */
+describe("displayNodesAtom keeps what the stored node already carries", () => {
+  it("leaves a disabled step disabled while a run is painted", () => {
+    const disabled: WorkflowNode = {
+      ...actionNode("a"),
+      data: { label: "a", type: "action", enabled: false },
+    };
+    const store = createGraphStore([lifecycleNode("t"), disabled]);
+
+    store.set(setNodeStatusesAtom, [{ nodeId: "a", status: "running" }]);
+
+    const painted = store.get(displayNodesAtom).find((node) => node.id === "a");
+    expect(painted?.data.enabled).toBe(false);
+    expect(painted?.data.status).toBe("running");
+  });
+
+  it("keeps the comparison marker on a frame it repaints as disabled", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(workflowWorkspaceViewAtom, "changes");
+    const child: WorkflowNode = {
+      ...groupedChild("a", "g"),
+      data: { label: "a", type: "action", enabled: false },
+    };
+    openComparison(store, {
+      ...comparisonPayload,
+      baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+      draftGraph: createSerializedWorkflowGraph({
+        nodes: [groupNode("g", "a", "a"), child],
+        edges: [],
+      }),
+      nodeChanges: [{ nodeId: "g", kind: "modified", fields: [] }],
+    });
+
+    // Every member of the frame is disabled, so the frame is painted disabled,
+    // and that repaint is where the marker used to be dropped.
+    const frame = store.get(displayNodesAtom).find((node) => node.id === "g");
+    expect(frame?.data.enabled).toBe(false);
+    expect(frame?.data[COMPARISON_NODE_ANNOTATION]).toEqual({
+      kind: "modified",
+    });
   });
 });
 

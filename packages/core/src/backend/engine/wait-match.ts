@@ -163,9 +163,12 @@ export function compileWaitSubscriptions(input: {
   const subscriptions: CompiledWaitSubscription[] = [];
 
   for (const subscription of input.subscriptions) {
+    // A blank Connection is one nobody picked, and it is stored as no key at
+    // all: `connectionMatches` reads a stored blank as a Connection of its own,
+    // and the wait would then wake on no arrival.
     const base: CompiledWaitSubscription = omitUndefined({
       event: subscription.event,
-      connectionId: subscription.connectionId,
+      connectionId: subscription.connectionId || undefined,
     });
 
     if (subscription.match === undefined || isBlank(subscription.match)) {

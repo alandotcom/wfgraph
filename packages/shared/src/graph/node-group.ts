@@ -6,7 +6,6 @@
  */
 
 import { groupBy, uniqBy } from "es-toolkit/array";
-import { compact, countBy, map, pipe } from "es-toolkit/fp";
 import { normalizeConditionBranch } from "#src/conditions/condition-branch";
 import { type ExtensionCatalog, findAction } from "#src/extensions/catalog";
 import {
@@ -548,17 +547,18 @@ function isRestGroupsChildrenOrder(nodes: readonly GroupGraphNode[]): boolean {
 }
 
 export function undersizedGroupIds(nodes: readonly GroupGraphNode[]): string[] {
-  // A group with no children is absent from the counts, so each read falls
-  // back to 0.
-  const childCount = pipe(
-    nodes,
-    map((node: GroupGraphNode) => node.parentId),
-    compact(),
-    countBy((parentId) => parentId)
-  );
+  // A Map rather than a countBy record: `parentId` comes from the persisted
+  // graph, and a plain object would answer a group named `constructor` with a
+  // prototype member instead of undefined.
+  const childCount = new Map<string, number>();
+  for (const node of nodes) {
+    if (node.parentId) {
+      childCount.set(node.parentId, (childCount.get(node.parentId) ?? 0) + 1);
+    }
+  }
 
   return nodes
-    .filter((node) => isGroupNode(node) && (childCount[node.id] ?? 0) < 2)
+    .filter((node) => isGroupNode(node) && (childCount.get(node.id) ?? 0) < 2)
     .map((node) => node.id);
 }
 

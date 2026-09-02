@@ -11,8 +11,12 @@
  * cannot carry one. `details` is whatever the vendor said, for the log line only.
  */
 export type IntegrationTestResult =
-  | { success: true; details?: Record<string, unknown> }
-  | { success: false; error: string; details?: Record<string, unknown> };
+  | { success: true; details?: Record<string, unknown> | undefined }
+  | {
+      success: false;
+      error: string;
+      details?: Record<string, unknown> | undefined;
+    };
 
 /**
  * Where each credential came from, which the values themselves do not say.

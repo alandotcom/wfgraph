@@ -10,7 +10,6 @@
  * answers from their exact click-time graph snapshot.
  */
 
-import { groupBy } from "es-toolkit/array";
 import { atom } from "jotai";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import {
@@ -75,10 +74,13 @@ export function collectAllWorkflowIssues(input: {
  * bail out of rendering. Built here it changes only when the issues do.
  */
 export const workflowIssuesByNodeIdAtom = atom((get) => {
-  const byNode = groupBy(get(workflowIssuesAtom), (issue) => issue.nodeId);
+  // A Map rather than a groupBy record: a node id is minted by the API or by
+  // the build agent, and a plain object files an id of `__proto__` onto the
+  // prototype, where the badge for that node is lost.
+  const byNode = Map.groupBy(get(workflowIssuesAtom), (issue) => issue.nodeId);
 
   const next = new Map(
-    Object.entries(byNode).map(([nodeId, forNode]) => {
+    [...byNode].map(([nodeId, forNode]) => {
       // Reuse the last summary for a node whose own issues have not changed.
       // The list changes whenever any node does, so without this, filling in
       // one field would hand every other flagged node a new summary, miss the

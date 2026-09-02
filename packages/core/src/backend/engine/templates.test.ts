@@ -199,6 +199,31 @@ describe("processTemplates over a JSON object of authored values", () => {
     expect(processed.vars).toBe("just Ada text");
   });
 
+  it("resolves every value of an object carrying an own __proto__ key", () => {
+    const outputs = outputsWith({ name: "Ada" });
+    const authored = JSON.stringify(
+      Object.fromEntries([
+        ["__proto__", "{{@n1:Lead.name}}"],
+        ["channel", "C1"],
+      ])
+    );
+
+    const processed = processTemplates(
+      { vars: authored },
+      outputs,
+      new Set(),
+      new Map([["vars", "provider-fields" as const]])
+    );
+
+    // A key the resolver dropped would hand the step an object missing one of
+    // the variables the builder filled in.
+    const resolved: unknown = JSON.parse(String(processed.vars));
+    expect(Object.keys(resolved as object)).toEqual(["__proto__", "channel"]);
+    expect(Object.getOwnPropertyDescriptor(resolved, "__proto__")?.value).toBe(
+      "Ada"
+    );
+  });
+
   it("leaves a literal key alone even when it names a template object", () => {
     const outputs = outputsWith({ name: "Ada" });
     const authored = JSON.stringify({ NAME: "{{@n1:Lead.name}}" });

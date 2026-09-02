@@ -128,8 +128,13 @@ export function readJsonValue(value: unknown): JsonValue | null {
  * es-toolkit's `isPlainObject` cannot do this job: it is typed
  * `value is Record<PropertyKey, any>`, and a JSON array is assignable to that,
  * so it narrows a `JsonValue` to a type that still admits an array.
+ *
+ * `undefined` is accepted and answers false, because a walk over a JSON tree
+ * reaches a missing key before it reaches a value.
  */
-export function isJsonObject(value: JsonValue): value is JsonObject {
+export function isJsonObject(
+  value: JsonValue | undefined
+): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 

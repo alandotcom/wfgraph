@@ -4,9 +4,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { orderBy } from "es-toolkit/array";
 import { Effect } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { compareText } from "@wfgraph/shared/types/string";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { PersistenceTestRegistry } from "#src/backend/persistence/conformance/support";
@@ -252,14 +252,15 @@ export function describeWorkflowConformance({
           }),
         ])
       );
-      const expected = orderBy(
-        [usage.first, usage.second],
-        [
-          (snapshot) => snapshot.publishedAt.getTime(),
-          (snapshot) => snapshot.id,
-        ],
-        ["desc", "desc"]
-      );
+      // The comparator mirrors the database's own ORDER BY, whose id tie-break
+      // is a text collation rather than code-unit order.
+      const expected = [usage.first, usage.second].toSorted((left, right) => {
+        const byPublishedAt =
+          right.publishedAt.getTime() - left.publishedAt.getTime();
+        return byPublishedAt === 0
+          ? compareText(right.id, left.id)
+          : byPublishedAt;
+      });
       expect(usage.usage.map((item) => item.id)).toEqual(
         expected.map((snapshot) => snapshot.id)
       );

@@ -137,8 +137,7 @@ id and set `hidden: true` on the old one so the picker drops it while runs keep 
 `JsonObject`. Anything walking a value that arrived as JSON takes one of them, and narrowing
 is then plain language checks, or `isJsonObject` from that same module where the check would
 otherwise be written a second time. Never a fresh `value is Record<string, unknown>`
-predicate: es-toolkit's `isPlainObject` is typed that way and a JSON array is assignable to
-it, so it leaves the array arm in the narrowed type.
+predicate, and never es-toolkit's `isPlainObject`; that module's header says why.
 
 **Effect Schema is the only schema library** inside `packages/`, and
 `packages/shared/src/types/schema.ts` holds the three names most of the repo needs:
@@ -376,27 +375,37 @@ is the one home of the seven core entry points.
   operators stay namespaced (`Effect.map`, `Option.map`), so a file using both reads
   unambiguously.
 - `exactOptionalPropertyTypes` is on in `tsconfig.json`, so a target declared `k?: T`
-  refuses a `k` holding `undefined`. Dropping keys: `omitUndefined`
+  refuses a `k` holding `undefined` (ADR-0017). An internal type writes
+  `k?: T | undefined`, and so does every type an adopter passes a value into.
+  Dropping keys: `omitUndefined`
   (`packages/shared/src/utils/omit-undefined.ts`) when the key
   must be absent and the required keys must stay required; `omitBy(..., isNil)` when `null`
   must go too, which is what an outbound HTTP payload needs. A conditional spread
   `...(x === undefined ? {} : { k: x })` is not written here.
 - `groupBy`, `keyBy`, `countBy` and `partition` over pushing into a `Map` or into parallel
-  arrays. Two exceptions stay a `Map`: state a traversal mutates while it runs, such as
-  in-degree counts and adjacency in a topological pass; and a lookup table read with a key
-  that is arbitrary text, such as a node id or a field path taken from a template token,
-  because a plain object answers `constructor` or `toString` with a prototype member.
+  arrays. Two exceptions stay a `Map`. The first is state a traversal mutates while it
+  runs, such as in-degree counts and adjacency in a topological pass. The second is any
+  grouping or lookup whose key can be text a person or an agent chose: a node id, a parent
+  id, a label, a field key, a path taken from a template token. A plain object answers
+  `constructor` with a prototype member and swallows a `__proto__` assignment, and
+  es-toolkit builds its result on a plain object, so those keys stay a `Map`. Keys a
+  developer declared, such as an enum member or an integration type from the catalog, may
+  use the es-toolkit helpers. The sites the rule protects are
+  `packages/client/src/lib/workflow-node-placement.ts`,
+  `packages/core/src/backend/extensions/steps/config-form.ts`,
+  `packages/core/src/backend/services/workflows/validation/workflow-template-validation.ts`,
+  `packages/evals/src/agent/judges/semantics.ts`,
+  `packages/client/src/components/workflow/config/condition-field-combobox.tsx`,
+  `packages/shared/src/graph/node-group.ts` and
+  `packages/shared/src/graph/workflow-issues.ts`.
 - `sortBy` and `orderBy` for numeric and identifier keys; `compareText`
-  (`packages/shared/src/types/string.ts`) for text a person reads, which is the one place
-  `localeCompare` is written.
+  (`packages/shared/src/types/string.ts`) for text a person reads.
 - `compact` and `isNotNil` over `filter(Boolean)` and `filter((x) => x !== undefined)`.
   Write `compact(rules.map(...))` where a rule returns `undefined` for the cases it does
   not report.
 - `isBlank` (`packages/shared/src/types/string.ts`) over `.trim().length === 0`.
-- No `let changed` flag beside a `map`: `mapOrSame` and `mapValuesOrSame`
-  (`packages/shared/src/utils/map-or-same.ts`) return the input itself when every element
-  mapped to itself, so a reconcile running during render compares references and writes no
-  state.
+- No `let changed` flag beside a `map`: reach for `mapOrSame` or `mapValuesOrSame`
+  (`packages/shared/src/utils/map-or-same.ts`), so a caller can compare references.
 - The first object parameter is `input`, a trailing optional object is `options`, and a
   context is `context`. `ctx`, `args`, `params` and `opts` are not parameter names here.
   A rest parameter stays `...args`.

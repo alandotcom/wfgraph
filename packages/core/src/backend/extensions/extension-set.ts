@@ -12,7 +12,6 @@
  * slug is a record key the definition never spells out twice.
  */
 
-import { countBy } from "es-toolkit/array";
 import { isBlank } from "@wfgraph/shared/types/string";
 import type {
   ActionMetadata,
@@ -132,6 +131,30 @@ function indexEvents(
 }
 
 /**
+ * The first key two of these items share, or undefined when every key is its own.
+ *
+ * A Set rather than a counted record: the key is an action id or an integration
+ * type an adopter wrote, so it can be `constructor` or `__proto__`, which a
+ * plain object answers with a prototype member.
+ */
+function firstDuplicate<T>(
+  items: readonly T[],
+  keyOf: (item: T) => string
+): string | undefined {
+  const seen = new Set<string>();
+
+  for (const item of items) {
+    const key = keyOf(item);
+    if (seen.has(key)) {
+      return key;
+    }
+    seen.add(key);
+  }
+
+  return undefined;
+}
+
+/**
  * Two actions may not share an id.
  *
  * The whole surface goes through this in one list, so a host action colliding with
@@ -140,12 +163,11 @@ function indexEvents(
  * implementation.
  */
 function assertDistinctActionIds(actions: readonly ActionMetadata[]): void {
-  const countById = countBy(actions, (action) => action.id);
-  const duplicate = Object.entries(countById).find(([, count]) => count > 1);
+  const duplicate = firstDuplicate(actions, (action) => action.id);
 
-  if (duplicate) {
+  if (duplicate !== undefined) {
     throw new Error(
-      `Two actions are defined with the id "${duplicate[0]}". An action id is "<integration>/<slug>" for an integration's action and whatever the host wrote for its own, and the engine dispatches on it, so it names one implementation.`
+      `Two actions are defined with the id "${duplicate}". An action id is "<integration>/<slug>" for an integration's action and whatever the host wrote for its own, and the engine dispatches on it, so it names one implementation.`
     );
   }
 }
@@ -234,12 +256,14 @@ function assertNoConnectionStampField(
 function assertDistinctIntegrationTypes(
   integrations: readonly IntegrationMetadata[]
 ): void {
-  const countByType = countBy(integrations, (integration) => integration.type);
-  const duplicate = Object.entries(countByType).find(([, count]) => count > 1);
+  const duplicate = firstDuplicate(
+    integrations,
+    (integration) => integration.type
+  );
 
-  if (duplicate) {
+  if (duplicate !== undefined) {
     throw new Error(
-      `Two integrations are defined with the type "${duplicate[0]}". The type keys an integration's stored credentials, so two of them would read each other's.`
+      `Two integrations are defined with the type "${duplicate}". The type keys an integration's stored credentials, so two of them would read each other's.`
     );
   }
 }
@@ -253,12 +277,14 @@ function toEventMetadata(
   event: RegisteredEvent,
   integration?: string
 ): EventMetadata {
+  // `|| undefined` rather than the value itself: a blank string is a member the
+  // author left empty, and the wire schema takes an absent key for it.
   return omitUndefined({
     name: event.name,
     label: event.label,
-    description: event.description,
-    correlationPath: event.correlationPath,
-    integration,
+    description: event.description || undefined,
+    correlationPath: event.correlationPath || undefined,
+    integration: integration || undefined,
     payloadFields: event.payloadFields,
   });
 }
@@ -299,7 +325,8 @@ function readIntegration(
         category: step.category,
         integration: integration.type,
         sideEffect: step.sideEffect,
-        hidden: step.hidden,
+        // An action the picker shows carries no `hidden` key at all.
+        hidden: step.hidden || undefined,
         configFields: step.configFields,
         outputFields,
       })
@@ -342,8 +369,8 @@ function readIntegration(
     credentialFields: integration.credentials,
     hasTest: integration.test !== undefined,
     hasWebhook: integration.webhook !== undefined,
-    webhookHelpText: integration.webhook?.helpText,
-    webhookSecretKey: integration.webhook?.secret,
+    webhookHelpText: integration.webhook?.helpText || undefined,
+    webhookSecretKey: integration.webhook?.secret || undefined,
     oauth: integration.oauth ? { label: integration.oauth.label } : undefined,
   });
 }
@@ -387,9 +414,10 @@ function readHostAction(action: ActionDefinition, into: Assembly): void {
       label: action.label,
       description: action.description,
       category: action.category,
-      logoUrl: action.logoUrl,
+      logoUrl: action.logoUrl || undefined,
       sideEffect: action.sideEffect,
-      hidden: action.hidden,
+      // An action the picker shows carries no `hidden` key at all.
+      hidden: action.hidden || undefined,
       configFields: action.configFields ?? [],
       outputFields: action.outputFields ?? [],
     })

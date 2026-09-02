@@ -16,7 +16,9 @@ import "@xyflow/react/dist/style.css";
 //
 // Every React Flow prop is restated as accepting `undefined`, because the
 // editor withholds a handler by passing `undefined` when the canvas is locked.
-// `Canvas` drops those keys before React Flow sees them.
+// `Canvas` drops those keys before React Flow sees them. The mapped type also
+// marks every prop optional, which loses nothing: `ReactFlowProps` declares no
+// required member today, so the two spellings describe the same set of props.
 type CanvasProps = {
   [Key in keyof ReactFlowProps<WorkflowNode>]?:
     | ReactFlowProps<WorkflowNode>[Key]

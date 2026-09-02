@@ -23,9 +23,9 @@ export type MissingRequiredFieldInfo = {
 type ActionConfigFieldBaseLike = {
   key: string;
   label: string;
-  required?: boolean;
-  showWhen?: ShowWhen;
-  type?: string;
+  required?: boolean | undefined;
+  showWhen?: ShowWhen | undefined;
+  type?: string | undefined;
 };
 
 type ActionConfigFieldGroupLike = {
@@ -38,8 +38,8 @@ type ActionConfigFieldLike =
   | ActionConfigFieldGroupLike;
 
 type ResolvedAction = {
-  label?: string;
-  configFields?: readonly ActionConfigFieldLike[];
+  label?: string | undefined;
+  configFields?: readonly ActionConfigFieldLike[] | undefined;
 };
 
 export type ResolveActionByType = (

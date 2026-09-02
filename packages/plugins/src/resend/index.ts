@@ -17,8 +17,6 @@ import {
   type JsonObject,
   StepFailure,
 } from "@wfgraph/core/plugin";
-import { omitBy } from "es-toolkit/object";
-import { isNil } from "es-toolkit/predicate";
 import { Effect, Result, Schema } from "effect";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
@@ -124,7 +122,7 @@ const sendEmailOutput = Schema.Struct({
    * here and on a `resend/email.delivered` payload. A repeated tag name folds
    * to one key, which is what the webhook does with it too.
    */
-  tags: Schema.optional(
+  tags: Schema.optionalKey(
     Schema.Record(Schema.String, Schema.String).annotate({
       description: "Email tags",
     })
@@ -159,7 +157,7 @@ const findEmailOutput = Schema.Struct({
   createdAt: isoTimestampString("Creation timestamp"),
   lastEvent: Schema.String.annotate({ description: "Latest email event" }),
   scheduledAt: Schema.NullOr(isoTimestampString("Scheduled send timestamp")),
-  tags: Schema.optional(
+  tags: Schema.optionalKey(
     Schema.Record(Schema.String, Schema.String).annotate({
       description: "Email tags",
     })
@@ -583,7 +581,7 @@ export const resend = defineIntegration({
         const tags = input.emailTags
           ? yield* readTags(input.emailTags)
           : undefined;
-        const tagOutput = omitBy({ tags: tagsByName(tags) }, isNil);
+        const tagOutput = omitUndefined({ tags: tagsByName(tags) });
 
         // A test run either sends nothing at all or sends to one address the
         // user nominated. Both answers are a success carrying the reason, so
@@ -713,7 +711,7 @@ export const resend = defineIntegration({
               createdAt: email.created_at.toISOString(),
               lastEvent: email.last_event,
               scheduledAt: email.scheduled_at?.toISOString() ?? null,
-              ...omitBy({ tags: tagsByName(email.tags) }, isNil),
+              ...omitUndefined({ tags: tagsByName(email.tags) }),
             })),
             Effect.mapError(
               (error) =>

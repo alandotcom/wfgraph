@@ -1,6 +1,8 @@
 import { groupBy, uniq } from "es-toolkit/array";
-import { compact, map, pipe } from "es-toolkit/fp";
-import { compareText } from "@wfgraph/shared/types/string";
+// The curried step, aliased because `uniq` above is the direct call this file
+// also makes.
+import { compact, map, pipe, uniq as uniqStep } from "es-toolkit/fp";
+import { compareText, isBlank } from "@wfgraph/shared/types/string";
 import {
   WORKFLOW_EXECUTION_START_SOURCES,
   WORKFLOW_EXECUTION_STATUSES,
@@ -220,7 +222,7 @@ function equalsField(run: RunHistorySearchRow, filter: RunFilter): boolean {
 
 function containsField(run: RunHistorySearchRow, filter: RunFilter): boolean {
   const actual = fieldValue(run, filter.field);
-  if (actual === null || filter.value.trim() === "") {
+  if (actual === null || isBlank(filter.value)) {
     return false;
   }
   return normalize(actual).includes(normalize(filter.value));
@@ -408,6 +410,7 @@ export function uniqueNonEmpty(
     // `compact` drops the empty string as well as null and undefined, so a
     // value of nothing but spaces goes with them.
     compact(),
-    (trimmed) => uniq(trimmed).toSorted(compareText)
+    uniqStep(),
+    (unique) => unique.toSorted(compareText)
   );
 }

@@ -1,10 +1,12 @@
-import { compact, groupBy } from "es-toolkit/array";
-import { mapValues } from "es-toolkit/object";
+import { compact } from "es-toolkit/array";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
 import { findAction } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
-import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import {
+  type LifecycleRules,
+  readLifecycleRules,
+} from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { readWaitSubscriptions } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { parseConditionModel } from "@wfgraph/shared/conditions/condition-schema";
 import { isBlank } from "@wfgraph/shared/types/string";
@@ -43,20 +45,29 @@ function selectorName(selector: EvalNodeSelector): string {
  */
 function adjacency(
   edges: readonly AgentEvalDocument["edges"][number][]
-): Record<string, string[]> {
-  return mapValues(
-    groupBy(edges, (edge) => edge.source),
-    (group) => group.map((edge) => edge.target)
-  );
+): ReadonlyMap<string, string[]> {
+  // A Map rather than a record: a node id is arbitrary text, and a plain object
+  // would answer `constructor` with a prototype member instead of undefined.
+  const targetsBySource = new Map<string, string[]>();
+  for (const edge of edges) {
+    const targets = targetsBySource.get(edge.source);
+    if (targets) {
+      targets.push(edge.target);
+    } else {
+      targetsBySource.set(edge.source, [edge.target]);
+    }
+  }
+  return targetsBySource;
 }
 
+/** Every node id these source nodes reach, the source ids included. */
 function reachableNodeIds(input: {
   sourceIds: readonly string[];
-  targetsBySource: Record<string, string[]>;
+  targetsBySource: ReadonlyMap<string, string[]>;
 }): Set<string> {
   const reached = new Set(input.sourceIds);
   const pending = input.sourceIds.flatMap(
-    (sourceId) => input.targetsBySource[sourceId] ?? []
+    (sourceId) => input.targetsBySource.get(sourceId) ?? []
   );
   while (pending.length > 0) {
     const nodeId = pending.shift();
@@ -64,7 +75,7 @@ function reachableNodeIds(input: {
       continue;
     }
     reached.add(nodeId);
-    pending.push(...(input.targetsBySource[nodeId] ?? []));
+    pending.push(...(input.targetsBySource.get(nodeId) ?? []));
   }
   return reached;
 }
@@ -82,9 +93,9 @@ type SemanticsContext = {
   nodeById: ReadonlyMap<string, WorkflowNode>;
   /** The nodes of the document the agent started from, keyed by node id. */
   initialNodeById: ReadonlyMap<string, WorkflowNode>;
-  targetsBySource: Record<string, string[]>;
+  targetsBySource: ReadonlyMap<string, string[]>;
   /** The Lifecycle Rules of the first lifecycle node, undefined when there is none. */
-  lifecycleRules: ReturnType<typeof readLifecycleRules>;
+  lifecycleRules: LifecycleRules | undefined;
   lifecycleIds: readonly string[];
 };
 
@@ -116,27 +127,19 @@ function countActions(context: SemanticsContext, actionId: string): number {
 /** True when some source node reaches some target node over any number of edges. */
 function hasPath(
   context: SemanticsContext,
-  source: EvalNodeSelector,
-  target: EvalNodeSelector
+  required: { source: EvalNodeSelector; target: EvalNodeSelector }
 ): boolean {
-  const targetIds = new Set(nodeIdsMatching(context, target));
+  const targetIds = nodeIdsMatching(context, required.target);
 
-  for (const sourceId of nodeIdsMatching(context, source)) {
-    const pending = [...(context.targetsBySource[sourceId] ?? [])];
-    const visited = new Set([sourceId]);
-    while (pending.length > 0) {
-      const nodeId = pending.shift();
-      if (nodeId === undefined || visited.has(nodeId)) {
-        continue;
-      }
-      if (targetIds.has(nodeId)) {
-        return true;
-      }
-      visited.add(nodeId);
-      pending.push(...(context.targetsBySource[nodeId] ?? []));
-    }
-  }
-  return false;
+  // The walk starts at the source's own targets, so a node that matches both
+  // selectors reaches itself only over a cycle.
+  return nodeIdsMatching(context, required.source).some((sourceId) => {
+    const downstream = reachableNodeIds({
+      sourceIds: context.targetsBySource.get(sourceId) ?? [],
+      targetsBySource: context.targetsBySource,
+    });
+    return targetIds.some((targetId) => downstream.has(targetId));
+  });
 }
 
 /**
@@ -145,11 +148,12 @@ function hasPath(
  * match; otherwise one satisfying node is enough.
  */
 function nodesSatisfy(
-  nodes: readonly WorkflowNode[],
-  allMatches: boolean | undefined,
+  context: SemanticsContext,
+  required: { node: EvalNodeSelector; allMatches?: boolean | undefined },
   predicate: (node: WorkflowNode) => boolean
 ): boolean {
-  return allMatches
+  const nodes = nodesMatching(context, required.node);
+  return required.allMatches
     ? nodes.length > 0 && nodes.every(predicate)
     : nodes.some(predicate);
 }
@@ -258,7 +262,7 @@ function missingFlows(context: SemanticsContext): string[] {
 /** Each required path exists over any number of intermediate nodes. */
 function missingPaths(context: SemanticsContext): string[] {
   return checkEach(context.input.expected.requiredPaths, (path) =>
-    hasPath(context, path.source, path.target)
+    hasPath(context, path)
       ? undefined
       : `missing required path ${selectorName(path.source)} -> ${selectorName(path.target)}`
   );
@@ -304,8 +308,8 @@ function gateFailures(context: SemanticsContext): string[] {
 /** Neither node of a required parallel pair is downstream of the other. */
 function nonParallelBranches(context: SemanticsContext): string[] {
   return checkEach(context.input.expected.requiredParallel, (required) =>
-    hasPath(context, required.first, required.second) ||
-    hasPath(context, required.second, required.first)
+    hasPath(context, { source: required.first, target: required.second }) ||
+    hasPath(context, { source: required.second, target: required.first })
       ? `${selectorName(required.first)} and ${selectorName(required.second)} are not parallel branches`
       : undefined
   );
@@ -318,11 +322,7 @@ function missingConfigs(context: SemanticsContext): string[] {
       Object.entries(required.values).every(
         ([key, value]) => node.data.config?.[key] === value
       );
-    return nodesSatisfy(
-      nodesMatching(context, required.node),
-      required.allMatches,
-      hasConfig
-    )
+    return nodesSatisfy(context, required, hasConfig)
       ? undefined
       : `${selectorName(required.node)} does not have required config ${Object.keys(required.values).join(", ")}`;
   });
@@ -340,11 +340,7 @@ function emptyConfigs(context: SemanticsContext): string[] {
             ? !isBlank(value)
             : value !== undefined && value !== null;
         });
-      return nodesSatisfy(
-        nodesMatching(context, required.node),
-        required.allMatches,
-        hasNonEmptyConfig
-      )
+      return nodesSatisfy(context, required, hasNonEmptyConfig)
         ? undefined
         : `${selectorName(required.node)} has empty required config ${required.keys.join(", ")}`;
     }
@@ -467,11 +463,7 @@ function missingReferences(context: SemanticsContext): string[] {
         );
       });
     };
-    return nodesSatisfy(
-      nodesMatching(context, required.node),
-      required.allMatches,
-      hasReference
-    )
+    return nodesSatisfy(context, required, hasReference)
       ? undefined
       : `${selectorName(required.node)} ${required.key} does not reference ${required.path}`;
   });

@@ -45,7 +45,7 @@ export const PROVIDER_FIELD_TYPES = new Set<ActionConfigFieldBase["type"]>([
  */
 export type FieldOptionsSource = {
   provider: string;
-  parameters?: string[];
+  parameters?: string[] | undefined;
 };
 
 /**
@@ -71,10 +71,10 @@ export type ActionConfigFieldBase = {
     | "provider-fields"; // One input per field the connection answers with
 
   // Placeholder text
-  placeholder?: string;
+  placeholder?: string | undefined;
 
   // Default value
-  defaultValue?: string;
+  defaultValue?: string | undefined;
 
   /**
    * The Connection value this field falls back to when it is left blank, so the
@@ -86,31 +86,31 @@ export type ActionConfigFieldBase = {
   connectionDefaultKey?: string | undefined;
 
   // Example value for AI prompt generation
-  example?: string;
+  example?: string | undefined;
 
   // For select fields: list of options
-  options?: SelectOption[];
+  options?: SelectOption[] | undefined;
 
   // For provider-select and provider-fields: which connection question to ask
-  optionsSource?: FieldOptionsSource;
+  optionsSource?: FieldOptionsSource | undefined;
 
   // Number of rows (for textarea)
-  rows?: number;
+  rows?: number | undefined;
 
   // Min value (for number fields)
-  min?: number;
+  min?: number | undefined;
 
   // Whether this field is required (defaults to false)
-  required?: boolean;
+  required?: boolean | undefined;
 
   // The value reaches the step as the builder typed it: template resolution
   // never reads this key. A test destination is the case it exists for, because
   // steering where a test message goes from a run's own payload is never what
   // the person who typed the address meant.
-  literal?: true;
+  literal?: true | undefined;
 
   // Conditional rendering: only show if another field has a specific value
-  showWhen?: ShowWhen;
+  showWhen?: ShowWhen | undefined;
 
   /**
    * The open records whose keys this `key-value` field's names are, by the path
@@ -127,7 +127,7 @@ export type ActionConfigFieldBase = {
    * this workflow carries keys no node here names, so a key typed by hand keeps
    * resolving whether it was offered or not.
    */
-  fillsRecords?: string[];
+  fillsRecords?: string[] | undefined;
 };
 
 /**

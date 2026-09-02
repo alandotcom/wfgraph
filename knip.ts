@@ -60,12 +60,6 @@ const config: KnipConfig = {
         // Named in the concurrently command line scripts/dev.ts builds, which
         // is a string knip cannot follow:
         "scripts/dev-client.ts",
-
-        // Named in .oxlintrc.json's jsPlugins list as a string knip cannot
-        // follow. Its co-located test imports it today, so knip hints "Remove
-        // redundant entry pattern". Keep the entry anyway: it records why the
-        // file stays once the test is no longer what imports it:
-        "scripts/lint/conventions-plugin.ts",
       ],
       project: ["*.ts", "scripts/**/*.ts"],
 

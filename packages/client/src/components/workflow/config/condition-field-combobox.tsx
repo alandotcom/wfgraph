@@ -1,4 +1,3 @@
-import { groupBy } from "es-toolkit/array";
 import { useMemo } from "react";
 import { compareText } from "@wfgraph/shared/types/string";
 import {
@@ -42,9 +41,12 @@ function unavailableField(path: string): ConditionSelectableField {
 function groupsBySource(
   fields: readonly ConditionSelectableField[]
 ): ConditionFieldGroup[] {
-  const grouped = groupBy(fields, (field) => field.sourceNodeLabel);
+  // A Map rather than a groupBy record: `sourceNodeLabel` is the name a builder
+  // typed on the step, and a plain object files a step named `__proto__` onto
+  // the prototype, where its fields never reach the list.
+  const grouped = Map.groupBy(fields, (field) => field.sourceNodeLabel);
 
-  return Object.entries(grouped)
+  return [...grouped]
     .toSorted(([a], [b]) => compareText(a, b))
     .map(([value, items]) => ({
       value,

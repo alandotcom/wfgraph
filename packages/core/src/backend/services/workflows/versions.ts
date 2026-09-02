@@ -101,11 +101,7 @@ function redactFieldValue(path: string[], value: JsonValue): JsonValue {
 
   let current = redactSensitiveData(wrapped);
   for (const segment of path) {
-    if (
-      current === undefined ||
-      !isJsonObject(current) ||
-      !Object.hasOwn(current, segment)
-    ) {
+    if (!isJsonObject(current) || !Object.hasOwn(current, segment)) {
       return "[REDACTED]";
     }
 

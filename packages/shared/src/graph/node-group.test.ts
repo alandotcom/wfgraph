@@ -575,6 +575,16 @@ describe("undersizedGroupIds", () => {
     const nodes = [group("g", ["a"], ["c"]), { ...lookupA, parentId: "g" }];
     expect(undersizedGroupIds(nodes)).toEqual(["g"]);
   });
+
+  it("counts the children of a group whose id names a prototype member", () => {
+    // A plain-object counter answers `constructor` with Object itself, and the
+    // comparison against it is never true, so such a group would go unnamed.
+    const nodes = [
+      group("constructor", ["a"], ["c"]),
+      { ...lookupA, parentId: "constructor" },
+    ];
+    expect(undersizedGroupIds(nodes)).toEqual(["constructor"]);
+  });
 });
 
 describe("groupOutletHandle", () => {

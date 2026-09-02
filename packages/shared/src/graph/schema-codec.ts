@@ -3,6 +3,7 @@ import { compact, uniq } from "es-toolkit/array";
 import { startCase } from "es-toolkit/string";
 import type { ActionConfigFieldBase } from "#src/plugins/action-fields";
 import { readAs } from "#src/types/schema";
+import { omitUndefined } from "#src/utils/omit-undefined";
 
 /**
  * Library-specific options passed through StandardSchema's `libraryOptions`.
@@ -10,24 +11,18 @@ import { readAs } from "#src/types/schema";
  * Handles non-JSON-representable output types (Date, morphs, predicates).
  */
 export const jsonSchemaLibraryOptions: Record<string, unknown> = {
-  // Arktype documents these fallback handler parameters as `ctx`:
-  // https://arktype.io/docs/configuration#tojsonschema
   fallback: {
-    // oxlint-disable-next-line wfgraph/parameter-names -- `ctx` is Arktype's documented parameter name for a toJsonSchema fallback handler.
-    date: (ctx: { base: Record<string, unknown> }) => ({
-      ...ctx.base,
+    date: (context: { base: Record<string, unknown> }) => ({
+      ...context.base,
       type: "string",
       format: "date-time",
     }),
-    // oxlint-disable-next-line wfgraph/parameter-names -- `ctx` is Arktype's documented parameter name for a toJsonSchema fallback handler.
-    morph: (ctx: {
+    morph: (context: {
       base: Record<string, unknown>;
       out: Record<string, unknown> | null;
-    }) => ctx.out ?? ctx.base,
-    // oxlint-disable-next-line wfgraph/parameter-names -- `ctx` is Arktype's documented parameter name for a toJsonSchema fallback handler.
-    predicate: (ctx: { base: Record<string, unknown> }) => ctx.base,
-    // oxlint-disable-next-line wfgraph/parameter-names -- `ctx` is Arktype's documented parameter name for a toJsonSchema fallback handler.
-    default: (ctx: { base: Record<string, unknown> }) => ctx.base,
+    }) => context.out ?? context.base,
+    predicate: (context: { base: Record<string, unknown> }) => context.base,
+    default: (context: { base: Record<string, unknown> }) => context.base,
   },
 };
 
@@ -469,10 +464,10 @@ function workflowSchemaItemTypeToJsonSchemaNode(
   type: WorkflowSchemaItemType
 ): Record<string, unknown> {
   const format = stringFormatFor(type);
-  return {
+  return omitUndefined({
     type: format ? "string" : type,
     format,
-  };
+  });
 }
 
 function workflowSchemaFieldsFromRecords(
@@ -749,22 +744,22 @@ function resolveJsonSchemaUnion(
  */
 function openRecordValueType(
   additional: JsonSchemaNode | boolean | undefined
-): WorkflowSchemaItemType | null {
+): WorkflowSchemaItemType | undefined {
   if (additional === undefined || typeof additional === "boolean") {
-    return null;
+    return undefined;
   }
 
   const declared =
     normalizeJsonSchemaType(additional.type) ||
     (additional.properties ? "object" : null);
   if (!declared) {
-    return null;
+    return undefined;
   }
 
   const valueType =
     declared === "string" ? (stringSubtype(additional) ?? declared) : declared;
 
-  return isWorkflowSchemaItemType(valueType) ? valueType : null;
+  return isWorkflowSchemaItemType(valueType) ? valueType : undefined;
 }
 
 function parseNonNullableJsonSchemaProperty(
@@ -803,13 +798,12 @@ function parseNonNullableJsonSchemaProperty(
   }
 
   if (normalizedType === "object") {
-    const valueType = openRecordValueType(value.additionalProperties);
     return {
       name,
       type: "object",
       fields: parseJsonSchemaProperties(value.properties, value.required),
       description,
-      valueType: valueType ?? undefined,
+      valueType: openRecordValueType(value.additionalProperties),
     };
   }
 
@@ -932,6 +926,13 @@ export function parseWorkflowSchemaFieldsOrJsonSchema(
   return parseJsonSchemaProperties(document.properties, document.required);
 }
 
+/**
+ * Write one field back out as a JSON Schema node.
+ *
+ * Every emitted node goes through `omitUndefined`, because the reader answers
+ * `format` and `additionalProperties` from whether the key is there at all: a
+ * key present and holding `undefined` would read as a declared one.
+ */
 function workflowSchemaFieldToJsonSchemaNode(
   field: WorkflowSchemaField
 ): Record<string, unknown> {
@@ -949,15 +950,15 @@ function workflowSchemaFieldToJsonSchemaNode(
     field.type === "duration"
   ) {
     const format = stringFormatFor(field.type);
-    return {
+    return omitUndefined({
       ...base,
       type: format ? "string" : field.type,
       format,
-    };
+    });
   }
 
   if (field.type === "object") {
-    return {
+    return omitUndefined({
       ...base,
       type: "object",
       properties: workflowSchemaFieldsToJsonSchemaProperties(
@@ -967,11 +968,11 @@ function workflowSchemaFieldToJsonSchemaNode(
       additionalProperties: field.valueType
         ? workflowSchemaItemTypeToJsonSchemaNode(field.valueType)
         : undefined,
-    };
+    });
   }
 
   if (field.itemType === "object") {
-    return {
+    return omitUndefined({
       ...base,
       type: "array",
       items: {
@@ -981,18 +982,18 @@ function workflowSchemaFieldToJsonSchemaNode(
         ),
         ...requiredNamesOf(field.fields ?? []),
       },
-    };
+    });
   }
 
   const itemFormat = stringFormatFor(field.itemType);
-  return {
+  return omitUndefined({
     ...base,
     type: "array",
-    items: {
+    items: omitUndefined({
       type: itemFormat ? "string" : (field.itemType ?? "string"),
       format: itemFormat,
-    },
-  };
+    }),
+  });
 }
 
 /**

@@ -1,5 +1,4 @@
-import { omitBy } from "es-toolkit/object";
-import { isEmptyObject } from "es-toolkit/predicate";
+import { isBlank } from "@wfgraph/shared/types/string";
 import { toast } from "sonner";
 
 /**
@@ -20,9 +19,7 @@ import { toast } from "sonner";
 export function hasProvidedConfigValues(
   config: Record<string, string>
 ): boolean {
-  return !isEmptyObject(
-    omitBy(config, (value) => !value || value.length === 0)
-  );
+  return Object.values(config).some((value) => !isBlank(value));
 }
 
 /**

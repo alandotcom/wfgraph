@@ -20,6 +20,7 @@ import {
 } from "#src/components/workflow/node-config-panel";
 import {
   loadWorkflowGraphAtom,
+  nodesAtom,
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import {
@@ -35,6 +36,7 @@ import { orpcQuery } from "#src/lib/rpc-query";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 
 const catalog: ExtensionCatalog = {
   events: [
@@ -67,6 +69,20 @@ function lifecycleNode(id = "lifecycle_1"): WorkflowNode {
           allowManualStart: true,
         },
       },
+    },
+  };
+}
+
+/** A Wait step, whose fields the action config renders from its actionType. */
+function waitNode(config: Record<string, unknown>): WorkflowNode {
+  return {
+    id: "wait_1",
+    type: "action",
+    position: { x: 0, y: 100 },
+    data: {
+      label: "Wait",
+      type: "action",
+      config: { actionType: BUILT_IN_ACTION_IDS.wait, ...config },
     },
   };
 }
@@ -301,5 +317,34 @@ describe("NodeConfigPanel authorization", () => {
         "You are viewing a public workflow. Duplicate it to make changes."
       )
     ).toBeNull();
+  });
+});
+
+/**
+ * Leaving a Wait shape drops the value keys that shape owned, so a run never
+ * reads a duration or a timeout the node is no longer in the shape for.
+ */
+describe("NodeConfigPanel Wait mode", () => {
+  it("clears the timeout when the step leaves event mode", async () => {
+    installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
+    const { view, store } = renderPanel({
+      nodes: [
+        lifecycleNode(),
+        waitNode({ waitMode: "event", waitTimeout: "1h" }),
+      ],
+      selected: "wait_1",
+    });
+
+    const picker = await view.findByRole("combobox", {
+      name: "How should this step wait?",
+    });
+    fireEvent.click(picker);
+    const choice = view.getByRole("option", { name: "Wait for time" });
+    fireEvent.pointerDown(choice);
+    fireEvent.click(choice);
+
+    const stored = store.get(nodesAtom).find((node) => node.id === "wait_1");
+    expect(stored?.data.config?.waitMode).toBe("delay");
+    expect(stored?.data.config?.waitTimeout).toBe("");
   });
 });

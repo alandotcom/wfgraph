@@ -145,9 +145,12 @@ function buildFramedChain(input: {
   entryIds: string[];
   members: string[];
   interior: WorkflowEdge[];
+  /** The frame's own id, which a case about frame identity overrides. */
+  groupId?: string;
 }): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+  const groupId = input.groupId ?? "g";
   const group: WorkflowNode = {
-    id: "g",
+    id: groupId,
     type: "group",
     position: { x: 0, y: 400 },
     data: {
@@ -158,7 +161,7 @@ function buildFramedChain(input: {
   };
   const children = input.members.map((id, index) => ({
     ...buildNode(id, { x: 12, y: 48 + index * 64 }),
-    parentId: "g",
+    parentId: groupId,
     extent: "parent" as const,
   }));
 
@@ -738,6 +741,27 @@ describe("layoutWorkflowNodes", () => {
     expect(centerX(result.nodes, "entry", WORKFLOW_NODE_WIDTH)).toBe(
       waitCenter + HALF_SIBLING_PITCH
     );
+  });
+
+  // A frame id comes from the persisted graph, so it can be any string.
+  // Gathering the members into a plain object files a frame named "__proto__"
+  // onto the prototype, and the frame is then never sized around them.
+  test("sizes a frame whose id is __proto__ around its members", async () => {
+    const frame = groupFrameSize(1, 2);
+    const graph = buildFramedChain({
+      groupId: "__proto__",
+      entryIds: ["lookup"],
+      members: ["lookup", "exit"],
+      interior: [buildEdge("i1", "lookup", "exit")],
+    });
+
+    const result = await layoutWorkflowNodes({
+      catalog: layoutCatalog,
+      ...graph,
+    });
+
+    expect(findNode(result.nodes, "__proto__").width).toBe(frame.width);
+    expect(findNode(result.nodes, "__proto__").height).toBe(frame.height);
   });
 
   test("gives a Group a rank as tall as the frame draws", async () => {

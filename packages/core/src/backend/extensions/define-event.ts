@@ -73,7 +73,9 @@ export type PayloadSchema<TPayload> =
 /** How an Event arrives, when the transport differs from the Event's identity. */
 export type EventSource = {
   readonly event: string;
-  readonly when?: { readonly path: string; readonly equals: string };
+  readonly when?:
+    | { readonly path: string; readonly equals: string }
+    | undefined;
 };
 
 export type EventDefinition<TPayload extends JsonObject> = {
@@ -251,10 +253,12 @@ export type DefineEventInput<TPayload extends JsonObject> = {
   readonly source?:
     | {
         readonly event: string;
-        readonly when?: {
-          readonly path: StringPath<TPayload>;
-          readonly equals: string;
-        };
+        readonly when?:
+          | {
+              readonly path: StringPath<TPayload>;
+              readonly equals: string;
+            }
+          | undefined;
       }
     | undefined;
   readonly inngest?: InngestEventOptions<TPayload> | undefined;

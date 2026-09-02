@@ -15,7 +15,7 @@ import type {
 } from "#src/graph/schema-codec";
 
 export function toConditionFieldType(field: {
-  type?: WorkflowSchemaFieldType;
+  type?: WorkflowSchemaFieldType | undefined;
 }): ConditionFieldType | null {
   if (field.type === "timestamp") {
     return "timestamp";
@@ -52,8 +52,8 @@ export function toConditionFieldType(field: {
  * key. Anything else answers for itself.
  */
 export function conditionTypeOf(field: {
-  type?: WorkflowSchemaFieldType;
-  valueType?: WorkflowSchemaItemType;
+  type?: WorkflowSchemaFieldType | undefined;
+  valueType?: WorkflowSchemaItemType | undefined;
 }): ConditionFieldType | null {
   return toConditionFieldType(
     field.valueType ? { type: field.valueType } : field

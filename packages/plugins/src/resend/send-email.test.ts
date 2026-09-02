@@ -231,7 +231,11 @@ describe("the send-email action", () => {
         })
       );
 
+      // The output crosses the canonical JSON codec, where a key declared
+      // `optional` and holding undefined encodes as `tags: null`. A send that
+      // carried no tags answers with no `tags` key at all.
       expect(result).toEqual({ id: "email_123" });
+      expect(Object.keys(result as object)).toEqual(["id"]);
     })
   );
 

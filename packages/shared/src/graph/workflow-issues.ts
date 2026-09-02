@@ -453,14 +453,48 @@ function issuesByKind(issues: readonly WorkflowIssue[]): IssuesByKind {
 }
 
 /**
- * One list per node, ordered by where the issue list first names each node.
- * Every issue of a node repeats that node's label, so the first issue of a list
- * carries the label for the whole group.
+ * One group per node, ordered by where the issue list first names each node.
+ *
+ * Every issue of a node repeats that node's label, so the header is written
+ * once here and each caller says only what one issue contributes to its group.
  */
-function issuesByNode<Issue extends { nodeId: string }>(
-  issues: readonly Issue[]
-): Issue[][] {
-  return Object.values(groupBy(issues, (issue) => issue.nodeId));
+function groupIssuesByNode<
+  Issue extends { nodeId: string; nodeLabel: string },
+  Group,
+>(
+  issues: readonly Issue[],
+  toGroup: (
+    node: { nodeId: string; nodeLabel: string },
+    nodeIssues: Issue[]
+  ) => Group
+): Group[] {
+  // A Map rather than a groupBy record: a node id is text the saved graph or
+  // the build agent chose, and es-toolkit's groupBy writes `result[key] = []`,
+  // which for `__proto__` replaces the prototype instead of starting a group.
+  const byNode = new Map<string, Issue[]>();
+  for (const issue of issues) {
+    const existing = byNode.get(issue.nodeId);
+    if (existing) {
+      existing.push(issue);
+      continue;
+    }
+    byNode.set(issue.nodeId, [issue]);
+  }
+
+  return [...byNode.values()].map((nodeIssues) =>
+    toGroup(
+      { nodeId: nodeIssues[0].nodeId, nodeLabel: nodeIssues[0].nodeLabel },
+      nodeIssues
+    )
+  );
+}
+
+/** What a field-shaped issue contributes to its node's group. */
+function issueFieldEntry(issue: { fieldKey: string; fieldLabel: string }): {
+  fieldKey: string;
+  fieldLabel: string;
+} {
+  return { fieldKey: issue.fieldKey, fieldLabel: issue.fieldLabel };
 }
 
 /** Group a flat issue list into the shape the issues overlay renders. */
@@ -474,14 +508,11 @@ export function groupWorkflowIssuesForOverlay(
 
   return {
     totalIssues: issues.length,
-    missingRequiredFields: issuesByNode(byKind.missing_required_field).map(
-      (nodeIssues) => ({
-        nodeId: nodeIssues[0].nodeId,
-        nodeLabel: nodeIssues[0].nodeLabel,
-        missingFields: nodeIssues.map((issue) => ({
-          fieldKey: issue.fieldKey,
-          fieldLabel: issue.fieldLabel,
-        })),
+    missingRequiredFields: groupIssuesByNode(
+      byKind.missing_required_field,
+      (node, nodeIssues) => ({
+        ...node,
+        missingFields: nodeIssues.map(issueFieldEntry),
       })
     ),
     missingIntegrations: missingIntegrationsByType.map((typeIssues) => ({
@@ -491,27 +522,23 @@ export function groupWorkflowIssuesForOverlay(
       // each node once.
       nodeNames: uniq(typeIssues.map((issue) => issue.nodeLabel)),
     })),
-    brokenReferences: issuesByNode(byKind.broken_reference).map(
-      (nodeIssues) => ({
-        nodeId: nodeIssues[0].nodeId,
-        nodeLabel: nodeIssues[0].nodeLabel,
+    brokenReferences: groupIssuesByNode(
+      byKind.broken_reference,
+      (node, nodeIssues) => ({
+        ...node,
         brokenReferences: nodeIssues.map((issue) => ({
-          fieldKey: issue.fieldKey,
-          fieldLabel: issue.fieldLabel,
+          ...issueFieldEntry(issue),
           referencedNodeId: issue.referencedNodeId,
           displayText: issue.displayText,
         })),
       })
     ),
-    unverifiedProviderFields: issuesByNode(
-      byKind.unverified_provider_field
-    ).map((nodeIssues) => ({
-      nodeId: nodeIssues[0].nodeId,
-      nodeLabel: nodeIssues[0].nodeLabel,
-      fields: nodeIssues.map((issue) => ({
-        fieldKey: issue.fieldKey,
-        fieldLabel: issue.fieldLabel,
-      })),
-    })),
+    unverifiedProviderFields: groupIssuesByNode(
+      byKind.unverified_provider_field,
+      (node, nodeIssues) => ({
+        ...node,
+        fields: nodeIssues.map(issueFieldEntry),
+      })
+    ),
   };
 }

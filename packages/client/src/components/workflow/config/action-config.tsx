@@ -517,17 +517,20 @@ function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
       waitValueKeysNotIn(next).map((key) => [key, ""])
     );
 
-    onUpdateConfig(
-      omitUndefined({
-        ...cleared,
-        waitMode: value,
+    // The default timeout is spread over `cleared` rather than merged into the
+    // same literal: `omitUndefined` would otherwise delete the `waitTimeout: ""`
+    // that `cleared` carries whenever the node is leaving event mode.
+    onUpdateConfig({
+      ...cleared,
+      waitMode: value,
+      ...omitUndefined({
         waitTimeout:
           value === "event" &&
-          !(readConfigString(config, "waitTimeout") ?? "").trim()
+          isBlank(readConfigString(config, "waitTimeout") ?? "")
             ? DEFAULT_WAIT_TIMEOUT
             : undefined,
-      })
-    );
+      }),
+    });
   };
 
   return (

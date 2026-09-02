@@ -25,31 +25,6 @@
     "no-console": "off",
     "no-var": "error",
     "prefer-const": "error",
-    // An override replaces a rule's options wholesale instead of merging them,
-    // so these three entries are repeated in every override that sets
-    // no-restricted-imports: the client and plugins block, the shared block and
-    // the core block. Changing one means changing all four.
-    "no-restricted-imports": [
-      "error",
-      {
-        "paths": [
-          {
-            "name": "es-toolkit",
-            "message": "Import from the es-toolkit subpath that holds the helper: es-toolkit/array, /object, /predicate, /string, /function, /promise, /math, or /fp."
-          },
-          {
-            "name": "es-toolkit/compat",
-            "message": "The lodash compatibility shim. Every helper has a typed home under another es-toolkit subpath."
-          },
-          {
-            "name": "effect",
-            "importNames": ["pipe", "flow"],
-            "allowTypeImports": true,
-            "message": "Compose an Effect with Effect.gen and the .pipe method. The bare names pipe and flow belong to es-toolkit/fp."
-          }
-        ]
-      }
-    ],
     // A leading underscore marks a name this codebase keeps out of ordinary use.
     // Every such name is spelled out here, so introducing another one is a visible
     // decision and an accidental `_foo` is an error.
@@ -126,9 +101,14 @@
     "no-effect/no-external-store-subscription": "error",
     "no-effect/no-initialize-state": "error",
     // This repository's own structural rules, from
-    // scripts/lint/conventions-plugin.ts. lint is a required check and oxlint
-    // has no level here that reports a site without failing the build, so each
-    // rule is turned on by the commit that clears its last violation.
+    // scripts/lint/conventions-plugin.ts.
+    //
+    // es-toolkit-subpath and no-effect-pipe-import were no-restricted-imports
+    // paths entries. An override replaces that rule's options wholesale rather
+    // than merging them, so the same three entries had to be repeated in the
+    // client, shared and core overrides, and the effects.ts override, which
+    // turns no-restricted-imports off, dropped them. A plugin rule is set once
+    // here and every override keeps it.
     "wfgraph/no-filter-boolean": "error",
     "wfgraph/no-set-spread-uniq": "error",
     "wfgraph/no-entries-round-trip": "error",
@@ -137,6 +117,8 @@
     "wfgraph/no-hand-rolled-object-guard": "error",
     "wfgraph/no-changed-flag": "error",
     "wfgraph/parameter-names": "error",
+    "wfgraph/es-toolkit-subpath": "error",
+    "wfgraph/no-effect-pipe-import": "error",
     "typescript/no-deprecated": "error",
     "typescript/no-floating-promises": [
       "error",
@@ -212,22 +194,6 @@
                 // back to a type import is part of taking a component.
                 "allowTypeImports": true,
                 "message": "Use a named hook from #src/hooks/effects. If none of them fits, the work probably belongs in an event handler, in render, or in a query."
-              },
-              // Repeated from the root `rules` block: an override replaces a
-              // rule's options wholesale rather than merging them.
-              {
-                "name": "es-toolkit",
-                "message": "Import from the es-toolkit subpath that holds the helper: es-toolkit/array, /object, /predicate, /string, /function, /promise, /math, or /fp."
-              },
-              {
-                "name": "es-toolkit/compat",
-                "message": "The lodash compatibility shim. Every helper has a typed home under another es-toolkit subpath."
-              },
-              {
-                "name": "effect",
-                "importNames": ["pipe", "flow"],
-                "allowTypeImports": true,
-                "message": "Compose an Effect with Effect.gen and the .pipe method. The bare names pipe and flow belong to es-toolkit/fp."
               }
             ]
           }
@@ -289,24 +255,6 @@
                 ],
                 "message": "@wfgraph/shared cannot import @wfgraph/core or @wfgraph/plugins source. Shared is the bottom of the dependency graph: move the shared piece into packages/shared, or invert the call so core passes it in."
               }
-            ],
-            // Repeated from the root `rules` block: an override replaces a
-            // rule's options wholesale rather than merging them.
-            "paths": [
-              {
-                "name": "es-toolkit",
-                "message": "Import from the es-toolkit subpath that holds the helper: es-toolkit/array, /object, /predicate, /string, /function, /promise, /math, or /fp."
-              },
-              {
-                "name": "es-toolkit/compat",
-                "message": "The lodash compatibility shim. Every helper has a typed home under another es-toolkit subpath."
-              },
-              {
-                "name": "effect",
-                "importNames": ["pipe", "flow"],
-                "allowTypeImports": true,
-                "message": "Compose an Effect with Effect.gen and the .pipe method. The bare names pipe and flow belong to es-toolkit/fp."
-              }
             ]
           }
         ]
@@ -347,24 +295,6 @@
               {
                 "group": ["./*", "./**", "../*", "../**"],
                 "message": "Name the module with #src/, which resolves against packages/core's own manifest from any depth."
-              }
-            ],
-            // Repeated from the root `rules` block: an override replaces a
-            // rule's options wholesale rather than merging them.
-            "paths": [
-              {
-                "name": "es-toolkit",
-                "message": "Import from the es-toolkit subpath that holds the helper: es-toolkit/array, /object, /predicate, /string, /function, /promise, /math, or /fp."
-              },
-              {
-                "name": "es-toolkit/compat",
-                "message": "The lodash compatibility shim. Every helper has a typed home under another es-toolkit subpath."
-              },
-              {
-                "name": "effect",
-                "importNames": ["pipe", "flow"],
-                "allowTypeImports": true,
-                "message": "Compose an Effect with Effect.gen and the .pipe method. The bare names pipe and flow belong to es-toolkit/fp."
               }
             ]
           }

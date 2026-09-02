@@ -32,6 +32,7 @@ import {
   findIntegration,
 } from "@wfgraph/shared/extensions/catalog";
 import { isSafeRecordKey } from "@wfgraph/shared/types/record-key";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 const describeConfigOptionsFailure = () =>
   "Failed to read integration config options";
@@ -133,7 +134,13 @@ export const postIntegrationConfigOptions = Effect.fn(
     },
   });
 
-  return answer;
+  // An author writes a field in `ConfigOptionField`, whose optional members
+  // admit `undefined`; the wire shape takes an absent key for each of them. A
+  // key holding `undefined` is dropped here rather than at the encoder, so the
+  // two shapes agree in the type system as well as over JSON.
+  return answer.status === "fields"
+    ? { status: answer.status, fields: answer.fields.map(omitUndefined) }
+    : answer;
 });
 
 /**
