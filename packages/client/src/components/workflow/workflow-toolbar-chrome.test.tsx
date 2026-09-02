@@ -156,7 +156,7 @@ describe("WorkflowToolbarChrome", () => {
     }: {
       actions: WorkflowToolbarActions;
       state: WorkflowToolbarState;
-      workflowId?: string;
+      workflowId?: string | undefined;
     }) {
       return (
         <WorkflowToolbarChrome

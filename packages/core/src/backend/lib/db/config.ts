@@ -29,15 +29,15 @@ type DatabaseCommonConfig = {
    * to lowercase, so a mixed-case name would silently mean a different schema
    * than the one written here.
    */
-  schema?: string;
+  schema?: string | undefined;
   /** Connections the query pool may open. Defaults to 10. */
-  maxConnections?: number;
+  maxConnections?: number | undefined;
   /**
    * How to reach the server over TLS. An explicit value here outranks an
    * `sslmode` in the URL, which is why it is left out of the options handed to
    * postgres.js when the host said nothing.
    */
-  ssl?: boolean | "require" | "allow" | "prefer" | "verify-full";
+  ssl?: boolean | "require" | "allow" | "prefer" | "verify-full" | undefined;
 };
 
 /**
@@ -58,20 +58,20 @@ export type DatabaseRuntimeConfig =
   | (DatabaseCommonConfig & {
       url?: never;
       host: string;
-      port?: number;
+      port?: number | undefined;
       user: string;
-      password?: string;
+      password?: string | undefined;
       database: string;
     });
 
 /** The two arms above, read as the one set of fields they draw from. */
 type DatabaseConnectionFields = {
-  url?: string;
-  host?: string;
-  port?: number;
-  user?: string;
-  password?: string;
-  database?: string;
+  url?: string | undefined;
+  host?: string | undefined;
+  port?: number | undefined;
+  user?: string | undefined;
+  password?: string | undefined;
+  database?: string | undefined;
 };
 
 /**
@@ -84,7 +84,7 @@ type DatabaseConnectionFields = {
 export type NormalizedDatabaseConfig = DatabaseConnectionFields & {
   schema: string;
   maxConnections: number;
-  ssl?: boolean | "require" | "allow" | "prefer" | "verify-full";
+  ssl?: boolean | "require" | "allow" | "prefer" | "verify-full" | undefined;
 };
 
 const SCHEMA_NAME_PATTERN = /^[a-z_][a-z0-9_$]*$/;

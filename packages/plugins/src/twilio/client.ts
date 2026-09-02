@@ -15,10 +15,9 @@
 
 import type { JsonValue } from "@wfgraph/core/plugin";
 import type { Effect } from "effect";
-import { omitBy } from "es-toolkit/object";
-import { isNil } from "es-toolkit/predicate";
 import { Schema } from "effect";
 import type { HttpClient } from "effect/unstable/http";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   callExternal,
   parsePayload,
@@ -107,10 +106,10 @@ function requestTwilio<S extends Schema.ConstraintDecoder<unknown>>(
 export type TwilioMessageParameters = {
   To: string;
   Body: string;
-  From?: string;
-  MessagingServiceSid?: string;
-  StatusCallback?: string;
-  MediaUrl?: string[];
+  From?: string | undefined;
+  MessagingServiceSid?: string | undefined;
+  StatusCallback?: string | undefined;
+  MediaUrl?: string[] | undefined;
 };
 
 /**
@@ -123,7 +122,7 @@ export function createTwilioMessage(
   parameters: TwilioMessageParameters
 ): Effect.Effect<TwilioMessage, ExternalError, HttpClient.HttpClient> {
   const { MediaUrl, ...scalars } = parameters;
-  const body = new URLSearchParams(omitBy(scalars, isNil));
+  const body = new URLSearchParams(omitUndefined(scalars));
   for (const mediaUrl of MediaUrl ?? []) {
     body.append("MediaUrl", mediaUrl);
   }

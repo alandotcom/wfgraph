@@ -16,15 +16,15 @@ export const appContext = makeAppContextLayer({
 export const failedAttempt = Effect.succeed(true);
 
 export function oauthExtensions(overrides: {
-  registerClient?: () => { clientId: string };
+  registerClient?: (() => { clientId: string }) | undefined;
   exchange?: () => Promise<{
     credentials: Record<string, string>;
     tokens: {
       accessToken: string;
-      refreshToken?: string;
-      expiresAt?: string;
+      refreshToken?: string | undefined;
+      expiresAt?: string | undefined;
     };
-    accountLabel?: string;
+    accountLabel?: string | undefined;
   }>;
   revoke: (accessToken: string) => Promise<void>;
 }): Partial<ExtensionSet> {

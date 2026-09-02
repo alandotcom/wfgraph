@@ -10,7 +10,7 @@ import { type ExtensionCatalog, findEvent } from "#src/extensions/catalog";
 /** One Event's stored Connection, before any other subscription fields. */
 export type EventConnection = {
   readonly event: string;
-  readonly connectionId?: string;
+  readonly connectionId?: string | undefined;
 };
 
 export type ConnectionReference = {
@@ -26,7 +26,7 @@ export type ConnectionReference = {
  * id is removed when zero or several Connections could replace it.
  */
 export function repairConnectionId(input: {
-  stored?: string;
+  stored?: string | undefined;
   integration: string | undefined;
   connections: readonly ConnectionReference[];
 }): string | undefined {

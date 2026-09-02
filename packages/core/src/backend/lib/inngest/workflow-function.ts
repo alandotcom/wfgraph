@@ -163,7 +163,11 @@ function createDurableRuntime(input: {
     waitForEvent: async (durableStep, options) =>
       await step.waitForEvent(durableStep, {
         event: options.event,
-        if: options.ifExpression,
+        // Inngest declares `if` as an optional string, so a wait that matches
+        // any occurrence of the event leaves the key out.
+        ...(options.ifExpression === undefined
+          ? {}
+          : { if: options.ifExpression }),
         timeout:
           options.timeoutMs === undefined
             ? "365d"

@@ -59,8 +59,8 @@ const liveWaitState: WorkflowWaitState = {
  */
 function makeResumeSeams(input: {
   candidates: ApiKeyCandidate[];
-  waitState?: WorkflowWaitState;
-  sendWaitSignal?: InngestClient["Service"]["sendWaitSignal"];
+  waitState?: WorkflowWaitState | undefined;
+  sendWaitSignal?: InngestClient["Service"]["sendWaitSignal"] | undefined;
 }) {
   const calls = {
     tokenLookups: [] as string[],

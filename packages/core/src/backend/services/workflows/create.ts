@@ -15,7 +15,11 @@ const loggerFor = () =>
   Effect.map(AppLogger, (appLogger) => appLogger.get("create"));
 
 export const postWorkflowsCreate = Effect.fn("postWorkflowsCreate")(
-  function* (body: { name: string; description?: string; graph: unknown }) {
+  function* (body: {
+    name: string;
+    description?: string | undefined;
+    graph: unknown;
+  }) {
     const repo = yield* WorkflowRepo;
     const logger = yield* loggerFor();
 

@@ -55,9 +55,9 @@ export const workflowListQueryOptions = () =>
 export function selectPublicationState(payload: WorkflowApiPayload): {
   isPublished: boolean;
   hasUnpublishedChanges: boolean;
-  publishedVersionId?: string;
-  publishedVersion?: number;
-  publishedAt?: string;
+  publishedVersionId?: string | undefined;
+  publishedVersion?: number | undefined;
+  publishedAt?: string | undefined;
 } {
   return {
     isPublished: Boolean(payload.publishedVersionId),
@@ -148,13 +148,14 @@ export function refreshWorkflowVersionHistory(queryClient: QueryClient) {
  */
 export function cacheWorkflowPublication(
   queryClient: QueryClient,
-  workflow: Pick<WorkflowApiPayload, "id" | "hasUnpublishedChanges"> &
-    Partial<
-      Pick<
-        WorkflowApiPayload,
-        "publishedVersionId" | "publishedVersion" | "publishedAt" | "updatedAt"
-      >
-    >
+  // Each version field may be absent or present holding nothing: a publish
+  // answers with all four, and a refused publish carries the flag alone.
+  workflow: Pick<WorkflowApiPayload, "id" | "hasUnpublishedChanges"> & {
+    publishedVersionId?: string | undefined;
+    publishedVersion?: number | undefined;
+    publishedAt?: string | undefined;
+    updatedAt?: string | undefined;
+  }
 ) {
   queryClient.setQueryData(
     orpcQuery.workflow.getById.queryKey({

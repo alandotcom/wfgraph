@@ -15,8 +15,8 @@ import type { BranchHandoff } from "#src/backend/engine/branch";
 
 export type WaitForEventOptions = {
   event: string;
-  timeoutMs?: number;
-  ifExpression?: string;
+  timeoutMs?: number | undefined;
+  ifExpression?: string | undefined;
 };
 
 /**
@@ -76,7 +76,7 @@ export type WorkflowExecutionRuntime = {
    * what an earlier one wrote.
    */
   attempt: number;
-  runId?: string;
+  runId?: string | undefined;
 };
 
 export type InMemoryRuntimeOptions = {
@@ -85,13 +85,13 @@ export type InMemoryRuntimeOptions = {
    * replay: the second pass reads stored results instead of repeating the work.
    * Left out, each runtime gets a fresh map and memoizes within one run only.
    */
-  memo?: Map<string, unknown>;
+  memo?: Map<string, unknown> | undefined;
   /** What `waitForEvent` resolves to. `null` models a timeout. */
   resumeEvent?: unknown;
   /** Resolve sleeps immediately instead of sitting through a real timer. */
-  skipSleep?: boolean;
+  skipSleep?: boolean | undefined;
   /** The attempt this runtime reports. See `WorkflowExecutionRuntime.attempt`. */
-  attempt?: number;
+  attempt?: number | undefined;
 };
 
 export type InMemoryWorkflowRuntime = WorkflowExecutionRuntime & {

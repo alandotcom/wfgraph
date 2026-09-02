@@ -63,9 +63,9 @@ export type RegisteredEvent = AnyEventDefinition;
  * test; a host's own action, from `defineAction`, brings its handler.
  */
 export type WfGraphExtensions = {
-  readonly events?: readonly AnyEventDefinition[];
-  readonly integrations?: readonly IntegrationDefinition[];
-  readonly actions?: readonly ActionDefinition[];
+  readonly events?: readonly AnyEventDefinition[] | undefined;
+  readonly integrations?: readonly IntegrationDefinition[] | undefined;
+  readonly actions?: readonly ActionDefinition[] | undefined;
 };
 
 export type ExtensionSet = {

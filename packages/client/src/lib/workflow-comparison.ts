@@ -4,6 +4,7 @@
  * and a temporary location for historical nodes that a reviewer repositions.
  */
 
+import { omit } from "es-toolkit/object";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import type { XYPosition } from "@xyflow/react";
@@ -165,13 +166,9 @@ export function buildComparisonDisplayGraph(
         const position = historicalParentDeleted
           ? node.position
           : absoluteBasePosition(node, baseNodesById);
-        return {
-          ...node,
+        const historical: WorkflowNode = {
+          ...omit(node, ["parentId", "extent"]),
           position,
-          // A deleted frame remains the coordinate system for its deleted
-          // children. A current or missing frame cannot safely own history.
-          parentId: historicalParentDeleted ? node.parentId : undefined,
-          extent: historicalParentDeleted ? ("parent" as const) : undefined,
           draggable: true,
           connectable: false,
           focusable: true,
@@ -181,6 +178,14 @@ export function buildComparisonDisplayGraph(
             ...(comparison ? { [COMPARISON_NODE_ANNOTATION]: comparison } : {}),
           },
         };
+        // A deleted frame remains the coordinate system for its deleted
+        // children. A current or missing frame cannot safely own history, so
+        // the node carries neither key at all.
+        if (historicalParentDeleted && node.parentId !== undefined) {
+          historical.parentId = node.parentId;
+          historical.extent = "parent";
+        }
+        return historical;
       }),
   ]);
 

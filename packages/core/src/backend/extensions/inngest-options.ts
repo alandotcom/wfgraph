@@ -35,7 +35,7 @@ type WithPayloadKey<TOption, TPayload extends JsonObject> = Omit<
   "key"
 > & {
   /** Schema-relative dot-path to partition by. */
-  key?: PayloadPath<TPayload>;
+  key?: PayloadPath<TPayload> | undefined;
 };
 
 /**
@@ -47,9 +47,11 @@ type WithPayloadKey<TOption, TPayload extends JsonObject> = Omit<
  * nor refuse a start and say so in run history.
  */
 export type InngestEventOptions<TPayload extends JsonObject> = {
-  rateLimit?: WithPayloadKey<FunctionOptions["rateLimit"], TPayload>;
-  throttle?: WithPayloadKey<FunctionOptions["throttle"], TPayload>;
-  debounce?: WithPayloadKey<FunctionOptions["debounce"], TPayload>;
+  rateLimit?:
+    | WithPayloadKey<FunctionOptions["rateLimit"], TPayload>
+    | undefined;
+  throttle?: WithPayloadKey<FunctionOptions["throttle"], TPayload> | undefined;
+  debounce?: WithPayloadKey<FunctionOptions["debounce"], TPayload> | undefined;
   /**
    * Dynamic priority, evaluated at enqueue time. Higher runs first. `run` is
    * required here where the SDK leaves it optional: an empty `priority` says
@@ -61,9 +63,9 @@ export type InngestEventOptions<TPayload extends JsonObject> = {
    * // becomes: 'event.data.appointment.priority == "high" ? 100 : 50'
    * ```
    */
-  priority?: { run: string };
-  timeouts?: FunctionOptions["timeouts"];
-  retries?: FunctionOptions["retries"];
+  priority?: { run: string } | undefined;
+  timeouts?: FunctionOptions["timeouts"] | undefined;
+  retries?: FunctionOptions["retries"] | undefined;
 };
 
 /** What `createFunction` is handed, once every path is under `event.data`. */
@@ -79,10 +81,14 @@ type RewrittenInngestOptions = Pick<
  * `concurrency` would quietly take over what Concurrency on the Lifecycle Node
  * does, and do it with no status and no run-history row. The type above declares
  * neither, so this is here for the object that arrived by a spread.
+ *
+ * The parameter is `object` because the body only reads key presence, and
+ * `InngestEventOptions` is invariant in its payload type: naming it here would
+ * refuse every caller whose payload is not exactly `JsonObject`.
  */
 function assertNoRetiredInngestOptions(
   eventName: string,
-  inngest: InngestEventOptions<JsonObject>
+  inngest: object
 ): void {
   if ("batchEvents" in inngest) {
     throw new Error(
@@ -117,16 +123,22 @@ export function rewriteInngestOptions<TPayload extends JsonObject>(
 
   const result: RewrittenInngestOptions = {};
 
+  // Each of the three drops `key` when the Event named none: Inngest's own
+  // option types spell it as a plain optional string, which refuses a property
+  // that is present and holds `undefined`.
   if (inngest.rateLimit) {
-    result.rateLimit = prefixKeyField(inngest.rateLimit);
+    const { key, ...rest } = prefixKeyField(inngest.rateLimit);
+    result.rateLimit = key === undefined ? rest : { ...rest, key };
   }
 
   if (inngest.throttle) {
-    result.throttle = prefixKeyField(inngest.throttle);
+    const { key, ...rest } = prefixKeyField(inngest.throttle);
+    result.throttle = key === undefined ? rest : { ...rest, key };
   }
 
   if (inngest.debounce) {
-    result.debounce = prefixKeyField(inngest.debounce);
+    const { key, ...rest } = prefixKeyField(inngest.debounce);
+    result.debounce = key === undefined ? rest : { ...rest, key };
   }
 
   if (inngest.priority) {

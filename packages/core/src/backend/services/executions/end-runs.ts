@@ -36,7 +36,7 @@ export type CancelInFlightRunsInput = {
   /** Wait states belonging to the waiting subset of those executions. */
   waitStates: EndingWaitState[];
   reason: string;
-  eventName?: string;
+  eventName?: string | undefined;
 };
 
 export type EndedRunsSummary = {
@@ -77,7 +77,7 @@ export const signalRunToStop = Effect.fn("signalRunToStop")(function* (input: {
   workflowId: string;
   executionId: string;
   reason: string;
-  eventName?: string;
+  eventName?: string | undefined;
 }) {
   const inngest = yield* InngestClient;
   const logger = yield* loggerFor;
@@ -127,7 +127,7 @@ const recordEndingFailure = Effect.fn("recordEndingFailure")(function* (input: {
   workflowId: string;
   executionId: string;
   message: string;
-  eventName?: string;
+  eventName?: string | undefined;
   outcome: "send_failed" | "write_failed";
 }) {
   const repo = yield* ExecutionRepo;
@@ -158,7 +158,7 @@ const recordRunEnded = Effect.fn("recordRunEnded")(function* (input: {
   executionId: string;
   eventType: "run_cancelled" | "run_superseded" | "run_failed";
   reason: string;
-  eventName?: string;
+  eventName?: string | undefined;
 }) {
   const repo = yield* ExecutionRepo;
   const logger = yield* loggerFor;
@@ -242,7 +242,7 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
   workflowId: string;
   executionId: string;
   reason: string;
-  eventName?: string;
+  eventName?: string | undefined;
 }) {
   const { executionId, workflowId } = input;
   const repo = yield* ExecutionRepo;
@@ -322,7 +322,7 @@ const announceEndedRuns = Effect.fn("announceEndedRuns")(function* (input: {
   executionIds: string[];
   eventType: "run_superseded" | "run_failed";
   reason: string;
-  eventName?: string;
+  eventName?: string | undefined;
 }) {
   const outcomes = yield* Effect.forEach(
     uniq(input.executionIds),
@@ -359,7 +359,7 @@ export const announceSupersededRuns = (input: {
   workflowId: string;
   executionIds: string[];
   reason: string;
-  eventName?: string;
+  eventName?: string | undefined;
 }) => announceEndedRuns({ ...input, eventType: "run_superseded" });
 
 /**
@@ -374,7 +374,7 @@ export const announceReclaimedRuns = (input: {
   workflowId: string;
   executionIds: string[];
   reason: string;
-  eventName?: string;
+  eventName?: string | undefined;
 }) => announceEndedRuns({ ...input, eventType: "run_failed" });
 
 function waitStateIdsFor(

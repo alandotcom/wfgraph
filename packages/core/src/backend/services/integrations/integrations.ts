@@ -146,7 +146,7 @@ function toIntegrationSummary(
     id: string;
     name: string;
     type: string;
-    isManaged?: boolean | null;
+    isManaged?: boolean | null | undefined;
     config: IntegrationConfig;
     refreshState: IntegrationRefreshState;
     createdAt: Date;
@@ -197,7 +197,7 @@ function toIntegrationWithConfig(
     name: string;
     type: string;
     config: IntegrationConfig;
-    isManaged?: boolean | null;
+    isManaged?: boolean | null | undefined;
     refreshState: IntegrationRefreshState;
     createdAt: Date;
     updatedAt: Date;
@@ -350,8 +350,8 @@ export const getIntegration = Effect.fn("getIntegration")(function* (
 export const putIntegration = Effect.fn("putIntegration")(function* (
   integrationId: string,
   body: {
-    name?: string;
-    config?: IntegrationConfig;
+    name?: string | undefined;
+    config?: IntegrationConfig | undefined;
   }
 ) {
   if (hasReservedOAuthGrant(body.config)) {
@@ -564,7 +564,7 @@ export const postIntegrationTest = Effect.fn("postIntegrationTest")(function* (
 });
 
 export const postIntegrations = Effect.fn("postIntegrations")(function* (body: {
-  name?: string;
+  name?: string | undefined;
   type: string;
   config: IntegrationConfig;
 }) {

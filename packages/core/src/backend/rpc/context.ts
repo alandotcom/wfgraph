@@ -13,7 +13,7 @@ export type RpcContext = {
    * record rather than two. Absent when a procedure is called outside the HTTP
    * middleware, which is what a test does.
    */
-  requestEvent?: RequestEvent;
+  requestEvent?: RequestEvent | undefined;
   /**
    * The Effect runtime the app owns. A procedure whose service has been migrated
    * runs its Effect through this rather than reaching for a process global, so

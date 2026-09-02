@@ -185,7 +185,7 @@ function ProviderSubField({
   parentKey: string;
   value: string;
   onChange: (value: string) => void;
-  disabled?: boolean;
+  disabled?: boolean | undefined;
 }) {
   const id = `${parentKey}.${entry.key}`;
   const missing = entry.required === true && value.trim().length === 0;

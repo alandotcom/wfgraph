@@ -12,6 +12,7 @@ import {
   refreshWorkflowList,
   selectPublicationState,
 } from "./rpc-query";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 // These helpers are the client's only statement of what a write invalidates, so
 // what they must not do matters as much as what they do: reaching for an area
@@ -40,7 +41,8 @@ const workflowListKey = orpcQuery.workflow.getAll.queryKey({ input: {} });
 // has to reach every filter variant, not just the unfiltered one.
 const runHistoryKey = (statuses?: ["failed"]) =>
   orpcQuery.workflow.getExecutionsGlobal.infiniteKey({
-    input: (cursor: undefined) => ({ limit: RUNS_PAGE_SIZE, statuses, cursor }),
+    input: (cursor: undefined) =>
+      omitUndefined({ limit: RUNS_PAGE_SIZE, statuses, cursor }),
     initialPageParam: undefined,
   });
 
@@ -66,7 +68,7 @@ const configOptionsKey = (integrationId: string, provider = "channels") =>
 
 const workflowVersionHistoryKey = (workflowId: string) =>
   orpcQuery.workflow.getVersionHistory.infiniteKey({
-    input: (cursor: undefined) => ({ workflowId, cursor }),
+    input: (cursor: undefined) => omitUndefined({ workflowId, cursor }),
     initialPageParam: undefined,
   });
 

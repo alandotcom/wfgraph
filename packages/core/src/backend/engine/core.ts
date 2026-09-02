@@ -55,16 +55,16 @@ export type WorkflowExecutionInput = {
    * Inngest event a Start Event arrived as. It reached the engine as JSON and is
    * written back out as JSON into `workflow_executions.input`.
    */
-  startPayload?: JsonObject;
+  startPayload?: JsonObject | undefined;
   /**
    * The Event that started the run, absent for a manual start and for the
    * execute route. A Condition node reads it as the Event the run arrived on
    * until an event-mode Wait resumes or a Cancel Event takes the run to the
    * Canceled outlet.
    */
-  startEventName?: string;
+  startEventName?: string | undefined;
   /** The untouched payload as it arrived, before any mock request filled in. */
-  requestPayload?: JsonObject;
+  requestPayload?: JsonObject | undefined;
   /**
    * Identifies the run row every log, timeline event, and wait state hangs off.
    * Required: whether a run leaves a trace is decided by which `WorkflowStore`
@@ -73,9 +73,9 @@ export type WorkflowExecutionInput = {
   executionId: string;
   /** Owning workflow. Also how steps look up integration credentials. */
   workflowId: string;
-  workflowName?: string;
-  workflowRunId?: string;
-  runMode?: "live" | "test";
+  workflowName?: string | undefined;
+  workflowRunId?: string | undefined;
+  runMode?: "live" | "test" | undefined;
 };
 
 /**
@@ -105,8 +105,8 @@ type WorkflowExecutionResult = {
   success: boolean;
   results: Readonly<Record<string, ExecutionResult>>;
   outputs: Readonly<NodeOutputs>;
-  error?: string;
-  cancelled?: boolean;
+  error?: string | undefined;
+  cancelled?: boolean | undefined;
 };
 
 /**

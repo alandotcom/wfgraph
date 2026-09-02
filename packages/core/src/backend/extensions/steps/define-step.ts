@@ -312,7 +312,7 @@ type ConfigFieldFor<TInput, TConnectionKey extends string = string> = Partial<
    * what `defineIntegration` passes in. A host calling `defineStep` outside an
    * integration has no such record, and the default admits any string.
    */
-  connectionDefaultKey?: TConnectionKey;
+  connectionDefaultKey?: TConnectionKey | undefined;
 };
 
 type ConfigFieldGroupFor<TInput, TConnectionKey extends string = string> = Omit<
@@ -351,7 +351,7 @@ export type ActionStep<TOutput = unknown> = {
   /** Whether running this changes the outside world; see `ActionStepInput`. */
   readonly sideEffect: boolean;
   /** When true, the editor's action picker omits this action. */
-  readonly hidden?: boolean;
+  readonly hidden?: boolean | undefined;
   readonly configFields: readonly ActionConfigField[];
   /** The config shape, which the form is derived from. */
   readonly input: InputSchema<unknown>;
@@ -406,9 +406,9 @@ export type ActionStepInput<TInput, TOutput> = StepSchemas<TInput, TOutput> & {
    * where a lookup's own HTTP call is a side effect too because `step.run` has
    * to memoize it. Here the question is only whether the outside world moved.
    */
-  readonly sideEffect?: boolean;
+  readonly sideEffect?: boolean | undefined;
   /** When true, the editor's action picker omits this action. */
-  readonly hidden?: boolean;
+  readonly hidden?: boolean | undefined;
   /**
    * What the input schema cannot say about the form: a placeholder, a row
    * count, a friendly option label, a group, a `showWhen`.
@@ -416,7 +416,7 @@ export type ActionStepInput<TInput, TOutput> = StepSchemas<TInput, TOutput> & {
    * Every key comes from the schema whether it appears here or not, so a step
    * whose fields need nothing beyond their labels writes none of these.
    */
-  readonly configFields?: readonly ActionConfigFieldFor<TInput>[];
+  readonly configFields?: readonly ActionConfigFieldFor<TInput>[] | undefined;
   /**
    * Where the work is.
    *
@@ -474,7 +474,7 @@ function toHandlerEffect<TOutput>(
  */
 export function buildStep<TInput, TOutput>(
   definition: Pick<ActionStepInput<TInput, TOutput>, "handler" | "input"> & {
-    readonly output?: OutputSchema<TOutput>;
+    readonly output?: OutputSchema<TOutput> | undefined;
   },
   subject: string
 ): StepFactory {

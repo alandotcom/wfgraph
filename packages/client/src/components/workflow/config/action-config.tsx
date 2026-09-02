@@ -66,8 +66,8 @@ type ActionConfigProps = {
 type CategoryActionOption = {
   id: string;
   label: string;
-  logoUrl?: string;
-  integration?: string;
+  logoUrl?: string | undefined;
+  integration?: string | undefined;
 };
 
 const WAIT_DELAY_TIMING_OPTIONS = [
@@ -96,7 +96,7 @@ function OptionLogo({
   label,
   fallback,
 }: {
-  logoUrl?: string;
+  logoUrl?: string | undefined;
   label: string;
   fallback: ReactNode;
 }) {

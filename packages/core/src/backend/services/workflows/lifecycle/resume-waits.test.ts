@@ -69,7 +69,7 @@ const services = Layer.mergeAll(
 
 type Subscription = {
   event: string;
-  connectionId?: string;
+  connectionId?: string | undefined;
   match?: { expression: string; timestampPaths: string[] };
 };
 
@@ -85,8 +85,8 @@ function createWaitState(
   id: string,
   executionId: string,
   opts?: {
-    resumeToken?: string | null;
-    subscriptions?: Subscription[];
+    resumeToken?: string | null | undefined;
+    subscriptions?: Subscription[] | undefined;
   }
 ) {
   const subscriptions = opts?.subscriptions ?? [{ event: "event.update" }];

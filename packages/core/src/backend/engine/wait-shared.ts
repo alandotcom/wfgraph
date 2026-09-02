@@ -25,7 +25,7 @@ export type WaitActionInput = {
   runtime: WorkflowExecutionRuntime;
   store: WorkflowStore;
   workflowId: string;
-  workflowRunId?: string;
+  workflowRunId?: string | undefined;
   /** See `WaitBranchContext.resolveTemplates`. */
   resolveTemplates: ResolveTemplates;
 };
@@ -66,7 +66,7 @@ export type WaitOutcome = {
    * means the run names none below this node (a timeout that continues). A
    * named Event replaces the one the run was on.
    */
-  arrivingEvent?: { eventName: string; payload: JsonObject } | null;
+  arrivingEvent?: { eventName: string; payload: JsonObject } | null | undefined;
 };
 
 export function fromStore<A>(

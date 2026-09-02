@@ -12,11 +12,11 @@ export type OAuthTopology = {
 /** Stable host URLs that background services cannot derive from a request. */
 export type WfGraphAppContextValue = {
   /** The normalized public origin. OAuth remains unavailable when it is absent. */
-  readonly publicUrl?: string;
+  readonly publicUrl?: string | undefined;
   /** The complete API mount path, such as `/wfgraph/api`. */
   readonly apiBasePath: `/${string}`;
   /** Every URL and cookie decision shared by the OAuth service and routes. */
-  readonly oauth?: OAuthTopology;
+  readonly oauth?: OAuthTopology | undefined;
 };
 
 export class WfGraphAppContext extends Context.Service<

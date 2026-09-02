@@ -1,3 +1,4 @@
+import { isNotNil } from "es-toolkit/predicate";
 import { nanoid } from "nanoid";
 import type {
   PublishedWorkflowVersion,
@@ -29,10 +30,10 @@ type WorkflowPayloadSource = Pick<
 >;
 
 type WorkflowUpdateInput = {
-  name?: string;
-  description?: string;
-  graph?: SerializedWorkflowGraph;
-  mode?: "live" | "test";
+  name?: string | undefined;
+  description?: string | undefined;
+  graph?: SerializedWorkflowGraph | undefined;
+  mode?: "live" | "test" | undefined;
 };
 
 /**
@@ -49,7 +50,11 @@ export function toWorkflowSummaryPayload(
   return {
     id: workflow.id,
     name: workflow.name,
-    description: workflow.description ?? undefined,
+    // `description` is declared with `optionalKey` on the wire, so a workflow
+    // with none leaves the key out rather than sending it as null.
+    ...(isNotNil(workflow.description)
+      ? { description: workflow.description }
+      : {}),
     isPaused: workflow.isPaused,
     mode: workflow.mode,
     visibility: workflow.visibility,

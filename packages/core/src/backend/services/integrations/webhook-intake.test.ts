@@ -71,8 +71,8 @@ function webhook(
 
 function runtimeFor(
   input: {
-    webhook?: IntegrationWebhook;
-    send?: InngestClient["Service"]["sendCatalogEvent"];
+    webhook?: IntegrationWebhook | undefined;
+    send?: InngestClient["Service"]["sendCatalogEvent"] | undefined;
   } = {}
 ) {
   const sendCatalogEvent = vi.fn<InngestClient["Service"]["sendCatalogEvent"]>(

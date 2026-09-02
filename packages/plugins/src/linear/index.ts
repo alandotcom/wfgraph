@@ -21,6 +21,7 @@ import {
   StepFailure,
 } from "@wfgraph/core/plugin";
 import { Effect, Schema } from "effect";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { describeLinearFailure } from "#src/linear/errors";
 
 const linearCredentialFields = {
@@ -251,11 +252,13 @@ export function createLinear(createClient: CreateLinearClient) {
           const issue = yield* bag.step.run(
             "create-ticket",
             callLinear("Failed to create ticket", async () => {
-              const created = await client.createIssue({
-                title: input.ticketTitle,
-                description: input.ticketDescription,
-                teamId,
-              });
+              const created = await client.createIssue(
+                omitUndefined({
+                  title: input.ticketTitle,
+                  description: input.ticketDescription,
+                  teamId,
+                })
+              );
               const made = created.issue ? await created.issue : undefined;
 
               return made
@@ -335,9 +338,9 @@ export function createLinear(createClient: CreateLinearClient) {
             "find-issues",
             Effect.tryPromise({
               try: async () => {
-                const found = await client.issues({
-                  filter: buildIssueFilter(input),
-                });
+                const found = await client.issues(
+                  omitUndefined({ filter: buildIssueFilter(input) })
+                );
 
                 // `issues()` is a Relay connection. `fetchNext()` appends into
                 // this same connection, so exhaust it before flattening or the

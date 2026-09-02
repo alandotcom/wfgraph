@@ -663,7 +663,7 @@ export function WorkflowMenuComponent({
   state,
   actions,
 }: {
-  workflowId?: string;
+  workflowId?: string | undefined;
   state: WorkflowToolbarState;
   actions: WorkflowToolbarActions;
 }) {

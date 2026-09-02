@@ -15,7 +15,7 @@ import {
 
 export function resolveEdgeLabel(
   sourceHandleId: string | null | undefined,
-  data: { displayLabel?: string } | undefined
+  data: { displayLabel?: string | undefined } | undefined
 ): string | null {
   return (
     getConditionBranchDisplayLabel(sourceHandleId) ?? data?.displayLabel ?? null

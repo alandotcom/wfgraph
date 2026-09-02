@@ -45,18 +45,18 @@ export type WorkflowSchemaItemType =
 export type WorkflowSchemaField = {
   name: string;
   type: WorkflowSchemaFieldType;
-  itemType?: WorkflowSchemaItemType;
+  itemType?: WorkflowSchemaItemType | undefined;
   /**
    * The type every value under an open record carries, the mirror of `itemType`
    * for an array. Present only on an object that accepts keys its schema does
    * not name, which is what makes an unlisted key addressable downstream.
    */
-  valueType?: WorkflowSchemaItemType;
-  fields?: WorkflowSchemaField[];
-  description?: string;
-  nullable?: boolean;
-  enumValues?: string[];
-  minItems?: number;
+  valueType?: WorkflowSchemaItemType | undefined;
+  fields?: WorkflowSchemaField[] | undefined;
+  description?: string | undefined;
+  nullable?: boolean | undefined;
+  enumValues?: string[] | undefined;
+  minItems?: number | undefined;
 };
 
 type JsonSchemaType = WorkflowSchemaFieldType | WorkflowSchemaItemType;
@@ -68,17 +68,17 @@ type JsonSchemaType = WorkflowSchemaFieldType | WorkflowSchemaItemType;
  * document had it in a shape this module cannot use.
  */
 interface JsonSchemaNode {
-  type?: string | string[];
-  format?: string;
-  description?: string;
-  enum?: unknown[];
+  type?: string | string[] | undefined;
+  format?: string | undefined;
+  description?: string | undefined;
+  enum?: unknown[] | undefined;
   const?: unknown;
-  required?: string[];
+  required?: string[] | undefined;
   default?: unknown;
-  examples?: unknown[];
-  minimum?: number;
-  minItems?: number;
-  properties?: JsonSchemaProperties;
+  examples?: unknown[] | undefined;
+  minimum?: number | undefined;
+  minItems?: number | undefined;
+  properties?: JsonSchemaProperties | undefined;
   /**
    * Present only when the document wrote the keyword. `false` closes the object;
    * `true` or a node opens it. An absent keyword is read as closed even though
@@ -86,11 +86,11 @@ interface JsonSchemaNode {
    * said nothing about extra keys and offering `user.anything` off that silence
    * would fill the picker with paths no payload holds.
    */
-  additionalProperties?: JsonSchemaNode | boolean;
-  items?: JsonSchemaNode;
-  anyOf?: (JsonSchemaNode | undefined)[];
-  oneOf?: (JsonSchemaNode | undefined)[];
-  allOf?: (JsonSchemaNode | undefined)[];
+  additionalProperties?: JsonSchemaNode | boolean | undefined;
+  items?: JsonSchemaNode | undefined;
+  anyOf?: (JsonSchemaNode | undefined)[] | undefined;
+  oneOf?: (JsonSchemaNode | undefined)[] | undefined;
+  allOf?: (JsonSchemaNode | undefined)[] | undefined;
 }
 
 /** A `properties` map, whose members drop out individually when malformed. */
@@ -101,13 +101,13 @@ type JsonSchemaProperties = Record<string, JsonSchemaNode | undefined>;
  * named fields, which the schema builder in the editor writes and reads.
  */
 interface WorkflowFieldRecord {
-  name?: string;
-  type?: string | string[];
-  itemType?: string | string[];
-  format?: string;
-  description?: string;
-  enumValues?: unknown[];
-  fields?: WorkflowFieldRecords;
+  name?: string | undefined;
+  type?: string | string[] | undefined;
+  itemType?: string | string[] | undefined;
+  format?: string | undefined;
+  description?: string | undefined;
+  enumValues?: unknown[] | undefined;
+  fields?: WorkflowFieldRecords | undefined;
 }
 
 /** A `fields` array, whose entries drop out individually when malformed. */
@@ -499,7 +499,7 @@ function resolvePrimitiveWorkflowSchemaType(input: {
 function arrayWorkflowSchemaFieldFromRecord(input: {
   name: string;
   record: WorkflowFieldRecord;
-  description?: string;
+  description?: string | undefined;
 }): WorkflowSchemaField {
   const { name, record, description } = input;
   const normalizedItemType = normalizeJsonSchemaType(record.itemType);
@@ -1077,9 +1077,11 @@ export function labelFromKey(key: string, description?: string): string {
   return description?.trim() ? description.trim() : startCase(key);
 }
 
+// Every branch answers with a list, so the return type drops the `undefined`
+// that the field's own declaration carries.
 function deriveSelectOptions(
   property: JsonSchemaNode
-): ActionConfigFieldBase["options"] {
+): NonNullable<ActionConfigFieldBase["options"]> {
   if (property.enum) {
     return property.enum.map((v: unknown) => ({
       value: String(v),

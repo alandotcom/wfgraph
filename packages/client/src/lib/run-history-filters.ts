@@ -138,7 +138,7 @@ export function createRunFilter(input: {
   field: RunFilterField;
   operator: RunFilterOperator;
   value: string;
-  valueLabel?: string;
+  valueLabel?: string | undefined;
 }): RunFilter {
   return {
     id: crypto.randomUUID(),

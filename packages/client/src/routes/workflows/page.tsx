@@ -52,6 +52,7 @@ import {
 import type { WorkflowMode } from "#src/lib/workflow-graph-types";
 import { publishedModeWord } from "#src/lib/workflow-run-labels";
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 type GlobalExecutionItem = WorkflowExecutionsGlobalResult["items"][number];
 
@@ -184,7 +185,10 @@ export default function WorkflowsPage() {
   // is the whole job of the effect this replaced.
   const runsQuery = useInfiniteQuery({
     ...orpcQuery.workflow.getExecutionsGlobal.infiniteOptions({
-      input: (cursor: RunsCursor | undefined) => ({ ...runsFilter, cursor }),
+      // The contract's `cursor` is an optional key, so the first page sends no
+      // cursor at all rather than a key holding nothing.
+      input: (cursor: RunsCursor | undefined) =>
+        omitUndefined({ ...runsFilter, cursor }),
       initialPageParam: undefined as RunsCursor | undefined,
       getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
       meta: { errorMessage: "Failed to load workflow runs" },

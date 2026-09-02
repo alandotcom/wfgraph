@@ -1,9 +1,10 @@
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { drizzle } from "drizzle-orm/postgres-js";
-import postgres, { type Sql } from "postgres";
+import postgres, { type Notice, type Sql } from "postgres";
 import type { NormalizedDatabaseConfig } from "#src/backend/lib/db/config";
 import { relations } from "#src/backend/lib/db/schema";
 import { getAppLogger } from "#src/backend/lib/logger";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 /**
  * The Drizzle handle, with this app's relational config attached. The `Database`
@@ -45,7 +46,13 @@ function createSqlClient(
   config: NormalizedDatabaseConfig,
   pool: { max: number; applicationName: string }
 ): Sql {
-  return postgres(config.url ?? "", {
+  // postgres.js tests for each option with `in`, so a key holding undefined is
+  // not the same to it as an absent key: an `host: undefined` would outrank the
+  // host the URL carries. `omitUndefined` drops whatever the config left out.
+  // The options are named here rather than written inline, because inline the
+  // library's own parameter type would drive the inference and the keys would
+  // survive.
+  const options = omitUndefined({
     host: config.host,
     port: config.port,
     user: config.user,
@@ -65,7 +72,7 @@ function createSqlClient(
     // this library writing to a host's stdout in a shape nothing configured,
     // which ADR-0013 exists to avoid. They are the server's own notices, so
     // this logs them at debug.
-    onnotice: (notice) => {
+    onnotice: (notice: Notice) => {
       logger.debug("PostgreSQL notice", {
         postgres: {
           code: notice.code,
@@ -75,6 +82,8 @@ function createSqlClient(
       });
     },
   });
+
+  return postgres(config.url ?? "", options);
 }
 
 /** The one connection a migration run holds its advisory lock on. */

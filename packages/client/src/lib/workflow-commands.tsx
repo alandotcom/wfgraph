@@ -43,20 +43,20 @@ export type WorkflowCommand = {
   readonly id: WorkflowCommandId;
   readonly group: "steps" | "workflow" | "canvas";
   readonly label: string;
-  readonly detail?: string;
+  readonly detail?: string | undefined;
   readonly keywords: string;
-  readonly hint?: string;
+  readonly hint?: string | undefined;
   /**
    * Whether running this command reaches real recipients. A surface that
    * highlights rows on its own must skip these, because a highlighted row plus
    * the Return key would send without anyone choosing to.
    */
-  readonly consequential?: boolean;
+  readonly consequential?: boolean | undefined;
   /**
    * Whether this command belongs to the command palette alone. The Actions menu
    * skips these, because the toolbar already offers them as their own control.
    */
-  readonly paletteOnly?: boolean;
+  readonly paletteOnly?: boolean | undefined;
   readonly disabled: boolean;
   readonly execute: () => void;
 };
@@ -65,7 +65,7 @@ type WorkflowCommandState = {
   readonly currentWorkflowId: string | null;
   readonly workflowMode: WorkflowMode;
   /** The published version's number, absent until the first publish. */
-  readonly publishedVersion?: number;
+  readonly publishedVersion?: number | undefined;
   readonly isExecuting: boolean;
   readonly isPreflighting: boolean;
   readonly isGenerating: boolean;
@@ -112,10 +112,12 @@ type PublishEligibility = {
   readonly isPreflighting: boolean;
   readonly hasNodes: boolean;
   readonly hasUnsavedChanges: boolean;
-  readonly publication?: {
-    readonly isPublished: boolean;
-    readonly hasUnpublishedChanges: boolean;
-  };
+  readonly publication?:
+    | {
+        readonly isPublished: boolean;
+        readonly hasUnpublishedChanges: boolean;
+      }
+    | undefined;
 };
 
 /** The publish gate shared by the command controller and toolbar button. */
@@ -155,7 +157,7 @@ export type WorkflowRunEligibility = {
   readonly isGenerating: boolean;
   readonly hasNodes: boolean;
   /** The published version's number, absent until the first publish. */
-  readonly publishedVersion?: number;
+  readonly publishedVersion?: number | undefined;
 };
 
 /**

@@ -19,12 +19,12 @@ import type { WorkflowEdge } from "#src/graph/types";
 /** Node fields grouping reads; shared and editor nodes both satisfy this. */
 export type GroupGraphNode = {
   id: string;
-  parentId?: string;
+  parentId?: string | undefined;
   data: {
     type: string;
-    label?: string;
-    config?: Record<string, unknown>;
-    enabled?: boolean;
+    label?: string | undefined;
+    config?: Record<string, unknown> | undefined;
+    enabled?: boolean | undefined;
   };
 };
 
@@ -65,7 +65,7 @@ export function groupOutletHandle(
 
 export function predecessorKey(edge: {
   source: string;
-  sourceHandle?: string | null;
+  sourceHandle?: string | null | undefined;
 }): string {
   return `${edge.source}\0${edge.sourceHandle ?? ""}`;
 }

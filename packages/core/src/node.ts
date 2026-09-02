@@ -17,6 +17,7 @@ import { getRequestListener } from "@hono/node-server";
 import type { WfGraphApp } from "#src/app";
 import { getAppLogger } from "#src/backend/lib/logger";
 import { getErrorMessage } from "@wfgraph/shared/utils";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 const nodeLogger = getAppLogger("http", "node");
 
@@ -77,7 +78,7 @@ export type CreateRequestListenerOptions = {
    * Hostname to assume when a request carries no Host header, which is legal in
    * HTTP/1.0. Workflow Graph only needs it to build a `Request` URL; nothing routes on it.
    */
-  hostname?: string;
+  hostname?: string | undefined;
 };
 
 export type WfGraphRequestListener = (
@@ -98,14 +99,18 @@ export function createRequestListener(
   wfgraph: WfGraphApp,
   options: CreateRequestListenerOptions = {}
 ): WfGraphRequestListener {
-  const listener = getRequestListener(wfgraph.fetch, {
+  // The adapter reads its options with `in`, so a hostname the host left out
+  // has to be an absent key rather than one holding undefined. The options are
+  // named here rather than written inline, because inline the adapter's own
+  // parameter type would drive the inference and the key would survive.
+  const listenerOptions = omitUndefined({
     hostname: options.hostname,
     // A library has no business swapping the host application's global Request
     // and Response constructors, which this adapter does by default.
     overrideGlobalObjects: false,
     // Without this the adapter answers 500 with an empty body and says nothing,
     // which turns a bug inside Workflow Graph into a mystery for whoever mounted it.
-    errorHandler: (error) => {
+    errorHandler: (error: unknown) => {
       nodeLogger.error(
         `Unhandled error serving a Workflow Graph request: ${getErrorMessage(error)}`,
         {
@@ -115,6 +120,7 @@ export function createRequestListener(
       return Response.json({ error: "Internal Server Error" }, { status: 500 });
     },
   });
+  const listener = getRequestListener(wfgraph.fetch, listenerOptions);
 
   // The mount-point warning fires once. A mismatch is a startup mistake, so
   // repeating it per request would bury the rest of the host's log.

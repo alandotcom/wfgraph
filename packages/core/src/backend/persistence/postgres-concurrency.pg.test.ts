@@ -392,8 +392,8 @@ describePostgres("PostgreSQL concurrency", () => {
 
     const start = (
       overrides: {
-        entityValue?: string;
-        runMode?: "live" | "test";
+        entityValue?: string | undefined;
+        runMode?: "live" | "test" | undefined;
       },
       deliveryId: string
     ) =>

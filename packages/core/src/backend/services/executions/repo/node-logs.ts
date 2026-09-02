@@ -13,14 +13,14 @@ export type NodeLogsRepoMethods = {
     nodeId: string;
     nodeName: string;
     nodeType: string;
-    input?: JsonValue;
+    input?: JsonValue | undefined;
   }) => Effect.Effect<string, DatabaseError>;
   /** Close a row `openNodeLog` opened. */
   readonly closeNodeLog: (input: {
     logId: string;
     status: "success" | "error";
-    output?: JsonValue;
-    error?: string;
+    output?: JsonValue | undefined;
+    error?: string | undefined;
     durationMs: number;
   }) => Effect.Effect<void, DatabaseError>;
   /**

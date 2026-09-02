@@ -31,7 +31,7 @@ import {
 } from "#src/lib/workflow-ui-store";
 
 type WorkflowToolbarProps = {
-  workflowId?: string;
+  workflowId?: string | undefined;
 };
 
 const WORKSPACE_LABELS: Record<WorkflowWorkspaceView, string> = {

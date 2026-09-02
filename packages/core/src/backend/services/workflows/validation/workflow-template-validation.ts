@@ -41,9 +41,9 @@ export type WorkflowTemplateValidationResult =
  * ever sees it.
  */
 type ValueTarget = {
-  type?: ValueTargetType;
+  type?: ValueTargetType | undefined;
   required: boolean;
-  literal?: true;
+  literal?: true | undefined;
 };
 
 /**

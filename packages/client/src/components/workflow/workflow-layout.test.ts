@@ -7,6 +7,7 @@ import type {
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { layoutWorkflowNodes } from "./workflow-layout";
 import {
   eventSplitCardWidth,
@@ -127,12 +128,14 @@ function buildEdge(
   target: string,
   sourceHandle?: string
 ): WorkflowEdge {
-  return {
+  // React Flow declares `sourceHandle` as a plain optional key, so an edge
+  // leaving a node's only handle carries no key at all.
+  return omitUndefined({
     id,
     source,
     target,
     sourceHandle,
-  };
+  });
 }
 
 /**

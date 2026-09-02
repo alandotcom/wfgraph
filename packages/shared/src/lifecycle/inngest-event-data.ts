@@ -76,7 +76,9 @@ export function compileEventDataEquals(when: {
 }
 
 /** One flow-control option with its partition key moved under `event.data`. */
-export function prefixKeyField<T extends { key?: string }>(obj: T): T {
+export function prefixKeyField<T extends { key?: string | undefined }>(
+  obj: T
+): T {
   if (!obj.key) {
     return obj;
   }

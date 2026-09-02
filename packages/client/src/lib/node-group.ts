@@ -4,6 +4,7 @@
  */
 
 import { nanoid } from "nanoid";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { toast } from "sonner";
 import type { EdgeChange } from "@xyflow/react";
 import { isConditionNode } from "@wfgraph/shared/graph/node-config";
@@ -426,13 +427,17 @@ function alignEntryIncoming(input: {
     // No `type`: the canvas names the edge component for every edge through
     // `defaultEdgeOptions`, and React Flow merges that under the edge, so an
     // explicit `type: undefined` here would shadow it back to the bezier.
-    extra.push({
-      id: createEdgeId(),
-      source: template.source,
-      target: entryId,
-      sourceHandle: template.sourceHandle,
-      targetHandle: template.targetHandle,
-    });
+    // React Flow declares both handle keys as plain optional, so a handle the
+    // template does not name is left out rather than written as `undefined`.
+    extra.push(
+      omitUndefined({
+        id: createEdgeId(),
+        source: template.source,
+        target: entryId,
+        sourceHandle: template.sourceHandle,
+        targetHandle: template.targetHandle,
+      })
+    );
   }
   return extra.length === 0 ? edges : [...edges, ...extra];
 }

@@ -1,4 +1,5 @@
 import { atom } from "jotai";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { getClientLogger } from "#src/lib/logger";
 import { queryClient } from "#src/lib/query-client";
 import type { SavedWorkflow } from "#src/lib/rpc-client";
@@ -102,10 +103,35 @@ export const autosaveDelayAtom = atom(1000);
  * sending half of it would drop the other half. The union makes that a type
  * error rather than something the queue has to check for at run time.
  */
-export type WorkflowPatch = { name?: string; mode?: WorkflowMode } & (
+export type WorkflowPatch = {
+  name?: string | undefined;
+  mode?: WorkflowMode | undefined;
+} & (
   | { nodes: WorkflowNode[]; edges: WorkflowEdge[] }
   | { nodes?: undefined; edges?: undefined }
 );
+
+/**
+ * Fold an earlier patch under a later one, field by field, with the later
+ * patch winning. `nodes` and `edges` travel together, so a graph is taken whole
+ * from whichever patch carries one rather than merged key by key.
+ */
+function mergePatches(
+  earlier: WorkflowPatch,
+  later: WorkflowPatch
+): WorkflowPatch {
+  // A field neither patch carries stays absent, because `toUpdatePayload` sends
+  // every key the patch holds and the contract reads an absent key as "leave
+  // this alone".
+  const metadata = omitUndefined({
+    name: later.name ?? earlier.name,
+    mode: later.mode ?? earlier.mode,
+  });
+  const graph = later.nodes ? later : earlier;
+  return graph.nodes
+    ? { ...metadata, nodes: graph.nodes, edges: graph.edges }
+    : metadata;
+}
 
 /**
  * What a caller gets back. Saves never reject: a debounced save has no `await`
@@ -310,12 +336,15 @@ export const saveWorkflowAtom = atom(
               (pending) => pending.workflowId === next.workflowId
             );
             if (later) {
-              later.patch = { ...next.patch, ...later.patch };
+              later.patch = mergePatches(next.patch, later.patch);
             } else {
-              queue.failedPatches.set(next.workflowId, {
-                ...queue.failedPatches.get(next.workflowId),
-                ...next.patch,
-              });
+              queue.failedPatches.set(
+                next.workflowId,
+                mergePatches(
+                  queue.failedPatches.get(next.workflowId) ?? {},
+                  next.patch
+                )
+              );
             }
             logger.error("Save failed", {
               workflowId: next.workflowId,
@@ -338,12 +367,14 @@ export const saveWorkflowAtom = atom(
       // workflow, so a rename typed during a node drag becomes one request
       // carrying both. An entry for a different workflow stays queued behind it.
       const failedPatch = queue.failedPatches.get(workflowId);
-      const patchWithRetry = failedPatch ? { ...failedPatch, ...patch } : patch;
+      const patchWithRetry = failedPatch
+        ? mergePatches(failedPatch, patch)
+        : patch;
       queue.failedPatches.delete(workflowId);
 
       const newest = queue.pending.at(-1);
       if (newest?.workflowId === workflowId) {
-        newest.patch = { ...newest.patch, ...patchWithRetry };
+        newest.patch = mergePatches(newest.patch, patchWithRetry);
         newest.waiters.push(resolve);
         return;
       }

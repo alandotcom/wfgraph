@@ -65,8 +65,8 @@ export function DemoLoginPage({
   username,
   invalidCredentials,
 }: {
-  username?: string;
-  invalidCredentials?: boolean;
+  username?: string | undefined;
+  invalidCredentials?: boolean | undefined;
 }) {
   return (
     <html lang="en">

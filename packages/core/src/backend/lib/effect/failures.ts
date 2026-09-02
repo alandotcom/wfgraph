@@ -76,8 +76,8 @@ type Kind<K extends ServiceFailureKind> = K;
  */
 export type ServiceFailurePayload = {
   error: string;
-  code?: string;
-  invalidIntegrationIds?: readonly string[];
+  code?: string | undefined;
+  invalidIntegrationIds?: readonly string[] | undefined;
 };
 
 /** The caller's input, or the resource it points at, does not pass validation. */

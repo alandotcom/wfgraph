@@ -71,7 +71,7 @@ export function insertExecution(
   database: SqliteExecutor,
   input: NewExecution,
   status: WorkflowExecution["status"],
-  terminal?: { output?: JsonValue; error?: string }
+  terminal?: { output?: JsonValue | undefined; error?: string | undefined }
 ) {
   return Effect.gen(function* () {
     const id = generateId();

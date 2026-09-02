@@ -45,7 +45,7 @@ export const getApiKeys = Effect.fn("getApiKeys")(function* () {
 });
 
 export const postApiKeys = Effect.fn("postApiKeys")(function* (body: {
-  name?: string;
+  name?: string | undefined;
 }) {
   const repo = yield* ApiKeyRepo;
   const logger = (yield* AppLogger).get("api-keys");

@@ -30,12 +30,12 @@ export type HandlerBag<TInput> = {
   readonly input: TInput;
   /** `"test"` when the editor is running the workflow, `"live"` otherwise. */
   readonly runMode: "live" | "test";
-  readonly executionId?: string;
+  readonly executionId?: string | undefined;
   readonly nodeId: string;
   readonly nodeName: string;
   readonly nodeType: string;
   /** The integration the node was configured with, if any. */
-  readonly integrationId?: string;
+  readonly integrationId?: string | undefined;
 };
 
 /**

@@ -206,7 +206,7 @@ export type RunsRepoMethods = {
   readonly endInFlight: (input: {
     executionId: string;
     status: "canceled" | "superseded";
-    error?: string;
+    error?: string | undefined;
   }) => Effect.Effect<boolean, DatabaseError>;
   /**
    * Flag every in-flight run of this workflow about this entity for the
@@ -239,8 +239,8 @@ export type RunsRepoMethods = {
   readonly finishRun: (input: {
     executionId: string;
     status: "completed" | "failed" | "canceled";
-    output?: JsonValue;
-    error?: string;
+    output?: JsonValue | undefined;
+    error?: string | undefined;
   }) => Effect.Effect<boolean, DatabaseError>;
 };
 

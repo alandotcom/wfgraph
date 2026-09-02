@@ -15,9 +15,8 @@ import {
   defineIntegration,
   StepFailure,
 } from "@wfgraph/core/plugin";
-import { omitBy } from "es-toolkit/object";
-import { isNil } from "es-toolkit/predicate";
 import { Effect, Schema } from "effect";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   createClerkBackendClient,
   getClerkApiErrorMessage,
@@ -255,19 +254,16 @@ export const clerk = defineIntegration({
         );
 
         const client = createClerkBackendClient(secretKey);
-        // Clerk reads an absent field and a null one differently, so the fields
-        // the user left blank are dropped rather than sent empty.
-        const createPayload = omitBy(
-          {
-            emailAddress: [input.emailAddress],
-            firstName: input.firstName,
-            lastName: input.lastName,
-            password: input.password,
-            publicMetadata,
-            privateMetadata,
-          },
-          isNil
-        );
+        // Clerk reads an absent field differently from an empty one, so the
+        // fields the user left blank are dropped rather than sent as undefined.
+        const createPayload = omitUndefined({
+          emailAddress: [input.emailAddress],
+          firstName: input.firstName,
+          lastName: input.lastName,
+          password: input.password,
+          publicMetadata,
+          privateMetadata,
+        });
 
         return yield* bag.step.run(
           "create-user",
@@ -359,15 +355,12 @@ export const clerk = defineIntegration({
         const client = createClerkBackendClient(secretKey);
         // An update sends only the fields the user filled in, so a blank box
         // leaves what Clerk already holds alone rather than clearing it.
-        const updatePayload = omitBy(
-          {
-            firstName: input.firstName,
-            lastName: input.lastName,
-            publicMetadata,
-            privateMetadata,
-          },
-          isNil
-        );
+        const updatePayload = omitUndefined({
+          firstName: input.firstName,
+          lastName: input.lastName,
+          publicMetadata,
+          privateMetadata,
+        });
 
         return yield* bag.step.run(
           "update-user",

@@ -121,7 +121,7 @@ export function recordRunCompleted(input: {
   workflowId: string;
   status: TraversalTerminalStatus;
   output: unknown;
-  failure?: EngineFailure;
+  failure?: EngineFailure | undefined;
   resultCount: number;
   runMode: "live" | "test";
 }): Effect.Effect<{ status: TraversalTerminalStatus }> {

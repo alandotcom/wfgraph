@@ -9,6 +9,7 @@ import { atom } from "jotai";
 import { nanoid } from "nanoid";
 import { groupSelection, ungroupNode } from "#src/lib/node-group";
 import { canonicalizeNodeEnabled } from "@wfgraph/shared/graph/node-enabled";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   childIdsOfGroup,
   fanOutStoreEdges,
@@ -150,13 +151,17 @@ export const connectNodesAtom = atom(null, (get, set, edge: WorkflowEdge) => {
     sourceId: edge.source,
     targetId: edge.target,
     sourceHandle,
-  }).map((item, index) => ({
-    ...edge,
-    id: index === 0 ? edge.id : nanoid(),
-    source: item.source,
-    target: item.target,
-    sourceHandle: item.sourceHandle,
-  }));
+  }).map((item, index) =>
+    // React Flow declares `sourceHandle` as a plain optional key, so a fan-out
+    // edge leaving an unnamed handle carries no key at all.
+    omitUndefined({
+      ...edge,
+      id: index === 0 ? edge.id : nanoid(),
+      source: item.source,
+      target: item.target,
+      sourceHandle: item.sourceHandle,
+    })
+  );
   if (additions.length === 0) {
     return;
   }

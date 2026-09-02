@@ -24,7 +24,7 @@ export type AuthoredGroup = {
   label: string;
   type: "group";
   fields: AuthoredField[];
-  defaultExpanded?: boolean;
+  defaultExpanded?: boolean | undefined;
 };
 
 export type AuthoredEntry = AuthoredField | AuthoredGroup;

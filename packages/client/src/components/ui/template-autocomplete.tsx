@@ -36,9 +36,9 @@ type TemplateAutocompleteProps = {
   anchor: TemplateAutocompleteAnchor;
   onSelect: (template: string) => void;
   onClose: () => void;
-  currentNodeId?: string;
-  filter?: string;
-  fieldType?: ValueTargetType;
+  currentNodeId?: string | undefined;
+  filter?: string | undefined;
+  fieldType?: ValueTargetType | undefined;
 };
 
 /** What the menu offers a typed target: the save's rule, without the numbers. */
@@ -91,20 +91,20 @@ type TemplateOption = {
   rank: number;
   nodeId: string;
   nodeName: string;
-  field?: string;
-  description?: string;
+  field?: string | undefined;
+  description?: string | undefined;
   template: string;
   /** Why this row cannot be chosen, absent where it can. */
-  unusable?: string;
+  unusable?: string | undefined;
   /** The Events reaching this node that leave the path out. */
-  absentOn?: string[];
+  absentOn?: string[] | undefined;
   /** Internal record metadata used to complete a key typed under an open record. */
-  recordOnly?: boolean;
+  recordOnly?: boolean | undefined;
   /**
    * Set on an open record, such as Resend's email tags: the type a key under
    * `field` carries. `keyUnderOpenRecordOptions` turns it into a row.
    */
-  valueType?: WorkflowSchemaItemType;
+  valueType?: WorkflowSchemaItemType | undefined;
 };
 
 /**

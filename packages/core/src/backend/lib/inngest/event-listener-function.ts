@@ -108,7 +108,7 @@ export async function runEventListener(input: {
   /**
    * The Connection this arrival came through. Absent for a host Event.
    */
-  connectionId?: string;
+  connectionId?: string | undefined;
   runtime: WfGraphRuntime;
   step: EventListenerSteps;
   deliver: EventListenerDeliverPorts;

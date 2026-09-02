@@ -41,15 +41,18 @@ export type WfGraphWorkerRequestConfig = {
    * because a Worker reads its bindings from the environment it was invoked
    * with.
    */
-  agent?: WfGraphAgentConfig;
+  agent?: WfGraphAgentConfig | undefined;
 };
 
 export type WfGraphWorkerOptions<Env> = {
-  basePath?: string;
+  basePath?: string | undefined;
   /** Public origin used in provider callback URLs and client metadata. */
-  publicUrl?: string;
-  logger?: WfGraphLogger;
-  extensions?: WfGraphExtensions | ((env: Env) => WfGraphExtensions);
+  publicUrl?: string | undefined;
+  logger?: WfGraphLogger | undefined;
+  extensions?:
+    | WfGraphExtensions
+    | ((env: Env) => WfGraphExtensions)
+    | undefined;
   /** Resolve bindings and secrets for this request's Worker environment. */
   request: (env: Env) => WfGraphWorkerRequestConfig;
 };

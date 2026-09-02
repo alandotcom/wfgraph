@@ -153,7 +153,7 @@ export type CreateApiAppOptions = {
    * that mode dials out over a WebSocket and must not expose a callback route
    * that Inngest cannot reach on a private network.
    */
-  inngestHandler?: InngestServeHandler;
+  inngestHandler?: InngestServeHandler | undefined;
 };
 
 /**

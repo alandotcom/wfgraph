@@ -401,10 +401,10 @@ type MenuItemProps = {
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
-  variant?: "default" | "destructive";
-  disabled?: boolean;
-  hint?: string;
-  shortcut?: string;
+  variant?: "default" | "destructive" | undefined;
+  disabled?: boolean | undefined;
+  hint?: string | undefined;
+  shortcut?: string | undefined;
 };
 
 function shortcutLabel(key: string): string {

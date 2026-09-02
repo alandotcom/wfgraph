@@ -42,8 +42,11 @@ const logger = getAppLogger("waits");
  */
 const compiledWaitSubscriptionSchema = Schema.Struct({
   event: Schema.String,
-  connectionId: Schema.optional(Schema.String),
-  match: Schema.optional(
+  // The row this decodes is a stored JSONB document, so an unset key is absent
+  // rather than present holding undefined. `optionalKey` says that, and it is
+  // also what lets a compiled subscription be written back as a JSON value.
+  connectionId: Schema.optionalKey(Schema.String),
+  match: Schema.optionalKey(
     Schema.Struct({
       expression: Schema.String,
       timestampPaths: Schema.mutable(Schema.Array(Schema.String)),

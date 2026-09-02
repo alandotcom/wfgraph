@@ -16,7 +16,7 @@ export type HyperdriveBinding = {
 
 export type HyperdrivePostgresPersistenceOptions = {
   /** Must match the origin role's default first schema. Defaults to `_workflows`. */
-  schema?: string;
+  schema?: string | undefined;
 };
 
 /** Connection-local options safe under Hyperdrive's transaction pooler. */

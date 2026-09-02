@@ -679,7 +679,7 @@ function isLayoutableNode(node: WorkflowNode): boolean {
 export function layoutWorkflowNodes(input: {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
-  availableWidth?: number;
+  availableWidth?: number | undefined;
   catalog: ExtensionCatalog;
 }): {
   nodes: WorkflowNode[];

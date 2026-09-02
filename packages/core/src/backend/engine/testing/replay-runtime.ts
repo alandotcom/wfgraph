@@ -46,9 +46,9 @@ export type ReplayRunOptions = {
    * What an event wait resolves to, keyed by its step id. A wait with no answer
    * here runs to its timeout, which the engine reads as `null`.
    */
-  events?: Record<string, unknown>;
+  events?: Record<string, unknown> | undefined;
   /** Invocation ceiling, which turns a non-converging graph into a failure. */
-  maxInvocations?: number;
+  maxInvocations?: number | undefined;
   /**
    * The body a branch hand-off starts. Left out, the runtime offers no
    * `startBranch` at all, which is what the engine reads as "run the Wait
@@ -62,7 +62,7 @@ export type ReplayRunOptions = {
    * Virtual clock at which every live branch run is killed, which is what a
    * cancellation does to them. The run that started one reads `killed` back.
    */
-  killBranchesAtMs?: number;
+  killBranchesAtMs?: number | undefined;
 };
 
 export type ReplayRun<T> = {
@@ -171,11 +171,11 @@ type DurableRun = {
   /** How each of those branches ended, once one has. */
   readonly branchEndings: Map<string, BranchEnding>;
   /** The run that started this one, absent on the root. */
-  readonly parent?: { run: DurableRun; stepId: string };
+  readonly parent?: { run: DurableRun; stepId: string } | undefined;
   /** Pauses the last pass is blocked on that have yet to end. */
   outstanding: Set<string>;
   invocation: number;
-  settled?: Settlement;
+  settled?: Settlement | undefined;
 };
 
 /**

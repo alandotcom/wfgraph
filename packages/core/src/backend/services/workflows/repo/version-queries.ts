@@ -39,7 +39,7 @@ export function makeWorkflowVersionQueries(database: Database["Service"]) {
     listVersionHistoryPage: (input: {
       workflowId: string;
       limit: number;
-      cursor?: { version: number };
+      cursor?: { version: number } | undefined;
     }) =>
       database.query(async (db) => {
         const rows = await db

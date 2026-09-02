@@ -69,7 +69,7 @@ export type CompleteStepLogInput = {
   durationMs: number;
   status: "success" | "error";
   output?: unknown;
-  error?: string;
+  error?: string | undefined;
 };
 
 export type RecordAuditEventInput = {
@@ -77,7 +77,7 @@ export type RecordAuditEventInput = {
   executionId: string;
   eventType: WorkflowRunAuditEventType;
   message: string;
-  metadata?: JsonObjectDraft;
+  metadata?: JsonObjectDraft | undefined;
 };
 
 export type CreateWaitStateInput = {
@@ -92,15 +92,15 @@ export type CreateWaitStateInput = {
    * park rather than authored, because two runs at one node would collide on a
    * token decided at design time.
    */
-  resumeToken?: string;
+  resumeToken?: string | undefined;
   /** Target timestamp as ISO 8601; the adapter converts it for storage. */
-  waitUntilIso?: string;
+  waitUntilIso?: string | undefined;
   /**
    * The Event names this wait parks on, which the delivery fan-out finds the run
    * by. Empty for a wait on a clock, which no Event reaches.
    */
-  subscribedEvents?: string[];
-  metadata?: JsonObjectDraft;
+  subscribedEvents?: string[] | undefined;
+  metadata?: JsonObjectDraft | undefined;
 };
 
 export type MarkWaitStateStatusInput = {
@@ -122,7 +122,7 @@ export type CompleteRunInput = {
   executionId: string;
   status: "completed" | "failed" | "canceled";
   output?: unknown;
-  failure?: EngineFailure;
+  failure?: EngineFailure | undefined;
 };
 
 export type WorkflowStore = {

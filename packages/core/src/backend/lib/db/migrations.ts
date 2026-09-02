@@ -76,12 +76,12 @@ export type MigrationsOptions = {
    * starting together is safe either way: `runMigrations` holds an advisory
    * lock and the ones that lose the race wait, then find nothing to do.
    */
-  runOnStartup?: boolean;
+  runOnStartup?: boolean | undefined;
   /**
    * Directory holding the generated SQL, for an operator whose migrations really
    * do sit somewhere other than the copy Workflow Graph ships.
    */
-  migrationsDir?: string;
+  migrationsDir?: string | undefined;
 };
 
 async function resolveExistingMigrationsDir(

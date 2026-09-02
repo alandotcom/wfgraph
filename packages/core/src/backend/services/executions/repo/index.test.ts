@@ -32,10 +32,10 @@ function isLock(query: string): boolean {
 }
 
 function harness(answers: {
-  ownRow?: boolean;
-  inFlight?: InFlightRow[];
-  updated?: string[];
-  transactionFailures?: readonly unknown[];
+  ownRow?: boolean | undefined;
+  inFlight?: InFlightRow[] | undefined;
+  updated?: string[] | undefined;
+  transactionFailures?: readonly unknown[] | undefined;
 }) {
   const {
     layer: databaseLayer,

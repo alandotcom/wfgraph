@@ -153,8 +153,8 @@ function resolveActionFromCatalog(
  */
 export function workflowNodeLabel(input: {
   node: WorkflowNode;
-  actionLabel?: string;
-  actionType?: string;
+  actionLabel?: string | undefined;
+  actionType?: string | undefined;
 }): string {
   const explicit = asNonEmptyString(input.node.data.label);
   if (explicit) {

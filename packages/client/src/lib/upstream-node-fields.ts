@@ -75,7 +75,10 @@ export function seedConditionModelForField(
     : field;
 
   const model = createDefaultConditionModel(named, ids);
-  if (!field.recordKey) {
+  // Read once, so the key each rule carries is the narrowed string rather than
+  // the optional property, which the callbacks below cannot narrow.
+  const recordKey = field.recordKey;
+  if (!recordKey) {
     return model;
   }
 
@@ -85,7 +88,7 @@ export function seedConditionModelForField(
       ...group,
       conditions: group.conditions.map((rule) => ({
         ...rule,
-        recordKey: field.recordKey,
+        recordKey,
       })),
     })),
   };
@@ -249,7 +252,7 @@ export function getNodeOutputFields(
 
 /** The nodes a run passed through before this one, in canvas order. */
 export function getUpstreamNodes(input: {
-  currentNodeId?: string;
+  currentNodeId?: string | undefined;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
 }): WorkflowNode[] {
@@ -263,7 +266,7 @@ export function getUpstreamNodes(input: {
 }
 
 export function getUpstreamFields(input: {
-  currentNodeId?: string;
+  currentNodeId?: string | undefined;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   catalog: ExtensionCatalog;
@@ -388,7 +391,7 @@ export function getEventConditionFields(
  * anything the entry node hands on.
  */
 function eventNameConditionField(input: {
-  currentNodeId?: string;
+  currentNodeId?: string | undefined;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   catalog: ExtensionCatalog;
@@ -563,7 +566,7 @@ function sharedEnumValues(
 }
 
 export function getUpstreamConditionFields(input: {
-  currentNodeId?: string;
+  currentNodeId?: string | undefined;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   catalog: ExtensionCatalog;

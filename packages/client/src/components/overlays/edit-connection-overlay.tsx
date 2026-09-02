@@ -26,6 +26,7 @@ import {
   type IntegrationMetadata,
 } from "@wfgraph/shared/extensions/catalog";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
@@ -216,8 +217,8 @@ function OAuthConnectionStatus({
 type EditConnectionOverlayProps = {
   overlayId: string;
   integration: Integration;
-  onSuccess?: () => void;
-  onDelete?: () => void;
+  onSuccess?: (() => void) | undefined;
+  onDelete?: (() => void) | undefined;
 };
 
 /**
@@ -237,9 +238,9 @@ function SecretField({
   fieldId: string;
   label: string;
   configKey: string;
-  placeholder?: string;
-  helpText?: string;
-  helpLink?: { url: string; text: string };
+  placeholder?: string | undefined;
+  helpText?: string | undefined;
+  helpLink?: { url: string; text: string } | undefined;
   configured: boolean;
   value: string;
   onChange: (key: string, value: string) => void;
@@ -439,13 +440,15 @@ export function EditConnectionOverlay({
     if (!canUpdate) {
       return;
     }
-    update.mutate({
-      integrationId: integration.id,
-      name: name.trim(),
+    update.mutate(
       // Both fields are optional on the contract, so leaving the credentials out
       // is how "keep the stored ones" is said.
-      config: hasProvidedConfigValues(config) ? config : undefined,
-    });
+      omitUndefined({
+        integrationId: integration.id,
+        name: name.trim(),
+        config: hasProvidedConfigValues(config) ? config : undefined,
+      })
+    );
   };
 
   const offerToSaveAnyway = (reason: string) => {
@@ -472,9 +475,10 @@ export function EditConnectionOverlay({
 
     // Test before saving
     try {
+      // `hasNewConfig` is true on this path, so the credentials always travel.
       const result = await testForSave.mutateAsync({
         integrationId: integration.id,
-        config: hasNewConfig ? config : undefined,
+        config,
       });
 
       if (result.status === "error") {
@@ -495,10 +499,13 @@ export function EditConnectionOverlay({
     if (!canTest) {
       return;
     }
-    testStoredCredentials.mutate({
-      integrationId: integration.id,
-      config: hasProvidedConfigValues(config) ? config : undefined,
-    });
+    testStoredCredentials.mutate(
+      // Leaving `config` out tests the credentials already stored.
+      omitUndefined({
+        integrationId: integration.id,
+        config: hasProvidedConfigValues(config) ? config : undefined,
+      })
+    );
   };
 
   const handleDelete = () => {
@@ -726,9 +733,9 @@ type DeleteConnectionOverlayProps = {
    * confirmation alone; a caller that pushed it over its own overlay closes
    * both, because what it reveals is the edit form for a deleted connection.
    */
-  onDismiss?: () => void;
+  onDismiss?: (() => void) | undefined;
   /** Runs after the connection list has been refreshed. */
-  onSuccess?: () => void;
+  onSuccess?: (() => void) | undefined;
 };
 
 /**

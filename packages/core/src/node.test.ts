@@ -70,9 +70,9 @@ type TestResponse = { status: number; body: string };
 function send(
   url: string,
   options: {
-    method?: string;
-    headers?: Record<string, string>;
-    body?: string;
+    method?: string | undefined;
+    headers?: Record<string, string> | undefined;
+    body?: string | undefined;
   } = {}
 ): Promise<TestResponse> {
   return new Promise((resolve, reject) => {

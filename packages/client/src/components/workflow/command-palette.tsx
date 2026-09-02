@@ -68,9 +68,9 @@ type PaletteItem = {
   readonly id: string;
   readonly label: string;
   /** The rest of the row, when the item has something worth adding. */
-  readonly detail?: string;
+  readonly detail?: string | undefined;
   /** A shortcut or a keyboard hint, printed at the end of the row. */
-  readonly hint?: string;
+  readonly hint?: string | undefined;
   /** Everything the item can be found by, which is what the filter matches. */
   readonly keywords: string;
   readonly disabled: boolean;

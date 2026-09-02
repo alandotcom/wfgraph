@@ -426,7 +426,8 @@ describe("createWfGraphApp with host authentication", () => {
           new Request(`http://localhost${toRequestPath(path)}`, {
             method,
             headers: { "content-type": "application/json" },
-            body: method === "GET" ? undefined : "{}",
+            // RequestInit spells "no body" as null, which is what a GET takes.
+            body: method === "GET" ? null : "{}",
           })
         );
 

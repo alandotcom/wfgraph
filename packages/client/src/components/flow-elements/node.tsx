@@ -10,8 +10,8 @@ export type NodeProps = ComponentProps<typeof Card> & {
     target: boolean | NodeHandleConfig[];
     source: boolean | NodeHandleConfig[];
   };
-  status?: "idle" | "running" | "success" | "error" | "cancelled";
-  selected?: boolean;
+  status?: "idle" | "running" | "success" | "error" | "cancelled" | undefined;
+  selected?: boolean | undefined;
 };
 
 // Run status is worn as a border color, which a colorblind user cannot read and
@@ -69,11 +69,11 @@ const NodeStatusChip = ({ status }: { status?: NodeProps["status"] }) => {
 };
 
 type NodeHandleConfig = {
-  id?: string;
-  label?: string;
+  id?: string | undefined;
+  label?: string | undefined;
   position: Position;
-  style?: CSSProperties;
-  className?: string;
+  style?: CSSProperties | undefined;
+  className?: string | undefined;
 };
 
 function renderHandles(
@@ -112,7 +112,9 @@ function renderHandles(
           (handleType === "source" ? "Output handle" : "Input handle")
         }
         className={handleConfig.className}
-        id={handleConfig.id}
+        // React Flow spells an unnamed handle as `null` rather than an absent
+        // key, and its `id` prop admits no `undefined`.
+        id={handleConfig.id ?? null}
         key={handleConfig.id ?? fallbackKey}
         position={handleConfig.position}
         role="img"

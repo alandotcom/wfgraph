@@ -178,11 +178,11 @@ export class WorkflowRepo extends Context.Service<
     readonly insert: (input: {
       id: string;
       name: string;
-      description?: string | null;
+      description?: string | null | undefined;
       graph: SerializedWorkflowGraph;
-      mode?: WorkflowMode;
-      visibility?: WorkflowVisibility;
-      isPaused?: boolean;
+      mode?: WorkflowMode | undefined;
+      visibility?: WorkflowVisibility | undefined;
+      isPaused?: boolean | undefined;
       eventSubscriptions: WorkflowEventSubscriptionRow[];
     }) => Effect.Effect<Workflow, DatabaseError>;
     /**
@@ -249,7 +249,7 @@ export class WorkflowRepo extends Context.Service<
     readonly listVersionHistoryPage: (input: {
       workflowId: string;
       limit: number;
-      cursor?: { version: number };
+      cursor?: { version: number } | undefined;
     }) => Effect.Effect<WorkflowVersionHistoryRow[], DatabaseError>;
     /**
      * Current publication first, followed by active published versions newest

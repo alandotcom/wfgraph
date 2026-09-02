@@ -20,8 +20,8 @@ type WorkflowIssuesOverlayProps = OverlayComponentProps<{
    * their own. A run of the published version never arrives here: publish
    * refused that graph's blocking issues before it became a version.
    */
-  onRunDraftAnyway?: () => void;
-  allowRunDraftAnyway?: boolean;
+  onRunDraftAnyway?: (() => void) | undefined;
+  allowRunDraftAnyway?: boolean | undefined;
 }>;
 
 /** Count the individual repairs represented by the overlay's grouped rows. */

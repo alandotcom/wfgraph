@@ -30,11 +30,11 @@ const connectedAt = "2026-08-01T00:00:00.000Z";
 
 function storedGrant(
   input: {
-    accessToken?: string;
-    refreshToken?: string;
-    expiresAt?: string;
-    accountLabel?: string;
-    grantedAccessLabel?: string;
+    accessToken?: string | undefined;
+    refreshToken?: string | undefined;
+    expiresAt?: string | undefined;
+    accountLabel?: string | undefined;
+    grantedAccessLabel?: string | undefined;
   } = {}
 ): string {
   const accessToken = input.accessToken ?? "old-access";

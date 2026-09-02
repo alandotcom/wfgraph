@@ -20,7 +20,7 @@ import { isEventSplitNode } from "#src/lifecycle/event-split";
 export type JoinGraphEdge = {
   source: string;
   target: string;
-  sourceHandle?: string | null;
+  sourceHandle?: string | null | undefined;
 };
 
 function nodeLabel(node: WorkflowNode | undefined, fallbackId: string): string {

@@ -5,6 +5,7 @@ import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
 } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 function lifecycleNode(id: string, cancelEvents: string[] = []): WorkflowNode {
   return {
@@ -45,7 +46,9 @@ function edge(
   target: string,
   sourceHandle?: string
 ): WorkflowEdge {
-  return { id, source, target, sourceHandle };
+  // React Flow declares `sourceHandle` as a plain optional key, so an edge
+  // leaving a node's only handle carries no key at all.
+  return omitUndefined({ id, source, target, sourceHandle });
 }
 
 describe("inactiveBranch", () => {

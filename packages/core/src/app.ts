@@ -71,9 +71,9 @@ export type WfGraphAppOptions = {
    * `<base href>` from this, so a host that mounts under a sub-path says so
    * once here instead of Workflow Graph guessing per request.
    */
-  basePath?: string;
+  basePath?: string | undefined;
   /** Public origin used in provider callback URLs and client metadata. */
-  publicUrl?: string;
+  publicUrl?: string | undefined;
   /**
    * Authenticates operators and returns their request-scoped access policy.
    * Use `trustWfGraphUpstream()` only when an upstream boundary authenticates
@@ -91,7 +91,7 @@ export type WfGraphAppOptions = {
    * Where Workflow Graph's own log lines go. Absent, Workflow Graph configures a console sink of
    * its own; present, every line is handed to this instead.
    */
-  logger?: WfGraphLogger;
+  logger?: WfGraphLogger | undefined;
   /** The storage backend Workflow Graph uses for all durable state. */
   persistence: WfGraphPersistence;
   encryption: EncryptionRuntimeConfig;
@@ -104,7 +104,7 @@ export type WfGraphAppOptions = {
    * Event brings its listener, and a `defineAction` brings its handler. Dropping
    * a line is what turns something off.
    */
-  extensions?: WfGraphExtensions;
+  extensions?: WfGraphExtensions | undefined;
   /**
    * The build agent: the chat panel in the editor that reads the catalog and
    * edits the open workflow.
@@ -113,7 +113,7 @@ export type WfGraphAppOptions = {
    * the editor shows no chat panel. A host passes its own key, conventionally
    * `process.env.OPENAI_API_KEY`.
    */
-  agent?: WfGraphAgentConfig;
+  agent?: WfGraphAgentConfig | undefined;
   /**
    * The workflow editor, from `import { clientBundle } from "@wfgraph/client"`.
    *
@@ -122,7 +122,7 @@ export type WfGraphAppOptions = {
    * consequence of what happens to be installed. `@wfgraph/core` does not depend on
    * `@wfgraph/client` in either direction.
    */
-  client?: WfGraphClientBundle;
+  client?: WfGraphClientBundle | undefined;
 };
 
 /** Structural, so `@wfgraph/core` and `@wfgraph/client` need no dependency between them. */
@@ -206,7 +206,7 @@ async function buildWfGraphApp(
   options: WfGraphAppOptions,
   startup: {
     basePath: "" | `/${string}`;
-    publicUrl?: string;
+    publicUrl?: string | undefined;
     auth: ResolvedAuth;
   }
 ): Promise<WfGraphApp> {

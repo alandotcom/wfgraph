@@ -70,7 +70,7 @@ export type IntegrationDefinition = {
   readonly description: string;
   readonly credentials: CredentialFields;
   /** Provider behavior retained on the server when this integration supports OAuth. */
-  readonly oauth?: IntegrationOAuth;
+  readonly oauth?: IntegrationOAuth | undefined;
   /**
    * What "Test connection" calls, absent when the integration offers none.
    *
@@ -78,12 +78,14 @@ export type IntegrationDefinition = {
    * the network, so it stays behind a dynamic import until someone presses the
    * button.
    */
-  readonly test?: IntegrationTestLoader;
+  readonly test?: IntegrationTestLoader | undefined;
   /**
    * What a `provider-select` or `provider-fields` field asks, keyed by the name
    * its `optionsSource.provider` uses. Deferred for the reason `test` is.
    */
-  readonly configOptions?: Readonly<Record<string, ConfigOptionsProvider>>;
+  readonly configOptions?:
+    | Readonly<Record<string, ConfigOptionsProvider>>
+    | undefined;
   /** Keyed by action slug. */
   readonly actions: Readonly<Record<string, ActionStep>>;
   /**
@@ -91,12 +93,12 @@ export type IntegrationDefinition = {
    * stamps `EventMetadata.integration`, so the editor can offer a Connection
    * picker. Identity stays the Event name; a webhook is how they arrive.
    */
-  readonly events?: readonly AnyEventDefinition[];
+  readonly events?: readonly AnyEventDefinition[] | undefined;
   /**
    * The ungated intake that turns a vendor POST into an Event send. Absent when
    * this integration only sends.
    */
-  readonly webhook?: IntegrationWebhook;
+  readonly webhook?: IntegrationWebhook | undefined;
 };
 
 /**
@@ -112,16 +114,16 @@ type ActionInputSide<TCredentials, TInput, TOutput> = {
   readonly label: string;
   readonly description: string;
   /** Defaults to the integration's own label, which is the usual heading. */
-  readonly category?: string;
+  readonly category?: string | undefined;
   /**
    * Whether running this action changes something outside the workflow: a
    * message sent, a record written or removed. Defaults to `false`, which says
    * the action only reads, and that is what lets a Group hold it. See
    * `ActionStepInput` for how this differs from the replay sense of the phrase.
    */
-  readonly sideEffect?: boolean;
+  readonly sideEffect?: boolean | undefined;
   /** When true, the editor's action picker omits this action. */
-  readonly hidden?: boolean;
+  readonly hidden?: boolean | undefined;
   readonly input: InputSchema<TInput>;
   readonly configFields?: readonly ActionConfigFieldFor<
     TInput,
@@ -204,8 +206,10 @@ export function defineIntegration<
   readonly label: string;
   readonly description: string;
   readonly credentials: TCredentials;
-  readonly oauth?: IntegrationOAuth;
-  readonly test?: IntegrationTestLoader<CredentialsOf<TCredentials>>;
+  readonly oauth?: IntegrationOAuth | undefined;
+  readonly test?:
+    | IntegrationTestLoader<CredentialsOf<TCredentials>>
+    | undefined;
   readonly configOptions?: Readonly<
     Record<string, ConfigOptionsProvider<CredentialsOf<TCredentials>>>
   >;
@@ -214,8 +218,10 @@ export function defineIntegration<
     TInputs,
     TOutputs
   >;
-  readonly events?: readonly AnyEventDefinition[];
-  readonly webhook?: IntegrationWebhook<CredentialsOf<TCredentials>>;
+  readonly events?: readonly AnyEventDefinition[] | undefined;
+  readonly webhook?:
+    | IntegrationWebhook<CredentialsOf<TCredentials>>
+    | undefined;
 }): Integration<TInputs, TOutputs>;
 /**
  * The body runs on the erased shape. The signature above has said everything the
@@ -227,12 +233,14 @@ export function defineIntegration(input: {
   readonly label: string;
   readonly description: string;
   readonly credentials: CredentialFields;
-  readonly oauth?: IntegrationOAuth;
-  readonly test?: IntegrationTestLoader;
-  readonly configOptions?: Readonly<Record<string, ConfigOptionsProvider>>;
+  readonly oauth?: IntegrationOAuth | undefined;
+  readonly test?: IntegrationTestLoader | undefined;
+  readonly configOptions?:
+    | Readonly<Record<string, ConfigOptionsProvider>>
+    | undefined;
   readonly actions: Readonly<Record<string, unknown>>;
-  readonly events?: readonly AnyEventDefinition[];
-  readonly webhook?: IntegrationWebhook;
+  readonly events?: readonly AnyEventDefinition[] | undefined;
+  readonly webhook?: IntegrationWebhook | undefined;
 }): IntegrationDefinition {
   assertOrdinaryDeclarationRecord(input.type, "credentials", input.credentials);
   if (input.configOptions) {
@@ -286,7 +294,7 @@ export function defineIntegration(input: {
 
 /** One action with its inference done, as `defineStep` takes it. */
 type DeclaredAction = Omit<ActionStepInput<unknown, unknown>, "category"> & {
-  readonly category?: string;
+  readonly category?: string | undefined;
 };
 
 /**

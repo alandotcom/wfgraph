@@ -90,7 +90,7 @@ export type NodeSchedulerInput = {
    * the one Wait this run enters in place rather than hands on again, which is
    * what stops a branch from handing itself off forever.
    */
-  branchEntryNodeId?: string;
+  branchEntryNodeId?: string | undefined;
 };
 
 export class NodeScheduler {

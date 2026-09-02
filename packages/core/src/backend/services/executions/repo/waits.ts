@@ -50,11 +50,11 @@ export type WaitsRepoMethods = {
     nodeId: string;
     nodeName: string;
     waitType: "delay" | "event";
-    resumeToken?: string;
-    waitUntil?: Date;
+    resumeToken?: string | undefined;
+    waitUntil?: Date | undefined;
     /** The Event names a delivery finds this row by. Empty for a wait on a clock. */
-    subscribedEvents?: string[];
-    metadata?: JsonObjectDraft;
+    subscribedEvents?: string[] | undefined;
+    metadata?: JsonObjectDraft | undefined;
   }) => Effect.Effect<{ waitStateId: string } | undefined, DatabaseError>;
   /**
    * Close out one wait row, answering whether it was still active. A normal
@@ -106,9 +106,9 @@ export type WaitsRepoMethods = {
     workflowId: string;
     eventName: string;
     limit: number;
-    afterId?: string;
+    afterId?: string | undefined;
     /** Runs this delivery already settled, filtered in SQL rather than after. */
-    excludingExecutionIds?: string[];
+    excludingExecutionIds?: string[] | undefined;
   }) => Effect.Effect<WorkflowWaitState[], DatabaseError>;
   /**
    * Claim the waiting node one resume token addresses. The guarded update is

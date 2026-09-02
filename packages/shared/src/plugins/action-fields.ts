@@ -83,7 +83,7 @@ export type ActionConfigFieldBase = {
    * would draw as `********`. The handler is what applies the fallback; this
    * only says where to read the hint.
    */
-  connectionDefaultKey?: string;
+  connectionDefaultKey?: string | undefined;
 
   // Example value for AI prompt generation
   example?: string;
@@ -145,7 +145,7 @@ export type ActionConfigFieldGroup = {
   fields: ActionConfigFieldBase[];
 
   // Whether the group is expanded by default (defaults to false)
-  defaultExpanded?: boolean;
+  defaultExpanded?: boolean | undefined;
 };
 
 /**

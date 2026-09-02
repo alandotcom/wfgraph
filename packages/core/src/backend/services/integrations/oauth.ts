@@ -93,7 +93,7 @@ function missingPublicUrl() {
 const providerStep = <A>(input: {
   logger: EffectLogger;
   operation: string;
-  integrationId?: string;
+  integrationId?: string | undefined;
   integrationType: string;
   run: () => A | Promise<A>;
 }): Effect.Effect<A, InternalFailure> =>

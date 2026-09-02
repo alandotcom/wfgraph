@@ -301,8 +301,8 @@ export function applyWaitAllowedHours(input: {
   waitAllowedHoursMode?: unknown;
   waitAllowedStartTime?: unknown;
   waitAllowedEndTime?: unknown;
-  timeZone?: string;
-}): { date: Date; error?: string } {
+  timeZone?: string | undefined;
+}): { date: Date; error?: string | undefined } {
   const mode = normalizeWaitAllowedHoursMode(input.waitAllowedHoursMode);
 
   if (mode === "off") {
@@ -354,7 +354,7 @@ export function resolveWaitUntil(input: {
   waitUntil?: unknown;
   waitDuration?: unknown;
   waitOffset?: unknown;
-  waitTimezone?: string;
+  waitTimezone?: string | undefined;
   waitAllowedHoursMode?: unknown;
   waitAllowedStartTime?: unknown;
   waitAllowedEndTime?: unknown;

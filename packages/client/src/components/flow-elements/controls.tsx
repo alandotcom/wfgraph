@@ -14,8 +14,8 @@ import { viewportAnimationDuration } from "#src/lib/motion";
 import { showMinimapAtom } from "#src/lib/workflow-ui-store";
 
 type ControlsProps = {
-  onReflow?: () => void;
-  canReflow?: boolean;
+  onReflow?: (() => void) | undefined;
+  canReflow?: boolean | undefined;
 };
 
 export const Controls = ({ onReflow, canReflow = true }: ControlsProps) => {

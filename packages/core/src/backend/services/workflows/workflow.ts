@@ -89,20 +89,20 @@ export const patchWorkflow = Effect.fn("patchWorkflow")(
   function* (
     workflowId: string,
     body: {
-      name?: string;
-      description?: string;
+      name?: string | undefined;
+      description?: string | undefined;
       graph?: unknown;
-      mode?: "live" | "test";
+      mode?: "live" | "test" | undefined;
     }
   ) {
     const repo = yield* WorkflowRepo;
     const logger = yield* loggerFor(workflowId);
 
     const updateInput: {
-      name?: string;
-      description?: string;
-      graph?: SerializedWorkflowGraph;
-      mode?: "live" | "test";
+      name?: string | undefined;
+      description?: string | undefined;
+      graph?: SerializedWorkflowGraph | undefined;
+      mode?: "live" | "test" | undefined;
     } = {};
     /** A rename writes no graph, so the index derived from one stands. */
     let eventSubscriptions: WorkflowEventSubscriptionRow[] | "unchanged" =

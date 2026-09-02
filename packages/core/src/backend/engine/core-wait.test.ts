@@ -119,8 +119,8 @@ type RunWaitOptions = {
   config: Record<string, unknown>;
   store: RecordingWorkflowStore;
   resumeEvent?: unknown;
-  startPayload?: JsonObject;
-  memo?: Map<string, unknown>;
+  startPayload?: JsonObject | undefined;
+  memo?: Map<string, unknown> | undefined;
 };
 
 /**

@@ -57,9 +57,9 @@ function connection(id: string, name: string): Integration {
 }
 
 function renderSelector(options: {
-  value?: string;
+  value?: string | undefined;
   connections: Integration[];
-  disabled?: boolean;
+  disabled?: boolean | undefined;
 }) {
   const onChange = vi.fn<(integrationId: string) => void>();
 

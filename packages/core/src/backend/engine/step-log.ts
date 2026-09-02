@@ -39,7 +39,7 @@ export type NodeContext = StepContext & { executionId: string };
 type StepLogClose = {
   status: "success" | "error";
   output?: unknown;
-  error?: string;
+  error?: string | undefined;
 };
 
 /** Opens the run-log row for a node. */

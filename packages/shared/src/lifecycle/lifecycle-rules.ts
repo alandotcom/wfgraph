@@ -156,7 +156,7 @@ export function configDeclaresCancelEvent(
 export function resolveCorrelationPath(input: {
   rules: LifecycleRules;
   eventName: string;
-  declaredPath?: string;
+  declaredPath?: string | undefined;
 }): string | undefined {
   return input.rules.correlationPaths?.[input.eventName] ?? input.declaredPath;
 }
@@ -216,9 +216,9 @@ export type CorrelationPathRequest = {
   eventName: string;
   role: CorrelationPathRole;
   /** The Event Author's declaration, which stands until the builder overrides it. */
-  declaredPath?: string;
+  declaredPath?: string | undefined;
   /** The builder's own path for this workflow, absent while the declaration stands. */
-  suppliedPath?: string;
+  suppliedPath?: string | undefined;
 };
 
 /**

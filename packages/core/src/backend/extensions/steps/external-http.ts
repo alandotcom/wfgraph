@@ -150,7 +150,7 @@ export type ExternalRequest<T> = {
   readonly url: string;
   readonly method: HttpMethod.HttpMethod;
   readonly headers: Record<string, string>;
-  readonly body?: ExternalBody;
+  readonly body?: ExternalBody | undefined;
   /**
    * What a success body must decode to. Anything else is `ExternalUnreadable`.
    * Effect Schema, Zod, arktype, or anything else publishing Standard Schema.
@@ -161,14 +161,16 @@ export type ExternalRequest<T> = {
    * retried: the system replays its first answer rather than doing the work
    * twice.
    */
-  readonly idempotencyKey?: string;
+  readonly idempotencyKey?: string | undefined;
   /**
    * Reads a refusal out of a success body. Slack needs this: every call it
    * answers arrives as 200, and `ok: false` with an error slug is how it says
    * no, which a status check alone would read as success. Answering true turns
    * that body into the same `ExternalRejected` a 4xx produces.
    */
-  readonly refusedInBody?: (payload: JsonValue | undefined) => boolean;
+  readonly refusedInBody?:
+    | ((payload: JsonValue | undefined) => boolean)
+    | undefined;
   /**
    * Widens the repeat-safety rule for a request the caller knows better about,
    * such as a read that a system's API insists on spelling as a POST. Setting
@@ -176,7 +178,7 @@ export type ExternalRequest<T> = {
    * carrying an idempotency key are repeatable by construction, so there is
    * nothing for a caller to take back.
    */
-  readonly safeToRepeat?: true;
+  readonly safeToRepeat?: true | undefined;
 };
 
 /**

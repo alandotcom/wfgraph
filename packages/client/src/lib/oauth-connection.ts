@@ -131,7 +131,8 @@ export async function startOAuthConnection(
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
-      signal,
+      // `RequestInit` reads `null` as "no signal"; it declares no `undefined`.
+      signal: signal ?? null,
     }
   );
   const body = readJsonObject(await response.json().catch(() => null));
@@ -161,7 +162,8 @@ export async function readOAuthAttemptStatus(
 ): Promise<OAuthAttemptStatus> {
   const response = await fetch(attemptPath(attemptId), {
     credentials: "same-origin",
-    signal,
+    // `RequestInit` reads `null` as "no signal"; it declares no `undefined`.
+    signal: signal ?? null,
   });
   const body = readJsonObject(await response.json().catch(() => null));
   if (!response.ok) {
@@ -200,12 +202,12 @@ export async function pollOAuthAttempt({
   signal,
 }: {
   attemptId: string;
-  intervalMs?: number;
-  timeoutMs?: number;
-  getStatus?: GetStatus;
-  sleep?: Sleep;
-  now?: () => number;
-  signal?: AbortSignal;
+  intervalMs?: number | undefined;
+  timeoutMs?: number | undefined;
+  getStatus?: GetStatus | undefined;
+  sleep?: Sleep | undefined;
+  now?: (() => number) | undefined;
+  signal?: AbortSignal | undefined;
 }): Promise<OAuthPollOutcome> {
   const startedAt = now();
 

@@ -19,14 +19,14 @@ export type NodeRunStatus =
  */
 export type PersistedNodeData = {
   label: string;
-  description?: string;
+  description?: string | undefined;
   type: WorkflowNodeType;
-  config?: Record<string, unknown>;
+  config?: Record<string, unknown> | undefined;
   /**
    * Absent means on. Only `false` is stored; `true` is the same as omitting
    * the key, so persist and the publication diff drop it.
    */
-  enabled?: boolean;
+  enabled?: boolean | undefined;
 };
 
 /**
@@ -40,25 +40,27 @@ export type WorkflowNode = {
   position: { x: number; y: number };
   data: PersistedNodeData;
   /** React Flow types this as `string`; persisted values are WorkflowNodeType. */
-  type?: string;
-  width?: number;
-  height?: number;
-  measured?: { width?: number; height?: number };
+  type?: string | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+  measured?:
+    | { width?: number | undefined; height?: number | undefined }
+    | undefined;
   /**
    * Editor nesting: the Group frame this node sits inside. The engine walks
    * children and never schedules the frame. React Flow's `extent` stays on the
    * editor view-model; it is wider than `"parent"` and must not land here.
    */
-  parentId?: string;
+  parentId?: string | undefined;
 };
 
 export type WorkflowEdge = {
   id: string;
   source: string;
   target: string;
-  sourceHandle?: string | null;
-  targetHandle?: string | null;
-  data?: Record<string, unknown>;
+  sourceHandle?: string | null | undefined;
+  targetHandle?: string | null | undefined;
+  data?: Record<string, unknown> | undefined;
 };
 
 export type SerializedWorkflowGraph = SerializedWorkflowGraphInput;

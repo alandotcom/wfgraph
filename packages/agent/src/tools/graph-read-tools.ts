@@ -41,10 +41,16 @@ const graphEdgeSchema = Schema.Struct({
   sourceHandle: Schema.optionalKey(Schema.String),
 });
 
+/**
+ * The host's own `AgentValidationIssue` passes through this Tool's success
+ * schema unchanged, so `nodeId` and `nodeLabel` are `Schema.optional`: the
+ * host builds that value in process and may set either key to `undefined`
+ * explicitly rather than omitting it.
+ */
 const issueSchema = Schema.Struct({
   kind: Schema.String,
-  nodeId: Schema.optionalKey(Schema.String),
-  nodeLabel: Schema.optionalKey(Schema.String),
+  nodeId: Schema.optional(Schema.String),
+  nodeLabel: Schema.optional(Schema.String),
   message: Schema.String,
 });
 

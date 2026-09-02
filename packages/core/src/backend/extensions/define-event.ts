@@ -81,7 +81,7 @@ export type EventDefinition<TPayload extends JsonObject> = {
   /** The Event's identity in Workflow Graph, and by default the name it arrives under. */
   readonly name: string;
   readonly label: string;
-  readonly description?: string;
+  readonly description?: string | undefined;
   /**
    * The intake gate: whether an arriving payload is this Event at all.
    *
@@ -98,14 +98,14 @@ export type EventDefinition<TPayload extends JsonObject> = {
    * Optional, because an imported Event may have no path its author knew to
    * declare, and the Workflow Builder then supplies one in the Lifecycle panel.
    */
-  readonly correlationPath?: string;
+  readonly correlationPath?: string | undefined;
   readonly source: EventSource;
   /**
    * The authored flow control in the form Inngest's `createFunction` takes, as
    * `rewriteInngestOptions` translates it. The authored form is not kept, because
    * nothing downstream has a use for a path Inngest would reject.
    */
-  readonly inngestFunctionOptions?: Record<string, unknown>;
+  readonly inngestFunctionOptions?: Record<string, unknown> | undefined;
   /** Derived once, at definition. What the editor lists. */
   readonly payloadFields: readonly ReferenceField[];
   /**
@@ -116,7 +116,7 @@ export type EventDefinition<TPayload extends JsonObject> = {
    * options against the payload's own shape. Without this field TypeScript would
    * have no occurrence to infer from and every definition would widen.
    */
-  readonly _payload?: TPayload;
+  readonly _payload?: TPayload | undefined;
 };
 
 /** An Event definition of any payload, which is what a list of them holds. */
@@ -232,14 +232,14 @@ export type DefineEventInput<TPayload extends JsonObject> = {
    */
   readonly name: string;
   /** Defaults to the name. */
-  readonly label?: string;
-  readonly description?: string;
+  readonly label?: string | undefined;
+  readonly description?: string | undefined;
   readonly schema: PayloadSchema<TPayload>;
   /**
    * Where the payload carries its Entity Value. An Entity Value is a string, so
    * only a path resolving to one is admitted.
    */
-  readonly correlationPath?: StringPath<TPayload>;
+  readonly correlationPath?: StringPath<TPayload> | undefined;
   /**
    * How the Event arrives, for an existing bus that sends one umbrella name and
    * cannot change. Identity stays the Workflow Graph name above, so the lifecycle model is
@@ -255,7 +255,7 @@ export type DefineEventInput<TPayload extends JsonObject> = {
       readonly equals: string;
     };
   };
-  readonly inngest?: InngestEventOptions<TPayload>;
+  readonly inngest?: InngestEventOptions<TPayload> | undefined;
 };
 
 /**

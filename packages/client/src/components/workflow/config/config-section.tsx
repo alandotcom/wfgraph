@@ -40,7 +40,7 @@ export function ConfigSection({
    * than a noun: "Edit Continue when" is not a sentence anybody would say.
    * Defaults to the label, which is right for a section headed by a noun.
    */
-  editActionName?: string;
+  editActionName?: string | undefined;
   /** Long-form explanation, behind the icon beside the label. */
   help?: ReactNode;
   editable: boolean;
@@ -52,7 +52,7 @@ export function ConfigSection({
    * inside a card pins to that same column, which tears the header away from
    * the box it names and paints the column's own fill across a tinted card.
    */
-  stickyHeader?: boolean;
+  stickyHeader?: boolean | undefined;
   /** Extra header control, such as copy, shown beside Edit when there is one. */
   trailing?: ReactNode;
   /** What the section reads as when it is not being edited. */

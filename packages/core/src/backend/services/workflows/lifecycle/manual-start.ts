@@ -64,7 +64,7 @@ function readManualEntityValue(input: {
   rules: LifecycleRules;
   payload: JsonObject;
   catalog: ExtensionCatalog;
-  eventName?: string;
+  eventName?: string | undefined;
 }): string {
   const { catalog } = input;
   const candidates = input.eventName
@@ -145,13 +145,13 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
        * `workflow_executions.input` column, and so carries the same JSON-only
        * contract.
        */
-      input?: JsonObject;
+      input?: JsonObject | undefined;
       /**
        * The Start Event this run stands in for, which the engine routes an Event
        * Split on. Absent is the plain manual start, and the graphs it can travel
        * are the ones holding no such node.
        */
-      eventName?: string;
+      eventName?: string | undefined;
       /**
        * Which graph this run travels. When omitted, the run uses the published
        * version, which is what an Event start always gets and what runs in the
@@ -159,7 +159,7 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
        * frozen into a snapshot version the run pins to, and always uses test
        * recipients.
        */
-      graph?: "published" | "draft";
+      graph?: "published" | "draft" | undefined;
       /**
        * What the caller was shown when it offered this run: the published
        * version's id and the workflow's Published mode. A published run
@@ -168,7 +168,7 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
        * graph or a set of recipients the person never saw. A draft run ignores
        * it, because the canvas is the graph the run reads.
        */
-      expected?: { versionId: string; mode: WorkflowMode };
+      expected?: { versionId: string; mode: WorkflowMode } | undefined;
     }
   ) {
     const logger = yield* loggerFor(workflowId);
@@ -359,7 +359,9 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
     const response: WorkflowExecuteResponse = {
       status: "running",
       executionId: started.executionId,
-      runId: started.runId,
+      // The response is decoded against a contract that declares `runId` with
+      // `optionalKey`, so a run Inngest has not named yet leaves the key out.
+      ...(started.runId === undefined ? {} : { runId: started.runId }),
       runMode,
       ...(started.supersededExecutionIds.length > 0
         ? { supersededExecutions: started.supersededExecutionIds.length }

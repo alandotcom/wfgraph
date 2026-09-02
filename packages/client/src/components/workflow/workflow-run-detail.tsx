@@ -24,15 +24,15 @@ type WorkflowRunDetailProps = {
   execution: WorkflowExecution;
   runNumber: number;
   /** Why this run is no longer in the list behind it, when it has left. */
-  notice?: string;
+  notice?: string | undefined;
   logs: ExecutionLog[];
   events: ExecutionEvent[];
   waits: ExecutionWait[];
   isCanceling: boolean;
   isResuming: boolean;
   onBack: () => void;
-  onCancel?: (executionId: string) => void;
-  onResume?: (token: string) => void;
+  onCancel?: ((executionId: string) => void) | undefined;
+  onResume?: ((token: string) => void) | undefined;
 };
 
 function waitingSummary(wait: ExecutionWait): string {

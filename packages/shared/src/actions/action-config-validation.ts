@@ -227,8 +227,8 @@ function getSystemMissingRequiredFields(input: {
 
 function getNodeLabel(input: {
   node: WorkflowNode;
-  actionType?: string;
-  actionLabel?: string;
+  actionType?: string | undefined;
+  actionLabel?: string | undefined;
 }): string {
   const { node, actionType, actionLabel } = input;
 

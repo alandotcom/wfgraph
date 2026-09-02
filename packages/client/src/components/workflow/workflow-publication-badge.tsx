@@ -9,7 +9,7 @@
 type WorkflowPublicationBadgeProps = {
   isPublished: boolean;
   hasUnpublishedChanges: boolean;
-  publishedVersion?: number;
+  publishedVersion?: number | undefined;
 };
 
 /**

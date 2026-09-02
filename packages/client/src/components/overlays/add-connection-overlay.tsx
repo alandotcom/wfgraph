@@ -39,7 +39,7 @@ const getLabel = (catalog: ExtensionCatalog, type: string): string =>
 
 type AddConnectionOverlayProps = {
   overlayId: string;
-  onSuccess?: (integrationId: string) => void;
+  onSuccess?: ((integrationId: string) => void) | undefined;
 };
 
 /**
@@ -122,7 +122,7 @@ export function AddConnectionOverlay({
 type ConfigureConnectionOverlayProps = {
   overlayId: string;
   type: string;
-  onSuccess?: (integrationId: string) => void;
+  onSuccess?: ((integrationId: string) => void) | undefined;
 };
 
 /**
@@ -141,9 +141,9 @@ function SecretField({
   fieldId: string;
   label: string;
   configKey: string;
-  placeholder?: string;
-  helpText?: string;
-  helpLink?: { url: string; text: string };
+  placeholder?: string | undefined;
+  helpText?: string | undefined;
+  helpLink?: { url: string; text: string } | undefined;
   value: string;
   onChange: (key: string, value: string) => void;
 }) {

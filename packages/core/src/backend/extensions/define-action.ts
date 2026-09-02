@@ -58,10 +58,10 @@ export type ActionIdentity = {
    * Grouping category in the action selector (e.g. `"Appointments"`).
    * Defaults to `"Custom"` if omitted.
    */
-  category?: string;
+  category?: string | undefined;
 
   /** Optional URL to a logo/icon displayed next to the action in the editor. */
-  logoUrl?: string;
+  logoUrl?: string | undefined;
 
   /**
    * Whether running this action changes something outside the workflow: a
@@ -69,13 +69,13 @@ export type ActionIdentity = {
    * editor keeps an action declaring `true` out of a Group. `ActionStepInput`
    * separates this from the replay sense of the phrase.
    */
-  sideEffect?: boolean;
+  sideEffect?: boolean | undefined;
 
   /**
    * When true, the editor's action picker omits this action; the handler stays
    * registered for runs and existing nodes.
    */
-  hidden?: boolean;
+  hidden?: boolean | undefined;
 };
 
 /**
@@ -105,7 +105,7 @@ export type ActionDefinition = ActionIdentity & {
    * unwrapped automatically. Absent when `defineAction` was given no `output`,
    * which leaves the action addressable by node but not by field.
    */
-  readonly outputFields?: ReferenceField[];
+  readonly outputFields?: ReferenceField[] | undefined;
 
   /**
    * The engine's entry point, in the shape `stepFor` answers with.

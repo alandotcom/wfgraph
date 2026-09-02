@@ -106,7 +106,9 @@ function ControlledRow({
 }: {
   fields: ConditionSelectableField[];
   initialValue: string;
-  onChange?: (next: { model: string; expression: string }) => void;
+  onChange?:
+    | ((next: { model: string; expression: string }) => void)
+    | undefined;
 }) {
   const [value, setValue] = useState(initialValue);
 

@@ -9,9 +9,9 @@ export function persistedNodeEnabled(
   return enabled === false ? false : undefined;
 }
 
-export function canonicalizeNodeEnabled<T extends { enabled?: boolean }>(
-  data: T
-): T {
+export function canonicalizeNodeEnabled<
+  T extends { enabled?: boolean | undefined },
+>(data: T): T {
   if (data.enabled !== true) {
     return data;
   }

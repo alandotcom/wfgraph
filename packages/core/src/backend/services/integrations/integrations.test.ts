@@ -120,9 +120,9 @@ function makeIntegrationRepo(stored: StoredIntegration) {
     updates: [] as Array<{
       integrationId: string;
       updates: {
-        name?: string;
-        config?: IntegrationConfig;
-        expectedRevision?: number;
+        name?: string | undefined;
+        config?: IntegrationConfig | undefined;
+        expectedRevision?: number | undefined;
       };
     }>,
   };

@@ -65,7 +65,7 @@ type EventWaitPreparation =
       status: "ready";
       waitStateId: string;
       resumeToken: string;
-      timeoutMs?: number;
+      timeoutMs?: number | undefined;
       timeoutBehavior: "continue" | "skip";
     };
 

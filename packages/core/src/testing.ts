@@ -40,10 +40,10 @@ type SuppliedCredentials =
 
 /** The node a case is standing in for, where it cares which node that is. */
 type NodeUnderTest = {
-  readonly nodeId?: string;
-  readonly nodeName?: string;
-  readonly nodeType?: string;
-  readonly executionId?: string;
+  readonly nodeId?: string | undefined;
+  readonly nodeName?: string | undefined;
+  readonly nodeType?: string | undefined;
+  readonly executionId?: string | undefined;
 };
 
 const TEST_INTEGRATION_ID = "int_test";
@@ -74,9 +74,9 @@ export function runAction<
   slug: TSlug,
   run: {
     readonly input: Readonly<Record<string, unknown>>;
-    readonly credentials?: SuppliedCredentials;
-    readonly runMode?: "live" | "test";
-    readonly node?: NodeUnderTest;
+    readonly credentials?: SuppliedCredentials | undefined;
+    readonly runMode?: "live" | "test" | undefined;
+    readonly node?: NodeUnderTest | undefined;
   }
 ): Effect.Effect<
   StepResult<OutputOf<TIntegration["actions"][TSlug]>>,
@@ -92,9 +92,9 @@ export function runAction(
   slug: string,
   run: {
     readonly input: Readonly<Record<string, unknown>>;
-    readonly credentials?: SuppliedCredentials;
-    readonly runMode?: "live" | "test";
-    readonly node?: NodeUnderTest;
+    readonly credentials?: SuppliedCredentials | undefined;
+    readonly runMode?: "live" | "test" | undefined;
+    readonly node?: NodeUnderTest | undefined;
   }
 ): Effect.Effect<StepResult, CredentialsUnavailable> {
   const step = integration.actions[slug].implement(

@@ -49,7 +49,7 @@ export type IntegrationWriteOutcome =
 
 type OAuthAuthorizationAttemptBase = {
   redirectUri: string;
-  codeVerifier?: string;
+  codeVerifier?: string | undefined;
 };
 
 export type OAuthReconnectAuthorizationAttemptPayload =
@@ -199,9 +199,9 @@ const ownedRefreshClaim = (input: RefreshClaimInput) =>
   );
 
 type IntegrationUpdate =
-  | { name?: string; config?: never }
+  | { name?: string | undefined; config?: never }
   | {
-      name?: string;
+      name?: string | undefined;
       config: IntegrationConfig;
       expectedRevision: number;
     };

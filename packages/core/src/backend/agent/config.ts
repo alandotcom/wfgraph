@@ -37,9 +37,9 @@ export type WfGraphAgentConfig = {
    */
   readonly apiKey: string | undefined;
   /** Defaults to `DEFAULT_AGENT_MODEL`. */
-  readonly model?: string;
+  readonly model?: string | undefined;
   /** For an OpenAI-compatible endpoint that is not OpenAI's own. */
-  readonly baseUrl?: string;
+  readonly baseUrl?: string | undefined;
 };
 
 /** The configuration a turn actually runs against. */
@@ -47,7 +47,7 @@ export type EnabledAgentSettings = {
   readonly enabled: true;
   readonly apiKey: string;
   readonly model: string;
-  readonly baseUrl?: string;
+  readonly baseUrl?: string | undefined;
 };
 
 /** The configuration as the runtime holds it, absent when the agent is off. */

@@ -39,7 +39,17 @@ const integration: DecryptedIntegration = {
   updatedAt: new Date("2026-08-24T00:00:00.000Z"),
 };
 
-function provider(overrides: Partial<IntegrationOAuth> = {}): IntegrationOAuth {
+/**
+ * What a case may replace on the fixture below. The fixture is the PKCE arm of
+ * `IntegrationOAuth`, and `pkce` is left out because spreading it as an optional
+ * property widens the literal to `"S256" | undefined`, which matches neither arm
+ * of the union.
+ */
+type PkceProviderOverrides = Partial<
+  Omit<Extract<IntegrationOAuth, { pkce: "S256" }>, "pkce">
+>;
+
+function provider(overrides: PkceProviderOverrides = {}): IntegrationOAuth {
   return {
     label: "Example OAuth",
     pkce: "S256",
