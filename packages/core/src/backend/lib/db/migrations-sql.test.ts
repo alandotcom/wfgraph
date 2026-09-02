@@ -1,3 +1,4 @@
+import { uniq } from "es-toolkit/array";
 import { describe, expect, it } from "vitest";
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -65,7 +66,7 @@ describe("the generated migrations", () => {
         .map((identifier) => `${migration.name}: "${identifier}"`)
     );
 
-    expect([...new Set(foreign)]).toEqual([]);
+    expect(uniq(foreign)).toEqual([]);
   });
 
   // The predicate is generated from IN_FLIGHT_EXECUTION_STATUSES, so this is

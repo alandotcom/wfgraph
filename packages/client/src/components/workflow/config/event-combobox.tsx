@@ -1,3 +1,4 @@
+import { groupBy } from "es-toolkit/array";
 import {
   Combobox,
   ComboboxCollection,
@@ -19,14 +20,10 @@ type EventChoiceGroup = {
 function groupEventChoices(
   choices: readonly EventChoice[]
 ): EventChoiceGroup[] {
-  const byGroup = new Map<string, EventChoice[]>();
-  for (const choice of choices) {
-    const key = choice.group ?? "This app";
-    const list = byGroup.get(key) ?? [];
-    list.push(choice);
-    byGroup.set(key, list);
-  }
-  return [...byGroup.entries()].map(([value, items]) => ({ value, items }));
+  // Group names are integration labels and the host's own heading, so the
+  // record keeps the order the choices first named them in.
+  const byGroup = groupBy(choices, (choice) => choice.group ?? "This app");
+  return Object.entries(byGroup).map(([value, items]) => ({ value, items }));
 }
 
 /**

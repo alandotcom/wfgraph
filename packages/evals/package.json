@@ -11,6 +11,7 @@
     "@wfgraph/core": "workspace:*",
     "@wfgraph/shared": "workspace:*",
     "effect": "catalog:",
+    "es-toolkit": "catalog:",
     "vitest-evals": "catalog:"
   }
 }

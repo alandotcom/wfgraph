@@ -1,3 +1,6 @@
+import { groupBy, uniq } from "es-toolkit/array";
+import { compact, map, pipe } from "es-toolkit/fp";
+import { compareText } from "@wfgraph/shared/types/string";
 import {
   WORKFLOW_EXECUTION_START_SOURCES,
   WORKFLOW_EXECUTION_STATUSES,
@@ -286,18 +289,13 @@ export function filterRuns<T extends RunHistorySearchRow>(
   input: { query: string; filters: readonly RunFilter[] }
 ): T[] {
   const query = input.query.trim().toLowerCase();
-  const grouped = new Map<RunFilterField, RunFilter[]>();
-  for (const filter of input.filters) {
-    const group = grouped.get(filter.field) ?? [];
-    group.push(filter);
-    grouped.set(filter.field, group);
-  }
+  const grouped = groupBy(input.filters, (filter) => filter.field);
 
   return runs.filter((run) => {
     if (query !== "" && !runSearchText(run).includes(query)) {
       return false;
     }
-    for (const group of grouped.values()) {
+    for (const group of Object.values(grouped)) {
       if (!matchesFieldGroup(run, group)) {
         return false;
       }
@@ -313,7 +311,7 @@ export type RunHistoryServerQuery = {
 };
 
 function uniqueSorted<T extends string>(values: readonly T[]): T[] {
-  return [...new Set(values)].toSorted();
+  return uniq(values).toSorted();
 }
 
 const EXECUTION_STATUS_SET: ReadonlySet<string> = new Set(
@@ -404,18 +402,12 @@ export function autofillRemainder(query: string, label: string): string {
 export function uniqueNonEmpty(
   values: readonly (string | null | undefined)[]
 ): string[] {
-  const seen = new Set<string>();
-  const unique: string[] = [];
-  for (const value of values) {
-    if (value === null || value === undefined) {
-      continue;
-    }
-    const trimmed = value.trim();
-    if (trimmed === "" || seen.has(trimmed)) {
-      continue;
-    }
-    seen.add(trimmed);
-    unique.push(trimmed);
-  }
-  return unique.toSorted((a, b) => a.localeCompare(b));
+  return pipe(
+    values,
+    map((value: string | null | undefined) => value?.trim()),
+    // An empty string is falsey, so a value holding only spaces drops out here
+    // along with the nulls.
+    compact(),
+    (trimmed) => uniq(trimmed).toSorted(compareText)
+  );
 }

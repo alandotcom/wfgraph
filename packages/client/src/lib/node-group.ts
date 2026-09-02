@@ -3,6 +3,8 @@
  * size, and React Flow parent constraints. Analysis lives in shared.
  */
 
+import { countBy, groupBy, uniqBy } from "es-toolkit/array";
+import { isEmptyObject } from "es-toolkit/predicate";
 import { nanoid } from "nanoid";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { toast } from "sonner";
@@ -178,23 +180,19 @@ export function layoutGroupChildren(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[]
 ): WorkflowNode[] {
-  const byParent = new Map<string, WorkflowNode[]>();
-  for (const node of nodes) {
-    if (!node.parentId) {
-      continue;
-    }
-    const current = byParent.get(node.parentId) ?? [];
-    current.push(node);
-    byParent.set(node.parentId, current);
-  }
+  const nested = nodes.filter(
+    (node): node is WorkflowNode & { parentId: string } =>
+      node.parentId !== undefined && node.parentId !== ""
+  );
+  const byParent = groupBy(nested, (node) => node.parentId);
 
-  if (byParent.size === 0) {
+  if (isEmptyObject(byParent)) {
     return nodes;
   }
 
   const childById = new Map<string, WorkflowNode>();
   const sizeByGroup = new Map<string, { width: number; height: number }>();
-  for (const [groupId, children] of byParent) {
+  for (const [groupId, children] of Object.entries(byParent)) {
     const group = nodes.find((node) => node.id === groupId);
     const memberIds = children.map((child) => child.id);
     const memberSet = new Set(memberIds);
@@ -395,16 +393,7 @@ function alignEntryIncoming(input: {
   const { edges, entryIds, createEdgeId } = input;
   const entrySet = new Set(entryIds);
   const incoming = edges.filter((edge) => entrySet.has(edge.target));
-  const templates: WorkflowEdge[] = [];
-  const seen = new Set<string>();
-  for (const edge of incoming) {
-    const key = predecessorKey(edge);
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    templates.push(edge);
-  }
+  const templates = uniqBy(incoming, predecessorKey);
   if (templates.length !== 1) {
     return edges;
   }
@@ -451,14 +440,11 @@ function childPositions(
   slots: readonly GroupMemberSlot[],
   columns: number
 ): Map<string, { x: number; y: number }> {
-  const widthOfRow = new Map<number, number>();
-  for (const slot of slots) {
-    widthOfRow.set(slot.row, (widthOfRow.get(slot.row) ?? 0) + 1);
-  }
+  const widthOfRow = countBy(slots, (slot) => slot.row);
 
   const positions = new Map<string, { x: number; y: number }>();
   for (const slot of slots) {
-    const spare = columns - (widthOfRow.get(slot.row) ?? 1);
+    const spare = columns - (widthOfRow[slot.row] ?? 1);
     const indent = (spare * (GROUP_CHILD_WIDTH + GROUP_COLUMN_GAP)) / 2;
     positions.set(slot.id, {
       x:

@@ -5,6 +5,8 @@
  * Lookup exits may share one downstream endpoint; a Condition is one True exit.
  */
 
+import { uniqBy } from "es-toolkit/array";
+import { compact, countBy, map, pipe } from "es-toolkit/fp";
 import { normalizeConditionBranch } from "#src/conditions/condition-branch";
 import { type ExtensionCatalog, findAction } from "#src/extensions/catalog";
 import {
@@ -550,16 +552,17 @@ function isRestGroupsChildrenOrder(nodes: readonly GroupGraphNode[]): boolean {
 }
 
 export function undersizedGroupIds(nodes: readonly GroupGraphNode[]): string[] {
-  const count = new Map<string, number>();
-  for (const node of nodes) {
-    if (!node.parentId) {
-      continue;
-    }
-    count.set(node.parentId, (count.get(node.parentId) ?? 0) + 1);
-  }
+  // A group with no children at all is absent from the counts, so every read
+  // falls back to 0.
+  const childCount = pipe(
+    nodes,
+    map((node: GroupGraphNode) => node.parentId),
+    compact(),
+    countBy((parentId) => parentId)
+  );
 
   return nodes
-    .filter((node) => isGroupNode(node) && (count.get(node.id) ?? 0) < 2)
+    .filter((node) => isGroupNode(node) && (childCount[node.id] ?? 0) < 2)
     .map((node) => node.id);
 }
 
@@ -729,16 +732,7 @@ function orderMembers(
 function collapseDuplicateDisplayEdges<E extends WorkflowEdge>(
   edges: E[]
 ): E[] {
-  const seen = new Set<string>();
-  const collapsed: E[] = [];
-  for (const edge of edges) {
-    const key = edgeEndpointKey(edge);
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    collapsed.push(edge);
-  }
+  const collapsed = uniqBy(edges, edgeEndpointKey);
   // The same array when nothing duplicated, so a canvas render that changed no
   // edge hands React Flow the `edges` prop it already holds.
   return collapsed.length === edges.length ? edges : collapsed;

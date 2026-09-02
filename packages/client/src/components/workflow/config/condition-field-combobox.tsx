@@ -1,3 +1,4 @@
+import { groupBy } from "es-toolkit/array";
 import { useMemo } from "react";
 import {
   Combobox,
@@ -40,18 +41,9 @@ function unavailableField(path: string): ConditionSelectableField {
 function groupsBySource(
   fields: readonly ConditionSelectableField[]
 ): ConditionFieldGroup[] {
-  const grouped = new Map<string, ConditionSelectableField[]>();
+  const grouped = groupBy(fields, (field) => field.sourceNodeLabel);
 
-  for (const field of fields) {
-    const group = grouped.get(field.sourceNodeLabel);
-    if (group) {
-      group.push(field);
-    } else {
-      grouped.set(field.sourceNodeLabel, [field]);
-    }
-  }
-
-  return Array.from(grouped.entries())
+  return Object.entries(grouped)
     .toSorted(([a], [b]) => a.localeCompare(b))
     .map(([value, items]) => ({
       value,

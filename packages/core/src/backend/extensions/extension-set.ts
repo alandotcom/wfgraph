@@ -12,6 +12,7 @@
  * slug is a record key the definition never spells out twice.
  */
 
+import { countBy } from "es-toolkit/array";
 import type {
   ActionMetadata,
   EventMetadata,
@@ -138,15 +139,13 @@ function indexEvents(
  * implementation.
  */
 function assertDistinctActionIds(actions: readonly ActionMetadata[]): void {
-  const seen = new Set<string>();
+  const countById = countBy(actions, (action) => action.id);
+  const duplicate = Object.entries(countById).find(([, count]) => count > 1);
 
-  for (const action of actions) {
-    if (seen.has(action.id)) {
-      throw new Error(
-        `Two actions are defined with the id "${action.id}". An action id is "<integration>/<slug>" for an integration's action and whatever the host wrote for its own, and the engine dispatches on it, so it names one implementation.`
-      );
-    }
-    seen.add(action.id);
+  if (duplicate) {
+    throw new Error(
+      `Two actions are defined with the id "${duplicate[0]}". An action id is "<integration>/<slug>" for an integration's action and whatever the host wrote for its own, and the engine dispatches on it, so it names one implementation.`
+    );
   }
 }
 
@@ -234,15 +233,13 @@ function assertNoConnectionStampField(
 function assertDistinctIntegrationTypes(
   integrations: readonly IntegrationMetadata[]
 ): void {
-  const seen = new Set<string>();
+  const countByType = countBy(integrations, (integration) => integration.type);
+  const duplicate = Object.entries(countByType).find(([, count]) => count > 1);
 
-  for (const integration of integrations) {
-    if (seen.has(integration.type)) {
-      throw new Error(
-        `Two integrations are defined with the type "${integration.type}". The type keys an integration's stored credentials, so two of them would read each other's.`
-      );
-    }
-    seen.add(integration.type);
+  if (duplicate) {
+    throw new Error(
+      `Two integrations are defined with the type "${duplicate[0]}". The type keys an integration's stored credentials, so two of them would read each other's.`
+    );
   }
 }
 

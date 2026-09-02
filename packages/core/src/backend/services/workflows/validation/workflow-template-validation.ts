@@ -9,6 +9,7 @@
  * API.
  */
 
+import { keyBy } from "es-toolkit/array";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import {
   type ExtensionCatalog,
@@ -101,7 +102,7 @@ export function validateWorkflowTemplates(input: {
   catalog: ExtensionCatalog;
 }): WorkflowTemplateValidationResult {
   const { nodes, edges, catalog } = input;
-  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const nodeById = keyBy(nodes, (node) => node.id);
 
   for (const node of nodes) {
     const config = node.data.config;
@@ -121,8 +122,9 @@ export function validateWorkflowTemplates(input: {
       edges,
       catalog,
     });
-    const entryFields = new Map(
-      reachableEventFields(reaching).map((field) => [field.path, field])
+    const entryFields = keyBy(
+      reachableEventFields(reaching),
+      (field) => field.path
     );
 
     for (const [key, value] of Object.entries(config)) {
@@ -136,11 +138,11 @@ export function validateWorkflowTemplates(input: {
       }
 
       for (const token of findTemplateTokens(value)) {
-        if (nodeById.get(token.nodeId)?.data.type !== "lifecycle") {
+        if (nodeById[token.nodeId]?.data.type !== "lifecycle") {
           continue;
         }
 
-        const field = entryFields.get(token.fieldPath);
+        const field = entryFields[token.fieldPath];
         if (!field) {
           continue;
         }

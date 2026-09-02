@@ -13,6 +13,7 @@
  * the server and the browser run one implementation over the same document.
  */
 
+import { compact, map, pipe, uniq } from "es-toolkit/fp";
 import {
   type ActionConfigField,
   type ActionConfigFieldBase,
@@ -165,17 +166,12 @@ export function uniqueIntegrationsOfEvents(
   catalog: ExtensionCatalog,
   eventNames: readonly string[]
 ): string[] {
-  const types: string[] = [];
-  const seen = new Set<string>();
-  for (const name of eventNames) {
-    const type = findEvent(catalog, name)?.integration;
-    if (!type || seen.has(type)) {
-      continue;
-    }
-    seen.add(type);
-    types.push(type);
-  }
-  return types;
+  return pipe(
+    eventNames,
+    map((name: string) => findEvent(catalog, name)?.integration),
+    compact(),
+    uniq()
+  );
 }
 
 export function findAction(

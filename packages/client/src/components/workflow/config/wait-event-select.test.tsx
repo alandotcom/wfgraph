@@ -536,3 +536,35 @@ describe("WaitEventSelect Connection picker", () => {
     ).toHaveLength(1);
   });
 });
+
+describe("WaitEventSelect Event grouping", () => {
+  // The picker lists this app's Events under one heading and each
+  // integration's under its own, in the order the catalog first names them.
+  it("groups the Events under the app and the integrations that declare them", () => {
+    const view = render(
+      <ExtensionCatalogProvider value={resendWaitCatalog}>
+        <WaitEventSelect
+          config={{ waitFor: [] }}
+          disabled={false}
+          onUpdateConfig={vi.fn()}
+        />
+      </ExtensionCatalogProvider>
+    );
+
+    const input = view.getByLabelText("Resume when the event is");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+
+    expect(
+      [...document.querySelectorAll('[data-slot="combobox-label"]')].map(
+        (label) => label.textContent
+      )
+    ).toEqual(["This app", "Resend"]);
+    expect(
+      view.getAllByRole("option").map((option) => option.textContent)
+    ).toEqual([
+      "Payment settledbilling/payment.settled",
+      "Email sentresend/email.sent",
+      "Email deliveredresend/email.delivered",
+    ]);
+  });
+});

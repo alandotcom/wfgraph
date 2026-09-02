@@ -1,3 +1,5 @@
+import { groupBy, keyBy } from "es-toolkit/array";
+import { mapValues } from "es-toolkit/object";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
 import { findAction } from "@wfgraph/shared/extensions/catalog";
@@ -33,6 +35,20 @@ function selectorName(selector: EvalNodeSelector): string {
   return selector.label ?? selector.actionId;
 }
 
+/**
+ * The target node ids each source node reaches in one hop, keyed by source id.
+ * A node with no outgoing edge is absent, so every read falls back to an empty
+ * list.
+ */
+function adjacency(
+  edges: readonly AgentEvalDocument["edges"][number][]
+): Record<string, string[]> {
+  return mapValues(
+    groupBy(edges, (edge) => edge.source),
+    (group) => group.map((edge) => edge.target)
+  );
+}
+
 function hasPath(input: {
   source: EvalNodeSelector;
   target: EvalNodeSelector;
@@ -46,18 +62,10 @@ function hasPath(input: {
       .filter((node) => matchesSelector(node, input.target))
       .map((node) => node.id)
   );
-  const targetsBySource = new Map<string, string[]>();
-  for (const edge of input.document.edges) {
-    const targets = targetsBySource.get(edge.source);
-    if (targets) {
-      targets.push(edge.target);
-    } else {
-      targetsBySource.set(edge.source, [edge.target]);
-    }
-  }
+  const targetsBySource = adjacency(input.document.edges);
 
   for (const sourceId of sourceIds) {
-    const pending = [...(targetsBySource.get(sourceId) ?? [])];
+    const pending = [...(targetsBySource[sourceId] ?? [])];
     const visited = new Set([sourceId]);
     while (pending.length > 0) {
       const nodeId = pending.shift();
@@ -68,7 +76,7 @@ function hasPath(input: {
         return true;
       }
       visited.add(nodeId);
-      pending.push(...(targetsBySource.get(nodeId) ?? []));
+      pending.push(...(targetsBySource[nodeId] ?? []));
     }
   }
   return false;
@@ -79,22 +87,15 @@ function reachableNodeIds(input: {
   document: AgentEvalDocument;
   includeEdge?: (edge: AgentEvalDocument["edges"][number]) => boolean;
 }): Set<string> {
-  const targetsBySource = new Map<string, string[]>();
-  for (const edge of input.document.edges) {
-    if (input.includeEdge && !input.includeEdge(edge)) {
-      continue;
-    }
-    const targets = targetsBySource.get(edge.source);
-    if (targets) {
-      targets.push(edge.target);
-    } else {
-      targetsBySource.set(edge.source, [edge.target]);
-    }
-  }
+  const targetsBySource = adjacency(
+    input.includeEdge
+      ? input.document.edges.filter(input.includeEdge)
+      : input.document.edges
+  );
 
   const reached = new Set(input.sourceIds);
   const pending = input.sourceIds.flatMap(
-    (sourceId) => targetsBySource.get(sourceId) ?? []
+    (sourceId) => targetsBySource[sourceId] ?? []
   );
   while (pending.length > 0) {
     const nodeId = pending.shift();
@@ -102,7 +103,7 @@ function reachableNodeIds(input: {
       continue;
     }
     reached.add(nodeId);
-    pending.push(...(targetsBySource.get(nodeId) ?? []));
+    pending.push(...(targetsBySource[nodeId] ?? []));
   }
   return reached;
 }
@@ -172,12 +173,12 @@ export function assessScenarioSemantics(
     }
   }
 
-  const nodeById = new Map(document.nodes.map((node) => [node.id, node]));
+  const nodeById = keyBy(document.nodes, (node) => node.id);
   for (const flow of input.expected.requiredFlows ?? []) {
     const found = document.edges.some(
       (edge) =>
-        matchesSelector(nodeById.get(edge.source), flow.source) &&
-        matchesSelector(nodeById.get(edge.target), flow.target) &&
+        matchesSelector(nodeById[edge.source], flow.source) &&
+        matchesSelector(nodeById[edge.target], flow.target) &&
         (flow.sourceHandle === undefined ||
           edge.sourceHandle === flow.sourceHandle)
     );
@@ -394,7 +395,7 @@ export function assessScenarioSemantics(
         if (token.fieldPath !== required.path) {
           return false;
         }
-        const source = nodeById.get(token.nodeId);
+        const source = nodeById[token.nodeId];
         if (source?.data.type === "lifecycle") {
           return input.catalog.events.some((event) =>
             event.payloadFields.some((field) => field.path === required.path)
@@ -438,9 +439,7 @@ export function assessScenarioSemantics(
     }
   }
 
-  const initialById = new Map(
-    input.document.nodes.map((node) => [node.id, node.data])
-  );
+  const initialNodeById = keyBy(input.document.nodes, (node) => node.id);
   if (
     input.expected.preserveDocument === true &&
     JSON.stringify(input.document) !== JSON.stringify(document)
@@ -448,8 +447,8 @@ export function assessScenarioSemantics(
     issues.push("the workflow document changed");
   }
   for (const nodeId of input.expected.preserveNodeIds ?? []) {
-    const initial = initialById.get(nodeId);
-    const final = nodeById.get(nodeId)?.data;
+    const initial = initialNodeById[nodeId]?.data;
+    const final = nodeById[nodeId]?.data;
     if (
       initial === undefined ||
       JSON.stringify(initial) !== JSON.stringify(final)

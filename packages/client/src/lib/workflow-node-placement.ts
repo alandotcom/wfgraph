@@ -7,6 +7,7 @@
  * node's top-left corner, which is what React Flow stores.
  */
 
+import { keyBy } from "es-toolkit/array";
 import {
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
@@ -35,7 +36,7 @@ export function workflowNodeRectangles(
     nodeId: string
   ) => { readonly x: number; readonly y: number } | undefined = () => undefined
 ): NodeRectangle[] {
-  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  const nodesById = keyBy(nodes, (node) => node.id);
 
   return nodes
     .filter((node) => node.type !== "add")
@@ -49,7 +50,7 @@ export function workflowNodeRectangles(
         let parentId = node.parentId;
         while (parentId && !visited.has(parentId)) {
           visited.add(parentId);
-          const parent = nodesById.get(parentId);
+          const parent = nodesById[parentId];
           if (!parent) {
             break;
           }
