@@ -1,4 +1,4 @@
-import { groupBy, keyBy } from "es-toolkit/array";
+import { compact, groupBy, keyBy } from "es-toolkit/array";
 import { mapValues } from "es-toolkit/object";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
@@ -50,23 +50,79 @@ function adjacency(
   );
 }
 
-function hasPath(input: {
-  source: EvalNodeSelector;
-  target: EvalNodeSelector;
-  document: AgentEvalDocument;
-}): boolean {
-  const sourceIds = input.document.nodes
-    .filter((node) => matchesSelector(node, input.source))
-    .map((node) => node.id);
-  const targetIds = new Set(
-    input.document.nodes
-      .filter((node) => matchesSelector(node, input.target))
-      .map((node) => node.id)
+function reachableNodeIds(input: {
+  sourceIds: readonly string[];
+  targetsBySource: Record<string, string[]>;
+}): Set<string> {
+  const reached = new Set(input.sourceIds);
+  const pending = input.sourceIds.flatMap(
+    (sourceId) => input.targetsBySource[sourceId] ?? []
   );
-  const targetsBySource = adjacency(input.document.edges);
+  while (pending.length > 0) {
+    const nodeId = pending.shift();
+    if (nodeId === undefined || reached.has(nodeId)) {
+      continue;
+    }
+    reached.add(nodeId);
+    pending.push(...(input.targetsBySource[nodeId] ?? []));
+  }
+  return reached;
+}
 
-  for (const sourceId of sourceIds) {
-    const pending = [...(targetsBySource[sourceId] ?? [])];
+/**
+ * The document facts every rule reads, built once per assessment so that no
+ * rule rebuilds a lookup another rule already holds.
+ */
+type SemanticsContext = {
+  input: AgentEvalInput;
+  document: AgentEvalDocument;
+  /** The action id of each node in document order; a lifecycle node has none. */
+  actionIds: readonly (string | undefined)[];
+  /** The nodes of the graph under assessment, keyed by node id. */
+  nodeById: Record<string, WorkflowNode>;
+  /** The nodes of the document the agent started from, keyed by node id. */
+  initialNodeById: Record<string, WorkflowNode>;
+  targetsBySource: Record<string, string[]>;
+  /** The Lifecycle Rules of the first lifecycle node, undefined when there is none. */
+  lifecycleRules: ReturnType<typeof readLifecycleRules>;
+  lifecycleIds: readonly string[];
+};
+
+/** Reports the issues one check found, or undefined when the check passes. */
+type SemanticsRule = (
+  context: SemanticsContext
+) => string | readonly string[] | undefined;
+
+function nodesMatching(
+  context: SemanticsContext,
+  selector: EvalNodeSelector
+): WorkflowNode[] {
+  return context.document.nodes.filter((node) =>
+    matchesSelector(node, selector)
+  );
+}
+
+function nodeIdsMatching(
+  context: SemanticsContext,
+  selector: EvalNodeSelector
+): string[] {
+  return nodesMatching(context, selector).map((node) => node.id);
+}
+
+function countActions(context: SemanticsContext, actionId: string): number {
+  return context.actionIds.filter((candidate) => candidate === actionId).length;
+}
+
+/** True when some source node reaches some target node over any number of edges. */
+function hasPath(
+  context: SemanticsContext,
+  source: EvalNodeSelector,
+  target: EvalNodeSelector
+): boolean {
+  const targetIds = new Set(nodeIdsMatching(context, target));
+
+  for (const sourceId of nodeIdsMatching(context, source)) {
+    const pending = [...(context.targetsBySource[sourceId] ?? [])];
     const visited = new Set([sourceId]);
     while (pending.length > 0) {
       const nodeId = pending.shift();
@@ -77,295 +133,300 @@ function hasPath(input: {
         return true;
       }
       visited.add(nodeId);
-      pending.push(...(targetsBySource[nodeId] ?? []));
+      pending.push(...(context.targetsBySource[nodeId] ?? []));
     }
   }
   return false;
 }
 
-function reachableNodeIds(input: {
-  sourceIds: readonly string[];
-  document: AgentEvalDocument;
-  includeEdge?: (edge: AgentEvalDocument["edges"][number]) => boolean;
-}): Set<string> {
-  const targetsBySource = adjacency(
-    input.includeEdge
-      ? input.document.edges.filter(input.includeEdge)
-      : input.document.edges
-  );
-
-  const reached = new Set(input.sourceIds);
-  const pending = input.sourceIds.flatMap(
-    (sourceId) => targetsBySource[sourceId] ?? []
-  );
-  while (pending.length > 0) {
-    const nodeId = pending.shift();
-    if (nodeId === undefined || reached.has(nodeId)) {
-      continue;
-    }
-    reached.add(nodeId);
-    pending.push(...(targetsBySource[nodeId] ?? []));
-  }
-  return reached;
+/**
+ * Applies a per-node requirement to the nodes a selector matched. With
+ * `allMatches` every matched node must satisfy it and at least one node must
+ * match; otherwise one satisfying node is enough.
+ */
+function nodesSatisfy(
+  nodes: readonly WorkflowNode[],
+  allMatches: boolean | undefined,
+  predicate: (node: WorkflowNode) => boolean
+): boolean {
+  return allMatches
+    ? nodes.length > 0 && nodes.every(predicate)
+    : nodes.some(predicate);
 }
 
-/** Checks the graph facts a scenario declares, allowing other valid graph details. */
-export function assessScenarioSemantics(
-  input: AgentEvalInput,
-  document: AgentEvalDocument
-): DeterministicAssessment {
-  const issues: string[] = [];
-  const actionIds = document.nodes.map(actionTypeOf);
-
-  for (const [actionId, expectedCount] of Object.entries(
-    input.expected.requiredActions ?? {}
-  )) {
-    const actualCount = actionIds.filter(
-      (candidate) => candidate === actionId
-    ).length;
-    if (actualCount < expectedCount) {
-      issues.push(
-        `Expected ${expectedCount} ${actionId} node${expectedCount === 1 ? "" : "s"}, found ${actualCount}`
-      );
-    }
-  }
-
-  for (const [actionId, expectedCount] of Object.entries(
-    input.expected.exactActions ?? {}
-  )) {
-    const actualCount = actionIds.filter(
-      (candidate) => candidate === actionId
-    ).length;
-    if (actualCount !== expectedCount) {
-      issues.push(
-        `Expected exactly ${expectedCount} ${actionId} node${expectedCount === 1 ? "" : "s"}, found ${actualCount}`
-      );
-    }
-  }
-
-  for (const actionId of input.expected.forbiddenActions ?? []) {
-    if (actionIds.includes(actionId)) {
-      issues.push(`forbidden action ${actionId} is present`);
-    }
-  }
-  if (input.expected.allowedActions !== undefined) {
-    const allowed = new Set(input.expected.allowedActions);
-    const unexpected = actionIds.filter(
-      (actionId): actionId is string =>
-        actionId !== undefined && !allowed.has(actionId)
-    );
-    if (unexpected.length > 0) {
-      issues.push(`unexpected action ${unexpected[0]} is present`);
-    }
-  }
-
-  const lifecycle = document.nodes.find(
-    (node) => node.data.type === "lifecycle"
+/** Each required action id appears at least as often as the scenario asks. */
+function missingActions(context: SemanticsContext): string[] {
+  return compact(
+    Object.entries(context.input.expected.requiredActions ?? {}).map(
+      ([actionId, expectedCount]) => {
+        const actualCount = countActions(context, actionId);
+        return actualCount < expectedCount
+          ? `Expected ${expectedCount} ${actionId} node${expectedCount === 1 ? "" : "s"}, found ${actualCount}`
+          : undefined;
+      }
+    )
   );
-  const rules = readLifecycleRules(lifecycle?.data.config);
-  for (const event of input.expected.startEvents ?? []) {
-    if (!rules?.startEvents.includes(event)) {
-      issues.push(`missing Start Event ${event}`);
-    }
-  }
-  for (const event of input.expected.cancelEvents ?? []) {
-    if (!rules?.cancelEvents.includes(event)) {
-      issues.push(`missing Cancel Event ${event}`);
-    }
-  }
+}
 
-  const nodeById = keyBy(document.nodes, (node) => node.id);
-  for (const flow of input.expected.requiredFlows ?? []) {
-    const found = document.edges.some(
-      (edge) =>
-        matchesSelector(nodeById[edge.source], flow.source) &&
-        matchesSelector(nodeById[edge.target], flow.target) &&
-        (flow.sourceHandle === undefined ||
-          edge.sourceHandle === flow.sourceHandle)
-    );
-    if (!found) {
-      issues.push(
-        `missing required flow ${selectorName(flow.source)} -> ${selectorName(flow.target)}${flow.sourceHandle === undefined ? "" : ` through ${flow.sourceHandle}`}`
-      );
-    }
+/** Each action id the scenario counts exactly appears exactly that often. */
+function wrongExactActionCounts(context: SemanticsContext): string[] {
+  return compact(
+    Object.entries(context.input.expected.exactActions ?? {}).map(
+      ([actionId, expectedCount]) => {
+        const actualCount = countActions(context, actionId);
+        return actualCount === expectedCount
+          ? undefined
+          : `Expected exactly ${expectedCount} ${actionId} node${expectedCount === 1 ? "" : "s"}, found ${actualCount}`;
+      }
+    )
+  );
+}
+
+/** No forbidden action id appears in the graph. */
+function forbiddenActions(context: SemanticsContext): string[] {
+  return compact(
+    (context.input.expected.forbiddenActions ?? []).map((actionId) =>
+      context.actionIds.includes(actionId)
+        ? `forbidden action ${actionId} is present`
+        : undefined
+    )
+  );
+}
+
+/**
+ * Every action id in the graph is on the allowed list. Only the first
+ * disallowed action id is reported, since one wrong action explains the score.
+ */
+function disallowedActions(context: SemanticsContext): string | undefined {
+  const allowedActions = context.input.expected.allowedActions;
+  if (allowedActions === undefined) {
+    return undefined;
   }
+  const allowed = new Set(allowedActions);
+  const unexpected = context.actionIds.filter(
+    (actionId): actionId is string =>
+      actionId !== undefined && !allowed.has(actionId)
+  );
+  return unexpected.length > 0
+    ? `unexpected action ${unexpected[0]} is present`
+    : undefined;
+}
 
-  for (const path of input.expected.requiredPaths ?? []) {
-    if (!hasPath({ ...path, document })) {
-      issues.push(
-        `missing required path ${selectorName(path.source)} -> ${selectorName(path.target)}`
-      );
-    }
-  }
+/** The Lifecycle Rules list every Start Event the scenario requires. */
+function missingStartEvents(context: SemanticsContext): string[] {
+  return compact(
+    (context.input.expected.startEvents ?? []).map((event) =>
+      context.lifecycleRules?.startEvents.includes(event)
+        ? undefined
+        : `missing Start Event ${event}`
+    )
+  );
+}
 
-  const lifecycleIds = document.nodes
-    .filter((node) => node.data.type === "lifecycle")
-    .map((node) => node.id);
-  for (const required of input.expected.requiredGates ?? []) {
-    const gateIds = new Set(
-      document.nodes
-        .filter((node) => matchesSelector(node, required.gate))
-        .map((node) => node.id)
-    );
-    const targetIds = new Set(
-      document.nodes
-        .filter((node) => matchesSelector(node, required.target))
-        .map((node) => node.id)
-    );
-    const gateEdges = document.edges.filter(
-      (edge) =>
-        gateIds.has(edge.source) && edge.sourceHandle === required.sourceHandle
-    );
-    const gatedReach = reachableNodeIds({
-      sourceIds: gateEdges.map((edge) => edge.target),
-      document,
-    });
-    const hasGatedPath = [...targetIds].some((nodeId) =>
-      gatedReach.has(nodeId)
-    );
-    if (!hasGatedPath) {
-      issues.push(
-        `missing required gated path ${selectorName(required.gate)} -> ${selectorName(required.target)} through ${required.sourceHandle}`
-      );
-      continue;
-    }
+/** The Lifecycle Rules list every Cancel Event the scenario requires. */
+function missingCancelEvents(context: SemanticsContext): string[] {
+  return compact(
+    (context.input.expected.cancelEvents ?? []).map((event) =>
+      context.lifecycleRules?.cancelEvents.includes(event)
+        ? undefined
+        : `missing Cancel Event ${event}`
+    )
+  );
+}
 
-    const acceptedEdgeIds = new Set(gateEdges.map((edge) => edge.id));
-    const reachWithoutGate = reachableNodeIds({
-      sourceIds: lifecycleIds,
-      document,
-      includeEdge: (edge) => !acceptedEdgeIds.has(edge.id),
-    });
-    if ([...targetIds].some((nodeId) => reachWithoutGate.has(nodeId))) {
-      issues.push(
-        `a path to ${selectorName(required.target)} bypasses required gate ${selectorName(required.gate)} through ${required.sourceHandle}`
+/** Each required flow exists as one edge, on the named outlet when given. */
+function missingFlows(context: SemanticsContext): string[] {
+  return compact(
+    (context.input.expected.requiredFlows ?? []).map((flow) => {
+      const found = context.document.edges.some(
+        (edge) =>
+          matchesSelector(context.nodeById[edge.source], flow.source) &&
+          matchesSelector(context.nodeById[edge.target], flow.target) &&
+          (flow.sourceHandle === undefined ||
+            edge.sourceHandle === flow.sourceHandle)
       );
-    }
-  }
+      return found
+        ? undefined
+        : `missing required flow ${selectorName(flow.source)} -> ${selectorName(flow.target)}${flow.sourceHandle === undefined ? "" : ` through ${flow.sourceHandle}`}`;
+    })
+  );
+}
 
-  for (const required of input.expected.requiredParallel ?? []) {
-    if (
-      hasPath({
-        source: required.first,
-        target: required.second,
-        document,
-      }) ||
-      hasPath({
-        source: required.second,
-        target: required.first,
-        document,
-      })
-    ) {
-      issues.push(
-        `${selectorName(required.first)} and ${selectorName(required.second)} are not parallel branches`
-      );
-    }
-  }
+/** Each required path exists over any number of intermediate nodes. */
+function missingPaths(context: SemanticsContext): string[] {
+  return compact(
+    (context.input.expected.requiredPaths ?? []).map((path) =>
+      hasPath(context, path.source, path.target)
+        ? undefined
+        : `missing required path ${selectorName(path.source)} -> ${selectorName(path.target)}`
+    )
+  );
+}
 
-  for (const required of input.expected.requiredConfigs ?? []) {
-    const matchingNodes = document.nodes.filter((node) =>
-      matchesSelector(node, required.node)
-    );
-    const hasConfig = (node: WorkflowNode) =>
-      Object.entries(required.values).every(
-        ([key, value]) => node.data.config?.[key] === value
+/**
+ * Each required gate reaches its target through the named outlet, and no other
+ * route from a lifecycle node reaches that target around the gate. A gate that
+ * fails the first check is reported once and not tested for a bypass.
+ */
+function gateFailures(context: SemanticsContext): string[] {
+  return compact(
+    (context.input.expected.requiredGates ?? []).map((required) => {
+      const gateIds = new Set(nodeIdsMatching(context, required.gate));
+      const targetIds = new Set(nodeIdsMatching(context, required.target));
+      const gateEdges = context.document.edges.filter(
+        (edge) =>
+          gateIds.has(edge.source) &&
+          edge.sourceHandle === required.sourceHandle
       );
-    const satisfied = required.allMatches
-      ? matchingNodes.length > 0 && matchingNodes.every(hasConfig)
-      : matchingNodes.some(hasConfig);
-    if (!satisfied) {
-      issues.push(
-        `${selectorName(required.node)} does not have required config ${Object.keys(required.values).join(", ")}`
-      );
-    }
-  }
-
-  for (const required of input.expected.requiredNonEmptyConfigs ?? []) {
-    const matchingNodes = document.nodes.filter((node) =>
-      matchesSelector(node, required.node)
-    );
-    const hasNonEmptyConfig = (node: WorkflowNode) =>
-      required.keys.every((key) => {
-        const value = node.data.config?.[key];
-        return typeof value === "string"
-          ? !isBlank(value)
-          : value !== undefined && value !== null;
+      const gatedReach = reachableNodeIds({
+        sourceIds: gateEdges.map((edge) => edge.target),
+        targetsBySource: context.targetsBySource,
       });
-    const satisfied = required.allMatches
-      ? matchingNodes.length > 0 && matchingNodes.every(hasNonEmptyConfig)
-      : matchingNodes.some(hasNonEmptyConfig);
-    if (!satisfied) {
-      issues.push(
-        `${selectorName(required.node)} has empty required config ${required.keys.join(", ")}`
+      const hasGatedPath = [...targetIds].some((nodeId) =>
+        gatedReach.has(nodeId)
       );
-    }
-  }
+      if (!hasGatedPath) {
+        return `missing required gated path ${selectorName(required.gate)} -> ${selectorName(required.target)} through ${required.sourceHandle}`;
+      }
 
-  for (const required of input.expected.requiredDurations ?? []) {
-    const expectedMs = parseDurationMs(required.duration);
-    const satisfied = document.nodes
-      .filter((node) => matchesSelector(node, required.node))
-      .some(
+      const acceptedEdgeIds = new Set(gateEdges.map((edge) => edge.id));
+      const reachWithoutGate = reachableNodeIds({
+        sourceIds: context.lifecycleIds,
+        targetsBySource: adjacency(
+          context.document.edges.filter((edge) => !acceptedEdgeIds.has(edge.id))
+        ),
+      });
+      return [...targetIds].some((nodeId) => reachWithoutGate.has(nodeId))
+        ? `a path to ${selectorName(required.target)} bypasses required gate ${selectorName(required.gate)} through ${required.sourceHandle}`
+        : undefined;
+    })
+  );
+}
+
+/** Neither node of a required parallel pair is downstream of the other. */
+function nonParallelBranches(context: SemanticsContext): string[] {
+  return compact(
+    (context.input.expected.requiredParallel ?? []).map((required) =>
+      hasPath(context, required.first, required.second) ||
+      hasPath(context, required.second, required.first)
+        ? `${selectorName(required.first)} and ${selectorName(required.second)} are not parallel branches`
+        : undefined
+    )
+  );
+}
+
+/** Each required config key holds the exact value the scenario names. */
+function missingConfigs(context: SemanticsContext): string[] {
+  return compact(
+    (context.input.expected.requiredConfigs ?? []).map((required) => {
+      const hasConfig = (node: WorkflowNode) =>
+        Object.entries(required.values).every(
+          ([key, value]) => node.data.config?.[key] === value
+        );
+      return nodesSatisfy(
+        nodesMatching(context, required.node),
+        required.allMatches,
+        hasConfig
+      )
+        ? undefined
+        : `${selectorName(required.node)} does not have required config ${Object.keys(required.values).join(", ")}`;
+    })
+  );
+}
+
+/** Each config key the scenario requires holds a value that is not blank. */
+function emptyConfigs(context: SemanticsContext): string[] {
+  return compact(
+    (context.input.expected.requiredNonEmptyConfigs ?? []).map((required) => {
+      const hasNonEmptyConfig = (node: WorkflowNode) =>
+        required.keys.every((key) => {
+          const value = node.data.config?.[key];
+          return typeof value === "string"
+            ? !isBlank(value)
+            : value !== undefined && value !== null;
+        });
+      return nodesSatisfy(
+        nodesMatching(context, required.node),
+        required.allMatches,
+        hasNonEmptyConfig
+      )
+        ? undefined
+        : `${selectorName(required.node)} has empty required config ${required.keys.join(", ")}`;
+    })
+  );
+}
+
+/** Each required duration parses to the same number of milliseconds. */
+function missingDurations(context: SemanticsContext): string[] {
+  return compact(
+    (context.input.expected.requiredDurations ?? []).map((required) => {
+      const expectedMs = parseDurationMs(required.duration);
+      const satisfied = nodesMatching(context, required.node).some(
         (node) =>
           expectedMs !== null &&
           parseDurationMs(node.data.config?.[required.key]) === expectedMs
       );
-    if (!satisfied) {
-      issues.push(
-        `${selectorName(required.node)} does not have required duration ${required.key}`
-      );
-    }
-  }
+      return satisfied
+        ? undefined
+        : `${selectorName(required.node)} does not have required duration ${required.key}`;
+    })
+  );
+}
 
-  for (const required of input.expected.requiredWaitEvents ?? []) {
-    const subscribed = new Set(
-      document.nodes
-        .filter((node) => matchesSelector(node, required.node))
-        .flatMap((node) => readWaitSubscriptions(node.data.config))
-        .map((subscription) => subscription.event)
-    );
-    const missing = required.events.filter((event) => !subscribed.has(event));
-    if (missing.length > 0) {
-      issues.push(
-        `${selectorName(required.node)} is missing required Wait Event ${missing.join(", ")}`
+/**
+ * Each required Wait node subscribes to every Event the scenario names, and to
+ * no others when the scenario asks for an exact set.
+ */
+function missingWaitEvents(context: SemanticsContext): string[] {
+  return compact(
+    (context.input.expected.requiredWaitEvents ?? []).map((required) => {
+      const subscribed = new Set(
+        nodesMatching(context, required.node)
+          .flatMap((node) => readWaitSubscriptions(node.data.config))
+          .map((subscription) => subscription.event)
       );
-    } else if (required.exact && subscribed.size !== required.events.length) {
-      issues.push(
-        `${selectorName(required.node)} has unexpected Wait Event subscriptions`
-      );
-    }
-  }
-
-  for (const required of input.expected.requiredConditionRules ?? []) {
-    const matchingNodes = document.nodes.filter((node) =>
-      matchesSelector(node, required.node)
-    );
-    const found = matchingNodes.some((node) => {
-      const parsed = parseConditionModel(node.data.config?.conditionModel);
-      if (!parsed.valid) {
-        return false;
+      const missing = required.events.filter((event) => !subscribed.has(event));
+      if (missing.length > 0) {
+        return `${selectorName(required.node)} is missing required Wait Event ${missing.join(", ")}`;
       }
-      return parsed.model.groups.some((group) =>
-        group.conditions.some(
-          (rule) =>
-            rule.field === required.field &&
-            rule.operator === required.operator &&
-            (required.value === undefined ||
-              ("value" in rule && rule.value === required.value))
-        )
-      );
-    });
-    if (!found) {
-      issues.push(
-        `${selectorName(required.node)} is missing required rule ${required.field} ${required.operator}${required.value === undefined ? "" : ` ${required.value}`}`
-      );
-    }
-  }
+      return required.exact && subscribed.size !== required.events.length
+        ? `${selectorName(required.node)} has unexpected Wait Event subscriptions`
+        : undefined;
+    })
+  );
+}
 
-  for (const required of input.expected.requiredConditionLogic ?? []) {
-    const found = document.nodes
-      .filter((node) => matchesSelector(node, required.node))
-      .some((node) => {
+/** Some Condition node carries each rule the scenario names. */
+function missingConditionRules(context: SemanticsContext): string[] {
+  return compact(
+    (context.input.expected.requiredConditionRules ?? []).map((required) => {
+      const found = nodesMatching(context, required.node).some((node) => {
+        const parsed = parseConditionModel(node.data.config?.conditionModel);
+        if (!parsed.valid) {
+          return false;
+        }
+        return parsed.model.groups.some((group) =>
+          group.conditions.some(
+            (rule) =>
+              rule.field === required.field &&
+              rule.operator === required.operator &&
+              (required.value === undefined ||
+                ("value" in rule && rule.value === required.value))
+          )
+        );
+      });
+      return found
+        ? undefined
+        : `${selectorName(required.node)} is missing required rule ${required.field} ${required.operator}${required.value === undefined ? "" : ` ${required.value}`}`;
+    })
+  );
+}
+
+/** Some Condition node combines its groups and rules with the required logic. */
+function wrongConditionLogic(context: SemanticsContext): string[] {
+  return compact(
+    (context.input.expected.requiredConditionLogic ?? []).map((required) => {
+      const found = nodesMatching(context, required.node).some((node) => {
         const parsed = parseConditionModel(node.data.config?.conditionModel);
         return (
           parsed.valid &&
@@ -376,87 +437,142 @@ export function assessScenarioSemantics(
             ))
         );
       });
-    if (!found) {
-      issues.push(
-        `${selectorName(required.node)} does not use required ${required.groupLogic}/${required.ruleLogic ?? "any"} logic`
-      );
-    }
-  }
+      return found
+        ? undefined
+        : `${selectorName(required.node)} does not use required ${required.groupLogic}/${required.ruleLogic ?? "any"} logic`;
+    })
+  );
+}
 
-  for (const required of input.expected.requiredReferences ?? []) {
-    const matchingNodes = document.nodes.filter((node) =>
-      matchesSelector(node, required.node)
-    );
-    const hasReference = (node: WorkflowNode) => {
-      const value = node.data.config?.[required.key];
-      if (typeof value !== "string") {
-        return false;
-      }
-      return findTemplateTokens(value).some((token) => {
-        if (token.fieldPath !== required.path) {
+/**
+ * Each required config key holds a template token for the named field path, and
+ * the node the token reads from publishes that path in the catalog.
+ */
+function missingReferences(context: SemanticsContext): string[] {
+  return compact(
+    (context.input.expected.requiredReferences ?? []).map((required) => {
+      const hasReference = (node: WorkflowNode) => {
+        const value = node.data.config?.[required.key];
+        if (typeof value !== "string") {
           return false;
         }
-        const source = nodeById[token.nodeId];
-        if (source?.data.type === "lifecycle") {
-          return input.catalog.events.some((event) =>
-            event.payloadFields.some((field) => field.path === required.path)
+        return findTemplateTokens(value).some((token) => {
+          if (token.fieldPath !== required.path) {
+            return false;
+          }
+          const source = context.nodeById[token.nodeId];
+          if (source?.data.type === "lifecycle") {
+            return context.input.catalog.events.some((event) =>
+              event.payloadFields.some((field) => field.path === required.path)
+            );
+          }
+          const sourceAction = source ? actionTypeOf(source) : undefined;
+          return (
+            sourceAction !== undefined &&
+            findAction(context.input.catalog, sourceAction)?.outputFields.some(
+              (field) => field.path === required.path
+            ) === true
           );
-        }
-        const sourceAction = source ? actionTypeOf(source) : undefined;
-        return (
-          sourceAction !== undefined &&
-          findAction(input.catalog, sourceAction)?.outputFields.some(
-            (field) => field.path === required.path
-          ) === true
-        );
-      });
-    };
-    const found = required.allMatches
-      ? matchingNodes.length > 0 && matchingNodes.every(hasReference)
-      : matchingNodes.some(hasReference);
-    if (!found) {
-      issues.push(
-        `${selectorName(required.node)} ${required.key} does not reference ${required.path}`
-      );
-    }
-  }
+        });
+      };
+      return nodesSatisfy(
+        nodesMatching(context, required.node),
+        required.allMatches,
+        hasReference
+      )
+        ? undefined
+        : `${selectorName(required.node)} ${required.key} does not reference ${required.path}`;
+    })
+  );
+}
 
-  for (const required of input.expected.distinctConfigValues ?? []) {
-    const values = new Set(
-      document.nodes
-        .filter((node) => matchesSelector(node, required.nodes))
-        .map((node) => node.data.config?.[required.key])
-        .filter(
-          (value): value is string | number | boolean =>
-            typeof value === "string" ||
-            typeof value === "number" ||
-            typeof value === "boolean"
-        )
-    );
-    if (values.size !== required.count) {
-      issues.push(
-        `${selectorName(required.nodes)} needs ${required.count} distinct ${required.key} values, found ${values.size}`
+/** The matched nodes hold as many distinct values for a config key as required. */
+function wrongDistinctConfigValues(context: SemanticsContext): string[] {
+  return compact(
+    (context.input.expected.distinctConfigValues ?? []).map((required) => {
+      const values = new Set(
+        nodesMatching(context, required.nodes)
+          .map((node) => node.data.config?.[required.key])
+          .filter(
+            (value): value is string | number | boolean =>
+              typeof value === "string" ||
+              typeof value === "number" ||
+              typeof value === "boolean"
+          )
       );
-    }
-  }
+      return values.size === required.count
+        ? undefined
+        : `${selectorName(required.nodes)} needs ${required.count} distinct ${required.key} values, found ${values.size}`;
+    })
+  );
+}
 
-  const initialNodeById = keyBy(input.document.nodes, (node) => node.id);
-  if (
-    input.expected.preserveDocument === true &&
-    JSON.stringify(input.document) !== JSON.stringify(document)
-  ) {
-    issues.push("the workflow document changed");
-  }
-  for (const nodeId of input.expected.preserveNodeIds ?? []) {
-    const initial = initialNodeById[nodeId]?.data;
-    const final = nodeById[nodeId]?.data;
-    if (
-      initial === undefined ||
-      JSON.stringify(initial) !== JSON.stringify(final)
-    ) {
-      issues.push(`node ${nodeId} was not preserved`);
-    }
-  }
+/** A scenario the agent must refuse leaves the whole document untouched. */
+function changedDocument(context: SemanticsContext): string | undefined {
+  return context.input.expected.preserveDocument === true &&
+    JSON.stringify(context.input.document) !== JSON.stringify(context.document)
+    ? "the workflow document changed"
+    : undefined;
+}
+
+/** Each node the scenario protects still holds the data it started with. */
+function changedPreservedNodes(context: SemanticsContext): string[] {
+  return compact(
+    (context.input.expected.preserveNodeIds ?? []).map((nodeId) => {
+      const initial = context.initialNodeById[nodeId]?.data;
+      const final = context.nodeById[nodeId]?.data;
+      return initial === undefined ||
+        JSON.stringify(initial) !== JSON.stringify(final)
+        ? `node ${nodeId} was not preserved`
+        : undefined;
+    })
+  );
+}
+
+/** The checks, in the order their messages appear in the rationale. */
+const rules: readonly SemanticsRule[] = [
+  missingActions,
+  wrongExactActionCounts,
+  forbiddenActions,
+  disallowedActions,
+  missingStartEvents,
+  missingCancelEvents,
+  missingFlows,
+  missingPaths,
+  gateFailures,
+  nonParallelBranches,
+  missingConfigs,
+  emptyConfigs,
+  missingDurations,
+  missingWaitEvents,
+  missingConditionRules,
+  wrongConditionLogic,
+  missingReferences,
+  wrongDistinctConfigValues,
+  changedDocument,
+  changedPreservedNodes,
+];
+
+/** Checks the graph facts a scenario declares, allowing other valid graph details. */
+export function assessScenarioSemantics(
+  input: AgentEvalInput,
+  document: AgentEvalDocument
+): DeterministicAssessment {
+  const lifecycleNodes = document.nodes.filter(
+    (node) => node.data.type === "lifecycle"
+  );
+  const context: SemanticsContext = {
+    input,
+    document,
+    actionIds: document.nodes.map(actionTypeOf),
+    nodeById: keyBy(document.nodes, (node) => node.id),
+    initialNodeById: keyBy(input.document.nodes, (node) => node.id),
+    targetsBySource: adjacency(document.edges),
+    lifecycleRules: readLifecycleRules(lifecycleNodes[0]?.data.config),
+    lifecycleIds: lifecycleNodes.map((node) => node.id),
+  };
+
+  const issues = compact(rules.flatMap((rule) => rule(context)));
 
   return issues.length === 0
     ? {
