@@ -7,7 +7,7 @@
  * Wait in one of them and nothing in the other.
  */
 
-import { compact } from "es-toolkit/array";
+import { compact, groupBy } from "es-toolkit/array";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import type { ActionMetadata } from "@wfgraph/shared/extensions/catalog";
 import { compareText } from "@wfgraph/shared/types/string";
@@ -82,17 +82,11 @@ export function stepMatchesQuery(
 export function stepGroups(
   actions: readonly ActionMetadata[]
 ): { category: string; actions: ActionMetadata[] }[] {
-  const byCategory = new Map<string, ActionMetadata[]>();
-  for (const action of actions) {
-    const group = byCategory.get(action.category);
-    if (group) {
-      group.push(action);
-    } else {
-      byCategory.set(action.category, [action]);
-    }
-  }
+  // Key order matches the order categories first appear in `actions`, the
+  // same guarantee the previous Map-based loop gave.
+  const byCategory = groupBy(actions, (action) => action.category);
 
-  return [...byCategory.keys()]
+  return Object.keys(byCategory)
     .toSorted((a, b) => {
       if (a === "System") {
         return -1;
@@ -104,6 +98,6 @@ export function stepGroups(
     })
     .map((category) => ({
       category,
-      actions: byCategory.get(category) ?? [],
+      actions: byCategory[category] ?? [],
     }));
 }

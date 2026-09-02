@@ -312,6 +312,28 @@ describe("diffWorkflowGraphs", () => {
     ]);
   });
 
+  it("matches duplicate identical edges by sorted id whatever the input order", () => {
+    const nodes = [node("a"), node("b")];
+    const template = graph(nodes, [{ id: "edge-a", source: "a", target: "b" }]);
+    const withId = (id: string) => ({
+      ...template.edges[0]!,
+      key: id,
+      attributes: { ...template.edges[0]!.attributes, id },
+    });
+    const base: SerializedWorkflowGraph = {
+      ...template,
+      edges: [withId("edge-b"), withId("edge-a")],
+    };
+    const draft: SerializedWorkflowGraph = {
+      ...template,
+      edges: [withId("edge-c")],
+    };
+
+    expect(diffWorkflowGraphs(base, draft).edgeChanges).toEqual([
+      { edgeId: "edge-b", kind: "removed" },
+    ]);
+  });
+
   it("treats equal sensitive values as equal despite object key order", () => {
     const base = graph([
       node("secret", {
