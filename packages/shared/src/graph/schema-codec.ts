@@ -10,17 +10,25 @@ import { readAs } from "#src/types/schema";
  * Handles non-JSON-representable output types (Date, morphs, predicates).
  */
 export const jsonSchemaLibraryOptions: Record<string, unknown> = {
+  // Arktype's own docs name every one of these fallback handler parameters
+  // `ctx` (https://arktype.io/docs/configuration#tojsonschema), so the four
+  // below keep that spelling rather than diverging from the library's own
+  // convention.
   fallback: {
+    // oxlint-disable-next-line wfgraph/parameter-names -- `ctx` is Arktype's documented parameter name for a toJsonSchema fallback handler.
     date: (ctx: { base: Record<string, unknown> }) => ({
       ...ctx.base,
       type: "string",
       format: "date-time",
     }),
+    // oxlint-disable-next-line wfgraph/parameter-names -- `ctx` is Arktype's documented parameter name for a toJsonSchema fallback handler.
     morph: (ctx: {
       base: Record<string, unknown>;
       out: Record<string, unknown> | null;
     }) => ctx.out ?? ctx.base,
+    // oxlint-disable-next-line wfgraph/parameter-names -- `ctx` is Arktype's documented parameter name for a toJsonSchema fallback handler.
     predicate: (ctx: { base: Record<string, unknown> }) => ctx.base,
+    // oxlint-disable-next-line wfgraph/parameter-names -- `ctx` is Arktype's documented parameter name for a toJsonSchema fallback handler.
     default: (ctx: { base: Record<string, unknown> }) => ctx.base,
   },
 };

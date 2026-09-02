@@ -123,6 +123,7 @@ ruleTester.run("parameter-names", rules["parameter-names"], {
   valid: [
     "function read(input: ReadInput) { return input; }",
     "const read = (options: ReadOptions) => options;",
+    "function f(...args: unknown[]) {}",
   ],
   invalid: [
     {
@@ -131,6 +132,10 @@ ruleTester.run("parameter-names", rules["parameter-names"], {
     },
     {
       code: "const read = (opts: Options) => opts;",
+      errors: [{ messageId: "parameterNames" }],
+    },
+    {
+      code: "function read(args: Args) { return args; }",
       errors: [{ messageId: "parameterNames" }],
     },
   ],

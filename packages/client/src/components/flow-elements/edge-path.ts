@@ -8,10 +8,10 @@ const BORDER_RADIUS = 16;
 const OFFSET = 16;
 
 export function getWorkflowEdgePath(
-  params: Parameters<typeof getSmoothStepPath>[0]
+  input: Parameters<typeof getSmoothStepPath>[0]
 ): ReturnType<typeof getSmoothStepPath> {
   return getSmoothStepPath({
-    ...params,
+    ...input,
     borderRadius: BORDER_RADIUS,
     offset: OFFSET,
   });

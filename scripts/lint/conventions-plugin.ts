@@ -400,14 +400,17 @@ const parameterNames: Rule = {
     /** Reports each parameter of one function whose name is an abbreviation. */
     function checkParameters(node: AstNode): void {
       for (const param of readNodes(node, "params")) {
-        // A parameter written with a default value or as a rest element wraps
-        // its identifier, so the binding is read through those two wrappers.
+        // A rest parameter forwards a whole argument list rather than naming
+        // one object, and `...args` is the plain idiom for that, so it is
+        // exempt from the object-parameter names this rule otherwise holds to.
+        if (param.type === "RestElement") {
+          continue;
+        }
+
+        // A parameter written with a default value wraps its identifier, so
+        // the binding is read through that wrapper.
         const binding =
-          param.type === "AssignmentPattern"
-            ? readNode(param, "left")
-            : param.type === "RestElement"
-              ? readNode(param, "argument")
-              : param;
+          param.type === "AssignmentPattern" ? readNode(param, "left") : param;
 
         const name =
           binding?.type === "Identifier"

@@ -84,19 +84,19 @@ type Subscription = {
 function createWaitState(
   id: string,
   executionId: string,
-  opts?: {
+  options?: {
     resumeToken?: string | null | undefined;
     subscriptions?: Subscription[] | undefined;
   }
 ) {
-  const subscriptions = opts?.subscriptions ?? [{ event: "event.update" }];
+  const subscriptions = options?.subscriptions ?? [{ event: "event.update" }];
 
   return {
     id,
     executionId,
     nodeId: `node_${id}`,
     resumeToken:
-      opts?.resumeToken === undefined ? `token_${id}` : opts.resumeToken,
+      options?.resumeToken === undefined ? `token_${id}` : options.resumeToken,
     subscribedEvents: subscriptions.map((subscription) => subscription.event),
     metadata: { waitFor: subscriptions } as Record<string, unknown> | null,
   };

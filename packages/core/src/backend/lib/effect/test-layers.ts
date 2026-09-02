@@ -229,8 +229,8 @@ export function stubDatabase(
   const transactionFailures = [...(options.transactionFailures ?? [])];
 
   const base = drizzle(
-    async (query, params) => {
-      const statement = { query, params };
+    async (query, queryParams) => {
+      const statement = { query, params: queryParams };
       statements.push(statement);
       return { rows: answer(statement) };
     },

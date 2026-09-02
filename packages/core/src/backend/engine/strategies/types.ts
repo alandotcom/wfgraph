@@ -73,7 +73,9 @@ export type NodeWorkContext = {
 export type NodeStrategy = {
   /** Stable id for spans and logs. */
   readonly id: string;
-  run: (ctx: NodeWorkContext) => Effect.Effect<NodeWorkOutcome, EngineFailure>;
+  run: (
+    context: NodeWorkContext
+  ) => Effect.Effect<NodeWorkOutcome, EngineFailure>;
 };
 
 export type ActionStepInput = {

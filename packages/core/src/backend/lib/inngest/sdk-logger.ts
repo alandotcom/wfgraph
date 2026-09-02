@@ -25,7 +25,7 @@ type SdkLogger = {
  * dropped, because the SDK is free to pass it and losing it silently is worse
  * than an odd key name.
  */
-function splitSdkArgs(args: unknown[]): {
+function splitSdkArgs(input: unknown[]): {
   message: string;
   properties: Record<string, unknown> | undefined;
 } {
@@ -33,7 +33,7 @@ function splitSdkArgs(args: unknown[]): {
   let message: string | undefined;
   let extras = 0;
 
-  for (const arg of args) {
+  for (const arg of input) {
     if (message === undefined && typeof arg === "string") {
       message = arg;
     } else if (isPlainObject(arg)) {

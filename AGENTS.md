@@ -393,6 +393,7 @@ is the one home of the seven core entry points.
   changed, which is the identity a render-time reconcile reads.
 - The first object parameter is `input`, a trailing optional object is `options`, and a
   context is `context`. `ctx`, `args`, `params` and `opts` are not parameter names here.
+  A rest parameter stays `...args`.
 - A hook or factory returning more than five fields declares its return type. Exemplar:
   `packages/core/src/backend/services/executions/repo/audit.ts`.
 - A loop that pushes into two or more arrays is `partition` or `groupBy`; a loop that pushes

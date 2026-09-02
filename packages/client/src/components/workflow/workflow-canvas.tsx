@@ -573,13 +573,16 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   );
 
   const onConnectStart = useCallback(
-    (_event: MouseEvent | TouchEvent, params: OnConnectStartParams) => {
+    (
+      _event: MouseEvent | TouchEvent,
+      connectionStart: OnConnectStartParams
+    ) => {
       if (graphEditingLocked) {
         return;
       }
-      connectingNodeId.current = params.nodeId;
-      connectingHandleType.current = params.handleType;
-      connectingHandleId.current = params.handleId ?? null;
+      connectingNodeId.current = connectionStart.nodeId;
+      connectingHandleType.current = connectionStart.handleType;
+      connectingHandleId.current = connectionStart.handleId ?? null;
     },
     [graphEditingLocked]
   );
