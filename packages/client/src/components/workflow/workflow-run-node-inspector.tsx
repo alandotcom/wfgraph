@@ -1,6 +1,7 @@
 import { ArrowLeft, ChevronDown, ChevronRight } from "lucide-react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useRef, useState } from "react";
+import { isNotNil } from "es-toolkit/predicate";
 import { Button } from "#src/components/ui/button";
 import { useAfterCommit } from "#src/hooks/effects";
 import {
@@ -19,10 +20,6 @@ import {
   OutputDisplay,
 } from "./workflow-run-shared";
 
-function hasRecordedValue(value: unknown): boolean {
-  return value !== null && value !== undefined;
-}
-
 type PayloadTab = {
   id: "input" | "output";
   label: "Input" | "Output";
@@ -31,10 +28,10 @@ type PayloadTab = {
 
 function TechnicalDetails({ log }: { log: ExecutionLog }) {
   const payloads: PayloadTab[] = [];
-  if (hasRecordedValue(log.input)) {
+  if (isNotNil(log.input)) {
     payloads.push({ id: "input", label: "Input", value: log.input });
   }
-  if (hasRecordedValue(log.output)) {
+  if (isNotNil(log.output)) {
     payloads.push({ id: "output", label: "Output", value: log.output });
   }
 
@@ -286,7 +283,7 @@ export function WorkflowRunNodeInspector({
 
             <section>
               <h3 className="mb-2 font-medium text-xs">Result</h3>
-              {hasRecordedValue(log.output) ? (
+              {isNotNil(log.output) ? (
                 <OutputDisplay
                   actionType={log.nodeType}
                   input={log.input}

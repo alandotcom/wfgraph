@@ -9,6 +9,7 @@
  * wrapping every server refusal into this model is deferred.
  */
 
+import { isPlainObject } from "es-toolkit/predicate";
 import {
   getMissingRequiredFieldsForNodes,
   type ResolveActionByType,
@@ -338,9 +339,8 @@ function extractAllTemplateReferences(
       continue;
     }
 
-    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-      const nested: Record<string, unknown> = { ...value };
-      results.push(...extractAllTemplateReferences(nested, fieldPath));
+    if (isPlainObject(value)) {
+      results.push(...extractAllTemplateReferences(value, fieldPath));
     }
   }
 

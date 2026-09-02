@@ -5,7 +5,7 @@
 
 import { getAppLogger } from "#src/backend/lib/logger";
 import { getErrorMessage } from "@wfgraph/shared/utils";
-import { type JsonValue } from "@wfgraph/shared/types/json";
+import { isJsonObject, type JsonValue } from "@wfgraph/shared/types/json";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 
 const redactLogger = getAppLogger("utils", "redact");
@@ -297,9 +297,8 @@ function redactOpenAttributes<T extends Record<string, unknown>>(
 
     const walked = redactSensitiveData({ [key]: value });
     if (
-      typeof walked === "object" &&
-      walked !== null &&
-      !Array.isArray(walked) &&
+      walked !== undefined &&
+      isJsonObject(walked) &&
       Object.hasOwn(walked, key)
     ) {
       entries.push([key, walked[key] ?? null]);

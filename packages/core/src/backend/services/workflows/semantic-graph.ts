@@ -4,7 +4,12 @@
  * outside this projection.
  */
 
-import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
+import { isEmptyObject } from "es-toolkit/predicate";
+import {
+  isJsonObject,
+  type JsonObject,
+  type JsonValue,
+} from "@wfgraph/shared/types/json";
 import { persistedNodeEnabled } from "@wfgraph/shared/graph/node-enabled";
 import type {
   SerializedWorkflowEdge,
@@ -74,11 +79,7 @@ export function normalizeSemanticValue(
 
 function normalizedObject(value: Record<string, unknown>): JsonObject {
   const normalized = normalizeSemanticValue(value);
-  if (
-    typeof normalized !== "object" ||
-    normalized === null ||
-    Array.isArray(normalized)
-  ) {
+  if (normalized === undefined || !isJsonObject(normalized)) {
     throw new Error("Expected semantic projection to produce an object");
   }
   return normalized;
@@ -108,12 +109,7 @@ export function projectSemanticWorkflowEdge(
 ): JsonObject {
   const data = normalizeSemanticValue(edge.attributes.data);
   const normalizedData =
-    typeof data === "object" &&
-    data !== null &&
-    !Array.isArray(data) &&
-    Object.keys(data).length === 0
-      ? undefined
-      : data;
+    data !== undefined && isEmptyObject(data) ? undefined : data;
 
   return normalizedObject({
     source: edge.source,

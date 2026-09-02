@@ -13,7 +13,8 @@
  * `WorkflowSchemaField`. This module reads that tree and flattens it.
  */
 
-import type { JsonObject, JsonValue } from "#src/types/json";
+import { isPlainObject } from "es-toolkit/predicate";
+import { isJsonObject, type JsonObject, type JsonValue } from "#src/types/json";
 import { isSafeRecordKey } from "#src/types/record-key";
 import { matchesShowWhen, type ShowWhen } from "#src/types/show-when";
 import { omitUndefined } from "#src/utils/omit-undefined";
@@ -353,7 +354,7 @@ export function mapTemplateTokens(
     return changed ? next : value;
   }
 
-  if (typeof value === "object" && value !== null) {
+  if (isPlainObject(value)) {
     let changed = false;
     const remapped: Array<[string, unknown]> = [];
     for (const [key, nested] of Object.entries(value)) {
@@ -465,9 +466,7 @@ function isStepWrapper(
   value: JsonValue
 ): value is JsonObject & { success: boolean; data: JsonValue } {
   return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
+    isJsonObject(value) &&
     Object.hasOwn(value, "success") &&
     typeof value.success === "boolean" &&
     Object.hasOwn(value, "data")
@@ -554,7 +553,7 @@ function readKey(
   value: JsonValue | undefined,
   key: string
 ): JsonValue | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
+  return value !== undefined && isJsonObject(value)
     ? Object.hasOwn(value, key)
       ? value[key]
       : undefined

@@ -9,6 +9,7 @@
  * printed by `console.log`.
  */
 
+import { isPlainObject } from "es-toolkit/predicate";
 import { getAppLogger } from "#src/backend/lib/logger";
 
 type SdkLogger = {
@@ -17,15 +18,6 @@ type SdkLogger = {
   error: (...args: unknown[]) => void;
   debug: (...args: unknown[]) => void;
 };
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    !(value instanceof Error)
-  );
-}
 
 /**
  * The first string is the message and every object is a field bag. Anything

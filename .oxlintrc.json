@@ -132,11 +132,11 @@
     // count on each line is what that rule reported when the plugin landed, so a
     // sweep can check its own arithmetic.
     "wfgraph/no-filter-boolean": "off", // 3 sites
-    "wfgraph/no-set-spread-uniq": "off", // 7 sites
+    "wfgraph/no-set-spread-uniq": "error",
     "wfgraph/no-entries-round-trip": "off", // 7 sites
     "wfgraph/no-conditional-spread": "off", // 210 sites
     "wfgraph/no-locale-compare": "off", // 20 sites
-    "wfgraph/no-hand-rolled-object-guard": "off", // 6 sites
+    "wfgraph/no-hand-rolled-object-guard": "error",
     "wfgraph/no-changed-flag": "off", // 7 sites
     "wfgraph/parameter-names": "off", // 42 sites
     "typescript/no-deprecated": "error",
@@ -316,6 +316,14 @@
             ]
           }
         ]
+      }
+    },
+    {
+      // This file is where isJsonObject is defined, so the rule that points
+      // everyone else at it is off here.
+      "files": ["packages/shared/src/types/json.ts"],
+      "rules": {
+        "wfgraph/no-hand-rolled-object-guard": "off"
       }
     },
     {
