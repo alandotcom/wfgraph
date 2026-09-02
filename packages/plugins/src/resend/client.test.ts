@@ -9,6 +9,7 @@ import {
   listResendDomains,
   listResendTemplates,
   readResendError,
+  type ResendEmailPayload,
   sendResendEmail,
 } from "#src/resend/client";
 
@@ -17,8 +18,8 @@ import {
  * of handing arguments to the `resend` SDK. These assertions are the record of
  * what Resend's send-email reference says the call looks like.
  *
- * The payload's field names are the step's business, not this module's, so the
- * snake_case mapping is asserted in send-email.test.ts where it happens.
+ * The client owns the accepted payload type; the step owns constructing it, so
+ * send-email.test.ts also asserts the exact snake_case body it produces.
  */
 
 const realFetch = globalThis.fetch;
@@ -39,6 +40,13 @@ const failure = Effect.flip;
 
 const withTransport = Effect.provide(ExternalTransport);
 
+const validEmailPayload = {
+  from: "a@example.com",
+  to: "b@example.com",
+  subject: "Hi",
+  text: "Body",
+} satisfies ResendEmailPayload;
+
 beforeEach(() => {
   requests = [];
 });
@@ -48,16 +56,19 @@ afterEach(() => {
 });
 
 describe("sendResendEmail", () => {
+  it("makes template and body content mutually exclusive", () => {
+    // @ts-expect-error A template send cannot carry a text body.
+    void sendResendEmail("re_key", {
+      ...validEmailPayload,
+      template: { id: "template_123" },
+    });
+  });
+
   it.effect("posts the payload with a bearer token", () =>
     Effect.gen(function* () {
       stubFetch(() => Response.json({ id: "email_123" }));
 
-      const sent = yield* sendResendEmail("re_key", {
-        from: "a@example.com",
-        to: "b@example.com",
-        subject: "Hi",
-        text: "Body",
-      });
+      const sent = yield* sendResendEmail("re_key", validEmailPayload);
 
       expect(sent).toEqual({ id: "email_123" });
 
@@ -76,7 +87,7 @@ describe("sendResendEmail", () => {
     Effect.gen(function* () {
       stubFetch(() => Response.json({ id: "email_123" }));
 
-      yield* sendResendEmail("re_key", { subject: "Hi" }, "exec_42");
+      yield* sendResendEmail("re_key", validEmailPayload, "exec_42");
 
       expect(requests[0]?.headers.get("idempotency-key")).toBe("exec_42");
     }).pipe(withTransport)
@@ -96,7 +107,7 @@ describe("sendResendEmail", () => {
       );
 
       const error = yield* failure(
-        sendResendEmail("re_key", { subject: "Hi" })
+        sendResendEmail("re_key", validEmailPayload)
       );
 
       expect(error._tag).toBe("ExternalRejected");
@@ -121,7 +132,7 @@ describe("sendResendEmail", () => {
       stubFetch(() => Response.json({ queued: true }));
 
       const error = yield* failure(
-        sendResendEmail("re_key", { subject: "Hi" })
+        sendResendEmail("re_key", validEmailPayload)
       );
 
       expect(error._tag).toBe("ExternalUnreadable");
@@ -139,7 +150,7 @@ describe("sendResendEmail", () => {
       stubFetch(() => Promise.reject(new Error("ECONNRESET")));
 
       const error = yield* failure(
-        sendResendEmail("re_key", { subject: "Hi" })
+        sendResendEmail("re_key", validEmailPayload)
       );
 
       expect(error._tag).toBe("ExternalUnreachable");

@@ -14,7 +14,6 @@ import {
   type CredentialsOf,
   defineIntegration,
   isoTimestampString,
-  type JsonObject,
   StepFailure,
 } from "@wfgraph/core/plugin";
 import { omitBy } from "es-toolkit/object";
@@ -23,6 +22,8 @@ import { Effect, Result, Schema } from "effect";
 import {
   describeResendFailure,
   getResendEmail,
+  type ResendEmailContent,
+  type ResendEmailPayload,
   sendResendEmail,
 } from "#src/resend/client";
 import { resendEvents } from "#src/resend/events";
@@ -264,19 +265,6 @@ function tagsByName(
 }
 
 /**
- * The body fields one content mode contributes.
- *
- * Named as a type so all three modes answer one shape. Left to inference, each
- * mode answers a shape of its own, and a key another mode sets gets the type
- * `undefined`, which a `JsonObject` value rejects.
- */
-type EmailContent = {
-  text?: string;
-  html?: string;
-  template?: { id?: string; variables?: typeof templateVariablesSchema.Type };
-};
-
-/**
  * The body fields the chosen content mode contributes, or the failure naming the
  * box a builder still has to fill in.
  *
@@ -285,7 +273,7 @@ type EmailContent = {
  */
 function emailContent(
   input: typeof sendEmailInput.Type
-): Effect.Effect<EmailContent, StepFailure> {
+): Effect.Effect<ResendEmailContent, StepFailure> {
   return Effect.gen(function* () {
     switch (input.emailContentMode ?? "text") {
       case "template": {
@@ -300,7 +288,10 @@ function emailContent(
           : undefined;
 
         return {
-          template: omitBy({ id: input.emailTemplateId, variables }, isNil),
+          template: {
+            id: input.emailTemplateId,
+            ...(variables === undefined ? {} : { variables }),
+          },
         };
       }
 
@@ -339,26 +330,25 @@ const buildEmailPayload = Effect.fn(function* (
 ) {
   const content = yield* emailContent(input);
 
-  // Resend's own field names, which are snake_case on the wire. Every optional
-  // field is written out and the blank ones dropped in one pass, because Resend
-  // reads an absent field and an empty one differently.
-  const payload: JsonObject = {
+  // Required fields and content stay visible to inference. Only optional
+  // metadata passes through omitBy before the SDK-derived wire check.
+  const payload = {
+    from: senderEmail,
+    to: recipients.to,
+    subject: input.emailSubject,
+    ...content,
     ...omitBy(
       {
-        from: senderEmail,
-        to: recipients.to,
-        subject: input.emailSubject,
         cc: recipients.cc,
         bcc: recipients.bcc,
         reply_to: input.emailReplyTo,
         scheduled_at: input.emailScheduledAt,
         topic_id: input.emailTopicId,
         tags,
-        ...content,
       },
       isNil
     ),
-  };
+  } satisfies ResendEmailPayload;
 
   return payload;
 });

@@ -166,7 +166,7 @@ export async function resendTemplateVariableFields(
         // fallback, so this asks whether one is present rather than truthy.
         ...(variable.fallback_value == null
           ? { required: true as const }
-          : { defaultValue: variable.fallback_value }),
+          : { defaultValue: String(variable.fallback_value) }),
         ...(variable.type === "number" ? { type: "number" as const } : {}),
       })),
   };
