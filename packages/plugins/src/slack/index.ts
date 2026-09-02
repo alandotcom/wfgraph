@@ -1,6 +1,5 @@
 /**
- * The Slack integration: its credentials, its one action, and what that action
- * does.
+ * The Slack integration: its credentials, actions, and what those actions do.
  *
  * One file, because only the server imports it. The editor gets this plugin's
  * metadata as JSON over `/api/extensions`, so nothing here reaches a browser
@@ -81,6 +80,26 @@ const sendSlackMessageOutput = Schema.Struct({
   ),
 });
 
+const replyToThreadInput = Schema.Struct({
+  slackChannel: Schema.String,
+  slackThreadTs: Schema.String,
+  slackMessage: Schema.String,
+  testBehavior: Schema.optionalKey(Schema.String),
+});
+
+const replyToThreadOutput = Schema.Struct({
+  ts: Schema.String.annotate({ description: "Message timestamp" }),
+  channel: Schema.String.annotate({ description: "Channel ID" }),
+  threadTs: Schema.String.annotate({
+    description: "Parent message timestamp",
+  }),
+  reasonCode: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.String.annotate({ description: "Why a test run did not send" })
+    )
+  ),
+});
+
 function resolveSlackTestBehavior(
   value: string | undefined
 ): SlackTestBehavior {
@@ -105,7 +124,7 @@ export const slack = (options?: SlackOptions) => {
   return defineIntegration({
     type: "slack",
     label: "Slack",
-    description: "Send messages to Slack channels",
+    description: "Send messages to Slack channels and threads",
     credentials: slackCredentialFields,
     oauth:
       clientId && clientSecret
@@ -198,6 +217,96 @@ export const slack = (options?: SlackOptions) => {
           );
 
           return { ts: posted.ts, channel: posted.channel };
+        }),
+      },
+      "reply-to-thread": {
+        label: "Reply to Slack Thread",
+        description: "Send a reply to a Slack message thread",
+        sideEffect: true,
+        input: replyToThreadInput,
+        output: replyToThreadOutput,
+        configFields: [
+          {
+            key: "slackChannel",
+            label: "Channel ID",
+            type: "template-input",
+            placeholder: "C1234567890",
+            required: true,
+          },
+          {
+            key: "slackThreadTs",
+            label: "Parent Message Timestamp",
+            type: "template-input",
+            placeholder: "1739.123456",
+            required: true,
+          },
+          {
+            key: "slackMessage",
+            label: "Message",
+            type: "template-textarea",
+            placeholder:
+              "Your reply. Use {{NodeName.field}} to insert data from previous nodes.",
+            rows: 4,
+            example: "Following up in this thread.",
+            required: true,
+          },
+          {
+            key: "testBehavior",
+            label: "Test Mode Behavior",
+            type: "select",
+            defaultValue: "log_only",
+            options: [
+              { value: "log_only", label: "Log only (do nothing)" },
+              { value: "send_message", label: "Send real Slack message" },
+            ],
+          },
+        ],
+        handler: Effect.fn(function* (bag) {
+          const { input } = bag;
+          const testBehavior = resolveSlackTestBehavior(input.testBehavior);
+
+          if (bag.runMode === "test" && testBehavior === "log_only") {
+            return {
+              ts: "",
+              channel: input.slackChannel,
+              threadTs: input.slackThreadTs,
+              reasonCode: "test_mode_log_only",
+            };
+          }
+
+          const credentials = yield* bag.credentials;
+          const apiKey = credentials.SLACK_API_KEY;
+
+          if (!apiKey) {
+            return yield* new StepFailure({
+              message:
+                "SLACK_API_KEY is not configured. Please add it in Project Integrations.",
+            });
+          }
+
+          const posted = yield* bag.step.run(
+            "post",
+            callSlack(apiKey, "chat.postMessage", postMessageSchema, {
+              body: {
+                channel: input.slackChannel,
+                text: input.slackMessage,
+                thread_ts: input.slackThreadTs,
+              },
+            }).pipe(
+              Effect.mapError(
+                (error) =>
+                  new StepFailure({
+                    message: `Failed to reply to Slack thread: ${describeSlackFailure(error)}`,
+                  })
+              )
+            )
+          );
+
+          return {
+            ts: posted.ts,
+            channel: posted.channel,
+            threadTs: input.slackThreadTs,
+          };
         }),
       },
     },
