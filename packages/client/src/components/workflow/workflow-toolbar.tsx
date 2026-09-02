@@ -21,8 +21,14 @@ import {
   ToolbarPublishControls,
   WorkflowMenuComponent,
 } from "#src/components/workflow/workflow-toolbar-chrome";
-import { useWorkflowActions } from "#src/components/workflow/workflow-toolbar-handlers";
-import { useWorkflowToolbarState } from "#src/components/workflow/workflow-toolbar-state";
+import {
+  useWorkflowActions,
+  type WorkflowToolbarActions,
+} from "#src/components/workflow/workflow-toolbar-handlers";
+import {
+  useWorkflowToolbarState,
+  type WorkflowToolbarState,
+} from "#src/components/workflow/workflow-toolbar-state";
 import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import {
@@ -131,8 +137,8 @@ function WorkflowActionsMenu({
   views,
   selectView,
 }: ReturnType<typeof useWorkspaceViews> & {
-  actions: ReturnType<typeof useWorkflowActions>;
-  state: ReturnType<typeof useWorkflowToolbarState>;
+  actions: WorkflowToolbarActions;
+  state: WorkflowToolbarState;
 }) {
   return (
     <DropdownMenu>
@@ -195,8 +201,8 @@ function WorkflowTrailingControls({
   state,
   workflowId,
 }: WorkflowToolbarProps & {
-  actions: ReturnType<typeof useWorkflowActions>;
-  state: ReturnType<typeof useWorkflowToolbarState>;
+  actions: WorkflowToolbarActions;
+  state: WorkflowToolbarState;
 }) {
   const workspace = useWorkspaceViews({
     hasWorkflow: Boolean(workflowId),
@@ -230,8 +236,8 @@ export function WorkflowToolbarChrome({
   state,
   workflowId,
 }: WorkflowToolbarProps & {
-  actions: ReturnType<typeof useWorkflowActions>;
-  state: ReturnType<typeof useWorkflowToolbarState>;
+  actions: WorkflowToolbarActions;
+  state: WorkflowToolbarState;
 }) {
   return (
     <div className="relative h-11 shrink-0 border-b bg-background">

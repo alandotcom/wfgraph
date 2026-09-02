@@ -43,13 +43,11 @@ import {
   toEditorEdge,
   toEditorNode,
   type WorkflowEdge,
-  type WorkflowMode,
   type WorkflowNode,
 } from "#src/lib/workflow-graph-types";
 import {
   executeWorkflowRun,
   rememberTestPayload,
-  type UpdateNodeData,
 } from "#src/lib/workflow-run-actions";
 import {
   type RunSends,
@@ -79,6 +77,7 @@ import {
   isPublicationReviewActiveAtom,
   isPublicationReviewPendingAtom,
   publicationReviewAtom,
+  type ReadyPublicationReview,
   settlePublicationReviewAtom,
 } from "#src/lib/workflow-publication-review-store";
 import { enterRunsWorkspaceAtom } from "#src/lib/workflow-workspace-navigation";
@@ -146,28 +145,18 @@ type SaveWorkflow = (
   options?: { immediate?: boolean }
 ) => Promise<SaveOutcome | null>;
 
-type WorkflowHandlerParams = {
-  currentWorkflowId: string | null;
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
-  updateNodeData: UpdateNodeData;
-  isExecuting: boolean;
-  setIsExecuting: (value: boolean) => void;
-  setSelectedNodeId: (id: string | null) => void;
+type WorkflowHandlerInput = {
+  /** The toolbar's own state, read field by field in the body below. */
+  state: WorkflowToolbarState;
   checkWorkflowIssues: (input: {
     workflowId: string;
     nodes: WorkflowNode[];
   }) => Promise<WorkflowIssuePreflightResult>;
-  workflowMode: WorkflowMode;
   /** The published version's number, absent until the first publish. */
   publishedVersion: number | undefined;
   /** The published version's id, which is the key its graph is read by. */
   publishedVersionId: string | undefined;
-  hasUnsavedChanges: boolean;
   saveWorkflow: SaveWorkflow;
-  canExecute: boolean;
-  canUpdate: boolean;
-  canReadVersionGraph: boolean;
 };
 
 /**
@@ -207,23 +196,26 @@ function runOverlayGraphFacts(
 }
 
 function useWorkflowHandlers({
-  currentWorkflowId,
-  nodes,
-  edges,
-  updateNodeData,
-  isExecuting,
-  setIsExecuting,
-  setSelectedNodeId,
+  state,
   checkWorkflowIssues,
-  workflowMode,
   publishedVersion,
   publishedVersionId,
-  hasUnsavedChanges,
   saveWorkflow,
-  canExecute,
-  canUpdate,
-  canReadVersionGraph,
-}: WorkflowHandlerParams) {
+}: WorkflowHandlerInput) {
+  const {
+    canExecute,
+    canReadVersionGraph,
+    canUpdate,
+    currentWorkflowId,
+    edges,
+    hasUnsavedChanges,
+    isExecuting,
+    nodes,
+    setIsExecuting,
+    setSelectedNodeId,
+    updateNodeData,
+    workflowMode,
+  } = state;
   // The same implementation the status strip's issue count reaches for, so
   // "Fix" means one thing wherever the list was opened from. The hook is
   // instantiated per caller and each instance owns its own pending-focus state;
@@ -497,7 +489,33 @@ function useWorkflowHandlers({
   };
 }
 
-export function useWorkflowActions(state: WorkflowToolbarState) {
+/**
+ * What every toolbar surface calls: the chrome, the overflow menu, and the
+ * command palette. Each write states whether it is already running, because the
+ * control that starts it is disabled while it is.
+ */
+export type WorkflowToolbarActions = {
+  handleSave: () => Promise<void>;
+  handleExecute: (graph: WorkflowRunGraph) => Promise<void>;
+  handleClearWorkflow: () => void;
+  handleDeleteWorkflow: () => void;
+  /** Re-reads the workflow list the switcher draws. */
+  loadWorkflows: () => Promise<void>;
+  handleDuplicate: () => void;
+  isDuplicating: boolean;
+  handlePublish: () => Promise<void>;
+  confirmPublish: () => void;
+  isPublishing: boolean;
+  isComparing: boolean;
+  isPreflighting: boolean;
+  /** The review a publish is waiting on, null while no review is open. */
+  publishReview: ReadyPublicationReview | null;
+  setPublishReviewOpen: (open: boolean) => void;
+};
+
+export function useWorkflowActions(
+  state: WorkflowToolbarState
+): WorkflowToolbarActions {
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -511,47 +529,31 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
   const clearPublicationReview = useSetAtom(clearPublicationReviewAtom);
   const settlePublicationReview = useSetAtom(settlePublicationReviewAtom);
   const publishingReviewRef = useRef<string | null>(null);
+  // Only the fields this hook's own bodies read. Everything the run and issue
+  // handlers need travels as the whole state, which they destructure themselves.
   const {
-    currentWorkflowId,
-    workflowName,
-    workflowMode,
-    nodes,
-    edges,
-    updateNodeData,
-    isExecuting,
-    isGenerating,
-    setIsExecuting,
-    clearWorkflow,
-    setSelectedNodeId,
-    userIntegrations,
-    publication,
-    hasUnsavedChanges,
-    canUpdate,
-    canExecute,
     canDelete,
     canDuplicate,
+    canExecute,
     canPublish,
-    canReadVersionGraph,
+    canUpdate,
+    clearWorkflow,
+    currentWorkflowId,
+    edges,
+    isGenerating,
+    nodes,
+    publication,
+    userIntegrations,
+    workflowName,
   } = state;
   const { checkWorkflowIssues, isPreflighting } =
     useWorkflowIssuePreflight(userIntegrations);
   const { handleExecute, handleGoToStep } = useWorkflowHandlers({
-    currentWorkflowId,
-    nodes,
-    edges,
-    updateNodeData,
-    isExecuting,
-    setIsExecuting,
-    setSelectedNodeId,
+    state,
     checkWorkflowIssues,
-    workflowMode,
     publishedVersion: publication?.publishedVersion,
     publishedVersionId: publication?.publishedVersionId,
-    hasUnsavedChanges,
     saveWorkflow,
-    canExecute,
-    canUpdate,
-    canReadVersionGraph,
   });
 
   const handleSave = useCallback(async () => {
@@ -872,6 +874,33 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     );
   };
 
+  /**
+   * The publish review dialog's open state. An `open` of true does nothing,
+   * because `handlePublish` is what opens a review.
+   *
+   * Closing ends the review by workflow and epoch, so a late answer cannot end
+   * a review the operator has opened since. A dialog closing while the review
+   * is still pending has no review to name, and the open workflow's id ends
+   * that session instead.
+   */
+  const setPublishReviewOpen = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        const workflowId =
+          publishReview?.workflowId ?? currentWorkflowId ?? undefined;
+        if (publishReview) {
+          clearPublicationReview({
+            workflowId: publishReview.workflowId,
+            epoch: publishReview.epoch,
+          });
+        } else {
+          clearPublicationReview(workflowId);
+        }
+      }
+    },
+    [clearPublicationReview, currentWorkflowId, publishReview]
+  );
+
   return {
     handleSave,
     handleExecute,
@@ -886,21 +915,6 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     isComparing: compareWorkflowVersion.isPending,
     isPreflighting,
     publishReview,
-    setPublishReviewOpen: (open: boolean) => {
-      if (!open) {
-        const workflowId =
-          publishReview?.workflowId ?? currentWorkflowId ?? undefined;
-        if (publishReview) {
-          clearPublicationReview({
-            workflowId: publishReview.workflowId,
-            epoch: publishReview.epoch,
-          });
-        } else {
-          clearPublicationReview(workflowId);
-        }
-      }
-    },
+    setPublishReviewOpen,
   };
 }
-
-export type WorkflowToolbarActions = ReturnType<typeof useWorkflowActions>;
