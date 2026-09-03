@@ -120,6 +120,59 @@ describe("assessScenarioSemantics", () => {
     });
   });
 
+  it("rejects changed lifecycle settings that a scenario requires", () => {
+    const document = completedDocument();
+    const lifecycleInput: AgentEvalInput = {
+      ...input,
+      expected: {
+        requiredLifecycleRules: {
+          concurrency: "newest-wins",
+          allowManualStart: true,
+          correlationPaths: { "applicant.created": "applicantId" },
+          connectionIds: { "applicant.created": "connection-1" },
+        },
+      },
+    };
+
+    expect(assessScenarioSemantics(lifecycleInput, document)).toEqual({
+      score: 0,
+      rationale:
+        "Lifecycle concurrency must be newest-wins; Lifecycle manual start must be enabled; Lifecycle Correlation Paths do not include the required values; Lifecycle Connections do not include the required values.",
+    });
+  });
+
+  it("allows additional lifecycle map entries required by the requested edit", () => {
+    const document = completedDocument();
+    const lifecycle = document.nodes[0];
+    if (!lifecycle) {
+      throw new Error("Lifecycle fixture is missing");
+    }
+    lifecycle.data.config = {
+      lifecycleRules: {
+        startEvents: ["applicant.created"],
+        cancelEvents: ["applicant.withdrawn"],
+        concurrency: "newest-wins",
+        correlationPaths: {
+          "applicant.created": "applicantId",
+          "applicant.withdrawn": "applicantId",
+        },
+      },
+    };
+    const lifecycleInput: AgentEvalInput = {
+      ...input,
+      expected: {
+        requiredLifecycleRules: {
+          concurrency: "newest-wins",
+          correlationPaths: { "applicant.created": "applicantId" },
+        },
+      },
+    };
+
+    expect(assessScenarioSemantics(lifecycleInput, document)).toMatchObject({
+      score: 1,
+    });
+  });
+
   it("includes Events from every Lifecycle node in an exact Event set", () => {
     const document = completedDocument();
     document.nodes.push({

@@ -1,4 +1,5 @@
 import { fixtureCatalog } from "@wfgraph/agent/tools/catalog-fixture";
+import { serializeConditionModel } from "@wfgraph/shared/conditions/condition-schema";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { AgentDocument } from "@wfgraph/agent/document";
 import type { AgentEvalInput } from "#src/agent/types";
@@ -9,6 +10,17 @@ export const evalCatalog: ExtensionCatalog = {
   ...fixtureCatalog,
   events: [
     ...fixtureCatalog.events,
+    {
+      name: "slack/candidate.referred",
+      label: "Slack candidate referred",
+      description: "Raised when a candidate referral arrives through Slack.",
+      integration: "slack",
+      correlationPath: "applicantId",
+      payloadFields: [
+        { path: "applicantId", type: "string" },
+        { path: "email", type: "string" },
+      ],
+    },
     {
       name: "app/appointment.created",
       label: "Appointment created",
@@ -136,9 +148,29 @@ export const configuredApplicantDocument: AgentDocument = {
           lifecycleRules: {
             startEvents: ["applicant.created"],
             cancelEvents: [],
-            concurrency: "unlimited",
-            allowManualStart: false,
+            concurrency: "newest-wins",
+            allowManualStart: true,
             correlationPaths: { "applicant.created": "applicantId" },
+            startFilters: {
+              "applicant.created": serializeConditionModel({
+                version: 2,
+                groupLogic: "and",
+                groups: [
+                  {
+                    id: "has-email",
+                    logic: "and",
+                    conditions: [
+                      {
+                        id: "email-is-set",
+                        field: "email",
+                        fieldType: "string",
+                        operator: "is_set",
+                      },
+                    ],
+                  },
+                ],
+              }),
+            },
           },
         },
       },

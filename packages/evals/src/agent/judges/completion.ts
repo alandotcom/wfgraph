@@ -45,6 +45,9 @@ function clauseClaimsPublishBlocker(clause: string): boolean {
     /\b(?:publishing|publication) (?:is|remains|has been) blocked\b/i.test(
       clause
     ) ||
+    /\bbefore\b.*\b(?:publish|published|publication)\b.*\b(?:needs|requires|must)\b/i.test(
+      clause
+    ) ||
     /\b(?:needs|requires|must)\b.*(?:\bto\s+publish\b|\b(?:before|prior to)\b.*\b(?:publish|published|publication)\b)/i.test(
       clause
     )

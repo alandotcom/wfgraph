@@ -80,6 +80,46 @@ function wrongExactEvents(context: SemanticsContext): string[] {
   ]);
 }
 
+function wrongRequiredLifecycleRules(context: SemanticsContext): string[] {
+  const required = context.input.expected.requiredLifecycleRules;
+  if (required === undefined) {
+    return [];
+  }
+  const rules = context.lifecycleRules.find(
+    (candidate): candidate is LifecycleRules => candidate !== undefined
+  );
+  return compact([
+    required.concurrency === undefined ||
+    rules?.concurrency === required.concurrency
+      ? undefined
+      : `Lifecycle concurrency must be ${required.concurrency}`,
+    required.allowManualStart === undefined ||
+    rules?.allowManualStart === required.allowManualStart
+      ? undefined
+      : `Lifecycle manual start must be ${required.allowManualStart ? "enabled" : "disabled"}`,
+    required.correlationPaths === undefined ||
+    includesRequiredEntries(rules?.correlationPaths, required.correlationPaths)
+      ? undefined
+      : "Lifecycle Correlation Paths do not include the required values",
+    required.connectionIds === undefined ||
+    includesRequiredEntries(rules?.connectionIds, required.connectionIds)
+      ? undefined
+      : "Lifecycle Connections do not include the required values",
+  ]);
+}
+
+function includesRequiredEntries(
+  actual: Readonly<Record<string, string>> | undefined,
+  required: Readonly<Record<string, string>>
+): boolean {
+  return Object.entries(required).every(
+    ([key, value]) =>
+      actual !== undefined &&
+      Object.hasOwn(actual, key) &&
+      actual[key] === value
+  );
+}
+
 function lifecycleFilterShape(model: ConditionModel) {
   return {
     groupLogic: model.groupLogic,
@@ -146,6 +186,7 @@ export function assessActionAndLifecycleSemantics(
   return [
     ...wrongExactActionCounts(context),
     ...wrongExactEvents(context),
+    ...wrongRequiredLifecycleRules(context),
     ...missingStartFilters(context),
     ...missingCancelFilters(context),
   ];

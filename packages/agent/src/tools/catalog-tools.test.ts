@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect } from "effect";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { fixtureCatalog } from "#src/tools/catalog-fixture";
 import { agentToolsFor } from "#src/testing";
 
@@ -205,6 +206,33 @@ describe("list_events", () => {
       // sending the model an empty string to reason about.
       expect(withdrawn?.correlationPath).toBeUndefined();
       expect(withdrawn?.description).toBeUndefined();
+    })
+  );
+
+  it.effect("identifies the integration that owns an Event", () =>
+    Effect.gen(function* () {
+      const integrationCatalog: ExtensionCatalog = {
+        ...catalog,
+        events: [
+          ...catalog.events,
+          {
+            name: "slack/message.received",
+            label: "Slack message received",
+            integration: "slack",
+            payloadFields: [],
+          },
+        ],
+      };
+      const { tools } = yield* agentToolsFor({ catalog: integrationCatalog });
+
+      const result = yield* tools.list_events();
+
+      expect(
+        result.events.find((event) => event.name === "slack/message.received")
+      ).toMatchObject({ integration: "slack" });
+      expect(
+        result.events.find((event) => event.name === "applicant.created")
+      ).not.toHaveProperty("integration");
     })
   );
 });

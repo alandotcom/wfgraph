@@ -428,6 +428,29 @@ describe("assessExpectedCompletion", () => {
     });
   });
 
+  it("accepts a blocker stated after a conditional publication phrase", () => {
+    expect(
+      assess({
+        expected: {
+          outcome: "blocked",
+          answerMustMention: ["slack", "connection"],
+          requiredPublishBlocker: {
+            kind: "missing_integration",
+            messageMustMention: ["connected slack integration"],
+          },
+          allowedPublishBlockerKinds: ["missing_integration"],
+        },
+        finalText:
+          "Before it can be published, the Slack trigger requires a connection.",
+        facts: blockedFacts,
+      })
+    ).toEqual({
+      score: 1,
+      rationale:
+        "The valid draft contains the requested work and names its publish blocker.",
+    });
+  });
+
   it("accepts future readiness after the user resolves a named blocker", () => {
     expect(
       assess({

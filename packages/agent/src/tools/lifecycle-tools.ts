@@ -30,9 +30,11 @@ import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import {
   checkLifecycleRules,
   emptyLifecycleRules,
+  inheritConnectionIds,
   type LifecycleRules,
   pruneConnectionIds,
   readLifecycleRules,
+  retainNamedKeys,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
   checkStartFilters,
@@ -105,22 +107,23 @@ export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
   description:
     "Declare when a run starts and when it is cancelled. A Start Filter checks an Event before a run opens. A Cancel Filter checks an Event before it cancels a run. Creates the Lifecycle Node if the workflow has none. Every Event name and filter field must come from list_events.",
   parameters: Schema.Struct({
-    startEvents: Schema.Array(Schema.String).annotate({
+    startEvents: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
       description:
-        "The Events that start a run. Empty means no Event starts it, in which case allowManualStart has to be true.",
+        "The complete set of Events that start a run. Omit to preserve it. An empty list clears it, in which case allowManualStart has to be true.",
     }),
     cancelEvents: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
       description:
-        "The Events that route an in-flight run to the Canceled outlet.",
+        "The complete set of Events that route an in-flight run to the Canceled outlet. Omit to preserve it. An empty list clears it.",
     }),
     concurrency: Schema.optionalKey(
       Schema.Literals(["newest-wins", "first-wins", "unlimited"])
     ).annotate({
       description:
-        "How many runs may exist per correlated entity. newest-wins ends the run already going, first-wins refuses the new one, unlimited allows both. Defaults to unlimited.",
+        "How many runs may exist per correlated entity. newest-wins ends the run already going, first-wins refuses the new one, unlimited allows both. Omit to preserve it; a new Lifecycle Node defaults to unlimited.",
     }),
     allowManualStart: Schema.optionalKey(Schema.Boolean).annotate({
-      description: "Whether the Run button and the execute route may start it.",
+      description:
+        "Whether the Run button and the execute route may start it. Omit to preserve it.",
     }),
     // A list rather than a record, for the reason `configBagSchema` in
     // graph-write-tools.ts states: a record cannot survive the round trip
@@ -139,7 +142,36 @@ export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
       )
     ).annotate({
       description:
-        "Where each Event carries the id of the thing a run is about. Concurrency and cancellation both need it.",
+        "Per-Event overrides for where an Event carries the entity id. Entries update named Events and preserve other overrides. Omit to preserve all overrides. An empty list clears all overrides.",
+    }),
+    clearCorrelationPaths: Schema.optionalKey(
+      Schema.Array(Schema.String)
+    ).annotate({
+      description:
+        "Event names whose Correlation Path overrides must be removed. Other overrides are preserved.",
+    }),
+    eventConnections: Schema.optionalKey(
+      Schema.Array(
+        Schema.Struct({
+          event: Schema.String.annotate({
+            description:
+              "An integration-owned Start or Cancel Event in this edit.",
+          }),
+          connectionId: Schema.String.annotate({
+            description:
+              "A matching connectionId returned by list_integrations.",
+          }),
+        })
+      )
+    ).annotate({
+      description:
+        "Connection bindings for integration-owned Start and Cancel Events. Entries update named Events and preserve other bindings. Omit to preserve all bindings. An empty list clears all bindings.",
+    }),
+    clearEventConnections: Schema.optionalKey(
+      Schema.Array(Schema.String)
+    ).annotate({
+      description:
+        "Event names whose Connection bindings must be removed. Other bindings are preserved.",
     }),
     startFilters: Schema.optionalKey(
       Schema.Array(
@@ -157,8 +189,14 @@ export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
       )
     ).annotate({
       description:
-        "Per-Event payload filters applied before a run opens. Omit this field to preserve existing filters. Supply it to replace all Start Filters.",
+        "Per-Event payload filters applied before a run opens. Entries update named Events and preserve other filters. Omit to preserve all filters. An empty list clears all filters.",
     }),
+    clearStartFilters: Schema.optionalKey(Schema.Array(Schema.String)).annotate(
+      {
+        description:
+          "Start Event names whose Start Filters must be removed. Other Start Filters are preserved.",
+      }
+    ),
     cancelFilters: Schema.optionalKey(
       Schema.Array(
         Schema.Struct({
@@ -175,7 +213,13 @@ export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
       )
     ).annotate({
       description:
-        "Per-Event payload filters checked before a Cancel Event cancels a run. Omit this field to preserve existing filters. Supply it to replace all Cancel Filters.",
+        "Per-Event payload filters checked before a Cancel Event cancels a run. Entries update named Events and preserve other filters. Omit to preserve all filters. An empty list clears all filters.",
+    }),
+    clearCancelFilters: Schema.optionalKey(
+      Schema.Array(Schema.String)
+    ).annotate({
+      description:
+        "Cancel Event names whose Cancel Filters must be removed. Other Cancel Filters are preserved.",
     }),
   }),
   success: lifecycleWriteResultSchema,
@@ -220,6 +264,34 @@ type LifecycleFilterInput = {
   readonly groupLogic?: GroupLogic | undefined;
   readonly groups: ConditionGroupsInput;
 };
+
+type EventConnectionInput = {
+  readonly event: string;
+  readonly connectionId: string;
+};
+
+/** Applies per-Event updates, with an empty update list clearing the record. */
+function patchEventRecord(input: {
+  stored: Record<string, string> | undefined;
+  updates: ReadonlyMap<string, string> | undefined;
+  clear: readonly string[] | undefined;
+}): Record<string, string> | undefined {
+  const patched =
+    input.updates === undefined
+      ? input.stored
+      : input.updates.size === 0
+        ? undefined
+        : { ...input.stored, ...Object.fromEntries(input.updates) };
+  if (patched === undefined || input.clear === undefined) {
+    return patched;
+  }
+
+  const cleared = new Set(input.clear);
+  return retainNamedKeys(
+    patched,
+    new Set(Object.keys(patched).filter((event) => !cleared.has(event)))
+  );
+}
 
 type RuleReading =
   | { readonly ok: true; readonly rule: ConditionRule }
@@ -457,7 +529,7 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
 
   return {
     set_lifecycle_rules: (input: {
-      readonly startEvents: readonly string[];
+      readonly startEvents?: readonly string[] | undefined;
       readonly cancelEvents?: readonly string[] | undefined;
       readonly concurrency?:
         | "newest-wins"
@@ -468,11 +540,30 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
       readonly correlationPaths?:
         | readonly { readonly event: string; readonly path: string }[]
         | undefined;
+      readonly clearCorrelationPaths?: readonly string[] | undefined;
+      readonly eventConnections?: readonly EventConnectionInput[] | undefined;
+      readonly clearEventConnections?: readonly string[] | undefined;
       readonly startFilters?: readonly LifecycleFilterInput[] | undefined;
+      readonly clearStartFilters?: readonly string[] | undefined;
       readonly cancelFilters?: readonly LifecycleFilterInput[] | undefined;
+      readonly clearCancelFilters?: readonly string[] | undefined;
     }) =>
       Effect.flatMap(draft.current, (document) => {
-        const named = [...input.startEvents, ...(input.cancelEvents ?? [])];
+        const entry = entryNodeOf(document.nodes);
+        const stored = readLifecycleRules(entry.data.config);
+        const startEvents = [
+          ...(input.startEvents ?? stored?.startEvents ?? []),
+        ];
+        const cancelEvents = [
+          ...(input.cancelEvents ?? stored?.cancelEvents ?? []),
+        ];
+        const concurrency =
+          input.concurrency ??
+          stored?.concurrency ??
+          emptyLifecycleRules.concurrency;
+        const allowManualStart =
+          input.allowManualStart ?? stored?.allowManualStart;
+        const named = [...startEvents, ...cancelEvents];
         const unknown = named.filter(
           (name) => findEvent(draft.catalog, name) === undefined
         );
@@ -482,22 +573,19 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
           });
         }
 
-        if (input.startEvents.length === 0 && input.allowManualStart !== true) {
+        if (startEvents.length === 0 && allowManualStart !== true) {
           return Effect.fail({
             reason:
               "A workflow needs a way to start. Name at least one Start Event, or set allowManualStart to true.",
           });
         }
 
-        const entry = entryNodeOf(document.nodes);
-
-        const stored = readLifecycleRules(entry.data.config);
-        const replacesStartFilters = input.startFilters !== undefined;
-        let startFilters = stored?.startFilters;
-        if (replacesStartFilters) {
+        const changesStartFilters = input.startFilters !== undefined;
+        let startFilterUpdates: Map<string, string> | undefined;
+        if (changesStartFilters) {
           const serialized = new Map<string, string>();
           for (const filter of input.startFilters) {
-            if (!input.startEvents.includes(filter.event)) {
+            if (!startEvents.includes(filter.event)) {
               return Effect.fail({
                 reason: `${filter.event} is not a Start Event in this edit, so it cannot have a Start Filter.`,
               });
@@ -521,16 +609,20 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
               serializeConditionModel(reading.model)
             );
           }
-          startFilters =
-            serialized.size === 0 ? undefined : Object.fromEntries(serialized);
+          startFilterUpdates = serialized;
         }
+        const startFilters = patchEventRecord({
+          stored: stored?.startFilters,
+          updates: startFilterUpdates,
+          clear: input.clearStartFilters,
+        });
 
-        const replacesCancelFilters = input.cancelFilters !== undefined;
-        let cancelFilters = stored?.cancelFilters;
-        if (replacesCancelFilters) {
+        const changesCancelFilters = input.cancelFilters !== undefined;
+        let cancelFilterUpdates: Map<string, string> | undefined;
+        if (changesCancelFilters) {
           const serialized = new Map<string, string>();
           for (const filter of input.cancelFilters) {
-            if (!input.cancelEvents?.includes(filter.event)) {
+            if (!cancelEvents.includes(filter.event)) {
               return Effect.fail({
                 reason: `${filter.event} is not a Cancel Event in this edit, so it cannot have a Cancel Filter.`,
               });
@@ -554,45 +646,122 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
               serializeConditionModel(reading.model)
             );
           }
-          cancelFilters =
-            serialized.size === 0 ? undefined : Object.fromEntries(serialized);
+          cancelFilterUpdates = serialized;
+        }
+        const cancelFilters = patchEventRecord({
+          stored: stored?.cancelFilters,
+          updates: cancelFilterUpdates,
+          clear: input.clearCancelFilters,
+        });
+
+        const correlationPaths = patchEventRecord({
+          stored: stored?.correlationPaths,
+          updates:
+            input.correlationPaths === undefined
+              ? undefined
+              : new Map(
+                  input.correlationPaths.map((supplied) => [
+                    supplied.event,
+                    supplied.path,
+                  ])
+                ),
+          clear: input.clearCorrelationPaths,
+        });
+
+        let connectionUpdates: Map<string, string> | undefined;
+        if (input.eventConnections !== undefined) {
+          const suppliedConnections = new Map<string, string>();
+          for (const binding of input.eventConnections) {
+            if (!named.includes(binding.event)) {
+              return Effect.fail({
+                reason: `${binding.event} is not a Start or Cancel Event in this edit, so it cannot have a Connection.`,
+              });
+            }
+            if (suppliedConnections.has(binding.event)) {
+              return Effect.fail({
+                reason: `${binding.event} has more than one Connection. Supply one Connection per Event.`,
+              });
+            }
+            suppliedConnections.set(binding.event, binding.connectionId);
+          }
+          connectionUpdates = suppliedConnections;
+        }
+        const connectionIds = patchEventRecord({
+          stored: stored?.connectionIds,
+          updates: connectionUpdates,
+          clear: undefined,
+        });
+
+        const mergedRules: LifecycleRules = {
+          ...emptyLifecycleRules,
+          ...omitUndefined({
+            startFilters,
+            cancelFilters,
+            connectionIds,
+            allowManualStart,
+            correlationPaths,
+          }),
+          startEvents,
+          cancelEvents,
+          concurrency,
+        };
+        const inheritedRules = inheritConnectionIds(
+          pruneStartFilters(
+            pruneCancelFilters({
+              ...pruneConnectionIds(mergedRules),
+              correlationPaths: retainNamedKeys(
+                mergedRules.correlationPaths,
+                new Set(named)
+              ),
+            })
+          ),
+          draft.catalog
+        );
+        const rules: LifecycleRules = {
+          ...inheritedRules,
+          connectionIds: patchEventRecord({
+            stored: inheritedRules.connectionIds,
+            updates: undefined,
+            clear: input.clearEventConnections,
+          }),
+        };
+
+        for (const [eventName, connectionId] of Object.entries(
+          rules.connectionIds ?? {}
+        )) {
+          const integration = findEvent(draft.catalog, eventName)?.integration;
+          if (!integration) {
+            return Effect.fail({
+              reason: `${eventName} is a host Event and cannot have a Connection.`,
+            });
+          }
+          const connection = draft.integrations.find(
+            (candidate) => candidate.id === connectionId
+          );
+          if (!connection) {
+            return Effect.fail({
+              reason:
+                "The selected Connection is not connected. Call list_integrations to see the available Connections.",
+            });
+          }
+          if (connection.type !== integration) {
+            return Effect.fail({
+              reason: `Event ${eventName} needs a ${integration} Connection, but the selected Connection belongs to ${connection.type}.`,
+            });
+          }
         }
 
-        // The per-Event records already on the node, carried across an edit that
-        // does not replace. This tool replaces the whole rules object, so an
-        // omitted filter list preserves the builder's filters. Supplying the
-        // list replaces that role's filters. Connection choices remain builder-owned.
-
-        const rules: LifecycleRules = pruneCancelFilters(
-          pruneStartFilters(
-            pruneConnectionIds({
-              ...emptyLifecycleRules,
-              ...omitUndefined({
-                startFilters,
-                cancelFilters,
-                connectionIds: stored?.connectionIds,
-                concurrency: input.concurrency,
-                allowManualStart: input.allowManualStart,
-                correlationPaths: input.correlationPaths
-                  ? Object.fromEntries(
-                      input.correlationPaths.map((supplied) => [
-                        supplied.event,
-                        supplied.path,
-                      ])
-                    )
-                  : undefined,
-              }),
-              startEvents: [...input.startEvents],
-              cancelEvents: [...(input.cancelEvents ?? [])],
-            })
-          )
-        );
-
-        const check = checkLifecycleRules({ rules, catalog: draft.catalog });
+        const check = checkLifecycleRules({
+          rules,
+          catalog: draft.catalog,
+          // The draft can carry the requested Event while `validate_draft`
+          // reports the Connection that the Workflow Builder must choose.
+          allowMissingConnections: true,
+        });
         if (!check.valid) {
           return Effect.fail({ reason: check.error });
         }
-        if (replacesStartFilters) {
+        if (changesStartFilters) {
           const filtersCheck = checkStartFilters({
             rules,
             catalog: draft.catalog,
@@ -601,7 +770,7 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
             return Effect.fail({ reason: filtersCheck.error });
           }
         }
-        if (replacesCancelFilters) {
+        if (changesCancelFilters) {
           const filtersCheck = checkCancelFilters({
             rules,
             catalog: draft.catalog,

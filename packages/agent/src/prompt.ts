@@ -69,6 +69,11 @@ How to work:
 5. An action belonging to an integration needs an integrationId from
    list_integrations. Say so plainly when no connection exists yet; the user
    connects it in the editor, and you can finish everything else.
+   An integration-owned Event needs an eventConnections binding in
+   set_lifecycle_rules, using a connectionId from list_integrations. Preserve
+   existing lifecycle fields by omitting them. Event-keyed entries update only
+   the named Events. Use a clear field to remove selected entries, or an explicit
+   empty list only when the user asked to clear the whole field.
    A required identifier or destination, such as a channel, comes from the user's
    request or tool evidence. When neither supplies it, leave that field empty and
    identify it as remaining human work. Draft non-empty descriptive text from the
