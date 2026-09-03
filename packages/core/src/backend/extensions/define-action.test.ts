@@ -701,6 +701,33 @@ describe("defineAction with Arktype schemas", () => {
     ).toBe("number");
   });
 
+  it("derives a select from an Arktype enumerated input", () => {
+    const action = defineAction({
+      id: "arktype/enum-input-test",
+      label: "Arktype Enum Input Test",
+      description: "Tests Arktype enumerated input schema derivation",
+      input: type({
+        choice: type.enumerated("alpha", "beta").describe("Choice"),
+      }),
+      handler() {
+        return {};
+      },
+    });
+
+    expect(action.configFields).toEqual([
+      {
+        key: "choice",
+        label: "Choice",
+        type: "select",
+        options: [
+          { value: "alpha", label: "alpha" },
+          { value: "beta", label: "beta" },
+        ],
+        required: true,
+      },
+    ]);
+  });
+
   it("derives outputFields from an Arktype date the schema gave a format", () => {
     // The derivation compiles the encoded side, and the encoded side of an Arktype
     // date morph is its ISO string, which carries a pattern and no keyword.
