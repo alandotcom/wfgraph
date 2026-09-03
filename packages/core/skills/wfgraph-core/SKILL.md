@@ -3,7 +3,8 @@ name: wfgraph-core
 description: >
   Embed Workflow Graph with createWfGraphApp: fetch handler, createRequestListener,
   auth, INTEGRATION_ENCRYPTION_KEY, Inngest, clientBundle, publicUrl, basePath,
-  configureWfGraphLogging, wfPostgres, wfSqlite, wfWorker, migrateWfGraphDatabase.
+  MCP authoring, configureWfGraphLogging, wfPostgres, wfSqlite, wfWorker,
+  migrateWfGraphDatabase.
   Load when mounting the host app or choosing persistence. Not for defineEvent,
   defineAction, or defineIntegration (those are sub-skills).
 metadata:
@@ -63,6 +64,10 @@ the editor.
 - OAuth needs `publicUrl` (HTTPS except loopback). The callback stays behind
   `auth`; a `SameSite=Lax` session cookie works, a custom request header on the
   provider redirect does not. Slack/Resend on/off: wfgraph-plugins.
+- `mcp: true` enables the authenticated stateless MCP endpoint at
+  `${basePath}/api/mcp`. It edits existing drafts only. Every call takes a
+  `workflowId`; writes also take the latest `expectedDraftRevision`. After a
+  `workflow_draft_stale` result, read the workflow again before editing.
 
 ## Persistence
 
@@ -141,3 +146,15 @@ Correct: disable query caching; Workflow Graph's writes would otherwise be
 invisible to later reads.
 
 Source: alandotcom/wfgraph:docs/embedding.md (Cloudflare Workers and Hyperdrive)
+
+### HIGH Repeat a stale MCP write
+
+Wrong: Repeat the same MCP write after a `workflow_draft_stale` result.
+
+Correct: Call `read_workflow`, evaluate the change against the updated draft,
+and send the write with the returned `draftRevision`.
+
+A stale write can refer to graph state that another editor changed. Workflow
+Graph does not replay the mutation automatically.
+
+Source: alandotcom/wfgraph:docs/embedding.md (MCP authoring)

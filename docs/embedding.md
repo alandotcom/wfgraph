@@ -77,6 +77,7 @@ const wfgraph = await createWfGraphApp({
   }),
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
   auth,
+  mcp: true,
   client: clientBundle,
   inngest: {
     id: "my-wfgraph-app",
@@ -285,6 +286,46 @@ operation calls `allows` once again when the operation runs. A custom asynchrono
 therefore tolerate concurrent bootstrap calls. The built-in roles and collection policies are
 local and perform no asynchronous fanout.
 
+## MCP authoring
+
+Set `mcp: true` to expose the authenticated Model Context Protocol (MCP)
+authoring endpoint at `${basePath}/api/mcp`. With the default `basePath`, the
+endpoint is `/api/mcp`. The `mcp` option is disabled by default and works with
+both `createWfGraphApp` and `wfWorker`.
+
+The endpoint supports MCP protocol revision `2026-07-28`. Each `POST` request
+contains one independent JSON-RPC message. Use a modern MCP client that sends
+the required protocol version, method, client identity, and client capabilities
+metadata. The endpoint doesn't support initialization, transport sessions,
+`Mcp-Session-Id`, `GET` streams, or `DELETE` session termination.
+
+The MCP tools edit an existing workflow draft. Every tool call requires a
+`workflowId`. Read tools return the persisted `draftRevision`. Write tools also
+require `expectedDraftRevision`, using the revision returned by the most recent
+read or write. A successful write increments the revision once and returns the
+new value.
+
+A stale write returns an error tool result with code
+`workflow_draft_stale` and the stored `draftRevision`. Call `read_workflow`
+again, evaluate the edit against the returned graph, and then send a new write
+with the updated revision. Don't automatically repeat the stale mutation.
+
+The host authentication callback protects the MCP endpoint. MCP tool calls use
+the following operation grants:
+
+- Every tool requires `workflow.getById`.
+- Graph-writing tools also require `workflow.update`.
+- `list_integrations` also requires `integration.getAll` because the result
+  contains Connection IDs.
+
+The authoring tools expose integration types and Connection IDs. They don't
+return or decrypt integration credentials.
+
+The MCP authoring surface doesn't list, create, duplicate, restore, delete,
+run, or publish workflows. MCP writes change the editable draft and leave the
+published workflow version unchanged. Reload an open editor to see an external
+MCP write. The endpoint doesn't send live external-edit updates to the editor.
+
 ## Built-in integrations
 
 The third-party SDKs stay in `@wfgraph/plugins`. Pass them and they turn on:
@@ -439,6 +480,7 @@ type Env = {
 
 export default wfWorker<Env>({
   publicUrl: "https://workflows.example.com",
+  mcp: true,
   request: (env) => ({
     auth,
     persistence: wfHyperdrive(env.HYPERDRIVE),
@@ -552,6 +594,7 @@ application's router serves static files.
 | `agent.apiKey`            | No       | OpenAI API key. Absent or blank turns the build agent off, and the editor then shows no chat panel                                                             |
 | `agent.model`             | No       | Model id the agent runs against. Defaults to a current OpenAI model                                                                                            |
 | `agent.baseUrl`           | No       | An OpenAI-compatible endpoint that is not OpenAI's own                                                                                                         |
+| `mcp`                     | No       | Enables the authenticated stateless MCP authoring endpoint at `${basePath}/api/mcp`. Default: `false`                                                          |
 | `logger`                  | No       | A `WfGraphLogger` that takes every record. See Logging below                                                                                                   |
 | `client`                  | No       | The editor bundle to serve, from `@wfgraph/client`                                                                                                             |
 
