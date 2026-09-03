@@ -139,7 +139,12 @@ function renderPanel({
     orpcQuery.workflow.getExecutions.queryKey({
       input: { workflowId: "wf_1", includeSuperseded: false },
     }),
-    { items: [], supersededCount: 0, refusedStarts: [] }
+    {
+      items: [],
+      supersededCount: 0,
+      refusedStarts: [],
+      cancelNotDelivered: [],
+    }
   );
 
   const confirmed: ConfirmRequest[] = [];

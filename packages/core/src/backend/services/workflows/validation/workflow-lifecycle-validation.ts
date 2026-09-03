@@ -1,10 +1,8 @@
 /**
  * The Events a graph names, held to the rules a save is refused by.
  *
- * The vocabulary is the assembled catalog, which the caller reads off the
- * `Extensions` service, so this runs where a graph is written and again before a
- * run: an Event a workflow names has to be one the app still defines, whether the
- * entry node named it as a lifecycle role or a Wait node parks on it.
+ * The catalog supplies the vocabulary for Start and Cancel lifecycle roles and
+ * Wait subscriptions, so every Event a workflow names has to still exist.
  */
 
 import {
@@ -29,6 +27,10 @@ import {
   checkStartFilterModels,
   checkStartFilters,
 } from "@wfgraph/shared/lifecycle/start-filters";
+import {
+  checkCancelFilterModels,
+  checkCancelFilters,
+} from "@wfgraph/shared/lifecycle/cancel-filters";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import { getNodeLabel } from "#src/backend/services/workflows/validation/workflow-graph";
 import { readWaitSubscriptions } from "@wfgraph/shared/lifecycle/wait-subscription";
@@ -92,9 +94,10 @@ export function validateEventSplitOutlets(
 /**
  * The Lifecycle Rules of every entry node, held to one check.
  *
- * Three checks walk the nodes for the same thing, and a graph carrying no rules
- * passes all three: the panel writes them, and refusing a graph that predates
- * the panel would lock the editor out of the one screen that can add them.
+ * Lifecycle checks walk the nodes for the same thing, and a graph carrying no
+ * rules passes each one: the panel writes them, and refusing a graph that
+ * predates the panel would lock the editor out of the one screen that can add
+ * them.
  */
 function checkEveryLifecycleNode(
   nodes: readonly WorkflowNode[],
@@ -147,6 +150,23 @@ export function validateStartFilters(
 ): WorkflowLifecycleValidationResult {
   return checkEveryLifecycleNode(nodes, (rules) =>
     checkStartFilters({ rules, catalog })
+  );
+}
+
+/** Every Cancel Filter, read as far as a stored graph must be readable. */
+export function validateCancelFilterModels(
+  nodes: readonly WorkflowNode[]
+): WorkflowLifecycleValidationResult {
+  return checkEveryLifecycleNode(nodes, checkCancelFilterModels);
+}
+
+/** Every Cancel Filter, held to what an arriving cancellation can read. */
+export function validateCancelFilters(
+  nodes: readonly WorkflowNode[],
+  catalog: ExtensionCatalog
+): WorkflowLifecycleValidationResult {
+  return checkEveryLifecycleNode(nodes, (rules) =>
+    checkCancelFilters({ rules, catalog })
   );
 }
 

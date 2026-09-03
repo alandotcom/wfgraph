@@ -270,7 +270,11 @@ export const workflowExecutionEvents = sqliteTable(
       table.executionId,
       table.createdAt
     ),
-    index("events_workflow_created_idx").on(table.workflowId, table.createdAt),
+    index("events_workflow_type_created_idx").on(
+      table.workflowId,
+      table.eventType,
+      table.createdAt
+    ),
     check(
       "workflow_execution_events_metadata_json_check",
       sql`${table.metadata} is null or (json_valid(${table.metadata}) and json_type(${table.metadata}) = 'object')`

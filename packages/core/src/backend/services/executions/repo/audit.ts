@@ -1,5 +1,5 @@
 import type { Effect } from "effect";
-import { WORKFLOW_SCOPED_AUDIT_EVENT_TYPES } from "@wfgraph/shared/lifecycle/audit-event-types";
+import type { WorkflowScopedAuditEventType } from "@wfgraph/shared/lifecycle/audit-event-types";
 import { workflowExecutionEvents } from "#src/backend/lib/db/schema";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import type {
@@ -12,13 +12,12 @@ import { toJsonObject } from "@wfgraph/shared/types/json";
 const EXECUTION_EVENTS_LIMIT = 200;
 
 /**
- * How many Refused Starts the panel is given. Lower than the per-run limit above
- * because these are read for the whole workflow and a busy first-wins workflow
- * writes one per arrival it declines.
+ * How many rows each workflow audit category receives. Each query applies this
+ * limit after it filters by event type.
  */
 const WORKFLOW_EVENTS_LIMIT = 50;
 
-/** The `workflow_execution_events` slice of `ExecutionRepo`, a run's timeline and its workflow's. */
+/** The `workflow_execution_events` slice: a run timeline and workflow-level audit rows. */
 export type AuditRepoMethods = {
   /** Append one entry to a run's timeline, or to its workflow's. */
   readonly recordAuditEvent: (
@@ -28,13 +27,13 @@ export type AuditRepoMethods = {
     executionId: string
   ) => Effect.Effect<WorkflowExecutionEvent[], DatabaseError>;
   /**
-   * The Refused Starts: audit rows that belong to the workflow because no run
-   * was opened for them. Nothing else can reach them, because every other
-   * reader is keyed on an execution id and these have none.
+   * The latest rows for one workflow audit category. The event-type filter is
+   * part of the database query so another category cannot consume this limit.
    */
-  readonly listWorkflowEvents: (
-    workflowId: string
-  ) => Effect.Effect<WorkflowExecutionEvent[], DatabaseError>;
+  readonly listWorkflowEvents: (input: {
+    workflowId: string;
+    eventType: WorkflowScopedAuditEventType;
+  }) => Effect.Effect<WorkflowExecutionEvent[], DatabaseError>;
 };
 
 /** Builds the `workflow_execution_events` slice of `ExecutionRepo` over one database. */
@@ -62,15 +61,12 @@ export function makeAuditMethods(
         })
       ),
 
-    listWorkflowEvents: (workflowId) =>
+    listWorkflowEvents: (input) =>
       database.query((db) =>
         db.query.workflowExecutionEvents.findMany({
-          // By type rather than by the absent execution id: the scope is what
-          // the type means, and a row is unreadable anywhere else because of
-          // it. A null id is the consequence, not the definition.
           where: {
-            workflowId,
-            eventType: { in: [...WORKFLOW_SCOPED_AUDIT_EVENT_TYPES] },
+            workflowId: input.workflowId,
+            eventType: input.eventType,
           },
           orderBy: { createdAt: "desc" },
           limit: WORKFLOW_EVENTS_LIMIT,

@@ -67,6 +67,8 @@ type RawExecution = {
 const served: WorkflowRunRpcFixture = {
   items: [] as RawExecution[],
   supersededCount: 0,
+  refusedStarts: [],
+  cancelNotDelivered: [],
   /** Keyed by workflowVersionId, the key `getVersionGraph` reads by. */
   graphs: {} as Record<string, SerializedWorkflowGraph>,
   /** Start identity the logs summary carries for ids not in the list. */
@@ -254,6 +256,8 @@ function resetServed(): void {
   installAuthorizationGrantsForTests(WfGraphOperationIds);
   served.items = [];
   served.supersededCount = 0;
+  served.refusedStarts = [];
+  served.cancelNotDelivered = [];
   served.graphs = {};
   served.logsSummaryExtras = {};
   served.logsByExecutionId = {};
@@ -296,6 +300,29 @@ describe("WorkflowRuns", () => {
     await view.findByText("No runs yet");
     expect(view.getByRole("button", { name: "Refresh" })).toBeTruthy();
     expect(view.getByRole("button", { name: "Clear All" })).toBeTruthy();
+  });
+
+  it("renders cancellation failures apart from refused starts", async () => {
+    served.refusedStarts = [
+      {
+        id: "evt_start_1",
+        message: "Start Filter declined the event",
+        createdAt: "2026-03-01T09:59:00.000Z",
+      },
+    ];
+    served.cancelNotDelivered = [
+      {
+        id: "evt_cancel_1",
+        message: "Cancel Filter declined the event",
+        createdAt: "2026-03-01T09:58:00.000Z",
+      },
+    ];
+    const { view } = renderRuns();
+
+    expect(await view.findByText("Refused Starts")).toBeTruthy();
+    expect(view.getByText("Cancellation Failures")).toBeTruthy();
+    expect(view.getByText("Start Filter declined the event")).toBeTruthy();
+    expect(view.getByText("Cancel Filter declined the event")).toBeTruthy();
   });
 
   it("shows each run-list action once in the populated mobile sheet", async () => {

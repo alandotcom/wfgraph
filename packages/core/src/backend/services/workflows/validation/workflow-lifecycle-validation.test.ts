@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { errorOf } from "#src/backend/services/workflows/validation/validation-test-support";
 import {
+  validateCancelFilterModels,
+  validateCancelFilters,
   validateEventSplitOutlets,
   validateStartFilterModels,
   validateStartFilters,
@@ -28,6 +30,15 @@ const catalog: ExtensionCatalog = {
       payloadFields: [
         { path: "appointment.id", type: "string" },
         { path: "appointment.channel", type: "string" },
+      ],
+    },
+    {
+      name: "app/appointment.canceled",
+      label: "Appointment canceled",
+      correlationPath: "appointment.id",
+      payloadFields: [
+        { path: "appointment.id", type: "string" },
+        { path: "appointment.reason", type: "string" },
       ],
     },
     {
@@ -396,6 +407,17 @@ function filteredRules(startFilters: Record<string, string>): LifecycleRules {
   };
 }
 
+function cancelFilteredRules(
+  cancelFilters: Record<string, string>
+): LifecycleRules {
+  return {
+    startEvents: ["app/appointment.created"],
+    cancelEvents: ["app/appointment.canceled"],
+    concurrency: "unlimited",
+    cancelFilters,
+  };
+}
+
 describe("validateStartFilters", () => {
   it("accepts a filter over a field the Start Event declares", () => {
     expect(
@@ -509,5 +531,69 @@ describe("validateStartFilterModels", () => {
     expect(validateStartFilterModels([lifecycleNode()])).toEqual({
       valid: true,
     });
+  });
+});
+
+describe("validateCancelFilters", () => {
+  it("accepts a filter over a field the Cancel Event declares", () => {
+    expect(
+      validateCancelFilters(
+        [
+          lifecycleNode(
+            cancelFilteredRules({
+              "app/appointment.canceled": filterOn("appointment.reason"),
+            })
+          ),
+        ],
+        catalog
+      )
+    ).toEqual({ valid: true });
+  });
+
+  it("refuses a filter reading a field the Cancel Event does not carry", () => {
+    expect(
+      errorOf(
+        validateCancelFilters(
+          [
+            lifecycleNode(
+              cancelFilteredRules({
+                "app/appointment.canceled": filterOn("appointment.channel"),
+              })
+            ),
+          ],
+          catalog
+        )
+      )
+    ).toContain("appointment.channel");
+  });
+});
+
+describe("validateCancelFilterModels", () => {
+  it("accepts an unfinished filter while a draft is saved", () => {
+    const unfinished = serializeConditionModel(
+      createDefaultConditionModel({
+        path: "appointment.reason",
+        label: "appointment.reason",
+        type: "string",
+      })
+    );
+
+    expect(
+      validateCancelFilterModels([
+        lifecycleNode(
+          cancelFilteredRules({ "app/appointment.canceled": unfinished })
+        ),
+      ])
+    ).toEqual({ valid: true });
+  });
+
+  it("refuses a broken Cancel Filter model", () => {
+    expect(
+      validateCancelFilterModels([
+        lifecycleNode(
+          cancelFilteredRules({ "app/appointment.canceled": "{not json" })
+        ),
+      ]).valid
+    ).toBe(false);
   });
 });

@@ -30,7 +30,7 @@ const rawExecution = {
 describe("toWorkflowExecutions", () => {
   // Timestamps arrive as ISO strings and are compared and formatted as Dates, so
   // this is where the wire shape becomes the shape every row reads.
-  it("keeps the three members the panel reads", () => {
+  it("keeps the run list and both workflow audit categories", () => {
     const result = toWorkflowExecutions({
       items: [rawExecution],
       supersededCount: 3,
@@ -39,6 +39,13 @@ describe("toWorkflowExecutions", () => {
           id: "evt_1",
           message: "Refused a start",
           createdAt: "2026-03-01T09:59:00.000Z",
+        },
+      ],
+      cancelNotDelivered: [
+        {
+          id: "evt_2",
+          message: "The cancel event reached no run",
+          createdAt: "2026-03-01T09:58:00.000Z",
         },
       ],
     });
@@ -53,6 +60,9 @@ describe("toWorkflowExecutions", () => {
     expect(result.refusedStarts[0]?.createdAt).toEqual(
       new Date("2026-03-01T09:59:00.000Z")
     );
+    expect(result.cancelNotDelivered[0]?.createdAt).toEqual(
+      new Date("2026-03-01T09:58:00.000Z")
+    );
   });
 
   // A run that never waited or was cancelled carries nulls, and a Date built from
@@ -62,6 +72,7 @@ describe("toWorkflowExecutions", () => {
       items: [{ ...rawExecution, completedAt: null }],
       supersededCount: 0,
       refusedStarts: [],
+      cancelNotDelivered: [],
     });
 
     expect(result.executions[0]?.waitingAt).toBeNull();

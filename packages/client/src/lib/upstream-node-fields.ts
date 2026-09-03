@@ -65,8 +65,8 @@ export type ConditionSelectableField = ConditionFieldDefinition & {
  * the key input the row promised would not appear.
  *
  * Every control that seeds a condition comes through here -- a Condition node
- * given its first rule, a Wait match, a Start Filter -- so the translation is
- * stated once rather than once per button.
+ * given its first rule, a Wait match, a Start Filter, or a Cancel Filter -- so
+ * the translation is stated once rather than once per button.
  */
 export function seedConditionModelForField(
   field: ConditionSelectableField,
@@ -339,8 +339,8 @@ function schemaFieldFlags(
 }
 
 /**
- * The typed vocabulary a Wait node's match editor builds rules from: the fields
- * of the Event being waited on, as the catalog declares them.
+ * The typed vocabulary a Wait node's match editor or a lifecycle filter editor
+ * builds rules from: the fields of an Event, as the catalog declares them.
  *
  * The source label is the Event itself rather than a node, because a match reads
  * a payload that has not arrived yet: no node in this graph produces it. An Event
@@ -434,10 +434,10 @@ function eventNameConditionField(input: {
  * The Event-name row itself, for a caller that already knows which Events are in
  * play.
  *
- * Two callers do. A node in the graph asks `eventNameConditionField`, which works
- * out the Events by walking upstream of it. The Lifecycle panel's Start Filter
- * knows them outright, being the control that lists them, and has no upstream to
- * walk -- the entry node is where the walk would start.
+ * A node in the graph asks `eventNameConditionField`, which works out the Events
+ * by walking upstream of it. The Lifecycle panel's Start Filter and Cancel
+ * Filter know them outright, because each control lists its Events and has no
+ * upstream to walk.
  */
 function eventNameFieldFor(input: {
   events: readonly EventMetadata[];
@@ -474,9 +474,10 @@ function eventNameFieldFor(input: {
  * The intersection is the point. A rule on a field only some of these Events
  * carry compiles and evaluates, and reads false on every arrival of the Events
  * that lack it, because the compiler guards each field for presence. Offering
- * only what they agree on is what keeps one control from writing a rule that
- * silently stops half the workflow starting; `checkStartFilters` refuses the same
- * thing at publish for a filter that acquired one another way.
+ * only what they agree on keeps one Start or Cancel Filter from writing a rule
+ * that silently stops half the workflow from starting or canceling;
+ * `checkStartFilters` and `checkCancelFilters` refuse the same mismatch at
+ * publish for a filter that acquired one another way.
  *
  * A field is kept when every Event declares its path at the same type. It comes
  * back nullable if any Event calls it nullable, and keeps its enum values only

@@ -40,9 +40,10 @@ const descendingIndexes = new Map<string, readonly [string, number][]>([
     ],
   ],
   [
-    "events_workflow_created_idx",
+    "events_workflow_type_created_idx",
     [
       ["workflow_id", 0],
+      ["event_type", 0],
       ["created_at", 1],
     ],
   ],

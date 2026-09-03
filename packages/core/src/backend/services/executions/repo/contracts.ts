@@ -185,10 +185,10 @@ export type PendingCancel = {
  * One audit row.
  *
  * The two arms are what keep the scope honest: a run-scoped type has to name its
- * Execution, and a workflow-scoped one has none to name. The reader for each is
- * keyed on that -- the run timeline by execution id, the Refused Starts panel by
- * the workflow-scoped list -- so a row written into the wrong arm would be a row
- * nothing shows.
+ * Execution, and a workflow-scoped one has none to name. The run timeline reads
+ * run-scoped rows by execution id. The Refused Starts and Cancellation Failures
+ * readers query workflow-scoped rows by workflow id and event type. A row
+ * written into the wrong arm would be unreadable.
  */
 export type NewAuditEvent = {
   workflowId: string;

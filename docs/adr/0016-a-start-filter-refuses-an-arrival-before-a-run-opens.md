@@ -164,3 +164,22 @@ replaces the whole rules object, so it now carries the filters it cannot write
 across an edit and prunes the ones whose Start Event the edit dropped. A Start
 Event the agent adds gets no filter, because inheriting one the agent cannot see
 would hide the same decision in the other direction.
+
+## Amendment: Cancel Filters
+
+Date: 2026-09-02
+
+Cancel Events gained the same per-Event condition model in `cancelFilters`. A
+Cancel Filter was evaluated after the Event held the cancel role and before the
+delivery required an Entity Value or requested cancellation. This order made an
+excluded payload a filter refusal even when the payload had no value at the
+Correlation Path.
+
+A declined or unevaluable Cancel Filter wrote a `cancel_not_delivered` audit
+event and left every active run unchanged. Precedence still delivered the Event
+to Wait Subscriptions after the lifecycle decision. The subscription index did
+not change because delivery read the filter from the published graph.
+
+The editor and `set_lifecycle_rules` gained Cancel Filter controls that matched
+the Start Filter controls. Both roles used the same model validation, shared
+layout, field checks, and carry rules.

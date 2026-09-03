@@ -18,7 +18,6 @@ import {
   type IntegrationRefreshState,
 } from "@wfgraph/shared/types/integration";
 import { generateId } from "@wfgraph/shared/utils/id";
-import { WORKFLOW_SCOPED_AUDIT_EVENT_TYPES } from "@wfgraph/shared/lifecycle/audit-event-types";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   type WorkflowExecutionStartSource,
@@ -250,11 +249,6 @@ export const oauthAuthorizationAttempts = pgTable(
  */
 const inFlightStatusLiterals = IN_FLIGHT_EXECUTION_STATUSES.map(
   (status) => `'${status}'`
-).join(", ");
-
-/** The workflow-scoped audit types as SQL literals, quoted for the same reason. */
-const workflowScopedTypeLiterals = WORKFLOW_SCOPED_AUDIT_EVENT_TYPES.map(
-  (eventType) => `'${eventType}'`
 ).join(", ");
 
 export const workflowExecutions = pgTable(
@@ -531,16 +525,13 @@ export const workflowExecutionEvents = pgTable(
       table.executionId,
       table.createdAt
     ),
-    // The Refused Starts list on the runs panel's two-second poll. Its LIMIT is
-    // 50 and a healthy workflow has fewer refusals than that, so the scan never
-    // stops early and walked the workflow's whole audit history without this.
-    // The predicate is built from the same list the query's filter is, so the
-    // two cannot drift.
-    index("workflow_execution_events_workflow_scoped_idx")
-      .on(table.workflowId, table.createdAt)
-      .where(
-        sql`${table.eventType} in (${sql.raw(workflowScopedTypeLiterals)})`
-      ),
+    // Each runs-panel audit category filters by workflow and type before it
+    // reads its newest 50 rows. A backward scan supplies the descending order.
+    index("workflow_execution_events_workflow_type_created_at_idx").on(
+      table.workflowId,
+      table.eventType,
+      table.createdAt
+    ),
   ]
 );
 

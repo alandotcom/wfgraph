@@ -1,12 +1,8 @@
 /**
- * Evaluating a compiled condition against one payload.
+ * Evaluate one compiled condition against one payload.
  *
- * Three callers reach the same question from different directions. A Condition
- * node asks it of the merged outputs of the nodes above it; a Wait Subscription
- * asks it of the Event payload that just arrived; a Start Filter asks it of an
- * arriving payload before any run exists. All three need the same preparation
- * before CEL sees the value: a CEL string compiled from a `ConditionModel`, and
- * the list of paths that model treats as timestamps.
+ * Condition nodes, Wait Subscriptions, Start Filters, and Cancel Filters share
+ * payload cloning, timestamp decoding, and CEL evaluation.
  */
 
 import {
@@ -151,11 +147,13 @@ export function evaluateCompiledCondition(input: {
 /**
  * Whether one stored condition model holds for one payload.
  *
- * The third caller of the evaluator above, and the only one compiling as it goes.
- * A Condition node keeps the CEL it compiled to and a Wait Subscription compiles
+ * The lifecycle filter path is the only caller that compiles as it goes. A
+ * Condition node keeps the CEL it compiled to and a Wait Subscription compiles
  * at park time, because each has run-side values to fold in first. A Start Filter
- * has none: it is read before any run exists, so the stored model is complete on
- * its own and compiling it costs one pass of string building per arrival.
+ * and a Cancel Filter have no run-side values: the Start Filter is read before a
+ * run exists, and the Cancel Filter is read before matching runs are canceled.
+ * Each stored model is complete on its own, so compiling it costs one pass of
+ * string building per arrival.
  */
 export function evaluateSerializedCondition(input: {
   /** Serialized `ConditionModel`, as the Lifecycle Rules store it. */

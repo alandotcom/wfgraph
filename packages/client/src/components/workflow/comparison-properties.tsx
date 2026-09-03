@@ -114,6 +114,7 @@ function lifecycleConfigFieldLabel(
       correlationPaths: "Correlation path",
       connectionIds: "Connection",
       startFilters: "Start filter",
+      cancelFilters: "Cancel filter",
     };
     return labels[path[3] ?? ""] ?? "Lifecycle rule";
   }

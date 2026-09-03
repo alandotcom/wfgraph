@@ -19,6 +19,12 @@ import {
   setConnectionForIntegration,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
+  carryCancelFilterToAddedEvents,
+  pruneCancelFilters,
+  setCancelFilterForAll,
+  setCancelFilterForEvent,
+} from "@wfgraph/shared/lifecycle/cancel-filters";
+import {
   carryStartFilterToAddedEvents,
   pruneStartFilters,
   setStartFilterForAll,
@@ -32,9 +38,11 @@ import type { UpdateNodeConfig } from "./node-config-patch";
 export { CONCURRENCY_OPTIONS } from "./lifecycle-concurrency-group";
 
 function prune(next: LifecycleRules, catalog: ExtensionCatalog) {
-  return pruneStartFilters(
-    pruneConnectionIds(
-      inheritConnectionIds(pruneCorrelationPaths(next), catalog)
+  return pruneCancelFilters(
+    pruneStartFilters(
+      pruneConnectionIds(
+        inheritConnectionIds(pruneCorrelationPaths(next), catalog)
+      )
     )
   );
 }
@@ -85,7 +93,13 @@ export function LifecyclePanel({
   };
 
   const setCancelEvents = (eventNames: string[]) => {
-    write(prune({ ...rules, cancelEvents: eventNames }, catalog));
+    write(
+      carryCancelFilterToAddedEvents({
+        previous: rules,
+        next: prune({ ...rules, cancelEvents: eventNames }, catalog),
+        catalog,
+      })
+    );
   };
 
   const setConcurrency = (value: Concurrency) => {
@@ -109,6 +123,14 @@ export function LifecyclePanel({
 
   const setStartFilterForEveryEvent = (model: string | undefined) => {
     write(setStartFilterForAll(rules, model));
+  };
+
+  const setCancelFilter = (eventName: string, model: string | undefined) => {
+    write(setCancelFilterForEvent({ rules, eventName, model }));
+  };
+
+  const setCancelFilterForEveryEvent = (model: string | undefined) => {
+    write(setCancelFilterForAll(rules, model));
   };
 
   const setCorrelationPath = (eventName: string, path: string) => {
@@ -141,6 +163,8 @@ export function LifecyclePanel({
     onCorrelationPathChange: setCorrelationPath,
     onStartFilterChange: setStartFilter,
     onStartFilterChangeForAll: setStartFilterForEveryEvent,
+    onCancelFilterChange: setCancelFilter,
+    onCancelFilterChangeForAll: setCancelFilterForEveryEvent,
   };
 
   return (
@@ -170,6 +194,8 @@ function LifecycleGroups({
   onCorrelationPathChange,
   onStartFilterChange,
   onStartFilterChangeForAll,
+  onCancelFilterChange,
+  onCancelFilterChangeForAll,
   onConnectionChange,
 }: {
   rules: LifecycleRules;
@@ -185,6 +211,8 @@ function LifecycleGroups({
   onCorrelationPathChange: (eventName: string, path: string) => void;
   onStartFilterChange: (eventName: string, model: string | undefined) => void;
   onStartFilterChangeForAll: (model: string | undefined) => void;
+  onCancelFilterChange: (eventName: string, model: string | undefined) => void;
+  onCancelFilterChangeForAll: (model: string | undefined) => void;
   onConnectionChange: (integration: string, connectionId: string) => void;
 }) {
   return (
@@ -195,8 +223,8 @@ function LifecycleGroups({
         inputId={startEventId}
         onCorrelationPathChange={onCorrelationPathChange}
         onEventNamesChange={onStartEventsChange}
-        onStartFilterChange={onStartFilterChange}
-        onStartFilterChangeForAll={onStartFilterChangeForAll}
+        onFilterChange={onStartFilterChange}
+        onFilterChangeForAll={onStartFilterChangeForAll}
         role="start"
         rules={rules}
       />
@@ -213,6 +241,8 @@ function LifecycleGroups({
         inputId={cancelEventsId}
         onCorrelationPathChange={onCorrelationPathChange}
         onEventNamesChange={onCancelEventsChange}
+        onFilterChange={onCancelFilterChange}
+        onFilterChangeForAll={onCancelFilterChangeForAll}
         role="cancel"
         rules={rules}
       />

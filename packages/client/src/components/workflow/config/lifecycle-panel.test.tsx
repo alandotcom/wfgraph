@@ -1167,3 +1167,149 @@ describe("LifecyclePanel start filters", () => {
     });
   });
 });
+
+describe("LifecyclePanel cancel filters", () => {
+  /** A finished one-rule filter over a path both fixture Events declare. */
+  function filterOnTenant(path = "tenantId"): string {
+    return JSON.stringify({
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group",
+          logic: "and",
+          conditions: [
+            {
+              id: "rule",
+              field: path,
+              fieldType: "string",
+              operator: "equals",
+              value: "t_1",
+            },
+          ],
+        },
+      ],
+    });
+  }
+
+  function withCancelEvents(cancelEvents: string[], cancelFilters?: unknown) {
+    return {
+      lifecycleRules: {
+        startEvents: [],
+        cancelEvents,
+        concurrency: "unlimited",
+        cancelFilters,
+      },
+    } satisfies Record<string, unknown>;
+  }
+
+  it("explains the Cancel Filter decision before correlation and cancellation", () => {
+    const view = renderWithCatalog(
+      <ControlledPanel
+        initialConfig={withCancelEvents(["app/appointment.created"])}
+      />
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "About Cancel Events" }));
+
+    expect(
+      view.getByText(
+        "Workflow Graph checks the Cancel Filter before reading the Correlation Path."
+      )
+    ).toBeTruthy();
+    expect(
+      view.getByText(
+        "If the Cancel Filter declines the Event, the runs in progress stay active."
+      )
+    ).toBeTruthy();
+    expect(
+      view.getByText(
+        "If the Cancel Filter accepts the Event, Workflow Graph reads the entity from the Event's Correlation Path and cancels matching runs."
+      )
+    ).toBeTruthy();
+  });
+
+  it("writes one filter to every Cancel Event while they agree", async () => {
+    let latest: Record<string, unknown> = withCancelEvents([
+      "app/appointment.created",
+      "ops/nightly.swept",
+    ]);
+    const view = renderWithCatalog(
+      <ControlledPanel
+        initialConfig={latest}
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+
+    expect(view.getAllByRole("button", { name: "Add a filter" })).toHaveLength(
+      1
+    );
+    expect(
+      view.getByRole("button", { name: "Filter each Cancel Event separately" })
+    ).toBeTruthy();
+
+    fireEvent.click(view.getByRole("button", { name: "Add a filter" }));
+
+    await waitFor(() => {
+      const filters = rulesOf(latest).cancelFilters ?? {};
+      expect(Object.keys(filters)).toEqual([
+        "app/appointment.created",
+        "ops/nightly.swept",
+      ]);
+      expect(filters["app/appointment.created"]).toBe(
+        filters["ops/nightly.swept"]
+      );
+    });
+  });
+
+  it("carries a shared filter onto a compatible Cancel Event", async () => {
+    const shared = filterOnTenant();
+    let latest: Record<string, unknown> = withCancelEvents(
+      ["app/appointment.created"],
+      { "app/appointment.created": shared }
+    );
+    const view = renderWithCatalog(
+      <ControlledPanel
+        initialConfig={latest}
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+
+    chooseEvent(view, "Cancel Events", "Nightly sweep");
+
+    await waitFor(() => {
+      expect(rulesOf(latest).cancelFilters).toEqual({
+        "app/appointment.created": shared,
+        "ops/nightly.swept": shared,
+      });
+    });
+  });
+
+  it("drops the filter of a Cancel Event that was removed", async () => {
+    const filter = filterOnTenant();
+    let latest: Record<string, unknown> = withCancelEvents(
+      ["app/appointment.created"],
+      { "app/appointment.created": filter }
+    );
+    const view = renderWithCatalog(
+      <ControlledPanel
+        initialConfig={latest}
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+
+    fireEvent.click(
+      view.getByRole("button", { name: "Remove app/appointment.created" })
+    );
+
+    await waitFor(() => {
+      expect(rulesOf(latest).cancelFilters).toBeUndefined();
+    });
+  });
+});

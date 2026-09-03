@@ -85,6 +85,7 @@ beforeEach(() => {
     items: [],
     supersededCount: 0,
     refusedStarts: [],
+    cancelNotDelivered: [],
   });
   queryClient.setQueryData(executionLogsKey("exec_a"), {
     execution: {

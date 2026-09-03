@@ -20,7 +20,15 @@ import {
 import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 
 /** A Lifecycle Node and one action wired to its Started outlet. */
-function graphWithAction(config: Record<string, unknown>) {
+function graphWithAction(
+  config: Record<string, unknown>,
+  lifecycleRules: Record<string, unknown> = {
+    startEvents: [],
+    cancelEvents: [],
+    concurrency: "newest-wins",
+    allowManualStart: true,
+  }
+) {
   return createSerializedWorkflowGraph({
     nodes: [
       {
@@ -31,12 +39,7 @@ function graphWithAction(config: Record<string, unknown>) {
           label: "Start",
           type: "lifecycle",
           config: {
-            lifecycleRules: {
-              startEvents: [],
-              cancelEvents: [],
-              concurrency: "newest-wins",
-              allowManualStart: true,
-            },
+            lifecycleRules,
           },
         },
       },
@@ -144,6 +147,25 @@ describe("prepareGraphSave", () => {
             conditionModel: serializeConditionModel(model),
             condition: "appointment.startsAt > now + days(10)",
           }),
+        }).pipe(Effect.flip);
+
+        assert.instanceOf(failure, InvalidInput);
+      })
+    );
+
+    it.effect("refuses a malformed inactive Cancel Filter", () =>
+      Effect.gen(function* () {
+        const failure = yield* prepareGraphSave({
+          graph: graphWithAction(
+            {},
+            {
+              startEvents: [],
+              cancelEvents: [],
+              concurrency: "newest-wins",
+              allowManualStart: true,
+              cancelFilters: { "app/appointment.canceled": "{" },
+            }
+          ),
         }).pipe(Effect.flip);
 
         assert.instanceOf(failure, InvalidInput);

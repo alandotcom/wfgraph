@@ -38,6 +38,10 @@ import {
   checkStartFilters,
   pruneStartFilters,
 } from "@wfgraph/shared/lifecycle/start-filters";
+import {
+  checkCancelFilters,
+  pruneCancelFilters,
+} from "@wfgraph/shared/lifecycle/cancel-filters";
 import { isBlank } from "@wfgraph/shared/types/string";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { WorkflowDraft } from "#src/document";
@@ -99,7 +103,7 @@ const conditionGroupsSchema = Schema.Array(
 
 export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
   description:
-    "Declare when a run starts and when it is cancelled. A Start Filter refuses non-matching Event payloads before a run opens, so use it when the request filters a Start Event. Creates the Lifecycle Node if the workflow has none. Every Event name and filter field must come from list_events.",
+    "Declare when a run starts and when it is cancelled. A Start Filter checks an Event before a run opens. A Cancel Filter checks an Event before it cancels a run. Creates the Lifecycle Node if the workflow has none. Every Event name and filter field must come from list_events.",
   parameters: Schema.Struct({
     startEvents: Schema.Array(Schema.String).annotate({
       description:
@@ -155,6 +159,24 @@ export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
       description:
         "Per-Event payload filters applied before a run opens. Omit this field to preserve existing filters. Supply it to replace all Start Filters.",
     }),
+    cancelFilters: Schema.optionalKey(
+      Schema.Array(
+        Schema.Struct({
+          event: Schema.String.annotate({
+            description: "The Cancel Event this filter applies to.",
+          }),
+          groupLogic: Schema.optionalKey(
+            Schema.Literals(["and", "or"])
+          ).annotate({
+            description: "How the filter groups combine. Defaults to and.",
+          }),
+          groups: conditionGroupsSchema,
+        })
+      )
+    ).annotate({
+      description:
+        "Per-Event payload filters checked before a Cancel Event cancels a run. Omit this field to preserve existing filters. Supply it to replace all Cancel Filters.",
+    }),
   }),
   success: lifecycleWriteResultSchema,
   failure: failureSchema,
@@ -193,7 +215,7 @@ type ConditionGroupsInput = readonly {
   readonly rules: readonly RuleInput[];
 }[];
 
-type StartFilterInput = {
+type LifecycleFilterInput = {
   readonly event: string;
   readonly groupLogic?: GroupLogic | undefined;
   readonly groups: ConditionGroupsInput;
@@ -446,7 +468,8 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
       readonly correlationPaths?:
         | readonly { readonly event: string; readonly path: string }[]
         | undefined;
-      readonly startFilters?: readonly StartFilterInput[] | undefined;
+      readonly startFilters?: readonly LifecycleFilterInput[] | undefined;
+      readonly cancelFilters?: readonly LifecycleFilterInput[] | undefined;
     }) =>
       Effect.flatMap(draft.current, (document) => {
         const named = [...input.startEvents, ...(input.cancelEvents ?? [])];
@@ -468,8 +491,9 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
 
         const entry = entryNodeOf(document.nodes);
 
+        const stored = readLifecycleRules(entry.data.config);
         const replacesStartFilters = input.startFilters !== undefined;
-        let startFilters = readLifecycleRules(entry.data.config)?.startFilters;
+        let startFilters = stored?.startFilters;
         if (replacesStartFilters) {
           const serialized = new Map<string, string>();
           for (const filter of input.startFilters) {
@@ -501,32 +525,67 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
             serialized.size === 0 ? undefined : Object.fromEntries(serialized);
         }
 
+        const replacesCancelFilters = input.cancelFilters !== undefined;
+        let cancelFilters = stored?.cancelFilters;
+        if (replacesCancelFilters) {
+          const serialized = new Map<string, string>();
+          for (const filter of input.cancelFilters) {
+            if (!input.cancelEvents?.includes(filter.event)) {
+              return Effect.fail({
+                reason: `${filter.event} is not a Cancel Event in this edit, so it cannot have a Cancel Filter.`,
+              });
+            }
+            if (serialized.has(filter.event)) {
+              return Effect.fail({
+                reason: `${filter.event} has more than one Cancel Filter. Combine its rules into one filter.`,
+              });
+            }
+
+            const reading = readConditionModelInput({
+              subject: "A Cancel Filter",
+              groupLogic: filter.groupLogic,
+              groups: filter.groups,
+            });
+            if (!reading.ok) {
+              return Effect.fail({ reason: reading.reason });
+            }
+            serialized.set(
+              filter.event,
+              serializeConditionModel(reading.model)
+            );
+          }
+          cancelFilters =
+            serialized.size === 0 ? undefined : Object.fromEntries(serialized);
+        }
+
         // The per-Event records already on the node, carried across an edit that
         // does not replace. This tool replaces the whole rules object, so an
-        // omitted filter list preserves the builder's Start Filters. Supplying
-        // the list replaces them. Connection choices remain builder-owned.
-        const stored = readLifecycleRules(entry.data.config);
+        // omitted filter list preserves the builder's filters. Supplying the
+        // list replaces that role's filters. Connection choices remain builder-owned.
 
-        const rules: LifecycleRules = pruneStartFilters(
-          pruneConnectionIds({
-            ...emptyLifecycleRules,
-            ...omitUndefined({
-              startFilters,
-              connectionIds: stored?.connectionIds,
-              concurrency: input.concurrency,
-              allowManualStart: input.allowManualStart,
-              correlationPaths: input.correlationPaths
-                ? Object.fromEntries(
-                    input.correlationPaths.map((supplied) => [
-                      supplied.event,
-                      supplied.path,
-                    ])
-                  )
-                : undefined,
-            }),
-            startEvents: [...input.startEvents],
-            cancelEvents: [...(input.cancelEvents ?? [])],
-          })
+        const rules: LifecycleRules = pruneCancelFilters(
+          pruneStartFilters(
+            pruneConnectionIds({
+              ...emptyLifecycleRules,
+              ...omitUndefined({
+                startFilters,
+                cancelFilters,
+                connectionIds: stored?.connectionIds,
+                concurrency: input.concurrency,
+                allowManualStart: input.allowManualStart,
+                correlationPaths: input.correlationPaths
+                  ? Object.fromEntries(
+                      input.correlationPaths.map((supplied) => [
+                        supplied.event,
+                        supplied.path,
+                      ])
+                    )
+                  : undefined,
+              }),
+              startEvents: [...input.startEvents],
+              cancelEvents: [...(input.cancelEvents ?? [])],
+            })
+          )
         );
 
         const check = checkLifecycleRules({ rules, catalog: draft.catalog });
@@ -535,6 +594,15 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
         }
         if (replacesStartFilters) {
           const filtersCheck = checkStartFilters({
+            rules,
+            catalog: draft.catalog,
+          });
+          if (!filtersCheck.valid) {
+            return Effect.fail({ reason: filtersCheck.error });
+          }
+        }
+        if (replacesCancelFilters) {
+          const filtersCheck = checkCancelFilters({
             rules,
             catalog: draft.catalog,
           });

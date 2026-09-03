@@ -8,7 +8,6 @@ import { readMigrationFiles } from "drizzle-orm/migrator";
 import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 import * as schema from "#src/backend/lib/db/schema";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
-import { WORKFLOW_SCOPED_AUDIT_EVENT_TYPES } from "@wfgraph/shared/lifecycle/audit-event-types";
 import { INTEGRATION_REFRESH_STATES } from "@wfgraph/shared/types/integration";
 
 /**
@@ -86,22 +85,16 @@ describe("the generated migrations", () => {
     expect(sql).toContain(`in (${predicate})`);
   });
 
-  // Same guard, for the index the Refused Starts list reads. Without this pin,
-  // a literal renamed in WORKFLOW_SCOPED_AUDIT_EVENT_TYPES with no regenerated
-  // migration goes unnoticed here and falls back to a full audit-history scan
-  // at read time.
-  it("index the workflow-scoped audit rows the refusals list reads", async () => {
+  // Each category query filters on the first two columns, then reads its newest
+  // 50 rows through the final column.
+  it("index each workflow audit category by creation time", async () => {
     const sql = (await readMigrations())
       .map((migration) => migration.sql)
       .join("\n");
-    const predicate = WORKFLOW_SCOPED_AUDIT_EVENT_TYPES.map(
-      (type) => `'${type}'`
-    ).join(", ");
 
     expect(sql).toContain(
-      `CREATE INDEX "workflow_execution_events_workflow_scoped_idx"`
+      `CREATE INDEX "workflow_execution_events_workflow_type_created_at_idx" ON "workflow_execution_events" ("workflow_id","event_type","created_at")`
     );
-    expect(sql).toContain(`in (${predicate})`);
   });
   // The version sweep at publish is the first thing that deletes a
   // workflow_versions row, and published_version_id is `on delete set null`, so

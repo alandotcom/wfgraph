@@ -195,7 +195,7 @@ describe("SQLite migration execution", () => {
     });
     await database.close();
 
-    const invalid = join(migrations, "20260902000000_invalid_schema");
+    const invalid = join(migrations, "20260904000000_invalid_schema");
     await mkdir(invalid);
     await writeFile(
       join(invalid, "migration.sql"),
@@ -224,7 +224,7 @@ describe("SQLite migration execution", () => {
         inspection
           .prepare("select count(*) as total from __wfgraph_sqlite_migrations")
           .get()
-      ).toEqual({ total: 1 });
+      ).toEqual({ total: sqliteMigrations.length });
     } finally {
       inspection.close();
     }
