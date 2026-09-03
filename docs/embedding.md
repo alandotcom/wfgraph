@@ -317,11 +317,15 @@ the required protocol version, method, client identity, and client capabilities
 metadata. The endpoint doesn't support initialization, transport sessions,
 `Mcp-Session-Id`, `GET` streams, or `DELETE` session termination.
 
-The MCP tools edit an existing workflow draft. Every tool call requires a
-`workflowId`. Read tools return the persisted `draftRevision`. Write tools also
-require `expectedDraftRevision`, using the revision returned by the most recent
-read or write. A successful write increments the revision once and returns the
-new value.
+Call `list_workflows` to list the workflows available through the host's
+workflow list. The result contains workflow IDs and summary metadata. It omits
+workflow graphs and integration credentials.
+
+The remaining MCP tools read or edit an existing workflow draft. Each tool call
+requires a `workflowId`. Read tools return the persisted `draftRevision`. Write
+tools also require `expectedDraftRevision`, using the revision returned by the
+most recent read or write. A successful write increments the revision once and
+returns the new value.
 
 A stale write returns an error tool result with code
 `workflow_draft_stale` and the stored `draftRevision`. Call `read_workflow`
@@ -332,7 +336,8 @@ Host and Origin validation protects the HTTP boundary from DNS rebinding. The
 host authentication callback authenticates the caller. MCP tool calls use the
 following operation grants:
 
-- Every tool requires `workflow.getById`.
+- `list_workflows` requires `workflow.getAll`.
+- Every workflow-specific tool requires `workflow.getById`.
 - Graph-writing tools also require `workflow.update`.
 - `list_integrations` also requires `integration.getAll` because the result
   contains Connection IDs.
@@ -340,10 +345,10 @@ following operation grants:
 The authoring tools expose integration types and Connection IDs. They don't
 return or decrypt integration credentials.
 
-The MCP authoring surface doesn't list, create, duplicate, restore, delete,
-run, or publish workflows. MCP writes change the editable draft and leave the
-published workflow version unchanged. Reload an open editor to see an external
-MCP write. The endpoint doesn't send live external-edit updates to the editor.
+The MCP authoring surface doesn't create, duplicate, restore, delete, run, or
+publish workflows. MCP writes change the editable draft and leave the published
+workflow version unchanged. Reload an open editor to see an external MCP write.
+The endpoint doesn't send live external-edit updates to the editor.
 
 ## Built-in integrations
 

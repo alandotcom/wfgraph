@@ -27,6 +27,7 @@ import {
 } from "#src/backend/rpc/openapi";
 import { rpcRouter } from "#src/backend/rpc/router";
 import { postWorkflowResume } from "#src/backend/services/workflows/lifecycle/resume";
+import { getWorkflows } from "#src/backend/services/workflows/list";
 import { receiveWebhook } from "#src/backend/services/integrations/webhook-intake";
 import { executeDraftTool } from "#src/backend/services/agent/draft-tool";
 import { WfGraphAppContext } from "#src/backend/lib/effect/app-context";
@@ -581,6 +582,22 @@ export function createApiApp(options: CreateApiAppOptions) {
       const handler = createAgentMcpHandler({
         auth: authContext,
         httpSecurity: mcp,
+        listWorkflows: async (signal) =>
+          await runtime.runPromise(
+            getWorkflows().pipe(
+              Effect.match({
+                onSuccess: (workflows) => ({
+                  ok: true as const,
+                  workflows,
+                }),
+                onFailure: (failure) => ({
+                  ok: false as const,
+                  failure,
+                }),
+              })
+            ),
+            { signal }
+          ),
         execute: async (input, signal) =>
           await runtime.runPromise(
             executeDraftTool(input).pipe(

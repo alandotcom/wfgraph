@@ -67,9 +67,10 @@ the editor.
 - `mcp: true` enables the authenticated stateless MCP endpoint for localhost.
   For a deployed host, set `mcp.allowedHostnames` and
   `mcp.allowedOriginHostnames`. The endpoint edits existing drafts only. Every
-  call takes a `workflowId`; writes also take the latest
-  `expectedDraftRevision`. After a `workflow_draft_stale` result, read the
-  workflow again before editing.
+  caller granted `workflow.getAll` can use `list_workflows` to discover available
+  workflow IDs. Authoring calls take a `workflowId`; writes also take the latest
+  `expectedDraftRevision`. After a `workflow_draft_stale` result, read the workflow
+  again before editing.
 
 ## Persistence
 

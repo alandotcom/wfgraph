@@ -12,11 +12,23 @@ import type { AuthContext } from "#src/backend/lib/http/authorize";
 import {
   createAgentMcpHandler,
   createAgentMcpServer,
+  type CreateAgentMcpServerInput,
   type DraftToolExecution,
   type DraftToolExecutor,
+  type WorkflowListExecutor,
 } from "#src/backend/agent/mcp-server";
 
 const allowAll: AuthContext = { allows: async () => true };
+const listNoWorkflows: WorkflowListExecutor = async () => ({
+  ok: true,
+  workflows: [],
+});
+
+function createTestMcpHandler(
+  input: Omit<CreateAgentMcpServerInput, "listWorkflows">
+) {
+  return createAgentMcpHandler({ ...input, listWorkflows: listNoWorkflows });
+}
 
 function localMcpRequest(
   input: RequestInfo | URL,
@@ -30,6 +42,7 @@ function localMcpRequest(
 async function makeSubject(input?: {
   auth?: AuthContext;
   execute?: DraftToolExecutor;
+  listWorkflows?: WorkflowListExecutor;
 }) {
   const execute =
     input?.execute ??
@@ -45,6 +58,7 @@ async function makeSubject(input?: {
   const server = createAgentMcpServer({
     auth: input?.auth ?? allowAll,
     execute,
+    listWorkflows: input?.listWorkflows ?? listNoWorkflows,
   });
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();
@@ -64,10 +78,17 @@ describe("createAgentMcpServer", () => {
     try {
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name).toSorted()).toEqual(
-        Object.values(agentToolkit.tools)
-          .map((tool) => tool.name)
-          .toSorted()
+        [
+          "list_workflows",
+          ...Object.values(agentToolkit.tools).map((tool) => tool.name),
+        ].toSorted()
       );
+      expect(
+        listed.tools.find((tool) => tool.name === "list_workflows")
+      ).toMatchObject({
+        annotations: { readOnlyHint: true, idempotentHint: true },
+        inputSchema: { type: "object", additionalProperties: false },
+      });
       const read = listed.tools.find((tool) => tool.name === "read_workflow");
       const write = listed.tools.find((tool) => tool.name === "add_node");
 
@@ -90,6 +111,93 @@ describe("createAgentMcpServer", () => {
           ]),
         },
         outputSchema: { type: "object" },
+      });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("lists workflows visible through the authenticated workflow list", async () => {
+    const checked: string[] = [];
+    const listWorkflows = vi.fn<WorkflowListExecutor>(async () => ({
+      ok: true,
+      workflows: [
+        {
+          id: "wf_1",
+          name: "Onboard customer",
+          description: "Creates the customer account",
+          isPaused: false,
+          mode: "live",
+          visibility: "private",
+          createdAt: "2026-09-01T10:00:00.000Z",
+          updatedAt: "2026-09-03T11:00:00.000Z",
+          publishedVersionId: "version_3",
+        },
+      ],
+    }));
+    const execute = vi.fn<DraftToolExecutor>(async () => {
+      throw new Error("unexpected");
+    });
+    const { client, server } = await makeSubject({
+      auth: {
+        allows: async (operation) => {
+          checked.push(operation.id);
+          return true;
+        },
+      },
+      execute,
+      listWorkflows,
+    });
+    try {
+      const result = await client.callTool({
+        name: "list_workflows",
+        arguments: {},
+      });
+
+      expect(checked).toEqual([WfGraphOperations.workflowGetAll.id]);
+      expect(listWorkflows).toHaveBeenCalledWith(expect.any(AbortSignal));
+      expect(execute).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        isError: false,
+        structuredContent: {
+          workflows: [
+            {
+              id: "wf_1",
+              name: "Onboard customer",
+              visibility: "private",
+              publishedVersionId: "version_3",
+            },
+          ],
+        },
+      });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("requires workflow list access before discovering workflows", async () => {
+    const listWorkflows = vi.fn<WorkflowListExecutor>(async () => {
+      throw new Error("unexpected");
+    });
+    const { client, server } = await makeSubject({
+      auth: {
+        allows: async (operation) =>
+          operation !== WfGraphOperations.workflowGetAll,
+      },
+      listWorkflows,
+    });
+    try {
+      const result = await client.callTool({
+        name: "list_workflows",
+        arguments: {},
+      });
+
+      expect(listWorkflows).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        isError: true,
+        structuredContent: { reason: "Forbidden" },
       });
     } finally {
       await client.close();
@@ -250,7 +358,7 @@ describe("createAgentMcpHandler", () => {
     const execute = vi.fn<DraftToolExecutor>(async () => {
       throw new Error("unexpected");
     });
-    const handler = createAgentMcpHandler({ auth: allowAll, execute });
+    const handler = createTestMcpHandler({ auth: allowAll, execute });
     const transport = new StreamableHTTPClientTransport(
       new URL("http://localhost/mcp"),
       {
@@ -268,6 +376,12 @@ describe("createAgentMcpHandler", () => {
       await expect(
         client.callTool({ name: "read_workflow", arguments: {} })
       ).rejects.toMatchObject({ code: -32602 });
+      await expect(
+        client.callTool({
+          name: "list_workflows",
+          arguments: { unexpected: true },
+        })
+      ).rejects.toMatchObject({ code: -32602 });
       expect(execute).not.toHaveBeenCalled();
     } finally {
       await client.close();
@@ -276,7 +390,7 @@ describe("createAgentMcpHandler", () => {
   });
 
   it("serves one modern JSON exchange without a transport session", async () => {
-    const handler = createAgentMcpHandler({
+    const handler = createTestMcpHandler({
       auth: allowAll,
       execute: async () => ({
         ok: true,
@@ -332,7 +446,7 @@ describe("createAgentMcpHandler", () => {
   });
 
   it("rejects legacy initialization and session methods", async () => {
-    const handler = createAgentMcpHandler({
+    const handler = createTestMcpHandler({
       auth: allowAll,
       execute: async () => {
         throw new Error("unexpected");
@@ -377,7 +491,7 @@ describe("createAgentMcpHandler", () => {
   });
 
   it("rejects unsupported modern protocol versions", async () => {
-    const handler = createAgentMcpHandler({
+    const handler = createTestMcpHandler({
       auth: allowAll,
       execute: async () => {
         throw new Error("unexpected");
@@ -423,7 +537,7 @@ describe("createAgentMcpHandler", () => {
   });
 
   it("rejects JSON-RPC batches", async () => {
-    const handler = createAgentMcpHandler({
+    const handler = createTestMcpHandler({
       auth: allowAll,
       execute: async () => {
         throw new Error("unexpected");
@@ -467,7 +581,7 @@ describe("createAgentMcpHandler", () => {
   });
 
   it("rejects standard headers that disagree with the request", async () => {
-    const handler = createAgentMcpHandler({
+    const handler = createTestMcpHandler({
       auth: allowAll,
       execute: async () => ({
         ok: true,
@@ -528,7 +642,7 @@ describe("createAgentMcpHandler", () => {
   });
 
   it("requires client identity and capabilities in every request envelope", async () => {
-    const handler = createAgentMcpHandler({
+    const handler = createTestMcpHandler({
       auth: allowAll,
       execute: async () => {
         throw new Error("unexpected");
@@ -606,7 +720,7 @@ describe("createAgentMcpHandler", () => {
       markStarted = resolve;
     });
     let executionWasAborted = false;
-    const handler = createAgentMcpHandler({
+    const handler = createTestMcpHandler({
       auth: allowAll,
       execute: async (_input, signal) => {
         markStarted?.();

@@ -40,8 +40,9 @@ The implementation uses the following decisions:
   Tool schemas do not expose node positions or a layout command.
 - Publication remains separate. The first release exposes no create, delete,
   duplicate, restore, run, or publish tool.
-- The first release edits a workflow whose ID the caller already knows. Workflow
-  discovery and creation can be designed as separate lifecycle tools later.
+- The endpoint lists existing workflows through the same summary service and
+  authorization operation as the editor. Workflow creation remains outside the
+  MCP surface.
 - The MCP endpoint supports the 2026-07-28 protocol only and rejects legacy
   traffic.
 - An editor learns about an external MCP write on its next workflow load. The
@@ -57,22 +58,22 @@ approved:
 - Hosts opt in with `WfGraphAppOptions.mcp`; the endpoint is disabled by
   default.
 - The endpoint path is `${basePath}/api/mcp`.
-- The first release edits existing workflows only. It has no workflow list,
-  create, restore, delete, run, or publish tools.
+- The first release lists and edits existing workflows. It has no create,
+  restore, delete, run, or publish tools.
 - External MCP writes become visible in an open editor after a reload. The first
   release does not add polling, server-sent events, or another cross-client
   revision channel.
 
 ## Actors and state owners
 
-| Actor               | Calls                               | State read or written                               | Observable result                  |
-| ------------------- | ----------------------------------- | --------------------------------------------------- | ---------------------------------- |
-| Workflow Builder    | The browser editor                  | Browser graph and persisted workflow draft          | Canvas updates and save status     |
-| Built-in agent      | `agent.chat` and `AgentToolSession` | Request-local copy of the browser graph             | Existing `AgentStreamPart` stream  |
-| External agent host | MCP endpoint                        | Persisted workflow draft selected by `workflowId`   | MCP tool result and draft revision |
-| MCP adapter         | Core draft-tool execution service   | No cross-request state                              | One response for one request       |
-| Workflow service    | `WorkflowRepo`                      | `workflows.graph` and `draft_revision`              | Conditional draft write            |
-| Publish service     | Existing publish procedures         | Immutable workflow versions and publication pointer | Unchanged by MCP draft editing     |
+| Actor               | Calls                               | State read or written                                 | Observable result                  |
+| ------------------- | ----------------------------------- | ----------------------------------------------------- | ---------------------------------- |
+| Workflow Builder    | The browser editor                  | Browser graph and persisted workflow draft            | Canvas updates and save status     |
+| Built-in agent      | `agent.chat` and `AgentToolSession` | Request-local copy of the browser graph               | Existing `AgentStreamPart` stream  |
+| External agent host | MCP endpoint                        | Workflow summaries and draft selected by `workflowId` | MCP tool result and draft revision |
+| MCP adapter         | Core draft-tool execution service   | No cross-request state                                | One response for one request       |
+| Workflow service    | `WorkflowRepo`                      | `workflows.graph` and `draft_revision`                | Conditional draft write            |
+| Publish service     | Existing publish procedures         | Immutable workflow versions and publication pointer   | Unchanged by MCP draft editing     |
 
 `workflows.graph` remains the system of record for a persisted editable draft.
 The browser graph can contain newer unsaved edits. The built-in agent receives

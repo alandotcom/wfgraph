@@ -15,11 +15,14 @@ import {
   type McpHttpHandler,
 } from "@modelcontextprotocol/server";
 import { Tool } from "effect/unstable/ai";
+import { Schema } from "effect";
 import { agentToolkit, WRITE_TOOL_NAMES } from "@wfgraph/agent/toolkit";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { readJsonObject } from "@wfgraph/shared/types/json";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import type { WorkflowSummaryPayload } from "@wfgraph/shared/graph/api-contracts";
+import { workflowSummarySchema } from "@wfgraph/shared/rpc/contracts/workflows";
 import type { ServiceFailure } from "#src/backend/lib/effect/failures";
 import type { AuthContext } from "#src/backend/lib/http/authorize";
 import type {
@@ -36,9 +39,21 @@ export type DraftToolExecutor = (
   signal: AbortSignal
 ) => Promise<DraftToolExecution>;
 
+export type WorkflowListExecution =
+  | {
+      readonly ok: true;
+      readonly workflows: readonly WorkflowSummaryPayload[];
+    }
+  | { readonly ok: false; readonly failure: ServiceFailure };
+
+export type WorkflowListExecutor = (
+  signal: AbortSignal
+) => Promise<WorkflowListExecution>;
+
 export type CreateAgentMcpServerInput = {
   readonly auth: AuthContext;
   readonly execute: DraftToolExecutor;
+  readonly listWorkflows: WorkflowListExecutor;
 };
 
 export type WfGraphMcpOptions = {
@@ -85,6 +100,24 @@ const DRAFT_REVISION_SCHEMA = {
   description:
     "Revision returned by the latest read or write. Read the workflow again after a conflict.",
 } as const;
+
+const LIST_WORKFLOWS_INPUT_SCHEMA = {
+  type: "object",
+  properties: {},
+  additionalProperties: false,
+} as const;
+
+const LIST_WORKFLOWS_OUTPUT_SCHEMA = (() => {
+  const schema = readJsonObject(
+    Tool.getJsonSchemaFromSchema(
+      Schema.Struct({ workflows: Schema.Array(workflowSummarySchema) })
+    )
+  );
+  if (!schema) {
+    throw new Error("The workflow list has a non-object output schema");
+  }
+  return schema;
+})();
 
 /** Adds persisted-draft fields while retaining the canonical tool schema. */
 function inputSchemaFor(name: AgentToolName): JsonObject {
@@ -219,6 +252,14 @@ function failureResult(workflowId: string, failure: ServiceFailure) {
   });
 }
 
+function workflowListResult(result: JsonObject, isError: boolean) {
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(result) }],
+    structuredContent: result,
+    isError,
+  };
+}
+
 /** Creates one MCP server whose calls read and write through the supplied executor. */
 export function createAgentMcpServer(
   input: CreateAgentMcpServerInput
@@ -227,6 +268,48 @@ export function createAgentMcpServer(
     name: "workflow-graph",
     version: "1.0.0",
   });
+
+  const listWorkflowsInput = fromJsonSchema<Record<string, unknown>>(
+    LIST_WORKFLOWS_INPUT_SCHEMA
+  );
+  const listWorkflowsOutput = fromJsonSchema<Record<string, unknown>>(
+    LIST_WORKFLOWS_OUTPUT_SCHEMA
+  );
+  server.registerTool<typeof listWorkflowsOutput, typeof listWorkflowsInput>(
+    "list_workflows",
+    {
+      description:
+        "List the workflows visible to the authenticated caller. Use a returned workflow ID with workflow authoring tools.",
+      inputSchema: listWorkflowsInput,
+      outputSchema: listWorkflowsOutput,
+      annotations: { readOnlyHint: true, idempotentHint: true },
+    },
+    async (_arguments, context) => {
+      if (!(await input.auth.allows(WfGraphOperations.workflowGetAll))) {
+        return workflowListResult({ reason: "Forbidden" }, true);
+      }
+
+      const outcome = await input.listWorkflows(context.mcpReq.signal);
+      if (!outcome.ok) {
+        return workflowListResult(
+          omitUndefined({
+            reason: outcome.failure.error,
+            code: outcome.failure.payload.code,
+          }),
+          true
+        );
+      }
+
+      return workflowListResult(
+        {
+          workflows: outcome.workflows.map((workflow) =>
+            omitUndefined({ ...workflow })
+          ),
+        },
+        false
+      );
+    }
+  );
 
   for (const tool of Object.values(agentToolkit.tools)) {
     const name = tool.name;
@@ -350,9 +433,16 @@ export function createAgentMcpHandler(
               );
             }
 
-            if (method === "tools/call" && isAgentToolName(name)) {
+            if (
+              method === "tools/call" &&
+              (name === "list_workflows" || isAgentToolName(name))
+            ) {
+              const schema =
+                name === "list_workflows"
+                  ? LIST_WORKFLOWS_INPUT_SCHEMA
+                  : inputSchemaFor(name);
               const validation = await fromJsonSchema<Record<string, unknown>>(
-                inputSchemaFor(name)
+                schema
               )["~standard"].validate(params?.arguments ?? {});
               if (validation.issues) {
                 return invalidParamsResponse(

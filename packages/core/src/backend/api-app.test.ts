@@ -108,10 +108,18 @@ describe("the MCP route", () => {
 
   it("serves modern stateless tool calls when the host opts in", async () => {
     const records = captureRequestFields();
+    const {
+      graph: _graph,
+      draftRevision: _draftRevision,
+      ...workflowSummary
+    } = workflow;
     await using runtime = stubWfGraphRuntime({
       extensions: { catalog: fixtureCatalog },
       integrationRepo: { listIdentities: Effect.succeed([]) },
-      workflowRepo: { findById: () => Effect.succeed(workflow) },
+      workflowRepo: {
+        findById: () => Effect.succeed(workflow),
+        listSummariesNewestFirst: Effect.succeed([workflowSummary]),
+      },
     });
     const app = createApiApp({
       basePath,
@@ -141,6 +149,10 @@ describe("the MCP route", () => {
 
     await client.connect(transport);
     try {
+      const listed = await client.callTool({
+        name: "list_workflows",
+        arguments: {},
+      });
       const result = await client.callTool({
         name: "read_workflow",
         arguments: { workflowId: workflow.id },
@@ -150,6 +162,18 @@ describe("the MCP route", () => {
       expect(client.getServerVersion()).toEqual({
         name: "workflow-graph",
         version: "1.0.0",
+      });
+      expect(listed).toMatchObject({
+        isError: false,
+        structuredContent: {
+          workflows: [
+            {
+              id: workflow.id,
+              name: workflow.name,
+              visibility: workflow.visibility,
+            },
+          ],
+        },
       });
       expect(result).toMatchObject({
         isError: false,

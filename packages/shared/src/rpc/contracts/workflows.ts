@@ -33,7 +33,7 @@ import {
 // invent a value or defend against `?? ""`. A consumer that feeds `id` straight
 // to a router as a workflow id would have an empty string resolve to a route
 // that redirects away.
-const workflowSummarySchema = Schema.Struct({
+export const workflowSummarySchema = Schema.Struct({
   id: idSchema,
   name: Schema.String,
   description: Schema.optionalKey(Schema.String),

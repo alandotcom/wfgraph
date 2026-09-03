@@ -273,6 +273,7 @@ async function runMcpTool(testCase: ConformanceCase) {
   const server = createAgentMcpServer({
     auth: { allows: async () => true },
     execute,
+    listWorkflows: async () => ({ ok: true, workflows: [] }),
   });
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();
