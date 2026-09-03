@@ -24,7 +24,6 @@ import {
   setStartFilterForAll,
   setStartFilterForEvent,
 } from "@wfgraph/shared/lifecycle/start-filters";
-import { ConfigHeading } from "./config-section";
 import { IntegrationEventConnectionEditor } from "./integration-event-connection";
 import { LifecycleConcurrencyGroup } from "./lifecycle-concurrency-group";
 import { LifecycleEventGroup } from "./lifecycle-event-group";
@@ -146,18 +145,7 @@ export function LifecyclePanel({
 
   return (
     <div className="space-y-4">
-      {/* One mode. Every control writes straight through `onUpdateConfig`, so a
-          view that read the same settings back as text moved the whole column
-          on each press of a button that saved nothing. */}
-      <section className="space-y-2">
-        <ConfigHeading
-          help={LIFECYCLE_RULES_HELP.map((sentence) => (
-            <p key={sentence}>{sentence}</p>
-          ))}
-          label="Lifecycle Rules"
-        />
-        <LifecycleGroups onConnectionChange={setConnectionId} {...groupProps} />
-      </section>
+      <LifecycleGroups onConnectionChange={setConnectionId} {...groupProps} />
 
       {check.valid ? null : (
         <WarningCallout title="This will not save">
@@ -246,8 +234,3 @@ function LifecycleGroups({
     </div>
   );
 }
-
-const LIFECYCLE_RULES_HELP = [
-  "What starts a run of this workflow.",
-  "What happens to runs in progress when another start arrives.",
-];

@@ -150,7 +150,7 @@ export function ConfigHeading({
             controls, and a <label> with nothing to point at is one every
             `getByLabelText` in the suite has to step over. */}
         <h3 className="truncate font-medium text-sm">{label}</h3>
-        {help ? <HelpPopover label={label}>{help}</HelpPopover> : null}
+        {help ? <ConfigHelp label={label}>{help}</ConfigHelp> : null}
       </div>
       <div className="flex shrink-0 items-center gap-1">{trailing}</div>
     </div>
@@ -167,6 +167,7 @@ export function ConfigGroup({
   label,
   help,
   className,
+  prominent = false,
   children,
 }: {
   label: string;
@@ -174,17 +175,24 @@ export function ConfigGroup({
   help?: ReactNode;
   /** Spacing the caller's list of groups owns, such as its separators. */
   className?: string;
+  /** Gives the primary group in a section full foreground emphasis. */
+  prominent?: boolean | undefined;
   children: ReactNode;
 }) {
   return (
     <section className={cn("space-y-1.5", className)}>
       <div className="flex min-w-0 items-center gap-1">
-        {/* Subordinate to the section's own <h3> by colour rather than size:
-            at this scale a smaller heading is a heading nobody reads. */}
-        <h4 className="truncate font-medium text-muted-foreground text-xs/relaxed">
+        <h4
+          className={cn(
+            "truncate font-medium",
+            prominent
+              ? "text-foreground text-sm"
+              : "text-muted-foreground text-xs/relaxed"
+          )}
+        >
           {label}
         </h4>
-        {help ? <HelpPopover label={label}>{help}</HelpPopover> : null}
+        {help ? <ConfigHelp label={label}>{help}</ConfigHelp> : null}
       </div>
       {children}
     </section>
@@ -197,7 +205,7 @@ export function ConfigGroup({
  * On click rather than hover: the content is long enough to want to stay open
  * while it is read, and hover does not exist on touch.
  */
-function HelpPopover({
+export function ConfigHelp({
   label,
   children,
 }: {

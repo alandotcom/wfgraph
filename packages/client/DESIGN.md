@@ -203,7 +203,7 @@ Both families are self-hosted through Fontsource variable packages, imported in 
 
 ### Hierarchy
 
-- **Title** (600, 1rem, 1.375): Card titles, node titles, dialog headings. The largest text in the working UI.
+- **Title** (600, 1rem, 1.375): Card titles and dialog headings. The largest text in the working UI.
 - **Label** (500, 0.875rem, 1.25): Buttons, form labels, tabs, menu items.
 - **Body** (400, 0.875rem, 1.5): Descriptions, settings prose, run detail text. `text-base` (1rem) only on mobile inputs to prevent iOS zoom.
 - **Mono** (400, 0.8125rem, 1.5): Template expressions, cron strings, JSON output, execution logs.
@@ -258,7 +258,7 @@ All primitives are shadcn/ui on Base UI, refined and restrained: quiet at rest, 
 
 ### Workflow Node (signature component)
 
-The reason the product exists. A 192×112px rectangular card at 8px radius sitting on the React Flow canvas: integration icon, title, and description at rest. Event Split is wider at 264px on purpose, because it carries two labelled outlets. Nested Group children are compact (188×56) so the frame reads as one step; parallel lookups sit side by side inside it. 192×112 remains the top-level card. The card is flat; elevation on the canvas would compete with the status border.
+The reason the product exists. A 192×112px rectangular card at 8px radius sitting on the React Flow canvas: a 16px integration icon, a 14px semibold title that wraps to two lines, and a one-line description at rest. Event Split is wider at 264px on purpose, because it carries two labelled outlets. Nested Group children are compact (188×56) with a single-line title so the frame reads as one step; parallel lookups sit side by side inside it. 192×112 remains the top-level card. The card is flat; elevation on the canvas would compete with the status border.
 
 At rest the border is 1.5px of Canvas Line. Status is worn on that same border, stepping up to 2px: Signal Green for success, Signal Red for failure, Signal Slate for cancelled, and an animated Signal Blue sweep while running. Every status also renders its word in a chip, so the border is never the only carrier. Focus shifts the border to Graphite Ink rather than the ring color, because the resting border already sits at the ring's lightness and the shift would otherwise read as nothing.
 

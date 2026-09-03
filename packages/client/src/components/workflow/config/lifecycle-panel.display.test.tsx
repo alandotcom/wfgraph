@@ -125,18 +125,24 @@ describe("LifecyclePanel display", () => {
     fireEvent.click(view.getByRole("button", { name: "About Concurrency" }));
     const described = view
       .getAllByText(
-        /supersedes the ones already going|Every Event starts its own run/
+        /A new run supersedes active runs|Each Event starts a separate run/
       )
       .map((node) => node.textContent ?? "");
-    expect(described.at(0)).toContain("supersedes the ones already going");
+    expect(described.at(0)).toContain("A new run supersedes active runs");
   });
 
-  it("shows the selected concurrency and manual-run behavior beside their controls", () => {
+  it("keeps concurrency and manual-run details in their help popovers", () => {
     const view = renderPanel();
 
-    expect(
-      view.getByText(/A new run for the same entity supersedes/)
-    ).toBeTruthy();
-    expect(view.getByText(/Allows Run draft, Run vN/)).toBeTruthy();
+    expect(view.queryByText(/A new run supersedes active runs/)).toBeNull();
+    expect(view.queryByText(/Run draft, Run vN/)).toBeNull();
+
+    fireEvent.click(view.getByRole("button", { name: "About Concurrency" }));
+    expect(view.getByText(/A new run supersedes active runs/)).toBeTruthy();
+
+    fireEvent.click(
+      view.getByRole("button", { name: "About Allow manual runs" })
+    );
+    expect(view.getByText(/Run draft, Run vN/)).toBeTruthy();
   });
 });

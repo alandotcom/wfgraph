@@ -12,10 +12,10 @@ import {
   type Concurrency,
   type LifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
-import { ConfigGroup } from "./config-section";
+import { ConfigGroup, ConfigHelp } from "./config-section";
 
 const MANUAL_RUNS_HELP =
-  "Allows Run draft, Run vN, and the execute API. When off, only a Start Event can start a run.";
+  "Run draft, Run vN, and the execute API can start a run. When manual runs are off, only a Start Event can start one.";
 
 export function LifecycleConcurrencyGroup({
   rules,
@@ -67,21 +67,19 @@ export function LifecycleConcurrencyGroup({
           </SelectContent>
         </Select>
 
-        <p className="text-muted-foreground text-xs">
-          {concurrencyOption(rules.concurrency).description}
-        </p>
-
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Checkbox
-              checked={rules.allowManualStart === true}
-              disabled={disabled}
-              id={manualStartId}
-              onCheckedChange={onManualStartChange}
-            />
+        <div className="flex items-center gap-2">
+          <Checkbox
+            checked={rules.allowManualStart === true}
+            disabled={disabled}
+            id={manualStartId}
+            onCheckedChange={onManualStartChange}
+          />
+          <div className="flex items-center gap-1">
             <Label htmlFor={manualStartId}>Allow manual runs</Label>
+            <ConfigHelp label="Allow manual runs">
+              {MANUAL_RUNS_HELP}
+            </ConfigHelp>
           </div>
-          <p className="text-muted-foreground text-xs">{MANUAL_RUNS_HELP}</p>
         </div>
         <ManualRunPayloadNotice rules={rules} />
       </div>
@@ -116,13 +114,6 @@ function ConcurrencyHelp({ concurrency }: { concurrency: Concurrency }) {
   );
 }
 
-function concurrencyOption(concurrency: Concurrency) {
-  return (
-    CONCURRENCY_OPTIONS.find((option) => option.value === concurrency) ??
-    CONCURRENCY_OPTIONS[0]
-  );
-}
-
 function ManualRunPayloadNotice({ rules }: { rules: LifecycleRules }) {
   if (rules.startEvents.length > 0) {
     return null;
@@ -144,18 +135,18 @@ export const CONCURRENCY_OPTIONS: ReadonlyArray<{
   {
     value: "unlimited",
     label: "Unlimited",
-    description: "Every Event starts its own run.",
+    description: "Each Event starts a separate run.",
   },
   {
     value: "newest-wins",
     label: "Newest wins",
     description:
-      "A new run for the same entity supersedes the ones already going, which end with that status.",
+      "A new run supersedes active runs for the same entity. The active runs end with the Superseded status.",
   },
   {
     value: "first-wins",
     label: "First wins",
     description:
-      "A run already going for the same entity keeps it. The arriving Event is recorded as a Refused Start.",
+      "For the same entity, the active run continues. Workflow Graph records the new Event as a Refused Start.",
   },
 ];

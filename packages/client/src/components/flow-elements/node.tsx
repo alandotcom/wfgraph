@@ -154,10 +154,31 @@ export const Node = ({
   </Card>
 );
 
-export type NodeTitleProps = ComponentProps<typeof CardTitle>;
+export type NodeTitleProps = ComponentProps<typeof CardTitle> & {
+  /** Compact Group members have one text line; full-size nodes can use two. */
+  singleLine?: boolean | undefined;
+};
 
-export const NodeTitle = ({ className, ...props }: NodeTitleProps) => (
-  <CardTitle className={cn("w-full truncate text-base", className)} {...props} />
+export const NodeTitle = ({
+  children,
+  className,
+  singleLine = false,
+  title,
+  ...props
+}: NodeTitleProps) => (
+  <CardTitle
+    className={cn(
+      "w-full text-sm leading-tight",
+      singleLine
+        ? "truncate"
+        : "line-clamp-2 text-balance [overflow-wrap:anywhere]",
+      className
+    )}
+    title={title ?? (typeof children === "string" ? children : undefined)}
+    {...props}
+  >
+    {children}
+  </CardTitle>
 );
 
 export type NodeDescriptionProps = ComponentProps<typeof CardDescription>;
@@ -173,8 +194,8 @@ export const NodeDescription = ({
 );
 
 // `text-center` is what centres the words. The title and description are
-// full-width truncating blocks, so `items-center` reaches only the icon, the one
-// child narrower than the stack.
+// full-width blocks, so `items-center` reaches only the icon, the one child
+// narrower than the stack.
 export const NodeBody = ({ className, ...props }: ComponentProps<"div">) => (
   <div
     className={cn(
