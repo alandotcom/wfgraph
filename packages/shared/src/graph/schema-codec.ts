@@ -1093,12 +1093,27 @@ function deriveSelectOptions(
   ];
 }
 
+function resolveConfigFieldProperty(
+  property: JsonSchemaNode,
+  depth = 0
+): JsonSchemaNode {
+  if (depth > MAX_JSON_SCHEMA_UNION_DEPTH) {
+    return property;
+  }
+
+  const resolved = resolveJsonSchemaUnion(property);
+  return resolved
+    ? resolveConfigFieldProperty(resolved.node, depth + 1)
+    : property;
+}
+
 function jsonSchemaPropertyToConfigField(
   key: string,
   property: JsonSchemaNode,
   required: boolean
 ): ActionConfigFieldBase {
-  const fieldType = deriveConfigFieldType(property);
+  const resolvedProperty = resolveConfigFieldProperty(property);
+  const fieldType = deriveConfigFieldType(resolvedProperty);
 
   const field: ActionConfigFieldBase = {
     key,
@@ -1131,7 +1146,7 @@ function jsonSchemaPropertyToConfigField(
   }
 
   if (fieldType === "select") {
-    field.options = deriveSelectOptions(property);
+    field.options = deriveSelectOptions(resolvedProperty);
   }
 
   return field;

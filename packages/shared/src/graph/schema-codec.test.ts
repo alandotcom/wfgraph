@@ -1043,6 +1043,83 @@ describe("configFieldsFromJsonSchema", () => {
     ]);
   });
 
+  it("maps const unions to select fields", () => {
+    const fields = configFieldsFromJsonSchema({
+      type: "object",
+      required: ["choice"],
+      properties: {
+        choice: {
+          anyOf: [{ const: "alpha" }, { const: "beta" }],
+          description: "Choice",
+        },
+      },
+    });
+
+    expect(fields).toEqual([
+      {
+        key: "choice",
+        label: "Choice",
+        type: "select",
+        options: [
+          { value: "alpha", label: "alpha" },
+          { value: "beta", label: "beta" },
+        ],
+        required: true,
+      },
+    ]);
+  });
+
+  it("maps a closed set inside a nullable union to a select field", () => {
+    const fields = configFieldsFromJsonSchema({
+      type: "object",
+      properties: {
+        choice: {
+          anyOf: [
+            {
+              anyOf: [
+                { type: "string", enum: ["alpha"] },
+                { type: "string", enum: ["beta"] },
+              ],
+            },
+            { type: "null" },
+          ],
+          description: "Choice",
+        },
+      },
+    });
+
+    expect(fields).toEqual([
+      {
+        key: "choice",
+        label: "Choice",
+        type: "select",
+        options: [
+          { value: "alpha", label: "alpha" },
+          { value: "beta", label: "beta" },
+        ],
+      },
+    ]);
+  });
+
+  it("keeps a typed branch beside same-type consts as an open field", () => {
+    const fields = configFieldsFromJsonSchema({
+      type: "object",
+      properties: {
+        id: {
+          anyOf: [
+            { type: "string", format: "uuid", pattern: "[\\da-f]{8}-..." },
+            { const: "00000000-0000-0000-0000-000000000000" },
+            { const: "ffffffff-ffff-ffff-ffff-ffffffffffff" },
+          ],
+        },
+      },
+    });
+
+    expect(fields).toEqual([
+      { key: "id", label: "Id", type: "template-input" },
+    ]);
+  });
+
   it("maps object properties to key-value", () => {
     const fields = configFieldsFromJsonSchema({
       type: "object",
