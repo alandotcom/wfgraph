@@ -15,5 +15,6 @@
       "onAutoForward": "notify"
     }
   },
-  "postCreateCommand": "bash .devcontainer/setup.sh"
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "postStartCommand": "nohup bash -c 'pnpm run dev > /tmp/wfgraph-dev.log 2>&1 &'"
 }

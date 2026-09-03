@@ -63,12 +63,12 @@ pnpm run start
 1. Select the **Open in GitHub Codespaces** badge.
 2. Create the codespace.
 3. Wait for the setup command to finish.
-4. Run `pnpm run dev` in the terminal.
 
 The setup command installs the workspace and creates the required encryption key. The
-codespace keeps its own SQLite database. After the app starts, Codespaces opens the forwarded
-**Workflow Graph** port. Sign in with any demo account listed in **Run locally**. Codespaces
-also forwards the **Inngest** port for its development UI.
+codespace starts the development stack and keeps its own SQLite database. After the app
+starts, Codespaces opens the forwarded **Workflow Graph** port. Sign in with any demo account
+listed in **Run locally**. Codespaces also forwards the **Inngest** port for its development
+UI. If startup fails, read `/tmp/wfgraph-dev.log` in the codespace.
 
 ## Embed in your app
 
