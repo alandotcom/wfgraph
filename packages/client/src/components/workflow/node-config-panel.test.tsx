@@ -24,9 +24,13 @@ import {
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import {
+  autosaveDelayAtom,
   currentWorkflowIdAtom,
   currentWorkflowNameAtom,
+  successfulSaveGenerationAtom,
+  workflowApiAtom,
 } from "#src/lib/workflow-save-store";
+import { savedWorkflow } from "#src/lib/workflow-save-test-support";
 import {
   installAuthorizationGrantsForTests,
   resetAuthorizationGrantsForTests,
@@ -116,6 +120,8 @@ function renderPanel({
   workspaceView?: "draft" | "runs" | "changes";
 } = {}) {
   const store = createStore();
+  store.set(autosaveDelayAtom, 0);
+  store.set(workflowApiAtom, { update: async () => savedWorkflow("wf_1") });
   store.set(loadWorkflowGraphAtom, { nodes, edges });
   store.set(selectedNodeAtom, selected);
   store.set(currentWorkflowIdAtom, "wf_1");
@@ -372,5 +378,8 @@ describe("NodeConfigPanel Wait mode", () => {
     const stored = store.get(nodesAtom).find((node) => node.id === "wait_1");
     expect(stored?.data.config?.waitMode).toBe("delay");
     expect(stored?.data.config?.waitTimeout).toBe("");
+    await waitFor(() => {
+      expect(store.get(successfulSaveGenerationAtom).get("wf_1")).toBe(1);
+    });
   });
 });
