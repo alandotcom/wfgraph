@@ -80,6 +80,7 @@ describe("workflow publication contracts", () => {
           workflowId: "workflow_1",
           graph: emptyGraph,
           expectedPublishedVersionId: null,
+          expectedDraftRevision: 1,
         })
       )
     ).toBe(true);

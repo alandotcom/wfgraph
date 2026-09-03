@@ -78,7 +78,7 @@ describe("useSetPublishedMode", () => {
     fireEvent.click(getByRole("button", { name: "Ask for test" }));
 
     await waitFor(() => {
-      expect(update).toHaveBeenCalledWith(WORKFLOW_ID, { mode: "test" });
+      expect(update).toHaveBeenCalledWith(WORKFLOW_ID, { mode: "test" }, 0);
     });
     expect(success).toHaveBeenCalledWith("Published mode set to Test");
   });
@@ -92,7 +92,7 @@ describe("useSetPublishedMode", () => {
     fireEvent.click(getByRole("button", { name: "Ask for live" }));
 
     await waitFor(() => {
-      expect(update).toHaveBeenCalledWith(WORKFLOW_ID, { mode: "live" });
+      expect(update).toHaveBeenCalledWith(WORKFLOW_ID, { mode: "live" }, 0);
     });
     expect(success).toHaveBeenCalledWith("Published mode set to Live");
   });
