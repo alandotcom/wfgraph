@@ -28,6 +28,7 @@ import { useExtensionCatalog } from "#src/components/extension-catalog-provider"
 import { useAfterDelay, useAfterPaint, useDomEvent } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { isTextEntry } from "#src/lib/is-text-entry";
+import { viewportAnimationDuration } from "#src/lib/motion";
 import {
   addNodeAtom,
   connectNodesAtom,
@@ -53,6 +54,7 @@ import {
 } from "#src/lib/workflow-comparison-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
+  agentGraphRevisionAtom,
   isGeneratingAtom,
   showMinimapAtom,
   workflowWorkspaceViewAtom,
@@ -91,6 +93,7 @@ import {
   keyboardFitViewOptions,
   lifecycleAnchorViewport,
   synchronizeCanvasGraph,
+  useFitAgentGraph,
   useSynchronizedCanvas,
 } from "./workflow-canvas-synchronization";
 
@@ -148,6 +151,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const comparisonActive = comparison !== null;
   const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
   const isGenerating = useAtomValue(isGeneratingAtom);
+  const agentGraphRevision = useAtomValue(agentGraphRevisionAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
   // Below the mobile breakpoint the config rail is gone, so clicking a node has
@@ -271,6 +275,18 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
         }
       : null,
     fitGenerationRef,
+  });
+  useFitAgentGraph({
+    revision: agentGraphRevision,
+    beforeFit: () => {
+      fitGenerationRef.current += 1;
+    },
+    fitView: () =>
+      fitView({
+        padding: 0.2,
+        maxZoom: 1,
+        duration: viewportAnimationDuration(),
+      }),
   });
   useDomEvent(
     window,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { formatTemplateToken } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { fixtureCatalog } from "#src/tools/catalog-fixture";
 import { agentToolsFor } from "#src/testing";
@@ -39,6 +40,36 @@ const documentInput = {
   catalog: fixtureCatalog,
 };
 
+const timestampCatalog = {
+  ...fixtureCatalog,
+  events: fixtureCatalog.events.map((event) =>
+    event.name === "applicant.created"
+      ? {
+          ...event,
+          payloadFields: [
+            ...event.payloadFields,
+            { path: "interviewAt", type: "timestamp" as const },
+          ],
+        }
+      : event
+  ),
+};
+
+const eventLifecycle: WorkflowNode = {
+  ...lifecycle,
+  data: {
+    ...lifecycle.data,
+    config: {
+      lifecycleRules: {
+        startEvents: ["applicant.created"],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        allowManualStart: false,
+      },
+    },
+  },
+};
+
 describe("set_wait", () => {
   it.effect("writes a canonical delay and clears stale Event settings", () =>
     Effect.gen(function* () {
@@ -72,6 +103,93 @@ describe("set_wait", () => {
         waitMode: "delay",
         waitDuration: "2d",
       });
+    })
+  );
+
+  it.effect("waits until an upstream timestamp with a relative offset", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        ...documentInput,
+        nodes: [eventLifecycle, wait],
+        catalog: timestampCatalog,
+      });
+      const until = formatTemplateToken({
+        nodeId: "entry",
+        nodeLabel: "Lifecycle",
+        fieldPath: "interviewAt",
+      });
+
+      yield* tools.set_wait({
+        nodeId: "wait",
+        mode: "delay",
+        timing: "until",
+        until,
+        offset: "-1d",
+      });
+
+      expect((yield* draft.current).nodes[1]?.data.config).toEqual({
+        actionType: BUILT_IN_ACTION_IDS.wait,
+        custom: "kept",
+        waitMode: "delay",
+        waitDelayTimingMode: "until",
+        waitUntil: until,
+        waitOffset: "-1d",
+      });
+    })
+  );
+
+  it.effect("refuses a non-timestamp reference for wait-until timing", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({
+        ...documentInput,
+        nodes: [eventLifecycle, wait],
+      });
+      const applicantId = formatTemplateToken({
+        nodeId: "entry",
+        nodeLabel: "Lifecycle",
+        fieldPath: "applicantId",
+      });
+
+      const failure = yield* Effect.flip(
+        tools.set_wait({
+          nodeId: "wait",
+          mode: "delay",
+          timing: "until",
+          until: applicantId,
+          offset: "-1d",
+        })
+      );
+
+      expect(failure.reason).toContain("timestamp");
+      expect(failure.reason).toContain("list_references");
+    })
+  );
+
+  it.effect("refuses an unreachable timestamp reference", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({
+        ...documentInput,
+        nodes: [eventLifecycle, wait],
+        edges: [],
+        catalog: timestampCatalog,
+      });
+      const interviewAt = formatTemplateToken({
+        nodeId: "entry",
+        nodeLabel: "Lifecycle",
+        fieldPath: "interviewAt",
+      });
+
+      const failure = yield* Effect.flip(
+        tools.set_wait({
+          nodeId: "wait",
+          mode: "delay",
+          timing: "until",
+          until: interviewAt,
+        })
+      );
+
+      expect(failure.reason).toContain("timestamp token");
+      expect(failure.reason).toContain("list_references");
     })
   );
 

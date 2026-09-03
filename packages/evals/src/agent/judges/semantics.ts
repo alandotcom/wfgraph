@@ -243,6 +243,32 @@ function missingCancelEvents(context: SemanticsContext): string[] {
   );
 }
 
+/** Each named Start Event carries the payload rule the scenario requires. */
+function missingStartFilterRules(context: SemanticsContext): string[] {
+  return checkEach(
+    context.input.expected.requiredStartFilterRules,
+    (required) => {
+      const parsed = parseConditionModel(
+        context.lifecycleRules?.startFilters?.[required.event]
+      );
+      const found =
+        parsed.valid &&
+        parsed.model.groups.some((group) =>
+          group.conditions.some(
+            (rule) =>
+              rule.field === required.field &&
+              rule.operator === required.operator &&
+              (required.value === undefined ||
+                ("value" in rule && rule.value === required.value))
+          )
+        );
+      return found
+        ? undefined
+        : `${required.event} is missing required Start Filter rule ${required.field} ${required.operator}${required.value === undefined ? "" : ` ${required.value}`}`;
+    }
+  );
+}
+
 /** Each required flow exists as one edge, on the named outlet when given. */
 function missingFlows(context: SemanticsContext): string[] {
   return checkEach(context.input.expected.requiredFlows, (flow) => {
@@ -325,6 +351,17 @@ function missingConfigs(context: SemanticsContext): string[] {
     return nodesSatisfy(context, required, hasConfig)
       ? undefined
       : `${selectorName(required.node)} does not have required config ${Object.keys(required.values).join(", ")}`;
+  });
+}
+
+/** Each forbidden configuration key is absent from the selected node. */
+function presentForbiddenConfigs(context: SemanticsContext): string[] {
+  return checkEach(context.input.expected.forbiddenConfigKeys, (required) => {
+    const omitsConfigs = (node: WorkflowNode) =>
+      required.keys.every((key) => node.data.config?.[key] === undefined);
+    return nodesSatisfy(context, required, omitsConfigs)
+      ? undefined
+      : `${selectorName(required.node)} has forbidden config ${required.keys.join(", ")}`;
   });
 }
 
@@ -516,11 +553,13 @@ const rules: readonly SemanticsRule[] = [
   disallowedActions,
   missingStartEvents,
   missingCancelEvents,
+  missingStartFilterRules,
   missingFlows,
   missingPaths,
   gateFailures,
   nonParallelBranches,
   missingConfigs,
+  presentForbiddenConfigs,
   emptyConfigs,
   missingDurations,
   missingWaitEvents,

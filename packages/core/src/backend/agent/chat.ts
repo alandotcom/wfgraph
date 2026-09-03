@@ -50,7 +50,7 @@ import { validateAgentPublication } from "#src/backend/agent/publication-validat
  * The cap is what stops a model that keeps calling tools from running a turn
  * forever on someone's key.
  */
-const MAX_STEPS = 24;
+const MAX_STEPS = 48;
 
 type AgentStreamPartIn = Parameters<typeof toAgentStreamPart>[0];
 

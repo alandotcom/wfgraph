@@ -542,6 +542,125 @@ export const focusedScenarios: Array<{
       ],
     }),
   },
+  {
+    name: "filters a Start Event before opening a run",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            "When an applicant is created, start a run only if the Event score is at least 80, then score the applicant.",
+        },
+      ],
+      document: emptyDocument,
+      integrations: [],
+      expected: {
+        requiredActions: { "score-applicant": 1 },
+        exactActions: { "score-applicant": 1 },
+        forbiddenActions: [BUILT_IN_ACTION_IDS.condition],
+        startEvents: ["applicant.created"],
+        requiredStartFilterRules: [
+          {
+            event: "applicant.created",
+            field: "score",
+            operator: "greater_or_equal",
+            value: 80,
+          },
+        ],
+        requiredFlows: [
+          {
+            source: { kind: "lifecycle" },
+            target: { kind: "action", actionId: "score-applicant" },
+            sourceHandle: "started",
+          },
+        ],
+      },
+      expectedCompletion: { outcome: "ready" },
+      intentCriteria: [
+        "The score filter rejects arrivals before a run opens.",
+        "The workflow does not use a Condition step for the Start Event filter.",
+      ],
+    }),
+  },
+  {
+    name: "waits until one day before an Event timestamp",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            "When an appointment is created, wait until one day before appointment.startsAt, then post the start time to #appointments in Slack using our primary connection.",
+        },
+      ],
+      document: emptyDocument,
+      integrations: connectedIntegrations,
+      expected: {
+        requiredActions: {
+          [BUILT_IN_ACTION_IDS.wait]: 1,
+          "slack/send-message": 1,
+        },
+        exactActions: {
+          [BUILT_IN_ACTION_IDS.wait]: 1,
+          "slack/send-message": 1,
+        },
+        startEvents: ["app/appointment.created"],
+        requiredFlows: [
+          {
+            source: { kind: "lifecycle" },
+            target: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            sourceHandle: "started",
+          },
+          {
+            source: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            target: { kind: "action", actionId: "slack/send-message" },
+          },
+        ],
+        requiredConfigs: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            values: {
+              waitMode: "delay",
+              waitDelayTimingMode: "until",
+            },
+          },
+          {
+            node: { kind: "action", actionId: "slack/send-message" },
+            values: { channel: "#appointments" },
+          },
+        ],
+        forbiddenConfigKeys: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            keys: ["waitDuration"],
+          },
+        ],
+        requiredDurations: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            key: "waitOffset",
+            duration: "-1d",
+          },
+        ],
+        requiredReferences: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            key: "waitUntil",
+            path: "appointment.startsAt",
+          },
+          {
+            node: { kind: "action", actionId: "slack/send-message" },
+            key: "text",
+            path: "appointment.startsAt",
+          },
+        ],
+      },
+      expectedCompletion: { outcome: "ready" },
+      intentCriteria: [
+        "The Wait targets the appointment start timestamp with a negative one-day offset.",
+        "The workflow does not replace the requested calendar target with a one-day duration.",
+      ],
+    }),
+  },
 ];
 
 export const complexScenarios: Array<{
@@ -908,6 +1027,106 @@ export const complexScenarios: Array<{
         "A one-day delay sits before the Slack reminder.",
         "The reminder uses the appointment start time from the Start Event.",
         "Cancellation correlates the canceled appointment to its in-progress run.",
+      ],
+    }),
+  },
+  {
+    name: "builds a filtered appointment sequence within one turn",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            "When an appointment is created, start only if appointment.status is confirmed. Post an immediate booking message to #appointments. Then wait until one day before appointment.startsAt. At that time, post a reminder to #appointments, create a Linear issue titled Prepare for the appointment, and create another Linear issue titled Confirm staffing. Cancel an in-progress run if the appointment is canceled. Use our primary connections.",
+        },
+      ],
+      document: emptyDocument,
+      integrations: connectedIntegrations,
+      expected: {
+        requiredActions: {
+          [BUILT_IN_ACTION_IDS.wait]: 1,
+          "slack/send-message": 2,
+          "linear/create-issue": 2,
+        },
+        exactActions: {
+          [BUILT_IN_ACTION_IDS.wait]: 1,
+          "slack/send-message": 2,
+          "linear/create-issue": 2,
+        },
+        forbiddenActions: [BUILT_IN_ACTION_IDS.condition],
+        startEvents: ["app/appointment.created"],
+        cancelEvents: ["app/appointment.canceled"],
+        requiredStartFilterRules: [
+          {
+            event: "app/appointment.created",
+            field: "appointment.status",
+            operator: "equals",
+            value: "confirmed",
+          },
+        ],
+        requiredFlows: [
+          {
+            source: { kind: "lifecycle" },
+            target: { kind: "action", actionId: "slack/send-message" },
+            sourceHandle: "started",
+          },
+          {
+            source: { kind: "action", actionId: "slack/send-message" },
+            target: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+          },
+          {
+            source: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            target: { kind: "action", actionId: "slack/send-message" },
+          },
+        ],
+        requiredPaths: [
+          {
+            source: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            target: { kind: "action", actionId: "linear/create-issue" },
+          },
+        ],
+        requiredConfigs: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            values: {
+              waitMode: "delay",
+              waitDelayTimingMode: "until",
+            },
+          },
+          {
+            node: { kind: "action", actionId: "slack/send-message" },
+            values: { channel: "#appointments" },
+            allMatches: true,
+          },
+          {
+            node: { kind: "action", actionId: "linear/create-issue" },
+            values: { title: "Prepare for the appointment" },
+          },
+          {
+            node: { kind: "action", actionId: "linear/create-issue" },
+            values: { title: "Confirm staffing" },
+          },
+        ],
+        requiredDurations: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            key: "waitOffset",
+            duration: "-1d",
+          },
+        ],
+        requiredReferences: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            key: "waitUntil",
+            path: "appointment.startsAt",
+          },
+        ],
+      },
+      expectedCompletion: { outcome: "ready" },
+      intentCriteria: [
+        "The workflow completes the multi-step request in one agent turn.",
+        "The Event filter runs before an Execution opens.",
+        "The Wait targets one day before the appointment start timestamp.",
       ],
     }),
   },

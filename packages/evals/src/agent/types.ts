@@ -14,6 +14,12 @@ export type AgentEvalExpectations = {
   allowedActions?: string[];
   startEvents?: string[];
   cancelEvents?: string[];
+  requiredStartFilterRules?: Array<{
+    event: string;
+    field: string;
+    operator: string;
+    value?: string | number;
+  }>;
   requiredFlows?: Array<{
     source: EvalNodeSelector;
     target: EvalNodeSelector;
@@ -35,6 +41,11 @@ export type AgentEvalExpectations = {
   requiredConfigs?: Array<{
     node: EvalNodeSelector;
     values: Record<string, string | number | boolean>;
+    allMatches?: boolean;
+  }>;
+  forbiddenConfigKeys?: Array<{
+    node: EvalNodeSelector;
+    keys: string[];
     allMatches?: boolean;
   }>;
   requiredNonEmptyConfigs?: Array<{

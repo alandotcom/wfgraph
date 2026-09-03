@@ -1,4 +1,4 @@
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { canvasNodeWithInitialDimensions } from "#src/components/workflow/workflow-canvas-accessibility";
 import {
@@ -9,6 +9,7 @@ import {
   lifecycleAnchorViewport,
   synchronizeCanvasGraph,
   synchronizedLifecycleAnchor,
+  useFitAgentGraph,
   useSynchronizedCanvas,
 } from "#src/components/workflow/workflow-canvas-synchronization";
 import { canvasInteractionState } from "#src/components/workflow/workflow-canvas";
@@ -369,6 +370,44 @@ describe("useSynchronizedCanvas lifecycle anchor", () => {
       position: { x: 500, y: 20 },
       width: 192,
     });
+  });
+});
+
+describe("useFitAgentGraph", () => {
+  it("fits each accepted agent graph after the canvas has painted it", async () => {
+    vi.useFakeTimers();
+    try {
+      const fitView = vi.fn(async () => true);
+      const fitGenerationRef = { current: 0 };
+      const { rerender } = renderHook(
+        ({ revision }) =>
+          useFitAgentGraph({
+            revision,
+            beforeFit: () => {
+              fitGenerationRef.current += 1;
+            },
+            fitView,
+          }),
+        { initialProps: { revision: 0 } }
+      );
+
+      await act(() => vi.runAllTimersAsync());
+      expect(fitView).not.toHaveBeenCalled();
+
+      rerender({ revision: 1 });
+      await act(() => vi.runAllTimersAsync());
+
+      expect(fitView).toHaveBeenCalledOnce();
+      expect(fitGenerationRef.current).toBe(1);
+
+      rerender({ revision: 2 });
+      await act(() => vi.runAllTimersAsync());
+
+      expect(fitView).toHaveBeenCalledTimes(2);
+      expect(fitGenerationRef.current).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

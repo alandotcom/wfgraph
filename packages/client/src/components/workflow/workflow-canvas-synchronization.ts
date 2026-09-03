@@ -1,4 +1,4 @@
-import { useBeforePaint } from "#src/hooks/effects";
+import { useAfterPaint, useBeforePaint } from "#src/hooks/effects";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 type InternalLifecycleAnchor = {
@@ -100,6 +100,21 @@ export function useSynchronizedCanvas({
   });
 
   return { lifecycleAnchor, fitViewKey };
+}
+
+/** Fit the full canvas after React Flow has installed an agent graph update. */
+export function useFitAgentGraph(input: {
+  revision: number;
+  beforeFit: () => void;
+  fitView: () => Promise<boolean>;
+}): void {
+  useAfterPaint(input.revision, () => {
+    if (input.revision === 0) {
+      return;
+    }
+    input.beforeFit();
+    void input.fitView();
+  });
 }
 
 export async function fitInitialWorkflowViewport({

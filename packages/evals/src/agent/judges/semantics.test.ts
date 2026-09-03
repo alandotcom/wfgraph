@@ -295,6 +295,42 @@ describe("assessScenarioSemantics", () => {
     });
   });
 
+  it("rejects a node that keeps a forbidden config key", () => {
+    const document = completedDocument();
+    document.nodes.push({
+      id: "wait",
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Wait until the appointment",
+        type: "action",
+        config: {
+          actionType: "Wait",
+          waitMode: "delay",
+          waitDelayTimingMode: "until",
+          waitUntil: "{{entry.Lifecycle.appointment.startsAt}}",
+          waitDuration: "1d",
+        },
+      },
+    });
+    const configInput: AgentEvalInput = {
+      ...input,
+      expected: {
+        forbiddenConfigKeys: [
+          {
+            node: { kind: "action", actionId: "Wait" },
+            keys: ["waitDuration"],
+          },
+        ],
+      },
+    };
+
+    expect(assessScenarioSemantics(configInput, document)).toEqual({
+      score: 0,
+      rationale: "Wait has forbidden config waitDuration.",
+    });
+  });
+
   it("rejects a required config field that remains empty", () => {
     const document = completedDocument();
     document.nodes.push({
@@ -441,6 +477,61 @@ describe("assessScenarioSemantics", () => {
       score: 0,
       rationale:
         "Condition is missing required rule score greater_or_equal 80.",
+    });
+  });
+
+  it("rejects a Start Filter rule with the wrong value", () => {
+    const document = completedDocument();
+    const lifecycle = document.nodes[0];
+    if (!lifecycle) {
+      throw new Error("Lifecycle fixture is missing");
+    }
+    lifecycle.data.config = {
+      lifecycleRules: {
+        startEvents: ["applicant.created"],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        startFilters: {
+          "applicant.created": JSON.stringify({
+            version: 2,
+            groupLogic: "and",
+            groups: [
+              {
+                id: "group",
+                logic: "and",
+                conditions: [
+                  {
+                    id: "rule",
+                    field: "status",
+                    fieldType: "string",
+                    operator: "equals",
+                    value: "pending",
+                  },
+                ],
+              },
+            ],
+          }),
+        },
+      },
+    };
+    const filterInput: AgentEvalInput = {
+      ...input,
+      expected: {
+        requiredStartFilterRules: [
+          {
+            event: "applicant.created",
+            field: "status",
+            operator: "equals",
+            value: "confirmed",
+          },
+        ],
+      },
+    };
+
+    expect(assessScenarioSemantics(filterInput, document)).toEqual({
+      score: 0,
+      rationale:
+        "applicant.created is missing required Start Filter rule status equals confirmed.",
     });
   });
 
