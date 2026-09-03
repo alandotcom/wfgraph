@@ -23,7 +23,6 @@ export type { NodeRunStatus, PersistedNodeData };
 export type {
   ExecutionLogEntry,
   WorkflowMode,
-  WorkflowNodeType,
   WorkflowVisibility,
 } from "@wfgraph/shared/graph/types";
 

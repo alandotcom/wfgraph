@@ -2,9 +2,7 @@
   "version": "7",
   "dialect": "sqlite",
   "id": "dcfd17c1-30d6-4295-b5a9-13b893abcf9d",
-  "prevIds": [
-    "b3c2feb3-0213-4011-940e-217777b8c988"
-  ],
+  "prevIds": ["b3c2feb3-0213-4011-940e-217777b8c988"],
   "ddl": [
     {
       "name": "api_keys",
@@ -1127,13 +1125,9 @@
       "table": "workflows"
     },
     {
-      "columns": [
-        "integration_id"
-      ],
+      "columns": ["integration_id"],
       "tableTo": "integrations",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -1142,13 +1136,9 @@
       "table": "oauth_authorization_attempts"
     },
     {
-      "columns": [
-        "workflow_id"
-      ],
+      "columns": ["workflow_id"],
       "tableTo": "workflows",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -1157,13 +1147,9 @@
       "table": "workflow_event_subscriptions"
     },
     {
-      "columns": [
-        "workflow_id"
-      ],
+      "columns": ["workflow_id"],
       "tableTo": "workflows",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -1172,13 +1158,9 @@
       "table": "workflow_execution_events"
     },
     {
-      "columns": [
-        "execution_id"
-      ],
+      "columns": ["execution_id"],
       "tableTo": "workflow_executions",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -1187,13 +1169,9 @@
       "table": "workflow_execution_events"
     },
     {
-      "columns": [
-        "execution_id"
-      ],
+      "columns": ["execution_id"],
       "tableTo": "workflow_executions",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -1202,13 +1180,9 @@
       "table": "workflow_execution_logs"
     },
     {
-      "columns": [
-        "workflow_id"
-      ],
+      "columns": ["workflow_id"],
       "tableTo": "workflows",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -1217,13 +1191,9 @@
       "table": "workflow_executions"
     },
     {
-      "columns": [
-        "workflow_version_id"
-      ],
+      "columns": ["workflow_version_id"],
       "tableTo": "workflow_versions",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -1232,13 +1202,9 @@
       "table": "workflow_executions"
     },
     {
-      "columns": [
-        "workflow_id"
-      ],
+      "columns": ["workflow_id"],
       "tableTo": "workflows",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -1247,13 +1213,9 @@
       "table": "workflow_versions"
     },
     {
-      "columns": [
-        "execution_id"
-      ],
+      "columns": ["execution_id"],
       "tableTo": "workflow_executions",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -1262,13 +1224,9 @@
       "table": "workflow_wait_states"
     },
     {
-      "columns": [
-        "workflow_id"
-      ],
+      "columns": ["workflow_id"],
       "tableTo": "workflows",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -1277,13 +1235,9 @@
       "table": "workflow_wait_states"
     },
     {
-      "columns": [
-        "published_version_id"
-      ],
+      "columns": ["published_version_id"],
       "tableTo": "workflow_versions",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "nameExplicit": false,
@@ -1292,92 +1246,70 @@
       "table": "workflows"
     },
     {
-      "columns": [
-        "workflow_id",
-        "event_name",
-        "role"
-      ],
+      "columns": ["workflow_id", "event_name", "role"],
       "nameExplicit": false,
       "name": "workflow_event_subscriptions_pk",
       "entityType": "pks",
       "table": "workflow_event_subscriptions"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "api_keys_pk",
       "table": "api_keys",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "integrations_pk",
       "table": "integrations",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "state_hash"
-      ],
+      "columns": ["state_hash"],
       "nameExplicit": false,
       "name": "oauth_authorization_attempts_pk",
       "table": "oauth_authorization_attempts",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "workflow_execution_events_pk",
       "table": "workflow_execution_events",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "workflow_execution_logs_pk",
       "table": "workflow_execution_logs",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "workflow_executions_pk",
       "table": "workflow_executions",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "workflow_versions_pk",
       "table": "workflow_versions",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "workflow_wait_states_pk",
       "table": "workflow_wait_states",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "workflows_pk",
       "table": "workflows",
@@ -1672,27 +1604,21 @@
       "table": "workflow_wait_states"
     },
     {
-      "columns": [
-        "workflow_run_id"
-      ],
+      "columns": ["workflow_run_id"],
       "nameExplicit": false,
       "name": "workflow_executions_workflow_run_id_unique",
       "entityType": "uniques",
       "table": "workflow_executions"
     },
     {
-      "columns": [
-        "resume_token"
-      ],
+      "columns": ["resume_token"],
       "nameExplicit": false,
       "name": "workflow_wait_states_resume_token_unique",
       "entityType": "uniques",
       "table": "workflow_wait_states"
     },
     {
-      "columns": [
-        "name"
-      ],
+      "columns": ["name"],
       "nameExplicit": false,
       "name": "workflows_name_unique",
       "entityType": "uniques",

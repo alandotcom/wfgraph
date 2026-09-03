@@ -20,10 +20,7 @@ import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
 } from "#src/lifecycle/lifecycle-outlets";
-import {
-  isConditionNode,
-  isLifecycleNode,
-} from "#src/graph/node-config";
+import { isConditionNode, isLifecycleNode } from "#src/graph/node-config";
 import {
   eventSplitCardWidth,
   groupFrameSize,
@@ -701,7 +698,9 @@ type WorkflowLayoutResult<TNode extends WorkflowNode = WorkflowNode> = {
 export function layoutWorkflowNodes<TNode extends WorkflowNode>(
   input: WorkflowLayoutInput<TNode>
 ): WorkflowLayoutResult<TNode>;
-export function layoutWorkflowNodes(input: WorkflowLayoutInput): WorkflowLayoutResult;
+export function layoutWorkflowNodes(
+  input: WorkflowLayoutInput
+): WorkflowLayoutResult;
 export function layoutWorkflowNodes(input: {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
