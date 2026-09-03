@@ -222,6 +222,27 @@ describe("NodeConfigPanel with nothing selected", () => {
 });
 
 describe("NodeConfigPanel config scoping", () => {
+  it("puts the node name fields before the node configuration", async () => {
+    const { view } = renderPanel({ selected: "lifecycle_1" });
+
+    const label = await view.findByLabelText("Label");
+    const description = view.getByLabelText("Description");
+    const startEvents = view.getByRole("heading", {
+      name: "Start Events",
+    });
+
+    expect(view.queryByText("Node Metadata")).toBeNull();
+    expect(view.queryByText("Lifecycle Rules")).toBeNull();
+    expect(
+      label.compareDocumentPosition(startEvents) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      description.compareDocumentPosition(startEvents) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
   // The panel is keyed to the node, and the pickers inside it are what that
   // buys. Selecting anything of another type unmounts the panel whatever its
   // key, so the case the key answers for is one entry node replaced by another

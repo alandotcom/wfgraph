@@ -550,7 +550,9 @@ function GroupedActionNode({ data, selected, id }: ActionNodeProps) {
             strokeWidth={1.5}
           />
         )}
-        <NodeTitle className="truncate text-sm">{displayTitle}</NodeTitle>
+        <NodeTitle className="text-sm" singleLine>
+          {displayTitle}
+        </NodeTitle>
         {/* A member is validated like any other node, so it has to be able to
             say so. Inline at the end of the row, because this card is 56px tall
             and a floated corner badge would sit on the icon. */}

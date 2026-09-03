@@ -107,6 +107,30 @@ function renderPanel(input: {
 }
 
 describe("LifecyclePanel Connection picker", () => {
+  it("gives both Event groups clear headings", () => {
+    const view = renderPanel({});
+
+    for (const name of ["Start Events", "Cancel Events"]) {
+      const heading = view.getByRole("heading", { level: 4, name });
+
+      expect(heading.className).toContain("text-sm");
+      expect(heading.className).toContain("text-foreground");
+      expect(heading.className).not.toContain("text-muted-foreground");
+    }
+  });
+
+  it("presents each selected Event as the heading of its configuration", () => {
+    const view = renderPanel({});
+
+    const eventHeading = view.getByRole("heading", {
+      level: 5,
+      name: "Appointment created",
+    });
+
+    expect(eventHeading.className).toContain("text-base");
+    expect(eventHeading.className).toContain("font-semibold");
+  });
+
   it("offers a Connection only for an integration-owned Event", () => {
     const view = renderPanel({});
 

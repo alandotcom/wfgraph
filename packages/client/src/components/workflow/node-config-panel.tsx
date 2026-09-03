@@ -383,6 +383,32 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
 
     return (
       <div className="space-y-4 p-4">
+        {selectedNode.data.type !== "action" ||
+        selectedNode.data.config?.actionType ? (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="label">Label</Label>
+              <Input
+                disabled={isGenerating || !canUpdate}
+                id="label"
+                onChange={(e) => handleUpdateLabel(e.target.value)}
+                value={selectedNode.data.label}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Input
+                disabled={isGenerating || !canUpdate}
+                id="description"
+                onChange={(e) => handleUpdateDescription(e.target.value)}
+                placeholder="Optional description"
+                value={selectedNode.data.description || ""}
+              />
+            </div>
+          </div>
+        ) : null}
+
         {selectedNode.data.type === "group" ? (
           <p className="text-muted-foreground text-sm">
             Lookups in a frame share an incoming step. They can join at one
@@ -426,44 +452,6 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
             key={selectedNode.id}
             onUpdateConfig={handleUpdateConfig}
           />
-        ) : null}
-
-        {selectedNode.data.type !== "action" ||
-        selectedNode.data.config?.actionType ? (
-          <div
-            className={
-              selectedNode.data.type === "lifecycle"
-                ? "space-y-3 rounded-md border border-muted/70 bg-muted/20 p-3"
-                : "space-y-4"
-            }
-          >
-            {selectedNode.data.type === "lifecycle" ? (
-              <p className="font-medium text-muted-foreground text-sm">
-                Node Metadata
-              </p>
-            ) : null}
-
-            <div className="space-y-2">
-              <Label htmlFor="label">Label</Label>
-              <Input
-                disabled={isGenerating || !canUpdate}
-                id="label"
-                onChange={(e) => handleUpdateLabel(e.target.value)}
-                value={selectedNode.data.label}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Input
-                disabled={isGenerating || !canUpdate}
-                id="description"
-                onChange={(e) => handleUpdateDescription(e.target.value)}
-                placeholder="Optional description"
-                value={selectedNode.data.description || ""}
-              />
-            </div>
-          </div>
         ) : null}
 
         {canUpdate && selectedNode.parentId ? (

@@ -184,6 +184,28 @@ describe("LifecycleNode handles", () => {
     expect(view.container.querySelector("[data-selected='true']")).toBeTruthy();
   });
 
+  it("wraps a long title and keeps the node icon compact", () => {
+    const label = "New Donation Appointment";
+    const view = renderLifecycleNode({
+      label,
+      description: "",
+      type: "lifecycle",
+      config: {},
+      status: "idle",
+    });
+
+    const title = view.getByText(label);
+    expect(title.className).toContain("line-clamp-2");
+    expect(title.className).toContain("text-sm");
+    expect(title.className).not.toContain("truncate");
+    expect(title.getAttribute("title")).toBe(label);
+    expect(
+      view.container
+        .querySelector("svg[class*='text-node-lifecycle']")
+        ?.getAttribute("class")
+    ).toContain("size-4");
+  });
+
   it("hides the visual comparison marker from the accessibility tree", () => {
     const view = renderLifecycleNode({
       label: "Lifecycle",

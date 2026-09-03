@@ -48,8 +48,8 @@ const ROLE_COPY = {
     label: "Start Events",
     help: [
       "A run starts when one of these Events arrives.",
-      "Correlation Path: the payload field that identifies the entity. Runs with the same value belong to the same entity.",
-      "Filter: an arrival that does not satisfy it starts no run at all, so Concurrency never sees it.",
+      "The Correlation Path is the payload field that identifies the entity. Runs with the same value belong to the same entity.",
+      "A Filter stops an arrival from starting a run when its condition is false. Concurrency does not receive the arrival.",
       "With several Events, Concurrency decides what happens to a run already in progress.",
     ],
   },
@@ -57,7 +57,7 @@ const ROLE_COPY = {
     label: "Cancel Events",
     help: [
       "When one of these Events arrives, the runs in progress for its entity are canceled.",
-      "The entity is read at the Event's Correlation Path.",
+      "Workflow Graph reads the entity from the Event's Correlation Path.",
       "A canceled run leaves through the Canceled outlet.",
     ],
   },
@@ -176,6 +176,7 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
         <p key={sentence}>{sentence}</p>
       ))}
       label={copy.label}
+      prominent
     >
       <div className="space-y-2">
         <EventPicker hasEvents={catalog.events.length > 0}>
@@ -222,6 +223,7 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
         {collapsed ? (
           <div className="space-y-1 rounded-md border px-2 py-1.5">
             <StartFilterEditor
+              actionName="filter for all Start Events"
               disabled={disabled}
               eventNames={eventNames}
               model={collapsed.model}
@@ -289,9 +291,9 @@ function EventPicker({
 
   return (
     <p className="text-muted-foreground text-xs">
-      This server declares no Events. Whoever runs it passes them to
-      <code className="mx-1 font-mono text-xs">createWfGraphApp</code>, and they
-      appear here.
+      This server declares no Events. The host app passes Events to
+      <code className="mx-1 font-mono text-xs">createWfGraphApp</code>. Declared
+      Events appear in this list.
     </p>
   );
 }
@@ -321,19 +323,20 @@ function ChosenEvent({
   onRemove: () => void;
   disabled: boolean;
 }) {
+  const displayName = label ?? eventName;
   // This Event alone, held stable because `StartFilterEditor` memoizes a walk of
   // every node in the graph on it.
   const scope = useMemo(() => [eventName], [eventName]);
 
   return (
-    // Padded to the height of one row rather than to a card's. An Event with no
-    // Correlation Path to ask for is a name and a way to drop it, and sizing
-    // that like a card made it the tallest thing in a column of 28px controls.
-    <div className="space-y-1.5 rounded-md border px-2 py-1">
-      <div className="flex items-center justify-between gap-2">
-        <p className="min-w-0 truncate text-xs/relaxed" title={eventName}>
-          {label ?? eventName}
-        </p>
+    <div className="rounded-md border">
+      <div className="flex min-h-9 items-center justify-between gap-2 px-3 py-1.5">
+        <h5
+          className="min-w-0 truncate font-semibold text-base"
+          title={displayName}
+        >
+          {displayName}
+        </h5>
         <Button
           aria-label={`Remove ${eventName}`}
           className="shrink-0"
@@ -351,21 +354,26 @@ function ChosenEvent({
           <X className="size-3.5" />
         </Button>
       </div>
-      {request ? (
-        <CorrelationPathInput
-          catalog={catalog}
-          disabled={disabled}
-          onCommit={onCommitPath}
-          request={request}
-        />
-      ) : null}
-      {filter ? (
-        <StartFilterEditor
-          disabled={disabled}
-          eventNames={scope}
-          model={filter.model}
-          onChange={(model) => filter.onChange(eventName, model)}
-        />
+      {request || filter ? (
+        <div className="space-y-2 border-t px-3 py-2">
+          {request ? (
+            <CorrelationPathInput
+              catalog={catalog}
+              disabled={disabled}
+              onCommit={onCommitPath}
+              request={request}
+            />
+          ) : null}
+          {filter ? (
+            <StartFilterEditor
+              actionName={`filter for ${displayName}`}
+              disabled={disabled}
+              eventNames={scope}
+              model={filter.model}
+              onChange={(model) => filter.onChange(eventName, model)}
+            />
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
@@ -386,11 +394,14 @@ function ChosenEvent({
  * model itself and a stored copy of the CEL could only go stale.
  */
 function StartFilterEditor({
+  actionName,
   eventNames,
   model,
   onChange,
   disabled,
 }: {
+  /** The Edit and Done controls use this subject. */
+  actionName: string;
   /**
    * The Events this filter is written against. One means a filter of its own,
    * several mean one control standing for the group. Held stable by its caller,
@@ -484,6 +495,7 @@ function StartFilterEditor({
           : "An arrival that does not satisfy this starts no run. Compare a payload field against a literal."
       }
       disabled={disabled}
+      editActionName={actionName}
       emptyFieldsMessage={
         shared
           ? "These Events declare no fields in common, so there is nothing one filter can read. Filter each Event separately."
