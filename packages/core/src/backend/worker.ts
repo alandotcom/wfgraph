@@ -30,6 +30,9 @@ import type { WfGraphPersistence } from "#src/backend/persistence/types";
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 import { runWithClose } from "#src/backend/lib/close-in-order";
 import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
+import type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
+
+export type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
 
 export type WfGraphWorkerRequestConfig = {
   auth: WfGraphAuth;
@@ -47,7 +50,7 @@ export type WfGraphWorkerRequestConfig = {
 export type WfGraphWorkerOptions<Env> = {
   basePath?: string | undefined;
   /** Enables the authenticated stateless MCP endpoint at `${basePath}/api/mcp`. */
-  mcp?: boolean | undefined;
+  mcp?: true | WfGraphMcpOptions | undefined;
   /** Public origin used in provider callback URLs and client metadata. */
   publicUrl?: string | undefined;
   logger?: WfGraphLogger | undefined;

@@ -3,7 +3,11 @@ import { isNotNil } from "es-toolkit/predicate";
 import { Effect, Result, Schema, type SchemaAST } from "effect";
 import { Hono } from "hono";
 import { AgentConfig } from "#src/backend/agent/config";
-import { createAgentMcpHandler } from "#src/backend/agent/mcp-server";
+import {
+  createAgentMcpHandler,
+  mcpHttpValidationResponse,
+  type WfGraphMcpOptions,
+} from "#src/backend/agent/mcp-server";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
 import { readCappedText } from "#src/backend/lib/http/capped-body";
@@ -205,8 +209,8 @@ export type CreateApiAppOptions = {
    * that Inngest cannot reach on a private network.
    */
   inngestHandler?: InngestServeHandler | undefined;
-  /** Enables the authenticated stateless MCP authoring endpoint. */
-  mcp?: boolean | undefined;
+  /** Enables and secures the authenticated stateless MCP authoring endpoint. */
+  mcp?: true | WfGraphMcpOptions | undefined;
 };
 
 /**
@@ -558,6 +562,11 @@ export function createApiApp(options: CreateApiAppOptions) {
 
   if (mcp) {
     routes.all("/mcp", async (c) => {
+      const headerRejection = mcpHttpValidationResponse(c.req.raw, mcp);
+      if (headerRejection) {
+        return headerRejection;
+      }
+
       let mcpFields: McpRequestLogFields = {};
       if (c.req.method === "POST") {
         const body = await readCappedText(c.req.raw.clone());
@@ -571,6 +580,7 @@ export function createApiApp(options: CreateApiAppOptions) {
       const authContext = c.get("wfgraphAuth")!;
       const handler = createAgentMcpHandler({
         auth: authContext,
+        httpSecurity: mcp,
         execute: async (input, signal) =>
           await runtime.runPromise(
             executeDraftTool(input).pipe(

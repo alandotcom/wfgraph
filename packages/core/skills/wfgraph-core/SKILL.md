@@ -64,10 +64,12 @@ the editor.
 - OAuth needs `publicUrl` (HTTPS except loopback). The callback stays behind
   `auth`; a `SameSite=Lax` session cookie works, a custom request header on the
   provider redirect does not. Slack/Resend on/off: wfgraph-plugins.
-- `mcp: true` enables the authenticated stateless MCP endpoint at
-  `${basePath}/api/mcp`. It edits existing drafts only. Every call takes a
-  `workflowId`; writes also take the latest `expectedDraftRevision`. After a
-  `workflow_draft_stale` result, read the workflow again before editing.
+- `mcp: true` enables the authenticated stateless MCP endpoint for localhost.
+  For a deployed host, set `mcp.allowedHostnames` and
+  `mcp.allowedOriginHostnames`. The endpoint edits existing drafts only. Every
+  call takes a `workflowId`; writes also take the latest
+  `expectedDraftRevision`. After a `workflow_draft_stale` result, read the
+  workflow again before editing.
 
 ## Persistence
 

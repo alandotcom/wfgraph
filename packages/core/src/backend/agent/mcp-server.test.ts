@@ -18,6 +18,15 @@ import {
 
 const allowAll: AuthContext = { allows: async () => true };
 
+function localMcpRequest(
+  input: RequestInfo | URL,
+  init?: RequestInit
+): Request {
+  const request = new Request(input, init);
+  request.headers.set("host", "localhost");
+  return request;
+}
+
 async function makeSubject(input?: {
   auth?: AuthContext;
   execute?: DraftToolExecutor;
@@ -246,7 +255,7 @@ describe("createAgentMcpHandler", () => {
       new URL("http://localhost/mcp"),
       {
         fetch: async (input, init) =>
-          await handler.fetch(new Request(input, init)),
+          await handler.fetch(localMcpRequest(input, init)),
       }
     );
     const client = new Client(
@@ -285,7 +294,7 @@ describe("createAgentMcpHandler", () => {
       new URL("http://localhost/mcp"),
       {
         fetch: async (input, init) => {
-          const request = new Request(input, init);
+          const request = localMcpRequest(input, init);
           requests.push(request.clone());
           const response = await handler.fetch(request);
           responses.push(response.clone());
@@ -331,7 +340,7 @@ describe("createAgentMcpHandler", () => {
     });
     try {
       const initialize = await handler.fetch(
-        new Request("http://localhost/mcp", {
+        localMcpRequest("http://localhost/mcp", {
           method: "POST",
           headers: {
             "content-type": "application/json",
@@ -350,10 +359,10 @@ describe("createAgentMcpHandler", () => {
         })
       );
       const get = await handler.fetch(
-        new Request("http://localhost/mcp", { method: "GET" })
+        localMcpRequest("http://localhost/mcp", { method: "GET" })
       );
       const deleteResponse = await handler.fetch(
-        new Request("http://localhost/mcp", { method: "DELETE" })
+        localMcpRequest("http://localhost/mcp", { method: "DELETE" })
       );
 
       expect(initialize.status).toBe(400);
@@ -376,7 +385,7 @@ describe("createAgentMcpHandler", () => {
     });
     try {
       const response = await handler.fetch(
-        new Request("http://localhost/mcp", {
+        localMcpRequest("http://localhost/mcp", {
           method: "POST",
           headers: {
             "content-type": "application/json",
@@ -437,7 +446,7 @@ describe("createAgentMcpHandler", () => {
     };
     try {
       const response = await handler.fetch(
-        new Request("http://localhost/mcp", {
+        localMcpRequest("http://localhost/mcp", {
           method: "POST",
           headers: {
             "content-type": "application/json",
@@ -475,7 +484,7 @@ describe("createAgentMcpHandler", () => {
       new URL("http://localhost/mcp"),
       {
         fetch: async (input, init) => {
-          const request = new Request(input, init);
+          const request = localMcpRequest(input, init);
           if (request.headers.get("Mcp-Name") === "read_workflow") {
             callRequests.push(request.clone());
           }
@@ -501,7 +510,7 @@ describe("createAgentMcpHandler", () => {
       const headers = new Headers(callRequest.headers);
       headers.set("Mcp-Method", "tools/list");
       const response = await handler.fetch(
-        new Request("http://localhost/mcp", {
+        localMcpRequest("http://localhost/mcp", {
           method: "POST",
           headers,
           body: await callRequest.text(),
@@ -530,7 +539,7 @@ describe("createAgentMcpHandler", () => {
       new URL("http://localhost/mcp"),
       {
         fetch: async (input, init) => {
-          const request = new Request(input, init);
+          const request = localMcpRequest(input, init);
           discoverRequests.push(request.clone());
           return await handler.fetch(request);
         },
@@ -558,7 +567,7 @@ describe("createAgentMcpHandler", () => {
       params["_meta"] = meta;
       body.params = params;
       const missingIdentity = await handler.fetch(
-        new Request("http://localhost/mcp", {
+        localMcpRequest("http://localhost/mcp", {
           method: "POST",
           headers: discoverRequest.headers,
           body: JSON.stringify(body),
@@ -570,7 +579,7 @@ describe("createAgentMcpHandler", () => {
       meta["io.modelcontextprotocol/clientInfo"] = clientInfo;
       delete meta["io.modelcontextprotocol/clientCapabilities"];
       const missingCapabilities = await handler.fetch(
-        new Request("http://localhost/mcp", {
+        localMcpRequest("http://localhost/mcp", {
           method: "POST",
           headers: discoverRequest.headers,
           body: JSON.stringify(body),
@@ -617,7 +626,7 @@ describe("createAgentMcpHandler", () => {
       new URL("http://localhost/mcp"),
       {
         fetch: async (input, init) =>
-          await handler.fetch(new Request(input, init)),
+          await handler.fetch(localMcpRequest(input, init)),
       }
     );
     const client = new Client(

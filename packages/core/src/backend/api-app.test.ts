@@ -126,6 +126,7 @@ describe("the MCP route", () => {
       {
         fetch: async (input, init) => {
           const request = new Request(input, init);
+          request.headers.set("host", "localhost");
           requests.push(request.clone());
           const response = await app.fetch(request);
           responses.push(response.clone());
@@ -201,6 +202,46 @@ describe("the MCP route", () => {
     expect(response.status).toBe(401);
   });
 
+  it("rejects untrusted MCP hosts and browser origins before parsing", async () => {
+    await using runtime = stubWfGraphRuntime({});
+    const app = createApiApp({
+      basePath,
+      auth: resolveAuth(trustWfGraphUpstream()),
+      runtime,
+      mcp: {
+        allowedHostnames: ["api.example.com"],
+        allowedOriginHostnames: ["console.example.com"],
+      },
+    });
+
+    const [hostResponse, originResponse] = await Promise.all([
+      app.fetch(
+        new Request(`https://attacker.example${basePath}/mcp`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            host: "attacker.example",
+          },
+          body: "not JSON",
+        })
+      ),
+      app.fetch(
+        new Request(`https://api.example.com${basePath}/mcp`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            host: "api.example.com",
+            origin: "https://attacker.example",
+          },
+          body: "not JSON",
+        })
+      ),
+    ]);
+
+    expect(hostResponse.status).toBe(403);
+    expect(originResponse.status).toBe(403);
+  });
+
   it("refuses a write before reading a workflow when its grant is missing", async () => {
     await using runtime = stubWfGraphRuntime({
       extensions: { catalog: fixtureCatalog },
@@ -218,7 +259,11 @@ describe("the MCP route", () => {
     const transport = new StreamableHTTPClientTransport(
       new URL(`http://localhost${basePath}/mcp`),
       {
-        fetch: async (input, init) => await app.fetch(new Request(input, init)),
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
+          request.headers.set("host", "localhost");
+          return await app.fetch(request);
+        },
       }
     );
     const client = new Client(
@@ -262,6 +307,7 @@ describe("the MCP route", () => {
         headers: {
           "content-type": "application/json",
           "content-length": String(MAX_REQUEST_BODY_BYTES + 1),
+          host: "localhost",
         },
         body: "{}",
       })

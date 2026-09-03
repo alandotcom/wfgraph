@@ -4,8 +4,12 @@ import {
   CLIENT_CAPABILITIES_META_KEY,
   CLIENT_INFO_META_KEY,
   createMcpHandler,
+  hostHeaderValidationResponse,
   INVALID_PARAMS,
+  localhostAllowedHostnames,
+  localhostAllowedOrigins,
   McpServer,
+  originValidationResponse,
   PROTOCOL_VERSION_META_KEY,
   fromJsonSchema,
   type McpHttpHandler,
@@ -36,6 +40,36 @@ export type CreateAgentMcpServerInput = {
   readonly auth: AuthContext;
   readonly execute: DraftToolExecutor;
 };
+
+export type WfGraphMcpOptions = {
+  /** Hostnames accepted from the HTTP Host header. Ports are ignored. */
+  readonly allowedHostnames: readonly string[];
+  /** Hostnames accepted from browser Origin headers. Ports are ignored. */
+  readonly allowedOriginHostnames: readonly string[];
+};
+
+type McpHttpSecurity = true | WfGraphMcpOptions;
+
+function resolveMcpHttpSecurity(input: McpHttpSecurity): WfGraphMcpOptions {
+  return input === true
+    ? {
+        allowedHostnames: localhostAllowedHostnames(),
+        allowedOriginHostnames: localhostAllowedOrigins(),
+      }
+    : input;
+}
+
+/** Rejects untrusted HTTP routing headers before any MCP body is read. */
+export function mcpHttpValidationResponse(
+  request: Request,
+  input: McpHttpSecurity
+): Response | undefined {
+  const options = resolveMcpHttpSecurity(input);
+  return (
+    hostHeaderValidationResponse(request, [...options.allowedHostnames]) ??
+    originValidationResponse(request, [...options.allowedOriginHostnames])
+  );
+}
 
 type AgentToolName = keyof typeof agentToolkit.tools;
 
@@ -272,7 +306,7 @@ export function createAgentMcpServer(
 
 /** Creates a modern-only handler whose factory builds one server per request. */
 export function createAgentMcpHandler(
-  input: CreateAgentMcpServerInput
+  input: CreateAgentMcpServerInput & { readonly httpSecurity?: McpHttpSecurity }
 ): McpHttpHandler {
   const handler = createMcpHandler(() => createAgentMcpServer(input), {
     legacy: "reject",
@@ -281,6 +315,14 @@ export function createAgentMcpHandler(
   return {
     ...handler,
     fetch: async (request, options) => {
+      const rejection = mcpHttpValidationResponse(
+        request,
+        input.httpSecurity ?? true
+      );
+      if (rejection) {
+        return rejection;
+      }
+
       if (request.method === "POST") {
         try {
           const body = readJsonObject(await request.clone().json());

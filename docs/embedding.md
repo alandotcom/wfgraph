@@ -289,9 +289,27 @@ local and perform no asynchronous fanout.
 ## MCP authoring
 
 Set `mcp: true` to expose the authenticated Model Context Protocol (MCP)
-authoring endpoint at `${basePath}/api/mcp`. With the default `basePath`, the
-endpoint is `/api/mcp`. The `mcp` option is disabled by default and works with
-both `createWfGraphApp` and `wfWorker`.
+authoring endpoint for localhost development. For a deployed host, configure
+the hostnames that can address the endpoint:
+
+```ts
+const wfgraph = await createWfGraphApp({
+  // ...
+  mcp: {
+    allowedHostnames: ["workflows.example.com"],
+    allowedOriginHostnames: ["console.example.com"],
+  },
+});
+```
+
+The endpoint is `${basePath}/api/mcp`. With the default `basePath`, the endpoint
+is `/api/mcp`. The `mcp` option is disabled by default and works with both
+`createWfGraphApp` and `wfWorker`.
+
+List hostnames only, with no scheme or port. Every request must have an allowed
+`Host` header. Browser requests must also have an allowed `Origin` hostname.
+Requests from non-browser MCP clients can omit the `Origin` header. Workflow
+Graph rejects an invalid host or origin with HTTP 403 before reading the body.
 
 The endpoint supports MCP protocol revision `2026-07-28`. Each `POST` request
 contains one independent JSON-RPC message. Use a modern MCP client that sends
@@ -310,8 +328,9 @@ A stale write returns an error tool result with code
 again, evaluate the edit against the returned graph, and then send a new write
 with the updated revision. Don't automatically repeat the stale mutation.
 
-The host authentication callback protects the MCP endpoint. MCP tool calls use
-the following operation grants:
+Host and Origin validation protects the HTTP boundary from DNS rebinding. The
+host authentication callback authenticates the caller. MCP tool calls use the
+following operation grants:
 
 - Every tool requires `workflow.getById`.
 - Graph-writing tools also require `workflow.update`.

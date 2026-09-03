@@ -50,6 +50,7 @@ import type {
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 import { closeInOrder, failAfterClose } from "#src/backend/lib/close-in-order";
 import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
+import type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
 
 export type { EncryptionRuntimeConfig } from "#src/backend/services/integrations/cipher";
 export type { WfGraphInngestConfig } from "#src/backend/lib/inngest/client";
@@ -63,6 +64,7 @@ export {
 export type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 export type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
 export type { WfGraphPersistence } from "#src/backend/persistence/types";
+export type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
 
 export type WfGraphAppOptions = {
   /**
@@ -115,7 +117,7 @@ export type WfGraphAppOptions = {
    */
   agent?: WfGraphAgentConfig | undefined;
   /** Enables the authenticated stateless MCP endpoint at `${basePath}/api/mcp`. */
-  mcp?: boolean | undefined;
+  mcp?: true | WfGraphMcpOptions | undefined;
   /**
    * The workflow editor, from `import { clientBundle } from "@wfgraph/client"`.
    *
