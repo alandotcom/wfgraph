@@ -16,7 +16,6 @@ import { findEvent } from "@wfgraph/shared/extensions/catalog";
 // The barrel keeps a historical import path and leaves these two types out, so
 // the types come from the module that owns them and the functions from theirs.
 import { compileConditionModel } from "@wfgraph/shared/conditions/condition-compile";
-import { conditionTypeOf } from "@wfgraph/shared/conditions/condition-field-type";
 import type {
   ConditionFieldType,
   ConditionGroup,
@@ -483,36 +482,6 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
               return Effect.fail({
                 reason: `${filter.event} has more than one Start Filter. Combine its rules into one filter.`,
               });
-            }
-
-            const event = findEvent(draft.catalog, filter.event);
-            if (!event) {
-              return Effect.fail({
-                reason: `No Event named ${filter.event}. Call list_events to see what the host registered.`,
-              });
-            }
-            for (const group of filter.groups) {
-              for (const rule of group.rules) {
-                const declaredField = event.payloadFields.find(
-                  (field) => field.path === rule.field
-                );
-                const expectedType =
-                  rule.field === EVENT_NAME_FIELD_PATH
-                    ? "string"
-                    : declaredField
-                      ? conditionTypeOf(declaredField)
-                      : null;
-                if (!expectedType) {
-                  return Effect.fail({
-                    reason: `${filter.event} has no condition-compatible payload field named ${rule.field}. Use a path and type from list_events.`,
-                  });
-                }
-                if (rule.fieldType !== expectedType) {
-                  return Effect.fail({
-                    reason: `Use fieldType ${expectedType} for ${filter.event}.${rule.field}, as list_events reports.`,
-                  });
-                }
-              }
             }
 
             const reading = readConditionModelInput({

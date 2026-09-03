@@ -517,12 +517,25 @@ describe("assessScenarioSemantics", () => {
     const filterInput: AgentEvalInput = {
       ...input,
       expected: {
-        requiredStartFilterRules: [
+        requiredStartFilters: [
           {
             event: "applicant.created",
-            field: "status",
-            operator: "equals",
-            value: "confirmed",
+            filter: {
+              groupLogic: "and",
+              groups: [
+                {
+                  logic: "and",
+                  rules: [
+                    {
+                      field: "status",
+                      fieldType: "string",
+                      operator: "equals",
+                      value: "confirmed",
+                    },
+                  ],
+                },
+              ],
+            },
           },
         ],
       },
@@ -531,7 +544,88 @@ describe("assessScenarioSemantics", () => {
     expect(assessScenarioSemantics(filterInput, document)).toEqual({
       score: 0,
       rationale:
-        "applicant.created is missing required Start Filter rule status equals confirmed.",
+        "applicant.created does not have the exact required Start Filter.",
+    });
+  });
+
+  it("rejects a Start Filter whose extra branch bypasses the required rule", () => {
+    const document = completedDocument();
+    const lifecycle = document.nodes[0];
+    if (!lifecycle) {
+      throw new Error("Lifecycle fixture is missing");
+    }
+    lifecycle.data.config = {
+      lifecycleRules: {
+        startEvents: ["applicant.created"],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        startFilters: {
+          "applicant.created": JSON.stringify({
+            version: 2,
+            groupLogic: "or",
+            groups: [
+              {
+                id: "required-group",
+                logic: "and",
+                conditions: [
+                  {
+                    id: "required-rule",
+                    field: "status",
+                    fieldType: "string",
+                    operator: "equals",
+                    value: "confirmed",
+                  },
+                ],
+              },
+              {
+                id: "bypass-group",
+                logic: "and",
+                conditions: [
+                  {
+                    id: "bypass-rule",
+                    field: "status",
+                    fieldType: "string",
+                    operator: "not_equals",
+                    value: "confirmed",
+                  },
+                ],
+              },
+            ],
+          }),
+        },
+      },
+    };
+    const filterInput: AgentEvalInput = {
+      ...input,
+      expected: {
+        requiredStartFilters: [
+          {
+            event: "applicant.created",
+            filter: {
+              groupLogic: "and",
+              groups: [
+                {
+                  logic: "and",
+                  rules: [
+                    {
+                      field: "status",
+                      fieldType: "string",
+                      operator: "equals",
+                      value: "confirmed",
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+
+    expect(assessScenarioSemantics(filterInput, document)).toEqual({
+      score: 0,
+      rationale:
+        "applicant.created does not have the exact required Start Filter.",
     });
   });
 

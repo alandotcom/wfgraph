@@ -374,33 +374,53 @@ describe("useSynchronizedCanvas lifecycle anchor", () => {
 });
 
 describe("useFitAgentGraph", () => {
-  it("fits each accepted agent graph after the canvas has painted it", async () => {
+  it("fits only new agent updates for the open workflow", async () => {
     vi.useFakeTimers();
     try {
       const fitView = vi.fn(async () => true);
       const fitGenerationRef = { current: 0 };
       const { rerender } = renderHook(
-        ({ revision }) =>
+        ({ update, workflowId }) =>
           useFitAgentGraph({
-            revision,
+            update,
+            workflowId,
             beforeFit: () => {
               fitGenerationRef.current += 1;
             },
             fitView,
           }),
-        { initialProps: { revision: 0 } }
+        {
+          initialProps: {
+            update: { workflowId: "workflow-a", revision: 1 },
+            workflowId: "workflow-a",
+          },
+        }
       );
 
       await act(() => vi.runAllTimersAsync());
       expect(fitView).not.toHaveBeenCalled();
 
-      rerender({ revision: 1 });
+      rerender({
+        update: { workflowId: "workflow-a", revision: 2 },
+        workflowId: "workflow-a",
+      });
       await act(() => vi.runAllTimersAsync());
 
       expect(fitView).toHaveBeenCalledOnce();
       expect(fitGenerationRef.current).toBe(1);
 
-      rerender({ revision: 2 });
+      rerender({
+        update: { workflowId: "workflow-a", revision: 3 },
+        workflowId: "workflow-b",
+      });
+      await act(() => vi.runAllTimersAsync());
+
+      expect(fitView).toHaveBeenCalledOnce();
+
+      rerender({
+        update: { workflowId: "workflow-b", revision: 4 },
+        workflowId: "workflow-b",
+      });
       await act(() => vi.runAllTimersAsync());
 
       expect(fitView).toHaveBeenCalledTimes(2);

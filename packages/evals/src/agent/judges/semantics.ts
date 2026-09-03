@@ -1,4 +1,6 @@
 import { compact } from "es-toolkit/array";
+import { isEqual } from "es-toolkit/predicate";
+import type { ConditionModel } from "@wfgraph/shared/conditions/condition-model";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
 import { findAction } from "@wfgraph/shared/extensions/catalog";
@@ -243,30 +245,27 @@ function missingCancelEvents(context: SemanticsContext): string[] {
   );
 }
 
-/** Each named Start Event carries the payload rule the scenario requires. */
-function missingStartFilterRules(context: SemanticsContext): string[] {
-  return checkEach(
-    context.input.expected.requiredStartFilterRules,
-    (required) => {
-      const parsed = parseConditionModel(
-        context.lifecycleRules?.startFilters?.[required.event]
-      );
-      const found =
-        parsed.valid &&
-        parsed.model.groups.some((group) =>
-          group.conditions.some(
-            (rule) =>
-              rule.field === required.field &&
-              rule.operator === required.operator &&
-              (required.value === undefined ||
-                ("value" in rule && rule.value === required.value))
-          )
-        );
-      return found
-        ? undefined
-        : `${required.event} is missing required Start Filter rule ${required.field} ${required.operator}${required.value === undefined ? "" : ` ${required.value}`}`;
-    }
-  );
+function startFilterShape(model: ConditionModel) {
+  return {
+    groupLogic: model.groupLogic,
+    groups: model.groups.map((group) => ({
+      logic: group.logic,
+      rules: group.conditions.map(({ id: _id, ...rule }) => rule),
+    })),
+  };
+}
+
+/** Each named Start Event carries exactly the filter the scenario requires. */
+function missingStartFilters(context: SemanticsContext): string[] {
+  return checkEach(context.input.expected.requiredStartFilters, (required) => {
+    const parsed = parseConditionModel(
+      context.lifecycleRules?.startFilters?.[required.event]
+    );
+    return parsed.valid &&
+      isEqual(startFilterShape(parsed.model), required.filter)
+      ? undefined
+      : `${required.event} does not have the exact required Start Filter`;
+  });
 }
 
 /** Each required flow exists as one edge, on the named outlet when given. */
@@ -553,7 +552,7 @@ const rules: readonly SemanticsRule[] = [
   disallowedActions,
   missingStartEvents,
   missingCancelEvents,
-  missingStartFilterRules,
+  missingStartFilters,
   missingFlows,
   missingPaths,
   gateFailures,

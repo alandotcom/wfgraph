@@ -39,18 +39,12 @@ import type {
 } from "@wfgraph/shared/rpc/agent-stream";
 import type { EnabledAgentSettings } from "#src/backend/agent/config";
 import { agentModelLayer } from "#src/backend/agent/model";
+import {
+  AGENT_TURN_STEP_LIMIT,
+  runAgentStepLoop,
+} from "#src/backend/agent/step-loop";
 import { toAgentStreamPart } from "#src/backend/agent/stream";
 import { validateAgentPublication } from "#src/backend/agent/publication-validation";
-
-/**
- * How many times a turn may go back to the model.
- *
- * A step is one model call plus whatever tools it asked for, so the agent needs
- * several: read the graph, search the catalog, describe an action, then write.
- * The cap is what stops a model that keeps calling tools from running a turn
- * forever on someone's key.
- */
-const MAX_STEPS = 48;
 
 type AgentStreamPartIn = Parameters<typeof toAgentStreamPart>[0];
 
@@ -127,7 +121,7 @@ export function runAgentTurn(
       })
     ).pipe(Effect.provide(agentModelLayer(input.settings)));
 
-    const parts = agenticSteps({ session, toolkit, remaining: MAX_STEPS }).pipe(
+    const parts = agenticSteps({ session, toolkit }).pipe(
       Stream.provide(agentModelLayer(input.settings))
     );
 
@@ -149,40 +143,16 @@ export function runAgentTurn(
 function agenticSteps(input: {
   readonly session: Chat.Service;
   readonly toolkit: Toolkit.WithHandler<Toolkit.Tools<typeof agentToolkit>>;
-  readonly remaining: number;
 }): Stream.Stream<AgentStreamPartIn, unknown, LanguageModel.LanguageModel> {
-  if (input.remaining <= 0) {
-    // Ending quietly would leave the panel showing a column of tool calls and no
-    // answer, which reads as the agent having crashed rather than having been
-    // stopped. The failure is the caller's to see.
-    return Stream.fail(
-      new Error(
-        `The agent stopped after ${MAX_STEPS} steps without finishing. Ask for a smaller change, or say what to do next.`
-      )
-    );
-  }
-
-  let calledTool = false;
-
   // An empty prompt continues the conversation the chat already holds: the tool
   // results of the previous step are in its history, and this step is the model
   // reading them.
-  return input.session.streamText({ prompt: [], toolkit: input.toolkit }).pipe(
-    Stream.tap((part) =>
-      Effect.sync(() => {
-        if (part.type === "tool-call") {
-          calledTool = true;
-        }
-      })
-    ),
-    Stream.concat(
-      Stream.suspend(() =>
-        calledTool
-          ? agenticSteps({ ...input, remaining: input.remaining - 1 })
-          : Stream.empty
-      )
-    )
-  );
+  return runAgentStepLoop({
+    limit: AGENT_TURN_STEP_LIMIT,
+    step: () =>
+      input.session.streamText({ prompt: [], toolkit: input.toolkit }),
+    calledTool: (part) => part.type === "tool-call",
+  });
 }
 
 /**

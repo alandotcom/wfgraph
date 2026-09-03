@@ -19,7 +19,7 @@ import {
 } from "#src/lib/workflow-save-store";
 import {
   activeAgentTurnIdAtom,
-  agentGraphRevisionAtom,
+  agentGraphUpdateAtom,
   isGeneratingAtom,
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
@@ -220,7 +220,10 @@ describe("applyAgentGraphAtom", () => {
     expect(
       store.get(nodesAtom).find((node) => node.id === "a")?.position
     ).not.toEqual(positioned.position);
-    expect(store.get(agentGraphRevisionAtom)).toBe(1);
+    expect(store.get(agentGraphUpdateAtom)).toEqual({
+      workflowId: "workflow_1",
+      revision: 1,
+    });
   });
 
   it("refuses a graph from a turn that has already been replaced", () => {

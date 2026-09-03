@@ -34,75 +34,72 @@ const waitForSchema = Schema.Array(
   })
 );
 
-export const SetWait = Tool.make("set_wait", {
-  description:
-    "Configure a Wait step for a duration, until a date/time, or for an Event subscription. Use until timing when the request names a date/time from an earlier step, and call list_references first. This replaces the Wait settings from its previous mode.",
-  parameters: Schema.Struct({
-    nodeId: Schema.String.annotate({
-      description: "The Wait node to configure, from read_workflow.",
+const waitInputSchema = Schema.Union([
+  Schema.Struct({
+    mode: Schema.Literal("duration").annotate({
+      description: "Wait for a duration measured from now.",
     }),
-    mode: Schema.Literals(["delay", "event"]).annotate({
-      description:
-        "delay pauses for duration. event pauses for one of the waitFor Events.",
+    duration: Schema.String.annotate({
+      description: 'How long to wait, such as "2d".',
     }),
-    duration: Schema.optionalKey(Schema.String).annotate({
-      description:
-        'How long duration timing pauses, such as "2d". Required when timing is duration.',
+  }),
+  Schema.Struct({
+    mode: Schema.Literal("until").annotate({
+      description: "Wait until an absolute date/time.",
     }),
-    timing: Schema.optionalKey(Schema.Literals(["duration", "until"])).annotate(
-      {
-        description:
-          "How delay mode gets its target time. duration waits from now and is the default. until reads an absolute date/time, often from an upstream timestamp reference.",
-      }
-    ),
-    until: Schema.optionalKey(Schema.String).annotate({
+    timestamp: Schema.String.annotate({
       description:
-        "The date/time for until timing. Use the exact timestamp token from list_references, or an ISO timestamp.",
+        "The exact timestamp token from list_references, or an ISO timestamp.",
     }),
     offset: Schema.optionalKey(Schema.String).annotate({
       description:
-        'A duration added to until, such as "-1d" for one day before or "6h" for six hours after.',
+        'A duration added to the timestamp, such as "-1d" for one day before or "6h" for six hours after.',
     }),
     timezone: Schema.optionalKey(Schema.String).annotate({
       description:
-        "The IANA timezone for an until value that has no UTC offset. Omit it for timestamp references or ISO timestamps that include an offset.",
+        "The IANA timezone for an ISO timestamp with no UTC offset. Omit it for a timestamp reference or an ISO timestamp that includes an offset.",
     }),
-    waitFor: Schema.optionalKey(waitForSchema).annotate({
+  }),
+  Schema.Struct({
+    mode: Schema.Literal("event").annotate({
+      description: "Wait until an Event arrives or the timeout expires.",
+    }),
+    events: waitForSchema.annotate({
       description:
-        "One or more Event subscriptions from list_events. Required in event mode.",
+        "At least one Event subscription. Call list_events first and use exact Event names.",
     }),
     timeout: Schema.optionalKey(Schema.String).annotate({
       description:
-        "How long Event mode waits before timing out. Defaults to 7d.",
+        'How long to wait for an Event, such as "7d". Defaults to the safe system timeout.',
     }),
     timeoutBehavior: Schema.optionalKey(
       Schema.Literals(["continue", "skip"])
     ).annotate({
       description:
-        "What the run does after an Event timeout. continue resumes after the Wait; skip bypasses the path. Defaults to continue.",
+        "What happens after the timeout. continue follows outgoing edges; skip ends this path. Defaults to continue.",
     }),
   }),
+]).annotate({
+  description: "The one Wait mode and the fields that mode requires.",
+});
+
+const setWaitInputSchema = Schema.Struct({
+  nodeId: Schema.String.annotate({
+    description: "The Wait node to configure, from read_workflow.",
+  }),
+  wait: waitInputSchema,
+});
+
+export const SetWait = Tool.make("set_wait", {
+  description:
+    "Configure a Wait step for a duration, until a date/time, or for an Event subscription. Use until timing when the request names a date/time from an earlier step, and call list_references first. This replaces the Wait settings from its previous mode.",
+  parameters: setWaitInputSchema,
   success: writeResultSchema,
   failure: failureSchema,
   failureMode: "return",
 });
 
-type SetWaitInput = {
-  readonly nodeId: string;
-  readonly mode: "delay" | "event";
-  readonly timing?: "duration" | "until" | undefined;
-  readonly duration?: string | undefined;
-  readonly until?: string | undefined;
-  readonly offset?: string | undefined;
-  readonly timezone?: string | undefined;
-  readonly waitFor?:
-    | readonly {
-        readonly event: string;
-      }[]
-    | undefined;
-  readonly timeout?: string | undefined;
-  readonly timeoutBehavior?: "continue" | "skip" | undefined;
-};
+type SetWaitInput = typeof setWaitInputSchema.Type;
 
 const WAIT_OWNED_KEYS = new Set([
   "waitMode",
@@ -150,77 +147,74 @@ export const waitToolHandlers = Effect.gen(function* () {
         }
 
         const baseConfig = configOutsideWait(node);
+        const wait = input.wait;
         let waitConfig: Record<string, unknown>;
-        if (input.mode === "delay") {
-          const timing = input.timing ?? "duration";
-          if (timing === "duration") {
-            if (parseDurationMs(input.duration) === null) {
-              return Effect.fail({
-                reason:
-                  "Duration timing needs a valid duration such as 2d or 48h.",
-              });
-            }
-            waitConfig = {
-              waitMode: "delay",
-              waitDuration: input.duration,
-            };
-          } else {
-            if (!input.until || isBlank(input.until)) {
-              return Effect.fail({
-                reason:
-                  "Until timing needs a timestamp from list_references or an ISO timestamp.",
-              });
-            }
-
-            const tokens = findTemplateTokens(input.until);
-            if (tokens.length > 0) {
-              const reference = referencesForNode({
-                nodeId: input.nodeId,
-                document,
-                catalog: draft.catalog,
-              })?.find((candidate) => candidate.token === input.until);
-              if (reference?.type !== "timestamp") {
-                return Effect.fail({
-                  reason:
-                    "Until timing needs an exact timestamp token from list_references.",
-                });
-              }
-            } else if (
-              parseTimestampWithTimezone(input.until, input.timezone) === null
-            ) {
-              return Effect.fail({
-                reason:
-                  "Until timing needs an exact timestamp token from list_references or a valid ISO timestamp.",
-              });
-            }
-
-            if (
-              input.offset !== undefined &&
-              parseDurationMs(input.offset) === null
-            ) {
-              return Effect.fail({
-                reason:
-                  "An until offset must be a valid duration such as -1d or 6h.",
-              });
-            }
-            waitConfig = {
-              waitMode: "delay",
-              waitDelayTimingMode: "until",
-              waitUntil: input.until,
-              ...omitUndefined({
-                waitOffset: input.offset,
-                waitTimezone: input.timezone,
-              }),
-            };
-          }
-        } else {
-          if (!input.waitFor || input.waitFor.length === 0) {
+        if (wait.mode === "duration") {
+          if (parseDurationMs(wait.duration) === null) {
             return Effect.fail({
-              reason: "Event mode needs at least one Event in waitFor.",
+              reason: "A Wait needs a valid duration such as 2d or 48h.",
+            });
+          }
+          waitConfig = {
+            waitMode: "delay",
+            waitDuration: wait.duration,
+          };
+        } else if (wait.mode === "until") {
+          if (isBlank(wait.timestamp)) {
+            return Effect.fail({
+              reason:
+                "Until timing needs a timestamp from list_references or an ISO timestamp.",
+            });
+          }
+
+          const tokens = findTemplateTokens(wait.timestamp);
+          if (tokens.length > 0) {
+            const reference = referencesForNode({
+              nodeId: input.nodeId,
+              document,
+              catalog: draft.catalog,
+            })?.find((candidate) => candidate.token === wait.timestamp);
+            if (reference?.type !== "timestamp") {
+              return Effect.fail({
+                reason:
+                  "Until timing needs an exact timestamp token from list_references.",
+              });
+            }
+          } else if (
+            parseTimestampWithTimezone(wait.timestamp, wait.timezone) === null
+          ) {
+            return Effect.fail({
+              reason:
+                "Until timing needs an exact timestamp token from list_references or a valid ISO timestamp.",
+            });
+          }
+
+          if (
+            wait.offset !== undefined &&
+            parseDurationMs(wait.offset) === null
+          ) {
+            return Effect.fail({
+              reason:
+                "An until offset must be a valid duration such as -1d or 6h.",
+            });
+          }
+          waitConfig = {
+            waitMode: "delay",
+            waitDelayTimingMode: "until",
+            waitUntil: wait.timestamp,
+            ...omitUndefined({
+              waitOffset: wait.offset,
+              waitTimezone: wait.timezone,
+            }),
+          };
+        } else {
+          if (wait.events.length === 0) {
+            return Effect.fail({
+              reason: "Event mode needs at least one Event.",
             });
           }
           if (
-            input.waitFor.some(
+            wait.events.some(
               (subscription) =>
                 findEvent(draft.catalog, subscription.event) === undefined
             )
@@ -231,8 +225,8 @@ export const waitToolHandlers = Effect.gen(function* () {
             });
           }
           if (
-            input.timeout !== undefined &&
-            parseDurationMs(input.timeout) === null
+            wait.timeout !== undefined &&
+            parseDurationMs(wait.timeout) === null
           ) {
             return Effect.fail({
               reason: "An Event wait timeout must be a valid duration.",
@@ -240,11 +234,11 @@ export const waitToolHandlers = Effect.gen(function* () {
           }
           waitConfig = {
             waitMode: "event",
-            waitFor: input.waitFor.map((subscription) => ({
+            waitFor: wait.events.map((subscription) => ({
               event: subscription.event,
             })),
-            waitTimeout: input.timeout ?? DEFAULT_WAIT_TIMEOUT,
-            waitTimeoutBehavior: input.timeoutBehavior ?? "continue",
+            waitTimeout: wait.timeout ?? DEFAULT_WAIT_TIMEOUT,
+            waitTimeoutBehavior: wait.timeoutBehavior ?? "continue",
           };
         }
 
@@ -263,7 +257,7 @@ export const waitToolHandlers = Effect.gen(function* () {
             ),
           })),
           {
-            summary: `Set ${node.data.label || node.id} to wait by ${input.mode}.`,
+            summary: `Set ${node.data.label || node.id} to wait by ${wait.mode}.`,
           }
         );
       }),

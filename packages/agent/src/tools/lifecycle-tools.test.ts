@@ -743,7 +743,7 @@ describe("set_lifecycle_rules and start filters", () => {
         })
       );
 
-      expect(failure.reason).toContain("no condition-compatible payload field");
+      expect(failure.reason).toContain("does not carry");
     })
   );
 

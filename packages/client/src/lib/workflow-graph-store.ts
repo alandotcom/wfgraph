@@ -27,7 +27,7 @@ import {
 } from "#src/lib/workflow-save-store";
 import {
   activeAgentTurnIdAtom,
-  agentGraphRevisionAtom,
+  agentGraphUpdateAtom,
   isGeneratingAtom,
   selectedExecutionIdAtom,
   workflowWorkspaceViewAtom,
@@ -713,7 +713,10 @@ export const applyAgentGraphAtom = atom(
     }
     set(nodesStateAtom, orderGroupParentsFirst(reconciled));
     set(edgesStateAtom, input.edges);
-    set(agentGraphRevisionAtom, get(agentGraphRevisionAtom) + 1);
+    set(agentGraphUpdateAtom, {
+      workflowId: input.workflowId,
+      revision: (get(agentGraphUpdateAtom)?.revision ?? 0) + 1,
+    });
     requestGraphSave(get, set, { immediate: true });
     return true;
   }

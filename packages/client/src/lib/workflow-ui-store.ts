@@ -134,8 +134,12 @@ export const isExecutingAtom = atom(false);
 export const isGeneratingAtom = atom(false);
 /** Identifies the only agent turn allowed to change the open workflow. */
 export const activeAgentTurnIdAtom = atom<symbol | null>(null);
-/** Changes after each accepted agent graph update, so the canvas can fit it. */
-export const agentGraphRevisionAtom = atom(0);
+export type AgentGraphUpdate = {
+  workflowId: string;
+  revision: number;
+};
+/** Identifies the latest accepted agent graph update for viewport fitting. */
+export const agentGraphUpdateAtom = atom<AgentGraphUpdate | null>(null);
 
 /**
  * The build agent's panel: whether it is open, and how big the user made it.
