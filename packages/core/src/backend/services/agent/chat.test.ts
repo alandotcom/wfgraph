@@ -4,20 +4,32 @@ import {
   Effect,
   Exit,
   Fiber,
+  Layer,
   References,
   Semaphore,
   Stream,
 } from "effect";
 import { describe, expect, it } from "@effect/vitest";
 import type { AgentStreamPart } from "@wfgraph/shared/rpc/agent-stream";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { makeAgentConfigLayer } from "#src/backend/agent/config";
+import {
+  makeAgentRunnerLayer,
+  type AgentRunner,
+} from "#src/backend/agent/runner";
 import { makeAgentTraceAccumulator } from "#src/backend/agent/trace";
-import { makeRecordingLogger } from "#src/backend/lib/effect/test-layers";
+import {
+  makeRecordingLogger,
+  stubExtensions,
+  stubIntegrationRepo,
+} from "#src/backend/lib/effect/test-layers";
 import {
   agentTurnLogLevel,
   agentTurnStatus,
   limitAgentStream,
   observeAgentStream,
   observeAgentTurn,
+  postAgentChat,
 } from "#src/backend/services/agent/chat";
 
 const reply: AgentStreamPart = {
@@ -52,6 +64,56 @@ describe("observeAgentStream", () => {
 
       expect(failures).toEqual([]);
       expect(parts).toEqual([]);
+    })
+  );
+});
+
+describe("postAgentChat", () => {
+  it.effect("uses the configured runner and preserves its browser stream", () =>
+    Effect.gen(function* () {
+      let receivedMessage = "";
+      const runner: AgentRunner = {
+        metadata: { provider: "test", model: "custom-runner" },
+        run: (input) => {
+          receivedMessage = input.messages[0]?.content ?? "";
+          input.observeTrace({ type: "model-step-start", step: 1 });
+          input.observeTrace({
+            type: "model-step-finish",
+            step: 1,
+            reason: "stop",
+            usage: { inputTokens: {}, outputTokens: {} },
+          });
+          return Effect.succeed(Stream.succeed(reply));
+        },
+      };
+      const recording = makeRecordingLogger();
+
+      const parts = yield* postAgentChat({
+        workflowId: "workflow-1",
+        messages: [{ role: "user", content: "Build it" }],
+        graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            makeAgentConfigLayer({
+              enabled: true,
+              apiKey: "test-key",
+              model: "unused-built-in-model",
+            }),
+            makeAgentRunnerLayer(runner),
+            stubExtensions(),
+            stubIntegrationRepo({ listByType: () => Effect.succeed([]) }),
+            recording.layer
+          )
+        ),
+        Effect.flatMap(Stream.runCollect)
+      );
+
+      expect(parts).toEqual([reply]);
+      expect(receivedMessage).toBe("Build it");
+      expect(recording.infoLines[0]?.properties).toMatchObject({
+        model: { id: "custom-runner" },
+      });
     })
   );
 });

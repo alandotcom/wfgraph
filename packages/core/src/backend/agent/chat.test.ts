@@ -54,6 +54,19 @@ const draft: WorkflowDraftService = {
 
 const part = Response.makePart;
 
+function revisionRecorder(sessionDraft: WorkflowDraftService) {
+  let revision = 0;
+  return {
+    recordGraphRevision: Effect.fn("recordGraphRevision")(function* () {
+      revision += 1;
+      return {
+        revision,
+        document: yield* sessionDraft.revision(revision),
+      };
+    }),
+  };
+}
+
 describe("withGraphParts", () => {
   it.effect(
     "captures raw write results and the graph revision they produced",
@@ -75,7 +88,7 @@ describe("withGraphParts", () => {
                 preliminary: false,
               }),
             }),
-            draft,
+            revisionRecorder(draft),
             (event) => trace.push(event)
           )
         );
@@ -132,7 +145,7 @@ describe("withGraphParts", () => {
               }),
             }),
           }),
-          draft,
+          revisionRecorder(draft),
           (event) => trace.push(event)
         )
       );
@@ -179,7 +192,7 @@ describe("withGraphParts", () => {
                 toolkit,
                 observeTrace: (event) => trace.push(event),
               }).pipe(Stream.provide(modelLayer)),
-              draft,
+              revisionRecorder(draft),
               (event) => trace.push(event)
             ),
             () => Effect.void
@@ -231,7 +244,11 @@ describe("withGraphParts", () => {
 
       const parts = yield* Stream.runCollect(
         observeAgentStream(
-          withGraphParts(providerParts, draft, () => undefined),
+          withGraphParts(
+            providerParts,
+            revisionRecorder(draft),
+            () => undefined
+          ),
           () => Effect.void
         )
       );
@@ -339,7 +356,7 @@ describe("withGraphParts", () => {
               toolkit,
               observeTrace: (event) => trace.push(event),
             }).pipe(Stream.provide(modelLayer)),
-            delayedDraft,
+            revisionRecorder(delayedDraft),
             (event) => trace.push(event)
           )
         );

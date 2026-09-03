@@ -5,6 +5,12 @@ import {
   type AgentSettings,
   makeAgentConfigLayer,
 } from "#src/backend/agent/config";
+import { makeBuiltInAgentRunner } from "#src/backend/agent/chat";
+import {
+  AgentRunnerService,
+  disabledAgentRunner,
+  makeAgentRunnerLayer,
+} from "#src/backend/agent/runner";
 import { AppLogger, AppLoggerLayer } from "#src/backend/lib/effect/app-logger";
 import {
   Extensions,
@@ -42,6 +48,7 @@ export type WfGraphServices =
   | AppLogger
   | AgentCapacity
   | AgentConfig
+  | AgentRunnerService
   | WfGraphAppContext
   | Extensions
   | ApiKeyRepo
@@ -86,6 +93,11 @@ function buildWfGraphLayer(
     makeAppContextLayer(parts.appContext),
     makeExtensionsLayer(parts.extensions),
     makeAgentConfigLayer(parts.agent),
+    makeAgentRunnerLayer(
+      parts.agent.enabled
+        ? makeBuiltInAgentRunner(parts.agent)
+        : disabledAgentRunner
+    ),
     parts.repositories,
     makeInngestClientLayer(parts.inngest.client)
   );

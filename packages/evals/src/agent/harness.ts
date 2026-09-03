@@ -1,8 +1,12 @@
 import { Cause, Effect, Stream } from "effect";
 import { createHarness } from "vitest-evals";
-import { runAgentTurn } from "@wfgraph/core/backend/agent/chat";
 import { DEFAULT_AGENT_MODEL } from "@wfgraph/core/backend/agent/config";
 import { validateAgentDraft } from "@wfgraph/core/backend/agent/publication-validation";
+import {
+  runAgentRunner,
+  type AgentRunner,
+} from "@wfgraph/core/backend/agent/runner";
+import { makeAgentToolSession } from "@wfgraph/core/backend/agent/tool-session";
 import {
   summarizeAgentTrace,
   type AgentTraceEvent,
@@ -65,99 +69,117 @@ export function collectAgentTurn(
   return Effect.runPromise(collected, { signal });
 }
 
-export const workflowAgentHarness = createHarness<
-  AgentEvalInput,
-  AgentEvalOutput
->({
-  name: "workflow-build-agent",
-  run: async ({ input, setArtifact, signal }) => {
-    const startedAt = Date.now();
-    const settings = readEvalModelSettings(input.model);
-    const trace: AgentTraceEvent[] = [];
-    const parts = await collectAgentTurn(
-      runAgentTurn({
-        settings,
+export type AgentEvalRunner = (input: AgentEvalInput) => AgentRunner;
+
+/** Builds the eval harness around the runner under assessment. */
+export function createWorkflowAgentHarness(resolveRunner: AgentEvalRunner) {
+  return createHarness<AgentEvalInput, AgentEvalOutput>({
+    name: "workflow-build-agent",
+    run: async ({ input, setArtifact, signal }) => {
+      const startedAt = Date.now();
+      const runner = resolveRunner(input);
+      const trace: AgentTraceEvent[] = [];
+      const session = await Effect.runPromise(
+        makeAgentToolSession({
+          catalog: input.catalog,
+          integrations: input.integrations,
+          document: input.document,
+          validateDraft: (document) =>
+            validateAgentDraft({
+              document,
+              catalog: input.catalog,
+              integrations: input.integrations,
+            }),
+        }),
+        { signal }
+      );
+      const parts = await collectAgentTurn(
+        Effect.succeed(
+          runAgentRunner(runner, {
+            messages: input.messages,
+            session,
+            observeTrace: (event) => trace.push(event),
+          })
+        ),
+        signal
+      );
+      const result = collectAgentEvalResult(input.document, parts);
+      const events = [
+        ...input.messages.map((message) => ({
+          type: "message" as const,
+          role: message.role,
+          content: message.content,
+        })),
+        ...result.events,
+      ];
+      const traceSummary = summarizeAgentTrace(trace);
+      const trajectory = buildAgentTrajectory(trace);
+      const finalDocument = normalizeAgentEvalDocument(result.finalDocument);
+      const validation = validateAgentDraft({
+        document: finalDocument,
         catalog: input.catalog,
         integrations: input.integrations,
-        document: input.document,
-        messages: input.messages,
-        observeTrace: (event) => trace.push(event),
-      }),
-      signal
-    );
-    const result = collectAgentEvalResult(input.document, parts);
-    const events = [
-      ...input.messages.map((message) => ({
-        type: "message" as const,
-        role: message.role,
-        content: message.content,
-      })),
-      ...result.events,
-    ];
-    const traceSummary = summarizeAgentTrace(trace);
-    const trajectory = buildAgentTrajectory(trace);
-    const finalDocument = normalizeAgentEvalDocument(result.finalDocument);
-    const validation = validateAgentDraft({
-      document: finalDocument,
-      catalog: input.catalog,
-      integrations: input.integrations,
-    });
-    const completionFacts = collectCompletionFacts({
-      validation,
-      finalText: result.finalText,
-      streamErrors: result.errors,
-      finalFinishReason: traceSummary.finishReason,
-    });
-    const normalizedTraceSummary = normalizeJsonObjectEvidence(
-      {
-        ...traceSummary,
-        finishReason: traceSummary.finishReason ?? null,
-      },
-      "Agent eval trace summary"
-    );
-    const output: AgentEvalOutput = {
-      finalDocument,
-      finalText: result.finalText,
-      errors: result.errors,
-      completionFacts: normalizeJsonObjectEvidence(
-        completionFacts,
-        "Agent eval completion facts"
-      ),
-      trajectory: normalizeJsonObjectEvidence(
-        trajectory,
-        "Agent eval trajectory"
-      ),
-      traceSummary: normalizedTraceSummary,
-    };
-
-    setArtifact("finalDocument", finalDocument);
-    setArtifact(
-      "streamParts",
-      normalizeJsonEvidence(parts, "Agent eval stream parts")
-    );
-    setArtifact("agentTrace", normalizeJsonEvidence(trace, "Agent eval trace"));
-
-    return {
-      output,
-      events,
-      usage: {
-        provider: "openai",
-        model: settings.model,
-        inputTokens: traceSummary.inputTokens,
-        outputTokens: traceSummary.outputTokens,
-        reasoningTokens: traceSummary.reasoningTokens,
-        totalTokens: traceSummary.totalTokens,
-        toolCalls: traceSummary.toolCalls,
-        metadata: {
-          modelCalls: traceSummary.modelCalls,
-          refusals: traceSummary.refusals,
-          graphRevisions: traceSummary.graphRevisions,
-          finishReason: traceSummary.finishReason ?? "missing",
-          finishReasons: traceSummary.finishReasons,
+      });
+      const completionFacts = collectCompletionFacts({
+        validation,
+        finalText: result.finalText,
+        streamErrors: result.errors,
+        finalFinishReason: traceSummary.finishReason,
+      });
+      const normalizedTraceSummary = normalizeJsonObjectEvidence(
+        {
+          ...traceSummary,
+          finishReason: traceSummary.finishReason ?? null,
         },
-      },
-      timings: { totalMs: Date.now() - startedAt },
-      errors: result.errors.map((message) => ({ message })),
-    };
-  },
-});
+        "Agent eval trace summary"
+      );
+      const output: AgentEvalOutput = {
+        finalDocument,
+        finalText: result.finalText,
+        errors: result.errors,
+        completionFacts: normalizeJsonObjectEvidence(
+          completionFacts,
+          "Agent eval completion facts"
+        ),
+        trajectory: normalizeJsonObjectEvidence(
+          trajectory,
+          "Agent eval trajectory"
+        ),
+        traceSummary: normalizedTraceSummary,
+      };
+
+      setArtifact("finalDocument", finalDocument);
+      setArtifact(
+        "streamParts",
+        normalizeJsonEvidence(parts, "Agent eval stream parts")
+      );
+      setArtifact(
+        "agentTrace",
+        normalizeJsonEvidence(trace, "Agent eval trace")
+      );
+
+      return {
+        output,
+        events,
+        usage: {
+          provider: runner.metadata.provider,
+          model: runner.metadata.model,
+          inputTokens: traceSummary.inputTokens,
+          outputTokens: traceSummary.outputTokens,
+          reasoningTokens: traceSummary.reasoningTokens,
+          totalTokens: traceSummary.totalTokens,
+          toolCalls: traceSummary.toolCalls,
+          metadata: {
+            modelCalls: traceSummary.modelCalls,
+            refusals: traceSummary.refusals,
+            graphRevisions: traceSummary.graphRevisions,
+            finishReason: traceSummary.finishReason ?? "missing",
+            finishReasons: traceSummary.finishReasons,
+          },
+        },
+        timings: { totalMs: Date.now() - startedAt },
+        errors: result.errors.map((message) => ({ message })),
+      };
+    },
+  });
+}

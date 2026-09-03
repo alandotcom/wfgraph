@@ -12,26 +12,16 @@
  * even when a tool reports one sentence.
  */
 
-import { Effect, Layer, Stream } from "effect";
+import { Effect, Stream } from "effect";
 import {
   Chat,
   type LanguageModel,
   Prompt,
   type Toolkit,
 } from "effect/unstable/ai";
-import {
-  agentToolkit,
-  agentToolkitLayer,
-  WRITE_TOOL_NAMES,
-} from "@wfgraph/agent/toolkit";
-import {
-  type AgentDocument,
-  layerFromDraft,
-  makeWorkflowDraft,
-  type WorkflowDraftService,
-} from "@wfgraph/agent/document";
+import { agentToolkit, WRITE_TOOL_NAMES } from "@wfgraph/agent/toolkit";
+import type { AgentDocument } from "@wfgraph/agent/document";
 import { buildSystemPrompt } from "@wfgraph/agent/prompt";
-import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type {
   AgentMessage,
@@ -39,6 +29,8 @@ import type {
 } from "@wfgraph/shared/rpc/agent-stream";
 import type { EnabledAgentSettings } from "#src/backend/agent/config";
 import { agentModelLayer } from "#src/backend/agent/model";
+import type { AgentRunner, AgentRunnerInput } from "#src/backend/agent/runner";
+import type { AgentToolSession } from "#src/backend/agent/tool-session";
 import {
   AGENT_TURN_STEP_LIMIT,
   runAgentStepLoop,
@@ -49,18 +41,8 @@ import {
   traceResponsePart,
   type AgentTraceObserver,
 } from "#src/backend/agent/trace";
-import { validateAgentDraft } from "#src/backend/agent/publication-validation";
 
 type AgentStreamPartIn = Parameters<typeof toAgentStreamPart>[0];
-
-export type AgentTurnInput = {
-  readonly settings: EnabledAgentSettings;
-  readonly catalog: ExtensionCatalog;
-  readonly integrations: readonly { id: string; type: string }[];
-  readonly document: AgentDocument;
-  readonly messages: readonly AgentMessage[];
-  readonly observeTrace?: AgentTraceObserver | undefined;
-};
 
 /**
  * The conversation, in the shape the language model takes it.
@@ -94,46 +76,39 @@ function graphPartOf(document: AgentDocument): AgentStreamPart {
 /**
  * Runs one turn and answers the parts the panel renders.
  *
- * The stream is built inside an Effect so the draft is created once and the
- * write-tool watcher reads the same handle the tools write through.
+ * The runner uses the toolkit and draft from the request-scoped tool session.
+ * The write-tool watcher reads the same draft that the handlers update.
  */
-export function runAgentTurn(
-  input: AgentTurnInput
+function runBuiltInAgentTurn(
+  settings: EnabledAgentSettings,
+  input: AgentRunnerInput
 ): Effect.Effect<Stream.Stream<AgentStreamPart, unknown>> {
   return Effect.gen(function* () {
-    const draft = yield* makeWorkflowDraft({
-      document: input.document,
-      catalog: input.catalog,
-      integrations: input.integrations,
-      validateDraft: (document) =>
-        validateAgentDraft({
-          document,
-          catalog: input.catalog,
-          integrations: input.integrations,
-        }),
-    });
-
-    // The toolkit is resolved here, with the draft this turn writes through,
-    // so the stream below carries no requirement of its own.
-    const toolkit = yield* Effect.provide(
-      agentToolkit,
-      agentToolkitLayer.pipe(Layer.provide(layerFromDraft(draft)))
-    );
-
     const session = yield* Chat.fromPrompt(
       toPrompt({
         messages: input.messages,
-        system: buildSystemPrompt(input.catalog),
+        system: buildSystemPrompt(input.session.draft.catalog),
       })
-    ).pipe(Effect.provide(agentModelLayer(input.settings)));
+    ).pipe(Effect.provide(agentModelLayer(settings)));
 
-    const observeTrace = input.observeTrace ?? (() => undefined);
-    const parts = agenticSteps({ session, toolkit, observeTrace }).pipe(
-      Stream.provide(agentModelLayer(input.settings))
-    );
+    const parts = agenticSteps({
+      session,
+      toolkit: input.session.toolkit,
+      observeTrace: input.observeTrace,
+    }).pipe(Stream.provide(agentModelLayer(settings)));
 
-    return withGraphParts(parts, draft, observeTrace);
+    return withGraphParts(parts, input.session, input.observeTrace);
   });
+}
+
+/** The default runner backed by the configured Effect AI model. */
+export function makeBuiltInAgentRunner(
+  settings: EnabledAgentSettings
+): AgentRunner {
+  return {
+    metadata: { provider: "openai", model: settings.model },
+    run: (input) => runBuiltInAgentTurn(settings, input),
+  };
 }
 
 /**
@@ -193,11 +168,9 @@ export type SteppedAgentPart = {
  */
 export function withGraphParts(
   parts: Stream.Stream<SteppedAgentPart, unknown>,
-  draft: WorkflowDraftService,
+  session: Pick<AgentToolSession, "recordGraphRevision">,
   observeTrace: AgentTraceObserver
 ): Stream.Stream<AgentStreamPart, unknown> {
-  let graphRevision = 0;
-
   return parts.pipe(
     Stream.mapEffect(({ part, step }) =>
       Effect.gen(function* () {
@@ -205,11 +178,13 @@ export function withGraphParts(
           part.type === "tool-result" &&
           !part.isFailure &&
           WRITE_TOOL_NAMES.has(part.name);
-        const revision = writesGraph ? ++graphRevision : undefined;
+        const graphRevision = writesGraph
+          ? yield* session.recordGraphRevision()
+          : undefined;
         const traceEvent = traceResponsePart({
           step,
           part,
-          graphRevision: revision,
+          graphRevision: graphRevision?.revision,
         });
         if (traceEvent) {
           observeTrace(traceEvent);
@@ -223,16 +198,15 @@ export function withGraphParts(
           return [];
         }
 
-        if (writesGraph && revision !== undefined) {
-          const document = yield* draft.revision(revision);
+        if (writesGraph && graphRevision !== undefined) {
           observeTrace({
             type: "graph-revision",
             step,
             toolCallId: part.id,
-            revision,
-            document,
+            revision: graphRevision.revision,
+            document: graphRevision.document,
           });
-          return [mapped, graphPartOf(document)];
+          return [mapped, graphPartOf(graphRevision.document)];
         }
 
         return [mapped];

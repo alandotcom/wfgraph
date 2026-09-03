@@ -4,6 +4,10 @@ import {
   type AgentSettings,
   makeAgentConfigLayer,
 } from "#src/backend/agent/config";
+import {
+  disabledAgentRunner,
+  makeAgentRunnerLayer,
+} from "#src/backend/agent/runner";
 import type { WfGraphDatabase } from "#src/backend/lib/db/index";
 import { relations } from "#src/backend/lib/db/schema";
 import {
@@ -463,6 +467,7 @@ export function stubWfGraphRuntime(
       stubIntegrationRepo(overrides.integrationRepo),
       stubApiKeyRepo(overrides.apiKeyRepo),
       makeAgentConfigLayer(overrides.agent ?? { enabled: false }),
+      makeAgentRunnerLayer(disabledAgentRunner),
       stubInngestClient(overrides.inngestClient)
     )
   );
