@@ -272,6 +272,13 @@ export const complexScenarios: Array<{
         editSafety: {
           protectedNodeIds: ["entry", "score", "notify"],
           protectedEdgeIds: ["entry-score"],
+          forbiddenMutations: ["add_node", "connect_nodes", "disconnect_nodes"],
+        },
+        efficiencyBudget: {
+          maxModelCalls: 10,
+          maxToolCalls: 12,
+          maxGraphRevisions: 2,
+          maxRefusals: 0,
         },
         requiredFlows: [
           {

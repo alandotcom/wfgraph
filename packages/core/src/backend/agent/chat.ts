@@ -87,7 +87,7 @@ function runBuiltInAgentTurn(
     const session = yield* Chat.fromPrompt(
       toPrompt({
         messages: input.messages,
-        system: buildSystemPrompt(input.session.draft.catalog),
+        system: buildSystemPrompt(),
       })
     ).pipe(Effect.provide(agentModelLayer(settings)));
 

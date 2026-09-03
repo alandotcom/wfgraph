@@ -32,6 +32,11 @@ import { readConfigString } from "@wfgraph/shared/graph/node-config";
 import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { type AgentDocument, WorkflowDraft } from "#src/document";
+import {
+  pageResults,
+  resultLimitSchema,
+  resultOffsetSchema,
+} from "#src/tools/result-page";
 
 const referenceSchema = Schema.Struct({
   /** Paste this straight into a config field. */
@@ -108,9 +113,24 @@ export const ListReferences = Tool.make("list_references", {
     nodeId: Schema.String.annotate({
       description: "The node whose config is being filled in.",
     }),
+    query: Schema.optionalKey(Schema.String).annotate({
+      description:
+        "Case-insensitive text matched against the source node, path, type, description, and token.",
+    }),
+    sourceNodeId: Schema.optionalKey(Schema.String).annotate({
+      description: "Return references from this exact upstream node only.",
+    }),
+    type: Schema.optionalKey(Schema.String).annotate({
+      description: "Return references with this exact declared type only.",
+    }),
+    offset: Schema.optionalKey(resultOffsetSchema),
+    limit: Schema.optionalKey(resultLimitSchema),
   }),
   success: Schema.Struct({
     references: Schema.Array(referenceSchema),
+    totalMatches: Schema.Number,
+    truncated: Schema.Boolean,
+    nextOffset: Schema.optionalKey(Schema.Number),
   }),
   failure: Schema.Struct({ reason: Schema.String }),
   failureMode: "return",
@@ -165,7 +185,14 @@ export const referenceToolHandlers = Effect.gen(function* () {
   const draft = yield* WorkflowDraft;
 
   return {
-    list_references: (input: { readonly nodeId: string }) =>
+    list_references: (input: {
+      readonly nodeId: string;
+      readonly query?: string | undefined;
+      readonly sourceNodeId?: string | undefined;
+      readonly type?: string | undefined;
+      readonly offset?: number | undefined;
+      readonly limit?: number | undefined;
+    }) =>
       Effect.flatMap(draft.current, (document) => {
         const references = referencesForNode({
           nodeId: input.nodeId,
@@ -178,7 +205,30 @@ export const referenceToolHandlers = Effect.gen(function* () {
           });
         }
 
-        return Effect.succeed({ references });
+        const needle = input.query?.trim().toLowerCase() ?? "";
+        const matches = references.filter(
+          (reference) =>
+            (input.sourceNodeId === undefined ||
+              reference.sourceNodeId === input.sourceNodeId) &&
+            (input.type === undefined || reference.type === input.type) &&
+            (needle.length === 0 ||
+              [
+                reference.token,
+                reference.sourceNodeLabel,
+                reference.path,
+                reference.type ?? "",
+                reference.description ?? "",
+              ].some((value) => value.toLowerCase().includes(needle)))
+        );
+        const page = pageResults(matches, input);
+        return Effect.succeed(
+          omitUndefined({
+            references: page.items,
+            totalMatches: page.total,
+            truncated: page.nextOffset !== undefined,
+            nextOffset: page.nextOffset,
+          })
+        );
       }),
   };
 });

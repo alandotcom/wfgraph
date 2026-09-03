@@ -85,6 +85,38 @@ const readyFacts = {
 };
 
 describe("focused scenarios", () => {
+  it("covers bounded discovery and repeated insertion at scale", () => {
+    const largeCatalog = focusedScenarios.find(
+      (candidate) =>
+        candidate.name === "finds requested capabilities in a large catalog"
+    );
+    const largeWorkflow = focusedScenarios.find(
+      (candidate) =>
+        candidate.name === "updates a selected node in a large workflow"
+    );
+    const repeatedInsertion = focusedScenarios.find(
+      (candidate) => candidate.name === "inserts two waits on the same path"
+    );
+
+    expect(largeCatalog?.input.catalog.actions.length).toBeGreaterThan(20);
+    expect(largeCatalog?.input.catalog.events.length).toBeGreaterThan(20);
+    expect(largeWorkflow?.input.document.nodes.length).toBeGreaterThan(20);
+    expect(largeWorkflow?.input.document.edges.length).toBeGreaterThan(20);
+    if (!largeWorkflow) {
+      throw new Error("The large-workflow focused scenario is missing");
+    }
+    expect(
+      validateAgentDraft({
+        document: largeWorkflow.input.document,
+        catalog: largeWorkflow.input.catalog,
+        integrations: largeWorkflow.input.integrations,
+      })
+    ).toMatchObject({ draftValid: true, publishBlockers: [] });
+    expect(
+      repeatedInsertion?.input.expected.editSafety?.forbiddenMutations
+    ).toEqual(["add_node", "connect_nodes", "disconnect_nodes"]);
+  });
+
   it("publishes a same-entity Wait with its integration Connection", () => {
     const scenario = sameEntityWaitScenario();
     const document: AgentDocument = {

@@ -1,5 +1,5 @@
 /**
- * The five tools that change the shape of the graph.
+ * The six tools that change the shape of the graph.
  *
  * Each one edits the draft and answers a short sentence, never the whole graph.
  * The editor is told what the graph became through a separate channel, so
@@ -19,6 +19,7 @@ import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import { canonicalizeNodeEnabled } from "@wfgraph/shared/graph/node-enabled";
+import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
 import {
@@ -26,7 +27,14 @@ import {
   isEventSplitNode,
 } from "@wfgraph/shared/lifecycle/event-split";
 import { isLifecycleOutlet } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
+import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import {
+  type AgentDocument,
+  type ConnectedIntegration,
+  WorkflowDraft,
+} from "#src/document";
+import { referencesForNode } from "#src/tools/reference-tools";
 /**
  * A config bag as the model fills it in: a list of entries, not a record.
  *
@@ -66,7 +74,6 @@ function toConfigRecord(entries: ConfigBag): Record<string, string> {
 function configNamesKey(entries: ConfigBag | undefined, key: string): boolean {
   return entries?.some((entry) => entry.key === key) ?? false;
 }
-import { type AgentDocument, WorkflowDraft } from "#src/document";
 
 const builtInActionIds: readonly string[] = Object.values(BUILT_IN_ACTION_IDS);
 
@@ -77,6 +84,13 @@ const writeResultSchema = Schema.Struct({ summary: Schema.String });
 
 const addNodeResultSchema = Schema.Struct({
   nodeId: Schema.String,
+  summary: Schema.String,
+});
+
+const insertNodeResultSchema = Schema.Struct({
+  nodeId: Schema.String,
+  incomingEdgeId: Schema.String,
+  outgoingEdgeId: Schema.String,
   summary: Schema.String,
 });
 
@@ -211,6 +225,37 @@ export const DisconnectNodes = Tool.make("disconnect_nodes", {
   failureMode: "return",
 });
 
+export const InsertNodeOnEdge = Tool.make("insert_node_on_edge", {
+  description:
+    "Add one step on an existing edge as one atomic edit. The original source handle is preserved. The result returns both replacement edge ids; use outgoingEdgeId to insert another step before the original target.",
+  parameters: Schema.Struct({
+    edgeId: Schema.String.annotate({
+      description: "The edge to replace, from read_workflow.",
+    }),
+    actionId: Schema.String.annotate({
+      description:
+        'An action id from list_actions, or one of the built-in steps "Condition", "Wait" and "Event Split".',
+    }),
+    label: Schema.String.annotate({
+      description: "What the inserted step is called on the canvas.",
+    }),
+    description: Schema.optionalKey(Schema.String).annotate({
+      description: "A sentence saying why the inserted step is here.",
+    }),
+    config: Schema.optionalKey(configBagSchema).annotate({
+      description:
+        "Literal config values to set during insertion. Set upstream references afterward with update_node and an exact token from list_references.",
+    }),
+    outgoingSourceHandle: Schema.optionalKey(Schema.String).annotate({
+      description:
+        'The inserted step outlet leading to the original target. Use "true" or "false" for a Condition, or "event:<Event name>" for an Event Split. Omit for other actions.',
+    }),
+  }),
+  success: insertNodeResultSchema,
+  failure: failureSchema,
+  failureMode: "return",
+});
+
 /**
  * The outlet rule an edge is held to, stated as the refusal a builder would
  * read.
@@ -275,6 +320,123 @@ function mergedConfig(input: {
   return merged;
 }
 
+function configPatchRefusal(input: {
+  readonly actionId: string;
+  readonly patch: ConfigBag | undefined;
+  readonly clear?: readonly string[] | undefined;
+  readonly document?: AgentDocument | undefined;
+  readonly nodeId?: string | undefined;
+  readonly referenceGuidance?: string | undefined;
+  readonly catalog: ExtensionCatalog;
+  readonly integrations: readonly ConnectedIntegration[];
+}): string | undefined {
+  const action = findAction(input.catalog, input.actionId);
+  const fields = action ? flattenConfigFields(action.configFields) : [];
+  const fieldsByKey = new Map(fields.map((field) => [field.key, field]));
+  const allowedKeys = new Set(fieldsByKey.keys());
+  if (action?.integration) {
+    allowedKeys.add("integrationId");
+  }
+
+  const patchKeys = input.patch?.map((entry) => entry.key) ?? [];
+  const clearKeys = input.clear ?? [];
+  const seenKeys = new Set<string>();
+  for (const key of [...patchKeys, ...clearKeys]) {
+    if (seenKeys.has(key)) {
+      return `Config key ${key} appears more than once. Supply one operation for each config key.`;
+    }
+    seenKeys.add(key);
+    if (!allowedKeys.has(key)) {
+      return `Action ${input.actionId} does not declare config key ${key}. Call describe_action for its config fields.`;
+    }
+  }
+
+  for (const entry of input.patch ?? []) {
+    const tokens = findTemplateTokens(entry.value);
+    let cursor = 0;
+    let malformedTemplateSyntax = false;
+    for (const token of tokens) {
+      const literal = entry.value.slice(cursor, token.start);
+      malformedTemplateSyntax ||= /\{\{|\}\}/u.test(literal);
+      cursor = token.end;
+    }
+    const remainingLiteral = entry.value.slice(cursor);
+    malformedTemplateSyntax ||= /\{\{|\}\}/u.test(remainingLiteral);
+    if (
+      (entry.key === "integrationId" ||
+        fieldsByKey.get(entry.key)?.literal === true) &&
+      (tokens.length > 0 || malformedTemplateSyntax)
+    ) {
+      return `${entry.key} is a literal field and cannot contain a template reference.`;
+    }
+    if (malformedTemplateSyntax) {
+      return `${entry.key} contains a malformed template reference. Use an exact token from list_references.`;
+    }
+    if (tokens.length === 0) {
+      continue;
+    }
+    if (!input.document || !input.nodeId) {
+      return (
+        input.referenceGuidance ??
+        `Connect the node before setting ${entry.key} to an upstream reference, then use update_node with an exact token from list_references.`
+      );
+    }
+
+    const availableTokens = new Set(
+      (
+        referencesForNode({
+          nodeId: input.nodeId,
+          document: input.document,
+          catalog: input.catalog,
+        }) ?? []
+      ).map((reference) => reference.token)
+    );
+    if (tokens.some((token) => !availableTokens.has(token.raw))) {
+      return `${entry.key} must use each exact token returned by list_references.`;
+    }
+  }
+
+  const connectionId = input.patch?.find(
+    (entry) => entry.key === "integrationId"
+  )?.value;
+  if (connectionId !== undefined && action?.integration !== undefined) {
+    const connection = input.integrations.find(
+      (candidate) => candidate.id === connectionId
+    );
+    if (!connection) {
+      return "The selected Connection is not connected. Call list_integrations to see the available Connections.";
+    }
+    if (connection.type !== action.integration) {
+      return `Action ${input.actionId} needs a ${action.integration} Connection, but the selected Connection belongs to ${connection.type}.`;
+    }
+  }
+
+  return undefined;
+}
+
+function actionNode(input: {
+  readonly nodeId: string;
+  readonly actionId: string;
+  readonly label: string;
+  readonly description?: string | undefined;
+  readonly config?: ConfigBag | undefined;
+}): WorkflowNode {
+  return {
+    id: input.nodeId,
+    position: UNPLACED,
+    type: "action",
+    data: {
+      label: input.label,
+      type: "action",
+      description: input.description,
+      config: {
+        actionType: input.actionId,
+        ...toConfigRecord(input.config ?? []),
+      },
+    },
+  };
+}
+
 export const graphWriteToolHandlers = Effect.gen(function* () {
   const draft = yield* WorkflowDraft;
 
@@ -299,21 +461,18 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
           });
         }
 
+        const configRefusal = configPatchRefusal({
+          actionId: input.actionId,
+          patch: input.config,
+          catalog: draft.catalog,
+          integrations: draft.integrations,
+        });
+        if (configRefusal) {
+          return Effect.fail({ reason: configRefusal });
+        }
+
         const nodeId = nanoid();
-        const node: WorkflowNode = {
-          id: nodeId,
-          position: UNPLACED,
-          type: "action",
-          data: {
-            label: input.label,
-            type: "action",
-            description: input.description,
-            config: {
-              actionType: input.actionId,
-              ...toConfigRecord(input.config ?? []),
-            },
-          },
-        };
+        const node = actionNode({ ...input, nodeId });
 
         return Effect.as(
           draft.update((current) => ({
@@ -351,6 +510,22 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
             reason:
               "actionType identifies the step and cannot be changed through config.",
           });
+        }
+
+        const actionId = actionTypeOf(node);
+        if (actionId) {
+          const configRefusal = configPatchRefusal({
+            actionId,
+            patch: input.config,
+            clear: input.clearConfigKeys,
+            document,
+            nodeId: node.id,
+            catalog: draft.catalog,
+            integrations: draft.integrations,
+          });
+          if (configRefusal) {
+            return Effect.fail({ reason: configRefusal });
+          }
         }
         if (
           node.data.type === "lifecycle" &&
@@ -503,6 +678,81 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
             ),
           })),
           { summary: `Disconnected ${edge.source} from ${edge.target}.` }
+        );
+      }),
+
+    insert_node_on_edge: (input: {
+      readonly edgeId: string;
+      readonly actionId: string;
+      readonly label: string;
+      readonly description?: string | undefined;
+      readonly config?: ConfigBag | undefined;
+      readonly outgoingSourceHandle?: string | undefined;
+    }) =>
+      Effect.flatMap(draft.current, (document) => {
+        const edge = document.edges.find(
+          (candidate) => candidate.id === input.edgeId
+        );
+        if (!edge) {
+          return Effect.fail({
+            reason: `No edge with id ${input.edgeId}. Call read_workflow to see what the graph holds.`,
+          });
+        }
+        if (!knownActionId(draft.catalog, input.actionId)) {
+          return Effect.fail({
+            reason: `No action with id ${input.actionId}. Call list_actions to see what exists, or use one of ${builtInActionIds.join(", ")}.`,
+          });
+        }
+        if (configNamesKey(input.config, "actionType")) {
+          return Effect.fail({
+            reason:
+              "actionType is set by actionId. Remove it from config and call insert_node_on_edge again.",
+          });
+        }
+
+        const nodeId = nanoid();
+        const node = actionNode({ ...input, nodeId });
+        const incoming: WorkflowEdge = { ...edge, target: nodeId };
+        const outgoing: WorkflowEdge = {
+          id: nanoid(),
+          source: nodeId,
+          target: edge.target,
+          sourceHandle: input.outgoingSourceHandle,
+        };
+        const candidate: AgentDocument = {
+          nodes: [...document.nodes, node],
+          edges: document.edges.flatMap((current) =>
+            current.id === edge.id ? [incoming, outgoing] : [current]
+          ),
+        };
+        const outlet = outletRefusal({
+          source: node,
+          sourceHandle: input.outgoingSourceHandle,
+          document: candidate,
+          catalog: draft.catalog,
+        });
+        if (outlet) {
+          return Effect.fail({ reason: outlet });
+        }
+        const configRefusal = configPatchRefusal({
+          actionId: input.actionId,
+          patch: input.config,
+          catalog: draft.catalog,
+          integrations: draft.integrations,
+          referenceGuidance: `Set references after inserting the node. Use update_node with an exact token from list_references for ${nodeId}.`,
+        });
+        if (configRefusal) {
+          return Effect.fail({ reason: configRefusal });
+        }
+
+        return Effect.as(
+          draft.update(() => candidate),
+          {
+            nodeId,
+            incomingEdgeId: incoming.id,
+            outgoingEdgeId: outgoing.id,
+            summary: `Inserted ${input.label} (${input.actionId}) on edge ${input.edgeId}.`,
+          }
         );
       }),
   };

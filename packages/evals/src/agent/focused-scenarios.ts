@@ -1,16 +1,293 @@
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import type { AgentDocument } from "@wfgraph/agent/document";
 import type { AgentEvalInput } from "#src/agent/types";
 import {
   configuredApplicantDocument,
   connectedIntegrations,
   emptyDocument,
+  evalCatalog,
   scenario,
 } from "#src/agent/scenario-fixtures";
+
+const largeCatalog: ExtensionCatalog = {
+  ...evalCatalog,
+  actions: [
+    ...Array.from({ length: 30 }, (_, index) => ({
+      id: `generated/action-${index}`,
+      label: `Generated action ${index}`,
+      description: `An unrelated generated action numbered ${index}.`,
+      category: "Generated",
+      configFields: [],
+      outputFields: [],
+    })),
+    ...evalCatalog.actions,
+  ],
+  events: [
+    ...Array.from({ length: 30 }, (_, index) => ({
+      name: `generated/event-${index}`,
+      label: `Generated Event ${index}`,
+      description: `An unrelated generated Event numbered ${index}.`,
+      payloadFields: [],
+    })),
+    ...evalCatalog.events,
+  ],
+};
+
+const largeWorkflowStepIds = Array.from(
+  { length: 24 },
+  (_, index) => `existing-${index}`
+);
+
+const largeWorkflowDocument: AgentDocument = {
+  nodes: [
+    {
+      id: "entry",
+      type: "lifecycle",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Lifecycle",
+        type: "lifecycle",
+        config: {
+          lifecycleRules: {
+            startEvents: ["applicant.created"],
+            cancelEvents: [],
+            concurrency: "unlimited",
+            allowManualStart: false,
+          },
+        },
+      },
+    },
+    ...largeWorkflowStepIds.map((id, index) => ({
+      id,
+      type: "action" as const,
+      position: { x: 0, y: 0 },
+      data: {
+        label: `Existing step ${index}`,
+        type: "action" as const,
+        config: { actionType: "score-applicant" },
+      },
+    })),
+    {
+      id: "notify",
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Notify recruiting",
+        type: "action",
+        config: {
+          actionType: "slack/send-message",
+          integrationId: "slack-primary",
+          channel: "#recruiting",
+          text: "Existing notification",
+        },
+      },
+    },
+  ],
+  edges: [
+    {
+      id: "entry-existing-0",
+      source: "entry",
+      target: "existing-0",
+      sourceHandle: "started",
+    },
+    ...largeWorkflowStepIds.slice(1).map((id, index) => ({
+      id: `existing-${index}-${id}`,
+      source: `existing-${index}`,
+      target: id,
+    })),
+    {
+      id: "existing-23-notify",
+      source: "existing-23",
+      target: "notify",
+    },
+  ],
+};
 
 export const focusedScenarios: Array<{
   name: string;
   input: AgentEvalInput;
 }> = [
+  {
+    name: "finds requested capabilities in a large catalog",
+    input: {
+      ...scenario({
+        messages: [
+          {
+            role: "user",
+            content:
+              "When an applicant is created, score them. Use only the requested Event and action.",
+          },
+        ],
+        document: emptyDocument,
+        integrations: [],
+        expected: {
+          exactActions: { "score-applicant": 1 },
+          exactEvents: { start: ["applicant.created"], cancel: [] },
+          efficiencyBudget: {
+            maxModelCalls: 12,
+            maxToolCalls: 24,
+            maxGraphRevisions: 6,
+            maxRefusals: 2,
+          },
+          requiredFlows: [
+            {
+              source: { kind: "lifecycle" },
+              target: { kind: "action", actionId: "score-applicant" },
+              sourceHandle: "started",
+            },
+          ],
+          requiredReferences: [
+            {
+              node: { kind: "action", actionId: "score-applicant" },
+              key: "applicantId",
+              path: "applicantId",
+            },
+          ],
+        },
+        expectedCompletion: { outcome: "ready" },
+        intentCriteria: [
+          "The agent finds the requested action and Event through filtered discovery.",
+          "Unrelated catalog entries do not change the workflow.",
+        ],
+      }),
+      catalog: largeCatalog,
+    },
+  },
+  {
+    name: "updates a selected node in a large workflow",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            "Change only Notify recruiting's channel to #operations. Keep every other node and connection unchanged.",
+        },
+      ],
+      document: largeWorkflowDocument,
+      integrations: connectedIntegrations,
+      expected: {
+        exactActions: {
+          "score-applicant": largeWorkflowStepIds.length,
+          "slack/send-message": 1,
+        },
+        exactEvents: { start: ["applicant.created"], cancel: [] },
+        editSafety: {
+          protectedNodeIds: ["entry", ...largeWorkflowStepIds],
+          protectedEdgeIds: largeWorkflowDocument.edges.map((edge) => edge.id),
+        },
+        efficiencyBudget: {
+          maxModelCalls: 8,
+          maxToolCalls: 10,
+          maxGraphRevisions: 1,
+          maxRefusals: 0,
+        },
+        requiredConfigs: [
+          {
+            node: {
+              kind: "action",
+              actionId: "slack/send-message",
+              label: "Notify recruiting",
+            },
+            values: { channel: "#operations" },
+          },
+        ],
+      },
+      expectedCompletion: { outcome: "ready" },
+      intentCriteria: [
+        "Only the selected notification node changes.",
+        "The agent reads later topology pages and inspects the selected node's config.",
+      ],
+    }),
+  },
+  {
+    name: "inserts two waits on the same path",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            "Between Score applicant and Notify recruiting, wait one day and then wait two more days. Call the waits First wait and Second wait. Change nothing else.",
+        },
+      ],
+      document: configuredApplicantDocument,
+      integrations: connectedIntegrations,
+      expected: {
+        exactActions: {
+          "score-applicant": 1,
+          [BUILT_IN_ACTION_IDS.wait]: 2,
+          "slack/send-message": 1,
+        },
+        exactEvents: { start: ["applicant.created"], cancel: [] },
+        editSafety: {
+          protectedNodeIds: ["entry", "score", "notify"],
+          protectedEdgeIds: ["entry-score"],
+          forbiddenMutations: ["add_node", "connect_nodes", "disconnect_nodes"],
+        },
+        efficiencyBudget: {
+          maxModelCalls: 12,
+          maxToolCalls: 16,
+          maxGraphRevisions: 4,
+          maxRefusals: 0,
+        },
+        requiredFlows: [
+          {
+            source: { kind: "action", actionId: "score-applicant" },
+            target: {
+              kind: "action",
+              actionId: BUILT_IN_ACTION_IDS.wait,
+              label: "First wait",
+            },
+          },
+          {
+            source: {
+              kind: "action",
+              actionId: BUILT_IN_ACTION_IDS.wait,
+              label: "First wait",
+            },
+            target: {
+              kind: "action",
+              actionId: BUILT_IN_ACTION_IDS.wait,
+              label: "Second wait",
+            },
+          },
+          {
+            source: {
+              kind: "action",
+              actionId: BUILT_IN_ACTION_IDS.wait,
+              label: "Second wait",
+            },
+            target: { kind: "action", actionId: "slack/send-message" },
+          },
+        ],
+        requiredDurations: [
+          {
+            node: {
+              kind: "action",
+              actionId: BUILT_IN_ACTION_IDS.wait,
+              label: "First wait",
+            },
+            key: "waitDuration",
+            duration: "1d",
+          },
+          {
+            node: {
+              kind: "action",
+              actionId: BUILT_IN_ACTION_IDS.wait,
+              label: "Second wait",
+            },
+            key: "waitDuration",
+            duration: "2d",
+          },
+        ],
+      },
+      expectedCompletion: { outcome: "ready" },
+      intentCriteria: [
+        "The two waits run in the requested order between scoring and notification.",
+        "Each insertion is an atomic graph change and unrelated records are preserved.",
+      ],
+    }),
+  },
   {
     name: "creates a basic event-driven workflow",
     input: scenario({
