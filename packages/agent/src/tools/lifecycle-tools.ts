@@ -15,12 +15,8 @@ import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { findEvent } from "@wfgraph/shared/extensions/catalog";
 // The barrel keeps a historical import path and leaves these two types out, so
 // the types come from the module that owns them and the functions from theirs.
-import { compileConditionModel } from "@wfgraph/shared/conditions/condition-compile";
 import type {
   ConditionFieldType,
-  ConditionGroup,
-  ConditionModel,
-  ConditionRule,
   GroupLogic,
 } from "@wfgraph/shared/conditions/condition-model";
 import { EVENT_NAME_FIELD_PATH } from "@wfgraph/shared/conditions/condition-model";
@@ -44,9 +40,14 @@ import {
   checkCancelFilters,
   pruneCancelFilters,
 } from "@wfgraph/shared/lifecycle/cancel-filters";
-import { isBlank } from "@wfgraph/shared/types/string";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { WorkflowDraft } from "#src/document";
+import {
+  conditionGroupsSchema,
+  type ConditionGroupsInput,
+  type ConditionRuleInput,
+  readConditionModelInput,
+} from "#src/tools/condition-input";
 import { referencesForNode } from "#src/tools/reference-tools";
 
 const failureSchema = Schema.Struct({ reason: Schema.String });
@@ -57,51 +58,6 @@ const lifecycleWriteResultSchema = Schema.Struct({
 });
 
 const UNPLACED = { x: 0, y: 0 };
-
-const conditionRuleSchema = Schema.Struct({
-  field: Schema.String.annotate({
-    description:
-      'The payload or reference path, such as "score". Do not include a template token or node prefix.',
-  }),
-  fieldType: Schema.Literals([
-    "string",
-    "number",
-    "boolean",
-    "timestamp",
-  ]).annotate({
-    description: "The type of the value at that path.",
-  }),
-  operator: Schema.String.annotate({
-    description:
-      "string: equals, not_equals, contains. number: equals, not_equals, greater_than, greater_or_equal, less_than, less_or_equal. boolean: is_true, is_false. timestamp: within_next, more_than_from_now, less_than_ago, more_than_ago, before, after. Any type also takes is_set and is_not_set.",
-  }),
-  value: Schema.optionalKey(Schema.String).annotate({
-    description:
-      "The value compared against, for a string or number operator. A number is written as digits.",
-  }),
-  amount: Schema.optionalKey(Schema.Number).annotate({
-    description: "How many units, for a relative timestamp operator.",
-  }),
-  unit: Schema.optionalKey(
-    Schema.Literals(["minutes", "hours", "days", "weeks"])
-  ).annotate({
-    description: "The unit of amount, for a relative timestamp operator.",
-  }),
-  dateTime: Schema.optionalKey(Schema.String).annotate({
-    description: "An ISO timestamp, for the before and after operators.",
-  }),
-});
-
-const conditionGroupsSchema = Schema.Array(
-  Schema.Struct({
-    logic: Schema.optionalKey(Schema.Literals(["and", "or"])).annotate({
-      description: "How this group's rules combine. Defaults to and.",
-    }),
-    rules: Schema.Array(conditionRuleSchema),
-  })
-).annotate({
-  description: "At least one group, each holding at least one rule.",
-});
 
 export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
   description:
@@ -244,21 +200,6 @@ export const SetCondition = Tool.make("set_condition", {
   failureMode: "return",
 });
 
-type RuleInput = {
-  readonly field: string;
-  readonly fieldType: ConditionFieldType;
-  readonly operator: string;
-  readonly value?: string | undefined;
-  readonly amount?: number | undefined;
-  readonly unit?: "minutes" | "hours" | "days" | "weeks" | undefined;
-  readonly dateTime?: string | undefined;
-};
-
-type ConditionGroupsInput = readonly {
-  readonly logic?: GroupLogic | undefined;
-  readonly rules: readonly RuleInput[];
-}[];
-
 type LifecycleFilterInput = {
   readonly event: string;
   readonly groupLogic?: GroupLogic | undefined;
@@ -291,224 +232,6 @@ function patchEventRecord(input: {
     patched,
     new Set(Object.keys(patched).filter((event) => !cleared.has(event)))
   );
-}
-
-type RuleReading =
-  | { readonly ok: true; readonly rule: ConditionRule }
-  | { readonly ok: false; readonly reason: string };
-
-type RuleBase = { readonly id: string; readonly field: string };
-
-function readStringRule(base: RuleBase, input: RuleInput): RuleReading {
-  if (
-    input.operator !== "equals" &&
-    input.operator !== "not_equals" &&
-    input.operator !== "contains"
-  ) {
-    return {
-      ok: false,
-      reason: `${input.operator} is not a string operator. Use equals, not_equals, contains, is_set or is_not_set.`,
-    };
-  }
-  if (input.value === undefined) {
-    return {
-      ok: false,
-      reason: `The ${input.operator} operator on ${input.field} needs a value.`,
-    };
-  }
-  return {
-    ok: true,
-    rule: {
-      ...base,
-      fieldType: "string",
-      operator: input.operator,
-      value: input.value,
-    },
-  };
-}
-
-const NUMBER_OPERATORS = [
-  "equals",
-  "not_equals",
-  "greater_than",
-  "greater_or_equal",
-  "less_than",
-  "less_or_equal",
-] as const;
-
-function readNumberRule(base: RuleBase, input: RuleInput): RuleReading {
-  const operator = NUMBER_OPERATORS.find(
-    (candidate) => candidate === input.operator
-  );
-  if (!operator) {
-    return {
-      ok: false,
-      reason: `${input.operator} is not a number operator. Use ${NUMBER_OPERATORS.join(", ")}, is_set or is_not_set.`,
-    };
-  }
-
-  const value = Number(input.value);
-  if (
-    input.value === undefined ||
-    isBlank(input.value) ||
-    !Number.isFinite(value)
-  ) {
-    return {
-      ok: false,
-      reason: `The ${input.operator} operator on ${input.field} needs a numeric value.`,
-    };
-  }
-  return { ok: true, rule: { ...base, fieldType: "number", operator, value } };
-}
-
-function readBooleanRule(base: RuleBase, input: RuleInput): RuleReading {
-  if (input.operator !== "is_true" && input.operator !== "is_false") {
-    return {
-      ok: false,
-      reason: `${input.operator} is not a boolean operator. Use is_true, is_false, is_set or is_not_set.`,
-    };
-  }
-  return {
-    ok: true,
-    rule: { ...base, fieldType: "boolean", operator: input.operator },
-  };
-}
-
-const RELATIVE_TIMESTAMP_OPERATORS = [
-  "within_next",
-  "more_than_from_now",
-  "less_than_ago",
-  "more_than_ago",
-] as const;
-
-function readTimestampRule(base: RuleBase, input: RuleInput): RuleReading {
-  if (input.operator === "before" || input.operator === "after") {
-    return input.dateTime === undefined
-      ? {
-          ok: false,
-          reason: `The ${input.operator} operator on ${input.field} needs dateTime.`,
-        }
-      : {
-          ok: true,
-          rule: {
-            ...base,
-            fieldType: "timestamp",
-            operator: input.operator,
-            dateTime: input.dateTime,
-          },
-        };
-  }
-
-  const operator = RELATIVE_TIMESTAMP_OPERATORS.find(
-    (candidate) => candidate === input.operator
-  );
-  if (!operator) {
-    return {
-      ok: false,
-      reason: `${input.operator} is not a timestamp operator. Use ${RELATIVE_TIMESTAMP_OPERATORS.join(", ")}, before, after, is_set or is_not_set.`,
-    };
-  }
-  if (input.amount === undefined || input.unit === undefined) {
-    return {
-      ok: false,
-      reason: `The ${input.operator} operator on ${input.field} needs amount and unit.`,
-    };
-  }
-  return {
-    ok: true,
-    rule: {
-      ...base,
-      fieldType: "timestamp",
-      operator,
-      amount: input.amount,
-      unit: input.unit,
-    },
-  };
-}
-
-/**
- * A reader per field type, which is what makes the set exhaustive: adding a
- * `ConditionFieldType` stops this record compiling until it has a reader.
- */
-const RULE_READERS: Record<
-  ConditionFieldType,
-  (base: RuleBase, input: RuleInput) => RuleReading
-> = {
-  string: readStringRule,
-  number: readNumberRule,
-  boolean: readBooleanRule,
-  timestamp: readTimestampRule,
-};
-
-/**
- * One rule, read out of the flat shape the model fills in.
- *
- * The stored model is a discriminated union, and a union is a poor thing to ask
- * a model to fill in; a flat struct with the wrong combination refused by name
- * is the trade. Every refusal says which field was missing for which operator,
- * so the next call can be right.
- */
-function readRule(input: RuleInput): RuleReading {
-  const base: RuleBase = { id: nanoid(), field: input.field };
-
-  // Either null check reads the same whatever the field holds.
-  if (input.operator === "is_set" || input.operator === "is_not_set") {
-    return {
-      ok: true,
-      rule: { ...base, fieldType: input.fieldType, operator: input.operator },
-    };
-  }
-
-  return RULE_READERS[input.fieldType](base, input);
-}
-
-function readConditionModelInput(input: {
-  readonly subject: string;
-  readonly groupLogic?: GroupLogic | undefined;
-  readonly groups: ConditionGroupsInput;
-}):
-  | { readonly ok: true; readonly model: ConditionModel }
-  | { readonly ok: false; readonly reason: string } {
-  if (input.groups.length === 0) {
-    return {
-      ok: false,
-      reason: `${input.subject} needs at least one group.`,
-    };
-  }
-
-  const groups: ConditionGroup[] = [];
-  for (const group of input.groups) {
-    if (group.rules.length === 0) {
-      return {
-        ok: false,
-        reason: `Every ${input.subject.toLowerCase()} group needs at least one rule.`,
-      };
-    }
-
-    const rules: ConditionRule[] = [];
-    for (const rule of group.rules) {
-      const reading = readRule(rule);
-      if (!reading.ok) {
-        return reading;
-      }
-      rules.push(reading.rule);
-    }
-    groups.push({
-      id: nanoid(),
-      logic: group.logic ?? "and",
-      conditions: rules,
-    });
-  }
-
-  const model: ConditionModel = {
-    version: 2,
-    groupLogic: input.groupLogic ?? "and",
-    groups,
-  };
-  const compiled = compileConditionModel(model);
-  return compiled.valid
-    ? { ok: true, model }
-    : { ok: false, reason: compiled.error };
 }
 
 /** The entry node, or a fresh one when the workflow has never had rules. */
@@ -810,7 +533,7 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
       readonly groupLogic?: GroupLogic | undefined;
       readonly groups: readonly {
         readonly logic?: GroupLogic | undefined;
-        readonly rules: readonly RuleInput[];
+        readonly rules: readonly ConditionRuleInput[];
       }[];
     }) =>
       Effect.flatMap(draft.current, (document) => {
@@ -841,7 +564,6 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
           availableReferences.map((reference) => reference.path)
         );
 
-        const groups: ConditionGroup[] = [];
         for (const group of input.groups) {
           if (group.rules.length === 0) {
             return Effect.fail({
@@ -849,7 +571,6 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
             });
           }
 
-          const rules: ConditionRule[] = [];
           for (const rule of group.rules) {
             if (
               rule.field !== EVENT_NAME_FIELD_PATH &&
@@ -887,30 +608,36 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
                 reason: `Use fieldType ${expectedType} for ${rule.field}, as list_references reports.`,
               });
             }
-            const reading = readRule(rule);
-            if (!reading.ok) {
-              return Effect.fail({ reason: reading.reason });
+            const matchingReferences = availableReferences.filter(
+              (reference) => reference.path === rule.field
+            );
+            const openRecord =
+              matchingReferences.length > 0 &&
+              matchingReferences.every(
+                (reference) => reference.openRecord === true
+              );
+            if (openRecord && !rule.recordKey?.trim()) {
+              return Effect.fail({
+                reason: `${rule.field} is an open record. Supply recordKey for the value to compare.`,
+              });
             }
-            rules.push(reading.rule);
+            if (!openRecord && rule.recordKey !== undefined) {
+              return Effect.fail({
+                reason: `${rule.field} is not an open record and does not take recordKey.`,
+              });
+            }
           }
-
-          groups.push({
-            id: nanoid(),
-            logic: group.logic ?? "and",
-            conditions: rules,
-          });
         }
 
-        const model: ConditionModel = {
-          version: 2,
-          groupLogic: input.groupLogic ?? "and",
-          groups,
-        };
-
-        const compiled = compileConditionModel(model);
-        if (!compiled.valid) {
-          return Effect.fail({ reason: compiled.error });
+        const reading = readConditionModelInput({
+          subject: "A condition",
+          groupLogic: input.groupLogic,
+          groups: input.groups,
+        });
+        if (!reading.ok) {
+          return Effect.fail({ reason: reading.reason });
         }
+        const { model, expression } = reading;
 
         // The model and the CEL it compiles to are one fact about the node, so
         // they are written together; the editor writes them the same way.
@@ -921,7 +648,7 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
             config: {
               ...node.data.config,
               conditionModel: serializeConditionModel(model),
-              condition: compiled.expression,
+              condition: expression,
             },
           },
         };

@@ -4,6 +4,7 @@ import type {
   ConditionModel,
   ConditionModelParseResult,
 } from "#src/conditions/condition-model";
+import { findTemplateTokens } from "#src/graph/node-references";
 import { decodeIsoTimestamp } from "#src/types/timestamp";
 
 /**
@@ -95,14 +96,18 @@ const NUMBER_VALUE_ERROR = "Number conditions require a finite numeric value";
 const BOOLEAN_OPERATOR_ERROR = "Boolean operator is invalid";
 
 /**
- * A `before`/`after` rule stores the moment the user picked as text, so what
- * counts as a valid one is the shared timestamp contract: ISO 8601 carrying an
- * explicit zone. The builder writes these through `Date.toISOString()`, and a
- * rule that named a wall-clock time with no zone would compare against payloads
- * from any zone and mean something different each time.
+ * A `before`/`after` rule stores either an ISO 8601 timestamp with an explicit
+ * zone or one exact template token. Wait matches resolve the token before they
+ * compile the comparison. A literal wall-clock time with no zone would compare
+ * against payloads from any zone and mean something different each time.
  */
-function isIsoTimestamp(value: string): boolean {
-  return decodeIsoTimestamp(value) !== null;
+function isIsoTimestampOrExactTemplate(value: string): boolean {
+  if (decodeIsoTimestamp(value) !== null) {
+    return true;
+  }
+
+  const tokens = findTemplateTokens(value);
+  return tokens.length === 1 && tokens[0]?.raw === value;
 }
 
 /**
@@ -158,7 +163,7 @@ const conditionRuleVariants = [
       .pipe(Schema.decodeTo(Schema.String, SchemaTransformation.trim()))
       .check(
         Schema.makeFilter((value: string) =>
-          isIsoTimestamp(value) ? undefined : DATE_TIME_ERROR
+          isIsoTimestampOrExactTemplate(value) ? undefined : DATE_TIME_ERROR
         )
       )
       .annotateKey({ messageMissingKey: DATE_TIME_ERROR }),

@@ -19,15 +19,25 @@ type WithoutId<Value> = Value extends { id: string }
 
 type EvalConditionRule = WithoutId<ConditionRule>;
 
+export type EvalCondition = {
+  groupLogic: GroupLogic;
+  groups: Array<{
+    logic: GroupLogic;
+    rules: EvalConditionRule[];
+  }>;
+};
+
 export type EvalLifecycleFilter = {
   event: string;
-  filter: {
-    groupLogic: GroupLogic;
-    groups: Array<{
-      logic: GroupLogic;
-      rules: EvalConditionRule[];
-    }>;
-  };
+  filter: EvalCondition;
+};
+
+export type EvalWaitMatchRule = {
+  field: string;
+  recordKey?: string;
+  operator: string;
+  value?: string | number;
+  referencePath?: string;
 };
 
 export type AgentEvalEditSafety = {
@@ -115,6 +125,13 @@ export type AgentEvalExpectations = {
     node: EvalNodeSelector;
     events: string[];
     exact?: boolean;
+  }>;
+  requiredWaitSubscriptions?: Array<{
+    node: EvalNodeSelector;
+    event: string;
+    connectionId?: string;
+    match?: EvalCondition;
+    matchRule?: EvalWaitMatchRule;
   }>;
   requiredConditionRules?: Array<{
     node: EvalNodeSelector;

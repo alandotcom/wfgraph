@@ -1,26 +1,48 @@
 /**
  * Structured authoring for the Wait step's two modes.
  *
- * The tool replaces every Wait-owned config key as one unit. This keeps fields
- * from the previous mode out of the graph while preserving config owned by the
- * node itself.
+ * The tool writes one complete timing or Event shape. It clears keys owned by a
+ * mode that the edit leaves and preserves optional settings within the retained
+ * mode unless the input explicitly changes them.
  */
 
 import { Effect, Schema } from "effect";
 import { Tool } from "effect/unstable/ai";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { conditionTypeOf } from "@wfgraph/shared/conditions/condition-field-type";
+import {
+  type ConditionModel,
+  readConditionRuleOperand,
+} from "@wfgraph/shared/conditions/condition-model";
+import { serializeConditionModel } from "@wfgraph/shared/conditions/condition-schema";
 import { findEvent } from "@wfgraph/shared/extensions/catalog";
-import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import {
+  actionTypeOf,
+  readConfigString,
+} from "@wfgraph/shared/graph/node-config";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
-import { DEFAULT_WAIT_TIMEOUT } from "@wfgraph/shared/lifecycle/wait-subscription";
+import { inheritConnections } from "@wfgraph/shared/lifecycle/event-connections";
+import {
+  DEFAULT_WAIT_TIMEOUT,
+  type EventSubscription,
+  readWaitDelayTiming,
+  readWaitSubscriptions,
+} from "@wfgraph/shared/lifecycle/wait-subscription";
 import { isBlank } from "@wfgraph/shared/types/string";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   parseDurationMs,
   parseTimestampWithTimezone,
 } from "@wfgraph/shared/utils/wait-time";
-import { WorkflowDraft } from "#src/document";
+import { validateWaitAllowedHoursConfig } from "@wfgraph/shared/utils/wait-allowed-hours";
+import { type AgentDocument, WorkflowDraft } from "#src/document";
+import {
+  conditionGroupsSchema,
+  type ConditionGroupsInput,
+  readWaitMatchModelInput,
+} from "#src/tools/condition-input";
 import { referencesForNode } from "#src/tools/reference-tools";
 
 const failureSchema = Schema.Struct({ reason: Schema.String });
@@ -31,8 +53,59 @@ const waitForSchema = Schema.Array(
     event: Schema.String.annotate({
       description: "An Event name exactly as list_events returned it.",
     }),
+    match: Schema.optionalKey(
+      Schema.Struct({
+        groupLogic: Schema.optionalKey(Schema.Literals(["and", "or"])).annotate(
+          {
+            description: "How the match groups combine. Defaults to and.",
+          }
+        ),
+        groups: conditionGroupsSchema,
+      })
+    ).annotate({
+      description:
+        "A predicate on this Event's payload. A string or absolute timestamp operand may be one exact token returned by list_references.",
+    }),
+    clearMatch: Schema.optionalKey(Schema.Boolean).annotate({
+      description:
+        "Set to true to remove this Event's stored match. Omit to preserve the match.",
+    }),
+    connectionId: Schema.optionalKey(Schema.String).annotate({
+      description:
+        "The matching connectionId from list_integrations when an integration owns this Event.",
+    }),
+    clearConnection: Schema.optionalKey(Schema.Boolean).annotate({
+      description:
+        "Set to true to remove this Event's stored Connection. Omit to preserve the Connection.",
+    }),
   })
 );
+
+const delayPolicyFields = {
+  gateMode: Schema.optionalKey(
+    Schema.Literals(["off", "require_actual_wait"])
+  ).annotate({
+    description:
+      "Whether an already-due target continues immediately or skips the branch. Omit to preserve it while changing delay timing.",
+  }),
+  allowedHoursMode: Schema.optionalKey(
+    Schema.Literals(["off", "daily_window"])
+  ).annotate({
+    description:
+      "Whether the wait may end at any time or only inside a daily window. Omit to preserve it while changing delay timing.",
+  }),
+  windowStart: Schema.optionalKey(Schema.String).annotate({
+    description:
+      'The daily window start in 24-hour HH:MM form, such as "09:00".',
+  }),
+  windowEnd: Schema.optionalKey(Schema.String).annotate({
+    description: 'The daily window end in 24-hour HH:MM form, such as "17:00".',
+  }),
+  timezone: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "The IANA timezone for a local timestamp or daily window. Omit to preserve it while changing delay timing.",
+  }),
+};
 
 const waitInputSchema = Schema.Union([
   Schema.Struct({
@@ -42,6 +115,7 @@ const waitInputSchema = Schema.Union([
     duration: Schema.String.annotate({
       description: 'How long to wait, such as "2d".',
     }),
+    ...delayPolicyFields,
   }),
   Schema.Struct({
     mode: Schema.Literal("until").annotate({
@@ -55,10 +129,11 @@ const waitInputSchema = Schema.Union([
       description:
         'A duration added to the timestamp, such as "-1d" for one day before or "6h" for six hours after.',
     }),
-    timezone: Schema.optionalKey(Schema.String).annotate({
+    clearOffset: Schema.optionalKey(Schema.Boolean).annotate({
       description:
-        "The IANA timezone for an ISO timestamp with no UTC offset. Omit it for a timestamp reference or an ISO timestamp that includes an offset.",
+        "Set to true to remove the stored offset. Omit to preserve the offset when the Wait already uses until timing.",
     }),
+    ...delayPolicyFields,
   }),
   Schema.Struct({
     mode: Schema.Literal("event").annotate({
@@ -92,7 +167,7 @@ const setWaitInputSchema = Schema.Struct({
 
 export const SetWait = Tool.make("set_wait", {
   description:
-    "Configure a Wait step for a duration, until a date/time, or for an Event subscription. Use until timing when the request names a date/time from an earlier step, and call list_references first. This replaces the Wait settings from its previous mode.",
+    "Configure a Wait step for a duration, until a date/time, or for Event subscriptions. Use until timing when the request names a date/time from an earlier step, and call list_references first. Omitted optional fields preserve settings owned by the retained mode.",
   parameters: setWaitInputSchema,
   success: writeResultSchema,
   failure: failureSchema,
@@ -100,6 +175,87 @@ export const SetWait = Tool.make("set_wait", {
 });
 
 type SetWaitInput = typeof setWaitInputSchema.Type;
+
+function eventMatchFieldFailure(input: {
+  eventName: string;
+  match: { readonly groups: ConditionGroupsInput };
+  catalog: ExtensionCatalog;
+}): string | undefined {
+  const event = findEvent(input.catalog, input.eventName);
+  if (!event) {
+    return undefined;
+  }
+
+  for (const group of input.match.groups) {
+    for (const rule of group.rules) {
+      const field = event.payloadFields.find(
+        (candidate) => candidate.path === rule.field
+      );
+      if (!field) {
+        return `The match for ${input.eventName} reads ${rule.field}, which that Event does not carry.`;
+      }
+      const expectedType = conditionTypeOf(field);
+      if (expectedType === null) {
+        return `The match field ${rule.field} has no condition-compatible type.`;
+      }
+      if (expectedType !== rule.fieldType) {
+        return `Use fieldType ${expectedType} for ${rule.field}, as list_events reports.`;
+      }
+      if (field.valueType && !rule.recordKey?.trim()) {
+        return `${rule.field} is an open record. Supply recordKey for the value to compare.`;
+      }
+      if (!field.valueType && rule.recordKey !== undefined) {
+        return `${rule.field} is not an open record and does not take recordKey.`;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function matchReferenceFailure(input: {
+  model: ConditionModel;
+  nodeId: string;
+  document: AgentDocument;
+  catalog: ExtensionCatalog;
+}): string | undefined {
+  const references = referencesForNode({
+    nodeId: input.nodeId,
+    document: input.document,
+    catalog: input.catalog,
+  });
+  const byToken = new Map(
+    (references ?? []).map((reference) => [reference.token, reference])
+  );
+
+  for (const group of input.model.groups) {
+    for (const rule of group.conditions) {
+      const operand = readConditionRuleOperand(rule);
+      if (!operand) {
+        continue;
+      }
+      const tokens = findTemplateTokens(operand);
+      if (tokens.length === 0 && operand.includes("{{")) {
+        return "A Wait match reference must be one exact token from list_references.";
+      }
+      if (tokens.length === 0) {
+        continue;
+      }
+      if (tokens.length !== 1 || tokens[0]?.raw !== operand) {
+        return "A Wait match reference must be one exact token from list_references.";
+      }
+      const reference = byToken.get(operand);
+      if (!reference) {
+        return "A Wait match uses an unavailable reference. Use an exact token from list_references.";
+      }
+      if (reference.conditionFieldType !== rule.fieldType) {
+        return `The Wait match reference must have type ${rule.fieldType}.`;
+      }
+    }
+  }
+
+  return undefined;
+}
 
 const WAIT_OWNED_KEYS = new Set([
   "waitMode",
@@ -126,6 +282,88 @@ function configOutsideWait(node: WorkflowNode): Record<string, unknown> {
   );
 }
 
+function validTimeZone(timeZone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+type DelayWaitInput = Exclude<SetWaitInput["wait"], { readonly mode: "event" }>;
+
+function readDelayPolicy(input: {
+  wait: DelayWaitInput;
+  stored: Record<string, unknown>;
+}):
+  | { readonly ok: true; readonly config: Record<string, unknown> }
+  | { readonly ok: false; readonly reason: string } {
+  const preserve = input.stored.waitMode !== "event";
+  const gateMode =
+    input.wait.gateMode ??
+    (preserve ? readConfigString(input.stored, "waitGateMode") : undefined);
+  const allowedHoursMode =
+    input.wait.allowedHoursMode ??
+    (preserve
+      ? readConfigString(input.stored, "waitAllowedHoursMode")
+      : undefined);
+  const windowStart =
+    input.wait.allowedHoursMode === "off"
+      ? undefined
+      : (input.wait.windowStart ??
+        (preserve
+          ? readConfigString(input.stored, "waitAllowedStartTime")
+          : undefined));
+  const windowEnd =
+    input.wait.allowedHoursMode === "off"
+      ? undefined
+      : (input.wait.windowEnd ??
+        (preserve
+          ? readConfigString(input.stored, "waitAllowedEndTime")
+          : undefined));
+  const timezone =
+    input.wait.timezone ??
+    (preserve ? readConfigString(input.stored, "waitTimezone") : undefined);
+
+  const windowIssues = validateWaitAllowedHoursConfig({
+    mode: allowedHoursMode,
+    startTime: windowStart,
+    endTime: windowEnd,
+  });
+  if (windowIssues.length > 0) {
+    return {
+      ok: false,
+      reason: windowIssues.map((issue) => issue.message).join(" "),
+    };
+  }
+  if (allowedHoursMode === "daily_window") {
+    if (!timezone?.trim()) {
+      return {
+        ok: false,
+        reason: "Timezone is required when the daily window is enabled.",
+      };
+    }
+    if (!validTimeZone(timezone)) {
+      return {
+        ok: false,
+        reason: "The daily window needs a valid IANA timezone.",
+      };
+    }
+  }
+
+  return {
+    ok: true,
+    config: omitUndefined({
+      waitGateMode: gateMode,
+      waitAllowedHoursMode: allowedHoursMode,
+      waitAllowedStartTime: windowStart,
+      waitAllowedEndTime: windowEnd,
+      waitTimezone: timezone,
+    }),
+  };
+}
+
 export const waitToolHandlers = Effect.gen(function* () {
   const draft = yield* WorkflowDraft;
 
@@ -146,6 +384,7 @@ export const waitToolHandlers = Effect.gen(function* () {
           });
         }
 
+        const storedConfig = node.data.config ?? {};
         const baseConfig = configOutsideWait(node);
         const wait = input.wait;
         let waitConfig: Record<string, unknown>;
@@ -155,9 +394,14 @@ export const waitToolHandlers = Effect.gen(function* () {
               reason: "A Wait needs a valid duration such as 2d or 48h.",
             });
           }
+          const policy = readDelayPolicy({ wait, stored: storedConfig });
+          if (!policy.ok) {
+            return Effect.fail({ reason: policy.reason });
+          }
           waitConfig = {
             waitMode: "delay",
             waitDuration: wait.duration,
+            ...policy.config,
           };
         } else if (wait.mode === "until") {
           if (isBlank(wait.timestamp)) {
@@ -167,6 +411,11 @@ export const waitToolHandlers = Effect.gen(function* () {
             });
           }
 
+          const policy = readDelayPolicy({ wait, stored: storedConfig });
+          if (!policy.ok) {
+            return Effect.fail({ reason: policy.reason });
+          }
+          const timezone = readConfigString(policy.config, "waitTimezone");
           const tokens = findTemplateTokens(wait.timestamp);
           if (tokens.length > 0) {
             const reference = referencesForNode({
@@ -181,7 +430,7 @@ export const waitToolHandlers = Effect.gen(function* () {
               });
             }
           } else if (
-            parseTimestampWithTimezone(wait.timestamp, wait.timezone) === null
+            parseTimestampWithTimezone(wait.timestamp, timezone) === null
           ) {
             return Effect.fail({
               reason:
@@ -189,10 +438,20 @@ export const waitToolHandlers = Effect.gen(function* () {
             });
           }
 
-          if (
-            wait.offset !== undefined &&
-            parseDurationMs(wait.offset) === null
-          ) {
+          if (wait.offset !== undefined && wait.clearOffset === true) {
+            return Effect.fail({
+              reason: "Set offset or clearOffset, not both.",
+            });
+          }
+          const storedOffset =
+            storedConfig.waitMode !== "event" &&
+            readWaitDelayTiming(storedConfig) === "until"
+              ? readConfigString(storedConfig, "waitOffset")
+              : undefined;
+          const offset = wait.clearOffset
+            ? undefined
+            : (wait.offset ?? storedOffset);
+          if (offset !== undefined && parseDurationMs(offset) === null) {
             return Effect.fail({
               reason:
                 "An until offset must be a valid duration such as -1d or 6h.",
@@ -202,10 +461,8 @@ export const waitToolHandlers = Effect.gen(function* () {
             waitMode: "delay",
             waitDelayTimingMode: "until",
             waitUntil: wait.timestamp,
-            ...omitUndefined({
-              waitOffset: wait.offset,
-              waitTimezone: wait.timezone,
-            }),
+            ...omitUndefined({ waitOffset: offset }),
+            ...policy.config,
           };
         } else {
           if (wait.events.length === 0) {
@@ -213,16 +470,123 @@ export const waitToolHandlers = Effect.gen(function* () {
               reason: "Event mode needs at least one Event.",
             });
           }
-          if (
-            wait.events.some(
-              (subscription) =>
-                findEvent(draft.catalog, subscription.event) === undefined
-            )
-          ) {
-            return Effect.fail({
-              reason:
-                "A waitFor Event is absent from the host catalog. Call list_events and use an exact Event name.",
-            });
+          const storedSubscriptions =
+            storedConfig.waitMode === "event"
+              ? readWaitSubscriptions(storedConfig)
+              : [];
+          const storedByEvent = new Map(
+            storedSubscriptions.map((subscription) => [
+              subscription.event,
+              subscription,
+            ])
+          );
+          const subscriptions: EventSubscription[] = [];
+          const eventNames = new Set<string>();
+          const connectionsExcludedFromInheritance = new Set<string>();
+          for (const subscription of wait.events) {
+            const event = findEvent(draft.catalog, subscription.event);
+            if (!event) {
+              return Effect.fail({
+                reason:
+                  "A waitFor Event is absent from the host catalog. Call list_events and use an exact Event name.",
+              });
+            }
+            if (eventNames.has(subscription.event)) {
+              return Effect.fail({
+                reason: `Wait for ${subscription.event} appears more than once. Supply one subscription per Event.`,
+              });
+            }
+            eventNames.add(subscription.event);
+
+            if (
+              subscription.connectionId !== undefined &&
+              subscription.clearConnection === true
+            ) {
+              return Effect.fail({
+                reason: `Set connectionId or clearConnection for ${subscription.event}, not both.`,
+              });
+            }
+            const storedSubscription = storedByEvent.get(subscription.event);
+            const connectionId = subscription.clearConnection
+              ? undefined
+              : (subscription.connectionId ?? storedSubscription?.connectionId);
+            if (
+              subscription.clearConnection ||
+              (storedSubscription !== undefined &&
+                storedSubscription.connectionId === undefined &&
+                subscription.connectionId === undefined)
+            ) {
+              connectionsExcludedFromInheritance.add(subscription.event);
+            }
+            if (connectionId !== undefined) {
+              if (!event.integration) {
+                return Effect.fail({
+                  reason: `${subscription.event} is a host Event and cannot have a Connection.`,
+                });
+              }
+              const connection = draft.integrations.find(
+                (candidate) => candidate.id === connectionId
+              );
+              if (!connection) {
+                return Effect.fail({
+                  reason:
+                    "The selected Connection is not connected. Call list_integrations to see the available Connections.",
+                });
+              }
+              if (connection.type !== event.integration) {
+                return Effect.fail({
+                  reason: `Event ${subscription.event} needs a ${event.integration} Connection, but the selected Connection belongs to ${connection.type}.`,
+                });
+              }
+            }
+
+            if (
+              subscription.match !== undefined &&
+              subscription.clearMatch === true
+            ) {
+              return Effect.fail({
+                reason: `Set match or clearMatch for ${subscription.event}, not both.`,
+              });
+            }
+            let match = subscription.clearMatch
+              ? undefined
+              : storedSubscription?.match;
+            if (subscription.match !== undefined) {
+              const fieldFailure = eventMatchFieldFailure({
+                eventName: subscription.event,
+                match: subscription.match,
+                catalog: draft.catalog,
+              });
+              if (fieldFailure) {
+                return Effect.fail({ reason: fieldFailure });
+              }
+              const reading = readWaitMatchModelInput({
+                subject: `The match for ${subscription.event}`,
+                groupLogic: subscription.match.groupLogic,
+                groups: subscription.match.groups,
+              });
+              if (!reading.ok) {
+                return Effect.fail({ reason: reading.reason });
+              }
+              const referenceFailure = matchReferenceFailure({
+                model: reading.model,
+                nodeId: input.nodeId,
+                document,
+                catalog: draft.catalog,
+              });
+              if (referenceFailure) {
+                return Effect.fail({ reason: referenceFailure });
+              }
+              match = serializeConditionModel(reading.model);
+            }
+
+            subscriptions.push(
+              omitUndefined({
+                event: subscription.event,
+                match,
+                connectionId,
+              })
+            );
           }
           if (
             wait.timeout !== undefined &&
@@ -232,13 +596,31 @@ export const waitToolHandlers = Effect.gen(function* () {
               reason: "An Event wait timeout must be a valid duration.",
             });
           }
+          const preserveEvent = storedConfig.waitMode === "event";
+          const storedTimeout = preserveEvent
+            ? readConfigString(storedConfig, "waitTimeout")
+            : undefined;
+          const storedTimeoutBehavior = preserveEvent
+            ? readConfigString(storedConfig, "waitTimeoutBehavior")
+            : undefined;
+          const inheritedSubscriptions = inheritConnections(
+            subscriptions,
+            draft.catalog
+          ).map((subscription) =>
+            connectionsExcludedFromInheritance.has(subscription.event)
+              ? omitUndefined({
+                  event: subscription.event,
+                  match: subscription.match,
+                })
+              : subscription
+          );
           waitConfig = {
             waitMode: "event",
-            waitFor: wait.events.map((subscription) => ({
-              event: subscription.event,
-            })),
-            waitTimeout: wait.timeout ?? DEFAULT_WAIT_TIMEOUT,
-            waitTimeoutBehavior: wait.timeoutBehavior ?? "continue",
+            waitFor: inheritedSubscriptions,
+            waitTimeout: wait.timeout ?? storedTimeout ?? DEFAULT_WAIT_TIMEOUT,
+            waitTimeoutBehavior:
+              wait.timeoutBehavior ??
+              (storedTimeoutBehavior === "skip" ? "skip" : "continue"),
           };
         }
 

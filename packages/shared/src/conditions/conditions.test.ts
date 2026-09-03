@@ -75,6 +75,30 @@ describe("conditions", () => {
     }
   });
 
+  it("parses an exact template as a deferred absolute timestamp", () => {
+    const parsed = parseConditionModel({
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group-1",
+          logic: "and",
+          conditions: [
+            {
+              id: "condition-1",
+              field: "occurredAt",
+              fieldType: "timestamp",
+              operator: "after",
+              dateTime: "{{@entry:Lifecycle.interviewAt}}",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(parsed.valid).toBe(true);
+  });
+
   it("compiles multiple groups with group logic", () => {
     const model: ConditionModel = {
       version: 2,

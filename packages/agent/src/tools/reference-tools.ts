@@ -16,6 +16,7 @@
 import { Effect, Schema } from "effect";
 import { Tool } from "effect/unstable/ai";
 import type { ConditionFieldType } from "@wfgraph/shared/conditions/condition-model";
+import { conditionTypeOf } from "@wfgraph/shared/conditions/condition-field-type";
 import { findAction } from "@wfgraph/shared/extensions/catalog";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
@@ -47,6 +48,8 @@ const referenceSchema = Schema.Struct({
   conditionFieldType: Schema.optionalKey(
     Schema.Literals(["string", "number", "boolean", "timestamp"])
   ),
+  /** True when a condition must provide a recordKey under this path. */
+  openRecord: Schema.optionalKey(Schema.Boolean),
 });
 
 /** The condition type a reference supports, absent for objects and type clashes. */
@@ -56,17 +59,7 @@ function conditionFieldTypeOf(
   if ("typeClash" in field && field.typeClash) {
     return null;
   }
-  if (
-    field.type === "string" ||
-    field.type === "number" ||
-    field.type === "boolean" ||
-    field.type === "timestamp"
-  ) {
-    return field.type;
-  }
-  return field.type === undefined || field.type === "duration"
-    ? "string"
-    : null;
+  return conditionTypeOf(field);
 }
 
 /**
@@ -162,6 +155,7 @@ export function referencesForNode(input: {
           nullable: field.nullable,
           enumValues: field.enumValues,
           conditionFieldType: conditionFieldType ?? undefined,
+          openRecord: field.valueType ? true : undefined,
         });
       });
     });

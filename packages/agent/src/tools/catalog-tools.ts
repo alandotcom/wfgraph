@@ -50,6 +50,8 @@ const configFieldSchema = Schema.Struct({
 const referenceFieldSchema = Schema.Struct({
   path: Schema.String,
   type: Schema.optionalKey(Schema.String),
+  /** The value type for an open-record field whose keys are chosen at runtime. */
+  valueType: Schema.optionalKey(Schema.String),
   description: Schema.optionalKey(Schema.String),
   nullable: Schema.optionalKey(Schema.Boolean),
   enumValues: Schema.optionalKey(Schema.Array(Schema.String)),
@@ -81,7 +83,7 @@ const BUILT_IN_AUTHORING = new Map<
       description:
         "Wait for a duration, until a date/time, or until an Event arrives.",
       instructions:
-        "Add and connect the node, then call set_wait. Use duration timing for a relative delay. Use until timing with a timestamp from list_references and an optional negative or positive offset. Use list_events before Event mode; Event waits carry waitFor subscriptions and a timeout.",
+        "Add and connect the node, then call set_wait. Use duration timing for a relative delay. Use until timing with a timestamp from list_references and an optional negative or positive offset. Use list_events before Event mode. Match a Wait Event to the current run with an exact list_references token. Integration-owned Events take a Connection ID from list_integrations. Event waits also need a timeout.",
     },
   ],
 ]);
@@ -105,6 +107,7 @@ function toReferenceField(field: ReferenceField) {
   return omitUndefined({
     path: field.path,
     type: field.type,
+    valueType: field.valueType,
     description: field.description,
     nullable: field.nullable,
     enumValues: field.enumValues,

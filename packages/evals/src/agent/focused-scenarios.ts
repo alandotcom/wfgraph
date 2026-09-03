@@ -374,6 +374,126 @@ export const focusedScenarios: Array<{
     }),
   },
   {
+    name: "waits for the same entity on a connected integration Event",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            "When an applicant is created, wait up to 7 days for a Slack candidate referral for that same applicant. Use our primary Slack connection.",
+        },
+      ],
+      document: emptyDocument,
+      integrations: connectedIntegrations,
+      expected: {
+        exactActions: { [BUILT_IN_ACTION_IDS.wait]: 1 },
+        exactEvents: { start: ["applicant.created"], cancel: [] },
+        requiredFlows: [
+          {
+            source: { kind: "lifecycle" },
+            target: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            sourceHandle: "started",
+          },
+        ],
+        requiredConfigs: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            values: { waitMode: "event" },
+          },
+        ],
+        requiredDurations: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            key: "waitTimeout",
+            duration: "7d",
+          },
+        ],
+        requiredWaitEvents: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            events: ["slack/candidate.referred"],
+            exact: true,
+          },
+        ],
+        requiredWaitSubscriptions: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            event: "slack/candidate.referred",
+            connectionId: "slack-primary",
+            matchRule: {
+              field: "applicantId",
+              operator: "equals",
+              referencePath: "applicantId",
+            },
+          },
+        ],
+      },
+      expectedCompletion: { outcome: "ready" },
+      intentCriteria: [
+        "The Wait resumes only for a Slack referral carrying the current run's applicant id.",
+        "The Wait uses the primary Slack Connection and times out after seven days.",
+      ],
+    }),
+  },
+  {
+    name: "waits inside a daily window with an elapsed-time gate",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            "When an appointment is created, wait until appointment.startsAt. Continue only from 09:00 through 17:00 America/New_York, and skip the branch if no time would actually elapse.",
+        },
+      ],
+      document: emptyDocument,
+      integrations: [],
+      expected: {
+        exactActions: { [BUILT_IN_ACTION_IDS.wait]: 1 },
+        exactEvents: { start: ["app/appointment.created"], cancel: [] },
+        requiredFlows: [
+          {
+            source: { kind: "lifecycle" },
+            target: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            sourceHandle: "started",
+          },
+        ],
+        requiredConfigs: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            values: {
+              waitMode: "delay",
+              waitDelayTimingMode: "until",
+              waitGateMode: "require_actual_wait",
+              waitAllowedHoursMode: "daily_window",
+              waitAllowedStartTime: "09:00",
+              waitAllowedEndTime: "17:00",
+              waitTimezone: "America/New_York",
+            },
+          },
+        ],
+        forbiddenConfigKeys: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            keys: ["waitDuration"],
+          },
+        ],
+        requiredReferences: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            key: "waitUntil",
+            path: "appointment.startsAt",
+          },
+        ],
+      },
+      expectedCompletion: { outcome: "ready" },
+      intentCriteria: [
+        "The Wait uses the appointment start timestamp as its target.",
+        "The Wait shifts completion into the requested New York daily window.",
+        "The Wait skips the branch when the computed target is already due.",
+      ],
+    }),
+  },
+  {
     name: "waits for a production Event with a timeout",
     input: scenario({
       messages: [

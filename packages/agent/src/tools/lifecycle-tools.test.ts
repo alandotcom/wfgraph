@@ -24,6 +24,24 @@ const catalogWithTimestamp = {
       : event
   ),
 };
+const catalogWithOpenRecord = {
+  ...catalog,
+  actions: catalog.actions.map((action) =>
+    action.id === "score-applicant"
+      ? {
+          ...action,
+          outputFields: [
+            ...action.outputFields,
+            {
+              path: "metadata",
+              type: "object" as const,
+              valueType: "string" as const,
+            },
+          ],
+        }
+      : action
+  ),
+};
 const catalogWithTypeClash = {
   ...catalog,
   events: [
@@ -903,6 +921,78 @@ describe("set_condition", () => {
 
       const parsed = parseConditionModel(serialized);
       expect(parsed.valid).toBe(true);
+    })
+  );
+
+  it.effect("writes a named key under an open-record field", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [conditionLifecycle, score, condition],
+        edges: conditionEdges,
+        catalog: catalogWithOpenRecord,
+      });
+
+      yield* tools.set_condition({
+        nodeId: "branch",
+        groups: [
+          {
+            rules: [
+              {
+                field: "metadata",
+                recordKey: "priority",
+                fieldType: "string",
+                operator: "equals",
+                value: "high",
+              },
+            ],
+          },
+        ],
+      });
+
+      const serialized = readConfigString(
+        (yield* draft.current).nodes.find((node) => node.id === "branch")?.data
+          .config,
+        "conditionModel"
+      );
+      const parsed = parseConditionModel(serialized);
+      expect(parsed.valid).toBe(true);
+      if (parsed.valid) {
+        expect(parsed.model.groups[0]?.conditions[0]).toMatchObject({
+          field: "metadata",
+          recordKey: "priority",
+          fieldType: "string",
+        });
+      }
+    })
+  );
+
+  it.effect("refuses an open-record field with no key", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({
+        nodes: [conditionLifecycle, score, condition],
+        edges: conditionEdges,
+        catalog: catalogWithOpenRecord,
+      });
+
+      const failure = yield* Effect.flip(
+        tools.set_condition({
+          nodeId: "branch",
+          groups: [
+            {
+              rules: [
+                {
+                  field: "metadata",
+                  fieldType: "string",
+                  operator: "equals",
+                  value: "high",
+                },
+              ],
+            },
+          ],
+        })
+      );
+
+      expect(failure.reason).toContain("recordKey");
     })
   );
 
