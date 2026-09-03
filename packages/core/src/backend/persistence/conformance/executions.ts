@@ -69,7 +69,10 @@ export function describeExecutionConformance({
           return {
             keys: yield* apiKeys.listNewestFirst,
             workflow: yield* workflows.findById("wf_1"),
-            events: yield* executions.listWorkflowEvents("wf_1"),
+            events: yield* executions.listWorkflowEvents({
+              workflowId: "wf_1",
+              eventType: "run_refused",
+            }),
           };
         })
       );
@@ -604,7 +607,7 @@ export function describeExecutionConformance({
       });
     });
 
-    it("keeps the workflow's own audit rows apart from a run's timeline", async () => {
+    it("keeps workflow audit rows apart from a run's timeline", async () => {
       const database = await openConnection();
       await seedPublishedWorkflow(database);
 
@@ -628,12 +631,18 @@ export function describeExecutionConformance({
             throw new Error("Start was refused");
           }
 
-          // One row of each scope. A workflow read that did not filter by type
-          // would return the run's row too, which is the regression this pins.
+          // These workflow-scoped rows and the run-scoped row exercise both
+          // audit readers. A workflow audit read without its scope filter would
+          // return the run's row too.
           yield* executions.recordAuditEvent({
             workflowId: "wf_1",
             eventType: "run_refused",
             message: "A run for this entity was already going",
+          });
+          yield* executions.recordAuditEvent({
+            workflowId: "wf_1",
+            eventType: "cancel_not_delivered",
+            message: "The cancel event reached no run",
           });
           yield* executions.recordAuditEvent({
             workflowId: "wf_1",
@@ -643,18 +652,115 @@ export function describeExecutionConformance({
           });
 
           return {
-            workflowEvents: yield* executions.listWorkflowEvents("wf_1"),
+            workflowEvents: [
+              ...(yield* executions.listWorkflowEvents({
+                workflowId: "wf_1",
+                eventType: "run_refused",
+              })),
+              ...(yield* executions.listWorkflowEvents({
+                workflowId: "wf_1",
+                eventType: "cancel_not_delivered",
+              })),
+            ],
             runEvents: yield* executions.listEvents(started.execution.id),
           };
         })
       );
 
-      expect(result.workflowEvents.map((event) => event.eventType)).toEqual([
-        "run_refused",
-      ]);
+      expect(
+        result.workflowEvents.map((event) => event.eventType).toSorted()
+      ).toEqual(["cancel_not_delivered", "run_refused"]);
       expect(result.runEvents.map((event) => event.eventType)).toEqual([
         "run_completed",
       ]);
+    });
+
+    it("limits each workflow audit event type independently", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+      await seedPublishedWorkflow(database, {
+        workflowId: "wf_2",
+        versionId: "ver_2",
+        name: "Follow-ups",
+      });
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+
+          yield* executions.recordAuditEvent({
+            workflowId: "wf_1",
+            eventType: "cancel_not_delivered",
+            message: "The older cancel event reached no run",
+          });
+          yield* executions.recordAuditEvent({
+            workflowId: "wf_1",
+            eventType: "run_refused",
+            message: "Oldest refused start",
+          });
+          yield* Effect.sleep(5);
+          yield* Effect.forEach(Array.from({ length: 50 }), (_, index) =>
+            executions.recordAuditEvent({
+              workflowId: "wf_1",
+              eventType: "run_refused",
+              message: `Refused start ${index}`,
+            })
+          );
+
+          yield* executions.recordAuditEvent({
+            workflowId: "wf_2",
+            eventType: "run_refused",
+            message: "The older start was refused",
+          });
+          yield* executions.recordAuditEvent({
+            workflowId: "wf_2",
+            eventType: "cancel_not_delivered",
+            message: "Oldest cancel event",
+          });
+          yield* Effect.sleep(5);
+          yield* Effect.forEach(Array.from({ length: 50 }), (_, index) =>
+            executions.recordAuditEvent({
+              workflowId: "wf_2",
+              eventType: "cancel_not_delivered",
+              message: `Cancel event ${index} reached no run`,
+            })
+          );
+
+          return {
+            workflowOneRefusals: yield* executions.listWorkflowEvents({
+              workflowId: "wf_1",
+              eventType: "run_refused",
+            }),
+            workflowOneCancellations: yield* executions.listWorkflowEvents({
+              workflowId: "wf_1",
+              eventType: "cancel_not_delivered",
+            }),
+            workflowTwoRefusals: yield* executions.listWorkflowEvents({
+              workflowId: "wf_2",
+              eventType: "run_refused",
+            }),
+            workflowTwoCancellations: yield* executions.listWorkflowEvents({
+              workflowId: "wf_2",
+              eventType: "cancel_not_delivered",
+            }),
+          };
+        })
+      );
+
+      expect(result.workflowOneRefusals).toHaveLength(50);
+      expect(result.workflowOneCancellations).toMatchObject([
+        { eventType: "cancel_not_delivered" },
+      ]);
+      expect(result.workflowTwoRefusals).toMatchObject([
+        { eventType: "run_refused" },
+      ]);
+      expect(result.workflowTwoCancellations).toHaveLength(50);
+      expect(
+        result.workflowOneRefusals.map((event) => event.message)
+      ).not.toContain("Oldest refused start");
+      expect(
+        result.workflowTwoCancellations.map((event) => event.message)
+      ).not.toContain("Oldest cancel event");
     });
   });
 }

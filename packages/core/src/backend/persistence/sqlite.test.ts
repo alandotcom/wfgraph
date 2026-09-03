@@ -241,9 +241,6 @@ async function prepareLegacyDatabase(
 }
 
 function createMigrationJournal(database: DatabaseSync): void {
-  const [baseline] = sqliteMigrations;
-  if (!baseline) throw new Error("SQLite baseline migration is missing");
-
   database.exec(`
     CREATE TABLE __wfgraph_sqlite_migrations (
       id INTEGER PRIMARY KEY,
@@ -253,13 +250,19 @@ function createMigrationJournal(database: DatabaseSync): void {
       applied_at TEXT
     );
   `);
-  database
-    .prepare(
-      `INSERT INTO __wfgraph_sqlite_migrations
+  const insert = database.prepare(
+    `INSERT INTO __wfgraph_sqlite_migrations
          (hash, created_at, name, applied_at)
        VALUES (?, ?, ?, ?)`
-    )
-    .run(baseline.hash, baseline.folderMillis, baseline.name, "2026-09-01");
+  );
+  for (const migration of sqliteMigrations) {
+    insert.run(
+      migration.hash,
+      migration.folderMillis,
+      migration.name,
+      "2026-09-01"
+    );
+  }
 }
 
 describe("native SQLite persistence", () => {
@@ -344,7 +347,7 @@ describe("native SQLite persistence", () => {
               "select count(*) as total from __wfgraph_sqlite_migrations"
             )
             .get()
-        ).toEqual({ total: 1 });
+        ).toEqual({ total: sqliteMigrations.length });
       } finally {
         inspection.close();
       }
@@ -353,13 +356,10 @@ describe("native SQLite persistence", () => {
     }
   });
 
-  it("creates a fresh normalized schema from the Drizzle baseline", async () => {
+  it("creates a fresh normalized schema from the Drizzle migrations", async () => {
     const filename = await databasePath();
     const persistence = await open(filename);
     await persistence.close();
-
-    const [baseline] = sqliteMigrations;
-    expect(baseline).toBeDefined();
 
     const database = new DatabaseSync(filename, { readOnly: true });
     try {
@@ -381,14 +381,16 @@ describe("native SQLite persistence", () => {
       expect(
         database
           .prepare(
-            "SELECT hash, created_at, name FROM __wfgraph_sqlite_migrations"
+            "SELECT hash, created_at, name FROM __wfgraph_sqlite_migrations ORDER BY id"
           )
-          .get()
-      ).toEqual({
-        hash: baseline!.hash,
-        created_at: baseline!.folderMillis,
-        name: baseline!.name,
-      });
+          .all()
+      ).toEqual(
+        sqliteMigrations.map((migration) => ({
+          hash: migration.hash,
+          created_at: migration.folderMillis,
+          name: migration.name,
+        }))
+      );
       expect(database.prepare("PRAGMA journal_mode").get()).toEqual({
         journal_mode: "wal",
       });
@@ -418,6 +420,17 @@ describe("native SQLite persistence", () => {
         { name: "workflow_id", desc: 0 },
         { name: "started_at", desc: 1 },
         { name: "id", desc: 1 },
+      ]);
+      expect(
+        database
+          .prepare("PRAGMA index_xinfo('events_workflow_type_created_idx')")
+          .all()
+          .filter((column) => column.key === 1)
+          .map((column) => ({ name: column.name, desc: column.desc }))
+      ).toEqual([
+        { name: "workflow_id", desc: 0 },
+        { name: "event_type", desc: 0 },
+        { name: "created_at", desc: 1 },
       ]);
     } finally {
       database.close();
@@ -466,7 +479,7 @@ describe("native SQLite persistence", () => {
               "SELECT count(*) AS total FROM __wfgraph_sqlite_migrations"
             )
             .get()
-        ).toEqual({ total: 1 });
+        ).toEqual({ total: sqliteMigrations.length });
         expect(database.prepare("PRAGMA user_version").get()).toEqual({
           user_version: 0,
         });

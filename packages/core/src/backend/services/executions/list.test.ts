@@ -34,7 +34,7 @@ function execution(
   };
 }
 
-/** The two reads this service makes, with what each was asked recorded. */
+/** The execution-list read, with its input recorded. */
 function makeRepos(rows: WorkflowExecutionListRow[]) {
   const listCalls: Array<{ workflowId: string; includeSuperseded: boolean }> =
     [];
@@ -142,28 +142,43 @@ describe("getWorkflowExecutions", () => {
       })
     );
 
-    // The Refused Starts ride in this payload rather than in a procedure of their
-    // own, so their mapping is asserted here: the panel formats a Date.
-    it.effect("hands the Refused Starts over with their timestamps", () =>
+    // Workflow-scoped audit rows ride in this payload rather than in a procedure
+    // of their own. The service reads each category separately so one busy
+    // category cannot consume the other category's database limit.
+    it.effect("reads refused starts and cancellation failures separately", () =>
       Effect.gen(function* () {
+        const eventTypes: string[] = [];
         const repos = Layer.mergeAll(
           SilentAppLoggerLayer,
           stubWorkflowRepo({ existsById: () => Effect.succeed(true) }),
           stubExecutionRepo({
             listByWorkflow: () => Effect.succeed([]),
             countSuperseded: () => Effect.succeed(0),
-            listWorkflowEvents: () =>
-              Effect.succeed([
-                {
-                  id: "evt_1",
-                  workflowId: "wf_1",
-                  executionId: null,
-                  eventType: "run_refused",
-                  message: "Refused a start from event app/appointment.created",
-                  metadata: { reason: "concurrency_first_wins" },
-                  createdAt: new Date("2026-03-01T09:59:00.000Z"),
-                },
-              ]),
+            listWorkflowEvents: (input) => {
+              eventTypes.push(input.eventType);
+              return Effect.succeed([
+                input.eventType === "run_refused"
+                  ? {
+                      id: "evt_1",
+                      workflowId: "wf_1",
+                      executionId: null,
+                      eventType: "run_refused",
+                      message:
+                        "Refused a start from event app/appointment.created",
+                      metadata: { reason: "concurrency_first_wins" },
+                      createdAt: new Date("2026-03-01T09:59:00.000Z"),
+                    }
+                  : {
+                      id: "evt_2",
+                      workflowId: "wf_1",
+                      executionId: null,
+                      eventType: "cancel_not_delivered",
+                      message: "The cancel event reached no run",
+                      metadata: { reason: "cancel_filter_declined" },
+                      createdAt: new Date("2026-03-01T09:58:00.000Z"),
+                    },
+              ]);
+            },
           })
         );
 
@@ -178,6 +193,17 @@ describe("getWorkflowExecutions", () => {
             message: "Refused a start from event app/appointment.created",
             createdAt: "2026-03-01T09:59:00.000Z",
           },
+        ]);
+        assert.deepStrictEqual(result.cancelNotDelivered, [
+          {
+            id: "evt_2",
+            message: "The cancel event reached no run",
+            createdAt: "2026-03-01T09:58:00.000Z",
+          },
+        ]);
+        assert.deepStrictEqual(eventTypes.toSorted(), [
+          "cancel_not_delivered",
+          "run_refused",
         ]);
       })
     );

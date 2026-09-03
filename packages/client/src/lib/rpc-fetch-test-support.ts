@@ -104,6 +104,12 @@ type RawExecution = {
 export type WorkflowRunRpcFixture = {
   items: RawExecution[];
   supersededCount: number;
+  refusedStarts?: Array<{ id: string; message: string; createdAt: string }>;
+  cancelNotDelivered?: Array<{
+    id: string;
+    message: string;
+    createdAt: string;
+  }>;
   graphs: Record<string, SerializedWorkflowGraph>;
   logsSummaryExtras: Record<
     string,
@@ -134,7 +140,8 @@ export async function answerWorkflowRunRpc(
           ? served.items
           : served.items.filter((item) => item.status !== "superseded"),
         supersededCount: served.supersededCount,
-        refusedStarts: [],
+        refusedStarts: served.refusedStarts ?? [],
+        cancelNotDelivered: served.cancelNotDelivered ?? [],
       });
 
     case "workflow/getExecutionLogs": {

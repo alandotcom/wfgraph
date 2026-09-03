@@ -22,6 +22,7 @@ import { validateWorkflowActionConfigs } from "#src/backend/services/workflows/v
 import { validateWorkflowIntegrations } from "#src/backend/services/workflows/validation/workflow-integration-validation";
 import { validateWorkflowTemplates } from "#src/backend/services/workflows/validation/workflow-template-validation";
 import {
+  validateCancelFilters,
   validateEventSplitOutlets,
   validateStartFilters,
   validateWorkflowEvents,
@@ -152,9 +153,10 @@ export const checkPublishReadiness = Effect.fn(
       () => validateWorkflowActionConfigs(nodes, catalog),
       () => validateWorkflowEvents(nodes, catalog),
       // Publish only. `validateWorkflowEvents` above runs in preflight too, and
-      // a Start Filter must not be able to stop a whole workflow there; see the
-      // header on `validateStartFilters`.
+      // a lifecycle filter must not stop a whole workflow there. The validation
+      // module explains why these checks belong at publish.
       () => validateStartFilters(nodes, catalog),
+      () => validateCancelFilters(nodes, catalog),
       () => validateEventSplitOutlets(nodes, edges, catalog),
       () => validateWorkflowTemplates({ nodes, edges, catalog }),
       () => checkUnreachableSubtrees({ nodes, edges }),

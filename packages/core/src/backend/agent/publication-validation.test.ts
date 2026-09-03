@@ -107,10 +107,10 @@ describe("validateAgentPublication", () => {
  * reaches one list and not the other is therefore silent: the agent says the
  * workflow is ready and the person who clicks Publish is the one who finds out.
  *
- * These cases are the Start Filter's three publish refusals, each stated here as
- * the agent has to see it.
+ * These cases are lifecycle-filter publish refusals stated as the agent sees
+ * them.
  */
-describe("validateAgentPublication and start filters", () => {
+describe("validateAgentPublication and lifecycle filters", () => {
   function filterOn(path: string, value: string): string {
     return JSON.stringify({
       version: 2,
@@ -158,6 +158,35 @@ describe("validateAgentPublication and start filters", () => {
       integrations: [],
     }).publishBlockers;
 
+  const cancelBlockersFor = (filter: string) =>
+    validateAgentPublication({
+      document: {
+        nodes: [
+          {
+            ...manualLifecycle,
+            data: {
+              ...manualLifecycle.data,
+              config: {
+                lifecycleRules: {
+                  startEvents: ["applicant.created"],
+                  cancelEvents: ["applicant.withdrawn"],
+                  concurrency: "unlimited",
+                  allowManualStart: false,
+                  correlationPaths: {
+                    "applicant.withdrawn": "applicantId",
+                  },
+                  cancelFilters: { "applicant.withdrawn": filter },
+                },
+              },
+            },
+          },
+        ],
+        edges: [],
+      },
+      catalog: fixtureCatalog,
+      integrations: [],
+    }).publishBlockers;
+
   it("accepts a finished filter over a declared field", () => {
     expect(blockersFor(filterOn("email", "a@b.test"))).toEqual([]);
   });
@@ -185,6 +214,15 @@ describe("validateAgentPublication and start filters", () => {
       {
         kind: "invalid_start_filter",
         message: expect.stringContaining("before a run exists"),
+      },
+    ]);
+  });
+
+  it("blocks an invalid Cancel Filter", () => {
+    expect(cancelBlockersFor(filterOn("nosuchfield", "x"))).toEqual([
+      {
+        kind: "invalid_cancel_filter",
+        message: expect.stringContaining("nosuchfield"),
       },
     ]);
   });

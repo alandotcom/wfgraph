@@ -13,6 +13,17 @@ type WithoutId<Value> = Value extends { id: string }
 
 type EvalConditionRule = WithoutId<ConditionRule>;
 
+export type EvalLifecycleFilter = {
+  event: string;
+  filter: {
+    groupLogic: GroupLogic;
+    groups: Array<{
+      logic: GroupLogic;
+      rules: EvalConditionRule[];
+    }>;
+  };
+};
+
 export type EvalNodeSelector =
   | { kind: "lifecycle" }
   | { kind: "action"; actionId: string; label?: string };
@@ -24,16 +35,8 @@ export type AgentEvalExpectations = {
   allowedActions?: string[];
   startEvents?: string[];
   cancelEvents?: string[];
-  requiredStartFilters?: Array<{
-    event: string;
-    filter: {
-      groupLogic: GroupLogic;
-      groups: Array<{
-        logic: GroupLogic;
-        rules: EvalConditionRule[];
-      }>;
-    };
-  }>;
+  requiredStartFilters?: EvalLifecycleFilter[];
+  requiredCancelFilters?: EvalLifecycleFilter[];
   requiredFlows?: Array<{
     source: EvalNodeSelector;
     target: EvalNodeSelector;

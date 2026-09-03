@@ -1,0 +1,2 @@
+DROP INDEX "workflow_execution_events_workflow_scoped_idx";--> statement-breakpoint
+CREATE INDEX "workflow_execution_events_workflow_type_created_at_idx" ON "workflow_execution_events" ("workflow_id","event_type","created_at");

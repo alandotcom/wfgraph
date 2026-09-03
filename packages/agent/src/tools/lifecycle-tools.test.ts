@@ -131,6 +131,46 @@ const filteredLifecycle: WorkflowNode = {
   },
 };
 
+/** An entry node already carrying a Cancel Filter. */
+const cancelFilter = JSON.stringify({
+  version: 2,
+  groupLogic: "and",
+  groups: [
+    {
+      id: "group",
+      logic: "and",
+      conditions: [
+        {
+          id: "rule",
+          field: "applicantId",
+          fieldType: "string",
+          operator: "is_set",
+        },
+      ],
+    },
+  ],
+});
+
+const cancelFilteredLifecycle: WorkflowNode = {
+  ...entry,
+  data: {
+    ...entry.data,
+    config: {
+      lifecycleRules: {
+        startEvents: ["applicant.created"],
+        cancelEvents: ["applicant.withdrawn"],
+        concurrency: "unlimited",
+        allowManualStart: false,
+        correlationPaths: {
+          "applicant.created": "applicantId",
+          "applicant.withdrawn": "applicantId",
+        },
+        cancelFilters: { "applicant.withdrawn": cancelFilter },
+      },
+    },
+  },
+};
+
 describe("set_lifecycle_rules", () => {
   it.effect("creates the Lifecycle Node when the workflow has none", () =>
     Effect.gen(function* () {
@@ -808,5 +848,289 @@ describe("set_lifecycle_rules and start filters", () => {
         readLifecycleRules(document.nodes[0]?.data.config)?.startFilters
       ).toBeUndefined();
     })
+  );
+});
+
+describe("set_lifecycle_rules and Cancel Filters", () => {
+  it.effect("writes a Cancel Filter from Cancel Event payload fields", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({ catalog });
+
+      yield* tools.set_lifecycle_rules({
+        startEvents: ["applicant.created"],
+        cancelEvents: ["applicant.withdrawn"],
+        correlationPaths: [
+          { event: "applicant.created", path: "applicantId" },
+          { event: "applicant.withdrawn", path: "applicantId" },
+        ],
+        cancelFilters: [
+          {
+            event: "applicant.withdrawn",
+            groups: [
+              {
+                rules: [
+                  {
+                    field: "applicantId",
+                    fieldType: "string",
+                    operator: "is_set",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+
+      const rules = readLifecycleRules(
+        (yield* draft.current).nodes[0]?.data.config
+      );
+      const parsed = parseConditionModel(
+        rules?.cancelFilters?.["applicant.withdrawn"]
+      );
+      expect(parsed.valid).toBe(true);
+      if (parsed.valid) {
+        expect(parsed.model.groups[0]?.conditions[0]).toMatchObject({
+          field: "applicantId",
+          fieldType: "string",
+          operator: "is_set",
+        });
+      }
+    })
+  );
+
+  it.effect(
+    "refuses a Cancel Filter for an Event that does not cancel a run",
+    () =>
+      Effect.gen(function* () {
+        const { tools } = yield* agentToolsFor({ catalog });
+
+        const failure = yield* Effect.flip(
+          tools.set_lifecycle_rules({
+            startEvents: ["applicant.created"],
+            cancelEvents: ["applicant.withdrawn"],
+            correlationPaths: [
+              { event: "applicant.created", path: "applicantId" },
+              { event: "applicant.withdrawn", path: "applicantId" },
+            ],
+            cancelFilters: [
+              {
+                event: "applicant.created",
+                groups: [
+                  {
+                    rules: [
+                      {
+                        field: "applicantId",
+                        fieldType: "string",
+                        operator: "is_set",
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          })
+        );
+
+        expect(failure.reason).toContain("Cancel Event");
+      })
+  );
+
+  it.effect("refuses more than one Cancel Filter for the same Event", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({ catalog });
+
+      const failure = yield* Effect.flip(
+        tools.set_lifecycle_rules({
+          startEvents: ["applicant.created"],
+          cancelEvents: ["applicant.withdrawn"],
+          cancelFilters: [
+            {
+              event: "applicant.withdrawn",
+              groups: [
+                {
+                  rules: [
+                    {
+                      field: "applicantId",
+                      fieldType: "string",
+                      operator: "is_set",
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              event: "applicant.withdrawn",
+              groups: [
+                {
+                  rules: [
+                    {
+                      field: "applicantId",
+                      fieldType: "string",
+                      operator: "is_not_set",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        })
+      );
+
+      expect(failure.reason).toContain("more than one Cancel Filter");
+    })
+  );
+
+  it.effect(
+    "refuses a Cancel Filter field absent from the Cancel Event payload",
+    () =>
+      Effect.gen(function* () {
+        const { tools } = yield* agentToolsFor({ catalog });
+
+        const failure = yield* Effect.flip(
+          tools.set_lifecycle_rules({
+            startEvents: ["applicant.created"],
+            cancelEvents: ["applicant.withdrawn"],
+            correlationPaths: [
+              { event: "applicant.created", path: "applicantId" },
+              { event: "applicant.withdrawn", path: "applicantId" },
+            ],
+            cancelFilters: [
+              {
+                event: "applicant.withdrawn",
+                groups: [
+                  {
+                    rules: [
+                      {
+                        field: "score",
+                        fieldType: "number",
+                        operator: "greater_than",
+                        value: "80",
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          })
+        );
+
+        expect(failure.reason).toContain("does not carry");
+      })
+  );
+
+  it.effect(
+    "keeps a Cancel Filter the builder wrote when the edit omits it",
+    () =>
+      Effect.gen(function* () {
+        const { tools, draft } = yield* agentToolsFor({
+          nodes: [cancelFilteredLifecycle],
+          catalog,
+        });
+
+        yield* tools.set_lifecycle_rules({
+          startEvents: ["applicant.created"],
+          cancelEvents: ["applicant.withdrawn"],
+          correlationPaths: [
+            { event: "applicant.created", path: "applicantId" },
+            { event: "applicant.withdrawn", path: "applicantId" },
+          ],
+        });
+
+        expect(
+          readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+            ?.cancelFilters
+        ).toEqual({ "applicant.withdrawn": cancelFilter });
+      })
+  );
+
+  it.effect(
+    "replaces existing Cancel Filters when the edit supplies them",
+    () =>
+      Effect.gen(function* () {
+        const { tools, draft } = yield* agentToolsFor({
+          nodes: [cancelFilteredLifecycle],
+          catalog,
+        });
+
+        yield* tools.set_lifecycle_rules({
+          startEvents: ["applicant.created"],
+          cancelEvents: ["applicant.withdrawn"],
+          correlationPaths: [
+            { event: "applicant.created", path: "applicantId" },
+            { event: "applicant.withdrawn", path: "applicantId" },
+          ],
+          cancelFilters: [
+            {
+              event: "applicant.withdrawn",
+              groups: [
+                {
+                  rules: [
+                    {
+                      field: "applicantId",
+                      fieldType: "string",
+                      operator: "is_not_set",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        });
+
+        const parsed = parseConditionModel(
+          readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+            ?.cancelFilters?.["applicant.withdrawn"]
+        );
+        expect(parsed.valid).toBe(true);
+        if (parsed.valid) {
+          expect(parsed.model.groups[0]?.conditions[0]).toMatchObject({
+            operator: "is_not_set",
+          });
+        }
+      })
+  );
+
+  it.effect("clears Cancel Filters when the edit supplies an empty list", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [cancelFilteredLifecycle],
+        catalog,
+      });
+
+      yield* tools.set_lifecycle_rules({
+        startEvents: ["applicant.created"],
+        cancelEvents: ["applicant.withdrawn"],
+        correlationPaths: [
+          { event: "applicant.created", path: "applicantId" },
+          { event: "applicant.withdrawn", path: "applicantId" },
+        ],
+        cancelFilters: [],
+      });
+
+      expect(
+        readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+          ?.cancelFilters
+      ).toBeUndefined();
+    })
+  );
+
+  it.effect(
+    "drops a Cancel Filter when the edit removes its Cancel Event",
+    () =>
+      Effect.gen(function* () {
+        const { tools, draft } = yield* agentToolsFor({
+          nodes: [cancelFilteredLifecycle],
+          catalog,
+        });
+
+        yield* tools.set_lifecycle_rules({
+          startEvents: ["applicant.created"],
+        });
+
+        expect(
+          readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+            ?.cancelFilters
+        ).toBeUndefined();
+      })
   );
 });

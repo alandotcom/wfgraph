@@ -477,12 +477,17 @@ export const workflowContract = {
           items: listOf(workflowExecutionSchema),
           supersededCount: Schema.Finite,
           /**
-           * The starts that opened no run: first-wins Concurrency finding a run
-           * for the entity already going, a payload carrying nothing at the
-           * Correlation Path, or a manual start the rules do not allow. They ride
-           * along here because the panel showing them polls with the runs.
+           * Up to 50 recent starts that opened no run. Concurrency, a missing
+           * Entity Value, workflow rules, or a Start Filter can refuse a start.
+           * These rows ride with the runs because the panel polls this response.
            */
           refusedStarts: listOf(refusedStartSchema),
+          /**
+           * Up to 50 recent Cancel Events that reached no run. Missing Entity
+           * Values and declined or unevaluable Cancel Filters produce these
+           * rows. This category has a limit independent of Refused Starts.
+           */
+          cancelNotDelivered: listOf(refusedStartSchema),
         })
       )
     ),

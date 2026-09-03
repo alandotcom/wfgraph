@@ -59,9 +59,9 @@ _Avoid_: correlation key (the retired implicit wait-match model)
 
 **Lifecycle Rules**:
 The Workflow Builder's per-workflow declaration of a run's lifetime: Start
-Events and their Start Filters, Cancel Events, and Concurrency. Lives on the
-Lifecycle Node. One Event never holds the start role and the cancel role in the
-same workflow; the editor rejects that configuration.
+Events and their Start Filters, Cancel Events and their Cancel Filters, and
+Concurrency. Lives on the Lifecycle Node. One Event never holds the start role
+and the cancel role in the same workflow; the editor rejects that configuration.
 _Avoid_: Routing Policy (the retired per-event verb table), Replace, Ignore
 (retired verbs of that table)
 
@@ -104,9 +104,15 @@ anything can read it.
 
 **Cancel Event**:
 An Event the Lifecycle Rules list as canceling runs. When one arrives, every
-in-flight Execution with an equal Entity Value jumps to the Canceled outlet
-at its next step boundary. Stopping a sequence mid-graph is an unwired
-Condition False, not a Cancel Event.
+in-flight Execution with an equal Entity Value jumps to the Canceled outlet at
+its next step boundary if the Cancel Filter accepts the arrival. Stopping a
+sequence mid-graph is an unwired Condition False, not a Cancel Event.
+
+**Cancel Filter**:
+The condition an arrival must satisfy before it can cancel a run, written per
+Cancel Event. A declined arrival leaves every Execution active and still reaches
+Wait Subscriptions. The filter compares payload fields and the Arriving Event
+against literals. The filter runs before the workflow requires an Entity Value.
 
 **Arriving Event**:
 The Event that put a run where it is: the Start Event it began on, the Cancel
@@ -167,9 +173,9 @@ memoized, and nothing above a Wait re-runs.
 **Precedence**:
 One fixed order when an Event arrives: Lifecycle Rules apply first, then the
 Event reaches the Wait Subscriptions of surviving runs. Inside the first half the
-order is the Start Filter, then Concurrency, which is what lets a declined
-arrival leave a run in flight alone. There is no other ordering rule; an
-admitted start always starts, and Concurrency resolves multiplicity.
+Start Filter runs before Concurrency. A Cancel Filter runs before correlation
+and cancellation. These filters let a declined arrival leave every run in
+flight. An admitted start always starts, and Concurrency resolves multiplicity.
 
 ### Waits
 

@@ -22,6 +22,7 @@ import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
+import { WorkflowCancellationFailures } from "./workflow-cancellation-failures";
 import { WorkflowRefusedStarts } from "./workflow-refused-starts";
 import { WorkflowRunDetail } from "./workflow-run-detail";
 import { WorkflowRunsList } from "./workflow-runs-list";
@@ -134,6 +135,7 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
   const executions = executionsQuery.data?.executions ?? [];
   const supersededCount = executionsQuery.data?.supersededCount ?? 0;
   const refusedStarts = executionsQuery.data?.refusedStarts ?? [];
+  const cancelNotDelivered = executionsQuery.data?.cancelNotDelivered ?? [];
   const shouldSelectInitialRun =
     executionId === undefined &&
     currentWorkflowId !== null &&
@@ -348,6 +350,9 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
           <div className="space-y-2">
             {supersededToggle}
             <WorkflowRefusedStarts refusedStarts={refusedStarts} />
+            <WorkflowCancellationFailures
+              cancelNotDelivered={cancelNotDelivered}
+            />
             <div className="py-8 text-center">
               <p className="font-medium text-sm">No runs yet</p>
               <p className="mt-1 text-muted-foreground text-xs">
@@ -368,6 +373,9 @@ export function WorkflowRuns({ listActions }: { listActions?: ReactNode }) {
         <div className="space-y-2 py-2">
           {supersededToggle}
           <WorkflowRefusedStarts refusedStarts={refusedStarts} />
+          <WorkflowCancellationFailures
+            cancelNotDelivered={cancelNotDelivered}
+          />
         </div>
         <WorkflowRunsList
           executions={executions}

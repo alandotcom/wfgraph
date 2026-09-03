@@ -89,10 +89,10 @@ const invoicePaid = defineEvent({
 - Assembly refuses two Events on one source that both omit `when`.
 
 `when` decides which Event a payload is, for every workflow in the app, and it is the
-Event Author's. A Workflow Builder narrowing which arrivals of an Event start their own
-workflow writes a Start Filter on the Lifecycle Node instead. The two never compete:
-`when` settles which Event a payload is, and a Start Filter settles whether that
-Event opens a run here.
+Event Author's. A Workflow Builder narrowing which arrivals start or cancel their own
+workflow writes a Start Filter or Cancel Filter on the Lifecycle Node. These filters
+serve different scopes: `when` identifies the Event, and a lifecycle filter decides
+whether that Event changes a run in one workflow.
 
 ## The intake gate
 
@@ -121,13 +121,13 @@ downstream reads that JSON directly. A transform rewrites what the sender sent, 
 
 A Workflow Builder declares the Lifecycle Rules in the Lifecycle panel:
 
-- which Events start a run;
-- which Events cancel one;
+- which Events start a run and the payload filters for those Events;
+- which Events cancel a run and the payload filters for those Events;
 - the concurrency policy that applies to each Entity Value.
 
-`CONTEXT.md` defines Lifecycle Node, Start Event, Cancel Events, Arriving Event, Concurrency,
-Precedence, Refused Start, and Execution status in full. `docs/adr/0007` says why the model looks like
-this. An Event Author designs against that shape.
+`CONTEXT.md` defines Lifecycle Node, Start Event, Start Filter, Cancel Event, Cancel Filter,
+Arriving Event, Concurrency, Precedence, Refused Start, and Execution status in full.
+`docs/adr/0007` says why the model has this shape. An Event Author designs against that shape.
 
 ## Integration-owned Events
 

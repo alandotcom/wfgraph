@@ -2,10 +2,8 @@
  * One Event, delivered to one workflow, in the two halves Precedence names.
  *
  * The Lifecycle Rules apply first, then the Event reaches the Wait Subscriptions
- * of the runs that survived them (ADR-0007). Inside the first half the order is
- * the Start Event's own filter, then Concurrency (ADR-0016). There is no other
- * ordering rule: an admitted start always starts, and Concurrency resolves
- * multiplicity.
+ * of the runs that survived them (ADR-0007). A role's filter runs before that
+ * role changes any run. An admitted start then reaches Concurrency (ADR-0016).
  *
  * The two halves are separate entry points because the listener runs each in its
  * own durable step: a wait delivery that fails then retries without replaying the
@@ -40,6 +38,7 @@ import {
   emptyLifecycleRules,
   type LifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import { readCancelFilter } from "@wfgraph/shared/lifecycle/cancel-filters";
 import { readStartFilter } from "@wfgraph/shared/lifecycle/start-filters";
 import type { WorkflowMode } from "@wfgraph/shared/graph/types";
 import type { JsonObject } from "@wfgraph/shared/types/json";
@@ -81,6 +80,10 @@ export type LifecycleDeliveryOutcome =
       reason:
         | "concurrency_first_wins"
         | "entity_value_missing"
+        /** The arrival did not satisfy this Cancel Event's Cancel Filter. */
+        | "cancel_filter_not_met"
+        /** The Cancel Filter could not be read against this payload at all. */
+        | "cancel_filter_unevaluable"
         /** The arrival did not satisfy this Start Event's Start Filter. */
         | "start_filter_not_met"
         /** The Start Filter could not be read against this payload at all. */
@@ -255,13 +258,28 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
     // (ADR-0012, 2026-08-29).
     const rules = preflight.lifecycleRules ?? emptyLifecycleRules;
 
-    const entityValue = readEntityValue({
-      event: input.event,
-      subscriber: input.subscriber,
-      payload: input.payload,
-    });
-
     if (rules.cancelEvents.includes(input.event.name)) {
+      // The filter decides whether this arrival carries the cancel role before
+      // the Correlation Path is required. A payload the builder excluded does
+      // not become a malformed cancellation merely because it names no entity.
+      const filterRefusal = yield* refuseFilteredCancel({
+        rules,
+        workflow,
+        event: input.event,
+        payload: input.payload,
+        deliveryId: input.deliveryId,
+        logger,
+      });
+      if (filterRefusal) {
+        return filterRefusal;
+      }
+
+      const entityValue = readEntityValue({
+        event: input.event,
+        subscriber: input.subscriber,
+        payload: input.payload,
+      });
+
       // A cancel matches by Entity Value and has nothing else to match on, so a
       // payload carrying none reaches no run. The save rules require a path for
       // every Cancel Event, which is what makes this the payload's own gap.
@@ -314,6 +332,12 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
     if (!rules.startEvents.includes(input.event.name)) {
       return { kind: "waits_only" as const, workflowId: workflow.id };
     }
+
+    const entityValue = readEntityValue({
+      event: input.event,
+      subscriber: input.subscriber,
+      payload: input.payload,
+    });
 
     // The Start Filter is read before Concurrency, which is the whole of why it
     // exists: a Condition node behind the Started outlet reads the same payload,
@@ -445,6 +469,95 @@ function skipped(
   return { kind: "skipped", workflowId, reason };
 }
 
+/** The result that prevents one lifecycle filter from changing a run. */
+function lifecycleFilterRefusal(input: {
+  model: string | undefined;
+  payload: JsonObject;
+  eventName: string;
+}) {
+  if (!input.model) {
+    return undefined;
+  }
+
+  const evaluation = evaluateSerializedCondition({
+    model: input.model,
+    payload: input.payload,
+    eventName: input.eventName,
+  });
+
+  if (evaluation.ok && evaluation.value) {
+    return undefined;
+  }
+
+  return evaluation.ok
+    ? { kind: "not_met" as const, extra: {} }
+    : {
+        kind: "unevaluable" as const,
+        extra: { error: firstLineOf(evaluation.error) },
+      };
+}
+
+/** The refusal a Cancel Filter produces before any run receives cancellation. */
+const refuseFilteredCancel = Effect.fn("refuseFilteredCancel")(
+  function* (input: {
+    rules: LifecycleRules;
+    workflow: { id: string; mode: WorkflowMode };
+    event: DeliveredEvent;
+    payload: JsonObject;
+    deliveryId?: string | undefined;
+    logger: EffectLogger;
+  }) {
+    const evaluated = lifecycleFilterRefusal({
+      model: readCancelFilter(input.rules, input.event.name),
+      payload: input.payload,
+      eventName: input.event.name,
+    });
+    if (!evaluated) {
+      return undefined;
+    }
+
+    const refusal =
+      evaluated.kind === "not_met"
+        ? { reason: "cancel_filter_not_met" as const, extra: evaluated.extra }
+        : {
+            reason: "cancel_filter_unevaluable" as const,
+            extra: evaluated.extra,
+          };
+
+    const message =
+      evaluated.kind === "not_met"
+        ? `Cancel from ${input.event.name} reached no run: its Cancel Filter did not match`
+        : `Cancel from ${input.event.name} reached no run: its Cancel Filter could not be evaluated`;
+
+    const executionRepo = yield* ExecutionRepo;
+    yield* executionRepo.recordAuditEvent({
+      workflowId: input.workflow.id,
+      eventType: "cancel_not_delivered",
+      message,
+      metadata: {
+        reason: refusal.reason,
+        eventName: input.event.name,
+        deliveryId: input.deliveryId,
+        runMode: input.workflow.mode,
+        ...refusal.extra,
+      },
+    });
+
+    yield* input.logger.info("Cancel refused", {
+      reason: refusal.reason,
+      deliveryId: input.deliveryId,
+      ...refusal.extra,
+    });
+
+    const outcome: LifecycleDeliveryOutcome = {
+      kind: "refused",
+      workflowId: input.workflow.id,
+      reason: refusal.reason,
+    };
+    return outcome;
+  }
+);
+
 /**
  * The refusal this workflow's Start Filter produces for this arrival, or
  * `undefined` where the arrival may start a run.
@@ -469,18 +582,12 @@ const refuseFilteredStart = Effect.fn("refuseFilteredStart")(function* (input: {
   deliveryId?: string | undefined;
   logger: EffectLogger;
 }) {
-  const model = readStartFilter(input.rules, input.event.name);
-  if (!model) {
-    return undefined;
-  }
-
-  const evaluation = evaluateSerializedCondition({
-    model,
+  const evaluated = lifecycleFilterRefusal({
+    model: readStartFilter(input.rules, input.event.name),
     payload: input.payload,
     eventName: input.event.name,
   });
-
-  if (evaluation.ok && evaluation.value) {
+  if (!evaluated) {
     return undefined;
   }
 
@@ -490,12 +597,13 @@ const refuseFilteredStart = Effect.fn("refuseFilteredStart")(function* (input: {
   // name types rather than values, and their first line is the sentence; the
   // rest is a caret diagram over the expression, and a record holds one line
   // per field.
-  const refusal = evaluation.ok
-    ? { reason: "start_filter_not_met" as const }
-    : {
-        reason: "start_filter_unevaluable" as const,
-        extra: { error: firstLineOf(evaluation.error) },
-      };
+  const refusal =
+    evaluated.kind === "not_met"
+      ? { reason: "start_filter_not_met" as const }
+      : {
+          reason: "start_filter_unevaluable" as const,
+          extra: evaluated.extra,
+        };
 
   yield* recordStartRefusal({
     workflowId: input.workflow.id,

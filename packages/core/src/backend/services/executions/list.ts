@@ -60,8 +60,8 @@ function toWorkflowExecutionItem(
   };
 }
 
-/** One Refused Start as the wire carries it. */
-function toRefusedStartItem(event: {
+/** One workflow-level audit row as the wire carries it. */
+function toWorkflowAuditItem(event: {
   id: string;
   message: string;
   createdAt: Date;
@@ -85,10 +85,10 @@ const loggerFor = (workflowId: string) =>
 /**
  * Everything the editor's runs panel reads, in one answer.
  *
- * The runs, how many superseded ones were left out, and the Refused Starts that
- * opened no run at all. One payload rather than three procedures because the panel
- * polls every two seconds: a separate refusals read would double that traffic for
- * a list that is empty on most workflows.
+ * The runs, how many superseded ones were left out, and workflow-level audit
+ * rows that opened no run. The response separates Refused Starts from
+ * Cancellation Failures. One payload rather than three procedures avoids extra
+ * traffic while the panel polls every two seconds.
  *
  * Start and result payloads stay off the rows: the panel never paints them, and
  * a poll that retransmitted JSONB for fifty runs would be the same shape of
@@ -112,22 +112,31 @@ export const getWorkflowExecutions = Effect.fn("getWorkflowExecutions")(
       return yield* new NotFound({ error: "Workflow not found" });
     }
 
-    const [executions, supersededCount, refusedStarts] = yield* Effect.all(
-      [
-        executionRepo.listByWorkflow({
-          workflowId,
-          includeSuperseded: input.includeSuperseded,
-        }),
-        executionRepo.countSuperseded(workflowId),
-        executionRepo.listWorkflowEvents(workflowId),
-      ],
-      { concurrency: 3 }
-    );
+    const [executions, supersededCount, refusedStarts, cancelNotDelivered] =
+      yield* Effect.all(
+        [
+          executionRepo.listByWorkflow({
+            workflowId,
+            includeSuperseded: input.includeSuperseded,
+          }),
+          executionRepo.countSuperseded(workflowId),
+          executionRepo.listWorkflowEvents({
+            workflowId,
+            eventType: "run_refused",
+          }),
+          executionRepo.listWorkflowEvents({
+            workflowId,
+            eventType: "cancel_not_delivered",
+          }),
+        ],
+        { concurrency: 4 }
+      );
 
     return {
       items: executions.map(toWorkflowExecutionItem),
       supersededCount,
-      refusedStarts: refusedStarts.map(toRefusedStartItem),
+      refusedStarts: refusedStarts.map(toWorkflowAuditItem),
+      cancelNotDelivered: cancelNotDelivered.map(toWorkflowAuditItem),
     };
   },
   (effect, input) =>

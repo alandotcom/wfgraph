@@ -116,12 +116,16 @@ describe("lifecycleRulesSchema", () => {
       concurrency: "first-wins",
       allowManualStart: true,
       correlationPaths: { "ops/nightly.swept": "sweep.id" },
+      cancelFilters: { "app/appointment.canceled": "{}" },
     });
 
     expect(decoded.concurrency).toBe("first-wins");
     expect(decoded.allowManualStart).toBe(true);
     expect(decoded.correlationPaths).toEqual({
       "ops/nightly.swept": "sweep.id",
+    });
+    expect(decoded.cancelFilters).toEqual({
+      "app/appointment.canceled": "{}",
     });
   });
 
@@ -419,6 +423,19 @@ describe("checkLifecycleRules", () => {
     expect(refusalOf(check)).toContain(
       'No Event named "app/appointment.moved"'
     );
+  });
+
+  it("refuses a cancel filter for an Event that does not cancel this workflow", () => {
+    const check = checkLifecycleRules({
+      rules: rules({
+        cancelEvents: ["app/appointment.canceled"],
+        cancelFilters: { "app/appointment.created": "{}" },
+      }),
+      catalog,
+    });
+
+    expect(refusalOf(check)).toContain("cancel filter");
+    expect(refusalOf(check)).toContain("app/appointment.created");
   });
 
   it("accepts a workflow cancelling on one Event", () => {

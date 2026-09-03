@@ -4,7 +4,7 @@ description: >
   defineEvent: name identity, Standard Schema payload, correlationPath, umbrella
   source with when filter, inngest.send intake. Load when declaring host Events,
   webhook umbrellas, Entity Value paths, or Lifecycle start/cancel names, or when
-  choosing between an Event-author `when` filter and a per-workflow Start Filter.
+  choosing between an Event-author `when` filter and per-workflow lifecycle filters.
 metadata:
   type: sub-skill
   library: wfgraph
@@ -49,11 +49,11 @@ When an existing bus sends one name, keep Workflow Graph identity on `name` and
 filter with `source: { event, when: { path, equals } }`. Assembly refuses two
 Events on one source that both omit `when`.
 
-`when` decides which Event a payload is, for every workflow in the app, and it
-belongs to the Event Author. Narrowing which arrivals of one Event start a
-particular workflow is the Workflow Builder's Start Filter, set in the Lifecycle
-panel. An arrival a Start Filter declines opens no run and is recorded as a
-Refused Start.
+`when` decides which Event a payload is for every workflow in the app. It belongs
+to the Event Author. A Workflow Builder uses a Start Filter or Cancel Filter to
+narrow which arrivals change one workflow. A declined Start Filter opens no run.
+A declined Cancel Filter leaves active runs unchanged. Wait Subscriptions still
+receive either arrival.
 
 ### Intake
 
@@ -93,8 +93,9 @@ Wrong: declare `appointment.created.video` with `when: { path: "channel", equals
 because one workflow only wants video appointments.
 
 Correct: one `appointment.created` Event, and a Start Filter on that workflow's
-Lifecycle Node. `when` is for a bus that sends one name for several Events, and
-every workflow in the app sees the split it makes.
+Lifecycle Node. Use a Cancel Filter for the same workflow-specific decision on a
+Cancel Event. `when` is for a bus that sends one name for several Events, and every
+workflow in the app sees the split it makes.
 
 Source: alandotcom/wfgraph:docs/events.md (The umbrella source)
 

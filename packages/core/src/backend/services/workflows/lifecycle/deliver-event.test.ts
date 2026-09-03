@@ -18,6 +18,7 @@ import {
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { serializeConditionModel } from "@wfgraph/shared/conditions/conditions";
 import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type {
@@ -88,7 +89,10 @@ const catalogLayer = stubExtensionCatalog({
       name: "app/appointment.canceled",
       label: "Appointment canceled",
       correlationPath: "appointment.id",
-      payloadFields: [],
+      payloadFields: [
+        { path: "appointment.reason", type: "string" },
+        { path: "appointment.code", type: "number" },
+      ],
     },
   ],
 });
@@ -116,6 +120,50 @@ const cancelRules: LifecycleRules = {
   cancelEvents: ["app/appointment.canceled"],
   concurrency: "unlimited",
 };
+
+function cancelFilterOnReason(value: string): string {
+  return serializeConditionModel({
+    version: 2,
+    groupLogic: "and",
+    groups: [
+      {
+        id: "cancel-group",
+        logic: "and",
+        conditions: [
+          {
+            id: "cancel-rule",
+            field: "appointment.reason",
+            fieldType: "string",
+            operator: "equals",
+            value,
+          },
+        ],
+      },
+    ],
+  });
+}
+
+function cancelFilterOnCode(): string {
+  return serializeConditionModel({
+    version: 2,
+    groupLogic: "and",
+    groups: [
+      {
+        id: "cancel-group",
+        logic: "and",
+        conditions: [
+          {
+            id: "cancel-rule",
+            field: "appointment.code",
+            fieldType: "number",
+            operator: "greater_than",
+            value: 1,
+          },
+        ],
+      },
+    ],
+  });
+}
 
 function createExecution(
   overrides: Partial<WorkflowExecution> = {}
@@ -570,6 +618,158 @@ describe("applyLifecycleRules", () => {
           payload,
         });
         assert.strictEqual(startForEntityMock.mock.calls.length, 0);
+      })
+    );
+
+    it.effect("cancels when the arrival satisfies the Cancel Filter", () =>
+      Effect.gen(function* () {
+        const outcome = yield* applyLifecycleRules({
+          subscriber: subscriber({ roles: ["cancel"] }),
+          event: appointmentCanceled,
+          payload: {
+            appointment: { id: "appt_8813", reason: "duplicate" },
+          },
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              stubPublishedWorkflow(
+                createWorkflow({
+                  rules: {
+                    ...cancelRules,
+                    cancelFilters: {
+                      "app/appointment.canceled":
+                        cancelFilterOnReason("duplicate"),
+                    },
+                  },
+                })
+              ),
+              lifecyclePorts
+            )
+          )
+        );
+
+        assert.strictEqual(outcome.kind, "canceled");
+        assert.strictEqual(requestCancelForEntityMock.mock.calls.length, 1);
+      })
+    );
+
+    it.effect(
+      "leaves runs active when the arrival fails the Cancel Filter",
+      () =>
+        Effect.gen(function* () {
+          const outcome = yield* applyLifecycleRules({
+            subscriber: subscriber({ roles: ["cancel"] }),
+            event: appointmentCanceled,
+            payload: {
+              appointment: { id: "appt_8813", reason: "rescheduled" },
+            },
+            deliveryId: "evt_arrival",
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                stubPublishedWorkflow(
+                  createWorkflow({
+                    rules: {
+                      ...cancelRules,
+                      cancelFilters: {
+                        "app/appointment.canceled":
+                          cancelFilterOnReason("duplicate"),
+                      },
+                    },
+                  })
+                ),
+                lifecyclePorts
+              )
+            )
+          );
+
+          assert.deepStrictEqual(outcome, {
+            kind: "refused",
+            workflowId: "wf_1",
+            reason: "cancel_filter_not_met",
+          });
+          assert.strictEqual(requestCancelForEntityMock.mock.calls.length, 0);
+          assert.deepInclude(recordAuditEventMock.mock.calls[0]?.[0], {
+            workflowId: "wf_1",
+            eventType: "cancel_not_delivered",
+            metadata: {
+              reason: "cancel_filter_not_met",
+              eventName: "app/appointment.canceled",
+              deliveryId: "evt_arrival",
+              runMode: "live",
+            },
+          });
+        })
+    );
+
+    it.effect(
+      "applies the Cancel Filter before requiring an Entity Value",
+      () =>
+        Effect.gen(function* () {
+          const outcome = yield* applyLifecycleRules({
+            subscriber: subscriber({ roles: ["cancel"] }),
+            event: appointmentCanceled,
+            payload: { appointment: { reason: "rescheduled" } },
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                stubPublishedWorkflow(
+                  createWorkflow({
+                    rules: {
+                      ...cancelRules,
+                      cancelFilters: {
+                        "app/appointment.canceled":
+                          cancelFilterOnReason("duplicate"),
+                      },
+                    },
+                  })
+                ),
+                lifecyclePorts
+              )
+            )
+          );
+
+          assert.deepStrictEqual(outcome, {
+            kind: "refused",
+            workflowId: "wf_1",
+            reason: "cancel_filter_not_met",
+          });
+          assert.strictEqual(requestCancelForEntityMock.mock.calls.length, 0);
+        })
+    );
+
+    it.effect("leaves runs active when the Cancel Filter is unevaluable", () =>
+      Effect.gen(function* () {
+        const outcome = yield* applyLifecycleRules({
+          subscriber: subscriber({ roles: ["cancel"] }),
+          event: appointmentCanceled,
+          payload: {
+            appointment: { id: "appt_8813", code: "many" },
+          },
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              stubPublishedWorkflow(
+                createWorkflow({
+                  rules: {
+                    ...cancelRules,
+                    cancelFilters: {
+                      "app/appointment.canceled": cancelFilterOnCode(),
+                    },
+                  },
+                })
+              ),
+              lifecyclePorts
+            )
+          )
+        );
+
+        assert.deepStrictEqual(outcome, {
+          kind: "refused",
+          workflowId: "wf_1",
+          reason: "cancel_filter_unevaluable",
+        });
+        assert.strictEqual(requestCancelForEntityMock.mock.calls.length, 0);
       })
     );
 

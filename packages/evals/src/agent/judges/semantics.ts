@@ -14,7 +14,11 @@ import { parseConditionModel } from "@wfgraph/shared/conditions/condition-schema
 import { isBlank } from "@wfgraph/shared/types/string";
 import { parseDurationMs } from "@wfgraph/shared/utils/wait-time";
 import type { AgentEvalDocument } from "#src/agent/result";
-import type { AgentEvalInput, EvalNodeSelector } from "#src/agent/types";
+import type {
+  AgentEvalInput,
+  EvalLifecycleFilter,
+  EvalNodeSelector,
+} from "#src/agent/types";
 import type { DeterministicAssessment } from "#src/agent/judges/graph";
 
 function matchesSelector(
@@ -245,7 +249,7 @@ function missingCancelEvents(context: SemanticsContext): string[] {
   );
 }
 
-function startFilterShape(model: ConditionModel) {
+function lifecycleFilterShape(model: ConditionModel) {
   return {
     groupLogic: model.groupLogic,
     groups: model.groups.map((group) => ({
@@ -255,16 +259,36 @@ function startFilterShape(model: ConditionModel) {
   };
 }
 
+/** Each named Event carries exactly the lifecycle filter the scenario requires. */
+function missingLifecycleFilters(input: {
+  requiredFilters: readonly EvalLifecycleFilter[] | undefined;
+  filters: Record<string, string> | undefined;
+  label: "Start" | "Cancel";
+}): string[] {
+  return checkEach(input.requiredFilters, (required) => {
+    const parsed = parseConditionModel(input.filters?.[required.event]);
+    return parsed.valid &&
+      isEqual(lifecycleFilterShape(parsed.model), required.filter)
+      ? undefined
+      : `${required.event} does not have the exact required ${input.label} Filter`;
+  });
+}
+
 /** Each named Start Event carries exactly the filter the scenario requires. */
 function missingStartFilters(context: SemanticsContext): string[] {
-  return checkEach(context.input.expected.requiredStartFilters, (required) => {
-    const parsed = parseConditionModel(
-      context.lifecycleRules?.startFilters?.[required.event]
-    );
-    return parsed.valid &&
-      isEqual(startFilterShape(parsed.model), required.filter)
-      ? undefined
-      : `${required.event} does not have the exact required Start Filter`;
+  return missingLifecycleFilters({
+    requiredFilters: context.input.expected.requiredStartFilters,
+    filters: context.lifecycleRules?.startFilters,
+    label: "Start",
+  });
+}
+
+/** Each named Cancel Event carries exactly the filter the scenario requires. */
+function missingCancelFilters(context: SemanticsContext): string[] {
+  return missingLifecycleFilters({
+    requiredFilters: context.input.expected.requiredCancelFilters,
+    filters: context.lifecycleRules?.cancelFilters,
+    label: "Cancel",
   });
 }
 
@@ -553,6 +577,7 @@ const rules: readonly SemanticsRule[] = [
   missingStartEvents,
   missingCancelEvents,
   missingStartFilters,
+  missingCancelFilters,
   missingFlows,
   missingPaths,
   gateFailures,

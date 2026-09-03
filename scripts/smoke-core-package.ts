@@ -7,7 +7,11 @@ const root = resolve(import.meta.dirname, "..");
 const core = resolve(root, "packages/core");
 const temporaryDirectory = mkdtempSync(resolve(tmpdir(), "wfgraph-core-pack-"));
 
-function openAndVerifySqlite(importPath: string, filename: string): void {
+function openAndVerifySqlite(
+  importPath: string,
+  filename: string,
+  expectedMigrationCount: number
+): void {
   execFileSync(
     process.execPath,
     [
@@ -18,6 +22,7 @@ function openAndVerifySqlite(importPath: string, filename: string): void {
         const { wfSqlite } = await import(${JSON.stringify(importPath)});
 
         const filename = ${JSON.stringify(filename)};
+        const expectedMigrationCount = ${expectedMigrationCount};
         const persistence = await wfSqlite({ filename }).open({
           seal: JSON.stringify,
           open: () => { throw new Error("unused"); },
@@ -29,8 +34,13 @@ function openAndVerifySqlite(importPath: string, filename: string): void {
           "select count(*) as total from __wfgraph_sqlite_migrations"
         ).get();
         database.close();
-        if (journal?.total !== 1) {
-          throw new Error("The packed SQLite baseline migration did not run");
+        if (journal?.total !== expectedMigrationCount) {
+          throw new Error(
+            "The packed SQLite migration journal has " +
+              (journal?.total ?? "unknown") +
+              " entries; expected " +
+              expectedMigrationCount
+          );
         }
       `,
     ],
@@ -69,7 +79,16 @@ try {
     stdio: "inherit",
   });
 
-  openAndVerifySqlite("@wfgraph/core/sqlite", "./smoke.sqlite");
+  const packagedSqliteMigrationCount = readdirSync(
+    resolve(temporaryDirectory, "node_modules/@wfgraph/core/drizzle-sqlite"),
+    { withFileTypes: true }
+  ).filter((entry) => entry.isDirectory()).length;
+
+  openAndVerifySqlite(
+    "@wfgraph/core/sqlite",
+    "./smoke.sqlite",
+    packagedSqliteMigrationCount
+  );
 
   const bundledEntry = resolve(temporaryDirectory, "sqlite-bundle.mjs");
   execFileSync(
@@ -83,7 +102,11 @@ try {
     ],
     { cwd: temporaryDirectory, stdio: "inherit" }
   );
-  openAndVerifySqlite(bundledEntry, "./bundled-smoke.sqlite");
+  openAndVerifySqlite(
+    bundledEntry,
+    "./bundled-smoke.sqlite",
+    packagedSqliteMigrationCount
+  );
 
   console.log("Packed and bundled @wfgraph/core SQLite entries migrated");
 } finally {

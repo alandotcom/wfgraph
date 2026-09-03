@@ -421,6 +421,67 @@ export const focusedScenarios: Array<{
     }),
   },
   {
+    name: "filters a Cancel Event before canceling a run",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            'When an appointment is created, wait one day. Cancel the in-progress run only when the appointment canceled Event has reason "patient request".',
+        },
+      ],
+      document: emptyDocument,
+      integrations: [],
+      expected: {
+        requiredActions: { [BUILT_IN_ACTION_IDS.wait]: 1 },
+        exactActions: { [BUILT_IN_ACTION_IDS.wait]: 1 },
+        forbiddenActions: [BUILT_IN_ACTION_IDS.condition],
+        startEvents: ["app/appointment.created"],
+        cancelEvents: ["app/appointment.canceled"],
+        requiredCancelFilters: [
+          {
+            event: "app/appointment.canceled",
+            filter: {
+              groupLogic: "and",
+              groups: [
+                {
+                  logic: "and",
+                  rules: [
+                    {
+                      field: "reason",
+                      fieldType: "string",
+                      operator: "equals",
+                      value: "patient request",
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+        requiredFlows: [
+          {
+            source: { kind: "lifecycle" },
+            target: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            sourceHandle: "started",
+          },
+        ],
+        requiredDurations: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            key: "waitDuration",
+            duration: "1d",
+          },
+        ],
+      },
+      expectedCompletion: { outcome: "ready" },
+      intentCriteria: [
+        "Only a canceled appointment with reason patient request ends the run.",
+        "The workflow does not use a Condition step for the Cancel Event filter.",
+      ],
+    }),
+  },
+  {
     name: "waits until one day before an Event timestamp",
     input: scenario({
       messages: [

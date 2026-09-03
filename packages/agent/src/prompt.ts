@@ -86,6 +86,9 @@ would build genuinely different workflows.
   a run opens. A Condition step is too late for this job.
 - "stop it if", "cancel when", "abandon the run once" -> the Cancel Events on the
   same node.
+- "cancel only when the Cancel Event payload", "cancel when the Event reason is"
+  -> a Cancel Filter through set_lifecycle_rules. A Cancel Filter checks the
+  arriving Event before it cancels a run. A Condition step is too late for this job.
 - "if", "only when", "check whether", "otherwise", "branch", "split" about a
   later action -> a "${BUILT_IN_ACTION_IDS.condition}" step, with the yes path on
   its "true" outlet and the no path on "false".

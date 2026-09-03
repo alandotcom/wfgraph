@@ -92,6 +92,17 @@ export const lifecycleRulesSchema = Schema.Struct({
    * so the model is the only honest copy of the rule.
    */
   startFilters: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+
+  /**
+   * The Cancel Filter of each Cancel Event: the condition an arrival must
+   * satisfy before it cancels a run, keyed by Event name. A Cancel Event with no
+   * entry here cancels on every matching arrival.
+   *
+   * The value is a serialized `ConditionModel`, matching `startFilters`. The
+   * filter is read before cancellation, so it can compare only the arriving
+   * payload against literals.
+   */
+  cancelFilters: Schema.optional(Schema.Record(Schema.String, Schema.String)),
 });
 
 export type LifecycleRules = typeof lifecycleRulesSchema.Type;
@@ -185,8 +196,9 @@ export type LifecycleRulesCheck =
 
 /**
  * The two answers a rules check gives, built here so every module that returns
- * one builds it the same way. `start-filters.ts` returns the same verdict about
- * the same rules and reads them from here rather than declaring its own pair.
+ * one builds it the same way. The filter modules return the same verdict about
+ * the same rules and read the type from here rather than declaring their own
+ * pair.
  */
 export const lifecycleRulesValid: LifecycleRulesCheck = { valid: true };
 
@@ -306,11 +318,12 @@ export function eventsNeedingCorrelationPath(input: {
 /**
  * One of the rules' Event-keyed records, holding only the Events named here.
  *
- * The three records on these rules -- Correlation Paths, Connections and Start
- * Filters -- are each keyed by Event name and each meaningless for an Event that
- * lost its role, so the pruning is one operation over a different key and a
- * different set of names. An emptied record becomes absent rather than `{}`,
- * which is what keeps a rules object comparable and a save diff readable.
+ * The four records on these rules -- Correlation Paths, Connections, Start
+ * Filters and Cancel Filters -- are each keyed by Event name and each
+ * meaningless for an Event that lost its role, so the pruning is one operation
+ * over a different key and a different set of names. An emptied record becomes
+ * absent rather than `{}`, which is what keeps a rules object comparable and a
+ * save diff readable.
  */
 export function retainNamedKeys(
   stored: Record<string, string> | undefined,
@@ -516,15 +529,22 @@ export function checkLifecycleRules(input: {
   }
 
   // Structural only. Whether a filter is a rule a run could be held to is
-  // `checkStartFilters`, and whether it is readable at all is
-  // `checkStartFilterModels`, which the save battery runs. Both of those parse,
-  // and this function does not, because the Lifecycle panel calls it on every
-  // render.
+  // `checkStartFilters` or `checkCancelFilters`, and whether it is readable at
+  // all is `checkStartFilterModels` or `checkCancelFilterModels`, which the save
+  // battery runs. Those checks parse, and this function does not, because the
+  // Lifecycle panel calls it on every render.
   const strayFilter = Object.keys(rules.startFilters ?? {}).find(
     (eventName) => !rules.startEvents.includes(eventName)
   );
   if (strayFilter) {
     return refuseLifecycleRules(strayFilterMessage(strayFilter));
+  }
+
+  const strayCancelFilter = Object.keys(rules.cancelFilters ?? {}).find(
+    (eventName) => !rules.cancelEvents.includes(eventName)
+  );
+  if (strayCancelFilter) {
+    return refuseLifecycleRules(strayCancelFilterMessage(strayCancelFilter));
   }
 
   if (!hasStartSource(rules)) {
@@ -539,6 +559,11 @@ export function checkLifecycleRules(input: {
 /** The sentence a save is refused with when a filter names no Start Event. */
 function strayFilterMessage(eventName: string): string {
   return `A start filter names Event "${eventName}", which does not start this workflow. Add it as a Start Event, or remove the filter.`;
+}
+
+/** The sentence a save is refused with when a filter names no Cancel Event. */
+function strayCancelFilterMessage(eventName: string): string {
+  return `A cancel filter names Event "${eventName}", which does not cancel this workflow. Add it as a Cancel Event, or remove the filter.`;
 }
 
 /**

@@ -18,6 +18,7 @@ import { collectWorkflowIssues } from "@wfgraph/shared/graph/workflow-issues";
 import { checkUnreachableSubtrees } from "#src/backend/services/workflows/publish-checks";
 import { validateWorkflowConditionConfigs } from "#src/backend/services/workflows/validation/workflow-conditions-validation";
 import {
+  validateCancelFilters,
   validateEventSplitOutlets,
   validateStartFilters,
   validateWorkflowEvents,
@@ -69,6 +70,10 @@ export function validateAgentPublication(input: {
     // list as "ready to publish" and the person clicking Publish is the one who
     // finds out.
     ["invalid_start_filter", () => validateStartFilters(nodes, input.catalog)],
+    [
+      "invalid_cancel_filter",
+      () => validateCancelFilters(nodes, input.catalog),
+    ],
     [
       "invalid_event_split",
       () => validateEventSplitOutlets(nodes, edges, input.catalog),

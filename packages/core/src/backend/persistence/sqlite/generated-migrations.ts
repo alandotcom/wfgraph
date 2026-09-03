@@ -36,4 +36,14 @@ export const sqliteMigrations = [
     hash: "5c91727900262f74fd005dc4ae0c5827d915f1b227b9f4b8d4529c7d1dda930e",
     name: "20260901195832_reflective_ikaris",
   },
+  {
+    sql: [
+      "DROP INDEX IF EXISTS `events_workflow_created_idx`;",
+      "\nCREATE INDEX `events_workflow_type_created_idx` ON `workflow_execution_events` (`workflow_id`,`event_type`,`created_at` DESC);\n",
+    ],
+    bps: true,
+    folderMillis: 1788417666000,
+    hash: "21374d36a973c1b1c08683952c586bed48b3bf1808a7bcea75e2ded51ad79d5a",
+    name: "20260903064106_little_nebula",
+  },
 ] satisfies readonly MigrationMeta[];

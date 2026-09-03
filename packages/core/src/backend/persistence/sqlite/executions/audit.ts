@@ -1,7 +1,6 @@
 import { generateId } from "@wfgraph/shared/utils/id";
 import { Effect } from "effect";
-import { and, desc, eq, inArray } from "drizzle-orm";
-import { WORKFLOW_SCOPED_AUDIT_EVENT_TYPES } from "@wfgraph/shared/lifecycle/audit-event-types";
+import { and, desc, eq } from "drizzle-orm";
 import { toJsonObject } from "@wfgraph/shared/types/json";
 import type { AuditRepoMethods } from "#src/backend/services/executions/repo/audit";
 import type { SqliteDatabase } from "#src/backend/persistence/sqlite/database";
@@ -38,18 +37,15 @@ export function makeSqliteAuditMethods(
           .limit(EXECUTION_EVENTS_LIMIT)
           .pipe(Effect.map((rows) => rows.map(sqliteExecutionEvent)))
       ),
-    listWorkflowEvents: (workflowId) =>
+    listWorkflowEvents: (input) =>
       store.read((database) =>
         database
           .select()
           .from(workflowExecutionEvents)
           .where(
             and(
-              eq(workflowExecutionEvents.workflowId, workflowId),
-              inArray(
-                workflowExecutionEvents.eventType,
-                WORKFLOW_SCOPED_AUDIT_EVENT_TYPES
-              )
+              eq(workflowExecutionEvents.workflowId, input.workflowId),
+              eq(workflowExecutionEvents.eventType, input.eventType)
             )
           )
           .orderBy(desc(workflowExecutionEvents.createdAt))

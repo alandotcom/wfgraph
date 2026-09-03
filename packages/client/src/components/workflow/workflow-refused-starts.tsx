@@ -6,12 +6,11 @@ import { getRelativeTime } from "@wfgraph/shared/utils/time";
  * The Refused Starts: arrivals this workflow declined, which have no run to be
  * listed under.
  *
- * A refusal writes an audit row and no execution row -- first-wins Concurrency
- * found a run for the entity already going, the payload carried nothing at the
- * Correlation Path Concurrency needs, a manual start is not allowed here, or the
- * Start Event's Start Filter declined the arrival -- and without this the only
- * trace was the server log, which is the class of invisible behaviour ADR-0007
- * exists to remove.
+ * A refusal writes a `run_refused` audit row and no execution row. First-wins
+ * Concurrency can find a run for the entity already going, the payload can lack
+ * the Correlation Path value Concurrency needs, a manual start can be refused,
+ * or the Start Filter can decline the arrival. A cancellation delivery failure
+ * uses `cancel_not_delivered` and renders under Cancellation Failures.
  *
  * The rows arrive with the runs they belong beside, so this renders and reads
  * nothing of its own.

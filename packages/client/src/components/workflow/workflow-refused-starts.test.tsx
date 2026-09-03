@@ -1,6 +1,7 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { WorkflowRefusedStarts } from "#src/components/workflow/workflow-refused-starts";
+import { WorkflowCancellationFailures } from "#src/components/workflow/workflow-cancellation-failures";
 import type { RefusedStart } from "#src/lib/execution-logs";
 
 function refusal(id: string, message: string): RefusedStart {
@@ -37,5 +38,21 @@ describe("WorkflowRefusedStarts", () => {
     expect(
       view.getByText("Refused a start from event app/y: first-wins")
     ).toBeTruthy();
+  });
+});
+
+describe("WorkflowCancellationFailures", () => {
+  it("renders cancellation failures under their own heading", () => {
+    const view = render(
+      <WorkflowCancellationFailures
+        cancelNotDelivered={[
+          refusal("evt_cancel_1", "Cancel Filter declined the event"),
+        ]}
+      />
+    );
+
+    expect(view.getByText("Cancellation Failures")).toBeTruthy();
+    expect(view.getByText("Cancel Filter declined the event")).toBeTruthy();
+    expect(view.queryByText("Refused Starts")).toBeNull();
   });
 });

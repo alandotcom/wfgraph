@@ -629,6 +629,74 @@ describe("assessScenarioSemantics", () => {
     });
   });
 
+  it("rejects a Cancel Filter rule with the wrong value", () => {
+    const document = completedDocument();
+    const lifecycle = document.nodes[0];
+    if (!lifecycle) {
+      throw new Error("Lifecycle fixture is missing");
+    }
+    lifecycle.data.config = {
+      lifecycleRules: {
+        startEvents: ["applicant.created"],
+        cancelEvents: ["applicant.withdrawn"],
+        concurrency: "unlimited",
+        cancelFilters: {
+          "applicant.withdrawn": JSON.stringify({
+            version: 2,
+            groupLogic: "and",
+            groups: [
+              {
+                id: "group",
+                logic: "and",
+                conditions: [
+                  {
+                    id: "rule",
+                    field: "applicantId",
+                    fieldType: "string",
+                    operator: "equals",
+                    value: "other-applicant",
+                  },
+                ],
+              },
+            ],
+          }),
+        },
+      },
+    };
+    const filterInput: AgentEvalInput = {
+      ...input,
+      expected: {
+        requiredCancelFilters: [
+          {
+            event: "applicant.withdrawn",
+            filter: {
+              groupLogic: "and",
+              groups: [
+                {
+                  logic: "and",
+                  rules: [
+                    {
+                      field: "applicantId",
+                      fieldType: "string",
+                      operator: "equals",
+                      value: "expected-applicant",
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+
+    expect(assessScenarioSemantics(filterInput, document)).toEqual({
+      score: 0,
+      rationale:
+        "applicant.withdrawn does not have the exact required Cancel Filter.",
+    });
+  });
+
   it("rejects graph edits for an unsupported request", () => {
     const preserveInput: AgentEvalInput = {
       ...input,

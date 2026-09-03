@@ -36,6 +36,10 @@ import {
   type LifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
+  readCancelFilter,
+  readCancelFilterLayout,
+} from "@wfgraph/shared/lifecycle/cancel-filters";
+import {
   readStartFilter,
   readStartFilterLayout,
 } from "@wfgraph/shared/lifecycle/start-filters";
@@ -56,41 +60,43 @@ const ROLE_COPY = {
   cancel: {
     label: "Cancel Events",
     help: [
-      "When one of these Events arrives, the runs in progress for its entity are canceled.",
-      "Workflow Graph reads the entity from the Event's Correlation Path.",
+      "Workflow Graph checks the Cancel Filter before reading the Correlation Path.",
+      "If the Cancel Filter declines the Event, the runs in progress stay active.",
+      "If the Cancel Filter accepts the Event, Workflow Graph reads the entity from the Event's Correlation Path and cancels matching runs.",
       "A canceled run leaves through the Canceled outlet.",
     ],
   },
 } as const;
 
+const FILTER_COPY = {
+  start: {
+    actionForAll: "filter for all Start Events",
+    filterEach: "Filter each Event separately",
+    recollapse: "Use one filter for every Event",
+  },
+  cancel: {
+    actionForAll: "filter for all Cancel Events",
+    filterEach: "Filter each Cancel Event separately",
+    recollapse: "Use one filter for every Cancel Event",
+  },
+} as const;
+
 /**
- * What both roles need, and what only the start role has.
- *
- * A Start Filter decides whether a run opens, which is a question the cancel role
- * does not ask: a Cancel Event reaches the runs whose Entity Value it matches and
- * has nothing else to be held to. Written as a union so the cancel call site
- * carries no handler it would never call.
+ * Both Event roles can filter an arrival before it changes a run.
  */
 type LifecycleEventGroupProps = {
+  role: "start" | "cancel";
   rules: LifecycleRules;
   catalog: ExtensionCatalog;
   disabled: boolean;
   inputId: string;
   onEventNamesChange: (eventNames: string[]) => void;
   onCorrelationPathChange: (eventName: string, path: string) => void;
-} & (
-  | {
-      role: "start";
-      /** Writes one Event's Start Filter. */
-      onStartFilterChange: (
-        eventName: string,
-        model: string | undefined
-      ) => void;
-      /** Writes the same Start Filter to every Start Event. */
-      onStartFilterChangeForAll: (model: string | undefined) => void;
-    }
-  | { role: "cancel" }
-);
+  /** Writes one Event's filter for this role. */
+  onFilterChange: (eventName: string, model: string | undefined) => void;
+  /** Writes the same filter to every Event with this role. */
+  onFilterChangeForAll: (model: string | undefined) => void;
+};
 
 export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
   const {
@@ -103,10 +109,11 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
     onCorrelationPathChange,
   } = props;
   const copy = ROLE_COPY[role];
+  const filterCopy = FILTER_COPY[role];
   const eventNames = role === "start" ? rules.startEvents : rules.cancelEvents;
 
   /**
-   * The Start Events the builder asked to see filtered separately.
+   * The Events the builder asked to see filtered separately.
    *
    * The layout is otherwise read off the stored filters, so the moment two of
    * them differ there is nothing to choose: one control could not say what they
@@ -114,7 +121,7 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
    * has not yet made the filters differ.
    *
    * It records the Events rather than a flag, because a request is about the
-   * group that was on screen when it was made. Adding or removing a Start Event
+   * group that was on screen when it was made. Adding or removing an Event
    * makes a different group, which collapses again, and the shared functions
    * that also decide layout read the stored filters alone and cannot see this.
    */
@@ -122,52 +129,38 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
   const splitRequested = isEqual(splitFor, eventNames);
 
   /**
-   * Everything the start role has and the cancel role does not, read once.
-   *
-   * The role is a fact about this group rather than a question to re-ask, and
-   * narrowing it here is what keeps `props.role` out of the three derivations
-   * below and out of the render.
+   * The filter storage for this Event role, read once.
    */
-  const startFilters =
-    props.role === "start"
-      ? {
-          writeOne: props.onStartFilterChange,
-          writeAll: props.onStartFilterChangeForAll,
-        }
-      : undefined;
+  const readFilter =
+    props.role === "start" ? readStartFilter : readCancelFilter;
 
   /**
-   * Whether the Start Events agree on one rule.
+   * Whether the Events agree on one rule.
    *
    * Memoized on the role and the rules because it parses and compiles every
-   * stored filter, and the panel writes the rules on each keystroke. The cancel
-   * role never asks.
+   * stored filter, and the panel writes the rules on each keystroke.
    */
   const layout = useMemo(
-    () => (role === "start" ? readStartFilterLayout(rules) : undefined),
+    () =>
+      role === "start"
+        ? readStartFilterLayout(rules)
+        : readCancelFilterLayout(rules),
     [role, rules]
   );
 
   /**
-   * The one control standing for every Start Event, when there is one.
-   *
-   * Absent for the cancel role, for a single Start Event whose filter belongs on
-   * its own row beside its Correlation Path, for a group whose filters disagree,
-   * and while the builder has asked to see them apart.
+   * The one control standing for every Event, when there is one.
    */
   const collapsed =
-    startFilters &&
-    eventNames.length > 1 &&
-    layout?.collapsed &&
-    !splitRequested
-      ? { model: layout.model, write: startFilters.writeAll }
+    eventNames.length > 1 && layout.collapsed && !splitRequested
+      ? { model: layout.model, write: props.onFilterChangeForAll }
       : undefined;
 
-  const perEventFilter = collapsed ? undefined : startFilters?.writeOne;
+  const perEventFilter = collapsed ? undefined : props.onFilterChange;
 
   /** Whether re-collapsing would only change the layout, losing no filter. */
   const canRecollapse =
-    eventNames.length > 1 && layout?.collapsed === true && splitRequested;
+    eventNames.length > 1 && layout.collapsed && splitRequested;
 
   return (
     <ConfigGroup
@@ -199,7 +192,7 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
             filter={
               perEventFilter
                 ? {
-                    model: readStartFilter(rules, eventName),
+                    model: readFilter(rules, eventName),
                     onChange: perEventFilter,
                   }
                 : undefined
@@ -212,6 +205,7 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
                 eventNames.filter((entry) => entry !== eventName)
               )
             }
+            role={role}
             request={correlationPathRequestFor({
               rules,
               catalog,
@@ -222,16 +216,17 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
         ))}
         {collapsed ? (
           <div className="space-y-1 rounded-md border px-2 py-1.5">
-            <StartFilterEditor
-              actionName="filter for all Start Events"
+            <LifecycleFilterEditor
+              actionName={filterCopy.actionForAll}
               disabled={disabled}
               eventNames={eventNames}
               model={collapsed.model}
               onChange={collapsed.write}
+              role={role}
             />
             <FilterLayoutLink
               disabled={disabled}
-              label="Filter each Event separately"
+              label={filterCopy.filterEach}
               onClick={() => setSplitFor(eventNames)}
             />
           </div>
@@ -239,7 +234,7 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
         {canRecollapse ? (
           <FilterLayoutLink
             disabled={disabled}
-            label="Use one filter for every Event"
+            label={filterCopy.recollapse}
             onClick={() => setSplitFor([])}
           />
         ) : null}
@@ -298,7 +293,7 @@ function EventPicker({
   );
 }
 
-/** One Event row's own Start Filter, absent for a cancel role or a collapsed group. */
+/** One Event row's own filter, absent for a collapsed group. */
 type ChosenEventFilter = {
   model: string | undefined;
   onChange: (eventName: string, model: string | undefined) => void;
@@ -307,6 +302,7 @@ type ChosenEventFilter = {
 function ChosenEvent({
   eventName,
   label,
+  role,
   request,
   catalog,
   filter,
@@ -316,6 +312,7 @@ function ChosenEvent({
 }: {
   eventName: string;
   label: string | undefined;
+  role: "start" | "cancel";
   request: CorrelationPathRequest | undefined;
   catalog: ExtensionCatalog;
   filter: ChosenEventFilter | undefined;
@@ -324,7 +321,7 @@ function ChosenEvent({
   disabled: boolean;
 }) {
   const displayName = label ?? eventName;
-  // This Event alone, held stable because `StartFilterEditor` memoizes a walk of
+  // This Event alone, held stable because `LifecycleFilterEditor` memoizes a walk of
   // every node in the graph on it.
   const scope = useMemo(() => [eventName], [eventName]);
 
@@ -365,12 +362,13 @@ function ChosenEvent({
             />
           ) : null}
           {filter ? (
-            <StartFilterEditor
+            <LifecycleFilterEditor
               actionName={`filter for ${displayName}`}
               disabled={disabled}
               eventNames={scope}
               model={filter.model}
               onChange={(model) => filter.onChange(eventName, model)}
+              role={role}
             />
           ) : null}
         </div>
@@ -380,7 +378,7 @@ function ChosenEvent({
 }
 
 /**
- * The Start Filter control, for one Event or for a group of them.
+ * The Lifecycle Filter control, for one Event or for a group of them.
  *
  * The vocabulary is the difference between the two uses and the only one: a
  * filter written for one Event may read anything that Event declares, and one
@@ -390,15 +388,16 @@ function ChosenEvent({
  * from.
  *
  * The stored value is the model alone, and `next.expression` is dropped: nothing
- * a Start Filter compares is known before an arrival, so delivery compiles the
+ * a Lifecycle Filter compares is known before an arrival, so delivery compiles the
  * model itself and a stored copy of the CEL could only go stale.
  */
-function StartFilterEditor({
+function LifecycleFilterEditor({
   actionName,
   eventNames,
   model,
   onChange,
   disabled,
+  role,
 }: {
   /** The Edit and Done controls use this subject. */
   actionName: string;
@@ -411,6 +410,7 @@ function StartFilterEditor({
   model: string | undefined;
   onChange: (model: string | undefined) => void;
   disabled: boolean;
+  role: "start" | "cancel";
 }) {
   const catalog = useExtensionCatalog();
   const nodes = useAtomValue(nodesAtom);
@@ -470,8 +470,12 @@ function StartFilterEditor({
       <div className="space-y-1">
         <p className="text-muted-foreground text-xs">
           {shared
-            ? "Every arrival of these Events starts a run, whatever it carries."
-            : `Every ${eventNames[0]} arrival starts a run, whatever it carries.`}
+            ? role === "start"
+              ? "Every arrival of these Events starts a run, whatever it carries."
+              : "Every arrival of these Events cancels matching runs, whatever it carries."
+            : role === "start"
+              ? `Every ${eventNames[0]} arrival starts a run, whatever it carries.`
+              : `Every ${eventNames[0]} arrival cancels matching runs, whatever it carries.`}
         </p>
         <Button
           disabled={disabled || payloadFields.length === 0}
@@ -491,14 +495,20 @@ function StartFilterEditor({
       defaultEditing={seededHere}
       description={
         shared
-          ? "An arrival that does not satisfy this starts no run. Only the fields every Start Event declares can be read here."
-          : "An arrival that does not satisfy this starts no run. Compare a payload field against a literal."
+          ? role === "start"
+            ? "An arrival that does not satisfy this starts no run. Only the fields every Start Event declares can be read here."
+            : "An arrival that does not satisfy this cancels no runs. Only the fields every Cancel Event declares can be read here."
+          : role === "start"
+            ? "An arrival that does not satisfy this starts no run. Compare a payload field against a literal."
+            : "An arrival that does not satisfy this cancels no runs. Compare a payload field against a literal."
       }
       disabled={disabled}
       editActionName={actionName}
       emptyFieldsMessage={
         shared
-          ? "These Events declare no fields in common, so there is nothing one filter can read. Filter each Event separately."
+          ? role === "start"
+            ? "These Events declare no fields in common, so there is nothing one filter can read. Filter each Event separately."
+            : "These Events declare no fields in common, so there is nothing one filter can read. Filter each Cancel Event separately."
           : "This Event declares no fields, so there is nothing to filter on."
       }
       fields={fields}

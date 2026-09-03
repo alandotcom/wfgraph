@@ -12,6 +12,7 @@ import {
   carryStartFilterToAddedEvents,
   checkStartFilters,
   pruneStartFilters,
+  readStartFilter,
   readStartFilterLayout,
   setStartFilterForAll,
   setStartFilterForEvent,
@@ -261,6 +262,58 @@ describe("setStartFilterForEvent", () => {
       "app/appointment.canceled",
     ]);
   });
+
+  it("keeps constructor and __proto__ as own Start Filter keys", () => {
+    const filter = filterOn(EVENT_NAME_FIELD_PATH, "constructor");
+    const specialEventNames = ["constructor", "__proto__"];
+    const empty = rules({ startEvents: specialEventNames });
+
+    expect(readStartFilter(empty, "constructor")).toBeUndefined();
+    expect(readStartFilter(empty, "__proto__")).toBeUndefined();
+
+    const withConstructor = setStartFilterForEvent({
+      rules: empty,
+      eventName: "constructor",
+      model: filter,
+    });
+    const written = setStartFilterForEvent({
+      rules: withConstructor,
+      eventName: "__proto__",
+      model: filter,
+    });
+
+    expect(Object.hasOwn(written.startFilters ?? {}, "constructor")).toBe(true);
+    expect(Object.hasOwn(written.startFilters ?? {}, "__proto__")).toBe(true);
+    expect(written.startFilters).toEqual(
+      Object.fromEntries(
+        specialEventNames.map((eventName) => [eventName, filter])
+      )
+    );
+    expect(Object.getPrototypeOf(written.startFilters)).toBe(Object.prototype);
+  });
+
+  it("returns undefined for inherited special Start Event names", () => {
+    const filter = filterOn("appointment.id");
+    const withAnotherFilter = rules({
+      startEvents: ["app/appointment.created", "constructor", "__proto__"],
+      startFilters: { "app/appointment.created": filter },
+    });
+    const withAnotherFilterFromEntries = rules({
+      startEvents: ["app/appointment.created", "constructor", "__proto__"],
+      startFilters: Object.fromEntries([["app/appointment.created", filter]]),
+    });
+
+    expect(() =>
+      readStartFilter(withAnotherFilter, "constructor")
+    ).not.toThrow();
+    expect(readStartFilter(withAnotherFilter, "constructor")).toBeUndefined();
+    expect(() =>
+      readStartFilter(withAnotherFilterFromEntries, "__proto__")
+    ).not.toThrow();
+    expect(
+      readStartFilter(withAnotherFilterFromEntries, "__proto__")
+    ).toBeUndefined();
+  });
 });
 
 describe("carryStartFilterToAddedEvents", () => {
@@ -310,6 +363,37 @@ describe("carryStartFilterToAddedEvents", () => {
 
     expect(next.startFilters).toEqual(previous.startFilters);
   });
+
+  it("carries a Start Filter to an Event named __proto__", () => {
+    const filter = filterOn(EVENT_NAME_FIELD_PATH, "constructor");
+    const specialCatalog: ExtensionCatalog = {
+      ...catalog,
+      events: [
+        ...catalog.events,
+        { name: "constructor", label: "Constructor", payloadFields: [] },
+        { name: "__proto__", label: "Prototype", payloadFields: [] },
+      ],
+    };
+    const previous = rules({
+      startEvents: ["constructor"],
+      startFilters: Object.fromEntries([["constructor", filter]]),
+    });
+
+    const next = carryStartFilterToAddedEvents({
+      catalog: specialCatalog,
+      previous,
+      next: { ...previous, startEvents: ["constructor", "__proto__"] },
+    });
+
+    expect(next.startFilters).toEqual(
+      Object.fromEntries([
+        ["constructor", filter],
+        ["__proto__", filter],
+      ])
+    );
+    expect(Object.hasOwn(next.startFilters ?? {}, "__proto__")).toBe(true);
+    expect(Object.getPrototypeOf(next.startFilters)).toBe(Object.prototype);
+  });
 });
 
 describe("pruneStartFilters", () => {
@@ -339,6 +423,29 @@ describe("pruneStartFilters", () => {
     );
 
     expect(next.startFilters).toBeUndefined();
+  });
+
+  it("retains special Event names as own Start Filter keys", () => {
+    const filter = filterOn(EVENT_NAME_FIELD_PATH, "constructor");
+    const next = pruneStartFilters(
+      rules({
+        startEvents: ["constructor", "__proto__"],
+        startFilters: Object.fromEntries([
+          ["constructor", filter],
+          ["__proto__", filter],
+        ]),
+      })
+    );
+
+    expect(next.startFilters).toEqual(
+      Object.fromEntries([
+        ["constructor", filter],
+        ["__proto__", filter],
+      ])
+    );
+    expect(Object.hasOwn(next.startFilters ?? {}, "constructor")).toBe(true);
+    expect(Object.hasOwn(next.startFilters ?? {}, "__proto__")).toBe(true);
+    expect(Object.getPrototypeOf(next.startFilters)).toBe(Object.prototype);
   });
 });
 

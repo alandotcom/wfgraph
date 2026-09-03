@@ -91,6 +91,9 @@ export type RefusedStart = {
   createdAt: Date;
 };
 
+/** One Cancellation Failure, which is a Cancel Event that reached no run. */
+export type CancelNotDelivered = RefusedStart;
+
 type RawRefusedStart = Omit<RefusedStart, "createdAt"> & { createdAt: string };
 
 /** A run status that can still change, and so is still worth polling. */
@@ -110,16 +113,22 @@ export function toWorkflowExecutions(payload: {
   readonly items: readonly RawExecution[];
   readonly supersededCount: number;
   readonly refusedStarts: readonly RawRefusedStart[];
+  readonly cancelNotDelivered: readonly RawRefusedStart[];
 }): {
   executions: WorkflowExecution[];
   supersededCount: number;
   refusedStarts: RefusedStart[];
+  cancelNotDelivered: CancelNotDelivered[];
 } {
   return {
     supersededCount: payload.supersededCount,
     refusedStarts: payload.refusedStarts.map((refusal) => ({
       ...refusal,
       createdAt: new Date(refusal.createdAt),
+    })),
+    cancelNotDelivered: payload.cancelNotDelivered.map((failure) => ({
+      ...failure,
+      createdAt: new Date(failure.createdAt),
     })),
     executions: payload.items.map((execution) => ({
       ...execution,

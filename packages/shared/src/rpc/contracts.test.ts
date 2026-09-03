@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { isNotNil } from "es-toolkit/predicate";
 import {
   getWfGraphOperation,
@@ -35,6 +36,20 @@ async function validateInput(
 ): Promise<ValidationResult> {
   const schema = (contract as ContractWithInput)["~orpc"].inputSchemas[0];
   return await schema["~standard"].validate(input);
+}
+
+function getOutputDecoder(contract: {
+  readonly "~orpc": {
+    readonly outputSchemas?: readonly unknown[] | undefined;
+  };
+}): (value: unknown) => Promise<ValidationResult> {
+  const schema = contract["~orpc"].outputSchemas?.[0] as
+    | StandardSchemaV1
+    | undefined;
+  if (!schema) {
+    throw new Error("The contract must declare an output schema");
+  }
+  return async (value) => await schema["~standard"].validate(value);
 }
 
 describe("integration RPC input contracts", () => {
@@ -78,6 +93,33 @@ describe("integration RPC input contracts", () => {
       expect(result).toHaveProperty("issues");
     }
   );
+});
+
+describe("workflow executions RPC output contract", () => {
+  it("carries cancellation delivery failures separately from refused starts", async () => {
+    const decode = getOutputDecoder(rpcContract.workflow.getExecutions);
+
+    const result = await decode({
+      items: [],
+      supersededCount: 0,
+      refusedStarts: [
+        {
+          id: "evt_start_1",
+          message: "Start Filter declined the event",
+          createdAt: "2026-03-01T09:59:00.000Z",
+        },
+      ],
+      cancelNotDelivered: [
+        {
+          id: "evt_cancel_1",
+          message: "Cancel Filter declined the event",
+          createdAt: "2026-03-01T09:58:00.000Z",
+        },
+      ],
+    });
+
+    expect(result).toHaveProperty("value");
+  });
 });
 
 describe("authorization metadata", () => {
