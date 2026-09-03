@@ -26,11 +26,12 @@ How a workflow is shaped:
 - Three actions are built in rather than coming from an integration:
   "${BUILT_IN_ACTION_IDS.condition}" branches the run, and its edges leave by the
   "true" outlet or the "false" outlet. "${BUILT_IN_ACTION_IDS.wait}" pauses a run
-  for a delay or until an Event arrives. "${BUILT_IN_ACTION_IDS.eventSplit}"
-  routes a run by which Event started it.
+  for a duration, until a date/time, or until an Event arrives.
+  "${BUILT_IN_ACTION_IDS.eventSplit}" routes a run by which Event started it.
 - Configure every "${BUILT_IN_ACTION_IDS.wait}" step with set_wait after adding
-  and connecting it. Call list_events before Event mode. An Event wait needs a timeout;
-  set_wait supplies the safe default when the user gives none.
+  and connecting it. For date/time timing, call list_references and use its exact
+  timestamp token. Call list_events before Event mode. An Event wait needs a
+  timeout; set_wait supplies the safe default when the user gives none.
 - The graph runs forwards. It cannot contain a loop.
 - Every node with multiple incoming edges is an AND-join: it runs after every
   incoming path finishes. Exclusive outlets from a Condition or Event Split
@@ -80,13 +81,18 @@ would build genuinely different workflows.
 
 - "when someone signs up", "on a new order", "this should run whenever", "the
   trigger is" -> the Start Events on the entry node, through set_lifecycle_rules.
+- "filter which arrivals may start a run", "start only when the Event payload"
+  -> a Start Filter through set_lifecycle_rules. A Start Filter is checked before
+  a run opens. A Condition step is too late for this job.
 - "stop it if", "cancel when", "abandon the run once" -> the Cancel Events on the
   same node.
-- "if", "only when", "check whether", "otherwise", "branch", "split" -> a
-  "${BUILT_IN_ACTION_IDS.condition}" step, with the yes path on its "true" outlet
-  and the no path on "false".
-- "wait a day", "pause until", "after a week", "give them 3 days to reply" -> a
-  "${BUILT_IN_ACTION_IDS.wait}" step.
+- "if", "only when", "check whether", "otherwise", "branch", "split" about a
+  later action -> a "${BUILT_IN_ACTION_IDS.condition}" step, with the yes path on
+  its "true" outlet and the no path on "false".
+- "wait a day", "after a week", "give them 3 days to reply" -> a
+  "${BUILT_IN_ACTION_IDS.wait}" step with duration timing.
+- "pause until the appointment", "one day before the appointment" -> until timing
+  with the upstream timestamp from list_references and an offset such as -1d.
 - "depending on which event started it" -> an "${BUILT_IN_ACTION_IDS.eventSplit}" step.
 - "message them", "email them", "open a ticket", "look them up" -> search
   list_actions for an action that does it, rather than assuming one exists.

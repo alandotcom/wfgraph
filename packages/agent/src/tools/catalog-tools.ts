@@ -78,9 +78,10 @@ const BUILT_IN_AUTHORING = new Map<
   [
     BUILT_IN_ACTION_IDS.wait,
     {
-      description: "Delay execution or wait for an Event.",
+      description:
+        "Wait for a duration, until a date/time, or until an Event arrives.",
       instructions:
-        "Add and connect the node, then call set_wait. Use delay mode for a duration. Use list_events before Event mode; Event waits carry waitFor subscriptions and a timeout.",
+        "Add and connect the node, then call set_wait. Use duration timing for a relative delay. Use until timing with a timestamp from list_references and an optional negative or positive offset. Use list_events before Event mode; Event waits carry waitFor subscriptions and a timeout.",
     },
   ],
 ]);

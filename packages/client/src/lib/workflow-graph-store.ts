@@ -27,6 +27,7 @@ import {
 } from "#src/lib/workflow-save-store";
 import {
   activeAgentTurnIdAtom,
+  agentGraphUpdateAtom,
   isGeneratingAtom,
   selectedExecutionIdAtom,
   workflowWorkspaceViewAtom,
@@ -660,8 +661,7 @@ export const duplicateSelectionAtom = atom(
  * Put the build agent's version of the workflow on the canvas.
  *
  * The caller marks the first graph in a turn as its undo boundary. The agent
- * chooses no coordinates, so every node it added arrives at the origin and the
- * layout pass here is what places new nodes.
+ * chooses no coordinates, so every graph update gets a complete layout pass.
  *
  * Node identity is preserved for anything the agent left alone: `displayNodesAtom`
  * keeps a paint cache keyed on it, so rebuilding every node would re-render every
@@ -693,30 +693,17 @@ export const applyAgentGraphAtom = atom(
       get(nodesStateAtom).map((node) => [node.id, node] as const)
     );
 
-    // The agent chooses no coordinates, so the position it sends is absence
-    // rather than a move. Carrying the one already on screen forward is what
-    // stops the layout below reflowing the whole canvas around one edited step.
-    const placed = input.nodes.map((node) => {
-      const existing = existingById.get(node.id);
-      return existing ? { ...node, position: existing.position } : node;
-    });
-
     const { nodes: laidOut } = layoutWorkflowNodes({
-      nodes: placed,
+      nodes: input.nodes,
       edges: input.edges,
       catalog: input.catalog,
-    });
-
-    const positioned = laidOut.map((node) => {
-      const existing = existingById.get(node.id);
-      return existing ? { ...node, position: existing.position } : node;
     });
 
     // `layoutWorkflowNodes` rebuilds every node it is given, so identity is
     // restored here rather than assumed. `displayNodesAtom` keeps a paint cache
     // keyed on it, and a turn calls several write tools, each sending the whole
     // graph back: without this every card on the canvas repaints per tool call.
-    const reconciled = positioned.map((node) => {
+    const reconciled = laidOut.map((node) => {
       const existing = existingById.get(node.id);
       return existing && isSameNode(existing, node) ? existing : node;
     });
@@ -726,6 +713,10 @@ export const applyAgentGraphAtom = atom(
     }
     set(nodesStateAtom, orderGroupParentsFirst(reconciled));
     set(edgesStateAtom, input.edges);
+    set(agentGraphUpdateAtom, {
+      workflowId: input.workflowId,
+      revision: (get(agentGraphUpdateAtom)?.revision ?? 0) + 1,
+    });
     requestGraphSave(get, set, { immediate: true });
     return true;
   }

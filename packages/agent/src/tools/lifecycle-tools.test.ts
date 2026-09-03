@@ -114,7 +114,7 @@ const startFilter = JSON.stringify({
   ],
 });
 
-/** An entry node already carrying a Start Filter the agent cannot write. */
+/** An entry node already carrying a Start Filter. */
 const filteredLifecycle: WorkflowNode = {
   ...entry,
   data: {
@@ -638,13 +638,115 @@ describe("set_condition", () => {
   );
 });
 
-/**
- * The tool replaces the whole rules object and has no parameter for a Start
- * Filter, so what it does with one it did not write is a decision rather than an
- * omission. Dropping it would leave the workflow starting on every arrival with
- * nothing on the canvas saying the rule had gone.
- */
+/** Start Filters survive unrelated edits and follow their named Start Events. */
 describe("set_lifecycle_rules and start filters", () => {
+  it.effect("writes a Start Filter from Event payload fields", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({ catalog });
+
+      yield* tools.set_lifecycle_rules({
+        startEvents: ["applicant.created"],
+        startFilters: [
+          {
+            event: "applicant.created",
+            groups: [
+              {
+                rules: [
+                  {
+                    field: "score",
+                    fieldType: "number",
+                    operator: "greater_or_equal",
+                    value: "80",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+
+      const rules = readLifecycleRules(
+        (yield* draft.current).nodes[0]?.data.config
+      );
+      const parsed = parseConditionModel(
+        rules?.startFilters?.["applicant.created"]
+      );
+      expect(parsed.valid).toBe(true);
+      if (parsed.valid) {
+        expect(parsed.model.groups[0]?.conditions[0]).toMatchObject({
+          field: "score",
+          fieldType: "number",
+          operator: "greater_or_equal",
+          value: 80,
+        });
+      }
+    })
+  );
+
+  it.effect(
+    "refuses a Start Filter for an Event that does not start the run",
+    () =>
+      Effect.gen(function* () {
+        const { tools } = yield* agentToolsFor({ catalog });
+
+        const failure = yield* Effect.flip(
+          tools.set_lifecycle_rules({
+            startEvents: ["applicant.created"],
+            cancelEvents: ["applicant.withdrawn"],
+            startFilters: [
+              {
+                event: "applicant.withdrawn",
+                groups: [
+                  {
+                    rules: [
+                      {
+                        field: "applicantId",
+                        fieldType: "string",
+                        operator: "is_set",
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          })
+        );
+
+        expect(failure.reason).toContain("Start Event");
+      })
+  );
+
+  it.effect("refuses a Start Filter field absent from the Event payload", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({ catalog });
+
+      const failure = yield* Effect.flip(
+        tools.set_lifecycle_rules({
+          startEvents: ["applicant.created"],
+          startFilters: [
+            {
+              event: "applicant.created",
+              groups: [
+                {
+                  rules: [
+                    {
+                      field: "status",
+                      fieldType: "string",
+                      operator: "equals",
+                      value: "confirmed",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        })
+      );
+
+      expect(failure.reason).toContain("does not carry");
+    })
+  );
+
   it.effect("keeps a Start Filter the builder wrote", () =>
     Effect.gen(function* () {
       const { tools, draft } = yield* agentToolsFor({
@@ -665,6 +767,25 @@ describe("set_lifecycle_rules and start filters", () => {
       expect(
         readLifecycleRules(document.nodes[0]?.data.config)?.startFilters
       ).toEqual({ "applicant.created": startFilter });
+    })
+  );
+
+  it.effect("replaces existing Start Filters when the edit supplies them", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [filteredLifecycle],
+        catalog,
+      });
+
+      yield* tools.set_lifecycle_rules({
+        startEvents: ["applicant.created"],
+        startFilters: [],
+      });
+
+      const document = yield* draft.current;
+      expect(
+        readLifecycleRules(document.nodes[0]?.data.config)?.startFilters
+      ).toBeUndefined();
     })
   );
 

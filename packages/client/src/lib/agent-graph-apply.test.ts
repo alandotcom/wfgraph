@@ -19,6 +19,7 @@ import {
 } from "#src/lib/workflow-save-store";
 import {
   activeAgentTurnIdAtom,
+  agentGraphUpdateAtom,
   isGeneratingAtom,
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
@@ -200,7 +201,7 @@ describe("applyAgentGraphAtom", () => {
     expect(store.get(canUndoAtom)).toBe(false);
   });
 
-  it("keeps existing node positions while placing a new node", () => {
+  it("reflows existing nodes while placing a new node", () => {
     const positioned = {
       ...actionNode("a"),
       position: { x: 725, y: 315 },
@@ -218,7 +219,11 @@ describe("applyAgentGraphAtom", () => {
 
     expect(
       store.get(nodesAtom).find((node) => node.id === "a")?.position
-    ).toEqual(positioned.position);
+    ).not.toEqual(positioned.position);
+    expect(store.get(agentGraphUpdateAtom)).toEqual({
+      workflowId: "workflow_1",
+      revision: 1,
+    });
   });
 
   it("refuses a graph from a turn that has already been replaced", () => {

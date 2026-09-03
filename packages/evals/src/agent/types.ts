@@ -1,7 +1,17 @@
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { AgentMessage } from "@wfgraph/shared/rpc/agent-stream";
 import type { AgentDocument } from "@wfgraph/agent/document";
+import type {
+  ConditionRule,
+  GroupLogic,
+} from "@wfgraph/shared/conditions/condition-model";
 import type { DeterministicAssessment } from "#src/agent/judges/graph";
+
+type WithoutId<Value> = Value extends { id: string }
+  ? Omit<Value, "id">
+  : never;
+
+type EvalConditionRule = WithoutId<ConditionRule>;
 
 export type EvalNodeSelector =
   | { kind: "lifecycle" }
@@ -14,6 +24,16 @@ export type AgentEvalExpectations = {
   allowedActions?: string[];
   startEvents?: string[];
   cancelEvents?: string[];
+  requiredStartFilters?: Array<{
+    event: string;
+    filter: {
+      groupLogic: GroupLogic;
+      groups: Array<{
+        logic: GroupLogic;
+        rules: EvalConditionRule[];
+      }>;
+    };
+  }>;
   requiredFlows?: Array<{
     source: EvalNodeSelector;
     target: EvalNodeSelector;
@@ -35,6 +55,11 @@ export type AgentEvalExpectations = {
   requiredConfigs?: Array<{
     node: EvalNodeSelector;
     values: Record<string, string | number | boolean>;
+    allMatches?: boolean;
+  }>;
+  forbiddenConfigKeys?: Array<{
+    node: EvalNodeSelector;
+    keys: string[];
     allMatches?: boolean;
   }>;
   requiredNonEmptyConfigs?: Array<{

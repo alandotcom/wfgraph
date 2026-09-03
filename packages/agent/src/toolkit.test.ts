@@ -42,6 +42,48 @@ describe("the toolkit", () => {
     }
   });
 
+  it("presents Wait modes as one required discriminated input", () => {
+    const setWait = tools.find((tool) => tool.name === "set_wait");
+    if (!setWait) {
+      throw new Error("set_wait is missing");
+    }
+    const schema = Tool.getJsonSchema(setWait) as {
+      required?: string[];
+      properties?: {
+        wait?: {
+          anyOf?: Array<{
+            required?: string[];
+            properties?: { mode?: { enum?: string[] } };
+          }>;
+        };
+        mode?: unknown;
+      };
+    };
+
+    expect(schema.required).toContain("wait");
+    expect(schema.properties?.wait?.anyOf).toEqual([
+      expect.objectContaining({
+        required: ["mode", "duration"],
+        properties: expect.objectContaining({
+          mode: expect.objectContaining({ enum: ["duration"] }),
+        }),
+      }),
+      expect.objectContaining({
+        required: ["mode", "timestamp"],
+        properties: expect.objectContaining({
+          mode: expect.objectContaining({ enum: ["until"] }),
+        }),
+      }),
+      expect.objectContaining({
+        required: ["mode", "events"],
+        properties: expect.objectContaining({
+          mode: expect.objectContaining({ enum: ["event"] }),
+        }),
+      }),
+    ]);
+    expect(schema.properties?.mode).toBeUndefined();
+  });
+
   it("names only real tools as the ones that change the graph", () => {
     const names = new Set(tools.map((tool) => tool.name));
 

@@ -34,7 +34,10 @@ import {
   pruneConnectionIds,
   readLifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
-import { pruneStartFilters } from "@wfgraph/shared/lifecycle/start-filters";
+import {
+  checkStartFilters,
+  pruneStartFilters,
+} from "@wfgraph/shared/lifecycle/start-filters";
 import { isBlank } from "@wfgraph/shared/types/string";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { WorkflowDraft } from "#src/document";
@@ -49,9 +52,54 @@ const lifecycleWriteResultSchema = Schema.Struct({
 
 const UNPLACED = { x: 0, y: 0 };
 
+const conditionRuleSchema = Schema.Struct({
+  field: Schema.String.annotate({
+    description:
+      'The payload or reference path, such as "score". Do not include a template token or node prefix.',
+  }),
+  fieldType: Schema.Literals([
+    "string",
+    "number",
+    "boolean",
+    "timestamp",
+  ]).annotate({
+    description: "The type of the value at that path.",
+  }),
+  operator: Schema.String.annotate({
+    description:
+      "string: equals, not_equals, contains. number: equals, not_equals, greater_than, greater_or_equal, less_than, less_or_equal. boolean: is_true, is_false. timestamp: within_next, more_than_from_now, less_than_ago, more_than_ago, before, after. Any type also takes is_set and is_not_set.",
+  }),
+  value: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "The value compared against, for a string or number operator. A number is written as digits.",
+  }),
+  amount: Schema.optionalKey(Schema.Number).annotate({
+    description: "How many units, for a relative timestamp operator.",
+  }),
+  unit: Schema.optionalKey(
+    Schema.Literals(["minutes", "hours", "days", "weeks"])
+  ).annotate({
+    description: "The unit of amount, for a relative timestamp operator.",
+  }),
+  dateTime: Schema.optionalKey(Schema.String).annotate({
+    description: "An ISO timestamp, for the before and after operators.",
+  }),
+});
+
+const conditionGroupsSchema = Schema.Array(
+  Schema.Struct({
+    logic: Schema.optionalKey(Schema.Literals(["and", "or"])).annotate({
+      description: "How this group's rules combine. Defaults to and.",
+    }),
+    rules: Schema.Array(conditionRuleSchema),
+  })
+).annotate({
+  description: "At least one group, each holding at least one rule.",
+});
+
 export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
   description:
-    "Declare when a run starts and when it is cancelled. Creates the Lifecycle Node if the workflow has none. Every Event name must come from list_events.",
+    "Declare when a run starts and when it is cancelled. A Start Filter refuses non-matching Event payloads before a run opens, so use it when the request filters a Start Event. Creates the Lifecycle Node if the workflow has none. Every Event name and filter field must come from list_events.",
   parameters: Schema.Struct({
     startEvents: Schema.Array(Schema.String).annotate({
       description:
@@ -89,44 +137,28 @@ export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
       description:
         "Where each Event carries the id of the thing a run is about. Concurrency and cancellation both need it.",
     }),
+    startFilters: Schema.optionalKey(
+      Schema.Array(
+        Schema.Struct({
+          event: Schema.String.annotate({
+            description: "The Start Event this filter applies to.",
+          }),
+          groupLogic: Schema.optionalKey(
+            Schema.Literals(["and", "or"])
+          ).annotate({
+            description: "How the filter groups combine. Defaults to and.",
+          }),
+          groups: conditionGroupsSchema,
+        })
+      )
+    ).annotate({
+      description:
+        "Per-Event payload filters applied before a run opens. Omit this field to preserve existing filters. Supply it to replace all Start Filters.",
+    }),
   }),
   success: lifecycleWriteResultSchema,
   failure: failureSchema,
   failureMode: "return",
-});
-
-const conditionRuleSchema = Schema.Struct({
-  field: Schema.String.annotate({
-    description:
-      'The path property exactly as list_references reported it, such as "score". The token and its node prefix are separate fields and do not belong here.',
-  }),
-  fieldType: Schema.Literals([
-    "string",
-    "number",
-    "boolean",
-    "timestamp",
-  ]).annotate({
-    description: "The type of the value at that path.",
-  }),
-  operator: Schema.String.annotate({
-    description:
-      "string: equals, not_equals, contains. number: equals, not_equals, greater_than, greater_or_equal, less_than, less_or_equal. boolean: is_true, is_false. timestamp: within_next, more_than_from_now, less_than_ago, more_than_ago, before, after. Any type also takes is_set and is_not_set.",
-  }),
-  value: Schema.optionalKey(Schema.String).annotate({
-    description:
-      "The value compared against, for a string or number operator. A number is written as digits.",
-  }),
-  amount: Schema.optionalKey(Schema.Number).annotate({
-    description: "How many units, for a relative timestamp operator.",
-  }),
-  unit: Schema.optionalKey(
-    Schema.Literals(["minutes", "hours", "days", "weeks"])
-  ).annotate({
-    description: "The unit of amount, for a relative timestamp operator.",
-  }),
-  dateTime: Schema.optionalKey(Schema.String).annotate({
-    description: "An ISO timestamp, for the before and after operators.",
-  }),
 });
 
 export const SetCondition = Tool.make("set_condition", {
@@ -139,16 +171,7 @@ export const SetCondition = Tool.make("set_condition", {
     groupLogic: Schema.optionalKey(Schema.Literals(["and", "or"])).annotate({
       description: "How the groups combine. Defaults to and.",
     }),
-    groups: Schema.Array(
-      Schema.Struct({
-        logic: Schema.optionalKey(Schema.Literals(["and", "or"])).annotate({
-          description: "How this group's rules combine. Defaults to and.",
-        }),
-        rules: Schema.Array(conditionRuleSchema),
-      })
-    ).annotate({
-      description: "At least one group, each holding at least one rule.",
-    }),
+    groups: conditionGroupsSchema,
   }),
   success: writeResultSchema,
   failure: failureSchema,
@@ -163,6 +186,17 @@ type RuleInput = {
   readonly amount?: number | undefined;
   readonly unit?: "minutes" | "hours" | "days" | "weeks" | undefined;
   readonly dateTime?: string | undefined;
+};
+
+type ConditionGroupsInput = readonly {
+  readonly logic?: GroupLogic | undefined;
+  readonly rules: readonly RuleInput[];
+}[];
+
+type StartFilterInput = {
+  readonly event: string;
+  readonly groupLogic?: GroupLogic | undefined;
+  readonly groups: ConditionGroupsInput;
 };
 
 type RuleReading =
@@ -334,6 +368,55 @@ function readRule(input: RuleInput): RuleReading {
   return RULE_READERS[input.fieldType](base, input);
 }
 
+function readConditionModelInput(input: {
+  readonly subject: string;
+  readonly groupLogic?: GroupLogic | undefined;
+  readonly groups: ConditionGroupsInput;
+}):
+  | { readonly ok: true; readonly model: ConditionModel }
+  | { readonly ok: false; readonly reason: string } {
+  if (input.groups.length === 0) {
+    return {
+      ok: false,
+      reason: `${input.subject} needs at least one group.`,
+    };
+  }
+
+  const groups: ConditionGroup[] = [];
+  for (const group of input.groups) {
+    if (group.rules.length === 0) {
+      return {
+        ok: false,
+        reason: `Every ${input.subject.toLowerCase()} group needs at least one rule.`,
+      };
+    }
+
+    const rules: ConditionRule[] = [];
+    for (const rule of group.rules) {
+      const reading = readRule(rule);
+      if (!reading.ok) {
+        return reading;
+      }
+      rules.push(reading.rule);
+    }
+    groups.push({
+      id: nanoid(),
+      logic: group.logic ?? "and",
+      conditions: rules,
+    });
+  }
+
+  const model: ConditionModel = {
+    version: 2,
+    groupLogic: input.groupLogic ?? "and",
+    groups,
+  };
+  const compiled = compileConditionModel(model);
+  return compiled.valid
+    ? { ok: true, model }
+    : { ok: false, reason: compiled.error };
+}
+
 /** The entry node, or a fresh one when the workflow has never had rules. */
 function entryNodeOf(nodes: readonly WorkflowNode[]): WorkflowNode {
   const existing = nodes.find((node) => node.data.type === "lifecycle");
@@ -363,6 +446,7 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
       readonly correlationPaths?:
         | readonly { readonly event: string; readonly path: string }[]
         | undefined;
+      readonly startFilters?: readonly StartFilterInput[] | undefined;
     }) =>
       Effect.flatMap(draft.current, (document) => {
         const named = [...input.startEvents, ...(input.cancelEvents ?? [])];
@@ -384,22 +468,50 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
 
         const entry = entryNodeOf(document.nodes);
 
+        const replacesStartFilters = input.startFilters !== undefined;
+        let startFilters = readLifecycleRules(entry.data.config)?.startFilters;
+        if (replacesStartFilters) {
+          const serialized = new Map<string, string>();
+          for (const filter of input.startFilters) {
+            if (!input.startEvents.includes(filter.event)) {
+              return Effect.fail({
+                reason: `${filter.event} is not a Start Event in this edit, so it cannot have a Start Filter.`,
+              });
+            }
+            if (serialized.has(filter.event)) {
+              return Effect.fail({
+                reason: `${filter.event} has more than one Start Filter. Combine its rules into one filter.`,
+              });
+            }
+
+            const reading = readConditionModelInput({
+              subject: "A Start Filter",
+              groupLogic: filter.groupLogic,
+              groups: filter.groups,
+            });
+            if (!reading.ok) {
+              return Effect.fail({ reason: reading.reason });
+            }
+            serialized.set(
+              filter.event,
+              serializeConditionModel(reading.model)
+            );
+          }
+          startFilters =
+            serialized.size === 0 ? undefined : Object.fromEntries(serialized);
+        }
+
         // The per-Event records already on the node, carried across an edit that
-        // cannot write them. This tool replaces the whole rules object, so
-        // without this an agent asked to add a Cancel Event would also delete the
-        // builder's Start Filters and Connections: the workflow would quietly
-        // start on every arrival, and an integration Event would lose the
-        // Connection `checkLifecycleRules` requires. An Event this edit drops
-        // loses both, which the two prunes below are what do; an Event this edit
-        // adds gets neither, because inheriting what the agent cannot see would
-        // hide the same decision in the other direction.
+        // does not replace. This tool replaces the whole rules object, so an
+        // omitted filter list preserves the builder's Start Filters. Supplying
+        // the list replaces them. Connection choices remain builder-owned.
         const stored = readLifecycleRules(entry.data.config);
 
         const rules: LifecycleRules = pruneStartFilters(
           pruneConnectionIds({
             ...emptyLifecycleRules,
             ...omitUndefined({
-              startFilters: stored?.startFilters,
+              startFilters,
               connectionIds: stored?.connectionIds,
               concurrency: input.concurrency,
               allowManualStart: input.allowManualStart,
@@ -420,6 +532,15 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
         const check = checkLifecycleRules({ rules, catalog: draft.catalog });
         if (!check.valid) {
           return Effect.fail({ reason: check.error });
+        }
+        if (replacesStartFilters) {
+          const filtersCheck = checkStartFilters({
+            rules,
+            catalog: draft.catalog,
+          });
+          if (!filtersCheck.valid) {
+            return Effect.fail({ reason: filtersCheck.error });
+          }
         }
 
         const created = !document.nodes.some((node) => node.id === entry.id);

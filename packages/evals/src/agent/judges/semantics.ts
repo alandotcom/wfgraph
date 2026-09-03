@@ -1,4 +1,6 @@
 import { compact } from "es-toolkit/array";
+import { isEqual } from "es-toolkit/predicate";
+import type { ConditionModel } from "@wfgraph/shared/conditions/condition-model";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
 import { findAction } from "@wfgraph/shared/extensions/catalog";
@@ -243,6 +245,29 @@ function missingCancelEvents(context: SemanticsContext): string[] {
   );
 }
 
+function startFilterShape(model: ConditionModel) {
+  return {
+    groupLogic: model.groupLogic,
+    groups: model.groups.map((group) => ({
+      logic: group.logic,
+      rules: group.conditions.map(({ id: _id, ...rule }) => rule),
+    })),
+  };
+}
+
+/** Each named Start Event carries exactly the filter the scenario requires. */
+function missingStartFilters(context: SemanticsContext): string[] {
+  return checkEach(context.input.expected.requiredStartFilters, (required) => {
+    const parsed = parseConditionModel(
+      context.lifecycleRules?.startFilters?.[required.event]
+    );
+    return parsed.valid &&
+      isEqual(startFilterShape(parsed.model), required.filter)
+      ? undefined
+      : `${required.event} does not have the exact required Start Filter`;
+  });
+}
+
 /** Each required flow exists as one edge, on the named outlet when given. */
 function missingFlows(context: SemanticsContext): string[] {
   return checkEach(context.input.expected.requiredFlows, (flow) => {
@@ -325,6 +350,17 @@ function missingConfigs(context: SemanticsContext): string[] {
     return nodesSatisfy(context, required, hasConfig)
       ? undefined
       : `${selectorName(required.node)} does not have required config ${Object.keys(required.values).join(", ")}`;
+  });
+}
+
+/** Each forbidden configuration key is absent from the selected node. */
+function presentForbiddenConfigs(context: SemanticsContext): string[] {
+  return checkEach(context.input.expected.forbiddenConfigKeys, (required) => {
+    const omitsConfigs = (node: WorkflowNode) =>
+      required.keys.every((key) => node.data.config?.[key] === undefined);
+    return nodesSatisfy(context, required, omitsConfigs)
+      ? undefined
+      : `${selectorName(required.node)} has forbidden config ${required.keys.join(", ")}`;
   });
 }
 
@@ -516,11 +552,13 @@ const rules: readonly SemanticsRule[] = [
   disallowedActions,
   missingStartEvents,
   missingCancelEvents,
+  missingStartFilters,
   missingFlows,
   missingPaths,
   gateFailures,
   nonParallelBranches,
   missingConfigs,
+  presentForbiddenConfigs,
   emptyConfigs,
   missingDurations,
   missingWaitEvents,
