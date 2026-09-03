@@ -29,7 +29,6 @@ import {
 } from "#src/lib/rpc-query";
 import type { WorkflowRunGraph } from "#src/lib/workflow-run-labels";
 import {
-  currentWorkflowDraftRevisionAtom,
   recordLoadedDraftRevisionAtom,
   saveWorkflowAtom,
 } from "#src/lib/workflow-save-store";
@@ -105,7 +104,6 @@ export function useWorkflowActions(
   const queryClient = useQueryClient();
   const deleteWorkflow = useDeleteWorkflow();
   const saveWorkflow = useSetAtom(saveWorkflowAtom);
-  const draftRevision = useAtomValue(currentWorkflowDraftRevisionAtom);
   const recordLoadedDraftRevision = useSetAtom(recordLoadedDraftRevisionAtom);
   const publishReview = useAtomValue(publicationReviewAtom);
   const publicationReviewActive = useAtomValue(isPublicationReviewActiveAtom);
@@ -289,7 +287,26 @@ export function useWorkflowActions(
   };
 
   const handlePublish = async () => {
-    if (!currentWorkflowId || publicationReviewActive || !canPublish) {
+    if (!currentWorkflowId || !canPublish) {
+      return;
+    }
+    if (publicationReviewActive) {
+      toast.info(PREFLIGHT_BUSY_MESSAGE, { id: PREFLIGHT_TOAST_ID });
+      return;
+    }
+
+    const epoch = beginPublicationReview(currentWorkflowId);
+    if (epoch === null) {
+      toast.info(PREFLIGHT_BUSY_MESSAGE, { id: PREFLIGHT_TOAST_ID });
+      return;
+    }
+    const graph = toSerializedGraph({ nodes, edges });
+    const saved = await saveWorkflow({ nodes, edges }, { immediate: true });
+    if (!saved?.ok) {
+      clearPublicationReview({ workflowId: currentWorkflowId, epoch });
+      if (saved) {
+        toast.error(saved.error.message || "Failed to save workflow");
+      }
       return;
     }
 
@@ -304,6 +321,7 @@ export function useWorkflowActions(
       nodes,
     });
     if (preflight.status !== "ready") {
+      clearPublicationReview({ workflowId: currentWorkflowId, epoch });
       if (preflight.status === "busy") {
         toast.info(PREFLIGHT_BUSY_MESSAGE, { id: PREFLIGHT_TOAST_ID });
       }
@@ -311,6 +329,7 @@ export function useWorkflowActions(
     }
     const { issues } = preflight;
     if (hasBlockingWorkflowIssues(issues)) {
+      clearPublicationReview({ workflowId: currentWorkflowId, epoch });
       openOverlay(WorkflowIssuesOverlay, {
         issues: groupWorkflowIssuesForOverlay(issues),
         onGoToStep: handleGoToStep,
@@ -319,16 +338,11 @@ export function useWorkflowActions(
       return;
     }
 
-    const graph = toSerializedGraph({ nodes, edges });
     const input = omitUndefined({
       workflowId: currentWorkflowId,
       baseVersionId: publication?.publishedVersionId,
       draftGraph: graph,
     });
-    const epoch = beginPublicationReview(currentWorkflowId);
-    if (epoch === null) {
-      return;
-    }
     compareWorkflowVersion.mutate(input, {
       onSuccess: (comparison, comparisonInput) => {
         if (!comparison.hasChanges) {
@@ -349,6 +363,7 @@ export function useWorkflowActions(
           epoch,
           pending: false,
           graph: comparisonInput.draftGraph,
+          expectedDraftRevision: saved.workflow.draftRevision,
           expectedPublishedVersionId: comparison.baseVersion?.id ?? null,
           review: publicationReviewFromComparison(comparison),
         });
@@ -394,7 +409,7 @@ export function useWorkflowActions(
         workflowId: publishReview.workflowId,
         graph: publishReview.graph,
         expectedPublishedVersionId: publishReview.expectedPublishedVersionId,
-        expectedDraftRevision: draftRevision,
+        expectedDraftRevision: publishReview.expectedDraftRevision,
       },
       {
         onSuccess: (payload) => {

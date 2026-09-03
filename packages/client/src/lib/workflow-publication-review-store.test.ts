@@ -56,6 +56,7 @@ describe("publication review store", () => {
       epoch: epoch ?? 0,
       pending: false,
       graph,
+      expectedDraftRevision: 1,
       expectedPublishedVersionId: null,
       review: {
         proposedVersion: 1,
@@ -85,6 +86,7 @@ describe("publication review store", () => {
       epoch: epoch ?? 0,
       pending: false,
       graph,
+      expectedDraftRevision: 1,
       expectedPublishedVersionId: "version_1",
       review: { proposedVersion: 2, nodeChanges: [], edgeChanges: [] },
     });
@@ -117,6 +119,7 @@ describe("publication review store", () => {
         epoch: epoch ?? 0,
         pending: false,
         graph,
+        expectedDraftRevision: 1,
         expectedPublishedVersionId: null,
         review: { proposedVersion: 1, nodeChanges: [], edgeChanges: [] },
       })
@@ -137,6 +140,7 @@ describe("publication review store", () => {
         epoch: epoch ?? 0,
         pending: false,
         graph,
+        expectedDraftRevision: 1,
         expectedPublishedVersionId: null,
         review: { proposedVersion: 1, nodeChanges: [], edgeChanges: [] },
       })
@@ -165,6 +169,7 @@ describe("publication review store", () => {
         epoch: firstEpoch ?? 0,
         pending: false,
         graph,
+        expectedDraftRevision: 1,
         expectedPublishedVersionId: null,
         review: { proposedVersion: 1, nodeChanges: [], edgeChanges: [] },
       })
