@@ -1,0 +1,20 @@
+{
+  "name": "Workflow Graph",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:24-bookworm",
+  "containerEnv": {
+    "INNGEST_DEV_PORT": "8388"
+  },
+  "forwardPorts": [5173, 8388],
+  "portsAttributes": {
+    "5173": {
+      "label": "Workflow Graph",
+      "onAutoForward": "openBrowserOnce"
+    },
+    "8388": {
+      "label": "Inngest",
+      "onAutoForward": "notify"
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "postStartCommand": "nohup bash -c 'pnpm run dev > /tmp/wfgraph-dev.log 2>&1 &'"
+}
