@@ -27,9 +27,11 @@ export type GetIntegrationTypesByIds = (
   integrationIds: string[]
 ) => Effect.Effect<IntegrationTypeMap, DatabaseError>;
 
-type IntegrationRequirement = {
+export type IntegrationRequirement = {
   integrationId: string;
   requiredType: string;
+  nodeId: string;
+  nodeLabel: string;
 };
 
 /**
@@ -46,7 +48,7 @@ export type IntegrationValidation =
 const integrationValidationLogger = getAppLogger("validation");
 const STRICT_VALIDATION_ENV = "WORKFLOW_STRICT_INTEGRATION_VALIDATION";
 
-function shouldEnforceStrictValidation(
+export function shouldEnforceStrictIntegrationValidation(
   strictValidationOverride?: boolean
 ): boolean {
   if (strictValidationOverride !== undefined) {
@@ -71,23 +73,29 @@ function shouldEnforceStrictValidation(
  * subscription. Both kinds land here so a single query answers whether each id
  * exists and whether it is the type the reference needs.
  *
- * A blank id is not this function's business. `checkLifecycleRules` and
- * `validateWorkflowEvents` already refuse an integration-owned Event that names
- * no Connection, with a sentence naming the Event, and they run first at both
- * call sites.
+ * A blank id stays with the canonical graph issue and Event checks. The
+ * extractor returns references that can be checked against connected
+ * integrations or database rows.
  */
-function extractRequiredIntegrationRequirements(
+export function extractRequiredIntegrationRequirements(
   nodes: WorkflowNode[],
   catalog: ExtensionCatalog
 ): IntegrationRequirement[] {
   const requirements: IntegrationRequirement[] = [];
 
   const require = (
+    node: WorkflowNode,
     integrationId: string | undefined,
     requiredType: string | undefined
   ) => {
-    if (integrationId && requiredType) {
-      requirements.push({ integrationId, requiredType });
+    const trimmedIntegrationId = integrationId?.trim();
+    if (trimmedIntegrationId && requiredType) {
+      requirements.push({
+        integrationId: trimmedIntegrationId,
+        requiredType,
+        nodeId: node.id,
+        nodeLabel: node.data.label || node.id,
+      });
     }
   };
 
@@ -102,8 +110,10 @@ function extractRequiredIntegrationRequirements(
         ...(rules?.startEvents ?? []),
         ...(rules?.cancelEvents ?? []),
       ]) {
-        require(rules?.connectionIds?.[eventName], findEvent(catalog, eventName)
-          ?.integration);
+        require(node, rules?.connectionIds?.[eventName], findEvent(
+          catalog,
+          eventName
+        )?.integration);
       }
       continue;
     }
@@ -116,7 +126,7 @@ function extractRequiredIntegrationRequirements(
 
     if (actionType === BUILT_IN_ACTION_IDS.wait) {
       for (const subscription of readWaitSubscriptions(node.data.config)) {
-        require(subscription.connectionId, findEvent(
+        require(node, subscription.connectionId, findEvent(
           catalog,
           subscription.event
         )?.integration);
@@ -126,7 +136,7 @@ function extractRequiredIntegrationRequirements(
 
     // Which integration an action needs is the catalog's answer, the same for a
     // plugin action and a host's own.
-    require(readConfigTrimmedString(
+    require(node, readConfigTrimmedString(
       node.data.config,
       "integrationId"
     ), actionType ? findAction(catalog, actionType)?.integration : undefined);
@@ -204,7 +214,7 @@ export const validateWorkflowIntegrations = Effect.fn(
   getIntegrationTypesByIds: GetIntegrationTypesByIds,
   options: { strictValidation?: boolean } = {}
 ) {
-  const strictValidationEnabled = shouldEnforceStrictValidation(
+  const strictValidationEnabled = shouldEnforceStrictIntegrationValidation(
     options.strictValidation
   );
 

@@ -12,6 +12,9 @@ export default defineConfig({
     setupFiles: ["./load-env.ts"],
     testTimeout: 180_000,
     hookTimeout: 30_000,
-    maxConcurrency: 1,
+    // Scenarios keep their own graph, trace, and cancellation state. Running a
+    // small batch concurrently reduces model wait time without a large burst.
+    sequence: { concurrent: true },
+    maxConcurrency: 4,
   },
 });

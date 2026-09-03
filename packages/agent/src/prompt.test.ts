@@ -77,7 +77,10 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("leave that field empty");
     expect(prompt).toContain("remaining human work");
     expect(prompt).toContain("required identifier or destination");
-    expect(prompt).toContain("Draft descriptive text");
+    expect(prompt).toContain("Draft non-empty descriptive text");
+    expect(prompt).toContain(
+      "repair a missing descriptive text field and validate again"
+    );
     expect(prompt).toContain("requires a connection");
     expect(prompt).toContain("requires a channel");
   });
@@ -98,11 +101,53 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("Add a lookup action only when");
   });
 
-  it("requires a fresh graph read before recovering from a refusal", () => {
+  it("requires a fresh graph read before a write in a later response after a refusal", () => {
     const prompt = unwrapped(buildSystemPrompt(emptyExtensionCatalog));
 
-    expect(prompt).toContain("After a tool refusal, call read_workflow");
-    expect(prompt).toContain("Never repeat the refused call unchanged");
+    expect(prompt).toContain(
+      "After any refusal, call read_workflow before any write in a later response"
+    );
+  });
+
+  it("preserves the graph when the requested action or Event is unavailable", () => {
+    const prompt = unwrapped(buildSystemPrompt(emptyExtensionCatalog));
+
+    expect(prompt).toContain(
+      "When any requested action or Event is unavailable, make no graph changes. Do not build the supported parts of the request"
+    );
+    expect(prompt).toContain(
+      "Treat a requested delivery channel as exact: SMS, email, and Slack are different capabilities"
+    );
+    expect(prompt).toContain(
+      "Finish capability discovery before calling set_lifecycle_rules or another write tool"
+    );
+  });
+
+  it("limits Lifecycle Events to the user request", () => {
+    const prompt = unwrapped(buildSystemPrompt(emptyExtensionCatalog));
+
+    expect(prompt).toContain(
+      "only the Start and Cancel Events the user requests"
+    );
+    expect(prompt).toContain("Do not add helpful Events");
+  });
+
+  it("does not duplicate a Start Filter with a Condition", () => {
+    const prompt = unwrapped(buildSystemPrompt(emptyExtensionCatalog));
+
+    expect(prompt).toContain(
+      "A Start Filter fully enforces its predicate. Never add a Condition that repeats the Start Filter"
+    );
+    expect(prompt).toContain(
+      "Connect the Lifecycle started outlet directly to the first requested action"
+    );
+  });
+
+  it("creates Lifecycle Rules before adding a node to an empty graph", () => {
+    const prompt = unwrapped(buildSystemPrompt(emptyExtensionCatalog));
+
+    expect(prompt).toContain("On an empty graph, call set_lifecycle_rules");
+    expect(prompt).toContain("wait for its result before any add_node call");
   });
 
   it("routes structured Wait configuration through set_wait", () => {

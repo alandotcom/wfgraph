@@ -1,21 +1,22 @@
 import { Cause, Effect, Stream } from "effect";
-import { createHarness, toJsonValue } from "vitest-evals";
+import { createHarness } from "vitest-evals";
 import { runAgentTurn } from "@wfgraph/core/backend/agent/chat";
 import { DEFAULT_AGENT_MODEL } from "@wfgraph/core/backend/agent/config";
+import { validateAgentDraft } from "@wfgraph/core/backend/agent/publication-validation";
 import {
   summarizeAgentTrace,
   type AgentTraceEvent,
 } from "@wfgraph/core/backend/agent/trace";
 import { getErrorMessage } from "@wfgraph/shared/utils";
 import type { AgentStreamPart } from "@wfgraph/shared/rpc/agent-stream";
+import { collectCompletionFacts } from "#src/agent/completion-facts";
 import {
-  assessGraphGrounding,
-  assessPublishability,
-} from "#src/agent/judges/graph";
-import { assessExpectedCompletion } from "#src/agent/judges/completion";
-import { assessScenarioSemantics } from "#src/agent/judges/semantics";
-import { assessToolBehavior } from "#src/agent/judges/tool-behavior";
+  normalizeAgentEvalDocument,
+  normalizeJsonEvidence,
+  normalizeJsonObjectEvidence,
+} from "#src/agent/evidence";
 import { collectAgentEvalResult } from "#src/agent/result";
+import { buildAgentTrajectory } from "#src/agent/trajectory";
 import type { AgentEvalInput, AgentEvalOutput } from "#src/agent/types";
 
 const API_KEY_ENV = "OPENAI_API_KEY";
@@ -44,26 +45,14 @@ export function readEvalModelSettings(modelOverride?: string) {
   };
 }
 
-export const workflowAgentHarness = createHarness<
-  AgentEvalInput,
-  AgentEvalOutput
->({
-  name: "workflow-build-agent",
-  run: async ({ input, setArtifact }) => {
-    const startedAt = Date.now();
-    const settings = readEvalModelSettings(input.model);
-    const trace: AgentTraceEvent[] = [];
-    const stream = await Effect.runPromise(
-      runAgentTurn({
-        settings,
-        catalog: input.catalog,
-        integrations: input.integrations,
-        document: input.document,
-        messages: input.messages,
-        observeTrace: (event) => trace.push(event),
-      })
-    );
-    const observed = stream.pipe(
+/** Builds one turn and collects its stream under the same interruption signal. */
+export function collectAgentTurn(
+  turn: Effect.Effect<Stream.Stream<AgentStreamPart, unknown>>,
+  signal: AbortSignal | undefined
+): Promise<AgentStreamPart[]> {
+  const collected = Effect.gen(function* () {
+    const stream = yield* turn;
+    const observed: Stream.Stream<AgentStreamPart> = stream.pipe(
       Stream.catchCause((cause) =>
         Stream.succeed<AgentStreamPart>({
           type: "error",
@@ -71,8 +60,30 @@ export const workflowAgentHarness = createHarness<
         })
       )
     );
-    const parts = Array.from(
-      await Effect.runPromise(Stream.runCollect(observed))
+    return Array.from(yield* Stream.runCollect(observed));
+  });
+  return Effect.runPromise(collected, { signal });
+}
+
+export const workflowAgentHarness = createHarness<
+  AgentEvalInput,
+  AgentEvalOutput
+>({
+  name: "workflow-build-agent",
+  run: async ({ input, setArtifact, signal }) => {
+    const startedAt = Date.now();
+    const settings = readEvalModelSettings(input.model);
+    const trace: AgentTraceEvent[] = [];
+    const parts = await collectAgentTurn(
+      runAgentTurn({
+        settings,
+        catalog: input.catalog,
+        integrations: input.integrations,
+        document: input.document,
+        messages: input.messages,
+        observeTrace: (event) => trace.push(event),
+      }),
+      signal
     );
     const result = collectAgentEvalResult(input.document, parts);
     const events = [
@@ -83,44 +94,48 @@ export const workflowAgentHarness = createHarness<
       })),
       ...result.events,
     ];
-    const graphInput = {
-      document: result.finalDocument,
+    const traceSummary = summarizeAgentTrace(trace);
+    const trajectory = buildAgentTrajectory(trace);
+    const finalDocument = normalizeAgentEvalDocument(result.finalDocument);
+    const validation = validateAgentDraft({
+      document: finalDocument,
       catalog: input.catalog,
       integrations: input.integrations,
-    };
-    const publishability = assessPublishability(graphInput);
-    const grounding = assessGraphGrounding(graphInput);
-    const semantics = assessScenarioSemantics(input, result.finalDocument);
-    const traceSummary = summarizeAgentTrace(trace);
-    const output: AgentEvalOutput = {
-      finalDocumentJson: JSON.stringify(result.finalDocument),
+    });
+    const completionFacts = collectCompletionFacts({
+      validation,
       finalText: result.finalText,
-      errors: result.errors,
-      publishability,
-      grounding,
-      semantics,
-      toolBehavior: assessToolBehavior(events),
-      completion: assessExpectedCompletion({
-        expected: input.expectedCompletion,
-        document: result.finalDocument,
-        finalText: result.finalText,
-        errors: result.errors,
-        publishability,
-        grounding,
-        semantics,
-      }),
-      traceSummary: {
+      streamErrors: result.errors,
+      finalFinishReason: traceSummary.finishReason,
+    });
+    const normalizedTraceSummary = normalizeJsonObjectEvidence(
+      {
         ...traceSummary,
         finishReason: traceSummary.finishReason ?? null,
       },
+      "Agent eval trace summary"
+    );
+    const output: AgentEvalOutput = {
+      finalDocument,
+      finalText: result.finalText,
+      errors: result.errors,
+      completionFacts: normalizeJsonObjectEvidence(
+        completionFacts,
+        "Agent eval completion facts"
+      ),
+      trajectory: normalizeJsonObjectEvidence(
+        trajectory,
+        "Agent eval trajectory"
+      ),
+      traceSummary: normalizedTraceSummary,
     };
 
+    setArtifact("finalDocument", finalDocument);
     setArtifact(
-      "finalDocument",
-      toJsonValue(result.finalDocument) ?? { nodes: [], edges: [] }
+      "streamParts",
+      normalizeJsonEvidence(parts, "Agent eval stream parts")
     );
-    setArtifact("streamParts", toJsonValue(parts) ?? []);
-    setArtifact("agentTrace", toJsonValue(trace) ?? []);
+    setArtifact("agentTrace", normalizeJsonEvidence(trace, "Agent eval trace"));
 
     return {
       output,

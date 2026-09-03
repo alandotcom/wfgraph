@@ -44,7 +44,12 @@ const draft: WorkflowDraftService = {
   revision: () => Effect.succeed(document),
   catalog: { actions: [], events: [], integrations: [] },
   integrations: [],
-  validatePublication: () => ({ publishBlockers: [], warnings: [] }),
+  validateDraft: () => ({
+    draftValid: true,
+    structuralIssues: [],
+    publishBlockers: [],
+    warnings: [],
+  }),
 };
 
 const part = Response.makePart;
@@ -272,7 +277,12 @@ describe("withGraphParts", () => {
           revision: (revision) => Effect.succeed(revisions[revision]!),
           catalog: { actions: [], events: [], integrations: [] },
           integrations: [],
-          validatePublication: () => ({ publishBlockers: [], warnings: [] }),
+          validateDraft: () => ({
+            draftValid: true,
+            structuralIssues: [],
+            publishBlockers: [],
+            warnings: [],
+          }),
         };
 
         const toolkit = yield* Effect.provide(

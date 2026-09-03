@@ -15,8 +15,9 @@
 import { Effect } from "effect";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
-import { collectWorkflowIssues } from "@wfgraph/shared/graph/workflow-issues";
 import {
+  type AgentDocument,
+  type AgentDraftValidation,
   type ConnectedIntegration,
   layerFromDraft,
   makeWorkflowDraft,
@@ -29,6 +30,7 @@ export type ToolTestInput = {
   readonly edges?: readonly WorkflowEdge[];
   readonly catalog: ExtensionCatalog;
   readonly integrations?: readonly ConnectedIntegration[];
+  readonly validateDraft?: (document: AgentDocument) => AgentDraftValidation;
 };
 
 export type AgentToolHandlers = Effect.Success<typeof agentToolHandlers>;
@@ -47,19 +49,13 @@ export function agentToolsFor(
       document: { nodes: input.nodes ?? [], edges: input.edges ?? [] },
       catalog: input.catalog,
       integrations: input.integrations ?? [],
-      validatePublication: (document) => {
-        const issues = collectWorkflowIssues({
-          nodes: [...document.nodes],
-          catalog: input.catalog,
-          integrations: input.integrations ?? [],
-        });
-        return {
-          publishBlockers: issues.filter(
-            (issue) => issue.severity === "blocking"
-          ),
-          warnings: issues.filter((issue) => issue.severity === "warning"),
-        };
-      },
+      validateDraft:
+        input.validateDraft ??
+        (() => {
+          throw new Error(
+            "agentToolsFor requires an explicit validateDraft stub for validate_workflow"
+          );
+        }),
     });
 
     const tools = yield* Effect.provide(

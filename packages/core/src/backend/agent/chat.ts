@@ -49,7 +49,7 @@ import {
   traceResponsePart,
   type AgentTraceObserver,
 } from "#src/backend/agent/trace";
-import { validateAgentPublication } from "#src/backend/agent/publication-validation";
+import { validateAgentDraft } from "#src/backend/agent/publication-validation";
 
 type AgentStreamPartIn = Parameters<typeof toAgentStreamPart>[0];
 
@@ -105,8 +105,8 @@ export function runAgentTurn(
       document: input.document,
       catalog: input.catalog,
       integrations: input.integrations,
-      validatePublication: (document) =>
-        validateAgentPublication({
+      validateDraft: (document) =>
+        validateAgentDraft({
           document,
           catalog: input.catalog,
           integrations: input.integrations,

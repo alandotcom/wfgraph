@@ -112,7 +112,12 @@ describe("the toolkit layer", () => {
         document: { nodes: [], edges: [] },
         catalog: fixtureCatalog,
         integrations: [],
-        validatePublication: () => ({ publishBlockers: [], warnings: [] }),
+        validateDraft: () => ({
+          draftValid: true,
+          structuralIssues: [],
+          publishBlockers: [],
+          warnings: [],
+        }),
       });
 
       const encoded = yield* Effect.gen(function* () {

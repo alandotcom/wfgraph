@@ -12,7 +12,6 @@ import { Tool } from "effect/unstable/ai";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import { persistedNodeEnabled } from "@wfgraph/shared/graph/node-enabled";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
-import { workflowTopologyRefusalReason } from "@wfgraph/shared/graph/workflow-topology";
 import {
   type JsonObject,
   jsonObjectSchema,
@@ -127,17 +126,6 @@ export const graphReadToolHandlers = Effect.gen(function* () {
         ),
       })),
 
-    validate_workflow: () =>
-      Effect.map(draft.current, (document) => {
-        const topologyError = workflowTopologyRefusalReason(document);
-        const validation = draft.validatePublication(document);
-
-        return {
-          draftValid: topologyError === null,
-          structuralIssues: topologyError === null ? [] : [topologyError],
-          publishBlockers: [...validation.publishBlockers],
-          warnings: [...validation.warnings],
-        };
-      }),
+    validate_workflow: () => Effect.map(draft.current, draft.validateDraft),
   };
 });

@@ -23,7 +23,10 @@ import {
   validateCancelFilterModels,
   validateStartFilterModels,
 } from "#src/backend/services/workflows/validation/workflow-lifecycle-validation";
-import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
+import {
+  validateWorkflowGraph,
+  type WorkflowGraphValidationResult,
+} from "#src/backend/services/workflows/validation/workflow-graph";
 import { deriveEventSubscriptions } from "#src/backend/services/workflows/lifecycle/subscriptions";
 import type { WorkflowEventSubscriptionRow } from "#src/backend/services/workflows/repo";
 import type {
@@ -46,6 +49,32 @@ export type PreparedGraphSave = {
   subscriptionsFor: (workflowId: string) => WorkflowEventSubscriptionRow[];
 };
 
+/** Checks the complete graph shape policy shared by every save caller. */
+export function validateGraphSaveShape(
+  graph: unknown
+): WorkflowGraphValidationResult {
+  const graphValidation = validateWorkflowGraph(graph);
+  if (!graphValidation.valid) {
+    return graphValidation;
+  }
+
+  const conditions = validateWorkflowConditionConfigs(graphValidation.nodes);
+  if (!conditions.valid) {
+    return conditions;
+  }
+
+  for (const filters of [
+    validateStartFilterModels(graphValidation.nodes),
+    validateCancelFilterModels(graphValidation.nodes),
+  ]) {
+    if (!filters.valid) {
+      return filters;
+    }
+  }
+
+  return graphValidation;
+}
+
 /**
  * Checks a graph's shape and derives what a save writes beside it.
  *
@@ -55,33 +84,12 @@ export type PreparedGraphSave = {
  */
 export const prepareGraphSave = Effect.fn("prepareGraphSave")(
   function* (input: { graph: unknown }) {
-    const graphValidation = validateWorkflowGraph(input.graph);
-    if (!graphValidation.valid) {
-      return yield* new InvalidInput({ error: graphValidation.error });
+    const shapeValidation = validateGraphSaveShape(input.graph);
+    if (!shapeValidation.valid) {
+      return yield* new InvalidInput({ error: shapeValidation.error });
     }
 
-    const { nodes, edges, graph } = graphValidation;
-
-    // A stored expression has to be one the condition builder produced, because
-    // nothing downstream can repair CEL that disagrees with its own model. This
-    // check already tolerates the mid-edit states -- a blank condition, an
-    // operand nobody has typed yet -- so it costs a builder nothing.
-    const conditions = validateWorkflowConditionConfigs(nodes);
-    if (!conditions.valid) {
-      return yield* new InvalidInput({ error: conditions.error });
-    }
-
-    // The Lifecycle Node's own stored models, held to the same bar. Separate from
-    // the walk above because that one is about action configs, and lifecycle
-    // filters are not action configs.
-    for (const filters of [
-      validateStartFilterModels(nodes),
-      validateCancelFilterModels(nodes),
-    ]) {
-      if (!filters.valid) {
-        return yield* new InvalidInput({ error: filters.error });
-      }
-    }
+    const { nodes, edges, graph } = shapeValidation;
 
     const prepared: PreparedGraphSave = {
       graph,

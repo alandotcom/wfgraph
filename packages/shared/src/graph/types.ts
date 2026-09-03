@@ -63,6 +63,12 @@ export type WorkflowEdge = {
   data?: Record<string, unknown> | undefined;
 };
 
+/** The direct graph shape used by the editor, agent, and eval evidence. */
+export type WorkflowGraphData = {
+  readonly nodes: readonly WorkflowNode[];
+  readonly edges: readonly WorkflowEdge[];
+};
+
 export type SerializedWorkflowGraph = SerializedWorkflowGraphInput;
 export type SerializedWorkflowNode = SerializedWorkflowGraph["nodes"][number];
 export type SerializedWorkflowEdge = SerializedWorkflowGraph["edges"][number];

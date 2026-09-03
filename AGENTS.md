@@ -582,5 +582,5 @@ The app refuses to start without `INTEGRATION_ENCRYPTION_KEY` (64-char hex). Put
 ### Cloud VM gotchas
 
 - The live PostgreSQL suite wants `docker compose up -d` and `WFGRAPH_TEST_DATABASE_URL`; without them `pnpm run test:postgres` skips every case.
-- **Node 24 is required** (`engines` / `.node-version`). nvm's default alias is set to 24, so a normal `bash` shell already resolves the nvm Node 24 binary and its corepack `pnpm` (verify with `node -v`). If a stray older Node (e.g. `/exec-daemon/node`) is ever ahead on `PATH`, put nvm first: `export PATH="$HOME/.nvm/versions/node/$(nvm version 24)/bin:$PATH"`.
+- **Node 24 or newer is required** (`engines` is `>=24`). `.node-version` selects Node 24 as the repository default, but newer supported versions do not require a version switch.
 - For driving a real workflow against Inngest (not vitest), use `.claude/skills/live-run/SKILL.md`.

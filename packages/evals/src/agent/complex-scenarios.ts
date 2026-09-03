@@ -24,20 +24,22 @@ export const complexScenarios: Array<{
       document: emptyDocument,
       integrations: connectedIntegrations,
       expected: {
-        requiredActions: {
-          "score-applicant": 1,
-          [BUILT_IN_ACTION_IDS.condition]: 1,
-          "linear/create-issue": 1,
-          "slack/send-message": 1,
-        },
         exactActions: {
           "score-applicant": 1,
           [BUILT_IN_ACTION_IDS.condition]: 1,
           "linear/create-issue": 1,
           "slack/send-message": 1,
         },
-        startEvents: ["applicant.created"],
-        cancelEvents: ["applicant.withdrawn"],
+        exactEvents: {
+          start: ["applicant.created"],
+          cancel: ["applicant.withdrawn"],
+        },
+        efficiencyBudget: {
+          maxModelCalls: 24,
+          maxToolCalls: 48,
+          maxGraphRevisions: 12,
+          maxRefusals: 8,
+        },
         requiredPaths: [
           {
             source: { kind: "action", actionId: "score-applicant" },
@@ -111,19 +113,13 @@ export const complexScenarios: Array<{
       document: emptyDocument,
       integrations: connectedIntegrations,
       expected: {
-        requiredActions: {
-          "crm/get-applicant": 1,
-          "score-applicant": 1,
-          [BUILT_IN_ACTION_IDS.condition]: 1,
-          "slack/send-message": 1,
-        },
         exactActions: {
           "crm/get-applicant": 1,
           "score-applicant": 1,
           [BUILT_IN_ACTION_IDS.condition]: 1,
           "slack/send-message": 1,
         },
-        startEvents: ["applicant.created"],
+        exactEvents: { start: ["applicant.created"], cancel: [] },
         requiredFlows: [
           {
             source: { kind: "action", actionId: "crm/get-applicant" },
@@ -199,13 +195,16 @@ export const complexScenarios: Array<{
       document: configuredApplicantDocument,
       integrations: connectedIntegrations,
       expected: {
-        requiredActions: {
+        exactActions: {
           "score-applicant": 1,
           [BUILT_IN_ACTION_IDS.wait]: 1,
           "slack/send-message": 1,
         },
-        exactActions: { [BUILT_IN_ACTION_IDS.wait]: 1 },
-        preserveNodeIds: ["entry", "score", "notify"],
+        exactEvents: { start: ["applicant.created"], cancel: [] },
+        editSafety: {
+          protectedNodeIds: ["entry", "score", "notify"],
+          protectedEdgeIds: ["entry-score"],
+        },
         requiredFlows: [
           {
             source: { kind: "action", actionId: "score-applicant" },
@@ -250,15 +249,14 @@ export const complexScenarios: Array<{
       document: emptyDocument,
       integrations: connectedIntegrations,
       expected: {
-        requiredActions: {
-          [BUILT_IN_ACTION_IDS.eventSplit]: 1,
-          "slack/send-message": 2,
-        },
         exactActions: {
           [BUILT_IN_ACTION_IDS.eventSplit]: 1,
           "slack/send-message": 2,
         },
-        startEvents: ["app/appointment.created", "app/appointment.rescheduled"],
+        exactEvents: {
+          start: ["app/appointment.created", "app/appointment.rescheduled"],
+          cancel: [],
+        },
         requiredFlows: [
           {
             source: {
@@ -275,6 +273,24 @@ export const complexScenarios: Array<{
             },
             target: { kind: "action", actionId: "slack/send-message" },
             sourceHandle: "event:app/appointment.rescheduled",
+          },
+        ],
+        requiredExclusiveBranches: [
+          {
+            source: {
+              kind: "action",
+              actionId: BUILT_IN_ACTION_IDS.eventSplit,
+            },
+            branches: [
+              {
+                sourceHandle: "event:app/appointment.created",
+                target: { kind: "action", actionId: "slack/send-message" },
+              },
+              {
+                sourceHandle: "event:app/appointment.rescheduled",
+                target: { kind: "action", actionId: "slack/send-message" },
+              },
+            ],
           },
         ],
         requiredConfigs: [
@@ -320,16 +336,14 @@ export const complexScenarios: Array<{
       document: emptyDocument,
       integrations: connectedIntegrations,
       expected: {
-        requiredActions: {
-          [BUILT_IN_ACTION_IDS.wait]: 1,
-          "slack/send-message": 1,
-        },
         exactActions: {
           [BUILT_IN_ACTION_IDS.wait]: 1,
           "slack/send-message": 1,
         },
-        startEvents: ["app/appointment.created"],
-        cancelEvents: ["app/appointment.canceled"],
+        exactEvents: {
+          start: ["app/appointment.created"],
+          cancel: ["app/appointment.canceled"],
+        },
         requiredFlows: [
           {
             source: { kind: "lifecycle" },
@@ -387,19 +401,15 @@ export const complexScenarios: Array<{
       document: emptyDocument,
       integrations: connectedIntegrations,
       expected: {
-        requiredActions: {
-          [BUILT_IN_ACTION_IDS.wait]: 1,
-          "slack/send-message": 2,
-          "linear/create-issue": 2,
-        },
         exactActions: {
           [BUILT_IN_ACTION_IDS.wait]: 1,
           "slack/send-message": 2,
           "linear/create-issue": 2,
         },
-        forbiddenActions: [BUILT_IN_ACTION_IDS.condition],
-        startEvents: ["app/appointment.created"],
-        cancelEvents: ["app/appointment.canceled"],
+        exactEvents: {
+          start: ["app/appointment.created"],
+          cancel: ["app/appointment.canceled"],
+        },
         requiredStartFilters: [
           {
             event: "app/appointment.created",
