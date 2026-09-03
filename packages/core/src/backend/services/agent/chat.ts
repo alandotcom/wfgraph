@@ -35,7 +35,6 @@ import {
 } from "#src/backend/lib/effect/app-logger";
 import { internalFailure } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
-import { ENCRYPTION_KEY_MISMATCH_MESSAGE } from "#src/backend/services/integrations/cipher";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { getErrorMessage } from "@wfgraph/shared/utils";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
@@ -197,29 +196,18 @@ export const postAgentChat = Effect.fn("postAgentChat")(function* (
   const capacity = yield* AgentCapacity;
   const runner = yield* AgentRunnerService;
 
-  // `listByType` fails two ways, and neither is a sentence a caller can act on,
-  // so both become one internal failure with the cause on the log record.
-  const integrations = yield* repo.listByType().pipe(
-    Effect.catchTags({
-      DatabaseError: internalFailure(
-        logger,
-        "Failed to read integrations for the agent"
-      ),
-      EncryptionKeyMismatch: internalFailure(
-        logger,
-        ENCRYPTION_KEY_MISMATCH_MESSAGE
-      ),
-    })
+  const integrations = yield* repo.listIdentities.pipe(
+    Effect.catchTag(
+      "DatabaseError",
+      internalFailure(logger, "Failed to read integrations for the agent")
+    )
   );
 
   const startedAt = Date.now();
   const trace = makeAgentTraceAccumulator();
   const session = yield* makeAgentToolSession({
     catalog,
-    integrations: integrations.map((integration) => ({
-      id: integration.id,
-      type: integration.type,
-    })),
+    integrations,
     document: toDocument(input.graph),
     validateDraft: (document) =>
       validateAgentDraft({

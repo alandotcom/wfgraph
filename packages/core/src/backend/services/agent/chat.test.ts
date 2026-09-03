@@ -102,7 +102,7 @@ describe("postAgentChat", () => {
             }),
             makeAgentRunnerLayer(runner),
             stubExtensions(),
-            stubIntegrationRepo({ listByType: () => Effect.succeed([]) }),
+            stubIntegrationRepo({ listIdentities: Effect.succeed([]) }),
             recording.layer
           )
         ),

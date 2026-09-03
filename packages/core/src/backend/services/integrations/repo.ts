@@ -28,6 +28,12 @@ export type DecryptedIntegration = {
   updatedAt: Date;
 };
 
+/** The non-secret integration fields available to workflow authoring tools. */
+export type IntegrationIdentity = {
+  readonly id: string;
+  readonly type: string;
+};
+
 export type RefreshClaimOutcome =
   | { status: "acquired" }
   | { status: "lost" }
@@ -229,6 +235,11 @@ export class IntegrationRepo extends Context.Service<
     readonly listByType: (
       type?: string
     ) => Effect.Effect<DecryptedIntegration[], ReadFailure>;
+    /** Lists the integration identities used by workflow authoring tools. */
+    readonly listIdentities: Effect.Effect<
+      IntegrationIdentity[],
+      DatabaseError
+    >;
     readonly findById: (
       integrationId: string
     ) => Effect.Effect<DecryptedIntegration | null, ReadFailure>;
@@ -362,6 +373,12 @@ export function makeIntegrationRepoLayer(
                 : db.select().from(integrations)
             )
             .pipe(Effect.flatMap((rows) => Effect.forEach(rows, decrypted))),
+
+        listIdentities: database.query(async (db) =>
+          db
+            .select({ id: integrations.id, type: integrations.type })
+            .from(integrations)
+        ),
 
         findById: (integrationId) =>
           database

@@ -111,6 +111,12 @@ export function makeSqliteIntegrationRepo(
             .pipe(Effect.map((rows) => rows.map(storedIntegration)))
         )
         .pipe(Effect.flatMap((rows) => Effect.forEach(rows, decrypt))),
+    listIdentities: store.read((database) =>
+      database
+        .select({ id: integrations.id, type: integrations.type })
+        .from(integrations)
+        .orderBy(desc(integrations.createdAt))
+    ),
     findById: (integrationId) =>
       store
         .read((database) =>

@@ -381,6 +381,7 @@ export function stubApiKeyRepo(
 
 const integrationRepoStubs: IntegrationRepo["Service"] = {
   listByType: refuse("listByType"),
+  listIdentities: Effect.die("listIdentities is not part of this test"),
   findById: refuse("findById"),
   typesByIds: refuse("typesByIds"),
   insert: refuse("insert"),
