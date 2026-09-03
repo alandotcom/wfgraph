@@ -253,9 +253,6 @@ importers:
       '@base-ui/react':
         specifier: 1.7.0
         version: 1.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@dagrejs/dagre':
-        specifier: ^2.0.4
-        version: 2.0.4
       '@fontsource-variable/geist':
         specifier: 5.3.0
         version: 5.3.0
@@ -319,9 +316,6 @@ importers:
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
-      d3-hierarchy:
-        specifier: ^3.1.2
-        version: 3.1.2
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.112
@@ -531,6 +525,9 @@ importers:
 
   packages/shared:
     dependencies:
+      '@dagrejs/dagre':
+        specifier: ^2.0.4
+        version: 2.0.4
       '@marcbachmann/cel-js':
         specifier: 'catalog:'
         version: 7.6.1
@@ -543,6 +540,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      d3-hierarchy:
+        specifier: ^3.1.2
+        version: 3.1.2
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.112

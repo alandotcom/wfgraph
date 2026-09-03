@@ -13,7 +13,6 @@ import {
   analyzeGroupableSelection,
   childIdsOfGroup,
   fanOutStoreEdgeIds,
-  groupEntryIds,
   groupInteriorLayout,
   isEdgeBetweenMembers,
   isGroupNode,
@@ -171,64 +170,6 @@ export function ungroupNode(
           : node
       )
   );
-}
-
-export function layoutGroupChildren(
-  nodes: WorkflowNode[],
-  edges: WorkflowEdge[]
-): WorkflowNode[] {
-  const nested = nodes.filter(
-    (node): node is WorkflowNode & { parentId: string } =>
-      node.parentId !== undefined && node.parentId !== ""
-  );
-  // A Map rather than a groupBy record: `parentId` comes from the persisted
-  // graph, and a plain object files a frame named `__proto__` onto the
-  // prototype, where its children are never laid out.
-  const byParent = Map.groupBy(nested, (node) => node.parentId);
-
-  if (byParent.size === 0) {
-    return nodes;
-  }
-
-  const childById = new Map<string, WorkflowNode>();
-  const sizeByGroup = new Map<string, { width: number; height: number }>();
-  for (const [groupId, children] of byParent) {
-    const group = nodes.find((node) => node.id === groupId);
-    const memberIds = children.map((child) => child.id);
-    const memberSet = new Set(memberIds);
-    const interior = edges.filter((edge) =>
-      isEdgeBetweenMembers(memberSet, edge)
-    );
-    const { slots, bounds } = groupInteriorLayout(
-      memberIds,
-      interior,
-      groupEntryIds(group)
-    );
-    sizeByGroup.set(groupId, groupFrameSize(bounds.columns, bounds.rows));
-    const positionById = childPositions(slots, bounds.columns);
-    for (const child of children) {
-      childById.set(
-        child.id,
-        nestInGroup(child, groupId, childPosition(positionById, child.id))
-      );
-    }
-  }
-
-  return nodes.map((node) => {
-    if (isGroupNode(node)) {
-      const size = sizeByGroup.get(node.id);
-      if (!size) {
-        return node;
-      }
-      return {
-        ...node,
-        width: size.width,
-        height: size.height,
-        style: { ...node.style, width: size.width, height: size.height },
-      };
-    }
-    return childById.get(node.id) ?? node;
-  });
 }
 
 /**
