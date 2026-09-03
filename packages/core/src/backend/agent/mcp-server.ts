@@ -1,58 +1,191 @@
-/**
- * Adapts one request-scoped workflow tool session to an MCP server.
- *
- * The adapter preserves the Effect tool schemas and refusal values. Successful
- * writes publish the same graph revision that the built-in runner emits.
- */
+/** Adapts the canonical authoring toolkit to persisted, stateless MCP calls. */
 
-import { McpServer, fromJsonSchema } from "@modelcontextprotocol/server";
-import { Effect, Option, Stream } from "effect";
+import {
+  CLIENT_CAPABILITIES_META_KEY,
+  CLIENT_INFO_META_KEY,
+  createMcpHandler,
+  INVALID_PARAMS,
+  McpServer,
+  PROTOCOL_VERSION_META_KEY,
+  fromJsonSchema,
+  type McpHttpHandler,
+} from "@modelcontextprotocol/server";
 import { Tool } from "effect/unstable/ai";
 import { agentToolkit, WRITE_TOOL_NAMES } from "@wfgraph/agent/toolkit";
-import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
-import type { AgentStreamPart } from "@wfgraph/shared/rpc/agent-stream";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import { readJsonObject } from "@wfgraph/shared/types/json";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
-import type { AgentToolSession } from "#src/backend/agent/tool-session";
-import { summarizeToolResult } from "#src/backend/agent/stream";
+import type { ServiceFailure } from "#src/backend/lib/effect/failures";
+import type { AuthContext } from "#src/backend/lib/http/authorize";
 import type {
-  AgentTraceEvent,
-  AgentTraceObserver,
-} from "#src/backend/agent/trace";
+  DraftToolResult,
+  ExecuteDraftToolInput,
+} from "#src/backend/services/agent/draft-tool";
+
+export type DraftToolExecution =
+  | { readonly ok: true; readonly result: DraftToolResult }
+  | { readonly ok: false; readonly failure: ServiceFailure };
+
+export type DraftToolExecutor = (
+  input: ExecuteDraftToolInput,
+  signal: AbortSignal
+) => Promise<DraftToolExecution>;
 
 export type CreateAgentMcpServerInput = {
-  readonly session: AgentToolSession;
-  readonly observeTrace: AgentTraceObserver;
-  readonly emitPart: (part: AgentStreamPart) => void | Promise<void>;
-  readonly step?: number | undefined;
+  readonly auth: AuthContext;
+  readonly execute: DraftToolExecutor;
 };
 
 type AgentToolName = keyof typeof agentToolkit.tools;
 
-function toolCallId(id: string | number): string {
-  return String(id);
-}
+const WORKFLOW_ID_SCHEMA = {
+  type: "string",
+  minLength: 1,
+  description: "ID of the existing workflow draft to read or edit.",
+} as const;
 
-function executeTool(input: {
-  readonly session: AgentToolSession;
-  readonly name: AgentToolName;
-  readonly arguments: Record<string, unknown>;
-  readonly id: string;
-}) {
-  return input.session.toolkit
-    .handle(input.name, input.arguments, input.id)
-    .pipe(
-      Effect.flatMap(Stream.runLast),
-      Effect.flatMap(
-        Option.match({
-          onNone: () => Effect.die("The tool handler returned no result"),
-          onSome: Effect.succeed,
-        })
+const DRAFT_REVISION_SCHEMA = {
+  type: "integer",
+  minimum: 1,
+  description:
+    "Revision returned by the latest read or write. Read the workflow again after a conflict.",
+} as const;
+
+/** Adds persisted-draft fields while retaining the canonical tool schema. */
+function inputSchemaFor(name: AgentToolName): JsonObject {
+  const canonical = readJsonObject(
+    Tool.getJsonSchema(agentToolkit.tools[name])
+  );
+  if (!canonical) {
+    throw new Error(`Tool ${name} has a non-object input schema`);
+  }
+
+  const properties = readJsonObject(canonical.properties) ?? {};
+  const required = Array.isArray(canonical.required)
+    ? canonical.required.filter(
+        (value): value is string => typeof value === "string"
       )
-    );
+    : [];
+  const writesGraph = WRITE_TOOL_NAMES.has(name);
+
+  return {
+    ...canonical,
+    type: "object",
+    properties: {
+      ...properties,
+      workflowId: WORKFLOW_ID_SCHEMA,
+      ...(writesGraph ? { expectedDraftRevision: DRAFT_REVISION_SCHEMA } : {}),
+    },
+    required: [
+      ...required,
+      "workflowId",
+      ...(writesGraph ? ["expectedDraftRevision"] : []),
+    ],
+    additionalProperties: false,
+  };
 }
 
-/** Creates an MCP server bound to one mutable editor draft. */
+/** Adds persistence identity to the canonical successful result schema. */
+function outputSchemaFor(name: AgentToolName): JsonObject {
+  const canonical = readJsonObject(
+    Tool.getJsonSchemaFromSchema(agentToolkit.tools[name].successSchema)
+  );
+  if (!canonical) {
+    throw new Error(`Tool ${name} has a non-object output schema`);
+  }
+
+  const properties = readJsonObject(canonical.properties) ?? {};
+  const required = Array.isArray(canonical.required)
+    ? canonical.required.filter(
+        (value): value is string => typeof value === "string"
+      )
+    : [];
+
+  return {
+    ...canonical,
+    type: "object",
+    properties: {
+      ...properties,
+      workflowId: WORKFLOW_ID_SCHEMA,
+      draftRevision: DRAFT_REVISION_SCHEMA,
+    },
+    required: [...required, "workflowId", "draftRevision"],
+    additionalProperties: false,
+  };
+}
+
+function toolDescription(name: AgentToolName, description: string): string {
+  return WRITE_TOOL_NAMES.has(name)
+    ? `${description} Pass workflowId and the expectedDraftRevision from the latest read or write.`
+    : `${description} Pass workflowId to select the persisted draft.`;
+}
+
+function isAgentToolName(value: unknown): value is AgentToolName {
+  return (
+    typeof value === "string" &&
+    Object.values(agentToolkit.tools).some((tool) => tool.name === value)
+  );
+}
+
+function invalidParamsResponse(body: JsonObject, message: string): Response {
+  const id = body.id;
+  return Response.json(
+    {
+      jsonrpc: "2.0",
+      id: typeof id === "string" || typeof id === "number" ? id : null,
+      error: { code: INVALID_PARAMS, message },
+    },
+    { status: 400 }
+  );
+}
+
+function requiredOperations(name: AgentToolName) {
+  return [
+    WfGraphOperations.workflowGetById,
+    ...(WRITE_TOOL_NAMES.has(name) ? [WfGraphOperations.workflowUpdate] : []),
+    ...(name === "list_integrations"
+      ? [WfGraphOperations.integrationGetAll]
+      : []),
+  ];
+}
+
+function toolResult(input: {
+  workflowId: string;
+  draftRevision?: number | undefined;
+  result: JsonObject;
+  isError: boolean;
+}) {
+  const structuredContent = omitUndefined({
+    ...input.result,
+    workflowId: input.workflowId,
+    draftRevision: input.draftRevision,
+  });
+  return {
+    content: [
+      { type: "text" as const, text: JSON.stringify(structuredContent) },
+    ],
+    structuredContent,
+    isError: input.isError,
+  };
+}
+
+function failureResult(workflowId: string, failure: ServiceFailure) {
+  return toolResult({
+    workflowId,
+    draftRevision:
+      failure._tag === "DraftConflict"
+        ? failure.currentDraftRevision
+        : undefined,
+    result: omitUndefined({
+      reason: failure.error,
+      code: failure.payload.code,
+    }),
+    isError: true,
+  });
+}
+
+/** Creates one MCP server whose calls read and write through the supplied executor. */
 export function createAgentMcpServer(
   input: CreateAgentMcpServerInput
 ): McpServer {
@@ -60,107 +193,139 @@ export function createAgentMcpServer(
     name: "workflow-graph",
     version: "1.0.0",
   });
-  const step = input.step ?? 1;
 
   for (const tool of Object.values(agentToolkit.tools)) {
     const name = tool.name;
     const inputSchema = fromJsonSchema<Record<string, unknown>>(
-      Tool.getJsonSchema(tool)
+      inputSchemaFor(name)
     );
     const outputSchema = fromJsonSchema<Record<string, unknown>>(
-      Tool.getJsonSchemaFromSchema(tool.successSchema)
+      outputSchemaFor(name)
     );
+
     server.registerTool<typeof outputSchema, typeof inputSchema>(
       name,
-      omitUndefined({
-        description: tool.description,
+      {
+        description: toolDescription(name, tool.description ?? ""),
         inputSchema,
         outputSchema,
-      }),
+        annotations: {
+          readOnlyHint: !WRITE_TOOL_NAMES.has(name),
+          idempotentHint: !WRITE_TOOL_NAMES.has(name),
+        },
+      },
       async (arguments_, context) => {
-        const id = toolCallId(context.mcpReq.id);
         const argumentsObject = readJsonObject(arguments_) ?? {};
-        const callEvent: AgentTraceEvent = {
-          type: "tool-call",
-          step,
-          id,
-          name,
-          input: argumentsObject,
-        };
-        input.observeTrace(callEvent);
-        await input.emitPart({
-          type: "tool-call",
-          id,
-          name,
-          input: argumentsObject,
-        });
+        const workflowId = argumentsObject.workflowId;
+        if (typeof workflowId !== "string") {
+          throw new Error("The validated workflowId is not a string");
+        }
 
-        const result = await Effect.runPromise(
-          executeTool({
-            session: input.session,
-            name,
-            arguments: arguments_,
-            id,
-          }),
-          { signal: context.mcpReq.signal }
+        const grants = await Promise.all(
+          requiredOperations(name).map(async (operation) =>
+            input.auth.allows(operation)
+          )
         );
-        const resultObject = readJsonObject(result.encodedResult);
-        if (!resultObject) {
-          throw new Error("The tool returned a non-object result");
+        if (grants.includes(false)) {
+          return toolResult({
+            workflowId,
+            result: { reason: "Forbidden" },
+            isError: true,
+          });
         }
 
-        const graphRevision =
-          !result.isFailure && WRITE_TOOL_NAMES.has(name)
-            ? await Effect.runPromise(input.session.recordGraphRevision(), {
-                signal: context.mcpReq.signal,
-              })
-            : undefined;
-        input.observeTrace({
-          type: "tool-result",
-          step,
-          id,
-          name,
-          result: resultObject,
-          failed: result.isFailure,
-          graphRevision: graphRevision?.revision,
-        });
-        await input.emitPart({
-          type: "tool-result",
-          id,
-          name,
-          summary: summarizeToolResult({
+        const expectedDraftRevision = argumentsObject.expectedDraftRevision;
+        const {
+          workflowId: _workflowId,
+          expectedDraftRevision: _revision,
+          ...toolArguments
+        } = argumentsObject;
+        const outcome = await input.execute(
+          {
+            workflowId,
             name,
-            result: resultObject,
-            isFailure: result.isFailure,
-          }),
-          failed: result.isFailure,
-        });
+            arguments: toolArguments,
+            toolCallId: String(context.mcpReq.id),
+            ...(typeof expectedDraftRevision === "number"
+              ? { expectedDraftRevision }
+              : {}),
+          },
+          context.mcpReq.signal
+        );
 
-        if (graphRevision) {
-          input.observeTrace({
-            type: "graph-revision",
-            step,
-            toolCallId: id,
-            revision: graphRevision.revision,
-            document: graphRevision.document,
-          });
-          await input.emitPart({
-            type: "graph",
-            graph: createSerializedWorkflowGraph({
-              nodes: [...graphRevision.document.nodes],
-              edges: [...graphRevision.document.edges],
-            }),
-          });
+        if (!outcome.ok) {
+          return failureResult(workflowId, outcome.failure);
         }
 
-        return {
-          content: [{ type: "text", text: JSON.stringify(resultObject) }],
-          structuredContent: resultObject,
-          isError: result.isFailure,
-        };
+        return toolResult({
+          workflowId: outcome.result.workflowId,
+          draftRevision: outcome.result.draftRevision,
+          result: outcome.result.result,
+          isError: outcome.result.isFailure,
+        });
       }
     );
   }
 
   return server;
+}
+
+/** Creates a modern-only handler whose factory builds one server per request. */
+export function createAgentMcpHandler(
+  input: CreateAgentMcpServerInput
+): McpHttpHandler {
+  const handler = createMcpHandler(() => createAgentMcpServer(input), {
+    legacy: "reject",
+  });
+
+  return {
+    ...handler,
+    fetch: async (request, options) => {
+      if (request.method === "POST") {
+        try {
+          const body = readJsonObject(await request.clone().json());
+          const params = readJsonObject(body?.params);
+          const meta = readJsonObject(params?.["_meta"]);
+          const method = body?.method;
+          const name = params?.name;
+          const standardHeadersMatch =
+            request.headers.get("MCP-Protocol-Version") === "2026-07-28" &&
+            request.headers.get("Mcp-Method") === method &&
+            (method !== "tools/call" ||
+              request.headers.get("Mcp-Name") === name);
+
+          if (
+            meta?.[PROTOCOL_VERSION_META_KEY] === "2026-07-28" &&
+            standardHeadersMatch
+          ) {
+            if (
+              readJsonObject(meta[CLIENT_INFO_META_KEY]) === null ||
+              readJsonObject(meta[CLIENT_CAPABILITIES_META_KEY]) === null
+            ) {
+              return invalidParamsResponse(
+                body ?? {},
+                "Request _meta requires client identity and capabilities"
+              );
+            }
+
+            if (method === "tools/call" && isAgentToolName(name)) {
+              const validation = await fromJsonSchema<Record<string, unknown>>(
+                inputSchemaFor(name)
+              )["~standard"].validate(params?.arguments ?? {});
+              if (validation.issues) {
+                return invalidParamsResponse(
+                  body ?? {},
+                  "Invalid tool arguments"
+                );
+              }
+            }
+          }
+        } catch {
+          // The SDK owns JSON and JSON-RPC parse errors.
+        }
+      }
+
+      return await handler.fetch(request, options);
+    },
+  };
 }

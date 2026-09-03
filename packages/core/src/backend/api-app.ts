@@ -3,6 +3,7 @@ import { isNotNil } from "es-toolkit/predicate";
 import { Effect, Result, Schema, type SchemaAST } from "effect";
 import { Hono } from "hono";
 import { AgentConfig } from "#src/backend/agent/config";
+import { createAgentMcpHandler } from "#src/backend/agent/mcp-server";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
 import { readCappedText } from "#src/backend/lib/http/capped-body";
@@ -23,6 +24,7 @@ import {
 import { rpcRouter } from "#src/backend/rpc/router";
 import { postWorkflowResume } from "#src/backend/services/workflows/lifecycle/resume";
 import { receiveWebhook } from "#src/backend/services/integrations/webhook-intake";
+import { executeDraftTool } from "#src/backend/services/agent/draft-tool";
 import { WfGraphAppContext } from "#src/backend/lib/effect/app-context";
 import {
   createOAuthRoutes,
@@ -94,6 +96,56 @@ function rpcProcedureOf(path: string): string | null {
 /** The refusal a route answers with when a sender exceeds the body ceiling. */
 const TOO_LARGE_BODY = { error: "Request body is too large" } as const;
 
+type McpRequestLogFields = {
+  method?: string | undefined;
+  name?: string | undefined;
+  workflowId?: string | undefined;
+};
+
+function mcpRequestLogFields(rawBody: string): McpRequestLogFields {
+  try {
+    const body = readJsonObject(JSON.parse(rawBody));
+    const params = readJsonObject(body?.params);
+    const toolArguments = readJsonObject(params?.arguments);
+    return omitUndefined({
+      method: typeof body?.method === "string" ? body.method : undefined,
+      name: typeof params?.name === "string" ? params.name : undefined,
+      workflowId:
+        typeof toolArguments?.workflowId === "string"
+          ? toolArguments.workflowId
+          : undefined,
+    });
+  } catch {
+    return {};
+  }
+}
+
+async function mcpResponseLogFields(response: Response) {
+  if (!(response.headers.get("content-type") ?? "").includes("json")) {
+    return {};
+  }
+
+  try {
+    const body = readJsonObject(await response.clone().json());
+    const result = readJsonObject(body?.result);
+    const structuredContent = readJsonObject(result?.structuredContent);
+    return omitUndefined({
+      result:
+        body?.error !== undefined
+          ? "protocol_error"
+          : result?.isError === true
+            ? "tool_error"
+            : "success",
+      draftRevision:
+        typeof structuredContent?.draftRevision === "number"
+          ? structuredContent.draftRevision
+          : undefined,
+    });
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Read a request body as the JSON object a resume call carries.
  *
@@ -153,6 +205,8 @@ export type CreateApiAppOptions = {
    * that Inngest cannot reach on a private network.
    */
   inngestHandler?: InngestServeHandler | undefined;
+  /** Enables the authenticated stateless MCP authoring endpoint. */
+  mcp?: boolean | undefined;
 };
 
 /**
@@ -231,7 +285,7 @@ export function requestLogPath(path: string): string {
 }
 
 export function createApiApp(options: CreateApiAppOptions) {
-  const { basePath, auth, runtime, inngestHandler } = options;
+  const { basePath, auth, runtime, inngestHandler, mcp = false } = options;
   const app = new Hono<WfGraphHonoEnv>().basePath(basePath);
   const rpcHandler = new RPCHandler<RpcContext>(rpcRouter);
   const ungatedRoutes = machineRoutes({
@@ -500,6 +554,51 @@ export function createApiApp(options: CreateApiAppOptions) {
     routes.on(["GET", "POST", "PUT"], INNGEST_SERVE_ROUTE, (c) =>
       inngestHandler(c)
     );
+  }
+
+  if (mcp) {
+    routes.all("/mcp", async (c) => {
+      let mcpFields: McpRequestLogFields = {};
+      if (c.req.method === "POST") {
+        const body = await readCappedText(c.req.raw.clone());
+        if (!body.ok) {
+          return c.json(TOO_LARGE_BODY, 413);
+        }
+        mcpFields = mcpRequestLogFields(body.text);
+        c.get("wfgraphRequestEvent").set({ mcp: mcpFields });
+      }
+
+      const authContext = c.get("wfgraphAuth")!;
+      const handler = createAgentMcpHandler({
+        auth: authContext,
+        execute: async (input, signal) =>
+          await runtime.runPromise(
+            executeDraftTool(input).pipe(
+              Effect.match({
+                onSuccess: (result) => ({ ok: true as const, result }),
+                onFailure: (failure) => ({
+                  ok: false as const,
+                  failure,
+                }),
+              })
+            ),
+            { signal }
+          ),
+      });
+
+      try {
+        const response = await handler.fetch(c.req.raw);
+        c.get("wfgraphRequestEvent").set({
+          mcp: {
+            ...mcpFields,
+            ...(await mcpResponseLogFields(response)),
+          },
+        });
+        return response;
+      } finally {
+        await handler.close();
+      }
+    });
   }
 
   routes.post(WAIT_RESUME_ROUTE, async (c) => {

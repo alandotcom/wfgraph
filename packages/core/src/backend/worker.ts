@@ -46,6 +46,8 @@ export type WfGraphWorkerRequestConfig = {
 
 export type WfGraphWorkerOptions<Env> = {
   basePath?: string | undefined;
+  /** Enables the authenticated stateless MCP endpoint at `${basePath}/api/mcp`. */
+  mcp?: boolean | undefined;
   /** Public origin used in provider callback URLs and client metadata. */
   publicUrl?: string | undefined;
   logger?: WfGraphLogger | undefined;
@@ -128,6 +130,7 @@ export function wfWorker<Env>(
             basePath: `${basePath}/api`,
             auth,
             runtime,
+            mcp: options.mcp,
             inngestHandler: inngest.serve(functions),
           })
         );

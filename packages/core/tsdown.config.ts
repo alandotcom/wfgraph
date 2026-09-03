@@ -36,7 +36,7 @@ export default defineConfig({
     // workspace. Bundle that adapter so an installed @wfgraph/core does not
     // depend on the consumer's package manager reproducing the patch.
     alwaysBundle: [/^drizzle-orm\/effect-sqlite-node(?:\/.*)?$/],
-    onlyBundle: ["drizzle-orm"],
+    onlyBundle: ["@dagrejs/dagre", "d3-hierarchy", "drizzle-orm"],
   },
   // Module and path resolution for the bundle and the .d.ts pass. This lives at
   // the repo root on purpose; see the comment at the top of that file for why the

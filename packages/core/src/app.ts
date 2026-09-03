@@ -114,6 +114,8 @@ export type WfGraphAppOptions = {
    * `process.env.OPENAI_API_KEY`.
    */
   agent?: WfGraphAgentConfig | undefined;
+  /** Enables the authenticated stateless MCP endpoint at `${basePath}/api/mcp`. */
+  mcp?: boolean | undefined;
   /**
    * The workflow editor, from `import { clientBundle } from "@wfgraph/client"`.
    *
@@ -298,6 +300,7 @@ async function assembleWfGraphApp(
     basePath: `${basePath}/api`,
     auth,
     runtime,
+    mcp: options.mcp,
     // Connect dials out; mounting `/inngest` would advertise a callback Inngest
     // cannot reach on a private network and is not how Connect syncs.
     inngestHandler: useConnect ? undefined : inngest.serve(functions),

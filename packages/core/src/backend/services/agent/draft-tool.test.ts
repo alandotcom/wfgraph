@@ -1,4 +1,4 @@
-import { assert, describe, layer } from "@effect/vitest";
+import { assert, describe, it as test, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { fixtureCatalog } from "@wfgraph/agent/tools/catalog-fixture";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
@@ -8,6 +8,7 @@ import {
   SilentAppLoggerLayer,
   stubExtensionCatalog,
   stubIntegrationRepo,
+  stubWfGraphRuntime,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import { executeDraftTool } from "#src/backend/services/agent/draft-tool";
@@ -180,5 +181,59 @@ describe("executeDraftTool", () => {
         assert.strictEqual(writeCount, 1);
       })
     );
+  });
+
+  test("continues a persisted draft through independently constructed runtimes", async () => {
+    let stored = workflow;
+    const workflowRepo = {
+      findById: (workflowId: string) =>
+        Effect.sync(() => (workflowId === stored.id ? stored : null)),
+      writeDraft: (
+        input: Parameters<WorkflowRepo["Service"]["writeDraft"]>[0]
+      ) =>
+        Effect.sync(() => {
+          if (input.expectedDraftRevision !== stored.draftRevision) {
+            return {
+              status: "conflict" as const,
+              currentDraftRevision: stored.draftRevision,
+            };
+          }
+          stored = {
+            ...stored,
+            ...input.updates,
+            draftRevision: stored.draftRevision + 1,
+          };
+          return { status: "updated" as const, workflow: stored };
+        }),
+    };
+    const runtimeOptions = {
+      extensions: { catalog: fixtureCatalog },
+      integrationRepo: { listIdentities: Effect.succeed([]) },
+      workflowRepo,
+    };
+    await using firstRuntime = stubWfGraphRuntime(runtimeOptions);
+    await using secondRuntime = stubWfGraphRuntime(runtimeOptions);
+
+    const read = await firstRuntime.runPromise(
+      executeDraftTool({
+        workflowId: workflow.id,
+        name: "read_workflow",
+        arguments: {},
+        toolCallId: "call_read",
+      })
+    );
+    const write = await secondRuntime.runPromise(
+      executeDraftTool({
+        workflowId: workflow.id,
+        name: "add_node",
+        arguments: { actionId: "score-applicant", label: "Score" },
+        toolCallId: "call_write",
+        expectedDraftRevision: read.draftRevision,
+      })
+    );
+
+    assert.strictEqual(write.draftRevision, 2);
+    assert.strictEqual(stored.draftRevision, 2);
+    assert.strictEqual(stored.graph.nodes.length, 2);
   });
 });

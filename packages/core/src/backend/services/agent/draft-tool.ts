@@ -67,7 +67,11 @@ function runTool(session: AgentToolSession, input: ExecuteDraftToolInput) {
           throw new Error("The tool returned a non-object result");
         }
         return { result: resultObject, isFailure: result.isFailure };
-      })
+      }),
+      Effect.catchTag(
+        "AiError",
+        () => new InvalidInput({ error: "Tool arguments are invalid" })
+      )
     );
 }
 
