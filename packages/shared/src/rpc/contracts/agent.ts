@@ -16,12 +16,10 @@ import {
 /**
  * The build agent's one procedure, and the only streaming contract in the repo.
  *
- * `eventIterator` is oRPC's async-iterator output: the handler is a generator
- * and `RPCLink` hands the browser an async iterable, so the chat panel reads a
- * turn as it is produced without a second transport beside the RPC client.
- *
- * The turn carries the whole conversation and the whole graph, because neither
- * is kept on the server. Nothing about a turn outlives the request that ran it.
+ * `eventIterator` exposes an async iterable through `RPCLink`. The iterable yields
+ * incremental agent stream parts. Request and iterator cancellation stop the stream.
+ * Construction failures map to oRPC errors, and failures after streaming starts travel
+ * as `error` parts.
  */
 export const MAX_AGENT_MESSAGES = 100;
 export const MAX_AGENT_MESSAGE_CHARS = 32_000;

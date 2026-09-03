@@ -44,6 +44,11 @@ import {
   runAgentStepLoop,
 } from "#src/backend/agent/step-loop";
 import { toAgentStreamPart } from "#src/backend/agent/stream";
+import {
+  finishReasonFailure,
+  traceResponsePart,
+  type AgentTraceObserver,
+} from "#src/backend/agent/trace";
 import { validateAgentPublication } from "#src/backend/agent/publication-validation";
 
 type AgentStreamPartIn = Parameters<typeof toAgentStreamPart>[0];
@@ -54,6 +59,7 @@ export type AgentTurnInput = {
   readonly integrations: readonly { id: string; type: string }[];
   readonly document: AgentDocument;
   readonly messages: readonly AgentMessage[];
+  readonly observeTrace?: AgentTraceObserver | undefined;
 };
 
 /**
@@ -121,11 +127,12 @@ export function runAgentTurn(
       })
     ).pipe(Effect.provide(agentModelLayer(input.settings)));
 
-    const parts = agenticSteps({ session, toolkit }).pipe(
+    const observeTrace = input.observeTrace ?? (() => undefined);
+    const parts = agenticSteps({ session, toolkit, observeTrace }).pipe(
       Stream.provide(agentModelLayer(input.settings))
     );
 
-    return withGraphParts(parts, draft);
+    return withGraphParts(parts, draft, observeTrace);
   });
 }
 
@@ -140,20 +147,42 @@ export function runAgentTurn(
  * known once the stream has finished, so it is read through a flag and the
  * continuation is suspended until then.
  */
-function agenticSteps(input: {
+export function agenticSteps(input: {
   readonly session: Chat.Service;
   readonly toolkit: Toolkit.WithHandler<Toolkit.Tools<typeof agentToolkit>>;
-}): Stream.Stream<AgentStreamPartIn, unknown, LanguageModel.LanguageModel> {
+  readonly observeTrace: AgentTraceObserver;
+}): Stream.Stream<SteppedAgentPart, unknown, LanguageModel.LanguageModel> {
   // An empty prompt continues the conversation the chat already holds: the tool
   // results of the previous step are in its history, and this step is the model
   // reading them.
   return runAgentStepLoop({
     limit: AGENT_TURN_STEP_LIMIT,
-    step: () =>
-      input.session.streamText({ prompt: [], toolkit: input.toolkit }),
-    calledTool: (part) => part.type === "tool-call",
+    step: (step) => {
+      return input.session
+        .streamText({ prompt: [], toolkit: input.toolkit, concurrency: 1 })
+        .pipe(Stream.map((part) => ({ step, part })));
+    },
+    calledTool: ({ part }) => part.type === "tool-call",
+    stepCompletion: ({ part }) => {
+      if (part.type !== "finish") {
+        return undefined;
+      }
+      return {
+        calledTool: part.reason === "tool-calls",
+        failure: finishReasonFailure(part.reason),
+      };
+    },
+    stepFailure: ({ part }) =>
+      part.type === "error" ? finishReasonFailure("error") : undefined,
+    onStepStart: (startedStep) =>
+      input.observeTrace({ type: "model-step-start", step: startedStep }),
   });
 }
+
+export type SteppedAgentPart = {
+  readonly step: number;
+  readonly part: AgentStreamPartIn;
+};
 
 /**
  * Every response part as a wire part, with the graph folded in after each write.
@@ -162,24 +191,48 @@ function agenticSteps(input: {
  * something new to draw; a read tool leaves the graph as it found it and adds
  * nothing here.
  */
-function withGraphParts(
-  parts: Stream.Stream<AgentStreamPartIn, unknown>,
-  draft: WorkflowDraftService
+export function withGraphParts(
+  parts: Stream.Stream<SteppedAgentPart, unknown>,
+  draft: WorkflowDraftService,
+  observeTrace: AgentTraceObserver
 ): Stream.Stream<AgentStreamPart, unknown> {
+  let graphRevision = 0;
+
   return parts.pipe(
-    Stream.mapEffect((part) =>
+    Stream.mapEffect(({ part, step }) =>
       Effect.gen(function* () {
-        const mapped = toAgentStreamPart(part);
+        const writesGraph =
+          part.type === "tool-result" &&
+          !part.isFailure &&
+          WRITE_TOOL_NAMES.has(part.name);
+        const revision = writesGraph ? ++graphRevision : undefined;
+        const traceEvent = traceResponsePart({
+          step,
+          part,
+          graphRevision: revision,
+        });
+        if (traceEvent) {
+          observeTrace(traceEvent);
+        }
+
+        // The step loop turns a provider error or error finish into one safe
+        // browser error, so the provider part stays out of the browser stream.
+        const mapped =
+          part.type === "error" ? undefined : toAgentStreamPart(part);
         if (!mapped) {
           return [];
         }
 
-        if (
-          mapped.type === "tool-result" &&
-          !mapped.failed &&
-          WRITE_TOOL_NAMES.has(mapped.name)
-        ) {
-          return [mapped, graphPartOf(yield* draft.current)];
+        if (writesGraph && revision !== undefined) {
+          const document = yield* draft.revision(revision);
+          observeTrace({
+            type: "graph-revision",
+            step,
+            toolCallId: part.id,
+            revision,
+            document,
+          });
+          return [mapped, graphPartOf(document)];
         }
 
         return [mapped];

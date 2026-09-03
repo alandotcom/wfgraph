@@ -7,7 +7,8 @@
  * whole of the server's memory of one.
  */
 
-import { Cause, Effect, Semaphore, Stream } from "effect";
+import { Cause, Effect, Exit, Semaphore, Stream } from "effect";
+import type { Response } from "effect/unstable/ai";
 import type { AgentDocument } from "@wfgraph/agent/document";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import type {
@@ -21,16 +22,107 @@ import {
   agentDisabledMessage,
 } from "#src/backend/agent/config";
 import { runAgentTurn } from "#src/backend/agent/chat";
+import {
+  finishReasonFailure,
+  makeAgentTraceAccumulator,
+  type AgentTraceAccumulator,
+} from "#src/backend/agent/trace";
 import { Extensions } from "#src/backend/lib/effect/extensions";
-import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import {
+  AppLogger,
+  type EffectLogger,
+} from "#src/backend/lib/effect/app-logger";
 import { internalFailure } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
 import { ENCRYPTION_KEY_MISMATCH_MESSAGE } from "#src/backend/services/integrations/cipher";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { getErrorMessage } from "@wfgraph/shared/utils";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 const AGENT_BUSY_MESSAGE =
   "The build agent is busy with other turns. Wait for one to finish and try again.";
+
+type AgentTurnStatus = "completed" | "incomplete" | "failed" | "cancelled";
+type AgentTurnLogLevel = "info" | "warn";
+
+/** Classifies the provider stream result for the one completion log record. */
+export function agentTurnStatus(
+  exit: Exit.Exit<unknown, unknown>,
+  finishReason: Response.FinishReason | undefined
+): AgentTurnStatus {
+  if (Exit.isSuccess(exit)) {
+    return "completed";
+  }
+  if (Cause.hasInterruptsOnly(exit.cause)) {
+    return "cancelled";
+  }
+  return finishReason && finishReasonFailure(finishReason)
+    ? "incomplete"
+    : "failed";
+}
+
+export function agentTurnLogLevel(status: AgentTurnStatus): AgentTurnLogLevel {
+  return status === "failed" || status === "incomplete" ? "warn" : "info";
+}
+
+export type ObserveAgentTurnInput = {
+  readonly parts: Stream.Stream<AgentStreamPart, unknown>;
+  readonly trace: AgentTraceAccumulator;
+  readonly logger: EffectLogger;
+  readonly workflowId: string;
+  readonly messageCount: number;
+  readonly model: string;
+  readonly startedAt: number;
+  readonly now: () => number;
+};
+
+/** Records one aggregate completion line and maps stream failures to browser errors. */
+export function observeAgentTurn(
+  input: ObserveAgentTurnInput
+): Stream.Stream<AgentStreamPart> {
+  const completed = input.parts.pipe(
+    Stream.onExit((exit) => {
+      const summary = input.trace.summary();
+      const status = agentTurnStatus(exit, summary.finishReason);
+      const failureMessage =
+        Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause)
+          ? getErrorMessage(Cause.squash(exit.cause))
+          : undefined;
+
+      return input.logger[agentTurnLogLevel(status)](
+        "Agent turn finished",
+        omitUndefined({
+          run: {
+            workflowId: input.workflowId,
+            status,
+            messages: input.messageCount,
+            ms: input.now() - input.startedAt,
+          },
+          model: omitUndefined({
+            id: input.model,
+            calls: summary.modelCalls,
+            finishReason: summary.finishReason,
+            finishReasons: summary.finishReasons,
+          }),
+          tools: {
+            calls: summary.toolCalls,
+            refusals: summary.refusals,
+            graphRevisions: summary.graphRevisions,
+          },
+          usage: {
+            inputTokens: summary.inputTokens,
+            outputTokens: summary.outputTokens,
+            reasoningTokens: summary.reasoningTokens,
+            totalTokens: summary.totalTokens,
+          },
+          error: failureMessage ? { message: failureMessage } : undefined,
+        })
+      );
+    })
+  );
+
+  return observeAgentStream(completed, () => Effect.void);
+}
 
 /** Maps a running failure to the stream contract after recording its full cause. */
 export function observeAgentStream(
@@ -58,11 +150,17 @@ export function limitAgentStream(
   parts: Stream.Stream<AgentStreamPart>,
   capacity: Semaphore.Semaphore
 ): Stream.Stream<AgentStreamPart> {
-  return Stream.fromEffect(capacity.takeIfAvailable(1)).pipe(
-    Stream.flatMap((acquired) =>
-      acquired
-        ? parts.pipe(Stream.ensuring(capacity.release(1).pipe(Effect.asVoid)))
-        : Stream.succeed({ type: "error", message: AGENT_BUSY_MESSAGE })
+  return Stream.scoped(
+    Stream.fromEffect(
+      Effect.acquireRelease(capacity.takeIfAvailable(1), (acquired) =>
+        acquired ? capacity.release(1).pipe(Effect.asVoid) : Effect.void
+      )
+    ).pipe(
+      Stream.flatMap((acquired) =>
+        acquired
+          ? parts
+          : Stream.succeed({ type: "error", message: AGENT_BUSY_MESSAGE })
+      )
     )
   );
 }
@@ -111,6 +209,8 @@ export const postAgentChat = Effect.fn("postAgentChat")(function* (
     })
   );
 
+  const startedAt = Date.now();
+  const trace = makeAgentTraceAccumulator();
   const stream = yield* runAgentTurn({
     settings,
     catalog,
@@ -120,19 +220,20 @@ export const postAgentChat = Effect.fn("postAgentChat")(function* (
     })),
     document: toDocument(input.graph),
     messages: input.messages,
+    observeTrace: trace.observe,
   });
 
-  const observed = observeAgentStream(stream, (cause) =>
-    logger.warn("Agent turn failed", {
-      run: { workflowId: input.workflowId },
-      error: { message: getErrorMessage(Cause.squash(cause)) },
-    })
+  return limitAgentStream(
+    observeAgentTurn({
+      parts: stream,
+      trace,
+      logger,
+      workflowId: input.workflowId,
+      messageCount: input.messages.length,
+      model: settings.model,
+      startedAt,
+      now: Date.now,
+    }),
+    capacity
   );
-  const started = Stream.fromEffect(
-    logger.info("Agent turn started", {
-      run: { workflowId: input.workflowId, messages: input.messages.length },
-    })
-  ).pipe(Stream.flatMap(() => observed));
-
-  return limitAgentStream(started, capacity);
 });
