@@ -3,6 +3,7 @@ import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import {
   Conflict,
+  DraftConflict,
   InternalFailure,
   InvalidInput,
   NotFound,
@@ -11,7 +12,6 @@ import { validateWorkflowGraph } from "#src/backend/services/workflows/validatio
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import {
   asPublishedVersion,
-  type WorkflowEventSubscriptionRow,
   WorkflowRepo,
 } from "#src/backend/services/workflows/repo";
 import {
@@ -93,6 +93,7 @@ export const patchWorkflow = Effect.fn("patchWorkflow")(
       description?: string | undefined;
       graph?: unknown;
       mode?: "live" | "test" | undefined;
+      expectedDraftRevision?: number | undefined;
     }
   ) {
     const repo = yield* WorkflowRepo;
@@ -104,10 +105,7 @@ export const patchWorkflow = Effect.fn("patchWorkflow")(
       graph?: SerializedWorkflowGraph | undefined;
       mode?: "live" | "test" | undefined;
     } = {};
-    /** A rename writes no graph, so the index derived from one stands. */
-    let eventSubscriptions: WorkflowEventSubscriptionRow[] | "unchanged" =
-      "unchanged";
-
+    const expectedDraftRevision = body.expectedDraftRevision;
     if (body.description !== undefined) {
       updateInput.description = body.description;
     }
@@ -150,6 +148,11 @@ export const patchWorkflow = Effect.fn("patchWorkflow")(
     }
 
     if (body.graph !== undefined) {
+      if (expectedDraftRevision === undefined) {
+        return yield* new InvalidInput({
+          error: "Expected draft revision is required for a graph update",
+        });
+      }
       const prepared = yield* prepareGraphSave({ graph: body.graph }).pipe(
         // A refused query is not a rejected graph: it says nothing a builder can
         // act on, and the policy below logs it with its cause.
@@ -161,16 +164,33 @@ export const patchWorkflow = Effect.fn("patchWorkflow")(
       );
 
       updateInput.graph = prepared.graph;
-      // Draft saves keep the subscription index alone: only publish rewrites it
-      // from the published graph, so a half-built canvas cannot start runs.
-      eventSubscriptions = "unchanged";
     }
 
-    const updatedWorkflow = yield* repo.update({
-      workflowId,
-      updates: buildWorkflowUpdateData(updateInput),
-      eventSubscriptions,
-    });
+    const updates = buildWorkflowUpdateData(updateInput);
+    const updatedWorkflow =
+      updateInput.graph && expectedDraftRevision !== undefined
+        ? yield* repo
+            .writeDraft({
+              workflowId,
+              expectedDraftRevision,
+              updates: { ...updates, graph: updateInput.graph },
+            })
+            .pipe(
+              Effect.flatMap((result) => {
+                if (result.status === "updated") {
+                  return Effect.succeed(result.workflow);
+                }
+                if (result.status === "conflict") {
+                  return new DraftConflict({
+                    error:
+                      "The workflow draft changed. Reload it before saving again.",
+                    currentDraftRevision: result.currentDraftRevision,
+                  });
+                }
+                return Effect.succeed(null);
+              })
+            )
+        : yield* repo.updateMetadata({ workflowId, updates });
 
     if (!updatedWorkflow) {
       return yield* new NotFound({ error: "Workflow not found" });

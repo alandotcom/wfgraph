@@ -38,6 +38,7 @@ const testWorkflow: Workflow = {
   name: "Donor intake follow-up",
   description: null,
   graph: testGraph,
+  draftRevision: 1,
   isPaused: false,
   mode: "live",
   visibility: "private",

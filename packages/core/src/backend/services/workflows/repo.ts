@@ -30,6 +30,11 @@ export { type WorkflowVersionUsageRow } from "#src/backend/services/workflows/re
 export type WorkflowEventSubscriptionRow =
   typeof workflowEventSubscriptions.$inferSelect;
 
+export type WorkflowDraftWriteResult =
+  | { readonly status: "updated"; readonly workflow: Workflow }
+  | { readonly status: "conflict"; readonly currentDraftRevision: number }
+  | { readonly status: "not_found" };
+
 /** Every column of `workflows` but the graph. */
 const workflowSummaryColumns = {
   id: workflows.id,
@@ -43,7 +48,7 @@ const workflowSummaryColumns = {
   updatedAt: workflows.updatedAt,
 };
 
-export type WorkflowSummaryRow = Omit<Workflow, "graph">;
+export type WorkflowSummaryRow = Omit<Workflow, "graph" | "draftRevision">;
 
 export type WorkflowRunRow = Pick<
   Workflow,
@@ -198,21 +203,17 @@ export class WorkflowRepo extends Context.Service<
       workflowId: string;
       isPaused: boolean;
     }) => Effect.Effect<void, DatabaseError>;
-    /**
-     * Null when the row was gone by the time the update ran.
-     *
-     * `eventSubscriptions` replaces this workflow's rows wholesale, and saying so
-     * is not optional: a graph write that forgot the index derived from it would
-     * leave a workflow subscribed to the Events of a graph it no longer has.
-     * `"unchanged"` is the other half of that -- a rename touches no graph, and
-     * re-deriving would mean re-validating a stored graph a rename has no business
-     * refusing.
-     */
-    readonly update: (input: {
+    /** Updates fields that do not change the editable graph revision. */
+    readonly updateMetadata: (input: {
       workflowId: string;
-      updates: WorkflowUpdateData;
-      eventSubscriptions: WorkflowEventSubscriptionRow[] | "unchanged";
+      updates: Omit<WorkflowUpdateData, "graph">;
     }) => Effect.Effect<Workflow | null, DatabaseError>;
+    /** Conditionally replaces the editable graph and its derived rows. */
+    readonly writeDraft: (input: {
+      workflowId: string;
+      expectedDraftRevision: number;
+      updates: WorkflowUpdateData & { graph: SerializedWorkflowGraph };
+    }) => Effect.Effect<WorkflowDraftWriteResult, DatabaseError>;
     readonly deleteById: (
       workflowId: string
     ) => Effect.Effect<void, DatabaseError>;
@@ -335,6 +336,8 @@ export class WorkflowRepo extends Context.Service<
       version: number;
       /** The publication pointer carried by the confirmed review. */
       expectedPublishedVersionId: string | null;
+      /** The editable draft revision carried by the confirmed review. */
+      expectedDraftRevision: number;
       graph: SerializedWorkflowGraph;
       catalogFingerprint: string;
       graphDigest: string;
@@ -381,6 +384,7 @@ export class WorkflowRepo extends Context.Service<
 export type InsertPublishedVersionResult =
   | { workflow: Workflow; version: PublishedWorkflowVersion }
   | { stale: true }
+  | { draftConflict: number }
   | null;
 
 /** The four workflow columns a run reads before it starts. */
@@ -637,38 +641,51 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
               .where(eq(workflows.id, input.workflowId));
           }),
 
-        update: (input) =>
+        updateMetadata: (input) =>
+          database.query(async (db) => {
+            const updated = await db
+              .update(workflows)
+              .set(input.updates)
+              .where(eq(workflows.id, input.workflowId))
+              .returning();
+
+            return updated.at(0) ?? null;
+          }),
+
+        writeDraft: (input) =>
           database.query(
             async (db) =>
               await db.transaction(async (tx) => {
                 const updated = await tx
                   .update(workflows)
-                  .set(input.updates)
-                  .where(eq(workflows.id, input.workflowId))
+                  .set({
+                    ...input.updates,
+                    draftRevision: sql`${workflows.draftRevision} + 1`,
+                  })
+                  .where(
+                    and(
+                      eq(workflows.id, input.workflowId),
+                      eq(workflows.draftRevision, input.expectedDraftRevision)
+                    )
+                  )
                   .returning();
 
                 const workflow = updated.at(0);
                 if (!workflow) {
-                  return null;
+                  const current = await tx
+                    .select({ draftRevision: workflows.draftRevision })
+                    .from(workflows)
+                    .where(eq(workflows.id, input.workflowId))
+                    .limit(1);
+                  return current[0]
+                    ? {
+                        status: "conflict" as const,
+                        currentDraftRevision: current[0].draftRevision,
+                      }
+                    : { status: "not_found" as const };
                 }
 
-                const rows = input.eventSubscriptions;
-                if (rows !== "unchanged") {
-                  await tx
-                    .delete(workflowEventSubscriptions)
-                    .where(
-                      eq(
-                        workflowEventSubscriptions.workflowId,
-                        input.workflowId
-                      )
-                    );
-
-                  if (rows.length > 0) {
-                    await tx.insert(workflowEventSubscriptions).values(rows);
-                  }
-                }
-
-                return workflow;
+                return { status: "updated" as const, workflow };
               })
           ),
 
@@ -754,10 +771,13 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                 // update cannot miss under the FK KEY SHARE the insert takes.
                 const existing = await tx.query.workflows.findFirst({
                   where: { id: input.workflowId },
-                  columns: { id: true },
+                  columns: { id: true, draftRevision: true },
                 });
                 if (!existing) {
                   return null;
+                }
+                if (existing.draftRevision !== input.expectedDraftRevision) {
+                  return { draftConflict: existing.draftRevision };
                 }
 
                 // Optimistic claim: insert only if `version` is still free.
@@ -792,6 +812,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                   workflowId: input.workflowId,
                   version: published,
                   expectedPublishedVersionId: input.expectedPublishedVersionId,
+                  expectedDraftRevision: input.expectedDraftRevision,
                   draftGraph: input.draftGraph,
                   eventSubscriptions: input.eventSubscriptions,
                 });
@@ -802,9 +823,19 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                 // The version number was ours, but another publish moved the
                 // workflow pointer first. Remove this unobserved row before
                 // reporting the optimistic conflict.
+                const current = await tx.query.workflows.findFirst({
+                  where: { id: input.workflowId },
+                  columns: { publishedVersionId: true, draftRevision: true },
+                });
                 await tx
                   .delete(workflowVersions)
                   .where(eq(workflowVersions.id, minted.id));
+                if (!current) {
+                  return null;
+                }
+                if (current.draftRevision !== input.expectedDraftRevision) {
+                  return { draftConflict: current.draftRevision };
+                }
                 return { stale: true };
               })
           ),
@@ -889,6 +920,7 @@ async function activatePublishedVersion(
     workflowId: string;
     version: PublishedWorkflowVersion;
     expectedPublishedVersionId: string | null;
+    expectedDraftRevision: number;
     draftGraph: SerializedWorkflowGraph;
     eventSubscriptions: WorkflowEventSubscriptionRow[];
   }
@@ -900,11 +932,13 @@ async function activatePublishedVersion(
       // Keep the draft aligned with what was just published so a subsequent
       // edit starts from the published content.
       graph: input.draftGraph,
+      draftRevision: sql`${workflows.draftRevision} + 1`,
       updatedAt: new Date(),
     })
     .where(
       and(
         eq(workflows.id, input.workflowId),
+        eq(workflows.draftRevision, input.expectedDraftRevision),
         input.expectedPublishedVersionId === null
           ? isNull(workflows.publishedVersionId)
           : eq(workflows.publishedVersionId, input.expectedPublishedVersionId)

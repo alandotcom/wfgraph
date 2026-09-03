@@ -15,6 +15,7 @@ import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { SavedWorkflow } from "#src/lib/rpc-client";
 import {
   currentWorkflowIdAtom,
+  recordLoadedDraftRevisionAtom,
   currentWorkflowModeAtom,
   lastSavedAtAtom,
   currentWorkflowNameAtom,
@@ -218,6 +219,10 @@ export const hydrateWorkflowAtom = atom(
     // write the previous workflow's graph into this one.
     if (!clientIsAheadOfServer) {
       set(loadWorkflowGraphAtom, { nodes, edges: workflow.edges });
+      set(recordLoadedDraftRevisionAtom, {
+        workflowId: workflow.id,
+        draftRevision: workflow.draftRevision,
+      });
     }
     // Overlay, selection and statuses belong to the open run. Switching
     // workflows has to drop them — a reused node id would otherwise keep the
@@ -268,6 +273,10 @@ export const installRestoredWorkflowAtom = atom(
     set(loadWorkflowGraphAtom, {
       nodes: input.workflow.nodes,
       edges: input.workflow.edges,
+    });
+    set(recordLoadedDraftRevisionAtom, {
+      workflowId: input.workflow.id,
+      draftRevision: input.workflow.draftRevision,
     });
     return true;
   }

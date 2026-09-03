@@ -23,6 +23,7 @@ describe("makeWorkflowDraft", () => {
           document: initialDocument,
           catalog: { actions: [], events: [], integrations: [] },
           integrations: [],
+          validateUpdate: () => null,
           validateDraft: () => ({
             draftValid: true,
             structuralIssues: [],

@@ -5,6 +5,7 @@ import type {
   Workflow,
 } from "#src/backend/lib/db/schema";
 import {
+  DraftConflict,
   InvalidInput,
   PublicationConflict,
 } from "#src/backend/lib/effect/failures";
@@ -109,6 +110,7 @@ const draft: Workflow = {
   name: "Appointment Reminders",
   description: null,
   graph: graphWith(rules),
+  draftRevision: 1,
   isPaused: false,
   mode: "live",
   visibility: "private",
@@ -137,6 +139,7 @@ function mintedFrom(
       ...draft,
       publishedVersionId: version.id,
       graph: version.graph,
+      draftRevision: input.expectedDraftRevision + 1,
     },
     version,
   };
@@ -171,6 +174,7 @@ describe("publishWorkflow", () => {
           workflowId: "wf_1",
           graph: draft.graph,
           expectedPublishedVersionId: null,
+          expectedDraftRevision: 1,
         }).pipe(Effect.provide(repo));
 
         assert.strictEqual(result.publishedVersion, 1);
@@ -213,6 +217,7 @@ describe("publishWorkflow", () => {
             workflowId: "wf_1",
             graph: graphWith(rules, "Changed after review"),
             expectedPublishedVersionId: "ver_7",
+            expectedDraftRevision: 1,
           }).pipe(Effect.provide(repo), Effect.flip);
 
           assert.instanceOf(failure, PublicationConflict);
@@ -250,16 +255,19 @@ describe("publishWorkflow", () => {
           workflowId: "wf_1",
           graph: draft.graph,
           expectedPublishedVersionId: null,
+          expectedDraftRevision: 1,
         }).pipe(Effect.provide(repo));
         yield* publishWorkflow({
           workflowId: "wf_1",
           graph: graphWith(rules, "Changed"),
           expectedPublishedVersionId: workflow.publishedVersionId,
+          expectedDraftRevision: 2,
         }).pipe(Effect.provide(repo));
         yield* publishWorkflow({
           workflowId: "wf_1",
           graph: draft.graph,
           expectedPublishedVersionId: workflow.publishedVersionId,
+          expectedDraftRevision: 3,
         }).pipe(Effect.provide(repo));
 
         assert.deepStrictEqual(
@@ -294,6 +302,7 @@ describe("publishWorkflow", () => {
             workflowId: "wf_1",
             graph: draft.graph,
             expectedPublishedVersionId: current.id,
+            expectedDraftRevision: 1,
           }).pipe(Effect.provide(repo), Effect.flip);
 
           assert.instanceOf(failure, PublicationConflict);
@@ -341,6 +350,7 @@ describe("publishWorkflow", () => {
             workflowId: "wf_1",
             graph: moved,
             expectedPublishedVersionId: current.id,
+            expectedDraftRevision: 1,
           }).pipe(Effect.provide(repo), Effect.flip);
 
           assert.instanceOf(failure, PublicationConflict);
@@ -378,6 +388,7 @@ describe("publishWorkflow", () => {
           workflowId: "wf_1",
           graph: graphWithAction("edge-new"),
           expectedPublishedVersionId: current.id,
+          expectedDraftRevision: 1,
         }).pipe(Effect.provide(repo), Effect.flip);
 
         assert.instanceOf(failure, PublicationConflict);
@@ -417,6 +428,7 @@ describe("publishWorkflow", () => {
           workflowId: "wf_1",
           graph: graphWith(rules, "Changed"),
           expectedPublishedVersionId: current.id,
+          expectedDraftRevision: 1,
         }).pipe(Effect.provide(repo));
 
         assert.strictEqual(result.publishedVersion, 2);
@@ -447,6 +459,7 @@ describe("publishWorkflow", () => {
           workflowId: "wf_1",
           graph: draft.graph,
           expectedPublishedVersionId: null,
+          expectedDraftRevision: 1,
         }).pipe(Effect.provide(repo), Effect.flip);
 
         assert.instanceOf(failure, PublicationConflict);
@@ -458,6 +471,27 @@ describe("publishWorkflow", () => {
           failure.error.includes("Refresh"),
           `expected refresh guidance, got: ${failure.error}`
         );
+      })
+    );
+
+    it.effect("returns the current revision for a stale draft", () =>
+      Effect.gen(function* () {
+        const failure = yield* publishWorkflow({
+          workflowId: "wf_1",
+          graph: draft.graph,
+          expectedPublishedVersionId: null,
+          expectedDraftRevision: 1,
+        }).pipe(
+          Effect.provide(
+            stubWorkflowRepo({
+              findById: () => Effect.succeed({ ...draft, draftRevision: 2 }),
+            })
+          ),
+          Effect.flip
+        );
+
+        assert.instanceOf(failure, DraftConflict);
+        assert.strictEqual(failure.currentDraftRevision, 2);
       })
     );
   });
@@ -506,6 +540,7 @@ describe("publishWorkflow", () => {
           ],
         }),
         expectedPublishedVersionId: null,
+        expectedDraftRevision: 1,
       }).pipe(
         Effect.provide(
           Layer.mergeAll(

@@ -36,7 +36,10 @@ import type { WorkflowToolbarState } from "#src/components/workflow/workflow-too
 import { mutationErrorToast } from "#src/lib/query-client";
 import { toSerializedGraph } from "#src/lib/rpc-client";
 import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
-import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import {
+  currentWorkflowIdAtom,
+  recordLoadedDraftRevisionAtom,
+} from "#src/lib/workflow-save-store";
 import { toEditorNode } from "#src/lib/workflow-graph-types";
 import {
   createSerializedWorkflowGraph,
@@ -72,6 +75,10 @@ export const catalog: ExtensionCatalog = {
 export function workflowStore(id = workflowId) {
   const store = createStore();
   store.set(currentWorkflowIdAtom, id);
+  store.set(recordLoadedDraftRevisionAtom, {
+    workflowId: id,
+    draftRevision: 1,
+  });
   return store;
 }
 

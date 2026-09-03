@@ -147,6 +147,7 @@ describe("the toolkit layer", () => {
         document: { nodes: [], edges: [] },
         catalog: fixtureCatalog,
         integrations: [],
+        validateUpdate: () => null,
         validateDraft: () => ({
           draftValid: true,
           structuralIssues: [],

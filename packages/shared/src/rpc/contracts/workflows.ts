@@ -54,6 +54,7 @@ const workflowSummarySchema = Schema.Struct({
 const workflowApiPayloadSchema = Schema.Struct({
   ...workflowSummarySchema.fields,
   graph: serializedWorkflowGraphSchema,
+  draftRevision: Schema.Finite.check(Schema.isInt(), Schema.isGreaterThan(0)),
   /** Absent until the first publish. */
   publishedVersion: Schema.optionalKey(
     Schema.Finite.check(Schema.isInt(), Schema.isGreaterThan(0))
@@ -330,6 +331,9 @@ export const workflowContract = {
           name: Schema.optionalKey(Schema.String),
           description: Schema.optionalKey(Schema.String),
           graph: Schema.optionalKey(serializedWorkflowGraphSchema),
+          expectedDraftRevision: Schema.optionalKey(
+            Schema.Finite.check(Schema.isInt(), Schema.isGreaterThan(0))
+          ),
           mode: Schema.optionalKey(workflowRunModeSchema),
         })
       )
@@ -402,7 +406,14 @@ export const workflowContract = {
     WfGraphOperations.workflowSaveCurrent
   )
     .input(
-      contractSchema(Schema.Struct({ graph: serializedWorkflowGraphSchema }))
+      contractSchema(
+        Schema.Struct({
+          graph: serializedWorkflowGraphSchema,
+          expectedDraftRevision: Schema.optionalKey(
+            Schema.Finite.check(Schema.isInt(), Schema.isGreaterThan(0))
+          ),
+        })
+      )
     )
     .output(workflowApiPayload),
   execute: route(

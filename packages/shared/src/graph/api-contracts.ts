@@ -23,6 +23,8 @@ export type WorkflowSummaryPayload = {
 
 export type WorkflowApiPayload = WorkflowSummaryPayload & {
   graph: SerializedWorkflowGraph;
+  /** Monotonic revision used to protect editable draft writes. */
+  draftRevision: number;
   /** Numeric form of the current published version. Absent until first publish. */
   publishedVersion?: number;
   /** Publication time of the current version. Absent until first publish. */

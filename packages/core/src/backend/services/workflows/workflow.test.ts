@@ -1,6 +1,7 @@
 import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import type { Workflow } from "#src/backend/lib/db/schema";
+import { DraftConflict } from "#src/backend/lib/effect/failures";
 import {
   SilentAppLoggerLayer,
   stubExtensionCatalog,
@@ -8,6 +9,7 @@ import {
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import { patchWorkflow } from "#src/backend/services/workflows/workflow";
+import { postWorkflowsCurrent } from "#src/backend/services/workflows/current";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
@@ -58,6 +60,7 @@ const stored: Workflow = {
   name: "Appointment Reminders",
   description: null,
   graph: graphWith(startAndCancel),
+  draftRevision: 1,
   isPaused: false,
   mode: "live",
   visibility: "private",
@@ -68,17 +71,35 @@ const stored: Workflow = {
 
 /** The repository, keeping what the update was written with. */
 function makeRepo() {
-  const updates: Array<Parameters<WorkflowRepo["Service"]["update"]>[0]> = [];
+  const draftWrites: Array<
+    Parameters<WorkflowRepo["Service"]["writeDraft"]>[0]
+  > = [];
+  const metadataUpdates: Array<
+    Parameters<WorkflowRepo["Service"]["updateMetadata"]>[0]
+  > = [];
 
   return {
-    updates,
+    draftWrites,
+    metadataUpdates,
     layer: stubWorkflowRepo({
       findById: () => Effect.succeed(stored),
       hasOtherWithName: () => Effect.succeed(false),
-      update: (input) =>
+      writeDraft: (input) =>
         Effect.sync(() => {
-          updates.push(input);
-          return { ...stored, name: input.updates.name ?? stored.name };
+          draftWrites.push(input);
+          return {
+            status: "updated" as const,
+            workflow: {
+              ...stored,
+              ...input.updates,
+              draftRevision: stored.draftRevision + 1,
+            },
+          };
+        }),
+      updateMetadata: (input) =>
+        Effect.sync(() => {
+          metadataUpdates.push(input);
+          return { ...stored, ...input.updates };
         }),
     }),
   };
@@ -95,6 +116,7 @@ describe("patchWorkflow", () => {
         const repo = makeRepo();
 
         yield* patchWorkflow("wf_1", {
+          expectedDraftRevision: 1,
           graph: graphWith({
             startEvents: ["app/appointment.created"],
             cancelEvents: [],
@@ -102,7 +124,7 @@ describe("patchWorkflow", () => {
           }),
         }).pipe(Effect.provide(repo.layer));
 
-        assert.strictEqual(repo.updates[0]?.eventSubscriptions, "unchanged");
+        assert.strictEqual(repo.draftWrites[0]?.expectedDraftRevision, 1);
       })
     );
 
@@ -117,8 +139,58 @@ describe("patchWorkflow", () => {
           Effect.provide(repo.layer)
         );
 
-        assert.strictEqual(repo.updates[0]?.eventSubscriptions, "unchanged");
+        assert.strictEqual(repo.metadataUpdates[0]?.updates.name, "Renamed");
       })
+    );
+
+    it.effect("returns the current revision for a stale graph patch", () =>
+      Effect.gen(function* () {
+        const failure = yield* patchWorkflow("wf_1", {
+          expectedDraftRevision: 1,
+          graph: stored.graph,
+        }).pipe(
+          Effect.provide(
+            stubWorkflowRepo({
+              findById: () => Effect.succeed(stored),
+              writeDraft: () =>
+                Effect.succeed({
+                  status: "conflict" as const,
+                  currentDraftRevision: 2,
+                }),
+            })
+          ),
+          Effect.flip
+        );
+
+        assert.instanceOf(failure, DraftConflict);
+        assert.strictEqual(failure.currentDraftRevision, 2);
+      })
+    );
+
+    it.effect(
+      "returns the current revision for a stale current-workflow save",
+      () =>
+        Effect.gen(function* () {
+          const failure = yield* postWorkflowsCurrent({
+            graph: stored.graph,
+            expectedDraftRevision: 1,
+          }).pipe(
+            Effect.provide(
+              stubWorkflowRepo({
+                findCurrent: Effect.succeed(stored),
+                writeDraft: () =>
+                  Effect.succeed({
+                    status: "conflict" as const,
+                    currentDraftRevision: 2,
+                  }),
+              })
+            ),
+            Effect.flip
+          );
+
+          assert.instanceOf(failure, DraftConflict);
+          assert.strictEqual(failure.currentDraftRevision, 2);
+        })
     );
   });
 });

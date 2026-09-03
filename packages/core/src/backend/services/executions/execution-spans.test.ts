@@ -68,6 +68,7 @@ function workflowRow(rules: LifecycleRules, label: string): Workflow {
     name: "Appointment Reminders",
     description: null,
     graph: lifecycleGraphFixture({ label, rules }),
+    draftRevision: 1,
     isPaused: false,
     mode: "live",
     visibility: "private",

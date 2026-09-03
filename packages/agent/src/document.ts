@@ -46,6 +46,8 @@ export type WorkflowDraftInput = {
   readonly document: AgentDocument;
   readonly catalog: ExtensionCatalog;
   readonly integrations: readonly ConnectedIntegration[];
+  /** Returns why a candidate cannot be stored, or null when it can be stored. */
+  readonly validateUpdate: (document: AgentDocument) => string | null;
   readonly validateDraft: (document: AgentDocument) => AgentDraftValidation;
 };
 
@@ -104,7 +106,9 @@ export function makeWorkflowDraft(
           state,
           (current): [DraftUpdateResult, WorkflowDraftState] => {
             const candidate = edit(current.document);
-            const reason = workflowTopologyRefusalReason(candidate);
+            const reason =
+              workflowTopologyRefusalReason(candidate) ??
+              input.validateUpdate(candidate);
             return reason
               ? [{ ok: false as const, reason }, current]
               : [

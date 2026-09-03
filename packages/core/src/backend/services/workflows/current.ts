@@ -1,6 +1,11 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { InternalFailure, NotFound } from "#src/backend/lib/effect/failures";
+import {
+  DraftConflict,
+  InternalFailure,
+  InvalidInput,
+  NotFound,
+} from "#src/backend/lib/effect/failures";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
@@ -59,7 +64,10 @@ export const getWorkflowsCurrent = Effect.fn("getWorkflowsCurrent")(
 );
 
 export const postWorkflowsCurrent = Effect.fn("postWorkflowsCurrent")(
-  function* (body: { graph: unknown }) {
+  function* (body: {
+    graph: unknown;
+    expectedDraftRevision?: number | undefined;
+  }) {
     const repo = yield* WorkflowRepo;
 
     const prepared = yield* prepareGraphSave({
@@ -69,22 +77,34 @@ export const postWorkflowsCurrent = Effect.fn("postWorkflowsCurrent")(
     const existingWorkflow = yield* repo.findCurrent;
 
     if (existingWorkflow) {
-      const updatedWorkflow = yield* repo.update({
+      if (body.expectedDraftRevision === undefined) {
+        return yield* new InvalidInput({
+          error: "Expected draft revision is required for a graph update",
+        });
+      }
+      const outcome = yield* repo.writeDraft({
         workflowId: existingWorkflow.id,
-        updates: buildWorkflowUpdateData({ graph: prepared.graph }),
-        // The draft subscribes to nothing, so there is nothing to rewrite: an
-        // Event may not start a run of a graph nobody has saved. Writing rows
-        // here would mean a DELETE on every autosave with nothing to delete.
-        eventSubscriptions: "unchanged",
+        expectedDraftRevision: body.expectedDraftRevision,
+        updates: {
+          ...buildWorkflowUpdateData({ graph: prepared.graph }),
+          graph: prepared.graph,
+        },
       });
 
-      if (!updatedWorkflow) {
+      if (outcome.status === "conflict") {
+        return yield* new DraftConflict({
+          error: "The workflow draft changed. Reload it before saving again.",
+          currentDraftRevision: outcome.currentDraftRevision,
+        });
+      }
+      if (outcome.status === "not_found") {
         // The row was read a moment ago, so losing it here means something
         // deleted it mid-save; there is no newer graph to answer with.
         return yield* new InternalFailure({
           error: "Failed to save current workflow",
         });
       }
+      const updatedWorkflow = outcome.workflow;
 
       const publishedVersion = yield* resolvePublishedVersion(
         repo,

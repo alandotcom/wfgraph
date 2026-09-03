@@ -71,6 +71,23 @@ const firstToSecond: WorkflowEdge = {
 };
 
 describe("add_node", () => {
+  it.effect("refuses an update that the host cannot persist", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [entry],
+        catalog,
+        validateUpdate: () => "The stored condition model is invalid",
+      });
+
+      const failure = yield* Effect.flip(
+        tools.add_node({ actionId: "score-applicant", label: "Score" })
+      );
+
+      expect(failure.reason).toBe("The stored condition model is invalid");
+      expect((yield* draft.current).nodes).toEqual([entry]);
+    })
+  );
+
   it.effect("adds an action node carrying its action type", () =>
     Effect.gen(function* () {
       const { tools, draft } = yield* agentToolsFor({

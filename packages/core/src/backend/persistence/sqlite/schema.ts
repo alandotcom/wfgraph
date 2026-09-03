@@ -22,6 +22,7 @@ export const workflows = sqliteTable(
     name: caseInsensitiveText("name").notNull().unique(),
     description: text("description"),
     graph: text("graph").notNull(),
+    draftRevision: integer("draft_revision").notNull().default(1),
     isPaused: integer("is_paused").notNull().default(0),
     mode: text("mode").notNull().default("live"),
     visibility: text("visibility").notNull().default("private"),

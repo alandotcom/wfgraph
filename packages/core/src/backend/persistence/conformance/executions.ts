@@ -218,6 +218,7 @@ export function describeExecutionConformance({
             versionId: "ver_1",
             version: 1,
             expectedPublishedVersionId: null,
+            expectedDraftRevision: 1,
             graph: emptyGraph,
             draftGraph: emptyGraph,
             catalogFingerprint: "catalog",
@@ -231,13 +232,12 @@ export function describeExecutionConformance({
         database.run(
           Effect.gen(function* () {
             const workflows = yield* WorkflowRepo;
-            return yield* workflows.update({
+            return yield* workflows.updateMetadata({
               workflowId: "wf_2",
               updates: {
                 name: "appointments",
                 updatedAt: new Date(),
               },
-              eventSubscriptions: "unchanged",
             });
           })
         )

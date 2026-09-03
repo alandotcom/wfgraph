@@ -70,6 +70,7 @@ const draft: Workflow = {
   name: "Appointment Reminders",
   description: null,
   graph: graphWith(),
+  draftRevision: 1,
   isPaused: false,
   mode: "live",
   visibility: "private",
@@ -110,6 +111,7 @@ function mintedFrom(
       ...draft,
       publishedVersionId: version.id,
       graph: version.graph,
+      draftRevision: input.expectedDraftRevision + 1,
     },
     version,
   };
@@ -146,6 +148,7 @@ describe("workflow publication spans", () => {
         workflowId: "wf_1",
         graph: draft.graph,
         expectedPublishedVersionId: null,
+        expectedDraftRevision: 1,
       }).pipe(Effect.provide(Layer.merge(shared, repo)))
     );
 
@@ -180,6 +183,7 @@ describe("workflow publication spans", () => {
         workflowId: "wf_1",
         graph: draft.graph,
         expectedPublishedVersionId: "ver_8",
+        expectedDraftRevision: 1,
       }).pipe(Effect.provide(Layer.merge(shared, repo)), Effect.flip)
     );
 
@@ -237,13 +241,16 @@ describe("workflow publication spans", () => {
     const repo = stubWorkflowRepo({
       findById: () => Effect.succeed(draft),
       findVersionById: () => Effect.succeed(restored),
-      update: () => Effect.succeed(draft),
+      writeDraft: () =>
+        Effect.succeed({ status: "updated" as const, workflow: draft }),
     });
 
     await Effect.runPromise(
-      restoreWorkflowVersion({ workflowId: "wf_1", versionId: "ver_2" }).pipe(
-        Effect.provide(Layer.merge(shared, repo))
-      )
+      restoreWorkflowVersion({
+        workflowId: "wf_1",
+        versionId: "ver_2",
+        expectedDraftRevision: 1,
+      }).pipe(Effect.provide(Layer.merge(shared, repo)))
     );
 
     const restore = await spans.named("wfgraph.workflow.version.restore");
@@ -266,6 +273,7 @@ describe("workflow publication spans", () => {
         workflowId: "wf_1",
         graph: draft.graph,
         expectedPublishedVersionId: null,
+        expectedDraftRevision: 1,
       }).pipe(Effect.provide(Layer.merge(shared, repo)))
     );
 

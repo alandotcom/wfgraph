@@ -17,6 +17,7 @@ function createWorkflow(overrides: Partial<Workflow> = {}): Workflow {
     name: "Public Workflow",
     description: null,
     graph: { nodes: [], edges: [] },
+    draftRevision: 1,
     isPaused: false,
     mode: "live",
     visibility: "public",

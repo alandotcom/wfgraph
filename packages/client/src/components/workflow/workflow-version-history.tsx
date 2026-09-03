@@ -17,7 +17,10 @@ import {
   comparisonSessionAtom,
   setComparisonSubviewAtom,
 } from "#src/lib/workflow-comparison-store";
-import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import {
+  currentWorkflowDraftRevisionAtom,
+  currentWorkflowIdAtom,
+} from "#src/lib/workflow-save-store";
 import { orpcQuery } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
 import type { WorkflowVersionCursor } from "@wfgraph/shared/graph/publication-contracts";
@@ -36,6 +39,7 @@ export function WorkflowVersionHistory({
   actions: WorkflowComparisonActions;
 }) {
   const workflowId = useAtomValue(currentWorkflowIdAtom);
+  const draftRevision = useAtomValue(currentWorkflowDraftRevisionAtom);
   const session = useAtomValue(comparisonSessionAtom);
   const setSubview = useSetAtom(setComparisonSubviewAtom);
   const [restoreOpen, setRestoreOpen] = useState(false);
@@ -183,6 +187,7 @@ export function WorkflowVersionHistory({
             actions.restore.mutate({
               workflowId,
               versionId: selectedHistory.id,
+              expectedDraftRevision: draftRevision,
             })
           }
           open={restoreOpen}

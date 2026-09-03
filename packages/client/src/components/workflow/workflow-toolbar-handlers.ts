@@ -28,7 +28,11 @@ import {
   refreshWorkflowVersionHistory,
 } from "#src/lib/rpc-query";
 import type { WorkflowRunGraph } from "#src/lib/workflow-run-labels";
-import { saveWorkflowAtom } from "#src/lib/workflow-save-store";
+import {
+  currentWorkflowDraftRevisionAtom,
+  recordLoadedDraftRevisionAtom,
+  saveWorkflowAtom,
+} from "#src/lib/workflow-save-store";
 import { ApiError, toSerializedGraph } from "#src/lib/rpc-client";
 import {
   isPublicationConflictCode,
@@ -101,6 +105,8 @@ export function useWorkflowActions(
   const queryClient = useQueryClient();
   const deleteWorkflow = useDeleteWorkflow();
   const saveWorkflow = useSetAtom(saveWorkflowAtom);
+  const draftRevision = useAtomValue(currentWorkflowDraftRevisionAtom);
+  const recordLoadedDraftRevision = useSetAtom(recordLoadedDraftRevisionAtom);
   const publishReview = useAtomValue(publicationReviewAtom);
   const publicationReviewActive = useAtomValue(isPublicationReviewActiveAtom);
   const publicationReviewPending = useAtomValue(isPublicationReviewPendingAtom);
@@ -388,6 +394,7 @@ export function useWorkflowActions(
         workflowId: publishReview.workflowId,
         graph: publishReview.graph,
         expectedPublishedVersionId: publishReview.expectedPublishedVersionId,
+        expectedDraftRevision: draftRevision,
       },
       {
         onSuccess: (payload) => {
@@ -398,6 +405,10 @@ export function useWorkflowActions(
             })
           ) {
             toast.success(`Published version ${payload.publishedVersion}`);
+            recordLoadedDraftRevision({
+              workflowId: payload.id,
+              draftRevision: payload.draftRevision,
+            });
             cacheWorkflowPublication(queryClient, payload);
             void loadWorkflows();
             void refreshWorkflowVersionHistory(queryClient);

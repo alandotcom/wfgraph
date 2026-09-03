@@ -4,7 +4,7 @@ import type {
   PublishedWorkflowVersion,
   Workflow,
 } from "#src/backend/lib/db/schema";
-import { NotFound } from "#src/backend/lib/effect/failures";
+import { DraftConflict, NotFound } from "#src/backend/lib/effect/failures";
 import {
   SilentAppLoggerLayer,
   stubExtensionCatalog,
@@ -81,6 +81,7 @@ function workflow(overrides: Partial<Workflow> = {}): Workflow {
     name: "Workflow",
     description: null,
     graph: graph({ message: "saved draft" }),
+    draftRevision: 1,
     isPaused: false,
     mode: "live",
     visibility: "private",
@@ -562,11 +563,12 @@ describe("workflow versions", () => {
             publishedAt: new Date("2026-08-04T00:00:00.000Z"),
           });
           const updates: Array<
-            Parameters<WorkflowRepo["Service"]["update"]>[0]
+            Parameters<WorkflowRepo["Service"]["writeDraft"]>[0]
           > = [];
           const result = yield* restoreWorkflowVersion({
             workflowId: "wf_1",
             versionId: restored.id,
+            expectedDraftRevision: 1,
           }).pipe(
             Effect.provide(
               stubWorkflowRepo({
@@ -575,12 +577,16 @@ describe("workflow versions", () => {
                   Effect.succeed(
                     versionId === restored.id ? restored : current
                   ),
-                update: (input) =>
+                writeDraft: (input) =>
                   Effect.sync(() => {
                     updates.push(input);
                     return {
-                      ...workflow(),
-                      graph: input.updates.graph ?? workflow().graph,
+                      status: "updated" as const,
+                      workflow: {
+                        ...workflow(),
+                        graph: input.updates.graph,
+                        draftRevision: 2,
+                      },
                     };
                   }),
               })
@@ -588,7 +594,6 @@ describe("workflow versions", () => {
           );
 
           assert.deepStrictEqual(updates[0]?.updates.graph, restored.graph);
-          assert.strictEqual(updates[0]?.eventSubscriptions, "unchanged");
           assert.strictEqual(result.publishedVersionId, "ver_current");
           assert.strictEqual(result.publishedVersion, 4);
           assert.strictEqual(result.publishedAt, "2026-08-04T00:00:00.000Z");
@@ -600,6 +605,7 @@ describe("workflow versions", () => {
         const failure = yield* restoreWorkflowVersion({
           workflowId: "wf_1",
           versionId: "ver_foreign",
+          expectedDraftRevision: 1,
         }).pipe(
           Effect.provide(
             stubWorkflowRepo({
@@ -613,6 +619,33 @@ describe("workflow versions", () => {
 
         assert.instanceOf(failure, NotFound);
         assert.strictEqual(failure.error, "Workflow version not found");
+      })
+    );
+
+    it.effect("returns the current revision for a stale restore", () =>
+      Effect.gen(function* () {
+        const restored = version({ id: "ver_restore" });
+        const failure = yield* restoreWorkflowVersion({
+          workflowId: "wf_1",
+          versionId: restored.id,
+          expectedDraftRevision: 1,
+        }).pipe(
+          Effect.provide(
+            stubWorkflowRepo({
+              findById: () => Effect.succeed(workflow()),
+              findVersionById: () => Effect.succeed(restored),
+              writeDraft: () =>
+                Effect.succeed({
+                  status: "conflict" as const,
+                  currentDraftRevision: 2,
+                }),
+            })
+          ),
+          Effect.flip
+        );
+
+        assert.instanceOf(failure, DraftConflict);
+        assert.strictEqual(failure.currentDraftRevision, 2);
       })
     );
   });

@@ -35,7 +35,10 @@ import {
 import { PREFLIGHT_BUSY_MESSAGE } from "#src/hooks/use-workflow-issue-preflight";
 import { orpcQuery } from "#src/lib/rpc-query";
 import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
-import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import {
+  currentWorkflowDraftRevisionAtom,
+  currentWorkflowIdAtom,
+} from "#src/lib/workflow-save-store";
 import { toEditorNode } from "#src/lib/workflow-graph-types";
 import {
   createSerializedWorkflowGraph,
@@ -254,6 +257,7 @@ function savedWorkflowResponse(publication: {
     id: workflowId,
     name: "Workflow",
     graph: expectedSnapshot,
+    draftRevision: 2,
     isPaused: false,
     mode: "test",
     visibility: "private",
@@ -348,7 +352,11 @@ describe("useWorkflowActions Run graph selection", () => {
     // debounced, so without it the run would execute the previous graph.
     expect(requests[0]).toEqual({
       path: "workflow/update",
-      input: { workflowId, graph: expectedSnapshot },
+      input: {
+        workflowId,
+        graph: expectedSnapshot,
+        expectedDraftRevision: 1,
+      },
     });
     expect(requests[1]).toEqual({
       path: "workflow/execute",
@@ -939,6 +947,7 @@ describe("useWorkflowActions publication preflight", () => {
             id: workflowId,
             name: "Workflow",
             graph: expectedSnapshot,
+            draftRevision: 2,
             isPaused: false,
             mode: "test",
             visibility: "private",
@@ -955,7 +964,8 @@ describe("useWorkflowActions publication preflight", () => {
       }
     );
 
-    const view = renderProbe({ queryClient });
+    const store = workflowStore();
+    const view = renderProbe({ queryClient, store });
 
     await act(async () => {
       fireEvent.click(
@@ -983,6 +993,7 @@ describe("useWorkflowActions publication preflight", () => {
         workflowId,
         graph: expectedSnapshot,
         expectedPublishedVersionId: "version_7",
+        expectedDraftRevision: 1,
       },
     });
     await waitFor(() =>
@@ -990,6 +1001,7 @@ describe("useWorkflowActions publication preflight", () => {
         true
       )
     );
+    expect(store.get(currentWorkflowDraftRevisionAtom)).toBe(2);
   });
 
   it("asks the server to compare a first publication with no base version", async () => {
@@ -1035,6 +1047,7 @@ describe("useWorkflowActions publication preflight", () => {
           workflowId,
           graph: expectedSnapshot,
           expectedPublishedVersionId: null,
+          expectedDraftRevision: 1,
         },
       },
     ]);

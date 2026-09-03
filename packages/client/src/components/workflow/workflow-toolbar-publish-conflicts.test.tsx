@@ -65,6 +65,7 @@ function workflowPayload(publishedVersionId = "version_7"): WorkflowApiPayload {
     id: workflowId,
     name: "Workflow",
     graph,
+    draftRevision: 1,
     isPaused: false,
     mode: "test",
     visibility: "private",

@@ -241,6 +241,7 @@ describe("useWorkflowComparisonActions", () => {
       result.current.restore.mutate({
         workflowId: "workflow_1",
         versionId: "version_1",
+        expectedDraftRevision: 1,
       })
     );
     await waitFor(() =>
@@ -288,6 +289,7 @@ describe("useWorkflowComparisonActions", () => {
       result.current.restore.mutate({
         workflowId: "workflow_1",
         versionId: "version_1",
+        expectedDraftRevision: 1,
       })
     );
     await waitFor(() => expect(result.current.restore.isError).toBe(true));
@@ -349,6 +351,7 @@ describe("useWorkflowComparisonActions", () => {
       result.current.restore.mutate({
         workflowId: "workflow_a",
         versionId: "version_1",
+        expectedDraftRevision: 1,
       })
     );
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(1));

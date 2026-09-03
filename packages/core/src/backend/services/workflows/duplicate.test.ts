@@ -55,6 +55,7 @@ const sourceWorkflow: Workflow = {
   name: "Appointment Reminders",
   description: "the original",
   graph: sourceGraph,
+  draftRevision: 1,
   isPaused: false,
   mode: "test",
   visibility: "public",

@@ -19,6 +19,79 @@ export function describeWorkflowConformance({
   openConnection,
 }: PersistenceTestRegistry): void {
   describe("workflows", () => {
+    it("increments draft revisions and rejects stale graph writes", async () => {
+      const database = await openConnection();
+      const graph = createSerializedWorkflowGraph({
+        nodes: [
+          {
+            id: "entry",
+            type: "lifecycle",
+            position: { x: 0, y: 0 },
+            data: {
+              type: "lifecycle",
+              label: "Lifecycle",
+              config: {},
+            },
+          },
+        ],
+        edges: [],
+      });
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          const inserted = yield* workflows.insert({
+            id: "wf_revision",
+            name: "Revision workflow",
+            graph: emptyGraph,
+            eventSubscriptions: [],
+          });
+          const updated = yield* workflows.writeDraft({
+            workflowId: inserted.id,
+            expectedDraftRevision: inserted.draftRevision,
+            updates: { graph, name: "Winner", updatedAt: new Date() },
+          });
+          const stale = yield* workflows.writeDraft({
+            workflowId: inserted.id,
+            expectedDraftRevision: inserted.draftRevision,
+            updates: {
+              graph: emptyGraph,
+              name: "Stale",
+              updatedAt: new Date(),
+            },
+          });
+          const metadata = yield* workflows.updateMetadata({
+            workflowId: inserted.id,
+            updates: { description: "Metadata", updatedAt: new Date() },
+          });
+          return {
+            inserted,
+            updated,
+            stale,
+            metadata,
+            stored: yield* workflows.findById(inserted.id),
+          };
+        })
+      );
+
+      expect(result.inserted.draftRevision).toBe(1);
+      expect(result.updated).toMatchObject({
+        status: "updated",
+        workflow: { draftRevision: 2, name: "Winner" },
+      });
+      expect(result.stale).toEqual({
+        status: "conflict",
+        currentDraftRevision: 2,
+      });
+      expect(result.metadata?.draftRevision).toBe(2);
+      expect(result.stored).toMatchObject({
+        draftRevision: 2,
+        name: "Winner",
+        description: "Metadata",
+        graph,
+      });
+    });
+
     it("lists the current and active versions without terminal or foreign runs", async () => {
       const database = await openConnection();
       await seedPublishedWorkflow(database);
@@ -32,6 +105,7 @@ export function describeWorkflowConformance({
             versionId: "ver_2",
             version: 2,
             expectedPublishedVersionId: "ver_1",
+            expectedDraftRevision: 2,
             graph: emptyGraph,
             draftGraph: emptyGraph,
             catalogFingerprint: "catalog",
@@ -43,6 +117,7 @@ export function describeWorkflowConformance({
             versionId: "ver_3",
             version: 3,
             expectedPublishedVersionId: "ver_2",
+            expectedDraftRevision: 3,
             graph: emptyGraph,
             draftGraph: emptyGraph,
             catalogFingerprint: "catalog",
@@ -137,6 +212,7 @@ export function describeWorkflowConformance({
             versionId: "ver_other",
             version: 1,
             expectedPublishedVersionId: null,
+            expectedDraftRevision: 1,
             graph: emptyGraph,
             draftGraph: emptyGraph,
             catalogFingerprint: "catalog",
@@ -396,6 +472,7 @@ export function describeWorkflowConformance({
               version,
               expectedPublishedVersionId:
                 version === 1 ? null : `ver_${version - 1}`,
+              expectedDraftRevision: version,
               graph: emptyGraph,
               draftGraph: emptyGraph,
               catalogFingerprint: "catalog",
@@ -408,6 +485,7 @@ export function describeWorkflowConformance({
             versionId: "ver_other",
             version: 1,
             expectedPublishedVersionId: null,
+            expectedDraftRevision: 1,
             graph: emptyGraph,
             draftGraph: emptyGraph,
             catalogFingerprint: "catalog",
@@ -467,6 +545,7 @@ export function describeWorkflowConformance({
               versionId: "ver_failed",
               version: 1,
               expectedPublishedVersionId: null,
+              expectedDraftRevision: 1,
               graph: emptyGraph,
               draftGraph: emptyGraph,
               catalogFingerprint: "catalog",
@@ -521,6 +600,7 @@ export function describeWorkflowConformance({
             versionId: "ver_1",
             version: 1,
             expectedPublishedVersionId: null,
+            expectedDraftRevision: 1,
             graph: emptyGraph,
             draftGraph: emptyGraph,
             catalogFingerprint: "catalog",
@@ -555,6 +635,7 @@ export function describeWorkflowConformance({
               versionId: "ver_orphan",
               version: 1,
               expectedPublishedVersionId: null,
+              expectedDraftRevision: 1,
               graph: emptyGraph,
               draftGraph: emptyGraph,
               catalogFingerprint: "catalog",
@@ -604,6 +685,7 @@ export function describeWorkflowConformance({
             versionId: "ver_1",
             version: 1,
             expectedPublishedVersionId: null,
+            expectedDraftRevision: 1,
             graph: emptyGraph,
             draftGraph: emptyGraph,
             catalogFingerprint: "catalog",
@@ -712,6 +794,7 @@ export function describeWorkflowConformance({
             versionId: "ver_1",
             version: 1,
             expectedPublishedVersionId: null,
+            expectedDraftRevision: 1,
             graph: emptyGraph,
             draftGraph: emptyGraph,
             catalogFingerprint: "catalog",

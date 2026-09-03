@@ -9,7 +9,7 @@ import { uniq } from "es-toolkit/array";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
-import { NotFound } from "#src/backend/lib/effect/failures";
+import { DraftConflict, NotFound } from "#src/backend/lib/effect/failures";
 import { annotateServiceSpan } from "#src/backend/lib/telemetry";
 import {
   redactSensitiveData,
@@ -330,14 +330,24 @@ export const restoreWorkflowVersion = Effect.fn(
     }
 
     const prepared = yield* prepareGraphSave({ graph: version.graph });
-    const restored = yield* repo.update({
+    const outcome = yield* repo.writeDraft({
       workflowId: input.workflowId,
-      updates: buildWorkflowUpdateData({ graph: prepared.graph }),
-      eventSubscriptions: "unchanged",
+      expectedDraftRevision: input.expectedDraftRevision,
+      updates: {
+        ...buildWorkflowUpdateData({ graph: prepared.graph }),
+        graph: prepared.graph,
+      },
     });
-    if (!restored) {
+    if (outcome.status === "conflict") {
+      return yield* new DraftConflict({
+        error: "The workflow draft changed. Reload it before restoring again.",
+        currentDraftRevision: outcome.currentDraftRevision,
+      });
+    }
+    if (outcome.status === "not_found") {
       return yield* new NotFound({ error: "Workflow not found" });
     }
+    const restored = outcome.workflow;
 
     const publishedVersion = yield* resolvePublishedVersion(
       repo,

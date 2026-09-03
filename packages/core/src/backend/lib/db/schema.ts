@@ -80,6 +80,7 @@ export const workflows = pgTable(
      * pins itself to that.
      */
     graph: jsonb("graph").notNull().$type<SerializedWorkflowGraph>(),
+    draftRevision: integer("draft_revision").notNull().default(1),
     isPaused: boolean("is_paused").notNull().default(false),
     mode: text("mode").notNull().default("live").$type<WorkflowMode>(),
     visibility: text("visibility")

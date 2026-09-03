@@ -15,6 +15,8 @@ import {
   type WorkflowDraftService,
 } from "@wfgraph/agent/document";
 import { agentToolkit, agentToolkitLayer } from "@wfgraph/agent/toolkit";
+import { serializeWorkflowGraphData } from "@wfgraph/shared/graph/graph";
+import { validateGraphSaveShape } from "#src/backend/services/workflows/graph-save";
 
 export type AgentToolSession = {
   /** The mutable draft shared by every tool call in this turn. */
@@ -30,8 +32,16 @@ export type AgentToolSession = {
 
 /** Creates the isolated draft and handlers used for one agent turn. */
 export const makeAgentToolSession = Effect.fn("makeAgentToolSession")(
-  function* (input: WorkflowDraftInput) {
-    const draft = yield* makeWorkflowDraft(input);
+  function* (input: Omit<WorkflowDraftInput, "validateUpdate">) {
+    const draft = yield* makeWorkflowDraft({
+      ...input,
+      validateUpdate: (document) => {
+        const validation = validateGraphSaveShape(
+          serializeWorkflowGraphData(document)
+        );
+        return validation.valid ? null : validation.error;
+      },
+    });
     const graphRevision = yield* Ref.make(0);
     const toolkit = yield* Effect.provide(
       agentToolkit,

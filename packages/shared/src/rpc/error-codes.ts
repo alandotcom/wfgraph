@@ -14,6 +14,9 @@
 export const INTEGRATION_VALIDATION_FAILED_CODE =
   "integration_validation_failed";
 
+/** The editable workflow changed after the caller read its draft revision. */
+export const DRAFT_CONFLICT_CODE = "workflow_draft_stale";
+
 /** The two ways a publish is refused because publication moved underneath it. */
 export const PUBLICATION_CONFLICT_CODES = {
   /**

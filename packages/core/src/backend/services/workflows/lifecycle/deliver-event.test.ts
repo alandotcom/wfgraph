@@ -231,6 +231,7 @@ function createWorkflow(input: {
     name: "Appointment Reminders",
     description: null,
     graph: input.graph ?? lifecycleGraph(input.rules),
+    draftRevision: 1,
     isPaused: input.isPaused ?? false,
     mode: "live",
     visibility: "private",

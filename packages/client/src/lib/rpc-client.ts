@@ -47,6 +47,7 @@ export type WorkflowData = {
 export type SavedWorkflow = WorkflowData & {
   id: string;
   name: string;
+  draftRevision: number;
   isPaused: boolean;
   mode: WorkflowMode;
   visibility: WorkflowVisibility;
@@ -288,7 +289,8 @@ export type ConfigOptionField = Extract<
 export const workflowApi = {
   update: (
     id: string,
-    workflow: Partial<WorkflowData>
+    workflow: Partial<WorkflowData>,
+    expectedDraftRevision?: number
   ): Promise<SavedWorkflow> => {
     const hasGraphUpdate =
       workflow.graph !== undefined ||
@@ -312,6 +314,9 @@ export const workflowApi = {
           name: workflow.name,
           description: workflow.description,
           graph,
+          expectedDraftRevision: hasGraphUpdate
+            ? expectedDraftRevision
+            : undefined,
           mode: workflow.mode,
         }),
       })
