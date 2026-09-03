@@ -86,6 +86,56 @@ describe("list_actions", () => {
     })
   );
 
+  it.effect("omits hidden actions and their categories", () =>
+    Effect.gen(function* () {
+      const hiddenCatalog: ExtensionCatalog = {
+        ...catalog,
+        actions: [
+          ...catalog.actions,
+          {
+            id: "legacy/action",
+            label: "Legacy action",
+            description: "Kept for existing workflows.",
+            category: "Legacy",
+            hidden: true,
+            configFields: [],
+            outputFields: [],
+          },
+        ],
+      };
+      const { tools } = yield* agentToolsFor({ catalog: hiddenCatalog });
+
+      const result = yield* tools.list_actions({ query: "legacy" });
+
+      expect(result.actions).toEqual([]);
+      expect(result.totalMatches).toBe(0);
+      expect(result.categories).not.toContain("Legacy");
+    })
+  );
+
+  it.effect("bounds the category index and reports omitted categories", () =>
+    Effect.gen(function* () {
+      const manyCategories: ExtensionCatalog = {
+        ...catalog,
+        actions: Array.from({ length: 51 }, (_, index) => ({
+          id: `action-${index}`,
+          label: `Action ${index}`,
+          description: `Action number ${index}.`,
+          category: `Category ${index}`,
+          configFields: [],
+          outputFields: [],
+        })),
+      };
+      const { tools } = yield* agentToolsFor({ catalog: manyCategories });
+
+      const result = yield* tools.list_actions({});
+
+      expect(result.categories).toHaveLength(50);
+      expect(result.totalCategories).toBe(51);
+      expect(result.categoriesTruncated).toBe(true);
+    })
+  );
+
   it.effect("leaves integration off a host-defined action", () =>
     Effect.gen(function* () {
       const { tools } = yield* agentToolsFor({ catalog });
@@ -99,6 +149,33 @@ describe("list_actions", () => {
 });
 
 describe("describe_action", () => {
+  it.effect("describes a hidden action already used by a workflow", () =>
+    Effect.gen(function* () {
+      const hiddenCatalog: ExtensionCatalog = {
+        ...catalog,
+        actions: [
+          ...catalog.actions,
+          {
+            id: "legacy/action",
+            label: "Legacy action",
+            description: "Kept for existing workflows.",
+            category: "Legacy",
+            hidden: true,
+            configFields: [],
+            outputFields: [],
+          },
+        ],
+      };
+      const { tools } = yield* agentToolsFor({ catalog: hiddenCatalog });
+
+      const result = yield* tools.describe_action({
+        actionId: "legacy/action",
+      });
+
+      expect(result.action.id).toBe("legacy/action");
+    })
+  );
+
   it.effect("describes how to author a built-in Event Split", () =>
     Effect.gen(function* () {
       const { tools } = yield* agentToolsFor({ catalog });

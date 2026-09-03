@@ -12,9 +12,10 @@ import { Effect, Schema } from "effect";
 import { Tool } from "effect/unstable/ai";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import {
-  actionsByCategory,
   findAction,
   findEvent,
+  selectableActions,
+  selectableActionsByCategory,
 } from "@wfgraph/shared/extensions/catalog";
 import type {
   ActionMetadata,
@@ -139,14 +140,14 @@ function matchesQuery(action: ActionMetadata, query: string): boolean {
 }
 
 function searchActions(
-  catalog: ExtensionCatalog,
+  actions: readonly ActionMetadata[],
   filter: {
     readonly query?: string | undefined;
     readonly category?: string | undefined;
     readonly integration?: string | undefined;
   }
 ): ActionMetadata[] {
-  return catalog.actions.filter((action) => {
+  return actions.filter((action) => {
     if (filter.category !== undefined && action.category !== filter.category) {
       return false;
     }
@@ -191,7 +192,8 @@ export const ListActions = Tool.make("list_actions", {
         "Case-insensitive text matched against an action's id, label, description and category. Omit to list everything.",
     }),
     category: Schema.optionalKey(Schema.String).annotate({
-      description: "Exact category name, as listed in the categories field.",
+      description:
+        "Exact category name from the categories field or an action summary.",
     }),
     integration: Schema.optionalKey(Schema.String).annotate({
       description:
@@ -202,8 +204,10 @@ export const ListActions = Tool.make("list_actions", {
   }),
   success: Schema.Struct({
     actions: Schema.Array(actionSummarySchema),
-    /** Every category in the catalog, so a follow-up call can filter by one. */
+    /** A bounded index of selectable categories for follow-up filtering. */
     categories: Schema.Array(Schema.String),
+    totalCategories: Schema.Number,
+    categoriesTruncated: Schema.Boolean,
     totalInCatalog: Schema.Number,
     totalMatches: Schema.Number,
     truncated: Schema.Boolean,
@@ -305,11 +309,15 @@ export const catalogToolHandlers = Effect.gen(function* () {
     }) =>
       Effect.succeed(
         (() => {
-          const matches = searchActions(catalog, input);
+          const selectable = selectableActions(catalog);
+          const matches = searchActions(selectable, input);
           const page = pageResults(matches, input);
+          const categories = Object.keys(selectableActionsByCategory(catalog));
           return omitUndefined({
             actions: page.items.map(toActionSummary),
-            categories: Object.keys(actionsByCategory(catalog)).slice(0, 50),
+            categories: categories.slice(0, 50),
+            totalCategories: categories.length,
+            categoriesTruncated: categories.length > 50,
             totalInCatalog: catalog.actions.length,
             totalMatches: page.total,
             truncated: page.nextOffset !== undefined,

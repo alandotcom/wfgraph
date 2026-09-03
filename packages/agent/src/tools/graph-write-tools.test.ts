@@ -48,6 +48,22 @@ const literalCatalog: ExtensionCatalog = {
   ],
 };
 
+const hiddenCatalog: ExtensionCatalog = {
+  ...catalog,
+  actions: [
+    ...catalog.actions,
+    {
+      id: "legacy/action",
+      label: "Legacy action",
+      description: "Kept for existing workflows.",
+      category: "Legacy",
+      hidden: true,
+      configFields: [{ key: "legacy", label: "Legacy", type: "text" }],
+      outputFields: [],
+    },
+  ],
+};
+
 const firstToSecond: WorkflowEdge = {
   id: "e1",
   source: "first",
@@ -110,6 +126,21 @@ describe("add_node", () => {
 
       expect(failure.reason).toContain("stripe/refund");
       expect((yield* draft.current).nodes).toEqual([]);
+    })
+  );
+
+  it.effect("refuses a hidden action", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [entry],
+        catalog: hiddenCatalog,
+      });
+      const failure = yield* Effect.flip(
+        tools.add_node({ actionId: "legacy/action", label: "Legacy" })
+      );
+
+      expect(failure.reason).toContain("legacy/action");
+      expect((yield* draft.current).nodes).toEqual([entry]);
     })
   );
 
@@ -314,6 +345,54 @@ describe("update_node", () => {
 
       expect((yield* draft.current).nodes[1]?.data.config).toEqual({
         actionType: "slack/send-message",
+      });
+    })
+  );
+
+  it.effect("removes a stored config key the action no longer declares", () =>
+    Effect.gen(function* () {
+      const withStaleConfig: WorkflowNode = {
+        ...second,
+        data: {
+          ...second.data,
+          config: {
+            actionType: "slack/send-message",
+            removedField: "stale",
+          },
+        },
+      };
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [entry, withStaleConfig],
+        catalog,
+      });
+
+      yield* tools.update_node({
+        nodeId: "second",
+        clearConfigKeys: ["removedField"],
+      });
+
+      expect((yield* draft.current).nodes[1]?.data.config).toEqual({
+        actionType: "slack/send-message",
+      });
+    })
+  );
+
+  it.effect("updates an existing node that uses a hidden action", () =>
+    Effect.gen(function* () {
+      const legacy = actionNode("legacy", "legacy/action");
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [entry, legacy],
+        catalog: hiddenCatalog,
+      });
+
+      yield* tools.update_node({
+        nodeId: "legacy",
+        config: [{ key: "legacy", value: "kept" }],
+      });
+
+      expect((yield* draft.current).nodes[1]?.data.config).toEqual({
+        actionType: "legacy/action",
+        legacy: "kept",
       });
     })
   );
@@ -890,7 +969,7 @@ describe("insert_node_on_edge", () => {
   it.effect("leaves the graph unchanged when insertion is refused", () =>
     Effect.gen(function* () {
       const { tools, draft } = yield* agentToolsFor({
-        nodes: [first, second],
+        nodes: [entry, first, second],
         edges: [firstToSecond],
         catalog,
       });
@@ -904,6 +983,30 @@ describe("insert_node_on_edge", () => {
       );
 
       expect(failure.reason).toContain("missing/action");
+      expect(yield* draft.current).toEqual({
+        nodes: [entry, first, second],
+        edges: [firstToSecond],
+      });
+    })
+  );
+
+  it.effect("refuses to insert a hidden action", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [first, second],
+        edges: [firstToSecond],
+        catalog: hiddenCatalog,
+      });
+
+      const failure = yield* Effect.flip(
+        tools.insert_node_on_edge({
+          edgeId: "e1",
+          actionId: "legacy/action",
+          label: "Legacy",
+        })
+      );
+
+      expect(failure.reason).toContain("legacy/action");
       expect(yield* draft.current).toEqual({
         nodes: [first, second],
         edges: [firstToSecond],

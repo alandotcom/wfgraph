@@ -1,5 +1,8 @@
 import { WRITE_TOOL_NAMES } from "@wfgraph/agent/toolkit";
+import type { AgentDocument } from "@wfgraph/agent/document";
+import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
+import { eventSplitOutletEvent } from "@wfgraph/shared/lifecycle/event-split";
 import { isJsonObject, type JsonValue } from "@wfgraph/shared/types/json";
 import type { DeterministicAssessment } from "#src/agent/assessment";
 import type {
@@ -61,12 +64,52 @@ function referenceTokensReturnedBy(call: AgentTrajectoryToolCall): string[] {
 
 function configuredEventNames(call: AgentTrajectoryToolCall): string[] {
   if (call.name === "set_lifecycle_rules") {
-    const values = [call.input.startEvents, call.input.cancelEvents];
-    return values.flatMap((value) =>
-      Array.isArray(value)
-        ? value.filter((item): item is string => typeof item === "string")
-        : []
+    const eventSets = [
+      call.input.startEvents,
+      call.input.cancelEvents,
+      call.input.clearCorrelationPaths,
+      call.input.clearEventConnections,
+      call.input.clearStartFilters,
+      call.input.clearCancelFilters,
+    ];
+    const eventPatches = [
+      call.input.correlationPaths,
+      call.input.eventConnections,
+      call.input.startFilters,
+      call.input.cancelFilters,
+    ];
+    return [
+      ...eventSets.flatMap((value) =>
+        Array.isArray(value)
+          ? value.filter((item): item is string => typeof item === "string")
+          : []
+      ),
+      ...eventPatches.flatMap((value) =>
+        Array.isArray(value)
+          ? value.flatMap((item) =>
+              isJsonObject(item) && typeof item.event === "string"
+                ? [item.event]
+                : []
+            )
+          : []
+      ),
+    ];
+  }
+  if (call.name === "connect_nodes") {
+    const eventName = eventSplitOutletEvent(
+      typeof call.input.sourceHandle === "string"
+        ? call.input.sourceHandle
+        : undefined
     );
+    return eventName ? [eventName] : [];
+  }
+  if (call.name === "insert_node_on_edge") {
+    const eventName = eventSplitOutletEvent(
+      typeof call.input.outgoingSourceHandle === "string"
+        ? call.input.outgoingSourceHandle
+        : undefined
+    );
+    return eventName ? [eventName] : [];
   }
   if (call.name !== "set_wait" || !isJsonObject(call.input.wait)) {
     return [];
@@ -82,13 +125,157 @@ function configuredEventNames(call: AgentTrajectoryToolCall): string[] {
     : [];
 }
 
+function successfulReadsBefore(
+  calls: readonly AgentTrajectoryToolCall[],
+  boundary: AgentTrajectoryToolCall
+): AgentTrajectoryToolCall[] {
+  return calls.filter(
+    (candidate) =>
+      candidate.name === "read_workflow" &&
+      candidate.order < boundary.order &&
+      candidate.result !== undefined &&
+      !candidate.result.failed &&
+      candidate.result.order < boundary.order &&
+      isJsonObject(candidate.result.result)
+  );
+}
+
+function completedPageAxis(
+  reads: readonly AgentTrajectoryToolCall[],
+  offsetKey: "nodeOffset" | "edgeOffset",
+  nextOffsetKey: "nextNodeOffset" | "nextEdgeOffset"
+): boolean {
+  const pages = new Map<number, JsonValue>();
+  for (const read of reads) {
+    const offset = read.input[offsetKey];
+    if (offset !== undefined && typeof offset !== "number") {
+      continue;
+    }
+    const result = read.result?.result;
+    if (isJsonObject(result)) {
+      pages.set(offset ?? 0, result[nextOffsetKey]);
+    }
+  }
+
+  const visited = new Set<number>();
+  let offset = 0;
+  while (!visited.has(offset)) {
+    visited.add(offset);
+    if (!pages.has(offset)) {
+      return false;
+    }
+    const nextOffset = pages.get(offset);
+    if (nextOffset === undefined) {
+      return true;
+    }
+    if (typeof nextOffset !== "number") {
+      return false;
+    }
+    offset = nextOffset;
+  }
+  return false;
+}
+
+function workflowReadCompletedBefore(
+  calls: readonly AgentTrajectoryToolCall[],
+  boundary: AgentTrajectoryToolCall
+): boolean {
+  const reads = successfulReadsBefore(calls, boundary);
+  return (
+    completedPageAxis(reads, "nodeOffset", "nextNodeOffset") &&
+    completedPageAxis(reads, "edgeOffset", "nextEdgeOffset")
+  );
+}
+
+function nodeActionIds(
+  document: AgentDocument,
+  calls: readonly AgentTrajectoryToolCall[]
+): ReadonlyMap<string, string> {
+  const byNodeId = new Map(
+    document.nodes.flatMap((node) => {
+      const id = actionTypeOf(node);
+      return id ? [[node.id, id] as const] : [];
+    })
+  );
+
+  for (const call of calls) {
+    if (
+      (call.name === "read_workflow" || call.name === "read_nodes") &&
+      call.result !== undefined &&
+      !call.result.failed &&
+      isJsonObject(call.result.result) &&
+      Array.isArray(call.result.result.nodes)
+    ) {
+      for (const node of call.result.result.nodes) {
+        if (
+          isJsonObject(node) &&
+          typeof node.id === "string" &&
+          typeof node.actionType === "string"
+        ) {
+          byNodeId.set(node.id, node.actionType);
+        }
+      }
+    }
+
+    if (
+      (call.name === "add_node" || call.name === "insert_node_on_edge") &&
+      call.result !== undefined &&
+      !call.result.failed &&
+      isJsonObject(call.result.result) &&
+      typeof call.result.result.nodeId === "string"
+    ) {
+      const id = actionId(call);
+      if (id) {
+        byNodeId.set(call.result.result.nodeId, id);
+      }
+    }
+  }
+
+  return byNodeId;
+}
+
+function usedAction(input: {
+  readonly call: AgentTrajectoryToolCall;
+  readonly actionIdsByNode: ReadonlyMap<string, string>;
+}):
+  | { readonly id: string; readonly verb: "added" | "inserted" | "used" }
+  | undefined {
+  if (
+    input.call.name === "add_node" ||
+    input.call.name === "insert_node_on_edge"
+  ) {
+    const id = actionId(input.call);
+    return id
+      ? {
+          id,
+          verb: input.call.name === "add_node" ? "added" : "inserted",
+        }
+      : undefined;
+  }
+  if (input.call.name === "set_wait") {
+    return { id: "Wait", verb: "used" };
+  }
+  if (input.call.name === "set_condition") {
+    return { id: "Condition", verb: "used" };
+  }
+  if (input.call.name !== "update_node") {
+    return undefined;
+  }
+  const nodeId = input.call.input.nodeId;
+  const id =
+    typeof nodeId === "string" ? input.actionIdsByNode.get(nodeId) : undefined;
+  return id ? { id, verb: "used" } : undefined;
+}
+
 /** Requires confirmed workflow and action evidence before graph mutations. */
 export function assessEvidenceUse(
-  trajectory: AgentTrajectory
+  trajectory: AgentTrajectory,
+  document: AgentDocument = { nodes: [], edges: [] }
 ): DeterministicAssessment {
   const firstWrite = trajectory.calls.find((call) =>
     WRITE_TOOL_NAMES.has(call.name)
   );
+  const actionIdsByNode = nodeActionIds(document, trajectory.calls);
 
   for (const call of trajectory.calls) {
     if (!WRITE_TOOL_NAMES.has(call.name)) {
@@ -108,32 +295,41 @@ export function assessEvidenceUse(
       };
     }
 
+    if (!workflowReadCompletedBefore(trajectory.calls, call)) {
+      return {
+        score: 0,
+        rationale: `${call.name} was called before read_workflow completed every topology page.`,
+      };
+    }
+
+    const action = usedAction({ call, actionIdsByNode });
     if (call.name === "add_node" || call.name === "insert_node_on_edge") {
-      const addedActionId = actionId(call);
-      if (addedActionId === undefined) {
+      if (action === undefined) {
         return {
           score: 0,
           rationale: `${call.name} was called without an actionId.`,
         };
       }
+    }
+    if (action) {
       const actionWasDescribed = (boundary: AgentTrajectoryToolCall): boolean =>
         succeededBefore(
           trajectory.calls,
           boundary,
           (candidate) =>
             candidate.name === "describe_action" &&
-            actionId(candidate) === addedActionId
+            actionId(candidate) === action.id
         );
       if (!actionWasDescribed(call)) {
         return {
           score: 0,
-          rationale: `${addedActionId} was ${call.name === "add_node" ? "added" : "inserted"} before a successful describe_action result.`,
+          rationale: `${action.id} was ${action.verb} before a successful describe_action result.`,
         };
       }
       if (firstWrite && !actionWasDescribed(firstWrite)) {
         return {
           score: 0,
-          rationale: `${addedActionId} was ${call.name === "add_node" ? "added" : "inserted"} before capability discovery finished.`,
+          rationale: `${action.id} was ${action.verb} before capability discovery finished.`,
         };
       }
     }

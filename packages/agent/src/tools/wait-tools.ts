@@ -199,7 +199,7 @@ function eventMatchFieldFailure(input: {
         return `The match field ${rule.field} has no condition-compatible type.`;
       }
       if (expectedType !== rule.fieldType) {
-        return `Use fieldType ${expectedType} for ${rule.field}, as list_events reports.`;
+        return `Use fieldType ${expectedType} for ${rule.field}, as describe_event reports.`;
       }
       if (field.valueType && !rule.recordKey?.trim()) {
         return `${rule.field} is an open record. Supply recordKey for the value to compare.`;

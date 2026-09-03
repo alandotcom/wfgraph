@@ -58,8 +58,8 @@ export const ScenarioSemanticsJudge = createJudge<
 
 export const EvidenceUseJudge = createJudge<AgentEvalInput, AgentEvalOutput>(
   "EvidenceUseJudge",
-  ({ output }) => {
-    const assessment = assessEvidenceUse(output.trajectory);
+  ({ input, output }) => {
+    const assessment = assessEvidenceUse(output.trajectory, input.document);
     return {
       score: assessment.score,
       metadata: { rationale: assessment.rationale },

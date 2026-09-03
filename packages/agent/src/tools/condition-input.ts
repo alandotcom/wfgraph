@@ -25,7 +25,7 @@ export const conditionRuleSchema = Schema.Struct({
   }),
   recordKey: Schema.optionalKey(Schema.String).annotate({
     description:
-      "The key under field when list_events or list_references marks that field as an open record.",
+      "The key under field when describe_event or list_references marks that field as an open record.",
   }),
   fieldType: Schema.Literals([
     "string",

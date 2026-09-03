@@ -98,9 +98,10 @@ const insertNodeResultSchema = Schema.Struct({
 const UNPLACED = { x: 0, y: 0 };
 
 function knownActionId(catalog: ExtensionCatalog, actionId: string): boolean {
+  const action = findAction(catalog, actionId);
   return (
     builtInActionIds.includes(actionId) ||
-    findAction(catalog, actionId) !== undefined
+    (action !== undefined && action.hidden !== true)
   );
 }
 
@@ -324,6 +325,7 @@ function configPatchRefusal(input: {
   readonly actionId: string;
   readonly patch: ConfigBag | undefined;
   readonly clear?: readonly string[] | undefined;
+  readonly current?: Record<string, unknown> | undefined;
   readonly document?: AgentDocument | undefined;
   readonly nodeId?: string | undefined;
   readonly referenceGuidance?: string | undefined;
@@ -338,15 +340,22 @@ function configPatchRefusal(input: {
     allowedKeys.add("integrationId");
   }
 
-  const patchKeys = input.patch?.map((entry) => entry.key) ?? [];
-  const clearKeys = input.clear ?? [];
   const seenKeys = new Set<string>();
-  for (const key of [...patchKeys, ...clearKeys]) {
+  for (const key of input.patch?.map((entry) => entry.key) ?? []) {
     if (seenKeys.has(key)) {
       return `Config key ${key} appears more than once. Supply one operation for each config key.`;
     }
     seenKeys.add(key);
     if (!allowedKeys.has(key)) {
+      return `Action ${input.actionId} does not declare config key ${key}. Call describe_action for its config fields.`;
+    }
+  }
+  for (const key of input.clear ?? []) {
+    if (seenKeys.has(key)) {
+      return `Config key ${key} appears more than once. Supply one operation for each config key.`;
+    }
+    seenKeys.add(key);
+    if (!allowedKeys.has(key) && !Object.hasOwn(input.current ?? {}, key)) {
       return `Action ${input.actionId} does not declare config key ${key}. Call describe_action for its config fields.`;
     }
   }
@@ -518,6 +527,7 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
             actionId,
             patch: input.config,
             clear: input.clearConfigKeys,
+            current: node.data.config,
             document,
             nodeId: node.id,
             catalog: draft.catalog,
