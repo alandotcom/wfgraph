@@ -185,6 +185,9 @@ function missingConditionRules(context: SemanticsContext): string[] {
   return checkEach(
     context.input.expected.requiredConditionRules,
     (required) => {
+      const fields = Array.isArray(required.field)
+        ? required.field
+        : [required.field];
       const found = nodesMatching(context, required.node).some((node) => {
         const parsed = parseConditionModel(node.data.config?.conditionModel);
         if (!parsed.valid) {
@@ -193,7 +196,7 @@ function missingConditionRules(context: SemanticsContext): string[] {
         return parsed.model.groups.some((group) =>
           group.conditions.some(
             (rule) =>
-              rule.field === required.field &&
+              fields.includes(rule.field) &&
               // An omitted operator asks only that the rule tests this field,
               // which is what a scenario wants where two operators and swapped
               // outlets describe the same run.
@@ -206,7 +209,7 @@ function missingConditionRules(context: SemanticsContext): string[] {
       });
       return found
         ? undefined
-        : `${selectorName(required.node)} is missing required rule on ${required.field}${required.operator === undefined ? "" : ` ${required.operator}`}${required.value === undefined ? "" : ` ${required.value}`}`;
+        : `${selectorName(required.node)} is missing required rule on ${fields.join(" or ")}${required.operator === undefined ? "" : ` ${required.operator}`}${required.value === undefined ? "" : ` ${required.value}`}`;
     }
   );
 }

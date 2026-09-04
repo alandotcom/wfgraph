@@ -135,7 +135,8 @@ export type AgentEvalExpectations = {
   }>;
   requiredConditionRules?: Array<{
     node: EvalNodeSelector;
-    field: string;
+    /** One path, or the set of paths any of which answers the same question. */
+    field: string | string[];
     /** Omit to accept any operator, where either polarity describes the same run. */
     operator?: string;
     value?: string | number;

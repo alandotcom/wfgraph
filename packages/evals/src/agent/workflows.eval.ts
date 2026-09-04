@@ -20,7 +20,11 @@ import {
   IntentAlignmentJudge,
   workflowIntentJudgeHarness,
 } from "#src/agent/judges/intent";
-import { complexScenarios, focusedScenarios } from "#src/agent/scenarios";
+import {
+  capabilityScenarios,
+  complexScenarios,
+  focusedScenarios,
+} from "#src/agent/scenarios";
 
 const workflowAgentHarness = createWorkflowAgentHarness((input) =>
   makeBuiltInAgentRunner(readEvalModelSettings(input.model))
@@ -88,6 +92,38 @@ describeEval(
         // agent trials still measure behavioral variability.
         if (trial === 1) {
           await expect(result).toSatisfyJudge(IntentAlignmentJudge, {
+            threshold: null,
+          });
+        }
+      }
+    );
+  }
+);
+
+// Five trials because one is a coin toss: single-run agent scores move by
+// several points between identical runs, and four is the smallest count whose
+// best possible outcome can separate two configurations at all. These scenarios
+// are expected to fail while the behaviour they measure is still being built,
+// which is what makes them capability rather than regression scenarios.
+const capabilityTrials = capabilityScenarios.flatMap((entry) =>
+  [1, 2, 3, 4, 5].map((trial) => ({ ...entry, trial }))
+);
+
+describeEval(
+  "workflow build agent capability behavior",
+  {
+    harness: workflowAgentHarness,
+    judges: deterministicJudges,
+    judgeThreshold: 1,
+    skipIf: skipWithoutModelKey,
+  },
+  (it) => {
+    it.for(capabilityTrials)(
+      "$name (trial $trial)",
+      async ({ input }, { run }) => {
+        const result = await run(input);
+        if (input.expected.efficiencyBudget !== undefined) {
+          await expect(result).toSatisfyJudge(EfficiencyBudgetJudge, {
             threshold: null,
           });
         }
