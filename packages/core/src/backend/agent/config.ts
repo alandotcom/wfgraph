@@ -57,15 +57,18 @@ export type AgentReasoningEffort = (typeof AGENT_REASONING_EFFORTS)[number];
 /**
  * The effort a turn runs at when the host names none.
  *
- * A judgement rather than a measured win. A turn reads a catalog, settles a
- * graph shape and then writes it, and planning is where its mistakes come from.
- * Measured at twenty trials per arm the capability suite gave 16 of 20 here
- * against 12 of 20 at `medium`, which Fisher's exact test cannot separate from
- * noise (p = 0.30); telling an effect that size apart would take roughly a
- * hundred trials per arm. A host paying for latency or tokens instead sets
- * `reasoningEffort` down to `medium`, which is what the provider defaults to.
+ * `medium` because nothing measured says otherwise, and every step above it
+ * bills an adopter latency and tokens. Twenty trials per arm gave the capability
+ * suite 16 of 20 at `high` against 12 of 20 here, which Fisher's exact test
+ * cannot separate from noise (p = 0.30), and the complex suite 21 of 21 against
+ * 19 of 21 (p = 0.49). Neither arm's failures were ones more thinking would fix.
+ * Separating an effect that size would take roughly a hundred trials per arm.
+ *
+ * It is named rather than left unset so a provider changing its own default
+ * cannot change how the agent behaves. `medium` is what `gpt-5.6` defaults to
+ * today, so this pins current behaviour rather than altering it.
  */
-export const DEFAULT_AGENT_REASONING_EFFORT: AgentReasoningEffort = "high";
+export const DEFAULT_AGENT_REASONING_EFFORT: AgentReasoningEffort = "medium";
 
 export type WfGraphAgentConfig = {
   /**
