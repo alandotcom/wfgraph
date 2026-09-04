@@ -22,7 +22,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
-import { ArrowLeft, ChevronDown, Circle, Clock3 } from "lucide-react";
+import {
+  ArrowLeft,
+  ChevronDown,
+  Circle,
+  Clock3,
+  RefreshCw,
+} from "lucide-react";
 import { Button } from "#src/components/ui/button";
 import {
   DropdownMenu,
@@ -57,6 +63,7 @@ import {
   type WorkflowRunGraphIdentity,
 } from "#src/lib/workflow-run-labels";
 import { currentWorkflowModeAtom } from "#src/lib/workflow-save-store";
+import { remoteDraftChangeAtom } from "#src/lib/workflow-graph-store";
 import {
   comparisonSessionAtom,
   isComparisonPendingAtom,
@@ -286,6 +293,8 @@ function PublishedModeControl({
 }
 
 function DraftStatus({ workflowId }: { workflowId?: string | undefined }) {
+  const remoteDraftChange = useAtomValue(remoteDraftChangeAtom);
+  const hasRemoteDraftChange = remoteDraftChange?.workflowId === workflowId;
   const { data: publication } = useQuery({
     ...workflowPublicationQueryOptions(workflowId ?? ""),
     enabled: Boolean(workflowId),
@@ -317,6 +326,24 @@ function DraftStatus({ workflowId }: { workflowId?: string | undefined }) {
         {/* Not gated on the payload, unlike the badges above: a canvas nobody
             has saved yet has the most to lose. It is owner-gated for itself. */}
         <WorkflowSaveStatus />
+        {hasRemoteDraftChange ? (
+          <>
+            <StripDivider />
+            <span className="shrink-0 whitespace-nowrap text-warning">
+              Draft changed elsewhere
+            </span>
+            <Button
+              className="h-6 shrink-0 text-warning hover:bg-warning/10 hover:text-warning"
+              onClick={() => window.location.reload()}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              <RefreshCw className="size-3" />
+              Reload agent edits
+            </Button>
+          </>
+        ) : null}
       </StatusItems>
       <WorkflowIssuesChip />
     </>

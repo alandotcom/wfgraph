@@ -219,6 +219,19 @@ export function makeSqliteWorkflowRepo(
     ),
     findById: (workflowId) =>
       store.read((database) => findWorkflow(database, workflowId)),
+    findDraftRevisionById: (workflowId) =>
+      store.read((database) =>
+        database
+          .select({
+            id: workflows.id,
+            draftRevision: workflows.draftRevision,
+          })
+          .from(workflows)
+          .where(eq(workflows.id, workflowId))
+          .limit(1)
+          .get()
+          .pipe(Effect.map((workflow) => workflow ?? null))
+      ),
     existsById: (workflowId) =>
       store.read((database) =>
         database

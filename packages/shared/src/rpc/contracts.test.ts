@@ -122,6 +122,26 @@ describe("workflow executions RPC output contract", () => {
   });
 });
 
+describe("workflow draft subscription RPC input contract", () => {
+  it("accepts the last locally loaded revision, including the initial zero", async () => {
+    const result = await validateInput(rpcContract.workflow.subscribeDraft, {
+      workflowId: "workflow_1",
+      afterDraftRevision: 0,
+    });
+
+    expect(result).toHaveProperty("value");
+  });
+
+  it("rejects a negative revision cursor", async () => {
+    const result = await validateInput(rpcContract.workflow.subscribeDraft, {
+      workflowId: "workflow_1",
+      afterDraftRevision: -1,
+    });
+
+    expect(result).toHaveProperty("issues");
+  });
+});
+
 describe("authorization metadata", () => {
   it("exports the operation metadata definition used by RPC adapters", () => {
     expect(wfGraphOperationMeta).toBeTypeOf("function");

@@ -261,6 +261,45 @@ describe("rpcStreamHandler", () => {
     assert.strictEqual(rejection.code, "NOT_FOUND");
   });
 
+  it("maps and records a failure produced after the stream starts", async () => {
+    await using runtime = createStubRuntime();
+    const requestEvent = createRequestEvent();
+    const handler = rpcStreamHandler(
+      (
+        _input: ReturnType<typeof createContext> & {
+          input: { workflowId: string };
+        }
+      ) =>
+        Effect.succeed(
+          Stream.fail(new NotFound({ error: "Workflow not found" }))
+        )
+    );
+    const handlerArgs = {
+      ...createContext(runtime),
+      input: { workflowId: "workflow_1" },
+      context: {
+        ...createContext(runtime).context,
+        requestEvent,
+      },
+    };
+    const iterator = handler(handlerArgs);
+
+    const rejection = await iterator.next().then(
+      () => undefined,
+      (error: unknown) => error
+    );
+
+    assert.instanceOf(rejection, ORPCError);
+    assert.strictEqual(rejection.code, "NOT_FOUND");
+    assert.deepStrictEqual(requestEvent.fields(), {
+      error: {
+        kind: "not_found",
+        message: "Workflow not found",
+        input: { workflowId: "workflow_1" },
+      },
+    });
+  });
+
   it("rejects the active next call when the running stream dies", async () => {
     await using runtime = createStubRuntime();
     const defect = new Error("stream defect");
@@ -494,6 +533,56 @@ describe("rpcStreamHandler", () => {
     await expect(handler(createContext(runtime)).next()).rejects.toBe(
       layerError
     );
+  });
+});
+
+describe("workflow draft subscription RPC", () => {
+  it("resumes after the last event id and emits the revision as SSE metadata", async () => {
+    let read = 0;
+    await using runtime = createStubRuntime({
+      workflowRepo: {
+        findDraftRevisionById: () => {
+          read += 1;
+          return Effect.succeed({
+            id: "workflow_1",
+            draftRevision: read === 1 ? 6 : 7,
+          });
+        },
+      },
+    });
+    const app = createApiApp({
+      basePath: "/api",
+      auth: resolveAuth(defineWfGraphAuth(() => WfGraphAccess.all)),
+      runtime,
+    });
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/rpc/workflow/subscribeDraft", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "last-event-id": "6",
+        },
+        body: JSON.stringify({
+          json: { workflowId: "workflow_1", afterDraftRevision: 1 },
+        }),
+      })
+    );
+    const reader = response.body?.getReader();
+    assert.isDefined(reader);
+    const decoder = new TextDecoder();
+    let body = "";
+
+    while (!body.includes("event: message")) {
+      const chunk = await reader.read();
+      assert.isFalse(chunk.done);
+      body += decoder.decode(chunk.value, { stream: true });
+    }
+    await reader.cancel();
+
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(body).toContain("id: 7");
+    expect(body).toContain('"draftRevision":7');
   });
 });
 

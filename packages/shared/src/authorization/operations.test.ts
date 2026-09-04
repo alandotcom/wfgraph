@@ -32,6 +32,7 @@ function returnKnownOperationId(id: WfGraphOperationId): WfGraphOperationId {
     case "integration.testCredentials":
     case "workflow.getAll":
     case "workflow.getById":
+    case "workflow.subscribeDraft":
     case "workflow.getVersionHistory":
     case "workflow.getVersionUsage":
     case "workflow.compareVersion":

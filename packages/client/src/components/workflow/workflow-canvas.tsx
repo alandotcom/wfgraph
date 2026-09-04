@@ -54,9 +54,9 @@ import {
 } from "#src/lib/workflow-comparison-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
-  agentGraphUpdateAtom,
   isGeneratingAtom,
   showMinimapAtom,
+  workflowGraphUpdateAtom,
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
 import {
@@ -93,7 +93,7 @@ import {
   keyboardFitViewOptions,
   lifecycleAnchorViewport,
   synchronizeCanvasGraph,
-  useFitAgentGraph,
+  useFitWorkflowGraph,
   useSynchronizedCanvas,
 } from "./workflow-canvas-synchronization";
 
@@ -151,7 +151,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const comparisonActive = comparison !== null;
   const workspaceView = useAtomValue(workflowWorkspaceViewAtom);
   const isGenerating = useAtomValue(isGeneratingAtom);
-  const agentGraphUpdate = useAtomValue(agentGraphUpdateAtom);
+  const workflowGraphUpdate = useAtomValue(workflowGraphUpdateAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
   // Below the mobile breakpoint the config rail is gone, so clicking a node has
@@ -276,8 +276,8 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       : null,
     fitGenerationRef,
   });
-  useFitAgentGraph({
-    update: agentGraphUpdate,
+  useFitWorkflowGraph({
+    update: workflowGraphUpdate,
     workflowId: currentWorkflowId,
     beforeFit: () => {
       fitGenerationRef.current += 1;

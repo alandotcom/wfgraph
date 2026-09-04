@@ -280,6 +280,7 @@ export function stubDatabase(
 const workflowRepoStubs: WorkflowRepo["Service"] = {
   listSummariesNewestFirst: refuse("listSummariesNewestFirst")(),
   findById: refuse("findById"),
+  findDraftRevisionById: refuse("findDraftRevisionById"),
   existsById: refuse("existsById"),
   hasWithName: refuse("hasWithName"),
   hasOtherWithName: refuse("hasOtherWithName"),

@@ -1,3 +1,4 @@
+import { asyncIteratorObject } from "@orpc/contract";
 import { Schema } from "effect";
 import { WfGraphOperations } from "#src/authorization/operations";
 import {
@@ -297,6 +298,16 @@ const workflowBulkLifecycleResultSchema = Schema.Struct({
   ),
 });
 
+const draftRevisionSchema = Schema.Finite.check(
+  Schema.isInt(),
+  Schema.isGreaterThan(0)
+);
+
+const workflowDraftRevisionSchema = Schema.Struct({
+  workflowId: idSchema,
+  draftRevision: draftRevisionSchema,
+});
+
 export const workflowContract = {
   getAll: route("GET", "/workflows", WfGraphOperations.workflowGetAll)
     .input(noInput)
@@ -308,6 +319,23 @@ export const workflowContract = {
   )
     .input(contractSchema(Schema.Struct({ workflowId: idSchema })))
     .output(workflowApiPayload),
+  subscribeDraft: route(
+    "GET",
+    "/workflows/{workflowId}/draft-subscription",
+    WfGraphOperations.workflowSubscribeDraft
+  )
+    .input(
+      contractSchema(
+        Schema.Struct({
+          workflowId: idSchema,
+          afterDraftRevision: Schema.Finite.check(
+            Schema.isInt(),
+            Schema.isGreaterThanOrEqualTo(0)
+          ),
+        })
+      )
+    )
+    .output(asyncIteratorObject(contractSchema(workflowDraftRevisionSchema))),
   create: route("POST", "/workflows/create", WfGraphOperations.workflowCreate)
     .input(
       contractSchema(

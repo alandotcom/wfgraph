@@ -60,3 +60,20 @@ automatically retry the operation when the result is unknown.
 
 The canonical tool schemas do not expose node positions. Workflow Graph applies
 the same layout to built-in agent and MCP writes before persistence.
+
+## Amendment: open editors follow persisted draft revisions
+
+Date: 2026-09-04
+
+The editor added an authenticated server-sent events subscription while a
+workflow was open. The serving replica polled the persisted draft revision and
+emitted only newer revisions. Each event carried the revision as its event ID,
+so a reconnect resumed after the last received revision. When the persisted
+revision advanced, a clean Draft canvas loaded the saved graph and fitted the
+updated workflow into view. The database remained the cross-replica source of
+truth, and the MCP endpoint remained stateless.
+
+The editor preserved unsaved browser edits and active built-in agent turns. If
+an external write advanced the persisted revision during local work, the editor
+reported the conflict and required the Workflow Builder to reload the persisted
+draft explicitly.

@@ -9,7 +9,7 @@ import {
   lifecycleAnchorViewport,
   synchronizeCanvasGraph,
   synchronizedLifecycleAnchor,
-  useFitAgentGraph,
+  useFitWorkflowGraph,
   useSynchronizedCanvas,
 } from "#src/components/workflow/workflow-canvas-synchronization";
 import { canvasInteractionState } from "#src/components/workflow/workflow-canvas";
@@ -381,7 +381,7 @@ describe("useFitAgentGraph", () => {
       const fitGenerationRef = { current: 0 };
       const { rerender } = renderHook(
         ({ update, workflowId }) =>
-          useFitAgentGraph({
+          useFitWorkflowGraph({
             update,
             workflowId,
             beforeFit: () => {

@@ -12,34 +12,16 @@ import {
 } from "#src/lib/copy-selection";
 import { repairNodeIntegrations } from "#src/lib/node-integration";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import type { SavedWorkflow } from "#src/lib/rpc-client";
-import {
-  currentWorkflowIdAtom,
-  recordLoadedDraftRevisionAtom,
-  currentWorkflowModeAtom,
-  lastSavedAtAtom,
-  currentWorkflowNameAtom,
-  currentWorkflowVisibilityAtom,
-  hasUnsavedChangesAtom,
-  isSavingAtom,
-  successfulSaveGenerationAtom,
-  workflowNotFoundAtom,
-  workflowLoadErrorAtom,
-} from "#src/lib/workflow-save-store";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   activeAgentTurnIdAtom,
-  agentGraphUpdateAtom,
-  isGeneratingAtom,
-  selectedExecutionIdAtom,
-  workflowWorkspaceViewAtom,
+  workflowGraphUpdateAtom,
 } from "#src/lib/workflow-ui-store";
-import { clearPublicationReviewAtom } from "#src/lib/workflow-publication-review-store";
 import {
   formatTemplateToken,
   mapTemplateTokens,
 } from "@wfgraph/shared/graph/node-references";
 import { layoutWorkflowNodes } from "#src/components/workflow/workflow-layout";
-import { NO_ISSUES, workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import {
   dissolveUndersizedGroups,
   dropOrphanedEdges,
@@ -58,7 +40,6 @@ import {
 import {
   draftEditable,
   edgesStateAtom,
-  executionOverlayGraphAtom,
   futureAtom,
   historyAtom,
   nodesStateAtom,
@@ -76,7 +57,10 @@ import type {
   WorkflowNode,
   WorkflowNodeData,
 } from "#src/lib/workflow-graph-types";
-import { resetNodeStatusesAtom as resetPresentationNodeStatusesAtom } from "#src/lib/workflow-graph-presentation-store";
+import {
+  newlyCreatedNodeIdAtom,
+  workflowDragActiveAtom,
+} from "#src/lib/workflow-graph-session-store";
 
 export {
   executionOverlayGraphAtom,
@@ -99,6 +83,18 @@ export {
   resetNodeStatusesAtom,
   setNodeStatusesAtom,
 } from "#src/lib/workflow-graph-presentation-store";
+export {
+  endWorkflowEditorLifetimeAtom,
+  hydrateWorkflowAtom,
+  installRemoteWorkflowAtom,
+  installRestoredWorkflowAtom,
+  loadWorkflowGraphAtom,
+  newlyCreatedNodeIdAtom,
+  observedRemoteDraftRevisionAtom,
+  recordObservedRemoteDraftRevisionAtom,
+  remoteDraftChangeAtom,
+  remoteWorkflowUpdateDispositionAtom,
+} from "#src/lib/workflow-graph-session-store";
 
 /**
  * The graph the editor is showing, and every operation that may change it.
@@ -115,172 +111,12 @@ export {
 export const nodesAtom = atom((get) => get(nodesStateAtom));
 export const edgesAtom = atom((get) => get(edgesStateAtom));
 
-// Tracks a just-created node so the config panel can focus its search input.
-// Cleared once the node gets an action type or loses selection.
-export const newlyCreatedNodeIdAtom = atom<string | null>(null);
-
 type CopiedClipboard = {
   selection: CopiedSelection;
   pasteCount: number;
 };
 
 const copiedSelectionAtom = atom<CopiedClipboard | null>(null);
-
-// Whether a node drag is mid-flight, so the whole drag records one undo step
-// rather than one per frame.
-const isDraggingAtom = atom(false);
-
-/**
- * Replace the graph with what came back from the server.
- *
- * Clearing history is the point: undo history surviving a navigation between
- * workflows would let pressing undo after switching write the previous
- * workflow's graph into the current one, which autosave would then persist
- * under the wrong id.
- *
- * Nodes are stored rest → frames → members so `displayNodesAtom` can return
- * this array on a canvas read instead of reallocating through
- * `orderGroupParentsFirst` on every drag frame.
- */
-export const loadWorkflowGraphAtom = atom(
-  null,
-  (get, set, graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }) => {
-    const workflowId = get(currentWorkflowIdAtom);
-    if (workflowId) {
-      set(clearWorkflowComparisonAtom, workflowId);
-    }
-    set(nodesStateAtom, orderGroupParentsFirst(graph.nodes));
-    set(edgesStateAtom, graph.edges);
-    set(historyAtom, []);
-    set(futureAtom, []);
-    set(selectedNodeAtom, null);
-    set(selectedEdgeAtom, null);
-    set(newlyCreatedNodeIdAtom, null);
-    set(hasUnsavedChangesAtom, false);
-    // Issues name the node ids of the graph being replaced. The collector is
-    // debounced, so leaving them would let the toolbar chip count the previous
-    // workflow's faults against this one until the next settle, and the badges
-    // it claims to agree with would already be gone.
-    set(workflowIssuesAtom, NO_ISSUES);
-  }
-);
-
-/**
- * Put a workflow on screen: the graph, its identity, and who may edit it.
- *
- * Called from the route's loader, before the editor renders. A loader avoids
- * fetching from an effect in the editor and writing these one at a time, which
- * would need a ref comparing workflow ids to discard a response that arrived
- * after the user had already navigated elsewhere: the loader runs before the
- * component and the router cancels it on navigation.
- */
-export const hydrateWorkflowAtom = atom(
-  null,
-  (get, set, workflow: SavedWorkflow & { saveGeneration?: number }) => {
-    // A loader can hold an older server snapshot while a save completes. The
-    // save clears both guards used below, so compare the loader's start
-    // generation before changing any editor state.
-    if (
-      workflow.saveGeneration !== undefined &&
-      (get(successfulSaveGenerationAtom).get(workflow.id) ?? 0) >
-        workflow.saveGeneration
-    ) {
-      return;
-    }
-
-    // Hydration starts a new editor lifetime even when the route resolves the
-    // same workflow again. A comparison snapshot belongs to the lifetime that
-    // requested it and must not lock the newly loaded draft.
-    set(clearWorkflowComparisonAtom, workflow.id);
-    set(clearPublicationReviewAtom);
-    // Clearing selection stops a node from arriving pre-selected in a
-    // workflow the user has just opened.
-    const nodes = workflow.nodes.map((node) => ({
-      ...node,
-      selected: false,
-    }));
-
-    // Reopening the workflow already on screen must not overwrite edits the
-    // server has not stored. A failed save leaves the dirty flag raised on
-    // purpose, so without this a later route re-run installs the server's older
-    // graph and lowers the flag, dropping the edit and the failure notice with
-    // it. Route re-runs are routine: selecting a run writes `executionId` into
-    // the search and leaving Runs clears it, each one refetching the workflow.
-    // The same guard covers a read that overtakes a write still in flight,
-    // where the reverted graph stays on screen while the write lands.
-    //
-    // A different workflow always replaces the graph, and so does this one once
-    // the queue has drained and the two agree.
-    const clientIsAheadOfServer =
-      get(currentWorkflowIdAtom) === workflow.id &&
-      (get(hasUnsavedChangesAtom) || get(isSavingAtom));
-
-    // Also clears undo history, so undo cannot reach back past the switch and
-    // write the previous workflow's graph into this one.
-    if (!clientIsAheadOfServer) {
-      set(loadWorkflowGraphAtom, { nodes, edges: workflow.edges });
-      set(recordLoadedDraftRevisionAtom, {
-        workflowId: workflow.id,
-        draftRevision: workflow.draftRevision,
-      });
-    }
-    // Overlay, selection and statuses belong to the open run. Switching
-    // workflows has to drop them — a reused node id would otherwise keep the
-    // previous run's badges. Reloading the same workflow (dashboard round-trip,
-    // stale-while-revalidate) must not: wiping them is how a waiting canvas
-    // lost its animation while the Runs panel still showed the run.
-    if (get(currentWorkflowIdAtom) !== workflow.id) {
-      const preserveDeepLinkedRun =
-        get(workflowWorkspaceViewAtom) === "runs" &&
-        get(selectedExecutionIdAtom) !== null;
-      set(resetPresentationNodeStatusesAtom);
-      set(executionOverlayGraphAtom, null);
-      set(selectedExecutionIdAtom, null);
-      set(workflowWorkspaceViewAtom, preserveDeepLinkedRun ? "runs" : "draft");
-    }
-    set(activeAgentTurnIdAtom, null);
-    set(isGeneratingAtom, false);
-    set(currentWorkflowIdAtom, workflow.id);
-    set(currentWorkflowNameAtom, workflow.name);
-    // The clock reading belongs to the workflow just left, so the strip would
-    // otherwise open this one on a save that happened to a different graph.
-    set(lastSavedAtAtom, null);
-    set(currentWorkflowVisibilityAtom, workflow.visibility ?? "private");
-    set(currentWorkflowModeAtom, workflow.mode ?? "live");
-    set(workflowNotFoundAtom, false);
-    set(workflowLoadErrorAtom, null);
-  }
-);
-
-/**
- * Install a restored workflow only while the editor still shows that workflow.
- * A restore request can finish after navigation, so this guard owns the graph
- * write and comparison cleanup together rather than leaving each caller to race.
- */
-export const installRestoredWorkflowAtom = atom(
-  null,
-  (
-    get,
-    set,
-    input: { expectedWorkflowId: string; workflow: SavedWorkflow }
-  ) => {
-    if (
-      get(currentWorkflowIdAtom) !== input.expectedWorkflowId ||
-      input.workflow.id !== input.expectedWorkflowId
-    ) {
-      return false;
-    }
-    set(loadWorkflowGraphAtom, {
-      nodes: input.workflow.nodes,
-      edges: input.workflow.edges,
-    });
-    set(recordLoadedDraftRevisionAtom, {
-      workflowId: input.workflow.id,
-      draftRevision: input.workflow.draftRevision,
-    });
-    return true;
-  }
-);
 
 /**
  * Return from a comparison without making selection a graph edit. A historical
@@ -427,15 +263,15 @@ export const onNodesChangeAtom = atom(
     // starts emitting changes, because it splits one deletion into an edge
     // batch and a node batch. Snapshotting here would record two undo steps
     // for one delete, and a single undo would restore only half of it.
-    if (isDragFrame && !get(isDraggingAtom)) {
+    if (isDragFrame && !get(workflowDragActiveAtom)) {
       // A drag arrives as a stream of frames. Only the first still has the
       // pre-drag positions worth snapshotting.
       pushHistory(get, set);
-      set(isDraggingAtom, true);
+      set(workflowDragActiveAtom, true);
     }
 
     if (isDragSettled) {
-      set(isDraggingAtom, false);
+      set(workflowDragActiveAtom, false);
     }
 
     const newNodes = dissolveUndersizedGroups(
@@ -722,9 +558,9 @@ export const applyAgentGraphAtom = atom(
     }
     set(nodesStateAtom, orderGroupParentsFirst(reconciled));
     set(edgesStateAtom, input.edges);
-    set(agentGraphUpdateAtom, {
+    set(workflowGraphUpdateAtom, {
       workflowId: input.workflowId,
-      revision: (get(agentGraphUpdateAtom)?.revision ?? 0) + 1,
+      revision: (get(workflowGraphUpdateAtom)?.revision ?? 0) + 1,
     });
     requestGraphSave(get, set, { immediate: true });
     return true;

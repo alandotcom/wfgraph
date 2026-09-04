@@ -48,6 +48,7 @@ import {
   orpcQuery,
   refreshRunHistory,
   refreshWorkflowList,
+  workflowListQueryOptions,
 } from "#src/lib/rpc-query";
 import type { WorkflowMode } from "#src/lib/workflow-graph-types";
 import { publishedModeWord } from "#src/lib/workflow-run-labels";
@@ -134,11 +135,9 @@ export default function WorkflowsPage() {
   const { canOpenWorkflow, canOpenGlobalRuns } = readDashboardCapabilities();
 
   const { data: workflows = [], isPending: isLoadingWorkflows } = useQuery({
-    ...orpcQuery.workflow.getAll.queryOptions({
-      input: {},
-      select: toSortedWorkflows,
-      meta: { errorMessage: "Failed to load workflows" },
-    }),
+    ...workflowListQueryOptions(),
+    select: toSortedWorkflows,
+    meta: { errorMessage: "Failed to load workflows" },
     enabled: canReadWorkflows,
   });
 

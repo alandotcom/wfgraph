@@ -30,7 +30,10 @@ import {
   rpcUrl,
   type WorkflowRunRpcFixture,
 } from "#src/lib/rpc-fetch-test-support";
-import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
+import {
+  canvasEditingLockedAtom,
+  recordObservedRemoteDraftRevisionAtom,
+} from "#src/lib/workflow-graph-store";
 import {
   currentWorkflowIdAtom,
   currentWorkflowModeAtom,
@@ -263,6 +266,22 @@ describe("WorkflowStatusStrip", () => {
     expect(view.queryByText("Test mode")).toBeNull();
     expect(view.getByText("Saved")).toBeTruthy();
     expect(view.queryByText("Back to draft")).toBeNull();
+  });
+
+  it("offers to reload when a newer persisted draft conflicts with local work", async () => {
+    const { view, store } = await renderStrip({ hasUnsavedChanges: true });
+
+    act(() =>
+      store.set(recordObservedRemoteDraftRevisionAtom, {
+        workflowId: WORKFLOW_ID,
+        draftRevision: 2,
+      })
+    );
+
+    expect(view.getByText("Draft changed elsewhere")).toBeTruthy();
+    expect(
+      view.getByRole("button", { name: "Reload agent edits" })
+    ).toBeTruthy();
   });
 
   it("keeps execution mode out of the status row", async () => {

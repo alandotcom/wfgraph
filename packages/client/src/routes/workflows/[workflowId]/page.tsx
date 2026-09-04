@@ -6,16 +6,18 @@ import { AgentPanel } from "#src/components/agent/agent-panel";
 import { Button } from "#src/components/ui/button";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
 import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
+import { WorkflowDraftSync } from "#src/components/workflow/workflow-draft-sync";
 import { WorkflowSidebarPanel } from "#src/components/workflow/workflow-sidebar-panel";
 import { WorkflowStatusStrip } from "#src/components/workflow/workflow-status-strip";
 import { WorkflowToolbar } from "#src/components/workflow/workflow-toolbar";
-import { useAfterCommit } from "#src/hooks/effects";
+import { useAfterCommit, useUnmountCleanup } from "#src/hooks/effects";
 import { isAgentEnabled } from "#src/lib/extensions";
 import { isRunInProgress } from "#src/lib/execution-logs";
 import { orpcQuery } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import {
+  endWorkflowEditorLifetimeAtom,
   isExecutionOverlayActiveAtom,
   nodesAtom,
   setNodeStatusesAtom,
@@ -35,6 +37,8 @@ import {
 const RUN_STATUS_POLL_MS = 500;
 
 const WorkflowEditor = () => {
+  const endWorkflowEditorLifetime = useSetAtom(endWorkflowEditorLifetimeAtom);
+  useUnmountCleanup(() => endWorkflowEditorLifetime());
   const lastSaveError = useAtomValue(lastSaveErrorAtom);
   const nodes = useAtomValue(nodesAtom);
   const [currentWorkflowId] = useAtom(currentWorkflowIdAtom);
@@ -189,6 +193,10 @@ const WorkflowEditor = () => {
                 </Button>
               </div>
             </div>
+          )}
+
+          {currentWorkflowId && (
+            <WorkflowDraftSync workflowId={currentWorkflowId} />
           )}
 
           <WorkflowToolbar workflowId={currentWorkflowId ?? undefined} />

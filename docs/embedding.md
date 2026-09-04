@@ -228,7 +228,7 @@ The following table maps every operation ID to its permission:
 
 | Permission         | Operation IDs                                                                                                                                                                                                 |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `workflow.read`    | `workflow.getAll`, `workflow.getById`, `workflow.getVersionHistory`, `workflow.getVersionUsage`, `workflow.compareVersion`, `workflow.getCurrent`, `workflow.getVersionGraph`                                 |
+| `workflow.read`    | `workflow.getAll`, `workflow.getById`, `workflow.subscribeDraft`, `workflow.getVersionHistory`, `workflow.getVersionUsage`, `workflow.compareVersion`, `workflow.getCurrent`, `workflow.getVersionGraph`      |
 | `workflow.write`   | `workflow.create`, `workflow.update`, `workflow.delete`, `workflow.duplicate`, `workflow.publish`, `workflow.restoreVersion`, `workflow.saveCurrent`, `workflow.bulkLifecycle`                                |
 | `run.read`         | `workflow.getExecutions`, `workflow.getExecutionsGlobal`, `workflow.getExecutionLogs`, `workflow.getExecutionEvents`, `workflow.getExecutionStatus`                                                           |
 | `run.manage`       | `workflow.execute`, `workflow.deleteExecutions`, `workflow.resumeWait`, `workflow.cancelExecution`                                                                                                            |
@@ -355,8 +355,20 @@ return or decrypt integration credentials.
 The MCP authoring surface supports draft creation and existing-draft edits. The
 unavailable operations are duplicate, restore, delete, run, and publish. MCP
 writes change the editable draft and leave the published workflow version
-unchanged. Reload an open editor to see an external MCP write. The endpoint does
-not send live external-edit updates to the editor.
+unchanged.
+
+An open editor subscribes to persisted draft revisions through an authenticated
+server-sent events (SSE) stream. The server checks the persisted revision twice
+per second and emits an event only when the revision increases. After an MCP
+write succeeds, a clean Draft canvas loads the saved graph and fits it into
+view. The subscription reconnects from the last received revision after a
+connection failure. A workflow created through MCP appears in the dashboard and
+workflow switcher within one second.
+
+If the browser has unsaved edits when the persisted revision changes, the
+editor preserves those edits and shows **Draft changed elsewhere**. Select
+**Reload agent edits** to discard the browser edits and load the persisted
+draft.
 
 ## Built-in integrations
 

@@ -11,6 +11,7 @@ import {
   refreshWorkflowVersionHistory,
   refreshWorkflowList,
   selectPublicationState,
+  workflowListQueryOptions,
 } from "./rpc-query";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
@@ -143,6 +144,13 @@ function isInvalidated(queryKey: readonly unknown[]): boolean {
 }
 
 describe("refreshWorkflowList", () => {
+  it("keeps workflow discovery live while a list is visible", () => {
+    expect(workflowListQueryOptions()).toMatchObject({
+      refetchInterval: 1_000,
+      refetchIntervalInBackground: false,
+    });
+  });
+
   it("marks the workflow list stale", async () => {
     await refreshWorkflowList(queryClient);
 

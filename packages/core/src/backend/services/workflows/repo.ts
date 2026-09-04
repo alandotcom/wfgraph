@@ -35,6 +35,8 @@ export type WorkflowDraftWriteResult =
   | { readonly status: "conflict"; readonly currentDraftRevision: number }
   | { readonly status: "not_found" };
 
+export type WorkflowDraftRevisionRow = Pick<Workflow, "id" | "draftRevision">;
+
 /** Every column of `workflows` but the graph. */
 const workflowSummaryColumns = {
   id: workflows.id,
@@ -135,6 +137,10 @@ export class WorkflowRepo extends Context.Service<
     readonly findById: (
       workflowId: string
     ) => Effect.Effect<Workflow | null, DatabaseError>;
+    /** The persisted draft revision, selected without the graph column. */
+    readonly findDraftRevisionById: (
+      workflowId: string
+    ) => Effect.Effect<WorkflowDraftRevisionRow | null, DatabaseError>;
     /**
      * Whether the workflow is there at all. Separate from `findById` because the
      * paths that only need to answer "not found" have no use for a graph column
@@ -454,6 +460,20 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
             const workflow = await db.query.workflows.findFirst({
               where: { id: workflowId },
             });
+
+            return workflow ?? null;
+          }),
+
+        findDraftRevisionById: (workflowId) =>
+          database.query(async (db) => {
+            const [workflow] = await db
+              .select({
+                id: workflows.id,
+                draftRevision: workflows.draftRevision,
+              })
+              .from(workflows)
+              .where(eq(workflows.id, workflowId))
+              .limit(1);
 
             return workflow ?? null;
           }),
