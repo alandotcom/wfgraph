@@ -49,8 +49,13 @@ export const configOptionsQueryOptions = (input: {
  * The procedure answers summaries, so there is no graph to deserialise and no
  * select to memoise: both screens draw names.
  */
-export const workflowListQueryOptions = () =>
-  orpcQuery.workflow.getAll.queryOptions({ input: {} });
+const WORKFLOW_LIST_POLL_MS = 1_000;
+
+export const workflowListQueryOptions = () => ({
+  ...orpcQuery.workflow.getAll.queryOptions({ input: {} }),
+  refetchInterval: WORKFLOW_LIST_POLL_MS,
+  refetchIntervalInBackground: false,
+});
 
 /** Module-level select: TanStack memoises by identity. */
 export function selectPublicationState(payload: WorkflowApiPayload): {

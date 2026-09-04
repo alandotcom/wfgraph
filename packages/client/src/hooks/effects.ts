@@ -48,14 +48,109 @@ import {
  * once the released React handles memoised components, and only with
  * effects.test.tsx passing on the exact installed version.
  */
-function useLatestEvent<Args extends unknown[]>(
-  fn: (...args: Args) => void
-): (...args: Args) => void {
+function useLatestEvent<Args extends unknown[], Result>(
+  fn: (...args: Args) => Result
+): (...args: Args) => Result {
   const latest = useRef(fn);
   useInsertionEffect(() => {
     latest.current = fn;
   });
   return useCallback((...args: Args) => latest.current(...args), []);
+}
+
+type AbortableSubscriptionInput<T> = {
+  /** Recreate the subscription when this value changes. */
+  key: unknown;
+  /** Skip the subscription while false. Defaults to true. */
+  enabled?: boolean;
+  /** Open the external stream owned by the mounted component. */
+  subscribe: (signal: AbortSignal) => Promise<AsyncIterable<T>>;
+  /** Receive each value while the subscription remains active. */
+  onValue: (value: T) => void;
+  /** Handle a terminal error that did not come from cancellation. */
+  onError: (error: unknown) => void;
+};
+
+/** Own an async subscription and close it when its key changes or it unmounts. */
+export function useAbortableSubscription<T>(
+  input: AbortableSubscriptionInput<T>
+): void {
+  const subscribe = useLatestEvent(input.subscribe);
+  const onValue = useLatestEvent(input.onValue);
+  const onError = useLatestEvent(input.onError);
+  const enabled = input.enabled ?? true;
+
+  useEffect(() => {
+    if (!enabled) {
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    let iterator: AsyncIterator<T> | undefined;
+
+    void (async () => {
+      try {
+        const iterable = await subscribe(controller.signal);
+        iterator = iterable[Symbol.asyncIterator]();
+        if (controller.signal.aborted) {
+          await iterator.return?.();
+          return;
+        }
+
+        while (!controller.signal.aborted) {
+          // Async iterator reads are ordered and cannot run in parallel.
+          // eslint-disable-next-line no-await-in-loop
+          const result = await iterator.next();
+          if (controller.signal.aborted || result.done) {
+            return;
+          }
+          onValue(result.value);
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          onError(error);
+        }
+      }
+    })();
+
+    return () => {
+      controller.abort();
+      void Promise.resolve(iterator?.return?.()).catch(() => undefined);
+    };
+  }, [input.key, enabled, subscribe, onValue, onError]);
+}
+
+type AbortableTaskInput = {
+  /** Restart the task when this value changes. */
+  key: unknown;
+  /** Skip the task while false. Defaults to true. */
+  enabled?: boolean;
+  /** Run work owned by the current component state. */
+  run: (signal: AbortSignal) => Promise<void>;
+  /** Handle a failure that did not come from cancellation. */
+  onError: (error: unknown) => void;
+};
+
+/** Run one asynchronous task until its key changes or its owner unmounts. */
+export function useAbortableTask(input: AbortableTaskInput): void {
+  const run = useLatestEvent(input.run);
+  const onError = useLatestEvent(input.onError);
+  const enabled = input.enabled ?? true;
+
+  useEffect(() => {
+    if (!enabled) {
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    void run(controller.signal).catch((error: unknown) => {
+      if (!controller.signal.aborted) {
+        onError(error);
+      }
+    });
+
+    return () => controller.abort();
+  }, [input.key, enabled, run, onError]);
 }
 
 /** Dispose an owned external operation when its component unmounts. */

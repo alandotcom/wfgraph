@@ -1,4 +1,9 @@
-import { AsyncIteratorClass, implement, ORPCError } from "@orpc/server";
+import {
+  AsyncIteratorClass,
+  implement,
+  ORPCError,
+  withEventMeta,
+} from "@orpc/server";
 import { Cause, Effect, Exit, Fiber, Schema, Stream } from "effect";
 import type { ServiceFailure } from "#src/backend/lib/effect/failures";
 import { getAppLogger } from "#src/backend/lib/logger";
@@ -30,6 +35,7 @@ import {
   deleteWorkflow,
   getWorkflow,
   patchWorkflow,
+  streamWorkflowDraftRevisions,
 } from "#src/backend/services/workflows/workflow";
 import { postWorkflowDuplicate } from "#src/backend/services/workflows/duplicate";
 import { publishWorkflow } from "#src/backend/services/workflows/publish";
@@ -312,7 +318,11 @@ export function rpcStreamHandler<
 >(
   handler: (
     ...args: THandlerArgs
-  ) => Effect.Effect<Stream.Stream<TOutput>, TFailure, WfGraphServices>
+  ) => Effect.Effect<
+    Stream.Stream<TOutput, TFailure, WfGraphServices>,
+    TFailure,
+    WfGraphServices
+  >
 ): (...args: THandlerArgs) => AsyncIteratorClass<TOutput, void> {
   return (...args) => {
     const mailbox = new RpcStreamMailbox<TOutput>();
@@ -327,6 +337,7 @@ export function rpcStreamHandler<
 
       fiber = args[0].context.runtime.runFork(
         handler(...args).pipe(
+          Effect.flatMap((stream) => Stream.runForEach(stream, mailbox.offer)),
           Effect.tapError((failure) =>
             Effect.sync(() => {
               recordRpcFailure(
@@ -341,8 +352,7 @@ export function rpcStreamHandler<
               );
             })
           ),
-          Effect.mapError(toOrpcError),
-          Effect.flatMap((stream) => Stream.runForEach(stream, mailbox.offer))
+          Effect.mapError(toOrpcError)
         ),
         { signal }
       );
@@ -488,6 +498,27 @@ export const rpcRouter = rpc.router({
     getAll: rpc.workflow.getAll.handler(rpcEffectHandler(() => getWorkflows())),
     getById: rpc.workflow.getById.handler(
       rpcEffectHandler(({ input }) => getWorkflow(input.workflowId))
+    ),
+    subscribeDraft: rpc.workflow.subscribeDraft.handler(
+      rpcStreamHandler(({ input, lastEventId }) =>
+        streamWorkflowDraftRevisions({
+          workflowId: input.workflowId,
+          afterDraftRevision: Math.max(
+            input.afterDraftRevision,
+            Number.isSafeInteger(Number(lastEventId))
+              ? Number(lastEventId)
+              : input.afterDraftRevision
+          ),
+        }).pipe(
+          Effect.map((stream) =>
+            stream.pipe(
+              Stream.map((event) =>
+                withEventMeta(event, { id: String(event.draftRevision) })
+              )
+            )
+          )
+        )
+      )
     ),
     create: rpc.workflow.create.handler(
       rpcEffectHandler(({ input }) =>

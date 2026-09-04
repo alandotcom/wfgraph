@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { act, cleanup, render } from "@testing-library/react";
 import { memo } from "react";
-import { useAfterDelay, useAfterPaint, useBeforePaint } from "./effects";
+import {
+  useAbortableSubscription,
+  useAbortableTask,
+  useAfterDelay,
+  useAfterPaint,
+  useBeforePaint,
+} from "./effects";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -96,5 +102,152 @@ describe("useAfterDelay", () => {
 
     act(() => vi.advanceTimersByTime(1));
     expect(seen).toEqual(["second"]);
+  });
+});
+
+describe("useAbortableSubscription", () => {
+  test("delivers values and aborts the owned iterator on unmount", async () => {
+    const seen: number[] = [];
+    const subscribed = Promise.withResolvers<void>();
+    const returned = Promise.withResolvers<void>();
+    const pending = Promise.withResolvers<IteratorResult<number, void>>();
+    let signal: AbortSignal | undefined;
+    let nextCall = 0;
+
+    function Subscriber() {
+      useAbortableSubscription({
+        key: "draft",
+        subscribe: async (nextSignal) => {
+          signal = nextSignal;
+          subscribed.resolve();
+          const iterator: AsyncIterableIterator<number> = {
+            [Symbol.asyncIterator]() {
+              return iterator;
+            },
+            next: async () => {
+              nextCall += 1;
+              return nextCall === 1
+                ? { done: false as const, value: 2 }
+                : pending.promise;
+            },
+            return: async () => {
+              returned.resolve();
+              return { done: true as const, value: undefined };
+            },
+          };
+          return iterator;
+        },
+        onValue: (value) => {
+          seen.push(value);
+        },
+        onError: (error) => {
+          throw error;
+        },
+      });
+      return null;
+    }
+
+    const view = render(<Subscriber />);
+    await subscribed.promise;
+    await vi.waitFor(() => expect(seen).toEqual([2]));
+
+    view.unmount();
+
+    await returned.promise;
+    expect(signal?.aborted).toBe(true);
+  });
+
+  test("closes an iterator acquired after its owner unmounts", async () => {
+    const subscription = Promise.withResolvers<AsyncIterableIterator<number>>();
+    const returned = Promise.withResolvers<void>();
+    const iterator: AsyncIterableIterator<number> = {
+      [Symbol.asyncIterator]() {
+        return iterator;
+      },
+      next: () => new Promise<IteratorResult<number>>(() => undefined),
+      return: async () => {
+        returned.resolve();
+        return { done: true as const, value: undefined };
+      },
+    };
+
+    function Subscriber() {
+      useAbortableSubscription({
+        key: "draft",
+        subscribe: () => subscription.promise,
+        onValue: () => undefined,
+        onError: (error) => {
+          throw error;
+        },
+      });
+      return null;
+    }
+
+    const view = render(<Subscriber />);
+    view.unmount();
+    subscription.resolve(iterator);
+
+    await returned.promise;
+  });
+
+  test("does not deliver a pending value after its owner unmounts", async () => {
+    const pending = Promise.withResolvers<IteratorResult<number, void>>();
+    const seen: number[] = [];
+    const iterator: AsyncIterableIterator<number> = {
+      [Symbol.asyncIterator]() {
+        return iterator;
+      },
+      next: () => pending.promise,
+      return: async () => ({ done: true as const, value: undefined }),
+    };
+
+    function Subscriber() {
+      useAbortableSubscription({
+        key: "draft",
+        subscribe: async () => iterator,
+        onValue: (value) => seen.push(value),
+        onError: (error) => {
+          throw error;
+        },
+      });
+      return null;
+    }
+
+    const view = render(<Subscriber />);
+    await Promise.resolve();
+    view.unmount();
+    pending.resolve({ done: false, value: 2 });
+    await Promise.resolve();
+
+    expect(seen).toEqual([]);
+  });
+});
+
+describe("useAbortableTask", () => {
+  test("aborts the previous task when its key changes", async () => {
+    const signals: AbortSignal[] = [];
+
+    function Task({ revision }: { revision: number }) {
+      useAbortableTask({
+        key: revision,
+        run: async (signal) => {
+          signals.push(signal);
+          await new Promise<void>(() => undefined);
+        },
+        onError: (error) => {
+          throw error;
+        },
+      });
+      return null;
+    }
+
+    const view = render(<Task revision={1} />);
+    await vi.waitFor(() => expect(signals).toHaveLength(1));
+
+    view.rerender(<Task revision={2} />);
+    await vi.waitFor(() => expect(signals).toHaveLength(2));
+
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[1]?.aborted).toBe(false);
   });
 });

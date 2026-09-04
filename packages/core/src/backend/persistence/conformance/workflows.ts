@@ -69,6 +69,9 @@ export function describeWorkflowConformance({
             updated,
             stale,
             metadata,
+            revision: yield* workflows.findDraftRevisionById(inserted.id),
+            missingRevision:
+              yield* workflows.findDraftRevisionById("wf_missing"),
             stored: yield* workflows.findById(inserted.id),
           };
         })
@@ -84,6 +87,11 @@ export function describeWorkflowConformance({
         currentDraftRevision: 2,
       });
       expect(result.metadata?.draftRevision).toBe(2);
+      expect(result.revision).toEqual({
+        id: "wf_revision",
+        draftRevision: 2,
+      });
+      expect(result.missingRevision).toBeNull();
       expect(result.stored).toMatchObject({
         draftRevision: 2,
         name: "Winner",

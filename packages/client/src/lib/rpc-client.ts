@@ -4,6 +4,10 @@ import {
   ORPCError,
 } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
+import {
+  RetryLinkPlugin,
+  type RetryLinkPluginContext,
+} from "@orpc/client/plugins";
 import type { RouterContractClient } from "@orpc/contract";
 import { getBasePath } from "#src/lib/base-path";
 import type { RpcContract } from "@wfgraph/shared/rpc/contracts";
@@ -189,10 +193,13 @@ const ORPC_CODE_TO_STATUS: Record<string, number | undefined> =
 
 const rpcEndpoint = splitRpcUrl(resolveRpcUrl());
 
-const link = new RPCLink({
+type RpcClientContext = RetryLinkPluginContext;
+
+const link = new RPCLink<RpcClientContext>({
   origin: rpcEndpoint.origin,
   url: rpcEndpoint.pathWithQuery,
   fetch: (url, init) => globalThis.fetch(url, init),
+  plugins: [new RetryLinkPlugin()],
   interceptors: [
     async (options) => {
       try {
@@ -224,7 +231,8 @@ const link = new RPCLink({
   ],
 });
 
-export const rpc: RouterContractClient<RpcContract> = createORPCClient(link);
+export const rpc: RouterContractClient<RpcContract, RpcClientContext> =
+  createORPCClient(link);
 
 type RpcOutput<T> = T extends (...args: never[]) => Promise<infer TResult>
   ? TResult

@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Duration, Effect, Stream } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import {
@@ -84,6 +84,51 @@ export const getWorkflow = Effect.fn("getWorkflow")(
       )
     )
 );
+
+/** Reads the persisted revision without loading the workflow graph. */
+export const getWorkflowDraftRevision = Effect.fn("getWorkflowDraftRevision")(
+  function* (workflowId: string) {
+    const repo = yield* WorkflowRepo;
+    const workflow = yield* repo.findDraftRevisionById(workflowId);
+
+    if (!workflow) {
+      return yield* new NotFound({ error: "Workflow not found" });
+    }
+
+    return {
+      workflowId: workflow.id,
+      draftRevision: workflow.draftRevision,
+    };
+  },
+  (effect, workflowId) =>
+    effect.pipe(
+      Effect.catchTag(
+        "DatabaseError",
+        internalFailureFromCause(
+          loggerFor(workflowId),
+          "Failed to get workflow draft revision"
+        )
+      )
+    )
+);
+
+/** Polls persisted state and emits each newer draft revision once. */
+export const streamWorkflowDraftRevisions = Effect.fn(
+  "streamWorkflowDraftRevisions"
+)(function* (
+  input: { readonly workflowId: string; readonly afterDraftRevision: number },
+  options: { readonly pollIntervalMs?: number } = {}
+) {
+  return yield* Effect.succeed(
+    Stream.tick(Duration.millis(options.pollIntervalMs ?? 500)).pipe(
+      Stream.mapEffect(() => getWorkflowDraftRevision(input.workflowId)),
+      Stream.changesWith(
+        (previous, current) => previous.draftRevision === current.draftRevision
+      ),
+      Stream.filter((event) => event.draftRevision > input.afterDraftRevision)
+    )
+  );
+});
 
 export const patchWorkflow = Effect.fn("patchWorkflow")(
   function* (

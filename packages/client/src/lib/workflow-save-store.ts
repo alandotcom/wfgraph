@@ -43,6 +43,15 @@ export const currentWorkflowDraftRevisionAtom = atom((get) => {
     : 0;
 });
 export const workflowNotFoundAtom = atom(false);
+/** Mark a missing workflow only while the editor still owns that workflow. */
+export const markWorkflowNotFoundAtom = atom(
+  null,
+  (get, set, workflowId: string) => {
+    if (get(currentWorkflowIdAtom) === workflowId) {
+      set(workflowNotFoundAtom, true);
+    }
+  }
+);
 export const workflowLoadErrorAtom = atom<string | null>(null);
 
 // Save status, read by the toolbar and the unsaved-changes indicator.

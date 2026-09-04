@@ -22,11 +22,13 @@ import {
   displayNodesAtom,
   duplicateSelectionAtom,
   edgesAtom,
+  endWorkflowEditorLifetimeAtom,
   executionOverlayGraphAtom,
   exitWorkflowComparisonAtom,
   groupSelectionAtom,
   hasCopiedSelectionAtom,
   hydrateWorkflowAtom,
+  installRemoteWorkflowAtom,
   installRestoredWorkflowAtom,
   loadWorkflowGraphAtom,
   nodesAtom,
@@ -34,6 +36,8 @@ import {
   onNodesChangeAtom,
   pasteCopiedSelectionAtom,
   selectedNodeAtom,
+  recordObservedRemoteDraftRevisionAtom,
+  remoteDraftChangeAtom,
   setGroupEnabledAtom,
   setNodeStatusesAtom,
   snapshotHistoryAtom,
@@ -42,13 +46,17 @@ import {
 } from "#src/lib/workflow-graph-store";
 import {
   autosaveDelayAtom,
+  currentWorkflowDraftRevisionAtom,
   currentWorkflowIdAtom,
   hasUnsavedChangesAtom,
   isSavingAtom,
   successfulSaveGenerationAtom,
+  recordLoadedDraftRevisionAtom,
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
 import {
+  activeAgentTurnIdAtom,
+  workflowGraphUpdateAtom,
   workflowWorkspaceViewAtom,
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
@@ -68,6 +76,10 @@ import {
   beginWorkflowComparisonRequestAtom,
   installWorkflowComparisonAtom,
 } from "#src/lib/workflow-comparison-store";
+import {
+  beginPublicationReviewAtom,
+  installPublicationReviewAtom,
+} from "#src/lib/workflow-publication-review-store";
 
 type Store = ReturnType<typeof createJotaiStore>;
 
@@ -649,6 +661,264 @@ describe("hydrateWorkflowAtom", () => {
     );
 
     expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["fresh"]);
+  });
+});
+
+describe("installRemoteWorkflowAtom", () => {
+  it("installs a newer persisted graph without saving it again", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(recordLoadedDraftRevisionAtom, {
+      workflowId: "workflow_1",
+      draftRevision: 1,
+    });
+
+    const installed = store.set(installRemoteWorkflowAtom, {
+      ...savedWorkflow("workflow_1", {
+        nodes: [actionNode("remote")],
+        edges: [],
+      }),
+      draftRevision: 2,
+    });
+
+    expect(installed).toBe(true);
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["remote"]);
+    expect(store.get(currentWorkflowDraftRevisionAtom)).toBe(2);
+    expect(store.get(workflowGraphUpdateAtom)).toEqual({
+      workflowId: "workflow_1",
+      revision: 1,
+    });
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves local work when a newer persisted graph arrives", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(recordLoadedDraftRevisionAtom, {
+      workflowId: "workflow_1",
+      draftRevision: 1,
+    });
+    store.set(hasUnsavedChangesAtom, true);
+    store.set(recordObservedRemoteDraftRevisionAtom, {
+      workflowId: "workflow_1",
+      draftRevision: 2,
+    });
+
+    const installed = store.set(installRemoteWorkflowAtom, {
+      ...savedWorkflow("workflow_1", {
+        nodes: [actionNode("remote")],
+        edges: [],
+      }),
+      draftRevision: 2,
+    });
+
+    expect(installed).toBe(false);
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual([
+      "t",
+      "a",
+      "b",
+    ]);
+    expect(store.get(currentWorkflowDraftRevisionAtom)).toBe(1);
+    expect(store.get(remoteDraftChangeAtom)?.draftRevision).toBe(2);
+  });
+
+  it("preserves a built-in agent turn when an external edit arrives", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(recordLoadedDraftRevisionAtom, {
+      workflowId: "workflow_1",
+      draftRevision: 1,
+    });
+    store.set(activeAgentTurnIdAtom, Symbol("agent-turn"));
+
+    const installed = store.set(installRemoteWorkflowAtom, {
+      ...savedWorkflow("workflow_1", {
+        nodes: [actionNode("remote")],
+        edges: [],
+      }),
+      draftRevision: 2,
+    });
+
+    expect(installed).toBe(false);
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual([
+      "t",
+      "a",
+      "b",
+    ]);
+  });
+
+  it("preserves a pending publication review when an external edit arrives", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(recordLoadedDraftRevisionAtom, {
+      workflowId: "workflow_1",
+      draftRevision: 1,
+    });
+    store.set(beginPublicationReviewAtom, "workflow_1");
+
+    const installed = store.set(installRemoteWorkflowAtom, {
+      ...savedWorkflow("workflow_1", {
+        nodes: [actionNode("remote")],
+        edges: [],
+      }),
+      draftRevision: 2,
+    });
+
+    expect(installed).toBe(false);
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual([
+      "t",
+      "a",
+      "b",
+    ]);
+  });
+
+  it("preserves an active publication review when an external edit arrives", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(recordLoadedDraftRevisionAtom, {
+      workflowId: "workflow_1",
+      draftRevision: 1,
+    });
+    const epoch = store.set(beginPublicationReviewAtom, "workflow_1");
+    store.set(installPublicationReviewAtom, {
+      workflowId: "workflow_1",
+      epoch: epoch ?? 0,
+      pending: false,
+      graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+      expectedDraftRevision: 1,
+      expectedPublishedVersionId: null,
+      review: { proposedVersion: 1, nodeChanges: [], edgeChanges: [] },
+    });
+
+    const installed = store.set(installRemoteWorkflowAtom, {
+      ...savedWorkflow("workflow_1", {
+        nodes: [actionNode("remote")],
+        edges: [],
+      }),
+      draftRevision: 2,
+    });
+
+    expect(installed).toBe(false);
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual([
+      "t",
+      "a",
+      "b",
+    ]);
+  });
+
+  it("preserves a node drag until its position settles", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(recordLoadedDraftRevisionAtom, {
+      workflowId: "workflow_1",
+      draftRevision: 1,
+    });
+    store.set(onNodesChangeAtom, [
+      {
+        type: "position",
+        id: "a",
+        position: { x: 120, y: 80 },
+        dragging: true,
+      },
+    ]);
+
+    const installed = store.set(installRemoteWorkflowAtom, {
+      ...savedWorkflow("workflow_1", {
+        nodes: [actionNode("remote")],
+        edges: [],
+      }),
+      draftRevision: 2,
+    });
+
+    expect(installed).toBe(false);
+    expect(
+      store.get(nodesAtom).find((node) => node.id === "a")?.position
+    ).toEqual({ x: 120, y: 80 });
+  });
+
+  it("does not hydrate over a drag in the open workflow", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(recordLoadedDraftRevisionAtom, {
+      workflowId: "workflow_1",
+      draftRevision: 1,
+    });
+    store.set(onNodesChangeAtom, [
+      {
+        type: "position",
+        id: "a",
+        position: { x: 120, y: 80 },
+        dragging: true,
+      },
+    ]);
+
+    store.set(hydrateWorkflowAtom, {
+      ...savedWorkflow("workflow_1", {
+        nodes: [actionNode("remote")],
+        edges: [],
+      }),
+      draftRevision: 2,
+    });
+
+    expect(
+      store.get(nodesAtom).find((node) => node.id === "a")?.position
+    ).toEqual({ x: 120, y: 80 });
+    expect(store.get(currentWorkflowDraftRevisionAtom)).toBe(1);
+  });
+
+  it("allows remote updates after navigation interrupts a drag", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(onNodesChangeAtom, [
+      {
+        type: "position",
+        id: "a",
+        position: { x: 120, y: 80 },
+        dragging: true,
+      },
+    ]);
+    store.set(
+      hydrateWorkflowAtom,
+      savedWorkflow("workflow_2", {
+        nodes: [actionNode("opened")],
+        edges: [],
+      })
+    );
+
+    const installed = store.set(installRemoteWorkflowAtom, {
+      ...savedWorkflow("workflow_2", {
+        nodes: [actionNode("remote")],
+        edges: [],
+      }),
+      draftRevision: 2,
+    });
+
+    expect(installed).toBe(true);
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["remote"]);
+  });
+
+  it("allows remote updates after reopening a workflow interrupted during a drag", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(onNodesChangeAtom, [
+      {
+        type: "position",
+        id: "a",
+        position: { x: 120, y: 80 },
+        dragging: true,
+      },
+    ]);
+
+    store.set(endWorkflowEditorLifetimeAtom);
+    store.set(
+      hydrateWorkflowAtom,
+      savedWorkflow("workflow_1", {
+        nodes: [actionNode("reopened")],
+        edges: [],
+      })
+    );
+
+    const installed = store.set(installRemoteWorkflowAtom, {
+      ...savedWorkflow("workflow_1", {
+        nodes: [actionNode("remote")],
+        edges: [],
+      }),
+      draftRevision: 2,
+    });
+
+    expect(installed).toBe(true);
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["remote"]);
   });
 });
 

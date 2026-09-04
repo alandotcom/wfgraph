@@ -19,8 +19,8 @@ import {
 } from "#src/lib/workflow-save-store";
 import {
   activeAgentTurnIdAtom,
-  agentGraphUpdateAtom,
   isGeneratingAtom,
+  workflowGraphUpdateAtom,
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
 
@@ -220,7 +220,7 @@ describe("applyAgentGraphAtom", () => {
     expect(
       store.get(nodesAtom).find((node) => node.id === "a")?.position
     ).not.toEqual(positioned.position);
-    expect(store.get(agentGraphUpdateAtom)).toEqual({
+    expect(store.get(workflowGraphUpdateAtom)).toEqual({
       workflowId: "workflow_1",
       revision: 1,
     });
