@@ -35,6 +35,10 @@ export function agentModelLayer(
 
   return OpenAiLanguageModel.model(settings.model, {
     max_output_tokens: MAX_AGENT_OUTPUT_TOKENS,
-    reasoning: { effort: settings.reasoningEffort },
+    // Pinned rather than left to the provider, so a default that moves under us
+    // cannot change how the agent behaves without a change here. The summary is
+    // what the panel renders as the agent's working-out: the provider bills the
+    // reasoning tokens either way and streams nothing readable without it.
+    reasoning: { effort: settings.reasoningEffort, summary: "auto" },
   }).pipe(Layer.provide(client));
 }
