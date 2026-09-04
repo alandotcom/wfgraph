@@ -235,6 +235,32 @@ describe("list_events", () => {
       ).not.toHaveProperty("integration");
     })
   );
+
+  it.effect("identifies the value type of an open-record Event field", () =>
+    Effect.gen(function* () {
+      const openRecordCatalog: ExtensionCatalog = {
+        ...catalog,
+        events: [
+          {
+            name: "message.received",
+            label: "Message received",
+            payloadFields: [
+              { path: "metadata", type: "object", valueType: "string" },
+            ],
+          },
+        ],
+      };
+      const { tools } = yield* agentToolsFor({ catalog: openRecordCatalog });
+
+      const result = yield* tools.list_events();
+
+      expect(result.events[0]?.payloadFields[0]).toMatchObject({
+        path: "metadata",
+        type: "object",
+        valueType: "string",
+      });
+    })
+  );
 });
 
 describe("list_integrations", () => {

@@ -1,7 +1,10 @@
 import { findAction } from "@wfgraph/shared/extensions/catalog";
+import { referencesForNode } from "@wfgraph/agent/tools/reference-tools";
+import { isEqual } from "es-toolkit/predicate";
 import { enabledActionTypeOf } from "@wfgraph/shared/graph/node-config";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import type { ConditionModel } from "@wfgraph/shared/conditions/condition-model";
 import { parseConditionModel } from "@wfgraph/shared/conditions/condition-schema";
 import { readWaitSubscriptions } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { isBlank } from "@wfgraph/shared/types/string";
@@ -14,6 +17,7 @@ import {
   selectorName,
   type SemanticsContext,
 } from "#src/agent/judges/semantics/context";
+import type { EvalCondition, EvalWaitMatchRule } from "#src/agent/types";
 
 function missingConfigs(context: SemanticsContext): string[] {
   return checkEach(context.input.expected.requiredConfigs, (required) => {
@@ -84,6 +88,97 @@ function missingWaitEvents(context: SemanticsContext): string[] {
       ? `${selectorName(required.node)} has unexpected Wait Event subscriptions`
       : undefined;
   });
+}
+
+function conditionShape(model: ConditionModel): EvalCondition {
+  return {
+    groupLogic: model.groupLogic,
+    groups: model.groups.map((group) => ({
+      logic: group.logic,
+      rules: group.conditions.map(({ id: _id, ...rule }) => rule),
+    })),
+  };
+}
+
+function hasRequiredWaitMatchRule(
+  model: ConditionModel,
+  required: EvalWaitMatchRule,
+  referenceTokens: ReadonlyMap<string, string>
+): boolean {
+  return model.groups.some((group) =>
+    group.conditions.some((rule) => {
+      if (
+        rule.field !== required.field ||
+        rule.recordKey !== required.recordKey ||
+        rule.operator !== required.operator ||
+        (required.value !== undefined &&
+          (!("value" in rule) || rule.value !== required.value))
+      ) {
+        return false;
+      }
+      if (required.referencePath === undefined) {
+        return true;
+      }
+      if (!("value" in rule) || typeof rule.value !== "string") {
+        return false;
+      }
+      const tokens = findTemplateTokens(rule.value);
+      return (
+        tokens.length === 1 &&
+        tokens[0]?.raw === rule.value &&
+        referenceTokens.get(rule.value) === required.referencePath
+      );
+    })
+  );
+}
+
+function missingWaitSubscriptions(context: SemanticsContext): string[] {
+  return checkEach(
+    context.input.expected.requiredWaitSubscriptions,
+    (required) => {
+      const found = nodesMatching(context, required.node).some((node) => {
+        const referenceTokens = new Map(
+          (
+            referencesForNode({
+              nodeId: node.id,
+              document: context.document,
+              catalog: context.input.catalog,
+            }) ?? []
+          ).map((reference) => [reference.token, reference.path])
+        );
+        return readWaitSubscriptions(node.data.config).some((subscription) => {
+          if (
+            subscription.event !== required.event ||
+            (required.connectionId !== undefined &&
+              subscription.connectionId !== required.connectionId)
+          ) {
+            return false;
+          }
+          if (required.match === undefined) {
+            if (required.matchRule === undefined) {
+              return true;
+            }
+          }
+
+          const parsed = parseConditionModel(subscription.match);
+          return (
+            parsed.valid &&
+            (required.match === undefined ||
+              isEqual(conditionShape(parsed.model), required.match)) &&
+            (required.matchRule === undefined ||
+              hasRequiredWaitMatchRule(
+                parsed.model,
+                required.matchRule,
+                referenceTokens
+              ))
+          );
+        });
+      });
+      return found
+        ? undefined
+        : `${selectorName(required.node)} does not have the required subscription for ${required.event}`;
+    }
+  );
 }
 
 function missingConditionRules(context: SemanticsContext): string[] {
@@ -194,6 +289,7 @@ export function assessConfigurationSemantics(
     ...emptyConfigs(context),
     ...missingDurations(context),
     ...missingWaitEvents(context),
+    ...missingWaitSubscriptions(context),
     ...missingConditionRules(context),
     ...wrongConditionLogic(context),
     ...missingReferences(context),

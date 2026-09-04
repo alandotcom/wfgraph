@@ -78,6 +78,44 @@ describe("list_references", () => {
     })
   );
 
+  it.effect("identifies open-record fields and their value type", () =>
+    Effect.gen(function* () {
+      const catalogWithOpenRecord = {
+        ...catalog,
+        actions: catalog.actions.map((action) =>
+          action.id === "score-applicant"
+            ? {
+                ...action,
+                outputFields: [
+                  ...action.outputFields,
+                  {
+                    path: "metadata",
+                    type: "object" as const,
+                    valueType: "string" as const,
+                  },
+                ],
+              }
+            : action
+        ),
+      };
+      const { tools } = yield* agentToolsFor({
+        nodes: [lifecycleNode(["applicant.created"]), scoreNode, slackNode],
+        edges: [entryToScore, scoreToSlack],
+        catalog: catalogWithOpenRecord,
+      });
+
+      const result = yield* tools.list_references({ nodeId: "notify" });
+
+      expect(result.references).toContainEqual(
+        expect.objectContaining({
+          path: "metadata",
+          conditionFieldType: "string",
+          openRecord: true,
+        })
+      );
+    })
+  );
+
   it.effect("offers the payload of the Events that could start the run", () =>
     Effect.gen(function* () {
       const { tools } = yield* agentToolsFor({

@@ -82,6 +82,17 @@ describe("the toolkit", () => {
       }),
     ]);
     expect(schema.properties?.mode).toBeUndefined();
+    const serialized = JSON.stringify(schema.properties?.wait);
+    expect(serialized).toContain('"recordKey"');
+    expect(serialized).toContain('"connectionId"');
+    expect(serialized).toContain('"gateMode"');
+    expect(serialized).toContain('"allowedHoursMode"');
+    expect(serialized).toContain('"windowStart"');
+    expect(serialized).toContain('"windowEnd"');
+    expect(serialized).toContain('"timezone"');
+    expect(serialized).toContain('"clearOffset"');
+    expect(serialized).toContain('"clearMatch"');
+    expect(serialized).toContain('"clearConnection"');
   });
 
   it("presents Lifecycle Rules as an optional-field patch", () => {

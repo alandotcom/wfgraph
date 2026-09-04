@@ -162,6 +162,9 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("set_wait");
     expect(prompt).toContain("list_events");
     expect(prompt).toContain("Event wait needs a timeout");
+    expect(prompt).toContain("same run");
+    expect(prompt).toContain("Connection ID");
+    expect(prompt).toContain("preserves its gate, allowed-hours, and timezone");
   });
 
   it("explains how an always-run action and a conditional action fan out", () => {

@@ -1,4 +1,5 @@
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import type { AgentDocument } from "@wfgraph/agent/document";
 import type { AgentEvalInput } from "#src/agent/types";
 import {
   configuredApplicantDocument,
@@ -6,6 +7,73 @@ import {
   emptyDocument,
   scenario,
 } from "#src/agent/scenario-fixtures";
+
+const configuredTimedWaitDocument: AgentDocument = {
+  nodes: [
+    {
+      id: "entry",
+      type: "lifecycle",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Lifecycle",
+        type: "lifecycle",
+        config: {
+          lifecycleRules: {
+            startEvents: ["app/appointment.created"],
+            cancelEvents: [],
+            concurrency: "unlimited",
+            allowManualStart: false,
+          },
+        },
+      },
+    },
+    {
+      id: "wait",
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Wait until appointment",
+        type: "action",
+        config: {
+          actionType: BUILT_IN_ACTION_IDS.wait,
+          waitMode: "delay",
+          waitDelayTimingMode: "until",
+          waitUntil: "{{@entry:Lifecycle.appointment.startsAt}}",
+          waitOffset: "-1d",
+          waitGateMode: "require_actual_wait",
+          waitAllowedHoursMode: "daily_window",
+          waitAllowedStartTime: "09:00",
+          waitAllowedEndTime: "17:00",
+          waitTimezone: "America/New_York",
+        },
+      },
+    },
+    {
+      id: "notify",
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Notify appointments",
+        type: "action",
+        config: {
+          actionType: "slack/send-message",
+          integrationId: "slack-primary",
+          channel: "#appointments",
+          text: "Appointment reminder",
+        },
+      },
+    },
+  ],
+  edges: [
+    {
+      id: "entry-wait",
+      source: "entry",
+      target: "wait",
+      sourceHandle: "started",
+    },
+    { id: "wait-notify", source: "wait", target: "notify" },
+  ],
+};
 
 export const complexScenarios: Array<{
   name: string;
@@ -233,6 +301,63 @@ export const complexScenarios: Array<{
       intentCriteria: [
         "The existing steps retain their prior configuration.",
         "A two-day delay sits between scoring and notification.",
+      ],
+    }),
+  },
+  {
+    name: "changes Wait timing while preserving delay policies",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            "Change Wait until appointment to a two-day duration. Keep its elapsed-time gate and 09:00 to 17:00 America/New_York window. Change nothing else.",
+        },
+      ],
+      document: configuredTimedWaitDocument,
+      integrations: connectedIntegrations,
+      expected: {
+        exactActions: {
+          [BUILT_IN_ACTION_IDS.wait]: 1,
+          "slack/send-message": 1,
+        },
+        exactEvents: { start: ["app/appointment.created"], cancel: [] },
+        editSafety: {
+          protectedNodeIds: ["entry", "notify"],
+          protectedEdgeIds: ["entry-wait", "wait-notify"],
+        },
+        requiredConfigs: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            values: {
+              waitMode: "delay",
+              waitGateMode: "require_actual_wait",
+              waitAllowedHoursMode: "daily_window",
+              waitAllowedStartTime: "09:00",
+              waitAllowedEndTime: "17:00",
+              waitTimezone: "America/New_York",
+            },
+          },
+        ],
+        forbiddenConfigKeys: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            keys: ["waitUntil", "waitOffset"],
+          },
+        ],
+        requiredDurations: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            key: "waitDuration",
+            duration: "2d",
+          },
+        ],
+      },
+      expectedCompletion: { outcome: "ready" },
+      intentCriteria: [
+        "The Wait changes from timestamp timing to a two-day duration.",
+        "The elapsed-time gate and allowed-hours policy remain unchanged.",
+        "The Lifecycle, Slack step, and graph connections remain unchanged.",
       ],
     }),
   },

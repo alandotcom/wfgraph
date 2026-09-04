@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { serializeConditionModel } from "@wfgraph/shared/conditions/condition-schema";
 import type { AgentEvalInput } from "#src/agent/types";
+import { fixtureCatalog } from "@wfgraph/agent/tools/catalog-fixture";
 import { assessScenarioSemantics } from "#src/agent/judges/semantics";
 import { completedDocument, input } from "#src/agent/judges/semantics/fixtures";
 
@@ -212,6 +214,180 @@ describe("assessScenarioSemantics", () => {
     expect(assessScenarioSemantics(waitInput, document)).toEqual({
       score: 0,
       rationale: "Wait is missing required Wait Event billing/payment.settled.",
+    });
+  });
+
+  it("accepts an exact Wait match and Event Connection", () => {
+    const document = completedDocument();
+    document.nodes.push({
+      id: "wait",
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Wait for the same applicant",
+        type: "action",
+        config: {
+          actionType: "Wait",
+          waitMode: "event",
+          waitFor: [
+            {
+              event: "slack/message.received",
+              connectionId: "slack-primary",
+              match: serializeConditionModel({
+                version: 2,
+                groupLogic: "and",
+                groups: [
+                  {
+                    id: "group",
+                    logic: "and",
+                    conditions: [
+                      {
+                        id: "rule",
+                        field: "applicantId",
+                        fieldType: "string",
+                        operator: "equals",
+                        value: "{{@entry:Lifecycle.applicantId}}",
+                      },
+                    ],
+                  },
+                ],
+              }),
+            },
+          ],
+        },
+      },
+    });
+    document.edges.push({
+      id: "score-wait",
+      source: "score",
+      target: "wait",
+    });
+    const waitInput: AgentEvalInput = {
+      ...input,
+      catalog: fixtureCatalog,
+      expected: {
+        requiredWaitSubscriptions: [
+          {
+            node: { kind: "action", actionId: "Wait" },
+            event: "slack/message.received",
+            connectionId: "slack-primary",
+            matchRule: {
+              field: "applicantId",
+              operator: "equals",
+              referencePath: "applicantId",
+            },
+          },
+        ],
+      },
+    };
+
+    expect(assessScenarioSemantics(waitInput, document)).toEqual({
+      score: 1,
+      rationale: "The graph satisfies the scenario constraints.",
+    });
+  });
+
+  it("rejects a Wait subscription with the wrong Connection", () => {
+    const document = completedDocument();
+    document.nodes.push({
+      id: "wait",
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Wait for Slack",
+        type: "action",
+        config: {
+          actionType: "Wait",
+          waitMode: "event",
+          waitFor: [
+            {
+              event: "slack/message.received",
+              connectionId: "slack-secondary",
+            },
+          ],
+        },
+      },
+    });
+    const waitInput: AgentEvalInput = {
+      ...input,
+      expected: {
+        requiredWaitSubscriptions: [
+          {
+            node: { kind: "action", actionId: "Wait" },
+            event: "slack/message.received",
+            connectionId: "slack-primary",
+          },
+        ],
+      },
+    };
+
+    expect(assessScenarioSemantics(waitInput, document)).toEqual({
+      score: 0,
+      rationale:
+        "Wait does not have the required subscription for slack/message.received.",
+    });
+  });
+
+  it("rejects a Wait match that invents an upstream reference", () => {
+    const document = completedDocument();
+    document.nodes.push({
+      id: "wait",
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Wait for the same applicant",
+        type: "action",
+        config: {
+          actionType: "Wait",
+          waitMode: "event",
+          waitFor: [
+            {
+              event: "applicant.withdrawn",
+              match: serializeConditionModel({
+                version: 2,
+                groupLogic: "and",
+                groups: [
+                  {
+                    id: "group",
+                    logic: "and",
+                    conditions: [
+                      {
+                        id: "rule",
+                        field: "applicantId",
+                        fieldType: "string",
+                        operator: "equals",
+                        value: "{{@missing:Missing.applicantId}}",
+                      },
+                    ],
+                  },
+                ],
+              }),
+            },
+          ],
+        },
+      },
+    });
+    const waitInput: AgentEvalInput = {
+      ...input,
+      expected: {
+        requiredWaitSubscriptions: [
+          {
+            node: { kind: "action", actionId: "Wait" },
+            event: "applicant.withdrawn",
+            matchRule: {
+              field: "applicantId",
+              operator: "equals",
+              referencePath: "applicantId",
+            },
+          },
+        ],
+      },
+    };
+
+    expect(assessScenarioSemantics(waitInput, document)).toEqual({
+      score: 0,
+      rationale:
+        "Wait does not have the required subscription for applicant.withdrawn.",
     });
   });
 

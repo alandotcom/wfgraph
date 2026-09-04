@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { validateAgentDraft } from "@wfgraph/core/backend/agent/publication-validation";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { serializeConditionModel } from "@wfgraph/shared/conditions/condition-schema";
 import type { AgentDocument } from "@wfgraph/agent/document";
 import { focusedScenarios } from "#src/agent/focused-scenarios";
 import { assessExpectedCompletion } from "#src/agent/judges/completion";
@@ -61,6 +62,18 @@ function clarificationScenario() {
   return scenario;
 }
 
+function sameEntityWaitScenario() {
+  const scenario = focusedScenarios.find(
+    (candidate) =>
+      candidate.name ===
+      "waits for the same entity on a connected integration Event"
+  );
+  if (!scenario) {
+    throw new Error("The same-entity Wait focused scenario is missing");
+  }
+  return scenario;
+}
+
 const readyFacts = {
   graphStatus: "ready" as const,
   responseStatus: "answered" as const,
@@ -72,6 +85,88 @@ const readyFacts = {
 };
 
 describe("focused scenarios", () => {
+  it("publishes a same-entity Wait with its integration Connection", () => {
+    const scenario = sameEntityWaitScenario();
+    const document: AgentDocument = {
+      nodes: [
+        {
+          id: "entry",
+          type: "lifecycle",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "Lifecycle",
+            type: "lifecycle",
+            config: {
+              lifecycleRules: {
+                startEvents: ["applicant.created"],
+                cancelEvents: [],
+                concurrency: "unlimited",
+                allowManualStart: false,
+              },
+            },
+          },
+        },
+        {
+          id: "wait",
+          type: "action",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "Wait for the same applicant",
+            type: "action",
+            config: {
+              actionType: BUILT_IN_ACTION_IDS.wait,
+              waitMode: "event",
+              waitFor: [
+                {
+                  event: "slack/candidate.referred",
+                  connectionId: "slack-primary",
+                  match: serializeConditionModel({
+                    version: 2,
+                    groupLogic: "and",
+                    groups: [
+                      {
+                        id: "group",
+                        logic: "and",
+                        conditions: [
+                          {
+                            id: "rule",
+                            field: "applicantId",
+                            fieldType: "string",
+                            operator: "equals",
+                            value: "{{@entry:Lifecycle.applicantId}}",
+                          },
+                        ],
+                      },
+                    ],
+                  }),
+                },
+              ],
+              waitTimeout: "7d",
+              waitTimeoutBehavior: "continue",
+            },
+          },
+        },
+      ],
+      edges: [
+        {
+          id: "entry-wait",
+          source: "entry",
+          target: "wait",
+          sourceHandle: "started",
+        },
+      ],
+    };
+
+    const validation = validateAgentDraft({
+      document,
+      catalog: scenario.input.catalog,
+      integrations: scenario.input.integrations,
+    });
+
+    expect(validation.draftValid).toBe(true);
+    expect(validation.publishBlockers).toEqual([]);
+  });
+
   it("matches the canonical missing-Slack-connection blocker", () => {
     const scenario = missingIntegrationScenario();
     const expectedCompletion = scenario.input.expectedCompletion;

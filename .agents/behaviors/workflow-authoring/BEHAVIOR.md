@@ -46,6 +46,11 @@ selected entries, use `clearCorrelationPaths`, `clearEventConnections`,
 `clearStartFilters`, or `clearCancelFilters`. To clear a complete record, pass
 an empty list to its update field. Bind an integration-owned Event to a
 Connection returned by the discovery tools.
+Configure a Wait Event's match against its payload fields. Use an exact upstream
+reference token when the match identifies the current run's entity. When you
+change duration or date/time timing, omit gate, allowed-hours, and timezone
+fields that must stay unchanged. To remove a stored Wait setting, use
+`clearOffset`, `clearMatch`, or `clearConnection`.
 
 **Recovery:** If a requested topology is invalid, choose a valid topology that
 preserves the stated business behavior. Explain any material tradeoff.

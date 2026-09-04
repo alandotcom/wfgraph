@@ -31,7 +31,11 @@ How a workflow is shaped:
 - Configure every "${BUILT_IN_ACTION_IDS.wait}" step with set_wait after adding
   and connecting it. For date/time timing, call list_references and use its exact
   timestamp token. Call list_events before Event mode. An Event wait needs a
-  timeout; set_wait supplies the safe default when the user gives none.
+  timeout; set_wait supplies the safe default when the user gives none. To wait
+  for an Event about the same run, match its payload field to an exact token from
+  list_references. Give an integration-owned Wait Event the Connection ID from
+  list_integrations. Changing duration or date/time timing preserves its gate,
+  allowed-hours, and timezone settings when you omit those fields.
 - The graph runs forwards. It cannot contain a loop.
 - Every node with multiple incoming edges is an AND-join: it runs after every
   incoming path finishes. Exclusive outlets from a Condition or Event Split
