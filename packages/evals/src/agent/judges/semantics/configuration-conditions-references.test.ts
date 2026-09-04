@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { serializeConditionModel } from "@wfgraph/shared/conditions/condition-schema";
+import type { AgentEvalDocument } from "#src/agent/result";
 import type { AgentEvalInput } from "#src/agent/types";
 import { fixtureCatalog } from "@wfgraph/agent/tools/catalog-fixture";
 import { assessScenarioSemantics } from "#src/agent/judges/semantics";
@@ -628,5 +629,87 @@ describe("assessScenarioSemantics", () => {
       score: 0,
       rationale: "slack/send-message needs 2 distinct text values, found 1.",
     });
+  });
+});
+
+describe("forbiddenReferences", () => {
+  /** The completed fixture plus a Slack step reading the token a case is about. */
+  function documentReading(text: string): AgentEvalDocument {
+    const document = completedDocument();
+    document.nodes.push({
+      id: "notify",
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Notify recruiting",
+        type: "action",
+        config: { actionType: "slack/send-message", text },
+      },
+    });
+    return document;
+  }
+
+  const bansLifecyclePath: AgentEvalInput = {
+    ...input,
+    expected: {
+      forbiddenReferences: [
+        {
+          node: { kind: "action", actionId: "slack/send-message" },
+          paths: ["email"],
+          fromNode: { kind: "lifecycle" },
+        },
+      ],
+    },
+  };
+
+  it("accepts a graph that reads the path from a step output", () => {
+    expect(
+      assessScenarioSemantics(
+        bansLifecyclePath,
+        documentReading("{{@score:Score applicant.email}}")
+      ).score
+    ).toBe(1);
+  });
+
+  it("rejects a graph that reads the banned path off the Lifecycle Node", () => {
+    expect(
+      assessScenarioSemantics(
+        bansLifecyclePath,
+        documentReading("{{@entry:Lifecycle.email}}")
+      )
+    ).toEqual({
+      score: 0,
+      rationale: "slack/send-message must not reference email from lifecycle.",
+    });
+  });
+
+  it("bans the path from every source when no source is named", () => {
+    const anySource: AgentEvalInput = {
+      ...input,
+      expected: {
+        forbiddenReferences: [
+          {
+            node: { kind: "action", actionId: "slack/send-message" },
+            paths: ["email"],
+          },
+        ],
+      },
+    };
+
+    expect(
+      assessScenarioSemantics(
+        anySource,
+        documentReading("{{@score:Score applicant.email}}")
+      ).score
+    ).toBe(0);
+  });
+
+  it("leaves a path the ban does not name alone", () => {
+    expect(
+      assessScenarioSemantics(
+        bansLifecyclePath,
+        documentReading("{{@entry:Lifecycle.applicantId}}")
+      ).score
+    ).toBe(1);
   });
 });

@@ -1120,4 +1120,187 @@ export const focusedScenarios: Array<{
       ],
     }),
   },
+  {
+    name: "reads the Start Event payload above an Event wait",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            "When an appointment is created, wait until one day before it starts and post the start time to #appointments in Slack. After that, wait up to 3 days for the payment to settle, and post to #billing in Slack when it does.",
+        },
+      ],
+      document: emptyDocument,
+      integrations: connectedIntegrations,
+      expected: {
+        exactActions: {
+          [BUILT_IN_ACTION_IDS.wait]: 2,
+          "slack/send-message": 2,
+        },
+        exactEvents: { start: ["app/appointment.created"], cancel: [] },
+        requiredWaitSubscriptions: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            event: "billing/payment.settled",
+          },
+        ],
+        requiredReferences: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            key: "waitUntil",
+            path: "appointment.startsAt",
+          },
+        ],
+        requiredDurations: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            key: "waitOffset",
+            duration: "-1d",
+          },
+        ],
+      },
+      expectedCompletion: { outcome: "ready" },
+      intentCriteria: [
+        "The date Wait sits above the Event wait, so it can still read the Start Event payload.",
+        "The reminder posts the appointment start time rather than a value from the payment Event.",
+      ],
+    }),
+  },
+  {
+    name: "does not read the Start Event payload below an Event wait",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            "When an appointment is created, wait up to 3 days for the payment to settle, then post the patient's name to #billing in Slack.",
+        },
+      ],
+      document: emptyDocument,
+      integrations: connectedIntegrations,
+      expected: {
+        exactEvents: { start: ["app/appointment.created"], cancel: [] },
+        requiredWaitSubscriptions: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            event: "billing/payment.settled",
+          },
+        ],
+        // Below that Wait the Lifecycle Node carries the payment payload, which
+        // declares no patient name, so a lookup is where the name comes from.
+        forbiddenReferences: [
+          {
+            node: { kind: "action", actionId: "slack/send-message" },
+            paths: ["appointment.patientName"],
+            fromNode: { kind: "lifecycle" },
+          },
+        ],
+      },
+      expectedCompletion: { outcome: "ready" },
+      intentCriteria: [
+        "The patient name comes from a step output rather than from the Lifecycle Node below the Wait.",
+        "The workflow does not invent a patient name the catalog never offered.",
+      ],
+    }),
+  },
+  {
+    name: "carries an identifier past a wait that continues on timeout",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            'When an appointment is created, wait up to 3 days for the payment to settle. If it never settles, cancel the appointment with the reason "unpaid".',
+        },
+      ],
+      document: emptyDocument,
+      integrations: connectedIntegrations,
+      expected: {
+        exactActions: {
+          [BUILT_IN_ACTION_IDS.wait]: 1,
+          [BUILT_IN_ACTION_IDS.condition]: 1,
+          "appointments/get": 1,
+          "appointments/cancel": 1,
+        },
+        exactEvents: { start: ["app/appointment.created"], cancel: [] },
+        requiredWaitSubscriptions: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            event: "billing/payment.settled",
+          },
+        ],
+        // A timed-out run reaches the cancel step carrying no payment payload,
+        // so the id it cancels has to come off a step above the Wait.
+        forbiddenReferences: [
+          {
+            node: { kind: "action", actionId: "appointments/cancel" },
+            paths: ["appointmentId"],
+            fromNode: { kind: "lifecycle" },
+          },
+        ],
+        requiredNonEmptyConfigs: [
+          {
+            node: { kind: "action", actionId: "appointments/cancel" },
+            keys: ["appointmentId", "reason"],
+          },
+        ],
+      },
+      expectedCompletion: { outcome: "ready" },
+      intentCriteria: [
+        "Only a run whose payment never settled reaches the cancel step.",
+        "The cancelled appointment id survives the Wait rather than being read from the timed-out payload.",
+      ],
+    }),
+  },
+  {
+    name: "recovers when until timing cannot read the Start Event payload",
+    input: scenario({
+      messages: [
+        {
+          role: "user",
+          content:
+            "When an appointment is created, wait up to 3 days for the payment to settle, then wait until one day before the appointment starts and post a reminder to #appointments in Slack.",
+        },
+      ],
+      document: emptyDocument,
+      integrations: connectedIntegrations,
+      expected: {
+        exactActions: {
+          [BUILT_IN_ACTION_IDS.wait]: 2,
+          "appointments/get": 1,
+          "slack/send-message": 1,
+        },
+        exactEvents: { start: ["app/appointment.created"], cancel: [] },
+        // The requested order puts the date Wait below the Event wait, so the
+        // start time has to arrive on a lookup placed above that Wait.
+        forbiddenReferences: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            paths: ["appointment.startsAt"],
+            fromNode: { kind: "lifecycle" },
+          },
+        ],
+        requiredReferences: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            key: "waitUntil",
+            path: "startsAt",
+          },
+        ],
+        requiredDurations: [
+          {
+            node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.wait },
+            key: "waitOffset",
+            duration: "-1d",
+          },
+        ],
+        efficiencyBudget: { maxRefusals: 2 },
+      },
+      expectedCompletion: { outcome: "ready" },
+      intentCriteria: [
+        "The reminder still fires one day before the appointment start rather than after a fixed duration.",
+        "A refused reference is answered by reading the timestamp from a step output, not by changing the timing mode.",
+      ],
+    }),
+  },
 ];

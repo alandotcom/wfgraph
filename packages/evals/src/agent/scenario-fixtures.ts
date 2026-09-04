@@ -95,6 +95,29 @@ export const evalCatalog: ExtensionCatalog = {
       ],
     },
     {
+      // A lookup, so a workflow has a legitimate way to carry appointment
+      // values past a Wait: an Event wait replaces the Lifecycle Node payload
+      // below it, while a step's own output survives.
+      id: "appointments/get",
+      label: "Get Appointment",
+      description: "Read an appointment's current details.",
+      category: "Appointments",
+      configFields: [
+        {
+          key: "appointmentId",
+          label: "Appointment ID",
+          type: "template-input",
+          required: true,
+        },
+      ],
+      outputFields: [
+        { path: "appointmentId", type: "string" },
+        { path: "startsAt", type: "timestamp" },
+        { path: "patientName", type: "string" },
+        { path: "status", type: "string" },
+      ],
+    },
+    {
       id: "appointments/cancel",
       label: "Cancel Appointment",
       description: "Cancels an appointment and records the reason.",

@@ -12,6 +12,7 @@ import {
   EvidenceUseJudge,
   GroundedGraphJudge,
   RecoveryJudge,
+  ResolvableReferencesJudge,
   ScenarioSemanticsJudge,
   ValidationJudge,
 } from "#src/agent/judges/index";
@@ -29,6 +30,7 @@ const deterministicJudges = [
   CompletionOutcomeJudge,
   GroundedGraphJudge,
   ScenarioSemanticsJudge,
+  ResolvableReferencesJudge,
   EvidenceUseJudge,
   EditSafetyJudge,
   RecoveryJudge,

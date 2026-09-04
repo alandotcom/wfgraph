@@ -12,7 +12,10 @@ import type {
   EventMetadata,
   ExtensionCatalog,
 } from "#src/extensions/catalog";
-import { eventsReaching } from "#src/graph/events-reaching";
+import {
+  arrivingEventCanBeAbsent,
+  eventsReaching,
+} from "#src/graph/events-reaching";
 import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
 import { eventSplitOutlet } from "#src/lifecycle/event-split";
 import {
@@ -566,5 +569,148 @@ describe("eventsReaching", () => {
         edge("e2", "action-2", "action-1"),
       ])
     ).toEqual([]);
+  });
+});
+
+describe("arrivingEventCanBeAbsent", () => {
+  /** The same Wait, with the timeout behavior each case is about. */
+  function waitWithTimeout(
+    id: string,
+    behavior: "continue" | "skip" | undefined
+  ): WorkflowNode {
+    const node = waitNode(id, [CANCELED]);
+    return {
+      ...node,
+      data: {
+        ...node.data,
+        config: { ...node.data.config, waitTimeoutBehavior: behavior },
+      },
+    };
+  }
+
+  it("answers false where only the Lifecycle Node is above", () => {
+    const nodes = [entryNode({ startEvents: [CREATED] }), actionNode("notify")];
+    const edges = [
+      edge("e1", "lifecycle-1", "notify", LIFECYCLE_STARTED_HANDLE),
+    ];
+
+    expect(
+      arrivingEventCanBeAbsent({ targetNodeId: "notify", nodes, edges })
+    ).toBe(false);
+  });
+
+  it("answers true below a Wait that continues past its timeout", () => {
+    const nodes = [
+      entryNode({ startEvents: [CREATED] }),
+      waitWithTimeout("wait-1", "continue"),
+      actionNode("notify"),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
+      edge("e2", "wait-1", "notify"),
+    ];
+
+    expect(
+      arrivingEventCanBeAbsent({ targetNodeId: "notify", nodes, edges })
+    ).toBe(true);
+  });
+
+  it("treats an unset timeout behavior as continue, which is the default", () => {
+    const nodes = [
+      entryNode({ startEvents: [CREATED] }),
+      waitWithTimeout("wait-1", undefined),
+      actionNode("notify"),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
+      edge("e2", "wait-1", "notify"),
+    ];
+
+    expect(
+      arrivingEventCanBeAbsent({ targetNodeId: "notify", nodes, edges })
+    ).toBe(true);
+  });
+
+  it("answers false below a Wait that skips on timeout", () => {
+    const nodes = [
+      entryNode({ startEvents: [CREATED] }),
+      waitWithTimeout("wait-1", "skip"),
+      actionNode("notify"),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
+      edge("e2", "wait-1", "notify"),
+    ];
+
+    expect(
+      arrivingEventCanBeAbsent({ targetNodeId: "notify", nodes, edges })
+    ).toBe(false);
+  });
+
+  it("answers false at the Wait itself, which the run reaches carrying its Event", () => {
+    const nodes = [
+      entryNode({ startEvents: [CREATED] }),
+      waitWithTimeout("wait-1", "continue"),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
+    ];
+
+    expect(
+      arrivingEventCanBeAbsent({ targetNodeId: "wait-1", nodes, edges })
+    ).toBe(false);
+  });
+
+  it("carries the answer down through the steps below the Wait", () => {
+    const nodes = [
+      entryNode({ startEvents: [CREATED] }),
+      waitWithTimeout("wait-1", "continue"),
+      actionNode("first"),
+      actionNode("second"),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
+      edge("e2", "wait-1", "first"),
+      edge("e3", "first", "second"),
+    ];
+
+    expect(
+      arrivingEventCanBeAbsent({ targetNodeId: "second", nodes, edges })
+    ).toBe(true);
+  });
+
+  it("answers true when one of two paths loses the Event", () => {
+    const nodes = [
+      entryNode({ startEvents: [CREATED] }),
+      waitWithTimeout("wait-1", "continue"),
+      actionNode("direct"),
+      actionNode("join"),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
+      edge("e2", "lifecycle-1", "direct", LIFECYCLE_STARTED_HANDLE),
+      edge("e3", "wait-1", "join"),
+      edge("e4", "direct", "join"),
+    ];
+
+    expect(
+      arrivingEventCanBeAbsent({ targetNodeId: "join", nodes, edges })
+    ).toBe(true);
+  });
+
+  it("answers false for a delay Wait, which is not an Event source", () => {
+    const nodes = [
+      entryNode({ startEvents: [CREATED] }),
+      waitNode("wait-1", [], "delay"),
+      actionNode("notify"),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "wait-1", LIFECYCLE_STARTED_HANDLE),
+      edge("e2", "wait-1", "notify"),
+    ];
+
+    expect(
+      arrivingEventCanBeAbsent({ targetNodeId: "notify", nodes, edges })
+    ).toBe(false);
   });
 });

@@ -150,6 +150,17 @@ export type AgentEvalExpectations = {
     path: string;
     allMatches?: boolean;
   }>;
+  /**
+   * Paths a node's config must not reference, whatever key holds them. Names
+   * the one wrong value a scenario is about, where ResolvableReferencesJudge
+   * answers the general question of whether every token can be read at all.
+   */
+  forbiddenReferences?: Array<{
+    node: EvalNodeSelector;
+    paths: string[];
+    /** Restricts the ban to tokens reading from this node, such as lifecycle. */
+    fromNode?: EvalNodeSelector;
+  }>;
   distinctConfigValues?: Array<{
     nodes: EvalNodeSelector;
     key: string;

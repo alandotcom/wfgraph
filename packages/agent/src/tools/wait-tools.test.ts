@@ -1372,3 +1372,151 @@ describe("set_wait", () => {
     })
   );
 });
+
+describe("set_wait and the Arriving Event below it", () => {
+  const upstreamEventWait: WorkflowNode = {
+    id: "gate",
+    type: "action",
+    position: { x: 0, y: 0 },
+    data: {
+      label: "Wait for withdrawal",
+      type: "action",
+      config: {
+        actionType: BUILT_IN_ACTION_IDS.wait,
+        waitMode: "event",
+        waitFor: [{ event: "applicant.withdrawn" }],
+        waitTimeout: "7d",
+        waitTimeoutBehavior: "continue",
+      },
+    },
+  };
+
+  const interviewAt = formatTemplateToken({
+    nodeId: "entry",
+    nodeLabel: "Lifecycle",
+    fieldPath: "interviewAt",
+  });
+
+  it.effect("explains which wait took the Start Event payload away", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({
+        nodes: [eventLifecycle, upstreamEventWait, wait],
+        edges: [
+          {
+            id: "e1",
+            source: "entry",
+            target: "gate",
+            sourceHandle: "started",
+          },
+          { id: "e2", source: "gate", target: "wait" },
+        ],
+        catalog: timestampCatalog,
+      });
+
+      const failure = yield* Effect.flip(
+        tools.set_wait({
+          nodeId: "wait",
+          wait: { mode: "until", timestamp: interviewAt },
+        })
+      );
+
+      expect(failure.reason).toContain("Wait for withdrawal");
+      expect(failure.reason).toContain("applicant.withdrawn");
+      expect(failure.reason).toContain("list_references");
+    })
+  );
+
+  it.effect(
+    "accepts the same token when the wait sits above the Event wait",
+    () =>
+      Effect.gen(function* () {
+        const { tools } = yield* agentToolsFor({
+          nodes: [eventLifecycle, wait, upstreamEventWait],
+          edges: [
+            {
+              id: "e1",
+              source: "entry",
+              target: "wait",
+              sourceHandle: "started",
+            },
+            { id: "e2", source: "wait", target: "gate" },
+          ],
+          catalog: timestampCatalog,
+        });
+
+        const result = yield* tools.set_wait({
+          nodeId: "wait",
+          wait: { mode: "until", timestamp: interviewAt },
+        });
+
+        expect(result.summary).toContain("until");
+        expect(result.warning).toBeUndefined();
+      })
+  );
+
+  it.effect("warns about the tokens turning on Event mode just broke", () =>
+    Effect.gen(function* () {
+      const reader: WorkflowNode = {
+        id: "notify",
+        type: "action",
+        position: { x: 0, y: 0 },
+        data: {
+          label: "Notify the team",
+          type: "action",
+          config: {
+            actionType: "slack/send-message",
+            integrationId: "conn-1",
+            channel: "#team",
+            text: `Interview at ${interviewAt}`,
+          },
+        },
+      };
+
+      const { tools } = yield* agentToolsFor({
+        nodes: [eventLifecycle, wait, reader],
+        edges: [
+          {
+            id: "e1",
+            source: "entry",
+            target: "wait",
+            sourceHandle: "started",
+          },
+          { id: "e2", source: "wait", target: "notify" },
+        ],
+        catalog: timestampCatalog,
+      });
+
+      const result = yield* tools.set_wait({
+        nodeId: "wait",
+        wait: { mode: "event", events: [{ event: "applicant.withdrawn" }] },
+      });
+
+      expect(result.warning).toContain("Notify the team.text");
+      expect(result.warning).toContain("list_references");
+    })
+  );
+
+  it.effect("stays quiet when the edit strands nothing", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({
+        nodes: [eventLifecycle, wait],
+        edges: [
+          {
+            id: "e1",
+            source: "entry",
+            target: "wait",
+            sourceHandle: "started",
+          },
+        ],
+        catalog: timestampCatalog,
+      });
+
+      const result = yield* tools.set_wait({
+        nodeId: "wait",
+        wait: { mode: "event", events: [{ event: "applicant.withdrawn" }] },
+      });
+
+      expect(result.warning).toBeUndefined();
+    })
+  );
+});

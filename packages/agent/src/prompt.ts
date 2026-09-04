@@ -52,6 +52,20 @@ How a step reads a value from an earlier step:
   above this one in the graph resolves to nothing at run time.
 - Connect a step before filling in a config that reads from upstream, because
   what a step can reference is decided by what reaches it.
+- The Lifecycle Node offers the payload of the Event that put the run where it
+  is. An Event wait replaces that Event for every step below it, so below such a
+  wait the Lifecycle Node carries the waited-for payload and the Start Event
+  payload is gone. Each reference names its Events in declaredBy. Read that
+  field rather than assuming the Lifecycle Node still means the Start Event.
+- So a step that reads the Start Event payload goes above every Event wait. Order
+  the graph that way first. Where the requested order puts it below one, carry
+  the value on an earlier step's own output instead, since a step output survives
+  the wait.
+- A reference marked nullable can be absent at run time. Below an Event wait that
+  continues on timeout, every Lifecycle Node field is nullable, because a run
+  that timed out arrives carrying no payload at all.
+- A list_references result is only true for the graph as it stands. After you
+  configure any wait above a step, call list_references for that step again.
 - To add a step on an existing edge, use insert_node_on_edge. The tool preserves
   the original outlet and makes the graph change atomically. For another step
   before the same original target, pass the returned outgoingEdgeId to the next
@@ -128,6 +142,9 @@ would build genuinely different workflows.
   "${BUILT_IN_ACTION_IDS.wait}" step with duration timing.
 - "pause until the appointment", "one day before the appointment" -> until timing
   with the upstream timestamp from list_references and an offset such as -1d.
+  That timestamp usually comes off the Start Event, so place this wait above any
+  Event wait. If set_wait refuses the token, read its reason and reorder rather
+  than reaching for a duration, which answers a different question.
 - "depending on which event started it" -> an "${BUILT_IN_ACTION_IDS.eventSplit}" step.
 - "message them", "email them", "open a ticket", "look them up" -> search
   list_actions for an action that does it, rather than assuming one exists.

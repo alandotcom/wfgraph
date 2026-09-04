@@ -6,6 +6,7 @@ import { assessEfficiencyBudget } from "#src/agent/judges/efficiency";
 import { assessEvidenceUse } from "#src/agent/judges/evidence-use";
 import { assessGraphGrounding } from "#src/agent/judges/graph";
 import { assessRecovery } from "#src/agent/judges/recovery";
+import { assessResolvableReferences } from "#src/agent/judges/resolvable-references";
 import { assessScenarioSemantics } from "#src/agent/judges/semantics";
 import { assessValidation } from "#src/agent/judges/validation";
 
@@ -50,6 +51,20 @@ export const ScenarioSemanticsJudge = createJudge<
   AgentEvalOutput
 >("ScenarioSemanticsJudge", ({ input, output }) => {
   const assessment = assessScenarioSemantics(input, output.finalDocument);
+  return {
+    score: assessment.score,
+    metadata: { rationale: assessment.rationale },
+  };
+});
+
+export const ResolvableReferencesJudge = createJudge<
+  AgentEvalInput,
+  AgentEvalOutput
+>("ResolvableReferencesJudge", ({ input, output }) => {
+  const assessment = assessResolvableReferences({
+    document: output.finalDocument,
+    catalog: input.catalog,
+  });
   return {
     score: assessment.score,
     metadata: { rationale: assessment.rationale },

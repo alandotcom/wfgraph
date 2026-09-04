@@ -19,7 +19,10 @@ import type { ConditionFieldType } from "@wfgraph/shared/conditions/condition-mo
 import { conditionTypeOf } from "@wfgraph/shared/conditions/condition-field-type";
 import { findAction } from "@wfgraph/shared/extensions/catalog";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
+import {
+  arrivingEventCanBeAbsent,
+  eventsReaching,
+} from "@wfgraph/shared/graph/events-reaching";
 import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
 import {
   fieldsVisibleForConfig,
@@ -48,6 +51,12 @@ const referenceSchema = Schema.Struct({
   description: Schema.optionalKey(Schema.String),
   /** True when a run may reach this node without the value being set. */
   nullable: Schema.optionalKey(Schema.Boolean),
+  /**
+   * On a Lifecycle Node reference, the Events this path comes from. Below an
+   * event-mode Wait these are the Events that Wait parks on, not the Start
+   * Events, because the Wait decides the Arriving Event for everything under it.
+   */
+  declaredBy: Schema.optionalKey(Schema.Array(Schema.String)),
   enumValues: Schema.optionalKey(Schema.Array(Schema.String)),
   /** Pass this exact value to set_condition; absence means the field cannot be tested. */
   conditionFieldType: Schema.optionalKey(
@@ -56,6 +65,15 @@ const referenceSchema = Schema.Struct({
   /** True when a condition must provide a recordKey under this path. */
   openRecord: Schema.optionalKey(Schema.Boolean),
 });
+
+/**
+ * A field one upstream node offers, with the Events behind it where there are
+ * any. An action's own output fields name no Event, so `declaredBy` is absent
+ * on those and present on every Lifecycle Node field.
+ */
+type AgentReferenceField = ReferenceField & {
+  readonly declaredBy?: readonly string[] | undefined;
+};
 
 /** The condition type a reference supports, absent for objects and type clashes. */
 function conditionFieldTypeOf(
@@ -78,10 +96,11 @@ function conditionFieldTypeOf(
 function outputFieldsOf(input: {
   readonly node: WorkflowNode;
   readonly targetNodeId: string;
+  readonly arrivingEventCanBeAbsent: boolean;
   readonly nodes: readonly WorkflowNode[];
   readonly edges: readonly WorkflowEdge[];
   readonly catalog: ExtensionCatalog;
-}): readonly ReferenceField[] {
+}): readonly AgentReferenceField[] {
   const actionType = readConfigString(input.node.data.config, "actionType");
   if (actionType) {
     const action = findAction(input.catalog, actionType);
@@ -91,7 +110,7 @@ function outputFieldsOf(input: {
   }
 
   if (input.node.data.type === "lifecycle") {
-    return reachableEventFields(
+    const fields = reachableEventFields(
       eventsReaching({
         targetNodeId: input.targetNodeId,
         nodes: input.nodes,
@@ -99,6 +118,13 @@ function outputFieldsOf(input: {
         catalog: input.catalog,
       })
     );
+
+    // A run that leaves an event-mode Wait on its timeout carries no Arriving
+    // Event, and the entry node's payload is empty for the rest of that run. So
+    // every path here is one a run can reach this node without.
+    return input.arrivingEventCanBeAbsent
+      ? fields.map((field) => ({ ...field, nullable: true }))
+      : fields;
   }
 
   // An action type the catalog no longer ships declares no schema, so there is
@@ -108,7 +134,7 @@ function outputFieldsOf(input: {
 
 export const ListReferences = Tool.make("list_references", {
   description:
-    "Every value a given node's config may refer to, each as a finished {{@nodeId:Label.path}} token. Only nodes above this one in the graph can be referenced, so connect a node before filling in a config that reads from upstream.",
+    "Every value a given node's config may refer to, each as a finished {{@nodeId:Label.path}} token. Only nodes above this one in the graph can be referenced, so connect a node before filling in a config that reads from upstream. The Lifecycle Node offers the payload of the Arriving Event, which an event-mode Wait above this node replaces with the Events that Wait parks on: read declaredBy to see which Events a path came from, and expect the Start Event payload to be unavailable below such a Wait. Re-read this list after configuring any Wait above this node, because that edit changes what is addressable here.",
   parameters: Schema.Struct({
     nodeId: Schema.String.annotate({
       description: "The node whose config is being filled in.",
@@ -148,6 +174,12 @@ export function referencesForNode(input: {
   }
 
   const upstream = upstreamNodeIds(input.nodeId, input.document.edges);
+  const eventCanBeAbsent = arrivingEventCanBeAbsent({
+    targetNodeId: input.nodeId,
+    nodes: input.document.nodes,
+    edges: input.document.edges,
+  });
+
   return input.document.nodes
     .filter((node) => upstream.has(node.id))
     .flatMap((node) => {
@@ -156,6 +188,7 @@ export function referencesForNode(input: {
       return outputFieldsOf({
         node,
         targetNodeId: input.nodeId,
+        arrivingEventCanBeAbsent: eventCanBeAbsent,
         nodes: input.document.nodes,
         edges: input.document.edges,
         catalog: input.catalog,
@@ -173,6 +206,7 @@ export function referencesForNode(input: {
           type: field.type,
           description: field.description,
           nullable: field.nullable,
+          declaredBy: field.declaredBy ? [...field.declaredBy] : undefined,
           enumValues: field.enumValues,
           conditionFieldType: conditionFieldType ?? undefined,
           openRecord: field.valueType ? true : undefined,
