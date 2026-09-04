@@ -99,6 +99,7 @@ describe("postAgentChat", () => {
               enabled: true,
               apiKey: "test-key",
               model: "unused-built-in-model",
+              reasoningEffort: "high",
             }),
             makeAgentRunnerLayer(runner),
             stubExtensions(),

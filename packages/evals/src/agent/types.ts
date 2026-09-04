@@ -196,6 +196,12 @@ export type AgentEvalInput = {
   integrations: Array<{ id: string; type: string }>;
   expected: AgentEvalExpectations;
   expectedCompletion: AgentEvalExpectedCompletion;
+  /**
+   * What the scenario means, in the words the deterministic expectations only
+   * approximate. `IntentAlignmentJudge` reads these, and it runs on the complex
+   * suite alone, so on the focused and capability suites they are documentation
+   * for whoever edits the scenario next rather than a check that runs.
+   */
   intentCriteria: string[];
   model?: string;
 };

@@ -88,8 +88,10 @@ describeEval(
           });
         }
 
-        // One advisory model judgment per scenario limits cost while the three
-        // agent trials still measure behavioral variability.
+        // One verdict per scenario rather than one per trial: the judge is
+        // advisory and its agreement with a human has never been measured, so a
+        // second opinion from it adds no evidence. Widen this once it has a
+        // measured true-positive and true-negative rate.
         if (trial === 1) {
           await expect(result).toSatisfyJudge(IntentAlignmentJudge, {
             threshold: null,

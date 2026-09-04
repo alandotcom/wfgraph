@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_AGENT_MODEL,
+  DEFAULT_AGENT_REASONING_EFFORT,
   readAgentSettings,
 } from "#src/backend/agent/config";
 
@@ -23,6 +24,18 @@ describe("readAgentSettings", () => {
       enabled: true,
       apiKey: "sk-test",
       model: DEFAULT_AGENT_MODEL,
+      reasoningEffort: DEFAULT_AGENT_REASONING_EFFORT,
+    });
+  });
+
+  it("takes the host's reasoning effort when it names one", () => {
+    expect(
+      readAgentSettings({ apiKey: "sk-test", reasoningEffort: "low" })
+    ).toEqual({
+      enabled: true,
+      apiKey: "sk-test",
+      model: DEFAULT_AGENT_MODEL,
+      reasoningEffort: "low",
     });
   });
 
@@ -37,6 +50,7 @@ describe("readAgentSettings", () => {
       enabled: true,
       apiKey: "sk-test",
       model: "gpt-4.1",
+      reasoningEffort: DEFAULT_AGENT_REASONING_EFFORT,
       baseUrl: "https://gateway.example.test/v1",
     });
   });

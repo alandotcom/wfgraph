@@ -1,6 +1,12 @@
 import { Cause, Effect, Stream } from "effect";
 import { createHarness } from "vitest-evals";
-import { DEFAULT_AGENT_MODEL } from "@wfgraph/core/backend/agent/config";
+import {
+  type AgentReasoningEffort,
+  type EnabledAgentSettings,
+  AGENT_REASONING_EFFORTS,
+  DEFAULT_AGENT_REASONING_EFFORT,
+  readAgentSettings,
+} from "@wfgraph/core/backend/agent/config";
 import { validateAgentDraft } from "@wfgraph/core/backend/agent/publication-validation";
 import {
   runAgentRunner,
@@ -25,28 +31,54 @@ import type { AgentEvalInput, AgentEvalOutput } from "#src/agent/types";
 
 const API_KEY_ENV = "OPENAI_API_KEY";
 const AGENT_MODEL_ENV = "WFGRAPH_EVAL_AGENT_MODEL";
+const REASONING_EFFORT_ENV = "WFGRAPH_EVAL_REASONING_EFFORT";
 
-export function readEvalModelSettings(modelOverride?: string) {
-  const apiKey = process.env[API_KEY_ENV]?.trim();
-  if (!apiKey) {
+/**
+ * The effort this run measures, refusing an unknown one.
+ *
+ * A typo would otherwise be silently dropped and the run would report the
+ * default's numbers under the name of whatever was asked for.
+ */
+function readReasoningEffort(): AgentReasoningEffort {
+  const requested = process.env[REASONING_EFFORT_ENV]?.trim();
+  if (!requested) {
+    return DEFAULT_AGENT_REASONING_EFFORT;
+  }
+
+  const effort = AGENT_REASONING_EFFORTS.find((known) => known === requested);
+  if (!effort) {
+    throw new Error(
+      `${REASONING_EFFORT_ENV} is "${requested}". Use one of ${AGENT_REASONING_EFFORTS.join(", ")}.`
+    );
+  }
+  return effort;
+}
+
+/**
+ * The settings a run measures against, resolved the way a host's would be.
+ *
+ * `readAgentSettings` owns every default and the rule for a blank value, so a
+ * change to how the application resolves its model cannot leave the evals
+ * measuring the old one. What is added here is where the values come from, the
+ * environment rather than an option, and that a missing key is fatal to a run
+ * whose whole purpose is to call a model.
+ */
+export function readEvalModelSettings(
+  modelOverride?: string
+): EnabledAgentSettings {
+  const settings = readAgentSettings({
+    apiKey: process.env[API_KEY_ENV],
+    model: modelOverride?.trim() || process.env[AGENT_MODEL_ENV],
+    reasoningEffort: readReasoningEffort(),
+    baseUrl: process.env.OPENAI_BASE_URL,
+  });
+
+  if (!settings.enabled) {
     throw new Error(
       `Set ${API_KEY_ENV} before running the model-backed agent evals.`
     );
   }
-
-  const model =
-    modelOverride?.trim() ||
-    process.env[AGENT_MODEL_ENV]?.trim() ||
-    DEFAULT_AGENT_MODEL;
-  const baseUrl = process.env.OPENAI_BASE_URL?.trim();
-
-  return {
-    enabled: true as const,
-    apiKey,
-    model,
-    // oxlint-disable-next-line wfgraph/no-conditional-spread -- an empty `baseUrl` means none, so the key is left off instead of sent as an empty string.
-    ...(baseUrl ? { baseUrl } : {}),
-  };
+  return settings;
 }
 
 /** Builds one turn and collects its stream under the same interruption signal. */

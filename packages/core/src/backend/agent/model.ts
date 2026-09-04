@@ -35,5 +35,6 @@ export function agentModelLayer(
 
   return OpenAiLanguageModel.model(settings.model, {
     max_output_tokens: MAX_AGENT_OUTPUT_TOKENS,
+    reasoning: { effort: settings.reasoningEffort },
   }).pipe(Layer.provide(client));
 }
