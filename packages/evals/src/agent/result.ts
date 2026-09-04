@@ -3,6 +3,7 @@ import type { TranscriptEvent } from "vitest-evals";
 import type { AgentDocument } from "@wfgraph/agent/document";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import type { AgentStreamPart } from "@wfgraph/shared/rpc/agent-stream";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 export type AgentEvalDocument = {
   nodes: Array<AgentDocument["nodes"][number]>;
@@ -63,13 +64,20 @@ export function collectAgentEvalResult(
                 type: "tool_result",
                 toolCallId: part.id,
                 name: part.name,
-                error: { message: part.summary, type: "tool_refusal" },
+                // A refusal always answers a reason, and the fallback below
+                // stands only for a shape the wire type still admits.
+                error: {
+                  message: part.summary ?? `${part.name} failed.`,
+                  type: "tool_refusal",
+                },
               }
             : {
                 type: "tool_result",
                 toolCallId: part.id,
                 name: part.name,
-                content: { summary: part.summary },
+                // A read tool answers no sentence, and an empty content object
+                // says that more honestly than a `summary` holding nothing.
+                content: omitUndefined({ summary: part.summary }),
               }
         );
         break;

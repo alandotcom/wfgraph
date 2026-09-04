@@ -1,51 +1,146 @@
 /**
  * The chat itself: the message list, the composer, and the agent's working-out.
  *
- * assistant-ui ships the primitives unstyled, so every surface here is drawn
- * from the editor's own tokens. Color stays reserved for state, which in a chat
- * means one thing: a tool call that was refused.
+ * The working-out is assistant-ui's, not ours. `AssistantMessage` below is the
+ * composition their chain-of-thought guide ships, over the elements vendored
+ * under `elements/` from the `r.assistant-ui.com/base/*` registry. Reasoning
+ * uses their step-panel design: one "Thinking" disclosure above the message
+ * holding a titled step per passage, open while it streams and folded away
+ * after. Tool calls fold under a count beneath it, since which call was made is
+ * the question worth reopening when the agent gets something wrong.
  *
- * Reasoning and tool calls are folded into one collapsed "Thinking" disclosure
- * rather than listed inline, because a turn calls a dozen tools and the answer
- * is what the reader came for.
+ * What this file adds to that is wording. `agentToolLabel` names a call by what
+ * it asked for, because the raw tool name is the same string a dozen times in
+ * one turn.
  */
 
-import { Collapsible } from "@base-ui/react/collapsible";
 import {
   AuiIf,
   ComposerPrimitive,
+  ErrorPrimitive,
   groupPartByType,
   MessagePartPrimitive,
   MessagePrimitive,
-  type ReasoningMessagePartProps,
   ThreadPrimitive,
   type ToolCallMessagePartProps,
+  useAuiState,
 } from "@assistant-ui/react";
 import {
+  AlertCircleIcon,
   ArrowDownIcon,
   ArrowUpIcon,
-  BrainIcon,
-  CheckIcon,
-  ChevronRightIcon,
   SquareIcon,
-  XIcon,
 } from "lucide-react";
-import { cn } from "@wfgraph/shared/utils";
+import { useRef, useState } from "react";
 import { AgentMarkdown } from "#src/components/agent/agent-markdown";
+import {
+  ReasoningPanel,
+  type ReasoningStep,
+} from "#src/components/agent/elements/reasoning-panel";
+import { ToolFallback } from "#src/components/agent/elements/tool-fallback.aui";
+import {
+  ToolGroupContent,
+  ToolGroupRoot,
+  ToolGroupTrigger,
+} from "#src/components/agent/elements/tool-group";
 import { Button } from "#src/components/ui/button";
-import { Spinner } from "#src/components/ui/spinner";
+import { useAfterCommit } from "#src/hooks/effects";
+import { agentToolLabel } from "#src/lib/agent-tool-labels";
 
 /**
- * Which parts belong inside the chain of thought, and how they nest.
+ * Which parts group, and into what.
  *
- * A path per part type: both reasoning and tool calls sit under one thought
- * group, each under a sub-group of its own kind, so adjacent parts of the same
- * kind coalesce instead of drawing a box each.
+ * Tool calls only. Reasoning is not here at all: `AgentReasoning` draws it from
+ * the message's own parts, above everything else, because the step panel is one
+ * list rather than something that interleaves with the calls between passages.
  */
-const groupThinking = groupPartByType({
-  reasoning: ["group-thought", "group-reasoning"],
-  "tool-call": ["group-thought", "group-tool"],
+const groupWorkingOut = groupPartByType({
+  "tool-call": ["group-tool"],
 });
+
+/**
+ * Markdown emphasis, as the words inside it.
+ *
+ * The step panel renders a body as plain text, so a passage keeping its
+ * asterisks reads as punctuation. The heading is already lifted out by
+ * `toReasoningStep`; this is for the bold a model writes mid-paragraph.
+ */
+function withoutEmphasis(text: string): string {
+  return text
+    .replaceAll(/\*\*([^*]+)\*\*/gu, "$1")
+    .replaceAll(/(?<!\*)\*([^*\n]+)\*/gu, "$1");
+}
+
+/** How much of a headingless passage stands in for its title. */
+const UNTITLED_STEP_WORDS = 6;
+
+/** The opening of a passage, for a step the model gave no heading. */
+function firstWords(body: string): string {
+  const words = body.split(/\s+/u).slice(0, UNTITLED_STEP_WORDS);
+  return words.length === 0 ? "Thinking" : `${words.join(" ")}…`;
+}
+
+/**
+ * One heading and its paragraph, from one passage of reasoning.
+ *
+ * A reasoning summary arrives as markdown with a bold heading over each
+ * passage, which is the shape the panel wants: a title on the rail and the body
+ * under it. A passage that arrives without a heading keeps the whole text as
+ * its body, under a title saying only that the model is working.
+ */
+function toReasoningStep(text: string): ReasoningStep {
+  const heading = /^\s*\*\*([^*\n]+)\*\*\s*/u.exec(text);
+  const title = heading?.[1]?.trim();
+
+  if (!(heading && title)) {
+    // The body carries the whole passage, so the first words of it name the
+    // step. `ReasoningPanel` keys its list by title, and a shared "Thinking"
+    // for every headingless passage made those keys collide.
+    const body = withoutEmphasis(text.trim());
+    return { title: firstWords(body), body };
+  }
+
+  return { title, body: withoutEmphasis(text.slice(heading[0].length).trim()) };
+}
+
+/**
+ * The model's working-out, as the steps it went through.
+ *
+ * Open while it streams and closed once it settles, unless the reader has
+ * opened or closed it themselves, at which point their choice sticks. The
+ * resting label names the state rather than a duration: `useLocalRuntime` and
+ * this adapter attach no timing, so a "Thought for Ns" label would have nothing
+ * to count.
+ */
+function AgentReasoning() {
+  const parts = useAuiState((state) => state.message.parts);
+  // The whole turn, not just the passage in flight: a turn reasons, calls a
+  // tool, and reasons again, and a panel that settled to "Thought for 3s" in
+  // each gap would be reporting the turn finished three times before it had.
+  const streaming = useAuiState(
+    (state) => state.message.status?.type === "running"
+  );
+  const [readerOpen, setReaderOpen] = useState<boolean | null>(null);
+
+  const steps = parts.flatMap((part) =>
+    part.type === "reasoning" ? [toReasoningStep(part.text)] : []
+  );
+
+  if (steps.length === 0) {
+    return null;
+  }
+
+  return (
+    <ReasoningPanel
+      onOpenChange={setReaderOpen}
+      open={readerOpen ?? streaming}
+      restingLabel="Done thinking"
+      steps={steps}
+      streaming={streaming}
+      visibleSteps={steps.length}
+    />
+  );
+}
 
 /**
  * The text of one part.
@@ -63,11 +158,12 @@ function PartText() {
 function EmptyThread() {
   return (
     <AuiIf condition={(state) => state.thread.isEmpty}>
-      <div className="flex flex-col gap-2 px-1 py-6 text-muted-foreground text-sm">
+      <div className="flex flex-col gap-2 py-4 text-muted-foreground text-sm">
         <p className="font-medium text-foreground">Build with the agent</p>
+        <p>Describe the automation you want.</p>
         <p>
-          Describe the automation you want. The agent reads this workflow and
-          the steps this server offers, then edits the canvas as it goes.
+          The agent reads this workflow and the steps this server offers, then
+          edits the canvas as it goes.
         </p>
       </div>
     </AuiIf>
@@ -76,7 +172,11 @@ function EmptyThread() {
 
 function UserMessage() {
   return (
-    <MessagePrimitive.Root className="flex justify-end">
+    <MessagePrimitive.Root
+      aria-label="You"
+      className="flex justify-end"
+      role="article"
+    >
       <div className="max-w-[85%] whitespace-pre-wrap rounded-lg bg-secondary px-3 py-2 text-secondary-foreground text-sm">
         <MessagePrimitive.Parts>
           {({ part }) => (part.type === "text" ? <PartText /> : null)}
@@ -86,121 +186,105 @@ function UserMessage() {
   );
 }
 
-/** The model's own working-out, where the provider exposes it. */
-function Reasoning({ text }: ReasoningMessagePartProps) {
-  return (
-    <p className="whitespace-pre-wrap px-2.5 py-1.5 text-muted-foreground text-xs italic">
-      {text}
-    </p>
-  );
-}
-
 /**
- * One tool call, as a line a person reads.
+ * assistant-ui's tool row, named by what the call asked for.
  *
- * The arguments stay out of it: what the agent did is the summary the tool
- * answered, and the canvas beside the panel is where the result actually shows.
+ * A write tool answers a sentence built from the draft it changed, and that is
+ * the row once the call settles. Everything else — a read tool, and any call
+ * still in flight — takes `agentToolLabel`, which reads the tool and the
+ * arguments the model wrote, because a turn calls `list_actions` five times and
+ * the function name alone draws five identical rows.
  */
-function ToolCall({
-  toolName,
-  result,
-  isError,
-  status,
-}: ToolCallMessagePartProps) {
-  const running = status.type === "running";
-  const summary = typeof result === "string" ? result : toolName;
-
+function AgentToolCall(props: ToolCallMessagePartProps) {
   return (
-    <div
-      className={cn(
-        "flex items-start gap-2 px-2.5 py-1.5 text-xs",
-        isError ? "text-destructive" : "text-muted-foreground"
-      )}
-    >
-      {running ? (
-        <Spinner className="mt-px size-3.5" />
-      ) : isError ? (
-        <XIcon aria-hidden className="mt-px size-3.5 shrink-0" />
-      ) : (
-        <CheckIcon aria-hidden className="mt-px size-3.5 shrink-0" />
-      )}
-      <span className="min-w-0 break-words">
-        {running ? toolName : summary}
-      </span>
-    </div>
-  );
-}
-
-/**
- * The collapsed chain of thought.
- *
- * Closed by default: a turn calls a dozen tools, and what the reader came for is
- * the answer under it. It stays available because when the agent gets something
- * wrong, which step it was is the whole question.
- */
-function ThinkingDisclosure({ children }: { children: React.ReactNode }) {
-  return (
-    <Collapsible.Root className="rounded-md border">
-      <Collapsible.Trigger className="group flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1.5 text-muted-foreground text-xs hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30">
-        <ChevronRightIcon
-          aria-hidden
-          className="size-3.5 shrink-0 transition-transform duration-150 group-data-[panel-open]:rotate-90"
-        />
-        <BrainIcon aria-hidden className="size-3.5 shrink-0" />
-        Thinking
-      </Collapsible.Trigger>
-      <Collapsible.Panel className="border-t">{children}</Collapsible.Panel>
-    </Collapsible.Root>
+    <ToolFallback
+      {...props}
+      toolName={
+        typeof props.result === "string"
+          ? props.result
+          : agentToolLabel({ args: props.args, toolName: props.toolName })
+      }
+    />
   );
 }
 
 function AssistantMessage() {
   return (
-    <MessagePrimitive.Root className="flex flex-col gap-2">
-      <MessagePrimitive.GroupedParts groupBy={groupThinking}>
+    <MessagePrimitive.Root
+      aria-label="Agent"
+      className="flex flex-col gap-1"
+      role="article"
+    >
+      <AgentReasoning />
+      <MessagePrimitive.GroupedParts groupBy={groupWorkingOut}>
         {({ part, children }) => {
           switch (part.type) {
-            case "group-thought":
-              return <ThinkingDisclosure>{children}</ThinkingDisclosure>;
-            // The two inner groups only exist so adjacent parts of one kind
-            // coalesce; neither draws a frame of its own.
-            case "group-reasoning":
             case "group-tool":
-              return <>{children}</>;
+              return (
+                <ToolGroupRoot variant="ghost">
+                  <ToolGroupTrigger
+                    active={part.status.type === "running"}
+                    count={part.indices.length}
+                  />
+                  <ToolGroupContent>{children}</ToolGroupContent>
+                </ToolGroupRoot>
+              );
             case "text":
               return <AgentMarkdown />;
-            case "reasoning":
-              return <Reasoning {...part} />;
             case "tool-call":
-              return part.toolUI ?? <ToolCall {...part} />;
+              return part.toolUI ?? <AgentToolCall {...part} />;
             default:
               return null;
           }
         }}
       </MessagePrimitive.GroupedParts>
+      <AuiIf condition={(state) => state.message.status?.type === "incomplete"}>
+        <ErrorPrimitive.Root className="flex items-start gap-2 py-1 text-destructive text-xs">
+          <AlertCircleIcon aria-hidden className="mt-px size-3.5 shrink-0" />
+          <ErrorPrimitive.Message className="min-w-0 break-words" />
+        </ErrorPrimitive.Root>
+      </AuiIf>
     </MessagePrimitive.Root>
   );
 }
 
+/**
+ * The composer, pinned to the bottom of the card.
+ *
+ * It sits inside the scroll viewport rather than below it, so it is held to the
+ * same reading column the messages are, at whatever width the card is dragged
+ * or expanded to. Its footer pins it down and keeps it there once the thread is
+ * taller than the card, with the conversation scrolling behind it.
+ */
 function Composer() {
   return (
-    <ComposerPrimitive.Root className="flex items-end gap-2 border-t bg-background px-3 py-2.5">
+    <ComposerPrimitive.Root className="flex items-end gap-2 rounded-md border border-input bg-input/20 px-2 py-1.5 transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
       <ComposerPrimitive.Input
         autoFocus
-        className="max-h-32 min-h-9 flex-1 resize-none bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground"
+        className="max-h-32 min-h-8 flex-1 resize-none bg-transparent px-1 py-1.5 text-base outline-none placeholder:text-muted-foreground md:text-sm"
         placeholder="Describe a workflow, or ask for a change"
         rows={1}
       />
       <AuiIf condition={(state) => !state.thread.isRunning}>
         <ComposerPrimitive.Send asChild>
-          <Button aria-label="Send" size="icon-sm" type="submit">
+          <Button
+            aria-label="Send"
+            className="mb-1"
+            size="icon-sm"
+            type="submit"
+          >
             <ArrowUpIcon />
           </Button>
         </ComposerPrimitive.Send>
       </AuiIf>
       <AuiIf condition={(state) => state.thread.isRunning}>
         <ComposerPrimitive.Cancel asChild>
-          <Button aria-label="Stop" size="icon-sm" variant="outline">
+          <Button
+            aria-label="Stop"
+            className="mb-1"
+            size="icon-sm"
+            variant="outline"
+          >
             <SquareIcon />
           </Button>
         </ComposerPrimitive.Cancel>
@@ -209,7 +293,58 @@ function Composer() {
   );
 }
 
+/**
+ * Keep what the reader is looking at where it is while the composer grows.
+ *
+ * The composer sits at the end of the scrolled column, so a second line of
+ * input lengthens that column and the pinned composer then covers the message
+ * it grew over. Adding the same number of pixels to the scroll position moves
+ * the conversation up by exactly what the composer took, which reads as the
+ * message staying put.
+ *
+ * Driven off the composer's text rather than a resize observer: the text is
+ * what makes the field grow, and it is already state React commits.
+ */
+function useComposerGrowthScroll(): {
+  viewport: React.RefObject<HTMLDivElement | null>;
+  footer: React.RefObject<HTMLDivElement | null>;
+} {
+  const viewport = useRef<HTMLDivElement>(null);
+  const footer = useRef<HTMLDivElement>(null);
+  const measured = useRef<number | null>(null);
+  const text = useAuiState((state) => state.composer.text);
+
+  useAfterCommit(text, () => {
+    const scroller = viewport.current;
+    const field = footer.current;
+    if (!(scroller && field)) {
+      return;
+    }
+
+    const height = field.offsetHeight;
+    const previous = measured.current;
+    measured.current = height;
+
+    // The first measurement has nothing to compare against, a height of zero
+    // means the field has not been laid out yet, and an unchanged height means
+    // this keystroke did not grow the field. The composer grows on about one
+    // keystroke in forty, and a scroll write on the other thirty-nine fires a
+    // scroll event that cancels any smooth scroll in flight.
+    if (previous === null || height === 0 || height === previous) {
+      return;
+    }
+
+    scroller.scrollTop += height - previous;
+  });
+
+  return { viewport, footer };
+}
+
 export function AgentThread() {
+  // The refs belong to the hook: it is the only thing that reads either, and
+  // the thread just hands each to the element it names.
+  const { viewport, footer } = useComposerGrowthScroll();
+
   return (
     <ThreadPrimitive.Root className="relative flex min-h-0 flex-1 flex-col">
       {/*
@@ -219,27 +354,53 @@ export function AgentThread() {
         scroll position they chose and the button below takes them down.
       */}
       <ThreadPrimitive.Viewport
-        className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-3"
+        aria-label="Conversation"
+        className="relative flex min-h-0 flex-1 flex-col overflow-y-auto"
+        ref={viewport}
+        tabIndex={0}
         turnAnchor="top"
       >
-        <EmptyThread />
-        <ThreadPrimitive.Messages>
-          {({ message }) =>
-            message.role === "user" ? <UserMessage /> : <AssistantMessage />
-          }
-        </ThreadPrimitive.Messages>
+        {/*
+          One column, centred and held to a reading width: expanding the panel
+          over the editor makes the card wide enough that a line of prose would
+          otherwise run past what anyone can track back to the next line.
+        */}
+        <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 pt-4">
+          {/* The clearance the scroll-to-bottom button needs above the pinned
+              composer: it floats 44px over the footer, so anything less leaves
+              it sitting on the last line of the reply. */}
+          <div className="mb-14 flex flex-col gap-4">
+            <EmptyThread />
+            <ThreadPrimitive.Messages>
+              {({ message }) =>
+                message.role === "user" ? <UserMessage /> : <AssistantMessage />
+              }
+            </ThreadPrimitive.Messages>
+          </div>
+          {/*
+            `mt-auto` pins the composer to the bottom of the card, and `sticky`
+            keeps it there once the thread is taller than the card, with the
+            conversation scrolling behind it. Inside the viewport rather than
+            below it so it shares the reading column the messages are held to.
+          */}
+          <ThreadPrimitive.ViewportFooter
+            className="sticky bottom-0 mt-auto flex flex-col gap-2 bg-popover pt-4 pb-4"
+            ref={footer}
+          >
+            <ThreadPrimitive.ScrollToBottom asChild>
+              <Button
+                aria-label="Scroll to the latest"
+                className="-top-11 absolute z-10 self-center rounded-full shadow-sm disabled:invisible"
+                size="icon-sm"
+                variant="outline"
+              >
+                <ArrowDownIcon />
+              </Button>
+            </ThreadPrimitive.ScrollToBottom>
+            <Composer />
+          </ThreadPrimitive.ViewportFooter>
+        </div>
       </ThreadPrimitive.Viewport>
-      <ThreadPrimitive.ScrollToBottom asChild>
-        <Button
-          aria-label="Scroll to the latest"
-          className="-translate-x-1/2 absolute bottom-2 left-1/2 z-10 shadow-sm disabled:invisible"
-          size="icon-sm"
-          variant="outline"
-        >
-          <ArrowDownIcon />
-        </Button>
-      </ThreadPrimitive.ScrollToBottom>
-      <Composer />
     </ThreadPrimitive.Root>
   );
 }

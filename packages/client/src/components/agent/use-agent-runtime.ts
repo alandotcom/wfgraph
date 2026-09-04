@@ -88,14 +88,26 @@ function withDelta(
   return [...content, { type: kind, text: delta }];
 }
 
-/** Fold a tool's answer onto the call that asked for it. */
+/**
+ * Fold a tool's answer onto the call that asked for it.
+ *
+ * `result` is how assistant-ui knows a call has finished: a tool-call part
+ * without one is still running, and its row keeps a spinner. A read tool sends
+ * no summary, because its result is data the model wanted rather than a
+ * sentence a person needs, so the answer here is `null`: present, and carrying
+ * nothing for the row to print under the name it already has.
+ */
 function withToolResult(
   content: TurnContent,
-  input: { toolCallId: string; summary: string; failed: boolean }
+  input: {
+    toolCallId: string;
+    summary: string | undefined;
+    failed: boolean;
+  }
 ): TurnContent {
   return content.map((part) =>
     part.type === "tool-call" && part.toolCallId === input.toolCallId
-      ? { ...part, result: input.summary, isError: input.failed }
+      ? { ...part, result: input.summary ?? null, isError: input.failed }
       : part
   );
 }
@@ -121,6 +133,7 @@ export function useAgentRuntime(workflowId: string) {
         setIsGenerating(true);
         let content: TurnContent = [];
         let hasAppliedGraph = false;
+        let failure: string | undefined;
 
         try {
           const stream = await rpc.agent.chat(
@@ -180,26 +193,26 @@ export function useAgentRuntime(workflowId: string) {
               }
 
               case "error": {
-                // Not prose. A failure rendered as an ordinary reply reads as
-                // the agent saying something, so it goes on a part of its own
-                // that the thread draws as a failure.
-                content = [
-                  ...content,
-                  {
-                    type: "tool-call",
-                    toolCallId: `error-${content.length}`,
-                    toolName: "Something went wrong",
-                    args: {},
-                    argsText: "{}",
-                    result: part.message,
-                    isError: true,
-                  },
-                ];
+                // A failure is the turn's own state, not a part of it. Carried
+                // as one, it had to borrow the shape of a tool call, and the
+                // thread then had to keep that impostor out of the fold that
+                // hides the real ones. assistant-ui reads an incomplete message
+                // status and renders it through `ErrorPrimitive`.
+                failure = part.message;
                 break;
               }
             }
 
-            yield { content };
+            yield failure === undefined
+              ? { content }
+              : {
+                  content,
+                  status: {
+                    type: "incomplete" as const,
+                    reason: "error" as const,
+                    error: failure,
+                  },
+                };
           }
         } finally {
           if (

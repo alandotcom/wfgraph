@@ -69,6 +69,27 @@ describe("toAgentStreamPart", () => {
     });
   });
 
+  it("leaves the summary off a read tool's result", () => {
+    expect(
+      toAgentStreamPart(
+        part("tool-result", {
+          id: "c3",
+          name: "list_actions",
+          result: { actions: [], categories: [], totalInCatalog: 0 },
+          encodedResult: { actions: [], categories: [], totalInCatalog: 0 },
+          isFailure: false,
+          providerExecuted: false,
+          preliminary: false,
+        })
+      )
+    ).toEqual({
+      type: "tool-result",
+      id: "c3",
+      name: "list_actions",
+      failed: false,
+    });
+  });
+
   it("shows the reason a refused call gave, and marks it failed", () => {
     expect(
       toAgentStreamPart(
@@ -122,14 +143,16 @@ describe("toAgentStreamPart", () => {
 });
 
 describe("summarizeToolResult", () => {
-  it("falls back to naming the tool when a read answers only data", () => {
+  it("answers nothing when a read tool returns only data", () => {
+    // The panel keeps the phrase it drew from the call, which names what was
+    // searched for; a sentence built from the function name would say less.
     expect(
       summarizeToolResult({
         name: "list_actions",
         result: { actions: [], categories: [], totalInCatalog: 0 },
         isFailure: false,
       })
-    ).toBe("Read list_actions.");
+    ).toBeUndefined();
   });
 
   it("falls back to naming the tool when a refusal carries no reason", () => {

@@ -7,12 +7,30 @@
  */
 
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
+import type * as React from "react";
 import remarkGfm from "remark-gfm";
+
+/**
+ * A table scrolls inside its own box rather than widening the panel, which is
+ * what `.typeset-scroll` in `typeset.css` is for. The card clips its overflow,
+ * so an unwrapped table loses its right-hand columns instead of reaching for a
+ * scrollbar.
+ */
+const markdownComponents = {
+  table: ({ children }: { children?: React.ReactNode }) => (
+    <div className="typeset-scroll">
+      <table>{children}</table>
+    </div>
+  ),
+};
 
 export function AgentMarkdown() {
   return (
-    <div className="typeset typeset-chat text-sm">
-      <MarkdownTextPrimitive remarkPlugins={[remarkGfm]} />
+    <div className="typeset typeset-chat">
+      <MarkdownTextPrimitive
+        components={markdownComponents}
+        remarkPlugins={[remarkGfm]}
+      />
     </div>
   );
 }

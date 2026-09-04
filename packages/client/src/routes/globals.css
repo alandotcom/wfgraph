@@ -7,6 +7,10 @@
    tokens; those stay in this file's own @theme block below. */
 @import "shadcn/tailwind.css";
 @import "tw-animate-css";
+/* The `shimmer` utility assistant-ui's own Reasoning and ToolGroup elements put
+   on a trigger label while a turn streams. A Tailwind v4 plugin, so it has to be
+   imported here rather than reached from a component. */
+@import "tw-shimmer";
 /* Prose styling for the build agent's replies. Imported after Tailwind so its
    element rules win over the preflight reset. */
 @import "./typeset.css";
