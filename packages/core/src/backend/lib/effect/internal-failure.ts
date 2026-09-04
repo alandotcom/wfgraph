@@ -80,11 +80,8 @@ export const internalFailureFromCause =
     });
 
 /**
- * The same answer with the cause kept out of it, for a caller who is not us.
- *
- * The wait resume route answers third parties across origins, and
- * They get a stated sentence; the cause goes to the log, where the operator
- * greps `message`.
+ * The same answer with the cause kept out of it for an external caller. The
+ * caller gets a stated sentence; the cause goes to the log for the operator.
  *
  * It takes the logger as the Effect that produces one for the same reason the
  * function-level handler does: both are used from an `Effect.fn` transform, which runs
@@ -109,10 +106,7 @@ const statedInternalFailure =
     });
 
 /**
- * Both seams answered with a stated sentence, for the wait resume route.
- *
- * That route answers third parties across origins, where a Postgres message
- * naming our tables tells the sender our schema and nothing they can use.
+ * Both seams answer with one stated sentence and keep storage details private.
  */
 export const statedSeamFailureHandlers = (
   logger: Effect.Effect<EffectLogger, never, AppLogger>,

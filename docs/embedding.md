@@ -178,9 +178,9 @@ local immutable policy. Do not put a policy-store query inside `allows`.
 
 `WfGraphRoles.viewer`, `.editor`, and `.admin` are directly usable immutable policies. The
 viewer can read workflows, runs, and connections. The editor adds workflow changes, run
-management, and the build agent. The admin allows every operation, including connection and
-API-key administration. Return `WfGraphAccess.all` when every authenticated session should
-have unrestricted access; there is no implicit allow-all mode.
+management, and the build agent. The admin allows every operation, including connection
+management. Return `WfGraphAccess.all` when every authenticated session should have
+unrestricted access; there is no implicit allow-all mode.
 
 An access policy exposes `allows(operation)` and may return a boolean or `Promise<boolean>`.
 Use the common role policies first, permission collections for custom roles, and exact
@@ -220,8 +220,6 @@ Workflow Graph's built-in permission vocabulary is fixed:
 | `run.manage`       | Starting, canceling, deleting, and resuming runs                  |
 | `connection.read`  | Reading connections and connection configuration options          |
 | `connection.write` | Creating, editing, testing, deleting, and authorizing connections |
-| `settings.read`    | Reading API keys                                                  |
-| `settings.write`   | Creating and deleting API keys                                    |
 | `agent.use`        | Using the build agent                                             |
 
 The following table maps every operation ID to its permission:
@@ -234,8 +232,6 @@ The following table maps every operation ID to its permission:
 | `run.manage`       | `workflow.execute`, `workflow.deleteExecutions`, `workflow.resumeWait`, `workflow.cancelExecution`                                                                                                                                 |
 | `connection.read`  | `integration.getAll`, `integration.get`, `integration.configOptions`                                                                                                                                                               |
 | `connection.write` | `integration.create`, `integration.update`, `integration.delete`, `integration.disconnectOAuth`, `integration.testConnection`, `integration.testCredentials`, `oauth.start`, `oauth.status`, `oauth.callback`                      |
-| `settings.read`    | `apiKey.getAll`                                                                                                                                                                                                                    |
-| `settings.write`   | `apiKey.create`, `apiKey.delete`                                                                                                                                                                                                   |
 | `agent.use`        | `agent.chat`                                                                                                                                                                                                                       |
 
 The role policies contain these permissions:
@@ -244,7 +240,7 @@ The role policies contain these permissions:
 | -------- | ----------------------------------------------------------------------------- |
 | `viewer` | `workflow.read`, `run.read`, `connection.read`                                |
 | `editor` | Every viewer permission, plus `workflow.write`, `run.manage`, and `agent.use` |
-| `admin`  | Every exported permission, including connection and settings writes           |
+| `admin`  | Every exported permission, including connection writes                        |
 
 Each RPC and REST operation carries one descriptor from `WfGraphOperations`. The OpenAPI
 operation ID matches `WfGraphOperation.id`, and the `x-wfgraph-permission` extension contains
@@ -264,9 +260,9 @@ Three route classes have different authorization behavior:
 
 - Operator routes authenticate through the host. Protected RPC, REST, and OAuth operations
   call the returned policy's `allows` method.
-- Machine routes bypass host authentication because they carry a resume token, vendor
-  signature, or Inngest credential. These routes are the wait-resume endpoint, connection
-  webhook intake, and the Inngest HTTP callback when HTTP serve is enabled.
+- Machine routes bypass host authentication because they carry a vendor signature or
+  Inngest credential. These routes are connection webhook intake and the Inngest HTTP
+  callback when HTTP serve is enabled.
 - The OAuth client metadata endpoint is public provider-discovery data and bypasses host
   authentication.
 
@@ -488,7 +484,7 @@ const wfgraph = await createWfGraphApp({
 ```
 
 `wfSqlite()` with no options uses an in-memory database. Its workflows, runs,
-keys, and integrations disappear when the app is disposed or the process exits.
+and integrations disappear when the app is disposed or the process exits.
 Pass `filename` when the data must survive a restart:
 
 ```ts
@@ -649,18 +645,15 @@ Read these once:
   returns an access policy. Return `WfGraphAccess.all` for explicit unrestricted access, or
   pass `trustWfGraphUpstream()` when an upstream component enforces both checks. For the full
   contract, see [Authentication and authorization](#authentication-and-authorization).
-- **Three route classes define exposure.** Operator routes use `auth`. The wait
-  resume path, the Connection-addressed webhook intake
-  (`POST /api/webhooks/{type}/{connectionId}`), and the Inngest HTTP callback are
+- **Three route classes define exposure.** Operator routes use `auth`. The
+  Connection-addressed webhook intake
+  (`POST /api/webhooks/{type}/{connectionId}`) and the Inngest HTTP callback are
   machine routes that carry their own credentials. The OAuth client metadata
-  route is public discovery data.
-  The wait resume path and the webhook intake are always available outside the
-  gate, and the Inngest HTTP callback only when `inngest.connect` is unset. Their
-  callers are machines, each carrying a signing key, a resume token, or a vendor
-  signature. Workflow Graph alone knows which of its routes are which, which is
-  why it takes the predicate as an option and applies it route by route. Connect
-  mode mounts no `/api/inngest` — the worker dials out — so a private network that
-  Inngest cannot call into still runs.
+  route is public discovery data. Webhook intake is always available outside the
+  gate, and the Inngest HTTP callback is available only when `inngest.connect` is
+  unset. Workflow Graph applies the host authentication predicate route by route.
+  Connect mode mounts no `/api/inngest`; the worker dials out, so a private network
+  that Inngest cannot call into still runs.
 - **Set `publicUrl` when an integration offers OAuth or a webhook.** Use the
   origin that a provider reaches, such as `https://workflows.example.com`. Put
   the mount path in `basePath`. Workflow Graph refuses a `publicUrl` that contains

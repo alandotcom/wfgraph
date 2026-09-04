@@ -31,7 +31,6 @@ import {
 } from "#src/backend/api-app";
 import { resolveAuth } from "#src/backend/lib/http/authorize";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
-import { MAX_REQUEST_BODY_BYTES } from "#src/backend/lib/http/capped-body";
 import { connect as connectInngestSdk } from "inngest/connect";
 import { createInngestSurface } from "#src/backend/lib/inngest/client";
 import * as inngestClientModule from "#src/backend/lib/inngest/client";
@@ -439,39 +438,12 @@ describe("createWfGraphApp with host authentication", () => {
     }
   });
 
-  it("leaves the machine routes on their own credentials", async () => {
+  it("leaves the Inngest machine route on its own credentials", async () => {
     await using app = await createGuardedApp(false);
-    const resume = await app.fetch(
-      new Request("http://localhost/wfgraph/api/workflows/waits/tok_1/resume", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(["wrong", "shape"]),
-      })
-    );
-    // 400 from the route's own body validation, so the request got past the
-    // gate rather than being turned away at it.
-    expect(resume.status).toBe(400);
-
     // Inngest cannot carry a browser session, so a gate here would break every
     // callback and with it every workflow run.
     const inngest = await get(app, "/wfgraph/api/inngest");
     expect(inngest.status).not.toBe(401);
-  });
-
-  it("bounds the body on the resume route, which host auth does not guard", async () => {
-    await using app = await createGuardedApp(false);
-    const response = await app.fetch(
-      new Request("http://localhost/wfgraph/api/workflows/waits/tok_1/resume", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: "x".repeat(MAX_REQUEST_BODY_BYTES + 1),
-      })
-    );
-
-    expect(response.status).toBe(413);
-    expect(await response.json()).toEqual({
-      error: "Request body is too large",
-    });
   });
 
   it("refuses the editor itself, not only its data", async () => {

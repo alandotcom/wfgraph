@@ -27,7 +27,6 @@ import {
   emptyExtensionCatalog,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
-import { ApiKeyRepo } from "#src/backend/services/api-keys/repo";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
@@ -367,20 +366,6 @@ export function stubExecutionRepo(
   return Layer.succeed(ExecutionRepo, { ...executionRepoStubs, ...overrides });
 }
 
-const apiKeyRepoStubs: ApiKeyRepo["Service"] = {
-  listNewestFirst: refuse("listNewestFirst")(),
-  insert: refuse("insert"),
-  deleteById: refuse("deleteById"),
-  findByPrefix: refuse("findByPrefix"),
-  touchLastUsed: refuse("touchLastUsed"),
-};
-
-export function stubApiKeyRepo(
-  overrides: Partial<ApiKeyRepo["Service"]> = {}
-): Layer.Layer<ApiKeyRepo> {
-  return Layer.succeed(ApiKeyRepo, { ...apiKeyRepoStubs, ...overrides });
-}
-
 const integrationRepoStubs: IntegrationRepo["Service"] = {
   listByType: refuse("listByType"),
   listIdentities: Effect.die("listIdentities is not part of this test"),
@@ -448,7 +433,6 @@ export function stubWfGraphRuntime(
     workflowRepo?: Partial<WorkflowRepo["Service"]> | undefined;
     executionRepo?: Partial<ExecutionRepo["Service"]> | undefined;
     integrationRepo?: Partial<IntegrationRepo["Service"]> | undefined;
-    apiKeyRepo?: Partial<ApiKeyRepo["Service"]> | undefined;
     inngestClient?: Partial<InngestClient["Service"]> | undefined;
     /** The build agent is off unless a test turns it on. */
     agent?: AgentSettings | undefined;
@@ -468,7 +452,6 @@ export function stubWfGraphRuntime(
       stubWorkflowRepo(overrides.workflowRepo),
       stubExecutionRepo(overrides.executionRepo),
       stubIntegrationRepo(overrides.integrationRepo),
-      stubApiKeyRepo(overrides.apiKeyRepo),
       makeAgentConfigLayer(overrides.agent ?? { enabled: false }),
       makeAgentRunnerLayer(disabledAgentRunner),
       stubInngestClient(overrides.inngestClient)

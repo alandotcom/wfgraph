@@ -118,8 +118,7 @@ export type EventSubscriber = {
  * way ADR-0005 describes.
  *
  * These write their own Drizzle against the handle the `Database` service owns,
- * as the API key repository does, because no `backend/lib/db` module holds the
- * workflow queries.
+ * because no `backend/lib/db` module holds the workflow queries.
  */
 export class WorkflowRepo extends Context.Service<
   WorkflowRepo,

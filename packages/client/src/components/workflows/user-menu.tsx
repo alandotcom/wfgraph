@@ -1,6 +1,5 @@
-import { ChevronDown, Key, Moon, Plug, Sun } from "lucide-react";
+import { ChevronDown, Moon, Plug, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
-import { ApiKeysOverlay } from "#src/components/overlays/api-keys-overlay";
 import { IntegrationsOverlay } from "#src/components/overlays/integrations-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { Button } from "#src/components/ui/button";
@@ -34,12 +33,6 @@ export const UserMenu = () => {
           <DropdownMenuItem onClick={() => openOverlay(IntegrationsOverlay)}>
             <Plug className="size-4" />
             <span>Connections</span>
-          </DropdownMenuItem>
-        ) : null}
-        {can(WfGraphOperations.apiKeyGetAll.id) ? (
-          <DropdownMenuItem onClick={() => openOverlay(ApiKeysOverlay)}>
-            <Key className="size-4" />
-            <span>API Keys</span>
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuSeparator />

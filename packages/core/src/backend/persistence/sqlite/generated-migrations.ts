@@ -55,4 +55,14 @@ export const sqliteMigrations = [
     hash: "e6050af4b251ed2b8a8d6f9b747b45eea856879b093319bc4a43f853cd19b081",
     name: "20260903221648_harsh_white_queen",
   },
+  {
+    sql: [
+      "DROP INDEX IF EXISTS `api_keys_prefix_idx`;",
+      "\nDROP TABLE `api_keys`;",
+    ],
+    bps: true,
+    folderMillis: 1788564870000,
+    hash: "74f159129312eaeea04d89b85e5fd5b207c84301fcca5fc936f9f0b6099fa4af",
+    name: "20260904233430_goofy_doctor_faustus",
+  },
 ] satisfies readonly MigrationMeta[];

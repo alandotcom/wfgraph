@@ -6,7 +6,6 @@
 import { describe, expect, it } from "vitest";
 import { isNotNil } from "es-toolkit/predicate";
 import { Effect } from "effect";
-import { ApiKeyRepo } from "#src/backend/services/api-keys/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type {
@@ -37,13 +36,7 @@ export function describeExecutionConformance({
       await first.run(
         Effect.gen(function* () {
           const workflows = yield* WorkflowRepo;
-          const apiKeys = yield* ApiKeyRepo;
           const executions = yield* ExecutionRepo;
-          yield* apiKeys.insert({
-            name: "Deploy",
-            keyHash: "hash",
-            keyPrefix: "wfg_test",
-          });
           yield* workflows.insert({
             id: "wf_1",
             name: "Appointments",
@@ -64,10 +57,8 @@ export function describeExecutionConformance({
       const state = await second.run(
         Effect.gen(function* () {
           const workflows = yield* WorkflowRepo;
-          const apiKeys = yield* ApiKeyRepo;
           const executions = yield* ExecutionRepo;
           return {
-            keys: yield* apiKeys.listNewestFirst,
             workflow: yield* workflows.findById("wf_1"),
             events: yield* executions.listWorkflowEvents({
               workflowId: "wf_1",
@@ -77,9 +68,6 @@ export function describeExecutionConformance({
         })
       );
 
-      expect(state.keys).toMatchObject([
-        { name: "Deploy", keyPrefix: "wfg_test" },
-      ]);
       expect(state.workflow?.name).toBe("Appointments");
       expect(state.events[0]?.metadata).toEqual({
         createdAt: "host-json-stays-a-string",

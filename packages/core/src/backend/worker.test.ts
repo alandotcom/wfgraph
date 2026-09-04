@@ -14,7 +14,6 @@ import {
 import type { WfGraphPersistence } from "#src/backend/persistence/types";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
 import {
-  stubApiKeyRepo,
   stubExecutionRepo,
   stubIntegrationRepo,
   stubWorkflowRepo,
@@ -68,7 +67,6 @@ describe("wfWorker", () => {
 
   it("resolves request-scoped extensions from the Worker environment", async () => {
     const repositories = Layer.mergeAll(
-      stubApiKeyRepo(),
       stubExecutionRepo(),
       stubIntegrationRepo(),
       stubWorkflowRepo()
@@ -176,7 +174,6 @@ describe("wfWorker", () => {
     let reads = 0;
     let closed = 0;
     const repositories = Layer.mergeAll(
-      stubApiKeyRepo(),
       stubExecutionRepo(),
       stubIntegrationRepo(),
       stubWorkflowRepo({
@@ -254,7 +251,6 @@ describe("wfWorker", () => {
   it("closes persistence when runtime disposal fails", async () => {
     let closed = 0;
     const repositories = Layer.mergeAll(
-      stubApiKeyRepo(),
       stubExecutionRepo(),
       stubIntegrationRepo(),
       stubWorkflowRepo(),

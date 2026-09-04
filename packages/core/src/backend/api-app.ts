@@ -26,7 +26,6 @@ import {
   openApiRestHandler,
 } from "#src/backend/rpc/openapi";
 import { rpcRouter } from "#src/backend/rpc/router";
-import { postWorkflowResume } from "#src/backend/services/workflows/lifecycle/resume";
 import { getWorkflows } from "#src/backend/services/workflows/list";
 import { receiveWebhook } from "#src/backend/services/integrations/webhook-intake";
 import { executeDraftTool } from "#src/backend/services/agent/draft-tool";
@@ -38,7 +37,7 @@ import {
   OAUTH_RESPONSE_HEADERS,
   OAUTH_RESPONSE_ROUTES,
 } from "#src/backend/lib/http/oauth-routes";
-import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
+import { readJsonObject } from "@wfgraph/shared/types/json";
 import { formatSchemaFailure } from "@wfgraph/shared/types/schema-message";
 import {
   NonEmptyTrimmedString,
@@ -58,10 +57,6 @@ const readParams = {
   ...rejectUnknownKeys,
   errors: "all",
 } as const satisfies SchemaAST.ParseOptions;
-const readTokenParams = Schema.decodeUnknownResult(
-  Schema.Struct({ token: NonEmptyTrimmedString }),
-  readParams
-);
 const readWebhookParams = Schema.decodeUnknownResult(
   Schema.Struct({
     type: NonEmptyTrimmedString,
@@ -153,45 +148,6 @@ async function mcpResponseLogFields(response: Response) {
   }
 }
 
-/**
- * Read a request body as the JSON object a resume call carries.
- *
- * Workflow Graph parses untrusted input at the route boundary, which is what the project
- * asks for anyway, so no validator middleware sits between the request and the
- * service. A body that is not JSON and a body that is JSON but not an object
- * both come back as a message the caller can act on, and one over the ceiling
- * comes back as the status that says so.
- */
-async function parseJsonObjectBody(
-  request: Request
-): Promise<
-  | { ok: true; data: JsonObject }
-  | { ok: false; status: 400 | 413; error: string }
-> {
-  const raw = await readCappedText(request);
-  if (!raw.ok) {
-    return { ok: false, status: 413, ...TOO_LARGE_BODY };
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw.text);
-  } catch {
-    return { ok: false, status: 400, error: "Request body must be valid JSON" };
-  }
-
-  const body = readJsonObject(parsed);
-  if (!body) {
-    return {
-      ok: false,
-      status: 400,
-      error: "Request body must be a JSON object",
-    };
-  }
-
-  return { ok: true, data: body };
-}
-
 export type CreateApiAppOptions = {
   /**
    * Absolute path the API is reachable at, leading slash and no trailing slash,
@@ -216,21 +172,15 @@ export type CreateApiAppOptions = {
   mcp?: true | WfGraphMcpOptions | undefined;
 };
 
-/**
- * Where a parked wait is resumed by token. Local to this file, because the
- * editor resumes over RPC and nothing else addresses the path.
- */
-const WAIT_RESUME_ROUTE = "/workflows/waits/:token/resume";
-
 const WEBHOOK_ROUTE = "/webhooks/:type/:connectionId";
 
 const INNGEST_SERVE_ROUTE = "/inngest";
 
 /**
  * Routes reached by machines, each carrying a credential of its own: Inngest
- * signs its HTTP callback (when that route is mounted), the resume path carries
- * a resume token, and a webhook carries the vendor's signature. A session check
- * would break all three. Host `auth` must not consume the webhook body.
+ * signs its HTTP callback when that route is mounted, and a webhook carries the
+ * vendor's signature. A session check would break both routes. Host `auth` must
+ * not consume the webhook body.
  *
  * Written as the exception, so a route added to this file is gated by default
  * and opening one is an edit here with a reason attached. Listing what to gate
@@ -248,8 +198,8 @@ export function machineRoutes(options: {
   serveInngest: boolean;
 }): readonly string[] {
   return options.serveInngest
-    ? [INNGEST_SERVE_ROUTE, WAIT_RESUME_ROUTE, WEBHOOK_ROUTE]
-    : [WAIT_RESUME_ROUTE, WEBHOOK_ROUTE];
+    ? [INNGEST_SERVE_ROUTE, WEBHOOK_ROUTE]
+    : [WEBHOOK_ROUTE];
 }
 
 /** OAuth client metadata is provider-discovery data, so it reaches no host auth. */
@@ -262,7 +212,7 @@ const ERROR_MESSAGE_LIMIT = 200;
 
 /**
  * The reason a refusal gives, for a route that answers without going through
- * the oRPC handler: a 404, the auth gate's 401, the wait-resume route's 400.
+ * the oRPC handler, such as a 404 or the auth gate's 401.
  * An oRPC procedure puts a better-typed reason on the request event itself.
  */
 async function readRefusalMessage(res: Response): Promise<string | undefined> {
@@ -650,31 +600,6 @@ export function createApiApp(options: CreateApiAppOptions) {
       }
     });
   }
-
-  routes.post(WAIT_RESUME_ROUTE, async (c) => {
-    const params = readTokenParams(c.req.param());
-    if (Result.isFailure(params)) {
-      return c.json({ error: formatSchemaFailure(params.failure.issue) }, 400);
-    }
-
-    const body = await parseJsonObjectBody(c.req.raw);
-    if (!body.ok) {
-      return c.json({ error: body.error }, body.status);
-    }
-
-    return await runtime.runPromise(
-      postWorkflowResume({
-        token: params.success.token,
-        body: body.data,
-        authHeader: c.req.header("Authorization") ?? null,
-      }).pipe(
-        Effect.match({
-          onSuccess: (data) => Response.json(data),
-          onFailure: (failure) => responseFromServiceFailure(failure),
-        })
-      )
-    );
-  });
 
   routes.post(WEBHOOK_ROUTE, async (c) => {
     const params = readWebhookParams(c.req.param());

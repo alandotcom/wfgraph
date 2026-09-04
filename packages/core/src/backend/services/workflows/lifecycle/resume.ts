@@ -3,7 +3,6 @@ import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { statedSeamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import { NotFound } from "#src/backend/lib/effect/failures";
-import { validateApiKey } from "#src/backend/services/api-keys/auth";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 
@@ -23,11 +22,10 @@ const resumeLogger = Effect.map(AppLogger, (appLogger) =>
  *
  * The token is the whole of the address: no Event name and no match are consulted,
  * which is what makes this the way out for a run parked on an Event that will
- * never arrive. Two callers reach it, and each gates its own way in -- the machine
- * route on an API key, the runs panel on the session it already holds.
+ * never arrive. The runs panel reaches it through its authenticated RPC call.
  */
 export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
-  function* (input: { token: string; body: JsonObject; source: string }) {
+  function* (input: { token: string; body: JsonObject }) {
     const { token, body } = input;
     const repo = yield* ExecutionRepo;
     const inngest = yield* InngestClient;
@@ -94,7 +92,7 @@ export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
       workflowId: waitState.workflowId,
       executionId: waitState.executionId,
       eventType: "run_resumed",
-      message: `Run resumed from ${input.source}`,
+      message: "Run resumed from the runs panel",
       metadata: {
         waitStateId: waitState.id,
       },
@@ -119,36 +117,4 @@ export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
         )
       )
     )
-);
-
-/**
- * The machine route's resume: an API key, then the token.
- *
- * Credentials before the lookup. A wait token
- * travels in a URL and so accumulates in browser history, proxy logs, and
- * referrers; answering "not found" versus "unauthorized" to a caller who has one
- * but no API key tells them whether that token is still live.
- */
-export const postWorkflowResume = Effect.fn("postWorkflowResume")(
-  function* (input: {
-    token: string;
-    body: JsonObject;
-    authHeader: string | null;
-  }) {
-    yield* validateApiKey(input.authHeader).pipe(
-      Effect.tapError((failure) =>
-        Effect.andThen(resumeLogger, (logger) =>
-          logger.warn("Workflow resume rejected due to invalid API key", {
-            reason: failure.payload.error,
-          })
-        )
-      )
-    );
-
-    return yield* resumeWaitByToken({
-      token: input.token,
-      body: input.body,
-      source: "the resume endpoint",
-    });
-  }
 );

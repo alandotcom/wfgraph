@@ -28,7 +28,7 @@ describe("Workflow Graph access policies", () => {
       await WfGraphRoles.editor.allows(WfGraphOperations.workflowCreate)
     ).toBe(true);
     expect(
-      await WfGraphRoles.editor.allows(WfGraphOperations.apiKeyCreate)
+      await WfGraphRoles.editor.allows(WfGraphOperations.integrationCreate)
     ).toBe(false);
     expect(
       Object.values(WfGraphOperations).every((operation) =>
@@ -51,7 +51,9 @@ describe("Workflow Graph access policies", () => {
     expect(byPermission.allows(WfGraphOperations.workflowCreate)).toBe(false);
     expect(byOperation.allows(WfGraphOperations.workflowGetById)).toBe(true);
     expect(byOperation.allows(WfGraphOperations.workflowGetAll)).toBe(false);
-    expect(WfGraphAccess.all.allows(WfGraphOperations.apiKeyDelete)).toBe(true);
+    expect(WfGraphAccess.all.allows(WfGraphOperations.workflowDelete)).toBe(
+      true
+    );
     expect(Object.isFrozen(byPermission)).toBe(true);
     expect(Object.isFrozen(byOperation)).toBe(true);
     expect(Object.isFrozen(WfGraphAccess.all)).toBe(true);

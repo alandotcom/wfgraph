@@ -7,7 +7,6 @@ import {
   MAX_AGENT_MESSAGES,
   MAX_AGENT_REQUEST_CHARS,
 } from "#src/rpc/contracts/agent";
-import { apiKeyContract } from "#src/rpc/contracts/api-keys";
 import {
   getWfGraphOperation,
   wfGraphOperationMeta,
@@ -28,7 +27,6 @@ export {
 
 export const rpcContract = {
   agent: agentContract,
-  apiKey: apiKeyContract,
   integration: integrationContract,
   workflow: workflowContract,
 };

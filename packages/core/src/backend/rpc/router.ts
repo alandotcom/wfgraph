@@ -9,11 +9,6 @@ import type { ServiceFailure } from "#src/backend/lib/effect/failures";
 import { getAppLogger } from "#src/backend/lib/logger";
 import type { WfGraphServices } from "#src/backend/runtime";
 import { postAgentChat } from "#src/backend/services/agent/chat";
-import { deleteApiKey } from "#src/backend/services/api-keys/api-key";
-import {
-  getApiKeys,
-  postApiKeys,
-} from "#src/backend/services/api-keys/api-keys";
 import {
   deleteIntegration,
   getIntegration,
@@ -429,19 +424,6 @@ export const rpcRouter = rpc.router({
       )
     ),
   },
-  apiKey: {
-    getAll: rpc.apiKey.getAll.handler(rpcEffectHandler(() => getApiKeys())),
-    create: rpc.apiKey.create.handler(
-      rpcEffectHandler(({ input }) =>
-        postApiKeys({
-          name: input.name ?? undefined,
-        })
-      )
-    ),
-    delete: rpc.apiKey.delete.handler(
-      rpcEffectHandler(({ input }) => deleteApiKey(input.keyId))
-    ),
-  },
   integration: {
     getAll: rpc.integration.getAll.handler(
       rpcEffectHandler(({ input }) => getIntegrations(input.type))
@@ -640,7 +622,6 @@ export const rpcRouter = rpc.router({
         resumeWaitByToken({
           token: input.token,
           body: input.payload ?? {},
-          source: "the runs panel",
         })
       )
     ),

@@ -1,10 +1,10 @@
 /**
  * Read a request body with a hard byte ceiling.
  *
- * The webhook and wait-resume routes bypass host `auth`, so an unauthenticated
- * client reaches them before anything has looked up the Connection or the
- * token. Reading such a body straight into memory lets a sender decide how much
- * the process allocates, so these routes read through this instead.
+ * Webhook routes bypass host `auth`, so an unauthenticated client reaches them
+ * before anything has looked up the Connection. Reading such a body straight
+ * into memory lets a sender decide how much the process allocates, so webhook
+ * routes read through this function.
  *
  * The bytes come back decoded as UTF-8 and byte-for-byte as they arrived, which
  * is what Svix and every other HMAC scheme needs: re-serializing a parsed body
@@ -12,9 +12,9 @@
  */
 
 /**
- * The ceiling every capped route uses. Svix, Resend and the wait-resume callers
- * all send bodies far under this; raise it only for a webhook that legitimately
- * carries more, such as one delivering attachments inline.
+ * The ceiling every capped route uses. Webhook providers send bodies far under
+ * this; raise it only for a webhook that legitimately carries more, such as one
+ * delivering attachments inline.
  */
 export const MAX_REQUEST_BODY_BYTES = 1_048_576;
 
