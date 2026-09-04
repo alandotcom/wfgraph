@@ -43,6 +43,14 @@ export type EvalWaitMatchRule = {
 export type AgentEvalEditSafety = {
   protectedNodeIds?: string[];
   protectedEdgeIds?: string[];
+  /**
+   * `"all"` asks that the turn hand back the graph it started with. It permits
+   * editing and then reverting, which is what `BEHAVIOR.md` asks of a turn that
+   * finds mid-build that the request cannot be met.
+   *
+   * A list of tool names is the different question of which tool was used, for
+   * a scenario about reaching for `insert_node_on_edge` over add-and-connect.
+   */
   forbiddenMutations?: "all" | string[];
 };
 

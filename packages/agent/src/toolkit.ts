@@ -29,6 +29,7 @@ import {
   DisconnectNodes,
   graphWriteToolHandlers,
   InsertNodeOnEdge,
+  RevertDraft,
   UpdateNode,
 } from "#src/tools/graph-write-tools";
 import {
@@ -58,6 +59,7 @@ export const agentToolkit = Toolkit.make(
   ConnectNodes,
   DisconnectNodes,
   InsertNodeOnEdge,
+  RevertDraft,
   SetLifecycleRules,
   SetCondition,
   SetWait
@@ -105,6 +107,7 @@ export const WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
   ConnectNodes.name,
   DisconnectNodes.name,
   InsertNodeOnEdge.name,
+  RevertDraft.name,
   SetLifecycleRules.name,
   SetCondition.name,
   SetWait.name,

@@ -345,11 +345,15 @@ function normalizeGeneratedIds(value: unknown): unknown {
 }
 
 describe("native and MCP tool conformance", () => {
-  it("covers every canonical tool with a successful fixture", () => {
+  it("covers every canonical tool the MCP surface exposes", () => {
+    // revert_draft is turn-scoped and this transport does not carry a turn, so
+    // it is absent here on purpose. mcp-server.ts states why where it skips it.
+    const exposed = Object.values(agentToolkit.tools)
+      .map((tool) => tool.name)
+      .filter((name) => name !== "revert_draft");
+
     expect(successCases.map(({ name }) => name).toSorted()).toEqual(
-      Object.values(agentToolkit.tools)
-        .map((tool) => tool.name)
-        .toSorted()
+      exposed.toSorted()
     );
   });
 

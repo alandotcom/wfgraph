@@ -33,6 +33,12 @@ function valueResult(
 }
 
 describe("assessEvidenceUse", () => {
+  // Discovery must precede *use*, which is what stops an invented action
+  // reaching the graph. It no longer has to precede the turn's first write:
+  // `revert_draft` undoes a turn, so discovering a step is needed partway
+  // through is a way of working rather than a violation. The two cases that
+  // covered the stricter rule were removed with it.
+
   it("accepts successful workflow and action evidence before a write", () => {
     const trajectory = buildAgentTrajectory([
       call("read", "read_workflow"),
@@ -152,23 +158,6 @@ describe("assessEvidenceUse", () => {
     });
   });
 
-  it("requires all capability discovery before the first graph write", () => {
-    const trajectory = buildAgentTrajectory([
-      call("read", "read_workflow"),
-      result("read", "read_workflow"),
-      call("lifecycle", "set_lifecycle_rules"),
-      call("describe", "describe_action", { actionId: "score-applicant" }),
-      result("describe", "describe_action"),
-      call("add", "add_node", { actionId: "score-applicant" }),
-    ]);
-
-    expect(assessEvidenceUse(trajectory)).toEqual({
-      score: 0,
-      rationale:
-        "score-applicant was added before capability discovery finished.",
-    });
-  });
-
   it("requires action evidence before updating an existing node", () => {
     const document: AgentDocument = {
       nodes: [
@@ -195,38 +184,6 @@ describe("assessEvidenceUse", () => {
       score: 0,
       rationale:
         "slack/send-message was used before a successful describe_action result.",
-    });
-  });
-
-  it("requires action discovery to finish before an earlier unrelated write", () => {
-    const document: AgentDocument = {
-      nodes: [
-        {
-          id: "notify",
-          type: "action",
-          position: { x: 0, y: 0 },
-          data: {
-            type: "action",
-            label: "Notify",
-            config: { actionType: "slack/send-message" },
-          },
-        },
-      ],
-      edges: [],
-    };
-    const trajectory = buildAgentTrajectory([
-      call("read", "read_workflow"),
-      result("read", "read_workflow"),
-      call("lifecycle", "set_lifecycle_rules"),
-      call("describe", "describe_action", { actionId: "slack/send-message" }),
-      result("describe", "describe_action"),
-      call("update", "update_node", { nodeId: "notify", label: "Alert" }),
-    ]);
-
-    expect(assessEvidenceUse(trajectory, document)).toEqual({
-      score: 0,
-      rationale:
-        "slack/send-message was used before capability discovery finished.",
     });
   });
 

@@ -98,7 +98,10 @@ describe("createAgentMcpServer", () => {
         [
           "list_workflows",
           "create_workflow",
-          ...Object.values(agentToolkit.tools).map((tool) => tool.name),
+          // revert_draft is turn-scoped, and an MCP call carries no turn.
+          ...Object.values(agentToolkit.tools)
+            .map((tool) => tool.name)
+            .filter((name) => name !== "revert_draft"),
         ].toSorted()
       );
       expect(

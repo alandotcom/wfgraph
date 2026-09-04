@@ -1157,3 +1157,75 @@ describe("insert_node_on_edge", () => {
     })
   );
 });
+
+describe("revert_draft", () => {
+  it.effect("puts back every edit the turn made", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [entry],
+        edges: [],
+        catalog: fixtureCatalog,
+      });
+
+      yield* tools.add_node({
+        actionId: "slack/send-message",
+        label: "Notify",
+      });
+      yield* tools.add_node({ actionId: "score-applicant", label: "Score" });
+      expect((yield* draft.current).nodes).toHaveLength(3);
+
+      const result = yield* tools.revert_draft({
+        reason: "the request needs an action the catalog does not hold",
+      });
+
+      expect((yield* draft.current).nodes).toEqual([entry]);
+      expect(result.summary).toContain("the catalog does not hold");
+    })
+  );
+
+  it.effect(
+    "keeps the graph a turn started from rather than an empty one",
+    () =>
+      Effect.gen(function* () {
+        const existing: WorkflowNode = {
+          id: "kept",
+          type: "action",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "Already here",
+            type: "action",
+            config: { actionType: "score-applicant" },
+          },
+        };
+        const { tools, draft } = yield* agentToolsFor({
+          nodes: [entry, existing],
+          edges: [],
+          catalog: fixtureCatalog,
+        });
+
+        yield* tools.add_node({ actionId: "score-applicant", label: "Added" });
+        yield* tools.revert_draft({ reason: "wrong shape" });
+
+        expect((yield* draft.current).nodes).toEqual([entry, existing]);
+      })
+  );
+
+  it.effect(
+    "is available again after reverting, so a turn can restart twice",
+    () =>
+      Effect.gen(function* () {
+        const { tools, draft } = yield* agentToolsFor({
+          nodes: [entry],
+          edges: [],
+          catalog: fixtureCatalog,
+        });
+
+        yield* tools.add_node({ actionId: "score-applicant", label: "First" });
+        yield* tools.revert_draft({ reason: "first attempt was wrong" });
+        yield* tools.add_node({ actionId: "score-applicant", label: "Second" });
+        yield* tools.revert_draft({ reason: "so was the second" });
+
+        expect((yield* draft.current).nodes).toEqual([entry]);
+      })
+  );
+});

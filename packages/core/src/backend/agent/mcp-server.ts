@@ -102,6 +102,20 @@ export function mcpHttpValidationResponse(
 
 type AgentToolName = keyof typeof agentToolkit.tools;
 
+/**
+ * Canonical tools this transport does not expose.
+ *
+ * `revert_draft` returns the graph to the state its turn began in. A turn is
+ * one chat request holding the document in memory, so there is a state to go
+ * back to. An MCP call is its own request against the persisted draft, which
+ * makes the state it began in the state it is already in, and the tool a
+ * no-op wearing a useful name. An external client undoes its own edits by
+ * making the opposite ones.
+ */
+const TOOLS_WITHOUT_AN_MCP_MEANING: ReadonlySet<string> = new Set([
+  "revert_draft",
+]);
+
 const WORKFLOW_ID_SCHEMA = {
   type: "string",
   minLength: 1,
@@ -418,6 +432,9 @@ export function createAgentMcpServer(
 
   for (const tool of Object.values(agentToolkit.tools)) {
     const name = tool.name;
+    if (TOOLS_WITHOUT_AN_MCP_MEANING.has(name)) {
+      continue;
+    }
     const inputSchema = fromJsonSchema<Record<string, unknown>>(
       inputSchemaFor(name)
     );

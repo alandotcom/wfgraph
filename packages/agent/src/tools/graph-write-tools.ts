@@ -181,6 +181,20 @@ export const UpdateNode = Tool.make("update_node", {
   failureMode: "return",
 });
 
+export const RevertDraft = Tool.make("revert_draft", {
+  description:
+    "Put the graph back exactly as it was when this turn began, undoing every edit you have made. Use it when you find partway through that the shape is wrong, or that a capability the request needs does not exist: revert, then explain. Editing first and reverting is expected, so a step you only discover you need halfway through costs nothing.",
+  parameters: Schema.Struct({
+    reason: Schema.String.annotate({
+      description:
+        "What you found that made the edits so far wrong, in one sentence. It reaches the person watching the canvas change.",
+    }),
+  }),
+  success: writeResultSchema,
+  failure: failureSchema,
+  failureMode: "return",
+});
+
 export const DeleteNode = Tool.make("delete_node", {
   description:
     "Remove a step and every edge touching it. Steps below it are left connected to nothing, so reconnect them afterwards.",
@@ -450,6 +464,22 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
   const draft = yield* WorkflowDraft;
 
   return {
+    /**
+     * The turn's opening graph is revision 0, which `update` stores before any
+     * tool runs. Reverting through `update` rather than by assignment keeps the
+     * one path that validates a candidate and stores a revision, so the editor
+     * draws the revert the way it draws every other edit.
+     */
+    revert_draft: (input: { readonly reason: string }) =>
+      Effect.flatMap(draft.revision(0), (opening) =>
+        Effect.as(
+          draft.update(() => opening),
+          {
+            summary: `Put the graph back as it was when this turn began: ${input.reason}`,
+          }
+        )
+      ),
+
     add_node: (input: {
       readonly actionId: string;
       readonly label: string;

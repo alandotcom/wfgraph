@@ -33,7 +33,9 @@ function hasLaterStepWriteWithoutFreshRead(
   calls: readonly AgentTrajectoryToolCall[]
 ): boolean {
   return calls.some((call) => {
-    if (!WRITE_TOOL_NAMES.has(call.name)) {
+    // A revert is what recovery looks like, so it does not owe a fresh read
+    // first. It restores the graph the last read described.
+    if (!WRITE_TOOL_NAMES.has(call.name) || call.name === "revert_draft") {
       return false;
     }
 
