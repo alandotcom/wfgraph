@@ -54,7 +54,7 @@
     "eslint-plugin-react-you-might-not-need-an-effect": "1.0.1",
     "happy-dom": "^20.13.2",
     "knip": "^6.32.0",
-    "oxfmt": "^0.62.0",
+    "oxfmt": "^0.66.0",
     "oxlint": "^1.81.0",
     "oxlint-tsgolint": "^7.0.2001",
     "pkg-pr-new": "^0.0.88",

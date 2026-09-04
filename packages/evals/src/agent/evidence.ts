@@ -124,10 +124,9 @@ export type JsonNormalized<
             ? JsonObject
             : Flatten<
                 {
-                  -readonly [Key in Exclude<
-                    keyof Value,
-                    OptionalKeys<Value>
-                  >]: JsonNormalized<Value[Key], UndefinedValue>;
+                  -readonly [
+                    Key in Exclude<keyof Value, OptionalKeys<Value>>
+                  ]: JsonNormalized<Value[Key], UndefinedValue>;
                 } & {
                   -readonly [Key in OptionalKeys<Value>]?: JsonNormalized<
                     Exclude<Value[Key], undefined>,
